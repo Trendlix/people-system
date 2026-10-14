@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useActionState } from 'react';
-import { FormErrors, SubmitButton, valueOf } from '@/components/form';
+import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
 import type { Department, FormState, JobTitle } from '@/lib/types';
 
 export function JobTitleForm({
@@ -17,6 +17,7 @@ export function JobTitleForm({
   defaultDepartmentId?: string;
 }) {
   const [state, formAction] = useActionState(action, {});
+  const fid = useFieldIds();
   const duties = jobTitle?.duties.map((d) => d.duty).join('\n');
 
   return (
@@ -24,11 +25,11 @@ export function JobTitleForm({
       <FormErrors errors={state.errors} />
 
       <div>
-        <label htmlFor="departmentId" className="label">
+        <label htmlFor={fid('departmentId')} className="label">
           Department
         </label>
         <select
-          id="departmentId"
+          id={fid('departmentId')}
           name="departmentId"
           required
           defaultValue={valueOf(state, 'departmentId', jobTitle?.departmentId ?? defaultDepartmentId)}
@@ -45,17 +46,17 @@ export function JobTitleForm({
 
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
-          <label htmlFor="titleEn" className="label">
+          <label htmlFor={fid('titleEn')} className="label">
             Job title (English)
           </label>
-          <input id="titleEn" name="titleEn" required maxLength={150} defaultValue={valueOf(state, 'titleEn', jobTitle?.titleEn)} className="input" />
+          <input id={fid('titleEn')} name="titleEn" required maxLength={150} defaultValue={valueOf(state, 'titleEn', jobTitle?.titleEn)} className="input" />
         </div>
         <div>
-          <label htmlFor="titleAr" className="label">
+          <label htmlFor={fid('titleAr')} className="label">
             Job title (Arabic) <span className="font-normal text-muted">· printed on contracts</span>
           </label>
           <input
-            id="titleAr"
+            id={fid('titleAr')}
             name="titleAr"
             lang="ar"
             dir="rtl"
@@ -67,33 +68,33 @@ export function JobTitleForm({
       </div>
 
       <div className="max-w-40">
-        <label htmlFor="grade" className="label">
+        <label htmlFor={fid('grade')} className="label">
           Grade <span className="font-normal text-muted">· optional</span>
         </label>
-        <input id="grade" name="grade" maxLength={20} placeholder="e.g. G5" defaultValue={valueOf(state, 'grade', jobTitle?.grade)} className="input" />
+        <input id={fid('grade')} name="grade" maxLength={20} placeholder="e.g. G5" defaultValue={valueOf(state, 'grade', jobTitle?.grade)} className="input" />
       </div>
 
       <fieldset className="space-y-5 border-t border-line pt-5">
         <legend className="pr-2 font-semibold">Job description</legend>
         <div>
-          <label htmlFor="jdPurpose" className="label">
+          <label htmlFor={fid('jdPurpose')} className="label">
             Purpose of the role
           </label>
-          <textarea id="jdPurpose" name="jdPurpose" rows={3} maxLength={2000} defaultValue={valueOf(state, 'jdPurpose', jobTitle?.jdPurpose)} className="input" />
+          <textarea id={fid('jdPurpose')} name="jdPurpose" rows={3} maxLength={2000} defaultValue={valueOf(state, 'jdPurpose', jobTitle?.jdPurpose)} className="input" />
         </div>
         <div>
-          <label htmlFor="duties" className="label">
+          <label htmlFor={fid('duties')} className="label">
             Duties & responsibilities
           </label>
-          <textarea id="duties" name="duties" rows={7} defaultValue={valueOf(state, 'duties', duties)} className="input" />
+          <textarea id={fid('duties')} name="duties" rows={7} defaultValue={valueOf(state, 'duties', duties)} className="input" />
           <p className="hint">One duty per line. KPIs will be linked to these duties later.</p>
         </div>
         <div>
-          <label htmlFor="jdRequirements" className="label">
+          <label htmlFor={fid('jdRequirements')} className="label">
             Requirements
           </label>
           <textarea
-            id="jdRequirements"
+            id={fid('jdRequirements')}
             name="jdRequirements"
             rows={4}
             maxLength={4000}

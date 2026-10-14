@@ -22,10 +22,10 @@ async function JobTitlesList({ searchParams }: { searchParams: Promise<{ departm
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <form className="flex flex-wrap items-end gap-2">
           <div>
-            <label htmlFor="departmentId" className="label">
+            <label htmlFor="filter-department" className="label">
               Department
             </label>
-            <select id="departmentId" name="departmentId" defaultValue={departmentId} className="input min-w-56">
+            <select id="filter-department" name="departmentId" defaultValue={departmentId} className="input min-w-56">
               <option value="">All departments</option>
               {departments.map((d) => (
                 <option key={d.id} value={d.id}>

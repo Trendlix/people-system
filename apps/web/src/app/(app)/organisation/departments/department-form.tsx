@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useActionState } from 'react';
-import { FormErrors, SubmitButton, valueOf } from '@/components/form';
+import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
 import type { Department, FormState } from '@/lib/types';
 
 export function DepartmentForm({
@@ -13,21 +13,22 @@ export function DepartmentForm({
   department?: Department;
 }) {
   const [state, formAction] = useActionState(action, {});
+  const fid = useFieldIds();
   return (
     <form action={formAction} className="card max-w-xl space-y-5 p-6">
       <FormErrors errors={state.errors} />
       <div>
-        <label htmlFor="nameEn" className="label">
+        <label htmlFor={fid('nameEn')} className="label">
           Name (English)
         </label>
-        <input id="nameEn" name="nameEn" required maxLength={100} defaultValue={valueOf(state, 'nameEn', department?.nameEn)} className="input" />
+        <input id={fid('nameEn')} name="nameEn" required maxLength={100} defaultValue={valueOf(state, 'nameEn', department?.nameEn)} className="input" />
       </div>
       <div>
-        <label htmlFor="nameAr" className="label">
+        <label htmlFor={fid('nameAr')} className="label">
           Name (Arabic) <span className="font-normal text-muted">· optional</span>
         </label>
         <input
-          id="nameAr"
+          id={fid('nameAr')}
           name="nameAr"
           lang="ar"
           dir="rtl"

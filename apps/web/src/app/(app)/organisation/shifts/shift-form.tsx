@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { useActionState } from 'react';
-import { FormErrors, SubmitButton, valueOf } from '@/components/form';
+import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
 import type { FormState, Shift } from '@/lib/types';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: FormData) => Promise<FormState>; shift?: Shift }) {
   const [state, formAction] = useActionState(action, {});
+  const fid = useFieldIds();
   const typedDays = state.values?.workingDays;
   const days = state.values
     ? new Set((Array.isArray(typedDays) ? typedDays : typedDays ? [typedDays] : []).map(Number))
@@ -18,30 +19,30 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
     <form action={formAction} className="card max-w-xl space-y-5 p-6">
       <FormErrors errors={state.errors} />
       <div className="max-w-40">
-        <label htmlFor="code" className="label">
+        <label htmlFor={fid('code')} className="label">
           Shift code
         </label>
-        <input id="code" name="code" required maxLength={10} placeholder="e.g. A" defaultValue={valueOf(state, 'code', shift?.code)} className="input uppercase" />
+        <input id={fid('code')} name="code" required maxLength={10} placeholder="e.g. A" defaultValue={valueOf(state, 'code', shift?.code)} className="input uppercase" />
       </div>
       <div className="grid gap-5 sm:grid-cols-3">
         <div>
-          <label htmlFor="startTime" className="label">
+          <label htmlFor={fid('startTime')} className="label">
             Starts
           </label>
-          <input id="startTime" name="startTime" type="time" required defaultValue={valueOf(state, 'startTime', shift?.startTime ?? '09:00')} className="input" />
+          <input id={fid('startTime')} name="startTime" type="time" required defaultValue={valueOf(state, 'startTime', shift?.startTime ?? '09:00')} className="input" />
         </div>
         <div>
-          <label htmlFor="endTime" className="label">
+          <label htmlFor={fid('endTime')} className="label">
             Ends
           </label>
-          <input id="endTime" name="endTime" type="time" required defaultValue={valueOf(state, 'endTime', shift?.endTime ?? '18:00')} className="input" />
+          <input id={fid('endTime')} name="endTime" type="time" required defaultValue={valueOf(state, 'endTime', shift?.endTime ?? '18:00')} className="input" />
         </div>
         <div>
-          <label htmlFor="graceMinutes" className="label">
+          <label htmlFor={fid('graceMinutes')} className="label">
             Grace (minutes)
           </label>
           <input
-            id="graceMinutes"
+            id={fid('graceMinutes')}
             name="graceMinutes"
             type="number"
             min={0}

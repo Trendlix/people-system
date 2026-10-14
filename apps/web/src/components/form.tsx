@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useId } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { FormState } from '@/lib/types';
 
@@ -62,4 +62,13 @@ export function valueOf(state: FormState, key: string, saved?: string | null): s
   const typed = state.values?.[key];
   if (typeof typed === 'string') return typed;
   return saved ?? '';
+}
+
+/**
+ * Unique field ids per form instance. Next.js keeps recently visited pages mounted (hidden) for
+ * back/forward navigation, so fixed ids like "duties" could appear twice and break label links.
+ */
+export function useFieldIds(): (name: string) => string {
+  const base = useId();
+  return (name) => `${base}${name}`;
 }
