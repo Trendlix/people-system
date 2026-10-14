@@ -1,0 +1,9 @@
+{
+  // Used by `npm run start:dev`: compiles to dist-dev so a production build (dist) can't
+  // delete the files the running dev server needs.
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "outDir": "./dist-dev"
+  },
+  "exclude": ["node_modules", "test", "dist", "dist-dev", "**/*spec.ts"]
+}
