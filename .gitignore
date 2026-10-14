@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.next/
+coverage/
+*.tsbuildinfo
+
+# local secrets
+.env
+.env.local
+
+# generated Prisma client
+apps/api/src/generated/
+
+# local file storage (uploaded templates, signed scans)
+storage/
+
+.DS_Store
