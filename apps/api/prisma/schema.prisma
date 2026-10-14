@@ -34,6 +34,7 @@ model User {
   roles        UserRole[]
   auditEntries AuditLog[]
   uploads      PaperworkItem[]
+  corrections  OcrCorrection[]
 
   @@map("users")
 }
@@ -295,6 +296,24 @@ model PaperworkItem {
 
   @@index([employeeId, kind])
   @@map("paperwork_items")
+}
+
+// Fixes learned from HR's corrections to ID card readings (src/paperwork/corrections.ts): whole words of the Arabic
+// name, the address or the issuing office as read, and as HR corrected them. Applied to the next readings. Never
+// national ID numbers or dates.
+model OcrCorrection {
+  id          String   @id @default(uuid()) @db.Uuid
+  field       String // fullNameAr, addressAr, issuingOffice
+  wrong       String // the word(s) as read
+  right       String // as HR corrected them
+  timesSeen   Int      @default(1) @map("times_seen") // how often HR made this same correction
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([field, wrong])
+  @@map("ocr_corrections")
 }
 
 // ---------- audit ----------

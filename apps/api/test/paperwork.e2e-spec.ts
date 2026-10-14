@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { createServer } from 'node:http';
+import { createServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
@@ -9,6 +9,8 @@ import { createApp, createUser, signIn } from './helpers.js';
 // Unique per run, because the test database keeps data from earlier runs.
 const RUN = String(Date.now()).slice(-8);
 const arabicDigits = (s: string) => s.replace(/\d/g, (d) => String.fromCharCode(0x0660 + Number(d)));
+// digits as Arabic letters (0 → ب …), for a word unique to this run
+const arabicLetters = (s: string) => s.replace(/\d/g, (d) => 'بتثجحخدذرز'[Number(d)]);
 
 // A real 1×1 PNG. Test files carry a mark ("MARK:FRONT" …) after the image data, which tells the fake OCR service
 // below what to answer; the file is still a PNG by its first bytes.
@@ -51,6 +53,8 @@ const SUGGESTIONS = {
 interface FakeOcr {
   url: string;
   calls: { lang: string | null }[];
+  /** What each mark reads as; tests may add marks. */
+  texts: Record<string, string>;
   close: () => Promise<void>;
 }
 
@@ -62,6 +66,10 @@ async function fakeOcr(texts: Record<string, string>): Promise<FakeOcr> {
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
     req.on('end', () => {
       const url = new URL(req.url ?? '/', 'http://ocr');
+      if (req.method === 'POST' && url.pathname === '/cards') {
+        cardsAnswer(Buffer.concat(chunks), res);
+        return;
+      }
       if (req.method !== 'POST' || url.pathname !== '/read') return void res.writeHead(404).end();
       const lang = url.searchParams.get('lang');
       calls.push({ lang });
@@ -80,12 +88,34 @@ async function fakeOcr(texts: Record<string, string>): Promise<FakeOcr> {
   return {
     url: `http://127.0.0.1:${port}`,
     calls,
+    texts,
     close: () =>
       new Promise((resolve) => {
         server.closeAllConnections();
         server.close(() => resolve());
       }),
   };
+}
+
+const box = (cy: number, angle: number) => ({ cx: 500, cy, w: 704, h: 444, angle });
+/** The fake /cards: MARK:TWOCARDS is a page with the back above the front, MARK:NOCARD a page without a card. */
+function cardsAnswer(body: Buffer, res: ServerResponse) {
+  const mark = /MARK:(\w+)/.exec(body.toString('latin1'))?.[1] ?? '';
+  if (mark === 'FAIL') {
+    res.writeHead(500).end('Internal Server Error');
+    return;
+  }
+  const page = { width: 1000, height: 1400, image: Buffer.from(`PAGE:${mark}`).toString('base64') };
+  const cards =
+    mark === 'TWOCARDS'
+      ? [
+          { page: 0, box: box(300, -2.5), image: Buffer.from('BACK').toString('base64'), side: 'back', confidence: 0.94 },
+          { page: 0, box: box(1000, 1.2), image: Buffer.from('FRONT').toString('base64'), side: 'front', confidence: 0.97 },
+        ]
+      : mark === 'NOCARD'
+        ? []
+        : [{ page: 0, box: box(700, 0.4), image: Buffer.from(`CARD:${mark}`).toString('base64'), side: null, confidence: 0.5 }];
+  res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ pages: [page], cards }));
 }
 
 /** An address where nothing listens: the OCR service is not running. */
@@ -297,6 +327,7 @@ describe('Paperwork (e2e)', () => {
         .expect(200);
       expect(res.body).toEqual({
         suggestions: SUGGESTIONS,
+        corrected: [],
         front: { itemId: expect.any(String), text: FRONT },
         back: { itemId: expect.any(String), text: BACK },
       });
@@ -347,7 +378,7 @@ describe('Paperwork (e2e)', () => {
       const calls = ocr.calls.length;
 
       const res = await readCard().attach('front', jpeg('FRONT'), 'front.jpg').attach('back', png('BACK'), 'back.png').expect(200);
-      expect(res.body).toEqual({ suggestions: SUGGESTIONS, front: { text: FRONT }, back: { text: BACK } });
+      expect(res.body).toEqual({ suggestions: SUGGESTIONS, corrected: [], front: { text: FRONT }, back: { text: BACK } });
       expect(ocr.calls.slice(calls)).toEqual([{ lang: 'ar' }, { lang: 'ar' }]);
 
       expect(await stored()).toBe(storedBefore);
@@ -374,7 +405,7 @@ describe('Paperwork (e2e)', () => {
       expect(big.body.message).toBe('Each file must be 10 MB or smaller.');
 
       const front = await readCard().attach('front', jpeg('FRONT'), 'f.jpg').expect(200);
-      expect(front.body).toEqual({ suggestions: expect.objectContaining({ nationalId: '29503120123456' }), front: { text: FRONT } });
+      expect(front.body).toEqual({ suggestions: expect.objectContaining({ nationalId: '29503120123456' }), corrected: [], front: { text: FRONT } });
     });
 
     it('is for HR only, and is not mistaken for an employee', async () => {
@@ -383,6 +414,96 @@ describe('Paperwork (e2e)', () => {
       await readCard(staff).attach('front', jpeg('FRONT'), 'f.jpg').expect(403);
       await api().post('/api/employees/read-id-card').attach('front', jpeg('FRONT'), 'f.jpg').expect(401);
       await api().get('/api/employees/read-id-card').set('Cookie', hr).expect(400); // GET /employees/:id wants a UUID
+    });
+  });
+
+  describe('finding the card on a scan', () => {
+    const prepare = (session = hr) => api().post('/api/id-card/prepare').set('Cookie', session);
+
+    it('finds both sides on one page, front first, storing and logging nothing', async () => {
+      const { id: hrId } = await prisma.user.findUniqueOrThrow({ where: { email: hrEmail }, select: { id: true } });
+      const logged = () => prisma.auditLog.count({ where: { userId: hrId } });
+      const before = await logged();
+      const res = await prepare().attach('front', pdf('TWOCARDS'), 'scan.pdf').expect(200);
+      expect(res.body).toEqual({
+        pages: [{ width: 1000, height: 1400, image: Buffer.from('PAGE:TWOCARDS').toString('base64') }],
+        front: { image: Buffer.from('FRONT').toString('base64'), page: 0, box: box(1000, 1.2), recognised: 'front', confidence: 0.97 },
+        back: { image: Buffer.from('BACK').toString('base64'), page: 0, box: box(300, -2.5), recognised: 'back', confidence: 0.94 },
+        found: 2,
+      });
+      expect(await logged()).toBe(before);
+    });
+
+    it('takes the front and the back from two files, and says when a side is missing', async () => {
+      const two = await prepare().attach('front', jpeg('ONE'), 'a.jpg').attach('back', png('TWO'), 'b.png').expect(200);
+      expect(two.body.pages).toHaveLength(2);
+      expect(two.body.front).toMatchObject({ page: 0, image: Buffer.from('CARD:ONE').toString('base64') });
+      expect(two.body.back).toMatchObject({ page: 1, image: Buffer.from('CARD:TWO').toString('base64') });
+
+      const none = await prepare().attach('front', jpeg('NOCARD'), 'a.jpg').expect(200);
+      expect(none.body).toMatchObject({ front: null, back: null, found: 0 });
+    });
+
+    it('is for HR only', async () => {
+      await prepare(finance).attach('front', jpeg('ONE'), 'a.jpg').expect(403);
+      await prepare().expect(400);
+    });
+  });
+
+  describe('learning from corrections', () => {
+    // a misread word unique to this run, so what is learned here never changes other readings
+    const misread = arabicLetters(RUN);
+    const LEARN = FRONT.replace('١٥ شارع مكرم عبيد', `١٥ شارع ${misread} عبيد`);
+
+    beforeAll(() => {
+      ocr.texts.LEARN = LEARN;
+    });
+
+    it('learns the words HR corrected and fixes them in the next reading', async () => {
+      const first = await api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('LEARN'), 'f.jpg').expect(200);
+      expect(first.body.suggestions.addressAr).toBe(`١٥ شارع ${misread} عبيد، أول مدينة نصر - القاهرة`);
+      expect(first.body.corrected).toEqual([]);
+
+      await api()
+        .post('/api/id-card/corrections')
+        .set('Cookie', finance)
+        .send({ corrections: [] })
+        .expect(403);
+      const learned = await api()
+        .post('/api/id-card/corrections')
+        .set('Cookie', hr)
+        .send({
+          corrections: [
+            { field: 'addressAr', read: first.body.suggestions.addressAr, saved: SUGGESTIONS.addressAr },
+            { field: 'fullNameAr', read: SUGGESTIONS.fullNameAr, saved: SUGGESTIONS.fullNameAr }, // unchanged: nothing to learn
+          ],
+        })
+        .expect(200);
+      expect(learned.body).toEqual({ learned: 1 });
+
+      const next = await api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('LEARN'), 'f.jpg').expect(200);
+      expect(next.body.suggestions.addressAr).toBe(SUGGESTIONS.addressAr);
+      expect(next.body.corrected).toEqual(['addressAr']);
+
+      const list = await api().get('/api/id-card/corrections').set('Cookie', hr).expect(200);
+      const fix = list.body.find((c: { wrong: string }) => c.wrong === misread);
+      expect(fix).toMatchObject({ field: 'addressAr', right: 'مكرم', timesSeen: 1 });
+
+      // the log says how many, never the words
+      const audit = await prisma.auditLog.findFirst({ where: { entityType: 'ocr_correction', action: 'learn' }, orderBy: { id: 'desc' } });
+      expect(audit?.diff).toEqual({ fixes: 1 });
+
+      await api().delete(`/api/id-card/corrections/${fix.id}`).set('Cookie', hr).expect(204);
+      const after = await api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('LEARN'), 'f.jpg').expect(200);
+      expect(after.body.corrected).toEqual([]);
+    });
+
+    it('refuses fields that are never learned', async () => {
+      await api()
+        .post('/api/id-card/corrections')
+        .set('Cookie', hr)
+        .send({ corrections: [{ field: 'nationalId', read: '29503120123456', saved: '29503120123457' }] })
+        .expect(400);
     });
   });
 
@@ -440,17 +561,17 @@ describe('Paperwork (e2e)', () => {
       expect(failed.body.message).toBe('The OCR service could not read the ID card. The photos were saved in the employee file.');
     });
 
-    it('answers 503 or 502 for a new employee’s ID card that cannot be read, asking for the details by hand', async () => {
+    it('answers 503 or 502 for a new employee’s ID card that cannot be read (no filling in by hand)', async () => {
       const down503 = await apiDown()
         .post('/api/employees/read-id-card')
         .set('Cookie', hr)
         .attach('front', jpeg('FRONT'), 'front.jpg')
         .attach('back', png('BACK'), 'back.png')
         .expect(503);
-      expect(down503.body.message).toBe('Reading ID cards is not available right now: the OCR service is not running. Fill in the details by hand.');
+      expect(down503.body.message).toBe('Reading ID cards is not available right now: the OCR service is not running. Try again in a few minutes.');
 
       const failed = await api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('FAIL'), 'f.jpg').expect(502);
-      expect(failed.body.message).toBe('The OCR service could not read the ID card. Try a sharper photo, or fill in the details by hand.');
+      expect(failed.body.message).toBe('The OCR service could not read the ID card. Try again, or use a clearer scan.');
 
       // one side read is enough
       const half = await api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('FAIL'), 'f.jpg').attach('back', png('BACK'), 'b.png').expect(200);

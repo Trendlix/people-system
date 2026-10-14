@@ -6,6 +6,8 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { NORMALIZE_FROM, NORMALIZE_TO, normalizeArabic, snippet } from './arabic-text.js';
 import { readIdCard } from './egyptian-id.js';
+import { CorrectionsService } from './corrections.service.js';
+import { assignSides } from './id-card-sides.js';
 import { OcrClient, type OcrRead } from './ocr.client.js';
 import { detectPaperworkType, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from './paperwork-file.js';
 
@@ -34,9 +36,14 @@ const SCAN_UNREAD: CardUnread = {
   unavailable: 'Reading ID cards is not available right now: the OCR service is not running. The photos were saved in the employee file.',
   failed: 'The OCR service could not read the ID card. The photos were saved in the employee file.',
 };
+// A new employee starts from a clean scan of their card, so there is no filling in by hand (owner's rule).
 const NEW_EMPLOYEE_UNREAD: CardUnread = {
-  unavailable: 'Reading ID cards is not available right now: the OCR service is not running. Fill in the details by hand.',
-  failed: 'The OCR service could not read the ID card. Try a sharper photo, or fill in the details by hand.',
+  unavailable: 'Reading ID cards is not available right now: the OCR service is not running. Try again in a few minutes.',
+  failed: 'The OCR service could not read the ID card. Try again, or use a clearer scan.',
+};
+const PREPARE_UNREAD: CardUnread = {
+  unavailable: 'Finding the card on the scan is not available right now: the OCR service is not running. Try again in a few minutes.',
+  failed: 'The OCR service could not process the scan. Try again, or use a clearer scan.',
 };
 
 interface Upload {
@@ -103,6 +110,7 @@ export class PaperworkService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly ocr: OcrClient,
+    private readonly corrections: CorrectionsService,
   ) {}
 
   /** The employee file, newest first. */
@@ -231,8 +239,10 @@ export class PaperworkService {
     ]);
 
     const card = readCard(frontRead, backRead, SCAN_UNREAD);
+    const { suggestions, corrected } = await this.corrections.apply(card.suggestions);
     return {
-      suggestions: card.suggestions,
+      suggestions,
+      corrected,
       front: { itemId: frontId, text: card.frontText },
       // the back: its own file, or page 2 on of a PDF that holds both sides
       ...((backId || card.backText !== null) && { back: { itemId: backId ?? frontId, text: card.backText } }),
@@ -252,11 +262,42 @@ export class PaperworkService {
     ]);
 
     const card = readCard(frontRead, backRead, NEW_EMPLOYEE_UNREAD);
+    const { suggestions, corrected } = await this.corrections.apply(card.suggestions);
     return {
-      suggestions: card.suggestions,
+      suggestions,
+      corrected,
       front: { text: card.frontText },
       ...((back || card.backText !== null) && { back: { text: card.backText } }),
     };
+  }
+
+  /**
+   * Finds the national ID card on one or two uploaded scans or photos (often one page holding both sides): each card
+   * cut out, straightened and upright, which one is the front and which the back, and the pages themselves, so HR
+   * can frame a card by hand. Nothing is stored and nothing from the card is written to the audit log; the cut-out
+   * cards are then sent to be read (readNewIdCard / scanIdentity).
+   */
+  async prepareIdCard(files: IdCardFiles) {
+    const { front, back } = cardSides(files);
+    const uploads = back ? [front, back] : [front];
+    const results = await Promise.all(uploads.map((u) => this.ocr.cards(u.data, u.type)));
+    if (results.some((r) => r.status !== 'done')) {
+      throw results.some((r) => r.status === 'unavailable')
+        ? new ServiceUnavailableException(PREPARE_UNREAD.unavailable)
+        : new BadGatewayException(PREPARE_UNREAD.failed);
+    }
+
+    const pages: { width: number; height: number; image: string }[] = [];
+    const cards: { page: number; box: { cx: number; cy: number; w: number; h: number; angle: number }; image: string; side: 'front' | 'back' | null; confidence: number; file: number }[] = [];
+    results.forEach((r, file) => {
+      if (r.status !== 'done') return;
+      const offset = pages.length;
+      pages.push(...r.pages);
+      cards.push(...r.cards.map((c) => ({ ...c, page: c.page + offset, file })));
+    });
+    const [frontCard, backCard] = assignSides(cards, uploads.length);
+    const side = (c: (typeof cards)[number] | null) => c && { image: c.image, page: c.page, box: c.box, recognised: c.side, confidence: c.confidence };
+    return { pages, front: side(frontCard), back: side(backCard), found: cards.length };
   }
 
   // ---------- helpers ----------

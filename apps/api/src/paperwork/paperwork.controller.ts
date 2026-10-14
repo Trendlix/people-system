@@ -30,7 +30,7 @@ import { PaperworkService, type IdCardFiles } from './paperwork.service.js';
 const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 }, defParamCharset: 'utf8' };
 const ID_CARD = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 2, fields: 5 }, defParamCharset: 'utf8' };
 // Photos of the national ID card: the front (required) and the back (optional).
-const ID_CARD_SIDES = FileFieldsInterceptor(
+export const ID_CARD_SIDES = FileFieldsInterceptor(
   [
     { name: 'front', maxCount: 1 },
     { name: 'back', maxCount: 1 },

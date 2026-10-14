@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { extensionOf, type PaperworkType } from './paperwork-file.js';
 
-// Talks to the OCR service (services/ocr), which reads the text of scans and photos: POST {OCR_URL}/read?lang=ar|en
-// with the file. It is optional: without OCR_URL, or when the service is down, fails or is too slow, documents are
+// Talks to the OCR service (services/ocr), which reads the text of scans and photos (POST {OCR_URL}/read?lang=ar|en)
+// and finds ID cards on a scan (POST {OCR_URL}/cards), with the file. It is optional: without OCR_URL, or when the service is down, fails or is too slow, documents are
 // still stored, only without their text (status "unavailable" or "failed").
 
 export type OcrLang = 'ar' | 'en';
@@ -11,6 +11,25 @@ export type OcrLang = 'ar' | 'en';
 export type OcrRead =
   | { status: 'done'; text: string; lines: string[]; pages: string[][] } // lines in reading order: all, and page by page
   | { status: 'failed' | 'unavailable' };
+
+/** A card found on a scan: where it lies on its page, and the card itself, cut out, straightened and upright. */
+export interface OcrCard {
+  page: number;
+  /** Rotated rectangle on the page image: centre, size (w ≥ h) and angle in degrees (services/ocr/README.md). */
+  box: { cx: number; cy: number; w: number; h: number; angle: number };
+  image: string; // base64 JPEG
+  side: 'front' | 'back' | null;
+  confidence: number;
+}
+
+/** A page as the service analysed it (base64 JPEG), for framing a card by hand. */
+export interface OcrPage {
+  width: number;
+  height: number;
+  image: string;
+}
+
+export type OcrCards = { status: 'done'; pages: OcrPage[]; cards: OcrCard[] } | { status: 'failed' | 'unavailable' };
 
 /** What the service answers. Lines are in reading order; the text is as read (Arabic-Indic digits kept). */
 interface OcrResponse {
@@ -33,21 +52,31 @@ export class OcrClient {
   }
 
   async read(file: Buffer, mimeType: PaperworkType, lang: OcrLang): Promise<OcrRead> {
-    if (!this.url) return { status: 'unavailable' };
+    const res = await this.send(`/read?lang=${lang}`, file, mimeType);
+    if (res.status !== 'ok') return res;
+    const lines = linesOf(res.body);
+    if (!lines) return this.fail('failed', 'the answer was not in the expected form');
+    return { status: 'done', text: lines.text, lines: lines.lines, pages: lines.pages };
+  }
 
+  /** Finds the ID cards on a scan or photo, each cut out and straightened (POST {OCR_URL}/cards). */
+  async cards(file: Buffer, mimeType: PaperworkType): Promise<OcrCards> {
+    const res = await this.send('/cards', file, mimeType);
+    if (res.status !== 'ok') return res;
+    const found = cardsOf(res.body);
+    if (!found) return this.fail('failed', 'the card answer was not in the expected form');
+    return { status: 'done', ...found };
+  }
+
+  private async send(path: string, file: Buffer, mimeType: PaperworkType): Promise<{ status: 'ok'; body: unknown } | { status: 'failed' | 'unavailable' }> {
+    if (!this.url) return { status: 'unavailable' };
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(file)], { type: mimeType }), `document.${extensionOf(mimeType)}`);
     try {
-      const res = await fetch(`${this.url}/read?lang=${lang}`, {
-        method: 'POST',
-        body: form,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
+      const res = await fetch(`${this.url}${path}`, { method: 'POST', body: form, signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (res.status === 503) return this.fail('unavailable', 'the service is starting or overloaded (503)');
       if (!res.ok) return this.fail('failed', `the service answered ${res.status}`);
-      const lines = linesOf(await res.json());
-      if (!lines) return this.fail('failed', 'the answer was not in the expected form');
-      return { status: 'done', text: lines.text, lines: lines.lines, pages: lines.pages };
+      return { status: 'ok', body: await res.json() };
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') return this.fail('failed', `no answer within ${TIMEOUT_MS / 1000} s`);
       if (notRunning(err)) return this.fail('unavailable', `nothing answers at ${this.url}`);
@@ -56,7 +85,7 @@ export class OcrClient {
   }
 
   /** Logged without the document or its text. */
-  private fail(status: 'failed' | 'unavailable', reason: string): OcrRead {
+  private fail<S extends 'failed' | 'unavailable'>(status: S, reason: string): { status: S } {
     this.log.warn(`Could not read a document: ${reason}.`);
     return { status };
   }
@@ -80,4 +109,33 @@ function notRunning(err: unknown): boolean {
     if (codes.some((code) => code !== undefined && NOT_RUNNING.has(code))) return true;
   }
   return false;
+}
+
+const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** The pages and cards of a well-formed /cards answer; null for anything else. */
+function cardsOf(body: unknown): { pages: OcrPage[]; cards: OcrCard[] } | null {
+  if (!body || typeof body !== 'object') return null;
+  const { pages, cards } = body as { pages?: unknown; cards?: unknown };
+  if (!Array.isArray(pages) || !Array.isArray(cards)) return null;
+  const okPages = pages.every((p: Partial<OcrPage>) => isNumber(p?.width) && isNumber(p?.height) && typeof p?.image === 'string');
+  const okCards = cards.every((c: Partial<OcrCard>) => {
+    const b = c?.box;
+    return (
+      isNumber(c?.page) && c.page >= 0 && c.page < pages.length && typeof c?.image === 'string' &&
+      !!b && [b.cx, b.cy, b.w, b.h, b.angle].every(isNumber) &&
+      (c.side === 'front' || c.side === 'back' || c.side === null) && isNumber(c.confidence)
+    );
+  });
+  if (!okPages || !okCards) return null;
+  return {
+    pages: (pages as OcrPage[]).map(({ width, height, image }) => ({ width, height, image })),
+    cards: (cards as OcrCard[]).map(({ page, box, image, side, confidence }) => ({
+      page,
+      box: { cx: box.cx, cy: box.cy, w: box.w, h: box.h, angle: box.angle },
+      image,
+      side,
+      confidence,
+    })),
+  };
 }
