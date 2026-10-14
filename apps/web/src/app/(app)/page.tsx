@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import { API_URL } from '@/lib/api';
 
 const MODULES = [
-  { title: 'Organization', text: 'Company profile, departments with their teams, job titles and job descriptions, shifts.', href: '/organization/company' },
+  { title: 'Organization', text: 'Company profile, departments and their teams, job titles with grades and job descriptions, shifts.', href: '/organization/company' },
   { title: 'Employees', text: 'Directory and employee profiles.', href: '/employees' },
   { title: 'Contracts', text: 'Contract versions, durations and expiry alerts.' },
 ];

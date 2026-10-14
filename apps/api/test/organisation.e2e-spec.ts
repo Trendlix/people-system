@@ -165,8 +165,11 @@ describe('Organisation (e2e)', () => {
     });
 
     it('adds, changes and deletes a grade; codes and ranks stay unique; a grade in use stays', async () => {
-      const rank = 50 + (Date.now() % 40);
-      const code = `T${rank}`;
+      // a rank and code no grade has, whatever earlier runs left in the test database
+      const taken = new Set(((await api().get('/api/grades').set('Cookie', session).expect(200)).body as { rank: number }[]).map((g) => g.rank));
+      let rank = 50;
+      while (taken.has(rank)) rank++;
+      const code = `T${RUN}`;
       const created = await api().post('/api/grades').set('Cookie', session).send({ code: code.toLowerCase(), rank, levelEn: 'Trial' }).expect(201);
       expect(created.body).toMatchObject({ code, rank, levelEn: 'Trial', _count: { jobTitles: 0 } });
       await api().post('/api/grades').set('Cookie', session).send({ code, rank: rank + 1, levelEn: 'Copy' }).expect(409);

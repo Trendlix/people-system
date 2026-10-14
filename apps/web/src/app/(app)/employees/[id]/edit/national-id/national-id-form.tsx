@@ -6,7 +6,7 @@ import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { formatDate } from '@/lib/format';
 import type { EmployeeIdentity, EmployeeProfile, FormState } from '@/lib/types';
-import { cardMarks, FROM_CARD, NationalIdFields, type CardSuggestions as Suggestions } from '../../../id-card';
+import { cardMarks, NationalIdFields, ReadValues, type CardSuggestions as Suggestions } from '../../../id-card';
 
 /** The profile's current values for the personal details printed on an ID card. */
 export type CardProfile = Pick<EmployeeProfile, 'fullNameAr' | 'addressAr' | 'dateOfBirth' | 'gender'>;
@@ -35,19 +35,22 @@ function shown(key: PersonalKey, value: string | null): React.ReactNode {
 
 /**
  * The national ID details. After the ID card is read (`suggestions`), the fields start with what the card says and
- * are marked for checking, and the card's personal details can be ticked to save to the profile too.
+ * are marked for checking (`corrected`: those a fix learned from HR's earlier corrections changed), and the card's
+ * personal details can be ticked to save to the profile too.
  */
 export function NationalIdForm({
   action,
   employeeId,
   identity,
   suggestions,
+  corrected,
   profile,
 }: {
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
   employeeId: string;
   identity: EmployeeIdentity;
   suggestions?: Suggestions;
+  corrected?: readonly string[];
   profile?: CardProfile;
 }) {
   // Kept form: a refused save leaves the gender read from the card as it was chosen.
@@ -55,7 +58,7 @@ export function NationalIdForm({
   const fid = useFieldIds();
   const s: Suggestions = suggestions ?? {};
 
-  const { read } = cardMarks(fid, s);
+  const { read, noteText } = cardMarks(fid, s, corrected);
 
   // Personal details the card gives that differ from the profile; the matching ones are only listed.
   const personal = profile ? PERSONAL.filter((f) => read(f.key)) : [];
@@ -92,7 +95,9 @@ export function NationalIdForm({
     <form {...form} className="card max-w-2xl space-y-5 p-6">
       <FormErrors errors={state.errors} />
 
-      <NationalIdFields state={state} fid={fid} identity={identity} suggestions={s} />
+      {/* what the reading suggested, to learn from what HR corrects (see learnCorrections) */}
+      <ReadValues suggestions={s} />
+      <NationalIdFields state={state} fid={fid} identity={identity} suggestions={s} corrected={corrected} />
 
       {personal.length > 0 && (
         <div className="border-t border-line pt-6">
@@ -108,7 +113,7 @@ export function NationalIdForm({
                 </label>
                 {personalControl(key, fid(`card_${key}`), fid(`card_${key}-hint`))}
                 <p id={fid(`card_${key}-hint`)} className="hint">
-                  <span className="text-warn">{FROM_CARD}</span> In the profile now: {shown(key, profile?.[key] ?? null)}
+                  <span className="text-warn">{noteText(key)}</span> In the profile now: {shown(key, profile?.[key] ?? null)}
                 </p>
                 <label className="mt-3 flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
                   <input type="checkbox" name="apply" value={key} defaultChecked={ticked(key)} className="size-4 accent-accent" />

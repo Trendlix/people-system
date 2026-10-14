@@ -1,32 +1,33 @@
 'use client';
 
-import { startTransition, useActionState, useCallback, useEffect, useRef, useState, useTransition } from 'react';
+import { startTransition, useActionState, useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import type { FormState, IdCardReading } from '@/lib/types';
 import { createEmployee } from '../actions';
-import { EmploymentFields, type EmploymentPickers } from '../employment-fields';
-import { CardReadStatus, CardTextDetails, NationalIdFields } from '../id-card';
-import { FILE_INPUT, limitFileSize, PHOTO_ACCEPT } from '../paperwork';
+import { CardReadStatus, CardTextDetails, NationalIdFields, ReadValues } from '../id-card';
 import { readIdCard } from '../paperwork-actions';
 import { PersonalFields } from '../personal-fields';
-import { withSmallerPhotos } from '../shrink-photo';
+import { IdScan } from '../scan/id-scan';
 
-// The Add employee page, in three steps shown one at a time: 1 the national ID card is read, 2 the profile (filled in
-// from the card, for HR to check), 3 the employment details. Steps 2 and 3 are one form, sent once at the end, and
-// hidden steps stay in the page, so going back and forth loses nothing. What the card says and its photos stay in
-// this page, never in a URL; the photos go to the employee file once the employee is added.
+// The Add employee page, in three steps shown one at a time: 1 the national ID card is scanned and read, 2 the profile
+// (filled in from the card, for HR to check, with the national ID), 3 education; then Save profile. Every new employee
+// starts from a clean scan of their card, front and back (owner's rule): there is no filling in by hand instead. Steps 2
+// and 3 are one form, sent once at the end, and hidden steps stay in the page, so going back and forth loses nothing.
+// What the card says and the cut-out cards stay in this page, never in a URL; the cards go to the employee file once
+// the profile is saved. Employment is added next, on the new profile's Employment tab (owner's decision: the profile
+// and the employment are separate, so a profile exists before the hire and stays after the employment ends).
 
 type Step = 1 | 2 | 3;
 
 const STEPS: { step: Step; name: string }[] = [
   { step: 1, name: 'ID Card' },
   { step: 2, name: 'Profile' },
-  { step: 3, name: 'Employment' },
+  { step: 3, name: 'Education' },
 ];
 
-/** A card that was read: what it says, and its photos (made smaller) for the employee file. */
-type Card = { reading: IdCardReading; front: File; back: File | null };
+/** A card that was read: what it says, and its two sides cut out of the scan (JPEG) for the employee file. */
+type Card = { reading: IdCardReading; front: File; back: File };
 
 /**
  * The form is never reset (see `create`), so its fields keep what was typed through a refused save without the
@@ -35,24 +36,16 @@ type Card = { reading: IdCardReading; front: File; back: File | null };
 const FRESH: FormState = {};
 
 // Which step holds the field a message is about, by the words the API and the form use for it.
-const EMPLOYMENT_WORDS = /employment type|choose a status|department|team|job title|manager|join date|probation|work arrangement|hybrid|office days|shift/i;
-const PROFILE_WORDS =
-  /name|code|birth|gender|male|nationality|marital|military|email|mobile|governorate|address|emergency|university|faculty|degree|major|graduation|grade|qualification|national id|printed|issu|expir/i;
+const EDUCATION_WORDS = /university|faculty|degree|major|graduation|grade from the list|qualification/i;
 
-/** The step to show a refused save on: the profile when any message is about it, else employment. */
+/** The step to show a refused save on: education when every message is about it, else the profile. */
 function stepFor(errors: string[]): Step {
-  return errors.some((e) => !EMPLOYMENT_WORDS.test(e) && PROFILE_WORDS.test(e)) ? 2 : 3;
-}
-
-/** The photo chosen in a form field, or null when none was. */
-function photo(fd: FormData, key: string): File | null {
-  const value = fd.get(key);
-  return value instanceof File && value.size > 0 ? value : null;
+  return errors.length > 0 && errors.every((e) => EDUCATION_WORDS.test(e)) ? 3 : 2;
 }
 
 const viewLink = 'inline-flex min-h-9 items-center text-sm font-semibold';
 
-/** Opens a photo kept in this page. Its address is made when the link is shown and let go when it is not. */
+/** Opens a picture kept in this page. Its address is made when the link is shown and let go when it is not. */
 function PhotoLink({ file, children }: { file: File; children: React.ReactNode }) {
   const attach = useCallback(
     (link: HTMLAnchorElement) => {
@@ -70,7 +63,7 @@ function PhotoLink({ file, children }: { file: File; children: React.ReactNode }
   );
 }
 
-export function NewEmployeeForm({ pickers }: { pickers: EmploymentPickers }) {
+export function NewEmployeeForm() {
   const fid = useFieldIds();
   const [step, setStep] = useState<Step>(1);
   const profile = useRef<HTMLElement>(null);
@@ -82,10 +75,8 @@ export function NewEmployeeForm({ pickers }: { pickers: EmploymentPickers }) {
   const [card, setCard] = useState<Card | null>(null);
   /** Counts the cards read: a new one fills in the profile again. */
   const [cardsRead, setCardsRead] = useState(0);
-  const [readErrors, setReadErrors] = useState<string[]>();
-  const [reading, startReading] = useTransition();
 
-  // ---------- steps 2 and 3: the employee ----------
+  // ---------- steps 2 and 3: the profile ----------
   const [state, formAction, saving] = useActionState(createEmployee, {} as FormState);
   // A refused save opens the step holding the field the message is about.
   const [answered, setAnswered] = useState(state);
@@ -103,32 +94,20 @@ export function NewEmployeeForm({ pickers }: { pickers: EmploymentPickers }) {
     focusHeading(to);
   }
 
-  function read(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    startReading(async () => {
-      // The photos are made smaller first (see shrink-photo.ts), then sent; the smaller ones are kept for the file.
-      const ready = await withSmallerPhotos(fd, ['front', 'back']);
-      const front = photo(ready, 'front');
-      const result = await readIdCard(ready);
-      if (!result.reading || !front) {
-        startTransition(() => setReadErrors(result.errors));
-        return;
-      }
-      const reading = result.reading;
-      flushSync(() => {
-        setReadErrors(undefined);
-        setCard({ reading, front, back: photo(ready, 'back') });
-        setCardsRead((n) => n + 1);
-        setStep(2);
-      });
-      focusHeading(2);
+  /** Reads the two sides cut out of the scan; the profile opens once they are read (else the step says why not). */
+  async function read(cards: { front: File; back: File }): Promise<string[] | undefined> {
+    const fd = new FormData();
+    fd.append('front', cards.front, cards.front.name);
+    fd.append('back', cards.back, cards.back.name);
+    const result = await readIdCard(fd);
+    if (!result.reading) return result.errors ?? ['The card could not be read. Please try again.'];
+    const reading = result.reading;
+    flushSync(() => {
+      setCard({ reading, ...cards });
+      setCardsRead((n) => n + 1);
+      setStep(2);
     });
-  }
-
-  function byHand() {
-    setReadErrors(undefined);
-    go(2);
+    focusHeading(2);
   }
 
   /** Next from the profile: the names (and any email) must be right first. */
@@ -146,7 +125,7 @@ export function NewEmployeeForm({ pickers }: { pickers: EmploymentPickers }) {
     const fd = new FormData(e.currentTarget);
     if (card) {
       fd.set('idFront', card.front);
-      if (card.back) fd.set('idBack', card.back);
+      fd.set('idBack', card.back);
     }
     startTransition(() => formAction(fd));
   }
@@ -181,43 +160,22 @@ export function NewEmployeeForm({ pickers }: { pickers: EmploymentPickers }) {
       <section hidden={step !== 1} className="card p-6">
         <h2 {...heading(1)}>Start with the National ID Card</h2>
         <p className="mt-1 text-sm text-muted">
-          The photos are read and the details on the card are filled in for you to check. The photos are kept in the employee file once the
-          employee is added. No card at hand, or it cannot be read? Fill in the details by hand.
+          Every new employee starts from a scan of their national ID card, front and back. The card is found on the scan, cut out and set
+          straight; check both sides, then read them, and the details are filled in for you to check. The cut-out card is kept in the employee
+          file once the profile is saved.
         </p>
 
-        <form onSubmit={read} className="mt-4 space-y-4">
-          <FormErrors errors={readErrors} />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor={fid('front')} className="label">
-                Front of the card
-              </label>
-              <input id={fid('front')} name="front" type="file" accept={PHOTO_ACCEPT} required onChange={limitFileSize} className={FILE_INPUT} />
-            </div>
-            <div>
-              <label htmlFor={fid('back')} className="label">
-                Back of the card <span className="font-normal text-muted">(optional)</span>
-              </label>
-              <input id={fid('back')} name="back" type="file" accept={PHOTO_ACCEPT} onChange={limitFileSize} className={FILE_INPUT} />
-            </div>
-          </div>
-          <p className="hint">JPEG, PNG or WebP, up to 10 MB each. A sharp, straight photo in good light reads best. The back gives the dates and the issuing office.</p>
-          {card && <p className="text-sm text-muted">The card has been read. Reading other photos fills in the profile again from them.</p>}
-          <div className="flex flex-wrap gap-3">
-            <SubmitButton pendingText="Reading the card…" busy={reading}>
-              Read the card
-            </SubmitButton>
-            {card ? (
-              <button type="button" onClick={() => go(2)} disabled={reading} className="btn btn-secondary">
+        <div className="mt-4 space-y-4">
+          <IdScan onRead={read} />
+          {card && (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-muted">The card has been read. Reading the scan again fills in the profile again from it.</p>
+              <button type="button" onClick={() => go(2)} className="btn btn-secondary">
                 Next
               </button>
-            ) : (
-              <button type="button" onClick={byHand} disabled={reading} className="btn btn-secondary">
-                Fill in by hand instead
-              </button>
-            )}
-          </div>
-        </form>
+            </div>
+          )}
+        </div>
       </section>
 
       <form onSubmit={create} hidden={step === 1}>
@@ -230,10 +188,10 @@ export function NewEmployeeForm({ pickers }: { pickers: EmploymentPickers }) {
 
           {card && (
             <div className="space-y-3 rounded-lg border border-line p-4">
-              <CardReadStatus suggestions={card.reading.suggestions} />
+              <CardReadStatus suggestions={card.reading.suggestions} notes={card.reading.notes} />
               <div className="flex flex-wrap gap-x-4">
-                <PhotoLink file={card.front}>View the front photo</PhotoLink>
-                {card.back && <PhotoLink file={card.back}>View the back photo</PhotoLink>}
+                <PhotoLink file={card.front}>View the front</PhotoLink>
+                <PhotoLink file={card.back}>View the back</PhotoLink>
               </div>
               <CardTextDetails front={card.reading.front.text} back={card.reading.back?.text ?? null} />
             </div>
@@ -241,12 +199,14 @@ export function NewEmployeeForm({ pickers }: { pickers: EmploymentPickers }) {
 
           {/* A newly read card fills the profile in again from what it says. */}
           <div key={cardsRead} className="space-y-8">
-            <PersonalFields state={FRESH} fid={fid} suggestions={card?.reading.suggestions} />
+            {/* what the reading suggested, to learn from what HR corrects (see learnCorrections) */}
+            <ReadValues suggestions={card?.reading.suggestions} />
+            <PersonalFields state={FRESH} fid={fid} part="profile" suggestions={card?.reading.suggestions} corrected={card?.reading.corrected} />
             <fieldset className="space-y-5">
               <legend className="font-semibold">
                 National ID <span className="badge ml-2 bg-line-soft align-middle text-muted">Restricted</span>
               </legend>
-              <NationalIdFields state={FRESH} fid={fid} suggestions={card?.reading.suggestions} />
+              <NationalIdFields state={FRESH} fid={fid} suggestions={card?.reading.suggestions} corrected={card?.reading.corrected} />
             </fieldset>
           </div>
 
@@ -264,15 +224,20 @@ export function NewEmployeeForm({ pickers }: { pickers: EmploymentPickers }) {
         </section>
 
         <section hidden={step !== 3} className="card space-y-8 p-6">
-          <h2 {...heading(3)}>Employment</h2>
+          <div>
+            <h2 {...heading(3)}>Education</h2>
+            <p className="mt-1 text-sm text-muted">
+              Anything left empty can be added on the profile later. After saving, add the employment (team, job title, join date) on the profile,
+              and the bank details.
+            </p>
+          </div>
           <FormErrors errors={state.errors} />
-          <EmploymentFields state={FRESH} fid={fid} pickers={pickers} />
-          <p className="text-sm text-muted">Bank details can be added on the profile once it is created.</p>
+          <PersonalFields state={FRESH} fid={fid} part="education" />
 
           {step === 3 && (
             <div className="flex flex-wrap gap-3 border-t border-line pt-6">
-              <SubmitButton pendingText="Creating the employee…" busy={saving}>
-                Create employee
+              <SubmitButton pendingText="Saving the profile…" busy={saving}>
+                Save profile
               </SubmitButton>
               <button type="button" onClick={() => go(2)} disabled={saving} className="btn btn-secondary">
                 Back

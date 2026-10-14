@@ -10,7 +10,7 @@
     "dev:api": "npm run start:dev -w @trendlix/api",
     "dev:web": "npm run dev -w @trendlix/web",
     "build": "npm run build -w @trendlix/shared && npm run build -w @trendlix/api && npm run build -w @trendlix/web",
-    "test": "npm run test -w @trendlix/api"
+    "test": "npm run test -w @trendlix/api && npm run test -w @trendlix/web"
   },
   "devDependencies": {
     "concurrently": "10.0.6"

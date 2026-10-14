@@ -4,8 +4,9 @@ import { DeleteForm } from '@/components/form';
 import { apiGet } from '@/lib/api';
 import { departmentName } from '@/lib/departments';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
-import type { Department, JobTitle } from '@/lib/types';
+import type { Department, Grade, JobTitle } from '@/lib/types';
 import { deleteJobTitle, updateJobTitle } from '../../../../actions';
+import { gradeLabel } from '../../../../grades/label';
 import { BackLink, Loading, UUID } from '../../../../ui';
 import { AnchorSection } from '../../../anchor-section';
 import { JobTitleForm } from '../../../job-title-form';
@@ -49,15 +50,18 @@ function JobDescription({ jobTitle }: { jobTitle: JobTitle }) {
 async function JobTitleDetails({ params }: { params: Promise<{ id: string; jobTitleId: string }> }) {
   const { id, jobTitleId } = await params;
   if (!UUID.test(id) || !UUID.test(jobTitleId)) notFound();
-  const [user, jobTitle, departments] = await Promise.all([
+  const [user, jobTitle, departments, grades] = await Promise.all([
     getCurrentUser(),
     apiGet<JobTitle>(`/job-titles/${jobTitleId}`),
     apiGet<Department[]>('/departments'),
+    apiGet<Grade[]>('/grades'),
   ]);
   // Moved to another department or team since the link was made: show it under the one it is in now.
   if (jobTitle.departmentId !== id) redirect(`/organization/departments/${jobTitle.departmentId}/job-titles/${jobTitleId}`);
   const canEdit = canEditOrganisation(user);
   const back = `/organization/departments/${id}`;
+  // From before job titles belonged to teams only: still directly in a department until it is moved into a team.
+  const notInTeam = !jobTitle.department.parent;
 
   return (
     <>
@@ -70,9 +74,14 @@ async function JobTitleDetails({ params }: { params: Promise<{ id: string; jobTi
               {jobTitle.titleAr}
             </p>
           )}
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
             {departmentName(jobTitle.department)}
-            {jobTitle.grade && ` · Grade ${jobTitle.grade}`}
+            {jobTitle.grade && (
+              <span className="badge">
+                <span className="sr-only">Grade </span>
+                {gradeLabel(jobTitle.grade)}
+              </span>
+            )}
           </p>
         </div>
         {canEdit && (
@@ -82,13 +91,26 @@ async function JobTitleDetails({ params }: { params: Promise<{ id: string; jobTi
         )}
       </div>
 
+      {notInTeam && (
+        <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+          <span className="font-semibold">Not in a team yet.</span> This job title is directly in the {jobTitle.department.nameEn} department,
+          from before job titles belonged to teams.{canEdit && ' Move it into a team: choose one under Edit job title.'}
+        </p>
+      )}
+
       <JobDescription jobTitle={jobTitle} />
 
       {canEdit && (
         <>
           <AnchorSection id="edit" className="space-y-2 pt-4">
             <h3 className="font-semibold">Edit Job Title</h3>
-            <JobTitleForm action={updateJobTitle.bind(null, jobTitleId)} departments={departments} jobTitle={jobTitle} cancelHref={back} />
+            <JobTitleForm
+              action={updateJobTitle.bind(null, jobTitleId)}
+              departments={departments}
+              grades={grades}
+              jobTitle={jobTitle}
+              cancelHref={back}
+            />
           </AnchorSection>
           <section className="max-w-xl space-y-2 pt-4">
             <h3 className="font-semibold">Delete Job Title</h3>

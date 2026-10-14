@@ -9,9 +9,12 @@ import type { EmployeeProfile, FormState } from '@/lib/types';
 import { cardMarks, type CardSuggestions } from './id-card';
 
 // The profile fields (personal, contact and address, emergency contact, education), used by the Add employee page
-// and the Personal edit page.
+// (the profile, then education, as two steps) and the Personal Details and Education edit pages.
 
 type Option = { value: string; label: string };
+
+/** Personal, contact and emergency contact (`profile`), or `education`. */
+export type Part = 'profile' | 'education';
 
 type Field = {
   name: keyof EmployeeProfile & string;
@@ -30,9 +33,10 @@ type Field = {
 
 const options = <T extends string>(values: readonly T[], labels: Record<T, string>): Option[] => values.map((v) => ({ value: v, label: labels[v] }));
 
-const GROUPS: { title: string; fields: Field[] }[] = [
+const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
   {
     title: 'Personal',
+    part: 'profile',
     fields: [
       { name: 'fullNameEn', label: 'Full name (English)', max: 150, required: true },
       { name: 'fullNameAr', label: 'Full name (Arabic)', ar: true, max: 150, required: true, hint: 'As printed on contracts.' },
@@ -46,6 +50,7 @@ const GROUPS: { title: string; fields: Field[] }[] = [
   },
   {
     title: 'Contact & Address',
+    part: 'profile',
     fields: [
       {
         name: 'workEmail',
@@ -62,6 +67,7 @@ const GROUPS: { title: string; fields: Field[] }[] = [
   },
   {
     title: 'Emergency Contact',
+    part: 'profile',
     fields: [
       { name: 'emergencyName', label: 'Name', max: 150 },
       { name: 'emergencyRelation', label: 'Relation', max: 50, placeholder: 'e.g. Sister' },
@@ -70,6 +76,7 @@ const GROUPS: { title: string; fields: Field[] }[] = [
   },
   {
     title: 'Education',
+    part: 'education',
     fields: [
       { name: 'university', label: 'University', max: 150 },
       { name: 'faculty', label: 'Faculty', max: 150 },
@@ -95,20 +102,25 @@ function startText(f: Field, employee?: EmployeeProfile, card?: CardSuggestions)
 
 /**
  * The profile fields, in their groups. They start with the saved `employee`, or, for a new employee, with what the ID
- * card says (`suggestions`, marked for checking).
+ * card says (`suggestions`, marked for checking; `corrected`: those a fix learned from HR's earlier corrections changed).
  */
 export function PersonalFields({
   state,
   fid,
   employee,
   suggestions,
+  corrected,
+  part,
 }: {
   state: FormState;
   fid: (name: string) => string;
   employee?: EmployeeProfile;
   suggestions?: CardSuggestions;
+  corrected?: readonly string[];
+  /** Only these groups; all of them when left out. */
+  part?: Part;
 }) {
-  const card = cardMarks(fid, suggestions);
+  const card = cardMarks(fid, suggestions, corrected);
   const [gender, setGender] = useState(() => valueOf(state, 'gender', employee?.gender ?? suggestions?.gender));
   // a woman's military status is always Not applicable: no military papers are needed (owner's rule)
   const noMilitary = (f: Field) => f.name === 'militaryStatus' && gender === 'female';
@@ -166,7 +178,7 @@ export function PersonalFields({
     return <input type={f.kind ?? 'text'} {...common} />;
   }
 
-  return GROUPS.map((group) => (
+  return GROUPS.filter((group) => !part || group.part === part).map((group) => (
     <fieldset key={group.title} className="space-y-5">
       <legend className="font-semibold">{group.title}</legend>
       <div className="grid gap-5 sm:grid-cols-2">

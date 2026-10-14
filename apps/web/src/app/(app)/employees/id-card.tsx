@@ -3,7 +3,8 @@
 import { DateInput } from '@/components/date-time-inputs';
 import { valueOf } from '@/components/form';
 import { formatDate } from '@/lib/format';
-import type { EmployeeIdentity, FormState, IdCardScan } from '@/lib/types';
+import type { EmployeeIdentity, FormState, IdCardScan, LearnedField } from '@/lib/types';
+import { LEARNED_FIELDS, readKey } from './paperwork';
 
 // The national ID card pieces shared by the Add employee page and the National ID edit page: the national ID fields,
 // the note on each field filled in from the card, what reading the card found, and the text read from it.
@@ -12,34 +13,61 @@ import type { EmployeeIdentity, FormState, IdCardScan } from '@/lib/types';
 export type CardSuggestions = IdCardScan['suggestions'];
 
 export const FROM_CARD = 'Read from the card — check before saving.';
+/** On a field the reading filled in and a fix learned from HR's earlier corrections changed. */
+export const FIXED = 'Fixed from an earlier correction — check before saving.';
 
 /**
  * Marks the fields filled in from the ID card: `read` says whether the card gave a field, `describedBy` gives the ids
- * describing it (its own hint, if any, and the note), and `note` is the note to show under it.
+ * describing it (its own hint, if any, and the note), `noteText` is what the note says (`corrected`: the fields a learned
+ * fix changed), and `note` is the note to show under it.
  */
-export function cardMarks(fid: (name: string) => string, suggestions: CardSuggestions = {}) {
+export function cardMarks(fid: (name: string) => string, suggestions: CardSuggestions = {}, corrected: readonly string[] = []) {
   const read = (key: string) => (suggestions as Record<string, string | undefined>)[key] !== undefined;
+  const noteText = (key: string) => (corrected.includes(key) ? FIXED : FROM_CARD);
   return {
     read,
+    noteText,
     describedBy: (key: string, hint?: string) => [hint, read(key) ? fid(`${key}-card`) : undefined].filter(Boolean).join(' ') || undefined,
     note: (key: string) =>
       read(key) && (
         <p id={fid(`${key}-card`)} className="hint text-warn">
-          {FROM_CARD}
+          {noteText(key)}
         </p>
       ),
   };
 }
 
-/** How many details reading the card found, and what to do next. */
-export function CardReadStatus({ suggestions }: { suggestions: CardSuggestions }) {
+/**
+ * How many details reading the card found, and what to do next; then `notes`: what was left out and why (e.g. a number
+ * the edge of the picture cuts through), for HR to type in from the card.
+ */
+export function CardReadStatus({ suggestions, notes = [] }: { suggestions: CardSuggestions; notes?: string[] }) {
   const found = Object.keys(suggestions).length;
   return (
-    <p role="status" className={`rounded-lg px-4 py-3 text-sm ${found ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'}`}>
-      {found
-        ? `${found} ${found === 1 ? 'detail was' : 'details were'} read from the card and filled in below. Check each one against the card before saving.`
-        : 'Nothing could be read from the card with confidence. Fill in the details by hand, or try a sharper photo.'}
-    </p>
+    <div role="status" className="space-y-2">
+      <p className={`rounded-lg px-4 py-3 text-sm ${found ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'}`}>
+        {found
+          ? `${found} ${found === 1 ? 'detail was' : 'details were'} read from the card and filled in below. Check each one against the card before saving.`
+          : 'Nothing could be read from the card with confidence. Fill in the details by hand, or try a sharper photo or scan.'}
+      </p>
+      {notes.length > 0 && (
+        <ul className="space-y-1 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+          {notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What the reading suggested for the fields whose corrections are learned, sent with the form (never in a URL): after
+ * the save, the server compares them with what was saved (POST /id-card/corrections).
+ */
+export function ReadValues({ suggestions = {} }: { suggestions?: CardSuggestions }) {
+  return LEARNED_FIELDS.map((field: LearnedField) =>
+    suggestions[field] ? <input key={field} type="hidden" name={readKey(field)} value={suggestions[field]} /> : null,
   );
 }
 
@@ -78,14 +106,17 @@ export function NationalIdFields({
   fid,
   identity,
   suggestions = {},
+  corrected,
 }: {
   state: FormState;
   fid: (name: string) => string;
   identity?: EmployeeIdentity;
   suggestions?: CardSuggestions;
+  /** The suggestions a fix learned from HR's earlier corrections changed. */
+  corrected?: readonly string[];
 }) {
   const s = suggestions;
-  const card = cardMarks(fid, s);
+  const card = cardMarks(fid, s, corrected);
 
   return (
     <div className="grid gap-5 sm:grid-cols-2">

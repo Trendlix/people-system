@@ -61,7 +61,7 @@ Locally the database is `trendlix_hrms`, owned by the `trendlix` user; end-to-en
 |---|---|
 | `npm run dev` | Run API + web in watch mode |
 | `npm run build` | Build shared, API and web |
-| `npm test` | API unit tests |
+| `npm test` | Unit tests of the API and of the web app (e.g. the ID scan's card geometry) |
 | `npm run test:e2e -w @trendlix/api` | API end-to-end tests against the test database (needs PostgreSQL running) |
 | `npm run db:migrate -w @trendlix/api` | After editing `schema.prisma`: create a migration, apply it locally, regenerate the client |
 | `npm run db:deploy -w @trendlix/api` | Apply existing migrations (production) |

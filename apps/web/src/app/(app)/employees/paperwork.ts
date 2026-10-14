@@ -1,5 +1,5 @@
 import { PAPERWORK_KINDS, type PaperworkKind } from '@trendlix/shared';
-import type { FormState, IdCardReading, IdCardScan, OcrStatus } from '@/lib/types';
+import type { FormState, IdCardPrepared, IdCardReading, IdCardScan, LearnedField, OcrStatus } from '@/lib/types';
 
 // The employee file (scanned paperwork, spec §8.5), shared by the profile card, the upload and ID card forms and
 // their actions. Which scans a file needs comes from requiredPaperwork in @trendlix/shared.
@@ -17,11 +17,6 @@ export const PDF_TOO_LARGE = 'A PDF must be 4 MB or smaller. Scan it again at a 
 
 // Listing the types (not image/*) makes an iPhone hand over a JPEG instead of a HEIC photo.
 export const PAPERWORK_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
-export const PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp';
-
-/** A file field styled like the company logo upload. */
-export const FILE_INPUT =
-  'block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-white file:px-4 file:text-sm file:font-semibold';
 
 export function isPaperworkKind(value: string): value is PaperworkKind {
   return (PAPERWORK_KINDS as readonly string[]).includes(value);
@@ -58,8 +53,26 @@ export function limitFileSize(e: React.ChangeEvent<HTMLInputElement>) {
   e.currentTarget.setCustomValidity(message);
 }
 
-/** What the "Fill from ID card photos" box keeps after reading a card. */
+/** What reading an employee's ID card gives the National ID page: what the card says, or why it was not read. */
 export type IdScanState = FormState & { scan?: IdCardScan };
 
 /** What reading a new employee's ID card gives the Add employee page: what the card says, or why it was not read. */
 export type IdReadState = FormState & { reading?: IdCardReading };
+
+/** What looking for the card on the chosen scans gives (POST /id-card/prepare), or why it could not be done. */
+export type IdPrepareState = FormState & { prepared?: IdCardPrepared };
+
+/**
+ * Both scans of an ID card go in one upload, which Vercel limits to 4.5 MB: together they must stay under this. Photos
+ * are made smaller first (shrink-photo.ts), so this only stops two large PDFs, or a large PDF and a photo.
+ */
+export const SCANS_MAX_BYTES = PDF_MAX_BYTES;
+export const SCANS_TOO_LARGE =
+  'Together the two files are too large to send: at most 4 MB. Use one file that holds both sides, or scan again at a lower resolution (150–200 dpi is enough).';
+
+/**
+ * The fields whose corrections the card reader learns from (POST /id-card/corrections). What the reading suggested for
+ * each travels with the form in a hidden field (`readKey`), never in a URL, so the save can compare it with what HR saved.
+ */
+export const LEARNED_FIELDS: readonly LearnedField[] = ['fullNameAr', 'addressAr', 'issuingOffice'];
+export const readKey = (field: LearnedField) => `read_${field}`;

@@ -3,11 +3,13 @@ import type {
   EducationGrade,
   EmployeeStatus,
   EmploymentType,
+  EndReason,
   Gender,
   MaritalStatus,
   MilitaryStatus,
   PaperworkKind,
   Role,
+  Standing,
   WorkArrangement,
 } from '@trendlix/shared';
 
@@ -29,24 +31,44 @@ export interface DepartmentRef {
 /**
  * A department or a team (owner's words: Department → Team → Job title, e.g. Marketing → Content Team → Senior Content
  * Creator). One level only: a team belongs to a department (`parentId`), and a team has no teams of its own. The API
- * calls teams sub-departments (`parent`, `children`); GET /departments returns departments and teams in one list.
+ * calls teams sub-departments (`parent`, `children`); GET /departments returns departments and teams in one list, in the
+ * order an Admin set (then by name).
  */
 export interface Department extends DepartmentRef {
   /** The department this team belongs to; null for a department. */
   parentId: string | null;
   parent: DepartmentRef | null;
+  /** Its place among the departments, or among its department's teams, as an Admin ordered them (PUT /departments/order). */
+  sortOrder: number;
   /** `children`: how many teams it has. */
   _count: { jobTitles: number; children: number };
-  /** GET /departments/:id only: its teams, sorted by name. */
-  children?: (DepartmentRef & { _count: { jobTitles: number } })[];
+  /** GET /departments/:id only: its teams, in their saved order. */
+  children?: (DepartmentRef & { sortOrder: number; _count: { jobTitles: number } })[];
+}
+
+/** A grade as job titles and employees name it: G1 Entry Level … G9 Executive; rank 1 is the lowest. */
+export interface GradeRef {
+  id: string;
+  code: string;
+  rank: number;
+  levelEn: string;
+  levelAr: string | null;
+}
+
+/** GET /grades, lowest rank first. */
+export interface Grade extends GradeRef {
+  description: string | null;
+  _count: { jobTitles: number };
 }
 
 export interface JobTitleSummary {
   id: string;
+  /** Its team (a few older job titles may still sit directly in a department until HR moves them). */
   departmentId: string;
   titleEn: string;
   titleAr: string | null;
-  grade: string | null;
+  gradeId: string | null;
+  grade: GradeRef | null;
   jdVersion: number;
   department: DepartmentRef & { parent: DepartmentRef | null };
   _count: { duties: number };
@@ -104,6 +126,43 @@ export interface FormState {
 // ---------- employees ----------
 // Dates are "YYYY-MM-DD" (or null), times "HH:mm"; createdAt / updatedAt are ISO moments.
 
+/** A team (or, from before teams, a department) as an employment names it: `parent` is the team's department. */
+export type EmploymentPlace = DepartmentRef & { parent: DepartmentRef | null };
+
+/**
+ * One period of employment (owner's decision: the profile and the employment are separate, so the profiles of people
+ * who leave are kept). One at a time is current: the one without an end date. Ended ones are the person's history.
+ */
+export interface Employment {
+  id: string;
+  employeeId: string;
+  employmentType: EmploymentType;
+  /** Active, Probation, On leave or Notice period while current; Resigned or Terminated once ended (by the end reason). */
+  status: EmployeeStatus;
+  departmentId: string | null;
+  jobTitleId: string | null;
+  managerId: string | null;
+  joinDate: string;
+  probationEnd: string | null;
+  workArrangement: WorkArrangement;
+  /** Hybrid only; 0 = Sunday … 6 = Saturday. */
+  officeDays: number[];
+  shiftId: string | null;
+  jdAcknowledgedAt: string | null;
+  /** The last working day; null while current. */
+  endDate: string | null;
+  endReason: EndReason | null;
+  endNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** May be a team: then `parent` is its department. */
+  department: EmploymentPlace | null;
+  /** `grade` is the employee's grade: their job title's. */
+  jobTitle: { id: string; titleEn: string; titleAr: string | null; jdVersion: number; grade: GradeRef | null } | null;
+  manager: { id: string; employeeCode: string; fullNameEn: string } | null;
+  shift: { id: string; code: string; startTime: string; endTime: string } | null;
+}
+
 /** One row of GET /employees, already limited to the people the caller may see. */
 export interface EmployeeSummary {
   id: string;
@@ -111,16 +170,36 @@ export interface EmployeeSummary {
   fullNameEn: string;
   fullNameAr: string;
   workEmail: string | null;
-  status: EmployeeStatus;
-  employmentType: EmploymentType;
-  joinDate: string;
-  /** May be a team: then `parent` is its department. */
-  department: { id: string; nameEn: string; parent: DepartmentRef | null } | null;
-  jobTitle: { id: string; titleEn: string } | null;
-  manager: { id: string; fullNameEn: string } | null;
+  /** The current employment's status, else Former employee (an employment ended) or Not employed yet. */
+  standing: Standing;
+  /** The current employment; null for a former employee or someone not employed yet. */
+  employment: {
+    id: string;
+    status: EmployeeStatus;
+    employmentType: EmploymentType;
+    joinDate: string;
+    /** May be a team: then `parent` is its department. */
+    department: EmploymentPlace | null;
+    /** `grade` is the employee's grade: their job title's. */
+    jobTitle: { id: string; titleEn: string; grade: Omit<GradeRef, 'levelAr'> | null } | null;
+    manager: { id: string; fullNameEn: string } | null;
+  } | null;
+  /** How the last employment ended, when there is no current one. */
+  lastEnded: { endDate: string; endReason: EndReason } | null;
 }
 
-/** GET /employees/:id. `identity` and `bank` are only present when the caller may see them (masked). */
+/** One thing a profile still lacks, and the profile tab where it is filled in. */
+export interface ProfileGap {
+  key: string;
+  label: string;
+  tab: 'basic' | 'education' | 'documents';
+}
+
+/**
+ * GET /employees/:id: the profile (personal, contact, education), the current employment and the history of
+ * employments, newest first (the current one first). `identity` and `bank` are only present when the caller may see
+ * them (masked).
+ */
 export interface EmployeeProfile {
   id: string;
   employeeCode: string;
@@ -146,25 +225,13 @@ export interface EmployeeProfile {
   graduationYear: number | null;
   educationGrade: EducationGrade | null;
   qualificationAr: string | null;
-  employmentType: EmploymentType;
-  status: EmployeeStatus;
-  departmentId: string | null;
-  jobTitleId: string | null;
-  managerId: string | null;
-  joinDate: string;
-  probationEnd: string | null;
-  workArrangement: WorkArrangement;
-  /** Hybrid only; 0 = Sunday … 6 = Saturday. */
-  officeDays: number[];
-  shiftId: string | null;
-  jdAcknowledgedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  /** May be a team: then `parent` is its department. */
-  department: (DepartmentRef & { parent: DepartmentRef | null }) | null;
-  jobTitle: { id: string; titleEn: string; titleAr: string | null; grade: string | null; jdVersion: number } | null;
-  manager: { id: string; employeeCode: string; fullNameEn: string } | null;
-  shift: { id: string; code: string; startTime: string; endTime: string } | null;
+  /** The current employment; null when there is none (not employed yet, or a former employee). */
+  employment: Employment | null;
+  /** Every employment, newest first, the current one first. */
+  employments: Employment[];
+  /** The people whose current employment reports to this person; `status` is their employment's. */
   reports: { id: string; employeeCode: string; fullNameEn: string; status: EmployeeStatus; jobTitle: { titleEn: string } | null }[];
   /** HR and CEO only; null = nothing recorded. */
   identity?: {
@@ -182,8 +249,10 @@ export interface EmployeeProfile {
     accountNoMasked: string | null;
     ibanMasked: string | null;
   } | null;
-  /** What the caller may do: edit (HR), see the national ID, see the bank details. */
-  access: { edit: boolean; identity: boolean; bank: boolean };
+  /** How complete the profile is: the fields HR fills in and the papers the employee file needs. */
+  completeness: { percent: number; missing: ProfileGap[] };
+  /** What the caller may do: edit (HR), delete (HR and Admin), see the national ID, see the bank details. */
+  access: { edit: boolean; delete: boolean; identity: boolean; bank: boolean };
 }
 
 /** GET /employees/:id/identity: the full national ID details (each call is audited). */
@@ -232,6 +301,10 @@ export interface PaperworkItem {
   mimeType: string;
   sizeBytes: number;
   ocrStatus: OcrStatus;
+  /** The number printed on the paper, if any. */
+  documentNo: string | null;
+  /** When the paper stops being valid (YYYY-MM-DD), if it does. */
+  expiresOn: string | null;
   /** ISO moment. */
   uploadedAt: string;
   uploadedBy: { email: string } | null;
@@ -260,6 +333,10 @@ export interface IdCardScan {
     printedNo?: string;
     issuingOffice?: string;
   };
+  /** The suggestions changed by fixes learned from HR's earlier corrections (GET /id-card/corrections). */
+  corrected: LearnedField[];
+  /** What was left out and why, in plain English, for HR (e.g. a number the edge of the picture cuts through). */
+  notes: string[];
   /** The stored photos and their text (null when that side could not be read). */
   front: { itemId: string; text: string | null };
   back?: { itemId: string; text: string | null };
@@ -271,7 +348,62 @@ export interface IdCardScan {
  */
 export interface IdCardReading {
   suggestions: IdCardScan['suggestions'];
+  corrected: LearnedField[];
+  notes: string[];
   /** The text read from each side (null when that side could not be read). */
   front: { text: string | null };
   back?: { text: string | null };
+}
+
+// ---------- ID card scans (POST /id-card/prepare) and what is learned from HR's corrections ----------
+
+/**
+ * A card's rotated rectangle on a page, in the pixels of that page's image: centre (cx, cy), size w × h (w ≥ h), and
+ * `angle` in degrees, positive clockwise as seen on screen. To cut the card out: rotate the page by -angle around the
+ * centre, then cut the w × h box centred there.
+ */
+export interface IdCardBox {
+  cx: number;
+  cy: number;
+  w: number;
+  h: number;
+  angle: number;
+}
+
+/** A card found on a scan. `image`: the card cut out, straightened and upright (base64 JPEG, about 1000 px wide). */
+export interface IdCardFound {
+  image: string;
+  /** Index in `pages`. */
+  page: number;
+  box: IdCardBox;
+  /** Which side the OCR service took it for, when it could tell. */
+  recognised: 'front' | 'back' | null;
+  confidence: number;
+}
+
+/**
+ * POST /id-card/prepare: the cards found on one or two scans or photos (often one page holding both sides), and the
+ * pages as analysed (base64 JPEG, long side at most 2000 px), to frame a card by hand. Nothing is stored.
+ */
+export interface IdCardPrepared {
+  pages: { width: number; height: number; image: string }[];
+  front: IdCardFound | null;
+  back: IdCardFound | null;
+  /** How many cards were found on all the pages. */
+  found: number;
+}
+
+/** The fields whose corrections are learned: never national ID numbers or dates. */
+export type LearnedField = 'fullNameAr' | 'addressAr' | 'issuingOffice';
+
+/** GET /id-card/corrections (HR and Admin): a word or phrase the card reader got wrong, and how HR corrected it. */
+export interface CardCorrection {
+  id: string;
+  field: LearnedField;
+  wrong: string;
+  right: string;
+  /** How often HR made this same correction. */
+  timesSeen: number;
+  createdAt: string;
+  updatedAt: string;
 }

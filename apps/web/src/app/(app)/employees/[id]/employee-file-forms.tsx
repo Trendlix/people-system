@@ -2,12 +2,14 @@
 
 import { startTransition, useActionState } from 'react';
 import { PAPERWORK_KINDS, PAPERWORK_LABELS, type PaperworkKind } from '@trendlix/shared';
+import { DateInput } from '@/components/date-time-inputs';
+import { FileDrop } from '@/components/file-drop';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import type { FormState } from '@/lib/types';
-import { FILE_INPUT, limitFileSize, PAPERWORK_ACCEPT } from '../paperwork';
+import { limitFileSize, PAPERWORK_ACCEPT } from '../paperwork';
 import { withSmallerPhotos } from '../shrink-photo';
 
-// The HR-only parts of the Employee file card on the profile.
+// The HR-only parts of the employee file on the profile's Documents tab.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -22,7 +24,7 @@ export function UploadPaperworkForm({ action, defaultKind }: { action: Action; d
   }
 
   return (
-    <form action={upload} className="space-y-4 border-t border-line pt-6">
+    <form action={upload} className="space-y-4">
       <div>
         <h3 className="font-semibold">Upload a Scan</h3>
         <p className="mt-1 text-sm text-muted">
@@ -47,7 +49,22 @@ export function UploadPaperworkForm({ action, defaultKind }: { action: Action; d
           <label htmlFor={fid('file')} className="label">
             File
           </label>
-          <input id={fid('file')} name="file" type="file" accept={PAPERWORK_ACCEPT} required onChange={limitFileSize} className={FILE_INPUT} />
+          <FileDrop id={fid('file')} name="file" accept={PAPERWORK_ACCEPT} required onChange={limitFileSize} />
+        </div>
+        <div>
+          <label htmlFor={fid('documentNo')} className="label">
+            Document number <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <input id={fid('documentNo')} name="documentNo" maxLength={60} autoComplete="off" className="input tabular-nums" />
+        </div>
+        <div>
+          <label htmlFor={fid('expiresOn')} className="label">
+            Expiry date <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <DateInput id={fid('expiresOn')} name="expiresOn" aria-describedby={fid('expiresOn-hint')} defaultValue="" />
+          <p id={fid('expiresOn-hint')} className="hint">
+            For a paper that stops being valid, e.g. a criminal record certificate.
+          </p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-4">

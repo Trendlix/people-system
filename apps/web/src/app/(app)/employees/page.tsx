@@ -1,30 +1,36 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { EMPLOYEE_STATUSES, LABELS, type EmployeeStatus } from '@trendlix/shared';
+import { END_REASON_LABELS, STANDING_LABELS, STANDINGS, type Standing } from '@trendlix/shared';
 import { DepartmentOptions } from '@/components/department-options';
 import { apiGet } from '@/lib/api';
 import { departmentName, withTeams } from '@/lib/departments';
+import { formatDate } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
-import type { Department, EmployeeSummary } from '@/lib/types';
-import { Avatar, canAddEmployees, canSeeEmployeeFiles, Empty, Loading, seesEveryone, StatusBadge } from './ui';
+import type { Department, EmployeeSummary, Grade } from '@/lib/types';
+import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge } from './ui';
 
 // The directory filters on this server from the one GET /employees call (the API already limits it to the people
-// the caller may see), so the status counts always match the list.
+// the caller may see), so the counts always match the list. Everyone keeps a profile: someone whose employment ended is
+// a former employee, and someone added before being hired is not employed yet (their standing). The team, job title,
+// grade and manager are the current employment's, and so are the department and grade filters.
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
 type Query = Record<string, string | string[] | undefined>;
-type Filters = { q: string; departmentId: string; status: EmployeeStatus | '' };
+type Filters = { q: string; departmentId: string; gradeId: string; standing: Standing | '' };
 
 const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '');
 
 function readFilters(query: Query): Filters {
   const departmentId = one(query.departmentId);
-  const status = one(query.status);
+  const gradeId = one(query.gradeId);
+  // ?status= is how the filter was named before standings (Active, Probation, On leave and Notice period kept their names)
+  const standing = one(query.standing) || one(query.status);
   return {
     q: one(query.q).trim().slice(0, 100),
     departmentId: UUID.test(departmentId) ? departmentId : '',
-    status: (EMPLOYEE_STATUSES as readonly string[]).includes(status) ? (status as EmployeeStatus) : '',
+    gradeId: UUID.test(gradeId) ? gradeId : '',
+    standing: (STANDINGS as readonly string[]).includes(standing) ? (standing as Standing) : '',
   };
 }
 
@@ -33,7 +39,8 @@ function directoryHref(f: Filters): string {
   const params = new URLSearchParams();
   if (f.q) params.set('q', f.q);
   if (f.departmentId) params.set('departmentId', f.departmentId);
-  if (f.status) params.set('status', f.status);
+  if (f.gradeId) params.set('gradeId', f.gradeId);
+  if (f.standing) params.set('standing', f.standing);
   const qs = params.toString();
   return qs ? `/employees?${qs}` : '/employees';
 }
@@ -47,7 +54,7 @@ function matches(e: EmployeeSummary, q: string): boolean {
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
 
-function StatusChip({ href, label, count, active }: { href: string; label: string; count: number; active: boolean }) {
+function StandingChip({ href, label, count, active }: { href: string; label: string; count: number; active: boolean }) {
   return (
     <Link
       href={href}
@@ -62,10 +69,35 @@ function StatusChip({ href, label, count, active }: { href: string; label: strin
 
 const dash = <span className="text-muted">—</span>;
 
+/**
+ * The team, job title, grade and manager columns: the current employment's. For a former employee, when and why they
+ * left, across the four columns.
+ */
+function Placement({ employee: e }: { employee: EmployeeSummary }) {
+  const job = e.employment;
+  if (!job && e.lastEnded) {
+    return (
+      <td colSpan={4} className="text-muted">
+        Left <span className="tabular-nums">{formatDate(e.lastEnded.endDate)}</span>
+        {e.lastEnded.endReason && ` · ${END_REASON_LABELS[e.lastEnded.endReason]}`}
+      </td>
+    );
+  }
+  return (
+    <>
+      <td>{job?.department ? departmentName(job.department) : dash}</td>
+      <td>{job?.jobTitle?.titleEn ?? dash}</td>
+      <td className="whitespace-nowrap">{job?.jobTitle?.grade ? gradeLabel(job.jobTitle.grade) : dash}</td>
+      <td>{job?.manager?.fullNameEn ?? dash}</td>
+    </>
+  );
+}
+
 async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
-  const [user, departments, everyone, query] = await Promise.all([
+  const [user, departments, grades, everyone, query] = await Promise.all([
     getCurrentUser(),
     apiGet<Department[]>('/departments'),
+    apiGet<Grade[]>('/grades'),
     apiGet<EmployeeSummary[]>('/employees'),
     searchParams,
   ]);
@@ -80,15 +112,21 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
     );
   }
 
-  // Counts follow the search and department filters, so each chip shows how many rows it would list. A department
-  // also covers the people in its teams.
+  // Counts follow the search, department and grade filters, so each chip shows how many rows it would list. A
+  // department also covers the people in its teams. An employee's grade is their job title's. Both are the current
+  // employment's: a former employee is in no department now.
   const inDepartment = f.departmentId ? withTeams(departments, f.departmentId) : null;
-  const base = everyone.filter((e) => matches(e, f.q) && (!inDepartment || (e.department !== null && inDepartment.has(e.department.id))));
-  const rows = f.status ? base.filter((e) => e.status === f.status) : base;
-  const counts = new Map<EmployeeStatus, number>();
-  for (const e of base) counts.set(e.status, (counts.get(e.status) ?? 0) + 1);
-  const statuses = EMPLOYEE_STATUSES.filter((s) => counts.has(s) || s === f.status);
-  const filtered = Boolean(f.q || f.departmentId || f.status);
+  const base = everyone.filter(
+    (e) =>
+      matches(e, f.q) &&
+      (!inDepartment || (e.employment?.department != null && inDepartment.has(e.employment.department.id))) &&
+      (!f.gradeId || e.employment?.jobTitle?.grade?.id === f.gradeId),
+  );
+  const rows = f.standing ? base.filter((e) => e.standing === f.standing) : base;
+  const counts = new Map<Standing, number>();
+  for (const e of base) counts.set(e.standing, (counts.get(e.standing) ?? 0) + 1);
+  const standings = STANDINGS.filter((s) => counts.has(s) || s === f.standing);
+  const filtered = Boolean(f.q || f.departmentId || f.gradeId || f.standing);
 
   return (
     <section className="card">
@@ -116,7 +154,20 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
             <DepartmentOptions departments={departments} />
           </select>
         </div>
-        {f.status && <input type="hidden" name="status" value={f.status} />}
+        <div>
+          <label htmlFor="employee-grade" className="label">
+            Grade
+          </label>
+          <select id="employee-grade" name="gradeId" defaultValue={f.gradeId} className="input min-w-44">
+            <option value="">All grades</option>
+            {grades.map((g) => (
+              <option key={g.id} value={g.id}>
+                {gradeLabel(g)}
+              </option>
+            ))}
+          </select>
+        </div>
+        {f.standing && <input type="hidden" name="standing" value={f.standing} />}
         <button type="submit" className="btn btn-secondary">
           Search
         </button>
@@ -127,10 +178,16 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
         )}
       </form>
 
-      <nav aria-label="Filter by status" className="flex flex-wrap gap-2 px-4 pb-4">
-        <StatusChip href={directoryHref({ ...f, status: '' })} label="All" count={base.length} active={!f.status} />
-        {statuses.map((s) => (
-          <StatusChip key={s} href={directoryHref({ ...f, status: s })} label={LABELS.status[s]} count={counts.get(s) ?? 0} active={f.status === s} />
+      <nav aria-label="Filter by standing" className="flex flex-wrap gap-2 px-4 pb-4">
+        <StandingChip href={directoryHref({ ...f, standing: '' })} label="All" count={base.length} active={!f.standing} />
+        {standings.map((s) => (
+          <StandingChip
+            key={s}
+            href={directoryHref({ ...f, standing: s })}
+            label={STANDING_LABELS[s]}
+            count={counts.get(s) ?? 0}
+            active={f.standing === s}
+          />
         ))}
       </nav>
 
@@ -145,10 +202,11 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
               <tr>
                 <th>Employee</th>
                 <th>Code</th>
-                <th>Department</th>
+                <th>Team</th>
                 <th>Job Title</th>
+                <th>Grade</th>
                 <th>Manager</th>
-                <th>Status</th>
+                <th>Standing</th>
               </tr>
             </thead>
             <tbody>
@@ -166,11 +224,9 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                     </div>
                   </td>
                   <td className="whitespace-nowrap text-muted tabular-nums">{e.employeeCode}</td>
-                  <td>{e.department ? departmentName(e.department) : dash}</td>
-                  <td>{e.jobTitle?.titleEn ?? dash}</td>
-                  <td>{e.manager?.fullNameEn ?? dash}</td>
+                  <Placement employee={e} />
                   <td>
-                    <StatusBadge status={e.status} />
+                    <StandingBadge standing={e.standing} />
                   </td>
                 </tr>
               ))}
@@ -186,7 +242,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   );
 }
 
-/** HR and the CEO search the scanned paperwork; only HR adds employees. */
+/** HR and the CEO search the scanned paperwork; HR and Admin see what the card reader learned; only HR adds employees. */
 async function HeaderActions() {
   const user = await getCurrentUser();
   return (
@@ -194,6 +250,11 @@ async function HeaderActions() {
       {canSeeEmployeeFiles(user) && (
         <Link href="/employees/documents" className="btn btn-secondary">
           Search documents
+        </Link>
+      )}
+      {canSeeCardFixes(user) && (
+        <Link href="/employees/card-corrections" className="btn btn-secondary">
+          Card reading fixes
         </Link>
       )}
       {canAddEmployees(user) && (

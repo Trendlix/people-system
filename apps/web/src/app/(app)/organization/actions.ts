@@ -1,7 +1,8 @@
 'use server';
 
 // Form actions for the Organization pages. Each one forwards to the API, which checks
-// the session and the HR/Admin role, so calling these directly can't bypass permissions.
+// the session and the role (HR or Admin; Admin only for the order of departments and teams), so calling these directly
+// can't bypass permissions.
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import { timeFrom } from '@/lib/form-data';
@@ -58,13 +59,24 @@ export async function deleteDepartment(id: string, parentId: string | null, _pre
   return save(fd, () => apiSend('DELETE', `/departments/${id}`), afterwards(parentId));
 }
 
+/**
+ * The order departments are listed in (`parentId` null), or a department's teams: every one of their ids (`ids`, in
+ * the new order). Admins only; the API refuses a list that no longer matches (e.g. one was added meanwhile).
+ * Afterwards, back to the list without the reorder view.
+ */
+export async function reorderDepartments(parentId: string | null, _prev: FormState, fd: FormData): Promise<FormState> {
+  const ids = fd.getAll('ids').map(String);
+  return save(fd, () => apiSend('PUT', '/departments/order', { parentId, ids }), afterwards(parentId));
+}
+
 // ---------- job titles ----------
 
+// `departmentId` is the job title's team (job titles belong to teams only); `gradeId` "" is "No grade".
 const jobTitleBody = (fd: FormData) => ({
   departmentId: text(fd, 'departmentId'),
   titleEn: text(fd, 'titleEn'),
   titleAr: text(fd, 'titleAr'),
-  grade: text(fd, 'grade'),
+  gradeId: text(fd, 'gradeId'),
   jdPurpose: text(fd, 'jdPurpose'),
   jdRequirements: text(fd, 'jdRequirements'),
   duties: text(fd, 'duties').split('\n'),
@@ -83,6 +95,32 @@ export async function updateJobTitle(id: string, _prev: FormState, fd: FormData)
 
 export async function deleteJobTitle(id: string, departmentId: string, _prev: FormState, fd: FormData): Promise<FormState> {
   return save(fd, () => apiSend('DELETE', `/job-titles/${id}`), departmentPage(departmentId));
+}
+
+// ---------- grades ----------
+
+// The grading system (G1 Entry Level … G9 Executive): `rank` is the level in the hierarchy, 1 the lowest.
+const gradeBody = (fd: FormData) => {
+  const rank = text(fd, 'rank').trim();
+  return {
+    code: text(fd, 'code'),
+    rank: rank === '' ? undefined : Number(rank),
+    levelEn: text(fd, 'levelEn'),
+    levelAr: text(fd, 'levelAr'),
+    description: text(fd, 'description'),
+  };
+};
+
+export async function createGrade(_prev: FormState, fd: FormData): Promise<FormState> {
+  return save(fd, () => apiSend('POST', '/grades', gradeBody(fd)), '/organization/grades');
+}
+
+export async function updateGrade(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  return save(fd, () => apiSend('PATCH', `/grades/${id}`, gradeBody(fd)), '/organization/grades');
+}
+
+export async function deleteGrade(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  return save(fd, () => apiSend('DELETE', `/grades/${id}`), '/organization/grades');
 }
 
 // ---------- shifts ----------

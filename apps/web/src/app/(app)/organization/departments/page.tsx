@@ -2,14 +2,17 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
 import { groupDepartments } from '@/lib/departments';
-import { canEditOrganisation, getCurrentUser } from '@/lib/session';
+import { canEditOrganisation, canReorderDepartments, getCurrentUser } from '@/lib/session';
 import type { Department, JobTitleSummary } from '@/lib/types';
+import { reorderDepartments } from '../actions';
 import { Empty, Loading } from '../ui';
 import { JobTitlesTable } from './job-titles-table';
+import { NotInTeam } from './not-in-team';
+import { ReorderList } from './reorder-list';
 
 // Owner's words: Department → Team → Job title (e.g. Marketing → Content Team → Senior Content Creator). Each
-// department is a card with its own job titles, then its teams with theirs. Every job title belongs to exactly one
-// department or team.
+// department is a card with its teams, each team with its job titles: job titles belong to teams only. Job titles from
+// before that rule, still directly in a department, are shown on its card as not in a team yet.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -31,7 +34,22 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
   const canEdit = canEditOrganisation(user);
   const q = typeof query.q === 'string' ? query.q.trim().slice(0, 100) : '';
 
-  // The API sorts job titles by title within each department.
+  // Admins put the departments in order (?reorder=departments); the cards, pickers and filters all follow it.
+  const topLevel = departments.filter((d) => !d.parentId);
+  const canReorder = canReorderDepartments(user) && topLevel.length > 1;
+  if (canReorder && query.reorder === 'departments') {
+    return (
+      <ReorderList
+        title="Reorder Departments"
+        hint="Drag a department by its handle, or use Move up and Move down. Departments are listed in this order everywhere, each with its teams."
+        items={topLevel.map(({ id, nameEn, nameAr }) => ({ id, nameEn, nameAr }))}
+        action={reorderDepartments.bind(null, null)}
+        cancelHref="/organization/departments"
+      />
+    );
+  }
+
+  // The API sorts job titles by title within each team.
   const titlesOf = new Map<string, JobTitleSummary[]>();
   for (const j of jobTitles) {
     const list = titlesOf.get(j.departmentId);
@@ -52,12 +70,15 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
   };
   const sections = groups.flatMap(({ department, teams }) => {
     const whole = named(department);
-    const own = withTitles(department, whole);
-    const shownTeams = teams.flatMap((t) => {
-      const team = withTitles(t, whole || named(t));
-      return whole || named(t) || team.shown.length > 0 ? [team] : [];
-    });
-    return whole || own.shown.length > 0 || shownTeams.length > 0 ? [{ ...own, teams: shownTeams, teamTotal: teams.length }] : [];
+    const own = withTitles(department, whole); // not in a team yet
+    const allTeams = teams.map((t) => withTitles(t, whole || named(t)));
+    const shownTeams = allTeams.filter((team) => whole || named(team.department) || team.shown.length > 0);
+    const counts = { titles: 0, shown: 0 }; // the department's job titles, in its teams or not
+    for (const t of [own, ...allTeams]) {
+      counts.titles += t.all.length;
+      counts.shown += t.shown.length;
+    }
+    return whole || own.shown.length > 0 || shownTeams.length > 0 ? [{ ...own, teams: shownTeams, teamTotal: teams.length, counts }] : [];
   });
 
   if (departments.length === 0) {
@@ -103,9 +124,16 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
           )}
         </form>
         {canEdit && (
-          <Link href="/organization/departments/new" className="btn btn-primary">
-            New department
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {canReorder && (
+              <Link href="/organization/departments?reorder=departments" scroll={false} className="btn btn-secondary">
+                Reorder
+              </Link>
+            )}
+            <Link href="/organization/departments/new" className="btn btn-primary">
+              New department
+            </Link>
+          </div>
         )}
       </div>
 
@@ -129,7 +157,7 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
         </Empty>
       ) : (
         <div className="space-y-4">
-          {sections.map(({ department: d, all, shown, teams, teamTotal }) => (
+          {sections.map(({ department: d, shown, teams, teamTotal, counts }) => (
             <section key={d.id} className="card">
               <div className="flex flex-wrap items-start justify-between gap-3 p-5">
                 <div className="min-w-0">
@@ -142,31 +170,29 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
                     </p>
                   )}
                   <p className="mt-1 text-sm text-muted">
-                    {titleCount(all.length, shown.length)}
-                    {teamTotal > 0 && ` · ${plural(teamTotal, 'team', 'teams')}`}
+                    {plural(teamTotal, 'team', 'teams')} · {titleCount(counts.titles, counts.shown)}
                   </p>
                 </div>
                 {canEdit && (
                   <div className="flex flex-wrap gap-2">
-                    <Link href={`/organization/departments/${d.id}/job-titles/new`} className="btn btn-secondary">
-                      Add job title
-                    </Link>
                     <Link href={`/organization/departments/new?parentId=${d.id}`} className="btn btn-secondary">
-                      Add team
+                      Add team<span className="sr-only"> to {d.nameEn}</span>
                     </Link>
                     <Link href={`/organization/departments/${d.id}#edit`} className="btn btn-secondary">
-                      Edit department
+                      Edit department<span className="sr-only"> {d.nameEn}</span>
                     </Link>
                   </div>
                 )}
               </div>
-              {shown.length > 0 ? (
-                <div className="border-t border-line">
-                  <JobTitlesTable jobTitles={shown} />
+              {shown.length > 0 && (
+                <div className="border-t border-line px-5 py-4">
+                  <NotInTeam jobTitles={shown} canEdit={canEdit} />
                 </div>
-              ) : (
-                all.length === 0 &&
-                teamTotal === 0 && <p className="border-t border-line px-5 py-4 text-sm text-muted">No job titles or teams in this department yet.</p>
+              )}
+              {teamTotal === 0 && (
+                <p className="border-t border-line px-5 py-4 text-sm text-muted">
+                  No teams in this department yet.{canEdit && ' Add a team, then its job titles.'}
+                </p>
               )}
 
               {teams.length > 0 && (

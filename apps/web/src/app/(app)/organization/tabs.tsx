@@ -5,6 +5,7 @@ import Link from 'next/link';
 const TABS = [
   { key: 'company', href: '/organization/company', label: 'Company' },
   { key: 'departments', href: '/organization/departments', label: 'Departments & Job Titles' },
+  { key: 'grades', href: '/organization/grades', label: 'Grades' },
   { key: 'shifts', href: '/organization/shifts', label: 'Shifts' },
 ] as const;
 

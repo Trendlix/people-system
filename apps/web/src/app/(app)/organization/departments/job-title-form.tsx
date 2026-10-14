@@ -1,30 +1,43 @@
 'use client';
 
 import Link from 'next/link';
-import { DepartmentOptions } from '@/components/department-options';
+import { TeamOptions } from '@/components/department-options';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
-import type { Department, FormState, JobTitle } from '@/lib/types';
+import type { Department, FormState, Grade, JobTitle } from '@/lib/types';
+import { gradeLabel } from '../grades/label';
 
 /**
- * A job title and its job description. It belongs to a department or to a team in one. That comes preselected from
- * the page the form was opened on; it can still be changed, which moves the job title there.
+ * A job title and its job description. It belongs to a team (Department → Team → Job title), which comes preselected
+ * from the team page the form was opened on; choosing another one moves the job title there.
+ * `departments`: every department and team (GET /departments), for the team picker. `grades`: GET /grades.
  */
 export function JobTitleForm({
   action,
   departments,
+  grades,
   jobTitle,
-  defaultDepartmentId,
+  defaultTeamId,
   cancelHref,
 }: {
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
   departments: Department[];
+  grades: Grade[];
   jobTitle?: JobTitle;
-  defaultDepartmentId?: string;
+  defaultTeamId?: string;
   cancelHref: string;
 }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
   const duties = jobTitle?.duties.map((d) => d.duty).join('\n');
+  const hasTeams = departments.some((d) => d.parentId);
+  // A job title from before teams may sit directly in a department: no team is chosen until one is picked for it.
+  const inDepartment = jobTitle && !jobTitle.department.parent ? jobTitle.department : null;
+  const savedTeam = jobTitle ? (inDepartment ? '' : jobTitle.departmentId) : defaultTeamId;
+  const teamHint = inDepartment
+    ? `This job title is directly in the ${inDepartment.nameEn} department, from before teams. Choose a team for it.`
+    : !hasTeams
+      ? 'No teams yet. Add a team to a department first (Departments & Job Titles, Add team).'
+      : null;
 
   return (
     <form {...form} className="card max-w-2xl space-y-5 p-6">
@@ -32,18 +45,24 @@ export function JobTitleForm({
 
       <div>
         <label htmlFor={fid('departmentId')} className="label">
-          Department or team
+          Team
         </label>
         <select
           id={fid('departmentId')}
           name="departmentId"
           required
-          defaultValue={valueOf(state, 'departmentId', jobTitle?.departmentId ?? defaultDepartmentId)}
+          defaultValue={valueOf(state, 'departmentId', savedTeam)}
+          aria-describedby={teamHint ? fid('departmentId-hint') : undefined}
           className="input"
         >
-          <option value="">Choose a department or team</option>
-          <DepartmentOptions departments={departments} />
+          <option value="">Choose a team</option>
+          <TeamOptions departments={departments} />
         </select>
+        {teamHint && (
+          <p id={fid('departmentId-hint')} className={`hint ${inDepartment ? 'text-warn' : ''}`}>
+            {teamHint}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -69,11 +88,18 @@ export function JobTitleForm({
         </div>
       </div>
 
-      <div className="max-w-40">
-        <label htmlFor={fid('grade')} className="label">
-          Grade <span className="font-normal text-muted">· optional</span>
+      <div className="max-w-xs">
+        <label htmlFor={fid('gradeId')} className="label">
+          Grade
         </label>
-        <input id={fid('grade')} name="grade" maxLength={20} placeholder="e.g. G5" defaultValue={valueOf(state, 'grade', jobTitle?.grade)} className="input" />
+        <select id={fid('gradeId')} name="gradeId" defaultValue={valueOf(state, 'gradeId', jobTitle?.grade?.id)} className="input">
+          <option value="">No grade</option>
+          {grades.map((g) => (
+            <option key={g.id} value={g.id}>
+              {gradeLabel(g)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <fieldset className="space-y-5 border-t border-line pt-5">

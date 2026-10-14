@@ -6,11 +6,15 @@ const MAX_SIDE = 2200;
 const QUALITY = 0.88;
 const SMALL_ENOUGH = 1.5 * 1024 * 1024;
 
-export async function shrinkPhoto(file: File): Promise<File> {
+/**
+ * The photo made smaller: at most `maxSide` pixels on its long side (a whole scanner page with an ID card on it needs
+ * more than a photo of the card alone, e.g. 3000), as JPEG. Small files, and anything that is not a photo, stay as they are.
+ */
+export async function shrinkPhoto(file: File, maxSide = MAX_SIDE): Promise<File> {
   if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size <= SMALL_ENOUGH) return file;
   try {
     const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-    const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(bitmap.width * scale);
     canvas.height = Math.round(bitmap.height * scale);

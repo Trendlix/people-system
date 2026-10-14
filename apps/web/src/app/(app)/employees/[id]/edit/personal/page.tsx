@@ -10,7 +10,7 @@ async function EditPersonal({ params }: { params: Promise<{ id: string }> }) {
     <>
       <EditHeading profile={employee} title="Personal Details" />
       <RequireHr profile={employee}>
-        <PersonalForm action={updatePersonal.bind(null, employee.id)} employee={employee} />
+        <PersonalForm action={updatePersonal.bind(null, employee.id)} employee={employee} part="profile" cancelHref={`/employees/${employee.id}`} />
       </RequireHr>
     </>
   );

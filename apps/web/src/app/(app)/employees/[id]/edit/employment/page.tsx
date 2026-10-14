@@ -1,45 +1,21 @@
+import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { DeleteForm } from '@/components/form';
-import { deleteEmployee, updateEmployment } from '../../../actions';
-import { loadEmployee, loadPickers } from '../../../data';
-import { EditHeading, Loading, RequireHr } from '../../../ui';
-import { EmploymentForm } from './employment-form';
+import { loadEmployee } from '../../../data';
+import { Loading } from '../../../ui';
 
-async function EditEmployment({ params }: { params: Promise<{ id: string }> }) {
+// Employment became its own record, with a history (owner's decision, October 2026). Old links to the Employment edit
+// page land here and are sent on: to the current employment's Edit page, or to Add employment when there is none.
+
+async function Forward({ params }: { params: Promise<{ id: string }> }): Promise<React.ReactNode> {
   const employee = await loadEmployee(params);
-  const pickers = employee.access.edit ? await loadPickers(employee.id) : null;
-  return (
-    <>
-      <EditHeading profile={employee} title="Employment" />
-      <RequireHr profile={employee}>
-        {pickers && (
-          <div className="space-y-8">
-            <EmploymentForm action={updateEmployment.bind(null, employee.id)} employee={employee} pickers={pickers} />
-            <section className="max-w-xl space-y-2">
-              <h2 className="font-semibold">Delete Employee</h2>
-              <p className="text-sm text-muted">
-                Only for records added by mistake. When someone leaves, change their status to Resigned or Terminated instead, so their history is
-                kept.
-              </p>
-              <DeleteForm
-                action={deleteEmployee.bind(null, employee.id)}
-                confirmText={`Delete ${employee.fullNameEn} (${employee.employeeCode}) and all of their details? This cannot be undone.`}
-                label="Delete employee"
-              />
-            </section>
-          </div>
-        )}
-      </RequireHr>
-    </>
-  );
+  const current = employee.employment;
+  redirect(current ? `/employees/${employee.id}/employment/${current.id}/edit` : `/employees/${employee.id}/employment/new`);
 }
 
-export default function EditEmploymentPage({ params }: PageProps<'/employees/[id]/edit/employment'>) {
+export default function OldEmploymentPage({ params }: PageProps<'/employees/[id]/edit/employment'>) {
   return (
-    <div className="space-y-4">
-      <Suspense fallback={<Loading />}>
-        <EditEmployment params={params} />
-      </Suspense>
-    </div>
+    <Suspense fallback={<Loading />}>
+      <Forward params={params} />
+    </Suspense>
   );
 }

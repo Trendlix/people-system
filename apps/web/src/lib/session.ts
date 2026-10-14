@@ -10,3 +10,8 @@ export const getCurrentUser = cache(() => apiGet<SessionUser>('/auth/me'));
 export function canEditOrganisation(user: SessionUser): boolean {
   return user.roles.includes('hr') || user.roles.includes('admin');
 }
+
+/** Only Admin may change the order departments, and each department's teams, are listed in. */
+export function canReorderDepartments(user: SessionUser): boolean {
+  return user.roles.includes('admin');
+}

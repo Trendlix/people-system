@@ -3,22 +3,27 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { DeleteForm } from '@/components/form';
 import { apiGet } from '@/lib/api';
-import { canEditOrganisation, getCurrentUser } from '@/lib/session';
+import { canEditOrganisation, canReorderDepartments, getCurrentUser } from '@/lib/session';
 import type { Department, JobTitleSummary } from '@/lib/types';
-import { deleteDepartment, updateDepartment } from '../../actions';
+import { deleteDepartment, reorderDepartments, updateDepartment } from '../../actions';
 import { BackLink, Loading, UUID } from '../../ui';
 import { AnchorSection } from '../anchor-section';
 import { DepartmentForm } from '../department-form';
 import { JobTitlesTable } from '../job-titles-table';
+import { NotInTeam } from '../not-in-team';
+import { ReorderList } from '../reorder-list';
 
-// A department's page lists its job titles and its teams; a team's page (a team is a department with a parent) lists
-// its job titles, under a breadcrumb back to its department.
+// Department → Team → Job title: a department's page lists its teams; a team's page (a team is a department with a
+// parent) lists its job titles, under a breadcrumb back to its department. Job titles belong to teams only; any from
+// before that rule, still directly in the department, are listed on its page as not in a team yet.
+
+type Query = Record<string, string | string[] | undefined>;
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const dash = <span className="text-muted">—</span>;
 
-/** A department's teams, each with how many job titles it has. */
-function Teams({ department, canEdit }: { department: Department; canEdit: boolean }) {
+/** A department's teams, in their saved order, each with how many job titles it has. `canReorder`: Admin, 2+ teams. */
+function Teams({ department, canEdit, canReorder }: { department: Department; canEdit: boolean; canReorder: boolean }) {
   const teams = department.children ?? [];
   return (
     <section className="card">
@@ -27,13 +32,22 @@ function Teams({ department, canEdit }: { department: Department; canEdit: boole
           Teams <span className="font-normal text-muted">· {teams.length}</span>
         </h3>
         {canEdit && (
-          <Link href={`/organization/departments/new?parentId=${department.id}`} className="btn btn-secondary">
-            Add team
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {canReorder && (
+              <Link href={`/organization/departments/${department.id}?reorder=teams`} scroll={false} className="btn btn-secondary">
+                Reorder teams
+              </Link>
+            )}
+            <Link href={`/organization/departments/new?parentId=${department.id}`} className="btn btn-primary">
+              Add team
+            </Link>
+          </div>
         )}
       </div>
       {teams.length === 0 ? (
-        <p className="border-t border-line px-5 py-4 text-sm text-muted">No teams in this department yet. A team is a group inside it, e.g. Content Team in Marketing.</p>
+        <p className="border-t border-line px-5 py-4 text-sm text-muted">
+          No teams in this department yet. A team is a group inside it, e.g. Content Team in Marketing; job titles belong to teams.
+        </p>
       ) : (
         <div className="overflow-x-auto border-t border-line">
           <table className="table">
@@ -66,17 +80,21 @@ function Teams({ department, canEdit }: { department: Department; canEdit: boole
   );
 }
 
-async function DepartmentDetails({ params }: { params: Promise<{ id: string }> }) {
+async function DepartmentDetails({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Query> }) {
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const [user, department, jobTitles, departments] = await Promise.all([
+  const [user, department, jobTitles, departments, query] = await Promise.all([
     getCurrentUser(),
     apiGet<Department>(`/departments/${id}`),
     apiGet<JobTitleSummary[]>(`/job-titles?departmentId=${id}`),
     apiGet<Department[]>('/departments'),
+    searchParams,
   ]);
   const canEdit = canEditOrganisation(user);
   const { parent } = department;
+  const teams = department.children ?? [];
+  // Admins put a department's teams in order (?reorder=teams).
+  const canReorder = !parent && canReorderDepartments(user) && teams.length > 1;
   const kind = parent ? 'team' : 'department';
   const Kind = parent ? 'Team' : 'Department'; // in headings
   // Deleting is refused while it still has teams or job titles (and employees, which the API checks).
@@ -110,27 +128,42 @@ async function DepartmentDetails({ params }: { params: Promise<{ id: string }> }
         )}
       </div>
 
-      <section className="card">
-        <div className="flex flex-wrap items-center justify-between gap-3 p-5">
-          <h3 className="font-semibold">
-            Job Titles <span className="font-normal text-muted">· {jobTitles.length}</span>
-          </h3>
-          {canEdit && (
-            <Link href={`/organization/departments/${id}/job-titles/new`} className="btn btn-primary">
-              Add job title
-            </Link>
-          )}
-        </div>
-        {jobTitles.length === 0 ? (
-          <p className="border-t border-line px-5 py-4 text-sm text-muted">No job titles in this {kind} yet.</p>
-        ) : (
-          <div className="border-t border-line">
-            <JobTitlesTable jobTitles={jobTitles} />
+      {parent ? (
+        <section className="card">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+            <h3 className="font-semibold">
+              Job Titles <span className="font-normal text-muted">· {jobTitles.length}</span>
+            </h3>
+            {canEdit && (
+              <Link href={`/organization/departments/${id}/job-titles/new`} className="btn btn-primary">
+                Add job title
+              </Link>
+            )}
           </div>
-        )}
-      </section>
+          {jobTitles.length === 0 ? (
+            <p className="border-t border-line px-5 py-4 text-sm text-muted">No job titles in this team yet.</p>
+          ) : (
+            <div className="border-t border-line">
+              <JobTitlesTable jobTitles={jobTitles} />
+            </div>
+          )}
+        </section>
+      ) : (
+        jobTitles.length > 0 && <NotInTeam jobTitles={jobTitles} canEdit={canEdit} />
+      )}
 
-      {!parent && <Teams department={department} canEdit={canEdit} />}
+      {!parent &&
+        (canReorder && query.reorder === 'teams' ? (
+          <ReorderList
+            title="Reorder Teams"
+            hint={`Drag a team by its handle, or use Move up and Move down. The teams in ${department.nameEn} are listed in this order everywhere.`}
+            items={teams.map(({ id, nameEn, nameAr }) => ({ id, nameEn, nameAr }))}
+            action={reorderDepartments.bind(null, id)}
+            cancelHref={`/organization/departments/${id}`}
+          />
+        ) : (
+          <Teams department={department} canEdit={canEdit} canReorder={canReorder} />
+        ))}
 
       {canEdit && (
         <>
@@ -162,12 +195,12 @@ async function DepartmentDetails({ params }: { params: Promise<{ id: string }> }
   );
 }
 
-export default function DepartmentPage({ params }: PageProps<'/organization/departments/[id]'>) {
+export default function DepartmentPage({ params, searchParams }: PageProps<'/organization/departments/[id]'>) {
   return (
     <div className="space-y-4">
       <BackLink href="/organization/departments">Departments & Job Titles</BackLink>
       <Suspense fallback={<Loading />}>
-        <DepartmentDetails params={params} />
+        <DepartmentDetails params={params} searchParams={searchParams} />
       </Suspense>
     </div>
   );
