@@ -1,73 +1,129 @@
 # Deploying People System
 
-| Part | Where | Folder |
+| Part | Where | Address |
 |---|---|---|
-| Web (Next.js) | Vercel | `apps/web` |
-| API (NestJS) | Hostinger | `apps/api` |
-| Database | PostgreSQL 15 or newer | — |
+| Web (Next.js, `apps/web`) | Vercel, project `people-system` | `https://people.trendlix.com` |
+| API (NestJS, `apps/api`) + PostgreSQL | Hostinger VPS shared with Prime ERP (`srv2055591.hstgr.cloud`), Docker Compose in `/opt/people-system` | `https://srv2055591.hstgr.cloud:8443` |
 
-The browser only talks to the web app on Vercel. Vercel calls the API server-to-server, so the API needs no CORS setup and its address is never shown to browsers.
+The browser only talks to the web app on Vercel. Vercel calls the API server-to-server, so the API needs no CORS setup
+and its address is never shown to browsers.
 
-## 1. Database
+## How the server is shared with Prime ERP
 
-The API needs **PostgreSQL**. Hostinger's shared and cloud hosting plans come with MySQL, not PostgreSQL, so use one of:
+Owner's decision, 14 October 2026: same server as Prime ERP, its own port.
 
-- a **Hostinger VPS** with PostgreSQL installed on it, or
-- a managed PostgreSQL service (e.g. Neon, Supabase).
+- People System has its **own** containers (`deploy/docker-compose.yml`): PostgreSQL 17, the API, and a daily backup.
+  None of them opens a port.
+- **Prime ERP's Caddy** already holds ports 80/443 and the HTTPS certificate for `srv2055591.hstgr.cloud`. It also listens
+  on **8443** and passes that to People System's API (the last site of Prime ERP's `production/deploy/Caddyfile`).
+- The two systems meet only on the Docker network **`edge`**: Caddy and People System's API, nothing else. Each system's
+  `deploy.sh` creates it if it is missing. Prime ERP's database and API are not on it.
+- Each system has its own database, backups, deploy key on GitHub, and pipeline. Deploying one never restarts the other.
 
-The database will hold national IDs and salaries, so check where the provider stores data before choosing.
+## Every day: CI/CD
 
-Create an empty database and a user that owns it, and note the connection string:
+A push to `main`:
 
+- **Web:** Vercel builds and deploys `apps/web` by itself.
+- **API:** if the push touches `apps/api`, `packages/shared`, `deploy/` or the lock file, GitHub Actions
+  (`.github/workflows/backend.yml`) signs in to the server with a key that can do one thing there, run `deploy/deploy.sh`:
+  fetch, **save the database**, build the API image, restart, wait until healthy. Then it checks
+  `https://srv2055591.hstgr.cloud:8443/api/health` and prints `/api/version`.
+
+The pipeline runs no tests: run them before pushing (`npm run build`, `npm test`, `npm run test:e2e -w @trendlix/api`).
+"Run workflow" on the repository's Actions page deploys by hand; so does `./deploy.sh` on the server.
+
+Which code the server runs: `curl https://srv2055591.hstgr.cloud:8443/api/version` answers with the last commit that
+changed the API and its date.
+
+## First time on the server (once)
+
+Run on the VPS as `root`, in this order.
+
+**1. Port 8443 is free, and open in the firewall.** This must print nothing:
+
+```bash
+ss -ltnp | grep ':8443 '
 ```
-postgresql://USER:PASSWORD@HOST:5432/DATABASE?schema=public
+
+Then in Hostinger's panel: VPS → Firewall → allow incoming TCP **8443**.
+
+**2. A read-only key for this repository.** The server already has a deploy key for Prime ERP, and GitHub accepts a
+key on one repository only, so this one gets its own name:
+
+```bash
+ssh-keygen -t ed25519 -N "" -C "people-system-read" -f ~/.ssh/people_system_deploy
+cat ~/.ssh/people_system_deploy.pub
 ```
 
-## 2. API on Hostinger
+GitHub → Trendlix/people-system → Settings → Deploy keys → Add deploy key: paste it, leave "Allow write access" off.
+Then:
 
-Needs Node.js 22 or newer. Deploy the **whole repository** (it's one project with several apps), not only `apps/api`.
+```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github-people-system
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/people_system_deploy
+  IdentitiesOnly yes
+EOF
+git clone git@github-people-system:Trendlix/people-system.git /opt/people-system
+```
 
-### Environment variables
+**3. Settings.**
 
-Set these in Hostinger's panel, or put them in `apps/api/.env`:
+```bash
+cd /opt/people-system/deploy
+cp .env.example .env
+openssl rand -hex 24      # paste as POSTGRES_PASSWORD
+openssl rand -base64 48   # paste as JWT_SECRET
+nano .env                 # also SEED_ADMIN_EMAIL and a NEW SEED_ADMIN_PASSWORD
+```
 
-| Variable | Value |
+**4. First deploy.**
+
+```bash
+./deploy.sh
+```
+
+It ends with the list of containers; `api` and `db` should say `healthy`.
+
+**5. Caddy on port 8443.** Prime ERP's change (Caddy also listening on 8443) is deployed by Prime ERP's own pipeline
+when it is pushed. Its deploy recreates Prime ERP's Caddy, which takes a few seconds.
+
+**6. Starting data** (roles, shifts A/B, company details, first admin). Safe to repeat; it never overwrites:
+
+```bash
+docker compose exec api npm run db:seed -w @trendlix/api
+```
+
+Then remove `SEED_ADMIN_PASSWORD` from `.env`.
+
+**7. Check from anywhere:** `https://srv2055591.hstgr.cloud:8443/api/health` → `{"status":"ok","database":"ok"}`.
+
+**8. The pipeline's key.**
+
+```bash
+./ci-key.sh
+```
+
+It prints two values. GitHub → Trendlix/people-system → Settings → Secrets and variables → Actions → New repository
+secret: `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS`. Its key is named differently from Prime ERP's, so neither replaces the other.
+
+**9. Vercel.** people-system → Settings → Environment Variables: `API_URL` = `https://srv2055591.hstgr.cloud:8443`
+(no trailing slash, no `/api`). Then redeploy, because settings apply to new deployments only.
+
+## On the server
+
+| Task | Command (in `/opt/people-system/deploy`) |
 |---|---|
-| `NODE_ENV` | `production` |
-| `PORT` | The port Hostinger gives the app (defaults to 3001) |
-| `DATABASE_URL` | Connection string from step 1 |
-| `JWT_SECRET` | A long random string, e.g. the output of `openssl rand -base64 48`. Keep it secret; changing it signs everyone out. |
-| `SEED_ADMIN_EMAIL` | Email of the first admin account (first deploy only) |
-| `SEED_ADMIN_PASSWORD` | Its password (first deploy only; remove it afterwards) |
+| Deploy by hand | `./deploy.sh` |
+| API log | `docker compose logs -f api` |
+| Container state | `docker compose ps` |
+| Restore a save | `docker compose exec -T db pg_restore -U people -d people_system --clean --if-exists < backups/<file>` |
 
-### Commands (run from the repository root)
-
-```bash
-npm ci --include=dev                 # dev tools are needed to build
-npm run build -w @trendlix/shared
-npm run build -w @trendlix/api
-npm run db:deploy -w @trendlix/api   # creates/updates the database tables
-npm run db:seed -w @trendlix/api     # adds missing starting data: roles, shifts A/B, company details, admin account
-npm run start:prod -w @trendlix/api  # starts the API
-```
-
-On later deploys run the same commands. `db:seed` is safe to repeat: it only adds starting data that is missing (for example the company details added with the Company page) and never overwrites what HR has entered.
-
-On a VPS, keep the API running with PM2 and serve it over HTTPS (Nginx + Let's Encrypt, or Hostinger's SSL), for example at `https://api.yourdomain.com`:
-
-```bash
-pm2 start npm --name people-api -- run start:prod -w @trendlix/api
-pm2 save
-```
-
-**Check:** `https://api.yourdomain.com/api/health` should return `{"status":"ok","database":"ok"}`.
-
-## 3. Web on Vercel
-
-1. In Vercel, **Add New → Project** and import the GitHub repository.
-2. **Root Directory:** `apps/web`. Framework preset: Next.js (detected). Leave the build and install commands as they are.
-3. **Environment variable:** `API_URL` = the API address from step 2, e.g. `https://api.yourdomain.com` (no trailing slash, no `/api`).
-4. Deploy, open the site and sign in with `SEED_ADMIN_EMAIL`.
+Backups: a full save every day and before every deploy, in `deploy/backups/` (14 days kept). They hold national IDs and
+salaries: keep a copy off the server too, and restrict who can read it.
 
 ## Security notes
 
@@ -76,3 +132,4 @@ pm2 save
 - Every sign-in, failed sign-in and change to the company profile, departments, job titles and shifts is written to the `audit_log` table.
 - The company representative's national ID is stored but never returned in full by the API, and never written to the audit log.
 - Logos are checked by their content (PNG, JPEG or WebP only, up to 1 MB); SVG is refused because it can contain scripts.
+- The pipeline's key can only run `deploy.sh` (no shell, no file copy, no forwarding). The server's GitHub key is read-only.

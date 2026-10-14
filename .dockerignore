@@ -1,0 +1,16 @@
+# What the API image never needs. Keeps the build small and keeps local secrets out of it.
+**/node_modules
+**/dist
+**/dist-dev
+**/.next
+**/coverage
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+!**/.env.example
+apps/api/src/generated
+deploy/backups
+deploy/.env
+.git
+.github
+**/.DS_Store

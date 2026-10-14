@@ -16,3 +16,6 @@ apps/api/src/generated/
 storage/
 
 .DS_Store
+
+# database saves on the server
+deploy/backups/

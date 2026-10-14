@@ -20,6 +20,8 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 | `apps/api` | NestJS API (port 3001, all routes under `/api`) |
 | `apps/api/prisma/schema.prisma` | Database schema (Prisma 7); migrations in `apps/api/prisma/migrations` |
 | `packages/shared` | Types and value lists used by both apps |
+| `deploy/` | What the server runs: Docker Compose (PostgreSQL, API, daily backup), `deploy.sh`, `ci-key.sh` ([DEPLOY.md](DEPLOY.md)) |
+| `.github/workflows/backend.yml` | CI/CD: deploys the API to the server on every push to `main` that touches it |
 
 ## Requirements
 

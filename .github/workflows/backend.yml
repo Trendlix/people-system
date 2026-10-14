@@ -1,0 +1,68 @@
+name: Deploy backend
+
+# Brings People System's API on the server up to date, the same way Prime ERP's pipeline does. On every push to main
+# that touches the backend (apps/api, packages/shared, deploy, or the lock file), this signs in to the server with a
+# key that can do one thing there, run deploy/deploy.sh: fetch, save the database, build the API's image, restart, and
+# wait until it answers. Then it asks the API itself whether it is up. "Run workflow" on the Actions page does the
+# same by hand.
+#
+# Nothing else is done here: no tests are run. The tests are run before a push. The web app is built by Vercel from
+# the same push.
+#
+# What it needs, set once in the repository's settings (Secrets and variables, Actions):
+#   secret VPS_SSH_KEY       the private key made on the server by deploy/ci-key.sh
+#   secret VPS_KNOWN_HOSTS   the server's own host key, printed by the same script
+#   variables VPS_HOST, VPS_USER, API_URL   only if they differ from the ones written below
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'packages/shared/**'
+      - 'deploy/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.dockerignore'
+      - '.github/workflows/backend.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+# one at a time: a deploy is never started while another is still building on the server
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Run deploy.sh on the server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HOST: ${{ vars.VPS_HOST || 'srv2055591.hstgr.cloud' }}
+      USER_NAME: ${{ vars.VPS_USER || 'root' }}
+      API_URL: ${{ vars.API_URL || 'https://srv2055591.hstgr.cloud:8443' }}
+    steps:
+      - name: Run deploy/deploy.sh
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$KEY" ] || [ -z "$KNOWN" ]; then
+            echo "::error::The secrets VPS_SSH_KEY and VPS_KNOWN_HOSTS are not set. Run deploy/ci-key.sh on the server and save what it prints as the two secrets."
+            exit 1
+          fi
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          # the key is tied on the server to deploy.sh: whatever is asked for here, that script is what runs
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30 "$USER_NAME@$HOST" deploy
+          rm -f ~/.ssh/deploy
+      - name: The API answers
+        run: |
+          curl -fsS --retry 12 --retry-delay 5 --retry-all-errors "$API_URL/api/health" | tee /dev/stderr | grep -q '"ok"'
+      - name: The commit the server runs
+        run: |
+          curl -fsS "$API_URL/api/version"
