@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { Trim, TrimOrNull } from '../../common/transforms.js';
 
 export class CreateDepartmentDto {
@@ -13,6 +13,12 @@ export class CreateDepartmentDto {
   @IsString()
   @MaxLength(100)
   nameAr?: string | null;
+
+  /** For a team: the department it belongs to. Empty for a department. */
+  @TrimOrNull()
+  @IsOptional()
+  @IsUUID('all', { message: 'Choose the department this team belongs to.' })
+  parentId?: string | null;
 }
 
 export class UpdateDepartmentDto {
@@ -28,4 +34,10 @@ export class UpdateDepartmentDto {
   @IsString()
   @MaxLength(100)
   nameAr?: string | null;
+
+  /** For a team: the department it belongs to. Empty (null) makes it a department of its own. */
+  @TrimOrNull()
+  @IsOptional()
+  @IsUUID('all', { message: 'Choose the department this team belongs to.' })
+  parentId?: string | null;
 }

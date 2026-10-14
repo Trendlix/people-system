@@ -7,6 +7,10 @@ import { createApp, createUser, signIn } from './helpers.js';
 // Unique per run, because the test database keeps data from earlier runs.
 const RUN = Date.now().toString(36).toLowerCase();
 const VALID_IBAN = 'EG380019000500000000263180002';
+const arabicDigits = (s: string) => s.replace(/\d/g, (d) => String.fromCharCode(0x0660 + Number(d)));
+let ids = 0;
+/** A national ID no other run uses; digits 2–7 give the birth date 12 March 1995. */
+const newNationalId = () => `2950312${String((Date.now() * 10 + ++ids) % 10_000_000).padStart(7, '0')}`;
 
 describe('Employees (e2e)', () => {
   let app: INestApplication<App>;
@@ -159,6 +163,92 @@ describe('Employees (e2e)', () => {
       await addEmployee('In Ops', { departmentId: dept.body.id });
       const res = await api().delete(`/api/departments/${dept.body.id}`).set('Cookie', hr).expect(409);
       expect(res.body.message).toContain('employee');
+    });
+  });
+
+  describe('adding with the national ID (e.g. read from the ID card)', () => {
+    const named = (name: string) => prisma.employee.count({ where: { fullNameEn: `${name} ${RUN}` } });
+
+    it('saves the national ID with the employee, fills in the date of birth, and audits without the numbers', async () => {
+      const nationalId = newNationalId();
+      const e = await addEmployee('Card Holder', {
+        identity: { nationalId: arabicDigits(nationalId), printedNo: 'AB123456', issueDate: '2024-05-01', expiryDate: '2031-05-01', issuingOffice: 'Nasr City' },
+      });
+      expect(e.dateOfBirth).toBe('1995-03-12'); // filled in from the ID
+      expect(e.identity).toEqual({
+        nationalIdMasked: `•••• ${nationalId.slice(-4)}`,
+        printedNoMasked: '•••• 3456',
+        issueDate: '2024-05-01',
+        expiryDate: '2031-05-01',
+        issuingOffice: 'Nasr City',
+      });
+      expect(JSON.stringify(e)).not.toContain(nationalId);
+
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'employee', entityId: e.id }, orderBy: { id: 'asc' } });
+      expect(audit.map((a) => a.action)).toEqual(['create']);
+      expect(audit[0].diff).toMatchObject({
+        fullNameEn: `Card Holder ${RUN}`,
+        dateOfBirth: '1995-03-12',
+        identity: {
+          nationalId: 'changed',
+          printedNo: 'changed',
+          issueDate: { from: null, to: '2024-05-01' },
+          expiryDate: { from: null, to: '2031-05-01' },
+          issuingOffice: { from: null, to: 'Nasr City' },
+        },
+      });
+      expect(JSON.stringify(audit[0].diff)).not.toContain(nationalId);
+      expect(JSON.stringify(audit[0].diff)).not.toContain('AB123456');
+
+      const full = await api().get(`/api/employees/${e.id}/identity`).set('Cookie', hr).expect(200);
+      expect(full.body.nationalId).toBe(nationalId);
+    });
+
+    it('checks everything before adding anyone: the date of birth, a real date in the ID, a national ID already used', async () => {
+      const nationalId = newNationalId();
+      const mismatch = await api()
+        .post('/api/employees')
+        .set('Cookie', hr)
+        .send(person('Wrong Birthday', { dateOfBirth: '1995-03-13', identity: { nationalId } }))
+        .expect(400);
+      expect(mismatch.body.message).toBe('The national ID gives a birth date of 1995-03-12, but the profile says 1995-03-13. Check both.');
+      await api().post('/api/employees').set('Cookie', hr).send(person('No Real Date', { identity: { nationalId: '29502301234567' } })).expect(400); // 30 Feb
+      const dates = await api()
+        .post('/api/employees')
+        .set('Cookie', hr)
+        .send(person('Expired First', { identity: { issueDate: '2024-05-01', expiryDate: '2024-05-01' } }))
+        .expect(400);
+      expect(dates.body.message).toBe('The ID must expire after it was issued.');
+      expect(await named('Wrong Birthday')).toBe(0);
+      expect(await named('No Real Date')).toBe(0);
+      expect(await named('Expired First')).toBe(0);
+
+      const owner = await addEmployee('ID Owner', { dateOfBirth: '1995-03-12', identity: { nationalId } }); // a matching date is fine
+      const dup = await api().post('/api/employees').set('Cookie', hr).send(person('ID Copy', { identity: { nationalId } })).expect(409);
+      expect(dup.body.message).toBe(`Another employee (${owner.employeeCode}) already has this national ID.`);
+      expect(await named('ID Copy')).toBe(0);
+    });
+
+    it('checks the national ID details like the identity form, and refuses fields it does not know', async () => {
+      const post = (name: string, identity: unknown) => api().post('/api/employees').set('Cookie', hr).send(person(name, { identity }));
+      const short = await post('Short ID', { nationalId: '2950312' }).expect(400);
+      expect(short.body.message).toEqual(['The national ID must be 14 digits, starting with 2 or 3.']);
+      const unknown = await post('Extra Field', { nationalId: newNationalId(), religion: 'x' }).expect(400);
+      expect(unknown.body.message).toEqual(['property religion should not exist']);
+      await post('Bad Date', { issueDate: '2024-02-30' }).expect(400);
+      await post('Not An Object', 'x').expect(400);
+      await post('A List', [{ nationalId: newNationalId() }]).expect(400);
+      expect(await named('Extra Field')).toBe(0);
+    });
+
+    it('adds no national ID when none is filled in', async () => {
+      for (const identity of [{}, { nationalId: null, printedNo: ' ', issuingOffice: '' }, null]) {
+        const e = await addEmployee('No Card', { identity });
+        expect(e).toMatchObject({ identity: null, dateOfBirth: null });
+        expect(await prisma.employeeIdentity.count({ where: { employeeId: e.id } })).toBe(0);
+        const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'employee', entityId: e.id, action: 'create' } });
+        expect(audit.diff).not.toHaveProperty('identity');
+      }
     });
   });
 

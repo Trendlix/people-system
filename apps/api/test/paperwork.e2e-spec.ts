@@ -36,6 +36,17 @@ const BACK = `٢٩٥٠٣١٢٠١٢٣٤٥٦   ٢٠٢٠/٠٧
 const RECEIPT = `إقـرار اسْتلام العُهدة رقم ${arabicDigits(RUN)}
 يقر الموظف باستلام جهاز حاسب محمول`;
 const ID_BACK = `بطاقة مسجلة برقم ملف ${arabicDigits(RUN)}٧`;
+// What FRONT and BACK give.
+const SUGGESTIONS = {
+  nationalId: '29503120123456',
+  dateOfBirth: '1995-03-12',
+  fullNameAr: 'محمد أحمد محمود عبد الله',
+  addressAr: '١٥ شارع مكرم عبيد، أول مدينة نصر - القاهرة',
+  gender: 'male',
+  issueDate: '2020-07-01',
+  expiryDate: '2027-07-11',
+  issuingOffice: 'سجل مدني مدينة نصر',
+};
 
 interface FakeOcr {
   url: string;
@@ -282,16 +293,7 @@ describe('Paperwork (e2e)', () => {
         .attach('back', png('BACK'), 'back.png')
         .expect(200);
       expect(res.body).toEqual({
-        suggestions: {
-          nationalId: '29503120123456',
-          dateOfBirth: '1995-03-12',
-          fullNameAr: 'محمد أحمد محمود عبد الله',
-          addressAr: '١٥ شارع مكرم عبيد، أول مدينة نصر - القاهرة',
-          gender: 'male',
-          issueDate: '2020-07-01',
-          expiryDate: '2027-07-11',
-          issuingOffice: 'سجل مدني مدينة نصر',
-        },
+        suggestions: SUGGESTIONS,
         front: { itemId: expect.any(String), text: FRONT },
         back: { itemId: expect.any(String), text: BACK },
       });
@@ -328,6 +330,52 @@ describe('Paperwork (e2e)', () => {
       const front = await api().post(`/api/employees/${employeeId}/identity/scan`).set('Cookie', hr).attach('front', jpeg('FRONT'), 'f.jpg').expect(200);
       expect(front.body).not.toHaveProperty('back');
       expect(front.body.suggestions).toMatchObject({ nationalId: '29503120123456', fullNameAr: 'محمد أحمد محمود عبد الله' });
+    });
+  });
+
+  describe('reading the ID card of a new employee', () => {
+    const readCard = (session = hr) => api().post('/api/employees/read-id-card').set('Cookie', session);
+
+    it('suggests what the card says, storing nothing and logging nothing from the card', async () => {
+      const { id: hrId } = await prisma.user.findUniqueOrThrow({ where: { email: hrEmail }, select: { id: true } });
+      const stored = () => prisma.paperworkItem.count({ where: { uploadedById: hrId } });
+      const logged = () => prisma.auditLog.count({ where: { userId: hrId } });
+      const [storedBefore, loggedBefore, started] = [await stored(), await logged(), new Date()];
+      const calls = ocr.calls.length;
+
+      const res = await readCard().attach('front', jpeg('FRONT'), 'front.jpg').attach('back', png('BACK'), 'back.png').expect(200);
+      expect(res.body).toEqual({ suggestions: SUGGESTIONS, front: { text: FRONT }, back: { text: BACK } });
+      expect(ocr.calls.slice(calls)).toEqual([{ lang: 'ar' }, { lang: 'ar' }]);
+
+      expect(await stored()).toBe(storedBefore);
+      expect(await logged()).toBe(loggedBefore);
+      const since = await prisma.auditLog.findMany({ where: { at: { gte: started } }, select: { diff: true } });
+      expect(JSON.stringify(since)).not.toContain('29503120123456');
+    });
+
+    it('needs a photo of the front; the back is optional', async () => {
+      expect((await readCard().attach('back', png('BACK'), 'b.png').expect(400)).body.message).toBe('Choose a photo of the front of the ID card.');
+      expect((await readCard().attach('front', pdf('FRONT'), 'front.pdf').expect(400)).body.message).toBe(
+        'The photo of the front must be a JPEG, PNG or WebP image.',
+      );
+      expect((await readCard().attach('front', jpeg('FRONT'), 'f.jpg').attach('back', Buffer.from('not an image'), 'b.png').expect(400)).body.message).toBe(
+        'The photo of the back must be a JPEG, PNG or WebP image.',
+      );
+      const big = await readCard()
+        .attach('front', Buffer.concat([PNG, Buffer.alloc(10 * 1024 * 1024)]), 'big.png')
+        .expect(413);
+      expect(big.body.message).toBe('Each file must be 10 MB or smaller.');
+
+      const front = await readCard().attach('front', jpeg('FRONT'), 'f.jpg').expect(200);
+      expect(front.body).toEqual({ suggestions: expect.objectContaining({ nationalId: '29503120123456' }), front: { text: FRONT } });
+    });
+
+    it('is for HR only, and is not mistaken for an employee', async () => {
+      await readCard(finance).attach('front', jpeg('FRONT'), 'f.jpg').expect(403);
+      await readCard(ceo).attach('front', jpeg('FRONT'), 'f.jpg').expect(403);
+      await readCard(staff).attach('front', jpeg('FRONT'), 'f.jpg').expect(403);
+      await api().post('/api/employees/read-id-card').attach('front', jpeg('FRONT'), 'f.jpg').expect(401);
+      await api().get('/api/employees/read-id-card').set('Cookie', hr).expect(400); // GET /employees/:id wants a UUID
     });
   });
 
@@ -383,6 +431,23 @@ describe('Paperwork (e2e)', () => {
 
       const failed = await api().post(`/api/employees/${employeeId}/identity/scan`).set('Cookie', hr).attach('front', jpeg('FAIL'), 'f.jpg').expect(502);
       expect(failed.body.message).toBe('The OCR service could not read the ID card. The photos were saved in the employee file.');
+    });
+
+    it('answers 503 or 502 for a new employee’s ID card that cannot be read, asking for the details by hand', async () => {
+      const down503 = await apiDown()
+        .post('/api/employees/read-id-card')
+        .set('Cookie', hr)
+        .attach('front', jpeg('FRONT'), 'front.jpg')
+        .attach('back', png('BACK'), 'back.png')
+        .expect(503);
+      expect(down503.body.message).toBe('Reading ID cards is not available right now: the OCR service is not running. Fill in the details by hand.');
+
+      const failed = await api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('FAIL'), 'f.jpg').expect(502);
+      expect(failed.body.message).toBe('The OCR service could not read the ID card. Try a sharper photo, or fill in the details by hand.');
+
+      // one side read is enough
+      const half = await api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('FAIL'), 'f.jpg').attach('back', png('BACK'), 'b.png').expect(200);
+      expect(half.body).toMatchObject({ front: { text: null }, back: { text: BACK }, suggestions: { gender: 'male', expiryDate: '2027-07-11' } });
     });
   });
 });

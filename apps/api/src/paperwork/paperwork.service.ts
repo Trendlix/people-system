@@ -24,9 +24,20 @@ const ITEM = {
   uploadedBy: { select: { email: true } },
 } satisfies Prisma.PaperworkItemSelect;
 
-const NO_OCR_FOR_ID =
-  'Reading ID cards is not available right now: the OCR service is not running. The photos were saved in the employee file.';
-const OCR_FAILED_FOR_ID = 'The OCR service could not read the ID card. The photos were saved in the employee file.';
+/** Why an ID card could not be read: the OCR service is not running (503), or it failed (502). */
+interface CardUnread {
+  unavailable: string;
+  failed: string;
+}
+
+const SCAN_UNREAD: CardUnread = {
+  unavailable: 'Reading ID cards is not available right now: the OCR service is not running. The photos were saved in the employee file.',
+  failed: 'The OCR service could not read the ID card. The photos were saved in the employee file.',
+};
+const NEW_EMPLOYEE_UNREAD: CardUnread = {
+  unavailable: 'Reading ID cards is not available right now: the OCR service is not running. Fill in the details by hand.',
+  failed: 'The OCR service could not read the ID card. Try a sharper photo, or fill in the details by hand.',
+};
 
 interface Upload {
   data: Buffer;
@@ -34,16 +45,41 @@ interface Upload {
   fileName: string;
 }
 
+/** The photos of a national ID card as uploaded: the front is needed, the back is optional. */
+export type IdCardFiles = { front?: Express.Multer.File[]; back?: Express.Multer.File[] } | undefined;
+
 /** National ID scans are restricted like the national ID itself. */
 const isRestricted = (kind: string) => (RESTRICTED_PAPERWORK as readonly string[]).includes(kind);
 
-/** The uploaded file, checked by its content. */
-function checked(file: Express.Multer.File | undefined, missing: string, what = 'The file'): Upload {
+/** The uploaded file, checked by its content. With `photoOnly`, a PDF is refused too. */
+function checked(file: Express.Multer.File | undefined, missing: string, what = 'The file', photoOnly = false): Upload {
   if (!file?.buffer?.length) throw new BadRequestException(missing);
   if (file.size > PAPERWORK_MAX_BYTES) throw new BadRequestException(`${what} must be ${PAPERWORK_MAX_MB} MB or smaller.`);
   const type = detectPaperworkType(file.buffer);
+  if (photoOnly && (!type || type === 'application/pdf')) throw new BadRequestException(`${what} must be a JPEG, PNG or WebP image.`);
   if (!type) throw new BadRequestException(`${what} must be a JPEG, PNG or WebP image, or a PDF.`);
   return { data: file.buffer, type, fileName: safeFileName(file.originalname, type) };
+}
+
+/** Both sides of an ID card, checked by their content; the back may be missing. */
+function cardSides(files: IdCardFiles, photoOnly = false): { front: Upload; back: Upload | null } {
+  const front = checked(files?.front?.[0], 'Choose a photo of the front of the ID card.', 'The photo of the front', photoOnly);
+  const back = files?.back?.[0] ? checked(files.back[0], 'The photo of the back is empty.', 'The photo of the back', photoOnly) : null;
+  return { front, back };
+}
+
+/**
+ * What the card says (see egyptian-id.ts) and the text read from each side (null when that side could not be read).
+ * When neither side could be read, says why: 503 when the OCR service is not running, 502 when it failed.
+ */
+function readCard(front: OcrRead, back: OcrRead | null, unread: CardUnread) {
+  const reads = back ? [front, back] : [front];
+  if (!reads.some((r) => r.status === 'done')) {
+    throw reads.some((r) => r.status === 'unavailable') ? new ServiceUnavailableException(unread.unavailable) : new BadGatewayException(unread.failed);
+  }
+  const textOf = (r: OcrRead | null) => (r?.status === 'done' ? r.text : null);
+  const linesOf = (r: OcrRead | null) => (r?.status === 'done' ? (r.lines.length ? r.lines.join('\n') : r.text) : null);
+  return { suggestions: readIdCard(linesOf(front), linesOf(back)), frontText: textOf(front), backText: textOf(back) };
 }
 
 /** What is stored after reading: the text, or why there is none. PostgreSQL text cannot hold NUL characters. */
@@ -175,14 +211,9 @@ export class PaperworkService {
    * them, and returns what they say as suggestions. Nothing about the employee changes here: HR checks the
    * suggestions against the card and saves them through the profile and identity forms.
    */
-  async scanIdentity(
-    employeeId: string,
-    files: { front?: Express.Multer.File[]; back?: Express.Multer.File[] } | undefined,
-    user: SessionUser,
-  ) {
+  async scanIdentity(employeeId: string, files: IdCardFiles, user: SessionUser) {
     await this.assertEmployee(employeeId);
-    const front = checked(files?.front?.[0], 'Choose a photo of the front of the ID card.', 'The photo of the front');
-    const back = files?.back?.[0] ? checked(files.back[0], 'The photo of the back is empty.', 'The photo of the back') : null;
+    const { front, back } = cardSides(files);
 
     const frontId = await this.store(employeeId, 'national_id_front', front, user);
     const backId = back ? await this.store(employeeId, 'national_id_back', back, user) : null;
@@ -191,18 +222,31 @@ export class PaperworkService {
       back && backId ? this.read(backId, back) : Promise.resolve(null),
     ]);
 
-    const reads = backRead ? [frontRead, backRead] : [frontRead];
-    if (!reads.some((r) => r.status === 'done')) {
-      throw reads.some((r) => r.status === 'unavailable')
-        ? new ServiceUnavailableException(NO_OCR_FOR_ID)
-        : new BadGatewayException(OCR_FAILED_FOR_ID);
-    }
-    const textOf = (r: OcrRead | null) => (r?.status === 'done' ? r.text : null);
-    const linesOf = (r: OcrRead | null) => (r?.status === 'done' ? (r.lines.length ? r.lines.join('\n') : r.text) : null);
+    const card = readCard(frontRead, backRead, SCAN_UNREAD);
     return {
-      suggestions: readIdCard(linesOf(frontRead), linesOf(backRead)),
-      front: { itemId: frontId, text: textOf(frontRead) },
-      ...(backId && { back: { itemId: backId, text: textOf(backRead) } }),
+      suggestions: card.suggestions,
+      front: { itemId: frontId, text: card.frontText },
+      ...(backId && { back: { itemId: backId, text: card.backText } }),
+    };
+  }
+
+  /**
+   * Reads the national ID card of someone who is not an employee yet, to start their profile from it: the photos are
+   * read as for scanIdentity, but nothing is stored and nothing from the card is written to the audit log. HR checks
+   * the suggestions, adds the employee, then uploads the photos to the new employee file.
+   */
+  async readNewIdCard(files: IdCardFiles) {
+    const { front, back } = cardSides(files, true);
+    const [frontRead, backRead] = await Promise.all([
+      this.ocr.read(front.data, front.type, 'ar'),
+      back ? this.ocr.read(back.data, back.type, 'ar') : Promise.resolve(null),
+    ]);
+
+    const card = readCard(frontRead, backRead, NEW_EMPLOYEE_UNREAD);
+    return {
+      suggestions: card.suggestions,
+      front: { text: card.frontText },
+      ...(back && { back: { text: card.backText } }),
     };
   }
 

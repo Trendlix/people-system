@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateJobTitleDto, UpdateJobTitleDto } from './job-title.dto.js';
 
 const ENTITY = 'job_title';
-const DEPARTMENT = { select: { id: true, nameEn: true, nameAr: true } } as const;
+const DEPARTMENT = { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } } as const;
 
 @Injectable()
 export class JobTitlesService {

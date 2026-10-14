@@ -22,13 +22,13 @@ const SUMMARY = {
   status: true,
   employmentType: true,
   joinDate: true,
-  department: { select: { id: true, nameEn: true } },
+  department: { select: { id: true, nameEn: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
   jobTitle: { select: { id: true, titleEn: true } },
   manager: { select: { id: true, fullNameEn: true } },
 } satisfies Prisma.EmployeeSelect;
 
 const PROFILE = {
-  department: { select: { id: true, nameEn: true, nameAr: true } },
+  department: { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
   jobTitle: { select: { id: true, titleEn: true, titleAr: true, grade: true, jdVersion: true } },
   manager: { select: { id: true, employeeCode: true, fullNameEn: true } },
   shift: { select: { id: true, code: true, startTime: true, endTime: true } },
@@ -106,6 +106,23 @@ function restrictedChanges(diff: Record<string, unknown>, keys: string[]) {
   return diff;
 }
 
+/** What changed in the national ID details, for the audit log: the numbers themselves only as 'changed'. */
+function identityChanges(before: EmployeeIdentity | null, dto: UpdateIdentityDto): Record<string, unknown> {
+  return restrictedChanges(changes(identityView(before), dto as Record<string, unknown>), ['nationalId', 'printedNo']);
+}
+
+/** The national ID columns Prisma writes: YYYY-MM-DD strings become dates; undefined leaves a column as it is. */
+function identityData(dto: UpdateIdentityDto) {
+  const date = (v: string | null | undefined) => (typeof v === 'string' ? toDateOnly(v) : v);
+  return {
+    nationalId: dto.nationalId,
+    printedNo: dto.printedNo,
+    issueDate: date(dto.issueDate),
+    expiryDate: date(dto.expiryDate),
+    issuingOffice: dto.issuingOffice,
+  };
+}
+
 @Injectable()
 export class EmployeesService {
   constructor(
@@ -161,16 +178,28 @@ export class EmployeesService {
     return bankView(row);
   }
 
+  /**
+   * Adds an employee, with their national ID details when sent (e.g. read from the ID card first): everything is
+   * checked before anything is saved, and the employee and the national ID are saved together or not at all.
+   */
   async create(dto: CreateEmployeeDto, user: SessionUser) {
-    const { employeeCode: code, ...given } = dto;
+    const { employeeCode: code, identity: sentIdentity, ...given } = dto;
     const employeeCode = code ?? (await this.nextCode());
     await this.assertFree({ employeeCode, workEmail: dto.workEmail });
     const derived = await this.checked(null, dto);
-    const values = { ...given, employeeCode, ...derived };
+    // national ID details with nothing filled in are not saved at all
+    const identity = sentIdentity && Object.values(sentIdentity).some((v) => v !== null && v !== undefined) ? sentIdentity : null;
+    const dateOfBirth = identity ? await this.checkedIdentity({ id: null, dateOfBirth: dto.dateOfBirth ?? null }, null, identity) : undefined;
+    const values = { ...given, employeeCode, ...derived, ...(dateOfBirth && { dateOfBirth }) };
 
-    const e = await this.prisma.employee.create({ data: toData(values) });
+    const e = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.employee.create({ data: toData(values) });
+      if (identity) await tx.employeeIdentity.create({ data: { employeeId: row.id, ...identityData(identity) } });
+      return row;
+    });
     const { id: _id, createdAt: _c, updatedAt: _u, ...created } = fields(e);
-    await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, entityId: e.id, diff: created });
+    const diff = identity ? { ...created, identity: identityChanges(null, identity) } : created;
+    await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, entityId: e.id, diff });
     return this.get(e.id, user);
   }
 
@@ -196,41 +225,15 @@ export class EmployeesService {
   async updateIdentity(id: string, dto: UpdateIdentityDto, user: SessionUser) {
     const employee = await this.row(id);
     const before = await this.prisma.employeeIdentity.findUnique({ where: { employeeId: id } });
-    const { issueDate, expiryDate } = { ...identityView(before), ...withoutUndefined(dto) };
-    let dateOfBirth: string | undefined;
+    const dateOfBirth = await this.checkedIdentity({ id, dateOfBirth: fromDateOnly(employee.dateOfBirth) }, before, dto);
 
-    if (dto.nationalId) {
-      const born = birthDateFromNationalId(dto.nationalId);
-      if (!born) throw new BadRequestException('This national ID holds no real birth date (digits 2–7 are YYMMDD). Check it against the card.');
-      const profileDob = fromDateOnly(employee.dateOfBirth);
-      if (profileDob && profileDob !== born) {
-        throw new BadRequestException(`The national ID gives a birth date of ${born}, but the profile says ${profileDob}. Check both.`);
-      }
-      if (!profileDob) dateOfBirth = born; // filled in from the ID
-      const other = await this.prisma.employeeIdentity.findFirst({
-        where: { nationalId: dto.nationalId, employeeId: { not: id } },
-        select: { employee: { select: { employeeCode: true } } },
-      });
-      if (other) throw new ConflictException(`Another employee (${other.employee.employeeCode}) already has this national ID.`);
-    }
-    if (issueDate && expiryDate && expiryDate <= issueDate) {
-      throw new BadRequestException('The ID must expire after it was issued.');
-    }
-
-    const date = (v: string | null | undefined) => (typeof v === 'string' ? toDateOnly(v) : v);
-    const data = {
-      nationalId: dto.nationalId,
-      printedNo: dto.printedNo,
-      issueDate: date(dto.issueDate),
-      expiryDate: date(dto.expiryDate),
-      issuingOffice: dto.issuingOffice,
-    };
+    const data = identityData(dto);
     const row = await this.prisma.$transaction(async (tx) => {
       if (dateOfBirth) await tx.employee.update({ where: { id }, data: { dateOfBirth: toDateOnly(dateOfBirth) } });
       return tx.employeeIdentity.upsert({ where: { employeeId: id }, update: data, create: { employeeId: id, ...data } });
     });
 
-    const diff: Record<string, unknown> = restrictedChanges(changes(identityView(before), dto as Record<string, unknown>), ['nationalId', 'printedNo']);
+    const diff = identityChanges(before, dto);
     if (dateOfBirth) diff.dateOfBirth = { from: null, to: dateOfBirth };
     if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: id, diff: { identity: diff } });
     return maskedIdentity(row);
@@ -375,6 +378,38 @@ export class EmployeesService {
     }
 
     return derived;
+  }
+
+  /**
+   * The national ID checks, for a new employee (`id` null) or one on file: the ID holds a real birth date, which must
+   * match the date of birth on the profile; no other employee has the same ID; and the card expires after it was
+   * issued. Returns the date of birth to fill in from the ID when the profile has none.
+   */
+  private async checkedIdentity(
+    employee: { id: string | null; dateOfBirth: string | null },
+    before: EmployeeIdentity | null,
+    dto: UpdateIdentityDto,
+  ): Promise<string | undefined> {
+    const { issueDate, expiryDate } = { ...identityView(before), ...withoutUndefined(dto) };
+    let dateOfBirth: string | undefined;
+
+    if (dto.nationalId) {
+      const born = birthDateFromNationalId(dto.nationalId);
+      if (!born) throw new BadRequestException('This national ID holds no real birth date (digits 2–7 are YYMMDD). Check it against the card.');
+      if (employee.dateOfBirth && employee.dateOfBirth !== born) {
+        throw new BadRequestException(`The national ID gives a birth date of ${born}, but the profile says ${employee.dateOfBirth}. Check both.`);
+      }
+      if (!employee.dateOfBirth) dateOfBirth = born; // filled in from the ID
+      const other = await this.prisma.employeeIdentity.findFirst({
+        where: { nationalId: dto.nationalId, ...(employee.id && { employeeId: { not: employee.id } }) },
+        select: { employee: { select: { employeeCode: true } } },
+      });
+      if (other) throw new ConflictException(`Another employee (${other.employee.employeeCode}) already has this national ID.`);
+    }
+    if (issueDate && expiryDate && expiryDate <= issueDate) {
+      throw new BadRequestException('The ID must expire after it was issued.');
+    }
+    return dateOfBirth;
   }
 
   /** The chosen manager must not report to this employee, directly or through others. */

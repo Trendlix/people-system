@@ -77,15 +77,21 @@ model Company {
 
 // ---------- organisation ----------
 
+// A department (parent_id empty) or one of its teams (parent_id = the department), e.g. Marketing → Content Team.
+// One level only: a team has no teams of its own. Job titles and employees can belong to either.
 model Department {
-  id        String     @id @default(uuid()) @db.Uuid
-  nameEn    String     @unique @map("name_en")
-  nameAr    String?    @map("name_ar")
-  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  id        String       @id @default(uuid()) @db.Uuid
+  nameEn    String       @map("name_en") // unique among a department's teams; among departments, checked by the API
+  nameAr    String?      @map("name_ar")
+  parentId  String?      @map("parent_id") @db.Uuid
+  parent    Department?  @relation("SubDepartments", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Department[] @relation("SubDepartments")
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz
   jobTitles JobTitle[]
   employees Employee[]
 
+  @@unique([parentId, nameEn])
   @@map("departments")
 }
 

@@ -69,6 +69,70 @@ describe('Organisation (e2e)', () => {
     });
   });
 
+  describe('teams', () => {
+    it('puts a team in a department, one level deep', async () => {
+      const marketing = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name('Marketing') }).expect(201);
+      const content = await api()
+        .post('/api/departments')
+        .set('Cookie', session)
+        .send({ nameEn: name('Content Team'), nameAr: 'فريق المحتوى', parentId: marketing.body.id })
+        .expect(201);
+      expect(content.body).toMatchObject({ parentId: marketing.body.id, parent: { nameEn: name('Marketing') }, _count: { jobTitles: 0, children: 0 } });
+
+      const main = await api().get(`/api/departments/${marketing.body.id}`).set('Cookie', session).expect(200);
+      expect(main.body._count.children).toBe(1);
+      expect(main.body.children).toEqual([{ id: content.body.id, nameEn: name('Content Team'), nameAr: 'فريق المحتوى', _count: { jobTitles: 0 } }]);
+
+      // a job title in the team shows where it sits
+      const job = await api()
+        .post('/api/job-titles')
+        .set('Cookie', session)
+        .send({ departmentId: content.body.id, titleEn: 'Senior Content Creator' })
+        .expect(201);
+      expect(job.body.department.parent).toEqual({ id: marketing.body.id, nameEn: name('Marketing'), nameAr: null });
+
+      // no team inside a team, and not inside itself
+      await api().post('/api/departments').set('Cookie', session).send({ nameEn: 'Video', parentId: content.body.id }).expect(400);
+      await api().patch(`/api/departments/${marketing.body.id}`).set('Cookie', session).send({ parentId: marketing.body.id }).expect(400);
+
+      // a department with teams can't become a team, nor be deleted
+      const other = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name('Sales') }).expect(201);
+      await api().patch(`/api/departments/${marketing.body.id}`).set('Cookie', session).send({ parentId: other.body.id }).expect(400);
+      const refused = await api().delete(`/api/departments/${marketing.body.id}`).set('Cookie', session).expect(409);
+      expect(refused.body.message).toContain('1 team');
+
+      // taking the team out makes it a department of its own
+      const moved = await api().patch(`/api/departments/${content.body.id}`).set('Cookie', session).send({ parentId: '' }).expect(200);
+      expect(moved.body).toMatchObject({ parentId: null, parent: null });
+      const audit = await prisma.auditLog.findFirst({ where: { entityType: 'department', entityId: content.body.id, action: 'update' } });
+      expect(audit?.diff).toEqual({ parentId: { from: marketing.body.id, to: null } });
+    });
+
+    it('keeps names unique among departments, and among the teams of one department', async () => {
+      const a = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name('Design') }).expect(201);
+      const b = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name('Operations') }).expect(201);
+      await api().post('/api/departments').set('Cookie', session).send({ nameEn: 'Support', parentId: a.body.id }).expect(201);
+      await api().post('/api/departments').set('Cookie', session).send({ nameEn: 'Support', parentId: b.body.id }).expect(201);
+      const dup = await api().post('/api/departments').set('Cookie', session).send({ nameEn: 'SUPPORT', parentId: a.body.id }).expect(409);
+      expect(dup.body.message).toContain('already a team');
+      await api().post('/api/departments').set('Cookie', session).send({ nameEn: name('design').toUpperCase() }).expect(409);
+    });
+
+    it('shows an employee in a team with its department', async () => {
+      const ops = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name('People Ops') }).expect(201);
+      const team = await api().post('/api/departments').set('Cookie', session).send({ nameEn: 'Recruiting', parentId: ops.body.id }).expect(201);
+      const job = await api().post('/api/job-titles').set('Cookie', session).send({ departmentId: team.body.id, titleEn: 'Recruiter' }).expect(201);
+      const e = await api()
+        .post('/api/employees')
+        .set('Cookie', session)
+        .send({ fullNameEn: name('Recruiter'), fullNameAr: 'مسؤول توظيف', employmentType: 'full_time', joinDate: '2026-02-01', jobTitleId: job.body.id })
+        .expect(201);
+      expect(e.body.department).toEqual({ id: team.body.id, nameEn: 'Recruiting', nameAr: null, parent: { id: ops.body.id, nameEn: name('People Ops'), nameAr: null } });
+      const list = await api().get('/api/employees').set('Cookie', session).expect(200);
+      expect(list.body.find((x: { id: string }) => x.id === e.body.id).department.parent.nameEn).toBe(name('People Ops'));
+    });
+  });
+
   describe('job titles', () => {
     let departmentId: string;
 

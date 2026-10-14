@@ -1,4 +1,4 @@
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayUnique,
   IsArray,
@@ -6,6 +6,7 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -15,6 +16,7 @@ import {
   Min,
   ValidateBy,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import {
   DEGREES,
@@ -155,35 +157,7 @@ class EmployeeDetailsDto {
   jdAcknowledgedAt?: string | null;
 }
 
-export class CreateEmployeeDto extends EmployeeDetailsDto {
-  @Trim() @IsString() @IsNotEmpty({ message: 'Enter the full name in English.' }) @MaxLength(150)
-  fullNameEn: string;
-
-  @Trim() @IsString() @IsNotEmpty({ message: 'Enter the full name in Arabic, as printed on contracts.' }) @MaxLength(150)
-  fullNameAr: string;
-
-  @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
-  employmentType: EmploymentType;
-
-  @IsDateOnly('Enter the join date.')
-  joinDate: string;
-}
-
-export class UpdateEmployeeDto extends EmployeeDetailsDto {
-  @Trim() @Sent() @IsString() @IsNotEmpty({ message: 'Enter the full name in English.' }) @MaxLength(150)
-  fullNameEn?: string;
-
-  @Trim() @Sent() @IsString() @IsNotEmpty({ message: 'Enter the full name in Arabic, as printed on contracts.' }) @MaxLength(150)
-  fullNameAr?: string;
-
-  @Sent() @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
-  employmentType?: EmploymentType;
-
-  @Sent() @IsDateOnly('Enter the join date.')
-  joinDate?: string;
-}
-
-/** National ID (restricted). */
+/** National ID (restricted): changed on its own, or sent with a new employee. */
 export class UpdateIdentityDto {
   @LatinDigits()
   @TrimOrNull()
@@ -202,6 +176,41 @@ export class UpdateIdentityDto {
 
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(100)
   issuingOffice?: string | null;
+}
+
+export class CreateEmployeeDto extends EmployeeDetailsDto {
+  @Trim() @IsString() @IsNotEmpty({ message: 'Enter the full name in English.' }) @MaxLength(150)
+  fullNameEn: string;
+
+  @Trim() @IsString() @IsNotEmpty({ message: 'Enter the full name in Arabic, as printed on contracts.' }) @MaxLength(150)
+  fullNameAr: string;
+
+  @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
+  employmentType: EmploymentType;
+
+  @IsDateOnly('Enter the join date.')
+  joinDate: string;
+
+  /** The national ID, saved with the new employee (e.g. read from the ID card first). Empty: none yet. */
+  @IsOptional()
+  @IsObject({ message: 'Send the national ID details as an object.' })
+  @ValidateNested()
+  @Type(() => UpdateIdentityDto)
+  identity?: UpdateIdentityDto | null;
+}
+
+export class UpdateEmployeeDto extends EmployeeDetailsDto {
+  @Trim() @Sent() @IsString() @IsNotEmpty({ message: 'Enter the full name in English.' }) @MaxLength(150)
+  fullNameEn?: string;
+
+  @Trim() @Sent() @IsString() @IsNotEmpty({ message: 'Enter the full name in Arabic, as printed on contracts.' }) @MaxLength(150)
+  fullNameAr?: string;
+
+  @Sent() @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
+  employmentType?: EmploymentType;
+
+  @Sent() @IsDateOnly('Enter the join date.')
+  joinDate?: string;
 }
 
 /** Bank and payment (restricted). */

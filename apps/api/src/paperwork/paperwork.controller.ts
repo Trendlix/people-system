@@ -21,7 +21,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { FileTooLargeFilter } from './file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from './paperwork-file.js';
 import { SearchPaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
-import { PaperworkService } from './paperwork.service.js';
+import { PaperworkService, type IdCardFiles } from './paperwork.service.js';
 
 // The employee file is HR and CEO only: both read it, only HR adds, re-reads and deletes. National ID scans are
 // restricted data on top of that: every view is written to the audit log (see PaperworkService).
@@ -29,6 +29,14 @@ import { PaperworkService } from './paperwork.service.js';
 // File names are read as UTF-8, so Arabic names arrive intact.
 const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 }, defParamCharset: 'utf8' };
 const ID_CARD = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 2, fields: 5 }, defParamCharset: 'utf8' };
+// Photos of the national ID card: the front (required) and the back (optional).
+const ID_CARD_SIDES = FileFieldsInterceptor(
+  [
+    { name: 'front', maxCount: 1 },
+    { name: 'back', maxCount: 1 },
+  ],
+  ID_CARD,
+);
 
 @Controller('employees')
 export class EmployeePaperworkController {
@@ -53,25 +61,26 @@ export class EmployeePaperworkController {
     return this.paperwork.upload(id, dto.kind, file, user);
   }
 
+  /**
+   * Photos of a new employee's national ID card → suggestions for the Add employee form. Nothing is stored: the
+   * photos go to the employee file once the employee is added. (POST only, so no clash with GET /employees/:id.)
+   */
+  @Roles('hr')
+  @Post('read-id-card')
+  @HttpCode(200)
+  @UseFilters(FileTooLargeFilter)
+  @UseInterceptors(ID_CARD_SIDES)
+  readIdCard(@UploadedFiles() files: IdCardFiles) {
+    return this.paperwork.readNewIdCard(files);
+  }
+
   /** Photos of the national ID card (front required, back optional) → suggestions for the identity form. */
   @Roles('hr')
   @Post(':id/identity/scan')
   @HttpCode(200)
   @UseFilters(FileTooLargeFilter)
-  @UseInterceptors(
-    FileFieldsInterceptor(
-      [
-        { name: 'front', maxCount: 1 },
-        { name: 'back', maxCount: 1 },
-      ],
-      ID_CARD,
-    ),
-  )
-  scan(
-    @Param('id', ParseUUIDPipe) id: string,
-    @UploadedFiles() files: { front?: Express.Multer.File[]; back?: Express.Multer.File[] } | undefined,
-    @CurrentUser() user: SessionUser,
-  ) {
+  @UseInterceptors(ID_CARD_SIDES)
+  scan(@Param('id', ParseUUIDPipe) id: string, @UploadedFiles() files: IdCardFiles, @CurrentUser() user: SessionUser) {
     return this.paperwork.scanIdentity(id, files, user);
   }
 }
