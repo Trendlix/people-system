@@ -164,7 +164,7 @@ describe('Paperwork (e2e)', () => {
     const e = await api()
       .post('/api/employees')
       .set('Cookie', hr)
-      .send({ fullNameEn: `Paper Trail ${RUN}`, fullNameAr: 'موظف تجريبي', employmentType: 'full_time', joinDate: '2026-01-15' })
+      .send({ fullNameEn: `Paper Trail ${RUN}`, fullNameAr: 'موظف تجريبي' })
       .expect(201);
     employeeId = e.body.id;
   });
@@ -187,13 +187,15 @@ describe('Paperwork (e2e)', () => {
       ocrStatus: 'done',
       uploadedAt: expect.any(String),
       uploadedBy: { email: hrEmail },
+      documentNo: null,
+      expiresOn: null,
     });
     expect(ocr.calls.at(-1)).toEqual({ lang: 'ar' });
     const photo = await upload(png('NONE'), 'photo.png', 'personal_photo');
 
     const list = await api().get(`/api/employees/${employeeId}/paperwork`).set('Cookie', ceo).expect(200);
     expect(list.body.slice(0, 2).map((i: { id: string }) => i.id)).toEqual([photo.id, form.id]);
-    expect(Object.keys(list.body[0]).sort()).toEqual(['fileName', 'id', 'kind', 'mimeType', 'ocrStatus', 'sizeBytes', 'uploadedAt', 'uploadedBy']);
+    expect(Object.keys(list.body[0]).sort()).toEqual(['documentNo', 'expiresOn', 'fileName', 'id', 'kind', 'mimeType', 'ocrStatus', 'sizeBytes', 'uploadedAt', 'uploadedBy']);
 
     const text = await api().get(`/api/paperwork/${form.id}/text`).set('Cookie', hr).expect(200);
     expect(text.body).toEqual({ ocrStatus: 'done', ocrText: RECEIPT });
@@ -280,6 +282,65 @@ describe('Paperwork (e2e)', () => {
     expect(audit[1].diff).toEqual({ employeeId, kind: 'other', fileName: 'old.png', sizeBytes: png('NONE').length });
   });
 
+  describe('the number printed on a paper and when it expires', () => {
+    const post = () => api().post(`/api/employees/${employeeId}/paperwork`).set('Cookie', hr);
+    const describePaper = (itemId: string, body: object, session = hr) => api().patch(`/api/paperwork/${itemId}`).set('Cookie', session).send(body);
+
+    it('keeps them with the upload, and lets HR change or clear them, logging only what changed', async () => {
+      const res = await post()
+        .field('kind', 'criminal_record')
+        .field('documentNo', ` FS-${RUN} `)
+        .field('expiresOn', '2026-12-31')
+        .attach('file', png('NONE'), 'record.png')
+        .expect(201);
+      const itemId = (res.body as { id: string }).id;
+      expect(res.body).toMatchObject({ kind: 'criminal_record', documentNo: `FS-${RUN}`, expiresOn: '2026-12-31' });
+
+      const later = await describePaper(itemId, { expiresOn: '2027-06-30' }).expect(200);
+      expect(later.body).toMatchObject({ id: itemId, kind: 'criminal_record', documentNo: `FS-${RUN}`, expiresOn: '2027-06-30' }); // the number stays
+      const cleared = await describePaper(itemId, { documentNo: '' }).expect(200);
+      expect(cleared.body).toMatchObject({ documentNo: null, expiresOn: '2027-06-30' });
+      await describePaper(itemId, { expiresOn: '2027-06-30' }).expect(200); // nothing changes, so nothing is logged
+
+      const list = await api().get(`/api/employees/${employeeId}/paperwork`).set('Cookie', ceo).expect(200);
+      expect(list.body.find((i: { id: string }) => i.id === itemId)).toMatchObject({ documentNo: null, expiresOn: '2027-06-30' });
+
+      const audit = await auditOf(itemId);
+      expect(audit.map((a) => a.action)).toEqual(['create', 'update', 'update']);
+      expect(audit[1].diff).toEqual({ employeeId, expiresOn: { from: '2026-12-31', to: '2027-06-30' } });
+      expect(audit[2].diff).toEqual({ employeeId, documentNo: { from: `FS-${RUN}`, to: null } });
+    });
+
+    it('checks them, and only HR changes them', async () => {
+      const before = await prisma.paperworkItem.count({ where: { employeeId } });
+      await post().field('kind', 'other').field('expiresOn', '2026-02-30').attach('file', png('NONE'), 'x.png').expect(400);
+      await post().field('kind', 'other').field('documentNo', 'x'.repeat(61)).attach('file', png('NONE'), 'x.png').expect(400);
+      expect(await prisma.paperworkItem.count({ where: { employeeId } })).toBe(before);
+
+      const item = await upload(png('NONE'), 'certificate.png', 'qualification_certificate');
+      expect(item).toMatchObject({ documentNo: null, expiresOn: null });
+      await describePaper(item.id, { expiresOn: '31/12/2026' }).expect(400);
+      await describePaper(item.id, { kind: 'other' }).expect(400); // what kind of paper it is does not change here
+      await describePaper(item.id, { documentNo: 'X' }, ceo).expect(403);
+      await describePaper(item.id, { documentNo: 'X' }, finance).expect(403);
+      await describePaper('00000000-0000-4000-8000-000000000000', { documentNo: 'X' }).expect(404);
+      expect((await auditOf(item.id)).map((a) => a.action)).toEqual(['create']);
+    });
+
+    it('logs only that the number of a national ID scan changed, never the number', async () => {
+      const card = await post().field('kind', 'national_id_front').field('documentNo', 'AB123456').attach('file', png('NONE'), 'card.png').expect(201);
+      const itemId = (card.body as { id: string }).id;
+      expect(card.body.documentNo).toBe('AB123456');
+      const changed = await describePaper(itemId, { documentNo: 'CD654321', expiresOn: '2031-05-01' }).expect(200);
+      expect(changed.body).toMatchObject({ documentNo: 'CD654321', expiresOn: '2031-05-01' });
+
+      const audit = await auditOf(itemId);
+      expect(audit.map((a) => a.action)).toEqual(['create', 'update']);
+      expect(audit[1].diff).toEqual({ employeeId, documentNo: 'changed', expiresOn: { from: null, to: '2031-05-01' } });
+      expect(JSON.stringify(audit.map((a) => a.diff))).not.toMatch(/AB123456|CD654321/);
+    });
+  });
+
   describe('search', () => {
     it('finds a document by its Arabic text, whatever the hamza, ta marbuta, tatweel, diacritics or digits', async () => {
       const receipt = await upload(jpeg('RECEIPT'), 'receipt.jpg', 'other');
@@ -294,7 +355,7 @@ describe('Paperwork (e2e)', () => {
         employee: { id: employeeId, employeeCode: expect.stringMatching(/^EMP-/), fullNameEn: `Paper Trail ${RUN}` },
         snippet: expect.stringContaining(`إقـرار اسْتلام العُهدة رقم ${arabicDigits(RUN)}`),
       });
-      expect(Object.keys(hit.item).sort()).toEqual(['fileName', 'id', 'kind', 'mimeType', 'ocrStatus', 'sizeBytes', 'uploadedAt', 'uploadedBy']);
+      expect(Object.keys(hit.item).sort()).toEqual(['documentNo', 'expiresOn', 'fileName', 'id', 'kind', 'mimeType', 'ocrStatus', 'sizeBytes', 'uploadedAt', 'uploadedBy']);
 
       const typedOtherwise = await api().get('/api/paperwork/search').query({ q: `العُهدة رقم ${arabicDigits(RUN)}` }).set('Cookie', hr).expect(200);
       expect(typedOtherwise.body.map((r: { item: { id: string } }) => r.item.id)).toContain(receipt.id);

@@ -1,8 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { PROBATION_MONTHS } from '@trendlix/shared';
+import { PAPERWORK_LABELS, requiredPaperwork, type EmploymentType, type Gender, type Standing } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { addMonths, fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
+import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -11,54 +11,47 @@ import { birthDateFromNationalId, maskTail } from './checks.js';
 import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
 
 const ENTITY = 'employee';
-const DATE_FIELDS = ['dateOfBirth', 'joinDate', 'probationEnd', 'jdAcknowledgedAt'] as const;
+const DATE_FIELDS = ['dateOfBirth'] as const;
 
-const SUMMARY = {
-  id: true,
-  employeeCode: true,
-  fullNameEn: true,
-  fullNameAr: true,
-  workEmail: true,
-  status: true,
-  employmentType: true,
-  joinDate: true,
-  department: { select: { id: true, nameEn: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
-  jobTitle: { select: { id: true, titleEn: true, grade: { select: { id: true, code: true, rank: true, levelEn: true } } } },
-  manager: { select: { id: true, fullNameEn: true } },
-} satisfies Prisma.EmployeeSelect;
-
-const PROFILE = {
+/** Where an employment places someone: their team (or department) with its department, and their job title and grade. */
+const PLACE = {
   department: { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
   jobTitle: {
-    select: {
-      id: true,
-      titleEn: true,
-      titleAr: true,
-      jdVersion: true,
-      grade: { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } },
-    },
+    select: { id: true, titleEn: true, titleAr: true, jdVersion: true, grade: { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } } },
   },
+} satisfies Prisma.EmploymentInclude;
+
+const EMPLOYMENT = {
+  ...PLACE,
   manager: { select: { id: true, employeeCode: true, fullNameEn: true } },
   shift: { select: { id: true, code: true, startTime: true, endTime: true } },
-  reports: {
-    select: { id: true, employeeCode: true, fullNameEn: true, status: true, jobTitle: { select: { titleEn: true } } },
-    orderBy: { fullNameEn: 'asc' },
-  },
-} satisfies Prisma.EmployeeInclude;
+} satisfies Prisma.EmploymentInclude;
+
+/** Newest first, the current employment (no end date) before all ended ones. */
+const NEWEST_FIRST = [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate: 'desc' }] satisfies Prisma.EmploymentOrderByWithRelationInput[];
+
+type EmploymentRow = Prisma.EmploymentGetPayload<{ include: typeof EMPLOYMENT }>;
+
+/** An employment as the API sends it: dates as YYYY-MM-DD, office days in order, shift times as HH:mm. */
+export function employmentView(e: EmploymentRow) {
+  const { shift, joinDate, probationEnd, jdAcknowledgedAt, endDate, officeDays, ...rest } = e;
+  return {
+    ...rest,
+    joinDate: fromDateOnly(joinDate),
+    probationEnd: fromDateOnly(probationEnd),
+    jdAcknowledgedAt: fromDateOnly(jdAcknowledgedAt),
+    endDate: fromDateOnly(endDate),
+    officeDays: [...officeDays].sort((a, b) => a - b),
+    shift: shift && { ...shift, startTime: fromTimeOfDay(shift.startTime), endTime: fromTimeOfDay(shift.endTime) },
+  };
+}
 
 type DateField = (typeof DATE_FIELDS)[number];
 type EmployeeFields = Omit<Employee, DateField> & Record<DateField, string | null>;
 
-/** The employee's own columns as the API sends them: dates as YYYY-MM-DD, office days in order. */
+/** The profile's own columns as the API sends them: dates as YYYY-MM-DD. */
 function fields(e: Employee): EmployeeFields {
-  return {
-    ...e,
-    dateOfBirth: fromDateOnly(e.dateOfBirth),
-    joinDate: fromDateOnly(e.joinDate),
-    probationEnd: fromDateOnly(e.probationEnd),
-    jdAcknowledgedAt: fromDateOnly(e.jdAcknowledgedAt),
-    officeDays: [...e.officeDays].sort((a, b) => a - b),
-  };
+  return { ...e, dateOfBirth: fromDateOnly(e.dateOfBirth) };
 }
 
 /** What Prisma writes: YYYY-MM-DD strings become dates. */
@@ -131,6 +124,52 @@ function identityData(dto: UpdateIdentityDto) {
   };
 }
 
+/** One thing the profile still lacks, and the tab of the profile where it is filled in. */
+export interface Missing {
+  key: string;
+  label: string;
+  tab: 'basic' | 'education' | 'documents';
+}
+
+/**
+ * How complete a profile is: the fields HR fills in and the papers the employee file needs (by the current
+ * employment; see requiredPaperwork). Only whether each is there counts, so restricted values are never read here
+ * for the result.
+ */
+function completeness(
+  e: Employee,
+  identity: EmployeeIdentity | null,
+  bank: EmployeeBank | null,
+  employmentType: EmploymentType | null,
+  papers: string[],
+): { percent: number; missing: Missing[] } {
+  const checks: [boolean, Missing][] = [
+    [!!e.fullNameEn, { key: 'fullNameEn', label: 'Full name (English)', tab: 'basic' }],
+    [!!e.fullNameAr, { key: 'fullNameAr', label: 'Full name (Arabic)', tab: 'basic' }],
+    [!!e.dateOfBirth, { key: 'dateOfBirth', label: 'Date of birth', tab: 'basic' }],
+    [!!e.gender, { key: 'gender', label: 'Gender', tab: 'basic' }],
+    [!!e.nationality, { key: 'nationality', label: 'Nationality', tab: 'basic' }],
+    [!!e.maritalStatus, { key: 'maritalStatus', label: 'Marital status', tab: 'basic' }],
+    [!!e.militaryStatus, { key: 'militaryStatus', label: 'Military status', tab: 'basic' }],
+    [!!e.mobile, { key: 'mobile', label: 'Mobile', tab: 'basic' }],
+    [!!e.addressAr, { key: 'addressAr', label: 'Address (Arabic)', tab: 'basic' }],
+    [!!e.governorate, { key: 'governorate', label: 'Governorate', tab: 'basic' }],
+    [!!e.emergencyName && !!e.emergencyMobile, { key: 'emergency', label: 'Emergency contact', tab: 'basic' }],
+    [!!identity?.nationalId, { key: 'nationalId', label: 'National ID number', tab: 'basic' }],
+    [!!identity?.expiryDate, { key: 'idExpiry', label: 'National ID expiry date', tab: 'basic' }],
+    [!!bank?.iban, { key: 'iban', label: 'IBAN', tab: 'basic' }],
+    [!!e.degree, { key: 'degree', label: 'Degree', tab: 'education' }],
+    [!!e.university, { key: 'university', label: 'University', tab: 'education' }],
+    [!!e.graduationYear, { key: 'graduationYear', label: 'Graduation year', tab: 'education' }],
+    [!!e.qualificationAr, { key: 'qualificationAr', label: 'Qualification (Arabic)', tab: 'education' }],
+    ...requiredPaperwork(employmentType, (e.gender as Gender | null) ?? null).map(
+      (kind): [boolean, Missing] => [papers.includes(kind), { key: kind, label: PAPERWORK_LABELS[kind], tab: 'documents' }],
+    ),
+  ];
+  const done = checks.filter(([ok]) => ok).length;
+  return { percent: Math.round((done / checks.length) * 100), missing: checks.filter(([ok]) => !ok).map(([, m]) => m) };
+}
+
 @Injectable()
 export class EmployeesService {
   constructor(
@@ -138,34 +177,92 @@ export class EmployeesService {
     private readonly audit: AuditService,
   ) {}
 
+  /** The people this user may see, each with their current employment, or how their last one ended. */
   async list(user: SessionUser) {
     const rows = await this.prisma.employee.findMany({
       where: await this.visibleTo(user),
-      select: SUMMARY,
+      select: {
+        id: true,
+        employeeCode: true,
+        fullNameEn: true,
+        fullNameAr: true,
+        workEmail: true,
+        employments: {
+          orderBy: NEWEST_FIRST,
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            employmentType: true,
+            joinDate: true,
+            endDate: true,
+            endReason: true,
+            department: PLACE.department,
+            jobTitle: { select: { id: true, titleEn: true, grade: { select: { id: true, code: true, rank: true, levelEn: true } } } },
+            manager: { select: { id: true, fullNameEn: true } },
+          },
+        },
+      },
       orderBy: { employeeCode: 'asc' },
     });
-    return rows.map((e) => ({ ...e, joinDate: fromDateOnly(e.joinDate) }));
+    return rows.map(({ employments: [latest], ...e }) => {
+      const current = latest && !latest.endDate ? latest : null;
+      const ended = latest?.endDate ? latest : null;
+      return {
+        ...e,
+        standing: (current?.status ?? (ended ? 'former' : 'not_employed')) as Standing,
+        employment: current && {
+          id: current.id,
+          status: current.status,
+          employmentType: current.employmentType,
+          joinDate: fromDateOnly(current.joinDate),
+          department: current.department,
+          jobTitle: current.jobTitle,
+          manager: current.manager,
+        },
+        lastEnded: ended && { endDate: fromDateOnly(ended.endDate), endReason: ended.endReason },
+      };
+    });
   }
 
+  /**
+   * A profile: personal details, the national ID and bank (masked, for those who may see them), the current
+   * employment and the history of employments, the people who report to this person now, and how complete it is.
+   */
   async get(id: string, user: SessionUser) {
     const identity = seesIdentity(user);
     const bank = seesBank(user);
     const e = await this.prisma.employee.findFirst({
       where: { AND: [{ id }, await this.visibleTo(user)] },
-      include: { ...PROFILE, identity, bank },
+      include: {
+        identity: true,
+        bank: true,
+        employments: { include: EMPLOYMENT, orderBy: NEWEST_FIRST },
+        managing: {
+          where: { endDate: null },
+          select: {
+            status: true,
+            employee: { select: { id: true, employeeCode: true, fullNameEn: true } },
+            jobTitle: { select: { titleEn: true } },
+          },
+          orderBy: { employee: { fullNameEn: 'asc' } },
+        },
+      },
     });
     if (!e) throw new NotFoundException('Employee not found.');
 
-    const { department, jobTitle, manager, shift, reports, identity: idRow, bank: bankRow, ...own } = e;
+    const { identity: idRow, bank: bankRow, employments, managing, ...own } = e;
+    const history = employments.map(employmentView);
+    const current = history.find((x) => x.endDate === null) ?? null;
+    const papers = await this.prisma.paperworkItem.findMany({ where: { employeeId: id }, select: { kind: true }, distinct: ['kind'] });
     return {
       ...fields(own),
-      department,
-      jobTitle,
-      manager,
-      shift: shift && { ...shift, startTime: fromTimeOfDay(shift.startTime), endTime: fromTimeOfDay(shift.endTime) },
-      reports,
-      ...(identity && { identity: maskedIdentity(idRow ?? null) }),
-      ...(bank && { bank: maskedBank(bankRow ?? null) }),
+      employment: current,
+      employments: history,
+      reports: managing.map((m) => ({ ...m.employee, status: m.status, jobTitle: m.jobTitle })),
+      ...(identity && { identity: maskedIdentity(idRow) }),
+      ...(bank && { bank: maskedBank(bankRow) }),
+      completeness: completeness(own, idRow, bankRow, current?.employmentType ?? null, papers.map((x) => x.kind)),
       access: { edit: editsEmployees(user), delete: deletesEmployees(user), identity, bank },
     };
   }
@@ -187,8 +284,9 @@ export class EmployeesService {
   }
 
   /**
-   * Adds an employee, with their national ID details when sent (e.g. read from the ID card first): everything is
-   * checked before anything is saved, and the employee and the national ID are saved together or not at all.
+   * Adds a profile, with the national ID details when sent (e.g. read from the ID card first): everything is checked
+   * before anything is saved, and the profile and the national ID are saved together or not at all. Employment is
+   * added afterwards (EmploymentsService), so a profile can exist before a hire and stays after one ends.
    */
   async create(dto: CreateEmployeeDto, user: SessionUser) {
     const { employeeCode: code, identity: sentIdentity, ...given } = dto;
@@ -258,11 +356,16 @@ export class EmployeesService {
     return maskedBank(row);
   }
 
+  /** Deletes a profile added by mistake, with its employments. Not while it is anyone's manager on record. */
   async remove(id: string, user: SessionUser) {
     const e = await this.row(id);
-    const reports = await this.prisma.employee.count({ where: { managerId: id } });
-    if (reports > 0) {
-      throw new ConflictException(`${reports} employee(s) report to ${e.fullNameEn}. Choose another manager for them before deleting.`);
+    const now = await this.prisma.employment.count({ where: { managerId: id, endDate: null } });
+    if (now > 0) {
+      throw new ConflictException(`${now} employee(s) report to ${e.fullNameEn}. Choose another manager for them before deleting.`);
+    }
+    const before = await this.prisma.employment.count({ where: { managerId: id } });
+    if (before > 0) {
+      throw new ConflictException(`${e.fullNameEn} is the manager on record of ${before} past employment(s), so the profile is kept.`);
     }
     await this.prisma.employee.delete({ where: { id } });
     await this.audit.record({
@@ -281,7 +384,9 @@ export class EmployeesService {
     if (seesEveryone(user)) return {};
     const me = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } });
     if (!me) return { id: { in: [] } };
-    return user.roles.includes('manager') ? { OR: [{ id: me.id }, { managerId: me.id }] } : { id: me.id };
+    if (!user.roles.includes('manager')) return { id: me.id };
+    // a manager sees themself and the people whose current employment reports to them
+    return { OR: [{ id: me.id }, { employments: { some: { managerId: me.id, endDate: null } } }] };
   }
 
   private async row(id: string): Promise<Employee> {
@@ -309,62 +414,10 @@ export class EmployeesService {
     }
   }
 
-  /**
-   * Checks that span several fields or other records, and the values that follow from them: the department of the
-   * chosen job title, office days only for Hybrid, the default probation end. Returns the values to write as well.
-   */
+  /** Checks of the profile that span several fields or records, and the values that follow from them. */
   private async checked(before: Employee | null, dto: CreateEmployeeDto | UpdateEmployeeDto) {
-    const derived: { departmentId?: string | null; officeDays?: number[]; probationEnd?: string | null; militaryStatus?: string } = {};
+    const derived: { militaryStatus?: string } = {};
     const current = before ? fields(before) : null;
-
-    // department follows the job title
-    if (dto.jobTitleId !== undefined || dto.departmentId !== undefined) {
-      const jobTitleId = dto.jobTitleId !== undefined ? dto.jobTitleId : (before?.jobTitleId ?? null);
-      if (jobTitleId) {
-        const job = await this.prisma.jobTitle.findUnique({
-          where: { id: jobTitleId },
-          select: { titleEn: true, departmentId: true, department: { select: { nameEn: true } } },
-        });
-        if (!job) throw new BadRequestException('Job title not found. Choose one from the list.');
-        if (dto.departmentId && dto.departmentId !== job.departmentId) {
-          throw new BadRequestException(`The job title "${job.titleEn}" belongs to ${job.department.nameEn}. Choose that department, or another job title.`);
-        }
-        derived.departmentId = job.departmentId;
-      } else if (dto.departmentId) {
-        const exists = await this.prisma.department.count({ where: { id: dto.departmentId } });
-        if (!exists) throw new BadRequestException('Department not found. Choose one from the list.');
-      }
-    }
-
-    if (dto.managerId) {
-      if (before && dto.managerId === before.id) throw new BadRequestException('An employee cannot be their own manager.');
-      const manager = await this.prisma.employee.findUnique({ where: { id: dto.managerId }, select: { id: true } });
-      if (!manager) throw new BadRequestException('Manager not found. Choose one from the list.');
-      if (before) await this.assertNoLoop(before.id, dto.managerId);
-    }
-
-    if (dto.shiftId) {
-      const exists = await this.prisma.shift.count({ where: { id: dto.shiftId } });
-      if (!exists) throw new BadRequestException('Shift not found. Choose one from the list.');
-    }
-
-    // office days are kept for Hybrid only
-    if (!before || dto.workArrangement !== undefined || dto.officeDays !== undefined) {
-      const arrangement = dto.workArrangement ?? before?.workArrangement ?? 'office';
-      const days = [...(dto.officeDays ?? before?.officeDays ?? [])].sort((a, b) => a - b);
-      if (arrangement === 'hybrid' && days.length === 0) throw new BadRequestException('Choose the office days for a Hybrid work arrangement.');
-      derived.officeDays = arrangement === 'hybrid' ? days : [];
-    }
-
-    // Probation ends PROBATION_MONTHS after joining unless HR sets another date (left empty: the default).
-    // A default end date moves with the join date.
-    const joinDate = dto.joinDate ?? current!.joinDate!;
-    const wasDefault = current !== null && current.probationEnd === addMonths(current.joinDate!, PROBATION_MONTHS);
-    if (dto.probationEnd === null || (dto.probationEnd === undefined && (!current || (dto.joinDate && wasDefault)))) {
-      derived.probationEnd = addMonths(joinDate, PROBATION_MONTHS);
-    }
-    const probationEnd = derived.probationEnd ?? dto.probationEnd ?? current?.probationEnd ?? null;
-    if (probationEnd && probationEnd < joinDate) throw new BadRequestException('Probation must end on or after the join date.');
 
     // a woman's military status is always Not applicable, so no military papers are needed (owner's rule)
     const gender = dto.gender !== undefined ? dto.gender : (before?.gender ?? null);
@@ -418,17 +471,5 @@ export class EmployeesService {
       throw new BadRequestException('The ID must expire after it was issued.');
     }
     return dateOfBirth;
-  }
-
-  /** The chosen manager must not report to this employee, directly or through others. */
-  private async assertNoLoop(employeeId: string, managerId: string) {
-    let current: string | null = managerId;
-    for (let steps = 0; current && steps < 1000; steps++) {
-      if (current === employeeId) {
-        throw new BadRequestException('That manager reports to this employee, directly or through others. Choose someone else.');
-      }
-      const next: { managerId: string | null } | null = await this.prisma.employee.findUnique({ where: { id: current }, select: { managerId: true } });
-      current = next?.managerId ?? null;
-    }
   }
 }

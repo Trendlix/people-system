@@ -1,6 +1,7 @@
 import { BadGatewayException, BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { RESTRICTED_PAPERWORK, type PaperworkKind } from '@trendlix/shared';
-import { AuditService } from '../audit/audit.service.js';
+import { AuditService, changes } from '../audit/audit.service.js';
+import { fromDateOnly, toDateOnly } from '../common/date-only.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -10,6 +11,7 @@ import { CorrectionsService } from './corrections.service.js';
 import { assignSides } from './id-card-sides.js';
 import { OcrClient, type OcrPageRead, type OcrRead } from './ocr.client.js';
 import { detectPaperworkType, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from './paperwork-file.js';
+import type { UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
 
 const ENTITY = 'paperwork';
 const SEARCH_LIMIT = 50;
@@ -24,7 +26,14 @@ const ITEM = {
   ocrStatus: true,
   uploadedAt: true,
   uploadedBy: { select: { email: true } },
+  documentNo: true,
+  expiresOn: true,
 } satisfies Prisma.PaperworkItemSelect;
+
+/** A paper as the API sends it: its expiry date as YYYY-MM-DD. */
+function itemView<T extends { expiresOn: Date | null }>(item: T) {
+  return { ...item, expiresOn: fromDateOnly(item.expiresOn) };
+}
 
 /** Why an ID card could not be read: the OCR service is not running (503), or it failed (502). */
 interface CardUnread {
@@ -134,20 +143,39 @@ export class PaperworkService {
   /** The employee file, newest first. */
   async list(employeeId: string) {
     await this.assertEmployee(employeeId);
-    return this.prisma.paperworkItem.findMany({
+    const items = await this.prisma.paperworkItem.findMany({
       where: { employeeId },
       select: ITEM,
       orderBy: [{ uploadedAt: 'desc' }, { id: 'desc' }],
     });
+    return items.map(itemView);
   }
 
-  /** Stores the file, then reads its text (Arabic, every page) right away. */
-  async upload(employeeId: string, kind: PaperworkKind, file: Express.Multer.File | undefined, user: SessionUser) {
+  /** Stores the file with its number and expiry when given, then reads its text (Arabic, every page) right away. */
+  async upload(employeeId: string, dto: UploadPaperworkDto, file: Express.Multer.File | undefined, user: SessionUser) {
     await this.assertEmployee(employeeId);
     const upload = checked(file, 'Choose a file to upload.');
-    const id = await this.store(employeeId, kind, upload, user);
+    const id = await this.store(employeeId, dto.kind, upload, user, { documentNo: dto.documentNo ?? null, expiresOn: dto.expiresOn ?? null });
     await this.read(id, upload);
-    return this.prisma.paperworkItem.findUniqueOrThrow({ where: { id }, select: ITEM });
+    return itemView(await this.prisma.paperworkItem.findUniqueOrThrow({ where: { id }, select: ITEM }));
+  }
+
+  /** The number printed on a paper and when it expires. */
+  async describe(itemId: string, dto: UpdatePaperworkDto, user: SessionUser) {
+    const before = await this.prisma.paperworkItem.findUnique({ where: { id: itemId }, select: { employeeId: true, kind: true, documentNo: true, expiresOn: true } });
+    if (!before) throw new NotFoundException('Document not found.');
+    const data = {
+      documentNo: dto.documentNo,
+      expiresOn: dto.expiresOn === undefined ? undefined : dto.expiresOn === null ? null : toDateOnly(dto.expiresOn),
+    };
+    const updated = await this.prisma.paperworkItem.update({ where: { id: itemId }, data, select: ITEM });
+    // the number of a national ID scan is restricted like the national ID: only that it changed is logged
+    const diff: Record<string, unknown> = changes({ documentNo: before.documentNo, expiresOn: fromDateOnly(before.expiresOn) }, { documentNo: dto.documentNo, expiresOn: dto.expiresOn });
+    if (isRestricted(before.kind) && 'documentNo' in diff) diff.documentNo = 'changed';
+    if (Object.keys(diff).length) {
+      await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: itemId, diff: { employeeId: before.employeeId, ...diff } });
+    }
+    return itemView(updated);
   }
 
   /** The file itself. Every view of a national ID scan is written to the audit log. */
@@ -185,7 +213,7 @@ export class PaperworkService {
         ? new ServiceUnavailableException('The OCR service is not running. The text read earlier is kept.')
         : new BadGatewayException('The OCR service could not read the document. The text read earlier is kept.');
     }
-    const updated = await this.prisma.paperworkItem.update({ where: { id: itemId }, data: ocrColumns(read), select: ITEM });
+    const updated = itemView(await this.prisma.paperworkItem.update({ where: { id: itemId }, data: ocrColumns(read), select: ITEM }));
     await this.audit.record({
       userId: user.id,
       action: 'update',
@@ -235,7 +263,7 @@ export class PaperworkService {
       const row = byId.get(id);
       if (!row) continue; // deleted in the meantime
       const { ocrText, employee, ...item } = row;
-      results.push({ item, employee, snippet: snippet(ocrText ?? '', needle) });
+      results.push({ item: itemView(item), employee, snippet: snippet(ocrText ?? '', needle) });
     }
     return results;
   }
@@ -328,10 +356,26 @@ export class PaperworkService {
   }
 
   /** Saves the file (text not read yet) and logs the upload: kind, name and size, never the contents. */
-  private async store(employeeId: string, kind: PaperworkKind, upload: Upload, user: SessionUser): Promise<string> {
+  private async store(
+    employeeId: string,
+    kind: PaperworkKind,
+    upload: Upload,
+    user: SessionUser,
+    about: { documentNo: string | null; expiresOn: string | null } = { documentNo: null, expiresOn: null },
+  ): Promise<string> {
     const { fileName, type, data } = upload;
     const { id } = await this.prisma.paperworkItem.create({
-      data: { employeeId, kind, fileName, mimeType: type, sizeBytes: data.length, data: new Uint8Array(data), uploadedById: user.id },
+      data: {
+        employeeId,
+        kind,
+        fileName,
+        mimeType: type,
+        sizeBytes: data.length,
+        data: new Uint8Array(data),
+        uploadedById: user.id,
+        documentNo: about.documentNo,
+        expiresOn: about.expiresOn ? toDateOnly(about.expiresOn) : null,
+      },
       select: { id: true },
     });
     await this.audit.record({

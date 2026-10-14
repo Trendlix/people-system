@@ -103,10 +103,11 @@ export class JobTitlesService {
 
   async remove(id: string, userId: string) {
     const job = await this.get(id);
-    const employees = await this.prisma.employee.count({ where: { jobTitleId: id } });
-    if (employees > 0) {
-      throw new ConflictException(`${employees} employee(s) have this job title. Give them another one before deleting it.`);
-    }
+    // employments that ended keep their job title in the history
+    const now = await this.prisma.employment.count({ where: { jobTitleId: id, endDate: null } });
+    if (now > 0) throw new ConflictException(`${now} employee(s) have this job title. Give them another one before deleting it.`);
+    const before = await this.prisma.employment.count({ where: { jobTitleId: id } });
+    if (before > 0) throw new ConflictException(`This job title is in the history of ${before} past employment(s), so it is kept.`);
     await this.prisma.jobTitle.delete({ where: { id } });
     await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { titleEn: job.titleEn } });
   }

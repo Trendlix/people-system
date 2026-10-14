@@ -101,12 +101,12 @@ export const PAPERWORK_LABELS: Record<PaperworkKind, string> = {
 export const RESTRICTED_PAPERWORK: readonly PaperworkKind[] = ['national_id_front', 'national_id_back'];
 
 /**
- * The scans an employee's file needs (spec §8.5). Full-time: the full list; military papers for men only (a woman's
+ * The scans an employee's file needs (spec §8.5), by their current employment. Full-time: the full list; military papers for men only (a woman's
  * military status is always Not applicable). Other employment types: the national ID (their signed job offer and NDA
  * come from document generation). While the gender is not recorded, military papers are listed as needed.
  */
-export function requiredPaperwork(employmentType: EmploymentType, gender: Gender | null): PaperworkKind[] {
-  if (employmentType !== 'full_time') return ['national_id_front', 'national_id_back'];
+export function requiredPaperwork(employmentType: EmploymentType | null, gender: Gender | null): PaperworkKind[] {
+  if (employmentType !== 'full_time') return ['national_id_front', 'national_id_back']; // also before anyone is hired
   return [
     'national_id_front',
     'national_id_back',
@@ -119,3 +119,29 @@ export function requiredPaperwork(employmentType: EmploymentType, gender: Gender
     'bank_letter',
   ];
 }
+
+// ---------- employment history ----------
+
+/** Why an employment ended. Resigned gives the status Resigned; the others give Terminated. */
+export const END_REASONS = ['resigned', 'terminated', 'contract_ended', 'other'] as const;
+export type EndReason = (typeof END_REASONS)[number];
+
+export const END_REASON_LABELS: Record<EndReason, string> = {
+  resigned: 'Resigned',
+  terminated: 'Terminated',
+  contract_ended: 'Contract ended',
+  other: 'Other',
+};
+
+/** Where someone stands, for the directory: their current employment's status, or no current employment. */
+export const STANDINGS = ['active', 'probation', 'on_leave', 'notice_period', 'former', 'not_employed'] as const;
+export type Standing = (typeof STANDINGS)[number];
+
+export const STANDING_LABELS: Record<Standing, string> = {
+  active: 'Active',
+  probation: 'Probation',
+  on_leave: 'On leave',
+  notice_period: 'Notice period',
+  former: 'Former employee',
+  not_employed: 'Not employed yet',
+};

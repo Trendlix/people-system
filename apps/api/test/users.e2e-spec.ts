@@ -69,9 +69,7 @@ describe('Users (e2e)', () => {
         employeeCode: `USR-${RUN}`,
         fullNameEn: 'Linked Person',
         fullNameAr: 'شخص مرتبط',
-        workEmail: a,
-        employmentType: 'full_time',
-        joinDate: new Date('2026-01-01'),
+        workEmail: a, // a profile: being employed or not makes no difference here
       },
     });
 

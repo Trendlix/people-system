@@ -1,15 +1,30 @@
 import { PAPERWORK_KINDS, type PaperworkKind } from '@trendlix/shared';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsIn, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
-import { Trim } from '../common/transforms.js';
+import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { IsDateOnly } from '../common/date-only.js';
+import { Trim, TrimOrNull } from '../common/transforms.js';
 import { LEARNED_FIELDS, type LearnedField } from './corrections.js';
 
-/** The form field sent with an uploaded file. */
-export class UploadPaperworkDto {
+/** A paper's number and expiry, both optional: an empty value clears it. */
+class PaperDetailsDto {
+  /** The number printed on the paper, if any. */
+  @TrimOrNull() @IsOptional() @IsString() @MaxLength(60)
+  documentNo?: string | null;
+
+  /** When the paper stops being valid (e.g. a criminal record certificate), if it does. */
+  @TrimOrNull() @IsOptional() @IsDateOnly('Enter the expiry date as a real date.')
+  expiresOn?: string | null;
+}
+
+/** The form fields sent with an uploaded file. */
+export class UploadPaperworkDto extends PaperDetailsDto {
   @Trim()
   @IsIn(PAPERWORK_KINDS, { message: 'Choose what kind of document this is.' })
   kind: PaperworkKind;
 }
+
+/** Changing a stored paper's number or expiry. */
+export class UpdatePaperworkDto extends PaperDetailsDto {}
 
 export class SearchPaperworkDto {
   @Trim()

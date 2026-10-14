@@ -81,32 +81,32 @@ model Company {
 // A department (parent_id empty) or one of its teams (parent_id = the department), e.g. Marketing → Content Team.
 // One level only: a team has no teams of its own. Job titles and employees can belong to either.
 model Department {
-  id        String       @id @default(uuid()) @db.Uuid
-  nameEn    String       @map("name_en") // unique among a department's teams; among departments, checked by the API
-  nameAr    String?      @map("name_ar")
-  parentId  String?      @map("parent_id") @db.Uuid
-  sortOrder Int          @default(0) @map("sort_order") // the order set by an Admin, among departments or among one department's teams
-  parent    Department?  @relation("SubDepartments", fields: [parentId], references: [id], onDelete: Restrict)
-  children  Department[] @relation("SubDepartments")
-  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz
-  jobTitles JobTitle[]
-  employees Employee[]
+  id          String       @id @default(uuid()) @db.Uuid
+  nameEn      String       @map("name_en") // unique among a department's teams; among departments, checked by the API
+  nameAr      String?      @map("name_ar")
+  parentId    String?      @map("parent_id") @db.Uuid
+  sortOrder   Int          @default(0) @map("sort_order") // the order set by an Admin, among departments or among one department's teams
+  parent      Department?  @relation("SubDepartments", fields: [parentId], references: [id], onDelete: Restrict)
+  children    Department[] @relation("SubDepartments")
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  jobTitles   JobTitle[]
+  employments Employment[]
 
   @@unique([parentId, nameEn])
   @@map("departments")
 }
 
 model Shift {
-  id           String     @id @default(uuid()) @db.Uuid
-  code         String     @unique // A, B
-  startTime    DateTime   @map("start_time") @db.Time(0)
-  endTime      DateTime   @map("end_time") @db.Time(0)
-  graceMinutes Int        @default(15) @map("grace_minutes")
-  workingDays  Int[]      @default([0, 1, 2, 3, 4]) @map("working_days") @db.SmallInt // 0 = Sun … 6 = Sat
-  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz
-  employees    Employee[]
+  id           String       @id @default(uuid()) @db.Uuid
+  code         String       @unique // A, B
+  startTime    DateTime     @map("start_time") @db.Time(0)
+  endTime      DateTime     @map("end_time") @db.Time(0)
+  graceMinutes Int          @default(15) @map("grace_minutes")
+  workingDays  Int[]        @default([0, 1, 2, 3, 4]) @map("working_days") @db.SmallInt // 0 = Sun … 6 = Sat
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  employments  Employment[]
 
   @@map("shifts")
 }
@@ -125,7 +125,7 @@ model JobTitle {
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
   duties         JobTitleDuty[]
-  employees      Employee[]
+  employments    Employment[]
 
   @@unique([departmentId, titleEn])
   @@map("job_titles")
@@ -216,33 +216,50 @@ model Employee {
   graduationYear    Int?              @map("graduation_year") @db.SmallInt
   educationGrade    String?           @map("education_grade")
   qualificationAr   String?           @map("qualification_ar")
-  // employment
-  employmentType    EmploymentType    @map("employment_type")
-  status            EmployeeStatus    @default(probation)
-  departmentId      String?           @map("department_id") @db.Uuid
-  department        Department?       @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  jobTitleId        String?           @map("job_title_id") @db.Uuid
-  jobTitle          JobTitle?         @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
-  managerId         String?           @map("manager_id") @db.Uuid
-  manager           Employee?         @relation("DirectReports", fields: [managerId], references: [id], onDelete: Restrict)
-  reports           Employee[]        @relation("DirectReports")
-  joinDate          DateTime          @map("join_date") @db.Date
-  probationEnd      DateTime?         @map("probation_end") @db.Date
-  workArrangement   WorkArrangement   @default(office) @map("work_arrangement")
-  officeDays        Int[]             @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
-  shiftId           String?           @map("shift_id") @db.Uuid
-  shift             Shift?            @relation(fields: [shiftId], references: [id], onDelete: Restrict)
-  jdAcknowledgedAt  DateTime?         @map("jd_acknowledged_at") @db.Date
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz
   identity          EmployeeIdentity?
   bank              EmployeeBank?
   paperwork         PaperworkItem[]
+  employments       Employment[]      @relation("Employments")
+  managing          Employment[]      @relation("Manager") // the employments this person is the manager of
 
+  @@map("employees")
+}
+
+// One period of employment, from hiring to its end (resignation, termination …). The profile (Employee) is kept for
+// good; a person hired again gets a new employment and the earlier ones stay as their history (owner's decision,
+// 14 October 2026). At most one employment per person is current: the one without an end date (checked by the API).
+model Employment {
+  id               String          @id @default(uuid()) @db.Uuid
+  employeeId       String          @map("employee_id") @db.Uuid
+  employee         Employee        @relation("Employments", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentType   EmploymentType  @map("employment_type")
+  status           EmployeeStatus  @default(probation) // resigned or terminated once ended
+  departmentId     String?         @map("department_id") @db.Uuid // a team, or a department
+  department       Department?     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  jobTitleId       String?         @map("job_title_id") @db.Uuid
+  jobTitle         JobTitle?       @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  managerId        String?         @map("manager_id") @db.Uuid
+  manager          Employee?       @relation("Manager", fields: [managerId], references: [id], onDelete: Restrict)
+  joinDate         DateTime        @map("join_date") @db.Date
+  probationEnd     DateTime?       @map("probation_end") @db.Date
+  workArrangement  WorkArrangement @default(office) @map("work_arrangement")
+  officeDays       Int[]           @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
+  shiftId          String?         @map("shift_id") @db.Uuid
+  shift            Shift?          @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  jdAcknowledgedAt DateTime?       @map("jd_acknowledged_at") @db.Date
+  endDate          DateTime?       @map("end_date") @db.Date // empty while current
+  endReason        String?         @map("end_reason") // resigned, terminated, contract_ended, other
+  endNote          String?         @map("end_note")
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([employeeId])
   @@index([departmentId])
   @@index([jobTitleId])
   @@index([managerId])
-  @@map("employees")
+  @@map("employments")
 }
 
 // RESTRICTED (HR, CEO). Kept apart from employees so it is never loaded by accident; the full numbers are only
@@ -290,6 +307,8 @@ model PaperworkItem {
   ocrStatus    String    @default("pending") @map("ocr_status") // pending, done, failed, unavailable
   ocrText      String?   @map("ocr_text")
   ocrAt        DateTime? @map("ocr_at") @db.Timestamptz
+  documentNo   String?   @map("document_no") // the number printed on the paper, if any
+  expiresOn    DateTime? @map("expires_on") @db.Date // when the paper stops being valid, if it does
   uploadedById String?   @map("uploaded_by_id") @db.Uuid
   uploadedBy   User?     @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   uploadedAt   DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz

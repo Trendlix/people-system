@@ -86,10 +86,11 @@ export class ShiftsService {
 
   async remove(id: string, userId: string) {
     const shift = await this.get(id);
-    const employees = await this.prisma.employee.count({ where: { shiftId: id } });
-    if (employees > 0) {
-      throw new ConflictException(`${employees} employee(s) work shift ${shift.code}. Move them to another shift before deleting it.`);
-    }
+    // employments that ended keep their shift in the history
+    const now = await this.prisma.employment.count({ where: { shiftId: id, endDate: null } });
+    if (now > 0) throw new ConflictException(`${now} employee(s) work shift ${shift.code}. Move them to another shift before deleting it.`);
+    const before = await this.prisma.employment.count({ where: { shiftId: id } });
+    if (before > 0) throw new ConflictException(`Shift ${shift.code} is in the history of ${before} past employment(s), so it is kept.`);
     await this.prisma.shift.delete({ where: { id } });
     await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { code: shift.code } });
   }

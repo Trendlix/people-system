@@ -82,10 +82,11 @@ export class DepartmentsService {
         `This department has ${dept._count.jobTitles} job title(s). Move or delete them before deleting the department.`,
       );
     }
-    const employees = await this.prisma.employee.count({ where: { departmentId: id } });
-    if (employees > 0) {
-      throw new ConflictException(`${employees} employee(s) work in this department. Move them before deleting the department.`);
-    }
+    // employments that ended keep their department or team in the history
+    const now = await this.prisma.employment.count({ where: { departmentId: id, endDate: null } });
+    if (now > 0) throw new ConflictException(`${now} employee(s) work in this department. Move them before deleting the department.`);
+    const before = await this.prisma.employment.count({ where: { departmentId: id } });
+    if (before > 0) throw new ConflictException(`This department is in the history of ${before} past employment(s), so it is kept.`);
     await this.prisma.department.delete({ where: { id } });
     await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { nameEn: dept.nameEn } });
   }

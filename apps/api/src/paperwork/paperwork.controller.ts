@@ -7,6 +7,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   StreamableFile,
@@ -20,7 +21,7 @@ import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { FileTooLargeFilter } from './file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from './paperwork-file.js';
-import { SearchPaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
+import { SearchPaperworkDto, UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
 import { PaperworkService, type IdCardFiles } from './paperwork.service.js';
 
 // The employee file is HR and CEO only: both read it, only HR adds, re-reads and deletes. National ID scans are
@@ -58,7 +59,7 @@ export class EmployeePaperworkController {
     @Body() dto: UploadPaperworkDto,
     @CurrentUser() user: SessionUser,
   ) {
-    return this.paperwork.upload(id, dto.kind, file, user);
+    return this.paperwork.upload(id, dto, file, user);
   }
 
   /**
@@ -117,6 +118,13 @@ export class PaperworkController {
   @HttpCode(200)
   reread(@Param('itemId', ParseUUIDPipe) itemId: string, @CurrentUser() user: SessionUser) {
     return this.paperwork.reread(itemId, user);
+  }
+
+  /** The number printed on a paper and when it expires. */
+  @Roles('hr')
+  @Patch(':itemId')
+  describe(@Param('itemId', ParseUUIDPipe) itemId: string, @Body() dto: UpdatePaperworkDto, @CurrentUser() user: SessionUser) {
+    return this.paperwork.describe(itemId, dto, user);
   }
 
   @Roles('hr')

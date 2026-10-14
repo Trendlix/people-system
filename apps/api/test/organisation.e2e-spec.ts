@@ -16,6 +16,12 @@ describe('Organisation (e2e)', () => {
   let gradeIds: Map<string, string>;
   const api = () => request(app.getHttpServer());
   const grade = (code: string) => gradeIds.get(code);
+  /** A new profile, hired straight away (POST /employees adds the profile, the employment comes after); answers the profile. */
+  const addHired = async (fullNameEn: string, employment: Record<string, unknown>) => {
+    const e = await api().post('/api/employees').set('Cookie', session).send({ fullNameEn, fullNameAr: 'موظف' }).expect(201);
+    const hired = await api().post(`/api/employees/${e.body.id}/employments`).set('Cookie', session).send(employment).expect(201);
+    return hired.body as { id: string; employment: { department: unknown; jobTitle: { grade: unknown } } };
+  };
   /** A new department with one team in it; job titles belong to teams. */
   const newTeam = async (department: string, team = 'Core Team') => {
     const dept = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name(department) }).expect(201);
@@ -134,14 +140,10 @@ describe('Organisation (e2e)', () => {
       const ops = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name('People Ops') }).expect(201);
       const team = await api().post('/api/departments').set('Cookie', session).send({ nameEn: 'Recruiting', parentId: ops.body.id }).expect(201);
       const job = await api().post('/api/job-titles').set('Cookie', session).send({ departmentId: team.body.id, titleEn: 'Recruiter' }).expect(201);
-      const e = await api()
-        .post('/api/employees')
-        .set('Cookie', session)
-        .send({ fullNameEn: name('Recruiter'), fullNameAr: 'مسؤول توظيف', employmentType: 'full_time', joinDate: '2026-02-01', jobTitleId: job.body.id })
-        .expect(201);
-      expect(e.body.department).toEqual({ id: team.body.id, nameEn: 'Recruiting', nameAr: null, parent: { id: ops.body.id, nameEn: name('People Ops'), nameAr: null } });
+      const e = await addHired(name('Recruiter'), { employmentType: 'full_time', joinDate: '2026-02-01', jobTitleId: job.body.id });
+      expect(e.employment.department).toEqual({ id: team.body.id, nameEn: 'Recruiting', nameAr: null, parent: { id: ops.body.id, nameEn: name('People Ops'), nameAr: null } });
       const list = await api().get('/api/employees').set('Cookie', session).expect(200);
-      expect(list.body.find((x: { id: string }) => x.id === e.body.id).department.parent.nameEn).toBe(name('People Ops'));
+      expect(list.body.find((x: { id: string }) => x.id === e.id).employment.department.parent.nameEn).toBe(name('People Ops'));
     });
   });
 
@@ -182,13 +184,9 @@ describe('Organisation (e2e)', () => {
       expect(refused.body.message).toContain('1 job title');
 
       // an employee's grade is their job title's
-      const e = await api()
-        .post('/api/employees')
-        .set('Cookie', session)
-        .send({ fullNameEn: name('Graded Person'), fullNameAr: 'موظف', employmentType: 'full_time', joinDate: '2026-03-01', jobTitleId: job.body.id })
-        .expect(201);
-      expect(e.body.jobTitle.grade).toMatchObject({ code, levelEn: 'Trial', levelAr: 'تجريبي' });
-      await api().delete(`/api/employees/${e.body.id}`).set('Cookie', session).expect(204);
+      const e = await addHired(name('Graded Person'), { employmentType: 'full_time', joinDate: '2026-03-01', jobTitleId: job.body.id });
+      expect(e.employment.jobTitle.grade).toMatchObject({ code, levelEn: 'Trial', levelAr: 'تجريبي' });
+      await api().delete(`/api/employees/${e.id}`).set('Cookie', session).expect(204);
 
       await api().patch(`/api/job-titles/${job.body.id}`).set('Cookie', session).send({ gradeId: '' }).expect(200);
       await api().delete(`/api/grades/${created.body.id}`).set('Cookie', session).expect(204);

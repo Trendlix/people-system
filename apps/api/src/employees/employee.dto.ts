@@ -1,7 +1,5 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayUnique,
-  IsArray,
   IsEmail,
   IsIn,
   IsInt,
@@ -9,7 +7,6 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -21,16 +18,10 @@ import {
 import {
   DEGREES,
   EDUCATION_GRADES,
-  EMPLOYEE_STATUSES,
-  EMPLOYMENT_TYPES,
   GENDERS,
   GOVERNORATES,
   MARITAL_STATUSES,
   MILITARY_STATUSES,
-  WORK_ARRANGEMENTS,
-  type EmployeeStatus,
-  type EmploymentType,
-  type WorkArrangement,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
@@ -51,7 +42,7 @@ const PHONE_MESSAGE = (what: string) => `Enter the ${what} as digits only, e.g. 
 const CODE = /^EMP-\d{4,6}$/;
 const CODE_MESSAGE = 'Employee code: EMP- and 4 digits, e.g. EMP-0142. Leave it empty to number automatically.';
 
-/** Fields that are optional both when adding and when changing an employee. */
+/** Profile fields that are optional both when adding and when changing an employee. Employment is separate (employment.dto.ts). */
 class EmployeeDetailsDto {
   @Code() @IsOptional() @Matches(CODE, { message: CODE_MESSAGE })
   employeeCode?: string | null;
@@ -121,40 +112,6 @@ class EmployeeDetailsDto {
 
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(200)
   qualificationAr?: string | null;
-
-  // ---------- employment ----------
-  @Sent() @IsIn(EMPLOYEE_STATUSES, { message: 'Choose a status from the list.' })
-  status?: EmployeeStatus;
-
-  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a department.' })
-  departmentId?: string | null;
-
-  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a job title.' })
-  jobTitleId?: string | null;
-
-  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a manager.' })
-  managerId?: string | null;
-
-  @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real probation end date.')
-  probationEnd?: string | null;
-
-  @Sent() @IsIn(WORK_ARRANGEMENTS, { message: 'Choose Office, Work from home or Hybrid.' })
-  workArrangement?: WorkArrangement;
-
-  /** 0 = Sunday … 6 = Saturday; Hybrid only */
-  @Sent()
-  @IsArray()
-  @ArrayUnique()
-  @IsInt({ each: true })
-  @Min(0, { each: true })
-  @Max(6, { each: true })
-  officeDays?: number[];
-
-  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a shift.' })
-  shiftId?: string | null;
-
-  @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real date for the job description acknowledgement.')
-  jdAcknowledgedAt?: string | null;
 }
 
 /** National ID (restricted): changed on its own, or sent with a new employee. */
@@ -185,12 +142,6 @@ export class CreateEmployeeDto extends EmployeeDetailsDto {
   @Trim() @IsString() @IsNotEmpty({ message: 'Enter the full name in Arabic, as printed on contracts.' }) @MaxLength(150)
   fullNameAr: string;
 
-  @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
-  employmentType: EmploymentType;
-
-  @IsDateOnly('Enter the join date.')
-  joinDate: string;
-
   /** The national ID, saved with the new employee (e.g. read from the ID card first). Empty: none yet. */
   @IsOptional()
   @IsObject({ message: 'Send the national ID details as an object.' })
@@ -205,12 +156,6 @@ export class UpdateEmployeeDto extends EmployeeDetailsDto {
 
   @Trim() @Sent() @IsString() @IsNotEmpty({ message: 'Enter the full name in Arabic, as printed on contracts.' }) @MaxLength(150)
   fullNameAr?: string;
-
-  @Sent() @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
-  employmentType?: EmploymentType;
-
-  @Sent() @IsDateOnly('Enter the join date.')
-  joinDate?: string;
 }
 
 /** Bank and payment (restricted). */
