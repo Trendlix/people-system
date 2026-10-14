@@ -1,10 +1,11 @@
 'use client';
 
 import { startTransition, useCallback, useRef, useState, useTransition } from 'react';
+import { DocumentViewer } from '@/components/document-viewer';
 import { FileDrop } from '@/components/file-drop';
 import { FormErrors, useFieldIds } from '@/components/form';
 import type { IdCardFound, IdCardPrepared } from '@/lib/types';
-import { PAPERWORK_ACCEPT, PAPERWORK_MAX_BYTES, PDF_MAX_BYTES, PDF_TOO_LARGE, SCANS_MAX_BYTES, SCANS_TOO_LARGE, TOO_LARGE } from '../paperwork';
+import { idScanTitle, PAPERWORK_ACCEPT, PAPERWORK_MAX_BYTES, PDF_MAX_BYTES, PDF_TOO_LARGE, SCANS_MAX_BYTES, SCANS_TOO_LARGE, TOO_LARGE } from '../paperwork';
 import { prepareIdCard } from '../paperwork-actions';
 import { shrinkPhoto } from '../shrink-photo';
 import { CARD_TOL, cardDims, cardOff, cardRect, CARD_MM, fineOf, foundRect, frameCard, quarterFor, startRect, turnCard, type Card, type Rect, type Side } from './card';
@@ -128,10 +129,11 @@ function Preview({ file, alt }: { file: File; alt: string }) {
 }
 
 /**
- * The ID scan: the two file areas, the cards found on them, framing a side by hand, and "Read data from the scan".
- * `onRead` reads the two cut-out cards and gives back what went wrong, or nothing when they were read.
+ * The ID scan: the two file areas, the cards found on them (to view larger, side by side), framing a side by hand, and
+ * "Read data from the scan". `onRead` reads the two cut-out cards and gives back what went wrong, or nothing when they
+ * were read. `name`: whose card it is, when known, for the viewer's title.
  */
-export function IdScan({ onRead }: { onRead: (cards: { front: File; back: File }) => Promise<string[] | undefined> }) {
+export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: File }) => Promise<string[] | undefined>; name?: string }) {
   const fid = useFieldIds();
   const [files, setFiles] = useState<Files>({ front: null, back: null });
   const [set, setSet] = useState<Prepared | null>(null);
@@ -388,9 +390,21 @@ export function IdScan({ onRead }: { onRead: (cards: { front: File; back: File }
               <div className="flex flex-wrap gap-4">{(['front', 'back'] as const).map(figure)}</div>
               <p className="text-sm">{set.note}</p>
               {(set.front || set.back) && (
-                <button type="button" onClick={swap} disabled={busy} className="btn btn-secondary">
-                  Swap front and back
-                </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button type="button" onClick={swap} disabled={busy} className="btn btn-secondary">
+                    Swap front and back
+                  </button>
+                  <DocumentViewer
+                    title={idScanTitle({ front: Boolean(set.front), back: Boolean(set.back) }, name)}
+                    files={(['front', 'back'] as const).flatMap((side) => {
+                      const card = set[side];
+                      return card ? [{ label: SIDE_LABEL[side], alt: `${SIDE_LABEL[side]} of the card, as it will be read and saved`, src: card.file }] : [];
+                    })}
+                    className="btn btn-secondary"
+                  >
+                    {set.front && set.back ? 'View the front and back' : `View the ${set.front ? 'front' : 'back'}`}
+                  </DocumentViewer>
+                </div>
               )}
             </>
           )

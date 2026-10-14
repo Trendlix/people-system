@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { LABELS, PAPERWORK_LABELS, requiredPaperwork, RESTRICTED_PAPERWORK, type PaperworkKind } from '@trendlix/shared';
+import { DocumentViewer, type ViewerFile } from '@/components/document-viewer';
 import { ApiError, apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, PaperworkItem } from '@/lib/types';
 import { describePaperwork } from '../paper-details-actions';
-import { formatSize, OCR_LABEL, paperworkHref } from '../paperwork';
+import { formatSize, idScanTitle, OCR_LABEL, paperworkHref } from '../paperwork';
 import { deletePaperwork, rereadPaperwork, uploadPaperwork } from '../paperwork-actions';
 import { EXPIRY_WARNING_DAYS, ExpiryChip, Loading, ProfileSection } from '../ui';
 import { DeleteFileButton, RereadButton, UploadPaperworkForm } from './employee-file-forms';
@@ -15,10 +16,11 @@ import { PaperDetails } from './inline-forms';
 // the CEO see it (the API checks this again); only HR uploads, deletes and sets a paper's number and expiry. The
 // national ID's number and expiry are the profile's own (changed on the National ID page).
 
-type Employee = Pick<EmployeeProfile, 'id' | 'employment' | 'gender' | 'access' | 'identity'>;
+type Employee = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'employment' | 'gender' | 'access' | 'identity'>;
 
 const label = (kind: PaperworkKind) => PAPERWORK_LABELS[kind] ?? kind;
 const NATIONAL_ID: readonly PaperworkKind[] = ['national_id_front', 'national_id_back'];
+const otherKind = (kind: PaperworkKind): PaperworkKind => (kind === 'national_id_front' ? 'national_id_back' : 'national_id_front');
 
 /** A paper of the checklist: one kind, or the national ID's two sides together. */
 type Paper = { key: string; label: string; kinds: PaperworkKind[] };
@@ -44,9 +46,35 @@ export function EmployeeFileLoading() {
   );
 }
 
-/** One uploaded file: when, its name, size, uploader and whether its text was read; View, and for HR re-read and delete. */
-function FileLine({ item, canEdit }: { item: PaperworkItem; canEdit: boolean }) {
+/**
+ * The other side of a national ID scan: the file of the other side uploaded closest in time to it (both sides are
+ * usually uploaded together).
+ */
+function otherSide(item: PaperworkItem, other: PaperworkItem[]): PaperworkItem | undefined {
+  const gap = (x: PaperworkItem) => Math.abs(Date.parse(x.uploadedAt) - Date.parse(item.uploadedAt));
+  return other.reduce<PaperworkItem | undefined>((best, x) => (!best || gap(x) < gap(best) ? x : best), undefined);
+}
+
+/** A file as the document viewer shows it; `side`: which side of the national ID card it is. */
+const viewed = (item: PaperworkItem, side?: 'Front' | 'Back'): ViewerFile => ({
+  label: side,
+  alt: side ? `${side} of the national ID card` : label(item.kind),
+  src: paperworkHref(item.id),
+  mimeType: item.mimeType,
+});
+
+/**
+ * One uploaded file: when, its name, size, uploader and whether its text was read; View, and for HR re-read and
+ * delete. A side of the national ID opens with the other side (`pair`), front and back side by side.
+ */
+function FileLine({ item, pair, owner, canEdit }: { item: PaperworkItem; pair?: PaperworkItem; owner: string; canEdit: boolean }) {
   const name = label(item.kind);
+  const front = item.kind === 'national_id_front' ? item : pair;
+  const back = item.kind === 'national_id_back' ? item : pair;
+  const view =
+    pair && front && back
+      ? { title: idScanTitle({ front: true, back: true }, owner), files: [viewed(front, 'Front'), viewed(back, 'Back')], what: 'the national ID, front and back' }
+      : { title: `${name} · ${owner}`, files: [viewed(item)], what: name };
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
       <div className="min-w-0">
@@ -62,10 +90,10 @@ function FileLine({ item, canEdit }: { item: PaperworkItem; canEdit: boolean }) 
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-x-4">
-        {/* Never prefetched: each download of a national ID scan is written to the audit log. */}
-        <Link href={paperworkHref(item.id)} prefetch={false} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center text-sm font-semibold">
-          View<span className="sr-only"> {name} (opens in a new tab)</span>
-        </Link>
+        {/* Loaded only when opened: each download of a national ID scan is written to the audit log. */}
+        <DocumentViewer title={view.title} files={view.files}>
+          View<span className="sr-only"> {view.what}</span>
+        </DocumentViewer>
         {canEdit && item.ocrStatus !== 'done' && <RereadButton action={rereadPaperwork.bind(null, item.id)} name={name} />}
         {canEdit && (
           <DeleteFileButton
@@ -223,7 +251,13 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
                       {files.length > 0 ? (
                         <div className="space-y-2">
                           {files.map((item) => (
-                            <FileLine key={item.id} item={item} canEdit={canEdit} />
+                            <FileLine
+                              key={item.id}
+                              item={item}
+                              pair={isId ? otherSide(item, byKind.get(otherKind(kind)) ?? []) : undefined}
+                              owner={employee.fullNameEn}
+                              canEdit={canEdit}
+                            />
                           ))}
                         </div>
                       ) : (
@@ -252,7 +286,7 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
                 >
                   <DetailsLine number={item.documentNo} expiry={item.expiresOn} today={today} />
                 </PaperDetails>
-                <FileLine item={item} canEdit={canEdit} />
+                <FileLine item={item} owner={employee.fullNameEn} canEdit={canEdit} />
               </li>
             ))}
           </ul>

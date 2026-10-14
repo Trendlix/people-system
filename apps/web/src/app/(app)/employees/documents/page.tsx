@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { PAPERWORK_LABELS } from '@trendlix/shared';
+import { DocumentViewer, VIEW_BUTTON } from '@/components/document-viewer';
 import { ApiError, apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
@@ -113,10 +114,14 @@ async function Search({ searchParams }: { searchParams: Promise<Query> }) {
                         </span>
                       </td>
                       <td>
-                        {/* Never prefetched: each download of a national ID scan is written to the audit log. */}
-                        <Link href={paperworkHref(item.id)} prefetch={false} target="_blank" rel="noopener" className="font-semibold whitespace-nowrap">
-                          View<span className="sr-only"> {kind} of {employee.fullNameEn} (opens in a new tab)</span>
-                        </Link>
+                        {/* Loaded only when opened: each download of a national ID scan is written to the audit log. */}
+                        <DocumentViewer
+                          title={`${kind} · ${employee.fullNameEn}`}
+                          files={[{ alt: `${kind} of ${employee.fullNameEn}`, src: paperworkHref(item.id), mimeType: item.mimeType }]}
+                          className={`${VIEW_BUTTON} whitespace-nowrap`}
+                        >
+                          View<span className="sr-only"> {kind} of {employee.fullNameEn}</span>
+                        </DocumentViewer>
                       </td>
                     </tr>
                   );

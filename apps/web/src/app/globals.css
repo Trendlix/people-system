@@ -30,6 +30,11 @@ body {
   color: var(--color-ink);
 }
 
+/* The page stays still behind a pop-up window (a modal dialog, e.g. the document viewer). */
+html:has(dialog:modal) {
+  overflow: hidden;
+}
+
 /* Arabic text (names, titles) */
 [lang="ar"] {
   font-family: var(--font-arabic);

@@ -22,8 +22,18 @@ async function EditNationalId({ params }: { params: Promise<{ id: string }> }) {
               saveAction={updateIdentity.bind(null, employee.id)}
               scanAction={scanIdCard.bind(null, employee.id)}
               employeeId={employee.id}
+              name={employee.fullNameEn}
               identity={identity}
-              profile={{ fullNameAr: employee.fullNameAr, addressAr: employee.addressAr, dateOfBirth: employee.dateOfBirth, gender: employee.gender }}
+              profile={{
+                fullNameAr: employee.fullNameAr,
+                addressAr: employee.addressAr,
+                city: employee.city,
+                governorate: employee.governorate,
+                dateOfBirth: employee.dateOfBirth,
+                gender: employee.gender,
+                maritalStatus: employee.maritalStatus,
+                nationality: employee.nationality,
+              }}
             />
           </>
         )}

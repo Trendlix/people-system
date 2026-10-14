@@ -35,6 +35,12 @@ export function paperworkHref(itemId: string): string {
   return `/paperwork/${itemId}`;
 }
 
+/** The document viewer's title for an ID scan: "ID Scan, Front and Back · <name>", or the one side there is. */
+export function idScanTitle(sides: { front: boolean; back: boolean }, name?: string): string {
+  const what = sides.front && sides.back ? 'Front and Back' : sides.front ? 'Front' : 'Back';
+  return `ID Scan, ${what}${name ? ` · ${name}` : ''}`;
+}
+
 /** 812 → "812 B", 245 760 → "240 KB", 1 258 291 → "1.2 MB". */
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

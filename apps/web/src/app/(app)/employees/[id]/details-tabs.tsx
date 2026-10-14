@@ -75,7 +75,9 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
             { key: 'workEmail', label: 'Work email', value: p.workEmail && <a href={`mailto:${p.workEmail}`}>{p.workEmail}</a> },
             { key: 'personalEmail', label: 'Personal email', value: p.personalEmail && <a href={`mailto:${p.personalEmail}`}>{p.personalEmail}</a> },
             { key: 'mobile', label: 'Mobile', value: number(p.mobile), required: true },
+            { key: 'mobile2', label: 'Second mobile', value: number(p.mobile2) },
             { key: 'governorate', label: 'Governorate', value: p.governorate, required: true },
+            { key: 'city', label: 'City', value: p.city, ar: true },
             { key: 'addressAr', label: 'Address (Arabic)', value: p.addressAr, required: true, ar: true },
           ]}
         />

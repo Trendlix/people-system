@@ -24,7 +24,7 @@ type Field = {
   ar?: boolean;
   multiline?: boolean;
   required?: boolean;
-  hint?: string;
+  hint?: React.ReactNode;
   placeholder?: string;
   options?: readonly Option[];
   /** Takes the whole row on wide screens. */
@@ -61,7 +61,19 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
       },
       { name: 'personalEmail', label: 'Personal email', kind: 'email', max: 254 },
       { name: 'mobile', label: 'Mobile', kind: 'tel', max: 30 },
+      { name: 'mobile2', label: 'Second mobile', kind: 'tel', max: 30 },
       { name: 'governorate', label: 'Governorate', kind: 'select', options: GOVERNORATES.map((g) => ({ value: g, label: g })) },
+      {
+        name: 'city',
+        label: 'City',
+        ar: true,
+        max: 100,
+        hint: (
+          <>
+            As on the ID card, e.g. <span lang="ar">مدينة نصر</span>.
+          </>
+        ),
+      },
       { name: 'addressAr', label: 'Address (Arabic)', ar: true, multiline: true, max: 300, wide: true, hint: 'As printed on contracts.' },
     ],
   },

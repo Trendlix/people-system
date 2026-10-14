@@ -1,11 +1,13 @@
 'use client';
 
-import { startTransition, useActionState, useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useActionState, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { DocumentViewer } from '@/components/document-viewer';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import type { FormState, IdCardReading } from '@/lib/types';
 import { createEmployee } from '../actions';
 import { CardReadStatus, CardTextDetails, NationalIdFields, ReadValues } from '../id-card';
+import { idScanTitle } from '../paperwork';
 import { readIdCard } from '../paperwork-actions';
 import { PersonalFields } from '../personal-fields';
 import { IdScan } from '../scan/id-scan';
@@ -41,26 +43,6 @@ const EDUCATION_WORDS = /university|faculty|degree|major|graduation|grade from t
 /** The step to show a refused save on: education when every message is about it, else the profile. */
 function stepFor(errors: string[]): Step {
   return errors.length > 0 && errors.every((e) => EDUCATION_WORDS.test(e)) ? 3 : 2;
-}
-
-const viewLink = 'inline-flex min-h-9 items-center text-sm font-semibold';
-
-/** Opens a picture kept in this page. Its address is made when the link is shown and let go when it is not. */
-function PhotoLink({ file, children }: { file: File; children: React.ReactNode }) {
-  const attach = useCallback(
-    (link: HTMLAnchorElement) => {
-      const address = URL.createObjectURL(file);
-      link.href = address;
-      return () => URL.revokeObjectURL(address);
-    },
-    [file],
-  );
-  return (
-    <a ref={attach} target="_blank" rel="noopener" className={viewLink}>
-      {children}
-      <span className="sr-only"> (opens in a new tab)</span>
-    </a>
-  );
 }
 
 export function NewEmployeeForm() {
@@ -189,10 +171,15 @@ export function NewEmployeeForm() {
           {card && (
             <div className="space-y-3 rounded-lg border border-line p-4">
               <CardReadStatus suggestions={card.reading.suggestions} notes={card.reading.notes} />
-              <div className="flex flex-wrap gap-x-4">
-                <PhotoLink file={card.front}>View the front</PhotoLink>
-                <PhotoLink file={card.back}>View the back</PhotoLink>
-              </div>
+              <DocumentViewer
+                title={idScanTitle({ front: true, back: true })}
+                files={[
+                  { label: 'Front', alt: 'Front of the national ID card', src: card.front },
+                  { label: 'Back', alt: 'Back of the national ID card', src: card.back },
+                ]}
+              >
+                View the front and back
+              </DocumentViewer>
               <CardTextDetails front={card.reading.front.text} back={card.reading.back?.text ?? null} />
             </div>
           )}

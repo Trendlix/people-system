@@ -5,6 +5,7 @@ import type {
   EmploymentType,
   EndReason,
   Gender,
+  Governorate,
   MaritalStatus,
   MilitaryStatus,
   PaperworkKind,
@@ -213,7 +214,11 @@ export interface EmployeeProfile {
   workEmail: string | null;
   personalEmail: string | null;
   mobile: string | null;
+  /** A second mobile number. */
+  mobile2: string | null;
   addressAr: string | null;
+  /** The city or district, in Arabic as on the ID card (e.g. مدينة نصر). */
+  city: string | null;
   governorate: string | null;
   emergencyName: string | null;
   emergencyRelation: string | null;
@@ -332,6 +337,14 @@ export interface IdCardScan {
     expiryDate?: string;
     printedNo?: string;
     issuingOffice?: string;
+    /** Printed on the back. */
+    maritalStatus?: MaritalStatus;
+    /** The governorate the address ends in. */
+    governorate?: Governorate;
+    /** The city or district the address names before its governorate, in Arabic as printed (e.g. مدينة نصر). */
+    city?: string;
+    /** 'Egyptian': the card is an Egyptian national ID. */
+    nationality?: string;
   };
   /** The suggestions changed by fixes learned from HR's earlier corrections (GET /id-card/corrections). */
   corrected: LearnedField[];

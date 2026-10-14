@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { GENDERS, LABELS, type Gender } from '@trendlix/shared';
+import { GENDERS, GOVERNORATES, LABELS, MARITAL_STATUSES, type Gender, type MaritalStatus } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { formatDate } from '@/lib/format';
@@ -9,15 +9,25 @@ import type { EmployeeIdentity, EmployeeProfile, FormState } from '@/lib/types';
 import { cardMarks, NationalIdFields, ReadValues, type CardSuggestions as Suggestions } from '../../../id-card';
 
 /** The profile's current values for the personal details printed on an ID card. */
-export type CardProfile = Pick<EmployeeProfile, 'fullNameAr' | 'addressAr' | 'dateOfBirth' | 'gender'>;
+export type CardProfile = Pick<
+  EmployeeProfile,
+  'fullNameAr' | 'addressAr' | 'city' | 'governorate' | 'dateOfBirth' | 'gender' | 'maritalStatus' | 'nationality'
+>;
 
 const PERSONAL = [
   { key: 'fullNameAr', label: 'Full name (Arabic)' },
   { key: 'addressAr', label: 'Address (Arabic)' },
+  { key: 'city', label: 'City' },
+  { key: 'governorate', label: 'Governorate' },
   { key: 'dateOfBirth', label: 'Date of birth' },
   { key: 'gender', label: 'Gender' },
+  { key: 'maritalStatus', label: 'Marital status' },
+  { key: 'nationality', label: 'Nationality' },
 ] as const;
 type PersonalKey = (typeof PERSONAL)[number]['key'];
+
+/** The details written in Arabic, as printed on the card. */
+const ARABIC: readonly PersonalKey[] = ['fullNameAr', 'addressAr', 'city'];
 
 const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? '').replace(/\s+/g, ' ').trim() === (b ?? '').replace(/\s+/g, ' ').trim();
 
@@ -26,11 +36,20 @@ function shown(key: PersonalKey, value: string | null): React.ReactNode {
   if (!value) return <span className="text-muted">Not set</span>;
   if (key === 'dateOfBirth') return formatDate(value);
   if (key === 'gender') return LABELS.gender[value as Gender] ?? value;
+  if (key === 'maritalStatus') return LABELS.maritalStatus[value as MaritalStatus] ?? value;
+  if (!ARABIC.includes(key)) return value;
   return (
     <span lang="ar" dir="rtl">
       {value}
     </span>
   );
+}
+
+/** The choices for a detail the card gives as one of a list. */
+function choices(key: 'gender' | 'maritalStatus' | 'governorate'): { value: string; label: string }[] {
+  if (key === 'gender') return GENDERS.map((g) => ({ value: g, label: LABELS.gender[g] }));
+  if (key === 'maritalStatus') return MARITAL_STATUSES.map((m) => ({ value: m, label: LABELS.maritalStatus[m] }));
+  return GOVERNORATES.map((g) => ({ value: g, label: g }));
 }
 
 /**
@@ -77,18 +96,21 @@ export function NationalIdForm({
     const name = `card_${key}`;
     if (key === 'dateOfBirth')
       return <DateInput id={id} name={name} aria-describedby={describedById} defaultValue={valueOf(state, name, formatDate(s.dateOfBirth))} />;
-    if (key === 'gender')
+    if (key === 'gender' || key === 'maritalStatus' || key === 'governorate')
       return (
-        <select id={id} name={name} aria-describedby={describedById} defaultValue={valueOf(state, name, s.gender)} className="input">
-          {GENDERS.map((g) => (
-            <option key={g} value={g}>
-              {LABELS.gender[g]}
+        <select id={id} name={name} aria-describedby={describedById} defaultValue={valueOf(state, name, s[key])} className="input">
+          {choices(key).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>
       );
-    const common = { id, name, lang: 'ar', dir: 'rtl' as const, 'aria-describedby': describedById, defaultValue: valueOf(state, name, s[key]), className: 'input' };
-    return key === 'addressAr' ? <textarea rows={2} maxLength={300} {...common} /> : <input maxLength={150} {...common} />;
+    const common = { id, name, 'aria-describedby': describedById, defaultValue: valueOf(state, name, s[key]), className: 'input' };
+    if (key === 'nationality') return <input maxLength={60} {...common} />;
+    const ar = { ...common, lang: 'ar', dir: 'rtl' as const };
+    if (key === 'addressAr') return <textarea rows={2} maxLength={300} {...ar} />;
+    return <input maxLength={key === 'city' ? 100 : 150} {...ar} />;
   }
 
   return (

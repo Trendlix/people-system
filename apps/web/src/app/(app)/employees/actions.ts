@@ -50,7 +50,9 @@ const PERSONAL_TEXT = [
   'workEmail',
   'personalEmail',
   'mobile',
+  'mobile2',
   'addressAr',
+  'city',
   'governorate',
   'emergencyName',
   'emergencyRelation',
@@ -200,7 +202,7 @@ export async function updateIdentity(id: string, _prev: FormState, fd: FormData)
   // After reading the ID card, HR can tick personal details from it to save to the profile too (none otherwise).
   const apply = new Set(fd.getAll('apply').map(String));
   const personal: Record<string, string> = {};
-  for (const key of ['fullNameAr', 'addressAr', 'gender'] as const) {
+  for (const key of ['fullNameAr', 'addressAr', 'city', 'governorate', 'gender', 'maritalStatus', 'nationality'] as const) {
     if (apply.has(key)) personal[key] = text(fd, `card_${key}`); // a woman's military status is set by the API
   }
   const dateOfBirth = apply.has('dateOfBirth') ? dateFrom(fd, 'card_dateOfBirth', 'date of birth', errors) : undefined;
