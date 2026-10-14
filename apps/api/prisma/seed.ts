@@ -24,7 +24,19 @@ const SHIFTS = [
   { code: 'B', start: '10:00', end: '19:00' },
 ];
 
+// Company details as printed on TrendLIX's current contract template. HR can edit them in the app.
+const COMPANY = {
+  nameEn: 'TrendLIX',
+  nameAr: 'تريندليكس',
+  activity: 'الدعاية والإعلان وإقامة وتنظيم المعارض وانتاج المحتوي الإليكتروني بصوره المختلفة',
+  commercialRegNo: '142423',
+  addressAr: '١٣ شارع محمد يوسف القاضي – كلية البنات – مدينة نصر – القاهرة',
+  city: 'Cairo',
+};
+
 async function main() {
+  await prisma.company.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...COMPANY } });
+
   for (const role of ROLES) {
     await prisma.role.upsert({ where: { key: role.key }, update: {}, create: role });
   }

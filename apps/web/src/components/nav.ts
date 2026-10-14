@@ -2,7 +2,7 @@
 
 export const NAV = [
   { href: '/', label: 'Home' },
-  { href: '/organisation/departments', label: 'Organisation', section: '/organisation' },
+  { href: '/organisation/company', label: 'Organisation', section: '/organisation' },
 ];
 
 export const COMING_SOON = ['Employees', 'Contracts', 'Attendance', 'Leave', 'Payroll'];

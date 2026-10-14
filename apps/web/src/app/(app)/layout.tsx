@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { Brand, BrandFallback } from '@/components/brand';
 import { COMING_SOON } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { UserMenu } from '@/components/user-menu';
@@ -7,12 +8,10 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <aside className="bg-sidebar px-4 py-4 md:w-60 md:shrink-0 md:py-6">
-        <div className="mb-4 flex items-center gap-3 md:mb-8">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-accent font-bold text-white">T</span>
-          <div className="leading-tight">
-            <p className="font-semibold text-white">TrendLIX</p>
-            <p className="text-xs text-sidebar-text">People System</p>
-          </div>
+        <div className="mb-4 md:mb-8">
+          <Suspense fallback={<BrandFallback dark />}>
+            <Brand dark />
+          </Suspense>
         </div>
         <nav aria-label="Main" className="flex gap-1 overflow-x-auto md:flex-col">
           <Suspense fallback={<NavLinksFallback />}>

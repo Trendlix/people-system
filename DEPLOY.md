@@ -47,11 +47,11 @@ npm ci --include=dev                 # dev tools are needed to build
 npm run build -w @trendlix/shared
 npm run build -w @trendlix/api
 npm run db:deploy -w @trendlix/api   # creates/updates the database tables
-npm run db:seed -w @trendlix/api     # FIRST DEPLOY ONLY: roles, shifts A/B, admin account
+npm run db:seed -w @trendlix/api     # adds missing starting data: roles, shifts A/B, company details, admin account
 npm run start:prod -w @trendlix/api  # starts the API
 ```
 
-On later deploys run everything except `db:seed`.
+On later deploys run the same commands. `db:seed` is safe to repeat: it only adds starting data that is missing (for example the company details added with the Company page) and never overwrites what HR has entered.
 
 On a VPS, keep the API running with PM2 and serve it over HTTPS (Nginx + Let's Encrypt, or Hostinger's SSL), for example at `https://api.yourdomain.com`:
 
@@ -73,4 +73,6 @@ pm2 save
 
 - Sign-in sessions last 8 hours and are stored in an HttpOnly, Secure cookie on the Vercel domain.
 - After 10 failed sign-ins for the same email within 15 minutes, that email is refused for 15 minutes.
-- Every sign-in, failed sign-in and change to departments, job titles and shifts is written to the `audit_log` table.
+- Every sign-in, failed sign-in and change to the company profile, departments, job titles and shifts is written to the `audit_log` table.
+- The company representative's national ID is stored but never returned in full by the API, and never written to the audit log.
+- Logos are checked by their content (PNG, JPEG or WebP only, up to 1 MB); SVG is refused because it can contain scripts.

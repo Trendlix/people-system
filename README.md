@@ -8,7 +8,7 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 | Module | Status |
 |---|---|
 | Sign-in, roles (Employee, Manager, HR, Finance, CEO, Admin), audit log | Done |
-| 1 · Organisation: departments, job titles with job descriptions, shifts | Done. HR and Admin edit, everyone else views |
+| 1 · Organisation: company profile and logo, departments, job titles with job descriptions, shifts | Done. HR and Admin edit, everyone else views |
 | 2 · Employees | Next |
 | 3 · Contracts | Next |
 
@@ -53,7 +53,7 @@ Locally the database is `trendlix_hrms`, owned by the `trendlix` user; end-to-en
 | `npm run test:e2e -w @trendlix/api` | API end-to-end tests against the test database (needs PostgreSQL running) |
 | `npm run db:migrate -w @trendlix/api` | After editing `schema.prisma`: create a migration, apply it locally, regenerate the client |
 | `npm run db:deploy -w @trendlix/api` | Apply existing migrations (production) |
-| `npm run db:seed -w @trendlix/api` | Load roles, shifts and the first admin (safe to repeat) |
+| `npm run db:seed -w @trendlix/api` | Load roles, shifts, company details and the first admin (safe to repeat) |
 | `npm run db:studio -w @trendlix/api` | Browse the database in the browser |
 
 If Postgres.app doesn't show the server, start it from the terminal:

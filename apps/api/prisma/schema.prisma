@@ -47,6 +47,33 @@ model UserRole {
   @@map("user_roles")
 }
 
+// ---------- company profile (one row) ----------
+
+model Company {
+  id                  Int       @id @default(1) // always 1: one company per installation
+  nameEn              String    @map("name_en")
+  nameAr              String?   @map("name_ar") // as printed on contracts
+  activity            String? // business activity, e.g. the contract preamble
+  commercialRegNo     String?   @map("commercial_reg_no") // السجل التجاري
+  taxRegNo            String?   @map("tax_reg_no")
+  insuranceEmployerNo String?   @map("insurance_employer_no") // رقم المنشأة في التأمينات
+  addressAr           String?   @map("address_ar") // as printed on contracts
+  addressEn           String?   @map("address_en")
+  city                String?
+  phone               String?
+  email               String?
+  website             String?
+  repName             String?   @map("rep_name") // company representative who signs documents
+  repTitle            String?   @map("rep_title")
+  repNationalId       String?   @map("rep_national_id") @db.Char(14) // RESTRICTED: never returned in full
+  logo                Bytes?
+  logoMimeType        String?   @map("logo_mime_type")
+  logoUpdatedAt       DateTime? @map("logo_updated_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("company")
+}
+
 // ---------- organisation ----------
 
 model Department {
