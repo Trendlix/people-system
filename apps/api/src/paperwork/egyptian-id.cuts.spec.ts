@@ -46,6 +46,10 @@ describe('a scan cut short', () => {
       issueDate: '2020-07-01',
       expiryDate: '2027-07-11',
       issuingOffice: 'سجل مدني مدينة نصر',
+      maritalStatus: 'single',
+      governorate: 'Cairo',
+      city: 'أول مدينة نصر',
+      nationality: 'Egyptian',
     });
   });
 
@@ -73,9 +77,11 @@ describe('a scan cut short', () => {
     const { suggestions, notes } = readIdCardWithNotes(front, back, TODAY);
     expect(suggestions.nationalId).toBeUndefined();
     expect(suggestions.dateOfBirth).toBeUndefined();
-    expect(suggestions.issueDate).toBeUndefined(); // printed on the cut line
+    // printed on the cut line: worked out from the expiry instead (seven years), and said so
+    expect(suggestions.issueDate).toBe(whole.issueDate);
     expect(notes).toEqual([
       'The national ID number is at the edge of the picture, which cuts through it, so it was not taken. Type it in from the card, or scan the card again with some space around it.',
+      'The issue date could not be read on the card, so it is worked out from the expiry date (a card is valid for seven years). Check it against the card.',
     ]);
   });
 

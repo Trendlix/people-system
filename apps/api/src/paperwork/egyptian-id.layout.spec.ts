@@ -35,6 +35,10 @@ const WHOLE = {
   issueDate: '2020-07-01',
   expiryDate: '2027-07-11',
   printedNo: 'KH1234567',
+  maritalStatus: 'single',
+  governorate: 'Cairo',
+  city: 'أول مدينة نصر',
+  nationality: 'Egyptian',
 };
 
 describe('the card as the reader really reads it', () => {
@@ -57,14 +61,56 @@ describe('the card as the reader really reads it', () => {
     expect(suggestions.nationalId).toBeUndefined();
     expect(suggestions.dateOfBirth).toBeUndefined();
     expect(suggestions).toMatchObject({ fullNameAr: WHOLE.fullNameAr, addressAr: WHOLE.addressAr, expiryDate: WHOLE.expiryDate });
-    expect(notes).toEqual([
+    expect(notes).toContain(
       'The national ID number could not be read completely: its zeros are printed as small dots, which the reader can miss. Type it in from the card.',
-    ]);
+    );
   });
 
   it('never takes a line on the photo side for the address, whatever it says', () => {
     const front = [...FRONT.slice(0, 6), line('شارع وهمي', 0.99, 0.08, 0.3), ...FRONT.slice(6)];
     expect(readIdCardWithNotes(front, BACK, TODAY).suggestions.addressAr).toBe(WHOLE.addressAr);
+  });
+
+  it('works the issue month out from the expiry when it cannot be read, or when it disagrees with it (seven years)', () => {
+    // the issue month lost its zeros and slash: nothing readable beside the number
+    const unread = BACK.map((l, i) => (i === 0 ? { ...l, text: '٢٩٥٠٣١٢٠١٢٣٤٥٦ ٢٢٧' } : l));
+    const a = readIdCardWithNotes(FRONT, unread, TODAY);
+    expect(a.suggestions.issueDate).toBe('2020-07-01');
+    expect(a.notes).toEqual([
+      'The issue date could not be read on the card, so it is worked out from the expiry date (a card is valid for seven years). Check it against the card.',
+    ]);
+    // misread as another month
+    const misread = BACK.map((l, i) => (i === 0 ? { ...l, text: '٢٩٥٠٣١٢٠١٢٣٤٥٦ ٢٠٢٢٠٧' } : l));
+    const b = readIdCardWithNotes(FRONT, misread, TODAY);
+    expect(b.suggestions.issueDate).toBe('2020-07-01');
+    expect(b.notes).toHaveLength(1);
+    // read and agreeing: kept, nothing to say
+    expect(readIdCardWithNotes(FRONT, BACK, TODAY)).toMatchObject({ suggestions: { issueDate: '2020-07-01' }, notes: [] });
+    // no expiry either: nothing made up
+    const neither = unread.filter((l) => !l.text.includes('سارية'));
+    expect(readIdCardWithNotes(FRONT, neither, TODAY).suggestions.issueDate).toBeUndefined();
+  });
+
+  it('reads the marital status as printed for a woman or a man, and the governorate the address ends in', () => {
+    const marital = (word: string) => readIdCardWithNotes(FRONT, BACK.map((l) => (l.text === 'أعزب' ? { ...l, text: word } : l)), TODAY).suggestions.maritalStatus;
+    expect(marital('متزوجة')).toBe('married');
+    expect(marital('مطلق')).toBe('divorced');
+    expect(marital('أرملة')).toBe('widowed');
+    expect(marital('آنسة')).toBe('single');
+    expect(marital('مسلم')).toBeUndefined(); // none printed
+    const place = (text: string) =>
+      readIdCardWithNotes(FRONT.map((l) => (l.text.startsWith('أول مدينة') ? { ...l, text } : l)), BACK, TODAY).suggestions.governorate;
+    expect(place('الدقي - الجيزة')).toBe('Giza');
+    expect(place('العامرية - الإسكندرية')).toBe('Alexandria');
+    expect(place('بور سعيد')).toBe('Port Said');
+    expect(place('مدينة نصر')).toBeUndefined(); // no governorate named
+    const city = (text: string) =>
+      readIdCardWithNotes(FRONT.map((l) => (l.text.startsWith('أول مدينة') ? { ...l, text } : l)), BACK, TODAY).suggestions.city;
+    expect(city('الدقي - الجيزة')).toBe('الدقي');
+    expect(city('الشروق ٢ - القاهرة')).toBe('الشروق');
+    expect(city('مدينة نصر')).toBeUndefined(); // without a governorate after it, not certain
+    expect(city('القاهرة')).toBeUndefined(); // only the governorate
+    expect(place('الجيزة - القاهرة')).toBeUndefined(); // two named: not certain
   });
 
   it('takes no 6- or 8-digit group for a date unless it is one', () => {

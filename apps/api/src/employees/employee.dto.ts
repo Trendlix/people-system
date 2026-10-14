@@ -73,8 +73,15 @@ class EmployeeDetailsDto {
   @LatinDigits() @Phone() @IsOptional() @Matches(PHONE, { message: PHONE_MESSAGE('mobile number') })
   mobile?: string | null;
 
+  @LatinDigits() @Phone() @IsOptional() @Matches(PHONE, { message: PHONE_MESSAGE('second mobile number') })
+  mobile2?: string | null;
+
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(300)
   addressAr?: string | null;
+
+  /** The city or district, in Arabic as on the ID card (e.g. مدينة نصر). */
+  @TrimOrNull() @IsOptional() @IsString() @MaxLength(100)
+  city?: string | null;
 
   @TrimOrNull() @IsOptional() @IsIn(GOVERNORATES, { message: 'Choose a governorate from the list.' })
   governorate?: string | null;

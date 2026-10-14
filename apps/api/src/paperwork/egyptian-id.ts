@@ -26,6 +26,13 @@ export interface IdCardSuggestions {
   expiryDate?: string;
   printedNo?: string;
   issuingOffice?: string;
+  maritalStatus?: 'single' | 'married' | 'divorced' | 'widowed';
+  /** The governorate the address ends in, as the profile's list names it (packages/shared GOVERNORATES). */
+  governorate?: string;
+  /** The city or district the address names before its governorate, in Arabic as printed (e.g. مدينة نصر). */
+  city?: string;
+  /** Egyptian: the card is an Egyptian national ID. */
+  nationality?: string;
 }
 
 /** A date printed on the card, as YYYY-MM-DD; month-only dates (2020/07) are on the 1st. */
@@ -63,6 +70,8 @@ const SURE = 0.6;
 // The name and the address are printed on the right of the front; the photo, the date under it and the card's code are
 // on the left. A line ending in the left part of the card is not part of them.
 const RIGHT_PART = 0.55;
+// An Egyptian national ID card is valid for seven years from the month it was issued.
+const CARD_YEARS = 7;
 
 /** One side of the card as read: its text (no positions known), or its lines in reading order. */
 export type CardSide = string | CardLine[] | null;
@@ -102,11 +111,31 @@ export function readIdCardWithNotes(front: CardSide, back: CardSide, today = tod
 
   const gender = readGender(backLines);
   if (gender) out.gender = gender;
+  const marital = readMaritalStatus(backLines);
+  if (marital) out.maritalStatus = marital;
+  const governorate = out.addressAr ? governorateIn(out.addressAr) : undefined;
+  if (governorate) out.governorate = governorate;
+  const city = out.addressAr ? cityIn(out.addressAr) : undefined;
+  if (city) out.city = city;
+  if (out.nationalId || frontKept.some((l) => isHeader(l.text))) out.nationality = 'Egyptian';
 
   const expiry = readExpiry(backLines);
   if (expiry.date) out.expiryDate = expiry.date;
   const issueDate = readIssueDate(backLines, expiry.lines, out.expiryDate, out.dateOfBirth, today);
   if (issueDate) out.issueDate = issueDate;
+  // The issue month is printed small beside the number, where digits and slashes are easily lost; the expiry is printed
+  // in full. A card is valid for seven years from the month it was issued, so the expiry tells the issue month.
+  if (out.expiryDate) {
+    const expected = issuedFor(out.expiryDate);
+    const possible = expected <= today && (!out.dateOfBirth || expected > out.dateOfBirth);
+    if (!out.issueDate && possible) {
+      out.issueDate = expected;
+      notes.push('The issue date could not be read on the card, so it is worked out from the expiry date (a card is valid for seven years). Check it against the card.');
+    } else if (out.issueDate && out.issueDate.slice(0, 7) !== expected.slice(0, 7) && possible) {
+      out.issueDate = expected;
+      notes.push('The issue date read on the card did not agree with the expiry date, so it is worked out from the expiry date (a card is valid for seven years). Check both against the card.');
+    }
+  }
 
   const office = readIssuingOffice(backLines);
   if (office) out.issuingOffice = office;
@@ -260,6 +289,53 @@ function readGender(lines: string[]): 'male' | 'female' | undefined {
   return male ? 'male' : 'female';
 }
 
+/** The marital status printed on the back, beside gender and religion; only when the card names exactly one. */
+function readMaritalStatus(lines: string[]): IdCardSuggestions['maritalStatus'] {
+  const text = normalizeArabic(lines.join('\n'));
+  const found = (Object.entries(MARITAL_WORDS) as [NonNullable<IdCardSuggestions['maritalStatus']>, string[]][])
+    .filter(([, words]) => words.some((w) => hasWord(text, w)))
+    .map(([status]) => status);
+  return found.length === 1 ? found[0] : undefined;
+}
+
+// As printed on the card (for a man and for a woman), normalised (see arabic-text.ts).
+const MARITAL_WORDS = {
+  single: ['اعزب', 'عزباء', 'انسه'],
+  married: ['متزوج', 'متزوجه'],
+  divorced: ['مطلق', 'مطلقه'],
+  widowed: ['ارمل', 'ارمله'],
+};
+
+// The governorates as the address names them, normalised, with the profile's names (packages/shared GOVERNORATES).
+const GOVERNORATE_NAMES: [string, string][] = [
+  ['القاهره', 'Cairo'], ['الجيزه', 'Giza'], ['الاسكندريه', 'Alexandria'], ['الدقهليه', 'Dakahlia'], ['البحر الاحمر', 'Red Sea'],
+  ['البحيره', 'Beheira'], ['الفيوم', 'Faiyum'], ['الغربيه', 'Gharbia'], ['الاسماعيليه', 'Ismailia'], ['المنوفيه', 'Monufia'],
+  ['المنيا', 'Minya'], ['القليوبيه', 'Qalyubia'], ['الوادي الجديد', 'New Valley'], ['السويس', 'Suez'], ['اسوان', 'Aswan'],
+  ['اسيوط', 'Asyut'], ['بني سويف', 'Beni Suef'], ['بورسعيد', 'Port Said'], ['بور سعيد', 'Port Said'], ['دمياط', 'Damietta'],
+  ['الشرقيه', 'Sharqia'], ['جنوب سيناء', 'South Sinai'], ['كفر الشيخ', 'Kafr El Sheikh'], ['مطروح', 'Matrouh'], ['الاقصر', 'Luxor'],
+  ['قنا', 'Qena'], ['شمال سيناء', 'North Sinai'], ['سوهاج', 'Sohag'],
+];
+
+/** The governorate an address names (usually at its end, after a dash); only when it names exactly one. */
+export function governorateIn(address: string): string | undefined {
+  const text = normalizeArabic(address).replace(/[-–،,/.]/g, ' ');
+  const found = unique(GOVERNORATE_NAMES.filter(([name]) => hasWord(text, name)).map(([, en]) => en));
+  return found.length === 1 ? found[0] : undefined;
+}
+
+/**
+ * The city or district an address names: its last line (after the last "، ") reads "<city> - <governorate>", so the
+ * part before the dash, when the part after it is a governorate. As printed, without digits; 1 to 4 words.
+ */
+export function cityIn(address: string): string | undefined {
+  const last = address.split('،').at(-1)?.trim() ?? '';
+  const parts = last.split(/\s*[-–]\s*/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2 || !governorateIn(parts.at(-1)!)) return undefined;
+  const city = parts.slice(0, -1).join(' - ').replace(/[0-9٠-٩۰-۹]/g, '').replace(/\s+/g, ' ').trim();
+  const words = city.split(' ').filter(Boolean).length;
+  return words >= 1 && words <= 4 && letterCount(city) >= 2 ? city : undefined;
+}
+
 function hasWord(text: string, word: string): boolean {
   return new RegExp(`(^|[^\\u0621-\\u064a])${word}($|[^\\u0621-\\u064a])`).test(text);
 }
@@ -291,6 +367,9 @@ function readIssueDate(
   const dates = lines
     .flatMap((l, i) => (expiryLines.includes(i) ? [] : [...datesIn(l), ...compactDatesIn(l, 6)]))
     .filter((d) => d.ymd >= '1990-01-01' && d.ymd <= today && d.ymd !== born && (!expiry || d.ymd < expiry));
+  // among several, the one seven years before the expiry
+  const fits = expiry ? dates.filter((d) => d.ymd.slice(0, 7) === issuedFor(expiry).slice(0, 7)) : [];
+  if (fits.length) return fits[0].monthOnly ? fits[0].ymd : (fits.find((d) => d.monthOnly) ?? fits[0]).ymd;
   const months = unique(dates.filter((d) => d.monthOnly).map((d) => d.ymd));
   if (months.length) return only(months);
   return only(unique(dates.map((d) => d.ymd)));
@@ -352,6 +431,11 @@ function compactDatesIn(line: string, length: 6 | 8): CardDate[] {
     }
   }
   return out;
+}
+
+/** The month a card that expires on `expiry` was issued: seven years earlier (as a month-only date, on the 1st). */
+function issuedFor(expiry: string): string {
+  return `${Number(expiry.slice(0, 4)) - CARD_YEARS}-${expiry.slice(5, 7)}-01`;
 }
 
 // ---------- helpers ----------

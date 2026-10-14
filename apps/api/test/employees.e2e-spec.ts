@@ -692,6 +692,14 @@ describe('Employees (e2e)', () => {
     });
   });
 
+  it('keeps a second mobile number and the city', async () => {
+    const e = await addEmployee('Two Phones', { mobile: '010 1111 2222', mobile2: '+20 122 333 4444', city: ' مدينة نصر ' });
+    expect(e).toMatchObject({ mobile: '01011112222', mobile2: '+201223334444', city: 'مدينة نصر' });
+    await api().patch(`/api/employees/${e.id}`).set('Cookie', hr).send({ mobile2: 'not a phone' }).expect(400);
+    const cleared = await api().patch(`/api/employees/${e.id}`).set('Cookie', hr).send({ mobile2: '', city: '' }).expect(200);
+    expect(cleared.body).toMatchObject({ mobile2: null, city: null });
+  });
+
   describe('who sees whom', () => {
     let managerSession: string;
     let staffSession: string;

@@ -203,7 +203,9 @@ model Employee {
   workEmail         String?           @unique @map("work_email") // lower case; a sign-in account with this email is this employee
   personalEmail     String?           @map("personal_email")
   mobile            String?
+  mobile2           String? // a second mobile number
   addressAr         String?           @map("address_ar")
+  city              String? // the city or district, in Arabic as on the ID card (e.g. مدينة نصر)
   governorate       String?
   emergencyName     String?           @map("emergency_name")
   emergencyRelation String?           @map("emergency_relation")

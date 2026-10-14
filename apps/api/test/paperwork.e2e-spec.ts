@@ -48,6 +48,10 @@ const SUGGESTIONS = {
   issueDate: '2020-07-01',
   expiryDate: '2027-07-11',
   issuingOffice: 'سجل مدني مدينة نصر',
+  maritalStatus: 'single',
+  governorate: 'Cairo',
+  city: 'أول مدينة نصر',
+  nationality: 'Egyptian',
 };
 
 interface FakeOcr {

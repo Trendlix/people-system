@@ -49,6 +49,10 @@ describe('Egyptian ID card reader', () => {
       expiryDate: '2027-07-11',
       issuingOffice: 'سجل مدني مدينة نصر',
       printedNo: 'FA1234567',
+      maritalStatus: 'single',
+      governorate: 'Cairo',
+      city: 'أول مدينة نصر',
+      nationality: 'Egyptian',
     });
   });
 
@@ -62,6 +66,10 @@ describe('Egyptian ID card reader', () => {
       issueDate: '2019-05-01',
       expiryDate: '2026-05-14',
       issuingOffice: 'سجل مدنى طنطا أول',
+      maritalStatus: 'single',
+      governorate: 'Gharbia',
+      city: 'مركز طنطا',
+      nationality: 'Egyptian',
     });
   });
 
@@ -124,10 +132,10 @@ describe('Egyptian ID card reader', () => {
     expect(readIdCard(null, BACK.replace('ذكر', 'تذكرة'), TODAY)).not.toHaveProperty('gender');
   });
 
-  it('suggests no issue date when there are several candidates', () => {
+  it('picks, among several dates, the one seven years before the expiry', () => {
     const back = `${BACK}\n٢٠٢١/٠٣`;
     const read = readIdCard(null, back, TODAY);
-    expect(read).not.toHaveProperty('issueDate');
+    expect(read.issueDate).toBe('2020-07-01');
     expect(read.expiryDate).toBe('2027-07-11');
   });
 
