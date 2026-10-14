@@ -10,7 +10,7 @@ export type OcrLang = 'ar' | 'en';
 
 /** A page as read: its lines in reading order, each with its box, and the page's size when the service gives it. */
 export interface OcrPageRead {
-  lines: { text: string; box: [number, number, number, number] }[]; // box: x_min, y_min, x_max, y_max in pixels
+  lines: { text: string; box: [number, number, number, number]; confidence?: number }[]; // box: x_min, y_min, x_max, y_max in pixels
   width?: number;
   height?: number;
 }
@@ -108,6 +108,7 @@ function linesOf(body: unknown): { text: string; lines: string[]; pages: OcrPage
       .map((line) => ({
         text: typeof line?.text === 'string' ? line.text.trim() : '',
         box: (Array.isArray(line?.box) && line.box.length === 4 && line.box.every(isNumber) ? line.box : [0, 0, 0, 0]) as [number, number, number, number],
+        ...(isNumber(line?.confidence) && { confidence: line.confidence }),
       }))
       .filter((line) => line.text),
     ...(isNumber(page?.width) && isNumber(page?.height) && { width: page.width, height: page.height }),

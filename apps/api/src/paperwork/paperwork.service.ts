@@ -95,8 +95,9 @@ function splitSides(front: OcrRead, back: OcrRead | null): [OcrRead, OcrRead | n
 }
 
 /**
- * The lines of a side, each marked when the top or bottom edge of its picture runs through it (a scan cut a little
- * short). Without the page's size, nothing is marked.
+ * The lines of a side, each with how sure the reader was and where it lies on the card (as shares of the picture's
+ * width), and marked when the top or bottom edge of the picture runs through it (a scan cut a little short). Without
+ * the page's size, nothing is marked and no place is known.
  */
 function cardLines(read: OcrRead | null): CardLine[] | null {
   if (read?.status !== 'done') return null;
@@ -105,6 +106,8 @@ function cardLines(read: OcrRead | null): CardLine[] | null {
     return page.lines.map((l) => ({
       text: l.text,
       cut: page.height !== undefined && (l.box[1] <= tolerance || l.box[3] >= page.height - tolerance),
+      ...(l.confidence !== undefined && { confidence: l.confidence }),
+      ...(page.width && { left: l.box[0] / page.width, right: l.box[2] / page.width }),
     }));
   });
 }

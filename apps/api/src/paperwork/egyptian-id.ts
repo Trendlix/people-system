@@ -50,7 +50,19 @@ const DATE = /(?<!\d)(\d{1,4})\s*[/\-.]\s*(\d{1,4})(?:\s*[/\-.]\s*(\d{1,4}))?(?!
 export interface CardLine {
   text: string;
   cut?: boolean;
+  /** How sure the reader was (0–1), when known. */
+  confidence?: number;
+  /** Where the line lies across the card, as shares of its width (0 = left edge), when known. */
+  left?: number;
+  right?: number;
 }
+
+// The front's calligraphic heading is drawn, not printed: the reader makes words of it, with little certainty (about
+// 0.5, where printed lines read at 0.85 and above). Lines read with less certainty than this are not names or addresses.
+const SURE = 0.6;
+// The name and the address are printed on the right of the front; the photo, the date under it and the card's code are
+// on the left. A line ending in the left part of the card is not part of them.
+const RIGHT_PART = 0.55;
 
 /** One side of the card as read: its text (no positions known), or its lines in reading order. */
 export type CardSide = string | CardLine[] | null;
@@ -65,7 +77,8 @@ export function readIdCardWithNotes(front: CardSide, back: CardSide, today = tod
   const frontAll = sideLines(front);
   const backAll = sideLines(back);
   // a line the edge of the picture cuts through is not used for anything
-  const frontLines = frontAll.filter((l) => !l.cut).map((l) => l.text);
+  const frontKept = frontAll.filter((l) => !l.cut);
+  const frontLines = frontKept.map((l) => l.text);
   const backLines = backAll.filter((l) => !l.cut).map((l) => l.text);
   const topCut = frontAll.length > 0 && frontAll[0].cut === true;
   const out: IdCardSuggestions = {};
@@ -79,8 +92,13 @@ export function readIdCardWithNotes(front: CardSide, back: CardSide, today = tod
     notes.push(
       'The national ID number is at the edge of the picture, which cuts through it, so it was not taken. Type it in from the card, or scan the card again with some space around it.',
     );
+  } else if ([...frontAll, ...backAll].some((l) => isNumberRow(l))) {
+    // the number is there, but not all of it was read: the zeros on the card are small dots the reader can miss
+    notes.push(
+      'The national ID number could not be read completely: its zeros are printed as small dots, which the reader can miss. Type it in from the card.',
+    );
   }
-  Object.assign(out, readNameAndAddress(frontLines, topCut));
+  Object.assign(out, readNameAndAddress(frontKept, topCut));
 
   const gender = readGender(backLines);
   if (gender) out.gender = gender;
@@ -137,36 +155,48 @@ function pickNationalId(front: string[], back: string[], today: string): string 
 // ---------- front: name and address ----------
 
 /**
- * The name (first name on one line, the rest on the next) and the address (the lines between the name and the
- * national ID). When the top of the picture was cut (`topCut`), lines may be missing above, so the block is counted
- * up from the national ID instead: the address is the two lines above it, and the name the two above those, or
- * nothing when they aren't both there.
+ * The name (first name on one line, the rest on the next) and the address (two lines), read from the confident lines
+ * on the right of the front. Counted up from the national ID's row whenever it is found, even when the number itself
+ * was misread: the address is the two lines above it and the name the two above those — so a heading read as words,
+ * or lines lost at the top, never shift the name into the address. Without that row, the name is the first two lines
+ * (unless the top was cut) and the address unknown.
  */
-function readNameAndAddress(lines: string[], topCut = false): Pick<IdCardSuggestions, 'fullNameAr' | 'addressAr'> {
-  // The national ID ends the name and address block; the printed code and header are not part of it.
-  const idLine = lines.findIndex((l) => (l.match(DIGIT)?.length ?? 0) >= 12);
-  const block = (idLine >= 0 ? lines.slice(0, idLine) : lines).filter((l) => !isHeader(l) && letterCount(l) >= 2);
+function readNameAndAddress(all: CardLine[], topCut = false): Pick<IdCardSuggestions, 'fullNameAr' | 'addressAr'> {
+  const anchor = numberRowIndex(all);
+  const above = anchor >= 0 ? all.slice(0, anchor) : all;
+  const block = above
+    .filter((l) => (l.confidence ?? 1) >= SURE && (l.right ?? 1) >= RIGHT_PART && !isHeader(l.text) && letterCount(l.text) >= 2)
+    .map((l) => l.text);
   const out: Pick<IdCardSuggestions, 'fullNameAr' | 'addressAr'> = {};
 
-  if (topCut) {
-    if (idLine < 0) return out; // without the number to count from, nothing is certain
-    const address = addressOf(block.slice(-2));
-    if (address && block.length >= 2) out.addressAr = address;
+  if (anchor >= 0) {
+    const address = block.length >= 2 ? addressOf(block.slice(-2)) : undefined;
+    if (address) out.addressAr = address;
     const name = block.length >= 4 ? nameOf(block[block.length - 4], block[block.length - 3]) : undefined;
     if (name) out.fullNameAr = name;
     return out;
   }
-
+  if (topCut) return out; // without the number to count from, lines lost above leave nothing certain
   const [first, rest] = block;
   const name = first && rest ? nameOf(first, rest) : undefined;
-  if (!name) return out;
-  out.fullNameAr = name;
-  // the address lines lie between the name and the national ID; without the ID their end is unknown
-  if (idLine >= 0) {
-    const address = addressOf(block.slice(2));
-    if (address) out.addressAr = address;
-  }
+  if (name) out.fullNameAr = name;
   return out;
+}
+
+/** A row holding a long number and no words: the national ID's row, read in full or not. */
+function isNumberRow(line: CardLine): boolean {
+  return (line.text.match(DIGIT)?.length ?? 0) >= 8 && letterCount(line.text) === 0 && !LATIN_LETTER.test(line.text) && (line.right ?? 1) >= RIGHT_PART;
+}
+
+/** Where the national ID's row is among the front's lines: the row with the most digits; -1 when there is none. */
+function numberRowIndex(lines: CardLine[]): number {
+  let best = -1;
+  let most = 0;
+  lines.forEach((l, i) => {
+    const digits = l.text.match(DIGIT)?.length ?? 0;
+    if (isNumberRow(l) && digits >= most) [best, most] = [i, digits];
+  });
+  return best;
 }
 
 /** The full name from its two lines, when both are name lines and it has 3 to 8 words. */
@@ -239,7 +269,8 @@ function readExpiry(lines: string[]): { date?: string; lines: number[] } {
   const at = lines.findIndex((l) => normalizeArabic(l).includes('ساريه'));
   if (at < 0) return { lines: [] };
   const valid = (d: CardDate) => d.ymd >= '2000-01-01';
-  const same = datesIn(lines[at]).filter(valid);
+  // the reader sometimes drops the slashes: 2030/12/01 comes back as 20301201
+  const same = [...datesIn(lines[at]), ...compactDatesIn(lines[at], 8)].filter(valid);
   if (same.length) return { date: (same.find((d) => !d.monthOnly) ?? same[0]).ymd, lines: [at] };
   const next = datesIn(lines[at + 1] ?? '').filter((d) => valid(d) && !d.monthOnly);
   if (next.length) return { date: next[0].ymd, lines: [at, at + 1] };
@@ -258,7 +289,7 @@ function readIssueDate(
   today: string,
 ): string | undefined {
   const dates = lines
-    .flatMap((l, i) => (expiryLines.includes(i) ? [] : datesIn(l)))
+    .flatMap((l, i) => (expiryLines.includes(i) ? [] : [...datesIn(l), ...compactDatesIn(l, 6)]))
     .filter((d) => d.ymd >= '1990-01-01' && d.ymd <= today && d.ymd !== born && (!expiry || d.ymd < expiry));
   const months = unique(dates.filter((d) => d.monthOnly).map((d) => d.ymd));
   if (months.length) return only(months);
@@ -306,10 +337,27 @@ function cardDate(parts: string[]): CardDate | null {
   return year >= 1900 && year <= 2100 && isDateOnly(ymd) ? { ymd, monthOnly } : null;
 }
 
+/**
+ * Dates read without their slashes, as a group of digits on its own: 8 digits as YYYYMMDD (or DDMMYYYY), 6 as YYYYMM
+ * (or MMYYYY), month-only on the 1st. A group of any other length is not taken for a date.
+ */
+function compactDatesIn(line: string, length: 6 | 8): CardDate[] {
+  const out: CardDate[] = [];
+  for (const [group] of latinDigits(line).matchAll(/(?<!\d)\d+(?!\d)/g)) {
+    if (group.length !== length) continue;
+    const parts = length === 8 ? [[group.slice(0, 4), group.slice(4, 6), group.slice(6)], [group.slice(0, 2), group.slice(2, 4), group.slice(4)]] : [[group.slice(0, 4), group.slice(4)], [group.slice(0, 2), group.slice(2)]];
+    for (const p of parts) {
+      const date = cardDate(p);
+      if (date) out.push(date);
+    }
+  }
+  return out;
+}
+
 // ---------- helpers ----------
 
 function sideLines(side: CardSide): CardLine[] {
-  if (Array.isArray(side)) return side.map((l) => ({ text: l.text.trim(), cut: l.cut === true })).filter((l) => l.text);
+  if (Array.isArray(side)) return side.map((l) => ({ ...l, text: l.text.trim(), cut: l.cut === true })).filter((l) => l.text);
   return (side ?? '')
     .split(/\r?\n/)
     .map((l) => ({ text: l.trim(), cut: false }))
