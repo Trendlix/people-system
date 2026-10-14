@@ -41,15 +41,30 @@ def sniff(data: bytes) -> str | None:
 class Page:
     image: np.ndarray  # what the engine reads: height x width x 3, uint8, BGR
     scale: tuple[float, float]  # multiply the engine's x and y by these to get pixels of the page as uploaded
+    size: tuple[int, int]  # width and height of the page as uploaded (turned upright), or as rendered from the PDF
 
 
 class Document:
-    """A picture (one page) or a PDF (up to MAX_PDF_PAGES pages, rendered one at a time as they are read)."""
+    """A picture (one page) or a PDF (up to MAX_PDF_PAGES pages, rendered one at a time as they are read).
 
-    def __init__(self, data: bytes, kind: str):
+    `max_side`: a larger picture or page is scaled down to this. `pdf_dpi`: how finely PDF pages are rendered.
+    `first_pages`: only the first so many pages of a PDF are looked at, and a longer PDF is not refused for its length.
+    """
+
+    def __init__(
+        self,
+        data: bytes,
+        kind: str,
+        *,
+        max_side: int = MAX_SIDE,
+        pdf_dpi: int = PDF_DPI,
+        first_pages: int | None = None,
+    ):
         self.kind = kind
         self._data = data
         self._pdf = None
+        self._max_side = max_side
+        self._pdf_dpi = pdf_dpi
         if kind == "pdf":
             try:
                 self._pdf = pdfium.PdfDocument(data)
@@ -59,12 +74,14 @@ class Document:
             if count == 0:
                 self.close()
                 raise UnreadableFile("The PDF has no pages.")
-            if count > MAX_PDF_PAGES:
+            if first_pages is not None:
+                count = min(count, first_pages)
+            elif count > MAX_PDF_PAGES:
                 self.close()
                 raise UnreadableFile(f"The PDF has {count} pages; at most {MAX_PDF_PAGES} pages are read.")
             self.page_count = count
         elif kind in _PILLOW_FORMATS:
-            self._picture = _decode_picture(data, _PILLOW_FORMATS[kind])
+            self._picture = _decode_picture(data, _PILLOW_FORMATS[kind], max_side)
             self.page_count = 1
         else:
             raise UnreadableFile("Unsupported file: send a JPEG, PNG, WebP or PDF.")
@@ -74,7 +91,7 @@ class Document:
             yield self._picture
             return
         for index in range(self.page_count):
-            yield _render_pdf_page(self._pdf, index)
+            yield _render_pdf_page(self._pdf, index, self._pdf_dpi, self._max_side)
 
     def close(self) -> None:
         if self._pdf is not None:
@@ -88,7 +105,7 @@ class Document:
         self.close()
 
 
-def _decode_picture(data: bytes, pillow_format: str) -> Page:
+def _decode_picture(data: bytes, pillow_format: str, max_side: int = MAX_SIDE) -> Page:
     try:
         img = Image.open(io.BytesIO(data), formats=[pillow_format])
         width, height = img.size  # read from the header: nothing is decoded yet
@@ -97,14 +114,14 @@ def _decode_picture(data: bytes, pillow_format: str) -> Page:
         # a phone stores its photos sideways and says which way up they go; the page is read the right way up
         if img.getexif().get(0x0112, 1) in (5, 6, 7, 8):
             width, height = height, width
-        if pillow_format == "JPEG" and max(width, height) > MAX_SIDE:
+        if pillow_format == "JPEG" and max(width, height) > max_side:
             # JPEG can be decoded straight at a half, a quarter or an eighth of its size, which saves memory
-            ratio = MAX_SIDE / max(width, height)
+            ratio = max_side / max(width, height)
             img.draft("RGB", (math.ceil(img.width * ratio), math.ceil(img.height * ratio)))
         img = ImageOps.exif_transpose(img)
         img = _on_white(img)
-        if max(img.size) > MAX_SIDE:
-            ratio = MAX_SIDE / max(img.size)
+        if max(img.size) > max_side:
+            ratio = max_side / max(img.size)
             img = img.resize((max(round(img.width * ratio), 1), max(round(img.height * ratio), 1)), Image.LANCZOS)
         rgb = np.asarray(img)
     except UnreadableFile:
@@ -114,6 +131,7 @@ def _decode_picture(data: bytes, pillow_format: str) -> Page:
     return Page(
         image=np.ascontiguousarray(rgb[:, :, ::-1]),
         scale=(width / rgb.shape[1], height / rgb.shape[0]),
+        size=(width, height),
     )
 
 
@@ -125,13 +143,13 @@ def _on_white(img: Image.Image) -> Image.Image:
     return img.convert("RGB")
 
 
-def _render_pdf_page(pdf: "pdfium.PdfDocument", index: int) -> Page:
+def _render_pdf_page(pdf: "pdfium.PdfDocument", index: int, dpi: int = PDF_DPI, max_side: int = MAX_SIDE) -> Page:
     page = pdf[index]
     try:
         width_pt, height_pt = page.get_size()  # in points, 72 to the inch
         if width_pt <= 0 or height_pt <= 0:
             raise UnreadableFile(f"Page {index + 1} of the PDF has no size.")
-        scale = min(PDF_DPI / 72, MAX_SIDE / max(width_pt, height_pt))
+        scale = min(dpi / 72, max_side / max(width_pt, height_pt))
         # the right way up (the page's own rotation is applied), on white, three channels in PDFium's order: BGR
         bitmap = page.render(scale=scale)
         try:
@@ -144,4 +162,4 @@ def _render_pdf_page(pdf: "pdfium.PdfDocument", index: int) -> Page:
         page.close()
     if image.ndim != 3 or image.shape[2] != 3:
         raise UnreadableFile(f"Page {index + 1} of the PDF cannot be read.")
-    return Page(image=image, scale=(1.0, 1.0))
+    return Page(image=image, scale=(1.0, 1.0), size=(image.shape[1], image.shape[0]))

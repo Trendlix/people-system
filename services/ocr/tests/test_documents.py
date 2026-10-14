@@ -151,3 +151,18 @@ def test_a_pdf_with_the_most_pages_allowed_is_read():
 def test_a_damaged_pdf_is_unreadable():
     with pytest.raises(UnreadableFile, match="cannot be opened"):
         Document(b"%PDF-1.7\n" + b"rubbish" * 50, "pdf")
+
+
+def test_only_the_first_pages_are_looked_at_when_asked_and_a_long_pdf_is_then_not_refused():
+    with Document(pdf(*[(72, 144, (255, 255, 255))] * (MAX_PDF_PAGES + 5)), "pdf", first_pages=2, pdf_dpi=100) as d:
+        rendered = list(d.pages())
+    assert d.page_count == 2 and len(rendered) == 2
+    assert rendered[0].image.shape[:2] == (200, 100) and rendered[0].size == (100, 200)
+
+
+def test_a_larger_limit_keeps_a_large_picture_larger():
+    _, [page] = pages(png(MAX_SIDE * 2, 100), "png")
+    with Document(png(MAX_SIDE * 2, 100), "png", max_side=MAX_SIDE * 2) as document:
+        [large] = list(document.pages())
+    assert page.image.shape[1] == MAX_SIDE and large.image.shape[1] == MAX_SIDE * 2
+    assert page.size == large.size == (MAX_SIDE * 2, 100)

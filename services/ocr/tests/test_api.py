@@ -4,7 +4,7 @@ import threading
 from app.documents import MAX_SIDE
 from app.upload import MAX_FILE_BYTES
 
-from .conftest import StubEngine, line, pdf, png, wait_ready
+from .conftest import StubEngine, jpeg, line, pdf, png, wait_ready
 
 
 def upload(client, data, lang=None, field="file", filename="scan.png"):
@@ -93,7 +93,20 @@ def test_every_pdf_page_is_read_and_pages_are_separated_by_form_feeds(make_clien
 
 def test_a_page_with_no_text(make_client):
     response = upload(make_client(StubEngine()), png())
-    assert response.json() == {"lang": "ar", "pages": [{"lines": []}], "text": ""}
+    assert response.json() == {"lang": "ar", "pages": [{"width": 120, "height": 40, "lines": []}], "text": ""}
+
+
+def test_each_page_says_its_size_in_the_pixels_its_boxes_are_in(make_client):
+    # a picture scaled down to be read: the size as uploaded; a phone photo stored sideways: the size upright
+    client = make_client(StubEngine())
+    assert upload(client, png(MAX_SIDE * 2, 200)).json()["pages"][0] | {"lines": []} == {
+        "width": MAX_SIDE * 2, "height": 200, "lines": []
+    }
+    page = upload(client, jpeg(300, 100, exif_orientation=6), filename="p.jpg").json()["pages"][0]
+    assert (page["width"], page["height"]) == (100, 300)
+    # a PDF: its pages rendered at 200 dpi
+    pages = upload(client, pdf((612, 792, (255, 255, 255)), (842, 595, (255, 255, 255))), filename="c.pdf")
+    assert [(p["width"], p["height"]) for p in pages.json()["pages"]] == [(1700, 2200), (2339, 1653)]
 
 
 def test_boxes_are_in_pixels_of_the_picture_as_uploaded(make_client):

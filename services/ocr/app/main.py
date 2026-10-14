@@ -4,17 +4,22 @@ Internal only: no sign-in, and reachable only on People System's Docker network,
 
   GET  /health            200 {"status": "ok"} once the models are loaded and checked; 503 before
   POST /read?lang=ar|en   multipart field "file": JPEG, PNG, WebP or PDF (every page, up to 20), up to 15 MB
-       200 {"lang": "ar", "pages": [{"lines": [{"text", "confidence", "box": [x_min, y_min, x_max, y_max]}]}],
-            "text": lines joined by \\n, pages separated by \\f}
-       400 {"detail": "..."} for an unsupported or unreadable file, 413 for one too large, 503 while loading
+       200 {"lang": "ar", "pages": [{"width", "height", "lines": [{"text", "confidence",
+            "box": [x_min, y_min, x_max, y_max]}]}], "text": lines joined by \\n, pages separated by \\f}
+  POST /cards             multipart field "file": JPEG, PNG, WebP or PDF (its first 2 pages), up to 15 MB
+       200 {"pages": [{"width", "height", "image"}], "cards": [{"page", "box": {"cx", "cy", "w", "h", "angle"},
+            "frame": [left, top, right, bottom], "image", "side", "confidence"}]}  (see app/cards.py, README.md)
+  both: 400 {"detail": "..."} for an unsupported or unreadable file, 413 for one too large, 503 while loading
 
-Lines are in reading order: top to bottom, and within a row right to left (ar) or left to right (en). Boxes are in
-pixels of the picture as uploaded, turned the right way up; for a PDF, of the page rendered at 200 dpi. The text is
-returned as read: Arabic-Indic digits stay as they are.
+/read: lines are in reading order: top to bottom, and within a row right to left (ar) or left to right (en). Boxes,
+width and height are in pixels of the picture as uploaded, turned the right way up; for a PDF, of the page rendered
+at 200 dpi. The text is returned as read: Arabic-Indic digits stay as they are.
 
-Pictures and their text are never written to disk or to the log; only sizes, page counts and timings are logged.
+Pictures and their text are never written to disk or to the log; only sizes, page counts, card sides and timings are
+logged.
 """
 
+import base64
 import logging
 import os
 import sys
@@ -23,15 +28,26 @@ import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 
+import cv2
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from . import cards as id_cards
 from .documents import Document, UnreadableFile, sniff
 from .layout import Line, reading_order
 from .upload import UploadError, read_file
 
 RIGHT_TO_LEFT = {"ar": True, "en": False}
+
+# /cards: a picture is looked at up to this large (an A4 page scanned at 300 dpi is 3508 px), and a PDF's first pages
+# are rendered at 300 dpi; each page is returned, and its cards are located, at most PAGE_SIDE large.
+CARDS_MAX_SIDE = 4096
+CARDS_PDF_DPI = 300
+CARDS_PDF_PAGES = 2
+PAGE_SIDE = 2000
+PAGE_QUALITY = 85
+CARD_QUALITY = 90
 
 log = logging.getLogger("ocr")
 
@@ -81,20 +97,28 @@ def create_app(make_engine: Callable = _default_engine, on_load_failure: Callabl
             return {"status": "ok"}
         return JSONResponse({"status": "loading"}, status_code=503)
 
+    async def upload(request: Request, what: str):
+        """(data, kind), or the refusal to send back."""
+        if not ready.is_set():
+            return None, _refuse(503, "The OCR models are still loading. Try again in a minute.", what=what)
+        try:
+            data = await read_file(request)
+        except UploadError as e:
+            return None, _refuse(e.status, e.detail, what=what)
+        kind = sniff(data)
+        if kind is None:
+            return None, _refuse(400, "Unsupported file: send a JPEG, PNG, WebP or PDF.", len(data), what=what)
+        return (data, kind), None
+
     @app.post("/read")
     async def read(request: Request, lang: str = "ar"):
         lang = lang.strip().lower()
         if lang not in RIGHT_TO_LEFT:
             return _refuse(400, 'lang must be "ar" or "en".')
-        if not ready.is_set():
-            return _refuse(503, "The OCR models are still loading. Try again in a minute.")
-        try:
-            data = await read_file(request)
-        except UploadError as e:
-            return _refuse(e.status, e.detail)
-        kind = sniff(data)
-        if kind is None:
-            return _refuse(400, "Unsupported file: send a JPEG, PNG, WebP or PDF.", len(data))
+        got, refusal = await upload(request, "read")
+        if refusal is not None:
+            return refusal
+        data, kind = got
         try:
             pages, seconds = await run_in_threadpool(_read_document, engines[0], work, data, kind, lang)
         except UnreadableFile as e:
@@ -108,22 +132,48 @@ def create_app(make_engine: Callable = _default_engine, on_load_failure: Callabl
             len(data),
             lang,
             len(pages),
-            sum(len(lines) for lines in pages),
+            sum(len(lines) for _, lines in pages),
             seconds,
         )
         return {
             "lang": lang,
             "pages": [
                 {
+                    "width": size[0],
+                    "height": size[1],
                     "lines": [
                         {"text": line.text, "confidence": round(line.confidence, 4), "box": list(line.box)}
                         for line in lines
-                    ]
+                    ],
                 }
-                for lines in pages
+                for size, lines in pages
             ],
-            "text": "\f".join("\n".join(line.text for line in lines) for lines in pages),
+            "text": "\f".join("\n".join(line.text for line in lines) for _, lines in pages),
         }
+
+    @app.post("/cards")
+    async def cards(request: Request):
+        got, refusal = await upload(request, "cards")
+        if refusal is not None:
+            return refusal
+        data, kind = got
+        try:
+            result, found, seconds = await run_in_threadpool(_find_cards, engines[0], work, data, kind)
+        except UnreadableFile as e:
+            return _refuse(400, str(e), len(data), kind, what="cards")
+        except Exception:
+            log.exception("cards failed: %s, %d bytes", kind, len(data))
+            return JSONResponse({"detail": "The OCR service failed to look for cards in this file."}, status_code=500)
+        log.info(
+            "cards: %s, %d bytes, %d page(s), %d card(s)%s, %.2f s",
+            kind,
+            len(data),
+            len(result["pages"]),
+            len(found),
+            "".join(f", {card.side or 'side unknown'}{' (whole picture)' if card.whole else ''}" for card in found),
+            seconds,
+        )
+        return result
 
     return app
 
@@ -148,13 +198,61 @@ def _read_document(engine, work: threading.Lock, data: bytes, kind: str, lang: s
                     )
                     for line in engine.read(page.image, lang)
                 ]
-                pages.append(reading_order(lines, right_to_left=RIGHT_TO_LEFT[lang]))
+                pages.append((page.size, reading_order(lines, right_to_left=RIGHT_TO_LEFT[lang])))
         return pages, time.perf_counter() - started
 
 
-def _refuse(status: int, detail: str, size: int | None = None, kind: str | None = None) -> JSONResponse:
-    what = ", ".join(part for part in (kind, f"{size} bytes" if size is not None else None) if part)
-    log.info("read refused (%d): %s%s", status, detail, f" [{what}]" if what else "")
+def _find_cards(engine, work: threading.Lock, data: bytes, kind: str):
+    """The response of /cards, the cards found, and the time it took."""
+    with work:
+        started = time.perf_counter()
+        pages, found = [], []
+        with Document(
+            data, kind, max_side=CARDS_MAX_SIDE, pdf_dpi=CARDS_PDF_DPI, first_pages=CARDS_PDF_PAGES
+        ) as document:
+            for index, page in enumerate(document.pages()):
+                full = page.image
+                shown = id_cards.shrunk(full, PAGE_SIDE)
+                found += id_cards.find_on_page(engine, shown, full, index)
+                pages.append(
+                    {"width": shown.shape[1], "height": shown.shape[0], "image": _jpeg(shown, PAGE_QUALITY)}
+                )
+        found = id_cards.in_order(found)[: id_cards.MAX_CARDS]
+        result = {"pages": pages, "cards": [_card_json(card) for card in found]}
+        return result, found, time.perf_counter() - started
+
+
+def _card_json(card: "id_cards.Card") -> dict:
+    box = card.box
+    return {
+        "page": card.page,
+        # pixel indices to distances from the page's top-left corner: a pixel's centre is half a pixel in
+        "box": {
+            "cx": round(float(box.cx) + 0.5, 2),
+            "cy": round(float(box.cy) + 0.5, 2),
+            "w": round(float(box.w), 2),
+            "h": round(float(box.h), 2),
+            "angle": round(float(box.angle), 2),
+        },
+        "frame": [round(float(v), 4) for v in card.frame],
+        "image": _jpeg(card.image, CARD_QUALITY),
+        "side": card.side,
+        "confidence": round(card.confidence, 3),
+    }
+
+
+def _jpeg(image, quality: int) -> str:
+    ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    if not ok:
+        raise RuntimeError("JPEG encoding failed")
+    return base64.b64encode(encoded.tobytes()).decode("ascii")
+
+
+def _refuse(
+    status: int, detail: str, size: int | None = None, kind: str | None = None, what: str = "read"
+) -> JSONResponse:
+    about = ", ".join(part for part in (kind, f"{size} bytes" if size is not None else None) if part)
+    log.info("%s refused (%d): %s%s", what, status, detail, f" [{about}]" if about else "")
     return JSONResponse({"detail": detail}, status_code=status)
 
 

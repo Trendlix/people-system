@@ -9,3 +9,6 @@ uvicorn==0.54.0
 python-multipart==0.0.32  # the upload is parsed as it streams in, in memory (app/upload.py)
 pypdfium2==5.13.0         # PDF pages to pictures, with no system packages
 pillow==12.3.0
+# Finding ID cards on a page (app/cards.py). PaddleOCR brings both anyway; named here because the service uses them.
+opencv-contrib-python==4.10.0.84
+numpy==2.3.5
