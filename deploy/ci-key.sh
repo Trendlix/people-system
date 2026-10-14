@@ -6,8 +6,8 @@
 # The key is tied to this deploy.sh: whoever holds it can start a deploy of what is on GitHub, and nothing else.
 # No shell, no file copy, no forwarding. Run it again to replace the key; the old one stops working.
 #
-# Prime ERP's pipeline has a key of its own on this server, named github-actions-deploy. This one has a different
-# name, so neither script ever removes the other's key.
+# Another system on this server may have a deploy key of its own (named github-actions-deploy). This one has a
+# different name, so it never removes another key, and no other script removes it.
 set -eu
 cd "$(dirname "$0")"
 here=$(pwd)

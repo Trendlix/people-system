@@ -1,0 +1,17 @@
+# People System's HTTPS, on port 8443 only.
+#
+# Ports 80 and 443 of this server belong to another system, and a public certificate can only be obtained through
+# them. So this Caddy issues the certificate itself, from a private authority of its own (tls internal). Only People
+# System's web app (on Vercel) ever calls this API, and it trusts exactly this authority: its root certificate is the
+# Vercel setting API_CA_CERT, printed by ./ca-cert.sh. The connection is encrypted and checked like any other HTTPS.
+{
+	# never listen on 80 or 443, and do not try to install the authority on this machine
+	auto_https disable_redirects
+	skip_install_trust
+}
+
+{$SERVER_NAME}:8443 {
+	tls internal
+	encode zstd gzip
+	reverse_proxy api:3001
+}

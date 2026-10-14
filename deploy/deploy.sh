@@ -13,10 +13,6 @@ if [ -z "${PEOPLE_FETCHED:-}" ]; then
   PEOPLE_FETCHED=1 exec sh "$0" "$@"
 fi
 
-# The network this API shares with Prime ERP's Caddy, which passes https://<server>:8443 on to it. Whichever
-# system deploys first creates it.
-docker network inspect edge >/dev/null 2>&1 || docker network create edge >/dev/null
-
 # People's records are in this database: before anything is changed, it is saved as it is. A new version may change
 # the tables, which happens when the API starts. The save is kept with the daily ones, in backups/; if it cannot be
 # made, nothing is deployed.

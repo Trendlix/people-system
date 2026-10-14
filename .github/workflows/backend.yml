@@ -12,6 +12,7 @@ name: Deploy backend
 # What it needs, set once in the repository's settings (Secrets and variables, Actions):
 #   secret VPS_SSH_KEY       the private key made on the server by deploy/ci-key.sh
 #   secret VPS_KNOWN_HOSTS   the server's own host key, printed by the same script
+#   variable API_CA_CERT     the root certificate of the API's private authority, printed by deploy/ca-cert.sh
 #   variables VPS_HOST, VPS_USER, API_URL   only if they differ from the ones written below
 
 on:
@@ -60,6 +61,17 @@ jobs:
           # the key is tied on the server to deploy.sh: whatever is asked for here, that script is what runs
           ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30 "$USER_NAME@$HOST" deploy
           rm -f ~/.ssh/deploy
+      # the API's certificate comes from its own private authority (deploy/Caddyfile): curl trusts exactly that one
+      - name: Trust the API's certificate
+        env:
+          CA: ${{ vars.API_CA_CERT }}
+        run: |
+          if [ -z "$CA" ]; then
+            echo "::error::The variable API_CA_CERT is not set. Run deploy/ca-cert.sh on the server and save what it prints as a repository variable."
+            exit 1
+          fi
+          printf '%s' "$CA" | base64 -d > "$RUNNER_TEMP/api-ca.crt"
+          echo "CURL_CA_BUNDLE=$RUNNER_TEMP/api-ca.crt" >> "$GITHUB_ENV"
       - name: The API answers
         run: |
           curl -fsS --retry 12 --retry-delay 5 --retry-all-errors "$API_URL/api/health" | tee /dev/stderr | grep -q '"ok"'

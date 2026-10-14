@@ -1,4 +1,5 @@
 import 'server-only';
+import './api-ca';
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { SESSION_COOKIE } from './constants';
