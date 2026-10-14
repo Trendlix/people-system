@@ -15,5 +15,8 @@ export const seesIdentity = (user: SessionUser) => has(user, ['hr', 'ceo']);
 /** Bank and payment: HR, Finance and CEO. */
 export const seesBank = (user: SessionUser) => has(user, ['hr', 'finance', 'ceo']);
 
-/** Only HR adds, changes and deletes employees. */
+/** Only HR adds and changes employees. */
 export const editsEmployees = (user: SessionUser) => has(user, ['hr']);
+
+/** HR and Admin (the top role) can delete an employee record, e.g. one added by mistake. */
+export const deletesEmployees = (user: SessionUser) => has(user, ['hr', 'admin']);

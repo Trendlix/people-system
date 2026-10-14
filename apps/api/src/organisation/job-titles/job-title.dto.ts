@@ -28,9 +28,8 @@ export class CreateJobTitleDto {
 
   @TrimOrNull()
   @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  grade?: string | null;
+  @IsUUID('all', { message: 'Choose a grade.' })
+  gradeId?: string | null;
 
   @TrimOrNull()
   @IsOptional()
@@ -73,9 +72,8 @@ export class UpdateJobTitleDto {
 
   @TrimOrNull()
   @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  grade?: string | null;
+  @IsUUID('all', { message: 'Choose a grade.' })
+  gradeId?: string | null;
 
   @TrimOrNull()
   @IsOptional()

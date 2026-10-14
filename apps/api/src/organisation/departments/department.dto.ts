@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { Trim, TrimOrNull } from '../../common/transforms.js';
 
 export class CreateDepartmentDto {
@@ -40,4 +40,18 @@ export class UpdateDepartmentDto {
   @IsOptional()
   @IsUUID('all', { message: 'Choose the department this team belongs to.' })
   parentId?: string | null;
+}
+
+/** The new order of all departments (parentId empty), or of all the teams of one department. */
+export class ReorderDepartmentsDto {
+  @TrimOrNull()
+  @IsOptional()
+  @IsUUID('all', { message: 'Choose the department whose teams are reordered.' })
+  parentId?: string | null;
+
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  ids: string[];
 }

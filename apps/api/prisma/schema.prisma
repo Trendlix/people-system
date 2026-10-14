@@ -84,6 +84,7 @@ model Department {
   nameEn    String       @map("name_en") // unique among a department's teams; among departments, checked by the API
   nameAr    String?      @map("name_ar")
   parentId  String?      @map("parent_id") @db.Uuid
+  sortOrder Int          @default(0) @map("sort_order") // the order set by an Admin, among departments or among one department's teams
   parent    Department?  @relation("SubDepartments", fields: [parentId], references: [id], onDelete: Restrict)
   children  Department[] @relation("SubDepartments")
   createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz
@@ -115,7 +116,8 @@ model JobTitle {
   department     Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   titleEn        String         @map("title_en")
   titleAr        String?        @map("title_ar")
-  grade          String?
+  gradeId        String?        @map("grade_id") @db.Uuid
+  grade          Grade?         @relation(fields: [gradeId], references: [id], onDelete: Restrict)
   jdPurpose      String?        @map("jd_purpose")
   jdRequirements String?        @map("jd_requirements")
   jdVersion      Int            @default(1) @map("jd_version")
@@ -126,6 +128,22 @@ model JobTitle {
 
   @@unique([departmentId, titleEn])
   @@map("job_titles")
+}
+
+// The grading system (owner's table, 14 October 2026): G1 Entry Level … G9 Executive. The rank orders the hierarchy
+// (1 = entry level). Every job title has a grade; an employee's grade is their job title's.
+model Grade {
+  id          String     @id @default(uuid()) @db.Uuid
+  code        String     @unique // G1 … G9
+  rank        Int        @unique // 1 = lowest level
+  levelEn     String     @map("level_en") // Entry Level, Junior, … Executive
+  levelAr     String?    @map("level_ar")
+  description String? // e.g. example job titles
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  jobTitles   JobTitle[]
+
+  @@map("grades")
 }
 
 model JobTitleDuty {

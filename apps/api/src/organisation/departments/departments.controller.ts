@@ -1,7 +1,7 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import { CurrentUser, Roles } from '../../auth/decorators.js';
 import type { SessionUser } from '../../auth/session-user.js';
-import { CreateDepartmentDto, UpdateDepartmentDto } from './department.dto.js';
+import { CreateDepartmentDto, ReorderDepartmentsDto, UpdateDepartmentDto } from './department.dto.js';
 import { DepartmentsService } from './departments.service.js';
 
 @Controller('departments')
@@ -35,5 +35,13 @@ export class DepartmentsController {
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
     return this.departments.remove(id, user.id);
+  }
+
+  /** The order departments (or one department's teams) are listed in: Admins only. */
+  @Roles('admin')
+  @Put('order')
+  @HttpCode(204)
+  reorder(@Body() dto: ReorderDepartmentsDto, @CurrentUser() user: SessionUser) {
+    return this.departments.reorder(dto.parentId ?? null, dto.ids, user.id);
   }
 }

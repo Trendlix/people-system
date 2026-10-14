@@ -55,7 +55,7 @@ export class EmployeesController {
     return this.employees.updateBank(id, dto, user);
   }
 
-  @Roles('hr')
+  @Roles('hr', 'admin')
   @Delete(':id')
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {

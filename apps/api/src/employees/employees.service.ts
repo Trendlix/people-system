@@ -6,7 +6,7 @@ import { addMonths, fromDateOnly, toDateOnly, todayInCairo } from '../common/dat
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { editsEmployees, seesBank, seesEveryone, seesIdentity } from './access.js';
+import { deletesEmployees, editsEmployees, seesBank, seesEveryone, seesIdentity } from './access.js';
 import { birthDateFromNationalId, maskTail } from './checks.js';
 import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
 
@@ -23,13 +23,21 @@ const SUMMARY = {
   employmentType: true,
   joinDate: true,
   department: { select: { id: true, nameEn: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
-  jobTitle: { select: { id: true, titleEn: true } },
+  jobTitle: { select: { id: true, titleEn: true, grade: { select: { id: true, code: true, rank: true, levelEn: true } } } },
   manager: { select: { id: true, fullNameEn: true } },
 } satisfies Prisma.EmployeeSelect;
 
 const PROFILE = {
   department: { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
-  jobTitle: { select: { id: true, titleEn: true, titleAr: true, grade: true, jdVersion: true } },
+  jobTitle: {
+    select: {
+      id: true,
+      titleEn: true,
+      titleAr: true,
+      jdVersion: true,
+      grade: { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } },
+    },
+  },
   manager: { select: { id: true, employeeCode: true, fullNameEn: true } },
   shift: { select: { id: true, code: true, startTime: true, endTime: true } },
   reports: {
@@ -158,7 +166,7 @@ export class EmployeesService {
       reports,
       ...(identity && { identity: maskedIdentity(idRow ?? null) }),
       ...(bank && { bank: maskedBank(bankRow ?? null) }),
-      access: { edit: editsEmployees(user), identity, bank },
+      access: { edit: editsEmployees(user), delete: deletesEmployees(user), identity, bank },
     };
   }
 

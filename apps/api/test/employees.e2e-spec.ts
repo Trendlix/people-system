@@ -40,7 +40,9 @@ describe('Employees (e2e)', () => {
     hr = await signIn(app, await createUser(prisma, ['hr']));
     finance = await signIn(app, await createUser(prisma, ['finance']));
     const dept = await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Web ${RUN}` }).expect(201);
-    departmentId = dept.body.id;
+    // job titles belong to teams, so the Frontend Developer's department is the Frontend team
+    const team = await api().post('/api/departments').set('Cookie', hr).send({ nameEn: 'Frontend', parentId: dept.body.id }).expect(201);
+    departmentId = team.body.id;
     const other = await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Media ${RUN}` }).expect(201);
     otherDepartmentId = other.body.id;
     const job = await api().post('/api/job-titles').set('Cookie', hr).send({ departmentId, titleEn: 'Frontend Developer' }).expect(201);
@@ -65,7 +67,7 @@ describe('Employees (e2e)', () => {
         mobile: '01012345678',
         workArrangement: 'office',
         officeDays: [],
-        access: { edit: true, identity: true, bank: true },
+        access: { edit: true, delete: true, identity: true, bank: true },
         identity: null,
         bank: null,
       });
@@ -145,6 +147,14 @@ describe('Employees (e2e)', () => {
       expect(res.body.message).toContain('1 employee');
       await api().delete(`/api/employees/${dev.id}`).set('Cookie', hr).expect(204);
       await api().get(`/api/employees/${dev.id}`).set('Cookie', hr).expect(404);
+    });
+
+    it('lets an Admin delete an employee record', async () => {
+      const admin = await signIn(app, await createUser(prisma, ['admin']));
+      const e = await addEmployee('Added By Mistake');
+      await api().patch(`/api/employees/${e.id}`).set('Cookie', admin).send({ nationality: 'X' }).expect(403);
+      await api().delete(`/api/employees/${e.id}`).set('Cookie', admin).expect(204);
+      await api().get(`/api/employees/${e.id}`).set('Cookie', hr).expect(404);
     });
 
     it('only HR adds, changes and deletes', async () => {
@@ -280,7 +290,7 @@ describe('Employees (e2e)', () => {
       const list = await api().get('/api/employees').set('Cookie', staffSession).expect(200);
       expect(list.body.map((e: { id: string }) => e.id)).toEqual([report.id]);
       const own = await api().get(`/api/employees/${report.id}`).set('Cookie', staffSession).expect(200);
-      expect(own.body.access).toEqual({ edit: false, identity: false, bank: false });
+      expect(own.body.access).toEqual({ edit: false, delete: false, identity: false, bank: false });
       expect(own.body).not.toHaveProperty('identity');
       expect(own.body).not.toHaveProperty('bank');
       await api().get(`/api/employees/${manager.id}`).set('Cookie', staffSession).expect(404);
