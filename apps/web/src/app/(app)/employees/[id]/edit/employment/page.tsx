@@ -16,7 +16,7 @@ async function EditEmployment({ params }: { params: Promise<{ id: string }> }) {
           <div className="space-y-8">
             <EmploymentForm action={updateEmployment.bind(null, employee.id)} employee={employee} pickers={pickers} />
             <section className="max-w-xl space-y-2">
-              <h2 className="font-semibold">Delete employee</h2>
+              <h2 className="font-semibold">Delete Employee</h2>
               <p className="text-sm text-muted">
                 Only for records added by mistake. When someone leaves, change their status to Resigned or Terminated instead, so their history is
                 kept.

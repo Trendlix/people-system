@@ -34,7 +34,7 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
           </Suspense>
         </nav>
         <div className="mt-8 hidden md:block">
-          <p className="px-3 text-xs font-semibold tracking-wide text-sidebar-text/70 uppercase">Coming next</p>
+          <p className="px-3 text-xs font-semibold tracking-wide text-sidebar-text/70 uppercase">Coming Next</p>
           <ul className="mt-2">
             {COMING_SOON.map((label) => (
               <li key={label} className="px-3 py-1.5 text-sm text-sidebar-text/60">

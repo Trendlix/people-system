@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { startTransition, useActionState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import type { EmployeeIdentity, FormState } from '@/lib/types';
+import { CardReadStatus, CardTextDetails } from '../../../id-card';
 import { FILE_INPUT, limitFileSize, paperworkHref, PHOTO_ACCEPT, type IdScanState } from '../../../paperwork';
 import { withSmallerPhotos } from '../../../shrink-photo';
 import { NationalIdForm, type CardProfile } from './national-id-form';
@@ -12,18 +13,6 @@ import { NationalIdForm, type CardProfile } from './national-id-form';
 // What the card says stays in this page (never in a URL) until HR checks it and saves.
 
 const viewLink = 'inline-flex min-h-9 items-center text-sm font-semibold';
-
-function CardText({ title, text }: { title: string; text: string | null }) {
-  if (!text) return null;
-  return (
-    <div>
-      <p className="text-xs font-semibold text-muted">{title}</p>
-      <pre lang="ar" dir="auto" className="mt-1 text-xs whitespace-pre-wrap">
-        {text}
-      </pre>
-    </div>
-  );
-}
 
 export function NationalIdEditor({
   saveAction,
@@ -47,12 +36,11 @@ export function NationalIdEditor({
     startTransition(() => formAction(ready));
   }
   const scan = state.scan;
-  const found = scan ? Object.keys(scan.suggestions).length : 0;
 
   return (
     <>
       <section className="card max-w-2xl p-6">
-        <h2 className="font-semibold">Fill from ID card photos</h2>
+        <h2 className="font-semibold">Fill from ID Card Photos</h2>
         <p className="mt-1 text-sm text-muted">
           The photos are read and the national ID details below are filled in for you to check. Nothing changes until you save. The photos are
           kept in the employee file.
@@ -82,11 +70,7 @@ export function NationalIdEditor({
 
         {scan && (
           <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <p role="status" className={`rounded-lg px-4 py-3 text-sm ${found ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'}`}>
-              {found
-                ? `${found} ${found === 1 ? 'detail was' : 'details were'} read from the card and filled in below. Check each one against the card before saving.`
-                : 'Nothing could be read from the card with confidence. Fill in the details by hand, or try a sharper photo.'}
-            </p>
+            <CardReadStatus suggestions={scan.suggestions} />
             <div className="flex flex-wrap gap-x-4">
               {/* Never prefetched: each download of a national ID scan is written to the audit log. */}
               <Link href={paperworkHref(scan.front.itemId)} prefetch={false} target="_blank" rel="noopener" className={viewLink}>
@@ -98,15 +82,7 @@ export function NationalIdEditor({
                 </Link>
               )}
             </div>
-            {(scan.front.text || scan.back?.text) && (
-              <details className="text-sm">
-                <summary className="cursor-pointer font-semibold">Text read from the card</summary>
-                <div className="mt-2 space-y-3 rounded-lg bg-canvas p-3">
-                  <CardText title="Front" text={scan.front.text} />
-                  <CardText title="Back" text={scan.back?.text ?? null} />
-                </div>
-              </details>
-            )}
+            <CardTextDetails front={scan.front.text} back={scan.back?.text ?? null} />
           </div>
         )}
       </section>

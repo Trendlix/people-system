@@ -83,7 +83,7 @@ async function Search({ searchParams }: { searchParams: Promise<Query> }) {
                   <th>Employee</th>
                   <th>Document</th>
                   <th>Uploaded</th>
-                  <th>Found text</th>
+                  <th>Found Text</th>
                   <th>
                     <span className="sr-only">File</span>
                   </th>
@@ -139,7 +139,7 @@ export default function DocumentSearchPage({ searchParams }: PageProps<'/employe
     <div className="space-y-4">
       <BackLink href="/employees">Employees</BackLink>
       <div>
-        <h1 className="text-2xl font-semibold">Search documents</h1>
+        <h1 className="text-2xl font-semibold">Search Documents</h1>
         <p className="mt-1 text-muted">Find scanned paperwork in the employee files by the text read from it.</p>
       </div>
       <Suspense fallback={<Loading />}>

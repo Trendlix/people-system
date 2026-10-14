@@ -1,9 +1,9 @@
 import type { Role } from '@trendlix/shared';
 import { isAdmin, ROLE_LABELS } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
-import { BackLink, Empty, Loading } from '../organisation/ui';
+import { BackLink, Empty, Loading } from '../organization/ui';
 
-// Small building blocks shared by the Users pages (the generic ones come from the Organisation pages).
+// Small building blocks shared by the Users pages (the generic ones come from the Organization pages).
 
 export { BackLink, Empty, Loading };
 

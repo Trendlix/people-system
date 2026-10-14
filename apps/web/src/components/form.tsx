@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useId } from 'react';
+import { startTransition, useActionState, useId } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { FormState } from '@/lib/types';
 
@@ -56,6 +56,22 @@ export function DeleteForm({
       </button>
     </form>
   );
+}
+
+/**
+ * A form whose fields keep what was chosen when the API refuses a save. React resets a form after its action has run,
+ * which puts selects (and anything else not refilled from `state.values`) back to how they started. Spread `form` on
+ * the `<form>`: its onSubmit sends the action itself and stops the submission, which React then leaves alone (no
+ * reset); `action` is still there for a submission made before the page has loaded its scripts.
+ */
+export function useKeptForm(action: (prev: FormState, fd: FormData) => Promise<FormState>) {
+  const [state, formAction, pending] = useActionState(action, {});
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    startTransition(() => formAction(fd));
+  }
+  return { state, pending, form: { action: formAction, onSubmit } };
 }
 
 /** Value to show in a field: what the user just typed (after a failed save), else the saved value. */

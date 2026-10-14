@@ -1,14 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState } from 'react';
 import { GENDERS, LABELS, type Gender } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
-import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
+import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { formatDate } from '@/lib/format';
-import type { EmployeeIdentity, EmployeeProfile, FormState, IdCardScan } from '@/lib/types';
-
-type Suggestions = IdCardScan['suggestions'];
+import type { EmployeeIdentity, EmployeeProfile, FormState } from '@/lib/types';
+import { cardMarks, FROM_CARD, NationalIdFields, type CardSuggestions as Suggestions } from '../../../id-card';
 
 /** The profile's current values for the personal details printed on an ID card. */
 export type CardProfile = Pick<EmployeeProfile, 'fullNameAr' | 'addressAr' | 'dateOfBirth' | 'gender'>;
@@ -20,8 +18,6 @@ const PERSONAL = [
   { key: 'gender', label: 'Gender' },
 ] as const;
 type PersonalKey = (typeof PERSONAL)[number]['key'];
-
-const FROM_CARD = 'Read from the card — check before saving.';
 
 const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? '').replace(/\s+/g, ' ').trim() === (b ?? '').replace(/\s+/g, ' ').trim();
 
@@ -54,19 +50,12 @@ export function NationalIdForm({
   suggestions?: Suggestions;
   profile?: CardProfile;
 }) {
-  const [state, formAction] = useActionState(action, {});
+  // Kept form: a refused save leaves the gender read from the card as it was chosen.
+  const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
   const s: Suggestions = suggestions ?? {};
 
-  const read = (key: keyof Suggestions) => s[key] !== undefined;
-  /** The ids describing a field: its own hint (if any) and the "read from the card" note. */
-  const describedBy = (key: keyof Suggestions, hint?: string) => [hint, read(key) ? fid(`${key}-card`) : undefined].filter(Boolean).join(' ') || undefined;
-  const cardNote = (key: keyof Suggestions) =>
-    read(key) && (
-      <p id={fid(`${key}-card`)} className="hint text-warn">
-        {FROM_CARD}
-      </p>
-    );
+  const { read } = cardMarks(fid, s);
 
   // Personal details the card gives that differ from the profile; the matching ones are only listed.
   const personal = profile ? PERSONAL.filter((f) => read(f.key)) : [];
@@ -100,99 +89,15 @@ export function NationalIdForm({
   }
 
   return (
-    <form action={formAction} className="card max-w-2xl space-y-5 p-6">
+    <form {...form} className="card max-w-2xl space-y-5 p-6">
       <FormErrors errors={state.errors} />
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div>
-          <label htmlFor={fid('nationalId')} className="label">
-            National ID number{' '}
-            <span lang="ar" className="font-normal text-muted">
-              (الرقم القومي)
-            </span>
-          </label>
-          <input
-            id={fid('nationalId')}
-            name="nationalId"
-            inputMode="numeric"
-            autoComplete="off"
-            maxLength={14}
-            aria-describedby={describedBy('nationalId', fid('nationalId-hint'))}
-            defaultValue={valueOf(state, 'nationalId', s.nationalId ?? identity.nationalId)}
-            className="input tabular-nums"
-          />
-          <p id={fid('nationalId-hint')} className="hint">
-            14 digits. It must agree with the date of birth.
-          </p>
-          {cardNote('nationalId')}
-        </div>
-        <div>
-          <label htmlFor={fid('printedNo')} className="label">
-            Printed number{' '}
-            <span lang="ar" className="font-normal text-muted">
-              (الرقم المطبوع)
-            </span>
-          </label>
-          <input
-            id={fid('printedNo')}
-            name="printedNo"
-            autoComplete="off"
-            maxLength={20}
-            aria-describedby={describedBy('printedNo')}
-            defaultValue={valueOf(state, 'printedNo', s.printedNo ?? identity.printedNo)}
-            className="input tabular-nums"
-          />
-          {cardNote('printedNo')}
-        </div>
-        <div>
-          <label htmlFor={fid('issueDate')} className="label">
-            Issue date
-          </label>
-          <DateInput
-            id={fid('issueDate')}
-            name="issueDate"
-            aria-describedby={describedBy('issueDate')}
-            defaultValue={valueOf(state, 'issueDate', formatDate(s.issueDate ?? identity.issueDate))}
-          />
-          {cardNote('issueDate')}
-        </div>
-        <div>
-          <label htmlFor={fid('expiryDate')} className="label">
-            Expiry date
-          </label>
-          <DateInput
-            id={fid('expiryDate')}
-            name="expiryDate"
-            aria-describedby={describedBy('expiryDate')}
-            defaultValue={valueOf(state, 'expiryDate', formatDate(s.expiryDate ?? identity.expiryDate))}
-          />
-          {cardNote('expiryDate')}
-        </div>
-        <div className="sm:col-span-2">
-          <label htmlFor={fid('issuingOffice')} className="label">
-            Issuing office{' '}
-            <span lang="ar" className="font-normal text-muted">
-              (جهة الإصدار)
-            </span>
-          </label>
-          <input
-            id={fid('issuingOffice')}
-            name="issuingOffice"
-            lang="ar"
-            dir="rtl"
-            maxLength={150}
-            aria-describedby={describedBy('issuingOffice')}
-            defaultValue={valueOf(state, 'issuingOffice', s.issuingOffice ?? identity.issuingOffice)}
-            className="input"
-          />
-          {cardNote('issuingOffice')}
-        </div>
-      </div>
+      <NationalIdFields state={state} fid={fid} identity={identity} suggestions={s} />
 
       {personal.length > 0 && (
         <div className="border-t border-line pt-6">
           <fieldset className="space-y-4">
-            <legend className="font-semibold">Personal details on the card</legend>
+            <legend className="font-semibold">Personal Details on the Card</legend>
             {differing.length > 0 && (
               <p className="text-sm text-muted">Tick the ones to save to the profile as well. They are saved together with the national ID.</p>
             )}
@@ -219,7 +124,7 @@ export function NationalIdForm({
       )}
 
       <div className="flex flex-wrap gap-3 border-t border-line pt-6">
-        <SubmitButton>Save national ID</SubmitButton>
+        <SubmitButton busy={pending}>Save national ID</SubmitButton>
         <Link href={`/employees/${employeeId}`} className="btn btn-secondary">
           Cancel
         </Link>

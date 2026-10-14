@@ -24,7 +24,7 @@ export function UploadPaperworkForm({ action, defaultKind }: { action: Action; d
   return (
     <form action={upload} className="space-y-4 border-t border-line pt-6">
       <div>
-        <h3 className="font-semibold">Upload a scan</h3>
+        <h3 className="font-semibold">Upload a Scan</h3>
         <p className="mt-1 text-sm text-muted">
           A photo (JPEG, PNG or WebP) or a PDF of up to 4 MB. On a phone you can take a photo. Reading the text takes a few seconds.
         </p>

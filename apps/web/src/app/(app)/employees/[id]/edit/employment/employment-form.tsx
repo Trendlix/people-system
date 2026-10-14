@@ -1,9 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState } from 'react';
 import { DateInput } from '@/components/date-time-inputs';
-import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
+import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, FormState } from '@/lib/types';
 import { EmploymentFields, type EmploymentPickers } from '../../../employment-fields';
@@ -17,11 +16,12 @@ export function EmploymentForm({
   employee: EmployeeProfile;
   pickers: EmploymentPickers;
 }) {
-  const [state, formAction] = useActionState(action, {});
+  // Kept form: a refused save leaves the selects (type, status, manager, shift…) as they were chosen.
+  const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
 
   return (
-    <form action={formAction} className="card max-w-3xl space-y-5 p-6">
+    <form {...form} className="card max-w-3xl space-y-5 p-6">
       <FormErrors errors={state.errors} />
       <EmploymentFields state={state} fid={fid} pickers={pickers} employee={employee} />
       <div className="max-w-64">
@@ -39,7 +39,7 @@ export function EmploymentForm({
         </p>
       </div>
       <div className="flex flex-wrap gap-3 border-t border-line pt-6">
-        <SubmitButton>Save changes</SubmitButton>
+        <SubmitButton busy={pending}>Save changes</SubmitButton>
         <Link href={`/employees/${employee.id}`} className="btn btn-secondary">
           Cancel
         </Link>

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { LABELS } from '@trendlix/shared';
 import { apiGet } from '@/lib/api';
+import { departmentName } from '@/lib/departments';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import type { EmployeeBank, EmployeeIdentity } from '@/lib/types';
@@ -58,7 +59,8 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
 
   const base = `/employees/${id}`;
   const edit = (part: string) => (p.access.edit ? `${base}/edit/${part}` : undefined);
-  const role = [p.jobTitle?.titleEn, p.department?.nameEn].filter(Boolean).join(' · ');
+  const department = p.department && departmentName(p.department); // "Marketing › Content Team" for a team
+  const role = [p.jobTitle?.titleEn, department].filter(Boolean).join(' · ');
   const emergency = p.emergencyName
     ? `${p.emergencyName}${p.emergencyRelation ? ` (${p.emergencyRelation})` : ''}${p.emergencyMobile ? ` · ${p.emergencyMobile}` : ''}`
     : p.emergencyMobile;
@@ -111,7 +113,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
           </Row>
         </Section>
 
-        <Section title="Contact & address" editHref={edit('personal')}>
+        <Section title="Contact & Address" editHref={edit('personal')}>
           <Row label="Work email">{p.workEmail && <a href={`mailto:${p.workEmail}`}>{p.workEmail}</a>}</Row>
           <Row label="Personal email">{p.personalEmail && <a href={`mailto:${p.personalEmail}`}>{p.personalEmail}</a>}</Row>
           <Row label="Mobile">{p.mobile}</Row>
@@ -139,7 +141,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
           <Row label="Status">
             <StatusBadge status={p.status} />
           </Row>
-          <Row label="Department">{p.department?.nameEn}</Row>
+          <Row label="Department">{department}</Row>
           <Row label="Job title">{p.jobTitle?.titleEn}</Row>
           <Row label="Job title (Arabic)" ar>
             {p.jobTitle?.titleAr}
@@ -159,7 +161,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
 
         {p.reports.length > 0 && (
           <section className="card p-6">
-            <h2 className="font-semibold">Team</h2>
+            <h2 className="font-semibold">Direct Reports</h2>
             <p className="mt-1 text-sm text-muted">
               {p.reports.length} direct {p.reports.length === 1 ? 'report' : 'reports'}
             </p>
@@ -220,7 +222,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
         )}
 
         {p.access.bank && (
-          <Section title="Bank & payment" restricted editHref={edit('bank')} emptyText={p.bank ? undefined : 'No bank details recorded yet.'}>
+          <Section title="Bank & Payment" restricted editHref={edit('bank')} emptyText={p.bank ? undefined : 'No bank details recorded yet.'}>
             {p.bank && (
               <>
                 <Row label="Bank">{p.bank.bankName}</Row>

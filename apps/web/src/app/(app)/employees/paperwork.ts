@@ -1,5 +1,5 @@
 import { PAPERWORK_KINDS, type PaperworkKind } from '@trendlix/shared';
-import type { FormState, IdCardScan, OcrStatus } from '@/lib/types';
+import type { FormState, IdCardReading, IdCardScan, OcrStatus } from '@/lib/types';
 
 // The employee file (scanned paperwork, spec §8.5), shared by the profile card, the upload and ID card forms and
 // their actions. Which scans a file needs comes from requiredPaperwork in @trendlix/shared.
@@ -60,3 +60,6 @@ export function limitFileSize(e: React.ChangeEvent<HTMLInputElement>) {
 
 /** What the "Fill from ID card photos" box keeps after reading a card. */
 export type IdScanState = FormState & { scan?: IdCardScan };
+
+/** What reading a new employee's ID card gives the Add employee page: what the card says, or why it was not read. */
+export type IdReadState = FormState & { reading?: IdCardReading };

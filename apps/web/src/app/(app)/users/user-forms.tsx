@@ -200,7 +200,7 @@ export function PasswordForm({ action, email }: { action: Action; email: string 
   return (
     <form action={formAction} className="card max-w-xl space-y-5 p-6">
       <div>
-        <h3 className="font-semibold">Set a new temporary password</h3>
+        <h3 className="font-semibold">Set a New Temporary Password</h3>
         <p className="mt-1 text-sm text-muted">For when {email} has forgotten their password. The old one stops working at once.</p>
       </div>
       <FormErrors errors={state.errors} />

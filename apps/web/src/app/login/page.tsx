@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 import { Brand, BrandFallback } from '@/components/brand';
 import { LoginForm } from './login-form';
 
-export const metadata: Metadata = { title: 'Sign in · People System' };
+export const metadata: Metadata = { title: 'Sign In · People System' };
 
 export default function LoginPage() {
   return (
@@ -15,7 +15,7 @@ export default function LoginPage() {
           </Suspense>
         </div>
         <div className="card p-6">
-          <h1 className="mb-6 text-xl font-semibold">Sign in</h1>
+          <h1 className="mb-6 text-xl font-semibold">Sign In</h1>
           <Suspense>
             <LoginForm />
           </Suspense>

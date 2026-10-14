@@ -12,6 +12,21 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: '25mb',
   },
   partialPrefetching: true,
+  // Old addresses keep working (checked in order; the first match wins). Query values are passed through.
+  async redirects() {
+    const old = '/:org(organisation|organization)';
+    const department = { type: 'query', key: 'departmentId', value: '(?<departmentId>[0-9a-fA-F-]{36})' } as const;
+    return [
+      // Job titles moved under their department. /organization/job-titles/<id> is forwarded by its page, which looks
+      // up the job title's department.
+      { source: `${old}/job-titles`, has: [department], destination: '/organization/departments/:departmentId', permanent: true },
+      { source: `${old}/job-titles`, destination: '/organization/departments', permanent: true },
+      { source: `${old}/job-titles/new`, has: [department], destination: '/organization/departments/:departmentId/job-titles/new', permanent: true },
+      { source: `${old}/job-titles/new`, destination: '/organization/departments', permanent: true },
+      // The pages were at /organisation (British spelling) until October 2026.
+      { source: '/organisation/:path*', destination: '/organization/:path*', permanent: true },
+    ];
+  },
   turbopack: {
     rules: {
       "*.css": {

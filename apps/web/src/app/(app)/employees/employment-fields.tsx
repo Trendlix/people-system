@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { EMPLOYEE_STATUSES, EMPLOYMENT_TYPES, LABELS, PROBATION_MONTHS, WORK_ARRANGEMENTS } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
+import { DepartmentOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
 import { formatDate, formatTime } from '@/lib/format';
 import type { Department, EmployeeProfile, EmployeeSummary, FormState, JobTitleSummary, Shift } from '@/lib/types';
@@ -45,14 +46,19 @@ export function EmploymentFields({
   pickers: EmploymentPickers;
   employee?: EmployeeProfile;
 }) {
-  // Kept in state: office days show only for Hybrid, and the department follows the chosen job title.
+  // Kept in state: office days show only for Hybrid, and the job titles listed are the chosen department's.
   const [arrangement, setArrangement] = useState(() => valueOf(state, 'workArrangement', employee?.workArrangement ?? 'office'));
-  const [departmentId, setDepartmentId] = useState(() => valueOf(state, 'departmentId', employee?.departmentId));
   const [jobTitleId, setJobTitleId] = useState(() => valueOf(state, 'jobTitleId', employee?.jobTitleId));
+  // A job title without a department on the profile brings its own department, so it stays selected.
+  const [departmentId, setDepartmentId] = useState(() =>
+    valueOf(state, 'departmentId', employee?.departmentId ?? pickers.jobTitles.find((j) => j.id === employee?.jobTitleId)?.departmentId),
+  );
 
-  const titlesByDepartment = pickers.departments
-    .map((d) => ({ department: d, titles: pickers.jobTitles.filter((j) => j.departmentId === d.id) }))
-    .filter((g) => g.titles.length > 0);
+  // Job titles belong to a department or a team: only the chosen one's own are listed (and the current one, so it
+  // stays shown). A department's list leaves out its teams' job titles: for those, choose the team.
+  const titles = departmentId ? pickers.jobTitles.filter((j) => j.departmentId === departmentId || j.id === jobTitleId) : [];
+  const chosen = pickers.departments.find((d) => d.id === departmentId);
+  const jobTitleHint = chosen && titles.length === 0 ? `No job titles in ${chosen.parentId ? 'this team' : 'this department'} yet.` : undefined;
 
   const managerId = valueOf(state, 'managerId', employee?.managerId);
   // People who have left can't be picked as a new manager, but a current choice stays visible.
@@ -61,12 +67,6 @@ export function EmploymentFields({
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn));
 
   const officeDays = officeDaysOf(state, employee?.officeDays ?? []);
-
-  function pickJobTitle(id: string) {
-    setJobTitleId(id);
-    const title = pickers.jobTitles.find((j) => j.id === id);
-    if (title) setDepartmentId(title.departmentId);
-  }
 
   function pickDepartment(id: string) {
     setDepartmentId(id);
@@ -111,7 +111,7 @@ export function EmploymentFields({
 
         <div>
           <label htmlFor={fid('departmentId')} className="label">
-            Department
+            Department or team
           </label>
           <select
             id={fid('departmentId')}
@@ -121,39 +121,35 @@ export function EmploymentFields({
             className="input"
           >
             <option value="">No department</option>
-            {pickers.departments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.nameEn}
-              </option>
-            ))}
+            <DepartmentOptions departments={pickers.departments} />
           </select>
         </div>
         <div>
           <label htmlFor={fid('jobTitleId')} className="label">
             Job title
           </label>
+          {/* Disabled (and so not sent) until a department or team with job titles is chosen: no job title is saved then. */}
           <select
             id={fid('jobTitleId')}
             name="jobTitleId"
             value={jobTitleId}
-            onChange={(e) => pickJobTitle(e.target.value)}
-            aria-describedby={fid('jobTitleId-hint')}
-            className="input"
+            onChange={(e) => setJobTitleId(e.target.value)}
+            disabled={titles.length === 0}
+            aria-describedby={jobTitleHint ? fid('jobTitleId-hint') : undefined}
+            className="input disabled:cursor-not-allowed disabled:bg-canvas disabled:text-muted"
           >
-            <option value="">No job title</option>
-            {titlesByDepartment.map((g) => (
-              <optgroup key={g.department.id} label={g.department.nameEn}>
-                {g.titles.map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.grade ? `${j.titleEn} (${j.grade})` : j.titleEn}
-                  </option>
-                ))}
-              </optgroup>
+            <option value="">{departmentId ? 'No job title' : 'Choose a department or team first'}</option>
+            {titles.map((j) => (
+              <option key={j.id} value={j.id}>
+                {j.grade ? `${j.titleEn} (${j.grade})` : j.titleEn}
+              </option>
             ))}
           </select>
-          <p id={fid('jobTitleId-hint')} className="hint">
-            Choosing a job title also sets its department.
-          </p>
+          {jobTitleHint && (
+            <p id={fid('jobTitleId-hint')} className="hint">
+              {jobTitleHint}
+            </p>
+          )}
         </div>
 
         <div className="sm:col-span-2">

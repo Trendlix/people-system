@@ -19,11 +19,26 @@ export interface SessionUser {
   roles: Role[];
 }
 
-export interface Department {
+/** A department as other records name it. `parent` is set when it is a team: the department the team belongs to. */
+export interface DepartmentRef {
   id: string;
   nameEn: string;
   nameAr: string | null;
-  _count: { jobTitles: number };
+}
+
+/**
+ * A department or a team (owner's words: Department → Team → Job title, e.g. Marketing → Content Team → Senior Content
+ * Creator). One level only: a team belongs to a department (`parentId`), and a team has no teams of its own. The API
+ * calls teams sub-departments (`parent`, `children`); GET /departments returns departments and teams in one list.
+ */
+export interface Department extends DepartmentRef {
+  /** The department this team belongs to; null for a department. */
+  parentId: string | null;
+  parent: DepartmentRef | null;
+  /** `children`: how many teams it has. */
+  _count: { jobTitles: number; children: number };
+  /** GET /departments/:id only: its teams, sorted by name. */
+  children?: (DepartmentRef & { _count: { jobTitles: number } })[];
 }
 
 export interface JobTitleSummary {
@@ -33,7 +48,7 @@ export interface JobTitleSummary {
   titleAr: string | null;
   grade: string | null;
   jdVersion: number;
-  department: { id: string; nameEn: string; nameAr: string | null };
+  department: DepartmentRef & { parent: DepartmentRef | null };
   _count: { duties: number };
 }
 
@@ -99,7 +114,8 @@ export interface EmployeeSummary {
   status: EmployeeStatus;
   employmentType: EmploymentType;
   joinDate: string;
-  department: { id: string; nameEn: string } | null;
+  /** May be a team: then `parent` is its department. */
+  department: { id: string; nameEn: string; parent: DepartmentRef | null } | null;
   jobTitle: { id: string; titleEn: string } | null;
   manager: { id: string; fullNameEn: string } | null;
 }
@@ -144,7 +160,8 @@ export interface EmployeeProfile {
   jdAcknowledgedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  department: { id: string; nameEn: string; nameAr: string | null } | null;
+  /** May be a team: then `parent` is its department. */
+  department: (DepartmentRef & { parent: DepartmentRef | null }) | null;
   jobTitle: { id: string; titleEn: string; titleAr: string | null; grade: string | null; jdVersion: number } | null;
   manager: { id: string; employeeCode: string; fullNameEn: string } | null;
   shift: { id: string; code: string; startTime: string; endTime: string } | null;
@@ -246,4 +263,15 @@ export interface IdCardScan {
   /** The stored photos and their text (null when that side could not be read). */
   front: { itemId: string; text: string | null };
   back?: { itemId: string; text: string | null };
+}
+
+/**
+ * POST /employees/read-id-card: what was read from photos of a new employee's ID card, for the Add employee form.
+ * Nothing is stored; the photos go to the employee file once the employee is added. Dates are YYYY-MM-DD.
+ */
+export interface IdCardReading {
+  suggestions: IdCardScan['suggestions'];
+  /** The text read from each side (null when that side could not be read). */
+  front: { text: string | null };
+  back?: { text: string | null };
 }

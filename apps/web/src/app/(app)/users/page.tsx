@@ -27,7 +27,7 @@ async function UsersList() {
               <th>Roles</th>
               <th>Status</th>
               <th>Employee</th>
-              <th>Last sign-in</th>
+              <th>Last Sign-In</th>
               <th>
                 <span className="sr-only">Actions</span>
               </th>

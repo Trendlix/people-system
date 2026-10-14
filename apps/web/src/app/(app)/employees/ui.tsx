@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { LABELS, type EmployeeStatus } from '@trendlix/shared';
 import { formatTime } from '@/lib/format';
 import type { EmployeeProfile, SessionUser } from '@/lib/types';
-import { BackLink, DAY_NAMES, Empty, Loading } from '../organisation/ui';
+import { BackLink, DAY_NAMES, Empty, Loading } from '../organization/ui';
 
-// Small building blocks shared by the Employees pages (the generic ones come from the Organisation pages).
+// Small building blocks shared by the Employees pages (the generic ones come from the Organization pages).
 
 export { BackLink, DAY_NAMES, Empty, Loading };
 

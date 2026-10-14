@@ -3,19 +3,21 @@
 // Form actions for the Employees pages. Each one forwards to the API, which checks the session and the HR role,
 // so calling these directly can't bypass permissions. Dates are typed as DD/MM/YYYY and sent as YYYY-MM-DD.
 import { redirect } from 'next/navigation';
-import { ApiError, apiSend } from '@/lib/api';
+import type { PaperworkKind } from '@trendlix/shared';
+import { ApiError, apiSend, apiUpload } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
 import type { EmployeeProfile, FormState } from '@/lib/types';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '');
 
-/** The submitted values, so the form can be refilled after an error. */
+/** The submitted values, so the form can be refilled after an error. Files (e.g. ID card photos) are never sent back. */
 function submitted(fd: FormData): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const key of new Set(fd.keys())) {
     if (key.startsWith('$ACTION')) continue;
-    const all = fd.getAll(key).map(String);
-    out[key] = all.length > 1 ? all : (all[0] ?? '');
+    const all = fd.getAll(key).filter((v) => typeof v === 'string');
+    if (all.length === 0) continue;
+    out[key] = all.length > 1 ? all : all[0];
   }
   return out;
 }
@@ -54,28 +56,6 @@ function employmentBody(fd: FormData, errors: string[]) {
   };
 }
 
-// ---------- create ----------
-
-export async function createEmployee(_prev: FormState, fd: FormData): Promise<FormState> {
-  const errors: string[] = [];
-  const body = {
-    fullNameEn: text(fd, 'fullNameEn'),
-    fullNameAr: text(fd, 'fullNameAr'),
-    employeeCode: text(fd, 'employeeCode'),
-    workEmail: text(fd, 'workEmail'),
-    mobile: text(fd, 'mobile'),
-    ...employmentBody(fd, errors),
-  };
-  return save(
-    fd,
-    errors,
-    () => apiSend<EmployeeProfile>('POST', '/employees', body),
-    (created) => (created ? `/employees/${created.id}` : '/employees'),
-  );
-}
-
-// ---------- edit ----------
-
 const PERSONAL_TEXT = [
   'employeeCode',
   'fullNameEn',
@@ -100,8 +80,8 @@ const PERSONAL_TEXT = [
   'qualificationAr',
 ] as const;
 
-export async function updatePersonal(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  const errors: string[] = [];
+/** Profile fields, shared by the new-employee form and the Personal edit page. */
+function personalBody(fd: FormData, errors: string[]): Record<string, string | number | null> {
   const body: Record<string, string | number | null> = {};
   for (const key of PERSONAL_TEXT) body[key] = text(fd, key);
   body.dateOfBirth = dateFrom(fd, 'dateOfBirth', 'date of birth', errors);
@@ -110,7 +90,82 @@ export async function updatePersonal(id: string, _prev: FormState, fd: FormData)
   if (year === '') body.graduationYear = null;
   else if (/^\d{4}$/.test(year)) body.graduationYear = Number(year);
   else errors.push('Enter the graduation year as four digits, e.g. 2016.');
+  return body;
+}
 
+/** National ID fields, shared by the new-employee form and the National ID edit page. */
+function identityBody(fd: FormData, errors: string[]) {
+  return {
+    nationalId: text(fd, 'nationalId'),
+    printedNo: text(fd, 'printedNo'),
+    issueDate: dateFrom(fd, 'issueDate', 'issue date', errors),
+    expiryDate: dateFrom(fd, 'expiryDate', 'expiry date', errors),
+    issuingOffice: text(fd, 'issuingOffice'),
+  };
+}
+
+// ---------- create ----------
+
+/** The ID card photos read on the Add employee page (made smaller in the browser), and where each goes in the employee file. */
+const CARD_PHOTOS = [
+  ['idFront', 'national_id_front'],
+  ['idBack', 'national_id_back'],
+] as const satisfies readonly (readonly [string, PaperworkKind])[];
+
+/**
+ * Puts the ID card photos in the new employee's file. One that fails is left out rather than undoing the new
+ * employee: the employee file then shows it as missing, to upload from the profile.
+ */
+async function keepCardPhotos(employeeId: string, photos: { kind: PaperworkKind; file: File }[]) {
+  await Promise.all(
+    photos.map(async ({ kind, file }) => {
+      const form = new FormData();
+      form.append('kind', kind);
+      form.append('file', file, file.name);
+      try {
+        await apiUpload('POST', `/employees/${employeeId}/paperwork`, form);
+      } catch (err) {
+        if (!(err instanceof ApiError)) throw err;
+      }
+    }),
+  );
+}
+
+/**
+ * Adds the employee with their profile, employment details and (when any is filled in) national ID in one request,
+ * so nothing is created if the API refuses any of it. Then keeps the ID card photos in the employee file.
+ */
+export async function createEmployee(_prev: FormState, fd: FormData): Promise<FormState> {
+  const errors: string[] = [];
+  const identity = identityBody(fd, errors);
+  const body = {
+    ...personalBody(fd, errors),
+    ...employmentBody(fd, errors),
+    // the API fills in an empty date of birth from the national ID, and refuses one that disagrees with it
+    ...(Object.values(identity).some((v) => v.trim() !== '') && { identity }),
+  };
+  const photos = CARD_PHOTOS.flatMap(([key, kind]) => {
+    const file = fd.get(key);
+    return file instanceof File && file.size > 0 ? [{ kind, file }] : [];
+  });
+
+  return save(
+    fd,
+    errors,
+    async () => {
+      const created = await apiSend<EmployeeProfile>('POST', '/employees', body);
+      if (created) await keepCardPhotos(created.id, photos);
+      return created;
+    },
+    (created) => (created ? `/employees/${created.id}` : '/employees'),
+  );
+}
+
+// ---------- edit ----------
+
+export async function updatePersonal(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const errors: string[] = [];
+  const body = personalBody(fd, errors);
   return save(fd, errors, () => apiSend('PATCH', `/employees/${id}`, body), `/employees/${id}`);
 }
 
@@ -125,13 +180,7 @@ export async function updateEmployment(id: string, _prev: FormState, fd: FormDat
 
 export async function updateIdentity(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const errors: string[] = [];
-  const body = {
-    nationalId: text(fd, 'nationalId'),
-    printedNo: text(fd, 'printedNo'),
-    issueDate: dateFrom(fd, 'issueDate', 'issue date', errors),
-    expiryDate: dateFrom(fd, 'expiryDate', 'expiry date', errors),
-    issuingOffice: text(fd, 'issuingOffice'),
-  };
+  const body = identityBody(fd, errors);
 
   // After reading the ID card, HR can tick personal details from it to save to the profile too (none otherwise).
   const apply = new Set(fd.getAll('apply').map(String));

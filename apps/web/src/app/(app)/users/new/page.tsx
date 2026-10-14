@@ -7,7 +7,7 @@ export default function NewUserPage() {
   return (
     <div className="space-y-4">
       <BackLink href="/users">Users</BackLink>
-      <h2 className="text-lg font-semibold">New user</h2>
+      <h2 className="text-lg font-semibold">New User</h2>
       <Suspense fallback={<Loading />}>
         <RequireAdmin>
           <NewUserForm action={createUser} />

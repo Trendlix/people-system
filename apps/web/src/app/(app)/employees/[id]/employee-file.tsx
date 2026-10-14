@@ -21,7 +21,7 @@ function Title({ children }: { children?: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="font-semibold">
-        Employee file
+        Employee File
         <span className="badge ml-2 bg-line-soft align-middle text-muted">Restricted</span>
       </h2>
       {children}
@@ -136,7 +136,7 @@ export async function EmployeeFile({ employee }: { employee: Employee }) {
 
       {others.length > 0 && (
         <div className="mt-6">
-          <h3 className="font-semibold">Other documents</h3>
+          <h3 className="font-semibold">Other Documents</h3>
           <ul className="mt-2">
             {others.map((item) => (
               <li key={item.id} className="border-b border-line-soft py-3 last:border-0">

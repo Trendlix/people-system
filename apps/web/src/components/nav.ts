@@ -12,7 +12,7 @@ export interface NavItem {
 
 export const NAV: NavItem[] = [
   { href: '/', label: 'Home' },
-  { href: '/organisation/company', label: 'Organisation', section: '/organisation' },
+  { href: '/organization/company', label: 'Organization', section: '/organization' },
   { href: '/employees', label: 'Employees', section: '/employees' },
   { href: '/users', label: 'Users', section: '/users', roles: ['admin'] },
 ];

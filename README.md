@@ -8,7 +8,7 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 | Module | Status |
 |---|---|
 | Sign-in, roles (Employee, Manager, HR, Finance, CEO, Admin), audit log | Done |
-| 1 · Organisation: company profile and logo, departments, job titles with job descriptions, shifts | Done. HR and Admin edit, everyone else views |
+| 1 · Organization: company profile and logo, departments with their job titles (and job descriptions), shifts | Done. HR and Admin edit, everyone else views |
 | Users: sign-in accounts, roles, temporary passwords; everyone can change their own password | Done. Admin only |
 | 2 · Employees: directory, profile (personal, contact, education, employment), national ID and bank (restricted, every view audited) | Done. HR edits; HR, CEO and Finance see everyone, a manager their team, an employee themself |
 | Employee file: scanned paperwork per employment type, text read by OCR and searchable, "Fill from ID card photos" | Done. HR and CEO |
@@ -31,6 +31,7 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 - **Dates and times on screen:** every date is DD/MM/YYYY (14/10/2026) and every time is 12-hour (9:00 AM), on every screen. Show them with the helpers in `apps/web/src/lib/format.ts` (`formatDate`, `formatTime`, `formatDateTime`) and take them in forms with `DateInput` / `TimeInput` from `apps/web/src/components/date-time-inputs.tsx` (plain text fields: the browser's own pickers follow the computer's region). Server actions read them with `dateFrom` / `timeFrom` from `apps/web/src/lib/form-data.ts`.
 - **The API** sends and accepts dates as YYYY-MM-DD and times as HH:mm (24-hour); only the web app converts.
 - **Moments** (created at, updated at) are shown in Cairo time.
+- Titles and headings are Title Case; labels, buttons and messages are sentence case.
 
 ## Requirements
 

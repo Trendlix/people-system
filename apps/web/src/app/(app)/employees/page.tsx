@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { EMPLOYEE_STATUSES, LABELS, type EmployeeStatus } from '@trendlix/shared';
+import { DepartmentOptions } from '@/components/department-options';
 import { apiGet } from '@/lib/api';
+import { departmentName, withTeams } from '@/lib/departments';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary } from '@/lib/types';
 import { Avatar, canAddEmployees, canSeeEmployeeFiles, Empty, Loading, seesEveryone, StatusBadge } from './ui';
@@ -78,8 +80,10 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
     );
   }
 
-  // Counts follow the search and department filters, so each chip shows how many rows it would list.
-  const base = everyone.filter((e) => matches(e, f.q) && (!f.departmentId || e.department?.id === f.departmentId));
+  // Counts follow the search and department filters, so each chip shows how many rows it would list. A department
+  // also covers the people in its teams.
+  const inDepartment = f.departmentId ? withTeams(departments, f.departmentId) : null;
+  const base = everyone.filter((e) => matches(e, f.q) && (!inDepartment || (e.department !== null && inDepartment.has(e.department.id))));
   const rows = f.status ? base.filter((e) => e.status === f.status) : base;
   const counts = new Map<EmployeeStatus, number>();
   for (const e of base) counts.set(e.status, (counts.get(e.status) ?? 0) + 1);
@@ -109,11 +113,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
           </label>
           <select id="employee-department" name="departmentId" defaultValue={f.departmentId} className="input min-w-56">
             <option value="">All departments</option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.nameEn}
-              </option>
-            ))}
+            <DepartmentOptions departments={departments} />
           </select>
         </div>
         {f.status && <input type="hidden" name="status" value={f.status} />}
@@ -146,7 +146,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                 <th>Employee</th>
                 <th>Code</th>
                 <th>Department</th>
-                <th>Job title</th>
+                <th>Job Title</th>
                 <th>Manager</th>
                 <th>Status</th>
               </tr>
@@ -166,7 +166,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                     </div>
                   </td>
                   <td className="whitespace-nowrap text-muted tabular-nums">{e.employeeCode}</td>
-                  <td>{e.department?.nameEn ?? dash}</td>
+                  <td>{e.department ? departmentName(e.department) : dash}</td>
                   <td>{e.jobTitle?.titleEn ?? dash}</td>
                   <td>{e.manager?.fullNameEn ?? dash}</td>
                   <td>

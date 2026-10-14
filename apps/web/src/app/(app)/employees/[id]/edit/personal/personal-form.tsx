@@ -1,179 +1,23 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState, useState } from 'react';
-import { DEGREES, EDUCATION_GRADES, GENDERS, GOVERNORATES, LABELS, MARITAL_STATUSES, MILITARY_STATUSES } from '@trendlix/shared';
-import { DateInput } from '@/components/date-time-inputs';
-import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
-import { formatDate } from '@/lib/format';
+import { FormErrors, SubmitButton, useFieldIds, useKeptForm } from '@/components/form';
 import type { EmployeeProfile, FormState } from '@/lib/types';
-
-type Option = { value: string; label: string };
-
-type Field = {
-  name: keyof EmployeeProfile & string;
-  label: string;
-  kind?: 'text' | 'email' | 'tel' | 'date' | 'year' | 'select';
-  max?: number;
-  ar?: boolean;
-  multiline?: boolean;
-  required?: boolean;
-  hint?: string;
-  placeholder?: string;
-  options?: readonly Option[];
-  /** Takes the whole row on wide screens. */
-  wide?: boolean;
-};
-
-const options = <T extends string>(values: readonly T[], labels: Record<T, string>): Option[] => values.map((v) => ({ value: v, label: labels[v] }));
-
-const GROUPS: { title: string; fields: Field[] }[] = [
-  {
-    title: 'Personal',
-    fields: [
-      { name: 'fullNameEn', label: 'Full name (English)', max: 150, required: true },
-      { name: 'fullNameAr', label: 'Full name (Arabic)', ar: true, max: 150, required: true, hint: 'As printed on contracts.' },
-      { name: 'employeeCode', label: 'Employee code', max: 20, required: true, placeholder: 'EMP-0000' },
-      { name: 'dateOfBirth', label: 'Date of birth', kind: 'date' },
-      { name: 'gender', label: 'Gender', kind: 'select', options: options(GENDERS, LABELS.gender) },
-      { name: 'nationality', label: 'Nationality', max: 60, placeholder: 'e.g. Egyptian' },
-      { name: 'maritalStatus', label: 'Marital status', kind: 'select', options: options(MARITAL_STATUSES, LABELS.maritalStatus) },
-      { name: 'militaryStatus', label: 'Military status', kind: 'select', options: options(MILITARY_STATUSES, LABELS.militaryStatus) },
-    ],
-  },
-  {
-    title: 'Contact & address',
-    fields: [
-      {
-        name: 'workEmail',
-        label: 'Work email',
-        kind: 'email',
-        max: 254,
-        hint: 'A sign-in account with this email is linked to this employee.',
-      },
-      { name: 'personalEmail', label: 'Personal email', kind: 'email', max: 254 },
-      { name: 'mobile', label: 'Mobile', kind: 'tel', max: 30 },
-      { name: 'governorate', label: 'Governorate', kind: 'select', options: GOVERNORATES.map((g) => ({ value: g, label: g })) },
-      { name: 'addressAr', label: 'Address (Arabic)', ar: true, multiline: true, max: 300, wide: true, hint: 'As printed on contracts.' },
-    ],
-  },
-  {
-    title: 'Emergency contact',
-    fields: [
-      { name: 'emergencyName', label: 'Name', max: 150 },
-      { name: 'emergencyRelation', label: 'Relation', max: 50, placeholder: 'e.g. Sister' },
-      { name: 'emergencyMobile', label: 'Mobile', kind: 'tel', max: 30 },
-    ],
-  },
-  {
-    title: 'Education',
-    fields: [
-      { name: 'university', label: 'University', max: 150 },
-      { name: 'faculty', label: 'Faculty', max: 150 },
-      { name: 'degree', label: 'Degree', kind: 'select', options: options(DEGREES, LABELS.degree) },
-      { name: 'major', label: 'Major', max: 150 },
-      { name: 'graduationYear', label: 'Graduation year', kind: 'year' },
-      { name: 'educationGrade', label: 'Grade', kind: 'select', options: options(EDUCATION_GRADES, LABELS.educationGrade) },
-      { name: 'qualificationAr', label: 'Qualification (Arabic)', ar: true, max: 200, wide: true, hint: 'As printed on contracts.' },
-    ],
-  },
-];
-
-/** The saved value as the field shows it: dates as DD/MM/YYYY, numbers as text. */
-function savedText(employee: EmployeeProfile, f: Field): string {
-  const v = employee[f.name];
-  if (f.kind === 'date') return formatDate(typeof v === 'string' ? v : null);
-  if (typeof v === 'number') return String(v);
-  return typeof v === 'string' ? v : '';
-}
+import { PersonalFields } from '../../../personal-fields';
 
 export function PersonalForm({ action, employee }: { action: (prev: FormState, fd: FormData) => Promise<FormState>; employee: EmployeeProfile }) {
-  const [state, formAction] = useActionState(action, {});
+  // Kept form: a refused save leaves the selects (gender, marital status…) as they were chosen.
+  const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
-  const [gender, setGender] = useState(() => valueOf(state, 'gender', employee.gender));
-  // a woman's military status is always Not applicable: no military papers are needed (owner's rule)
-  const noMilitary = (f: Field) => f.name === 'militaryStatus' && gender === 'female';
-  const hintOf = (f: Field) => (noMilitary(f) ? 'Women need no military papers.' : f.hint);
-
-  function control(f: Field) {
-    const saved = savedText(employee, f);
-    const id = fid(f.name);
-    const describedBy = hintOf(f) ? fid(`${f.name}-hint`) : undefined;
-    const value = valueOf(state, f.name, saved);
-
-    if (noMilitary(f)) {
-      return (
-        <>
-          <input type="hidden" name={f.name} value="not_applicable" />
-          <input id={id} value={LABELS.militaryStatus.not_applicable} readOnly aria-describedby={describedBy} className="input bg-canvas text-muted" />
-        </>
-      );
-    }
-    if (f.kind === 'date') return <DateInput id={id} name={f.name} aria-describedby={describedBy} defaultValue={value} />;
-    if (f.kind === 'select') {
-      // A stored value that is no longer in the list (e.g. imported) stays selectable, so saving doesn't clear it.
-      const list = saved && !f.options?.some((o) => o.value === saved) ? [...(f.options ?? []), { value: saved, label: saved }] : (f.options ?? []);
-      return (
-        <select
-          id={id}
-          name={f.name}
-          aria-describedby={describedBy}
-          defaultValue={value}
-          onChange={f.name === 'gender' ? (e) => setGender(e.target.value) : undefined}
-          className="input"
-        >
-          <option value="">Not set</option>
-          {list.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      );
-    }
-    const common = {
-      id,
-      name: f.name,
-      required: f.required,
-      maxLength: f.kind === 'year' ? 4 : f.max,
-      placeholder: f.kind === 'year' ? 'e.g. 2016' : f.placeholder,
-      'aria-describedby': describedBy,
-      defaultValue: value,
-      className: f.name === 'employeeCode' ? 'input uppercase' : 'input',
-      ...(f.ar ? { lang: 'ar', dir: 'rtl' as const } : {}),
-    };
-    if (f.multiline) return <textarea rows={2} {...common} />;
-    if (f.kind === 'year') return <input type="text" inputMode="numeric" autoComplete="off" {...common} />;
-    return <input type={f.kind ?? 'text'} {...common} />;
-  }
 
   return (
-    <form action={formAction} className="card max-w-3xl space-y-8 p-6">
+    <form {...form} className="card max-w-3xl space-y-8 p-6">
       <FormErrors errors={state.errors} />
 
-      {GROUPS.map((group) => (
-        <fieldset key={group.title} className="space-y-5">
-          <legend className="font-semibold">{group.title}</legend>
-          <div className="grid gap-5 sm:grid-cols-2">
-            {group.fields.map((f) => (
-              <div key={f.name} className={f.wide ? 'sm:col-span-2' : undefined}>
-                <label htmlFor={fid(f.name)} className="label">
-                  {f.label}
-                </label>
-                {control(f)}
-                {hintOf(f) && (
-                  <p id={fid(`${f.name}-hint`)} className="hint">
-                    {hintOf(f)}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </fieldset>
-      ))}
+      <PersonalFields state={state} fid={fid} employee={employee} />
 
       <div className="flex flex-wrap gap-3 border-t border-line pt-6">
-        <SubmitButton>Save changes</SubmitButton>
+        <SubmitButton busy={pending}>Save changes</SubmitButton>
         <Link href={`/employees/${employee.id}`} className="btn btn-secondary">
           Cancel
         </Link>

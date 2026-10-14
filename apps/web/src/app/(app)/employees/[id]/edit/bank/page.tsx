@@ -12,7 +12,7 @@ async function EditBank({ params }: { params: Promise<{ id: string }> }) {
   const bank = employee.access.edit ? await apiGet<EmployeeBank>(`/employees/${employee.id}/bank`) : null;
   return (
     <>
-      <EditHeading profile={employee} title="Bank & payment" />
+      <EditHeading profile={employee} title="Bank & Payment" />
       <RequireHr profile={employee}>
         {bank && (
           <>
