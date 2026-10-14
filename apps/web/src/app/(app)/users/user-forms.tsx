@@ -2,7 +2,7 @@
 
 import { ROLES, type Role } from '@trendlix/shared';
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
 import { ROLE_LABELS } from '@/lib/roles';
 import type { FormState } from '@/lib/types';
@@ -36,28 +36,72 @@ function RoleFields({ checked, hint }: { checked: Set<string>; hint?: string }) 
   );
 }
 
-/** A temporary password the admin types and passes on, so it is shown as typed. */
+// No look-alike characters (0/O, 1/l/I), so the password can be read out or typed from a message.
+const PASSWORD_ALPHABET = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/** A random password such as "Kp7m-Qx4z-Rt9w": 12 characters (about 70 bits) in groups of four, from the browser's secure random source. */
+function generatePassword(): string {
+  const chars = Array.from(crypto.getRandomValues(new Uint32Array(12)), (n) => PASSWORD_ALPHABET[n % PASSWORD_ALPHABET.length]);
+  return [0, 4, 8].map((i) => chars.slice(i, i + 4).join('')).join('-');
+}
+
+/** A temporary password the admin types or generates and passes on, so it is shown as typed. */
 function TemporaryPassword({ id, label }: { id: string; label: string }) {
+  const [password, setPassword] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopied(true);
+    } catch {
+      setCopied(false); // the clipboard can be blocked; the password is still on screen to copy by hand
+    }
+  }
+
   return (
     <div>
       <label htmlFor={id} className="label">
         {label}
       </label>
-      <input
-        id={id}
-        name="password"
-        type="text"
-        required
-        minLength={10}
-        maxLength={200}
-        autoComplete="off"
-        spellCheck={false}
-        aria-describedby={`${id}-hint`}
-        className="input font-mono"
-      />
+      <div className="flex flex-wrap gap-2">
+        <input
+          id={id}
+          name="password"
+          type="text"
+          required
+          minLength={10}
+          maxLength={200}
+          autoComplete="off"
+          spellCheck={false}
+          value={password}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            setCopied(false);
+          }}
+          aria-describedby={`${id}-hint`}
+          className="input min-w-0 flex-1 font-mono"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            setPassword(generatePassword());
+            setCopied(false);
+          }}
+          className="btn btn-secondary"
+        >
+          Generate
+        </button>
+        <button type="button" onClick={copy} disabled={!password} className="btn btn-secondary">
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
       <p id={`${id}-hint`} className="hint">
-        At least 10 characters. Pass it on to the person yourself; they should change it after signing in (Change password, at
-        the top of every page).
+        At least 10 characters, or press Generate. Pass it on to the person yourself; they should change it after signing in
+        (Change password, at the top of every page).
+      </p>
+      <p aria-live="polite" className="sr-only">
+        {copied ? 'Password copied.' : ''}
       </p>
     </div>
   );
