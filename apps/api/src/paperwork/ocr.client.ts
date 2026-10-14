@@ -9,7 +9,7 @@ import { extensionOf, type PaperworkType } from './paperwork-file.js';
 export type OcrLang = 'ar' | 'en';
 
 export type OcrRead =
-  | { status: 'done'; text: string; lines: string[] } // lines in reading order, every page
+  | { status: 'done'; text: string; lines: string[]; pages: string[][] } // lines in reading order: all, and page by page
   | { status: 'failed' | 'unavailable' };
 
 /** What the service answers. Lines are in reading order; the text is as read (Arabic-Indic digits kept). */
@@ -47,7 +47,7 @@ export class OcrClient {
       if (!res.ok) return this.fail('failed', `the service answered ${res.status}`);
       const lines = linesOf(await res.json());
       if (!lines) return this.fail('failed', 'the answer was not in the expected form');
-      return { status: 'done', text: lines.text, lines: lines.lines };
+      return { status: 'done', text: lines.text, lines: lines.lines, pages: lines.pages };
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') return this.fail('failed', `no answer within ${TIMEOUT_MS / 1000} s`);
       if (notRunning(err)) return this.fail('unavailable', `nothing answers at ${this.url}`);
@@ -62,16 +62,16 @@ export class OcrClient {
   }
 }
 
-/** The lines and text of a well-formed answer; null for anything else. The text is the lines when it is missing. */
-function linesOf(body: unknown): { text: string; lines: string[] } | null {
+/** The lines (all, and page by page) and text of a well-formed answer; null for anything else. The text is the lines when it is missing. */
+function linesOf(body: unknown): { text: string; lines: string[]; pages: string[][] } | null {
   if (!body || typeof body !== 'object') return null;
   const { pages, text } = body as Partial<OcrResponse>;
   if (!Array.isArray(pages)) return null;
-  const lines = pages
-    .flatMap((page) => (Array.isArray(page?.lines) ? page.lines : []))
-    .map((line) => (typeof line?.text === 'string' ? line.text.trim() : ''))
-    .filter(Boolean);
-  return { text: typeof text === 'string' && text.trim() ? text : lines.join('\n'), lines };
+  const byPage = pages.map((page) =>
+    (Array.isArray(page?.lines) ? page.lines : []).map((line) => (typeof line?.text === 'string' ? line.text.trim() : '')).filter(Boolean),
+  );
+  const lines = byPage.flat();
+  return { text: typeof text === 'string' && text.trim() ? text : lines.join('\n'), lines, pages: byPage };
 }
 
 function notRunning(err: unknown): boolean {

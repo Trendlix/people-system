@@ -51,28 +51,36 @@ export type IdCardFiles = { front?: Express.Multer.File[]; back?: Express.Multer
 /** National ID scans are restricted like the national ID itself. */
 const isRestricted = (kind: string) => (RESTRICTED_PAPERWORK as readonly string[]).includes(kind);
 
-/** The uploaded file, checked by its content. With `photoOnly`, a PDF is refused too. */
-function checked(file: Express.Multer.File | undefined, missing: string, what = 'The file', photoOnly = false): Upload {
+/** The uploaded file, checked by its content. */
+function checked(file: Express.Multer.File | undefined, missing: string, what = 'The file'): Upload {
   if (!file?.buffer?.length) throw new BadRequestException(missing);
   if (file.size > PAPERWORK_MAX_BYTES) throw new BadRequestException(`${what} must be ${PAPERWORK_MAX_MB} MB or smaller.`);
   const type = detectPaperworkType(file.buffer);
-  if (photoOnly && (!type || type === 'application/pdf')) throw new BadRequestException(`${what} must be a JPEG, PNG or WebP image.`);
   if (!type) throw new BadRequestException(`${what} must be a JPEG, PNG or WebP image, or a PDF.`);
   return { data: file.buffer, type, fileName: safeFileName(file.originalname, type) };
 }
 
-/** Both sides of an ID card, checked by their content; the back may be missing. */
-function cardSides(files: IdCardFiles, photoOnly = false): { front: Upload; back: Upload | null } {
-  const front = checked(files?.front?.[0], 'Choose a photo of the front of the ID card.', 'The photo of the front', photoOnly);
-  const back = files?.back?.[0] ? checked(files.back[0], 'The photo of the back is empty.', 'The photo of the back', photoOnly) : null;
+/** Both sides of an ID card, each a photo or a PDF scan, checked by their content; the back may be missing. */
+function cardSides(files: IdCardFiles): { front: Upload; back: Upload | null } {
+  const front = checked(files?.front?.[0], 'Choose a photo or PDF scan of the front of the ID card.', 'The front of the card');
+  const back = files?.back?.[0] ? checked(files.back[0], 'The file for the back of the card is empty.', 'The back of the card') : null;
   return { front, back };
+}
+
+/** A PDF scan with both sides of the card and no separate back: page 1 is the front, the next pages the back. */
+function splitSides(front: OcrRead, back: OcrRead | null): [OcrRead, OcrRead | null] {
+  if (back || front.status !== 'done' || front.pages.length < 2) return [front, back];
+  const [first, ...rest] = front.pages;
+  const page = (pages: string[][]): OcrRead => ({ status: 'done', text: pages.flat().join('\n'), lines: pages.flat(), pages });
+  return [page([first]), page(rest)];
 }
 
 /**
  * What the card says (see egyptian-id.ts) and the text read from each side (null when that side could not be read).
  * When neither side could be read, says why: 503 when the OCR service is not running, 502 when it failed.
  */
-function readCard(front: OcrRead, back: OcrRead | null, unread: CardUnread) {
+function readCard(read: OcrRead, readBack: OcrRead | null, unread: CardUnread) {
+  const [front, back] = splitSides(read, readBack);
   const reads = back ? [front, back] : [front];
   if (!reads.some((r) => r.status === 'done')) {
     throw reads.some((r) => r.status === 'unavailable') ? new ServiceUnavailableException(unread.unavailable) : new BadGatewayException(unread.failed);
@@ -226,7 +234,8 @@ export class PaperworkService {
     return {
       suggestions: card.suggestions,
       front: { itemId: frontId, text: card.frontText },
-      ...(backId && { back: { itemId: backId, text: card.backText } }),
+      // the back: its own file, or page 2 on of a PDF that holds both sides
+      ...((backId || card.backText !== null) && { back: { itemId: backId ?? frontId, text: card.backText } }),
     };
   }
 
@@ -236,7 +245,7 @@ export class PaperworkService {
    * the suggestions, adds the employee, then uploads the photos to the new employee file.
    */
   async readNewIdCard(files: IdCardFiles) {
-    const { front, back } = cardSides(files, true);
+    const { front, back } = cardSides(files);
     const [frontRead, backRead] = await Promise.all([
       this.ocr.read(front.data, front.type, 'ar'),
       back ? this.ocr.read(back.data, back.type, 'ar') : Promise.resolve(null),
@@ -246,7 +255,7 @@ export class PaperworkService {
     return {
       suggestions: card.suggestions,
       front: { text: card.frontText },
-      ...(back && { back: { text: card.backText } }),
+      ...((back || card.backText !== null) && { back: { text: card.backText } }),
     };
   }
 

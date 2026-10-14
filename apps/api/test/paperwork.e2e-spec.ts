@@ -68,8 +68,11 @@ async function fakeOcr(texts: Record<string, string>): Promise<FakeOcr> {
       const mark = /MARK:(\w+)/.exec(Buffer.concat(chunks).toString('latin1'))?.[1] ?? '';
       if (mark === 'FAIL') return void res.writeHead(500).end('Internal Server Error');
       const text = texts[mark] ?? 'مستند';
-      const lines = text.split('\n').map((line, i) => ({ text: line, confidence: 0.93, box: [10, i * 30, 400, i * 30 + 24] }));
-      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ lang, pages: [{ lines }], text }));
+      // pages are separated by \f, as services/ocr does
+      const pages = text.split('\f').map((page) => ({
+        lines: page.split('\n').map((line, i) => ({ text: line, confidence: 0.93, box: [10, i * 30, 400, i * 30 + 24] })),
+      }));
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ lang, pages, text }));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -120,7 +123,7 @@ describe('Paperwork (e2e)', () => {
   const auditOf = (itemId: string) => prisma.auditLog.findMany({ where: { entityType: 'paperwork', entityId: itemId }, orderBy: { id: 'asc' } });
 
   beforeAll(async () => {
-    ocr = await fakeOcr({ FRONT, BACK, RECEIPT, ID_BACK });
+    ocr = await fakeOcr({ FRONT, BACK, RECEIPT, ID_BACK, BOTHSIDES: `${FRONT}\f${BACK}` });
     process.env.OCR_URL = ocr.url;
     ({ app, prisma } = await createApp());
     hrEmail = await createUser(prisma, ['hr']);
@@ -319,13 +322,13 @@ describe('Paperwork (e2e)', () => {
 
     it('needs the front; the back is optional', async () => {
       const res = await api().post(`/api/employees/${employeeId}/identity/scan`).set('Cookie', hr).attach('back', png('BACK'), 'b.png').expect(400);
-      expect(res.body.message).toBe('Choose a photo of the front of the ID card.');
+      expect(res.body.message).toBe('Choose a photo or PDF scan of the front of the ID card.');
       const fake = await api()
         .post(`/api/employees/${employeeId}/identity/scan`)
         .set('Cookie', hr)
         .attach('front', Buffer.from('not an image'), 'front.jpg')
         .expect(400);
-      expect(fake.body.message).toBe('The photo of the front must be a JPEG, PNG or WebP image, or a PDF.');
+      expect(fake.body.message).toBe('The front of the card must be a JPEG, PNG or WebP image, or a PDF.');
 
       const front = await api().post(`/api/employees/${employeeId}/identity/scan`).set('Cookie', hr).attach('front', jpeg('FRONT'), 'f.jpg').expect(200);
       expect(front.body).not.toHaveProperty('back');
@@ -353,13 +356,17 @@ describe('Paperwork (e2e)', () => {
       expect(JSON.stringify(since)).not.toContain('29503120123456');
     });
 
-    it('needs a photo of the front; the back is optional', async () => {
-      expect((await readCard().attach('back', png('BACK'), 'b.png').expect(400)).body.message).toBe('Choose a photo of the front of the ID card.');
-      expect((await readCard().attach('front', pdf('FRONT'), 'front.pdf').expect(400)).body.message).toBe(
-        'The photo of the front must be a JPEG, PNG or WebP image.',
-      );
+    it('reads a PDF scan with the front on page 1 and the back on page 2', async () => {
+      const res = await readCard().attach('front', pdf('BOTHSIDES'), 'card.pdf').expect(200);
+      expect(res.body.suggestions).toEqual(SUGGESTIONS);
+      expect(res.body.front.text).toBe(FRONT);
+      expect(res.body.back.text).toBe(BACK);
+    });
+
+    it('needs the front (a photo or a PDF scan); the back is optional', async () => {
+      expect((await readCard().attach('back', png('BACK'), 'b.png').expect(400)).body.message).toBe('Choose a photo or PDF scan of the front of the ID card.');
       expect((await readCard().attach('front', jpeg('FRONT'), 'f.jpg').attach('back', Buffer.from('not an image'), 'b.png').expect(400)).body.message).toBe(
-        'The photo of the back must be a JPEG, PNG or WebP image.',
+        'The back of the card must be a JPEG, PNG or WebP image, or a PDF.',
       );
       const big = await readCard()
         .attach('front', Buffer.concat([PNG, Buffer.alloc(10 * 1024 * 1024)]), 'big.png')
