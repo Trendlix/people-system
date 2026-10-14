@@ -1,7 +1,7 @@
 #!/bin/sh
-# Brings People System on this server up to the latest version on GitHub: fetch, save the database, build the API,
-# restart, and wait until it answers. Run on the server:  ./deploy.sh   (the pipeline on GitHub runs the same script
-# after a push, see .github/workflows/backend.yml).
+# Brings People System on this server up to the latest version on GitHub: fetch, save the database, build the API and
+# the OCR service, restart, and wait until they answer. Run on the server:  ./deploy.sh   (the pipeline on GitHub runs
+# the same script after a push, see .github/workflows/backend.yml).
 set -eu
 cd "$(dirname "$0")"
 [ -f .env ] || { echo "There is no .env here yet. Copy .env.example to .env and fill it in first."; exit 1; }
@@ -40,6 +40,12 @@ else
   echo "This build has no stamp: git did not name the last commit of the API. The deploy goes on."
 fi
 
-docker compose build api
+# The OCR image is built from services/ocr; a push that does not touch that folder reuses it as it is. Its first build
+# takes a few minutes: it downloads PaddleOCR and its models, which then stay inside the image.
+docker compose build api ocr
+# Waits until every container with a health check is healthy: the database, the API, and the OCR service once its
+# models are loaded (seconds after it starts; its health check allows two minutes). If one does not become healthy,
+# this ends with an error; the containers keep running, and `docker compose ps` and `docker compose logs <name>` show
+# which one and why.
 docker compose up -d --wait
 docker compose ps

@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { CurrentUser, Public } from './decorators.js';
 import { LoginDto } from './login.dto.js';
+import { ChangePasswordDto } from './password.dto.js';
 import { SESSION_COOKIE, SESSION_HOURS, type SessionUser } from './session-user.js';
 
 @Controller('auth')
@@ -34,5 +35,11 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: SessionUser): SessionUser {
     return user;
+  }
+
+  @Post('change-password')
+  @HttpCode(204)
+  changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: SessionUser): Promise<void> {
+    return this.auth.changePassword(user.id, dto.currentPassword, dto.newPassword);
   }
 }

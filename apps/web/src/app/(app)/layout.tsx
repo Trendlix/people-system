@@ -1,8 +1,23 @@
+import type { Role } from '@trendlix/shared';
 import { Suspense } from 'react';
 import { Brand, BrandFallback } from '@/components/brand';
 import { COMING_SOON } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { UserMenu } from '@/components/user-menu';
+import { ApiError } from '@/lib/api';
+import { getCurrentUser } from '@/lib/session';
+
+/** The sidebar links for the signed-in user's roles. */
+async function MainNav() {
+  // Like the user menu: an API outage must not take the page down, so it falls back to the links everyone sees.
+  let roles: Role[] = [];
+  try {
+    roles = (await getCurrentUser()).roles;
+  } catch (err) {
+    if (!(err instanceof ApiError)) throw err;
+  }
+  return <NavLinks roles={roles} />;
+}
 
 export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
@@ -15,7 +30,7 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
         </div>
         <nav aria-label="Main" className="flex gap-1 overflow-x-auto md:flex-col">
           <Suspense fallback={<NavLinksFallback />}>
-            <NavLinks />
+            <MainNav />
           </Suspense>
         </nav>
         <div className="mt-8 hidden md:block">

@@ -1,0 +1,5 @@
+# a local virtual environment, Python's caches, and models downloaded for running the service locally
+.venv/
+__pycache__/
+.pytest_cache/
+models/

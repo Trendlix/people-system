@@ -3,7 +3,8 @@
 | Part | Where | Address |
 |---|---|---|
 | Web (Next.js, `apps/web`) | Vercel, project `people-system` | `https://people.trendlix.com` |
-| API (NestJS, `apps/api`) + PostgreSQL | Hostinger VPS shared with Prime ERP (`srv2055591.hstgr.cloud`), Docker Compose in `/opt/people-system` | `https://srv2055591.hstgr.cloud:8443` |
+| API (NestJS, `apps/api`) + PostgreSQL | Hostinger VPS (`srv2055591.hstgr.cloud`), Docker Compose in `/opt/people-system` | `https://srv2055591.hstgr.cloud:8443` |
+| OCR (Python, `services/ocr`) | Same server, same Docker Compose | None outside: the API calls it at `http://ocr:8000` |
 
 The browser only talks to the web app on Vercel. Vercel calls the API server-to-server, so the API needs no CORS setup
 and its address is never shown to browsers.
@@ -12,28 +13,29 @@ and its address is never shown to browsers.
 
 Owner's decision, 14 October 2026: same server as Prime ERP, its own port.
 
-- People System has its **own** containers (`deploy/docker-compose.yml`): PostgreSQL 17, the API, and a daily backup.
-  None of them opens a port.
-- **Prime ERP's Caddy** already holds ports 80/443 and the HTTPS certificate for `srv2055591.hstgr.cloud`. It also listens
-  on **8443** and passes that to People System's API (the last site of Prime ERP's `production/deploy/Caddyfile`).
-- The two systems meet only on the Docker network **`edge`**: Caddy and People System's API, nothing else. Each system's
-  `deploy.sh` creates it if it is missing. Prime ERP's database and API are not on it.
-- Each system has its own database, backups, deploy key on GitHub, and pipeline. Deploying one never restarts the other.
+- People System has its **own** containers (`deploy/docker-compose.yml`): PostgreSQL 17, the API, the OCR service,
+  Caddy for HTTPS, and a daily backup, on a Docker network of their own. Only Caddy opens a port: **8443**.
+- Ports 80/443 belong to Prime ERP, and a public certificate can only be obtained through them. So People System's Caddy
+  issues its certificate from a **private authority** of its own (`tls internal`, see `deploy/Caddyfile`). The web app
+  on Vercel trusts exactly that authority through the setting `API_CA_CERT` (printed by `deploy/ca-cert.sh`); so does
+  the pipeline's health check. Browsers never call the API, so they never see this certificate.
+- Nothing is shared with Prime ERP: its own database, backups, deploy key on GitHub, and pipeline. Deploying one never
+  restarts the other.
 
 ## Every day: CI/CD
 
 A push to `main`:
 
 - **Web:** Vercel builds and deploys `apps/web` by itself.
-- **API:** if the push touches `apps/api`, `packages/shared`, `deploy/` or the lock file, GitHub Actions
+- **API:** if the push touches `apps/api`, `packages/shared`, `services/`, `deploy/` or the lock file, GitHub Actions
   (`.github/workflows/backend.yml`) signs in to the server with a key that can do one thing there, run `deploy/deploy.sh`:
-  fetch, **save the database**, build the API image, restart, wait until healthy. Then it checks
-  `https://srv2055591.hstgr.cloud:8443/api/health` and prints `/api/version`.
+  fetch, **save the database**, build the API and OCR images, restart, wait until healthy. Then it checks
+  `https://srv2055591.hstgr.cloud:8443/api/health` (trusting `API_CA_CERT`) and prints `/api/version`.
 
 The pipeline runs no tests: run them before pushing (`npm run build`, `npm test`, `npm run test:e2e -w @trendlix/api`).
 "Run workflow" on the repository's Actions page deploys by hand; so does `./deploy.sh` on the server.
 
-Which code the server runs: `curl https://srv2055591.hstgr.cloud:8443/api/version` answers with the last commit that
+Which code the server runs: `curl -k https://srv2055591.hstgr.cloud:8443/api/version` answers with the last commit that
 changed the API and its date.
 
 ## First time on the server (once)
@@ -86,10 +88,18 @@ nano .env                 # also SEED_ADMIN_EMAIL and a NEW SEED_ADMIN_PASSWORD
 ./deploy.sh
 ```
 
-It ends with the list of containers; `api` and `db` should say `healthy`.
+It ends with the list of containers; `api`, `db` and `ocr` should say `healthy`. The first build of the OCR image takes
+a few minutes (see [The OCR service](#the-ocr-service)).
 
-**5. Caddy on port 8443.** Prime ERP's change (Caddy also listening on 8443) is deployed by Prime ERP's own pipeline
-when it is pushed. Its deploy recreates Prime ERP's Caddy, which takes a few seconds.
+**5. The certificate's authority.** Caddy makes it on its first start:
+
+```bash
+./ca-cert.sh
+```
+
+It prints one line: save it as `API_CA_CERT` in Vercel (step 9) and as a repository **variable** on GitHub
+(Settings → Secrets and variables → Actions → Variables). It stays the same across deploys; only if the volume
+`caddy_data` is deleted does Caddy make a new one, and then this is run and saved again.
 
 **6. Starting data** (roles, shifts A/B, company details, first admin). Safe to repeat; it never overwrites:
 
@@ -99,7 +109,8 @@ docker compose exec api npm run db:seed -w @trendlix/api
 
 Then remove `SEED_ADMIN_PASSWORD` from `.env`.
 
-**7. Check from anywhere:** `https://srv2055591.hstgr.cloud:8443/api/health` → `{"status":"ok","database":"ok"}`.
+**7. Check from anywhere:** `curl -k https://srv2055591.hstgr.cloud:8443/api/health` → `{"status":"ok","database":"ok"}`
+(`-k` because the certificate comes from the private authority; a browser shows a warning for the same reason).
 
 **8. The pipeline's key.**
 
@@ -108,10 +119,37 @@ Then remove `SEED_ADMIN_PASSWORD` from `.env`.
 ```
 
 It prints two values. GitHub → Trendlix/people-system → Settings → Secrets and variables → Actions → New repository
-secret: `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS`. Its key is named differently from Prime ERP's, so neither replaces the other.
+secret: `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS`, under **Repository secrets** (not Environment secrets: the workflow uses
+no environment, so it cannot see those). Its key is named differently from Prime ERP's, so neither replaces the other.
 
-**9. Vercel.** people-system → Settings → Environment Variables: `API_URL` = `https://srv2055591.hstgr.cloud:8443`
-(no trailing slash, no `/api`). Then redeploy, because settings apply to new deployments only.
+**9. Vercel.** people-system → Settings → Environment Variables, Production: `API_URL` = `https://srv2055591.hstgr.cloud:8443`
+(no trailing slash, no `/api`) and `API_CA_CERT` = the line from step 5. Then redeploy, because settings apply to new deployments only.
+
+## The OCR service
+
+`services/ocr` reads the text of national ID cards (phone photos), scanned certificates and signed contracts for the
+API: PaddleOCR 3 with its Arabic and English models, on the CPU ([services/ocr/README.md](services/ocr/README.md)).
+
+- **Internal only.** It opens no port and has no sign-in: only containers on People System's own Docker network reach
+  it, and the API calls it at `http://ocr:8000` (`OCR_URL`). Photos and scans are read in memory and never written to
+  disk or to its log, and it makes no connection to the internet: its models are inside the image.
+- **Memory.** About 250 MB idle, about 1.1 GB while it reads a file, 1.4 GB at most on a dense page; Docker stops it at
+  2 GB. Before the first deploy with it, `free -h` on the server must show at least **1.5 GB** in the `available`
+  column, with Prime ERP and the rest of People System running. With less, add memory (or swap) first: otherwise
+  reading a file can slow the whole server, Prime ERP included.
+- **Disk.** The image is about 0.9 GB. `deploy.sh` builds it with the API; its first build takes a few minutes and
+  downloads PaddleOCR and its models (the only time it needs the internet). Later deploys rebuild it only when
+  `services/ocr` changes.
+- **If it is down,** the API keeps working; only reading documents fails until it is back. Docker restarts it by itself.
+
+Check it (in `/opt/people-system/deploy`):
+
+```bash
+docker compose ps ocr                 # "healthy"
+docker compose exec api node -e "fetch('http://ocr:8000/health').then(r => r.text()).then(console.log)"   # {"status":"ok"}
+docker compose logs -f ocr            # one line per file read: kind, size, pages, lines, seconds; never the text
+docker stats --no-stream              # memory of each container
+```
 
 ## On the server
 
@@ -119,6 +157,7 @@ secret: `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS`. Its key is named differently from P
 |---|---|
 | Deploy by hand | `./deploy.sh` |
 | API log | `docker compose logs -f api` |
+| OCR log | `docker compose logs -f ocr` |
 | Container state | `docker compose ps` |
 | Restore a save | `docker compose exec -T db pg_restore -U people -d people_system --clean --if-exists < backups/<file>` |
 
@@ -132,4 +171,6 @@ salaries: keep a copy off the server too, and restrict who can read it.
 - Every sign-in, failed sign-in and change to the company profile, departments, job titles and shifts is written to the `audit_log` table.
 - The company representative's national ID is stored but never returned in full by the API, and never written to the audit log.
 - Logos are checked by their content (PNG, JPEG or WebP only, up to 1 MB); SVG is refused because it can contain scripts.
+- ID photos and scans sent to the OCR service never leave the server: it has no port of its own, reads them in memory
+  only, logs nothing of their content, and makes no outside connection.
 - The pipeline's key can only run `deploy.sh` (no shell, no file copy, no forwarding). The server's GitHub key is read-only.

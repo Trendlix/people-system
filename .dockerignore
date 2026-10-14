@@ -11,6 +11,7 @@
 apps/api/src/generated
 deploy/backups
 deploy/.env
+services
 .git
 .github
 **/.DS_Store

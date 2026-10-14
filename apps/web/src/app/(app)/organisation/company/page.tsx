@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { logoUrl } from '@/components/brand';
 import { apiGet } from '@/lib/api';
+import { formatDate } from '@/lib/format';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Company } from '@/lib/types';
 import { Loading } from '../ui';
@@ -44,7 +45,6 @@ function websiteHref(site: string): string {
 async function CompanyProfile() {
   const [user, company] = await Promise.all([getCurrentUser(), apiGet<Company>('/company')]);
   const canEdit = canEditOrganisation(user);
-  const updated = new Date(company.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
   return (
     <div className="space-y-4">
@@ -108,7 +108,7 @@ async function CompanyProfile() {
         </Section>
       </div>
 
-      <p className="text-xs text-muted">Last updated {updated}. Names and the Arabic address are printed on contracts and other documents.</p>
+      <p className="text-xs text-muted">Last updated {formatDate(company.updatedAt)}. Names and the Arabic address are printed on contracts and other documents.</p>
     </div>
   );
 }

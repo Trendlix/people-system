@@ -1,0 +1,6 @@
+# What the OCR image never needs: it is built from requirements.txt and app/ only.
+.venv
+**/__pycache__
+.pytest_cache
+tests
+models

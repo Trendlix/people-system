@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import { fromTimeOfDay, toTimeOfDay } from '../../common/time-of-day.js';
 import type { Shift } from '../../generated/prisma/client.js';
@@ -86,6 +86,10 @@ export class ShiftsService {
 
   async remove(id: string, userId: string) {
     const shift = await this.get(id);
+    const employees = await this.prisma.employee.count({ where: { shiftId: id } });
+    if (employees > 0) {
+      throw new ConflictException(`${employees} employee(s) work shift ${shift.code}. Move them to another shift before deleting it.`);
+    }
     await this.prisma.shift.delete({ where: { id } });
     await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { code: shift.code } });
   }

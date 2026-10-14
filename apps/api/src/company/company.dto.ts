@@ -1,12 +1,5 @@
-import { Transform } from 'class-transformer';
 import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, MaxLength } from 'class-validator';
-import { Trim, TrimOrNull } from '../common/transforms.js';
-
-// Arabic-Indic digits (٠-٩) typed on an Arabic keyboard become 0-9.
-const LatinDigits = () =>
-  Transform(({ value }) =>
-    typeof value === 'string' ? value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)) : value,
-  );
+import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
 
 // Every field is optional: send only what changes. An empty string clears a field.
 export class UpdateCompanyDto {

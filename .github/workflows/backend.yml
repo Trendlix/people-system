@@ -1,10 +1,10 @@
 name: Deploy backend
 
 # Brings People System's API on the server up to date, the same way Prime ERP's pipeline does. On every push to main
-# that touches the backend (apps/api, packages/shared, deploy, or the lock file), this signs in to the server with a
-# key that can do one thing there, run deploy/deploy.sh: fetch, save the database, build the API's image, restart, and
-# wait until it answers. Then it asks the API itself whether it is up. "Run workflow" on the Actions page does the
-# same by hand.
+# that touches the backend (apps/api, packages/shared, services, deploy, or the lock file), this signs in to the server
+# with a key that can do one thing there, run deploy/deploy.sh: fetch, save the database, build the images of the API
+# and the OCR service, restart, and wait until they answer. Then it asks the API itself whether it is up. "Run
+# workflow" on the Actions page does the same by hand.
 #
 # Nothing else is done here: no tests are run. The tests are run before a push. The web app is built by Vercel from
 # the same push.
@@ -21,6 +21,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'packages/shared/**'
+      - 'services/**'
       - 'deploy/**'
       - 'package.json'
       - 'package-lock.json'

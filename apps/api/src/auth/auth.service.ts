@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Role } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
@@ -52,6 +52,18 @@ export class AuthService {
       token,
       user: { id: user.id, email: user.email, roles: user.roles.map((r) => r.role.key as Role) },
     };
+  }
+
+  /** A signed-in person changes their own password; the current one is asked for again. */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { passwordHash: true } });
+    const ok = user.passwordHash ? await verifyPassword(currentPassword, user.passwordHash) : false;
+    if (!ok) throw new BadRequestException('Your current password is not correct.');
+    if (newPassword === currentPassword) {
+      throw new BadRequestException('Choose a new password that is different from your current one.');
+    }
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(newPassword) } });
+    await this.audit.record({ userId, action: 'password_change', entityType: 'user', entityId: userId });
   }
 
   private async ensureNotLockedOut(email: string): Promise<void> {

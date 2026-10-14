@@ -1,0 +1,11 @@
+# What the OCR service needs. requirements.txt pins these and everything they pull in, for the image (Linux x86-64,
+# Python 3.12). To change a version: edit this file, then from services/ocr run (uv: https://docs.astral.sh/uv/)
+#   uv pip compile requirements.in -o requirements.txt --python-version 3.12 --python-platform x86_64-manylinux_2_28
+paddleocr==3.7.0          # PP-OCR models and pipeline (pulls in paddlex[ocr-core]); see app/engine.py
+onnxruntime==1.30.0       # PaddleOCR's engine here, instead of PaddlePaddle
+fastapi==0.142.2
+starlette==1.7.0          # fastapi's web layer; its newest release is held back until it has settled
+uvicorn==0.54.0
+python-multipart==0.0.32  # the upload is parsed as it streams in, in memory (app/upload.py)
+pypdfium2==5.13.0         # PDF pages to pictures, with no system packages
+pillow==12.3.0

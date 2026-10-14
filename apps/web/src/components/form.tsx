@@ -21,11 +21,12 @@ export function FormErrors({ errors }: { errors?: string[] }) {
   );
 }
 
-export function SubmitButton({ children, pendingText = 'Saving…' }: { children: React.ReactNode; pendingText?: string }) {
+/** `busy`: also pending while something started by the form is still running (e.g. an upload after photos are resized). */
+export function SubmitButton({ children, pendingText = 'Saving…', busy = false }: { children: React.ReactNode; pendingText?: string; busy?: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending} className="btn btn-primary">
-      {pending ? pendingText : children}
+    <button type="submit" disabled={pending || busy} className="btn btn-primary">
+      {pending || busy ? pendingText : children}
     </button>
   );
 }

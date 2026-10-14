@@ -18,6 +18,8 @@
   --color-danger-soft: #fdecea;
   --color-ok: #0b5f58;
   --color-ok-soft: #e3f3f0;
+  --color-warn: #9a4108;
+  --color-warn-soft: #ffefe2;
 
   --font-sans: var(--font-instrument), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-arabic: var(--font-plex-arabic), "Segoe UI", Tahoma, sans-serif;

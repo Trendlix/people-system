@@ -50,19 +50,25 @@ export async function apiGet<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** POST / PATCH / DELETE for form actions: throws ApiError with the API's messages. */
-export async function apiSend<T = unknown>(method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T | undefined> {
+/** POST / PUT / PATCH / DELETE for form actions: throws ApiError with the API's messages. */
+export async function apiSend<T = unknown>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T | undefined> {
   const res = await call(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
   if (res.status === 401) redirect('/login');
   if (!res.ok) throw new ApiError(res.status, await messagesOf(res));
   return res.status === 204 ? undefined : ((await res.json()) as T);
 }
 
-/** Multipart upload (e.g. the company logo): throws ApiError with the API's messages. */
-export async function apiUpload(method: 'PUT' | 'POST', path: string, form: FormData): Promise<void> {
+/** Multipart upload (e.g. the company logo, scanned paperwork): throws ApiError with the API's messages. */
+export async function apiUpload<T = unknown>(method: 'PUT' | 'POST', path: string, form: FormData): Promise<T | undefined> {
   const res = await call(path, { method, body: form });
   if (res.status === 401) redirect('/login');
   if (!res.ok) throw new ApiError(res.status, await messagesOf(res));
+  return res.headers.get('content-type')?.includes('json') ? ((await res.json()) as T) : undefined;
+}
+
+/** GET with the caller's session, as the raw response, for streaming a file on to the browser. Throws ApiError (503) when the API is unreachable. */
+export function apiFetch(path: string): Promise<Response> {
+  return call(path);
 }
 
 /** Public company name and logo version, for the sidebar and the sign-in page. Never throws. */

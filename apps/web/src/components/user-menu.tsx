@@ -1,16 +1,9 @@
+import Link from 'next/link';
 import { logout } from '@/app/login/actions';
 import { ApiError } from '@/lib/api';
+import { ROLE_LABELS } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
-
-const ROLE_LABELS: Record<string, string> = {
-  employee: 'Employee',
-  manager: 'Manager',
-  hr: 'HR',
-  finance: 'Finance',
-  ceo: 'CEO',
-  admin: 'Admin',
-};
 
 export async function UserMenu() {
   // The menu sits in the layout, so an API outage must not take the whole page down with it.
@@ -33,6 +26,11 @@ export async function UserMenu() {
         <p role="status" className="text-sm text-danger">
           Server unreachable
         </p>
+      )}
+      {user && (
+        <Link href="/account/password" className="text-sm whitespace-nowrap">
+          Change password
+        </Link>
       )}
       <form action={logout}>
         <button type="submit" className="btn btn-secondary">

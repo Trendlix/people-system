@@ -9,7 +9,9 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 |---|---|
 | Sign-in, roles (Employee, Manager, HR, Finance, CEO, Admin), audit log | Done |
 | 1 · Organisation: company profile and logo, departments, job titles with job descriptions, shifts | Done. HR and Admin edit, everyone else views |
-| 2 · Employees | Next |
+| Users: sign-in accounts, roles, temporary passwords; everyone can change their own password | Done. Admin only |
+| 2 · Employees: directory, profile (personal, contact, education, employment), national ID and bank (restricted, every view audited) | Done. HR edits; HR, CEO and Finance see everyone, a manager their team, an employee themself |
+| Employee file: scanned paperwork per employment type, text read by OCR and searchable, "Fill from ID card photos" | Done. HR and CEO |
 | 3 · Contracts | Next |
 
 ## Layout
@@ -20,8 +22,15 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 | `apps/api` | NestJS API (port 3001, all routes under `/api`) |
 | `apps/api/prisma/schema.prisma` | Database schema (Prisma 7); migrations in `apps/api/prisma/migrations` |
 | `packages/shared` | Types and value lists used by both apps |
-| `deploy/` | What the server runs: Docker Compose (PostgreSQL, API, daily backup), `deploy.sh`, `ci-key.sh` ([DEPLOY.md](DEPLOY.md)) |
+| `services/ocr` | OCR service (Python, PaddleOCR): reads national ID cards and scanned documents for the API; internal only, port 8000 on the Docker network ([README](services/ocr/README.md)) |
+| `deploy/` | What the server runs: Docker Compose (PostgreSQL, API, OCR, daily backup), `deploy.sh`, `ci-key.sh` ([DEPLOY.md](DEPLOY.md)) |
 | `.github/workflows/backend.yml` | CI/CD: deploys the API to the server on every push to `main` that touches it |
+
+## Conventions
+
+- **Dates and times on screen:** every date is DD/MM/YYYY (14/10/2026) and every time is 12-hour (9:00 AM), on every screen. Show them with the helpers in `apps/web/src/lib/format.ts` (`formatDate`, `formatTime`, `formatDateTime`) and take them in forms with `DateInput` / `TimeInput` from `apps/web/src/components/date-time-inputs.tsx` (plain text fields: the browser's own pickers follow the computer's region). Server actions read them with `dateFrom` / `timeFrom` from `apps/web/src/lib/form-data.ts`.
+- **The API** sends and accepts dates as YYYY-MM-DD and times as HH:mm (24-hour); only the web app converts.
+- **Moments** (created at, updated at) are shown in Cairo time.
 
 ## Requirements
 

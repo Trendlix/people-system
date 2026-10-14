@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
+import { formatTime } from '@/lib/format';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Shift } from '@/lib/types';
 import { DAY_NAMES, Empty, Loading } from '../ui';
@@ -40,7 +41,7 @@ async function ShiftsList() {
                 <tr key={s.id}>
                   <td className="font-medium">Shift {s.code}</td>
                   <td className="whitespace-nowrap tabular-nums">
-                    {s.startTime}–{s.endTime}
+                    {formatTime(s.startTime)} – {formatTime(s.endTime)}
                   </td>
                   <td className="whitespace-nowrap">{s.graceMinutes} min</td>
                   <td>{s.workingDays.map((d) => DAY_NAMES[d]).join(', ')}</td>

@@ -5,7 +5,7 @@ import { API_URL } from '@/lib/api';
 
 const MODULES = [
   { title: 'Organisation', text: 'Company profile, departments, job titles and job descriptions, shifts.', href: '/organisation/company' },
-  { title: 'Employees', text: 'Directory and employee profiles.' },
+  { title: 'Employees', text: 'Directory and employee profiles.', href: '/employees' },
   { title: 'Contracts', text: 'Contract versions, durations and expiry alerts.' },
 ];
 

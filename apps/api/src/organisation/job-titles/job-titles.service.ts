@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateJobTitleDto, UpdateJobTitleDto } from './job-title.dto.js';
@@ -99,6 +99,10 @@ export class JobTitlesService {
 
   async remove(id: string, userId: string) {
     const job = await this.get(id);
+    const employees = await this.prisma.employee.count({ where: { jobTitleId: id } });
+    if (employees > 0) {
+      throw new ConflictException(`${employees} employee(s) have this job title. Give them another one before deleting it.`);
+    }
     await this.prisma.jobTitle.delete({ where: { id } });
     await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { titleEn: job.titleEn } });
   }

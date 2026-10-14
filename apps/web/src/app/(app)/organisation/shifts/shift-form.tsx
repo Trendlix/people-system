@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useActionState } from 'react';
+import { TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
+import { formatTime } from '@/lib/format';
 import type { FormState, Shift } from '@/lib/types';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -29,13 +31,13 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
           <label htmlFor={fid('startTime')} className="label">
             Starts
           </label>
-          <input id={fid('startTime')} name="startTime" type="time" required defaultValue={valueOf(state, 'startTime', shift?.startTime ?? '09:00')} className="input" />
+          <TimeInput id={fid('startTime')} name="startTime" required defaultValue={valueOf(state, 'startTime', formatTime(shift?.startTime ?? '09:00'))} />
         </div>
         <div>
           <label htmlFor={fid('endTime')} className="label">
             Ends
           </label>
-          <input id={fid('endTime')} name="endTime" type="time" required defaultValue={valueOf(state, 'endTime', shift?.endTime ?? '18:00')} className="input" />
+          <TimeInput id={fid('endTime')} name="endTime" required defaultValue={valueOf(state, 'endTime', formatTime(shift?.endTime ?? '18:00'))} />
         </div>
         <div>
           <label htmlFor={fid('graceMinutes')} className="label">

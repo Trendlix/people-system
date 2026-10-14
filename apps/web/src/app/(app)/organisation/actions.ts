@@ -4,6 +4,7 @@
 // the session and the HR/Admin role, so calling these directly can't bypass permissions.
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
+import { timeFrom } from '@/lib/form-data';
 import type { FormState } from '@/lib/types';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '');
@@ -71,23 +72,35 @@ export async function deleteJobTitle(id: string, _prev: FormState, fd: FormData)
 
 // ---------- shifts ----------
 
-const shiftBody = (fd: FormData) => {
+/** The shift for the API. Times are typed as 12-hour ("9:00 AM") and sent as HH:mm; problems go in `errors`. */
+const shiftBody = (fd: FormData, errors: string[]) => {
+  const time = (key: string, label: string) => {
+    const value = timeFrom(fd, key, label, errors);
+    if (value === '') errors.push(`Enter the ${label}, e.g. 9:00 AM.`);
+    return value;
+  };
   const grace = text(fd, 'graceMinutes').trim();
   return {
     code: text(fd, 'code'),
-    startTime: text(fd, 'startTime'),
-    endTime: text(fd, 'endTime'),
+    startTime: time('startTime', 'start time'),
+    endTime: time('endTime', 'end time'),
     graceMinutes: grace === '' ? undefined : Number(grace),
     workingDays: fd.getAll('workingDays').map(Number),
   };
 };
 
 export async function createShift(_prev: FormState, fd: FormData): Promise<FormState> {
-  return save(fd, () => apiSend('POST', '/shifts', shiftBody(fd)), '/organisation/shifts');
+  const errors: string[] = [];
+  const body = shiftBody(fd, errors);
+  if (errors.length) return { errors, values: submitted(fd) };
+  return save(fd, () => apiSend('POST', '/shifts', body), '/organisation/shifts');
 }
 
 export async function updateShift(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  return save(fd, () => apiSend('PATCH', `/shifts/${id}`, shiftBody(fd)), '/organisation/shifts');
+  const errors: string[] = [];
+  const body = shiftBody(fd, errors);
+  if (errors.length) return { errors, values: submitted(fd) };
+  return save(fd, () => apiSend('PATCH', `/shifts/${id}`, body), '/organisation/shifts');
 }
 
 export async function deleteShift(id: string, _prev: FormState, fd: FormData): Promise<FormState> {

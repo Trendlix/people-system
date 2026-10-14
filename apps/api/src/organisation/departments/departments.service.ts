@@ -49,6 +49,10 @@ export class DepartmentsService {
         `This department has ${dept._count.jobTitles} job title(s). Move or delete them before deleting the department.`,
       );
     }
+    const employees = await this.prisma.employee.count({ where: { departmentId: id } });
+    if (employees > 0) {
+      throw new ConflictException(`${employees} employee(s) work in this department. Move them before deleting the department.`);
+    }
     await this.prisma.department.delete({ where: { id } });
     await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { nameEn: dept.nameEn } });
   }

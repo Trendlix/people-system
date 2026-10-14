@@ -1,0 +1,251 @@
+import { BadGatewayException, BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { RESTRICTED_PAPERWORK, type PaperworkKind } from '@trendlix/shared';
+import { AuditService } from '../audit/audit.service.js';
+import type { SessionUser } from '../auth/session-user.js';
+import type { Prisma } from '../generated/prisma/client.js';
+import { PrismaService } from '../prisma/prisma.service.js';
+import { NORMALIZE_FROM, NORMALIZE_TO, normalizeArabic, snippet } from './arabic-text.js';
+import { readIdCard } from './egyptian-id.js';
+import { OcrClient, type OcrRead } from './ocr.client.js';
+import { detectPaperworkType, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from './paperwork-file.js';
+
+const ENTITY = 'paperwork';
+const SEARCH_LIMIT = 50;
+
+/** What lists show: never the file or its text. */
+const ITEM = {
+  id: true,
+  kind: true,
+  fileName: true,
+  mimeType: true,
+  sizeBytes: true,
+  ocrStatus: true,
+  uploadedAt: true,
+  uploadedBy: { select: { email: true } },
+} satisfies Prisma.PaperworkItemSelect;
+
+const NO_OCR_FOR_ID =
+  'Reading ID cards is not available right now: the OCR service is not running. The photos were saved in the employee file.';
+const OCR_FAILED_FOR_ID = 'The OCR service could not read the ID card. The photos were saved in the employee file.';
+
+interface Upload {
+  data: Buffer;
+  type: PaperworkType;
+  fileName: string;
+}
+
+/** National ID scans are restricted like the national ID itself. */
+const isRestricted = (kind: string) => (RESTRICTED_PAPERWORK as readonly string[]).includes(kind);
+
+/** The uploaded file, checked by its content. */
+function checked(file: Express.Multer.File | undefined, missing: string, what = 'The file'): Upload {
+  if (!file?.buffer?.length) throw new BadRequestException(missing);
+  if (file.size > PAPERWORK_MAX_BYTES) throw new BadRequestException(`${what} must be ${PAPERWORK_MAX_MB} MB or smaller.`);
+  const type = detectPaperworkType(file.buffer);
+  if (!type) throw new BadRequestException(`${what} must be a JPEG, PNG or WebP image, or a PDF.`);
+  return { data: file.buffer, type, fileName: safeFileName(file.originalname, type) };
+}
+
+/** What is stored after reading: the text, or why there is none. PostgreSQL text cannot hold NUL characters. */
+function ocrColumns(read: OcrRead) {
+  return read.status === 'done'
+    ? { ocrStatus: 'done', ocrText: read.text.replaceAll('\u0000', ''), ocrAt: new Date() }
+    : { ocrStatus: read.status, ocrText: null, ocrAt: null };
+}
+
+@Injectable()
+export class PaperworkService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly ocr: OcrClient,
+  ) {}
+
+  /** The employee file, newest first. */
+  async list(employeeId: string) {
+    await this.assertEmployee(employeeId);
+    return this.prisma.paperworkItem.findMany({
+      where: { employeeId },
+      select: ITEM,
+      orderBy: [{ uploadedAt: 'desc' }, { id: 'desc' }],
+    });
+  }
+
+  /** Stores the file, then reads its text (Arabic, every page) right away. */
+  async upload(employeeId: string, kind: PaperworkKind, file: Express.Multer.File | undefined, user: SessionUser) {
+    await this.assertEmployee(employeeId);
+    const upload = checked(file, 'Choose a file to upload.');
+    const id = await this.store(employeeId, kind, upload, user);
+    await this.read(id, upload);
+    return this.prisma.paperworkItem.findUniqueOrThrow({ where: { id }, select: ITEM });
+  }
+
+  /** The file itself. Every view of a national ID scan is written to the audit log. */
+  async file(itemId: string, user: SessionUser) {
+    const item = await this.prisma.paperworkItem.findUnique({
+      where: { id: itemId },
+      select: { id: true, employeeId: true, kind: true, fileName: true, mimeType: true, data: true },
+    });
+    if (!item) throw new NotFoundException('Document not found.');
+    await this.viewed(item, user, ['file']);
+    return { data: Buffer.from(item.data.buffer, item.data.byteOffset, item.data.byteLength), type: item.mimeType, fileName: item.fileName };
+  }
+
+  /** The text read from the file. Audited like the file for national ID scans. */
+  async text(itemId: string, user: SessionUser) {
+    const item = await this.prisma.paperworkItem.findUnique({
+      where: { id: itemId },
+      select: { id: true, employeeId: true, kind: true, ocrStatus: true, ocrText: true },
+    });
+    if (!item) throw new NotFoundException('Document not found.');
+    await this.viewed(item, user, ['ocrText']);
+    return { ocrStatus: item.ocrStatus, ocrText: item.ocrText };
+  }
+
+  /** Reads the text again, e.g. after the OCR service was down. Text read earlier is never lost to a failed read. */
+  async reread(itemId: string, user: SessionUser) {
+    const item = await this.prisma.paperworkItem.findUnique({
+      where: { id: itemId },
+      select: { id: true, employeeId: true, mimeType: true, data: true, ocrStatus: true, ocrText: true },
+    });
+    if (!item) throw new NotFoundException('Document not found.');
+    const read = await this.ocr.read(Buffer.from(item.data), item.mimeType as PaperworkType, 'ar');
+    if (read.status !== 'done' && item.ocrText !== null) {
+      throw read.status === 'unavailable'
+        ? new ServiceUnavailableException('The OCR service is not running. The text read earlier is kept.')
+        : new BadGatewayException('The OCR service could not read the document. The text read earlier is kept.');
+    }
+    const updated = await this.prisma.paperworkItem.update({ where: { id: itemId }, data: ocrColumns(read), select: ITEM });
+    await this.audit.record({
+      userId: user.id,
+      action: 'update',
+      entityType: ENTITY,
+      entityId: itemId,
+      diff: { employeeId: item.employeeId, ocrStatus: { from: item.ocrStatus, to: updated.ocrStatus } },
+    });
+    return updated;
+  }
+
+  async remove(itemId: string, user: SessionUser) {
+    const item = await this.prisma.paperworkItem.findUnique({
+      where: { id: itemId },
+      select: { employeeId: true, kind: true, fileName: true, sizeBytes: true },
+    });
+    if (!item) throw new NotFoundException('Document not found.');
+    await this.prisma.paperworkItem.delete({ where: { id: itemId } });
+    await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: itemId, diff: item });
+  }
+
+  /**
+   * Documents whose text contains `q`, newest first, with the words around it. The query and the stored text are
+   * made uniform the same way (see arabic-text.ts), so أ/إ/ا, ة/ه, ى/ي, tatweel, diacritics and the form of the
+   * digits make no difference. National ID scans are left out: what they say is already in the national ID fields,
+   * and showing their text would be a restricted view (owner's decision, 14 October 2026).
+   */
+  async search(q: string) {
+    const needle = normalizeArabic(q);
+    if (Array.from(needle).length < 2) throw new BadRequestException('Type at least 2 characters to search.');
+    const pattern = `%${needle.replace(/[\\%_]/g, '\\$&')}%`;
+    const hits = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM paperwork_items
+      WHERE ocr_text IS NOT NULL
+        AND kind <> ALL(${[...RESTRICTED_PAPERWORK]}::text[])
+        AND regexp_replace(translate(ocr_text, ${NORMALIZE_FROM}, ${NORMALIZE_TO}), '[[:space:]]+', ' ', 'g') ILIKE ${pattern}
+      ORDER BY uploaded_at DESC, id
+      LIMIT ${SEARCH_LIMIT}`;
+    if (!hits.length) return [];
+
+    const rows = await this.prisma.paperworkItem.findMany({
+      where: { id: { in: hits.map((h) => h.id) } },
+      select: { ...ITEM, ocrText: true, employee: { select: { id: true, employeeCode: true, fullNameEn: true } } },
+    });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const results = [];
+    for (const { id } of hits) {
+      const row = byId.get(id);
+      if (!row) continue; // deleted in the meantime
+      const { ocrText, employee, ...item } = row;
+      results.push({ item, employee, snippet: snippet(ocrText ?? '', needle) });
+    }
+    return results;
+  }
+
+  /**
+   * Reads a national ID card: keeps the photos in the employee file (national_id_front and national_id_back), reads
+   * them, and returns what they say as suggestions. Nothing about the employee changes here: HR checks the
+   * suggestions against the card and saves them through the profile and identity forms.
+   */
+  async scanIdentity(
+    employeeId: string,
+    files: { front?: Express.Multer.File[]; back?: Express.Multer.File[] } | undefined,
+    user: SessionUser,
+  ) {
+    await this.assertEmployee(employeeId);
+    const front = checked(files?.front?.[0], 'Choose a photo of the front of the ID card.', 'The photo of the front');
+    const back = files?.back?.[0] ? checked(files.back[0], 'The photo of the back is empty.', 'The photo of the back') : null;
+
+    const frontId = await this.store(employeeId, 'national_id_front', front, user);
+    const backId = back ? await this.store(employeeId, 'national_id_back', back, user) : null;
+    const [frontRead, backRead] = await Promise.all([
+      this.read(frontId, front),
+      back && backId ? this.read(backId, back) : Promise.resolve(null),
+    ]);
+
+    const reads = backRead ? [frontRead, backRead] : [frontRead];
+    if (!reads.some((r) => r.status === 'done')) {
+      throw reads.some((r) => r.status === 'unavailable')
+        ? new ServiceUnavailableException(NO_OCR_FOR_ID)
+        : new BadGatewayException(OCR_FAILED_FOR_ID);
+    }
+    const textOf = (r: OcrRead | null) => (r?.status === 'done' ? r.text : null);
+    const linesOf = (r: OcrRead | null) => (r?.status === 'done' ? (r.lines.length ? r.lines.join('\n') : r.text) : null);
+    return {
+      suggestions: readIdCard(linesOf(frontRead), linesOf(backRead)),
+      front: { itemId: frontId, text: textOf(frontRead) },
+      ...(backId && { back: { itemId: backId, text: textOf(backRead) } }),
+    };
+  }
+
+  // ---------- helpers ----------
+
+  private async assertEmployee(id: string) {
+    const exists = await this.prisma.employee.count({ where: { id } });
+    if (!exists) throw new NotFoundException('Employee not found.');
+  }
+
+  /** Saves the file (text not read yet) and logs the upload: kind, name and size, never the contents. */
+  private async store(employeeId: string, kind: PaperworkKind, upload: Upload, user: SessionUser): Promise<string> {
+    const { fileName, type, data } = upload;
+    const { id } = await this.prisma.paperworkItem.create({
+      data: { employeeId, kind, fileName, mimeType: type, sizeBytes: data.length, data: new Uint8Array(data), uploadedById: user.id },
+      select: { id: true },
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'create',
+      entityType: ENTITY,
+      entityId: id,
+      diff: { employeeId, kind, fileName, sizeBytes: data.length },
+    });
+    return id;
+  }
+
+  /** Reads the text of a stored file (in Arabic: every kind of paperwork here is Arabic) and keeps it. */
+  private async read(id: string, upload: Upload): Promise<OcrRead> {
+    const read = await this.ocr.read(upload.data, upload.type, 'ar');
+    await this.prisma.paperworkItem.update({ where: { id }, data: ocrColumns(read) });
+    return read;
+  }
+
+  /** National ID scans are restricted: every view of the file or its text is written to the audit log. */
+  private async viewed(item: { id: string; employeeId: string; kind: string }, user: SessionUser, fields: string[]) {
+    if (!isRestricted(item.kind)) return;
+    await this.audit.record({
+      userId: user.id,
+      action: 'view_restricted',
+      entityType: ENTITY,
+      entityId: item.id,
+      diff: { employeeId: item.employeeId, kind: item.kind, fields },
+    });
+  }
+}

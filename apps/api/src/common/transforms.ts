@@ -10,3 +10,9 @@ export const TrimOrNull = () =>
     const trimmed = value.trim();
     return trimmed === '' ? null : trimmed;
   });
+
+/** Arabic-Indic digits (٠-٩) typed on an Arabic keyboard become 0-9. */
+export const LatinDigits = () =>
+  Transform(({ value }) =>
+    typeof value === 'string' ? value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)) : value,
+  );
