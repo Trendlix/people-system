@@ -1,0 +1,68 @@
+// Starting data: roles, the two shifts and the first admin account.
+// Safe to run more than once; existing rows are left as they are.
+import 'dotenv/config';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../src/generated/prisma/client.js';
+import { hashPassword } from '../src/auth/password.js';
+import { toTimeOfDay } from '../src/common/time-of-day.js';
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
+
+const ROLES = [
+  { key: 'employee', name: 'Employee' },
+  { key: 'manager', name: 'Direct manager' },
+  { key: 'hr', name: 'HR' },
+  { key: 'finance', name: 'Finance' },
+  { key: 'ceo', name: 'CEO' },
+  { key: 'admin', name: 'Admin' },
+];
+
+const SHIFTS = [
+  { code: 'A', start: '09:00', end: '18:00' },
+  { code: 'B', start: '10:00', end: '19:00' },
+];
+
+async function main() {
+  for (const role of ROLES) {
+    await prisma.role.upsert({ where: { key: role.key }, update: {}, create: role });
+  }
+
+  for (const s of SHIFTS) {
+    await prisma.shift.upsert({
+      where: { code: s.code },
+      update: {},
+      create: { code: s.code, startTime: toTimeOfDay(s.start), endTime: toTimeOfDay(s.end) },
+    });
+  }
+
+  const email = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.SEED_ADMIN_PASSWORD;
+  if (!email || !password) {
+    console.log('SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD not set; skipping admin account.');
+    return;
+  }
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    console.log(`Admin account ${email} already exists; left unchanged.`);
+    return;
+  }
+  const admin = await prisma.role.findUniqueOrThrow({ where: { key: 'admin' } });
+  const hr = await prisma.role.findUniqueOrThrow({ where: { key: 'hr' } });
+  await prisma.user.create({
+    data: {
+      email,
+      passwordHash: await hashPassword(password),
+      roles: { create: [{ roleId: admin.id }, { roleId: hr.id }] },
+    },
+  });
+  console.log(`Created admin account ${email}.`);
+}
+
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());

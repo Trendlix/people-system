@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// People System database schema.
+// Starting point: trendlix-hrms-handoff/db/schema.sql. Tables and columns keep its snake_case names.
 
 generator client {
   provider            = "prisma-client"
@@ -10,4 +10,109 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ---------- users & access ----------
+
+model Role {
+  id    String     @id @default(uuid()) @db.Uuid
+  key   String     @unique // employee, manager, hr, finance, ceo, admin
+  name  String
+  users UserRole[]
+
+  @@map("roles")
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
+  passwordHash String?    @map("password_hash")
+  mfaEnabled   Boolean    @default(false) @map("mfa_enabled")
+  isActive     Boolean    @default(true) @map("is_active")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  roles        UserRole[]
+  auditEntries AuditLog[]
+
+  @@map("users")
+}
+
+model UserRole {
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// ---------- organisation ----------
+
+model Department {
+  id        String     @id @default(uuid()) @db.Uuid
+  nameEn    String     @unique @map("name_en")
+  nameAr    String?    @map("name_ar")
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  jobTitles JobTitle[]
+
+  @@map("departments")
+}
+
+model Shift {
+  id           String   @id @default(uuid()) @db.Uuid
+  code         String   @unique // A, B
+  startTime    DateTime @map("start_time") @db.Time(0)
+  endTime      DateTime @map("end_time") @db.Time(0)
+  graceMinutes Int      @default(15) @map("grace_minutes")
+  workingDays  Int[]    @default([0, 1, 2, 3, 4]) @map("working_days") @db.SmallInt // 0 = Sun … 6 = Sat
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("shifts")
+}
+
+model JobTitle {
+  id             String         @id @default(uuid()) @db.Uuid
+  departmentId   String         @map("department_id") @db.Uuid
+  department     Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  titleEn        String         @map("title_en")
+  titleAr        String?        @map("title_ar")
+  grade          String?
+  jdPurpose      String?        @map("jd_purpose")
+  jdRequirements String?        @map("jd_requirements")
+  jdVersion      Int            @default(1) @map("jd_version")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  duties         JobTitleDuty[]
+
+  @@unique([departmentId, titleEn])
+  @@map("job_titles")
+}
+
+model JobTitleDuty {
+  id         String   @id @default(uuid()) @db.Uuid
+  jobTitleId String   @map("job_title_id") @db.Uuid
+  jobTitle   JobTitle @relation(fields: [jobTitleId], references: [id], onDelete: Cascade)
+  position   Int
+  duty       String
+
+  @@map("job_title_duties")
+}
+
+// ---------- audit ----------
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  userId     String?  @map("user_id") @db.Uuid
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String // create, update, delete, login, view_restricted …
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id") @db.Uuid
+  diff       Json?
+  at         DateTime @default(now()) @db.Timestamptz
+
+  @@index([entityType, entityId])
+  @@map("audit_log")
 }

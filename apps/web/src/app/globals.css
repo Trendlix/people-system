@@ -1,26 +1,87 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Colours and fonts from the approved prototype (trendlix-hrms-handoff/screens). */
+@theme {
+  --color-ink: #12161f;
+  --color-muted: #5b6472;
+  --color-line: #e3e6eb;
+  --color-line-soft: #eef0f3;
+  --color-canvas: #f4f5f7;
+  --color-card: #ffffff;
+  --color-accent: #2b59f0;
+  --color-accent-hover: #1f47d1;
+  --color-accent-soft: #e8eeff;
+  --color-sidebar: #0e1726;
+  --color-sidebar-active: #1f2e4a;
+  --color-sidebar-text: #c9d1de;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+  --color-ok: #0b5f58;
+  --color-ok-soft: #e3f3f0;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-instrument), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-arabic: var(--font-plex-arabic), "Segoe UI", Tahoma, sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+/* Arabic text (names, titles) */
+[lang="ar"] {
+  font-family: var(--font-arabic);
+}
+
+@layer components {
+  .card {
+    /* relative: keeps visually hidden (sr-only) children inside scrolling tables */
+    @apply relative rounded-xl border border-line bg-card;
+  }
+
+  .input {
+    @apply block min-h-11 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink outline-none;
+    @apply focus:border-accent focus:ring-2 focus:ring-accent/20;
+  }
+
+  .label {
+    @apply mb-1 block text-sm font-medium;
+  }
+
+  .hint {
+    @apply mt-1 text-xs text-muted;
+  }
+
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-transparent px-4 text-sm font-semibold no-underline transition-colors;
+    @apply disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-primary {
+    @apply bg-accent text-white hover:bg-accent-hover;
+  }
+
+  .btn-secondary {
+    @apply border-line bg-white text-ink hover:bg-canvas;
+  }
+
+  .btn-danger {
+    @apply border-danger/30 bg-white text-danger hover:bg-danger-soft;
+  }
+
+  .table {
+    @apply w-full border-collapse text-sm;
+  }
+
+  .table th {
+    @apply border-b border-line px-4 py-3 text-left text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase;
+  }
+
+  .table td {
+    @apply border-b border-line-soft px-4 py-3 align-middle;
+  }
+
+  .badge {
+    @apply inline-block rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-accent;
+  }
 }

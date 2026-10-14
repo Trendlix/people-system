@@ -6,13 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "prebuild": "tsc -p ../../packages/shared/tsconfig.json"
   },
   "dependencies": {
+    "@trendlix/shared": "*",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "@trendlix/shared": "*"
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",

@@ -1,29 +1,27 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { IBM_Plex_Sans_Arabic, Instrument_Sans } from 'next/font/google';
+import './globals.css';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const instrument = Instrument_Sans({
+  variable: '--font-instrument',
+  subsets: ['latin'],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const plexArabic = IBM_Plex_Sans_Arabic({
+  variable: '--font-plex-arabic',
+  subsets: ['arabic'],
+  weight: ['400', '500', '600'],
 });
 
 export const metadata: Metadata = {
-  title: "TrendLIX HRMS",
-  description: "TrendLIX Management System",
+  title: 'People System · TrendLIX',
+  description: 'TrendLIX Management System',
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en" className={`${instrument.variable} ${plexArabic.variable} h-full antialiased`}>
+      <body className="min-h-full font-sans">{children}</body>
     </html>
   );
 }
