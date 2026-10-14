@@ -10,6 +10,11 @@ import { latinDigits, normalizeArabic } from './arabic-text.js';
 // name on the next, two address lines, then the 14-digit national ID; a small printed code may also appear.
 // Back: the national ID again, profession, gender, religion, marital status, the issue date,
 // "البطاقة سارية حتى <date>" (the expiry) and the civil registry office that issued it.
+//
+// A scan cut a little short (up to ~3 mm, often at the top) loses or cuts through a line. A line the top or bottom
+// edge of the picture runs through reads as something else, as surely as a whole one (a cut number reads as another,
+// well-formed number), so it is never used; and the name and address are then counted up from the national ID,
+// never down from the edge of the picture. A field that can't be found that way stays empty: never another value.
 
 export interface IdCardSuggestions {
   nationalId?: string;
@@ -41,18 +46,41 @@ const LATIN_LETTER = /[A-Za-z]/;
 // a date: 2 or 3 numbers joined by / - or . (2025/7/11, 11-07-2025, 2020/07, 07/2020), not inside a longer number
 const DATE = /(?<!\d)(\d{1,4})\s*[/\-.]\s*(\d{1,4})(?:\s*[/\-.]\s*(\d{1,4}))?(?!\d)/g;
 
+/** A line read from one side of the card; `cut` when the top or bottom edge of the picture runs through it. */
+export interface CardLine {
+  text: string;
+  cut?: boolean;
+}
+
+/** One side of the card as read: its text (no positions known), or its lines in reading order. */
+export type CardSide = string | CardLine[] | null;
+
 /** Everything the card's text gives, from the front, the back, or both (either may be missing). */
-export function readIdCard(front: string | null, back: string | null, today = todayInCairo()): IdCardSuggestions {
-  const frontLines = linesOf(front);
-  const backLines = linesOf(back);
+export function readIdCard(front: CardSide, back: CardSide, today = todayInCairo()): IdCardSuggestions {
+  return readIdCardWithNotes(front, back, today).suggestions;
+}
+
+/** As readIdCard, with notes for HR about what was left out and why. */
+export function readIdCardWithNotes(front: CardSide, back: CardSide, today = todayInCairo()): { suggestions: IdCardSuggestions; notes: string[] } {
+  const frontAll = sideLines(front);
+  const backAll = sideLines(back);
+  // a line the edge of the picture cuts through is not used for anything
+  const frontLines = frontAll.filter((l) => !l.cut).map((l) => l.text);
+  const backLines = backAll.filter((l) => !l.cut).map((l) => l.text);
+  const topCut = frontAll.length > 0 && frontAll[0].cut === true;
   const out: IdCardSuggestions = {};
+  const notes: string[] = [];
 
   const nationalId = pickNationalId(frontLines, backLines, today);
   if (nationalId) {
     out.nationalId = nationalId;
     out.dateOfBirth = birthDateFromNationalId(nationalId)!;
+  } else if ([...frontAll, ...backAll].some((l) => l.cut && (l.text.match(DIGIT)?.length ?? 0) >= 12)) {
+    notes.push(
+      'The national ID number is at the edge of the picture, which cuts through it, so it was not taken. Type it in from the card, or scan the card again with some space around it.',
+    );
   }
-  Object.assign(out, readNameAndAddress(frontLines));
+  Object.assign(out, readNameAndAddress(frontLines, topCut));
 
   const gender = readGender(backLines);
   if (gender) out.gender = gender;
@@ -67,7 +95,7 @@ export function readIdCard(front: string | null, back: string | null, today = to
 
   const printedNo = only(unique([...frontLines, ...backLines].flatMap(printedCodesIn)));
   if (printedNo) out.printedNo = printedNo;
-  return out;
+  return { suggestions: out, notes };
 }
 
 // ---------- national ID ----------
@@ -108,24 +136,51 @@ function pickNationalId(front: string[], back: string[], today: string): string 
 
 // ---------- front: name and address ----------
 
-function readNameAndAddress(lines: string[]): Pick<IdCardSuggestions, 'fullNameAr' | 'addressAr'> {
+/**
+ * The name (first name on one line, the rest on the next) and the address (the lines between the name and the
+ * national ID). When the top of the picture was cut (`topCut`), lines may be missing above, so the block is counted
+ * up from the national ID instead: the address is the two lines above it, and the name the two above those, or
+ * nothing when they aren't both there.
+ */
+function readNameAndAddress(lines: string[], topCut = false): Pick<IdCardSuggestions, 'fullNameAr' | 'addressAr'> {
   // The national ID ends the name and address block; the printed code and header are not part of it.
   const idLine = lines.findIndex((l) => (l.match(DIGIT)?.length ?? 0) >= 12);
   const block = (idLine >= 0 ? lines.slice(0, idLine) : lines).filter((l) => !isHeader(l) && letterCount(l) >= 2);
-  const [first, rest] = block;
-  if (!first || !rest || !isNameLine(first) || !isNameLine(rest)) return {};
-
   const out: Pick<IdCardSuggestions, 'fullNameAr' | 'addressAr'> = {};
-  const name = `${lettersOnly(first)} ${lettersOnly(rest)}`;
-  const words = name.split(' ').length;
-  if (words >= 3 && words <= 8) out.fullNameAr = name;
 
+  if (topCut) {
+    if (idLine < 0) return out; // without the number to count from, nothing is certain
+    const address = addressOf(block.slice(-2));
+    if (address && block.length >= 2) out.addressAr = address;
+    const name = block.length >= 4 ? nameOf(block[block.length - 4], block[block.length - 3]) : undefined;
+    if (name) out.fullNameAr = name;
+    return out;
+  }
+
+  const [first, rest] = block;
+  const name = first && rest ? nameOf(first, rest) : undefined;
+  if (!name) return out;
+  out.fullNameAr = name;
   // the address lines lie between the name and the national ID; without the ID their end is unknown
   if (idLine >= 0) {
-    const address = block.slice(2).filter((l) => !LATIN_LETTER.test(l)).map(addressText).filter(Boolean);
-    if (address.length >= 1 && address.length <= 3) out.addressAr = address.join('، ');
+    const address = addressOf(block.slice(2));
+    if (address) out.addressAr = address;
   }
   return out;
+}
+
+/** The full name from its two lines, when both are name lines and it has 3 to 8 words. */
+function nameOf(first: string, rest: string): string | undefined {
+  if (!isNameLine(first) || !isNameLine(rest)) return undefined;
+  const name = `${lettersOnly(first)} ${lettersOnly(rest)}`;
+  const words = name.split(' ').length;
+  return words >= 3 && words <= 8 ? name : undefined;
+}
+
+/** One to three address lines, joined with "، ". */
+function addressOf(lines: string[]): string | undefined {
+  const address = lines.filter((l) => !LATIN_LETTER.test(l)).map(addressText).filter(Boolean);
+  return address.length >= 1 && address.length <= 3 ? address.join('، ') : undefined;
 }
 
 function isHeader(line: string): boolean {
@@ -253,11 +308,12 @@ function cardDate(parts: string[]): CardDate | null {
 
 // ---------- helpers ----------
 
-function linesOf(text: string | null): string[] {
-  return (text ?? '')
+function sideLines(side: CardSide): CardLine[] {
+  if (Array.isArray(side)) return side.map((l) => ({ text: l.text.trim(), cut: l.cut === true })).filter((l) => l.text);
+  return (side ?? '')
     .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
+    .map((l) => ({ text: l.trim(), cut: false }))
+    .filter((l) => l.text);
 }
 
 function unique<T>(values: T[]): T[] {

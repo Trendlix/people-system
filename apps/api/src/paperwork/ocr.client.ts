@@ -8,8 +8,15 @@ import { extensionOf, type PaperworkType } from './paperwork-file.js';
 
 export type OcrLang = 'ar' | 'en';
 
+/** A page as read: its lines in reading order, each with its box, and the page's size when the service gives it. */
+export interface OcrPageRead {
+  lines: { text: string; box: [number, number, number, number] }[]; // box: x_min, y_min, x_max, y_max in pixels
+  width?: number;
+  height?: number;
+}
+
 export type OcrRead =
-  | { status: 'done'; text: string; lines: string[]; pages: string[][] } // lines in reading order: all, and page by page
+  | { status: 'done'; text: string; lines: string[]; pages: OcrPageRead[] } // lines in reading order: all, and page by page
   | { status: 'failed' | 'unavailable' };
 
 /** A card found on a scan: where it lies on its page, and the card itself, cut out, straightened and upright. */
@@ -34,7 +41,7 @@ export type OcrCards = { status: 'done'; pages: OcrPage[]; cards: OcrCard[] } | 
 /** What the service answers. Lines are in reading order; the text is as read (Arabic-Indic digits kept). */
 interface OcrResponse {
   lang: string;
-  pages: { lines: { text: string; confidence: number; box: [number, number, number, number] }[] }[];
+  pages: { lines: { text: string; confidence: number; box: [number, number, number, number] }[]; width?: number; height?: number }[];
   text: string;
 }
 
@@ -91,15 +98,21 @@ export class OcrClient {
   }
 }
 
-/** The lines (all, and page by page) and text of a well-formed answer; null for anything else. The text is the lines when it is missing. */
-function linesOf(body: unknown): { text: string; lines: string[]; pages: string[][] } | null {
+/** The lines (all, and page by page with their boxes) and text of a well-formed answer; null for anything else. The text is the lines when it is missing. */
+function linesOf(body: unknown): { text: string; lines: string[]; pages: OcrPageRead[] } | null {
   if (!body || typeof body !== 'object') return null;
   const { pages, text } = body as Partial<OcrResponse>;
   if (!Array.isArray(pages)) return null;
-  const byPage = pages.map((page) =>
-    (Array.isArray(page?.lines) ? page.lines : []).map((line) => (typeof line?.text === 'string' ? line.text.trim() : '')).filter(Boolean),
-  );
-  const lines = byPage.flat();
+  const byPage: OcrPageRead[] = pages.map((page) => ({
+    lines: (Array.isArray(page?.lines) ? page.lines : [])
+      .map((line) => ({
+        text: typeof line?.text === 'string' ? line.text.trim() : '',
+        box: (Array.isArray(line?.box) && line.box.length === 4 && line.box.every(isNumber) ? line.box : [0, 0, 0, 0]) as [number, number, number, number],
+      }))
+      .filter((line) => line.text),
+    ...(isNumber(page?.width) && isNumber(page?.height) && { width: page.width, height: page.height }),
+  }));
+  const lines = byPage.flatMap((p) => p.lines.map((l) => l.text));
   return { text: typeof text === 'string' && text.trim() ? text : lines.join('\n'), lines, pages: byPage };
 }
 

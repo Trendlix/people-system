@@ -328,6 +328,7 @@ describe('Paperwork (e2e)', () => {
       expect(res.body).toEqual({
         suggestions: SUGGESTIONS,
         corrected: [],
+        notes: [],
         front: { itemId: expect.any(String), text: FRONT },
         back: { itemId: expect.any(String), text: BACK },
       });
@@ -378,7 +379,7 @@ describe('Paperwork (e2e)', () => {
       const calls = ocr.calls.length;
 
       const res = await readCard().attach('front', jpeg('FRONT'), 'front.jpg').attach('back', png('BACK'), 'back.png').expect(200);
-      expect(res.body).toEqual({ suggestions: SUGGESTIONS, corrected: [], front: { text: FRONT }, back: { text: BACK } });
+      expect(res.body).toEqual({ suggestions: SUGGESTIONS, corrected: [], notes: [], front: { text: FRONT }, back: { text: BACK } });
       expect(ocr.calls.slice(calls)).toEqual([{ lang: 'ar' }, { lang: 'ar' }]);
 
       expect(await stored()).toBe(storedBefore);
@@ -405,7 +406,7 @@ describe('Paperwork (e2e)', () => {
       expect(big.body.message).toBe('Each file must be 10 MB or smaller.');
 
       const front = await readCard().attach('front', jpeg('FRONT'), 'f.jpg').expect(200);
-      expect(front.body).toEqual({ suggestions: expect.objectContaining({ nationalId: '29503120123456' }), corrected: [], front: { text: FRONT } });
+      expect(front.body).toEqual({ suggestions: expect.objectContaining({ nationalId: '29503120123456' }), corrected: [], notes: [], front: { text: FRONT } });
     });
 
     it('is for HR only, and is not mistaken for an employee', async () => {

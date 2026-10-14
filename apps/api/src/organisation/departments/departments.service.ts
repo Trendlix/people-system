@@ -33,7 +33,7 @@ export class DepartmentsService {
         _count: COUNTS,
         children: {
           orderBy: [...ORDER],
-          select: { id: true, nameEn: true, nameAr: true, _count: { select: { jobTitles: true } } },
+          select: { id: true, nameEn: true, nameAr: true, sortOrder: true, _count: { select: { jobTitles: true } } },
         },
       },
     });

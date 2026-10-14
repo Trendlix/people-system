@@ -5,10 +5,10 @@ import type { SessionUser } from '../auth/session-user.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { NORMALIZE_FROM, NORMALIZE_TO, normalizeArabic, snippet } from './arabic-text.js';
-import { readIdCard } from './egyptian-id.js';
+import { readIdCardWithNotes, type CardLine } from './egyptian-id.js';
 import { CorrectionsService } from './corrections.service.js';
 import { assignSides } from './id-card-sides.js';
-import { OcrClient, type OcrRead } from './ocr.client.js';
+import { OcrClient, type OcrPageRead, type OcrRead } from './ocr.client.js';
 import { detectPaperworkType, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from './paperwork-file.js';
 
 const ENTITY = 'paperwork';
@@ -78,8 +78,26 @@ function cardSides(files: IdCardFiles): { front: Upload; back: Upload | null } {
 function splitSides(front: OcrRead, back: OcrRead | null): [OcrRead, OcrRead | null] {
   if (back || front.status !== 'done' || front.pages.length < 2) return [front, back];
   const [first, ...rest] = front.pages;
-  const page = (pages: string[][]): OcrRead => ({ status: 'done', text: pages.flat().join('\n'), lines: pages.flat(), pages });
+  const page = (pages: OcrPageRead[]): OcrRead => {
+    const lines = pages.flatMap((p) => p.lines.map((l) => l.text));
+    return { status: 'done', text: lines.join('\n'), lines, pages };
+  };
   return [page([first]), page(rest)];
+}
+
+/**
+ * The lines of a side, each marked when the top or bottom edge of its picture runs through it (a scan cut a little
+ * short). Without the page's size, nothing is marked.
+ */
+function cardLines(read: OcrRead | null): CardLine[] | null {
+  if (read?.status !== 'done') return null;
+  return read.pages.flatMap((page) => {
+    const tolerance = page.height ? Math.max(1, page.height * 0.001) : 0;
+    return page.lines.map((l) => ({
+      text: l.text,
+      cut: page.height !== undefined && (l.box[1] <= tolerance || l.box[3] >= page.height - tolerance),
+    }));
+  });
 }
 
 /**
@@ -93,8 +111,8 @@ function readCard(read: OcrRead, readBack: OcrRead | null, unread: CardUnread) {
     throw reads.some((r) => r.status === 'unavailable') ? new ServiceUnavailableException(unread.unavailable) : new BadGatewayException(unread.failed);
   }
   const textOf = (r: OcrRead | null) => (r?.status === 'done' ? r.text : null);
-  const linesOf = (r: OcrRead | null) => (r?.status === 'done' ? (r.lines.length ? r.lines.join('\n') : r.text) : null);
-  return { suggestions: readIdCard(linesOf(front), linesOf(back)), frontText: textOf(front), backText: textOf(back) };
+  const { suggestions, notes } = readIdCardWithNotes(cardLines(front), cardLines(back));
+  return { suggestions, notes, frontText: textOf(front), backText: textOf(back) };
 }
 
 /** What is stored after reading: the text, or why there is none. PostgreSQL text cannot hold NUL characters. */
@@ -243,6 +261,7 @@ export class PaperworkService {
     return {
       suggestions,
       corrected,
+      notes: card.notes,
       front: { itemId: frontId, text: card.frontText },
       // the back: its own file, or page 2 on of a PDF that holds both sides
       ...((backId || card.backText !== null) && { back: { itemId: backId ?? frontId, text: card.backText } }),
@@ -266,6 +285,7 @@ export class PaperworkService {
     return {
       suggestions,
       corrected,
+      notes: card.notes,
       front: { text: card.frontText },
       ...((back || card.backText !== null) && { back: { text: card.backText } }),
     };

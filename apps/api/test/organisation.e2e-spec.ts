@@ -88,7 +88,7 @@ describe('Organisation (e2e)', () => {
 
       const main = await api().get(`/api/departments/${marketing.body.id}`).set('Cookie', session).expect(200);
       expect(main.body._count.children).toBe(1);
-      expect(main.body.children).toEqual([{ id: content.body.id, nameEn: name('Content Team'), nameAr: 'فريق المحتوى', _count: { jobTitles: 0 } }]);
+      expect(main.body.children).toEqual([{ id: content.body.id, nameEn: name('Content Team'), nameAr: 'فريق المحتوى', sortOrder: 1, _count: { jobTitles: 0 } }]);
 
       // a job title in the team shows where it sits
       const job = await api()
