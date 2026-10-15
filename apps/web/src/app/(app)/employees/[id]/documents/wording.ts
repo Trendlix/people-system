@@ -188,12 +188,12 @@ export interface MissingLink {
 }
 
 export function missingLinks(employeeId: string, missing: readonly MissingDocumentDetail[]): MissingLink[] {
-  return missing.map((m) => ({
-    tag: m.tag,
-    label: m.label || m.tag,
-    place: placeLabel(m.where?.tab ?? ''),
-    href: m.where ? missingHref(employeeId, m.where) : null,
-  }));
+  return missing.map((m) => {
+    const label = m.label || m.tag;
+    // the duties are written on the job title itself, under Organization (owner, 15 October 2026)
+    if (m.tag === 'job_duties') return { tag: m.tag, label, place: 'Job title, under Organization › Departments & Job Titles', href: '/organization/departments' };
+    return { tag: m.tag, label, place: placeLabel(m.where?.tab ?? ''), href: m.where ? missingHref(employeeId, m.where) : null };
+  });
 }
 
 // ---------- files ----------

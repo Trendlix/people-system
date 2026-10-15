@@ -94,9 +94,20 @@ export interface MissingHelp {
  * 'template'}: the template prints something an offer never has (a national ID, an address, bank details …), so the tag
  * comes out of the job offer template, in Templates.
  */
-export function missingHelp(o: Pick<OfferView, 'id' | 'status' | 'missing' | 'template'>): MissingHelp[] {
+export function missingHelp(o: Pick<OfferView, 'id' | 'status' | 'missing' | 'template'> & { jobTitle?: OfferView['jobTitle'] }): MissingHelp[] {
   return (o.missing ?? []).map((m) => {
     const label = m.label || m.tag;
+    // the duties are written on the job title itself, not on the offer (owner, 15 October 2026)
+    if (m.tag === 'job_duties') {
+      const title = o.jobTitle?.titleEn;
+      return {
+        tag: m.tag,
+        label,
+        what: `Write the duties and responsibilities of ${title ? `the ${title} job title` : 'the job title'} under Organization › Departments & Job Titles, or choose another job title on the offer.`,
+        href: title ? `/organization/departments?q=${encodeURIComponent(title)}` : '/organization/departments',
+        linkText: 'Departments & Job Titles',
+      };
+    }
     if (m.where?.tab === 'company') {
       return { tag: m.tag, label, what: 'Fill it in on the company profile.', href: '/organization/company', linkText: 'Company profile' };
     }

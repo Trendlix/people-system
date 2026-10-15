@@ -150,6 +150,14 @@ describe('what the template lacks', () => {
     ]);
   });
 
+  it('sends missing duties to the job title, under Organization, whatever the offer’s status', () => {
+    const duties = { tag: 'job_duties', label: 'Duties and responsibilities', where: { tab: 'offer', key: 'jobTitleId' } };
+    const help = missingHelp({ ...offer({ missing: [duties] }), jobTitle: { id: 'jt-1', titleEn: 'Videographer', titleAr: null } });
+    expect(help[0]).toMatchObject({ href: '/organization/departments?q=Videographer', linkText: 'Departments & Job Titles' });
+    expect(help[0].what).toMatch(/^Write the duties and responsibilities of the Videographer job title/);
+    expect(missingHelp(offer({ missing: [duties] }))[0].href).toBe('/organization/departments');
+  });
+
   it("doesn't link to editing an offer that was sent", () => {
     expect(missingHelp(offer({ status: 'sent', missing: [missing[0]] }))[0]).toMatchObject({ href: null, what: 'It was left empty on the offer.' });
   });

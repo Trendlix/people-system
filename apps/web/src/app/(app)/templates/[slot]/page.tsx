@@ -11,6 +11,8 @@ import { BackLink, Empty, Loading } from '../../organization/ui';
 import { deleteTemplateVersion, publishTemplateVersion, uploadTemplateVersion } from '../actions';
 import { loadTemplate } from '../data';
 import { SlotDetails, StatusLines, Tag } from '../parts';
+import { PREVIEW_HINT } from '../preview-people';
+import { PreviewWithData } from '../preview-with-data';
 import { checkTags, count, tagCount } from '../tag-check';
 import { UploadTemplateForm } from '../upload-form';
 import { DeleteDraftButton, PublishButton } from '../version-buttons';
@@ -123,6 +125,17 @@ function DraftCheck({ version: v, slotKey, inUse, manages }: { version: Template
         </div>
       )}
 
+      <div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {/* a plain link: never prefetched */}
+          <a href={versionPreviewHref(v.id)} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center text-sm font-semibold">
+            Preview<span className="sr-only"> draft v{v.version} ({v.fileName}) as a PDF, in a new tab</span>
+          </a>
+          <PreviewWithData versionId={v.id} label={`draft v${v.version} (${v.fileName})`} align="start" />
+        </div>
+        <p className="hint">{PREVIEW_HINT}</p>
+      </div>
+
       {manages && (
         <PublishButton
           action={publishTemplateVersion.bind(null, slotKey, v.id, v.version)}
@@ -186,6 +199,7 @@ function VersionRow({ version: v, slotKey, deletes }: { version: TemplateVersion
           <a href={versionPreviewHref(v.id)} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center text-sm font-semibold">
             Preview<span className="sr-only"> v{v.version} ({v.fileName}) as a PDF, in a new tab</span>
           </a>
+          <PreviewWithData versionId={v.id} label={`v${v.version} (${v.fileName})`} />
           <a href={versionFileHref(v.id)} className="inline-flex min-h-9 items-center text-sm font-semibold">
             Download<span className="sr-only"> v{v.version} ({v.fileName})</span>
           </a>
@@ -306,6 +320,7 @@ function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
             New documents are made from the version in use. A newer published version replaces it; documents made earlier keep the version they were made
             with.
           </p>
+          {versions.length > 0 && <p className="hint">{PREVIEW_HINT}</p>}
         </div>
         {versions.length === 0 ? <Empty>No file yet.</Empty> : <VersionsTable versions={versions} slotKey={detail.key} deletes={canDelete(user)} />}
       </section>

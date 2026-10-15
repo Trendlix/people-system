@@ -78,10 +78,12 @@ describe('where a missing detail is filled in', () => {
       missingLinks(ID, [
         { tag: 'insurance_no', label: 'Social insurance number', where: { tab: 'basic', key: 'insuranceNo' } },
         { tag: 'tax_reg_no', label: '', where: { tab: 'company', key: 'taxRegNo' } },
+        { tag: 'job_duties', label: 'Duties and responsibilities', where: { tab: 'employment', key: 'jobTitle' } },
       ]),
     ).toEqual([
       { tag: 'insurance_no', label: 'Social insurance number', place: 'Basic Data', href: '/employees/emp-1#field-insuranceNo' },
       { tag: 'tax_reg_no', label: 'tax_reg_no', place: 'Company profile', href: '/organization/company' },
+      { tag: 'job_duties', label: 'Duties and responsibilities', place: 'Job title, under Organization › Departments & Job Titles', href: '/organization/departments' },
     ]);
   });
 });
