@@ -41,15 +41,16 @@ async function save(employeeId: string, fd: FormData, errors: string[], request:
 }
 
 /**
- * The employment's fields (employment-fields.tsx). `withStatus`: a current employment's status (an ended one's follows
- * why it ended). A job title picker left disabled sends nothing, which clears the job title. `gradeId`: the person's
- * own grade ("" clears it); the API refuses one outside the job title's range.
+ * The employment's fields (employment-fields.tsx). `withStatus`: the status HR chose, Active or On leave, when the form
+ * has the select (owner's decision, 16 October 2026): a new employment's is the system's, so are Probation and Notice
+ * period, and an ended one's follows why it ended. A job title picker left disabled sends nothing, which clears the job
+ * title. `gradeId`: the person's own grade ("" clears it); the API refuses one outside the job title's range.
  */
 function employmentBody(fd: FormData, errors: string[], withStatus: boolean) {
   const workArrangement = text(fd, 'workArrangement');
   return {
     employmentType: text(fd, 'employmentType'),
-    ...(withStatus && { status: text(fd, 'status') }),
+    ...(withStatus && fd.has('status') && { status: text(fd, 'status') }),
     // the form keeps the team in line with the job title, so the API gets a matching pair
     departmentId: text(fd, 'departmentId'),
     jobTitleId: text(fd, 'jobTitleId'),
@@ -72,10 +73,13 @@ function endBody(fd: FormData, errors: string[]) {
   };
 }
 
-/** Hires someone: a new current employment (the API refuses one while another is current, or one overlapping the history). */
+/**
+ * Hires someone: a new current employment (the API refuses one while another is current, or one overlapping the
+ * history). No status: the API sets it, Probation while the probation runs, else Active.
+ */
 export async function addEmployment(employeeId: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const errors: string[] = [];
-  const body = employmentBody(fd, errors, true);
+  const body = employmentBody(fd, errors, false);
   return save(employeeId, fd, errors, () => apiSend('POST', `/employees/${employeeId}/employments`, body));
 }
 

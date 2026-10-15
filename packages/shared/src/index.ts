@@ -26,6 +26,14 @@ export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 export const EMPLOYEE_STATUSES = ['active', 'probation', 'on_leave', 'notice_period', 'resigned', 'terminated'] as const;
 export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
 
+/**
+ * The statuses HR chooses, for a current employment that has one of them. Probation and Notice period are the system's
+ * (a new employment's probation, Confirm probation, an approved ending) and Resigned and Terminated come from ending it
+ * (owner's decision, 16 October 2026).
+ */
+export const CHOSEN_STATUSES = ['active', 'on_leave'] as const satisfies readonly EmployeeStatus[];
+export type ChosenStatus = (typeof CHOSEN_STATUSES)[number];
+
 export const WORK_ARRANGEMENTS = ['office', 'outdoor', 'indoor_outdoor', 'hybrid', 'wfh'] as const;
 export type WorkArrangement = (typeof WORK_ARRANGEMENTS)[number];
 

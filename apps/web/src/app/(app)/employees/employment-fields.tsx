@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { EMPLOYEE_STATUSES, EMPLOYMENT_TYPES, LABELS, PROBATION_MONTHS, WORK_ARRANGEMENTS } from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, LABELS, PROBATION_MONTHS, WORK_ARRANGEMENTS } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
 import { formatDate, formatTime } from '@/lib/format';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
+import { statusField } from './employment-status';
 
 // The fields of an employment, used by the Add employment and Edit employment pages.
 
@@ -32,9 +33,6 @@ const OFFICE_DAYS = [
   [4, 'Thu'],
 ] as const;
 
-/** The statuses of a current employment; Resigned and Terminated come from ending it (End employment). */
-const CURRENT_STATUSES = EMPLOYEE_STATUSES.filter((s) => s !== 'resigned' && s !== 'terminated');
-
 /** Only people with a current employment can be picked as a new manager. */
 const EMPLOYED: readonly string[] = ['active', 'probation', 'on_leave', 'notice_period'];
 
@@ -54,10 +52,14 @@ export function EmploymentFields({
   state: FormState;
   fid: (name: string) => string;
   pickers: EmploymentPickers;
-  /** The employment being changed; none when adding one. An ended one has no status to choose (it follows why it ended). */
+  /**
+   * The employment being changed; none when adding one. HR chooses Active or On leave only; a new one's status, and
+   * Probation and Notice period, are the system's, and an ended one's follows why it ended (employment-status.ts).
+   */
   employment?: Employment;
 }) {
   const router = useRouter();
+  const status = statusField(employment);
   // Kept in state: office days show only for Hybrid, and the job titles listed are the chosen department's or team's.
   const [arrangement, setArrangement] = useState(() => valueOf(state, 'workArrangement', employment?.workArrangement ?? 'office'));
   const [type, setType] = useState(() => valueOf(state, 'employmentType', employment?.employmentType));
@@ -154,28 +156,28 @@ export function EmploymentFields({
           <label htmlFor={fid('status')} className="label">
             Status
           </label>
-          {employment?.endDate ? (
-            // not sent: an ended employment's status follows why it ended
-            <>
-              <input
-                id={fid('status')}
-                value={LABELS.status[employment.status]}
-                readOnly
-                aria-describedby={fid('status-hint')}
-                className="input bg-canvas text-muted"
-              />
-              <p id={fid('status-hint')} className="hint">
-                Follows why the employment ended.
-              </p>
-            </>
-          ) : (
-            <select id={fid('status')} name="status" defaultValue={valueOf(state, 'status', employment?.status ?? 'probation')} className="input">
-              {CURRENT_STATUSES.map((s) => (
+          {status.kind === 'choose' ? (
+            <select id={fid('status')} name="status" defaultValue={valueOf(state, 'status', employment?.status)} className="input">
+              {status.options.map((s) => (
                 <option key={s} value={s}>
                   {LABELS.status[s]}
                 </option>
               ))}
             </select>
+          ) : (
+            // not sent (no name): the system sets it, or for an ended employment why it ended
+            <>
+              <input
+                id={fid('status')}
+                value={status.value}
+                readOnly
+                aria-describedby={fid('status-hint')}
+                className="input bg-canvas text-muted"
+              />
+              <p id={fid('status-hint')} className="hint">
+                {status.hint}
+              </p>
+            </>
           )}
         </div>
 
