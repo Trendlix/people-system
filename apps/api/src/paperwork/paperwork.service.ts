@@ -195,18 +195,22 @@ export class PaperworkService {
     return itemView(await this.prisma.paperworkItem.findUniqueOrThrow({ where: { id }, select: ITEM }));
   }
 
-  /** The number printed on a paper and when it expires. */
+  /** The number printed on a paper, when it expires, and its kind (put right when it was uploaded under the wrong one). */
   async describe(itemId: string, dto: UpdatePaperworkDto, user: SessionUser) {
     const before = await this.prisma.paperworkItem.findUnique({ where: { id: itemId }, select: { employeeId: true, kind: true, documentNo: true, expiresOn: true } });
     if (!before) throw new NotFoundException('Document not found.');
     const data = {
       documentNo: dto.documentNo,
       expiresOn: dto.expiresOn === undefined ? undefined : dto.expiresOn === null ? null : toDateOnly(dto.expiresOn),
+      kind: dto.kind,
     };
     const updated = await this.prisma.paperworkItem.update({ where: { id: itemId }, data, select: ITEM });
-    // the number of a national ID scan is restricted like the national ID: only that it changed is logged
-    const diff: Record<string, unknown> = changes({ documentNo: before.documentNo, expiresOn: fromDateOnly(before.expiresOn) }, { documentNo: dto.documentNo, expiresOn: dto.expiresOn });
-    if (isRestricted(before.kind) && 'documentNo' in diff) diff.documentNo = 'changed';
+    // the number of a national ID scan (before or after) is restricted like the national ID: only that it changed is logged
+    const diff: Record<string, unknown> = changes(
+      { documentNo: before.documentNo, expiresOn: fromDateOnly(before.expiresOn), kind: before.kind },
+      { documentNo: dto.documentNo, expiresOn: dto.expiresOn, kind: dto.kind },
+    );
+    if ((isRestricted(before.kind) || isRestricted(updated.kind)) && 'documentNo' in diff) diff.documentNo = 'changed';
     if (Object.keys(diff).length) {
       await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: itemId, diff: { employeeId: before.employeeId, ...diff } });
     }

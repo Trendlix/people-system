@@ -23,8 +23,16 @@ export class UploadPaperworkDto extends PaperDetailsDto {
   kind: PaperworkKind;
 }
 
-/** Changing a stored paper's number or expiry. */
-export class UpdatePaperworkDto extends PaperDetailsDto {}
+/**
+ * Changing a stored paper's number, expiry or kind: a paper uploaded under the wrong kind is put right without deleting
+ * it (owner, 16 October 2026).
+ */
+export class UpdatePaperworkDto extends PaperDetailsDto {
+  @Trim()
+  @IsOptional()
+  @IsIn(PAPERWORK_KINDS, { message: 'Choose what kind of document this is.' })
+  kind?: PaperworkKind;
+}
 
 export class SearchPaperworkDto {
   @Trim()

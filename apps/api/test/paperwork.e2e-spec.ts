@@ -350,11 +350,24 @@ describe('Paperwork (e2e)', () => {
       const item = await upload(png('NONE'), 'certificate.png', 'qualification_certificate');
       expect(item).toMatchObject({ documentNo: null, expiresOn: null });
       await describePaper(item.id, { expiresOn: '31/12/2026' }).expect(400);
-      await describePaper(item.id, { kind: 'other' }).expect(400); // what kind of paper it is does not change here
+      await describePaper(item.id, { kind: 'passport' }).expect(400); // not a kind the file has
+      await describePaper(item.id, { kind: 'other' }, ceo).expect(403);
       await describePaper(item.id, { documentNo: 'X' }, ceo).expect(403);
       await describePaper(item.id, { documentNo: 'X' }, finance).expect(403);
       await describePaper('00000000-0000-4000-8000-000000000000', { documentNo: 'X' }).expect(404);
       expect((await auditOf(item.id)).map((a) => a.action)).toEqual(['create']);
+    });
+
+    it('puts right a paper uploaded under the wrong kind, logging the change (owner, 16 October 2026)', async () => {
+      const item = await upload(png('NONE'), 'print.png', 'other');
+      const moved = await describePaper(item.id, { kind: 'insurance_print' }).expect(200);
+      expect(moved.body).toMatchObject({ id: item.id, kind: 'insurance_print', fileName: 'print.png' });
+      const list = await api().get(`/api/employees/${employeeId}/paperwork`).set('Cookie', hr).expect(200);
+      expect(list.body.find((i: { id: string }) => i.id === item.id)).toMatchObject({ kind: 'insurance_print' });
+      await describePaper(item.id, { kind: 'insurance_print' }).expect(200); // the same kind: nothing changes, nothing is logged
+      const audit = await auditOf(item.id);
+      expect(audit.map((a) => a.action)).toEqual(['create', 'update']);
+      expect(audit[1].diff).toEqual({ employeeId, kind: { from: 'other', to: 'insurance_print' } });
     });
 
     it('logs only that the number of a national ID scan changed, never the number', async () => {
