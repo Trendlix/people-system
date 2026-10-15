@@ -26,7 +26,7 @@ export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 export const EMPLOYEE_STATUSES = ['active', 'probation', 'on_leave', 'notice_period', 'resigned', 'terminated'] as const;
 export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
 
-export const WORK_ARRANGEMENTS = ['office', 'wfh', 'hybrid'] as const;
+export const WORK_ARRANGEMENTS = ['office', 'outdoor', 'indoor_outdoor', 'hybrid', 'wfh'] as const;
 export type WorkArrangement = (typeof WORK_ARRANGEMENTS)[number];
 
 // ---------- employee profile lists (trendlix-hrms-handoff/docs/profile-fields.md) ----------
@@ -64,7 +64,13 @@ export const LABELS = {
     resigned: 'Resigned',
     terminated: 'Terminated',
   },
-  workArrangement: { office: 'Office', wfh: 'Work from home', hybrid: 'Hybrid' },
+  workArrangement: {
+    office: 'Indoor (office)',
+    outdoor: 'Outdoor (field work)',
+    indoor_outdoor: 'Indoor and outdoor',
+    hybrid: 'Hybrid (office and home)',
+    wfh: 'Work from home',
+  },
   gender: { male: 'Male', female: 'Female' },
   maritalStatus: { single: 'Single', married: 'Married', divorced: 'Divorced', widowed: 'Widowed' },
   militaryStatus: { completed: 'Completed', exempt: 'Exempt', postponed: 'Postponed', not_applicable: 'Not applicable' },

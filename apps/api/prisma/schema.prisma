@@ -212,9 +212,11 @@ enum EmployeeStatus {
 }
 
 enum WorkArrangement {
-  office
+  office // indoor, at the office
   wfh
-  hybrid
+  hybrid // office days and home days
+  outdoor // field work: shoots, sales visits … (owner, 15 October 2026)
+  indoor_outdoor // part at the office, part in the field
 
   @@map("work_arrangement")
 }
