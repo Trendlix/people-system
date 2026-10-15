@@ -129,7 +129,7 @@ export function offerBreakdownRows(b: SalaryBreakdown, { hourly = false, insured
             label: 'Allowances',
             amount: b.allowances,
             note: b.taxableAllowances > 0 ? `${formatAmount(b.taxableAllowances)} of it taxed` : 'not taxed',
-            kind: 'amount' as const,
+            kind: 'addition' as const,
           },
         ]
       : []),
@@ -140,7 +140,7 @@ export function offerBreakdownRows(b: SalaryBreakdown, { hourly = false, insured
       : []),
     { label: 'Income tax', amount: b.monthlyTax, kind: 'deduction' },
     { label: `Martyrs' Fund (${formatPercent(r.martyrsRate)})`, amount: b.martyrsFund, kind: 'deduction' },
-    { label: 'Net salary', amount: b.net, kind: 'total' },
+    { label: 'Net salary', amount: b.net, note: b.allowances > 0 ? 'allowances included' : undefined, kind: 'total' },
     {
       label: 'Company cost',
       amount: b.companyCost,

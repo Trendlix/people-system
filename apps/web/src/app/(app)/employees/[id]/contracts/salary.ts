@@ -188,8 +188,11 @@ export interface BreakdownRow {
   amount: number;
   /** Shown after the label, e.g. "capped at 16,700". */
   note?: string;
-  /** deduction: taken off the gross; total: what is left (or what it all comes to); company: what the company pays, shown quieter. */
-  kind: 'amount' | 'deduction' | 'total' | 'company';
+  /**
+   * addition: paid on top of the gross (allowances); deduction: taken off; total: what is left (or what it all comes
+   * to); company: what the company pays, shown quieter.
+   */
+  kind: 'amount' | 'addition' | 'deduction' | 'total' | 'company';
 }
 
 const healthRow = (b: SalaryBreakdown): BreakdownRow[] =>
@@ -206,13 +209,14 @@ export function breakdownRows(b: SalaryBreakdown, allowances: readonly Allowance
   const withAllowances = b.allowances > 0;
   return [
     { label: 'Gross salary', amount: b.gross, kind: 'amount' },
-    ...(withAllowances ? [{ label: 'Allowances', amount: b.allowances, note: allowancesNote(allowances), kind: 'amount' as const }] : []),
+    ...(withAllowances ? [{ label: 'Allowances', amount: b.allowances, note: allowancesNote(allowances), kind: 'addition' as const }] : []),
     { label: 'Insured wage', amount: b.insuredWage, note: insuredWageNote(b, allowanceTotals(allowances).insured), kind: 'amount' },
     { label: `Employee social insurance (${formatPercent(r.employeeInsuranceRate)})`, amount: b.employeeInsurance, kind: 'deduction' },
     ...healthRow(b),
     { label: 'Income tax', amount: b.monthlyTax, kind: 'deduction' },
     { label: `Martyrs' Fund (${formatPercent(r.martyrsRate)})`, amount: b.martyrsFund, kind: 'deduction' },
-    { label: 'Net salary', amount: b.net, kind: 'total' },
+    // the allowances are in the net: say so, as the owner looked for them there (15 October 2026)
+    { label: 'Net salary', amount: b.net, note: withAllowances ? 'allowances included' : undefined, kind: 'total' },
     {
       label: 'Company cost',
       amount: b.companyCost,

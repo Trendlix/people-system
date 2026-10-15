@@ -5,6 +5,7 @@ import { formatEgp, type BreakdownRow } from './salary';
 
 const ROW: Record<BreakdownRow['kind'], string> = {
   amount: '',
+  addition: '',
   deduction: '',
   total: 'border-t border-line font-semibold',
   company: 'text-xs text-muted',
@@ -21,6 +22,7 @@ export function SalaryBreakdownList({ rows, labelledBy }: { rows: BreakdownRow[]
           </dt>
           <dd className="shrink-0 text-right whitespace-nowrap tabular-nums">
             {r.kind === 'deduction' && '− '}
+            {r.kind === 'addition' && '+ '}
             {formatEgp(r.amount)}
           </dd>
         </div>
