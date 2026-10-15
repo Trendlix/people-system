@@ -7,6 +7,7 @@ import { BackLink, Loading, RequireEditor } from '../../../ui';
 import { updateEndingRule } from '../../actions';
 import { INITIATOR_LABELS } from '../../labels';
 import { EndingRuleForm } from '../../rule-form';
+import { titleCase } from '@/lib/format';
 
 async function EditRule({ params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
@@ -16,7 +17,7 @@ async function EditRule({ params }: { params: Promise<{ key: string }> }) {
   if (!rule) notFound();
   return (
     <RequireEditor>
-      <h2 className="text-lg font-semibold">{rule.label}</h2>
+      <h2 className="text-lg font-semibold">{titleCase(rule.label)}</h2>
       <p className="mt-1 text-sm text-muted">
         Started by: {INITIATOR_LABELS[rule.initiator] ?? rule.initiator} · Ends as: {END_REASON_LABELS[rule.endReason] ?? rule.endReason} · Source:{' '}
         {rule.source}

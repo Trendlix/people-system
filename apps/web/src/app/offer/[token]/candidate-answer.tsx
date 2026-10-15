@@ -18,7 +18,7 @@ export function AcceptOffer({ action, nameEn, nameAr }: { action: Action; nameEn
     <form {...form} aria-labelledby={fid('title')} className="card space-y-5 p-5 sm:p-6">
       <div>
         <h2 id={fid('title')} className="text-lg font-semibold">
-          Accept the offer
+          Accept the Offer
         </h2>
         <p lang="ar" dir="rtl" className="text-sm text-muted">
           قبول العرض
@@ -98,7 +98,7 @@ export function DeclineOffer({ action }: { action: Action }) {
     >
       <div>
         <h2 id={fid('title')} className="text-lg font-semibold">
-          Decline the offer
+          Decline the Offer
         </h2>
         <p lang="ar" dir="rtl" className="text-sm text-muted">
           الاعتذار عن العرض

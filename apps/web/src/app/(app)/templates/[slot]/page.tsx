@@ -2,7 +2,7 @@ import { TEMPLATE_SLOTS, TEMPLATE_VERSION_STATUS_LABELS, type TemplateSlot, type
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, titleCase } from '@/lib/format';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser, TemplateDetail, TemplateVersion } from '@/lib/types';
@@ -325,7 +325,7 @@ async function Template({ params, searchParams }: PageProps<'/templates/[slot]'>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold tracking-wide text-muted uppercase">{folderLabel(slot.folder)}</p>
-          <h1 className="mt-1 text-2xl font-semibold">{slot.name}</h1>
+          <h1 className="mt-1 text-2xl font-semibold">{titleCase(slot.name)}</h1>
         </div>
         {status}
       </div>

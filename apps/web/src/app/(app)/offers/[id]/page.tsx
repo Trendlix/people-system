@@ -49,7 +49,7 @@ function MissingValues({ offer: o }: { offer: OfferView }) {
   return (
     <section aria-labelledby="offer-missing" role="alert" className="space-y-2 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
       <h2 id="offer-missing" className="font-semibold">
-        {problem ? "The offer's document can't be made yet" : `The job offer template needs ${help.length === 1 ? 'one more value' : `${help.length} more values`}`}
+        {problem ? "The Offer's Document Can't Be Made Yet" : `The Job Offer Template Needs ${help.length === 1 ? 'One More Value' : `${help.length} More Values`}`}
       </h2>
       {problem && (
         <p>

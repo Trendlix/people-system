@@ -3,7 +3,7 @@ import { LABELS, PAPERWORK_LABELS, paperworkType, requiredPaperwork, RESTRICTED_
 import { AdjustStoredButton } from '@/components/adjust/adjust-button';
 import { DocumentViewer, type ViewerFile } from '@/components/document-viewer';
 import { ApiError, apiGet } from '@/lib/api';
-import { formatDate } from '@/lib/format';
+import { formatDate, titleCase } from '@/lib/format';
 import type { EmployeeProfile, PaperworkItem } from '@/lib/types';
 import { describePaperwork } from '../paper-details-actions';
 import { formatSize, idScanTitle, OCR_LABEL, paperworkHref } from '../paperwork';
@@ -281,7 +281,7 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
           return (
             <li key={paper.key} className="space-y-3 border-b border-line-soft p-5 last:border-0">
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                <h3 className="font-semibold">{paper.label}</h3>
+                <h3 className="font-semibold">{titleCase(paper.label)}</h3>
                 {restricted && anyFile && <span className="text-xs text-muted">Opening it is recorded.</span>}
               </div>
 
@@ -363,7 +363,7 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
           <ul className="card">
             {others.map((item) => (
               <li key={item.id} className="space-y-3 border-b border-line-soft p-5 last:border-0">
-                <h3 className="font-semibold">{label(item.kind)}</h3>
+                <h3 className="font-semibold">{titleCase(label(item.kind))}</h3>
                 <PaperDetails
                   action={canEdit ? describePaperwork.bind(null, item.id) : null}
                   name={label(item.kind)}

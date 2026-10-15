@@ -6,6 +6,7 @@ import { Empty, Loading } from '../organization/ui';
 import { loadLibrary } from './data';
 import { SlotDetails, StatusLines } from './parts';
 import { byFolder, COPY_NOTE, folderLabel, OVERRIDES_NOTE, managesTemplates, NOT_AVAILABLE, progress, seesTemplates, sourceName, statusLines, templateHref, uploadLabel, WHO_SEES } from './wording';
+import { titleCase } from '@/lib/format';
 
 // The template library (spec §8, owner's request of 15 October 2026): one slot per document, by folder, each with where
 // it stands and Upload. HR and Admin (a Super Admin too) upload and publish; the CEO views. Filling templates in for an
@@ -17,7 +18,7 @@ function SlotCard({ slot, slots, manages }: { slot: TemplateSlotView; slots: Tem
     <li className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 flex-1 space-y-3">
         <h3 className="font-semibold">
-          <Link href={templateHref(slot.key)}>{slot.name}</Link>
+          <Link href={templateHref(slot.key)}>{titleCase(slot.name)}</Link>
         </h3>
         <SlotDetails slot={slot} />
         {!copy && Object.keys(slot.overrides ?? {}).length > 0 && <p className="text-sm text-muted">{OVERRIDES_NOTE}</p>}

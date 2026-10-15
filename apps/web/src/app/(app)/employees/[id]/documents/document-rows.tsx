@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { DocumentViewer, VIEW_BUTTON } from '@/components/document-viewer';
-import { formatDate, formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime, titleCase } from '@/lib/format';
 import type { DocumentItem, EmployeeProfile, GeneratedDocument, GeneratedDocumentStatus } from '@/lib/types';
 import { formatSize } from '../../paperwork';
 import { FieldGrid, Loading, ProfileSection, profileHref, todayInCairo, type GridField } from '../../ui';
@@ -153,7 +153,7 @@ function ItemRow({ item, employee, can, today }: { item: DocumentItem; employee:
     <li className="space-y-3 border-b border-line-soft p-5 last:border-0">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="min-w-0">
-          <h4 className="font-semibold">{item.name}</h4>
+          <h4 className="font-semibold">{titleCase(item.name)}</h4>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
             {context && <span className="text-muted">{context} ·</span>}
             <span className={`font-medium ${TONE_TEXT[template.tone]}`}>{template.text}</span>

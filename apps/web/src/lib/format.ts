@@ -89,3 +89,25 @@ function cairoParts(date: Date) {
   );
   return { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour, minute: parts.minute };
 }
+
+/** Short words kept in lower case inside a title (not the first word). */
+const SMALL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'in', 'nor', 'of', 'on', 'or', 'per', 'the', 'to', 'vs', 'with']);
+
+/**
+ * A name as a title or heading shows it, in Title Case (the screens' rule: titles and headings in Title Case, labels and
+ * buttons in sentence case): "Social insurance print" → "Social Insurance Print". Words with capitals already (ID,
+ * EGP) and words in Arabic are left as they are.
+ */
+export function titleCase(text: string): string {
+  let first = true;
+  // a hyphenated word is one word: only its first letter changes ("Full-time")
+  return text.replace(/[A-Za-z][\w'’]*(?:-[A-Za-z][\w'’]*)*/g, (word, offset: number) => {
+    const isFirst = first;
+    first = false;
+    // after an opening bracket or a dash between words a word starts afresh, e.g. "(Front and Back)"
+    const starts = isFirst || /(?:[(–—:]|\s-)\s*$/.test(text.slice(0, offset));
+    if (word !== word.toLowerCase()) return word;
+    if (!starts && SMALL_WORDS.has(word)) return word;
+    return word[0].toUpperCase() + word.slice(1);
+  });
+}

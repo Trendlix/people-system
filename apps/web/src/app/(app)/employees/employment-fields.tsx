@@ -60,6 +60,7 @@ export function EmploymentFields({
   const router = useRouter();
   // Kept in state: office days show only for Hybrid, and the job titles listed are the chosen department's or team's.
   const [arrangement, setArrangement] = useState(() => valueOf(state, 'workArrangement', employment?.workArrangement ?? 'office'));
+  const [type, setType] = useState(() => valueOf(state, 'employmentType', employment?.employmentType));
   const [jobTitleId, setJobTitleId] = useState(() => valueOf(state, 'jobTitleId', employment?.jobTitleId));
   // A job title without a department on the employment brings its own department or team, so it stays selected.
   const savedDepartmentId = employment?.departmentId ?? pickers.jobTitles.find((j) => j.id === employment?.jobTitleId)?.departmentId;
@@ -131,6 +132,8 @@ export function EmploymentFields({
             name="employmentType"
             required
             defaultValue={valueOf(state, 'employmentType', employment?.employmentType)}
+            onChange={(e) => setType(e.target.value)}
+            aria-describedby={type === 'part_time' ? fid('employmentType-hint') : undefined}
             className="input"
           >
             <option value="">Choose a type</option>
@@ -140,6 +143,12 @@ export function EmploymentFields({
               </option>
             ))}
           </select>
+          {/* the pay terms belong to the contract, not the employment (owner, 15 October 2026) */}
+          {type === 'part_time' && (
+            <p id={fid('employmentType-hint')} className="hint">
+              Pay by the hour, hours a week and days a week are set on the contract: after saving, Contracts tab → New contract.
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor={fid('status')} className="label">
@@ -312,7 +321,13 @@ export function EmploymentFields({
           <label htmlFor={fid('shiftId')} className="label">
             Shift
           </label>
-          <select id={fid('shiftId')} name="shiftId" defaultValue={valueOf(state, 'shiftId', employment?.shiftId)} className="input">
+          <select
+            id={fid('shiftId')}
+            name="shiftId"
+            aria-describedby={fid('shiftId-hint')}
+            defaultValue={valueOf(state, 'shiftId', employment?.shiftId)}
+            className="input"
+          >
             <option value="">No shift</option>
             {pickers.shifts.map((s) => (
               <option key={s.id} value={s.id}>
@@ -320,6 +335,9 @@ export function EmploymentFields({
               </option>
             ))}
           </select>
+          <p id={fid('shiftId-hint')} className="hint">
+            No shift: no fixed days, e.g. a part-timer who comes in any 2 days a week.
+          </p>
         </div>
       </div>
 

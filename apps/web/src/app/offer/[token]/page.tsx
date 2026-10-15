@@ -114,7 +114,7 @@ async function CandidateOffer({ params }: { params: Promise<{ token: string }> }
   const { token } = await params;
   // a link replaced by a newer one, a withdrawn offer's (its link is cleared), or one not copied in full
   const invalid = (brand: Brand | null, said?: string) => (
-    <Notice brand={brand} title="This link isn't valid" titleAr="هذا الرابط غير صالح">
+    <Notice brand={brand} title="This Link Isn't Valid" titleAr="هذا الرابط غير صالح">
       {said && <p>{said}</p>}
       <p>Please open the latest link you received, or contact the HR team who sent it. A link that wasn&apos;t copied in full doesn&apos;t work either.</p>
     </Notice>
@@ -125,7 +125,7 @@ async function CandidateOffer({ params }: { params: Promise<{ token: string }> }
   if (!result.ok) {
     if (result.status === 404) return invalid(null, result.messages.find((m) => !/^Cannot GET /.test(m)));
     return (
-      <Notice brand={null} title="The offer can't be shown right now">
+      <Notice brand={null} title="The Offer Can't Be Shown Right Now">
         <p>Please try again in a few minutes.</p>
         <p className="text-xs text-muted">{result.messages.join(' ')}</p>
       </Notice>
@@ -142,7 +142,7 @@ async function CandidateOffer({ params }: { params: Promise<{ token: string }> }
       return invalid(brand);
     case 'accepted':
       return (
-        <Notice brand={brand} title={`Thank you, ${firstName}!`} titleAr="شكراً لك">
+        <Notice brand={brand} title={`Thank You, ${firstName}!`} titleAr="شكراً لك">
           <p>
             You accepted the offer{o.jobTitleEn ? ` for ${o.jobTitleEn}` : ''}
             {o.respondedAt && ` on ${formatDate(o.respondedAt)}`}
@@ -153,7 +153,7 @@ async function CandidateOffer({ params }: { params: Promise<{ token: string }> }
       );
     case 'declined':
       return (
-        <Notice brand={brand} title="You declined this offer" titleAr="تم الاعتذار عن العرض">
+        <Notice brand={brand} title="You Declined This Offer" titleAr="تم الاعتذار عن العرض">
           <p>
             You declined the offer{o.respondedAt && ` on ${formatDate(o.respondedAt)}`}. Thank you for letting us know, {firstName}, and we wish you all
             the best.
@@ -162,13 +162,13 @@ async function CandidateOffer({ params }: { params: Promise<{ token: string }> }
       );
     case 'withdrawn':
       return (
-        <Notice brand={brand} title="This offer has been withdrawn" titleAr="تم سحب هذا العرض">
+        <Notice brand={brand} title="This Offer Has Been Withdrawn" titleAr="تم سحب هذا العرض">
           <p>It can no longer be accepted. If you have any questions, please contact the HR team at {brand.nameEn}.</p>
         </Notice>
       );
     case 'expired':
       return (
-        <Notice brand={brand} title="This offer has expired" titleAr="انتهت صلاحية هذا العرض">
+        <Notice brand={brand} title="This Offer Has Expired" titleAr="انتهت صلاحية هذا العرض">
           <p>
             It was open until {formatDate(o.expiresOn)}. If you are still interested, please contact the HR team at {brand.nameEn}: they can extend it.
           </p>
@@ -184,7 +184,7 @@ async function CandidateOffer({ params }: { params: Promise<{ token: string }> }
           <div className="space-y-1">
             <p className="text-xs font-semibold tracking-wide text-accent uppercase">Job offer · {o.number}</p>
             <h1 id="offer-title" className="text-2xl font-semibold">
-              Job offer for {o.fullNameEn}
+              Job Offer for {o.fullNameEn}
             </h1>
             <p lang="ar" dir="rtl" className="text-muted">
               عرض عمل مقدم إلى {o.fullNameAr}
