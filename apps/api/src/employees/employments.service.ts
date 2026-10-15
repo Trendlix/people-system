@@ -3,13 +3,15 @@ import { PROBATION_MONTHS } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addMonths, fromDateOnly, toDateOnly } from '../common/date-only.js';
-import type { Employment } from '../generated/prisma/client.js';
+import type { Employment, Prisma } from '../generated/prisma/client.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateEmploymentDto, EndEmploymentDto, UpdateEmploymentDto } from './employment.dto.js';
 import { EmployeesService } from './employees.service.js';
 
 const ENTITY = 'employment';
+/** The database, or a transaction in it. */
+type Db = PrismaService | Prisma.TransactionClient;
 const DATE_FIELDS = ['joinDate', 'probationEnd', 'jdAcknowledgedAt', 'endDate'] as const;
 /** An end of the range of grades a job title takes. */
 const RANGE_END = { select: { code: true, rank: true } } as const;
@@ -99,24 +101,60 @@ export class EmploymentsService {
    * Terminated. The profile stays. Not while people report to this person: they need another manager first.
    */
   async end(employeeId: string, employmentId: string, dto: EndEmploymentDto, user: SessionUser) {
-    const before = await this.row(employeeId, employmentId);
+    await this.close(employeeId, employmentId, dto, user);
+    return this.employees.get(employeeId, user);
+  }
+
+  /**
+   * What ending an employment does, by hand (End employment) or when HR completes an approved ending (the contracts
+   * module): the checks, the end date, reason and status, and the signed contract marked ended (owner's decisions, 15
+   * October 2026). `db` is the transaction to run in, when the caller has one.
+   */
+  async close(employeeId: string, employmentId: string, dto: EndEmploymentDto, user: SessionUser, db: Db = this.prisma) {
+    const before = await this.row(employeeId, employmentId, db);
     if (before.endDate) throw new ConflictException(`This employment already ended on ${fromDateOnly(before.endDate)}.`);
     if (dto.endDate < fromDateOnly(before.joinDate)!) throw new BadRequestException('The last working day must be on or after the join date.');
-    const reports = await this.prisma.employment.count({ where: { managerId: employeeId, endDate: null } });
+    const reports = await db.employment.count({ where: { managerId: employeeId, endDate: null } });
     if (reports > 0) {
       throw new ConflictException(`${reports} employee(s) report to this person. Choose another manager for them before ending this employment.`);
     }
     const status = dto.endReason === 'resigned' ? 'resigned' : 'terminated';
-    await this.prisma.employment.update({
+    await db.employment.update({
       where: { id: employmentId },
       data: { endDate: toDateOnly(dto.endDate), endReason: dto.endReason, endNote: dto.endNote ?? null, status },
     });
+    // the signed contract ends with the employment
+    const contract = await db.contract.findFirst({ where: { employmentId, status: 'active' }, select: { id: true, number: true } });
+    if (contract) await db.contract.update({ where: { id: contract.id }, data: { status: 'ended' } });
     await this.audit.record({
       userId: user.id,
       action: 'end',
       entityType: ENTITY,
       entityId: employmentId,
-      diff: { employeeId, endDate: dto.endDate, endReason: dto.endReason, status: { from: before.status, to: status } },
+      diff: {
+        employeeId,
+        endDate: dto.endDate,
+        endReason: dto.endReason,
+        status: { from: before.status, to: status },
+        ...(contract && { contract: { number: contract.number, status: { from: 'active', to: 'ended' } } }),
+      },
+    });
+  }
+
+  /** Confirms someone on probation: the status becomes Active. */
+  async confirmProbation(employeeId: string, employmentId: string, user: SessionUser) {
+    const before = await this.row(employeeId, employmentId);
+    if (before.endDate || before.status !== 'probation') {
+      const person = await this.person(employeeId);
+      throw new ConflictException(`${person.fullNameEn} is not on probation, so there is nothing to confirm.`);
+    }
+    await this.prisma.employment.update({ where: { id: employmentId }, data: { status: 'active' } });
+    await this.audit.record({
+      userId: user.id,
+      action: 'confirm_probation',
+      entityType: ENTITY,
+      entityId: employmentId,
+      diff: { employeeId, status: { from: 'probation', to: 'active' }, probationEnd: fromDateOnly(before.probationEnd) },
     });
     return this.employees.get(employeeId, user);
   }
@@ -162,8 +200,8 @@ export class EmploymentsService {
     return e;
   }
 
-  private async row(employeeId: string, employmentId: string): Promise<Employment> {
-    const e = await this.prisma.employment.findFirst({ where: { id: employmentId, employeeId } });
+  private async row(employeeId: string, employmentId: string, db: Db = this.prisma): Promise<Employment> {
+    const e = await db.employment.findFirst({ where: { id: employmentId, employeeId } });
     if (!e) throw new NotFoundException('Employment not found.');
     return e;
   }

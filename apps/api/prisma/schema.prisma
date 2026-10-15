@@ -24,17 +24,22 @@ model Role {
 }
 
 model User {
-  id           String          @id @default(uuid()) @db.Uuid
-  email        String          @unique
-  passwordHash String?         @map("password_hash")
-  mfaEnabled   Boolean         @default(false) @map("mfa_enabled")
-  isActive     Boolean         @default(true) @map("is_active")
-  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz
-  roles        UserRole[]
-  auditEntries AuditLog[]
-  uploads      PaperworkItem[]
-  corrections  OcrCorrection[]
+  id                String                 @id @default(uuid()) @db.Uuid
+  email             String                 @unique
+  passwordHash      String?                @map("password_hash")
+  mfaEnabled        Boolean                @default(false) @map("mfa_enabled")
+  isActive          Boolean                @default(true) @map("is_active")
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  roles             UserRole[]
+  auditEntries      AuditLog[]
+  uploads           PaperworkItem[]
+  corrections       OcrCorrection[]
+  endingsHrApproved EmploymentEnding[]     @relation("EndingHrApproval") // endings this user recorded (and so approved) for HR
+  endingsCeoDecided EmploymentEnding[]     @relation("EndingCeoDecision") // endings this user approved or rejected as CEO
+  confirmations     ProfileConfirmation[] // the times this user confirmed their own details
+  changesRequested  ProfileChangeRequest[] @relation("ChangeRequester") // changes this user asked for to their own details
+  changesDecided    ProfileChangeRequest[] @relation("ChangeDecision") // change requests this user approved, rejected or cancelled
 
   @@map("users")
 }
@@ -203,43 +208,45 @@ enum WorkArrangement {
 
 // Lists stored as text (gender, marital status, degree …) take their values from packages/shared.
 model Employee {
-  id                String            @id @default(uuid()) @db.Uuid
-  employeeCode      String            @unique @map("employee_code") // EMP-0142: shown everywhere, different from the national ID
-  insuranceNo       String?           @unique @map("insurance_no") // الرقم التأميني, the social insurance number: digits only
-  fullNameEn        String            @map("full_name_en")
-  fullNameAr        String            @map("full_name_ar") // as printed on contracts
-  displayName       String?           @map("display_name") // the short name the person goes by (e.g. Hazem Magdy), for the email signature
-  dateOfBirth       DateTime?         @map("date_of_birth") @db.Date
+  id                String                 @id @default(uuid()) @db.Uuid
+  employeeCode      String                 @unique @map("employee_code") // EMP-0142: shown everywhere, different from the national ID
+  insuranceNo       String?                @unique @map("insurance_no") // الرقم التأميني, the social insurance number: digits only
+  fullNameEn        String                 @map("full_name_en")
+  fullNameAr        String                 @map("full_name_ar") // as printed on contracts
+  displayName       String?                @map("display_name") // the short name the person goes by (e.g. Hazem Magdy), for the email signature
+  dateOfBirth       DateTime?              @map("date_of_birth") @db.Date
   gender            String?
   nationality       String?
-  maritalStatus     String?           @map("marital_status")
-  militaryStatus    String?           @map("military_status")
+  maritalStatus     String?                @map("marital_status")
+  militaryStatus    String?                @map("military_status")
   // contact: phones are text, so the leading 0 is kept
-  workEmail         String?           @unique @map("work_email") // lower case; a sign-in account with this email is this employee
-  personalEmail     String?           @map("personal_email")
+  workEmail         String?                @unique @map("work_email") // lower case; a sign-in account with this email is this employee
+  personalEmail     String?                @map("personal_email")
   mobile            String?
   mobile2           String? // a second mobile number
-  addressAr         String?           @map("address_ar")
+  addressAr         String?                @map("address_ar")
   city              String? // the city or district, in Arabic as on the ID card (e.g. مدينة نصر)
   governorate       String?
-  emergencyName     String?           @map("emergency_name")
-  emergencyRelation String?           @map("emergency_relation")
-  emergencyMobile   String?           @map("emergency_mobile")
+  emergencyName     String?                @map("emergency_name")
+  emergencyRelation String?                @map("emergency_relation")
+  emergencyMobile   String?                @map("emergency_mobile")
   // education (the main qualification; qualification_ar is printed on contracts)
   university        String?
   faculty           String?
   degree            String?
   major             String?
-  graduationYear    Int?              @map("graduation_year") @db.SmallInt
-  educationGrade    String?           @map("education_grade")
-  qualificationAr   String?           @map("qualification_ar")
-  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  graduationYear    Int?                   @map("graduation_year") @db.SmallInt
+  educationGrade    String?                @map("education_grade")
+  qualificationAr   String?                @map("qualification_ar")
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime               @updatedAt @map("updated_at") @db.Timestamptz
   identity          EmployeeIdentity?
   bank              EmployeeBank?
   paperwork         PaperworkItem[]
-  employments       Employment[]      @relation("Employments")
-  managing          Employment[]      @relation("Manager") // the employments this person is the manager of
+  employments       Employment[]           @relation("Employments")
+  managing          Employment[]           @relation("Manager") // the employments this person is the manager of
+  confirmations     ProfileConfirmation[]
+  changeRequests    ProfileChangeRequest[]
 
   @@map("employees")
 }
@@ -250,31 +257,33 @@ model Employee {
 // The person's grade is the employment's own, within the range of grades its job title takes (owner's decision,
 // 15 October 2026; checked by the API).
 model Employment {
-  id               String          @id @default(uuid()) @db.Uuid
-  employeeId       String          @map("employee_id") @db.Uuid
-  employee         Employee        @relation("Employments", fields: [employeeId], references: [id], onDelete: Cascade)
-  employmentType   EmploymentType  @map("employment_type")
-  status           EmployeeStatus  @default(probation) // resigned or terminated once ended
-  departmentId     String?         @map("department_id") @db.Uuid // a team, or a department
-  department       Department?     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  jobTitleId       String?         @map("job_title_id") @db.Uuid
-  jobTitle         JobTitle?       @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
-  gradeId          String?         @map("grade_id") @db.Uuid // the person's own grade, within the job title's range
-  grade            Grade?          @relation(fields: [gradeId], references: [id], onDelete: Restrict)
-  managerId        String?         @map("manager_id") @db.Uuid
-  manager          Employee?       @relation("Manager", fields: [managerId], references: [id], onDelete: Restrict)
-  joinDate         DateTime        @map("join_date") @db.Date
-  probationEnd     DateTime?       @map("probation_end") @db.Date
-  workArrangement  WorkArrangement @default(office) @map("work_arrangement")
-  officeDays       Int[]           @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
-  shiftId          String?         @map("shift_id") @db.Uuid
-  shift            Shift?          @relation(fields: [shiftId], references: [id], onDelete: Restrict)
-  jdAcknowledgedAt DateTime?       @map("jd_acknowledged_at") @db.Date
-  endDate          DateTime?       @map("end_date") @db.Date // empty while current
-  endReason        String?         @map("end_reason") // resigned, terminated, contract_ended, other
-  endNote          String?         @map("end_note")
-  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  id               String             @id @default(uuid()) @db.Uuid
+  employeeId       String             @map("employee_id") @db.Uuid
+  employee         Employee           @relation("Employments", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentType   EmploymentType     @map("employment_type")
+  status           EmployeeStatus     @default(probation) // resigned or terminated once ended
+  departmentId     String?            @map("department_id") @db.Uuid // a team, or a department
+  department       Department?        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  jobTitleId       String?            @map("job_title_id") @db.Uuid
+  jobTitle         JobTitle?          @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  gradeId          String?            @map("grade_id") @db.Uuid // the person's own grade, within the job title's range
+  grade            Grade?             @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  managerId        String?            @map("manager_id") @db.Uuid
+  manager          Employee?          @relation("Manager", fields: [managerId], references: [id], onDelete: Restrict)
+  joinDate         DateTime           @map("join_date") @db.Date
+  probationEnd     DateTime?          @map("probation_end") @db.Date
+  workArrangement  WorkArrangement    @default(office) @map("work_arrangement")
+  officeDays       Int[]              @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
+  shiftId          String?            @map("shift_id") @db.Uuid
+  shift            Shift?             @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  jdAcknowledgedAt DateTime?          @map("jd_acknowledged_at") @db.Date
+  endDate          DateTime?          @map("end_date") @db.Date // empty while current
+  endReason        String?            @map("end_reason") // packages/shared END_REASONS: resigned, terminated, contract_ended …
+  endNote          String?            @map("end_note")
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  contracts        Contract[]
+  endings          EmploymentEnding[]
 
   @@index([employeeId])
   @@index([departmentId])
@@ -356,6 +365,165 @@ model OcrCorrection {
 
   @@unique([field, wrong])
   @@map("ocr_corrections")
+}
+
+// ---------- contracts and how an employment ends ----------
+// The owner's decisions of 15 October 2026, checked against Labour Law No. 14 of 2025: every employment type has a
+// fixed-term contract of a year, renewed in writing before it expires; the first months are probation, once per
+// employer (Art. 90); an ending is recorded and approved by HR, then approved by the CEO, and takes effect when HR
+// completes it on or after the last working day. Lists stored as text take their values from packages/shared
+// (contracts.ts).
+
+// The defaults for new contracts (one row, id 1): how many months of probation (the law's cap is 3, Art. 90) and how
+// long a fixed term runs.
+model ContractSettings {
+  id              Int      @id @default(1) // always 1
+  probationMonths Int      @default(3) @map("probation_months") // 0–3
+  durationMonths  Int      @default(12) @map("duration_months") // 1–60
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("contract_settings")
+}
+
+// The ways an employment can end (ENDING_RULES), seeded from ENDING_RULE_DEFAULTS. HR tunes the label, the notice,
+// pay in lieu and whether it is offered; who starts it, how it ends the employment and its legal source stay as seeded.
+model EndingRule {
+  key          String             @id // ENDING_RULES, e.g. resignation
+  label        String
+  initiator    String // INITIATORS: employee, company, either, none
+  noticeAmount Int                @map("notice_amount") // 0–365
+  noticeUnit   String             @map("notice_unit") // NOTICE_UNITS: days, working_days, weeks, months
+  payInLieu    Boolean            @map("pay_in_lieu") // whether the notice may be paid instead of worked
+  endReason    String             @map("end_reason") // END_REASONS: what the employment's end reason becomes
+  source       String // the article of the law or the contract clause it comes from
+  active       Boolean            @default(true) // offered when ending an employment
+  sortOrder    Int                @map("sort_order") // ENDING_RULES order
+  updatedAt    DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  endings      EmploymentEnding[]
+
+  @@map("ending_rules")
+}
+
+// One version of an employment's contract. Version 1 is the first; a renewal or a change of terms is a new version,
+// and signing it replaces (supersedes) the one before. A signed version is never edited, except the dates it was
+// signed and filed and its note. The job title, grade, department and shift are copied from the employment when it is
+// signed, so the contract keeps what was agreed.
+model Contract {
+  id                  String     @id @default(uuid()) @db.Uuid
+  number              String     @unique // CON-<start year>-<4-digit sequence per year>, e.g. CON-2026-0007
+  employmentId        String     @map("employment_id") @db.Uuid
+  employment          Employment @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  version             Int // 1, 2 … within the employment
+  form                String     @default("fixed") // CONTRACT_FORMS: fixed, open_ended
+  startDate           DateTime   @map("start_date") @db.Date
+  endDate             DateTime?  @map("end_date") @db.Date // start + duration − 1 day; empty when open-ended
+  durationMonths      Int?       @map("duration_months") // empty when open-ended
+  probationMonths     Int        @default(0) @map("probation_months") // 0–3, and 0 on a renewal (Art. 90)
+  probationEnd        DateTime?  @map("probation_end") @db.Date // start + probation − 1 day; empty without probation
+  // RESTRICTED (HR, Finance, CEO), like bank details
+  grossSalary         Decimal    @map("gross_salary") @db.Decimal(12, 2)
+  basicPercent        Int        @default(80) @map("basic_percent") // the basic salary's share of the gross; the rest is variable
+  netSalary           Decimal?   @map("net_salary") @db.Decimal(12, 2) // the approximate net, typed by HR
+  insuredSalary       Decimal    @map("insured_salary") @db.Decimal(12, 2) // the gross capped at the start year's maximum insurable wage
+  // copied from the employment when signed
+  jobTitleEn          String?    @map("job_title_en")
+  jobTitleAr          String?    @map("job_title_ar")
+  gradeCode           String?    @map("grade_code")
+  departmentName      String?    @map("department_name") // a team as "Department › Team"
+  shiftCode           String?    @map("shift_code")
+  status              String     @default("draft") // CONTRACT_STATUSES: draft, active (signed), ended, superseded
+  signedOn            DateTime?  @map("signed_on") @db.Date
+  insuranceFiledOn    DateTime?  @map("insurance_filed_on") @db.Date
+  labourOfficeFiledOn DateTime?  @map("labour_office_filed_on") @db.Date
+  note                String?
+  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([employmentId, version])
+  @@index([status, endDate])
+  @@map("contracts")
+}
+
+// How an employment ends: resignation, non-renewal, an ending during probation … (one of the ending rules). HR
+// records it, which counts as HR's approval; the CEO approves or rejects it; HR completes it on or after the last
+// working day, which ends the employment.
+model EmploymentEnding {
+  id              String     @id @default(uuid()) @db.Uuid
+  employmentId    String     @map("employment_id") @db.Uuid
+  employment      Employment @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  ruleKey         String     @map("rule_key")
+  rule            EndingRule @relation(fields: [ruleKey], references: [key], onDelete: Restrict)
+  initiator       String? // employee or company; empty for death and disability
+  noticeGivenOn   DateTime   @map("notice_given_on") @db.Date // the day the notice was received, or the event date
+  payInLieu       Boolean    @default(false) @map("pay_in_lieu")
+  lastWorkingDay  DateTime   @map("last_working_day") @db.Date // worked out from the rule's notice
+  // resignation only: certified at the labour office (Decree 187/2025); the company decides within 10 days
+  certifiedOffice String?    @map("certified_office")
+  certifiedSerial String?    @map("certified_serial")
+  certifiedOn     DateTime?  @map("certified_on") @db.Date
+  decisionDueOn   DateTime?  @map("decision_due_on") @db.Date
+  reason          String?
+  note            String?
+  status          String     @default("pending_ceo") // ENDING_STATUSES
+  hrApprovedById  String?    @map("hr_approved_by") @db.Uuid // who recorded it
+  hrApprovedBy    User?      @relation("EndingHrApproval", fields: [hrApprovedById], references: [id], onDelete: SetNull)
+  hrApprovedAt    DateTime?  @map("hr_approved_at") @db.Timestamptz
+  ceoDecidedById  String?    @map("ceo_decided_by") @db.Uuid
+  ceoDecidedBy    User?      @relation("EndingCeoDecision", fields: [ceoDecidedById], references: [id], onDelete: SetNull)
+  ceoDecidedAt    DateTime?  @map("ceo_decided_at") @db.Timestamptz
+  ceoNote         String?    @map("ceo_note")
+  completedAt     DateTime?  @map("completed_at") @db.Timestamptz
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([employmentId])
+  @@index([status])
+  @@index([ruleKey])
+  @@map("employment_endings")
+}
+
+// ---------- the employee's own check of their details ----------
+// Owner's decision, 15 October 2026: an employee confirms their personal, contact, emergency contact and education
+// details (packages/shared CONFIRM_FIELDS) once, and again after every change, accepting the statement that they are
+// responsible for what they confirmed (PROFILE_DISCLAIMER). They don't edit the data: they ask for a change, which HR
+// or an Admin approves (the change is then made as an HR edit) or rejects.
+
+// One confirmation, with the values confirmed. The confirmation is up to date while every confirmed field still has
+// the value in the snapshot: a change by HR makes it stale, and changing the field back makes it up to date again.
+model ProfileConfirmation {
+  id                String   @id @default(uuid()) @db.Uuid
+  employeeId        String   @map("employee_id") @db.Uuid
+  employee          Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  userId            String   @map("user_id") @db.Uuid // who confirmed: the employee's own sign-in account
+  user              User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  confirmedAt       DateTime @default(now()) @map("confirmed_at") @db.Timestamptz
+  disclaimerVersion Int      @map("disclaimer_version") // the PROFILE_DISCLAIMER version accepted
+  snapshot          Json // { field: value } for every CONFIRM_FIELDS key, dates as YYYY-MM-DD, empty as null
+
+  @@index([employeeId, confirmedAt])
+  @@map("profile_confirmations")
+}
+
+// A change the employee asked for to their own details. HR or an Admin approves it (the change is made) or rejects
+// it; the employee may cancel it while it waits. One waits per employee at a time (checked by the API).
+model ProfileChangeRequest {
+  id            String    @id @default(uuid()) @db.Uuid
+  employeeId    String    @map("employee_id") @db.Uuid
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  requestedById String    @map("requested_by") @db.Uuid // the employee's own sign-in account
+  requestedBy   User      @relation("ChangeRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  requestedAt   DateTime  @default(now()) @map("requested_at") @db.Timestamptz
+  changes       Json // [{ field, from, to }] in CONFIRM_FIELDS order, values as an HR edit would save them
+  note          String?
+  status        String    @default("pending") // CHANGE_REQUEST_STATUSES: pending, approved, rejected, cancelled
+  decidedById   String?   @map("decided_by") @db.Uuid // who approved or rejected it, or the employee who cancelled it
+  decidedBy     User?     @relation("ChangeDecision", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt     DateTime? @map("decided_at") @db.Timestamptz
+  decisionNote  String?   @map("decision_note")
+
+  @@index([status])
+  @@index([employeeId])
+  @@map("profile_change_requests")
 }
 
 // ---------- audit ----------

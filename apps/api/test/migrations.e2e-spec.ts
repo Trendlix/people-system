@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { ENDING_RULE_DEFAULTS, ENDING_RULES } from '@trendlix/shared';
 import pg from 'pg';
 import { dutiesFromHtml, dutyRow, htmlFromLines } from '../src/organisation/job-titles/jd-html.js';
 import { assertTestDatabase } from './test-env.js';
@@ -143,5 +144,23 @@ describe('Migrations (e2e)', () => {
     expect(kept.map((r) => r.duty)).toEqual(duties);
     const { rows: fn } = await db.query("SELECT 1 FROM pg_proc WHERE proname = 'jd_lines_to_html'");
     expect(fn).toEqual([]);
+  });
+
+  it('contracts: the settings row and the ending rules as packages/shared has them, in order', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_contracts'))!;
+    await migratedUpTo(migration);
+    await db.query(sql(migration));
+
+    const { rows: settings } = await db.query('SELECT id, probation_months, duration_months FROM contract_settings');
+    expect(settings).toEqual([{ id: 1, probation_months: 3, duration_months: 12 }]);
+    const { rows: rules } = await db.query<Record<string, unknown>>(`
+      SELECT key, label, initiator, notice_amount AS "noticeAmount", notice_unit AS "noticeUnit", pay_in_lieu AS "payInLieu",
+        end_reason AS "endReason", source, active, sort_order AS "sortOrder"
+      FROM ending_rules ORDER BY sort_order`);
+    expect(rules).toEqual(ENDING_RULES.map((key, i) => ({ key, ...ENDING_RULE_DEFAULTS[key], active: true, sortOrder: i + 1 })));
+
+    // the law's caps hold in the database too
+    await expect(db.query('UPDATE contract_settings SET probation_months = 4')).rejects.toThrow(/contract_settings_probation_months_check/);
+    await expect(db.query('INSERT INTO contract_settings (id, updated_at) VALUES (2, now())')).rejects.toThrow(/contract_settings_one_row/);
   });
 });

@@ -1,7 +1,8 @@
-// Starting data: roles, the two shifts, the grades G1–G9 and the first admin account.
-// Safe to run more than once; existing rows are left as they are.
+// Starting data: roles, the two shifts, the grades G1–G9, the contract settings and ending rules, and the first admin
+// account. Safe to run more than once; existing rows are left as they are.
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { ENDING_RULE_DEFAULTS, ENDING_RULES } from '@trendlix/shared';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 import { hashPassword } from '../src/auth/password.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
@@ -58,6 +59,12 @@ async function main() {
   for (const g of GRADES) {
     const taken = await prisma.grade.findFirst({ where: { OR: [{ code: g.code }, { rank: g.rank }] } });
     if (!taken) await prisma.grade.create({ data: g });
+  }
+
+  // the contracts migration adds the same rows to existing databases (owner's decisions, 15 October 2026)
+  await prisma.contractSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1, probationMonths: 3, durationMonths: 12 } });
+  for (const [i, key] of ENDING_RULES.entries()) {
+    await prisma.endingRule.upsert({ where: { key }, update: {}, create: { key, ...ENDING_RULE_DEFAULTS[key], sortOrder: i + 1 } });
   }
 
   for (const s of SHIFTS) {

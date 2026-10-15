@@ -53,6 +53,28 @@ export function safeFileName(name: string | undefined, type: PaperworkType): str
   return `${short || 'document'}.${extension}`;
 }
 
+// Names a browser or an editor gives a file it made, which say nothing about the document: "blob" (a canvas or a
+// Blob sent without a name), "image.jpg", "document (2).pdf", "adjusted.jpg" …
+const GENERIC_NAME = /^(blob|image|img|picture|photo|scan|page|file|document|upload|download|untitled|output|adjusted|cropped|edited)(?:[\s_-]*\(?\d+\)?)?$/i;
+const ADJUSTED = '-adjusted';
+
+/**
+ * The name of a file that replaces a stored one (adjusted in the browser: cropped, straightened …): the name it was
+ * uploaded with when that says something; otherwise the stored name with "-adjusted" and the extension of what the
+ * new file is ("Birth certificate.pdf" replaced by a JPEG named "blob" becomes "Birth certificate-adjusted.jpg"),
+ * never "-adjusted-adjusted".
+ */
+export function replacementName(given: string | undefined, previous: string, type: PaperworkType): string {
+  const name = safeFileName(given, type);
+  const stem = name.slice(0, name.lastIndexOf('.'));
+  if (given?.trim() && !GENERIC_NAME.test(stem)) return name;
+  const dot = previous.lastIndexOf('.');
+  const base = (dot > 0 ? previous.slice(0, dot) : previous).replace(/-adjusted$/i, '');
+  const extension = extensionOf(type);
+  const short = Array.from(base).slice(0, NAME_MAX - extension.length - 1 - ADJUSTED.length).join('').trim();
+  return `${short || 'document'}${ADJUSTED}.${extension}`;
+}
+
 /** Control characters, and the invisible marks that change the direction or joining of text. */
 function isHidden(code: number): boolean {
   return (

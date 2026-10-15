@@ -1,4 +1,4 @@
-import { contentDisposition, detectPaperworkType, safeFileName } from './paperwork-file.js';
+import { contentDisposition, detectPaperworkType, replacementName, safeFileName } from './paperwork-file.js';
 
 describe('paperwork files', () => {
   it('identifies JPEG, PNG, WebP and PDF by their first bytes, and nothing else', () => {
@@ -38,5 +38,30 @@ describe('paperwork files', () => {
       `inline; filename="_ (1).png"; filename*=UTF-8''%D8%A8%D8%B7%D8%A7%D9%82%D8%A9%20%281%29.png`,
     );
     expect(contentDisposition('a"b\\c.pdf')).toBe(`inline; filename="a_b_c.pdf"; filename*=UTF-8''a%22b%5Cc.pdf`);
+  });
+
+  describe('the name of an adjusted file that replaces a stored one', () => {
+    it('is the stored name with "-adjusted" and the new extension when the upload’s name says nothing', () => {
+      expect(replacementName('blob', 'شهادة الميلاد.pdf', 'image/jpeg')).toBe('شهادة الميلاد-adjusted.jpg');
+      expect(replacementName(undefined, 'scan.png', 'application/pdf')).toBe('scan-adjusted.pdf');
+      expect(replacementName('  ', 'scan.png', 'image/jpeg')).toBe('scan-adjusted.jpg');
+      for (const generic of ['image.jpg', 'IMAGE.JPEG', 'document (2).pdf', 'adjusted.jpg', 'cropped-1.jpg', 'Untitled.pdf', 'page_3.jpg']) {
+        expect(replacementName(generic, 'card.png', 'image/jpeg')).toBe('card-adjusted.jpg');
+      }
+    });
+
+    it('never adds "-adjusted" twice, and keeps the name within 120 characters', () => {
+      expect(replacementName('blob', 'card-adjusted.jpg', 'image/jpeg')).toBe('card-adjusted.jpg');
+      expect(replacementName('blob', 'card-Adjusted.jpg', 'application/pdf')).toBe('card-adjusted.pdf');
+      const long = replacementName('blob', `${'ش'.repeat(115)}.pdf`, 'image/jpeg');
+      expect(Array.from(long).length).toBe(120);
+      expect(long.endsWith('-adjusted.jpg')).toBe(true);
+    });
+
+    it('is the upload’s own name, made safe, when it says something', () => {
+      expect(replacementName('Birth certificate (cropped).jpg', 'scan.pdf', 'image/jpeg')).toBe('Birth certificate (cropped).jpg');
+      expect(replacementName('شهادة التخرج.pdf', 'scan.pdf', 'image/jpeg')).toBe('شهادة التخرج.jpg'); // what the file really is
+      expect(replacementName('../photo of the card.png', 'scan.pdf', 'image/png')).toBe('photo of the card.png');
+    });
   });
 });

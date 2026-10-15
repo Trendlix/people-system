@@ -3,8 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { extensionOf, type PaperworkType } from './paperwork-file.js';
 
 // Talks to the OCR service (services/ocr), which reads the text of scans and photos (POST {OCR_URL}/read?lang=ar|en)
-// and finds ID cards on a scan (POST {OCR_URL}/cards), with the file. It is optional: without OCR_URL, or when the service is down, fails or is too slow, documents are
-// still stored, only without their text (status "unavailable" or "failed").
+// and finds ID cards on a scan (POST {OCR_URL}/cards), with the file; /cards also gives the pages as pictures. It is
+// optional: without OCR_URL, or when the service is down, fails or is too slow, documents are still stored, only
+// without their text (status "unavailable" or "failed").
 
 export type OcrLang = 'ar' | 'en';
 
@@ -37,6 +38,14 @@ export interface OcrPage {
 }
 
 export type OcrCards = { status: 'done'; pages: OcrPage[]; cards: OcrCard[] } | { status: 'failed' | 'unavailable' };
+
+export type OcrPages = { status: 'done'; pages: OcrPage[] } | { status: 'failed' | 'unavailable' };
+
+/**
+ * How many pages of a PDF pages() gives at most: the service has no call that only shows pages, so they come from
+ * /cards, which looks at a PDF's first 2 pages (services/ocr/README.md, CARDS_PDF_PAGES in services/ocr/app/main.py).
+ */
+export const OCR_PDF_PAGES = 2;
 
 /** What the service answers. Lines are in reading order; the text is as read (Arabic-Indic digits kept). */
 interface OcrResponse {
@@ -73,6 +82,18 @@ export class OcrClient {
     const found = cardsOf(res.body);
     if (!found) return this.fail('failed', 'the card answer was not in the expected form');
     return { status: 'done', ...found };
+  }
+
+  /**
+   * The pages of a photo or a PDF as pictures (base64 JPEG, upright, at most 2000 px on their long side; a PDF page
+   * rendered at 300 dpi), in order: those /cards answers with, its cards left aside. A PDF: its first OCR_PDF_PAGES.
+   */
+  async pages(file: Buffer, mimeType: PaperworkType): Promise<OcrPages> {
+    const res = await this.send('/cards', file, mimeType);
+    if (res.status !== 'ok') return res;
+    const pages = pagesOf((res.body as { pages?: unknown } | null)?.pages);
+    if (!pages) return this.fail('failed', 'the page answer was not in the expected form');
+    return { status: 'done', pages };
   }
 
   private async send(path: string, file: Buffer, mimeType: PaperworkType): Promise<{ status: 'ok'; body: unknown } | { status: 'failed' | 'unavailable' }> {
@@ -127,12 +148,19 @@ function notRunning(err: unknown): boolean {
 
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
+/** The pages of a well-formed answer (each a picture with its size), in order; null for anything else. */
+function pagesOf(pages: unknown): OcrPage[] | null {
+  if (!Array.isArray(pages)) return null;
+  const ok = pages.every((p: Partial<OcrPage>) => isNumber(p?.width) && isNumber(p?.height) && typeof p?.image === 'string');
+  return ok ? (pages as OcrPage[]).map(({ width, height, image }) => ({ width, height, image })) : null;
+}
+
 /** The pages and cards of a well-formed /cards answer; null for anything else. */
 function cardsOf(body: unknown): { pages: OcrPage[]; cards: OcrCard[] } | null {
   if (!body || typeof body !== 'object') return null;
-  const { pages, cards } = body as { pages?: unknown; cards?: unknown };
-  if (!Array.isArray(pages) || !Array.isArray(cards)) return null;
-  const okPages = pages.every((p: Partial<OcrPage>) => isNumber(p?.width) && isNumber(p?.height) && typeof p?.image === 'string');
+  const { pages: rawPages, cards } = body as { pages?: unknown; cards?: unknown };
+  const pages = pagesOf(rawPages);
+  if (!pages || !Array.isArray(cards)) return null;
   const okCards = cards.every((c: Partial<OcrCard>) => {
     const b = c?.box;
     return (
@@ -141,9 +169,9 @@ function cardsOf(body: unknown): { pages: OcrPage[]; cards: OcrCard[] } | null {
       (c.side === 'front' || c.side === 'back' || c.side === null) && isNumber(c.confidence)
     );
   });
-  if (!okPages || !okCards) return null;
+  if (!okCards) return null;
   return {
-    pages: (pages as OcrPage[]).map(({ width, height, image }) => ({ width, height, image })),
+    pages,
     cards: (cards as OcrCard[]).map(({ page, box, image, side, confidence }) => ({
       page,
       box: { cx: box.cx, cy: box.cy, w: box.w, h: box.h, angle: box.angle },

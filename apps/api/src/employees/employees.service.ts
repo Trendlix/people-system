@@ -4,6 +4,7 @@ import {
   accountLengthText,
   bankNamed,
   PAPERWORK_LABELS,
+  paperworkType,
   requiredPaperwork,
   type EmploymentType,
   type Gender,
@@ -13,9 +14,21 @@ import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
+import { changeRequestView, CONFIRMATION_INCLUDE, confirmationView, REQUEST_INCLUDE } from '../confirmations/views.js';
+import { contractView, ENDING_INCLUDE, endingView, type ContractContext } from '../contracts/views.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { deletesEmployees, editsEmployees, seesBank, seesEveryone, seesIdentity } from './access.js';
+import {
+  deletesEmployees,
+  editsEmployees,
+  isSelf,
+  seesBank,
+  seesChangeRequests,
+  seesEndings,
+  seesEveryone,
+  seesIdentity,
+  seesSalary,
+} from './access.js';
 import { birthDateFromNationalId, maskTail } from './checks.js';
 import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
 
@@ -38,7 +51,11 @@ const PLACE = {
 const EMPLOYMENT = {
   ...PLACE,
   manager: { select: { id: true, employeeCode: true, fullNameEn: true } },
-  shift: { select: { id: true, code: true, startTime: true, endTime: true } },
+  shift: { select: { id: true, code: true, startTime: true, endTime: true, workingDays: true } },
+  // the newest signed contract (contracts module, 15 October 2026), and the newest ending whatever its status
+  // (contracts review, 15 October 2026): a rejected one stays, with the CEO's note, until a new ending is started
+  contracts: { where: { status: 'active' }, orderBy: { version: 'desc' }, take: 1 },
+  endings: { orderBy: { createdAt: 'desc' }, take: 1, include: ENDING_INCLUDE },
 } satisfies Prisma.EmploymentInclude;
 
 /** Newest first, the current employment (no end date) before all ended ones. */
@@ -46,9 +63,20 @@ const NEWEST_FIRST = [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate:
 
 type EmploymentRow = Prisma.EmploymentGetPayload<{ include: typeof EMPLOYMENT }>;
 
-/** An employment as the API sends it: dates as YYYY-MM-DD, office days in order, shift times as HH:mm. */
-export function employmentView(e: EmploymentRow) {
-  const { shift, joinDate, probationEnd, jdAcknowledgedAt, endDate, officeDays, ...rest } = e;
+/** What an employment is shown with, besides its own row. */
+interface EmploymentContext extends Omit<ContractContext, 'workingDays'> {
+  /** HR, Admin and the CEO see how it ends (see seesEndings); everyone else gets `ending: null`. */
+  seesEndings: boolean;
+}
+
+/**
+ * An employment as the API sends it: dates as YYYY-MM-DD, office days in order, shift times as HH:mm; its signed
+ * contract (salary restricted to HR, Finance and the CEO) and its newest ending (HR, Admin and the CEO), or null.
+ */
+export function employmentView(e: EmploymentRow, { seesEndings, ...ctx }: EmploymentContext) {
+  const { shift, joinDate, probationEnd, jdAcknowledgedAt, endDate, officeDays, contracts, endings, ...rest } = e;
+  const [contract] = contracts;
+  const [ending] = endings;
   return {
     ...rest,
     joinDate: fromDateOnly(joinDate),
@@ -56,7 +84,9 @@ export function employmentView(e: EmploymentRow) {
     jdAcknowledgedAt: fromDateOnly(jdAcknowledgedAt),
     endDate: fromDateOnly(endDate),
     officeDays: [...officeDays].sort((a, b) => a - b),
-    shift: shift && { ...shift, startTime: fromTimeOfDay(shift.startTime), endTime: fromTimeOfDay(shift.endTime) },
+    shift: shift && { id: shift.id, code: shift.code, startTime: fromTimeOfDay(shift.startTime), endTime: fromTimeOfDay(shift.endTime) },
+    contract: contract ? contractView(contract, { ...ctx, workingDays: shift?.workingDays ?? null }) : null,
+    ending: ending && seesEndings ? endingView(ending) : null,
   };
 }
 
@@ -188,6 +218,8 @@ interface ProfileOnFile {
   bank: EmployeeBank | null;
   /** The current employment; null when not employed. */
   employment: CurrentEmployment | null;
+  /** The latest employment's type, current or past (null when never employed): which papers the file needs. */
+  latestType: EmploymentType | null;
   /** The highest rank in the grades table (the CEO's grade); null when it was not needed. */
   topRank: number | null;
   /** The kinds of paper in the employee file. */
@@ -211,7 +243,7 @@ const check = (value: unknown, key: string, label: string, tab: Missing['tab']):
  * the employment items while employed, the university, faculty and major unless the degree is high school, and the
  * direct manager unless the grade is the top rank (the CEO has no manager).
  */
-function completeness({ employee: e, identity, bank, employment, topRank, papers }: ProfileOnFile): { percent: number; missing: Missing[] } {
+function completeness({ employee: e, identity, bank, employment, latestType, topRank, papers }: ProfileOnFile): { percent: number; missing: Missing[] } {
   const highSchool = e.degree === 'high_school';
   const topGrade = !!employment?.grade && topRank !== null && employment.grade.rank >= topRank;
   const checks: Check[] = [
@@ -238,7 +270,6 @@ function completeness({ employee: e, identity, bank, employment, topRank, papers
     check(identity?.issueDate, 'idIssueDate', 'National ID issue date', 'basic'),
     check(identity?.expiryDate, 'idExpiry', 'National ID expiry date', 'basic'),
     check(bank?.bankName, 'bankName', 'Bank', 'basic'),
-    check(bank?.branch, 'branch', 'Bank branch', 'basic'),
     check(bank?.accountNo, 'accountNo', 'Account number', 'basic'),
     check(bank?.iban, 'iban', 'IBAN', 'basic'),
     check(bank?.holderName, 'holderName', 'Account holder', 'basic'),
@@ -268,7 +299,7 @@ function completeness({ employee: e, identity, bank, employment, topRank, papers
       : []),
 
     // the national ID's front and back are one paper: its scan counts once, when both sides are there
-    ...requiredPaperwork(employment?.employmentType ?? null, (e.gender as Gender | null) ?? null)
+    ...requiredPaperwork(paperworkType(employment?.employmentType, latestType), (e.gender as Gender | null) ?? null)
       .filter((kind) => kind !== 'national_id_back')
       .map((kind): Check =>
         kind === 'national_id_front'
@@ -342,6 +373,8 @@ export class EmployeesService {
   /**
    * A profile: personal details, the national ID and bank (masked, for those who may see them), the current
    * employment and the history of employments, the people who report to this person now, and how complete it is.
+   * Also the employee's own confirmation of their details and their change requests (owner's decision, 15 October
+   * 2026), and whether the signed-in user is this employee (`isSelf`: only they confirm or ask for a change).
    */
   async get(id: string, user: SessionUser) {
     const identity = seesIdentity(user);
@@ -361,17 +394,24 @@ export class EmployeesService {
           },
           orderBy: { employee: { fullNameEn: 'asc' } },
         },
+        confirmations: { orderBy: { confirmedAt: 'desc' }, take: 1, include: CONFIRMATION_INCLUDE },
       },
     });
     if (!e) throw new NotFoundException('Employee not found.');
 
-    const { identity: idRow, bank: bankRow, employments, managing, ...own } = e;
-    const history = employments.map(employmentView);
+    const { identity: idRow, bank: bankRow, employments, managing, confirmations: [confirmed], ...own } = e;
+    const self = isSelf(user, own);
+    // the non-renewal rule's notice dates a signed fixed-term contract's last day to say it won't be renewed
+    const nonRenewal = employments.some((x) => x.contracts.some((c) => c.form === 'fixed'))
+      ? await this.prisma.endingRule.findUnique({ where: { key: 'non_renewal' }, select: { noticeAmount: true, noticeUnit: true } })
+      : null;
+    const history = employments.map((x) => employmentView(x, { seesSalary: seesSalary(user), seesEndings: seesEndings(user), nonRenewal }));
     const current = history.find((x) => x.endDate === null) ?? null;
     // the top rank is only needed to know whether a graded employment needs a manager
-    const [papers, top] = await Promise.all([
+    const [papers, top, changeRequests] = await Promise.all([
       this.prisma.paperworkItem.findMany({ where: { employeeId: id }, select: { kind: true }, distinct: ['kind'] }),
       current?.grade ? this.prisma.grade.aggregate({ _max: { rank: true } }) : null,
+      self || seesChangeRequests(user) ? this.changeRequestsOf(id) : [],
     ]);
     return {
       ...fields(own),
@@ -385,10 +425,14 @@ export class EmployeesService {
         identity: idRow,
         bank: bankRow,
         employment: current,
+        latestType: history[0]?.employmentType ?? null,
         topRank: top?._max.rank ?? null,
         papers: papers.map((x) => x.kind),
       }),
+      confirmation: confirmationView(confirmed ?? null, own),
+      changeRequests,
       access: { edit: editsEmployees(user), delete: deletesEmployees(user), identity, bank },
+      isSelf: self,
     };
   }
 
@@ -439,20 +483,22 @@ export class EmployeesService {
   }
 
   async update(id: string, dto: UpdateEmployeeDto, user: SessionUser) {
+    await this.edit(id, dto, user);
+    return this.get(id, user);
+  }
+
+  /**
+   * What update() does to the profile, checked and audited, without answering the profile. Also how an employee's
+   * change request is made once HR or an Admin approves it (the confirmations module), so it is checked and audited
+   * as HR's own edit; an Admin may approve without seeing the profile.
+   */
+  async edit(id: string, dto: UpdateEmployeeDto, user: SessionUser): Promise<void> {
     const before = await this.row(id);
-    const { employeeCode, ...rest } = dto;
-    // only a new work email is checked: one on file that is not changed never stops other fields being saved
-    const workEmail = dto.workEmail !== before.workEmail ? dto.workEmail : undefined;
-    await this.assertCompanyDomain(workEmail);
-    const insuranceNo = dto.insuranceNo !== before.insuranceNo ? dto.insuranceNo : undefined;
-    await this.assertFree({ employeeCode: employeeCode !== before.employeeCode ? employeeCode : undefined, workEmail, insuranceNo }, id);
-    const derived = await this.checked(before, dto);
-    const values = { ...rest, ...(employeeCode ? { employeeCode } : {}), ...derived }; // the code cannot be emptied
+    const values = await this.updateValues(before, dto);
 
     await this.prisma.employee.update({ where: { id }, data: toData(values) });
     const diff = changes(fields(before), values);
     if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: id, diff });
-    return this.get(id, user);
   }
 
   async updateIdentity(id: string, dto: UpdateIdentityDto, user: SessionUser) {
@@ -505,10 +551,44 @@ export class EmployeesService {
     });
   }
 
+  /**
+   * Checks a change of the profile as update() would, without saving it: for an employee's change request, checked
+   * when it is sent (the work email's domain, numbers already taken, the checks across fields …).
+   */
+  async checkUpdate(id: string, dto: UpdateEmployeeDto): Promise<void> {
+    await this.updateValues(await this.row(id), dto);
+  }
+
   // ---------- helpers ----------
 
-  /** Which employees this user may see (spec §1: row-level access). */
-  private async visibleTo(user: SessionUser): Promise<Prisma.EmployeeWhereInput> {
+  /** A change of the profile, checked: the values to save (with those that follow from them). */
+  private async updateValues(before: Employee, dto: UpdateEmployeeDto) {
+    const { employeeCode, ...rest } = dto;
+    // only a new work email is checked: one on file that is not changed never stops other fields being saved
+    const workEmail = dto.workEmail !== before.workEmail ? dto.workEmail : undefined;
+    await this.assertCompanyDomain(workEmail);
+    const insuranceNo = dto.insuranceNo !== before.insuranceNo ? dto.insuranceNo : undefined;
+    await this.assertFree({ employeeCode: employeeCode !== before.employeeCode ? employeeCode : undefined, workEmail, insuranceNo }, before.id);
+    const derived = await this.checked(before, dto);
+    return { ...rest, ...(employeeCode ? { employeeCode } : {}), ...derived }; // the code cannot be emptied
+  }
+
+  /** A profile's change requests: the one waiting first, then the 10 decided or cancelled most recently. */
+  private async changeRequestsOf(employeeId: string) {
+    const [waiting, closed] = await Promise.all([
+      this.prisma.profileChangeRequest.findMany({ where: { employeeId, status: 'pending' }, orderBy: { requestedAt: 'desc' }, include: REQUEST_INCLUDE }),
+      this.prisma.profileChangeRequest.findMany({
+        where: { employeeId, status: { not: 'pending' } },
+        orderBy: [{ decidedAt: { sort: 'desc', nulls: 'last' } }, { requestedAt: 'desc' }],
+        take: 10,
+        include: REQUEST_INCLUDE,
+      }),
+    ]);
+    return [...waiting, ...closed].map(changeRequestView);
+  }
+
+  /** Which employees this user may see (spec §1: row-level access). Also used for their contracts. */
+  async visibleTo(user: SessionUser): Promise<Prisma.EmployeeWhereInput> {
     if (seesEveryone(user)) return {};
     const me = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } });
     if (!me) return { id: { in: [] } };

@@ -29,6 +29,24 @@ export function addMonths(ymd: string, months: number): string {
   return fromDateOnly(new Date(Date.UTC(y, m - 1 + months, Math.min(d, lastDay))));
 }
 
+/** The day `days` later (or earlier, when negative). */
+export function addDays(ymd: string, days: number): string {
+  const date = toDateOnly(ymd);
+  date.setUTCDate(date.getUTCDate() + days);
+  return fromDateOnly(date);
+}
+
+/** The day of the week: 0 = Sunday … 6 = Saturday. */
+export function weekday(ymd: string): number {
+  return toDateOnly(ymd).getUTCDay();
+}
+
+/** A date as messages show it: DD/MM/YYYY (README: every date on screen is DD/MM/YYYY). */
+export function shownDate(ymd: string): string {
+  const [y, m, d] = ymd.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 /** Today in Cairo, as YYYY-MM-DD. */
 export function todayInCairo(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date());

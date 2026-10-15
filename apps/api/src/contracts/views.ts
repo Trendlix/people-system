@@ -1,0 +1,134 @@
+import { ENDING_RULE_DEFAULTS, type EndReason, type NoticeUnit } from '@trendlix/shared';
+import { addDays, fromDateOnly } from '../common/date-only.js';
+import type { Contract, Prisma } from '../generated/prisma/client.js';
+import { latestNoticeDay } from './notice.js';
+
+// Contracts and endings as the API sends them (dates as YYYY-MM-DD, money as numbers). Used by the contracts module
+// and by the employee profile, whose employments show their signed contract and their ending.
+
+/** The non-renewal rule's notice: how long before a fixed term ends the company must say it won't be renewed. */
+export interface NonRenewalNotice {
+  noticeAmount: number;
+  noticeUnit: string;
+}
+
+/** What a contract is shown with, besides its own row. */
+export interface ContractContext {
+  /** HR, Finance and the CEO see salaries (like bank details); everyone else gets null. */
+  seesSalary: boolean;
+  /** The employment's shift's working days; Sunday to Thursday without a shift. */
+  workingDays: readonly number[] | null;
+  /** The non-renewal rule's notice (seeded: 45 working days, contract clause 2). */
+  nonRenewal: NonRenewalNotice | null;
+}
+
+/** An amount of money as a number, to the piastre. */
+const money = (value: Prisma.Decimal | null): number | null => (value === null ? null : value.toNumber());
+
+/**
+ * The last day to give notice that a fixed term won't be renewed: the non-renewal rule's notice counted back from the
+ * end date (45 working days, by the employment's shift). Signed (active) fixed-term contracts only, else null.
+ */
+export function nonRenewalNoticeBy(c: Pick<Contract, 'form' | 'status' | 'endDate'>, ctx: Omit<ContractContext, 'seesSalary'>): string | null {
+  if (c.form !== 'fixed' || c.status !== 'active' || !c.endDate) return null;
+  const notice = ctx.nonRenewal ?? ENDING_RULE_DEFAULTS.non_renewal;
+  return latestNoticeDay(fromDateOnly(c.endDate), notice.noticeAmount, notice.noticeUnit as NoticeUnit, ctx.workingDays);
+}
+
+/**
+ * A contract version. The basic salary is `basic_percent` of the gross, the variable salary the rest. Salary fields are
+ * null for anyone but HR, Finance and the CEO, with `salaryHidden: true`.
+ */
+export function contractView(c: Contract, ctx: ContractContext) {
+  const grossCents = Math.round(c.grossSalary.toNumber() * 100);
+  const basicCents = Math.round((grossCents * c.basicPercent) / 100);
+  const salary = ctx.seesSalary
+    ? {
+        grossSalary: grossCents / 100,
+        basicPercent: c.basicPercent,
+        basicSalary: basicCents / 100,
+        variableSalary: (grossCents - basicCents) / 100,
+        netSalary: money(c.netSalary),
+        insuredSalary: money(c.insuredSalary),
+      }
+    : { grossSalary: null, basicPercent: c.basicPercent, basicSalary: null, variableSalary: null, netSalary: null, insuredSalary: null };
+  return {
+    id: c.id,
+    number: c.number,
+    version: c.version,
+    form: c.form,
+    startDate: fromDateOnly(c.startDate),
+    endDate: fromDateOnly(c.endDate),
+    durationMonths: c.durationMonths,
+    probationMonths: c.probationMonths,
+    probationEnd: fromDateOnly(c.probationEnd),
+    ...salary,
+    jobTitleEn: c.jobTitleEn,
+    jobTitleAr: c.jobTitleAr,
+    gradeCode: c.gradeCode,
+    departmentName: c.departmentName,
+    shiftCode: c.shiftCode,
+    status: c.status,
+    signedOn: fromDateOnly(c.signedOn),
+    insuranceFiledOn: fromDateOnly(c.insuranceFiledOn),
+    labourOfficeFiledOn: fromDateOnly(c.labourOfficeFiledOn),
+    note: c.note,
+    nonRenewalNoticeBy: nonRenewalNoticeBy(c, ctx),
+    salaryHidden: !ctx.seesSalary,
+  };
+}
+
+export type ContractView = ReturnType<typeof contractView>;
+
+/** What an ending is shown with: its rule, who approved it, and the end date of its employment once it ended. */
+export const ENDING_INCLUDE = {
+  rule: { select: { label: true, endReason: true } },
+  hrApprovedBy: { select: { email: true } },
+  ceoDecidedBy: { select: { email: true } },
+  employment: { select: { endDate: true } },
+} satisfies Prisma.EmploymentEndingInclude;
+
+export type EndingRow = Prisma.EmploymentEndingGetPayload<{ include: typeof ENDING_INCLUDE }>;
+
+/**
+ * How an ending ends the employment: its rule's end reason, except an ending during probation, which is a resignation
+ * when the employee ends it and a termination when the company does.
+ */
+export function endReasonOf(ruleKey: string, ruleEndReason: string, initiator: string | null): EndReason {
+  if (ruleKey === 'probation') return initiator === 'employee' ? 'resigned' : 'terminated';
+  return ruleEndReason as EndReason;
+}
+
+/**
+ * An ending. Once completed it has its deadlines: the final dues within 7 days of the end (Art. 108), and the filing
+ * at the labour office within 15 days (Decree 214/2025).
+ */
+export function endingView(e: EndingRow) {
+  const endDate = fromDateOnly(e.employment.endDate ?? e.lastWorkingDay);
+  return {
+    id: e.id,
+    ruleKey: e.ruleKey,
+    ruleLabel: e.rule.label,
+    initiator: e.initiator,
+    noticeGivenOn: fromDateOnly(e.noticeGivenOn),
+    payInLieu: e.payInLieu,
+    lastWorkingDay: fromDateOnly(e.lastWorkingDay),
+    certifiedOffice: e.certifiedOffice,
+    certifiedSerial: e.certifiedSerial,
+    certifiedOn: fromDateOnly(e.certifiedOn),
+    decisionDueOn: fromDateOnly(e.decisionDueOn),
+    reason: e.reason,
+    note: e.note,
+    status: e.status,
+    hrApprovedBy: e.hrApprovedBy && { email: e.hrApprovedBy.email },
+    hrApprovedAt: e.hrApprovedAt,
+    ceoDecidedBy: e.ceoDecidedBy && { email: e.ceoDecidedBy.email },
+    ceoDecidedAt: e.ceoDecidedAt,
+    ceoNote: e.ceoNote,
+    completedAt: e.completedAt,
+    endReason: endReasonOf(e.ruleKey, e.rule.endReason, e.initiator),
+    deadlines: e.status === 'completed' ? { finalDuesBy: addDays(endDate, 7), labourOfficeFilingBy: addDays(endDate, 15) } : null,
+  };
+}
+
+export type EndingView = ReturnType<typeof endingView>;

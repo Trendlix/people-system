@@ -5,9 +5,11 @@ import { EmploymentsController } from './employments.controller.js';
 import { EmploymentsService } from './employments.service.js';
 
 // Module 2 · Employees: the directory, the profile (personal details, national ID, contact, education, bank) kept for
-// good, and each period of employment on its own (hiring, changes, the end), so history stays.
+// good, and each period of employment on its own (hiring, changes, the end), so history stays. The contracts module
+// uses both services: who may see an employment, and ending one.
 @Module({
   controllers: [EmployeesController, EmploymentsController],
   providers: [EmployeesService, EmploymentsService],
+  exports: [EmployeesService, EmploymentsService],
 })
 export class EmployeesModule {}

@@ -38,6 +38,14 @@ export class EmploymentsController {
     return this.employments.end(id, employmentId, dto, user);
   }
 
+  /** Someone on probation passes it: the status becomes Active (owner's decisions, 15 October 2026). */
+  @Roles('hr')
+  @Post(':employmentId/confirm-probation')
+  @HttpCode(200)
+  confirmProbation(@Param('id', ParseUUIDPipe) id: string, @Param('employmentId', ParseUUIDPipe) employmentId: string, @CurrentUser() user: SessionUser) {
+    return this.employments.confirmProbation(id, employmentId, user);
+  }
+
   @Roles('hr', 'admin')
   @Delete(':employmentId')
   @HttpCode(204)

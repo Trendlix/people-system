@@ -9,9 +9,11 @@ import { NORMALIZE_FROM, NORMALIZE_TO, normalizeArabic, snippet } from './arabic
 import { readIdCardWithNotes, type CardLine } from './egyptian-id.js';
 import { CorrectionsService } from './corrections.service.js';
 import { assignSides } from './id-card-sides.js';
-import { OcrClient, type OcrPageRead, type OcrRead } from './ocr.client.js';
-import { detectPaperworkType, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from './paperwork-file.js';
+import { OCR_PDF_PAGES, OcrClient, type OcrPage, type OcrPageRead, type OcrRead } from './ocr.client.js';
+import { detectPaperworkType, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, replacementName, safeFileName, type PaperworkType } from './paperwork-file.js';
 import type { UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
+import { countPdfPages } from './pdf-pages.js';
+import { photoSize } from './photo-size.js';
 
 const ENTITY = 'paperwork';
 const SEARCH_LIMIT = 50;
@@ -35,25 +37,50 @@ function itemView<T extends { expiresOn: Date | null }>(item: T) {
   return { ...item, expiresOn: fromDateOnly(item.expiresOn) };
 }
 
-/** Why an ID card could not be read: the OCR service is not running (503), or it failed (502). */
-interface CardUnread {
+/** What to say when the OCR service gave nothing: it is not running (503), or it failed (502). */
+interface Unread {
   unavailable: string;
   failed: string;
 }
 
-const SCAN_UNREAD: CardUnread = {
+const SCAN_UNREAD: Unread = {
   unavailable: 'Reading ID cards is not available right now: the OCR service is not running. The photos were saved in the employee file.',
   failed: 'The OCR service could not read the ID card. The photos were saved in the employee file.',
 };
 // A new employee starts from a clean scan of their card, so there is no filling in by hand (owner's rule).
-const NEW_EMPLOYEE_UNREAD: CardUnread = {
+const NEW_EMPLOYEE_UNREAD: Unread = {
   unavailable: 'Reading ID cards is not available right now: the OCR service is not running. Try again in a few minutes.',
   failed: 'The OCR service could not read the ID card. Try again, or use a clearer scan.',
 };
-const PREPARE_UNREAD: CardUnread = {
+const PREPARE_UNREAD: Unread = {
   unavailable: 'Finding the card on the scan is not available right now: the OCR service is not running. Try again in a few minutes.',
   failed: 'The OCR service could not process the scan. Try again, or use a clearer scan.',
 };
+const PDF_PAGES_UNREAD: Unread = {
+  unavailable: "PDF pages can't be shown right now; try again in a minute, or upload a photo.",
+  failed: "The PDF's pages could not be shown: it may be damaged or protected by a password. Try again, or upload a photo.",
+};
+
+/** The 503 or 502 for an OCR call that gave nothing. */
+function unread(status: 'failed' | 'unavailable', say: Unread) {
+  return status === 'unavailable' ? new ServiceUnavailableException(say.unavailable) : new BadGatewayException(say.failed);
+}
+
+/**
+ * Pages shown for adjusting at most: a longer PDF is refused. For now, also a PDF longer than the OCR service shows
+ * (OCR_PDF_PAGES): its pages cannot all be shown.
+ */
+const ADJUST_MAX_PAGES = 20;
+const adjustMaxPages = Math.min(ADJUST_MAX_PAGES, OCR_PDF_PAGES);
+const FOR_NOW = adjustMaxPages < ADJUST_MAX_PAGES ? ' for now' : '';
+
+/** A page as a picture, for adjusting in the browser: base64 JPEG, and its size as shown. */
+export interface PreparedPage {
+  image: string;
+  width: number;
+  height: number;
+}
+const preparedPage = ({ image, width, height }: OcrPage): PreparedPage => ({ image, width, height });
 
 interface Upload {
   data: Buffer;
@@ -116,11 +143,11 @@ function cardLines(read: OcrRead | null): CardLine[] | null {
  * What the card says (see egyptian-id.ts) and the text read from each side (null when that side could not be read).
  * When neither side could be read, says why: 503 when the OCR service is not running, 502 when it failed.
  */
-function readCard(read: OcrRead, readBack: OcrRead | null, unread: CardUnread) {
+function readCard(read: OcrRead, readBack: OcrRead | null, say: Unread) {
   const [front, back] = splitSides(read, readBack);
   const reads = back ? [front, back] : [front];
   if (!reads.some((r) => r.status === 'done')) {
-    throw reads.some((r) => r.status === 'unavailable') ? new ServiceUnavailableException(unread.unavailable) : new BadGatewayException(unread.failed);
+    throw unread(reads.some((r) => r.status === 'unavailable') ? 'unavailable' : 'failed', say);
   }
   const textOf = (r: OcrRead | null) => (r?.status === 'done' ? r.text : null);
   const { suggestions, notes } = readIdCardWithNotes(cardLines(front), cardLines(back));
@@ -333,9 +360,7 @@ export class PaperworkService {
     const uploads = back ? [front, back] : [front];
     const results = await Promise.all(uploads.map((u) => this.ocr.cards(u.data, u.type)));
     if (results.some((r) => r.status !== 'done')) {
-      throw results.some((r) => r.status === 'unavailable')
-        ? new ServiceUnavailableException(PREPARE_UNREAD.unavailable)
-        : new BadGatewayException(PREPARE_UNREAD.failed);
+      throw unread(results.some((r) => r.status === 'unavailable') ? 'unavailable' : 'failed', PREPARE_UNREAD);
     }
 
     const pages: { width: number; height: number; image: string }[] = [];
@@ -351,7 +376,76 @@ export class PaperworkService {
     return { pages, front: side(frontCard), back: side(backCard), found: cards.length };
   }
 
+  /**
+   * A photo or a PDF → its pages as pictures, in order, for cropping and adjusting in the browser, which then uploads
+   * the result (a JPEG, or a PDF of several pages) as a new paper or in place of a stored one (replaceFile). Nothing is
+   * stored and nothing is logged.
+   */
+  async preparePages(file: Express.Multer.File | undefined): Promise<{ pages: PreparedPage[] }> {
+    const upload = checked(file, 'Choose a photo or PDF to adjust.');
+    return { pages: upload.type === 'application/pdf' ? await this.pdfPages(upload) : [await this.photoPage(upload)] };
+  }
+
+  /**
+   * Replaces the file of a stored paper with an adjusted one (cropped, straightened … in the browser). Its kind,
+   * employee, number and expiry stay; its name, type and size follow the new file, and its text is read again as for
+   * a new upload. Logged with the new name and size, never the contents. National ID scans are replaced by HR, who
+   * upload them; replacing one is not a view of it.
+   */
+  async replaceFile(itemId: string, file: Express.Multer.File | undefined, user: SessionUser) {
+    const item = await this.prisma.paperworkItem.findUnique({ where: { id: itemId }, select: { employeeId: true, fileName: true } });
+    if (!item) throw new NotFoundException('Document not found.');
+    const upload = checked(file, 'Choose the adjusted file to upload.');
+    const fileName = replacementName(file?.originalname, item.fileName, upload.type);
+    const sizeBytes = upload.data.length;
+    await this.prisma.paperworkItem.update({
+      where: { id: itemId },
+      data: { fileName, mimeType: upload.type, sizeBytes, data: new Uint8Array(upload.data), ocrStatus: 'pending', ocrText: null, ocrAt: null },
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'update',
+      entityType: ENTITY,
+      entityId: itemId,
+      diff: { employeeId: item.employeeId, file: 'replaced', fileName, sizeBytes },
+    });
+    await this.read(itemId, { ...upload, fileName });
+    return itemView(await this.prisma.paperworkItem.findUniqueOrThrow({ where: { id: itemId }, select: ITEM }));
+  }
+
   // ---------- helpers ----------
+
+  /**
+   * A photo as one page. A JPEG goes back as it is, at its full size: browsers turn it upright by its EXIF
+   * orientation, and the size given is as shown. A PNG or WebP photo goes back as a JPEG made by the OCR service, or,
+   * when the service is not running, as it is (browsers show a picture by its content, whatever it is called).
+   */
+  private async photoPage({ data, type }: Upload): Promise<PreparedPage> {
+    const size = photoSize(data, type);
+    if (size && type === 'image/jpeg') return { image: data.toString('base64'), ...size };
+    const shown = await this.ocr.pages(data, type);
+    if (shown.status === 'done' && shown.pages.length === 1) return preparedPage(shown.pages[0]);
+    if (size) return { image: data.toString('base64'), ...size };
+    throw new BadRequestException('This photo could not be opened: it may be damaged. Try another file.');
+  }
+
+  /**
+   * The pages of a PDF, rendered by the OCR service (503 without it). Never fewer than the PDF has: the adjusted file
+   * replaces the whole document, so a PDF whose pages cannot all be shown is refused.
+   */
+  private async pdfPages({ data, type }: Upload): Promise<PreparedPage[]> {
+    const count = countPdfPages(data);
+    const tooLong = (has: string) => new BadRequestException(`Only PDFs of up to ${adjustMaxPages} pages can be adjusted${FOR_NOW}; this one ${has}.`);
+    if (count !== null && count > adjustMaxPages) throw tooLong(`has ${count}`);
+    const shown = await this.ocr.pages(data, type);
+    if (shown.status !== 'done') throw unread(shown.status, PDF_PAGES_UNREAD);
+    const { pages } = shown;
+    if (!pages.length || (count !== null && pages.length < count)) throw new BadGatewayException(PDF_PAGES_UNREAD.failed);
+    if (pages.length > adjustMaxPages) throw tooLong(`has ${pages.length}`);
+    // when the page count cannot be told, as many pages as the service shows at most may be only the first ones
+    if (count === null && pages.length >= OCR_PDF_PAGES) throw tooLong('may have more');
+    return pages.map(preparedPage);
+  }
 
   private async assertEmployee(id: string) {
     const exists = await this.prisma.employee.count({ where: { id } });

@@ -99,14 +99,16 @@ export const PAPERWORK_LABELS: Record<PaperworkKind, string> = {
 export const RESTRICTED_PAPERWORK: readonly PaperworkKind[] = ['national_id_front', 'national_id_back'];
 
 /**
- * The scans an employee's file needs (spec §8.5), by their current employment. Full-time: the full list; military papers for men only (a woman's
- * military status is always Not applicable). Other employment types: the national ID (their signed job offer and NDA
- * come from document generation). While the gender is not recorded, military papers are listed as needed.
+ * The scans an employee's file needs (spec §8.5), by employment type (see paperworkType). Full-time: the full list;
+ * military papers for men only (a woman's military status is always Not applicable). Other employment types: the
+ * national ID (their signed job offer and NDA come from document generation). While the gender is not recorded,
+ * military papers are listed as needed. Someone not employed yet (null) needs the full-time list: HR collects the
+ * papers before the start date, and full time is the usual hire (owner, 15 October 2026).
  * The bank account letter and the social insurance forms (Form 1 …) are not scans HR collects: the system generates
  * them from templates HR adds (owner, 15 October 2026).
  */
 export function requiredPaperwork(employmentType: EmploymentType | null, gender: Gender | null): PaperworkKind[] {
-  if (employmentType !== 'full_time') return ['national_id_front', 'national_id_back']; // also before anyone is hired
+  if (employmentType !== null && employmentType !== 'full_time') return ['national_id_front', 'national_id_back'];
   return [
     'national_id_front',
     'national_id_back',
@@ -118,16 +120,28 @@ export function requiredPaperwork(employmentType: EmploymentType | null, gender:
   ];
 }
 
+/**
+ * The employment type a file's papers are checked against: the current employment's, else the latest past one's (a
+ * former employee's file stays as it was), else null for someone never employed (the full-time list).
+ */
+export function paperworkType(current: EmploymentType | null | undefined, latest: EmploymentType | null | undefined): EmploymentType | null {
+  return current ?? latest ?? null;
+}
+
 // ---------- employment history ----------
 
 /** Why an employment ended. Resigned gives the status Resigned; the others give Terminated. */
-export const END_REASONS = ['resigned', 'terminated', 'contract_ended', 'other'] as const;
+export const END_REASONS = ['resigned', 'terminated', 'contract_ended', 'mutual_agreement', 'retired', 'deceased', 'disability', 'other'] as const;
 export type EndReason = (typeof END_REASONS)[number];
 
 export const END_REASON_LABELS: Record<EndReason, string> = {
   resigned: 'Resigned',
   terminated: 'Terminated',
   contract_ended: 'Contract ended',
+  mutual_agreement: 'Mutual agreement',
+  retired: 'Retired',
+  deceased: 'Deceased',
+  disability: 'Disability',
   other: 'Other',
 };
 
@@ -155,3 +169,11 @@ export * from './education.js';
 // ---------- banks (EG-ACH list) ----------
 
 export * from './banks.js';
+
+// ---------- contracts and how employment ends (Labour Law 14/2025) ----------
+
+export * from './contracts.js';
+
+// ---------- the employee's own check of their data ----------
+
+export * from './profile-confirmation.js';

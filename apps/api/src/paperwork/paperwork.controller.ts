@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   StreamableFile,
   UploadedFile,
@@ -24,8 +25,8 @@ import { contentDisposition, PAPERWORK_MAX_BYTES } from './paperwork-file.js';
 import { SearchPaperworkDto, UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
 import { PaperworkService, type IdCardFiles } from './paperwork.service.js';
 
-// The employee file is HR and CEO only: both read it, only HR adds, re-reads and deletes. National ID scans are
-// restricted data on top of that: every view is written to the audit log (see PaperworkService).
+// The employee file is HR and CEO only: both read it, only HR adds, adjusts, re-reads and deletes. National ID scans
+// are restricted data on top of that: every view is written to the audit log (see PaperworkService).
 
 // File names are read as UTF-8, so Arabic names arrive intact.
 const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 }, defParamCharset: 'utf8' };
@@ -96,6 +97,19 @@ export class PaperworkController {
     return this.paperwork.search(dto.q);
   }
 
+  /**
+   * A photo or a PDF → { pages: [{ image (base64 JPEG), width, height }] }, its pages in order, for cropping and
+   * adjusting in the browser before it is uploaded (or in place of a stored file: PUT :itemId/file). Nothing is stored.
+   */
+  @Roles('hr')
+  @Post('prepare')
+  @HttpCode(200)
+  @UseFilters(FileTooLargeFilter)
+  @UseInterceptors(FileInterceptor('file', ONE_FILE))
+  prepare(@UploadedFile() file: Express.Multer.File | undefined) {
+    return this.paperwork.preparePages(file);
+  }
+
   @Roles('hr', 'ceo')
   @Get(':itemId/file')
   @Header('Cache-Control', 'private, no-store')
@@ -111,6 +125,19 @@ export class PaperworkController {
   @Header('Cache-Control', 'private, no-store')
   text(@Param('itemId', ParseUUIDPipe) itemId: string, @CurrentUser() user: SessionUser) {
     return this.paperwork.text(itemId, user);
+  }
+
+  /** A stored paper's file replaced by an adjusted one; its kind, number and expiry stay. Answers the paper as listed. */
+  @Roles('hr')
+  @Put(':itemId/file')
+  @UseFilters(FileTooLargeFilter)
+  @UseInterceptors(FileInterceptor('file', ONE_FILE))
+  replaceFile(
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: SessionUser,
+  ) {
+    return this.paperwork.replaceFile(itemId, file, user);
   }
 
   @Roles('hr')
