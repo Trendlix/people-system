@@ -9,8 +9,8 @@ import { shownStatus } from '../offers/rules.js';
 import { OFFER_INCLUDE, WITHOUT_FILES, type OfferRow } from '../offers/views.js';
 import { PdfService } from '../pdf/pdf.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { templateFileName } from '../templates/template-file.js';
 import { DocumentsService } from './documents.service.js';
+import { filledFileName } from './fill-version.js';
 import { SLOTS } from './offer.js';
 import { isOfferSlot } from './preview.js';
 
@@ -136,8 +136,9 @@ export class TemplatePreviewService {
         : (await this.choices(version, slot, user))[0];
     if (!used) throw new ConflictException(isOfferSlot(slot) ? NO_OFFER : NO_ONE);
 
-    const { data } = await this.prisma.templateVersion.findUniqueOrThrow({ where: { id: versionId }, select: { data: true } });
-    const template = { language: version.language, tags: version.tags, data };
+    // the file, and a PDF form's fields (owner's decision, 15 October 2026)
+    const { data, format, pdfFields } = await this.prisma.templateVersion.findUniqueOrThrow({ where: { id: versionId }, select: { data: true, format: true, pdfFields: true } });
+    const template = { language: version.language, tags: version.tags, data, format, pdfFields };
     let filled: { data: Buffer | null; shown: string[] };
     let whose: string;
     if (used.kind === 'offer') {
@@ -149,7 +150,7 @@ export class TemplatePreviewService {
       filled = forEmployee;
       whose = forEmployee.employee.fullNameEn;
     }
-    const file = await this.pdf.protectedFile({ data: filled.data!, fileName: templateFileName(`${slot.name} v${version.version} - preview - ${whose}.docx`) });
+    const file = await this.pdf.protectedFile({ data: filled.data!, fileName: filledFileName(`${slot.name} v${version.version} - preview - ${whose}`, format) });
     if (filled.shown.length) {
       await this.audit.record({
         userId: user.id,

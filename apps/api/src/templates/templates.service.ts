@@ -1,17 +1,22 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { TEMPLATE_SLOTS, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { TEMPLATE_SLOTS, type PdfField, type PdfPageSize, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { shownDate, todayInCairo } from '../common/date-only.js';
+import { fillPdfTemplate, PdfTemplateError, readPdfTemplate } from '../documents/pdf-engine/index.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB } from '../paperwork/paperwork-file.js';
+import { isPdf } from '../pdf/pdf-file.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { DOCX_MIME, DocxError, readDocx, type TagReading } from './docx-tags.js';
 import { FIELDS_GUIDE_FILE_NAME, fieldsGuideDocx } from './fields-guide.js';
-import { templateFileName } from './template-file.js';
+import { pdfFieldsProblem, pdfFieldTags, plainPdfFields } from './pdf-fields.js';
+import { pdfSample } from './pdf-sample.js';
+import { STARTER_LAYOUTS_TOKEN, starterLayoutFor, type StarterLayout } from './starter-layouts.js';
+import { formatOf, templateFileName } from './template-file.js';
 import type { UploadTemplateDto } from './templates.dto.js';
-import { slotView, VERSION, versionView, type VersionRow } from './views.js';
+import { fieldsOf, pagesOf, slotView, VERSION, versionView, type VersionRow } from './views.js';
 
 const ENTITY = 'template_version';
 const LANGUAGE_NAMES: Record<TemplateLanguage, string> = { ar: 'Arabic', en: 'English', bilingual: 'Arabic and English' };
@@ -19,6 +24,13 @@ const SLOTS = new Map(TEMPLATE_SLOTS.map((s) => [s.key, s]));
 
 /** Whose versions a slot stands on: its own, or its source's for a copy. */
 const fileSlot = (slot: TemplateSlot) => slot.copyOf ?? slot.key;
+
+const PDF_MIME = 'application/pdf';
+export const PLACE_FIELDS_FIRST = 'Place the fields on the form before publishing it.';
+
+/** The 409 for placing fields on a Word version: its fields are the tags typed in it. */
+const wordVersion = (version: number) =>
+  new ConflictException(`Version ${version} is a Word file: its fields are the {{tags}} typed in it. Fields are placed only on a PDF form.`);
 
 /** One upload or publish per slot at a time, so version numbers and the version in use can't be taken twice. */
 async function lockSlot(tx: Prisma.TransactionClient, key: string): Promise<void> {
@@ -42,9 +54,12 @@ export function publishProblem(v: Pick<TagReading, 'unknownTags' | 'broken'>): s
 // employee comes next: it takes the published version's file, tags and language.
 @Injectable()
 export class TemplatesService {
+  private readonly logger = new Logger(TemplatesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Inject(STARTER_LAYOUTS_TOKEN) private readonly starterLayouts: readonly StarterLayout[],
   ) {}
 
   /** Every slot, in the library's order, with where it stands. */
@@ -65,14 +80,33 @@ export class TemplatesService {
     const slot = this.slotOf(key);
     if (slot.copyOf) throw new BadRequestException(`This copy is printed from ${this.slotOf(slot.copyOf).name}'s file. Upload there.`);
     const language = this.languageOf(slot, dto.language ?? null);
-    if (!file?.buffer?.length) throw new BadRequestException('Choose the Word file (.docx) to upload.');
+    if (!file?.buffer?.length) throw new BadRequestException('Choose the file to upload: a Word document (.docx) or a PDF form.');
     if (file.size > PAPERWORK_MAX_BYTES) throw new BadRequestException(`The file must be ${PAPERWORK_MAX_MB} MB or smaller.`);
-    let reading: TagReading;
-    try {
-      reading = readDocx(file.buffer);
-    } catch (err) {
-      if (err instanceof DocxError) throw new BadRequestException(err.message);
-      throw err;
+    // a PDF (an official form) or a Word document, by its content
+    const pdf = isPdf(file.buffer);
+    let content: Pick<Prisma.TemplateVersionCreateInput, 'format' | 'mimeType' | 'pdfPages' | 'pdfFields' | 'tags' | 'unknownTags' | 'broken'>;
+    let starter: StarterLayout | null = null;
+    if (pdf) {
+      let pages: PdfPageSize[];
+      try {
+        pages = await readPdfTemplate(file.buffer);
+      } catch (err) {
+        if (err instanceof PdfTemplateError) throw new BadRequestException(err.message);
+        throw err;
+      }
+      // the fields already placed for exactly this file, when the system knows it (starter-layouts.ts)
+      starter = this.starterFor(slot.key, file.buffer, pages);
+      const fields = starter ? plainPdfFields(starter.fields) : [];
+      content = { format: 'pdf', mimeType: PDF_MIME, pdfPages: pages as unknown as Prisma.InputJsonValue, pdfFields: fields as unknown as Prisma.InputJsonValue, tags: pdfFieldTags(fields), unknownTags: [], broken: [] };
+    } else {
+      let reading: TagReading;
+      try {
+        reading = readDocx(file.buffer);
+      } catch (err) {
+        if (err instanceof DocxError) throw new BadRequestException(err.message);
+        throw err;
+      }
+      content = { format: 'docx', mimeType: DOCX_MIME, ...reading };
     }
 
     const row = await this.prisma.$transaction(async (tx) => {
@@ -82,12 +116,11 @@ export class TemplatesService {
         data: {
           slotKey: slot.key,
           version: (_max.version ?? 0) + 1,
-          fileName: templateFileName(file.originalname),
-          mimeType: DOCX_MIME,
+          fileName: templateFileName(file.originalname, pdf ? 'pdf' : 'docx'),
           sizeBytes: file.size,
           data: new Uint8Array(file.buffer),
           language,
-          ...reading,
+          ...content,
           note: dto.note ?? null,
           uploadedById: user.id,
         },
@@ -107,19 +140,87 @@ export class TemplatesService {
         tags: row.tags.length,
         unknownTags: row.unknownTags.length,
         broken: row.broken.length,
+        ...(pdf && { format: 'pdf', pages: pagesOf(row).length, fields: fieldsOf(row).length }),
+        ...(starter && { starterLayout: starter.note }),
       },
     });
     return versionView(row);
   }
 
   /**
+   * The fields placed on a PDF version, with its pages as shown, for the editor (Templates → a version → Place fields).
+   * Editable while it is a draft or in use (a box printed a little off is put right without uploading again; documents
+   * made before keep their own file), not once replaced. Refused (409) for a Word version.
+   */
+  async fields(id: string) {
+    return this.fieldsView(await this.row(id));
+  }
+
+  /**
+   * Saves all the fields of a PDF version (owner's decision, 15 October 2026), checked as pdfFieldsProblem says, and the
+   * tags it prints worked out again from them. Refused for a Word version and a replaced one (409); a version in use
+   * keeps at least one field.
+   */
+  async saveFields(id: string, sent: readonly PdfField[], user: SessionUser) {
+    const { slotKey } = await this.row(id);
+    const { before, row, fields } = await this.prisma.$transaction(async (tx) => {
+      await lockSlot(tx, slotKey); // not while it is being published
+      const v = await tx.templateVersion.findUniqueOrThrow({ where: { id }, select: VERSION });
+      if (formatOf(v.format) !== 'pdf') throw wordVersion(v.version);
+      if (v.status === 'retired') {
+        throw new ConflictException(`Version ${v.version} was replaced, so its fields can't be changed. Upload the form again to make it a new version.`);
+      }
+      const problem = pdfFieldsProblem(sent, pagesOf(v));
+      if (problem) throw new BadRequestException(problem);
+      if (v.status === 'published' && !sent.length) throw new BadRequestException(`Version ${v.version} is in use, so it keeps its fields: place at least one.`);
+      const checked = plainPdfFields(sent);
+      const saved = await tx.templateVersion.update({
+        where: { id },
+        data: { pdfFields: checked as unknown as Prisma.InputJsonValue, tags: pdfFieldTags(checked) },
+        select: VERSION,
+      });
+      return { before: v, row: saved, fields: checked };
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'update',
+      entityType: ENTITY,
+      entityId: id,
+      diff: {
+        slot: row.slotKey,
+        version: row.version,
+        status: row.status,
+        fields: { from: fieldsOf(before).length, to: fields.length },
+        tags: { from: before.tags.length, to: row.tags.length },
+      },
+    });
+    return this.fieldsView(row);
+  }
+
+  /**
+   * The PDF version filled in with made-up values where `fields` (not saved yet, checked as for saving) place them, for
+   * HR to see where each prints (pdf-sample.ts). No one's data: given unprotected. Refused (409) for a Word version.
+   */
+  async sample(id: string, sent: readonly PdfField[]): Promise<{ data: Buffer; fileName: string }> {
+    const v = await this.prisma.templateVersion.findUnique({ where: { id }, select: { ...VERSION, data: true } });
+    if (!v) throw new NotFoundException('Template version not found.');
+    if (formatOf(v.format) !== 'pdf') throw wordVersion(v.version);
+    const problem = pdfFieldsProblem(sent, pagesOf(v));
+    if (problem) throw new BadRequestException(problem);
+    const sample = pdfSample(plainPdfFields(sent), v.language);
+    const data = await fillPdfTemplate(v.data, sample.fields, sample.values, v.language);
+    const name = SLOTS.get(v.slotKey)?.name ?? 'Template';
+    return { data, fileName: templateFileName(`${name} v${v.version} - sample.pdf`, 'pdf') };
+  }
+
+  /**
    * A draft becomes the version in use, and the one in use before it is retired (kept, with the documents made from
    * it). Refused while it has unknown or broken tags, and for a draft older than the version in use.
    */
-  /** Renames a version's file (as uploaded names often aren't telling); cleaned as an upload's name is, ".docx" kept. */
+  /** Renames a version's file (as uploaded names often aren't telling); cleaned as an upload's name is, ".docx" or ".pdf" kept. */
   async rename(id: string, name: string, user: SessionUser) {
     const before = await this.row(id);
-    const fileName = templateFileName(name);
+    const fileName = templateFileName(name, formatOf(before.format));
     if (fileName === before.fileName) return versionView(before);
     const row = await this.prisma.templateVersion.update({ where: { id }, data: { fileName }, select: VERSION });
     await this.audit.record({
@@ -143,6 +244,7 @@ export class TemplatesService {
       }
       const problem = publishProblem(v);
       if (problem) throw new BadRequestException(problem);
+      if (formatOf(v.format) === 'pdf' && !fieldsOf(v).length) throw new BadRequestException(PLACE_FIELDS_FIRST);
       const current = await tx.templateVersion.findMany({ where: { slotKey, status: 'published' }, select: { id: true, version: true } });
       const newer = current.find((c) => c.version > v.version);
       if (newer) {
@@ -219,6 +321,24 @@ export class TemplatesService {
   }
 
   // ---------- helpers ----------
+
+  /** A PDF version's fields as the editor gets them. */
+  private fieldsView(v: VersionRow) {
+    if (formatOf(v.format) !== 'pdf') throw wordVersion(v.version);
+    return { version: versionView(v), pages: pagesOf(v), fields: fieldsOf(v), editable: v.status !== 'retired' };
+  }
+
+  /** The starter layout for this file in this slot, when there is one that fits its pages (one that doesn't is left out, and logged). */
+  private starterFor(slotKey: string, data: Uint8Array, pages: readonly PdfPageSize[]): StarterLayout | null {
+    const starter = starterLayoutFor(slotKey, data, pages, this.starterLayouts);
+    if (!starter) return null;
+    const problem = pdfFieldsProblem(starter.fields, pages);
+    if (problem) {
+      this.logger.warn(`The starter layout "${starter.note}" for ${slotKey} was not applied: ${problem}`);
+      return null;
+    }
+    return starter;
+  }
 
   private slotOf(key: string): TemplateSlot {
     const slot = SLOTS.get(key);

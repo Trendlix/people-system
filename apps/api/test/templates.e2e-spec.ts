@@ -93,6 +93,9 @@ describe('Templates (e2e)', () => {
       version: 1,
       fileName: 'عقد العمل.docx',
       sizeBytes: file.length,
+      format: 'docx',
+      pageCount: null,
+      fieldCount: null,
       language: 'ar',
       tags: CONTRACT_TAGS,
       unknownTags: [],
@@ -108,7 +111,16 @@ describe('Templates (e2e)', () => {
 
     const slot = await slotOf('contract_full_time');
     expect(slot).toMatchObject({ status: 'draft', published: null, versionCount: 1 });
-    expect(slot.latestDraft).toEqual({ id: res.body.id, version: 1, fileName: 'عقد العمل.docx', uploadedAt: res.body.uploadedAt, unknownTags: [], broken: [] });
+    expect(slot.latestDraft).toEqual({
+      id: res.body.id,
+      version: 1,
+      fileName: 'عقد العمل.docx',
+      format: 'docx',
+      fieldCount: null,
+      uploadedAt: res.body.uploadedAt,
+      unknownTags: [],
+      broken: [],
+    });
 
     const audit = await auditOf(res.body.id);
     expect(audit.map((a) => [a.action, a.diff])).toEqual([
@@ -135,13 +147,15 @@ describe('Templates (e2e)', () => {
 
   it('refuses a file that is not a Word document (.docx)', async () => {
     const say = async (file: Buffer, name: string) => (await upload('resignation_request', file, name).expect(400)).body.message as string;
-    expect(await say(Buffer.from('%PDF-1.4\n%%EOF\n'), 'contract.pdf')).toBe(`This file isn't a Word document. ${SAVE_AS}`);
+    // a PDF is taken as a form (pdf-templates.e2e-spec.ts), when it can be read
+    expect(await say(Buffer.from('%PDF-1.4\n%%EOF\n'), 'contract.pdf')).toBe("This PDF is damaged and can't be read. Save it again as a PDF and upload that.");
+    expect(await say(Buffer.from('Just some text'), 'contract.txt')).toBe(`This file isn't a Word document. ${SAVE_AS}`);
     expect(await say(Buffer.concat([Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]), Buffer.alloc(512)]), 'old.doc')).toMatch(
       /^This is an old Word document \(\.doc\)/,
     );
     expect(await say(docx({ body: p(r('{{date}}')), mainType: TEMPLATE_TYPE }), 'contract.dotx')).toBe(`This is a Word template (.dotx). ${SAVE_AS}`);
     const empty = await api().post('/api/templates/resignation_request/versions').set('Cookie', hr).field('note', 'x').expect(400);
-    expect(empty.body.message).toBe('Choose the Word file (.docx) to upload.');
+    expect(empty.body.message).toBe('Choose the file to upload: a Word document (.docx) or a PDF form.');
     const big = await upload('resignation_request', Buffer.alloc(10 * 1024 * 1024 + 1), 'big.docx').expect(413);
     expect(big.body.message).toBe('Each file must be 10 MB or smaller.');
     expect((await slotOf('resignation_request')).versionCount).toBe(0);

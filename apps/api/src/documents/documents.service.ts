@@ -16,10 +16,11 @@ import { seesBank, seesIdentity, seesSalary } from '../employees/access.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { detectPaperworkType, extensionOf, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from '../paperwork/paperwork-file.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { isPdf } from '../pdf/pdf-file.js';
 import { DOCX_MIME } from '../templates/docx-tags.js';
-import { templateFileName } from '../templates/template-file.js';
 import type { CheckDocumentDto, GenerateDocumentDto } from './documents.dto.js';
-import { fillTemplate, type TagValue } from './engine/index.js';
+import type { TagValue } from './engine/index.js';
+import { filledFileName, FILLED_FROM, fillVersion } from './fill-version.js';
 import { documentStem } from './format.js';
 import { ENDING_SLOTS, isContractSlot, offered, offeredSlots, SECTION_KEYS, sectionOf, SLOTS, TYPED_TAGS, type SectionKey, type Situation } from './offer.js';
 import { previewValues } from './preview.js';
@@ -61,7 +62,7 @@ type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
 type ContractRow = EmploymentRow['contracts'][number];
 
 /** The published version a document is filled in from. */
-const PUBLISHED = { id: true, version: true, language: true, tags: true } satisfies Prisma.TemplateVersionSelect;
+const PUBLISHED = { id: true, version: true, language: true, tags: true, format: true } satisfies Prisma.TemplateVersionSelect;
 
 /** Whose versions a slot stands on: its own, or its source's for a copy (as the template library). */
 const fileSlot = (slot: TemplateSlot) => slot.copyOf ?? slot.key;
@@ -240,8 +241,9 @@ export class DocumentsService {
     const { values, missing } = this.fill(ctx, template, documentDate, inputs);
     if (missing.length) throw new UnprocessableEntityException({ statusCode: 422, message: 'Fill in the missing details first.', missing });
 
-    const data = fillTemplate(Buffer.from(template.data), values);
-    const fileName = templateFileName(`${documentStem(slot.name, ctx.employee.employeeCode, ctx.employee.fullNameEn)}.docx`);
+    // a Word template's .docx, or a PDF form's PDF (owner's decision, 15 October 2026)
+    const data = await fillVersion(template, values);
+    const fileName = filledFileName(documentStem(slot.name, ctx.employee.employeeCode, ctx.employee.fullNameEn), template.format);
     const hasRestricted = restricted.length > 0;
     const row = await this.prisma.generatedDocument.create({
       data: {
@@ -283,7 +285,10 @@ export class DocumentsService {
     return documentView(row);
   }
 
-  /** The filled .docx (given out only as a protected PDF: DocumentsController). A view of one that prints restricted data is written to the audit log. */
+  /**
+   * The filled .docx, or the PDF of a PDF form (given out only as a protected PDF: DocumentsController). A view of one
+   * that prints restricted data is written to the audit log.
+   */
   async file(id: string, user: SessionUser): Promise<{ data: Buffer; type: string; fileName: string }> {
     const d = await this.prisma.generatedDocument.findUnique({
       where: { id },
@@ -291,7 +296,7 @@ export class DocumentsService {
     });
     if (!d) throw new NotFoundException('Document not found.');
     if (d.hasRestricted) await this.viewed(id, d.employeeId, d.slotKey, this.restrictedOf(d.slotKey, d.templateVersion.tags), 'file', user);
-    return { data: Buffer.from(d.data), type: DOCX_MIME, fileName: d.fileName };
+    return { data: Buffer.from(d.data), type: isPdf(d.data) ? 'application/pdf' : DOCX_MIME, fileName: d.fileName };
   }
 
   /**
@@ -311,7 +316,7 @@ export class DocumentsService {
       entityId: id,
       diff: { employeeId: d.employeeId, slot: d.slotKey, purpose: 'e-signature', fields: this.restrictedOf(d.slotKey, d.templateVersion.tags) },
     });
-    return { data: Buffer.from(d.data), type: DOCX_MIME, fileName: d.fileName };
+    return { data: Buffer.from(d.data), type: isPdf(d.data) ? 'application/pdf' : DOCX_MIME, fileName: d.fileName };
   }
 
   /** Generated → printed. */
@@ -334,7 +339,7 @@ export class DocumentsService {
     const before = await this.row(id);
     if (before.status === 'verified') throw wrongStep(before.status, 'its signed copy can’t be replaced.');
     const { data, type } = checkedScan(file);
-    const stem = before.fileName.replace(/\.docx$/i, '');
+    const stem = before.fileName.replace(/\.(docx|pdf)$/i, '');
     const signedFileName = safeFileName(`${stem} (signed).${extensionOf(type)}`, type);
     const { count } = await this.prisma.generatedDocument.updateMany({
       where: { id, status: { in: ['generated', 'printed', 'signed'] } },
@@ -425,7 +430,7 @@ export class DocumentsService {
   async previewFill(
     employeeId: string,
     slotKey: string,
-    template: { language: string; tags: string[]; data?: Uint8Array },
+    template: { language: string; tags: string[]; data?: Uint8Array; format?: string; pdfFields?: Prisma.JsonValue | null },
     user: SessionUser,
   ): Promise<{ employee: { id: string; employeeCode: string; fullNameEn: string }; filled: number; total: number; shown: string[]; data: Buffer | null }> {
     const slot = SLOTS.get(slotKey);
@@ -442,7 +447,7 @@ export class DocumentsService {
     // nothing is typed for a preview
     const empty = new Set([...missing.map((m) => m.tag), ...TYPED_TAGS]);
     const preview = previewValues(template.tags, values, empty, slot.overrides, { identity: seesIdentity(user), salary: seesSalary(user), bank: seesBank(user) });
-    const data = template.data ? fillTemplate(Buffer.from(template.data), preview.values) : null;
+    const data = template.data ? await fillVersion({ ...template, format: template.format ?? 'docx', data: template.data }, preview.values) : null;
     return { employee: ctx.employee, filled: preview.filled, total: preview.total, shown: data ? preview.shown : [], data };
   }
 
@@ -529,11 +534,17 @@ export class DocumentsService {
     };
   }
 
-  /** The slot's published version: its tags and language, and its file when it is to be filled in. */
-  private published(slot: TemplateSlot): Promise<{ id: string; version: number; language: string; tags: string[] } | null>;
-  private published(slot: TemplateSlot, withFile: true): Promise<{ id: string; version: number; language: string; tags: string[]; data: Uint8Array } | null>;
-  private published(slot: TemplateSlot, withFile = false) {
-    return this.prisma.templateVersion.findFirst({ where: { slotKey: fileSlot(slot), status: 'published' }, select: { ...PUBLISHED, data: withFile } });
+  /** The slot's published version: its tags, language and format, and its file (a PDF's fields too) when it is to be filled in. */
+  private published(slot: TemplateSlot): Promise<{ id: string; version: number; language: string; tags: string[]; format: string } | null>;
+  private published(
+    slot: TemplateSlot,
+    withFile: true,
+  ): Promise<{ id: string; version: number; language: string; tags: string[]; format: string; data: Uint8Array; pdfFields: Prisma.JsonValue | null } | null>;
+  private published(slot: TemplateSlot, withFile = false): Promise<unknown> {
+    return this.prisma.templateVersion.findFirst({
+      where: { slotKey: fileSlot(slot), status: 'published' },
+      select: withFile ? { ...PUBLISHED, ...FILLED_FROM } : PUBLISHED,
+    });
   }
 
   /** The values of the tags the template prints, and those of them still empty. */

@@ -575,11 +575,14 @@ model TemplateVersion {
   slotKey       String              @map("slot_key") // a TEMPLATE_SLOTS key (checked by the API); never a copy's (copyOf)
   version       Int // 1, 2 … within the slot
   fileName      String              @map("file_name")
-  mimeType      String              @map("mime_type") // always a Word document (.docx), checked by its content
+  mimeType      String              @map("mime_type") // a Word document (.docx) or a PDF, checked by its content
   sizeBytes     Int                 @map("size_bytes")
   data          Bytes
+  format        String              @default("docx") // docx: a Word template with {{tags}}; pdf: a form with its fields placed on it
+  pdfPages      Json?               @map("pdf_pages") // a PDF's pages as shown (PdfPageSize[], packages/shared), read at upload
+  pdfFields     Json?               @map("pdf_fields") // the fields placed on a PDF (PdfField[]); [] until HR places them
   language      String // TEMPLATE_LANGUAGES: ar, en
-  tags          String[] // the dictionary's tags found, in order of first appearance
+  tags          String[] // the dictionary's tags found (a PDF: its fields' tags), in order of first appearance
   unknownTags   String[]            @map("unknown_tags") // well-formed tags the dictionary doesn't have
   broken        String[] // fragments that look like a tag but aren't one, e.g. "{{ full_name_ar" (at most 20)
   status        String              @default("draft") // TEMPLATE_VERSION_STATUSES: draft, published, retired

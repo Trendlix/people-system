@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import type { TemplateLanguage, TemplateSlot } from '@trendlix/shared';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
-import { fillTemplate } from '../documents/engine/index.js';
+import { filledFileName, FILLED_FROM, fillVersion } from '../documents/fill-version.js';
 import { documentStem } from '../documents/format.js';
 import { TYPED_TAGS } from '../documents/offer.js';
 import { previewValues } from '../documents/preview.js';
@@ -9,7 +9,6 @@ import { missingTags, resolveValues, restrictedTags, type MissingTag, type Restr
 import { Prisma } from '../generated/prisma/client.js';
 import { pdfName, PdfService } from '../pdf/pdf.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { templateFileName } from '../templates/template-file.js';
 import { offerMissing, offerSlot, termDates } from './rules.js';
 import { offerPay, type OfferContext, type OfferRow } from './views.js';
 
@@ -17,9 +16,9 @@ import { offerPay, type OfferContext, type OfferRow } from './views.js';
 export const FILL_IN = 'Fill in the missing details first.';
 
 /** The published version an offer is filled in from. */
-const PUBLISHED = { id: true, version: true, language: true, tags: true } satisfies Prisma.TemplateVersionSelect;
+const PUBLISHED = { id: true, version: true, language: true, tags: true, format: true } satisfies Prisma.TemplateVersionSelect;
 
-/** A filled job offer: the .docx, its name, and the version it was filled in from. */
+/** A filled job offer: the .docx (or, from a PDF form, the PDF), its name, and the version it was filled in from. */
 export interface FilledOffer {
   data: Buffer;
   fileName: string;
@@ -147,8 +146,8 @@ export class OfferDocumentsService {
     const { values, missing } = await this.check(o, slot, template, documentDate);
     if (missing.length) throw new UnprocessableEntityException({ statusCode: 422, message: FILL_IN, missing });
     return {
-      data: fillTemplate(Buffer.from(template.data), values),
-      fileName: this.fileName(o),
+      data: await fillVersion(template, values),
+      fileName: this.fileName(o, template.format),
       templateVersionId: template.id,
       templateVersion: template.version,
       restricted: restrictedTags(template.tags, slot.overrides),
@@ -165,20 +164,20 @@ export class OfferDocumentsService {
   async previewFill(
     o: OfferRow,
     slot: TemplateSlot,
-    template: { language: string; tags: string[]; data?: Uint8Array },
+    template: { language: string; tags: string[]; data?: Uint8Array; format?: string; pdfFields?: Prisma.JsonValue | null },
     may: Readonly<Record<RestrictedRight, boolean>>,
   ): Promise<{ filled: number; total: number; shown: string[]; data: Buffer | null }> {
     const { values, missing } = await this.check(o, slot, template, todayInCairo());
     // nothing is typed for a preview
     const empty = new Set([...missing.map((m) => m.tag), ...TYPED_TAGS]);
     const preview = previewValues(template.tags, values, empty, slot.overrides, may);
-    const data = template.data ? fillTemplate(Buffer.from(template.data), preview.values) : null;
+    const data = template.data ? await fillVersion({ ...template, format: template.format ?? 'docx', data: template.data }, preview.values) : null;
     return { filled: preview.filled, total: preview.total, shown: data ? preview.shown : [], data };
   }
 
-  /** "<Slot name> - <OFF number> - <full name>.docx", cleaned as documents' names are. */
-  fileName(o: Pick<OfferRow, 'employmentType' | 'number' | 'fullNameEn'>): string {
-    return templateFileName(`${documentStem(offerSlot(o.employmentType).name, o.number, o.fullNameEn)}.docx`);
+  /** "<Slot name> - <OFF number> - <full name>.docx" (.pdf from a PDF form), cleaned as documents' names are. */
+  fileName(o: Pick<OfferRow, 'employmentType' | 'number' | 'fullNameEn'>, format = 'docx'): string {
+    return filledFileName(documentStem(offerSlot(o.employmentType).name, o.number, o.fullNameEn), format);
   }
 
   /** A Word file's PDF name. */
@@ -215,9 +214,15 @@ export class OfferDocumentsService {
     return { values, missing: offerMissing(missingTags(values, template.tags, slot.overrides, true), slot.overrides) };
   }
 
-  private published(slot: TemplateSlot): Promise<{ id: string; version: number; language: string; tags: string[] } | null>;
-  private published(slot: TemplateSlot, withFile: true): Promise<{ id: string; version: number; language: string; tags: string[]; data: Uint8Array } | null>;
-  private published(slot: TemplateSlot, withFile = false) {
-    return this.prisma.templateVersion.findFirst({ where: { slotKey: slot.copyOf ?? slot.key, status: 'published' }, select: { ...PUBLISHED, data: withFile } });
+  private published(slot: TemplateSlot): Promise<{ id: string; version: number; language: string; tags: string[]; format: string } | null>;
+  private published(
+    slot: TemplateSlot,
+    withFile: true,
+  ): Promise<{ id: string; version: number; language: string; tags: string[]; format: string; data: Uint8Array; pdfFields: Prisma.JsonValue | null } | null>;
+  private published(slot: TemplateSlot, withFile = false): Promise<unknown> {
+    return this.prisma.templateVersion.findFirst({
+      where: { slotKey: slot.copyOf ?? slot.key, status: 'published' },
+      select: withFile ? { ...PUBLISHED, ...FILLED_FROM } : PUBLISHED,
+    });
   }
 }

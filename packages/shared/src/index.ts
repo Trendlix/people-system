@@ -226,3 +226,6 @@ export * from './salary.js';
 
 // job offers: statuses, how long an offer stays open, the template slot of each employment type
 export * from './offers.js';
+
+// PDF templates: an official form uploaded as a PDF, with its fields placed on it
+export * from './pdf-fields.js';

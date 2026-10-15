@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   StreamableFile,
   UploadedFile,
@@ -23,15 +24,16 @@ import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
 import { PdfService } from '../pdf/pdf.service.js';
 import { attachment, fileFormat } from './template-file.js';
-import { RenameTemplateVersionDto, UploadTemplateDto } from './templates.dto.js';
+import { PdfFieldsDto, RenameTemplateVersionDto, UploadTemplateDto } from './templates.dto.js';
 import { TemplatesService } from './templates.service.js';
 
 // The template library (spec §8; owner's request, 15 October 2026: "Start working on the templates tab; I need to
 // upload the templates"). HR, Admin and Super Admin manage it; the CEO views it and downloads the files; nobody else
 // sees it. Only a Super Admin deletes, and only a draft (owner's decision, 15 October 2026). The tag dictionary, and
-// the Fields Guide made from it, are for everyone signed in.
+// the Fields Guide made from it, are for everyone signed in. A version is a Word template or a PDF form (owner's
+// decision, 15 October 2026), on which HR and Admin place the fields; the CEO sees where they are.
 
-// One Word file of up to 10 MB, as paperwork's; its name read as UTF-8, so Arabic names arrive intact.
+// One Word file or PDF of up to 10 MB, as paperwork's; its name read as UTF-8, so Arabic names arrive intact.
 const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 }, defParamCharset: 'utf8' };
 
 @Controller('templates')
@@ -78,7 +80,7 @@ export class TemplatesController {
     return this.templates.slot(slot);
   }
 
-  /** A new draft version: the .docx (`file`), its language when the slot has none, and a note. */
+  /** A new draft version: the .docx or the PDF form (`file`), its language when the slot has none, and a note. */
   @Roles('hr', 'admin')
   @Post(':slot/versions')
   @UseFilters(FileTooLargeFilter)
@@ -92,11 +94,40 @@ export class TemplatesController {
     return this.templates.upload(slot, dto, file, user);
   }
 
-  /** A version's file name, as the library shows it; ".docx" is kept. Nothing else about the version changes. */
+  /** A version's file name, as the library shows it; ".docx" or ".pdf" is kept. Nothing else about the version changes. */
   @Roles('hr', 'admin')
   @Patch('versions/:id')
   rename(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RenameTemplateVersionDto, @CurrentUser() user: SessionUser) {
     return this.templates.rename(id, dto.fileName, user);
+  }
+
+  /** A PDF version's fields with its pages as shown: { version, pages, fields, editable }. 409 for a Word version. */
+  @Roles('hr', 'admin', 'ceo')
+  @Get('versions/:id/fields')
+  fields(@Param('id', ParseUUIDPipe) id: string) {
+    return this.templates.fields(id);
+  }
+
+  /** Saves all the fields of a PDF version (a draft or the one in use), as fields() answers them. */
+  @Roles('hr', 'admin')
+  @Put('versions/:id/fields')
+  saveFields(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PdfFieldsDto, @CurrentUser() user: SessionUser) {
+    return this.templates.saveFields(id, dto.fields, user);
+  }
+
+  /**
+   * The PDF version filled in with made-up values where the fields sent (not saved) place them, shown in the browser.
+   * Unprotected: it holds no one's data.
+   */
+  @Roles('hr', 'admin', 'ceo')
+  @Post('versions/:id/fields/sample')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Content-Security-Policy', "default-src 'none'")
+  async sample(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PdfFieldsDto): Promise<StreamableFile> {
+    const { data, fileName } = await this.templates.sample(id, dto.fields);
+    return new StreamableFile(data, { type: 'application/pdf', length: data.length, disposition: contentDisposition(fileName) });
   }
 
   @Roles('hr', 'admin')
@@ -115,7 +146,8 @@ export class TemplatesController {
     const wanted = fileFormat(format);
     const file = await this.templates.file(id);
     if (wanted === 'pdf') {
-      // Preview: the file as uploaded, its {{tags}} as they are, shown in the browser
+      // Preview: the file as uploaded, its {{tags}} as they are, shown in the browser; a PDF form as it is (the editor
+      // shows it)
       const { data, type, fileName } = await this.pdf.preview(file);
       return new StreamableFile(data, { type, length: data.length, disposition: contentDisposition(fileName) });
     }

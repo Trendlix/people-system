@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { ConflictException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, PDFStream, PDFString, type PDFObject, type PDFRef } from '@cantoo/pdf-lib';
+import { isPdf } from './pdf-file.js';
 
 // Turns a filled Word document into a PDF (job offers, owner's request, 15 October 2026), through the converter beside
 // the API (deploy/docker-compose.yml: Gotenberg's LibreOffice route, POST {PDF_URL}/forms/libreoffice/convert). It is
@@ -13,6 +14,9 @@ import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, PD
 // from it, annotate it, fill in forms on it or insert, rotate or delete pages. The owner password that would lift
 // that is random for each file, and never stored or logged. The Word templates HR uploads, and the Fields Guide, stay
 // Word files (they are HR's own and the system's own files, not filled documents).
+//
+// A document filled in from a PDF template (an official form, owner's decision, 15 October 2026) is a PDF already: it
+// is protected as it is, without the converter, so the forms work on a server with no converter set up.
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 /** A page or two takes a second or so; a cold start of LibreOffice a few more. */
@@ -126,9 +130,12 @@ export class PdfService {
     return Buffer.from(await res.arrayBuffer());
   }
 
-  /** A filled .docx as a protected PDF (see protectPdf); null without a converter. Refused (503) when either step fails. */
+  /**
+   * A filled .docx as a protected PDF (see protectPdf); null without a converter. A document filled in from a PDF
+   * template is protected as it is. Refused (503) when either step fails.
+   */
   async protectedFromDocx(docx: Uint8Array, fileName = 'document.docx'): Promise<Buffer | null> {
-    const pdf = await this.fromDocx(docx, fileName);
+    const pdf = await this.asPdf(docx, fileName);
     if (!pdf) return null;
     try {
       return await protectPdf(pdf);
@@ -168,7 +175,7 @@ export class PdfService {
    * signed PDF itself; the signed copy comes back to the document. Refused (409) without a converter.
    */
   async forESignature(file: { data: Buffer; fileName: string }): Promise<{ data: Buffer; type: string; fileName: string }> {
-    const pdf = await this.fromDocx(file.data, file.fileName);
+    const pdf = await this.asPdf(file.data, file.fileName);
     if (!pdf) throw new ConflictException(PDF_NOT_SET_UP);
     return { data: pdf, type: 'application/pdf', fileName: pdfName(file.fileName).replace(/\.pdf$/i, ' (for e-signature).pdf') };
   }
@@ -178,13 +185,18 @@ export class PdfService {
    * 15 October 2026), as a PDF named like it. Refused (409) without a converter: the Word file can still be downloaded.
    */
   async preview(file: { data: Buffer; fileName: string }): Promise<{ data: Buffer; type: string; fileName: string }> {
-    const pdf = await this.fromDocx(file.data, file.fileName);
+    const pdf = await this.asPdf(file.data, file.fileName);
     if (!pdf) throw new ConflictException("The PDF converter isn't set up on the server, so there is no preview: download the Word file instead.");
     return { data: pdf, type: 'application/pdf', fileName: pdfName(file.fileName) };
   }
+
+  /** The file as a PDF: as it is when it is one already (a PDF template, or filled in from one), else converted; null without a converter. */
+  private async asPdf(data: Uint8Array, fileName: string): Promise<Buffer | null> {
+    return isPdf(data) ? Buffer.from(data) : this.fromDocx(data, fileName);
+  }
 }
 
-/** A Word file's PDF name. */
+/** A Word file's PDF name; a PDF's own name as it is. */
 export function pdfName(docxName: string): string {
-  return `${docxName.replace(/\.docx$/i, '')}.pdf`;
+  return `${docxName.replace(/\.(docx|pdf)$/i, '')}.pdf`;
 }

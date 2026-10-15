@@ -2,7 +2,9 @@ import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFString, type PDFRef } from '@cantoo/pdf-lib';
 import { CONTENT, convertedPdf, encryptionOf, FONT_PROGRAM, hasEncrypt, LANG, LINK, streamBytes, TITLE, TO_UNICODE } from '../../test/fixtures/pdf.js';
-import { PdfService, protectPdf } from './pdf.service.js';
+import { formPdf } from '../../test/fixtures/pdf-form.js';
+import { isPdf } from './pdf-file.js';
+import { pdfName, PdfService, protectPdf } from './pdf.service.js';
 
 // Filled documents leave the system only as protected PDFs (owner's request, 15 October 2026: "No doc file export,
 // just a protected PDF"): the converter's PDF re-saved encrypted, unchanged otherwise.
@@ -130,5 +132,37 @@ describe('PdfService', () => {
     vi.spyOn(pdf, 'fromDocx').mockResolvedValue(plain);
     const shown = await pdf.preview({ data: Buffer.from('docx'), fileName: 'Template v1.docx' });
     expect(shown).toEqual({ data: plain, type: 'application/pdf', fileName: 'Template v1.pdf' });
+  });
+
+  // A document filled in from a PDF template is a PDF already (owner's decision, 15 October 2026): protected, given for
+  // e-signature or shown as it is, never through the converter, so the forms work on a server without one.
+  it('protects a filled PDF form as it is, without a converter', async () => {
+    const none = service();
+    const convert = vi.spyOn(none, 'fromDocx');
+    const form = await formPdf();
+    const file = await none.protectedFile({ data: form, fileName: 'Form 1 - E-0001 - Omar.pdf' });
+    expect(convert).not.toHaveBeenCalled();
+    expect(file.fileName).toBe('Form 1 - E-0001 - Omar.pdf');
+    expect(hasEncrypt(file.data)).toBe(true);
+    expect((await PDFDocument.load(file.data, { password: '' })).getPageCount()).toBe(2);
+    expect(hasEncrypt((await none.protectedFromDocx(form, 'Form 1.pdf'))!)).toBe(true);
+  });
+
+  it('gives a filled PDF form for e-signature, and previews a PDF template, as they are', async () => {
+    const none = service();
+    const convert = vi.spyOn(none, 'fromDocx');
+    const form = await formPdf();
+    const signing = await none.forESignature({ data: form, fileName: 'Form 1 - E-0001 - Omar.pdf' });
+    expect(signing).toEqual({ data: form, type: 'application/pdf', fileName: 'Form 1 - E-0001 - Omar (for e-signature).pdf' });
+    expect(await none.preview({ data: form, fileName: 'نموذج 1.pdf' })).toEqual({ data: form, type: 'application/pdf', fileName: 'نموذج 1.pdf' });
+    expect(convert).not.toHaveBeenCalled();
+  });
+
+  it('tells a PDF by its content, and names a PDF after its Word file or its own name', () => {
+    expect(isPdf(Buffer.from('%PDF-1.7\n'))).toBe(true);
+    expect(isPdf(Buffer.from('PK\x03\x04'))).toBe(false);
+    expect(isPdf(Buffer.from('%PDF'))).toBe(false);
+    expect(isPdf(new Uint8Array(Buffer.from('xx%PDF-1.7')).subarray(2))).toBe(true);
+    expect([pdfName('Contract.docx'), pdfName('Form 1.pdf'), pdfName('Form 1.PDF')]).toEqual(['Contract.pdf', 'Form 1.pdf', 'Form 1.pdf']);
   });
 });

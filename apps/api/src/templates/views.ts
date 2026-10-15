@@ -1,5 +1,6 @@
-import type { TemplateSlot, TemplateVersionStatus } from '@trendlix/shared';
+import type { PdfField, PdfPageSize, TemplateSlot, TemplateVersionStatus } from '@trendlix/shared';
 import type { Prisma } from '../generated/prisma/client.js';
+import { formatOf } from './template-file.js';
 
 // What the template library sends: each slot with where it stands, and its versions. Never the file itself, which has
 // its own endpoint.
@@ -11,6 +12,9 @@ export const VERSION = {
   version: true,
   fileName: true,
   sizeBytes: true,
+  format: true,
+  pdfPages: true,
+  pdfFields: true,
   language: true,
   tags: true,
   unknownTags: true,
@@ -26,13 +30,25 @@ export const VERSION = {
 
 export type VersionRow = Prisma.TemplateVersionGetPayload<{ select: typeof VERSION }>;
 
+/** A PDF version's pages as shown, as kept (none for a Word version). */
+export const pagesOf = (v: Pick<VersionRow, 'pdfPages'>): PdfPageSize[] => (Array.isArray(v.pdfPages) ? (v.pdfPages as unknown as PdfPageSize[]) : []);
+
+/** A PDF version's fields, as kept (none for a Word version). */
+export const fieldsOf = (v: Pick<VersionRow, 'pdfFields'>): PdfField[] => (Array.isArray(v.pdfFields) ? (v.pdfFields as unknown as PdfField[]) : []);
+
 /** A version as the slot's history lists it. */
 export function versionView(v: VersionRow) {
+  const format = formatOf(v.format);
   return {
     id: v.id,
     version: v.version,
     fileName: v.fileName,
     sizeBytes: v.sizeBytes,
+    /** docx: a Word template with {{tags}}; pdf: a form with its fields placed on it (owner's decision, 15 October 2026). */
+    format,
+    /** A PDF's pages and the fields placed on it; null for a Word version. */
+    pageCount: format === 'pdf' ? pagesOf(v).length : null,
+    fieldCount: format === 'pdf' ? fieldsOf(v).length : null,
     language: v.language,
     tags: v.tags,
     unknownTags: v.unknownTags,
@@ -77,13 +93,24 @@ export function slotView(slot: TemplateSlot, versions: readonly VersionRow[]) {
       id: published.id,
       version: published.version,
       fileName: published.fileName,
+      format: formatOf(published.format),
       uploadedAt: published.uploadedAt,
       publishedAt: published.publishedAt,
       publishedBy: published.publishedBy,
     },
     latestDraft:
       own && latest
-        ? { id: latest.id, version: latest.version, fileName: latest.fileName, uploadedAt: latest.uploadedAt, unknownTags: latest.unknownTags, broken: latest.broken }
+        ? {
+            id: latest.id,
+            version: latest.version,
+            fileName: latest.fileName,
+            format: formatOf(latest.format),
+            // a PDF's fields placed so far: it is published once it has some
+            fieldCount: formatOf(latest.format) === 'pdf' ? fieldsOf(latest).length : null,
+            uploadedAt: latest.uploadedAt,
+            unknownTags: latest.unknownTags,
+            broken: latest.broken,
+          }
         : null,
     versionCount: own ? versions.length : 0,
   };

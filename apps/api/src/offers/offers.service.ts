@@ -19,7 +19,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { MailService } from '../mail/mail.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { fillTemplate } from '../documents/engine/index.js';
+import { FILLED_FROM, fillVersion } from '../documents/fill-version.js';
 import { restrictedTags } from '../documents/values.js';
 import { PDF_NOT_SET_UP } from '../pdf/pdf.service.js';
 import { FILL_IN, OfferDocumentsService } from './offer-documents.service.js';
@@ -464,8 +464,8 @@ export class OffersService {
     const slot = offerSlot(o.employmentType);
     const { values, missing } = await this.documents.check(o, slot, template, todayInCairo());
     if (missing.length) throw new UnprocessableEntityException({ statusCode: 422, message: FILL_IN, missing });
-    const { data } = await this.prisma.templateVersion.findUniqueOrThrow({ where: { id: template.id }, select: { data: true } });
-    return { data: fillTemplate(Buffer.from(data), values), fileName: this.documents.fileName(o), restricted: restrictedTags(template.tags, slot.overrides) };
+    const version = await this.prisma.templateVersion.findUniqueOrThrow({ where: { id: template.id }, select: FILLED_FROM });
+    return { data: await fillVersion(version, values), fileName: this.documents.fileName(o, version.format), restricted: restrictedTags(template.tags, slot.overrides) };
   }
 
   /** The filled .docx as a protected PDF; refused (409, `notSetUp`) without a PDF converter, (503) when it fails. */

@@ -2,15 +2,22 @@ import { BadRequestException } from '@nestjs/common';
 import { contentDisposition } from '../paperwork/paperwork-file.js';
 
 // The uploaded template's name, cleaned as paperwork's are (paperwork-file.ts) before it is stored, shown or sent
-// back in a header: the file is always a .docx by its content, so the name always ends in .docx.
+// back in a header: the file is a .docx or (an official form, owner's decision, 15 October 2026) a PDF by its content,
+// so the name always ends in .docx or .pdf, as the file is.
+
+/** What a template version is: a Word template with {{tags}}, or a PDF form with its fields placed on it. */
+export const TEMPLATE_FORMATS = ['docx', 'pdf'] as const;
+export type TemplateFormat = (typeof TEMPLATE_FORMATS)[number];
+
+/** A version's format as kept (docx unless pdf). */
+export const formatOf = (format: string | null | undefined): TemplateFormat => (format === 'pdf' ? 'pdf' : 'docx');
 
 const NAME_MAX = 120;
-const EXTENSION = 'docx';
-// Word's own extensions, replaced rather than kept before ".docx" ("Contract.doc" holding a .docx becomes
-// "Contract.docx", not "Contract.doc.docx")
-const WORD_EXTENSIONS = ['docx', 'doc', 'dotx', 'dot', 'docm', 'dotm', 'rtf', 'odt'];
+// Word's own extensions, and a PDF's, replaced rather than kept before ".docx" or ".pdf" ("Contract.doc" holding a
+// .docx becomes "Contract.docx", not "Contract.doc.docx"; "Form 1.docx" holding a PDF becomes "Form 1.pdf")
+const KNOWN_EXTENSIONS = ['docx', 'doc', 'dotx', 'dot', 'docm', 'dotm', 'rtf', 'odt', 'pdf'];
 
-export function templateFileName(name: string | undefined): string {
+export function templateFileName(name: string | undefined, format: TemplateFormat = 'docx'): string {
   const base = (name ?? '').split(/[\\/]/).pop() ?? '';
   const clean = Array.from(base.normalize('NFC'))
     .filter((ch) => !isHidden(ch.codePointAt(0)!))
@@ -19,9 +26,9 @@ export function templateFileName(name: string | undefined): string {
     .replace(/\s+/g, ' ')
     .replace(/^[\s.]+|\s+$/g, '');
   const m = /^(.+)\.([^.\s]+)$/.exec(clean);
-  const stem = m && WORD_EXTENSIONS.includes(m[2].toLowerCase()) ? m[1] : clean;
-  const short = Array.from(stem).slice(0, NAME_MAX - EXTENSION.length - 1).join('').trim();
-  return `${short || 'template'}.${EXTENSION}`;
+  const stem = m && KNOWN_EXTENSIONS.includes(m[2].toLowerCase()) ? m[1] : clean;
+  const short = Array.from(stem).slice(0, NAME_MAX - format.length - 1).join('').trim();
+  return `${short || 'template'}.${format}`;
 }
 
 /** Control characters, and the invisible marks that change the direction or joining of text (as paperwork-file.ts). */
