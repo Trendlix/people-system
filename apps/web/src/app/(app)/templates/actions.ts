@@ -1,7 +1,7 @@
 'use server';
 
-// Template library actions: uploading a version of a template's Word file (a draft), publishing a draft, deleting one
-// (a Super Admin only), and saving the fields mapped in a version as a new draft (Map Fields). Each one forwards to the API, which checks the session and the role (HR or Admin; deleting:
+// Template library actions: uploading a version of a template's Word file (a draft), publishing a draft, and deleting
+// one (a Super Admin only). Each one forwards to the API, which checks the session and the role (HR or Admin; deleting:
 // a Super Admin), reads the file's tags and refuses to publish a draft with unknown or broken ones, so calling these
 // directly can't bypass anything. The file's kind and size are checked here first for a quick answer.
 import { refresh } from 'next/cache';
@@ -9,8 +9,7 @@ import { redirect } from 'next/navigation';
 import { TEMPLATE_LANGUAGES, TEMPLATE_SLOTS, type TemplateLanguage } from '@trendlix/shared';
 import { ApiError, apiSend, apiUpload } from '@/lib/api';
 import { deleteRefusal } from '@/lib/session';
-import type { FormState, MapFieldsRequest, TemplateVersion } from '@/lib/types';
-import { readRequest } from './mapping';
+import type { FormState, TemplateVersion } from '@/lib/types';
 import { fileProblem, NOT_AVAILABLE_ACTION, templateHref } from './wording';
 
 /** What the upload form gets back: the API's messages, or the new draft (whose check the page then shows). */
@@ -86,29 +85,4 @@ export async function deleteTemplateVersion(slotKey: string, versionId: string, 
   }
   refresh();
   redirect(`${templateHref(slotKey)}?deleted=${version}`);
-}
-
-/**
- * Saves the fields mapped in a version (Map Fields, owner's request of 15 October 2026): the API makes a new draft from
- * the changes (the uploaded file never changes) and checks each one against the file. Back on the template's page, at
- * the new draft's check, which says so; a refusal (400) comes back with the API's messages, and the page keeps the
- * changes.
- */
-export async function mapTemplateFields(slotKey: string, versionId: string, _prev: FormState, input: MapFieldsRequest): Promise<FormState> {
-  const read = readRequest(input);
-  if ('errors' in read) return { errors: read.errors };
-  let draft: TemplateVersion | undefined;
-  try {
-    draft = await apiSend<TemplateVersion>('POST', `/templates/versions/${encodeURIComponent(versionId)}/map`, read.request);
-  } catch (err) {
-    if (err instanceof ApiError) {
-      // Nest's own 404 for a route it doesn't have ("Cannot POST …"): an API from before Map Fields
-      if (err.status === 404 && err.messages.some((m) => m.startsWith('Cannot POST'))) return { errors: [NOT_AVAILABLE_ACTION] };
-      if (err.status === 404) return { errors: ['This version is no longer there. Go back to the template’s page to see where it stands.'] };
-      return { errors: err.messages };
-    }
-    throw err;
-  }
-  refresh();
-  redirect(draft?.id ? `${templateHref(slotKey)}?mapped=${draft.version}#draft-${encodeURIComponent(draft.id)}` : templateHref(slotKey));
 }

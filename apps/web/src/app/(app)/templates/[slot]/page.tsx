@@ -12,7 +12,6 @@ import { deleteTemplateVersion, publishTemplateVersion, uploadTemplateVersion } 
 import { loadTemplate } from '../data';
 import { SlotDetails, StatusLines, Tag } from '../parts';
 import { checkTags, count, tagCount } from '../tag-check';
-import { ScrollTo } from '../scroll-to';
 import { UploadTemplateForm } from '../upload-form';
 import { DeleteDraftButton, PublishButton } from '../version-buttons';
 import {
@@ -20,7 +19,6 @@ import {
   folderLabel,
   LANGUAGE_LABELS,
   managesTemplates,
-  mapFieldsHref,
   NOT_AVAILABLE,
   publishConfirm,
   seesTemplates,
@@ -35,8 +33,7 @@ import {
 
 // One template (spec §8): what it is and where it stands; for HR and Admin, uploading a new version of its Word file as
 // a draft; the check of each draft's tags (unknown or broken ones block publishing), with Publish; and every version,
-// to download (the CEO too). HR and Admin can also map a draft's or the version in use's fields in the system (Map
-// Fields, 15 October 2026), which makes a new draft. A Super Admin can delete a draft. The API checks every request.
+// to download (the CEO too). A Super Admin can delete a draft. The API checks every request.
 
 const none = <span className="text-muted">—</span>;
 
@@ -62,27 +59,12 @@ function DraftCheck({ version: v, slotKey, inUse, manages }: { version: Template
         <span className="badge bg-warn-soft text-warn">{TEMPLATE_VERSION_STATUS_LABELS.draft}</span>
       </div>
 
-      {nothing && (
-        <p className="text-sm text-muted">
-          No merge tags were found in this file: documents made from it will be the file exactly as it is.
-          {manages && (
-            <>
-              {' '}
-              <Link href={mapFieldsHref(slotKey, v.id)} className="font-semibold">
-                Map fields
-              </Link>{' '}
-              to put tags in it here, without Word.
-            </>
-          )}
-        </p>
-      )}
+      {nothing && <p className="text-sm text-muted">No merge tags were found in this file: documents made from it will be the file exactly as it is.</p>}
 
       {check.unknown.length > 0 && (
         <div className="rounded-lg border border-danger/30 bg-danger-soft/40 p-4">
           <h4 className="text-sm font-semibold text-danger">Unknown Tags ({check.unknown.length})</h4>
-          <p className="mt-1 text-sm text-danger">
-            Not in the tag list: fix the spelling or remove it, in Word{manages ? ' or with Map fields' : ''}.
-          </p>
+          <p className="mt-1 text-sm text-danger">Not in the tag list: fix the spelling in Word or remove it.</p>
           <ul className="mt-3 space-y-2">
             {check.unknown.map(({ tag, suggestion }) => (
               <li key={tag} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
@@ -142,17 +124,12 @@ function DraftCheck({ version: v, slotKey, inUse, manages }: { version: Template
       )}
 
       {manages && (
-        <div className="flex flex-wrap items-start gap-x-3 gap-y-3">
-          <PublishButton
-            action={publishTemplateVersion.bind(null, slotKey, v.id, v.version)}
-            confirmText={publishConfirm(v.version, inUse)}
-            blocked={check.blocked}
-            label={label}
-          />
-          <Link href={mapFieldsHref(slotKey, v.id)} className="btn btn-secondary">
-            Map fields<span className="sr-only"> of {label}</span>
-          </Link>
-        </div>
+        <PublishButton
+          action={publishTemplateVersion.bind(null, slotKey, v.id, v.version)}
+          confirmText={publishConfirm(v.version, inUse)}
+          blocked={check.blocked}
+          label={label}
+        />
       )}
     </section>
   );
@@ -176,7 +153,7 @@ function Who({ email, at }: { email: string | null | undefined; at: string | nul
   );
 }
 
-function VersionRow({ version: v, slotKey, manages, deletes }: { version: TemplateVersion; slotKey: string; manages: boolean; deletes: boolean }) {
+function VersionRow({ version: v, slotKey, deletes }: { version: TemplateVersion; slotKey: string; deletes: boolean }) {
   const check = v.status === 'draft' ? checkTags(v) : null;
   const problems = check ? check.unknown.length + check.broken.length : 0;
   return (
@@ -212,12 +189,6 @@ function VersionRow({ version: v, slotKey, manages, deletes }: { version: Templa
           <a href={versionFileHref(v.id)} className="inline-flex min-h-9 items-center text-sm font-semibold">
             Download<span className="sr-only"> v{v.version} ({v.fileName})</span>
           </a>
-          {/* a draft or the version in use; a replaced one stays as it was */}
-          {manages && v.status !== 'retired' && (
-            <Link href={mapFieldsHref(slotKey, v.id)} className="inline-flex min-h-9 items-center text-sm font-semibold whitespace-nowrap">
-              Map fields<span className="sr-only"> of v{v.version}</span>
-            </Link>
-          )}
           {deletes && v.status === 'draft' && (
             <DeleteDraftButton
               action={deleteTemplateVersion.bind(null, slotKey, v.id, v.version)}
@@ -231,7 +202,7 @@ function VersionRow({ version: v, slotKey, manages, deletes }: { version: Templa
   );
 }
 
-function VersionsTable({ versions, slotKey, manages, deletes }: { versions: TemplateVersion[]; slotKey: string; manages: boolean; deletes: boolean }) {
+function VersionsTable({ versions, slotKey, deletes }: { versions: TemplateVersion[]; slotKey: string; deletes: boolean }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table">
@@ -254,7 +225,7 @@ function VersionsTable({ versions, slotKey, manages, deletes }: { versions: Temp
         </thead>
         <tbody>
           {versions.map((v) => (
-            <VersionRow key={v.id} version={v} slotKey={slotKey} manages={manages} deletes={deletes} />
+            <VersionRow key={v.id} version={v} slotKey={slotKey} deletes={deletes} />
           ))}
         </tbody>
       </table>
@@ -264,20 +235,13 @@ function VersionsTable({ versions, slotKey, manages, deletes }: { versions: Temp
 
 // ---------- the page ----------
 
-type Query = Record<string, string | string[] | undefined>;
-
-/** A version number the address carries (?published=4), or null. */
-const versionIn = (query: Query, key: string) => (typeof query[key] === 'string' && /^\d{1,4}$/.test(query[key]) ? query[key] : null);
-
-/** What the page says after Publish, Delete or Map Fields (Save as a new draft) brought the browser back here. */
-function doneMessage(query: Query): string | null {
-  const n = (key: string) => versionIn(query, key);
+/** What the page says after Publish or Delete brought the browser back here. */
+function doneMessage(query: Record<string, string | string[] | undefined>): string | null {
+  const n = (key: string) => (typeof query[key] === 'string' && /^\d{1,4}$/.test(query[key]) ? query[key] : null);
   const published = n('published');
   if (published) return `v${published} is now in use: new documents are made from it. Documents made earlier keep the version they were made with.`;
   const deleted = n('deleted');
   if (deleted) return `Draft v${deleted} deleted.`;
-  const mapped = n('mapped');
-  if (mapped) return `Draft v${mapped} saved with the fields you mapped: check it below, then publish it. The version it was made from stays as it was.`;
   return null;
 }
 
@@ -323,7 +287,7 @@ function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
             </h2>
             <p className="mt-1 text-sm text-muted">
               {manages
-                ? 'Check the tags found in the file, then publish it. Unknown tags must be fixed first, with Map fields or in Word; broken ones in Word, and the file uploaded again.'
+                ? 'Check the tags found in the file, then publish it. Unknown or broken tags must be fixed in Word first, and the file uploaded again.'
                 : 'HR or an Admin checks the tags found in the file, then publishes it.'}
             </p>
           </div>
@@ -343,7 +307,7 @@ function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
             with.
           </p>
         </div>
-        {versions.length === 0 ? <Empty>No file yet.</Empty> : <VersionsTable versions={versions} slotKey={detail.key} manages={manages} deletes={canDelete(user)} />}
+        {versions.length === 0 ? <Empty>No file yet.</Empty> : <VersionsTable versions={versions} slotKey={detail.key} deletes={canDelete(user)} />}
       </section>
     </div>
   );
@@ -393,9 +357,6 @@ async function Template({ params, searchParams }: PageProps<'/templates/[slot]'>
 
   const detail = loaded.data;
   const done = doneMessage(query);
-  // back from Map Fields: the new draft's check, in view
-  const mapped = versionIn(query, 'mapped');
-  const mappedDraft = mapped ? detail.versions?.find((v) => v.version === Number(mapped) && v.status === 'draft') : undefined;
   return (
     <div className="space-y-6">
       {header(detail, detail.copyOf ? undefined : <StatusLines lines={statusLines(detail)} />)}
@@ -405,7 +366,6 @@ async function Template({ params, searchParams }: PageProps<'/templates/[slot]'>
         </p>
       )}
       <Body detail={detail} user={user} />
-      {mappedDraft && <ScrollTo id={`draft-${mappedDraft.id}`} />}
     </div>
   );
 }

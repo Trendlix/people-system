@@ -103,7 +103,7 @@ const arabic = (s: string) =>
     .replace(/ى/g, 'ي');
 
 /**
- * Whether a tag matches what was typed in the tag reference's search box: its name (with or without the braces) or its
+ * Whether a tag matches what was typed in the Fields Guide's search box: its name (with or without the braces) or its
  * English or Arabic label contains it, ignoring capitals and the forms of Arabic letters (`arabic`), and reading spaces
  * as underscores in names. An empty search matches every tag.
  */

@@ -5,7 +5,7 @@ import type { TemplateSlotView } from '@/lib/types';
 import { Empty, Loading } from '../organization/ui';
 import { loadLibrary } from './data';
 import { SlotDetails, StatusLines } from './parts';
-import { byFolder, COPY_NOTE, folderLabel, OVERRIDES_NOTE, managesTemplates, NOT_AVAILABLE, progress, seesTemplates, sourceName, statusLines, templateHref, uploadLabel, WHO_SEES } from './wording';
+import { byFolder, COPY_NOTE, FIELDS_GUIDE_PAGE, folderLabel, OVERRIDES_NOTE, managesTemplates, NOT_AVAILABLE, progress, seesTemplates, sourceName, statusLines, templateHref, uploadLabel, WHO_SEES } from './wording';
 import { titleCase } from '@/lib/format';
 
 // The template library (spec §8, owner's request of 15 October 2026): one slot per document, by folder, each with where
@@ -83,7 +83,7 @@ export default function TemplatesPage() {
       <h1 className="text-2xl font-semibold">Templates</h1>
       <p className="mt-1 max-w-3xl text-muted">
         Upload each Word file exactly as you use it today, with merge tags like <code className="font-mono text-sm">{'{{full_name_ar}}'}</code> where the data
-        goes. The system only fills in the tags. The tags you can use are in the <Link href="/templates/tags">tag reference</Link>.
+        goes. The system only fills in the tags. The tags you can use are in the <Link href={FIELDS_GUIDE_PAGE}>Fields Guide</Link>.
       </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

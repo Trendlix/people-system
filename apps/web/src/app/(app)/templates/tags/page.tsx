@@ -1,21 +1,34 @@
 import { BackLink } from '../../organization/ui';
+import { FIELDS_GUIDE_DOCX_HREF, FIELDS_GUIDE_PDF_HREF } from '../wording';
 import { TagReference } from './tag-reference';
 
-// The tag reference (spec §8), for whoever writes templates in Word: every merge tag a template may use (TEMPLATE_TAGS
-// in @trendlix/shared), by group, with a Copy button. Any other {{tag}} stops a version from being published. The list
-// is the same for everyone and holds no one's data.
+// The Fields Guide (spec §8; owner's request, 15 October 2026), for whoever writes templates in Word: every merge tag a
+// template may use (TEMPLATE_TAGS in @trendlix/shared), by group, with a Copy button, and the same guide as a document
+// to download (Word, or a PDF in a new tab), which the API makes from the same list. Any other {{tag}} stops a version
+// from being published. The list is the same for everyone and holds no one's data.
 
 export default function TagsPage() {
   return (
     <div className="space-y-6">
       <BackLink href="/templates">Templates</BackLink>
-      <div>
-        <h1 className="text-2xl font-semibold">Tag Reference</h1>
-        <p className="mt-1 max-w-3xl text-muted">
-          The merge tags a template can use. Type a tag in the Word file where its value goes, braces included, e.g.{' '}
-          <code className="font-mono text-sm">{'{{full_name_ar}}'}</code>; when a document is made, the system puts the employee&apos;s data in its place. A tag
-          that isn&apos;t listed here stops the file from being published.
-        </p>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Fields Guide</h1>
+          <p className="mt-1 max-w-3xl text-muted">
+            The fields a template can use, as merge tags. Type a tag in the Word file where its value goes, braces included, e.g.{' '}
+            <code className="font-mono text-sm">{'{{full_name_ar}}'}</code>; when a document is made, the system puts the employee&apos;s data in its place. A
+            tag that isn&apos;t listed here stops the file from being published.
+          </p>
+        </div>
+        {/* plain links: the files are made on request, never prefetched */}
+        <div className="flex shrink-0 flex-wrap gap-3">
+          <a href={FIELDS_GUIDE_DOCX_HREF} className="btn btn-secondary">
+            Download as Word
+          </a>
+          <a href={FIELDS_GUIDE_PDF_HREF} target="_blank" rel="noopener" className="btn btn-secondary">
+            Download as PDF<span className="sr-only"> (opens in a new tab)</span>
+          </a>
+        </div>
       </div>
       <section aria-labelledby="typing-tags" className="card max-w-3xl p-5">
         <h2 id="typing-tags" className="font-semibold">
