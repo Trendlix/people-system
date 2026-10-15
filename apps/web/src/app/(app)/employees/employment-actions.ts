@@ -2,12 +2,13 @@
 
 // Employment actions: hiring someone whose profile exists (again, after an earlier employment ended), changing an
 // employment (the current one, or an ended one in the history), ending the current one, and deleting one added by
-// mistake. Each one forwards to the API, which checks the session and the HR role (deleting: HR and Admin), so calling
-// these directly can't bypass permissions. Dates are typed as DD/MM/YYYY and sent as YYYY-MM-DD.
+// mistake. Each one forwards to the API, which checks the session and the HR role (deleting: a Super Admin only), so
+// calling these directly can't bypass permissions. Dates are typed as DD/MM/YYYY and sent as YYYY-MM-DD.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
+import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 import { profileHref } from './ui';
 
@@ -93,8 +94,10 @@ export async function endEmployment(employeeId: string, employmentId: string, _p
   return save(employeeId, fd, errors, () => apiSend('POST', `/employees/${employeeId}/employments/${employmentId}/end`, body));
 }
 
-/** Deletes an employment added by mistake; the profile shows the change in place. */
+/** Deletes an employment added by mistake (a Super Admin only); the profile shows the change in place. */
 export async function deleteEmployment(employeeId: string, employmentId: string): Promise<FormState> {
+  const refused = await deleteRefusal();
+  if (refused) return { errors: refused };
   try {
     await apiSend('DELETE', `/employees/${employeeId}/employments/${employmentId}`);
   } catch (err) {

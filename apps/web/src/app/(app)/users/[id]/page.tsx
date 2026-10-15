@@ -1,11 +1,13 @@
+import { ROLES } from '@trendlix/shared';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { assignableRoles, canChangeAccount, isSuperAdmin } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { UserAccount } from '@/lib/types';
 import { setActive, setPassword, updateRoles } from '../actions';
-import { BackLink, LINKED_BY_WORK_EMAIL, Loading, RequireAdmin, StatusBadge } from '../ui';
+import { BackLink, LINKED_BY_WORK_EMAIL, Loading, ONLY_SUPER_ADMIN_CHANGES, RequireAdmin, RoleBadges, StatusBadge } from '../ui';
 import { PasswordForm, RolesForm, StatusForm } from '../user-forms';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -21,6 +23,14 @@ async function EditUser({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [me, user] = await Promise.all([getCurrentUser(), apiGet<UserAccount>(`/users/${id}`)]);
   const self = me.id === user.id;
+  // A Super Admin's roles, active flag and password are a Super Admin's to change: an Admin sees them read-only (the
+  // API refuses with 403). Only a Super Admin is offered the Super Admin role.
+  const mayChange = canChangeAccount(me, user);
+  const rolesHint = !self
+    ? 'Changes apply straight away, even if they are signed in.'
+    : isSuperAdmin(user)
+      ? 'This is your own account: you cannot remove your own admin rights, and the last active Super Admin keeps that role.'
+      : 'This is your own account: you cannot remove your own Admin role.';
 
   return (
     <>
@@ -50,34 +60,45 @@ async function EditUser({ params }: { params: Promise<{ id: string }> }) {
           </dl>
         </section>
 
-        <RolesForm action={updateRoles.bind(null, id)} roles={user.roles} self={self} />
-
-        <section className="card max-w-xl space-y-3 p-6">
-          <h3 className="font-semibold">{user.isActive ? 'Deactivate' : 'Reactivate'}</h3>
-          {self ? (
-            <p className="text-sm text-muted">You cannot deactivate your own account. Another admin can do it.</p>
-          ) : (
-            <>
-              <p className="text-sm text-muted">
-                {user.isActive
-                  ? 'Deactivating signs them out at once and stops them signing in. Nothing else is deleted, and you can reactivate the account later.'
-                  : 'This account is deactivated: they cannot sign in.'}
-              </p>
-              <StatusForm action={setActive.bind(null, id)} active={user.isActive} email={user.email} />
-            </>
-          )}
-        </section>
-
-        {self ? (
-          <section className="card max-w-xl p-6">
-            <h3 className="font-semibold">Password</h3>
-            <p className="mt-1 text-sm text-muted">
-              To change your own password, use <Link href="/account/password">Change password</Link>.
-            </p>
-          </section>
+        {mayChange ? (
+          <RolesForm action={updateRoles.bind(null, id)} roles={user.roles} choices={assignableRoles(me, ROLES)} hint={rolesHint} />
         ) : (
-          <PasswordForm action={setPassword.bind(null, id)} email={user.email} />
+          <section className="card max-w-xl space-y-3 p-6">
+            <h3 className="font-semibold">Roles</h3>
+            <RoleBadges roles={user.roles} />
+            <p className="text-sm text-muted">{ONLY_SUPER_ADMIN_CHANGES}</p>
+          </section>
         )}
+
+        {mayChange && (
+          <section className="card max-w-xl space-y-3 p-6">
+            <h3 className="font-semibold">{user.isActive ? 'Deactivate' : 'Reactivate'}</h3>
+            {self ? (
+              <p className="text-sm text-muted">You cannot deactivate your own account. Another admin can do it.</p>
+            ) : (
+              <>
+                <p className="text-sm text-muted">
+                  {user.isActive
+                    ? 'Deactivating signs them out at once and stops them signing in. Nothing else is deleted, and you can reactivate the account later.'
+                    : 'This account is deactivated: they cannot sign in.'}
+                </p>
+                <StatusForm action={setActive.bind(null, id)} active={user.isActive} email={user.email} />
+              </>
+            )}
+          </section>
+        )}
+
+        {mayChange &&
+          (self ? (
+            <section className="card max-w-xl p-6">
+              <h3 className="font-semibold">Password</h3>
+              <p className="mt-1 text-sm text-muted">
+                To change your own password, use <Link href="/account/password">Change password</Link>.
+              </p>
+            </section>
+          ) : (
+            <PasswordForm action={setPassword.bind(null, id)} email={user.email} />
+          ))}
       </div>
     </>
   );

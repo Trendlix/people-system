@@ -2,6 +2,8 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { DeleteForm } from '@/components/form';
 import { apiGet } from '@/lib/api';
+import { canDelete } from '@/lib/roles';
+import { getCurrentUser } from '@/lib/session';
 import type { Grade } from '@/lib/types';
 import { deleteGrade, updateGrade } from '../../actions';
 import { BackLink, Loading, RequireEditor, UUID } from '../../ui';
@@ -11,7 +13,7 @@ import { gradeLabel } from '../label';
 async function EditGrade({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  const grade = await apiGet<Grade>(`/grades/${id}`);
+  const [user, grade] = await Promise.all([getCurrentUser(), apiGet<Grade>(`/grades/${id}`)]);
   // A grade a job title's range starts or ends at, or that an employment has, stays (the API refuses too).
   const { jobTitles, employments } = grade._count;
   const uses = [
@@ -24,20 +26,23 @@ async function EditGrade({ params }: { params: Promise<{ id: string }> }) {
       <h2 className="text-lg font-semibold">Grade {gradeLabel(grade)}</h2>
       <div className="mt-4 space-y-8">
         <GradeForm action={updateGrade.bind(null, id)} grade={grade} />
-        <section className="max-w-xl space-y-2">
-          <h3 className="font-semibold">Delete Grade</h3>
-          {uses.length > 0 ? (
-            <p className="text-sm text-muted">
-              {grade.code} is in use: {uses.join(', and ')}. Change {jobTitles + employments === 1 ? 'it' : 'them'} first.
-            </p>
-          ) : (
-            <DeleteForm
-              action={deleteGrade.bind(null, id)}
-              confirmText={`Delete grade ${gradeLabel(grade)}? This cannot be undone.`}
-              label="Delete grade"
-            />
-          )}
-        </section>
+        {/* only a Super Admin deletes (owner's decision, 15 October 2026) */}
+        {canDelete(user) && (
+          <section className="max-w-xl space-y-2">
+            <h3 className="font-semibold">Delete Grade</h3>
+            {uses.length > 0 ? (
+              <p className="text-sm text-muted">
+                {grade.code} is in use: {uses.join(', and ')}. Change {jobTitles + employments === 1 ? 'it' : 'them'} first.
+              </p>
+            ) : (
+              <DeleteForm
+                action={deleteGrade.bind(null, id)}
+                confirmText={`Delete grade ${gradeLabel(grade)}? This cannot be undone.`}
+                label="Delete grade"
+              />
+            )}
+          </section>
+        )}
       </div>
     </RequireEditor>
   );

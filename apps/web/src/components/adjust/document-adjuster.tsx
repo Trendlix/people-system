@@ -11,6 +11,7 @@ import { FormErrors } from '@/components/form';
 import { fitPage, STRAIGHTEN_MAX, straightenOf, type PageFit } from '@/lib/page-edges';
 import { cutSize, isWhole, MAX_SIDE, PRESETS, ratioRect, shapeOf, turnRect, wholeRect, type Rect } from '@/lib/page-frame';
 import type { PagesState } from '@/lib/paperwork-pages';
+import type { Paper } from '@/lib/pdf-writer';
 import { cutFrame, makeDocument, openedSize, openPage, thumbOf, turned, type Adjusted } from './canvas';
 
 // The document adjuster (owner's request: "allow me to crop and adjust all other uploaded documents", e.g. a birth
@@ -48,6 +49,8 @@ interface Page {
   /** The frame, as shares of the page turned by `quarter`. */
   rect: Rect;
   removed: boolean;
+  /** The sheet chosen with a preset (A4 or A5): the page is printed that size while its frame keeps the preset's shape. */
+  paper: Paper | null;
 }
 
 /** The page on screen, opened at its full size (at most MAX_AREA points), turned by `quarter`. */
@@ -109,7 +112,7 @@ async function pagesOf(source: AdjustSource): Promise<Page[] | { errors: string[
   try {
     for (const [key, blob] of pictures.entries()) {
       const { thumb, width, height } = await thumbOf(blob);
-      pages.push({ key, source: blob, width, height, thumb, quarter: 0, fine: 0, rect: wholeRect(), removed: false });
+      pages.push({ key, source: blob, width, height, thumb, quarter: 0, fine: 0, rect: wholeRect(), removed: false, paper: null });
     }
   } catch {
     return { errors: ['This document could not be opened in this browser. Try another browser, or upload it as it is.'] };
@@ -166,15 +169,23 @@ function Thumb({ page }: { page: Page }) {
   return <canvas ref={cv} width={96} height={128} aria-hidden="true" className="block h-20 w-16 rounded-sm bg-white object-contain md:h-28 md:w-24" />;
 }
 
+/** The sheet a page is printed on: the one chosen with a preset, while its frame still has that sheet's shape. */
+function paperOf(page: Page): Paper | null {
+  const [W, H] = turnedSize(page);
+  return page.paper && shapeOf(page.rect, W, H) ? page.paper : null;
+}
+
 /** What the frame will give, said under the page: its size in pixels, and its shape when it is a preset's. */
 function PageSays({ page }: { page: Page }) {
   const [W, H] = turnedSize(page);
   const [w, h] = cutSize(page.rect, W, H, MAX_SIDE);
   const shape = shapeOf(page.rect, W, H);
+  const paper = paperOf(page);
+  const sheet = paper ? `, printed on an ${paper.toUpperCase()} sheet` : ', the shape of an A4 or A5 sheet';
   return (
     <>
       The page will be {w} × {h} pixels
-      {shape === 'a4Portrait' ? ', the shape of an A4 sheet, portrait' : shape === 'a4Landscape' ? ', the shape of an A4 sheet, landscape' : ''}
+      {shape === 'a4Portrait' ? `${sheet}, portrait` : shape === 'a4Landscape' ? `${sheet}, landscape` : ''}
       {page.fine ? `, straightened by ${degrees(page.fine)}` : ''}.
     </>
   );
@@ -309,14 +320,15 @@ export function DocumentAdjuster({ source, title, saveLabel = 'Save', confirmTex
   function reset() {
     if (!page || busy) return;
     const key = page.key;
-    update(key, () => ({ quarter: 0, fine: 0, rect: wholeRect() }), { text: `Page ${index + 1} is back as it was given.`, tone: 'ok' });
+    update(key, () => ({ quarter: 0, fine: 0, rect: wholeRect(), paper: null }), { text: `Page ${index + 1} is back as it was given.`, tone: 'ok' });
     setWork((w) => (w && w.key === key && w.quarter ? { key, quarter: 0, canvas: turnCanvas(w.canvas, 360 - w.quarter) } : w));
   }
 
-  function preset(ratio: number | null) {
+  /** A frame preset: the whole page, or a sheet's shape (A4 and A5 have the same shape; the paper sizes the saved page). */
+  function preset(ratio: number | null, paper: Paper | null = null) {
     if (!page || busy) return;
     const [W, H] = turnedSize(page);
-    update(page.key, (p) => ({ rect: ratio === null ? wholeRect() : ratioRect(p.rect, W, H, ratio) }));
+    update(page.key, (p) => ({ rect: ratio === null ? wholeRect() : ratioRect(p.rect, W, H, ratio), paper }));
   }
 
   function toggleRemoved(key: number) {
@@ -390,6 +402,7 @@ export function DocumentAdjuster({ source, title, saveLabel = 'Save', confirmTex
           fine: p.fine,
           rect: p.rect,
           work: work && work.key === p.key && work.quarter === p.quarter ? work.canvas : null,
+          paper: paperOf(p),
         })),
         name,
         ADJUSTED_MAX_BYTES,
@@ -518,11 +531,17 @@ export function DocumentAdjuster({ source, title, saveLabel = 'Save', confirmTex
                     <button type="button" onClick={() => preset(null)} className="btn btn-secondary">
                       Whole page
                     </button>
-                    <button type="button" onClick={() => preset(PRESETS.a4Portrait)} className="btn btn-secondary">
+                    <button type="button" onClick={() => preset(PRESETS.a4Portrait, 'a4')} className="btn btn-secondary">
                       A4 portrait
                     </button>
-                    <button type="button" onClick={() => preset(PRESETS.a4Landscape)} className="btn btn-secondary">
+                    <button type="button" onClick={() => preset(PRESETS.a4Landscape, 'a4')} className="btn btn-secondary">
                       A4 landscape
+                    </button>
+                    <button type="button" onClick={() => preset(PRESETS.a4Portrait, 'a5')} className="btn btn-secondary">
+                      A5 portrait
+                    </button>
+                    <button type="button" onClick={() => preset(PRESETS.a4Landscape, 'a5')} className="btn btn-secondary">
+                      A5 landscape
                     </button>
                   </span>
                   {/* aria-disabled rather than disabled while it looks, so that the button keeps the keyboard's focus */}

@@ -199,7 +199,8 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
         </ProfileSection>
       )}
 
-      {/* HR and Admin. The API refuses (409) while this person is anyone's manager on record; the form shows its reason. */}
+      {/* A Super Admin only (owner's decision, 15 October 2026). The API refuses (409) while this person is anyone's manager
+          on record; the form shows its reason. */}
       {p.access.delete && (
         <section className="card space-y-3 p-6">
           <h2 className="font-semibold">Delete Profile</h2>

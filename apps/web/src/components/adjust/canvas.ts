@@ -1,7 +1,7 @@
 import { jfifDpi } from '@/app/(app)/employees/scan/card';
 import { canvasOf, ctxOf, loadBitmap, toBlob } from '@/app/(app)/employees/scan/image';
 import { adjustedName, cutSize, fitUnder, MAX_SIDE, type Rect } from '@/lib/page-frame';
-import { jpegInfo, pdfOverhead, printDpi, writePdf } from '@/lib/pdf-writer';
+import { jpegInfo, pdfOverhead, printDpi, writePdf, type Paper } from '@/lib/pdf-writer';
 
 // The canvas work of the document adjuster: opening a page, drawing what a frame holds, and making the adjusted file.
 // The arithmetic is in lib/page-frame.ts, the PDF in lib/pdf-writer.ts; the canvas helpers of the ID scan are used as
@@ -106,6 +106,8 @@ export interface PageCut {
   rect: Rect;
   /** The page already opened at `quarter` (the one on screen), so that it is not opened again. */
   work?: HTMLCanvasElement | null;
+  /** The sheet chosen for it with a preset (A4 or A5), which sizes it in the file; otherwise worked out from its shape. */
+  paper?: Paper | null;
 }
 
 /** The adjusted document, and a sentence when its pictures had to be made smaller to stay under the limit. */
@@ -153,12 +155,12 @@ export async function makeDocument(pages: PageCut[], name: string, limit: number
         ? `To stay under ${limitText}, the ${pdf ? 'pages were' : 'picture was'} saved at a lower quality and resolution.`
         : undefined;
   if (!pdf) {
-    // its print size goes in the file too: 300 dpi, or the size of an A4 sheet when it has the shape of one
+    // its print size goes in the file too: the sheet chosen, else 300 dpi or an A4 sheet when it has the shape of one
     const [jpeg] = fitted.jpegs;
     const info = jpegInfo(jpeg);
-    const bytes = info ? jfifDpi(jpeg, printDpi(info.width, info.height)) : jpeg;
+    const bytes = info ? jfifDpi(jpeg, printDpi(info.width, info.height, pages[0].paper)) : jpeg;
     return { file: new File([bytes.buffer as ArrayBuffer], fileName, { type: 'image/jpeg' }), pages: 1, note };
   }
-  const bytes = writePdf(fitted.jpegs, { title: name.replace(/\.[^.]*$/, '') });
+  const bytes = writePdf(fitted.jpegs, { title: name.replace(/\.[^.]*$/, ''), papers: pages.map((p) => p.paper) });
   return { file: new File([bytes.buffer as ArrayBuffer], fileName, { type: 'application/pdf' }), pages: pages.length, note };
 }

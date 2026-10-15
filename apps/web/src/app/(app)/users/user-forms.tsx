@@ -1,6 +1,6 @@
 'use client';
 
-import { ROLES, type Role } from '@trendlix/shared';
+import type { Role } from '@trendlix/shared';
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
@@ -16,12 +16,16 @@ function checkedRoles(state: FormState, saved: Role[]): Set<string> {
   return new Set(Array.isArray(typed) ? typed : typed ? [typed] : []);
 }
 
-function RoleFields({ checked, hint }: { checked: Set<string>; hint?: string }) {
+/**
+ * A checkbox for each role in `choices`: every role for a Super Admin, all but Super Admin for an Admin (only a Super
+ * Admin grants or removes it; the API refuses anyone else with 403).
+ */
+function RoleFields({ choices, checked, hint }: { choices: readonly Role[]; checked: Set<string>; hint?: string }) {
   return (
     <fieldset>
       <legend className="label">Roles</legend>
       <div className="flex flex-wrap gap-2">
-        {ROLES.map((role) => (
+        {choices.map((role) => (
           <label
             key={role}
             className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft"
@@ -32,6 +36,9 @@ function RoleFields({ checked, hint }: { checked: Set<string>; hint?: string }) 
         ))}
       </div>
       {hint && <p className="hint">{hint}</p>}
+      {choices.includes('super_admin') && (
+        <p className="hint">Super Admin: everything an Admin can do, and the only role that can delete records.</p>
+      )}
     </fieldset>
   );
 }
@@ -116,7 +123,7 @@ function Saved({ state }: { state: FormState }) {
   );
 }
 
-export function NewUserForm({ action }: { action: Action }) {
+export function NewUserForm({ action, choices }: { action: Action; choices: readonly Role[] }) {
   const [state, formAction] = useActionState(action, {});
   const fid = useFieldIds();
   return (
@@ -142,7 +149,11 @@ export function NewUserForm({ action }: { action: Action }) {
         </p>
       </div>
       <TemporaryPassword id={fid('password')} label="Temporary password" />
-      <RoleFields checked={checkedRoles(state, ['employee'])} hint="Everyone who works here is an Employee; add the other roles they need." />
+      <RoleFields
+        choices={choices}
+        checked={checkedRoles(state, ['employee'])}
+        hint="Everyone who works here is an Employee; add the other roles they need."
+      />
       <div className="flex flex-wrap gap-3">
         <SubmitButton>Create user</SubmitButton>
         <Link href="/users" className="btn btn-secondary">
@@ -153,16 +164,14 @@ export function NewUserForm({ action }: { action: Action }) {
   );
 }
 
-export function RolesForm({ action, roles, self }: { action: Action; roles: Role[]; self: boolean }) {
+/** `hint`: under the roles, e.g. that it is the user's own account. */
+export function RolesForm({ action, roles, choices, hint }: { action: Action; roles: Role[]; choices: readonly Role[]; hint: string }) {
   const [state, formAction] = useActionState(action, {});
   return (
     <form action={formAction} className="card max-w-xl space-y-5 p-6">
       <h3 className="font-semibold">Roles</h3>
       <FormErrors errors={state.errors} />
-      <RoleFields
-        checked={checkedRoles(state, roles)}
-        hint={self ? 'This is your own account: you cannot remove your own Admin role.' : 'Changes apply straight away, even if they are signed in.'}
-      />
+      <RoleFields choices={choices} checked={checkedRoles(state, roles)} hint={hint} />
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton>Save roles</SubmitButton>
         <Saved state={state} />

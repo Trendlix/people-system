@@ -12,7 +12,7 @@ import { dueNote } from './organization/contracts/labels';
 const MODULES = [
   { title: 'Organization', text: 'Company profile, departments and their teams, job titles with their grade ranges and job descriptions, grades, shifts.', href: '/organization/company' },
   { title: 'Employees', text: 'Directory and employee profiles.', href: '/employees' },
-  { title: 'Contracts', text: 'Contract versions, probation, renewals, and endings approved by HR and the CEO.', href: '/organization/contracts' },
+  { title: 'Contracts', text: 'Contract versions, probation, renewals, and endings approved by HR and the CEO.', href: '/contracts' },
 ];
 
 async function SystemStatus() {

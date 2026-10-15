@@ -1,11 +1,12 @@
 'use server';
 
 // Form actions for the Organization pages. Each one forwards to the API, which checks
-// the session and the role (HR or Admin; Admin only for the order of departments and teams), so calling these directly
-// can't bypass permissions.
+// the session and the role (HR or Admin; Admin only for the order of departments and teams; a Super Admin only for
+// deleting), so calling these directly can't bypass permissions.
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import { timeFrom } from '@/lib/form-data';
+import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '');
@@ -29,6 +30,13 @@ async function save(fd: FormData, request: () => Promise<unknown>, then: string)
     throw err;
   }
   redirect(then);
+}
+
+/** Deletes, for a Super Admin only (owner's decision, 15 October 2026): anyone else is refused before asking the API. */
+async function remove(fd: FormData, request: () => Promise<unknown>, then: string): Promise<FormState> {
+  const refused = await deleteRefusal();
+  if (refused) return { errors: refused };
+  return save(fd, request, then);
 }
 
 // ---------- departments ----------
@@ -56,7 +64,7 @@ export async function updateDepartment(id: string, _prev: FormState, fd: FormDat
 }
 
 export async function deleteDepartment(id: string, parentId: string | null, _prev: FormState, fd: FormData): Promise<FormState> {
-  return save(fd, () => apiSend('DELETE', `/departments/${id}`), afterwards(parentId));
+  return remove(fd, () => apiSend('DELETE', `/departments/${id}`), afterwards(parentId));
 }
 
 /**
@@ -99,7 +107,7 @@ export async function updateJobTitle(id: string, _prev: FormState, fd: FormData)
 }
 
 export async function deleteJobTitle(id: string, departmentId: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  return save(fd, () => apiSend('DELETE', `/job-titles/${id}`), departmentPage(departmentId));
+  return remove(fd, () => apiSend('DELETE', `/job-titles/${id}`), departmentPage(departmentId));
 }
 
 // ---------- grades ----------
@@ -125,7 +133,7 @@ export async function updateGrade(id: string, _prev: FormState, fd: FormData): P
 }
 
 export async function deleteGrade(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  return save(fd, () => apiSend('DELETE', `/grades/${id}`), '/organization/grades');
+  return remove(fd, () => apiSend('DELETE', `/grades/${id}`), '/organization/grades');
 }
 
 // ---------- shifts ----------
@@ -162,5 +170,5 @@ export async function updateShift(id: string, _prev: FormState, fd: FormData): P
 }
 
 export async function deleteShift(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  return save(fd, () => apiSend('DELETE', `/shifts/${id}`), '/organization/shifts');
+  return remove(fd, () => apiSend('DELETE', `/shifts/${id}`), '/organization/shifts');
 }

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { LABELS, STANDING_LABELS, type EmployeeStatus, type Standing } from '@trendlix/shared';
 import { formatDate, formatTime } from '@/lib/format';
+import { hasRole } from '@/lib/roles';
 import type { EmployeeProfile, SessionUser } from '@/lib/types';
 import { BackLink, DAY_NAMES, Empty, Loading } from '../organization/ui';
 
@@ -18,9 +19,12 @@ export function canSeeEmployeeFiles(user: SessionUser): boolean {
   return user.roles.some((r) => r === 'hr' || r === 'ceo');
 }
 
-/** HR and Admin see (and may delete) the fixes the card reader learned from HR's corrections; the API checks this again. */
+/**
+ * HR and Admin (a Super Admin too) see the fixes the card reader learned from HR's corrections; only a Super Admin deletes
+ * one. The API checks this again.
+ */
 export function canSeeCardFixes(user: SessionUser): boolean {
-  return user.roles.some((r) => r === 'hr' || r === 'admin');
+  return hasRole(user, 'hr', 'admin');
 }
 
 /** HR, the CEO and Finance see everyone; managers see their team; everyone else sees only themselves. */

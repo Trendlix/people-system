@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { CardCorrection, LearnedField } from '@/lib/types';
 import { deleteCardCorrection } from '../paperwork-actions';
@@ -9,7 +10,8 @@ import { DeleteFixButton } from './delete-fix-button';
 
 // The fixes the ID card reader learned from HR's corrections (HR and Admin): a word or phrase it read wrong in the
 // Arabic name or the address, and how HR corrected it before saving. Each fix is applied to the next readings (the
-// fields it changes are marked for checking); one learned by mistake can be deleted.
+// fields it changes are marked for checking); a Super Admin can delete one learned by mistake (only a Super Admin
+// deletes, owner's decision of 15 October 2026).
 
 const FIELD_LABEL: Record<LearnedField, string> = {
   fullNameAr: 'Arabic name',
@@ -27,6 +29,7 @@ function Arabic({ children }: { children: string }) {
 async function Fixes() {
   const user = await getCurrentUser();
   if (!canSeeCardFixes(user)) return <Empty>Only HR and Admin can see what the card reader has learned.</Empty>;
+  const mayDelete = canDelete(user);
   const fixes = await apiGet<CardCorrection[]>('/id-card/corrections');
   if (fixes.length === 0) {
     return <Empty>Nothing learned yet. A fix is learned when HR corrects a word read from an ID card and saves.</Empty>;
@@ -42,9 +45,11 @@ async function Fixes() {
             <th>Corrected To</th>
             <th>Times</th>
             <th>Last Used</th>
-            <th>
-              <span className="sr-only">Actions</span>
-            </th>
+            {mayDelete && (
+              <th>
+                <span className="sr-only">Actions</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -59,13 +64,15 @@ async function Fixes() {
               </td>
               <td className="tabular-nums">{f.timesSeen}</td>
               <td className="whitespace-nowrap tabular-nums">{formatDate(f.updatedAt)}</td>
-              <td className="text-right">
-                <DeleteFixButton
-                  action={deleteCardCorrection.bind(null, f.id)}
-                  name={f.wrong}
-                  confirmText={`Delete this fix? “${f.wrong}” will no longer be changed to “${f.right}” in the next card readings.`}
-                />
-              </td>
+              {mayDelete && (
+                <td className="text-right">
+                  <DeleteFixButton
+                    action={deleteCardCorrection.bind(null, f.id)}
+                    name={f.wrong}
+                    confirmText={`Delete this fix? “${f.wrong}” will no longer be changed to “${f.right}” in the next card readings.`}
+                  />
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -86,7 +93,8 @@ export default function CardCorrectionsPage() {
         <h1 className="text-2xl font-semibold">Card Reading Fixes</h1>
         <p className="mt-1 max-w-3xl text-muted">
           Words the ID card reader got wrong and HR corrected before saving: in the Arabic name and the address, never in numbers or dates. Each
-          fix is applied to the next card readings, and the fields it changes are marked for checking. Delete a fix if it was learned by mistake.
+          fix is applied to the next card readings, and the fields it changes are marked for checking. Only a Super Admin can delete a fix, e.g. one
+          learned by mistake.
         </p>
       </div>
       <Suspense fallback={<Loading />}>

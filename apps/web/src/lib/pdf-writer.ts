@@ -46,16 +46,28 @@ export function jpegInfo(b: Uint8Array): JpegInfo | null {
 
 /** An A4 sheet, in points (1/72 inch): 210 × 297 mm. */
 export const A4_POINTS: readonly [number, number] = [(210 / 25.4) * 72, (297 / 25.4) * 72];
+/** An A5 sheet, in points: 148 × 210 mm, the same shape as A4 at half its area. */
+export const A5_POINTS: readonly [number, number] = [(148 / 25.4) * 72, (210 / 25.4) * 72];
+/** A sheet a page can be put on when HR chose it (the A4 and A5 frame presets). */
+export type Paper = 'a4' | 'a5';
+export const PAPER_POINTS: Readonly<Record<Paper, readonly [number, number]>> = { a4: A4_POINTS, a5: A5_POINTS };
 /** How far a picture's shape may be from an A4 sheet's and still be put on one (3%). */
 export const A4_TOLERANCE = 0.03;
 /** The dots per inch a page is sized at when it is not A4. */
 export const PAGE_DPI = 300;
 
 /**
- * The page a picture of w × h pixels goes on, in points: A4 (portrait or landscape) when its shape is within 3% of an A4
- * sheet's, else its own size at `dpi`. `scale`: points per pixel of the picture on it, fitted inside and centred.
+ * The page a picture of w × h pixels goes on, in points: the `paper` HR chose (A4 or A5, turned to the picture's way
+ * round); without one, A4 (portrait or landscape) when its shape is within 3% of an A4 sheet's (an A5 sheet has the same
+ * shape, so only a choice tells them apart), else its own size at `dpi`. `scale`: points per pixel of the picture on
+ * it, fitted inside and centred.
  */
-export function pageFor(w: number, h: number, dpi = PAGE_DPI): { width: number; height: number; a4: boolean; scale: number } {
+export function pageFor(w: number, h: number, dpi = PAGE_DPI, paper?: Paper | null): { width: number; height: number; a4: boolean; scale: number } {
+  if (paper) {
+    const [short, long] = PAPER_POINTS[paper];
+    const [width, height] = w > h ? [long, short] : [short, long];
+    return { width, height, a4: paper === 'a4', scale: Math.min(width / w, height / h) };
+  }
   const [a, b] = A4_POINTS;
   const near = (sheetW: number, sheetH: number) => Math.abs(w / h / (sheetW / sheetH) - 1) <= A4_TOLERANCE;
   const sheet = near(a, b) ? [a, b] : near(b, a) ? [b, a] : null;
@@ -67,8 +79,8 @@ export function pageFor(w: number, h: number, dpi = PAGE_DPI): { width: number; 
   return { width, height, a4: false, scale: Math.min(width / w, height / h) };
 }
 
-/** The dots per inch a picture of w × h pixels prints at on its page (pageFor): 300, or what fits it on an A4 sheet. */
-export const printDpi = (w: number, h: number) => Math.round(72 / pageFor(w, h).scale);
+/** The dots per inch a picture of w × h pixels prints at on its page (pageFor): 300, or what fits it on its sheet. */
+export const printDpi = (w: number, h: number, paper?: Paper | null) => Math.round(72 / pageFor(w, h, PAGE_DPI, paper).scale);
 
 /** A number as PDF writes it: at most two decimals, no trailing zeros. */
 const num = (v: number) => {
@@ -95,6 +107,8 @@ export interface PdfOptions {
   dpi?: number;
   /** The document's title, kept in its properties. */
   title?: string;
+  /** For each page, the sheet HR chose for it (pageFor), if any. */
+  papers?: readonly (Paper | null | undefined)[];
 }
 
 /**
@@ -138,7 +152,7 @@ export function writePdf(jpegs: readonly Uint8Array[], options: PdfOptions = {})
   const COLOURS = { 1: '/DeviceGray', 3: '/DeviceRGB', 4: '/DeviceCMYK' } as const;
   infos.forEach((info, k) => {
     const { width: w, height: h, components } = info;
-    const page = pageFor(w, h, options.dpi);
+    const page = pageFor(w, h, options.dpi, options.papers?.[k]);
     // the picture fitted inside the page and centred (it fills a page sized from it)
     const iw = w * page.scale;
     const ih = h * page.scale;

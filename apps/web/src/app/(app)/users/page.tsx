@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
+import { canChangeAccount } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { UserAccount } from '@/lib/types';
 import { LINKED_BY_WORK_EMAIL, Loading, RequireAdmin, RoleBadges, StatusBadge } from './ui';
@@ -59,8 +60,10 @@ async function UsersList() {
                   {u.lastSignInAt ? formatDateTime(u.lastSignInAt) : <span className="text-muted">Never</span>}
                 </td>
                 <td className="text-right">
+                  {/* a Super Admin's account is read-only for an Admin */}
                   <Link href={`/users/${u.id}`}>
-                    Edit<span className="sr-only"> {u.email}</span>
+                    {canChangeAccount(me, u) ? 'Edit' : 'View'}
+                    <span className="sr-only"> {u.email}</span>
                   </Link>
                 </td>
               </tr>

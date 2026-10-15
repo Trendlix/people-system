@@ -15,7 +15,8 @@ function limitLogoSize(e: React.ChangeEvent<HTMLInputElement>) {
   e.currentTarget.setCustomValidity(tooLarge ? 'The logo must be 1 MB or smaller.' : '');
 }
 
-export function LogoForm({ name, logoSrc }: { name: string; logoSrc: string | null }) {
+/** `canRemove`: Remove logo, for a Super Admin only (owner's decision, 15 October 2026); replacing it is for every editor. */
+export function LogoForm({ name, logoSrc, canRemove }: { name: string; logoSrc: string | null; canRemove: boolean }) {
   const [upload, uploadAction] = useActionState(uploadLogo, {} as FormState);
   const [removal, removeAction, removing] = useActionState(removeLogo, {} as FormState);
   const fid = useFieldIds();
@@ -47,7 +48,7 @@ export function LogoForm({ name, logoSrc }: { name: string; logoSrc: string | nu
             <SubmitButton pendingText="Uploading…">Upload</SubmitButton>
           </form>
 
-          {logoSrc && (
+          {logoSrc && canRemove && (
             <form
               action={removeAction}
               onSubmit={(e) => {

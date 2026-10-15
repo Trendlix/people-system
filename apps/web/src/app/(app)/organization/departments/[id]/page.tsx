@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { DeleteForm } from '@/components/form';
 import { apiGet } from '@/lib/api';
+import { canDelete } from '@/lib/roles';
 import { canEditOrganisation, canReorderDepartments, getCurrentUser } from '@/lib/session';
 import type { Department, JobTitleSummary } from '@/lib/types';
 import { deleteDepartment, reorderDepartments, updateDepartment } from '../../actions';
@@ -204,24 +205,27 @@ async function DepartmentDetails({ params, searchParams }: { params: Promise<{ i
             <h3 className="font-semibold">Edit {Kind}</h3>
             <DepartmentForm action={updateDepartment.bind(null, id)} department={department} departments={departments} />
           </AnchorSection>
-          <section className="max-w-xl space-y-2 pt-4">
-            <h3 className="font-semibold">Delete {Kind}</h3>
-            {inside.length > 0 ? (
-              <p className="text-sm text-muted">
-                This {kind} has {inside.join(' and ')}. Move or delete {them} first.
-              </p>
-            ) : (
-              <DeleteForm
-                action={deleteDepartment.bind(null, id, department.parentId)}
-                confirmText={
-                  parent
-                    ? `Delete the ${department.nameEn} team in ${parent.nameEn}? This cannot be undone.`
-                    : `Delete the ${department.nameEn} department? This cannot be undone.`
-                }
-                label={`Delete ${kind}`}
-              />
-            )}
-          </section>
+          {/* only a Super Admin deletes (owner's decision, 15 October 2026) */}
+          {canDelete(user) && (
+            <section className="max-w-xl space-y-2 pt-4">
+              <h3 className="font-semibold">Delete {Kind}</h3>
+              {inside.length > 0 ? (
+                <p className="text-sm text-muted">
+                  This {kind} has {inside.join(' and ')}. Move or delete {them} first.
+                </p>
+              ) : (
+                <DeleteForm
+                  action={deleteDepartment.bind(null, id, department.parentId)}
+                  confirmText={
+                    parent
+                      ? `Delete the ${department.nameEn} team in ${parent.nameEn}? This cannot be undone.`
+                      : `Delete the ${department.nameEn} department? This cannot be undone.`
+                  }
+                  label={`Delete ${kind}`}
+                />
+              )}
+            </section>
+          )}
         </>
       )}
     </>

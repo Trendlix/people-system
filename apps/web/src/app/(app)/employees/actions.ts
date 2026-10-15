@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import type { PaperworkKind } from '@trendlix/shared';
 import { ApiError, apiSend, apiUpload } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
+import { deleteRefusal } from '@/lib/session';
 import type { EmployeeProfile, FormState, LearnedField } from '@/lib/types';
 import { LEARNED_FIELDS, readKey } from './paperwork';
 
@@ -239,6 +240,9 @@ export async function updateBank(id: string, _prev: FormState, fd: FormData): Pr
   return save(fd, [], () => apiSend('PATCH', `/employees/${id}/bank`, body), `/employees/${id}`);
 }
 
+/** Deletes a profile added by mistake: a Super Admin only (owner's decision, 15 October 2026), as the API checks too. */
 export async function deleteEmployee(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const refused = await deleteRefusal();
+  if (refused) return { errors: refused };
   return save(fd, [], () => apiSend('DELETE', `/employees/${id}`), '/employees');
 }

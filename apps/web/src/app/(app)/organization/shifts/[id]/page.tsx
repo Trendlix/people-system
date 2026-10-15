@@ -1,6 +1,8 @@
 import { Suspense } from 'react';
 import { DeleteForm } from '@/components/form';
 import { apiGet } from '@/lib/api';
+import { canDelete } from '@/lib/roles';
+import { getCurrentUser } from '@/lib/session';
 import type { Shift } from '@/lib/types';
 import { deleteShift, updateShift } from '../../actions';
 import { BackLink, Loading, RequireEditor } from '../../ui';
@@ -8,20 +10,23 @@ import { ShiftForm } from '../shift-form';
 
 async function EditShift({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const shift = await apiGet<Shift>(`/shifts/${id}`);
+  const [user, shift] = await Promise.all([getCurrentUser(), apiGet<Shift>(`/shifts/${id}`)]);
   return (
     <RequireEditor>
       <h2 className="text-lg font-semibold">Shift {shift.code}</h2>
       <div className="mt-4 space-y-8">
         <ShiftForm action={updateShift.bind(null, id)} shift={shift} />
-        <section className="max-w-xl space-y-2">
-          <h3 className="font-semibold">Delete Shift</h3>
-          <DeleteForm
-            action={deleteShift.bind(null, id)}
-            confirmText={`Delete shift ${shift.code}? This cannot be undone.`}
-            label="Delete shift"
-          />
-        </section>
+        {/* only a Super Admin deletes (owner's decision, 15 October 2026) */}
+        {canDelete(user) && (
+          <section className="max-w-xl space-y-2">
+            <h3 className="font-semibold">Delete Shift</h3>
+            <DeleteForm
+              action={deleteShift.bind(null, id)}
+              confirmText={`Delete shift ${shift.code}? This cannot be undone.`}
+              label="Delete shift"
+            />
+          </section>
+        )}
       </div>
     </RequireEditor>
   );

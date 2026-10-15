@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
+import { decidesChangeRequests } from '../../approvals/data';
 import { loadEmployee } from '../data';
 import { BackLink, Loading, PROFILE_TABS, profileHref, seesEveryone, todayInCairo, type ProfileTabKey } from '../ui';
 import { BasicTab, EducationTab } from './details-tabs';
@@ -30,7 +31,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
 
   return (
     <div className="space-y-6">
-      <ProfileHeader profile={p} tabs={visible} linkPeople={linkPeople} />
+      <ProfileHeader profile={p} tabs={visible} linkPeople={linkPeople} decidesRequests={decidesChangeRequests(user)} />
 
       <ProfileTabs tabs={tabs.map((t) => ({ key: t.key, label: t.label, href: profileHref(p.id, t.key) }))} active={tab} label={`Profile of ${p.fullNameEn}`}>
         {tab === 'education' ? (

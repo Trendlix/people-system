@@ -20,8 +20,8 @@ async function MainNav() {
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
   }
-  // Beside Approvals: for HR and the CEO, the endings waiting for the CEO; for HR and Admin, the employees' change
-  // requests waiting for them. Each is left out when it can't be read.
+  // Beside Approvals: for HR and the CEO, the endings waiting for the CEO; for HR and Admin (a Super Admin too), the
+  // employees' change requests waiting for them. Each is left out when it can't be read.
   const [endings, changes] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS) : null,
     decidesChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS) : null,
@@ -31,11 +31,13 @@ async function MainNav() {
 }
 
 /**
- * The signed-in user's own profile: the employee whose work email is their sign-in email, as the API links them. Found
- * among the people they may see (GET /employees: just themself for an employee, plus their team for a manager), then
- * read; null when they have none, or when either can't be read.
+ * The signed-in user's own profile: the employee whose work email is their sign-in email, as the API links them; null
+ * when they have none, or when it can't be read. GET /auth/me names it (`employeeId`), so it is one read, or none.
  */
 async function ownProfile(user: SessionUser): Promise<EmployeeProfile | null> {
+  if (user.employeeId !== undefined) return user.employeeId ? getOrNull<EmployeeProfile>(`/employees/${user.employeeId}`) : null;
+  // An API from before 15 October 2026 doesn't name it: found among the people they may see (GET /employees: just
+  // themself for an employee, their team too for a manager, everyone for HR and the CEO), then read.
   const email = user.email.toLowerCase();
   const own = (await getOrNull<EmployeeSummary[]>('/employees'))?.find((e) => e.workEmail?.toLowerCase() === email);
   return own ? getOrNull<EmployeeProfile>(`/employees/${own.id}`) : null;
@@ -75,7 +77,7 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             <Brand dark />
           </Suspense>
         </div>
-        <nav aria-label="Main" className="flex gap-1 overflow-x-auto md:flex-col">
+        <nav aria-label="Main" className="relative flex gap-1 overflow-x-auto md:flex-col">
           <Suspense fallback={<NavLinksFallback />}>
             <MainNav />
           </Suspense>

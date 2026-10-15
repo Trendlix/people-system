@@ -16,8 +16,8 @@ import { DeleteRowButton } from './inline-forms';
 // The Employment tab: the probation banner and an ending in progress, the current employment (Edit, End employment)
 // and its contract, or a way to add one; every employment in the history, newest first; and the people who report to
 // this person now. HR changes employments, drafts and signs contracts, confirms probation and records endings; the CEO
-// approves or rejects endings here; HR and Admin may delete an employment added by mistake (the API checks all of it
-// again).
+// approves or rejects endings here; only a Super Admin may delete an employment added by mistake (the API checks all of
+// it again).
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';

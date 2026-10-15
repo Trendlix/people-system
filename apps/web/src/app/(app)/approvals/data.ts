@@ -1,5 +1,6 @@
 import 'server-only';
 import { ApiError, apiFetch } from '@/lib/api';
+import { hasRole } from '@/lib/roles';
 import type { SessionUser } from '@/lib/types';
 
 // Who follows endings and contracts, who decides employees' change requests, and reading what may fail quietly. Used by
@@ -19,11 +20,11 @@ export function decidesEndings(user: Pick<SessionUser, 'roles'>): boolean {
 export const PENDING_ENDINGS = '/endings?status=pending_ceo';
 
 /**
- * HR and Admin approve or reject employees' requests to change their details (owner's decision, 15 October 2026); the
- * CEO doesn't. The API checks this again.
+ * HR and Admin (a Super Admin too) approve or reject employees' requests to change their details (owner's decision, 15
+ * October 2026); the CEO doesn't. The API checks this again.
  */
 export function decidesChangeRequests(user: Pick<SessionUser, 'roles'>): boolean {
-  return user.roles.some((r) => r === 'hr' || r === 'admin');
+  return hasRole(user, 'hr', 'admin');
 }
 
 /** The employees' change requests waiting for HR or an Admin, newest first. */

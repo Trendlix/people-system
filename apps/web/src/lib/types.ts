@@ -18,6 +18,11 @@ import type {
   PaperworkKind,
   Role,
   Standing,
+  TemplateFolder,
+  TemplateLanguage,
+  TemplateSigners,
+  TemplateTrigger,
+  TemplateVersionStatus,
   WorkArrangement,
 } from '@trendlix/shared';
 
@@ -27,6 +32,11 @@ export interface SessionUser {
   id: string;
   email: string;
   roles: Role[];
+  /**
+   * The signed-in user's own employee profile (the one whose work email is their sign-in email), or null when they have
+   * none. Left out by an API from before 15 October 2026, hence optional: the layout then finds the profile itself.
+   */
+  employeeId?: string | null;
 }
 
 /** A department as other records name it. `parent` is set when it is a team: the department the team belongs to. */
@@ -307,7 +317,10 @@ export interface EmployeeProfile {
    * the second mobile (owner's decision, 15 October 2026).
    */
   completeness: { percent: number; missing: ProfileGap[] };
-  /** What the caller may do: edit (HR), delete (HR and Admin), see the national ID, see the bank details. */
+  /**
+   * What the caller may do: edit (HR), delete (a Super Admin only, owner's decision of 15 October 2026), see the national
+   * ID, see the bank details.
+   */
   access: { edit: boolean; delete: boolean; identity: boolean; bank: boolean };
   /**
    * Whether the employee confirmed their details, and what changed since (owner's decision, 15 October 2026). Left out
@@ -385,7 +398,7 @@ export interface EmployeeBank {
 
 // ---------- users ----------
 
-/** A sign-in account, from GET /users (admins only). */
+/** A sign-in account, from GET /users (Admins and Super Admins only). */
 export interface UserAccount {
   id: string;
   email: string;
@@ -609,6 +622,42 @@ export interface EndingSummary {
   employmentId: string;
 }
 
+/**
+ * One row of GET /contracts?status=&q=&form=&type=&endingWithin= (HR, CEO and Finance): a contract version in the
+ * company-wide list of the Contracts page, with its person and employment. Without a status, drafts and signed ones
+ * only; `endingWithin` keeps signed ones ending within that many days, overdue included. Signed by end date first, then
+ * drafts, then the rest. The salary fields are null, with `salaryHidden`, for anyone but HR, Finance and the CEO.
+ */
+export interface ContractListItem {
+  id: string;
+  number: string;
+  version: number;
+  form: ContractForm;
+  status: ContractStatus;
+  startDate: string;
+  /** Null for an open-ended contract. */
+  endDate: string | null;
+  probationMonths: number;
+  probationEnd: string | null;
+  signedOn: string | null;
+  insuranceFiledOn: string | null;
+  labourOfficeFiledOn: string | null;
+  /** A signed fixed contract's last day to tell the employee it won't be renewed: 45 working days before it ends. */
+  nonRenewalNoticeBy: string | null;
+  /** In EGP. */
+  grossSalary: number | null;
+  insuredSalary: number | null;
+  salaryHidden: boolean;
+  employee: ContractEmployeeRef & { fullNameAr: string };
+  employmentId: string;
+  employmentType: EmploymentType;
+  /** The employment hasn't ended. */
+  employmentCurrent: boolean;
+  /** As signed; a draft's are the employment's current ones. */
+  jobTitleEn: string | null;
+  departmentName: string | null;
+}
+
 // ---------- contracts and endings on the employee profile (the Employment tab) ----------
 
 /**
@@ -690,4 +739,77 @@ export interface Ending {
   endReason: EndReason;
   /** Once completed: when the final dues must be paid (Art. 108) and the ending filed with the labour office (Decree 214/2025). */
   deadlines: { finalDuesBy: string; labourOfficeFilingBy: string } | null;
+}
+
+// ---------- document templates: the library (spec §8; packages/shared/src/templates.ts) ----------
+// HR uploads each Word file as used today, with merge tags such as {{full_name_ar}}; a version is uploaded as a draft,
+// checked (unknown or broken tags block it) and published. Moments are ISO.
+
+/** Where a slot stands: no file yet, only drafts, or a version in use. */
+export type TemplateSlotStatus = 'missing' | 'draft' | 'published';
+
+/**
+ * One row of GET /templates (HR, Admin and the CEO): a slot of the library, as TEMPLATE_SLOTS describes it, with its
+ * version in use and its newest draft. A `copyOf` slot (the full-time contract's social insurance copy) is printed from
+ * its source's file and has no versions of its own; `overrides`: tag → the value it reads instead on that copy.
+ */
+export interface TemplateSlotView {
+  key: string;
+  name: string;
+  folder: TemplateFolder;
+  /** Null: each version's language is set when it is uploaded. */
+  language: TemplateLanguage | null;
+  appliesTo: EmploymentType[];
+  triggers: TemplateTrigger[];
+  signers: TemplateSigners;
+  copyOf?: string | null;
+  overrides?: Record<string, string> | null;
+  status: TemplateSlotStatus;
+  /** The version new documents are made from; null when none is published. */
+  published: {
+    id: string;
+    version: number;
+    fileName: string;
+    uploadedAt: string;
+    publishedAt: string;
+    publishedBy: { email: string } | null;
+  } | null;
+  /** The newest draft, if any (it may be older than the version in use). */
+  latestDraft: {
+    id: string;
+    version: number;
+    fileName: string;
+    uploadedAt: string;
+    /** {{tags}} not in the tag list (TEMPLATE_TAGS): they block publishing. */
+    unknownTags: string[];
+    /** Fragments that look like a tag but are not one (e.g. "{{full_name_ar}"): they block publishing too. */
+    broken: string[];
+  } | null;
+  versionCount: number;
+}
+
+/** One uploaded version of a template's Word file (GET /templates/:slot, newest first). The file itself is never included. */
+export interface TemplateVersion {
+  id: string;
+  version: number;
+  fileName: string;
+  sizeBytes: number;
+  language: TemplateLanguage;
+  /** The tags found in the file. */
+  tags: string[];
+  unknownTags: string[];
+  broken: string[];
+  /** draft → published (in use) → retired (replaced by a newer published version). */
+  status: TemplateVersionStatus;
+  /** What changed, in the uploader's words. */
+  note: string | null;
+  uploadedBy: { email: string } | null;
+  uploadedAt: string;
+  publishedBy: { email: string } | null;
+  publishedAt: string | null;
+}
+
+/** GET /templates/:slot: the slot and every version of its file, newest first ([] for a copy slot). */
+export interface TemplateDetail extends TemplateSlotView {
+  versions: TemplateVersion[];
 }

@@ -1,7 +1,8 @@
 'use server';
 
-// Form actions for the Users pages. Each one forwards to the API, which only lets admins
-// manage users, so calling these directly can't bypass permissions.
+// Form actions for the Users pages. Each one forwards to the API, which only lets Admins and Super Admins manage users,
+// and only a Super Admin grant or remove the Super Admin role or change a Super Admin's account, so calling these
+// directly can't bypass permissions. Its refusals (403, and 409 for the last active Super Admin) show on the forms.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';

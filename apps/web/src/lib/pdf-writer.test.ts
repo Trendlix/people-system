@@ -136,4 +136,13 @@ describe('a PDF of JPEG pictures', () => {
     const pictures = pics.reduce((n, p) => n + p.length, 0);
     expect(pdf.length - pictures).toBeLessThanOrEqual(pdfOverhead(pics.length, title.length));
   });
+
+  it('puts a page on the sheet chosen for it: A5 has the shape of A4, so only the choice tells them apart', () => {
+    const a5 = pageFor(1748, 2480, 300, 'a5');
+    expect(a5.width).toBeCloseTo((148 / 25.4) * 72, 1);
+    expect(a5.height).toBeCloseTo((210 / 25.4) * 72, 1);
+    const turned = pageFor(2480, 1748, 300, 'a5');
+    expect(turned.width).toBeCloseTo((210 / 25.4) * 72, 1);
+    expect(pageFor(1748, 2480).a4).toBe(true); // no choice: A4, as before
+  });
 });

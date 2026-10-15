@@ -76,10 +76,10 @@ const STATUS_TONE = { ok: 'text-ok', changed: 'text-warn', none: 'text-muted' } 
 
 /**
  * Whether the employee confirmed their details (owner's decision, 15 October 2026), for everyone who sees the profile.
- * The employee gets Review and confirm while it isn't up to date; HR and Admin, who decide change requests, a link to
- * Approvals when one waits. Nothing before the API sends confirmations.
+ * The employee gets Review and confirm while it isn't up to date; HR and Admin, who decide change requests
+ * (`decidesRequests`), a link to Approvals when one waits. Nothing before the API sends confirmations.
  */
-function Confirmation({ profile: p }: { profile: EmployeeProfile }) {
+function Confirmation({ profile: p, decidesRequests }: { profile: EmployeeProfile; decidesRequests: boolean }) {
   const status = confirmationStatus(p.confirmation);
   if (!status) return null;
   const upToDate = p.confirmation?.upToDate;
@@ -111,7 +111,7 @@ function Confirmation({ profile: p }: { profile: EmployeeProfile }) {
         ) : (
           pending &&
           // HR and Admin decide on Approvals; the CEO sees the requests but doesn't decide them
-          (p.access.delete ? (
+          (decidesRequests ? (
             <Link href="/approvals" className={waiting}>
               Change request waiting
             </Link>
@@ -128,12 +128,15 @@ export function ProfileHeader({
   profile: p,
   tabs,
   linkPeople,
+  decidesRequests,
 }: {
   profile: EmployeeProfile;
   /** The tabs the caller can open (Documents: HR and CEO). */
   tabs: ReadonlySet<ProfileTabKey>;
   /** Only people who can open every profile get links to others (e.g. the manager). */
   linkPeople: boolean;
+  /** HR and Admin decide employees' change requests, on Approvals. */
+  decidesRequests: boolean;
 }) {
   const e = p.employment;
   const standing = standingOf(p);
@@ -179,7 +182,7 @@ export function ProfileHeader({
           </div>
         </div>
       </div>
-      <Confirmation profile={p} />
+      <Confirmation profile={p} decidesRequests={decidesRequests} />
       <Completeness profile={p} tabs={tabs} />
     </section>
   );

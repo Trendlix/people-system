@@ -14,8 +14,9 @@ import { PaperDetails } from './inline-forms';
 
 // The Documents tab: the employee file (scanned paperwork, spec §8.5) as a checklist of papers for the current
 // employment type (requiredPaperwork), each with its number and expiry, whether it is uploaded, and its files. HR and
-// the CEO see it (the API checks this again); only HR uploads, deletes and sets a paper's number and expiry. The
-// national ID's number and expiry are the profile's own (changed on the National ID page).
+// the CEO see it (the API checks this again); only HR uploads and sets a paper's number and expiry, and only a Super
+// Admin deletes a file (owner's decision, 15 October 2026). The national ID's number and expiry are the profile's own
+// (changed on the National ID page).
 
 type Employee = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'employment' | 'employments' | 'gender' | 'access' | 'identity'>;
 
@@ -63,8 +64,11 @@ const viewed = (item: PaperworkItem, side?: 'Front' | 'Back'): ViewerFile => ({
   mimeType: item.mimeType,
 });
 
-/** One uploaded file: when, its name, size, uploader and whether its text was read; View, and for HR adjust, re-read and delete. */
-function FileLine({ item, owner, canEdit }: { item: PaperworkItem; owner: string; canEdit: boolean }) {
+/** What the caller may do with the files: `edit` (HR) adjust and re-read them, `delete` (a Super Admin) delete them. */
+type FileAccess = { edit: boolean; delete: boolean };
+
+/** One uploaded file: when, its name, size, uploader and whether its text was read; View, for HR adjust and re-read, and Delete. */
+function FileLine({ item, owner, can }: { item: PaperworkItem; owner: string; can: FileAccess }) {
   const name = label(item.kind);
   const view = { title: `${name} · ${owner}`, files: [viewed(item)], what: name };
   return (
@@ -87,11 +91,11 @@ function FileLine({ item, owner, canEdit }: { item: PaperworkItem; owner: string
           View<span className="sr-only"> {view.what}</span>
         </DocumentViewer>
         {/* crop, turn, straighten, remove pages, then replace the stored file (the national ID has its own scan flow) */}
-        {canEdit && !NATIONAL_ID.includes(item.kind) && (
+        {can.edit && !NATIONAL_ID.includes(item.kind) && (
           <AdjustStoredButton itemId={item.id} fileName={item.fileName} mimeType={item.mimeType} name={name} owner={owner} />
         )}
-        {canEdit && item.ocrStatus !== 'done' && <RereadButton action={rereadPaperwork.bind(null, item.id)} name={name} />}
-        {canEdit && (
+        {can.edit && item.ocrStatus !== 'done' && <RereadButton action={rereadPaperwork.bind(null, item.id)} name={name} />}
+        {can.delete && (
           <DeleteFileButton
             action={deletePaperwork.bind(null, item.id)}
             name={name}
@@ -120,9 +124,9 @@ function idScans(fronts: PaperworkItem[], backs: PaperworkItem[]): IdScan[] {
 
 /**
  * A national ID scan as one document: when, its files, whether their text was read; View opens both sides together,
- * and for HR, Delete removes both (and Re-read reads a side whose text wasn't read).
+ * for HR Re-read reads a side whose text wasn't read, and for a Super Admin Delete removes both.
  */
-function IdScanLine({ scan, owner, canEdit }: { scan: IdScan; owner: string; canEdit: boolean }) {
+function IdScanLine({ scan, owner, can }: { scan: IdScan; owner: string; can: FileAccess }) {
   const { front, back } = scan;
   const items = [front, back].filter((x): x is PaperworkItem => !!x);
   const sides = front && back ? 'front and back' : front ? 'front only' : 'back only';
@@ -150,11 +154,11 @@ function IdScanLine({ scan, owner, canEdit }: { scan: IdScan; owner: string; can
         <DocumentViewer title={idScanTitle({ front: !!front, back: !!back }, owner)} files={files}>
           View<span className="sr-only"> the national ID scan</span>
         </DocumentViewer>
-        {canEdit &&
+        {can.edit &&
           items
             .filter((item) => item.ocrStatus !== 'done')
             .map((item) => <RereadButton key={item.id} action={rereadPaperwork.bind(null, item.id)} name={label(item.kind)} />)}
-        {canEdit && (
+        {can.delete && (
           <DeleteFileButton
             action={deletePaperworkItems.bind(null, items.map((item) => item.id))}
             name="the national ID scan"
@@ -217,6 +221,7 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
   for (const item of items) byKind.set(item.kind, [...(byKind.get(item.kind) ?? []), item]); // newest first, as listed
   const others = items.filter((item) => !required.includes(item.kind));
   const canEdit = employee.access.edit;
+  const can: FileAccess = { edit: canEdit, delete: employee.access.delete };
 
   // The national ID's two sides are one paper, with the number and expiry of the profile's national ID.
   const idKinds = required.filter((k) => NATIONAL_ID.includes(k));
@@ -311,7 +316,7 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
                 <div id="paper-national_id" className="scroll-mt-6 space-y-2 rounded-md target:ring-2 target:ring-accent target:ring-offset-4">
                   {anyFile ? (
                     idScans(byKind.get('national_id_front') ?? [], byKind.get('national_id_back') ?? []).map((scan) => (
-                      <IdScanLine key={(scan.front ?? scan.back)!.id} scan={scan} owner={employee.fullNameEn} canEdit={canEdit} />
+                      <IdScanLine key={(scan.front ?? scan.back)!.id} scan={scan} owner={employee.fullNameEn} can={can} />
                     ))
                   ) : (
                     <div className="flex flex-wrap items-center gap-x-3">
@@ -337,7 +342,7 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
                         {files.length > 0 ? (
                           <div className="space-y-2">
                             {files.map((item) => (
-                              <FileLine key={item.id} item={item} owner={employee.fullNameEn} canEdit={canEdit} />
+                              <FileLine key={item.id} item={item} owner={employee.fullNameEn} can={can} />
                             ))}
                           </div>
                         ) : (
@@ -367,7 +372,7 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
                 >
                   <DetailsLine number={item.documentNo} expiry={item.expiresOn} today={today} />
                 </PaperDetails>
-                <FileLine item={item} owner={employee.fullNameEn} canEdit={canEdit} />
+                <FileLine item={item} owner={employee.fullNameEn} can={can} />
               </li>
             ))}
           </ul>

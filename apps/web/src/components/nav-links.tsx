@@ -3,13 +3,14 @@
 import type { Role } from '@trendlix/shared';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { hasRole } from '@/lib/roles';
 import { NAV } from './nav';
 
 const base = 'flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium no-underline';
 
-/** The items a user with these roles may see. */
+/** The items a user with these roles may see (a Super Admin sees an Admin's). */
 function visible(roles: readonly Role[]) {
-  return NAV.filter((item) => !item.roles || item.roles.some((r) => roles.includes(r)));
+  return NAV.filter((item) => !item.roles || hasRole({ roles }, ...item.roles));
 }
 
 /** `counts`: how many things wait behind a link, by its href (e.g. endings waiting for the CEO, beside Approvals). */

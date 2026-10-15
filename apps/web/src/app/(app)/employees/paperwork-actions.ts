@@ -2,12 +2,13 @@
 
 // Employee file actions: uploading, re-reading and deleting scanned paperwork; finding the national ID card on a scan
 // and reading it (for an employee, or for one being added); and deleting a fix learned from HR's corrections.
-// Each one forwards to the API, which checks the session and the HR role, so calling these directly can't bypass
-// permissions. The API also checks each file by its content; the size is checked here first for a quick answer.
+// Each one forwards to the API, which checks the session and the HR role (deleting: a Super Admin only), so calling
+// these directly can't bypass permissions. The API also checks each file by its content; the size is checked here first for a quick answer.
 import { refresh } from 'next/cache';
 import { PAPERWORK_LABELS } from '@trendlix/shared';
 import { ApiError, apiSend, apiUpload } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
+import { deleteRefusal } from '@/lib/session';
 import type { FormState, IdCardPrepared, IdCardReading, IdCardScan } from '@/lib/types';
 import { isPaperworkKind, PAPERWORK_MAX_BYTES, TOO_LARGE, type IdPrepareState, type IdReadState, type IdScanState } from './paperwork';
 
@@ -59,15 +60,20 @@ export async function rereadPaperwork(itemId: string): Promise<FormState> {
   return {};
 }
 
+/** Deletes a file from the employee file: a Super Admin only (owner's decision, 15 October 2026). */
 export async function deletePaperwork(itemId: string): Promise<FormState> {
+  const refused = await deleteRefusal();
+  if (refused) return { errors: refused };
   const errors = await attempt(() => apiSend('DELETE', `/paperwork/${itemId}`));
   if (errors) return { errors };
   refresh();
   return {};
 }
 
-/** A national ID scan is one document: its front and back files are deleted together. */
+/** A national ID scan is one document: its front and back files are deleted together (a Super Admin only). */
 export async function deletePaperworkItems(itemIds: string[]): Promise<FormState> {
+  const refused = await deleteRefusal();
+  if (refused) return { errors: refused };
   for (const id of itemIds) {
     const errors = await attempt(() => apiSend('DELETE', `/paperwork/${id}`));
     if (errors) {
@@ -151,8 +157,10 @@ export async function readIdCard(fd: FormData): Promise<IdReadState> {
   }
 }
 
-/** Forgets a fix learned from HR's corrections to card readings (HR and Admin), e.g. one learned by mistake. */
+/** Forgets a fix learned from HR's corrections to card readings (a Super Admin only), e.g. one learned by mistake. */
 export async function deleteCardCorrection(id: string): Promise<FormState> {
+  const refused = await deleteRefusal();
+  if (refused) return { errors: refused };
   const errors = await attempt(() => apiSend('DELETE', `/id-card/corrections/${id}`));
   if (errors) return { errors };
   refresh();

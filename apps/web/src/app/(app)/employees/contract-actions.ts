@@ -3,12 +3,13 @@
 // Contract and ending actions on the profile's Employment tab: drafting a contract or its renewal, signing it, its
 // filing dates; confirming probation; recording an ending (HR, which counts as HR's approval), the CEO's decision on
 // it, withdrawing and completing it. Each one forwards to the API, which checks the session and the role (HR; the
-// CEO for the decision), so calling these directly can't bypass permissions. Dates are typed as DD/MM/YYYY and sent
-// as YYYY-MM-DD.
+// CEO for the decision; a Super Admin for deleting a draft), so calling these directly can't bypass permissions. Dates
+// are typed as DD/MM/YYYY and sent as YYYY-MM-DD.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
+import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 import { parseAmount } from './[id]/contracts/salary';
 import { profileHref } from './ui';
@@ -141,8 +142,10 @@ export async function updateContract(employeeId: string, contractId: string, ren
   return save(employeeId, fd, errors, () => apiSend('PATCH', `/contracts/${contractId}`, body));
 }
 
-/** Deletes a draft. */
+/** Deletes a draft: a Super Admin only (owner's decision, 15 October 2026). */
 export async function deleteContract(contractId: string): Promise<FormState> {
+  const refused = await deleteRefusal();
+  if (refused) return { errors: refused };
   return act(() => apiSend('DELETE', `/contracts/${contractId}`), 'Draft deleted.');
 }
 

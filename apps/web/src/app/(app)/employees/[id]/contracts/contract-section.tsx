@@ -12,7 +12,8 @@ import { formatEgp } from './salary';
 
 // The Contract section of the Employment tab: the signed contract (its number, term, probation, signing and filing
 // dates, and the salary for HR, Finance and the CEO), a draft waiting to be signed, and every version. HR drafts the
-// first contract or a renewal, signs a draft, changes or deletes it, and sets a signed one's filing dates and note.
+// first contract or a renewal, signs a draft or changes it, and sets a signed one's filing dates and note; only a Super
+// Admin deletes a draft (owner's decision, 15 October 2026).
 
 /** A fixed-term contract gets a warning this many days before it ends, if no renewal is drafted. */
 const RENEWAL_WARNING_DAYS = 60;
@@ -124,8 +125,20 @@ function RenewalWarning({ contract: c, today }: { contract: Contract; today: str
   );
 }
 
-/** A draft waiting to be signed: what it says, and for HR Sign, Edit and Delete. */
-function DraftCard({ draft: d, employeeId, canEdit, today }: { draft: Contract; employeeId: string; canEdit: boolean; today: string }) {
+/** A draft waiting to be signed: what it says, for HR Sign and Edit, and for a Super Admin Delete. */
+function DraftCard({
+  draft: d,
+  employeeId,
+  canEdit,
+  canDelete,
+  today,
+}: {
+  draft: Contract;
+  employeeId: string;
+  canEdit: boolean;
+  canDelete: boolean;
+  today: string;
+}) {
   const name = `version ${d.version} (${d.number})`;
   const what = [
     CONTRACT_FORM_LABELS[d.form],
@@ -147,23 +160,28 @@ function DraftCard({ draft: d, employeeId, canEdit, today }: { draft: Contract; 
       </div>
       <p className="text-sm">{what}</p>
       {d.note && <p className="text-sm text-muted">{d.note}</p>}
-      {canEdit ? (
+      {!canEdit && <p className="text-xs text-muted">Waiting to be signed.</p>}
+      {(canEdit || canDelete) && (
         <div className="flex flex-wrap items-start gap-3">
-          <SignContract action={signContract.bind(null, d.id)} today={today} name={name} />
-          <Link href={`/employees/${employeeId}/contracts/${d.id}/edit`} className={`${small} btn-secondary`}>
-            Edit<span className="sr-only"> the draft of {name}</span>
-          </Link>
-          <ActionButton
-            action={deleteContract.bind(null, d.id)}
-            pendingText="Deleting…"
-            variant="danger"
-            confirmText={`Delete the draft of ${name}? This cannot be undone.`}
-          >
-            Delete<span className="sr-only"> the draft of {name}</span>
-          </ActionButton>
+          {canEdit && (
+            <>
+              <SignContract action={signContract.bind(null, d.id)} today={today} name={name} />
+              <Link href={`/employees/${employeeId}/contracts/${d.id}/edit`} className={`${small} btn-secondary`}>
+                Edit<span className="sr-only"> the draft of {name}</span>
+              </Link>
+            </>
+          )}
+          {canDelete && (
+            <ActionButton
+              action={deleteContract.bind(null, d.id)}
+              pendingText="Deleting…"
+              variant="danger"
+              confirmText={`Delete the draft of ${name}? This cannot be undone.`}
+            >
+              Delete<span className="sr-only"> the draft of {name}</span>
+            </ActionButton>
+          )}
         </div>
-      ) : (
-        <p className="text-xs text-muted">Waiting to be signed.</p>
       )}
     </div>
   );
@@ -292,7 +310,7 @@ export async function ContractSection({
           </p>
         )
       )}
-      {draft && <DraftCard draft={draft} employeeId={employee.id} canEdit={canEdit} today={today} />}
+      {draft && <DraftCard draft={draft} employeeId={employee.id} canEdit={canEdit} canDelete={employee.access.delete} today={today} />}
       {contracts.length > 0 && (
         <div className="space-y-2 pt-2">
           <h3 className="text-sm font-semibold">Versions</h3>

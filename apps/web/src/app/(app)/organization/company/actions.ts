@@ -1,9 +1,11 @@
 'use server';
 
-// Company profile actions. The API checks the session and the HR/Admin role on each call.
+// Company profile actions. The API checks the session and the HR/Admin role on each call (a Super Admin only for removing
+// the logo).
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend, apiUpload } from '@/lib/api';
+import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 
 const FIELDS = [
@@ -59,7 +61,10 @@ export async function uploadLogo(_prev: FormState, fd: FormData): Promise<FormSt
   return { message: 'Logo updated.' };
 }
 
+/** Removes the logo: a Super Admin only, like every deletion (owner's decision, 15 October 2026). Replacing it is HR's and Admin's. */
 export async function removeLogo(): Promise<FormState> {
+  const refused = await deleteRefusal();
+  if (refused) return { errors: refused };
   try {
     await apiSend('DELETE', '/company/logo');
   } catch (err) {

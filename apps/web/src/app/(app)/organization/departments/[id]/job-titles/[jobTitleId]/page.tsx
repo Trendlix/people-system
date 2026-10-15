@@ -5,6 +5,7 @@ import { RichText } from '@/components/rich-text';
 import { apiGet } from '@/lib/api';
 import { departmentName } from '@/lib/departments';
 import { isBlankRichText } from '@/lib/rich-text';
+import { canDelete } from '@/lib/roles';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Department, Grade, JobTitle } from '@/lib/types';
 import { deleteJobTitle, updateJobTitle } from '../../../../actions';
@@ -97,14 +98,17 @@ async function JobTitleDetails({ params }: { params: Promise<{ id: string; jobTi
               cancelHref={back}
             />
           </AnchorSection>
-          <section className="max-w-xl space-y-2 pt-4">
-            <h3 className="font-semibold">Delete Job Title</h3>
-            <DeleteForm
-              action={deleteJobTitle.bind(null, jobTitleId, jobTitle.departmentId)}
-              confirmText={`Delete the job title "${jobTitle.titleEn}" and its job description? This cannot be undone.`}
-              label="Delete job title"
-            />
-          </section>
+          {/* only a Super Admin deletes (owner's decision, 15 October 2026) */}
+          {canDelete(user) && (
+            <section className="max-w-xl space-y-2 pt-4">
+              <h3 className="font-semibold">Delete Job Title</h3>
+              <DeleteForm
+                action={deleteJobTitle.bind(null, jobTitleId, jobTitle.departmentId)}
+                confirmText={`Delete the job title "${jobTitle.titleEn}" and its job description? This cannot be undone.`}
+                label="Delete job title"
+              />
+            </section>
+          )}
         </>
       )}
     </>

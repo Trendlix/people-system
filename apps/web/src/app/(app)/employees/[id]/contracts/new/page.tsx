@@ -29,8 +29,8 @@ async function NewContract({ params }: { params: Promise<{ id: string }> }) {
   } else if (draft) {
     body = (
       <Empty>
-        Version {draft.version} is already drafted. <Link href={`/employees/${employee.id}/contracts/${draft.id}/edit`}>Change the draft</Link>, or sign or
-        delete it on the <Link href={back}>Employment tab</Link>.
+        Version {draft.version} is already drafted. <Link href={`/employees/${employee.id}/contracts/${draft.id}/edit`}>Change the draft</Link>, or sign it
+        on the <Link href={back}>Employment tab</Link>. Only a Super Admin can delete it.
       </Empty>
     );
   } else if (previous && !previous.endDate) {

@@ -1,6 +1,8 @@
 import 'server-only';
 import { notFound } from 'next/navigation';
 import { apiGet } from '@/lib/api';
+import { canDelete } from '@/lib/roles';
+import { getCurrentUser } from '@/lib/session';
 import type { Company, Department, EmployeeProfile, EmployeeSummary, Employment, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import type { EmploymentPickers } from './employment-fields';
 
@@ -8,11 +10,17 @@ import type { EmploymentPickers } from './employment-fields';
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
-/** The employee in the URL, as the caller may see them; the 404 page for a bad or hidden id. */
+/**
+ * The employee in the URL, as the caller may see them; the 404 page for a bad or hidden id. `access.delete` is the
+ * Super Admin's only (owner's decision, 15 October 2026): the API says so itself, and an API from before then (HR and
+ * Admin) is narrowed here, so nobody else is ever offered a delete.
+ */
 export async function loadEmployee(params: Promise<{ id: string }>): Promise<EmployeeProfile> {
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  return apiGet<EmployeeProfile>(`/employees/${id}`);
+  const [user, profile] = await Promise.all([getCurrentUser(), apiGet<EmployeeProfile>(`/employees/${id}`)]);
+  if (!profile.access.delete || canDelete(user)) return profile;
+  return { ...profile, access: { ...profile.access, delete: false } };
 }
 
 /** The employee and one of their employments, both in the URL; the 404 page when either is not theirs or not there. */
