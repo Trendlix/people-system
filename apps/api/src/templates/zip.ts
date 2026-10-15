@@ -4,7 +4,8 @@ import { crc32, deflateRawSync, inflateRawSync } from 'node:zlib';
 // dependency). The reader takes only what Word writes: one disk, stored or deflated entries, no encryption, no zip64.
 // Uploads come from outside, so it guards against zip bombs: the file's size, the number of entries and the size the
 // entries expand to are capped, and an entry is never inflated past the size its header declares. Entries are inflated
-// only when read, so checking a template inflates just its text parts.
+// only when read, so checking a template inflates just its text parts. The writer can also copy an entry from another
+// zip as it is stored, still compressed: filling a template in rewrites a few XML parts and copies the rest unchanged.
 
 export interface ZipLimits {
   /** The zip file itself. */
@@ -52,6 +53,20 @@ export interface ZipArchive {
   has(name: string): boolean;
   /** The entry's content, inflated and checked against its CRC; null when there is no such entry. */
   read(name: string): Buffer | null;
+  /** The entry as stored (not inflated, not checked), to copy into another zip unchanged; null when there is none. */
+  raw(name: string): ZipRawEntry | null;
+}
+
+/** An entry's bytes as the zip stores them, with what a zip needs to say about them. */
+export interface ZipRawEntry {
+  /** 0 stored, 8 deflated. */
+  method: number;
+  /** Of the content. */
+  crc: number;
+  /** The content's size; `data.length` is the stored size. */
+  size: number;
+  /** As stored: deflated or not, according to `method`. */
+  data: Buffer;
 }
 
 const EOCD = 0x06054b50;
@@ -125,6 +140,10 @@ export function readZip(data: Buffer, limits: ZipLimits = ZIP_LIMITS): ZipArchiv
       const entry = byName.get(name);
       return entry ? readEntry(data, entry) : null;
     },
+    raw: (name) => {
+      const entry = byName.get(name);
+      return entry ? { method: entry.method, crc: entry.crc, size: entry.size, data: storedBytes(data, entry) } : null;
+    },
   };
 }
 
@@ -137,13 +156,19 @@ function findEndOfCentralDirectory(data: Buffer): number {
   return -1;
 }
 
-function readEntry(data: Buffer, entry: ZipEntry): Buffer {
+/** The entry's bytes as stored, after its local header. */
+function storedBytes(data: Buffer, entry: ZipEntry): Buffer {
   const { name, offset } = entry;
   if (offset + 30 > data.length || data.readUInt32LE(offset) !== LOCAL) throw new ZipError('damaged', `${name}: local header`);
   const start = offset + 30 + data.readUInt16LE(offset + 26) + data.readUInt16LE(offset + 28);
   const end = start + entry.compressedSize;
   if (end > data.length) throw new ZipError('damaged', `${name}: data out of range`);
-  const raw = data.subarray(start, end);
+  return data.subarray(start, end);
+}
+
+function readEntry(data: Buffer, entry: ZipEntry): Buffer {
+  const { name } = entry;
+  const raw = storedBytes(data, entry);
 
   let content: Buffer;
   if (entry.method === STORED) {
@@ -169,20 +194,32 @@ export interface ZipFile {
   store?: boolean;
 }
 
+/** An entry copied from another zip as it is stored (ZipArchive.raw), so its bytes don't change. */
+export interface ZipRawFile {
+  name: string;
+  raw: ZipRawEntry;
+}
+
 /**
  * A zip of these files, in this order (names in UTF-8; strings as UTF-8). Every entry is dated 1 January 1980, so the
- * same files always give the same bytes. For the tests' fixtures now, and the filled-in documents later.
+ * same files always give the same bytes. For the tests' fixtures, and the filled-in documents.
  */
-export function writeZip(files: readonly ZipFile[]): Buffer {
+export function writeZip(files: readonly (ZipFile | ZipRawFile)[]): Buffer {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;
   for (const file of files) {
     const name = Buffer.from(file.name, 'utf8');
-    const content = typeof file.data === 'string' ? Buffer.from(file.data, 'utf8') : file.data;
-    const method = file.store ? STORED : DEFLATED;
-    const body = file.store ? content : deflateRawSync(content);
-    const crc = crc32(content);
+    let method: number, body: Buffer, crc: number, size: number;
+    if ('raw' in file) {
+      ({ method, data: body, crc, size } = file.raw);
+    } else {
+      const content = typeof file.data === 'string' ? Buffer.from(file.data, 'utf8') : file.data;
+      method = file.store ? STORED : DEFLATED;
+      body = file.store ? content : deflateRawSync(content);
+      crc = crc32(content);
+      size = content.length;
+    }
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(LOCAL, 0);
@@ -193,7 +230,7 @@ export function writeZip(files: readonly ZipFile[]): Buffer {
     local.writeUInt16LE(0x21, 12); // date 1980-01-01
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(body.length, 18);
-    local.writeUInt32LE(content.length, 22);
+    local.writeUInt32LE(size, 22);
     local.writeUInt16LE(name.length, 26);
     local.writeUInt16LE(0, 28);
     locals.push(local, name, body);
@@ -208,7 +245,7 @@ export function writeZip(files: readonly ZipFile[]): Buffer {
     central.writeUInt16LE(0x21, 14);
     central.writeUInt32LE(crc, 16);
     central.writeUInt32LE(body.length, 20);
-    central.writeUInt32LE(content.length, 24);
+    central.writeUInt32LE(size, 24);
     central.writeUInt16LE(name.length, 28);
     central.writeUInt32LE(offset, 42);
     centrals.push(central, name);

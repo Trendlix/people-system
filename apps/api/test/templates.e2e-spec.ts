@@ -80,7 +80,8 @@ describe('Templates (e2e)', () => {
       versionCount: 0,
     });
     const copy = list.find((s) => s.key === 'contract_full_time_insurance')!;
-    expect([copy.copyOf, copy.overrides]).toEqual(['contract_full_time', { gross_salary: 'insured_salary', gross_salary_words: 'insured_salary_words' }]);
+    // its own file since 15 October 2026 (the owner's file holds both copies, worded differently); its salary tags read the insured salary
+    expect([copy.copyOf, copy.overrides]).toEqual([null, { gross_salary: 'insured_salary', gross_salary_words: 'insured_salary_words' }]);
   });
 
   it('HR uploads a draft: the tags are read, and it is version 1', async () => {
@@ -216,19 +217,18 @@ describe('Templates (e2e)', () => {
     expect(rows.at(-1)!.status).toBe('published'); // the newer one, whichever came first
   });
 
-  it('the insurance copy is printed from the full-time contract’s file: no upload, and it stands where its source stands', async () => {
-    const res = await upload('contract_full_time_insurance', realTemplate('Contract'), 'copy.docx').expect(400);
-    expect(res.body.message).toBe("This copy is printed from Contract · Full-time (official copy)'s file. Upload there.");
+  it('the insurance copy has its own file, uploaded and published apart from the official copy', async () => {
+    const before = (await slots()).find((s) => s.key === 'contract_full_time')!;
+    const res = await upload('contract_full_time_insurance', realTemplate('Contract'), 'نسخة التأمينات.docx').expect(201);
+    expect(res.body).toMatchObject({ version: 1, status: 'draft', unknownTags: [], broken: [] });
+    await publish(res.body.id).expect(200);
 
     const list = await slots();
-    const source = list.find((s) => s.key === 'contract_full_time')!;
     const copy = list.find((s) => s.key === 'contract_full_time_insurance')!;
-    expect(copy).toMatchObject({ status: 'published', published: source.published, latestDraft: null, versionCount: 0 });
-
-    // a new draft of the source: the copy still stands on the published file
-    await upload('contract_full_time', realTemplate('Contract'), 'عقد العمل.docx').expect(201);
-    const detail = await api().get('/api/templates/contract_full_time_insurance').set('Cookie', hr).expect(200);
-    expect(detail.body).toMatchObject({ key: 'contract_full_time_insurance', status: 'published', published: source.published, latestDraft: null, versionCount: 0, versions: [] });
+    expect(copy).toMatchObject({ copyOf: null, status: 'published', versionCount: 1 });
+    expect(copy.published!.id).toBe(res.body.id);
+    // the official copy is untouched
+    expect(list.find((s) => s.key === 'contract_full_time')!.published).toEqual(before.published);
   });
 
   it('downloads the file as uploaded, with its Arabic name', async () => {
@@ -243,6 +243,7 @@ describe('Templates (e2e)', () => {
   });
 
   it('only a Super Admin deletes, and only a draft', async () => {
+    await upload('contract_full_time', realTemplate('Contract'), 'عقد العمل.docx').expect(201); // a new draft, version 3
     const { published, latestDraft } = await slotOf('contract_full_time');
     expect((await api().delete(`/api/templates/versions/${latestDraft!.id}`).set('Cookie', hr).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN);
     await api().delete(`/api/templates/versions/${latestDraft!.id}`).set('Cookie', admin).expect(403);

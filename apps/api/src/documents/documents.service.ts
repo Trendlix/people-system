@@ -1,0 +1,513 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { LABELS, type EmploymentType, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
+import { AuditService } from '../audit/audit.service.js';
+import { assertDeletes } from '../auth/roles.js';
+import type { SessionUser } from '../auth/session-user.js';
+import { toDateOnly, todayInCairo } from '../common/date-only.js';
+import { seesBank, seesIdentity, seesSalary } from '../employees/access.js';
+import type { Prisma } from '../generated/prisma/client.js';
+import { detectPaperworkType, extensionOf, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from '../paperwork/paperwork-file.js';
+import { PrismaService } from '../prisma/prisma.service.js';
+import { DOCX_MIME } from '../templates/docx-tags.js';
+import { templateFileName } from '../templates/template-file.js';
+import type { CheckDocumentDto, GenerateDocumentDto } from './documents.dto.js';
+import { fillTemplate } from './engine/index.js';
+import { documentStem } from './format.js';
+import { ENDING_SLOTS, isContractSlot, offered, offeredSlots, SECTION_KEYS, sectionOf, SLOTS, TYPED_TAGS, type SectionKey, type Situation } from './offer.js';
+import { missingTags, resolveValues, restrictedTags, rightFor, sourceTag, type MissingTag, type RestrictedRight, type ValueSources } from './values.js';
+import { DOCUMENT, documentView, type DocumentRow, type DocumentStatus } from './views.js';
+
+const ENTITY = 'generated_document';
+
+/** The endings that count: a rejected or withdrawn one is as if there were none. */
+const LIVE_ENDINGS = ['pending_ceo', 'approved', 'completed'];
+
+/** Newest first, the current employment (no end date) before all ended ones (as the profile orders them). */
+const NEWEST_FIRST = [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate: 'desc' }] satisfies Prisma.EmploymentOrderByWithRelationInput[];
+
+/** The employment documents are generated under, with what their values and the tab's items need. */
+const EMPLOYMENT = {
+  id: true,
+  employmentType: true,
+  joinDate: true,
+  endDate: true,
+  jobTitle: { select: { titleEn: true, titleAr: true } },
+  department: { select: { nameEn: true, nameAr: true } },
+  grade: { select: { code: true } },
+  contracts: { orderBy: { version: 'desc' } },
+  endings: {
+    where: { status: { in: LIVE_ENDINGS } },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: { id: true, initiator: true, noticeGivenOn: true, lastWorkingDay: true, reason: true },
+  },
+} satisfies Prisma.EmploymentSelect;
+
+type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
+type ContractRow = EmploymentRow['contracts'][number];
+
+/** The published version a document is filled in from. */
+const PUBLISHED = { id: true, version: true, language: true, tags: true } satisfies Prisma.TemplateVersionSelect;
+
+/** Whose versions a slot stands on: its own, or its source's for a copy (as the template library). */
+const fileSlot = (slot: TemplateSlot) => slot.copyOf ?? slot.key;
+
+/** "full-time", "part-time" …: an employment type inside a sentence. */
+const typeText = (t: EmploymentType) => LABELS.employmentType[t].toLowerCase();
+
+/** What each restricted right is called in a message. */
+const RIGHT_TEXT: Record<RestrictedRight, string> = { identity: 'the national ID', salary: 'salaries', bank: 'bank account details' };
+
+/** A document's step in a sentence: "is already marked printed" … */
+const STEP_DONE: Record<DocumentStatus, string> = {
+  generated: 'is only generated',
+  printed: 'is already marked printed',
+  signed: 'already has its signed copy uploaded',
+  verified: 'is already verified',
+};
+
+/** Everything a document of one slot is generated from. */
+interface Context {
+  slot: TemplateSlot;
+  employee: { id: string; employeeCode: string; fullNameEn: string };
+  employment: EmploymentRow;
+  /** A contract slot's contract version, or the contract whose terms another document prints (null: none yet). */
+  contract: ContractRow | null;
+  ending: EmploymentRow['endings'][number] | null;
+  sources: Omit<ValueSources, 'language' | 'documentDate' | 'inputs'>;
+}
+
+/** The employment's contract whose terms a document other than a contract prints: the signed one, else the newest draft, else the newest. */
+function termsContract(contracts: readonly ContractRow[]): ContractRow | null {
+  const live = contracts.filter((c) => c.status !== 'superseded');
+  return live.find((c) => c.status === 'active') ?? live.find((c) => c.status === 'draft') ?? live[0] ?? null;
+}
+
+function situation(e: EmploymentRow): Situation {
+  return { employmentType: e.employmentType, ending: e.endings[0] ?? null, ended: e.endDate !== null };
+}
+
+/** Why a slot isn't offered for the employment, in words HR act on. */
+function notOffered(slot: TemplateSlot, s: Situation, name: string): string {
+  if (!sectionOf(slot.key)) {
+    return slot.folder === 'payslips' ? 'Payslips come from payroll, which isn’t available yet.' : `${slot.name} isn’t generated from the Contracts tab.`;
+  }
+  if (!slot.appliesTo.includes(s.employmentType)) {
+    const type = typeText(s.employmentType);
+    return `${slot.name} is for ${slot.appliesTo.map(typeText).join(', ')} employments; ${name}’s is ${type}. Choose the document for a ${type} employment.`;
+  }
+  // otherwise its moment hasn't come: the documents of an ending
+  if (slot.key === 'insurance_form_6') return 'Form 6 is generated once the employment is ending or has ended. Record the ending on the Employment tab first.';
+  if (s.ending) return 'The resignation request is only for an ending the employee started, such as a resignation.';
+  return `${slot.name} is generated once an ending of the employment is recorded. Record it on the Employment tab first.`;
+}
+
+/** The 409 for a step taken in the wrong order. */
+function wrongStep(status: string, wanted: string): ConflictException {
+  return new ConflictException(`This document ${STEP_DONE[status as DocumentStatus] ?? `is ${status}`}: ${wanted}`);
+}
+
+/** An uploaded scan, checked by its content as paperwork is. */
+function checkedScan(file: Express.Multer.File | undefined): { data: Buffer; type: PaperworkType } {
+  if (!file?.buffer?.length) throw new BadRequestException('Choose the scan of the signed copy: a photo or a PDF.');
+  if (file.size > PAPERWORK_MAX_BYTES) throw new BadRequestException(`The file must be ${PAPERWORK_MAX_MB} MB or smaller.`);
+  const type = detectPaperworkType(file.buffer);
+  if (!type) throw new BadRequestException('The scan must be a JPEG, PNG or WebP image, or a PDF.');
+  return { data: file.buffer, type };
+}
+
+// Documents generated from the published templates: the profile's Contracts tab (spec §8.3–8.4; owner's request, 15
+// October 2026). The tab offers the documents that apply to the employment type and its situation, each with its
+// generated copies; HR generates one once every tag its template prints has a value, then marks it printed, uploads
+// the signed scan and verifies it. HR and the CEO view the tab and download the files; only HR generates and moves a
+// document on; only a Super Admin deletes one. A document that prints restricted data (national ID, salary, bank
+// account) needs the right to see it, and every view of it is written to the audit log.
+@Injectable()
+export class DocumentsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
+
+  /** The Contracts tab: the documents offered for the current employment (else the latest), in sections. */
+  async tab(employeeId: string) {
+    await this.employee(employeeId);
+    const employment = await this.employmentOf(employeeId);
+    if (!employment) return { sections: SECTION_KEYS.map((key) => ({ key, items: [] })) };
+
+    const s = situation(employment);
+    const slots = offeredSlots(s);
+    const keys = SECTION_KEYS.flatMap((k) => slots[k]);
+    const [versions, rows] = await Promise.all([
+      this.prisma.templateVersion.findMany({
+        where: { slotKey: { in: keys.map((k) => fileSlot(SLOTS.get(k)!)) }, status: { in: ['draft', 'published'] } },
+        select: { slotKey: true, version: true, status: true, tags: true },
+      }),
+      this.prisma.generatedDocument.findMany({
+        where: { employeeId, employmentId: employment.id },
+        select: DOCUMENT,
+        orderBy: [{ generatedAt: 'desc' }, { id: 'desc' }],
+      }),
+    ]);
+
+    const template = (key: string) => {
+      const own = versions.filter((v) => v.slotKey === fileSlot(SLOTS.get(key)!));
+      const published = own.find((v) => v.status === 'published') ?? null;
+      return {
+        templateStatus: published ? 'published' : own.length ? 'draft' : 'missing',
+        templateVersion: published?.version ?? null,
+        needsInputs: published ? TYPED_TAGS.filter((t) => published.tags.includes(t)) : [],
+      } as const;
+    };
+    const item = (key: string, docs: DocumentRow[], contract?: ContractRow) => ({
+      slotKey: key,
+      name: SLOTS.get(key)!.name,
+      ...(contract && { contractId: contract.id, contractNumber: contract.number, contractVersion: contract.version }),
+      ...template(key),
+      documents: docs.filter((d) => d.slotKey === key).map(documentView),
+    });
+
+    // each contract version not replaced, newest first; a replaced one only while it has documents, which stay on record
+    const contracts = employment.contracts.filter((c) => c.status !== 'superseded' || rows.some((d) => d.contractId === c.id));
+    const ending = employment.endings[0] ?? null;
+    const items: Record<SectionKey, ReturnType<typeof item>[]> = {
+      contract: contracts.flatMap((c) => slots.contract.map((key) => item(key, rows.filter((d) => d.contractId === c.id), c))),
+      hiring: slots.hiring.map((key) => item(key, rows)),
+      insurance: slots.insurance.map((key) => item(key, rows)),
+      letters: slots.letters.map((key) => item(key, rows)),
+      // the documents of the ending in hand: those of a withdrawn or rejected one no longer apply
+      leaving: slots.leaving.map((key) => item(key, rows.filter((d) => d.endingId === ending?.id))),
+    };
+    return { sections: SECTION_KEYS.map((key) => ({ key, items: items[key] })) };
+  }
+
+  /** The tags the published template prints that have no value for this employee, and whether it prints restricted data. */
+  async check(employeeId: string, dto: CheckDocumentDto) {
+    const ctx = await this.context(employeeId, dto.slotKey, dto.contractId);
+    const template = await this.published(ctx.slot);
+    if (!template) throw new NotFoundException(`There is no published template for ${ctx.slot.name}. Upload it in Templates first.`);
+    const { missing } = this.fill(ctx, template, todayInCairo(), {});
+    return { missing, usesRestricted: restrictedTags(template.tags, ctx.slot.overrides).length > 0 };
+  }
+
+  /**
+   * Generates a document: the published template filled in with the employee's values. Refused while any tag it
+   * prints has no value (422, with what is missing and where to fill it in).
+   */
+  async generate(employeeId: string, dto: GenerateDocumentDto, user: SessionUser) {
+    const ctx = await this.context(employeeId, dto.slotKey, dto.contractId);
+    const { slot } = ctx;
+    const template = await this.published(slot, true);
+    if (!template) throw new ConflictException(`There is no published template for ${slot.name}. Upload it in Templates first.`);
+
+    // restricted data only for those who may see it (generating is HR's, who may; checked all the same)
+    const restricted = restrictedTags(template.tags, slot.overrides);
+    const rights = new Set(restricted.flatMap((tag) => [rightFor(tag), rightFor(sourceTag(tag, slot.overrides))]).filter((r): r is RestrictedRight => r !== null));
+    const may: Record<RestrictedRight, boolean> = { identity: seesIdentity(user), salary: seesSalary(user), bank: seesBank(user) };
+    const denied = [...rights].filter((r) => !may[r]);
+    if (denied.length) {
+      throw new ForbiddenException(`${slot.name} prints ${denied.map((r) => RIGHT_TEXT[r]).join(' and ')}, which you can’t see, so you can’t generate it.`);
+    }
+
+    // what is typed when generating: asked for when the template prints it
+    const inputs: Record<string, string> = {};
+    for (const tag of TYPED_TAGS) {
+      const value = dto.inputs?.[tag as keyof typeof dto.inputs];
+      if (value) inputs[tag] = value;
+    }
+    const typed = TYPED_TAGS.filter((t) => template.tags.includes(t));
+    const notTyped = typed.filter((t) => !inputs[t]);
+    if (notTyped.length) {
+      const say: Record<string, string> = { letter_to: 'who the letter is addressed to', letter_purpose: 'the purpose of the letter' };
+      throw new BadRequestException(`Type ${notTyped.map((t) => say[t]).join(' and ')}.`);
+    }
+
+    const documentDate = dto.documentDate ?? todayInCairo();
+    const { values, missing } = this.fill(ctx, template, documentDate, inputs);
+    if (missing.length) throw new UnprocessableEntityException({ statusCode: 422, message: 'Fill in the missing details first.', missing });
+
+    const data = fillTemplate(Buffer.from(template.data), values);
+    const fileName = templateFileName(`${documentStem(slot.name, ctx.employee.employeeCode, ctx.employee.fullNameEn)}.docx`);
+    const hasRestricted = restricted.length > 0;
+    const row = await this.prisma.generatedDocument.create({
+      data: {
+        employeeId,
+        employmentId: ctx.employment.id,
+        contractId: isContractSlot(slot.key) ? ctx.contract!.id : null,
+        endingId: ENDING_SLOTS.includes(slot.key) ? (ctx.ending?.id ?? null) : null,
+        slotKey: slot.key,
+        templateVersionId: template.id,
+        inputs: Object.fromEntries(typed.map((t) => [t, inputs[t]])),
+        documentDate: toDateOnly(documentDate),
+        fileName,
+        data: new Uint8Array(data),
+        sizeBytes: data.length,
+        hasRestricted,
+        status: 'generated',
+        generatedById: user.id,
+        note: dto.note ?? null,
+      },
+      select: DOCUMENT,
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'generate',
+      entityType: ENTITY,
+      entityId: row.id,
+      diff: {
+        employeeId,
+        slot: slot.key,
+        templateVersion: template.version,
+        contract: ctx.contract?.number ?? null,
+        documentDate,
+        fileName,
+        sizeBytes: data.length,
+        ...(typed.length && { inputs: row.inputs }),
+      },
+    });
+    if (hasRestricted) await this.viewed(row.id, employeeId, slot.key, restricted, 'generated', user);
+    return documentView(row);
+  }
+
+  /** The filled .docx. A view of one that prints restricted data is written to the audit log. */
+  async file(id: string, user: SessionUser): Promise<{ data: Buffer; type: string; fileName: string }> {
+    const d = await this.prisma.generatedDocument.findUnique({
+      where: { id },
+      select: { employeeId: true, slotKey: true, fileName: true, data: true, hasRestricted: true, templateVersion: { select: { tags: true } } },
+    });
+    if (!d) throw new NotFoundException('Document not found.');
+    if (d.hasRestricted) await this.viewed(id, d.employeeId, d.slotKey, this.restrictedOf(d.slotKey, d.templateVersion.tags), 'file', user);
+    return { data: Buffer.from(d.data), type: DOCX_MIME, fileName: d.fileName };
+  }
+
+  /** Generated → printed. */
+  async printed(id: string, user: SessionUser) {
+    const { count } = await this.prisma.generatedDocument.updateMany({
+      where: { id, status: 'generated' },
+      data: { status: 'printed', printedById: user.id, printedAt: new Date() },
+    });
+    const row = await this.row(id);
+    if (!count) throw wrongStep(row.status, 'only a generated document is marked printed.');
+    await this.stepped(row, 'print', 'generated', user);
+    return documentView(row);
+  }
+
+  /**
+   * The scan of the signed copy (a photo or a PDF, checked as paperwork is): generated or printed → signed. Until the
+   * document is verified, a scan uploaded again replaces the one before (a page missed, a blurred photo).
+   */
+  async signed(id: string, file: Express.Multer.File | undefined, user: SessionUser) {
+    const before = await this.row(id);
+    if (before.status === 'verified') throw wrongStep(before.status, 'its signed copy can’t be replaced.');
+    const { data, type } = checkedScan(file);
+    const stem = before.fileName.replace(/\.docx$/i, '');
+    const signedFileName = safeFileName(`${stem} (signed).${extensionOf(type)}`, type);
+    const { count } = await this.prisma.generatedDocument.updateMany({
+      where: { id, status: { in: ['generated', 'printed', 'signed'] } },
+      data: {
+        status: 'signed',
+        signedFileName,
+        signedMime: type,
+        signedSize: data.length,
+        signedData: new Uint8Array(data),
+        signedUploadedById: user.id,
+        signedUploadedAt: new Date(),
+      },
+    });
+    const row = await this.row(id);
+    if (!count) throw wrongStep(row.status, 'its signed copy can’t be replaced.'); // verified since it was read
+    await this.audit.record({
+      userId: user.id,
+      action: before.status === 'signed' ? 'update' : 'sign',
+      entityType: ENTITY,
+      entityId: id,
+      diff: {
+        employeeId: row.employeeId,
+        slot: row.slotKey,
+        ...(before.status !== 'signed' && { status: { from: before.status, to: 'signed' } }),
+        ...(before.status === 'signed' && { replaced: before.signedFileName }),
+        signedFileName,
+        signedSize: data.length,
+      },
+    });
+    return documentView(row);
+  }
+
+  /** The scan of the signed copy. A view of one that prints restricted data is written to the audit log. */
+  async signedFile(id: string, user: SessionUser): Promise<{ data: Buffer; type: string; fileName: string }> {
+    const d = await this.prisma.generatedDocument.findUnique({
+      where: { id },
+      select: {
+        employeeId: true,
+        slotKey: true,
+        hasRestricted: true,
+        signedData: true,
+        signedMime: true,
+        signedFileName: true,
+        templateVersion: { select: { tags: true } },
+      },
+    });
+    if (!d) throw new NotFoundException('Document not found.');
+    if (!d.signedData || !d.signedMime || !d.signedFileName) throw new NotFoundException('The signed copy of this document hasn’t been uploaded yet.');
+    if (d.hasRestricted) await this.viewed(id, d.employeeId, d.slotKey, this.restrictedOf(d.slotKey, d.templateVersion.tags), 'signed copy', user);
+    return { data: Buffer.from(d.signedData), type: d.signedMime, fileName: d.signedFileName };
+  }
+
+  /** Signed → verified: HR checked the signed scan. */
+  async verify(id: string, user: SessionUser) {
+    const { count } = await this.prisma.generatedDocument.updateMany({
+      where: { id, status: 'signed' },
+      data: { status: 'verified', verifiedById: user.id, verifiedAt: new Date() },
+    });
+    const row = await this.row(id);
+    if (!count) {
+      throw row.status === 'verified' ? wrongStep(row.status, 'there is nothing more to do.') : wrongStep(row.status, 'upload the signed copy before verifying it.');
+    }
+    await this.stepped(row, 'verify', 'signed', user);
+    return documentView(row);
+  }
+
+  /** A Super Admin deletes a document, with its file and signed scan. */
+  async remove(id: string, user: SessionUser): Promise<void> {
+    assertDeletes(user);
+    const row = await this.row(id);
+    await this.prisma.generatedDocument.delete({ where: { id } });
+    await this.audit.record({
+      userId: user.id,
+      action: 'delete',
+      entityType: ENTITY,
+      entityId: id,
+      diff: { employeeId: row.employeeId, slot: row.slotKey, status: row.status, fileName: row.fileName, signedFileName: row.signedFileName },
+    });
+  }
+
+  // ---------- helpers ----------
+
+  private async employee(id: string) {
+    const e = await this.prisma.employee.findUnique({ where: { id }, select: { id: true, employeeCode: true, fullNameEn: true } });
+    if (!e) throw new NotFoundException('Employee not found.');
+    return e;
+  }
+
+  /** The current employment, else the latest; null for someone never employed. */
+  private employmentOf(employeeId: string): Promise<EmploymentRow | null> {
+    return this.prisma.employment.findFirst({ where: { employeeId }, select: EMPLOYMENT, orderBy: NEWEST_FIRST });
+  }
+
+  /** Everything a document of this slot is generated from, refused when the tab doesn't offer it. */
+  private async context(employeeId: string, slotKey: string, contractId: string | undefined): Promise<Context> {
+    const employee = await this.employee(employeeId);
+    const slot = SLOTS.get(slotKey);
+    if (!slot) throw new BadRequestException('Choose a document the Contracts tab offers.');
+    const employment = await this.employmentOf(employeeId);
+    if (!employment) throw new BadRequestException(`${employee.fullNameEn} has no employment yet. Add it on the Employment tab before generating documents.`);
+    const s = situation(employment);
+    if (!offered(slot.key, s)) throw new BadRequestException(notOffered(slot, s, employee.fullNameEn));
+
+    let contract: ContractRow | null;
+    if (contractId) {
+      contract = employment.contracts.find((c) => c.id === contractId) ?? null;
+      if (!contract) {
+        const elsewhere = await this.prisma.contract.findFirst({ where: { id: contractId, employment: { employeeId } }, select: { number: true } });
+        if (!elsewhere) throw new NotFoundException('Contract not found.');
+        throw new BadRequestException(`${elsewhere.number} belongs to an earlier employment: documents are generated for the current one.`);
+      }
+      if (contract.status === 'superseded') {
+        const newer = employment.contracts.find((c) => c.version > contract!.version && c.status !== 'superseded');
+        throw new ConflictException(`${contract.number} was replaced${newer ? ` by ${newer.number}` : ''}. Generate the documents of the newer version.`);
+      }
+    } else if (isContractSlot(slot.key)) {
+      throw new BadRequestException(`Choose the contract version to generate ${slot.name} for.`);
+    } else {
+      contract = termsContract(employment.contracts);
+    }
+
+    const [person, company] = await Promise.all([
+      this.prisma.employee.findUniqueOrThrow({
+        where: { id: employeeId },
+        select: {
+          employeeCode: true,
+          fullNameEn: true,
+          fullNameAr: true,
+          displayName: true,
+          nationality: true,
+          dateOfBirth: true,
+          addressAr: true,
+          city: true,
+          governorate: true,
+          mobile: true,
+          workEmail: true,
+          qualificationAr: true,
+          insuranceNo: true,
+          identity: { select: { nationalId: true, printedNo: true, issueDate: true } },
+          bank: { select: { bankName: true, accountNo: true, iban: true, holderName: true } },
+        },
+      }),
+      this.prisma.company.findUnique({ where: { id: 1 } }),
+    ]);
+    const { identity, bank, ...own } = person;
+    const ending = employment.endings[0] ?? null;
+    return {
+      slot,
+      employee,
+      employment,
+      contract,
+      ending,
+      sources: { employee: own, identity, bank, employment, contract, ending, company },
+    };
+  }
+
+  /** The slot's published version: its tags and language, and its file when it is to be filled in. */
+  private published(slot: TemplateSlot): Promise<{ id: string; version: number; language: string; tags: string[] } | null>;
+  private published(slot: TemplateSlot, withFile: true): Promise<{ id: string; version: number; language: string; tags: string[]; data: Uint8Array } | null>;
+  private published(slot: TemplateSlot, withFile = false) {
+    return this.prisma.templateVersion.findFirst({ where: { slotKey: fileSlot(slot), status: 'published' }, select: { ...PUBLISHED, data: withFile } });
+  }
+
+  /** The values of the tags the template prints, and those of them still empty. */
+  private fill(ctx: Context, template: { language: string; tags: string[] }, documentDate: string, inputs: Record<string, string>): { values: Record<string, string>; missing: MissingTag[] } {
+    const sources: ValueSources = { ...ctx.sources, language: template.language as TemplateLanguage, documentDate, inputs };
+    const values = resolveValues(sources, template.tags, ctx.slot.overrides);
+    return { values, missing: missingTags(values, template.tags, ctx.slot.overrides, ctx.contract !== null) };
+  }
+
+  /** The restricted tags a document of this slot prints, from its template version's tags. */
+  private restrictedOf(slotKey: string, tags: readonly string[]): string[] {
+    return restrictedTags(tags, SLOTS.get(slotKey)?.overrides);
+  }
+
+  private async row(id: string): Promise<DocumentRow> {
+    const d = await this.prisma.generatedDocument.findUnique({ where: { id }, select: DOCUMENT });
+    if (!d) throw new NotFoundException('Document not found.');
+    return d;
+  }
+
+  /** A step of the lifecycle (print, verify), for the audit log. */
+  private async stepped(row: DocumentRow, action: 'print' | 'verify', from: DocumentStatus, user: SessionUser) {
+    await this.audit.record({
+      userId: user.id,
+      action,
+      entityType: ENTITY,
+      entityId: row.id,
+      diff: { employeeId: row.employeeId, slot: row.slotKey, status: { from, to: row.status } },
+    });
+  }
+
+  /** Restricted data seen: generating a document that prints it, or downloading its file or its signed copy. */
+  private async viewed(id: string, employeeId: string, slotKey: string, tags: string[], seen: 'generated' | 'file' | 'signed copy', user: SessionUser) {
+    await this.audit.record({
+      userId: user.id,
+      action: 'view_restricted',
+      entityType: ENTITY,
+      entityId: id,
+      diff: { employeeId, slot: slotKey, fields: tags, seen },
+    });
+  }
+}

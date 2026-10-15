@@ -63,17 +63,17 @@ export interface TemplateSlot {
   appliesTo: readonly EmploymentType[];
   triggers: readonly TemplateTrigger[];
   signers: TemplateSigners;
-  /**
-   * A second printed copy of another slot's file (the full-time contract's social insurance copy): it has no file of
-   * its own, and some tags read other values (`overrides`: tag → what it reads instead).
-   */
+  /** A second printed copy of another slot's file, with no file of its own (no slot uses this today). */
   copyOf?: string;
+  /** Tags that read another value on this document (tag → the tag whose value it takes), e.g. the insured salary. */
   overrides?: Readonly<Record<string, string>>;
 }
 
 /** The template library: one slot per document. */
 export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   { key: 'contract_full_time', name: 'Contract · Full-time (official copy)', folder: 'contracts', language: 'ar', appliesTo: ['full_time'], triggers: ['on_hire', 'renewal'], signers: 'both' },
+  // its own file: the owner's Word file holds both copies one after the other, worded differently (the official copy
+  // has the 80/20 split and two weeks' probation notice, this one neither and one week), so HR uploads copy 2 here
   {
     key: 'contract_full_time_insurance',
     name: 'Contract · Full-time (social insurance copy)',
@@ -82,7 +82,6 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
     appliesTo: ['full_time'],
     triggers: ['on_hire', 'renewal'],
     signers: 'both',
-    copyOf: 'contract_full_time',
     overrides: { gross_salary: 'insured_salary', gross_salary_words: 'insured_salary_words' },
   },
   { key: 'contract_part_time', name: 'Contract · Part-time', folder: 'contracts', language: null, appliesTo: ['part_time'], triggers: ['on_hire', 'renewal'], signers: 'both' },

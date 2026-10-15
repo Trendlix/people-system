@@ -34,6 +34,30 @@ describe('zip', () => {
     expect(read.read('nothing.xml')).toBeNull();
   });
 
+  it('copies entries from another zip as they are stored, byte for byte', () => {
+    const text = '<w:document>نص</w:document>'.repeat(50);
+    const original = writeZip([
+      { name: 'word/document.xml', data: text },
+      { name: 'word/media/image1.png', data: Buffer.from([137, 80, 78, 71, 0, 255]), store: true },
+      { name: 'word/', data: '', store: true },
+    ]);
+    const zip = readZip(original);
+    expect(zip.raw('nothing.xml')).toBeNull();
+    const deflated = zip.raw('word/document.xml')!;
+    expect(deflated).toMatchObject({ method: 8, size: Buffer.byteLength(text) });
+    expect(deflated.data.length).toBeLessThan(deflated.size);
+
+    // copied as they are, in the same order and with the same dates, the zip comes out the same
+    const copy = writeZip(zip.entries.map((e) => ({ name: e.name, raw: zip.raw(e.name)! })));
+    expect(copy.equals(original)).toBe(true);
+
+    // copied next to an entry written afresh
+    const mixed = readZip(writeZip([{ name: 'word/media/image1.png', raw: zip.raw('word/media/image1.png')! }, { name: 'word/document.xml', data: '<w:document/>' }]));
+    expect(mixed.raw('word/media/image1.png')!.data.equals(zip.raw('word/media/image1.png')!.data)).toBe(true);
+    expect([...mixed.read('word/media/image1.png')!]).toEqual([137, 80, 78, 71, 0, 255]);
+    expect(mixed.read('word/document.xml')!.toString('utf8')).toBe('<w:document/>');
+  });
+
   it('always writes the same bytes for the same files', () => {
     const files = [{ name: 'a.xml', data: '<a/>' }];
     expect(writeZip(files).equals(writeZip(files))).toBe(true);

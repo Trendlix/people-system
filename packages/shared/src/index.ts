@@ -197,3 +197,7 @@ export * from './profile-confirmation.js';
 // ---------- document templates ----------
 
 export * from './templates.js';
+
+// ---------- salary: gross to net ----------
+
+export * from './salary.js';

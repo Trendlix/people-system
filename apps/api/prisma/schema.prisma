@@ -42,6 +42,10 @@ model User {
   changesDecided    ProfileChangeRequest[] @relation("ChangeDecision") // change requests this user approved, rejected or cancelled
   uploadedVersions  TemplateVersion[]      @relation("TemplateUpload") // template versions this user uploaded
   publishedVersions TemplateVersion[]      @relation("TemplatePublication") // template versions this user published
+  documentsMade     GeneratedDocument[]    @relation("DocumentGeneration") // documents this user generated from templates
+  documentsPrinted  GeneratedDocument[]    @relation("DocumentPrinting") // documents this user marked printed
+  documentsSigned   GeneratedDocument[]    @relation("DocumentSignedUpload") // documents whose signed scan this user uploaded
+  documentsVerified GeneratedDocument[]    @relation("DocumentVerification") // documents this user verified
 
   @@map("users")
 }
@@ -249,6 +253,7 @@ model Employee {
   managing          Employment[]           @relation("Manager") // the employments this person is the manager of
   confirmations     ProfileConfirmation[]
   changeRequests    ProfileChangeRequest[]
+  documents         GeneratedDocument[]
 
   @@map("employees")
 }
@@ -259,33 +264,34 @@ model Employee {
 // The person's grade is the employment's own, within the range of grades its job title takes (owner's decision,
 // 15 October 2026; checked by the API).
 model Employment {
-  id               String             @id @default(uuid()) @db.Uuid
-  employeeId       String             @map("employee_id") @db.Uuid
-  employee         Employee           @relation("Employments", fields: [employeeId], references: [id], onDelete: Cascade)
-  employmentType   EmploymentType     @map("employment_type")
-  status           EmployeeStatus     @default(probation) // resigned or terminated once ended
-  departmentId     String?            @map("department_id") @db.Uuid // a team, or a department
-  department       Department?        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  jobTitleId       String?            @map("job_title_id") @db.Uuid
-  jobTitle         JobTitle?          @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
-  gradeId          String?            @map("grade_id") @db.Uuid // the person's own grade, within the job title's range
-  grade            Grade?             @relation(fields: [gradeId], references: [id], onDelete: Restrict)
-  managerId        String?            @map("manager_id") @db.Uuid
-  manager          Employee?          @relation("Manager", fields: [managerId], references: [id], onDelete: Restrict)
-  joinDate         DateTime           @map("join_date") @db.Date
-  probationEnd     DateTime?          @map("probation_end") @db.Date
-  workArrangement  WorkArrangement    @default(office) @map("work_arrangement")
-  officeDays       Int[]              @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
-  shiftId          String?            @map("shift_id") @db.Uuid
-  shift            Shift?             @relation(fields: [shiftId], references: [id], onDelete: Restrict)
-  jdAcknowledgedAt DateTime?          @map("jd_acknowledged_at") @db.Date
-  endDate          DateTime?          @map("end_date") @db.Date // empty while current
-  endReason        String?            @map("end_reason") // packages/shared END_REASONS: resigned, terminated, contract_ended …
-  endNote          String?            @map("end_note")
-  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  id               String              @id @default(uuid()) @db.Uuid
+  employeeId       String              @map("employee_id") @db.Uuid
+  employee         Employee            @relation("Employments", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentType   EmploymentType      @map("employment_type")
+  status           EmployeeStatus      @default(probation) // resigned or terminated once ended
+  departmentId     String?             @map("department_id") @db.Uuid // a team, or a department
+  department       Department?         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  jobTitleId       String?             @map("job_title_id") @db.Uuid
+  jobTitle         JobTitle?           @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  gradeId          String?             @map("grade_id") @db.Uuid // the person's own grade, within the job title's range
+  grade            Grade?              @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  managerId        String?             @map("manager_id") @db.Uuid
+  manager          Employee?           @relation("Manager", fields: [managerId], references: [id], onDelete: Restrict)
+  joinDate         DateTime            @map("join_date") @db.Date
+  probationEnd     DateTime?           @map("probation_end") @db.Date
+  workArrangement  WorkArrangement     @default(office) @map("work_arrangement")
+  officeDays       Int[]               @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
+  shiftId          String?             @map("shift_id") @db.Uuid
+  shift            Shift?              @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  jdAcknowledgedAt DateTime?           @map("jd_acknowledged_at") @db.Date
+  endDate          DateTime?           @map("end_date") @db.Date // empty while current
+  endReason        String?             @map("end_reason") // packages/shared END_REASONS: resigned, terminated, contract_ended …
+  endNote          String?             @map("end_note")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz
   contracts        Contract[]
   endings          EmploymentEnding[]
+  documents        GeneratedDocument[]
 
   @@index([employeeId])
   @@index([departmentId])
@@ -411,35 +417,36 @@ model EndingRule {
 // signed and filed and its note. The job title, grade, department and shift are copied from the employment when it is
 // signed, so the contract keeps what was agreed.
 model Contract {
-  id                  String     @id @default(uuid()) @db.Uuid
-  number              String     @unique // CON-<start year>-<4-digit sequence per year>, e.g. CON-2026-0007
-  employmentId        String     @map("employment_id") @db.Uuid
-  employment          Employment @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  id                  String              @id @default(uuid()) @db.Uuid
+  number              String              @unique // CON-<start year>-<4-digit sequence per year>, e.g. CON-2026-0007
+  employmentId        String              @map("employment_id") @db.Uuid
+  employment          Employment          @relation(fields: [employmentId], references: [id], onDelete: Cascade)
   version             Int // 1, 2 … within the employment
-  form                String     @default("fixed") // CONTRACT_FORMS: fixed, open_ended
-  startDate           DateTime   @map("start_date") @db.Date
-  endDate             DateTime?  @map("end_date") @db.Date // start + duration − 1 day; empty when open-ended
-  durationMonths      Int?       @map("duration_months") // empty when open-ended
-  probationMonths     Int        @default(0) @map("probation_months") // 0–3, and 0 on a renewal (Art. 90)
-  probationEnd        DateTime?  @map("probation_end") @db.Date // start + probation − 1 day; empty without probation
+  form                String              @default("fixed") // CONTRACT_FORMS: fixed, open_ended
+  startDate           DateTime            @map("start_date") @db.Date
+  endDate             DateTime?           @map("end_date") @db.Date // start + duration − 1 day; empty when open-ended
+  durationMonths      Int?                @map("duration_months") // empty when open-ended
+  probationMonths     Int                 @default(0) @map("probation_months") // 0–3, and 0 on a renewal (Art. 90)
+  probationEnd        DateTime?           @map("probation_end") @db.Date // start + probation − 1 day; empty without probation
   // RESTRICTED (HR, Finance, CEO), like bank details
-  grossSalary         Decimal    @map("gross_salary") @db.Decimal(12, 2)
-  basicPercent        Int        @default(80) @map("basic_percent") // the basic salary's share of the gross; the rest is variable
-  netSalary           Decimal?   @map("net_salary") @db.Decimal(12, 2) // the approximate net, typed by HR
-  insuredSalary       Decimal    @map("insured_salary") @db.Decimal(12, 2) // the gross capped at the start year's maximum insurable wage
+  grossSalary         Decimal             @map("gross_salary") @db.Decimal(12, 2)
+  basicPercent        Int                 @default(80) @map("basic_percent") // the basic salary's share of the gross; the rest is variable
+  netSalary           Decimal?            @map("net_salary") @db.Decimal(12, 2) // the approximate net, typed by HR
+  insuredSalary       Decimal             @map("insured_salary") @db.Decimal(12, 2) // the gross capped at the start year's maximum insurable wage
   // copied from the employment when signed
-  jobTitleEn          String?    @map("job_title_en")
-  jobTitleAr          String?    @map("job_title_ar")
-  gradeCode           String?    @map("grade_code")
-  departmentName      String?    @map("department_name") // a team as "Department › Team"
-  shiftCode           String?    @map("shift_code")
-  status              String     @default("draft") // CONTRACT_STATUSES: draft, active (signed), ended, superseded
-  signedOn            DateTime?  @map("signed_on") @db.Date
-  insuranceFiledOn    DateTime?  @map("insurance_filed_on") @db.Date
-  labourOfficeFiledOn DateTime?  @map("labour_office_filed_on") @db.Date
+  jobTitleEn          String?             @map("job_title_en")
+  jobTitleAr          String?             @map("job_title_ar")
+  gradeCode           String?             @map("grade_code")
+  departmentName      String?             @map("department_name") // a team as "Department › Team"
+  shiftCode           String?             @map("shift_code")
+  status              String              @default("draft") // CONTRACT_STATUSES: draft, active (signed), ended, superseded
+  signedOn            DateTime?           @map("signed_on") @db.Date
+  insuranceFiledOn    DateTime?           @map("insurance_filed_on") @db.Date
+  labourOfficeFiledOn DateTime?           @map("labour_office_filed_on") @db.Date
   note                String?
-  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  documents           GeneratedDocument[] // its printed copies (the contract slots), generated from templates
 
   @@unique([employmentId, version])
   @@index([status, endDate])
@@ -450,33 +457,34 @@ model Contract {
 // records it, which counts as HR's approval; the CEO approves or rejects it; HR completes it on or after the last
 // working day, which ends the employment.
 model EmploymentEnding {
-  id              String     @id @default(uuid()) @db.Uuid
-  employmentId    String     @map("employment_id") @db.Uuid
-  employment      Employment @relation(fields: [employmentId], references: [id], onDelete: Cascade)
-  ruleKey         String     @map("rule_key")
-  rule            EndingRule @relation(fields: [ruleKey], references: [key], onDelete: Restrict)
+  id              String              @id @default(uuid()) @db.Uuid
+  employmentId    String              @map("employment_id") @db.Uuid
+  employment      Employment          @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  ruleKey         String              @map("rule_key")
+  rule            EndingRule          @relation(fields: [ruleKey], references: [key], onDelete: Restrict)
   initiator       String? // employee or company; empty for death and disability
-  noticeGivenOn   DateTime   @map("notice_given_on") @db.Date // the day the notice was received, or the event date
-  payInLieu       Boolean    @default(false) @map("pay_in_lieu")
-  lastWorkingDay  DateTime   @map("last_working_day") @db.Date // worked out from the rule's notice
+  noticeGivenOn   DateTime            @map("notice_given_on") @db.Date // the day the notice was received, or the event date
+  payInLieu       Boolean             @default(false) @map("pay_in_lieu")
+  lastWorkingDay  DateTime            @map("last_working_day") @db.Date // worked out from the rule's notice
   // resignation only: certified at the labour office (Decree 187/2025); the company decides within 10 days
-  certifiedOffice String?    @map("certified_office")
-  certifiedSerial String?    @map("certified_serial")
-  certifiedOn     DateTime?  @map("certified_on") @db.Date
-  decisionDueOn   DateTime?  @map("decision_due_on") @db.Date
+  certifiedOffice String?             @map("certified_office")
+  certifiedSerial String?             @map("certified_serial")
+  certifiedOn     DateTime?           @map("certified_on") @db.Date
+  decisionDueOn   DateTime?           @map("decision_due_on") @db.Date
   reason          String?
   note            String?
-  status          String     @default("pending_ceo") // ENDING_STATUSES
-  hrApprovedById  String?    @map("hr_approved_by") @db.Uuid // who recorded it
-  hrApprovedBy    User?      @relation("EndingHrApproval", fields: [hrApprovedById], references: [id], onDelete: SetNull)
-  hrApprovedAt    DateTime?  @map("hr_approved_at") @db.Timestamptz
-  ceoDecidedById  String?    @map("ceo_decided_by") @db.Uuid
-  ceoDecidedBy    User?      @relation("EndingCeoDecision", fields: [ceoDecidedById], references: [id], onDelete: SetNull)
-  ceoDecidedAt    DateTime?  @map("ceo_decided_at") @db.Timestamptz
-  ceoNote         String?    @map("ceo_note")
-  completedAt     DateTime?  @map("completed_at") @db.Timestamptz
-  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  status          String              @default("pending_ceo") // ENDING_STATUSES
+  hrApprovedById  String?             @map("hr_approved_by") @db.Uuid // who recorded it
+  hrApprovedBy    User?               @relation("EndingHrApproval", fields: [hrApprovedById], references: [id], onDelete: SetNull)
+  hrApprovedAt    DateTime?           @map("hr_approved_at") @db.Timestamptz
+  ceoDecidedById  String?             @map("ceo_decided_by") @db.Uuid
+  ceoDecidedBy    User?               @relation("EndingCeoDecision", fields: [ceoDecidedById], references: [id], onDelete: SetNull)
+  ceoDecidedAt    DateTime?           @map("ceo_decided_at") @db.Timestamptz
+  ceoNote         String?             @map("ceo_note")
+  completedAt     DateTime?           @map("completed_at") @db.Timestamptz
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  documents       GeneratedDocument[] // the resignation request, the clearance and Form 6 generated for it
 
   @@index([employmentId])
   @@index([status])
@@ -539,28 +547,83 @@ model ProfileChangeRequest {
 // dictionary doesn't have (unknown_tags) or with broken ones can't be published. At most one version per slot is
 // published (checked by the API, in a transaction).
 model TemplateVersion {
-  id            String    @id @default(uuid()) @db.Uuid
-  slotKey       String    @map("slot_key") // a TEMPLATE_SLOTS key (checked by the API); never a copy's (copyOf)
+  id            String              @id @default(uuid()) @db.Uuid
+  slotKey       String              @map("slot_key") // a TEMPLATE_SLOTS key (checked by the API); never a copy's (copyOf)
   version       Int // 1, 2 … within the slot
-  fileName      String    @map("file_name")
-  mimeType      String    @map("mime_type") // always a Word document (.docx), checked by its content
-  sizeBytes     Int       @map("size_bytes")
+  fileName      String              @map("file_name")
+  mimeType      String              @map("mime_type") // always a Word document (.docx), checked by its content
+  sizeBytes     Int                 @map("size_bytes")
   data          Bytes
   language      String // TEMPLATE_LANGUAGES: ar, en
   tags          String[] // the dictionary's tags found, in order of first appearance
-  unknownTags   String[]  @map("unknown_tags") // well-formed tags the dictionary doesn't have
+  unknownTags   String[]            @map("unknown_tags") // well-formed tags the dictionary doesn't have
   broken        String[] // fragments that look like a tag but aren't one, e.g. "{{ full_name_ar" (at most 20)
-  status        String    @default("draft") // TEMPLATE_VERSION_STATUSES: draft, published, retired
+  status        String              @default("draft") // TEMPLATE_VERSION_STATUSES: draft, published, retired
   note          String?
-  uploadedById  String?   @map("uploaded_by") @db.Uuid
-  uploadedBy    User?     @relation("TemplateUpload", fields: [uploadedById], references: [id], onDelete: SetNull)
-  uploadedAt    DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz
-  publishedById String?   @map("published_by") @db.Uuid
-  publishedBy   User?     @relation("TemplatePublication", fields: [publishedById], references: [id], onDelete: SetNull)
-  publishedAt   DateTime? @map("published_at") @db.Timestamptz
+  uploadedById  String?             @map("uploaded_by") @db.Uuid
+  uploadedBy    User?               @relation("TemplateUpload", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedAt    DateTime            @default(now()) @map("uploaded_at") @db.Timestamptz
+  publishedById String?             @map("published_by") @db.Uuid
+  publishedBy   User?               @relation("TemplatePublication", fields: [publishedById], references: [id], onDelete: SetNull)
+  publishedAt   DateTime?           @map("published_at") @db.Timestamptz
+  documents     GeneratedDocument[] // the documents filled in from this version
 
   @@unique([slotKey, version])
   @@map("template_versions")
+}
+
+// ---------- documents generated from templates ----------
+// The profile's Contracts tab (spec §8.3–8.4; owner's request, 15 October 2026): the documents the company issues from
+// the published templates, each with its lifecycle, generated → printed → signed copy uploaded → verified. Generating
+// fills the published version's {{tags}} with the employee's values and keeps the filled .docx; the version used is
+// kept (it is never deleted once published), so a document always says which version it came from. The signed scan
+// is checked and kept like paperwork. Only a Super Admin deletes one.
+
+// One document generated for an employee: the contract (each copy) of a contract version, a job offer, an NDA, a
+// letter, a certificate, a social insurance form, the resignation request or the clearance.
+model GeneratedDocument {
+  id                 String            @id @default(uuid()) @db.Uuid
+  employeeId         String            @map("employee_id") @db.Uuid
+  employee           Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId       String?           @map("employment_id") @db.Uuid // the employment it was issued under
+  employment         Employment?       @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  contractId         String?           @map("contract_id") @db.Uuid // a contract slot's contract version
+  contract           Contract?         @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  endingId           String?           @map("ending_id") @db.Uuid // the resignation request's, the clearance's and Form 6's ending
+  ending             EmploymentEnding? @relation(fields: [endingId], references: [id], onDelete: Cascade)
+  slotKey            String            @map("slot_key") // a TEMPLATE_SLOTS key (checked by the API)
+  templateVersionId  String            @map("template_version_id") @db.Uuid // the published version it was filled in from
+  templateVersion    TemplateVersion   @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  // what was typed when generating, e.g. { "letter_to": "…", "letter_purpose": "…" }
+  inputs             Json              @default("{}")
+  documentDate       DateTime          @map("document_date") @db.Date // the date printed on it ({{date}}, {{contract_date}})
+  // the filled .docx
+  fileName           String            @map("file_name")
+  data               Bytes
+  sizeBytes          Int               @map("size_bytes")
+  hasRestricted      Boolean           @map("has_restricted") // it prints restricted data (national ID, salary, bank): every view is audited
+  status             String            @default("generated") // generated, printed, signed, verified
+  generatedById      String?           @map("generated_by") @db.Uuid
+  generatedBy        User?             @relation("DocumentGeneration", fields: [generatedById], references: [id], onDelete: SetNull)
+  generatedAt        DateTime          @default(now()) @map("generated_at") @db.Timestamptz
+  printedById        String?           @map("printed_by") @db.Uuid
+  printedBy          User?             @relation("DocumentPrinting", fields: [printedById], references: [id], onDelete: SetNull)
+  printedAt          DateTime?         @map("printed_at") @db.Timestamptz
+  signedUploadedById String?           @map("signed_uploaded_by") @db.Uuid
+  signedUploadedBy   User?             @relation("DocumentSignedUpload", fields: [signedUploadedById], references: [id], onDelete: SetNull)
+  signedUploadedAt   DateTime?         @map("signed_uploaded_at") @db.Timestamptz
+  verifiedById       String?           @map("verified_by") @db.Uuid
+  verifiedBy         User?             @relation("DocumentVerification", fields: [verifiedById], references: [id], onDelete: SetNull)
+  verifiedAt         DateTime?         @map("verified_at") @db.Timestamptz
+  // the signed copy, scanned: a photo or a PDF, checked by its content like paperwork
+  signedFileName     String?           @map("signed_file_name")
+  signedMime         String?           @map("signed_mime")
+  signedSize         Int?              @map("signed_size")
+  signedData         Bytes?            @map("signed_data")
+  note               String?
+
+  @@index([employeeId, slotKey])
+  @@map("generated_documents")
 }
 
 // ---------- audit ----------
