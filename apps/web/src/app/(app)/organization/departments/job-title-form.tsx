@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
+import { RichTextEditor } from '@/components/rich-text-editor';
 import type { Department, FormState, Grade, JobTitle } from '@/lib/types';
 import { gradeLabel } from '../grades/label';
 
@@ -17,6 +18,9 @@ import { gradeLabel } from '../grades/label';
  * A job title has no grade of its own (owner's decision: a junior and a senior account manager are both Account
  * Managers, with different grades). It may limit the grades people with it can have to a range, either end of which
  * can be left open; each employment then has the person's own grade, in that range.
+ *
+ * The job description's purpose, duties and requirements are simple rich text, like an email's (owner's request,
+ * 15 October 2026): bold, italic, underline, bulleted and numbered lists, and indents, sent as HTML.
  */
 export function JobTitleForm({
   action,
@@ -35,7 +39,6 @@ export function JobTitleForm({
 }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
-  const duties = jobTitle?.duties.map((d) => d.duty).join('\n');
   // The range's ends, kept in state so "To" only offers grades from "From" up.
   const [minId, setMinId] = useState(() => valueOf(state, 'minGradeId', jobTitle?.minGradeId));
   const [maxId, setMaxId] = useState(() => valueOf(state, 'maxGradeId', jobTitle?.maxGradeId));
@@ -162,32 +165,15 @@ export function JobTitleForm({
 
       <fieldset className="space-y-5 border-t border-line pt-5">
         <legend className="pr-2 font-semibold">Job Description</legend>
-        <div>
-          <label htmlFor={fid('jdPurpose')} className="label">
-            Purpose of the role
-          </label>
-          <textarea id={fid('jdPurpose')} name="jdPurpose" rows={3} maxLength={2000} defaultValue={valueOf(state, 'jdPurpose', jobTitle?.jdPurpose)} className="input" />
-        </div>
-        <div>
-          <label htmlFor={fid('duties')} className="label">
-            Duties & responsibilities
-          </label>
-          <textarea id={fid('duties')} name="duties" rows={7} defaultValue={valueOf(state, 'duties', duties)} className="input" />
-          <p className="hint">One duty per line. KPIs will be linked to these duties later.</p>
-        </div>
-        <div>
-          <label htmlFor={fid('jdRequirements')} className="label">
-            Requirements
-          </label>
-          <textarea
-            id={fid('jdRequirements')}
-            name="jdRequirements"
-            rows={4}
-            maxLength={4000}
-            defaultValue={valueOf(state, 'jdRequirements', jobTitle?.jdRequirements)}
-            className="input"
-          />
-        </div>
+        <RichTextEditor name="jdPurpose" label="Purpose of the role" rows={3} defaultValue={valueOf(state, 'jdPurpose', jobTitle?.jdPurpose)} />
+        <RichTextEditor
+          name="jdDuties"
+          label="Duties & responsibilities"
+          rows={7}
+          defaultValue={valueOf(state, 'jdDuties', jobTitle?.jdDuties)}
+          hint="Format it as in an email: bold for headings, bullets or numbers for points, indent to nest. KPIs will be linked to these duties later."
+        />
+        <RichTextEditor name="jdRequirements" label="Requirements" rows={4} defaultValue={valueOf(state, 'jdRequirements', jobTitle?.jdRequirements)} />
         {jobTitle && (
           <p className="hint">
             Job description version {jobTitle.jdVersion}. Changing the purpose, duties or requirements creates version {jobTitle.jdVersion + 1}.

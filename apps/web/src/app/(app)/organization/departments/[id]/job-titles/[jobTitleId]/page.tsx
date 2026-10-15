@@ -1,9 +1,10 @@
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { DeleteForm } from '@/components/form';
-import { JdLines } from '@/components/jd-lines';
+import { RichText } from '@/components/rich-text';
 import { apiGet } from '@/lib/api';
 import { departmentName } from '@/lib/departments';
+import { isBlankRichText } from '@/lib/rich-text';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Department, Grade, JobTitle } from '@/lib/types';
 import { deleteJobTitle, updateJobTitle } from '../../../../actions';
@@ -13,6 +14,9 @@ import { AnchorSection } from '../../../anchor-section';
 import { JobTitleForm } from '../../../job-title-form';
 
 const notSet = <span className="text-muted">Not set</span>;
+
+/** A job description field as it was written: bold, lists and indents as chosen, nothing numbered unless it was. */
+const field = (html: string | null) => (html && !isBlankRichText(html) ? <RichText html={html} /> : notSet);
 
 function Part({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -31,16 +35,9 @@ function JobDescription({ jobTitle }: { jobTitle: JobTitle }) {
         <h3 className="font-semibold">Job Description</h3>
         <p className="text-sm text-muted">Version {jobTitle.jdVersion}</p>
       </div>
-      <Part title="Purpose of the Role">{jobTitle.jdPurpose ? <p className="whitespace-pre-line">{jobTitle.jdPurpose}</p> : notSet}</Part>
-      <Part title="Duties & Responsibilities">
-        {/* as HR typed them, points indented under their heading; not numbered */}
-        {jobTitle.duties.length > 0 ? (
-          <JdLines lines={jobTitle.duties.map((d) => d.duty)} />
-        ) : (
-          notSet
-        )}
-      </Part>
-      <Part title="Requirements">{jobTitle.jdRequirements ? <JdLines lines={jobTitle.jdRequirements.split('\n')} /> : notSet}</Part>
+      <Part title="Purpose of the Role">{field(jobTitle.jdPurpose)}</Part>
+      <Part title="Duties & Responsibilities">{field(jobTitle.jdDuties)}</Part>
+      <Part title="Requirements">{field(jobTitle.jdRequirements)}</Part>
     </section>
   );
 }

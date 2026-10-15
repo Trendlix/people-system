@@ -90,8 +90,15 @@ export interface JobTitleSummary {
 }
 
 export interface JobTitle extends Omit<JobTitleSummary, '_count'> {
+  /**
+   * The job description's purpose, duties and requirements: simple rich text (owner's request, 15 October 2026), as
+   * HTML cleaned by the API (p, with a data-indent of 1 to 4, br, strong, em, u, ul, ol, li), or null when not set.
+   * Shown with components/rich-text.tsx, written with components/rich-text-editor.tsx.
+   */
   jdPurpose: string | null;
+  jdDuties: string | null;
   jdRequirements: string | null;
+  /** The duties as plain text rows, read by the API from `jdDuties`: what KPIs will be linked to later. */
   duties: { id: string; position: number; duty: string }[];
 }
 

@@ -74,6 +74,8 @@ export async function reorderDepartments(parentId: string | null, _prev: FormSta
 // `departmentId` is where the job title belongs: a department itself (e.g. Head of Marketing) or one of its teams.
 // `minGradeId` / `maxGradeId`: the grades people with this title can have, lowest and highest; "" leaves that end open
 // ("Any", "No limit").
+// The job description's purpose, duties and requirements are the rich text editors' HTML ("" clears one); the API
+// cleans it, and reads the duties' rows (to link KPIs to later) from the duties' HTML itself.
 const jobTitleBody = (fd: FormData) => ({
   departmentId: text(fd, 'departmentId'),
   titleEn: text(fd, 'titleEn'),
@@ -81,8 +83,8 @@ const jobTitleBody = (fd: FormData) => ({
   minGradeId: text(fd, 'minGradeId'),
   maxGradeId: text(fd, 'maxGradeId'),
   jdPurpose: text(fd, 'jdPurpose'),
+  jdDuties: text(fd, 'jdDuties'),
   jdRequirements: text(fd, 'jdRequirements'),
-  duties: text(fd, 'duties').split('\n'),
 });
 
 // After saving, back to the department or team the title is now in (the form can move it to another one).

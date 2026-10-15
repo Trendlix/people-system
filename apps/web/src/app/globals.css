@@ -91,4 +91,114 @@ html:has(dialog:modal) {
   .badge {
     @apply inline-block rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-accent;
   }
+
+  /*
+   * Rich text, like an email's: a job description as written in the editor (components/rich-text-editor.tsx, whose
+   * text box has this class too) and as shown (components/rich-text.tsx). Only a list the author chose to number is
+   * numbered; paragraphs never are. Lists and indented paragraphs step in by the same amount, so a paragraph indented
+   * once lines up with the points of a list.
+   */
+  .rich-text {
+    @apply leading-relaxed;
+    overflow-wrap: anywhere;
+  }
+
+  .rich-text > * + * {
+    margin-top: 0.375rem;
+  }
+
+  .rich-text :where(ul, ol) {
+    padding-inline-start: 2rem;
+  }
+
+  .rich-text ul {
+    list-style-type: disc;
+  }
+
+  .rich-text ul ul {
+    list-style-type: circle;
+  }
+
+  .rich-text ul ul ul {
+    list-style-type: square;
+  }
+
+  .rich-text ol {
+    list-style-type: decimal;
+  }
+
+  .rich-text ol ol {
+    list-style-type: lower-alpha;
+  }
+
+  .rich-text ol ol ol {
+    list-style-type: lower-roman;
+  }
+
+  .rich-text li + li,
+  .rich-text li > :where(ul, ol) {
+    margin-top: 0.125rem;
+  }
+
+  .rich-text > p[data-indent="1"] {
+    margin-inline-start: 2rem;
+  }
+
+  .rich-text > p[data-indent="2"] {
+    margin-inline-start: 4rem;
+  }
+
+  .rich-text > p[data-indent="3"] {
+    margin-inline-start: 6rem;
+  }
+
+  .rich-text > p[data-indent="4"] {
+    margin-inline-start: 8rem;
+  }
+
+  .rich-text strong {
+    @apply font-semibold;
+  }
+
+  .rich-text em {
+    font-style: italic;
+  }
+
+  .rich-text u {
+    text-decoration-line: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  /* The rich text editor: looks like an input, with an email composer's toolbar along its top. */
+  .rte {
+    @apply w-full rounded-lg border border-line bg-white text-sm text-ink;
+    @apply focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20;
+  }
+
+  .rte-toolbar {
+    @apply flex flex-wrap items-center gap-0.5 border-b border-line-soft p-1;
+  }
+
+  .rte-button {
+    @apply inline-flex size-9 items-center justify-center rounded-md text-muted outline-none transition-colors;
+    @apply hover:bg-canvas hover:text-ink focus-visible:ring-2 focus-visible:ring-accent;
+  }
+
+  .rte-button[aria-pressed="true"] {
+    @apply bg-accent-soft text-accent;
+  }
+
+  .rte-button[aria-disabled="true"] {
+    @apply cursor-not-allowed bg-transparent text-muted opacity-40;
+  }
+
+  .rte-separator {
+    @apply mx-1 h-5 w-px bg-line;
+  }
+
+  /* --rte-rows: how many lines tall it is when empty (the editor's `rows`); it grows with its text */
+  .rte-content {
+    @apply px-3 py-2 outline-none;
+    min-height: calc(var(--rte-rows, 4) * 1.625em + 1rem);
+  }
 }

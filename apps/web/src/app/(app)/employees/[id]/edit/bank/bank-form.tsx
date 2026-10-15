@@ -138,11 +138,11 @@ export function BankForm({
             name="holderName"
             maxLength={150}
             aria-describedby={fid('holderName-hint')}
-            defaultValue={valueOf(state, 'holderName', bank.holderName ?? profileName)}
+            defaultValue={valueOf(state, 'holderName', bank.holderName?.trim() || profileName)}
             className="input"
           />
           <p id={fid('holderName-hint')} className="hint">
-            As registered at the bank.{!bank.holderName && ' Filled in from the profile: change it if the bank has it otherwise.'}
+            As registered at the bank.{!bank.holderName?.trim() && ' Filled in from the profile: change it if the bank has it otherwise.'}
           </p>
         </div>
       </div>
