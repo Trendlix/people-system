@@ -1,16 +1,23 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { END_REASON_LABELS, LABELS } from '@trendlix/shared';
 import { apiGet } from '@/lib/api';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
+import { getCurrentUser } from '@/lib/session';
 import type { EmployeeProfile, Employment, Grade } from '@/lib/types';
 import { deleteEmployment } from '../employment-actions';
-import { arrangementLabel, FieldGrid, gradeLabel, periodLabel, ProfileSection, shiftLabel, StatusBadge, type GridField } from '../ui';
+import { arrangementLabel, FieldGrid, gradeLabel, periodLabel, ProfileSection, shiftLabel, StatusBadge, todayInCairo, type GridField } from '../ui';
+import { ContractSection, ContractSectionLoading, termLabel } from './contracts/contract-section';
+import { ProbationBanner } from './contracts/probation-banner';
+import { EndingPanel } from './ending/ending-panel';
 import { DeleteRowButton } from './inline-forms';
 
-// The Employment tab: the current employment (Edit, End employment), or a way to add one; every employment in the
-// history, newest first; and the people who report to this person now. HR changes employments; HR and Admin may
-// delete one added by mistake (the API checks both again).
+// The Employment tab: the probation banner and an ending in progress, the current employment (Edit, End employment)
+// and its contract, or a way to add one; every employment in the history, newest first; and the people who report to
+// this person now. HR changes employments, drafts and signs contracts, confirms probation and records endings; the CEO
+// approves or rejects endings here; HR and Admin may delete an employment added by mistake (the API checks all of it
+// again).
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -69,6 +76,9 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
   ];
 }
 
+/** An ending waiting for the CEO or approved: the employment is on its way out. */
+const inProgress = (e: Employment) => e.ending?.status === 'pending_ceo' || e.ending?.status === 'approved';
+
 /** What an employment was, for a confirmation: "the Full-time employment as Senior Designer, 01/03/2024 – now". */
 function described(e: Employment): string {
   return `the ${LABELS.employmentType[e.employmentType].toLowerCase()} employment${e.jobTitle ? ` as ${e.jobTitle.titleEn}` : ''}, ${periodLabel(e)}`;
@@ -77,6 +87,8 @@ function described(e: Employment): string {
 function History({ profile: p }: { profile: EmployeeProfile }) {
   const base = `/employees/${p.id}`;
   const actions = p.access.edit || p.access.delete;
+  // the newest signed contract of each employment, from an API that has contracts (October 2026)
+  const contracts = p.employments.some((e) => e.contract !== undefined);
   if (p.employments.length === 0) {
     return <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">No employments yet.</p>;
   }
@@ -90,6 +102,7 @@ function History({ profile: p }: { profile: EmployeeProfile }) {
             <th>Team</th>
             <th>Job Title</th>
             <th>Grade</th>
+            {contracts && <th>Contract</th>}
             <th>Status</th>
             <th>Note</th>
             {actions && (
@@ -110,6 +123,20 @@ function History({ profile: p }: { profile: EmployeeProfile }) {
               <td>{e.department ? departmentName(e.department) : dash}</td>
               <td>{e.jobTitle?.titleEn ?? dash}</td>
               <td className="whitespace-nowrap">{e.grade ? gradeLabel(e.grade) : dash}</td>
+              {contracts && (
+                <td className="whitespace-nowrap">
+                  {e.contract ? (
+                    <>
+                      {e.contract.number}
+                      <span className="block text-xs text-muted tabular-nums">
+                        Version {e.contract.version} · {termLabel(e.contract)}
+                      </span>
+                    </>
+                  ) : (
+                    dash
+                  )}
+                </td>
+              )}
               <td>
                 {e.endDate ? (
                   <span className="badge bg-line-soft text-muted">{e.endReason ? END_REASON_LABELS[e.endReason] : LABELS.status[e.status]}</span>
@@ -183,7 +210,15 @@ export async function EmploymentTab({
   const lastEnded = e ? null : p.employments.find((x) => x.endDate);
   // the top grade (the highest rank in the grades table, as the API counts it) has no manager to fill in
   const rank = e?.grade?.rank;
-  const topGrade = rank !== undefined && (await apiGet<Grade[]>('/grades')).every((g) => g.rank <= rank);
+  const [user, topGrade] = await Promise.all([
+    getCurrentUser(),
+    rank !== undefined && apiGet<Grade[]>('/grades').then((all) => all.every((g) => g.rank <= rank)),
+  ]);
+  const isCeo = user.roles.includes('ceo');
+  const today = todayInCairo();
+  const ending = e && inProgress(e) ? e.ending : null;
+  // how the last employment ended through the approvals, with its deadlines
+  const lastEnding = lastEnded?.ending?.status === 'completed' ? lastEnded.ending : null;
 
   return (
     <div className="space-y-8">
@@ -192,25 +227,36 @@ export async function EmploymentTab({
           The profile of {p.fullNameEn} is saved, with the ID card in the employee file. Next, add the employment.
         </p>
       )}
+      {e && <ProbationBanner employee={p} employment={e} today={today} endingInProgress={Boolean(ending)} />}
+      {ending && <EndingPanel ending={ending} employeeName={p.fullNameEn} canEdit={p.access.edit} isCeo={isCeo} today={today} />}
       {e ? (
-        <ProfileSection
-          title="Current Employment"
-          note={`Since ${formatDate(e.joinDate)}`}
-          actions={
-            p.access.edit && (
-              <>
-                <Link href={`${base}/employment/${e.id}/edit`} className={`${small} btn-secondary`}>
-                  Edit<span className="sr-only"> current employment</span>
-                </Link>
-                <Link href={`${base}/employment/${e.id}/end`} className={`${small} btn-danger`}>
-                  End employment
-                </Link>
-              </>
-            )
-          }
-        >
-          <FieldGrid fields={employmentFields(e, linkPeople, topGrade)} />
-        </ProfileSection>
+        <>
+          <ProfileSection
+            title="Current Employment"
+            note={`Since ${formatDate(e.joinDate)}`}
+            actions={
+              p.access.edit && (
+                <>
+                  <Link href={`${base}/employment/${e.id}/edit`} className={`${small} btn-secondary`}>
+                    Edit<span className="sr-only"> current employment</span>
+                  </Link>
+                  {/* an ending in progress is withdrawn (or completed) in its panel */}
+                  {!ending && (
+                    <Link href={`${base}/ending/new`} className={`${small} btn-danger`}>
+                      End employment
+                    </Link>
+                  )}
+                </>
+              )
+            }
+          >
+            <FieldGrid fields={employmentFields(e, linkPeople, topGrade)} />
+          </ProfileSection>
+          {/* loads on its own, so a slow contract list doesn't hold up the tab */}
+          <Suspense fallback={<ContractSectionLoading />}>
+            <ContractSection employee={p} employment={e} endingInProgress={Boolean(ending)} />
+          </Suspense>
+        </>
       ) : (
         <ProfileSection title="Current Employment">
           <div className="card space-y-4 px-6 py-8 text-center">
@@ -227,6 +273,7 @@ export async function EmploymentTab({
           </div>
         </ProfileSection>
       )}
+      {lastEnding && <EndingPanel ending={lastEnding} employeeName={p.fullNameEn} canEdit={p.access.edit} isCeo={isCeo} today={today} />}
 
       <ProfileSection
         title="Employment History"

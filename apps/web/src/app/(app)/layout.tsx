@@ -6,6 +6,10 @@ import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { UserMenu } from '@/components/user-menu';
 import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
+import type { ChangeRequest, EmployeeProfile, EmployeeSummary, EndingSummary, SessionUser } from '@/lib/types';
+import { decidesChangeRequests, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './approvals/data';
+import { ReviewNowLink } from './employees/[id]/confirm/confirm-notices';
+import { bannerMessage } from './employees/confirmation';
 
 /** The sidebar links for the signed-in user's roles. */
 async function MainNav() {
@@ -16,7 +20,50 @@ async function MainNav() {
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
   }
-  return <NavLinks roles={roles} />;
+  // Beside Approvals: for HR and the CEO, the endings waiting for the CEO; for HR and Admin, the employees' change
+  // requests waiting for them. Each is left out when it can't be read.
+  const [endings, changes] = await Promise.all([
+    followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS) : null,
+    decidesChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS) : null,
+  ]);
+  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0);
+  return <NavLinks roles={roles} counts={waiting ? { '/approvals': waiting } : undefined} />;
+}
+
+/**
+ * The signed-in user's own profile: the employee whose work email is their sign-in email, as the API links them. Found
+ * among the people they may see (GET /employees: just themself for an employee, plus their team for a manager), then
+ * read; null when they have none, or when either can't be read.
+ */
+async function ownProfile(user: SessionUser): Promise<EmployeeProfile | null> {
+  const email = user.email.toLowerCase();
+  const own = (await getOrNull<EmployeeSummary[]>('/employees'))?.find((e) => e.workEmail?.toLowerCase() === email);
+  return own ? getOrNull<EmployeeProfile>(`/employees/${own.id}`) : null;
+}
+
+/**
+ * On every page, for an employee whose details aren't confirmed, or changed since they confirmed them (owner's decision,
+ * 15 October 2026): what to do, and Review now. It can't be dismissed; it goes once they confirm.
+ */
+async function ConfirmBanner() {
+  let user: SessionUser;
+  try {
+    user = await getCurrentUser();
+  } catch (err) {
+    if (err instanceof ApiError) return null;
+    throw err;
+  }
+  const own = await ownProfile(user);
+  const message = own && bannerMessage(own.confirmation);
+  if (!own || !message) return null;
+  return (
+    <section aria-label="Confirm your details" className="border-b border-warn/20 bg-warn-soft px-4 py-3 sm:px-8">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <p className="text-sm font-medium text-warn">{message}</p>
+        <ReviewNowLink href={`/employees/${own.id}/confirm`} />
+      </div>
+    </section>
+  );
 }
 
 export default function AppLayout({ children }: LayoutProps<'/'>) {
@@ -50,6 +97,9 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             <UserMenu />
           </Suspense>
         </header>
+        <Suspense fallback={null}>
+          <ConfirmBanner />
+        </Suspense>
         <main className="flex-1 px-4 py-6 sm:px-8">{children}</main>
       </div>
     </div>

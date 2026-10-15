@@ -24,7 +24,7 @@ async function AddEmployment({ params }: { params: Promise<{ id: string }> }) {
         {current ? (
           <Empty>
             {employee.fullNameEn} already has a current employment, since {formatDate(current.joinDate)}. To hire them again, first{' '}
-            <Link href={`/employees/${employee.id}/employment/${current.id}/end`}>end that employment</Link>.
+            <Link href={`/employees/${employee.id}/ending/new`}>end that employment</Link>.
           </Empty>
         ) : (
           pickers && (

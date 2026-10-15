@@ -4,9 +4,12 @@ import { END_REASON_LABELS, LABELS } from '@trendlix/shared';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, ProfileGap } from '@/lib/types';
+import { confirmationStatus, pendingRequest } from '../confirmation';
 import { Avatar, gradeLabel, PROFILE_TABS, profileHref, standingOf, StandingBadge, type ProfileTabKey } from '../ui';
+import { ConfirmedNotice } from './confirm/confirm-notices';
 
-// Above the profile's tabs: who it is, where they stand, their current job, and how complete the profile is.
+// Above the profile's tabs: who it is, where they stand, their current job, whether the employee confirmed their
+// details, and how complete the profile is.
 
 /** Where a missing item is filled in: the field's cell on Basic Data, Education or Employment, or the paper's row on Documents. */
 function gapHref(id: string, gap: ProfileGap): string {
@@ -15,7 +18,7 @@ function gapHref(id: string, gap: ProfileGap): string {
 
 // The national ID and bank cells are on Basic Data only for those who may see them; the list names them for everyone.
 const IDENTITY_KEYS: ReadonlySet<string> = new Set(['nationalId', 'printedNo', 'idIssueDate', 'idExpiry']);
-const BANK_KEYS: ReadonlySet<string> = new Set(['bankName', 'branch', 'accountNo', 'iban', 'holderName']);
+const BANK_KEYS: ReadonlySet<string> = new Set(['bankName', 'accountNo', 'iban', 'holderName']);
 
 /** Whether the caller can open where a missing item is filled in: its tab and, for the national ID and bank, that section. */
 function reachable(gap: ProfileGap, access: EmployeeProfile['access'], tabs: ReadonlySet<ProfileTabKey>): boolean {
@@ -65,6 +68,58 @@ function Completeness({ profile, tabs }: { profile: EmployeeProfile; tabs: Reado
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+const STATUS_TONE = { ok: 'text-ok', changed: 'text-warn', none: 'text-muted' } as const;
+
+/**
+ * Whether the employee confirmed their details (owner's decision, 15 October 2026), for everyone who sees the profile.
+ * The employee gets Review and confirm while it isn't up to date; HR and Admin, who decide change requests, a link to
+ * Approvals when one waits. Nothing before the API sends confirmations.
+ */
+function Confirmation({ profile: p }: { profile: EmployeeProfile }) {
+  const status = confirmationStatus(p.confirmation);
+  if (!status) return null;
+  const upToDate = p.confirmation?.upToDate;
+  const pending = pendingRequest(p.changeRequests);
+  // HR (who edit the profile) see a profile never confirmed in the warning colour: it is theirs to follow up
+  const tone = status.tone === 'none' && p.access.edit ? 'text-warn' : STATUS_TONE[status.tone];
+  const waiting = 'badge bg-warn-soft text-warn no-underline';
+
+  return (
+    <div className="space-y-3 border-t border-line pt-4">
+      {p.isSelf && <ConfirmedNotice />}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <p className={`font-medium ${tone}`}>{status.text}</p>
+        {p.isSelf ? (
+          <>
+            {!upToDate && (
+              <Link href={`/employees/${p.id}/confirm`} className="btn btn-primary min-h-9 px-3">
+                Review and confirm
+              </Link>
+            )}
+            {pending ? (
+              <Link href={`/employees/${p.id}/change-request`} className={waiting}>
+                Your change request is waiting for HR
+              </Link>
+            ) : (
+              upToDate && <Link href={`/employees/${p.id}/change-request`}>Request a change</Link>
+            )}
+          </>
+        ) : (
+          pending &&
+          // HR and Admin decide on Approvals; the CEO sees the requests but doesn't decide them
+          (p.access.delete ? (
+            <Link href="/approvals" className={waiting}>
+              Change request waiting
+            </Link>
+          ) : (
+            <span className={waiting}>Change request waiting for HR</span>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -124,6 +179,7 @@ export function ProfileHeader({
           </div>
         </div>
       </div>
+      <Confirmation profile={p} />
       <Completeness profile={p} tabs={tabs} />
     </section>
   );

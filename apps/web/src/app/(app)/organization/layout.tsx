@@ -2,7 +2,7 @@ export default function OrganizationLayout({ children }: LayoutProps<'/organizat
   return (
     <div className="max-w-5xl">
       <h1 className="text-2xl font-semibold">Organization</h1>
-      <p className="mt-1 text-muted">Company details, departments with their teams and the job titles in each (and their job descriptions), grades, and work shifts.</p>
+      <p className="mt-1 text-muted">Company details, departments with their teams and the job titles in each (and their job descriptions), grades, work shifts, and how contracts start and end.</p>
       {children}
     </div>
   );

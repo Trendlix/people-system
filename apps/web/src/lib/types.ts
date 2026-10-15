@@ -1,13 +1,20 @@
 import type {
+  ChangeRequestStatus,
+  ContractForm,
+  ContractStatus,
   Degree,
   EducationGrade,
   EmployeeStatus,
   EmploymentType,
+  EndingRuleKey,
+  EndingStatus,
   EndReason,
   Gender,
   Governorate,
+  Initiator,
   MaritalStatus,
   MilitaryStatus,
+  NoticeUnit,
   PaperworkKind,
   Role,
   Standing,
@@ -187,6 +194,13 @@ export interface Employment {
   grade: GradeRef | null;
   manager: { id: string; employeeCode: string; fullNameEn: string } | null;
   shift: { id: string; code: string; startTime: string; endTime: string } | null;
+  /**
+   * The newest signed contract (salary restricted), or null. Left out by an API from before contracts (October 2026),
+   * hence optional: the screens then say contracts are not available yet.
+   */
+  contract?: Contract | null;
+  /** The newest ending that was not rejected or withdrawn, or null. Optional for the same reason as `contract`. */
+  ending?: Ending | null;
 }
 
 /** One row of GET /employees, already limited to the people the caller may see. */
@@ -295,6 +309,61 @@ export interface EmployeeProfile {
   completeness: { percent: number; missing: ProfileGap[] };
   /** What the caller may do: edit (HR), delete (HR and Admin), see the national ID, see the bank details. */
   access: { edit: boolean; delete: boolean; identity: boolean; bank: boolean };
+  /**
+   * Whether the employee confirmed their details, and what changed since (owner's decision, 15 October 2026). Left out
+   * by an API from before confirmations (October 2026), hence optional: the screens then show nothing about it.
+   */
+  confirmation?: ProfileConfirmation;
+  /**
+   * The employee's requests to change their details: pending first, then up to 10 recent ones. The employee themself,
+   * HR, Admin and the CEO get them; anyone else gets []. Optional for the same reason as `confirmation`.
+   */
+  changeRequests?: ChangeRequest[];
+  /** Whether the signed-in user is this employee (their sign-in email is the work email). Optional like `confirmation`. */
+  isSelf?: boolean;
+}
+
+// ---------- the employee's own check of their details, and their change requests ----------
+// Owner's decision of 15 October 2026 (packages/shared/src/profile-confirmation.ts). Moments are ISO.
+
+/** On the profile: when the employee last confirmed their details, and whether they changed since. */
+export interface ProfileConfirmation {
+  /** Null = never confirmed. */
+  confirmedAt: string | null;
+  confirmedBy: { email: string } | null;
+  /** Confirmed, and nothing confirmed changed since (nor the statement accepted). */
+  upToDate: boolean;
+  /** The fields (CONFIRM_FIELDS keys) changed since the last confirmation; [] when never confirmed. */
+  changedFields: string[];
+  /** The version of the statement accepted (PROFILE_DISCLAIMER.version). */
+  disclaimerVersion: number | null;
+}
+
+/** One field of a change request: what it was when asked, and what the employee asked for. Values as the API keeps them. */
+export interface ChangeRequestChange {
+  field: string;
+  label: string;
+  from: string | number | null;
+  to: string | number | null;
+}
+
+/**
+ * An employee's request to change their details (GET /change-requests, and on their profile). HR or an Admin approves
+ * it, which makes the change, or rejects it with a note; the employee may cancel it while it waits.
+ */
+export interface ChangeRequest {
+  id: string;
+  employee: { id: string; employeeCode: string; fullNameEn: string };
+  changes: ChangeRequestChange[];
+  /** What should change and why, in the employee's words. */
+  note: string | null;
+  status: ChangeRequestStatus;
+  requestedBy: { email: string } | null;
+  requestedAt: string;
+  decidedBy: { email: string } | null;
+  decidedAt: string | null;
+  /** HR's note: optional on approval, required on rejection. */
+  decisionNote: string | null;
 }
 
 /** GET /employees/:id/identity: the full national ID details (each call is audited). */
@@ -454,4 +523,171 @@ export interface CardCorrection {
   timesSeen: number;
   createdAt: string;
   updatedAt: string;
+}
+
+// ---------- contracts and endings: Organization → Contracts & Endings, Approvals, the home page's alerts ----------
+// The owner's decisions of 15 October 2026, checked against Labour Law 14/2025 (packages/shared/src/contracts.ts).
+// Dates are "YYYY-MM-DD"; moments are ISO.
+
+/** An employee as the contract and ending lists name them. */
+export interface ContractEmployeeRef {
+  id: string;
+  employeeCode: string;
+  fullNameEn: string;
+}
+
+/** GET /contract-settings: what a new contract starts with. Probation is at most 3 months, once per employer (Art. 90). */
+export interface ContractSettings {
+  probationMonths: number;
+  /** How long a fixed-term contract runs, in months (12 by default). */
+  durationMonths: number;
+}
+
+/**
+ * One way an employment can end, from GET /ending-rules (in their order). HR or Admin tune its label, notice, pay in
+ * lieu and whether it is offered; resignation and the company's notice can't go below 3 months (Art. 156). A signed
+ * contract keeps the rules it was signed under.
+ */
+export interface EndingRule {
+  key: EndingRuleKey;
+  label: string;
+  /** Who starts it: the employee, the company, either, or no one (death, total disability). */
+  initiator: Initiator;
+  /** 0 = no notice. */
+  noticeAmount: number;
+  noticeUnit: NoticeUnit;
+  /** Whether the notice can be paid instead of worked. */
+  payInLieu: boolean;
+  /** How the employment is recorded as ended. */
+  endReason: EndReason;
+  /** The legal source, e.g. "Labour Law Arts. 156, 161, 167; Decree 187/2025". */
+  source: string;
+  /** Offered when HR records an ending. */
+  active: boolean;
+}
+
+/** GET /contracts/expiring?within=60 (HR and CEO): signed contracts ending soon. */
+export interface ExpiringContract {
+  id: string;
+  number: string;
+  employee: ContractEmployeeRef;
+  employmentId: string;
+  endDate: string;
+  /** The last day to tell the employee it won't be renewed: 45 working days before the end. */
+  nonRenewalNoticeBy: string;
+  /** A renewal (the next contract version) is already drafted. */
+  renewalDraft: boolean;
+}
+
+/** GET /employments/probation-ending?within=30 (HR and CEO): current employments whose probation ends soon. */
+export interface ProbationEnding {
+  employee: ContractEmployeeRef;
+  employmentId: string;
+  probationEnd: string;
+}
+
+/** GET /endings?status=pending_ceo (HR and CEO): an ending HR recorded and approved, waiting for the CEO. */
+export interface EndingSummary {
+  id: string;
+  ruleKey: EndingRuleKey;
+  ruleLabel: string;
+  /** Who started it. */
+  initiator: Initiator | null;
+  /** When notice was given; null when there was none. */
+  noticeGivenOn: string | null;
+  /** The notice is paid instead of worked. */
+  payInLieu: boolean;
+  lastWorkingDay: string;
+  reason: string | null;
+  note: string | null;
+  status: EndingStatus;
+  /** Who recorded and approved it for HR, and when (ISO moment). */
+  hrApprovedBy: { email: string } | null;
+  hrApprovedAt: string | null;
+  endReason: EndReason;
+  employee: ContractEmployeeRef;
+  employmentId: string;
+}
+
+// ---------- contracts and endings on the employee profile (the Employment tab) ----------
+
+/**
+ * One version of an employment's contract, from GET /employees/:id/employments/:employmentId/contracts (newest first),
+ * or the newest signed one as `Employment.contract`. Version 1 is the first contract; later versions are renewals,
+ * starting the day after the previous one ends. Signed versions are never edited, except their filing dates and note.
+ * The salary fields are null, with `salaryHidden`, for anyone but HR, Finance and the CEO.
+ */
+export interface Contract {
+  id: string;
+  number: string;
+  version: number;
+  form: ContractForm;
+  startDate: string;
+  /** Null for an open-ended contract. */
+  endDate: string | null;
+  durationMonths: number | null;
+  /** 0 = no probation (a renewal, or someone who already had one with the company: once per employer, Art. 90). */
+  probationMonths: number;
+  probationEnd: string | null;
+  /** The actual gross, in EGP. */
+  grossSalary: number | null;
+  /** The basic part of the gross, in percent (80 by default); the rest is variable. */
+  basicPercent: number | null;
+  basicSalary: number | null;
+  variableSalary: number | null;
+  /** Approximate, as agreed; optional. */
+  netSalary: number | null;
+  /** The salary on the social insurance copy: the gross, capped at the year's maximum insurable wage. */
+  insuredSalary: number | null;
+  /** The terms as signed: the job title, grade, department or team, and shift at the time. */
+  jobTitleEn: string | null;
+  jobTitleAr: string | null;
+  gradeCode: string | null;
+  departmentName: string | null;
+  shiftCode: string | null;
+  /** draft → active (signed) → ended, or superseded by a signed renewal. */
+  status: ContractStatus;
+  signedOn: string | null;
+  insuranceFiledOn: string | null;
+  labourOfficeFiledOn: string | null;
+  note: string | null;
+  /** A fixed contract's last day to tell the employee it won't be renewed: 45 working days before it ends. */
+  nonRenewalNoticeBy: string | null;
+  salaryHidden?: boolean;
+}
+
+/**
+ * How an employment is ending (or ended): recorded by HR, which counts as HR's approval, then approved by the CEO; HR
+ * completes it on or after the last working day, which ends the employment.
+ */
+export interface Ending {
+  id: string;
+  ruleKey: EndingRuleKey;
+  ruleLabel: string;
+  /** Who started it, for a rule either side may start; else the rule's own. */
+  initiator: Initiator | null;
+  /** When notice was given or received (or, without notice, the date of the event). */
+  noticeGivenOn: string | null;
+  /** The notice is paid instead of worked. */
+  payInLieu: boolean;
+  lastWorkingDay: string;
+  /** A resignation's certification at the labour office (Decree 187/2025). */
+  certifiedOffice: string | null;
+  certifiedSerial: string | null;
+  certifiedOn: string | null;
+  /** A resignation: the company decides by this day, or it counts as accepted. */
+  decisionDueOn: string | null;
+  reason: string | null;
+  note: string | null;
+  status: EndingStatus;
+  hrApprovedBy: { email: string } | null;
+  /** ISO moments. */
+  hrApprovedAt: string | null;
+  ceoDecidedBy: { email: string } | null;
+  ceoDecidedAt: string | null;
+  ceoNote: string | null;
+  completedAt: string | null;
+  endReason: EndReason;
+  /** Once completed: when the final dues must be paid (Art. 108) and the ending filed with the labour office (Decree 214/2025). */
+  deadlines: { finalDuesBy: string; labourOfficeFilingBy: string } | null;
 }

@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { LABELS, PAPERWORK_LABELS, requiredPaperwork, RESTRICTED_PAPERWORK, type PaperworkKind } from '@trendlix/shared';
+import { LABELS, PAPERWORK_LABELS, paperworkType, requiredPaperwork, RESTRICTED_PAPERWORK, type PaperworkKind } from '@trendlix/shared';
+import { AdjustStoredButton } from '@/components/adjust/adjust-button';
 import { DocumentViewer, type ViewerFile } from '@/components/document-viewer';
 import { ApiError, apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/format';
@@ -16,7 +17,7 @@ import { PaperDetails } from './inline-forms';
 // the CEO see it (the API checks this again); only HR uploads, deletes and sets a paper's number and expiry. The
 // national ID's number and expiry are the profile's own (changed on the National ID page).
 
-type Employee = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'employment' | 'gender' | 'access' | 'identity'>;
+type Employee = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'employment' | 'employments' | 'gender' | 'access' | 'identity'>;
 
 const label = (kind: PaperworkKind) => PAPERWORK_LABELS[kind] ?? kind;
 const NATIONAL_ID: readonly PaperworkKind[] = ['national_id_front', 'national_id_back'];
@@ -62,7 +63,7 @@ const viewed = (item: PaperworkItem, side?: 'Front' | 'Back'): ViewerFile => ({
   mimeType: item.mimeType,
 });
 
-/** One uploaded file: when, its name, size, uploader and whether its text was read; View, and for HR re-read and delete. */
+/** One uploaded file: when, its name, size, uploader and whether its text was read; View, and for HR adjust, re-read and delete. */
 function FileLine({ item, owner, canEdit }: { item: PaperworkItem; owner: string; canEdit: boolean }) {
   const name = label(item.kind);
   const view = { title: `${name} · ${owner}`, files: [viewed(item)], what: name };
@@ -85,6 +86,10 @@ function FileLine({ item, owner, canEdit }: { item: PaperworkItem; owner: string
         <DocumentViewer title={view.title} files={view.files}>
           View<span className="sr-only"> {view.what}</span>
         </DocumentViewer>
+        {/* crop, turn, straighten, remove pages, then replace the stored file (the national ID has its own scan flow) */}
+        {canEdit && !NATIONAL_ID.includes(item.kind) && (
+          <AdjustStoredButton itemId={item.id} fileName={item.fileName} mimeType={item.mimeType} name={name} owner={owner} />
+        )}
         {canEdit && item.ocrStatus !== 'done' && <RereadButton action={rereadPaperwork.bind(null, item.id)} name={name} />}
         {canEdit && (
           <DeleteFileButton
@@ -204,7 +209,9 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
     );
   }
 
-  const type = employee.employment?.employmentType ?? null;
+  // the papers of the current employment, else of the latest one, else (never employed) a full-time hire's
+  const current = employee.employment?.employmentType ?? null;
+  const type = paperworkType(current, employee.employments?.[0]?.employmentType);
   const required = requiredPaperwork(type, employee.gender);
   const byKind = new Map<PaperworkKind, PaperworkItem[]>();
   for (const item of items) byKind.set(item.kind, [...(byKind.get(item.kind) ?? []), item]); // newest first, as listed
@@ -241,9 +248,11 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
         </span>
       </Title>
       <p className="text-sm text-muted">
-        {type
-          ? `The papers a ${LABELS.employmentType[type].toLowerCase()} employee's file needs.`
-          : 'No current employment: until there is one, only the national ID is needed. The rest of the checklist follows the employment type.'}
+        {current
+          ? `The papers a ${LABELS.employmentType[current].toLowerCase()} employee's file needs.`
+          : type
+            ? `No current employment: the papers of their last employment (${LABELS.employmentType[type].toLowerCase()}).`
+            : 'Not employed yet: the papers a full-time hire needs, collected before the start date. Once hired, the checklist follows the employment type.'}
         {type && type !== 'full_time' && ' The signed job offer and NDA will be added here with document generation.'}
       </p>
 

@@ -25,7 +25,7 @@ async function EditEmployment({ params }: { params: Promise<{ id: string; employ
               {ended ? '. Its status follows why it ended.' : '. '}
               {!ended && (
                 <>
-                  When they leave, <Link href={`/employees/${employee.id}/employment/${employment.id}/end`}>end the employment</Link> instead of changing it.
+                  When they leave, <Link href={`/employees/${employee.id}/ending/new`}>end the employment</Link> instead of changing it.
                 </>
               )}
             </p>

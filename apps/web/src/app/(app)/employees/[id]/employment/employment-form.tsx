@@ -8,7 +8,7 @@ import { formatDate } from '@/lib/format';
 import type { Employment, FormState } from '@/lib/types';
 import { EmploymentFields, type EmploymentPickers } from '../../employment-fields';
 
-// The forms of the Add employment, Edit employment and End employment pages.
+// The forms of the Add employment, Edit employment and Record a past ending pages.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -124,7 +124,10 @@ export function EmploymentForm({
   );
 }
 
-/** Ending the current employment: the last working day, why, and a note. */
+/**
+ * Recording a past ending of the current employment, directly (an HR correction tool: ending one now goes to the CEO,
+ * on the End employment page): the last working day, why, and a note.
+ */
 export function EndEmploymentForm({ action, cancelHref }: { action: Action; cancelHref: string }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
@@ -133,8 +136,8 @@ export function EndEmploymentForm({ action, cancelHref }: { action: Action; canc
       <FormErrors errors={state.errors} />
       <EndFields state={state} fid={fid} />
       <div className="flex flex-wrap gap-3 border-t border-line pt-6">
-        <SubmitButton busy={pending} pendingText="Ending…">
-          End employment
+        <SubmitButton busy={pending} pendingText="Recording…">
+          Record the ending
         </SubmitButton>
         <Link href={cancelHref} className="btn btn-secondary">
           Cancel

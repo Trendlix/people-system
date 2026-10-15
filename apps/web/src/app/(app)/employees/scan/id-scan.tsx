@@ -4,6 +4,7 @@ import { startTransition, useCallback, useEffect, useRef, useState, useTransitio
 import { DocumentViewer } from '@/components/document-viewer';
 import { FileDrop } from '@/components/file-drop';
 import { FormErrors, useFieldIds } from '@/components/form';
+import { ScanButton } from '@/components/scan/scan-dialog';
 import type { IdCardFound, IdCardPrepared } from '@/lib/types';
 import { idScanTitle, PAPERWORK_ACCEPT, PAPERWORK_MAX_BYTES, PDF_MAX_BYTES, PDF_TOO_LARGE, SCANS_MAX_BYTES, SCANS_TOO_LARGE, TOO_LARGE } from '../paperwork';
 import { prepareIdCard } from '../paperwork-actions';
@@ -413,7 +414,19 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
             accept={PAPERWORK_ACCEPT}
             aria-describedby={fid('front-hint')}
             onChange={(e) => choose('front', e.currentTarget.files?.[0] ?? null)}
-          />
+          >
+            {/* a scan is put on the box as a chosen file is, so it goes to choose() the same way */}
+            {(take) => (
+              <ScanButton
+                title="Scan the ID Card, Front"
+                hint="Put the front of the card face down on the glass, or a photocopy that shows both sides."
+                purpose="photo"
+                maxBytes={PDF_MAX_BYTES}
+                context="the front"
+                onScanned={(result) => take(result.file)}
+              />
+            )}
+          </FileDrop>
           <p id={fid('front-hint')} className="hint">
             JPG, PNG or PDF. One file that holds both sides is enough.
           </p>
@@ -427,15 +440,27 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
             accept={PAPERWORK_ACCEPT}
             aria-describedby={fid('back-hint')}
             onChange={(e) => choose('back', e.currentTarget.files?.[0] ?? null)}
-          />
+          >
+            {(take) => (
+              <ScanButton
+                title="Scan the ID Card, Back"
+                hint="Turn the card over, and put its back face down on the glass."
+                purpose="photo"
+                maxBytes={PDF_MAX_BYTES}
+                context="the back"
+                onScanned={(result) => take(result.file)}
+              />
+            )}
+          </FileDrop>
           <p id={fid('back-hint')} className="hint">
             Optional. Leave it empty when the first file holds both sides.
           </p>
         </div>
       </div>
       <p className="text-sm text-muted">
-        From a scanner: scan to a JPG or PDF file, then choose it, drag it in or paste it. Both sides on one page, or on two pages of one PDF, are
-        told apart. On a phone the camera can be used.
+        From a scanner: press Scan to scan straight from an office scanner, the front and then the back (a photocopy of both sides takes one
+        scan). Or scan to a JPG or PDF file, then choose it, drag it in or paste it. Both sides on one page, or on two pages of one PDF, are told
+        apart. On a phone the camera can be used.
       </p>
 
       <FormErrors errors={errors} />

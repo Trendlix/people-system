@@ -167,7 +167,6 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
             fields={[
               { key: 'bankName', label: 'Bank', value: bankShown(p.bank?.bankName), required: true },
               { key: 'bankBic', label: 'SWIFT/BIC', value: bankNamed(p.bank?.bankName)?.bic },
-              { key: 'branch', label: 'Branch', value: p.bank?.branch, required: true },
               {
                 key: 'accountNo',
                 label: 'Account number',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 // A file to choose, or to drag in or paste (owner's request: drag any file straight in). After the file box of Prime ERP
 // (Trendlix), production/web/src/fields.tsx and drop.tsx at commit 1368621.
@@ -9,6 +9,9 @@ import { useEffect, useRef, useState } from 'react';
 // that is dropped or pasted is put on that box and goes the way a chosen file goes: `onChange` runs (e.g. limitFileSize),
 // and the form, or whoever reads the box, finds it. The kinds the box takes (`accept`) hold for a dropped or pasted file
 // too: one of another kind is not taken, the box keeps what it held, and the area says what is taken.
+//
+// Another way of giving the box a file can sit beside it, inside the area (`children`, e.g. the Scan button of
+// components/scan): it is handed `take`, which puts a file on the box as a dropped one is.
 
 /** Whether what is being dragged is a file brought in from outside, and not a word, a link or a picture of the page. */
 const carriesFiles = (dt: DataTransfer | null | undefined): boolean => Array.from(dt?.types ?? []).includes('Files');
@@ -78,7 +81,8 @@ const INPUT =
 
 /**
  * A file box inside an area a file can be dragged onto, or pasted into (⌘V or Ctrl+V) while the area or its box is
- * selected. One file is taken; of several, the first. Labelled like any input, by `id`.
+ * selected. One file is taken; of several, the first. Labelled like any input, by `id`. `ref`: the file box itself (e.g.
+ * to empty it). `children`: shown beside the box, given `take`, which puts a file on it (e.g. a scan).
  */
 export function FileDrop({
   id,
@@ -87,6 +91,8 @@ export function FileDrop({
   required,
   onChange,
   'aria-describedby': describedBy,
+  ref,
+  children,
 }: {
   id: string;
   name?: string;
@@ -94,8 +100,18 @@ export function FileDrop({
   required?: boolean;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   'aria-describedby'?: string;
+  ref?: React.Ref<HTMLInputElement>;
+  children?: (take: (file: File) => void) => React.ReactNode;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  // the box is in the page by the time this is given out
+  useImperativeHandle(ref, () => input.current as HTMLInputElement, []);
+  // and as what `take` puts files on, which may be handed to `children` while they are drawn
+  const [box, setBox] = useState<HTMLInputElement | null>(null);
+  const attach = useCallback((el: HTMLInputElement | null) => {
+    input.current = el;
+    setBox(el);
+  }, []);
   // entering what is inside the area is said before leaving the area itself: counted, not guessed
   const depth = useRef(0);
   const [over, setOver] = useState(false);
@@ -121,16 +137,33 @@ export function FileDrop({
   }, []);
 
   function take(file: File, all?: FileList | null) {
-    if (!input.current) return;
+    if (!box) return;
     if (!fits(file, accept)) {
       setRefused(file.name || 'The file');
       return;
     }
     setRefused('');
-    putFile(input.current, file, all);
+    putFile(box, file, all);
   }
 
   const hintId = `${id}-drop`;
+  const fileBox = (
+    <input
+      ref={attach}
+      id={id}
+      name={name}
+      type="file"
+      accept={accept}
+      required={required}
+      aria-describedby={[hintId, describedBy].filter(Boolean).join(' ')}
+      onChange={(e) => {
+        setRefused('');
+        setChosen(e.currentTarget.files?.[0] ?? null);
+        onChange?.(e);
+      }}
+      className={children ? `${INPUT} min-w-0 flex-1 basis-56` : INPUT}
+    />
+  );
   return (
     <div
       tabIndex={-1}
@@ -171,21 +204,14 @@ export function FileDrop({
         over ? 'border-accent bg-accent-soft' : 'border-line bg-white'
       }`}
     >
-      <input
-        ref={input}
-        id={id}
-        name={name}
-        type="file"
-        accept={accept}
-        required={required}
-        aria-describedby={[hintId, describedBy].filter(Boolean).join(' ')}
-        onChange={(e) => {
-          setRefused('');
-          setChosen(e.currentTarget.files?.[0] ?? null);
-          onChange?.(e);
-        }}
-        className={INPUT}
-      />
+      {children ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {fileBox}
+          {children(take)}
+        </div>
+      ) : (
+        fileBox
+      )}
       <p id={hintId} aria-live="polite" className={`text-xs ${refused ? 'text-danger' : 'text-muted'}`}>
         {refused
           ? `${refused} was not taken. This box takes ${kindsOf(accept ?? '')}.`

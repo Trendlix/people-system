@@ -8,9 +8,11 @@ import { loadEmployment } from '../../../../data';
 import { EditHeading, Empty, gradeLabel, Loading, profileHref, RequireHr } from '../../../../ui';
 import { EndEmploymentForm } from '../../employment-form';
 
-// Ending the current employment: resignation, termination, the end of a contract. The profile stays, and the person is
-// then listed as a former employee with this employment in their history. Not while people report to them: the API
-// refuses (409) until they have another manager.
+// Recording a past ending: an HR correction tool for an employment that already ended outside People System (e.g.
+// before it was used, when entering someone's history). It sets the end directly, without notice, the CEO's approval
+// or the deadlines; ending an employment now goes through End employment (../../../ending/new), which the CEO
+// approves. The profile stays, and the person is then listed as a former employee with this employment in their
+// history. Not while people report to them: the API refuses (409) until they have another manager.
 
 async function EndEmployment({ params }: { params: Promise<{ id: string; employmentId: string }> }) {
   const { employee, employment: e } = await loadEmployment(params);
@@ -26,7 +28,7 @@ async function EndEmployment({ params }: { params: Promise<{ id: string; employm
 
   return (
     <>
-      <EditHeading profile={employee} title="End Employment" backHref={back} />
+      <EditHeading profile={employee} title="Record a Past Ending" backHref={back} />
       <RequireHr profile={employee}>
         {e.endDate ? (
           <Empty>
@@ -37,6 +39,13 @@ async function EndEmployment({ params }: { params: Promise<{ id: string; employm
             <p className="text-sm">
               <span className="font-semibold">{what}</span> <span className="text-muted">since {formatDate(e.joinDate)}</span>
             </p>
+            <div role="note" className="space-y-1 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+              <p className="font-semibold">For records only: an employment that already ended outside People System.</p>
+              <p>
+                This ends it at once, without notice, the CEO&apos;s approval or the deadlines for the final dues and the labour office. To end an employment
+                now, use <Link href={`/employees/${employee.id}/ending/new`}>End employment</Link> instead.
+              </p>
+            </div>
             <p className="text-sm text-muted">
               The profile stays: {employee.fullNameEn} is then listed in the directory as a former employee, and this employment moves to the
               employment history. To hire them again later, add a new employment on the Employment tab.

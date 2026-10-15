@@ -232,7 +232,6 @@ export async function updateIdentity(id: string, _prev: FormState, fd: FormData)
 export async function updateBank(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const body = {
     bankName: text(fd, 'bankName'),
-    branch: text(fd, 'branch'),
     accountNo: text(fd, 'accountNo'),
     iban: text(fd, 'iban'),
     holderName: text(fd, 'holderName'),

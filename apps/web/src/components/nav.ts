@@ -14,7 +14,8 @@ export const NAV: NavItem[] = [
   { href: '/', label: 'Home' },
   { href: '/organization/company', label: 'Organization', section: '/organization' },
   { href: '/employees', label: 'Employees', section: '/employees' },
+  { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
   { href: '/users', label: 'Users', section: '/users', roles: ['admin'] },
 ];
 
-export const COMING_SOON = ['Contracts', 'Attendance', 'Leave', 'Payroll'];
+export const COMING_SOON = ['Attendance', 'Leave', 'Payroll'];

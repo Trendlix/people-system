@@ -77,12 +77,6 @@ export function BankForm({
           </p>
         </div>
         <div>
-          <label htmlFor={fid('branch')} className="label">
-            Branch
-          </label>
-          <input id={fid('branch')} name="branch" maxLength={100} defaultValue={valueOf(state, 'branch', bank.branch)} className="input" />
-        </div>
-        <div>
           <label htmlFor={fid('accountNo')} className="label">
             Account number
           </label>
