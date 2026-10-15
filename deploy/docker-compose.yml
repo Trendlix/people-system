@@ -79,9 +79,10 @@ services:
     logging: *logs
 
   pdf:
-    # Gotenberg's LibreOffice image: POST /forms/libreoffice/convert turns a .docx into a PDF. It has Arabic fonts
-    # (Noto, Amiri); a template set in a font it lacks is printed in the nearest one it has.
-    image: gotenberg/gotenberg:8.37.0-libreoffice
+    # Gotenberg's LibreOffice image with Microsoft's core fonts added (pdf/Dockerfile): POST /forms/libreoffice/convert
+    # turns a .docx into a PDF. With Arial and Times New Roman (Arabic included) the templates keep their layout; a font
+    # it still lacks is printed in the nearest one it has.
+    build: ./pdf
     restart: unless-stopped
     command: ["gotenberg", "--api-timeout=60s", "--libreoffice-restart-after=20", "--log-level=warn"]
     environment:

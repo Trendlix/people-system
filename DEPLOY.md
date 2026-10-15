@@ -162,9 +162,11 @@ container (Gotenberg's LibreOffice image, `gotenberg/gotenberg:8.37.0-libreoffic
   converted in memory and never leave the server.
 - **Memory and disk.** A few hundred MB while converting; Docker stops it at 1 GB. The image is about 1.5 GB and is
   downloaded by the first deploy that has it.
-- **Fonts.** It has Arabic fonts (Noto, Amiri). A template set in a font it lacks (e.g. a Windows-only Arabic font) is
-  printed in the nearest one it has, so check the first PDF of each template. To print a font exactly, its files can be
-  added to the image later.
+- **Fonts.** The image is built from `deploy/pdf/Dockerfile`: Gotenberg's image with Microsoft's core fonts added
+  (Arial, Times New Roman, Courier New, Georgia, Verdana …, from Debian's `ttf-mscorefonts-installer`), so templates set
+  in Arial or Times New Roman, Arabic included, keep their layout. It also has Noto and Amiri. A font it still lacks
+  (e.g. Segoe UI) is printed in the nearest one it has. The fonts are downloaded when the image is first built; if that
+  fails the image is built anyway, without them (the build log says which fonts came).
 - **If it is down,** offers are sent with the Word file instead.
 
 ```bash

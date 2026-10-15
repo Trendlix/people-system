@@ -42,7 +42,7 @@ fi
 
 # The OCR image is built from services/ocr; a push that does not touch that folder reuses it as it is. Its first build
 # takes a few minutes: it downloads PaddleOCR and its models, which then stay inside the image.
-docker compose build api ocr
+docker compose build api ocr pdf
 # Waits until every container with a health check is healthy: the database, the API, the PDF converter (its image is
 # downloaded on the first deploy that has it), and the OCR service once its models are loaded (seconds after it
 # starts; its health check allows two minutes). If one does not become healthy,
