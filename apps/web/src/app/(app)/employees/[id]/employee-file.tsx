@@ -301,8 +301,9 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
               ) : (
                 latest && (
                   <PaperDetails
-                    action={canEdit ? describePaperwork.bind(null, latest.id) : null}
+                    action={canEdit ? describePaperwork.bind(null, latest.id, latest.kind) : null}
                     name={paper.label}
+                    kind={latest.kind}
                     documentNo={latest.documentNo}
                     expiresOn={formatDate(latest.expiresOn)}
                   >
@@ -365,8 +366,9 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
               <li key={item.id} className="space-y-3 border-b border-line-soft p-5 last:border-0">
                 <h3 className="font-semibold">{titleCase(label(item.kind))}</h3>
                 <PaperDetails
-                  action={canEdit ? describePaperwork.bind(null, item.id) : null}
+                  action={canEdit ? describePaperwork.bind(null, item.id, item.kind) : null}
                   name={label(item.kind)}
+                  kind={item.kind}
                   documentNo={item.documentNo}
                   expiresOn={formatDate(item.expiresOn)}
                 >

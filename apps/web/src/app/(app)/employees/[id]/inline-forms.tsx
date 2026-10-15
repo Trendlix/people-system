@@ -1,11 +1,12 @@
 'use client';
 
+import { PAPERWORK_KINDS, PAPERWORK_LABELS, RESTRICTED_PAPERWORK, type PaperworkKind } from '@trendlix/shared';
 import { useActionState, useState } from 'react';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { FormState } from '@/lib/types';
 
-// Small forms inside the profile's tabs: deleting an employment from the history, and a paper's number and expiry.
+// Small forms inside the profile's tabs: deleting an employment from the history, and a paper's number, expiry and kind.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -38,12 +39,20 @@ export function DeleteRowButton({ action, name, confirmText }: { action: Action;
 }
 
 /**
+ * The kinds a paper can be moved to when it was uploaded as the wrong one (owner, 16 October 2026): any but the national
+ * ID's sides, which come only from scanning the card (it reads the card into the profile).
+ */
+const MOVABLE_KINDS = PAPERWORK_KINDS.filter((k) => !RESTRICTED_PAPERWORK.includes(k));
+
+/**
  * A paper's number and expiry (`children`: how they read now) with "Edit details" for HR, which opens a small form in
- * their place. Saving shows the new values and closes it; a refused save keeps it open with the reason.
+ * their place, its kind too (a paper uploaded as the wrong document is moved to the right one). Saving shows the new
+ * values and closes it; a refused save keeps it open with the reason.
  */
 export function PaperDetails({
   action,
   name,
+  kind,
   documentNo,
   expiresOn,
   children,
@@ -51,6 +60,7 @@ export function PaperDetails({
   /** null: the details cannot be changed here (not HR, or nothing uploaded yet). */
   action: Action | null;
   name: string;
+  kind: PaperworkKind;
   documentNo: string | null;
   /** DD/MM/YYYY, or "". */
   expiresOn: string;
@@ -58,7 +68,7 @@ export function PaperDetails({
 }) {
   if (!action) return <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{children}</div>;
   return (
-    <EditablePaperDetails action={action} name={name} documentNo={documentNo} expiresOn={expiresOn}>
+    <EditablePaperDetails action={action} name={name} kind={kind} documentNo={documentNo} expiresOn={expiresOn}>
       {children}
     </EditablePaperDetails>
   );
@@ -67,12 +77,14 @@ export function PaperDetails({
 function EditablePaperDetails({
   action,
   name,
+  kind,
   documentNo,
   expiresOn,
   children,
 }: {
   action: Action;
   name: string;
+  kind: PaperworkKind;
   documentNo: string | null;
   expiresOn: string;
   children: React.ReactNode;
@@ -102,6 +114,29 @@ function EditablePaperDetails({
     <form {...form} aria-label={`Details of ${name}`} className="space-y-3 rounded-lg border border-line bg-canvas p-4">
       <FormErrors errors={state.errors} />
       <div className="grid gap-4 sm:grid-cols-2">
+        {MOVABLE_KINDS.includes(kind) && (
+          <div className="sm:col-span-2">
+            <label htmlFor={fid('kind')} className="label">
+              Document type
+            </label>
+            <select
+              id={fid('kind')}
+              name="kind"
+              aria-describedby={fid('kind-hint')}
+              defaultValue={valueOf(state, 'kind', kind)}
+              className="input sm:max-w-xs"
+            >
+              {MOVABLE_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {PAPERWORK_LABELS[k]}
+                </option>
+              ))}
+            </select>
+            <p id={fid('kind-hint')} className="hint">
+              Uploaded as the wrong document? Choose the right one and the file moves there.
+            </p>
+          </div>
+        )}
         <div>
           <label htmlFor={fid('documentNo')} className="label">
             Document number
