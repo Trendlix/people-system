@@ -66,6 +66,7 @@ const OFFER_FIELDS: Record<string, string> = {
   job_title: 'jobTitleId',
   job_title_ar: 'jobTitleId',
   job_title_en: 'jobTitleId',
+  job_duties: 'jobTitleId', // the selected role, whose duties are written under Organization
   department: 'departmentId',
   department_ar: 'departmentId',
   department_en: 'departmentId',

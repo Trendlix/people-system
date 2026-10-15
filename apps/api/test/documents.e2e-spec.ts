@@ -542,4 +542,35 @@ describe('Documents (e2e)', () => {
       ]);
     });
   });
+
+  describe("the role's duties and responsibilities", () => {
+    // owner's request, 15 October 2026: the job title's duties printed as written, keeping their bold and indented points
+    it('missing until the job title has them; then printed on their own line as paragraphs, bold and points kept', async () => {
+      await publish('cert_experience', docx({ body: p(r('{{full_name_ar}}')) + p(r('{{job_duties}}')) }), 'ar');
+      const missing = [{ tag: 'job_duties', label: 'Duties and responsibilities', where: { tab: 'employment', key: 'jobTitle' } }];
+      expect((await check(ft.id, { slotKey: 'cert_experience' }).expect(200)).body).toEqual({ missing, usesRestricted: false });
+      expect((await generate(ft.id, { slotKey: 'cert_experience' }).expect(422)).body.missing).toEqual(missing);
+
+      const duties = '<p>Manages the <strong>key accounts</strong>.</p><ul><li><p>Plans visits</p><ul><li><p>weekly</p></li></ul></li><li><p>متابعة <strong>العملاء</strong></p></li></ul>';
+      await api().patch(`/api/job-titles/${jobTitleId}`).set('Cookie', hr).send({ jdDuties: duties }).expect(200);
+      expect((await check(ft.id, { slotKey: 'cert_experience' }).expect(200)).body).toEqual({ missing: [], usesRestricted: false });
+
+      const res = await generate(ft.id, { slotKey: 'cert_experience' }).expect(201);
+      const filled = (await fileOf(res.body.id).expect(200)).body as Buffer;
+      expect(readDocx(filled)).toEqual({ tags: [], unknownTags: [], broken: [] });
+      expect(textOf(filled)).toBe(['عمر خالد محمود', 'Manages the key accounts.', '•Plans visits', '◦weekly', '•متابعة العملاء'].join('\n'));
+      // the template's paragraph (right to left) and run, with the bold and the points' indents added
+      const document = readZip(filled).read('word/document.xml')!.toString('utf8');
+      const paragraphs = [...document.matchAll(/<w:p>.*?<\/w:p>/g)].map((m) => m[0]);
+      expect(paragraphs).toHaveLength(5);
+      expect(paragraphs[1]).toBe(
+        '<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space="preserve">Manages the </w:t></w:r>' +
+          '<w:r><w:rPr><w:b/><w:bCs/><w:rtl/></w:rPr><w:t>key accounts</w:t></w:r><w:r><w:rPr><w:rtl/></w:rPr><w:t>.</w:t></w:r></w:p>',
+      );
+      expect(paragraphs[2]).toContain('<w:pPr><w:bidi/><w:ind w:left="720" w:hanging="360"/></w:pPr><w:r><w:rPr><w:rtl/></w:rPr><w:t>•</w:t><w:tab/></w:r>');
+      expect(paragraphs[3]).toContain('<w:ind w:left="1440" w:hanging="360"/>');
+      expect(paragraphs[4]).toContain('<w:r><w:rPr><w:b/><w:bCs/><w:rtl/></w:rPr><w:t>العملاء</w:t></w:r>');
+      expect(document).not.toContain('w:numPr');
+    });
+  });
 });

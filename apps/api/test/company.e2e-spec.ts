@@ -33,15 +33,16 @@ describe('Company profile (e2e)', () => {
 
   it('is seeded from the contract template and readable by everyone signed in', async () => {
     const res = await api().get('/api/company').set('Cookie', employee).expect(200);
-    expect(res.body).toMatchObject({ nameEn: expect.any(String), hasLogo: expect.any(Boolean) });
+    expect(res.body).toMatchObject({ nameEn: expect.any(String), hasLogo: expect.any(Boolean), hasThumbnail: expect.any(Boolean) });
     expect(res.body).not.toHaveProperty('logo');
+    expect(res.body).not.toHaveProperty('thumbnail');
     expect(res.body).not.toHaveProperty('repNationalId');
   });
 
-  it('needs a session to read, but the brand (name and logo version) is public', async () => {
+  it('needs a session to read, but the brand (name, logo and thumbnail versions) is public', async () => {
     await api().get('/api/company').expect(401);
     const brand = await api().get('/api/company/brand').expect(200);
-    expect(Object.keys(brand.body).sort()).toEqual(['logoVersion', 'nameAr', 'nameEn']);
+    expect(Object.keys(brand.body).sort()).toEqual(['logoVersion', 'nameAr', 'nameEn', 'thumbnailVersion']);
   });
 
   it('lets HR edit it, but not employees', async () => {
@@ -80,6 +81,7 @@ describe('Company profile (e2e)', () => {
     await api().patch('/api/company').set('Cookie', hr).send({ email: 'not-an-email' }).expect(400);
     await api().patch('/api/company').set('Cookie', hr).send({ repNationalId: '12345' }).expect(400);
     await api().patch('/api/company').set('Cookie', hr).send({ logo: 'x' }).expect(400);
+    await api().patch('/api/company').set('Cookie', hr).send({ thumbnail: 'x' }).expect(400);
   });
 
   it('stores the representative national ID but only ever returns it masked, and keeps it out of the audit log', async () => {
@@ -143,6 +145,78 @@ describe('Company profile (e2e)', () => {
       await api().delete('/api/company/logo').set('Cookie', superAdmin).expect(204);
       await api().get('/api/company/logo').expect(404);
       expect((await api().get('/api/company/brand')).body.logoVersion).toBeNull();
+    });
+  });
+
+  // The square brand mark beside the logo (owner's request, 15 October 2026): kept, checked and served like the logo.
+  describe('thumbnail', () => {
+    // A WebP by its first bytes: the type is taken from the content, whatever the name or the browser says.
+    const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0x1a, 0, 0, 0]), Buffer.from('WEBPVP8 '), Buffer.alloc(14)]);
+
+    // the other test files share the database and expect neither image (e.g. the org chart's)
+    afterAll(async () => {
+      await api().delete('/api/company/logo').set('Cookie', superAdmin).expect(204);
+      await api().delete('/api/company/thumbnail').set('Cookie', superAdmin).expect(204);
+    });
+
+    it('accepts a real image, serves it publicly with safe headers, and bumps its own version only', async () => {
+      await api().put('/api/company/logo').set('Cookie', hr).attach('file', PNG, 'logo.png').expect(200);
+      const before = (await api().get('/api/company/brand')).body as { logoVersion: number; thumbnailVersion: number | null };
+
+      const res = await api().put('/api/company/thumbnail').set('Cookie', admin).attach('file', WEBP, { filename: 'mark.png', contentType: 'image/png' }).expect(200);
+      expect(res.body).toMatchObject({ hasThumbnail: true, hasLogo: true, thumbnailUpdatedAt: expect.any(String) });
+      expect(res.body).not.toHaveProperty('thumbnail');
+      expect(res.body).not.toHaveProperty('thumbnailMimeType');
+
+      const brand = await api().get('/api/company/brand').expect(200);
+      expect(brand.body.thumbnailVersion).toEqual(expect.any(Number));
+      expect(brand.body.thumbnailVersion).not.toBe(before.thumbnailVersion);
+      expect(brand.body.logoVersion).toBe(before.logoVersion);
+
+      const thumbnail = await api().get('/api/company/thumbnail').expect(200);
+      expect(thumbnail.headers['content-type']).toBe('image/webp');
+      expect(thumbnail.headers['cache-control']).toBe('public, max-age=300');
+      expect(thumbnail.headers['x-content-type-options']).toBe('nosniff');
+      expect(thumbnail.headers['content-security-policy']).toBe("default-src 'none'");
+      expect(Buffer.compare(thumbnail.body as Buffer, WEBP)).toBe(0);
+      // the logo is untouched
+      expect(Buffer.compare((await api().get('/api/company/logo').expect(200)).body as Buffer, PNG)).toBe(0);
+
+      const entry = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'company' }, orderBy: { id: 'desc' } });
+      expect(entry.diff).toEqual({ thumbnail: { type: 'image/webp', bytes: WEBP.length } });
+    });
+
+    it('rejects files that are not really images, files over 1 MB and requests without a file', async () => {
+      const fake = Buffer.from('<svg onload="alert(1)"></svg>');
+      const res = await api().put('/api/company/thumbnail').set('Cookie', hr).attach('file', fake, { filename: 'mark.png', contentType: 'image/png' }).expect(400);
+      expect(res.body.message).toBe('The thumbnail must be a PNG, JPEG or WebP image.');
+
+      const big = Buffer.concat([PNG, Buffer.alloc(1024 * 1024)]);
+      await api().put('/api/company/thumbnail').set('Cookie', hr).attach('file', big, 'big.png').expect(413);
+      const empty = await api().put('/api/company/thumbnail').set('Cookie', hr).expect(400);
+      expect(empty.body.message).toBe('Choose an image file to upload.');
+    });
+
+    it('only HR and Admin can change it, and only a Super Admin can remove it: removing it deletes it', async () => {
+      await api().put('/api/company/thumbnail').set('Cookie', employee).attach('file', PNG, 'mark.png').expect(403);
+      await api().put('/api/company/thumbnail').attach('file', PNG, 'mark.png').expect(401);
+      await api().delete('/api/company/thumbnail').set('Cookie', employee).expect(403);
+      for (const who of [hr, admin]) {
+        const refused = await api().delete('/api/company/thumbnail').set('Cookie', who).expect(403);
+        expect(refused.body.message).toBe('Only a Super Admin can delete records.');
+      }
+      expect((await api().get('/api/company/brand')).body.thumbnailVersion).not.toBeNull();
+
+      await api().delete('/api/company/thumbnail').set('Cookie', superAdmin).expect(204);
+      const missing = await api().get('/api/company/thumbnail').expect(404);
+      expect(missing.body.message).toBe('No thumbnail uploaded.');
+      const brand = await api().get('/api/company/brand').expect(200);
+      expect(brand.body.thumbnailVersion).toBeNull();
+      expect(brand.body.logoVersion).not.toBeNull(); // the logo stays
+      expect((await api().get('/api/company').set('Cookie', hr).expect(200)).body).toMatchObject({ hasThumbnail: false, thumbnailUpdatedAt: null, hasLogo: true });
+
+      const entry = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'company' }, orderBy: { id: 'desc' } });
+      expect(entry.diff).toEqual({ thumbnail: 'removed' });
     });
   });
 });

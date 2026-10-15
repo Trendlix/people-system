@@ -29,7 +29,8 @@ export interface FilledOffer {
 
 /**
  * A ValueSources for an offer, as if the candidate were an employee with a draft contract made from it: the candidate's
- * name and mobile (a former employee's code); the position as the employment; the terms as contract version 1, numbered
+ * name and mobile (a former employee's code); the position as the employment, with the selected role's duties
+ * (`jdDuties`, its job title's, as saved: owner's request, 15 October 2026); the terms as contract version 1, numbered
  * with the offer's number, starting on the join date; the offer's number and last day; the company's details.
  */
 export function offerSources(
@@ -37,6 +38,7 @@ export function offerSources(
   company: ValueSources['company'],
   language: TemplateLanguage,
   documentDate: string,
+  jdDuties: string | null = null,
 ): ValueSources {
   const joinDate = fromDateOnly(o.joinDate);
   const { endDate, probationEnd } = termDates(joinDate, o.durationMonths, o.probationMonths);
@@ -63,7 +65,7 @@ export function offerSources(
     employment: {
       employmentType: o.employmentType,
       joinDate: o.joinDate,
-      jobTitle: o.jobTitle,
+      jobTitle: o.jobTitle && { titleEn: o.jobTitle.titleEn, titleAr: o.jobTitle.titleAr, jdDuties },
       department: o.department && { nameEn: o.department.nameEn, nameAr: o.department.nameAr },
       grade: o.grade && { code: o.grade.code },
     },
@@ -164,8 +166,12 @@ export class OfferDocumentsService {
   }
 
   private async check(o: OfferRow, slot: TemplateSlot, template: { language: string; tags: string[] }, documentDate: string) {
-    const company = await this.prisma.company.findUnique({ where: { id: 1 } });
-    const sources = offerSources(o, company, template.language as TemplateLanguage, documentDate);
+    const [company, role] = await Promise.all([
+      this.prisma.company.findUnique({ where: { id: 1 } }),
+      // the selected role's duties, read here rather than with every offer (the offer's view doesn't show them)
+      o.jobTitleId ? this.prisma.jobTitle.findUnique({ where: { id: o.jobTitleId }, select: { jdDuties: true } }) : null,
+    ]);
+    const sources = offerSources(o, company, template.language as TemplateLanguage, documentDate, role?.jdDuties ?? null);
     const values = resolveValues(sources, template.tags, slot.overrides);
     return { values, missing: offerMissing(missingTags(values, template.tags, slot.overrides, true), slot.overrides) };
   }

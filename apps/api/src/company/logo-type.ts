@@ -1,6 +1,7 @@
-// Identifies an uploaded logo by its first bytes instead of trusting the browser's file type.
-// SVG is deliberately not accepted: it can carry scripts.
+// Identifies an uploaded logo or thumbnail (the company's two images) by its first bytes instead of trusting the
+// browser's file type. SVG is deliberately not accepted: it can carry scripts.
 
+/** The largest logo, and the largest thumbnail: 1 MB. */
 export const LOGO_MAX_BYTES = 1024 * 1024;
 
 export type LogoType = 'image/png' | 'image/jpeg' | 'image/webp';

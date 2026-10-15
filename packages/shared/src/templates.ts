@@ -159,6 +159,16 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'job_title', group: 'job_contract', labelEn: 'Job title', labelAr: 'الوظيفة', source: 'Employment: in the template’s language' },
   { tag: 'job_title_ar', group: 'job_contract', labelEn: 'Job title (Arabic)', labelAr: 'الوظيفة بالعربي', source: 'Employment' },
   { tag: 'job_title_en', group: 'job_contract', labelEn: 'Job title (English)', labelAr: 'الوظيفة بالإنجليزية', source: 'Employment' },
+  // the selected role's duties on its job offer (owner's request, 15 October 2026: "map each job description to the
+  // selected role"; then "we can just add the duties and responsibilities section")
+  {
+    tag: 'job_duties',
+    group: 'job_contract',
+    labelEn: 'Duties and responsibilities',
+    labelAr: 'المهام والمسؤوليات',
+    source: 'Job title: its duties and responsibilities (Organization › Departments & Job Titles)',
+    note: 'On a line of its own: the duties as written, in paragraphs, with their bold and indented points. Inside a sentence: as plain text',
+  },
   { tag: 'department', group: 'job_contract', labelEn: 'Department or team', labelAr: 'الإدارة', source: 'Employment: in the template’s language' },
   { tag: 'department_ar', group: 'job_contract', labelEn: 'Department or team (Arabic)', labelAr: 'الإدارة بالعربي', source: 'Employment' },
   { tag: 'department_en', group: 'job_contract', labelEn: 'Department or team (English)', labelAr: 'الإدارة بالإنجليزية', source: 'Employment' },

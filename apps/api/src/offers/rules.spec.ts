@@ -30,12 +30,14 @@ describe('job offer rules', () => {
   it("an empty value points to the offer's field, the company's details to Company, anything else to the template", () => {
     const missing = offerMissing([
       { tag: 'job_title', label: 'Job title', where: { tab: 'employment', key: 'jobTitle' } },
+      { tag: 'job_duties', label: 'Duties and responsibilities', where: { tab: 'employment', key: 'jobTitle' } },
       { tag: 'net_salary', label: 'Net salary', where: { tab: 'contracts', key: 'netSalary' } },
       { tag: 'company_name_ar', label: 'Company name (Arabic)', where: { tab: 'company', key: 'nameAr' } },
       { tag: 'national_id', label: 'National ID number', where: { tab: 'basic', key: 'nationalId' } },
     ]);
     expect(missing.map((m) => m.where)).toEqual([
       { tab: 'offer', key: 'jobTitleId' },
+      { tab: 'offer', key: 'jobTitleId' }, // the selected role's duties: its job title
       { tab: 'offer', key: 'netSalary' },
       { tab: 'company', key: 'nameAr' },
       { tab: 'offer', key: 'template' },

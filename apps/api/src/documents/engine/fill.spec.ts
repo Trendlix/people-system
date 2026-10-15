@@ -1,5 +1,5 @@
 import { CONTRACT_TAGS, contentTypes, docx, footerXml, headerXml, p, r, realTemplate } from '../../../test/fixtures/docx.js';
-import { readDocx, textParts } from '../../templates/docx-tags.js';
+import { paragraphTexts, readDocx, textParts } from '../../templates/docx-tags.js';
 import { readZip, writeZip, ZipError } from '../../templates/zip.js';
 import { arabicAmountInWords, arabicDuration, arabicWeekday, fillTemplate } from './index.js';
 import { resolveTarget } from './mail-merge.js';
@@ -143,6 +143,17 @@ describe('filling in a template', () => {
     expect(text(out, 'word/footnotes.xml')).toContain(r('123-456'));
     expect(text(out, 'word/endnotes.xml')).toContain(r('15/10/2026'));
     expect(text(out, 'word/comments.xml')).toContain('{{full_name_ar}}');
+  });
+
+  it("prints a value with formatting on a line of its own as paragraphs, and inside a sentence as text", () => {
+    const file = docx({ body: p(r('{{full_name_ar}}')) + p(r(' {{job_duties}} ')) + p(r('المهام: {{job_duties}}')) });
+    const out = fillTemplate(file, { full_name_ar: 'منى', job_duties: { html: '<p>قيادة <strong>الفريق</strong></p><ul><li>متابعة العملاء</li></ul>' } });
+    const document = text(out, 'word/document.xml')!;
+    expect(readDocx(out)).toEqual({ tags: [], unknownTags: [], broken: [] });
+    expect(wellFormed(document)).toBe(true);
+    expect(paragraphTexts(document)).toEqual(['منى', 'قيادة الفريق', '•متابعة العملاء', 'المهام: قيادة الفريق• متابعة العملاء']);
+    expect(document).toContain('<w:r><w:rPr><w:b/><w:bCs/><w:rtl/></w:rPr><w:t>الفريق</w:t></w:r>');
+    expect(document).toContain('<w:p><w:pPr><w:bidi/><w:ind w:left="720" w:hanging="360"/></w:pPr>');
   });
 
   it('leaves tags without a value for the caller to notice', () => {

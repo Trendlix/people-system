@@ -19,7 +19,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { DOCX_MIME } from '../templates/docx-tags.js';
 import { templateFileName } from '../templates/template-file.js';
 import type { CheckDocumentDto, GenerateDocumentDto } from './documents.dto.js';
-import { fillTemplate } from './engine/index.js';
+import { fillTemplate, type TagValue } from './engine/index.js';
 import { documentStem } from './format.js';
 import { ENDING_SLOTS, isContractSlot, offered, offeredSlots, SECTION_KEYS, sectionOf, SLOTS, TYPED_TAGS, type SectionKey, type Situation } from './offer.js';
 import { missingTags, resolveValues, restrictedTags, rightFor, sourceTag, type MissingTag, type RestrictedRight, type ValueSources } from './values.js';
@@ -39,7 +39,8 @@ const EMPLOYMENT = {
   employmentType: true,
   joinDate: true,
   endDate: true,
-  jobTitle: { select: { titleEn: true, titleAr: true } },
+  // its duties for {{job_duties}} (owner's request, 15 October 2026)
+  jobTitle: { select: { titleEn: true, titleAr: true, jdDuties: true } },
   department: { select: { nameEn: true, nameAr: true } },
   grade: { select: { code: true } },
   contracts: { orderBy: { version: 'desc' }, include: { allowances: { select: { nameEn: true, nameAr: true, amount: true }, orderBy: ALLOWANCE_ORDER } } },
@@ -479,7 +480,7 @@ export class DocumentsService {
   }
 
   /** The values of the tags the template prints, and those of them still empty. */
-  private fill(ctx: Context, template: { language: string; tags: string[] }, documentDate: string, inputs: Record<string, string>): { values: Record<string, string>; missing: MissingTag[] } {
+  private fill(ctx: Context, template: { language: string; tags: string[] }, documentDate: string, inputs: Record<string, string>): { values: Record<string, TagValue>; missing: MissingTag[] } {
     const sources: ValueSources = { ...ctx.sources, language: template.language as TemplateLanguage, documentDate, inputs };
     const values = resolveValues(sources, template.tags, ctx.slot.overrides);
     return { values, missing: missingTags(values, template.tags, ctx.slot.overrides, ctx.contract !== null) };

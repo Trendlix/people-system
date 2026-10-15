@@ -1,5 +1,7 @@
 import { TAG_PATTERN } from '@trendlix/shared';
-import { applyEdits, escapeText, innerText, parseXml, wordPrefix, type XmlEdit, type XmlElement } from './xml.js';
+import { richParagraphs } from './paragraphs.js';
+import { isRich, richBlocks, valueText, type TagValue } from './rich.js';
+import { applyEdits, descendants, escapeText, innerText, parseXml, wordPrefix, type XmlEdit, type XmlElement } from './xml.js';
 
 // Putting the values in place of the {{tags}} of one part (spec §8; owner's request, 15 October 2026). Word splits
 // what is typed into runs whenever the formatting, the spell checker or a bookmark says so, so a tag is often spread
@@ -11,6 +13,11 @@ import { applyEdits, escapeText, innerText, parseXml, wordPrefix, type XmlEdit, 
 // - the tag's other characters are taken out of the <w:t> they are in (which may leave an empty <w:t>);
 // - only the <w:t> elements changed are rewritten. A value's line breaks become <w:br/> in the same run, and
 //   xml:space="preserve" is added where a rewritten text starts or ends with a space, so Word keeps it.
+// A value with formatting (rich.ts: the role's duties, owner's request of 15 October 2026) on a line of its own (the
+// only text of its paragraph, spaces aside) replaces the whole paragraph with its own paragraphs, bold and indented
+// points kept (paragraphs.ts). Elsewhere, inside a sentence, it is put in as plain text like any other value, and so it
+// is where the paragraph holds what replacing it would lose: a picture, a text box, a field, a note's or a comment's
+// mark, a symbol, a content control.
 // A tag without a value is left as it is: the caller checks for missing values first.
 
 interface Text {
@@ -20,19 +27,27 @@ interface Text {
   text: string;
 }
 
+/** The elements in a paragraph that replacing the whole paragraph would lose (by local name). */
+const KEPT_IN_PLACE = new Set(
+  'p drawing pict object AlternateContent fldChar fldSimple instrText footnoteReference endnoteReference commentReference sym sdt'.split(' '),
+);
+/** The markers moved to the first of the paragraphs replacing it (by local name): ranges that may end elsewhere. */
+const MARKERS = new Set(['bookmarkStart', 'bookmarkEnd', 'commentRangeStart', 'commentRangeEnd', 'permStart', 'permEnd']);
+const localName = (name: string) => name.slice(name.indexOf(':') + 1);
+
 /** The part's XML with every tag that has a value replaced; unchanged when there is none. */
-export function fillTags(xml: string, values: Readonly<Record<string, string>>): string {
+export function fillTags(xml: string, values: Readonly<Record<string, TagValue>>): string {
   if (!xml.includes('{') && !xml.includes('&#123;') && !xml.includes('&#x7')) return xml;
   const w = wordPrefix(xml);
   const P = `${w}:p`;
   const T = `${w}:t`;
 
-  const paragraphs: XmlElement[][] = [];
+  const paragraphs: { p: XmlElement; texts: XmlElement[] }[] = [];
   const collect = (el: XmlElement, paragraph: XmlElement[] | null) => {
     for (const child of el.children) {
       if (child.name === P) {
         const own: XmlElement[] = [];
-        paragraphs.push(own);
+        paragraphs.push({ p: child, texts: own });
         collect(child, own);
       } else if (child.name === T) {
         if (paragraph && !child.empty) paragraph.push(child);
@@ -44,7 +59,7 @@ export function fillTags(xml: string, values: Readonly<Record<string, string>>):
   collect(parseXml(xml), null);
 
   const edits: XmlEdit[] = [];
-  for (const elements of paragraphs) {
+  for (const { p, texts: elements } of paragraphs) {
     let from = 0;
     const texts: Text[] = elements.map((el) => {
       const text = innerText(xml, el);
@@ -53,10 +68,33 @@ export function fillTags(xml: string, values: Readonly<Record<string, string>>):
       return t;
     });
     const joined = texts.map((t) => t.text).join('');
-    const matches = [...joined.matchAll(new RegExp(TAG_PATTERN.source, 'g'))]
-      .filter((m) => Object.hasOwn(values, m[1]))
-      .map((m) => ({ start: m.index, end: m.index + m[0].length, value: String(values[m[1]]) }));
-    if (!matches.length) continue;
+    const found = [...joined.matchAll(new RegExp(TAG_PATTERN.source, 'g'))].filter((m) => Object.hasOwn(values, m[1]));
+    if (!found.length) continue;
+
+    // a rich value alone on its line: the paragraph is replaced
+    const only = found.length === 1 ? found[0] : null;
+    const value = only ? values[only[1]] : undefined;
+    if (only && value !== undefined && isRich(value) && !joined.slice(0, only.index).trim() && !joined.slice(only.index + only[0].length).trim()) {
+      const blocks = richBlocks(value.html);
+      if (blocks.length && replaceable(p, w)) {
+        const run = texts.find((t) => only.index < t.from + t.text.length)?.el.parent;
+        const own = (el: XmlElement | null | undefined, name: string) => el?.children.find((c) => c.name === `${w}:${name}`);
+        const pPr = own(p, 'pPr');
+        const rPr = run?.name === `${w}:r` ? own(run, 'rPr') : undefined;
+        const markers = [...descendants(p)].filter((el) => el.name.startsWith(`${w}:`) && MARKERS.has(localName(el.name)));
+        const paragraphsXml = richParagraphs(blocks, {
+          w,
+          startTag: xml.slice(p.start, p.openEnd),
+          pPr: pPr ? xml.slice(pPr.start, pPr.end) : null,
+          rPr: rPr ? xml.slice(rPr.start, rPr.end) : null,
+          markers: markers.map((el) => xml.slice(el.start, el.end)).join(''),
+        });
+        edits.push({ start: p.start, end: p.end, text: paragraphsXml });
+        continue;
+      }
+    }
+
+    const matches = found.map((m) => ({ start: m.index, end: m.index + m[0].length, value: valueText(values[m[1]]) }));
 
     for (const t of texts) {
       const to = t.from + t.text.length;
@@ -75,6 +113,16 @@ export function fillTags(xml: string, values: Readonly<Record<string, string>>):
     }
   }
   return applyEdits(xml, edits);
+}
+
+/** Whether the paragraph can be replaced as a whole: it holds nothing that would be lost (see KEPT_IN_PLACE). */
+function replaceable(p: XmlElement, w: string): boolean {
+  if (p.empty) return false;
+  for (const el of descendants(p)) {
+    const local = localName(el.name);
+    if (KEPT_IN_PLACE.has(local) && (el.name.startsWith(`${w}:`) || local === 'AlternateContent')) return false;
+  }
+  return true;
 }
 
 const LINE_BREAK = /\r\n|\r|\n/;

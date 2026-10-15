@@ -86,6 +86,10 @@ model Company {
   logo                Bytes?
   logoMimeType        String?   @map("logo_mime_type")
   logoUpdatedAt       DateTime? @map("logo_updated_at") @db.Timestamptz
+  // the square brand mark beside the wide logo: the browser tab icon, and where the logo has no room (owner, 15 October 2026)
+  thumbnail           Bytes?
+  thumbnailMimeType   String?   @map("thumbnail_mime_type")
+  thumbnailUpdatedAt  DateTime? @map("thumbnail_updated_at") @db.Timestamptz
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("company")

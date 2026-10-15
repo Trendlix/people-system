@@ -417,6 +417,33 @@ describe('Job offers (e2e)', () => {
         convert.mockRestore();
       }
     });
+
+    it("prints the selected role's duties, keeping their formatting; missing until its job title has them", async () => {
+      // owner's request, 15 October 2026: "map each job description to the selected role"
+      const role = await api().post('/api/job-titles').set('Cookie', hr).send({ departmentId: teamId, titleEn: `Field Agent ${RUN}` }).expect(201);
+      await publish('offer_freelance', docx({ body: p(r('{{full_name_en}} — {{job_title}}')) + p(r('{{job_duties}}')) + p(r('In short: {{job_duties}}')) }), 'en');
+      const o = await draft('Fadi Freelance', { employmentType: 'freelance', jobTitleId: role.body.id });
+      const missing = [{ tag: 'job_duties', label: 'Duties and responsibilities', where: { tab: 'offer', key: 'jobTitleId' } }];
+      expect(o.missing).toEqual(missing);
+      const refused = await documentOf(o.id).expect(422);
+      expect(JSON.parse((refused.body as Buffer).toString('utf8'))).toMatchObject({ message: 'Fill in the missing details first.', missing });
+
+      const duties = '<p>Visits <strong>clients</strong> in the field.</p><ol><li><p>Collects orders</p></li><li><p>Reports <em>daily</em></p></li></ol>';
+      await api().patch(`/api/job-titles/${role.body.id}`).set('Cookie', hr).send({ jdDuties: duties }).expect(200);
+      expect((await getOffer(o.id)).missing).toEqual([]);
+      const filled = (await documentOf(o.id).expect(200)).body as Buffer;
+      expect(textOf(filled)).toBe(
+        [`Fadi Freelance ${RUN} — Field Agent ${RUN}`, 'Visits clients in the field.', '1.Collects orders', '2.Reports daily', 'In short: Visits clients in the field.1. Collects orders2. Reports daily'].join('\n'),
+      );
+      const document = readZip(filled).read('word/document.xml')!.toString('utf8');
+      expect(document).toContain('<w:r><w:rPr><w:b/><w:bCs/><w:rtl/></w:rPr><w:t>clients</w:t></w:r>');
+      expect(document).toContain('<w:ind w:left="720" w:hanging="360"/></w:pPr><w:r><w:rPr><w:rtl/></w:rPr><w:t>1.</w:t><w:tab/></w:r>');
+      expect(document).toContain('<w:r><w:rPr><w:i/><w:iCs/><w:rtl/></w:rPr><w:t>daily</w:t></w:r>');
+      // inside a sentence: plain text, a line each
+      expect(document).toContain(
+        '<w:t xml:space="preserve">In short: Visits clients in the field.</w:t><w:br/><w:t xml:space="preserve">1. Collects orders</w:t><w:br/><w:t xml:space="preserve">2. Reports daily</w:t>',
+      );
+    });
   });
 
   describe('sending', () => {

@@ -1,7 +1,7 @@
 import { bankNamed, LABELS, PAY_BASIS_LABELS, PAY_BASIS_LABELS_AR, TEMPLATE_TAGS, type EmploymentType, type PayBasis, type TemplateLanguage } from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
-import { arabicAmountInWords, arabicDuration, arabicWeekday } from './engine/index.js';
+import { arabicAmountInWords, arabicDuration, arabicWeekday, isBlankValue, type TagValue } from './engine/index.js';
 import { EMPLOYMENT_TYPES_AR, hasArabic, inLanguage, printedAddress, printedDate, printedMoney, printedMonth, printedPhone } from './format.js';
 import { TYPED_TAGS } from './offer.js';
 
@@ -9,7 +9,7 @@ import { TYPED_TAGS } from './offer.js';
 // employment, a contract version (or a job offer's terms), an ending, the company profile and the document's date, written as the document
 // prints it (format.ts). A slot's overrides are applied last: on the social insurance copy, {{gross_salary}} prints the
 // insured salary. Only the tags asked for are worked out, so a template that doesn't print an amount in words never
-// needs it.
+// needs it. A value is plain text, but for the role's duties, which keep their formatting (engine/rich.ts).
 
 type Decimal = Prisma.Decimal;
 
@@ -37,7 +37,8 @@ export interface ValueSources {
   employment: {
     employmentType: EmploymentType;
     joinDate: Date;
-    jobTitle: { titleEn: string; titleAr: string | null } | null;
+    /** The role: its titles, and its duties and responsibilities as saved (HTML; null for none). */
+    jobTitle: { titleEn: string; titleAr: string | null; jdDuties: string | null } | null;
     department: { nameEn: string; nameAr: string | null } | null;
     grade: { code: string } | null;
   } | null;
@@ -116,7 +117,7 @@ function split(c: NonNullable<ValueSources['contract']>) {
 type Lang = 'ar' | 'en';
 
 /** How each tag's value is worked out, from the sources. */
-function resolvers(src: ValueSources): Record<string, () => string> {
+function resolvers(src: ValueSources): Record<string, () => TagValue> {
   const { employee: e, identity: id, bank, employment: job, contract: c, ending, company: co } = src;
   // a bilingual template's tags that depend on the language print in Arabic; their _ar and _en forms in that language
   const language: Lang = src.language === 'en' ? 'en' : 'ar';
@@ -133,6 +134,12 @@ function resolvers(src: ValueSources): Record<string, () => string> {
   const department = (lang: Lang) => inLanguage(lang, job?.department?.nameEn, job?.department?.nameAr);
   const employmentType = (lang: Lang) => (job ? (lang === 'ar' ? EMPLOYMENT_TYPES_AR[job.employmentType] : LABELS.employmentType[job.employmentType]) : '');
   const payBasis = (lang: Lang) => (c ? ((lang === 'ar' ? PAY_BASIS_LABELS_AR : PAY_BASIS_LABELS)[c.payBasis as PayBasis] ?? '') : '');
+  // the role's duties as written, with their formatting (owner's request, 15 October 2026), in whatever language HR
+  // wrote them; none when there is nothing to read
+  const duties = (): TagValue => {
+    const html = job?.jobTitle?.jdDuties ?? '';
+    return isBlankValue({ html }) ? '' : { html };
+  };
   // none is a value too: "لا يوجد" / "None"
   const allowances = (lang: Lang) =>
     !c
@@ -163,6 +170,7 @@ function resolvers(src: ValueSources): Record<string, () => string> {
     job_title: () => jobTitle(language),
     job_title_ar: () => jobTitle('ar'),
     job_title_en: () => jobTitle('en'),
+    job_duties: duties,
     department: () => department(language),
     department_ar: () => department('ar'),
     department_en: () => department('en'),
@@ -239,9 +247,9 @@ function resolvers(src: ValueSources): Record<string, () => string> {
  * The values of `tags` (those a template uses), each read through the slot's overrides: { tag: value }, an empty
  * string where there is none.
  */
-export function resolveValues(src: ValueSources, tags: readonly string[], overrides: Readonly<Record<string, string>> = {}): Record<string, string> {
+export function resolveValues(src: ValueSources, tags: readonly string[], overrides: Readonly<Record<string, string>> = {}): Record<string, TagValue> {
   const all = resolvers(src);
-  const out: Record<string, string> = {};
+  const out: Record<string, TagValue> = {};
   for (const tag of tags) {
     const read = all[overrides[tag] ?? tag];
     out[tag] = read ? read() : '';
@@ -280,6 +288,7 @@ const WHERE: Record<string, Where> = {
   job_title: EMPLOYMENT('jobTitle'),
   job_title_ar: EMPLOYMENT('jobTitle'),
   job_title_en: EMPLOYMENT('jobTitle'),
+  job_duties: EMPLOYMENT('jobTitle'), // the employment's job title, whose duties are written under Organization
   department: EMPLOYMENT('team'),
   department_ar: EMPLOYMENT('team'),
   department_en: EMPLOYMENT('team'),
@@ -345,13 +354,13 @@ const TAGS = new Map(TEMPLATE_TAGS.map((t) => [t.tag, t]));
  * they are asked for when generating.
  */
 export function missingTags(
-  values: Readonly<Record<string, string>>,
+  values: Readonly<Record<string, TagValue>>,
   tags: readonly string[],
   overrides: Readonly<Record<string, string>> = {},
   hasContract = true,
 ): MissingTag[] {
   return tags
-    .filter((tag) => !TYPED_TAGS.includes(tag) && !values[tag]?.trim())
+    .filter((tag) => !TYPED_TAGS.includes(tag) && isBlankValue(values[tag]))
     .map((tag) => {
       const source = sourceTag(tag, overrides);
       const where = WHERE[source] ?? BASIC(source);
