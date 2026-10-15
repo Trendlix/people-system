@@ -7,6 +7,7 @@ const TABS = [
   { key: 'departments', href: '/organization/departments', label: 'Departments & Job Titles' },
   { key: 'grades', href: '/organization/grades', label: 'Grades' },
   { key: 'shifts', href: '/organization/shifts', label: 'Shifts' },
+  { key: 'allowances', href: '/organization/allowances', label: 'Allowances' },
   { key: 'contracts', href: '/organization/contracts', label: 'Contracts & Endings' },
 ] as const;
 

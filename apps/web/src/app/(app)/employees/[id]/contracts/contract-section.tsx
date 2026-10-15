@@ -1,19 +1,21 @@
 import Link from 'next/link';
-import { CONTRACT_FORM_LABELS, CONTRACT_STATUS_LABELS, type ContractStatus } from '@trendlix/shared';
+import { CONTRACT_FORM_LABELS, CONTRACT_STATUS_LABELS, PAY_BASIS_LABELS, type ContractStatus } from '@trendlix/shared';
+import { treatmentText } from '@/lib/allowances';
 import { ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/format';
-import type { Contract, EmployeeProfile, Employment } from '@/lib/types';
+import type { AllowanceLine, Contract, EmployeeProfile, Employment } from '@/lib/types';
 import { deleteContract, signContract, unsignContract, updateSignedContract } from '../../contract-actions';
 import { FieldGrid, Loading, ProfileSection, todayInCairo, type GridField } from '../../ui';
 import { ActionButton, SignContract, SignedContractDetails } from './contract-buttons';
 import { loadContracts } from './data';
 import { daysBetween } from './dates';
-import { formatEgp } from './salary';
+import { allowancesLabel, daysLabel, formatEgp, hourlyTerms, payLabel } from './salary';
 
 // The Contract section of the Contracts tab: the signed contract (its number, term, probation, signing and filing
-// dates, and the salary for HR, Finance and the CEO), a draft waiting to be signed, and every version. HR drafts the
-// first contract or a renewal, signs a draft or changes it, and sets a signed one's filing dates and note; only a Super
-// Admin deletes a draft, or undoes a signing recorded by mistake (owner's decision, 15 October 2026).
+// dates, its pay basis and working days, and the salary and allowances for HR, Finance and the CEO), a draft waiting to
+// be signed, and every version. HR drafts the first contract or a renewal, signs a draft or changes it, and sets a
+// signed one's filing dates and note; only a Super Admin deletes a draft, or undoes a signing recorded by mistake
+// (owner's decision, 15 October 2026). Every contract is for a fixed term (owner, the same day).
 
 /** A fixed-term contract gets a warning this many days before it ends, if no renewal is drafted. */
 const RENEWAL_WARNING_DAYS = 60;
@@ -35,23 +37,38 @@ export function ContractStatusBadge({ status }: { status: ContractStatus }) {
   return <span className={`badge ${STATUS_STYLE[status]}`}>{CONTRACT_STATUS_LABELS[status]}</span>;
 }
 
-/** "01/11/2026 – 31/10/2027", or "From 01/11/2026" for an open-ended one. */
+/** "01/11/2026 – 31/10/2027", or "From 01/11/2026" when the end isn't known. */
 export function termLabel(c: Pick<Contract, 'startDate' | 'endDate'>): string {
   return c.endDate ? `${formatDate(c.startDate)} – ${formatDate(c.endDate)}` : `From ${formatDate(c.startDate)}`;
 }
 
+/** Each allowance with its amount a month and how it is treated. */
+function AllowanceList({ lines }: { lines: AllowanceLine[] }) {
+  return (
+    <ul className="space-y-0.5">
+      {lines.map((a) => (
+        <li key={a.allowanceTypeId}>
+          {a.nameEn} <span className="tabular-nums">{formatEgp(a.amount)}</span>
+          <span className="block text-xs text-muted">{treatmentText(a)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The signed contract, in the profile's field grid. The salary only when the caller may see it. */
 function contractFields(c: Contract): GridField[] {
+  const hourly = c.payBasis === 'hourly';
   const position = [c.jobTitleEn, c.gradeCode, c.departmentName, c.shiftCode && `Shift ${c.shiftCode}`].filter(Boolean).join(' · ');
   const fields: GridField[] = [
     { key: 'contract-number', label: 'Contract number', value: c.number, note: `Version ${c.version}` },
     {
       key: 'contract-form',
       label: 'Term',
-      value: CONTRACT_FORM_LABELS[c.form],
+      value: CONTRACT_FORM_LABELS[c.form] ?? CONTRACT_FORM_LABELS.fixed,
       note: c.durationMonths && c.endDate ? `${c.durationMonths} months` : undefined,
     },
-    { key: 'contract-period', label: 'Start – end', value: termLabel(c), note: !c.endDate && 'No end date' },
+    { key: 'contract-period', label: 'Start – end', value: termLabel(c) },
     {
       key: 'contract-probation',
       label: 'Probation end date',
@@ -70,10 +87,36 @@ function contractFields(c: Contract): GridField[] {
         </span>
       ),
     },
+    {
+      key: 'contract-pay-basis',
+      label: 'Pay basis',
+      value: PAY_BASIS_LABELS[c.payBasis] ?? PAY_BASIS_LABELS.monthly,
+      // by the hour: the rate (for those who see the salary) and the hours a week
+      note: hourlyTerms(c),
+      protected: hourly && !c.salaryHidden,
+    },
+    { key: 'contract-days', label: 'Working days', value: daysLabel(c.daysPerWeek ?? null) ?? "The shift's week" },
   ];
   if (!c.salaryHidden && c.grossSalary !== null) {
+    const allowances = c.allowances ?? [];
     fields.push(
-      { key: 'contract-gross', label: 'Gross salary', value: formatEgp(c.grossSalary), protected: true },
+      {
+        key: 'contract-gross',
+        label: 'Gross salary',
+        value: formatEgp(c.grossSalary),
+        protected: true,
+        note: hourly ? 'The monthly estimate: the hourly rate × the hours a week × 52 ÷ 12' : allowances.length > 0 ? 'Without the allowances' : undefined,
+      },
+      {
+        key: 'contract-allowances',
+        label: 'Allowances',
+        value: allowances.length > 0 ? <AllowanceList lines={allowances} /> : <span className="text-muted">None</span>,
+        protected: true,
+        note: allowances.length > 0 && c.allowancesTotal !== null && `${formatEgp(c.allowancesTotal)} a month in total, on top of the gross`,
+      },
+      ...(allowances.length > 0
+        ? [{ key: 'contract-total', label: 'Gross and allowances', value: c.totalSalary !== null && formatEgp(c.totalSalary), protected: true, note: 'A month' }]
+        : []),
       {
         key: 'contract-split',
         label: 'Basic / variable',
@@ -81,13 +124,19 @@ function contractFields(c: Contract): GridField[] {
         protected: true,
         note: c.basicPercent !== null && `${c.basicPercent}% basic; the variable part follows the monthly performance reports`,
       },
-      { key: 'contract-net', label: 'Net salary', value: c.netSalary !== null && formatEgp(c.netSalary), protected: true },
+      {
+        key: 'contract-net',
+        label: 'Net salary',
+        value: c.netSalary !== null && formatEgp(c.netSalary),
+        protected: true,
+        note: allowances.length > 0 ? 'Allowances included' : undefined,
+      },
       {
         key: 'contract-insured',
         label: 'Insured salary',
         value: c.insuredSalary !== null && formatEgp(c.insuredSalary),
         protected: true,
-        note: 'On the social insurance copy: the gross, capped at the maximum insurable wage',
+        note: 'On the social insurance copy: the gross and the insured allowances, capped at the maximum insurable wage',
       },
     );
   }
@@ -97,10 +146,11 @@ function contractFields(c: Contract): GridField[] {
 
 /**
  * Renew in writing before a fixed-term contract ends: warned 60 days before the end, or 30 days before the
- * non-renewal notice is due, whichever comes first. After the end, without a written renewal, it counts as open-ended.
+ * non-renewal notice is due, whichever comes first. After the end, without a written renewal, the law counts it as
+ * open-ended (Labour Law Art. 88): a warning about the law, as every contract here is for a fixed term.
  */
 function RenewalWarning({ contract: c, today }: { contract: Contract; today: string }) {
-  if (c.form !== 'fixed' || !c.endDate) return null;
+  if (!c.endDate) return null;
   const toEnd = daysBetween(today, c.endDate);
   const noticeBy = c.nonRenewalNoticeBy;
   const toNotice = noticeBy ? daysBetween(today, noticeBy) : null;
@@ -140,11 +190,15 @@ function DraftCard({
   today: string;
 }) {
   const name = `version ${d.version} (${d.number})`;
+  const allowances = d.allowances ?? [];
   const what = [
-    CONTRACT_FORM_LABELS[d.form],
+    CONTRACT_FORM_LABELS[d.form] ?? CONTRACT_FORM_LABELS.fixed,
     termLabel(d),
     d.probationMonths > 0 ? `${d.probationMonths} months' probation` : 'no probation',
+    payLabel(d),
     !d.salaryHidden && d.grossSalary !== null && `gross ${formatEgp(d.grossSalary)}`,
+    !d.salaryHidden && allowances.length > 0 && `allowances ${allowancesLabel(allowances)}`,
+    !d.salaryHidden && allowances.length > 0 && d.totalSalary !== null && `${formatEgp(d.totalSalary)} a month in all`,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -227,7 +281,7 @@ function Versions({ contracts }: { contracts: Contract[] }) {
           <tr>
             <th>Version</th>
             <th>Number</th>
-            <th>Term</th>
+            <th>Pay</th>
             <th>Start – End</th>
             <th>Probation</th>
             <th>Signed On</th>
@@ -239,7 +293,7 @@ function Versions({ contracts }: { contracts: Contract[] }) {
             <tr key={c.id}>
               <td className="tabular-nums">{c.version}</td>
               <td className="whitespace-nowrap">{c.number}</td>
-              <td className="whitespace-nowrap">{CONTRACT_FORM_LABELS[c.form]}</td>
+              <td>{payLabel(c)}</td>
               <td className="whitespace-nowrap tabular-nums">{termLabel(c)}</td>
               <td className="whitespace-nowrap tabular-nums">{c.probationEnd ? `To ${formatDate(c.probationEnd)}` : dash}</td>
               <td className="whitespace-nowrap tabular-nums">{c.signedOn ? formatDate(c.signedOn) : dash}</td>
@@ -305,8 +359,8 @@ export async function ContractSection({
   const active = contracts.find((c) => c.status === 'active');
   const draft = contracts.find((c) => c.status === 'draft');
   const previous = contracts.find((c) => c.status !== 'draft');
-  // HR drafts the first contract, or renews a fixed-term one (one draft at a time)
-  const offer = canEdit && !draft && !endingInProgress && (!previous ? 'New contract' : previous.endDate ? 'Renew' : null);
+  // HR drafts the first contract, or renews the last one (one draft at a time)
+  const offer = canEdit && !draft && !endingInProgress && (previous ? 'Renew' : 'New contract');
 
   return (
     <ProfileSection

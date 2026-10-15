@@ -145,4 +145,15 @@ describe('a PDF of JPEG pictures', () => {
     expect(turned.width).toBeCloseTo((210 / 25.4) * 72, 1);
     expect(pageFor(1748, 2480).a4).toBe(true); // no choice: A4, as before
   });
+
+  it('puts the org chart on an A3 sheet when it is chosen, landscape for a wide picture', () => {
+    const a3 = pageFor(4630, 3274, 300, 'a3');
+    expect(a3.width).toBeCloseTo((420 / 25.4) * 72, 1);
+    expect(a3.height).toBeCloseTo((297 / 25.4) * 72, 1);
+    expect(a3.a4).toBe(false);
+    expect(a3.scale).toBeCloseTo(Math.min(a3.width / 4630, a3.height / 3274), 9);
+    expect(printDpi(4630, 3274, 'a3')).toBe(280);
+    const { objects, kids } = readPdf(writePdf([fakeJpeg(4630, 3274)], { papers: ['a3'] }));
+    expect(objects.get(kids[0])).toContain('/MediaBox [0 0 1190.55 841.89]');
+  });
 });

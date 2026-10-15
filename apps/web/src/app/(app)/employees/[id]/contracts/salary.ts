@@ -1,9 +1,24 @@
-import { grossToNet, INSURABLE_WAGE, insuredSalary, netToGross, SALARY_RULES, type SalaryBreakdown } from '@trendlix/shared';
+import {
+  grossToNet,
+  INSURABLE_WAGE,
+  insuredWageOf,
+  monthlyFromHourly,
+  netToGross,
+  PAY_BASIS_LABELS,
+  SALARY_RULES,
+  type AllowanceTerms,
+  type PayBasis,
+  type SalaryBreakdown,
+} from '@trendlix/shared';
 
 // A contract's money, as the contract form previews it and the Contracts tab shows it: amounts in EGP, the basic and
 // variable parts of the gross, the insured salary on the social insurance copy, and the net worked out from the gross
 // (or the gross from a net) as the Ministry of Finance's salary tax system does (grossToNet / netToGross in
 // @trendlix/shared). The Salary Calculator page uses the same helpers.
+//
+// The owner's requests of 15 October 2026: allowances are paid every month on top of the gross, each kind taxed or not
+// and insured or not, and the net and the insured salary include them; and part-time pay can be by the hour, when the
+// gross is the monthly estimate, rate × hours a week × 52 ÷ 12 (monthlyFromHourly in @trendlix/shared).
 
 const money = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
@@ -17,12 +32,14 @@ export function formatAmount(amount: number): string {
   return money.format(amount);
 }
 
+const latinDigits = (input: string) => input.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+
 /**
  * An amount as typed: "15000", "15,000", "15 000" or in Arabic digits, with up to 2 decimals. "" → null (left empty);
  * anything else that is not an amount → NaN.
  */
 export function parseAmount(input: string): number | null {
-  const s = input.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[,\s]/g, '');
+  const s = latinDigits(input).replace(/[,\s]/g, '');
   if (s === '') return null;
   return /^\d+(\.\d{1,2})?$/.test(s) ? Number(s) : NaN;
 }
@@ -49,16 +66,25 @@ export function insurableLimits(year: number): { year: number; min: number; max:
   return { year: from, ...INSURABLE_WAGE[from] };
 }
 
+/** Allowances added up, a month: all of them, the taxed ones and the insured ones. */
+export function allowanceTotals(allowances: readonly AllowanceTerms[]): { total: number; taxable: number; insured: number } {
+  const sum = (which: (a: AllowanceTerms) => boolean) => cents(allowances.reduce((t, a) => t + (which(a) ? a.amount : 0), 0));
+  return { total: sum(() => true), taxable: sum((a) => a.taxable), insured: sum((a) => a.insured) };
+}
+
 /**
- * The insured salary for a gross, and why it is that amount: "the 2026 maximum" when the gross is above the year's
- * maximum insurable wage, "the 2026 minimum" when below its minimum, else "the actual gross".
+ * The insured salary for a gross and its allowances, and why it is that amount: "the 2026 maximum" when the gross and
+ * the insured allowances are above the year's maximum insurable wage, "the 2026 minimum" when below its minimum, else
+ * "the actual gross" (or "the gross and the insured allowances").
  */
-export function insuredFor(gross: number, year: number): { amount: number; why: string } {
-  const amount = insuredSalary(gross, year);
+export function insuredFor(gross: number, year: number, allowances: readonly AllowanceTerms[] = []): { amount: number; why: string } {
+  const insured = allowanceTotals(allowances).insured;
+  const base = cents(gross + insured);
+  const amount = insuredWageOf(gross, allowances, year);
   const limits = limitsYear(year);
-  if (amount < gross) return { amount, why: `the ${limits} maximum` };
-  if (amount > gross) return { amount, why: `the ${limits} minimum` };
-  return { amount, why: 'the actual gross' };
+  if (amount < base) return { amount, why: `the ${limits} maximum` };
+  if (amount > base) return { amount, why: `the ${limits} minimum` };
+  return { amount, why: insured > 0 ? 'the gross and the insured allowances' : 'the actual gross' };
 }
 
 // ---------- gross and net ----------
@@ -74,17 +100,32 @@ export function basisFrom(value: unknown): SalaryBasis {
   return value === 'net' ? 'net' : 'gross';
 }
 
-export type SalaryResult = { kind: 'empty' } | { kind: 'invalid' } | { kind: 'ok'; typed: number; breakdown: SalaryBreakdown };
+export type SalaryResult =
+  | { kind: 'empty' }
+  | { kind: 'invalid' }
+  /** A net the allowances alone already give (`net`): there is no gross to work out. */
+  | { kind: 'belowAllowances'; net: number }
+  | { kind: 'ok'; typed: number; breakdown: SalaryBreakdown };
 
 /**
  * The breakdown for an amount as typed (see `parseAmount`): a gross's net, or for a net the lowest whole-pound gross
- * whose net reaches it. `year` sets the insurable wage limits. Left empty → empty; not an amount, or 0 → invalid.
+ * whose net reaches it, with the allowances on top (their net included). `year` sets the insurable wage limits. Left
+ * empty → empty; not an amount, or 0 → invalid.
  */
-export function salaryFor(basis: SalaryBasis, input: string, year: number): SalaryResult {
+export function salaryFor(basis: SalaryBasis, input: string, year: number, allowances: readonly AllowanceTerms[] = []): SalaryResult {
   const n = parseAmount(input);
   if (n === null) return { kind: 'empty' };
   if (Number.isNaN(n) || n <= 0) return { kind: 'invalid' };
-  return { kind: 'ok', typed: n, breakdown: basis === 'net' ? netToGross(n, year) : grossToNet(n, year) };
+  if (basis === 'gross') return { kind: 'ok', typed: n, breakdown: grossToNet(n, year, allowances) };
+  // asked first: just above 0 the insured wage jumps to the year's minimum, so a tiny gross could seem to reach it
+  const allowancesNet = allowances.length > 0 ? grossToNet(0, year, allowances).net : 0;
+  const b = netToGross(n, year, 1, allowances);
+  return allowancesNet < n && b.gross > 0 ? { kind: 'ok', typed: n, breakdown: b } : { kind: 'belowAllowances', net: allowancesNet };
+}
+
+/** Why there is no gross for a net: the allowances alone give it. */
+export function belowAllowancesText(net: number): string {
+  return `The allowances alone give a net of ${formatEgp(net)}: enter a higher net, or fewer allowances.`;
 }
 
 /** An amount as the form sends it and the address holds it: 13069.65 → "13069.65", 16700 → "16700". */
@@ -97,8 +138,13 @@ export function plainAmount(amount: number): string {
  * salary stays the same (a gross with piasters comes back in whole pounds). Left as it was when there is nothing to
  * work from.
  */
-export function switchBasis(to: SalaryBasis, typed: { gross: string; net: string }, year: number): { gross: string; net: string } {
-  const from = salaryFor(to === 'net' ? 'gross' : 'net', to === 'net' ? typed.gross : typed.net, year);
+export function switchBasis(
+  to: SalaryBasis,
+  typed: { gross: string; net: string },
+  year: number,
+  allowances: readonly AllowanceTerms[] = [],
+): { gross: string; net: string } {
+  const from = salaryFor(to === 'net' ? 'gross' : 'net', to === 'net' ? typed.gross : typed.net, year, allowances);
   if (from.kind !== 'ok') return typed;
   return to === 'net' ? { ...typed, net: plainAmount(from.breakdown.net) } : { ...typed, gross: plainAmount(from.breakdown.gross) };
 }
@@ -108,11 +154,22 @@ export function formatPercent(rate: number): string {
   return `${Number((rate * 100).toFixed(4))}%`;
 }
 
-/** Why the insured wage isn't the gross: "capped at 16,700" above the year's maximum, "raised to the minimum, 2,700" below its minimum. */
-export function insuredWageNote(b: Pick<SalaryBreakdown, 'gross' | 'insuredWage'>): string | undefined {
-  if (b.insuredWage < b.gross) return `capped at ${formatAmount(b.insuredWage)}`;
-  if (b.insuredWage > b.gross) return `raised to the minimum, ${formatAmount(b.insuredWage)}`;
-  return undefined;
+/**
+ * Why the insured wage isn't the gross (with the insured allowances): "capped at 16,700" above the year's maximum,
+ * "raised to the minimum, 2,700" below its minimum, or "the gross and the insured allowances".
+ */
+export function insuredWageNote(b: Pick<SalaryBreakdown, 'gross' | 'insuredWage'>, insuredAllowances = 0): string | undefined {
+  const base = cents(b.gross + insuredAllowances);
+  if (b.insuredWage < base) return `capped at ${formatAmount(b.insuredWage)}`;
+  if (b.insuredWage > base) return `raised to the minimum, ${formatAmount(b.insuredWage)}`;
+  return insuredAllowances > 0 ? 'the gross and the insured allowances' : undefined;
+}
+
+/** How the allowances are treated, in a few words: "taxed, not insured", or "1,000 taxed, 500 insured" when they differ. */
+export function allowancesNote(allowances: readonly AllowanceTerms[]): string {
+  const t = allowanceTotals(allowances);
+  const part = (amount: number, word: string) => (amount >= t.total ? word : amount <= 0 ? `not ${word}` : `${formatAmount(amount)} ${word}`);
+  return `${part(t.taxable, 'taxed')}, ${part(t.insured, 'insured')}`;
 }
 
 /** For a net typed: the gross worked out (its net can be up to a pound more than asked, the gross being in whole pounds). */
@@ -134,12 +191,17 @@ const healthRow = (b: SalaryBreakdown): BreakdownRow[] =>
     ? [{ label: `Health insurance (${formatPercent(SALARY_RULES.healthInsuranceRate)})`, amount: b.healthInsurance, kind: 'deduction' }]
     : [];
 
-/** The contract form's breakdown, monthly: the gross, the insured wage, what is deducted, the net and the company's cost. */
-export function breakdownRows(b: SalaryBreakdown): BreakdownRow[] {
+/**
+ * The contract form's breakdown, monthly: the gross, the allowances (`allowances`: those `b` was worked out with), the
+ * insured wage, what is deducted, the net and the company's cost.
+ */
+export function breakdownRows(b: SalaryBreakdown, allowances: readonly AllowanceTerms[] = []): BreakdownRow[] {
   const r = SALARY_RULES;
+  const withAllowances = b.allowances > 0;
   return [
     { label: 'Gross salary', amount: b.gross, kind: 'amount' },
-    { label: 'Insured wage', amount: b.insuredWage, note: insuredWageNote(b), kind: 'amount' },
+    ...(withAllowances ? [{ label: 'Allowances', amount: b.allowances, note: allowancesNote(allowances), kind: 'amount' as const }] : []),
+    { label: 'Insured wage', amount: b.insuredWage, note: insuredWageNote(b, allowanceTotals(allowances).insured), kind: 'amount' },
     { label: `Employee social insurance (${formatPercent(r.employeeInsuranceRate)})`, amount: b.employeeInsurance, kind: 'deduction' },
     ...healthRow(b),
     { label: 'Income tax', amount: b.monthlyTax, kind: 'deduction' },
@@ -148,7 +210,7 @@ export function breakdownRows(b: SalaryBreakdown): BreakdownRow[] {
     {
       label: 'Company cost',
       amount: b.companyCost,
-      note: `gross plus the company's ${formatPercent(r.employerInsuranceRate)} insurance, ${formatAmount(b.employerInsurance)}`,
+      note: `${withAllowances ? 'gross and allowances' : 'gross'} plus the company's ${formatPercent(r.employerInsuranceRate)} insurance, ${formatAmount(b.employerInsurance)}`,
       kind: 'company',
     },
   ];
@@ -161,4 +223,79 @@ export function breakdownRows(b: SalaryBreakdown): BreakdownRow[] {
 export function savedNetChange(saved: { gross: number | null; net: number | null }, b: SalaryBreakdown | null): { saved: number; calculated: number } | null {
   if (!b || saved.net === null || saved.gross !== b.gross) return null;
   return Math.abs(saved.net - b.net) >= 0.005 ? { saved: saved.net, calculated: b.net } : null;
+}
+
+// ---------- pay by the hour, working days, allowances ----------
+
+/** The most hours a week by the hour: the legal working week (8 hours a day, 6 days). */
+export const MAX_HOURS_PER_WEEK = 48;
+
+/** Hours as typed: "20", "22.5" or in Arabic digits, with up to 1 decimal. "" → null (left empty); anything else → NaN. */
+export function parseHours(input: string): number | null {
+  const s = latinDigits(input).replace(/\s/g, '');
+  if (s === '') return null;
+  return /^\d+(\.\d)?$/.test(s) ? Number(s) : NaN;
+}
+
+export type HourlyResult = { kind: 'empty' } | { kind: 'invalid'; field: 'rate' | 'hours' } | { kind: 'ok'; rate: number; hours: number; gross: number };
+
+/**
+ * By the hour: the rate and the hours a week as typed, and the gross they give, the monthly estimate (rate × hours a
+ * week × 52 ÷ 12). Either left empty → empty; a rate that is not an amount above 0, or hours not from above 0 to 48 →
+ * invalid, naming the field.
+ */
+export function hourlyFor(rateInput: string, hoursInput: string): HourlyResult {
+  const rate = parseAmount(rateInput);
+  const hours = parseHours(hoursInput);
+  if (rate !== null && (Number.isNaN(rate) || rate <= 0)) return { kind: 'invalid', field: 'rate' };
+  if (hours !== null && (Number.isNaN(hours) || hours <= 0 || hours > MAX_HOURS_PER_WEEK)) return { kind: 'invalid', field: 'hours' };
+  if (rate === null || hours === null) return { kind: 'empty' };
+  return { kind: 'ok', rate, hours, gross: monthlyFromHourly(rate, hours) };
+}
+
+/** "20 hours a week", "22.5 hours a week", "1 hour a week". */
+export function hoursLabel(hours: number): string {
+  return `${money.format(hours)} ${hours === 1 ? 'hour' : 'hours'} a week`;
+}
+
+/** "EGP 150 an hour × 20 hours a week". */
+export function hourlyLabel(rate: number, hours: number): string {
+  return `${formatEgp(rate)} an hour × ${hoursLabel(hours)}`;
+}
+
+/** How the monthly estimate is worked out: "EGP 150 an hour × 20 hours a week × 52 ÷ 12 = EGP 13,000 a month". */
+export function monthlyEstimateText(h: { rate: number; hours: number; gross: number }): string {
+  return `${hourlyLabel(h.rate, h.hours)} × 52 ÷ 12 = ${formatEgp(h.gross)} a month`;
+}
+
+/** "3 days a week", "1 day a week"; null (the shift's week) → null. */
+export function daysLabel(days: number | null): string | null {
+  return days ? `${days} ${days === 1 ? 'day' : 'days'} a week` : null;
+}
+
+/** A contract's allowances, each with its amount a month: "Transport EGP 1,000 · Mobile EGP 500". */
+export function allowancesLabel(lines: readonly { nameEn: string; amount: number }[]): string {
+  return lines.map((a) => `${a.nameEn} ${formatEgp(a.amount)}`).join(' · ');
+}
+
+/** A contract's (or offer's) pay terms as the API sends them; the amounts are null when the salary is hidden. */
+export interface PayTerms {
+  payBasis: PayBasis;
+  hourlyRate: number | null;
+  hoursPerWeek: number | null;
+  daysPerWeek: number | null;
+  salaryHidden?: boolean;
+}
+
+/** By the hour: "EGP 150 an hour × 20 hours a week", or "20 hours a week" when the salary is hidden. Null for a monthly salary. */
+export function hourlyTerms(c: PayTerms): string | null {
+  if (c.payBasis !== 'hourly' || c.hoursPerWeek === null || c.hoursPerWeek === undefined) return null;
+  return !c.salaryHidden && c.hourlyRate !== null && c.hourlyRate !== undefined ? hourlyLabel(c.hourlyRate, c.hoursPerWeek) : hoursLabel(c.hoursPerWeek);
+}
+
+/** How the pay is set, in a few words: "Monthly salary", "By the hour: EGP 150 an hour × 20 hours a week · 3 days a week". */
+export function payLabel(c: PayTerms): string {
+  const basis = PAY_BASIS_LABELS[c.payBasis] ?? PAY_BASIS_LABELS.monthly;
+  const hourly = hourlyTerms(c);
+  return [hourly ? `${basis}: ${hourly}` : basis, daysLabel(c.daysPerWeek ?? null)].filter(Boolean).join(' · ');
 }

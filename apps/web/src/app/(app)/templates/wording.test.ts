@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { TemplateSlotView } from '../../../lib/types';
 import {
   appliesToLabel,
+  BILINGUAL_HINT,
   byFolder,
   draftIssues,
   draftText,
@@ -79,7 +80,9 @@ describe('a slot as the library words it', () => {
   it('names the language, or says it is chosen on upload', () => {
     expect(languageLabel('ar')).toBe('Arabic');
     expect(languageLabel('en')).toBe('English');
-    expect(languageLabel(null)).toBe('Arabic or English, chosen on upload');
+    expect(languageLabel(null)).toBe('Arabic, English or both, chosen on upload');
+    expect(languageLabel('bilingual')).toBe('Arabic and English');
+    expect(BILINGUAL_HINT).toContain('{{job_title_ar}} and {{job_title_en}}');
   });
 
   it('names the employment types, or says all of them', () => {

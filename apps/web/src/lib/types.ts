@@ -16,6 +16,7 @@ import type {
   MilitaryStatus,
   NoticeUnit,
   PaperworkKind,
+  PayBasis,
   Role,
   Standing,
   TemplateFolder,
@@ -155,6 +156,44 @@ export interface CompanyBrand {
   nameEn: string;
   nameAr: string | null;
   logoVersion: number | null;
+}
+
+// ---------- the org chart: Organization → Departments & Job Titles → Org chart (owner's request, 15 October 2026) ----------
+
+/** Someone who holds a job title now, as the org chart names them. */
+export interface OrgChartPerson {
+  id: string;
+  employeeCode: string;
+  fullNameEn: string;
+  fullNameAr: string;
+}
+
+export interface OrgChartJobTitle {
+  id: string;
+  titleEn: string;
+  titleAr: string | null;
+  /** The current employments with this job title; 0 when it is vacant. */
+  headcount: number;
+  /** Who they are, by English name: only for HR, the CEO and Finance (`OrgChart.showsPeople`). */
+  people?: OrgChartPerson[];
+}
+
+/** A team, or the department part of a department: its own job titles, the most senior first. */
+export interface OrgChartTeam extends DepartmentRef {
+  jobTitles: OrgChartJobTitle[];
+}
+
+export interface OrgChartDepartment extends OrgChartTeam {
+  /** In the order an Admin set. */
+  teams: OrgChartTeam[];
+}
+
+/** GET /org-chart: the company, and its departments in the order an Admin set. Everyone signed in may read it. */
+export interface OrgChart {
+  company: { nameEn: string; nameAr: string | null; hasLogo: boolean; logoVersion: number | null };
+  /** Whether the job titles list their people (HR, the CEO and Finance see every employee). */
+  showsPeople: boolean;
+  departments: OrgChartDepartment[];
 }
 
 /** Returned by every form action. */
@@ -623,19 +662,19 @@ export interface EndingSummary {
 }
 
 /**
- * One row of GET /contracts?status=&q=&form=&type=&endingWithin= (HR, CEO and Finance): a contract version in the
+ * One row of GET /contracts?status=&q=&type=&endingWithin= (HR, CEO and Finance): a contract version in the
  * company-wide list of the Contracts page, with its person and employment. Without a status, drafts and signed ones
  * only; `endingWithin` keeps signed ones ending within that many days, overdue included. Signed by end date first, then
  * drafts, then the rest. The salary fields are null, with `salaryHidden`, for anyone but HR, Finance and the CEO.
  */
-export interface ContractListItem {
+export interface ContractListItem extends ContractPay {
   id: string;
   number: string;
   version: number;
   form: ContractForm;
   status: ContractStatus;
   startDate: string;
-  /** Null for an open-ended contract. */
+  /** Null only for a contract from before every contract was fixed-term (owner, 15 October 2026). */
   endDate: string | null;
   probationMonths: number;
   probationEnd: string | null;
@@ -644,7 +683,7 @@ export interface ContractListItem {
   labourOfficeFiledOn: string | null;
   /** A signed fixed contract's last day to tell the employee it won't be renewed: 45 working days before it ends. */
   nonRenewalNoticeBy: string | null;
-  /** In EGP. */
+  /** In EGP: the gross (for pay by the hour, the monthly estimate), and the insured salary with the insured allowances. */
   grossSalary: number | null;
   insuredSalary: number | null;
   salaryHidden: boolean;
@@ -658,6 +697,27 @@ export interface ContractListItem {
   departmentName: string | null;
 }
 
+/**
+ * How a contract's pay is set (owner's requests, 15 October 2026): a monthly salary, or by the hour for part-time work
+ * (the gross is then the monthly estimate, rate × hours a week × 52 ÷ 12, worked out by the API); the working days a
+ * week; and the allowances paid every month on top of the gross. The amounts are null, like the salary, for anyone but
+ * HR, Finance and the CEO.
+ */
+export interface ContractPay {
+  payBasis: PayBasis;
+  /** By the hour: EGP an hour. Null for a monthly salary. */
+  hourlyRate: number | null;
+  /** By the hour: the contracted hours a week. Null for a monthly salary. */
+  hoursPerWeek: number | null;
+  /** Working days a week, e.g. 2 or 3 part-time (1 to 6); null: the shift's week. */
+  daysPerWeek: number | null;
+  /** Each allowance a month, with its kind's name and treatment as drafted. */
+  allowances: AllowanceLine[] | null;
+  allowancesTotal: number | null;
+  /** The gross and the allowances, a month. */
+  totalSalary: number | null;
+}
+
 // ---------- contracts and endings on the employee profile (the Employment tab) ----------
 
 /**
@@ -666,27 +726,28 @@ export interface ContractListItem {
  * starting the day after the previous one ends. Signed versions are never edited, except their filing dates and note.
  * The salary fields are null, with `salaryHidden`, for anyone but HR, Finance and the CEO.
  */
-export interface Contract {
+export interface Contract extends ContractPay {
   id: string;
   number: string;
   version: number;
+  /** Always 'fixed': every contract runs for a fixed term (owner, 15 October 2026). */
   form: ContractForm;
   startDate: string;
-  /** Null for an open-ended contract. */
+  /** Null only for a contract from before every contract was fixed-term. */
   endDate: string | null;
   durationMonths: number | null;
   /** 0 = no probation (a renewal, or someone who already had one with the company: once per employer, Art. 90). */
   probationMonths: number;
   probationEnd: string | null;
-  /** The actual gross, in EGP. */
+  /** The actual gross, in EGP; for pay by the hour, the monthly estimate. Allowances are on top of it. */
   grossSalary: number | null;
   /** The basic part of the gross, in percent (80 by default); the rest is variable. */
   basicPercent: number | null;
   basicSalary: number | null;
   variableSalary: number | null;
-  /** Approximate, as agreed; optional. */
+  /** As worked out on the contract form, allowances included; optional. */
   netSalary: number | null;
-  /** The salary on the social insurance copy: the gross, capped at the year's maximum insurable wage. */
+  /** The salary on the social insurance copy: the gross and the insured allowances, capped at the year's maximum insurable wage. */
   insuredSalary: number | null;
   /** The terms as signed: the job title, grade, department or team, and shift at the time. */
   jobTitleEn: string | null;
@@ -905,4 +966,173 @@ export interface MissingDocumentDetail {
 export interface DocumentCheck {
   missing: MissingDocumentDetail[];
   usesRestricted: boolean;
+}
+
+/**
+ * A kind of allowance (Organization → Allowances; owner's request, 15 October 2026): paid every month on top of the
+ * gross salary, taxed or not, and counted in the insured wage or not. An inactive kind isn't offered for new contracts
+ * and offers. `inUse`: on a contract or offer, so it can't be deleted (only made inactive).
+ */
+export interface AllowanceType {
+  id: string;
+  nameEn: string;
+  nameAr: string;
+  taxable: boolean;
+  insured: boolean;
+  active: boolean;
+  sortOrder: number;
+  inUse: boolean;
+}
+
+/** An allowance on a contract or offer, a month: its kind's name and treatment as when drafted. */
+export interface AllowanceLine {
+  allowanceTypeId: string;
+  nameEn: string;
+  nameAr: string;
+  taxable: boolean;
+  insured: boolean;
+  amount: number;
+}
+
+// ---------- job offers (owner's request, 15 October 2026; packages/shared/src/offers.ts) ----------
+// A candidate is not an employee: HR drafts an offer, the system fills in the job offer template, HR sends it (by the
+// system's email, or as a link HR sends), and the candidate accepts or declines it on a public page. Once accepted, the
+// API makes the profile, the employment and a draft contract. HR writes, HR and the CEO read; the salary fields are null,
+// with `salaryHidden`, for anyone else. Dates are "YYYY-MM-DD"; moments are ISO.
+
+type OfferStatusShown = import('@trendlix/shared').OfferShownStatus;
+type OfferWay = import('@trendlix/shared').OfferSendWay;
+type OfferPayBasis = import('@trendlix/shared').PayBasis;
+
+/** One row of GET /offers?status=&q= (status: a shown status, or 'open' = drafts and sent ones not expired). */
+export interface OfferListItem {
+  id: string;
+  /** OFF-<year>-<4 digits>. */
+  number: string;
+  /** As shown: a sent offer past its last day is 'expired'. */
+  status: OfferStatusShown;
+  fullNameEn: string;
+  fullNameAr: string;
+  email: string;
+  employmentType: EmploymentType;
+  jobTitle: { titleEn: string; titleAr: string | null } | null;
+  departmentName: string | null;
+  joinDate: string;
+  grossSalary: number | null;
+  /** The gross and the allowances, a month. */
+  totalSalary: number | null;
+  salaryHidden: boolean;
+  /** The last day to accept. */
+  expiresOn: string;
+  sentAt: string | null;
+  respondedAt: string | null;
+  /** Once accepted and the profile is made (or a former employee offered again): their profile. */
+  employeeId: string | null;
+}
+
+/** Something the job offer template needs that the offer (or the company profile) lacks, and where it is filled in. */
+export interface OfferMissingValue {
+  tag: string;
+  label: string;
+  /** `tab`: 'offer' (a field of the offer: `key`), 'company' (the company profile), or another place the API names. */
+  where: { tab: string; key: string };
+}
+
+/** GET /offers/:id (also what POST, PATCH and the actions answer). */
+export interface OfferView {
+  id: string;
+  number: string;
+  status: OfferStatusShown;
+  fullNameEn: string;
+  fullNameAr: string;
+  email: string;
+  mobile: string | null;
+  /** A former employee offered again (or, once accepted, the profile made). */
+  employeeId: string | null;
+  employee: { id: string; employeeCode: string; fullNameEn: string } | null;
+  employmentType: EmploymentType;
+  department: (DepartmentRef & { parent: DepartmentRef | null }) | null;
+  jobTitle: { id: string; titleEn: string; titleAr: string | null } | null;
+  grade: { id: string; code: string; levelEn: string } | null;
+  manager: { id: string; employeeCode: string; fullNameEn: string } | null;
+  shift: { id: string; code: string; workingDays: number[] } | null;
+  workArrangement: WorkArrangement;
+  /** Hybrid only; 0 = Sunday … 6 = Saturday. */
+  officeDays: number[];
+  joinDate: string;
+  payBasis: OfferPayBasis;
+  /** A month; by the hour, the monthly estimate (hourly rate × hours a week × 52 ÷ 12). */
+  grossSalary: number | null;
+  hourlyRate: number | null;
+  hoursPerWeek: number | null;
+  daysPerWeek: number | null;
+  basicPercent: number | null;
+  netSalary: number | null;
+  insuredSalary: number | null;
+  allowances: AllowanceLine[] | null;
+  allowancesTotal: number | null;
+  totalSalary: number | null;
+  salaryHidden: boolean;
+  probationMonths: number;
+  durationMonths: number;
+  expiresOn: string;
+  /** A few words to the candidate, in the email and on their page. */
+  message: string | null;
+  /** For HR only. */
+  note: string | null;
+  /** The job offer template of the employment type (offerSlotKey) and where it stands. */
+  template: { slotKey: string; name: string; status: TemplateSlotStatus; version: number | null };
+  /** A draft's: what filling in the template would lack. */
+  missing: OfferMissingValue[];
+  /** The document as sent; null for a draft (filled in afresh at each preview). */
+  document: { fileName: string; hasPdf: boolean; documentDate: string } | null;
+  sentVia: OfferWay | null;
+  sentTo: string | null;
+  sentAt: string | null;
+  sentBy: { email: string } | null;
+  sentCount: number;
+  /** The candidate first opened the link. */
+  viewedAt: string | null;
+  respondedAt: string | null;
+  /** HR recorded the answer; null when the candidate answered online. */
+  answeredBy: { email: string } | null;
+  /** The name the candidate typed to accept. */
+  acceptedName: string | null;
+  declineReason: string | null;
+  withdrawnAt: string | null;
+  withdrawReason: string | null;
+  /** The profile, the employment and the draft contract were made from it. */
+  hiredAt: string | null;
+  /** Whether the server can send email (SMTP is set up); without it, HR copies the link. */
+  emailConfigured: boolean;
+  /** Whether the server can make PDFs (the converter is set up). */
+  pdfAvailable: boolean;
+  createdAt: string;
+  createdBy: { email: string } | null;
+}
+
+/** POST /offers/:id/send: the offer as sent, and the candidate's link (sending again makes a new link). */
+export interface OfferSendResult {
+  offer: OfferView;
+  link: string;
+}
+
+/** GET /public/offers/:token: what the candidate's page shows (no sign-in). */
+export interface PublicOffer {
+  number: string;
+  status: OfferStatusShown;
+  fullNameEn: string;
+  fullNameAr: string;
+  jobTitleEn: string | null;
+  jobTitleAr: string | null;
+  employmentType: EmploymentType;
+  joinDate: string;
+  expiresOn: string;
+  /** Null when the company profile isn't filled in yet. */
+  companyNameEn: string | null;
+  companyNameAr: string | null;
+  message: string | null;
+  document: { hasPdf: boolean } | null;
+  respondedAt: string | null;
+  acceptedName: string | null;
 }

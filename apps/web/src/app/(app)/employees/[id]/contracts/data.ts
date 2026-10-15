@@ -1,7 +1,7 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
-import type { Contract, ContractSettings, EndingRule } from '@/lib/types';
+import type { AllowanceType, Contract, ContractSettings, EndingRule } from '@/lib/types';
 
 // Loading contracts, their settings and the ending rules for the profile. These came with the contracts module
 // (October 2026): an API from before it answers 404, which here means "not available yet" (null) rather than the 404
@@ -29,4 +29,12 @@ export function loadContractSettings(): Promise<ContractSettings | null> {
 /** Every ending rule, the inactive ones too. */
 export function loadEndingRules(): Promise<EndingRule[] | null> {
   return getIfAvailable<EndingRule[]>('/ending-rules');
+}
+
+/**
+ * The kinds of allowance (Organization → Allowances, October 2026), the inactive ones too, for the contract form. An API
+ * from before them gives none, so the form still works without allowances.
+ */
+export async function loadAllowanceTypes(): Promise<AllowanceType[]> {
+  return (await getIfAvailable<AllowanceType[]>('/allowance-types')) ?? [];
 }

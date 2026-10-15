@@ -18,6 +18,8 @@ export const NAV: NavItem[] = [
   { href: '/organization/company', label: 'Organization', section: '/organization' },
   { href: '/employees', label: 'Employees', section: '/employees' },
   { href: '/contracts', label: 'Contracts', section: '/contracts', roles: ['hr', 'ceo', 'finance'] },
+  // job offers: the offer stage, before someone is an employee (owner's request, 15 October 2026)
+  { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
   { href: '/templates', label: 'Templates', section: '/templates', roles: ['hr', 'admin', 'ceo'] },
   { href: '/users', label: 'Users', section: '/users', roles: ['admin'] },

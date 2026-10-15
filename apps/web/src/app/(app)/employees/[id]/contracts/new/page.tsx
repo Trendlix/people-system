@@ -5,17 +5,20 @@ import { createContract } from '../../../contract-actions';
 import { loadEmployee } from '../../../data';
 import { EditHeading, Empty, Loading, profileHref, RequireHr, todayInCairo } from '../../../ui';
 import { ContractForm, type ContractDefaults } from '../contract-form';
-import { loadContractSettings, loadContracts } from '../data';
+import { loadAllowanceTypes, loadContractSettings, loadContracts } from '../data';
 import { addDays } from '../dates';
 
-// Drafting the current employment's contract: its first one, or the renewal of the signed one (fixed-term contracts
-// are renewed in writing before they end). It is saved as a draft, one at a time, and signed on the Contracts tab.
+// Drafting the current employment's contract: its first one, or the renewal of the signed one (every contract is for a
+// fixed term, renewed in writing before it ends). It is saved as a draft, one at a time, and signed on the Contracts
+// tab. A renewal starts from the pay of the version it renews: its pay basis, salary or hourly rate and hours, working
+// days and allowances.
 
 async function NewContract({ params }: { params: Promise<{ id: string }> }) {
   const employee = await loadEmployee(params);
   const back = profileHref(employee.id, 'contracts');
   const e = employee.employment;
-  const [contracts, settings] = employee.access.edit && e ? await Promise.all([loadContracts(employee.id, e.id), loadContractSettings()]) : [null, null];
+  const [contracts, settings, allowanceTypes] =
+    employee.access.edit && e ? await Promise.all([loadContracts(employee.id, e.id), loadContractSettings(), loadAllowanceTypes()]) : [null, null, []];
   const today = todayInCairo();
   const draft = contracts?.find((c) => c.status === 'draft');
   // the newest signed version: what a new one renews
@@ -33,45 +36,52 @@ async function NewContract({ params }: { params: Promise<{ id: string }> }) {
         on the <Link href={back}>Contracts tab</Link>. Only a Super Admin can delete it.
       </Empty>
     );
-  } else if (previous && !previous.endDate) {
-    body = <Empty>The contract (version {previous.version}) is open-ended: there is nothing to renew.</Empty>;
   } else {
     // Probation comes once with an employer (Art. 90): none for someone who had an employment here before.
     const hadProbation = employee.employments.some((x) => x.id !== e.id && x.probationEnd);
     const defaults: ContractDefaults = previous
       ? {
-          form: 'fixed',
           startDate: '',
           durationMonths: settings.durationMonths,
           probationMonths: 0,
-          // the salary so far, to start from
+          // the pay so far, to start from
+          payBasis: previous.payBasis ?? 'monthly',
           grossSalary: previous.grossSalary,
+          hourlyRate: previous.hourlyRate ?? null,
+          hoursPerWeek: previous.hoursPerWeek ?? null,
+          daysPerWeek: previous.daysPerWeek ?? null,
           basicPercent: previous.basicPercent ?? 80,
           netSalary: previous.netSalary,
+          allowances: previous.allowances ?? [],
           note: '',
         }
       : {
-          form: 'fixed',
           startDate: e.joinDate,
           durationMonths: settings.durationMonths,
           probationMonths: hadProbation ? 0 : settings.probationMonths,
+          payBasis: 'monthly',
           grossSalary: null,
+          hourlyRate: null,
+          hoursPerWeek: null,
+          daysPerWeek: null,
           basicPercent: 80,
           netSalary: null,
+          allowances: [],
           note: '',
         };
     body = (
       <div className="max-w-3xl space-y-4">
         <p className="text-sm text-muted">
-          {previous?.endDate
-            ? `Version ${previous.version + 1}, renewing version ${previous.version} (${previous.number}), which ends on ${formatDate(previous.endDate)}.`
+          {previous
+            ? `Version ${previous.version + 1}, renewing version ${previous.version} (${previous.number})${previous.endDate ? `, which ends on ${formatDate(previous.endDate)}` : ''}.`
             : `The first contract of the employment since ${formatDate(e.joinDate)}.`}{' '}
           It is saved as a draft: sign it on the Contracts tab once the employee and the company have signed it.
         </p>
         <ContractForm
           action={createContract.bind(null, employee.id, e.id, Boolean(previous))}
           defaults={defaults}
-          renewal={previous?.endDate ? { startDate: addDays(previous.endDate, 1), after: `version ${previous.version}` } : null}
+          allowanceTypes={allowanceTypes}
+          renewal={previous ? { startDate: previous.endDate ? addDays(previous.endDate, 1) : null, after: `version ${previous.version}` } : null}
           probationHint={
             hadProbation && !previous
               ? `0: ${employee.fullNameEn} was employed here before, and probation comes only once with an employer (Labour Law Art. 90).`

@@ -5,7 +5,7 @@ import { TEMPLATE_LANGUAGES, type TemplateLanguage } from '@trendlix/shared';
 import { FileDrop } from '@/components/file-drop';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import type { UploadState } from './actions';
-import { DOCX_ACCEPT, fileProblem, LANGUAGE_LABELS } from './wording';
+import { BILINGUAL_HINT, DOCX_ACCEPT, fileProblem, LANGUAGE_LABELS } from './wording';
 
 /**
  * Uploading a version of a template's Word file, as a draft (HR and Admin): the file, chosen, dropped or pasted; its
@@ -65,7 +65,7 @@ export function UploadTemplateForm({
           />
         </div>
         {language === null && (
-          <fieldset>
+          <fieldset aria-describedby={fid('language-hint')}>
             <legend className="label">Language of the document</legend>
             <div className="flex flex-wrap gap-x-6 gap-y-2">
               {TEMPLATE_LANGUAGES.map((l) => (
@@ -75,8 +75,12 @@ export function UploadTemplateForm({
                 </label>
               ))}
             </div>
+            <p id={fid('language-hint')} className="hint">
+              {LANGUAGE_LABELS.bilingual}: {BILINGUAL_HINT}
+            </p>
           </fieldset>
         )}
+        {language === 'bilingual' && <p className="hint sm:col-span-2">{BILINGUAL_HINT}</p>}
         <div className={language === null ? undefined : 'sm:col-span-2'}>
           <label htmlFor={fid('note')} className="label">
             What changed <span className="font-normal text-muted">(optional)</span>

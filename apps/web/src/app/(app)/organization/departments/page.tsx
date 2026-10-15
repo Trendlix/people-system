@@ -122,18 +122,24 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
             </Link>
           )}
         </form>
-        {canEdit && (
-          <div className="flex flex-wrap gap-2">
-            {canReorder && (
-              <Link href="/organization/departments?reorder=departments" scroll={false} className="btn btn-secondary">
-                Reorder
+        <div className="flex flex-wrap gap-2">
+          {/* the org chart of all this, to download or print (owner's request, 15 October 2026): for everyone who sees the page */}
+          <Link href="/organization/chart" className="btn btn-secondary">
+            Org chart
+          </Link>
+          {canEdit && (
+            <>
+              {canReorder && (
+                <Link href="/organization/departments?reorder=departments" scroll={false} className="btn btn-secondary">
+                  Reorder
+                </Link>
+              )}
+              <Link href="/organization/departments/new" className="btn btn-primary">
+                New department
               </Link>
-            )}
-            <Link href="/organization/departments/new" className="btn btn-primary">
-              New department
-            </Link>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {sections.length > 0 && (

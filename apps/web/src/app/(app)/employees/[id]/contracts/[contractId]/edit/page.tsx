@@ -5,7 +5,7 @@ import { updateContract } from '../../../../contract-actions';
 import { loadEmployee } from '../../../../data';
 import { EditHeading, Empty, Loading, profileHref, RequireHr, todayInCairo } from '../../../../ui';
 import { ContractForm } from '../../contract-form';
-import { loadContractSettings, loadContracts } from '../../data';
+import { loadAllowanceTypes, loadContractSettings, loadContracts } from '../../data';
 
 // Changing a draft of the current employment's contract, before it is signed. A signed version changes only in its
 // filing dates and note, on the Contracts tab.
@@ -15,7 +15,8 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
   const employee = await loadEmployee(params);
   const back = profileHref(employee.id, 'contracts');
   const e = employee.employment;
-  const [contracts, settings] = employee.access.edit && e ? await Promise.all([loadContracts(employee.id, e.id), loadContractSettings()]) : [null, null];
+  const [contracts, settings, allowanceTypes] =
+    employee.access.edit && e ? await Promise.all([loadContracts(employee.id, e.id), loadContractSettings(), loadAllowanceTypes()]) : [null, null, []];
   const today = todayInCairo();
   const contract = contracts?.find((c) => c.id === contractId);
   if (contracts && !contract) notFound();
@@ -41,15 +42,20 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
         <ContractForm
           action={updateContract.bind(null, employee.id, contract.id, renewal)}
           defaults={{
-            form: contract.form,
             startDate: contract.startDate,
             durationMonths: contract.durationMonths ?? settings?.durationMonths ?? 12,
             probationMonths: contract.probationMonths,
+            payBasis: contract.payBasis ?? 'monthly',
             grossSalary: contract.grossSalary,
+            hourlyRate: contract.hourlyRate ?? null,
+            hoursPerWeek: contract.hoursPerWeek ?? null,
+            daysPerWeek: contract.daysPerWeek ?? null,
             basicPercent: contract.basicPercent ?? 80,
             netSalary: contract.netSalary,
+            allowances: contract.allowances ?? [],
             note: contract.note ?? '',
           }}
+          allowanceTypes={allowanceTypes}
           renewal={renewal ? { startDate: contract.startDate, after: `version ${contract.version - 1}` } : null}
           fullTime={e.employmentType === 'full_time'}
           today={today}

@@ -1,17 +1,18 @@
 import Link from 'next/link';
-import { CONTRACT_FORM_LABELS, CONTRACT_FORMS, EMPLOYMENT_TYPES, LABELS } from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, LABELS } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import type { ContractListItem } from '@/lib/types';
 import { ContractStatusBadge, termLabel } from '../employees/[id]/contracts/contract-section';
-import { formatEgp } from '../employees/[id]/contracts/salary';
+import { allowancesLabel, formatEgp, hourlyTerms, payLabel } from '../employees/[id]/contracts/salary';
 import { profileHref } from '../employees/ui';
 import { loadContractList } from './data';
 import { contractsHref, countLabel, ENDING_WITHIN_DAYS, isFiltered, listPaths, readFilters, STATUS_FILTERS, type ContractFilters } from './list';
 
 // Every contract in the company, filtered by a GET form so the address can be shared: a search, the status (drafts and
-// signed unless chosen), the term, the employment type and "ending within". The API does the filtering and the order
-// (signed by end date, then drafts, then the rest); the salary (the gross, and the insured salary under it) only for
-// those who see salaries.
+// signed unless chosen), the employment type and "ending within" (every contract is for a fixed term, so there is no
+// term to filter by). The API does the filtering and the order (signed by end date, then drafts, then the rest). Each
+// shows its term and how its pay is set; the salary (the gross, for pay by the hour the rate, the allowances and the
+// total, and the insured salary) only for those who see salaries.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -46,7 +47,6 @@ function Select({
   );
 }
 
-const FORM_OPTIONS = [{ value: '', label: 'Any term' }, ...CONTRACT_FORMS.map((f) => ({ value: f, label: CONTRACT_FORM_LABELS[f] }))];
 const TYPE_OPTIONS = [{ value: '', label: 'All types' }, ...EMPLOYMENT_TYPES.map((t) => ({ value: t, label: LABELS.employmentType[t] }))];
 const ENDING_OPTIONS = [{ value: '', label: 'Any time' }, ...ENDING_WITHIN_DAYS.map((d) => ({ value: String(d), label: `${d} days` }))];
 
@@ -69,7 +69,6 @@ function Filters({ filters: f }: { filters: ContractFilters }) {
         />
       </div>
       <Select id="contract-status" name="status" label="Status" value={f.status} options={STATUS_FILTERS} />
-      <Select id="contract-form" name="form" label="Term" value={f.form} options={FORM_OPTIONS} />
       <Select id="contract-type" name="type" label="Employment type" value={f.type} options={TYPE_OPTIONS} />
       <Select id="contract-ending" name="endingWithin" label="Ending within" value={f.endingWithin === null ? '' : String(f.endingWithin)} options={ENDING_OPTIONS} />
       <button type="submit" className="btn btn-secondary">
@@ -87,6 +86,24 @@ function Filters({ filters: f }: { filters: ContractFilters }) {
 /** An amount in EGP, or a dash when there is none or it is hidden from this viewer. */
 function Money({ amount, hidden }: { amount: number | null; hidden: boolean }) {
   return hidden || amount === null ? dash : <>{formatEgp(amount)}</>;
+}
+
+/** Under the gross: the hourly rate, each allowance and the total with them, and the insured salary. */
+function SalaryLines({ contract: c }: { contract: ContractListItem }) {
+  const allowances = c.allowances ?? [];
+  const hourly = c.payBasis === 'hourly' && c.hourlyRate !== null ? hourlyTerms(c) : null;
+  return (
+    <div className="text-xs text-muted">
+      {hourly && <div>{hourly}</div>}
+      {allowances.length > 0 && (
+        <>
+          <div className="whitespace-normal">+ {allowancesLabel(allowances)}</div>
+          {c.totalSalary !== null && <div>Total {formatEgp(c.totalSalary)} a month</div>}
+        </>
+      )}
+      {c.insuredSalary !== null && <div>Insured {formatEgp(c.insuredSalary)}</div>}
+    </div>
+  );
 }
 
 function ContractRow({ contract: c, salary }: { contract: ContractListItem; salary: boolean }) {
@@ -110,9 +127,10 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
         {c.jobTitleEn ?? dash}
         {c.departmentName && <div className="text-xs text-muted">{c.departmentName}</div>}
       </td>
-      <td className="whitespace-nowrap">
-        {CONTRACT_FORM_LABELS[c.form] ?? c.form}
-        <div className="text-xs text-muted tabular-nums">{termLabel(c)}</div>
+      <td>
+        <span className="whitespace-nowrap tabular-nums">{termLabel(c)}</span>
+        {/* the hourly rate is with the salary */}
+        <div className="text-xs text-muted">{payLabel({ ...c, salaryHidden: true })}</div>
       </td>
       <td>
         <ContractStatusBadge status={c.status} />
@@ -121,7 +139,7 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
       {salary && (
         <td className="text-right whitespace-nowrap tabular-nums">
           <Money amount={c.grossSalary} hidden={c.salaryHidden} />
-          {!c.salaryHidden && c.insuredSalary !== null && <div className="text-xs text-muted">Insured {formatEgp(c.insuredSalary)}</div>}
+          {!c.salaryHidden && <SalaryLines contract={c} />}
         </td>
       )}
     </tr>
@@ -157,7 +175,7 @@ export async function AllContracts({ searchParams, salary }: { searchParams: Pro
                   <th>Contract</th>
                   <th>Employment Type</th>
                   <th>Job Title</th>
-                  <th>Term</th>
+                  <th>Term and Pay</th>
                   <th>Status</th>
                   <th>Signed On</th>
                   {salary && <th className="text-right">Salary</th>}

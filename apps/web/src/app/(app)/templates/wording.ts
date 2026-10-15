@@ -38,12 +38,19 @@ export const WHO_SEES = 'Only HR, Admin and the CEO can see the templates.';
 export const NOT_AVAILABLE = 'Not available yet.';
 export const NOT_AVAILABLE_ACTION = 'Not available yet: the server does not have templates yet. Please try again after its next update.';
 
-export const LANGUAGE_LABELS: Record<TemplateLanguage, string> = { ar: 'Arabic', en: 'English' };
+export const LANGUAGE_LABELS: Record<TemplateLanguage, string> = { ar: 'Arabic', en: 'English', bilingual: 'Arabic and English' };
 
 /** A slot's language, or that each version's is chosen when it is uploaded. */
 export function languageLabel(language: TemplateLanguage | null): string {
-  return language ? LANGUAGE_LABELS[language] : 'Arabic or English, chosen on upload';
+  return language ? LANGUAGE_LABELS[language] : 'Arabic, English or both, chosen on upload';
 }
+
+/**
+ * How a bilingual template (both languages side by side, like the owner's NDA, 15 October 2026) takes its tags: those
+ * that depend on the language print in Arabic, and their _ar and _en forms print the language they name.
+ */
+export const BILINGUAL_HINT =
+  'Arabic and English side by side, e.g. the NDA. Tags that depend on the language print in Arabic; for each side use their _ar and _en forms, e.g. {{job_title_ar}} and {{job_title_en}}.';
 
 export const SIGNER_LABELS: Record<TemplateSigners, string> = {
   both: 'The employee and the company',

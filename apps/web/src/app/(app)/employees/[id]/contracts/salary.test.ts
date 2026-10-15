@@ -1,14 +1,26 @@
 import { grossToNet } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  allowancesLabel,
+  allowancesNote,
+  allowanceTotals,
   basisFrom,
+  belowAllowancesText,
   breakdownRows,
+  daysLabel,
   formatEgp,
   formatPercent,
+  hourlyFor,
+  hourlyLabel,
+  hourlyTerms,
+  hoursLabel,
   insurableLimits,
   insuredFor,
   insuredWageNote,
+  monthlyEstimateText,
   parseAmount,
+  parseHours,
+  payLabel,
   plainAmount,
   salaryFor,
   savedNetChange,
@@ -16,6 +28,10 @@ import {
   switchBasis,
   workedOutGross,
 } from './salary';
+
+const TAXED = { amount: 1000, taxable: true, insured: false };
+const UNTAXED = { amount: 500, taxable: false, insured: false };
+const INSURED = { amount: 2000, taxable: true, insured: true };
 
 describe('a contract’s money', () => {
   it('reads amounts as typed, with commas, spaces or Arabic digits', () => {
@@ -143,5 +159,115 @@ describe('gross and net', () => {
     expect(savedNetChange({ gross: 16700, net: null }, b)).toBeNull();
     expect(savedNetChange({ gross: 15000, net: 12000 }, b)).toBeNull();
     expect(savedNetChange({ gross: 16700, net: 13000 }, null)).toBeNull();
+  });
+});
+
+describe('allowances on top of the gross', () => {
+  it('adds them up: all, the taxed and the insured', () => {
+    expect(allowanceTotals([TAXED, UNTAXED, INSURED])).toEqual({ total: 3500, taxable: 3000, insured: 2000 });
+    expect(allowanceTotals([])).toEqual({ total: 0, taxable: 0, insured: 0 });
+  });
+
+  it('insures the gross with the insured allowances, within the year’s limits', () => {
+    expect(insuredFor(12000, 2026, [INSURED, TAXED])).toEqual({ amount: 14000, why: 'the gross and the insured allowances' });
+    expect(insuredFor(16000, 2026, [INSURED])).toEqual({ amount: 16700, why: 'the 2026 maximum' });
+    // an allowance that isn't insured leaves the insured wage alone
+    expect(insuredFor(12000, 2026, [TAXED, UNTAXED])).toEqual({ amount: 12000, why: 'the actual gross' });
+  });
+
+  it('works the net out with them, and the gross for a net that includes them', () => {
+    const r = salaryFor('gross', '12000', 2026, [UNTAXED]);
+    expect(r.kind === 'ok' && r.breakdown.net).toBeCloseTo((salaryFor('gross', '12000', 2026) as { breakdown: { net: number } }).breakdown.net + 500, 2);
+    const net = salaryFor('net', '13000', 2026, [UNTAXED]);
+    expect(net.kind === 'ok' && net.breakdown.net).toBeGreaterThanOrEqual(13000);
+    expect(net.kind === 'ok' && net.breakdown.gross).toBeLessThan(16603);
+  });
+
+  it('says when the allowances alone give the net asked for', () => {
+    expect(salaryFor('net', '400', 2026, [UNTAXED])).toEqual({ kind: 'belowAllowances', net: 500 });
+    expect(belowAllowancesText(500)).toBe('The allowances alone give a net of EGP 500: enter a higher net, or fewer allowances.');
+  });
+
+  it('carries the salary over with them when switching what HR starts from', () => {
+    const s = switchBasis('net', { gross: '12000', net: '' }, 2026, [UNTAXED]);
+    expect(switchBasis('gross', { gross: '', net: s.net }, 2026, [UNTAXED]).gross).toBe('12000');
+  });
+
+  it('describes how they are treated', () => {
+    expect(allowancesNote([TAXED])).toBe('taxed, not insured');
+    expect(allowancesNote([UNTAXED])).toBe('not taxed, not insured');
+    expect(allowancesNote([INSURED])).toBe('taxed, insured');
+    expect(allowancesNote([TAXED, UNTAXED, INSURED])).toBe('3,000 taxed, 2,000 insured');
+  });
+
+  it('says when the insured wage is the gross with the insured allowances', () => {
+    expect(insuredWageNote({ gross: 12000, insuredWage: 14000 }, 2000)).toBe('the gross and the insured allowances');
+    expect(insuredWageNote({ gross: 16000, insuredWage: 16700 }, 2000)).toBe('capped at 16,700');
+    expect(insuredWageNote({ gross: 500, insuredWage: 2700 }, 1000)).toBe('raised to the minimum, 2,700');
+  });
+
+  it('lists them in the contract form breakdown', () => {
+    const allowances = [TAXED, INSURED];
+    const rows = breakdownRows(grossToNet(12000, 2026, allowances), allowances);
+    expect(rows.slice(0, 3).map((r) => [r.label, r.amount, r.note])).toEqual([
+      ['Gross salary', 12000, undefined],
+      ['Allowances', 3000, 'taxed, 2,000 insured'],
+      ['Insured wage', 14000, 'the gross and the insured allowances'],
+    ]);
+    expect(rows.at(-1)?.note).toBe("gross and allowances plus the company's 18.75% insurance, 2,625");
+    // none: no row
+    expect(breakdownRows(grossToNet(12000, 2026)).map((r) => r.label)).not.toContain('Allowances');
+  });
+
+  it('lists a contract’s allowances with their amounts', () => {
+    expect(allowancesLabel([{ nameEn: 'Transport', amount: 1000 }, { nameEn: 'Mobile', amount: 500.5 }])).toBe('Transport EGP 1,000 · Mobile EGP 500.5');
+    expect(allowancesLabel([])).toBe('');
+  });
+});
+
+describe('pay by the hour and working days', () => {
+  it('reads hours as typed, to a tenth of an hour', () => {
+    expect(parseHours('20')).toBe(20);
+    expect(parseHours(' 22.5 ')).toBe(22.5);
+    expect(parseHours('٢٠')).toBe(20);
+    expect(parseHours('')).toBeNull();
+    expect(parseHours('22.25')).toBeNaN();
+    expect(parseHours('twenty')).toBeNaN();
+  });
+
+  it('works out the monthly estimate from the rate and the hours a week', () => {
+    expect(hourlyFor('150', '20')).toEqual({ kind: 'ok', rate: 150, hours: 20, gross: 13000 });
+    expect(hourlyFor('100', '22.5')).toEqual({ kind: 'ok', rate: 100, hours: 22.5, gross: 9750 });
+    expect(hourlyFor('', '20')).toEqual({ kind: 'empty' });
+    expect(hourlyFor('150', '')).toEqual({ kind: 'empty' });
+    expect(hourlyFor('abc', '20')).toEqual({ kind: 'invalid', field: 'rate' });
+    expect(hourlyFor('0', '')).toEqual({ kind: 'invalid', field: 'rate' });
+    expect(hourlyFor('150', '0')).toEqual({ kind: 'invalid', field: 'hours' });
+    expect(hourlyFor('150', '49')).toEqual({ kind: 'invalid', field: 'hours' });
+    expect(hourlyFor('150', '48').kind).toBe('ok');
+  });
+
+  it('words the hourly terms and the estimate', () => {
+    expect(hoursLabel(20)).toBe('20 hours a week');
+    expect(hoursLabel(1)).toBe('1 hour a week');
+    expect(hourlyLabel(150, 22.5)).toBe('EGP 150 an hour × 22.5 hours a week');
+    expect(monthlyEstimateText({ rate: 150, hours: 20, gross: 13000 })).toBe('EGP 150 an hour × 20 hours a week × 52 ÷ 12 = EGP 13,000 a month');
+  });
+
+  it('words the working days, or none for the shift’s week', () => {
+    expect(daysLabel(3)).toBe('3 days a week');
+    expect(daysLabel(1)).toBe('1 day a week');
+    expect(daysLabel(null)).toBeNull();
+  });
+
+  it('words how a contract’s pay is set, the rate only when the salary is shown', () => {
+    const hourly = { payBasis: 'hourly' as const, hourlyRate: 150, hoursPerWeek: 20, daysPerWeek: 3 };
+    expect(payLabel(hourly)).toBe('By the hour: EGP 150 an hour × 20 hours a week · 3 days a week');
+    expect(payLabel({ ...hourly, salaryHidden: true })).toBe('By the hour: 20 hours a week · 3 days a week');
+    expect(payLabel({ ...hourly, hourlyRate: null, daysPerWeek: null })).toBe('By the hour: 20 hours a week');
+    expect(payLabel({ payBasis: 'monthly', hourlyRate: null, hoursPerWeek: null, daysPerWeek: null })).toBe('Monthly salary');
+    expect(payLabel({ payBasis: 'monthly', hourlyRate: null, hoursPerWeek: null, daysPerWeek: 5 })).toBe('Monthly salary · 5 days a week');
+    expect(hourlyTerms({ payBasis: 'monthly', hourlyRate: 150, hoursPerWeek: 20, daysPerWeek: null })).toBeNull();
+    expect(hourlyTerms(hourly)).toBe('EGP 150 an hour × 20 hours a week');
   });
 });

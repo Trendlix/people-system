@@ -1,6 +1,7 @@
 import { INSURABLE_WAGE, SALARY_RULES } from '@trendlix/shared';
 import { Suspense } from 'react';
 import { getCurrentUser } from '@/lib/session';
+import { loadAllowanceTypes } from '../../employees/[id]/contracts/data';
 import { formatAmount, formatPercent } from '../../employees/[id]/contracts/salary';
 import { todayInCairo } from '../../employees/ui';
 import { BackLink, Empty, Loading } from '../../organization/ui';
@@ -9,17 +10,22 @@ import { bracketLabels, calculatorYears, readCalculatorQuery, TAX_TIERS, TOP_TIE
 import { SalaryCalculator } from './salary-calculator';
 
 // The Salary Calculator (owner, 15 October 2026: "add the calculation method to calculate the net and gross salary"):
-// a gross's net, or the gross for a net, step by step, as the Ministry of Finance's salary tax system works it out. The
-// contract form shows the same calculation for a contract's salary. For HR, the CEO and Finance, like the Contracts
-// page; it is worked out in the browser and asks the API nothing.
+// a gross's net, or the gross for a net, step by step, as the Ministry of Finance's salary tax system works it out, for
+// a monthly salary or pay by the hour, with allowances on top (the owner's requests of the same day). The contract form
+// shows the same calculation for a contract's salary. For HR, the CEO and Finance, like the Contracts page; it is
+// worked out in the browser, and asks the API only for the kinds of allowance.
 
 async function Calculator({ searchParams }: { searchParams: PageProps<'/contracts/calculator'>['searchParams'] }) {
   const user = await getCurrentUser();
   if (!canSeeContracts(user)) return <Empty>Only HR, the CEO and Finance can use the salary calculator.</Empty>;
   const thisYear = Number(todayInCairo().slice(0, 4));
+  const [query, allowanceTypes] = await Promise.all([searchParams, loadAllowanceTypes()]);
+  const initial = readCalculatorQuery(query, thisYear);
+  // an allowance of a kind that no longer exists (e.g. in an old address) is left out
+  initial.allowances = initial.allowances.filter((a) => allowanceTypes.some((t) => t.id === a.allowanceTypeId));
   return (
     <>
-      <SalaryCalculator initial={readCalculatorQuery(await searchParams, thisYear)} years={calculatorYears(thisYear)} />
+      <SalaryCalculator initial={initial} years={calculatorYears(thisYear)} allowanceTypes={allowanceTypes} />
       <HowItsCalculated />
     </>
   );
@@ -37,10 +43,19 @@ function HowItsCalculated() {
       </h2>
       <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm">
         <li>
-          Social insurance: {formatPercent(r.employeeInsuranceRate)} of the insured wage, which is the gross capped at the year&apos;s maximum insurable wage
-          and never below its minimum ({limits}). The company pays {formatPercent(r.employerInsuranceRate)} on the same wage (Law 148/2019).
+          By the hour, the gross is the monthly estimate: the hourly rate × the hours a week × 52 ÷ 12. Allowances are paid every month on top of the gross,
+          each kind taxed or not and insured or not as HR sets it in Organization → Allowances: a cash allowance is taxed with the salary (Law 91/2005 Art.
+          9), and only transport the company itself provides is exempt.
         </li>
-        <li>Monthly taxable: the gross less the employee&apos;s social insurance. Comprehensive health insurance doesn&apos;t apply in Cairo yet.</li>
+        <li>
+          Social insurance: {formatPercent(r.employeeInsuranceRate)} of the insured wage, which is the gross and the insured allowances, capped at the
+          year&apos;s maximum insurable wage and never below its minimum ({limits}). The company pays {formatPercent(r.employerInsuranceRate)} on the same
+          wage (Law 148/2019).
+        </li>
+        <li>
+          Monthly taxable: the gross and the taxed allowances, less the employee&apos;s social insurance. Comprehensive health insurance doesn&apos;t apply in
+          Cairo yet.
+        </li>
         <li>
           Annual net income: the monthly taxable × 12, less the {formatAmount(r.personalExemption)} personal exemption, rounded down to{' '}
           {r.roundIncomeDownTo} pounds.
@@ -59,14 +74,14 @@ function HowItsCalculated() {
             tier&apos;s limit. The monthly tax is the annual tax ÷ 12.
           </p>
         </li>
-        <li>Martyrs&apos; Fund: {formatPercent(r.martyrsRate)} of the gross (Law 4/2021).</li>
+        <li>Martyrs&apos; Fund: {formatPercent(r.martyrsRate)} of the gross and the taxed allowances (Law 4/2021).</li>
         <li>
-          Net: the gross less the social insurance, the monthly tax and the Martyrs&apos; Fund. Company cost: the gross plus the company&apos;s social
-          insurance.
+          Net: the gross and every allowance, less the social insurance, the monthly tax and the Martyrs&apos; Fund. Company cost: the gross and the
+          allowances, plus the company&apos;s social insurance.
         </li>
         <li>
-          From a net: the lowest whole-pound gross whose net reaches it, so its net can be up to a pound more than asked. Just past a tier&apos;s limit a
-          higher gross gives a lower net, as the tax jumps.
+          From a net (allowances included): the lowest whole-pound gross whose net reaches it, so its net can be up to a pound more than asked. Just past a
+          tier&apos;s limit a higher gross gives a lower net, as the tax jumps.
         </li>
       </ol>
       <p className="hint">Assumes the full gross, including the variable part, is paid, and the same salary all year.</p>
@@ -82,7 +97,8 @@ export default function SalaryCalculatorPage({ searchParams }: PageProps<'/contr
         <h1 className="text-2xl font-semibold">Salary Calculator</h1>
         <p className="mt-1 max-w-3xl text-muted">
           A gross salary&apos;s net, or the gross for a net, step by step, as the Ministry of Finance&apos;s salary tax system works it out: social insurance
-          on the insured wage, salary tax in Law 7/2024&apos;s brackets, and the Martyrs&apos; Fund. The address keeps what you type, to share a result.
+          on the insured wage, salary tax in Law 7/2024&apos;s brackets, and the Martyrs&apos; Fund. For a monthly salary or pay by the hour, with any
+          allowances on top. The address keeps what you type, to share a result.
         </p>
       </div>
       <Suspense fallback={<Loading />}>

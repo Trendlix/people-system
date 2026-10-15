@@ -219,7 +219,7 @@ function InsuranceFacts({ employee: p }: { employee: Employee }) {
       label: 'Insured salary',
       value: formatEgp(c.insuredSalary),
       protected: true,
-      note: `Contract ${c.number}, version ${c.version}: the gross, capped at the maximum insurable wage`,
+      note: `Contract ${c.number}, version ${c.version}: the gross and the insured allowances, capped at the maximum insurable wage`,
     });
   }
   fields.push(

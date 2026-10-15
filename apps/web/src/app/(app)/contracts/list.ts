@@ -1,9 +1,7 @@
 import {
-  CONTRACT_FORMS,
   CONTRACT_STATUS_LABELS,
   EMPLOYMENT_TYPES,
   ENDING_STATUS_LABELS,
-  type ContractForm,
   type ContractStatus,
   type EmploymentType,
   type EndingStatus,
@@ -48,16 +46,16 @@ export const STATUS_FILTERS: readonly { value: StatusFilter; label: string }[] =
 /** "Ending within" choices, in days. */
 export const ENDING_WITHIN_DAYS = [30, 60, 90] as const;
 
+// No filter by term: every contract is for a fixed term (owner, 15 October 2026), so an old ?form= is left out.
 export interface ContractFilters {
   q: string;
   status: StatusFilter;
-  form: ContractForm | '';
   type: EmploymentType | '';
   /** Signed contracts ending within this many days, those past their end included; null = any. */
   endingWithin: number | null;
 }
 
-export const NO_FILTERS: ContractFilters = { q: '', status: '', form: '', type: '', endingWithin: null };
+export const NO_FILTERS: ContractFilters = { q: '', status: '', type: '', endingWithin: null };
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -70,7 +68,6 @@ export function readFilters(query: Query): ContractFilters {
   return {
     q: one(query.q).trim().slice(0, 100),
     status: oneOf(one(query.status), STATUS_FILTERS.map((s) => s.value)),
-    form: oneOf(one(query.form), CONTRACT_FORMS),
     type: oneOf(one(query.type), EMPLOYMENT_TYPES),
     endingWithin: (ENDING_WITHIN_DAYS as readonly number[]).includes(days) ? days : null,
   };
@@ -78,7 +75,7 @@ export function readFilters(query: Query): ContractFilters {
 
 /** Whether any filter is chosen (the default status, drafts and signed, is not one). */
 export function isFiltered(f: ContractFilters): boolean {
-  return Boolean(f.q || f.status || f.form || f.type || f.endingWithin !== null);
+  return Boolean(f.q || f.status || f.type || f.endingWithin !== null);
 }
 
 /** The filters as a query string, without the empty ones and in a fixed order: "status=active&endingWithin=30". */
@@ -86,7 +83,6 @@ function queryOf(f: ContractFilters, status: string): string {
   const params = new URLSearchParams();
   if (f.q) params.set('q', f.q);
   if (status) params.set('status', status);
-  if (f.form) params.set('form', f.form);
   if (f.type) params.set('type', f.type);
   if (f.endingWithin !== null) params.set('endingWithin', String(f.endingWithin));
   return params.toString();

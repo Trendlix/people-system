@@ -59,14 +59,17 @@ describe('who sees the Contracts page', () => {
 
 describe('the filters in the address', () => {
   it('reads every filter', () => {
-    expect(readFilters({ q: '  Omar ', status: 'draft', form: 'fixed', type: 'part_time', endingWithin: '60' })).toEqual({
+    expect(readFilters({ q: '  Omar ', status: 'draft', type: 'part_time', endingWithin: '60' })).toEqual({
       q: 'Omar',
       status: 'draft',
-      form: 'fixed',
       type: 'part_time',
       endingWithin: 60,
     });
-    expect(readFilters({ status: 'all', form: 'open_ended' })).toMatchObject({ status: 'all', form: 'open_ended' });
+  });
+
+  it('has no filter by term: every contract is fixed-term, so an old ?form= is left out', () => {
+    expect(readFilters({ status: 'all', form: 'fixed' })).toEqual({ ...NO_FILTERS, status: 'all' });
+    expect(readFilters({ form: 'open_ended' })).toEqual(NO_FILTERS);
   });
 
   it('leaves out what it does not know, as if not chosen', () => {
@@ -95,8 +98,8 @@ describe('the filters in the address', () => {
 describe('the addresses', () => {
   it('gives the page without the empty filters, to share', () => {
     expect(contractsHref(NO_FILTERS)).toBe('/contracts');
-    expect(contractsHref({ q: 'Omar Khaled', status: 'all', form: 'fixed', type: 'full_time', endingWithin: 30 })).toBe(
-      '/contracts?q=Omar+Khaled&status=all&form=fixed&type=full_time&endingWithin=30',
+    expect(contractsHref({ q: 'Omar Khaled', status: 'all', type: 'full_time', endingWithin: 30 })).toBe(
+      '/contracts?q=Omar+Khaled&status=all&type=full_time&endingWithin=30',
     );
   });
 
@@ -108,10 +111,10 @@ describe('the addresses', () => {
   });
 
   it('asks for drafts and signed, then ended, then replaced, for All', () => {
-    expect(listPaths({ ...NO_FILTERS, status: 'all', form: 'fixed' })).toEqual([
-      '/contracts?form=fixed',
-      '/contracts?status=ended&form=fixed',
-      '/contracts?status=superseded&form=fixed',
+    expect(listPaths({ ...NO_FILTERS, status: 'all', type: 'full_time' })).toEqual([
+      '/contracts?type=full_time',
+      '/contracts?status=ended&type=full_time',
+      '/contracts?status=superseded&type=full_time',
     ]);
   });
 
@@ -137,6 +140,13 @@ const contract = (number: string, status: ContractListItem['status'], startDate:
   grossSalary: null,
   insuredSalary: null,
   salaryHidden: false,
+  payBasis: 'monthly',
+  hourlyRate: null,
+  hoursPerWeek: null,
+  daysPerWeek: null,
+  allowances: [],
+  allowancesTotal: 0,
+  totalSalary: null,
   employee: { id: 'e', employeeCode: 'TLX-001', fullNameEn: 'Omar', fullNameAr: 'عمر' },
   employmentId: 'm',
   employmentType: 'full_time',

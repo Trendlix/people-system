@@ -4,7 +4,8 @@
 // draw it, the table of where each object starts (xref) and the trailer.
 //
 // A page takes the size of its picture at 300 dots per inch, or exactly A4 when the picture has nearly the shape of
-// an A4 sheet (a whole page cut out of a scan), so that it prints on one sheet. Pure: tested in pdf-writer.test.ts.
+// an A4 sheet (a whole page cut out of a scan), so that it prints on one sheet. The org chart's PDF (organization/chart)
+// is one picture of an A4 or A3 page, put on that sheet. Pure: tested in pdf-writer.test.ts.
 
 /** What a JPEG says about itself: its size in pixels and how many colour components it has (1 grey, 3 colour, 4 CMYK). */
 export interface JpegInfo {
@@ -48,18 +49,20 @@ export function jpegInfo(b: Uint8Array): JpegInfo | null {
 export const A4_POINTS: readonly [number, number] = [(210 / 25.4) * 72, (297 / 25.4) * 72];
 /** An A5 sheet, in points: 148 × 210 mm, the same shape as A4 at half its area. */
 export const A5_POINTS: readonly [number, number] = [(148 / 25.4) * 72, (210 / 25.4) * 72];
-/** A sheet a page can be put on when HR chose it (the A4 and A5 frame presets). */
-export type Paper = 'a4' | 'a5';
-export const PAPER_POINTS: Readonly<Record<Paper, readonly [number, number]>> = { a4: A4_POINTS, a5: A5_POINTS };
+/** An A3 sheet, in points: 297 × 420 mm, the same shape as A4 at twice its area (the org chart, 15 October 2026). */
+export const A3_POINTS: readonly [number, number] = [(297 / 25.4) * 72, (420 / 25.4) * 72];
+/** A sheet a page can be put on when it was chosen: the A4 and A5 frame presets of the adjuster, A4 or A3 for the org chart. */
+export type Paper = 'a3' | 'a4' | 'a5';
+export const PAPER_POINTS: Readonly<Record<Paper, readonly [number, number]>> = { a3: A3_POINTS, a4: A4_POINTS, a5: A5_POINTS };
 /** How far a picture's shape may be from an A4 sheet's and still be put on one (3%). */
 export const A4_TOLERANCE = 0.03;
 /** The dots per inch a page is sized at when it is not A4. */
 export const PAGE_DPI = 300;
 
 /**
- * The page a picture of w × h pixels goes on, in points: the `paper` HR chose (A4 or A5, turned to the picture's way
- * round); without one, A4 (portrait or landscape) when its shape is within 3% of an A4 sheet's (an A5 sheet has the same
- * shape, so only a choice tells them apart), else its own size at `dpi`. `scale`: points per pixel of the picture on
+ * The page a picture of w × h pixels goes on, in points: the `paper` chosen (A3, A4 or A5, turned to the picture's way
+ * round); without one, A4 (portrait or landscape) when its shape is within 3% of an A4 sheet's (A3 and A5 sheets have the
+ * same shape, so only a choice tells them apart), else its own size at `dpi`. `scale`: points per pixel of the picture on
  * it, fitted inside and centred.
  */
 export function pageFor(w: number, h: number, dpi = PAGE_DPI, paper?: Paper | null): { width: number; height: number; a4: boolean; scale: number } {

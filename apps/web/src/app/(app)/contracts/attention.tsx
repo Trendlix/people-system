@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CONTRACT_FORM_LABELS } from '@trendlix/shared';
+import { PAY_BASIS_LABELS } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import type { ContractEmployeeRef, ContractListItem, EndingSummary, ExpiringContract, ProbationEnding, SessionUser } from '@/lib/types';
 import { followsEndings, getOrNull, PENDING_ENDINGS } from '../approvals/data';
@@ -125,7 +125,7 @@ function DraftsToSign({ rows, today }: { rows: Rows<ContractListItem>; today: st
             </div>
             <div className={subline}>
               <span>
-                <span className="tabular-nums">{c.number}</span> · Version {c.version} · {CONTRACT_FORM_LABELS[c.form]}
+                <span className="tabular-nums">{c.number}</span> · Version {c.version} · {PAY_BASIS_LABELS[c.payBasis] ?? PAY_BASIS_LABELS.monthly}
               </span>
             </div>
           </li>

@@ -172,3 +172,33 @@ export async function updateShift(id: string, _prev: FormState, fd: FormData): P
 export async function deleteShift(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   return remove(fd, () => apiSend('DELETE', `/shifts/${id}`), '/organization/shifts');
 }
+
+// ---------- allowances ----------
+
+// The kinds of allowance paid a month on top of the gross (owner's request, 15 October 2026), e.g. Transport: each taxed
+// or not and insured or not. The API checks the role (HR or Admin; a Super Admin for deleting). A checkbox is sent only
+// when ticked, so both are always sent, as true or false.
+const allowanceTypeBody = (fd: FormData) => ({
+  nameEn: text(fd, 'nameEn'),
+  nameAr: text(fd, 'nameAr'),
+  taxable: fd.get('taxable') === 'on',
+  insured: fd.get('insured') === 'on',
+});
+
+export async function createAllowanceType(_prev: FormState, fd: FormData): Promise<FormState> {
+  return save(fd, () => apiSend('POST', '/allowance-types', allowanceTypeBody(fd)), '/organization/allowances');
+}
+
+export async function updateAllowanceType(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  return save(fd, () => apiSend('PATCH', `/allowance-types/${id}`, allowanceTypeBody(fd)), '/organization/allowances');
+}
+
+/** An inactive kind isn't offered for new contracts and offers; those it is already on keep it. */
+export async function setAllowanceTypeActive(id: string, active: boolean, _prev: FormState, fd: FormData): Promise<FormState> {
+  return save(fd, () => apiSend('PATCH', `/allowance-types/${id}`, { active }), '/organization/allowances');
+}
+
+/** The API refuses a kind that is on a contract or offer (409): make it inactive instead. */
+export async function deleteAllowanceType(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  return remove(fd, () => apiSend('DELETE', `/allowance-types/${id}`), '/organization/allowances');
+}
