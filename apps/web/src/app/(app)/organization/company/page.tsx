@@ -1,8 +1,8 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { logoUrl } from '@/components/brand';
 import { apiGet } from '@/lib/api';
+import { logoUrl, thumbnailUrl } from '@/lib/brand';
 import { formatDate } from '@/lib/format';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Company } from '@/lib/types';
@@ -42,20 +42,35 @@ function websiteHref(site: string): string {
   return /^https?:\/\//i.test(site) ? site : `https://${site}`;
 }
 
+/** What an editor is told is missing: "No logo yet.", "No thumbnail yet." or "No logo or thumbnail yet."; null when neither is. */
+function missingImages(company: Company): string | null {
+  const missing = [!company.hasLogo && 'logo', !company.hasThumbnail && 'thumbnail'].filter(Boolean);
+  return missing.length ? `No ${missing.join(' or ')} yet.` : null;
+}
+
 async function CompanyProfile() {
   const [user, company] = await Promise.all([getCurrentUser(), apiGet<Company>('/company')]);
   const canEdit = canEditOrganisation(user);
+  const missing = canEdit ? missingImages(company) : null;
 
   return (
     <div className="space-y-4">
       <div className="card flex flex-wrap items-center gap-5 p-6">
-        <span className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-white">
-          {company.hasLogo && company.logoUpdatedAt ? (
-            <Image src={logoUrl(company.logoUpdatedAt)} alt={`${company.nameEn} logo`} fill unoptimized className="object-contain p-2" />
-          ) : (
-            <span className="text-3xl font-bold text-muted">{company.nameEn.charAt(0).toUpperCase()}</span>
+        {/* the logo, and the thumbnail beside it (owner's request, 15 October 2026) */}
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-white">
+            {company.hasLogo && company.logoUpdatedAt ? (
+              <Image src={logoUrl(company.logoUpdatedAt)} alt={`${company.nameEn} logo`} fill unoptimized className="object-contain p-2" />
+            ) : (
+              <span className="text-3xl font-bold text-muted">{company.nameEn.charAt(0).toUpperCase()}</span>
+            )}
+          </span>
+          {company.hasThumbnail && company.thumbnailUpdatedAt && (
+            <span className="relative flex size-20 shrink-0 overflow-hidden rounded-xl border border-line bg-white">
+              <Image src={thumbnailUrl(company.thumbnailUpdatedAt)} alt={`${company.nameEn} thumbnail`} fill unoptimized className="object-contain p-2" />
+            </span>
           )}
-        </span>
+        </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-xl font-semibold">{company.nameEn}</h2>
           {company.nameAr && (
@@ -63,7 +78,7 @@ async function CompanyProfile() {
               {company.nameAr}
             </p>
           )}
-          {!company.hasLogo && canEdit && <p className="mt-1 text-sm text-muted">No logo yet.</p>}
+          {missing && <p className="mt-1 text-sm text-muted">{missing}</p>}
         </div>
         {canEdit && (
           <Link href="/organization/company/edit" className="btn btn-primary">

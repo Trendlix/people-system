@@ -1,8 +1,8 @@
 import Image from 'next/image';
 import { Suspense } from 'react';
 import { LABELS } from '@trendlix/shared';
-import { logoUrl } from '@/components/brand';
 import { getBrand } from '@/lib/api';
+import { brandMark } from '@/lib/brand';
 import { formatDate } from '@/lib/format';
 import { publicGet } from '@/lib/public-api';
 import type { CompanyBrand, PublicOffer } from '@/lib/types';
@@ -17,14 +17,16 @@ import { candidateView, isOfferToken } from './candidate';
 // file to download), then Accept and Decline. Once answered, withdrawn or past its last day, it says so instead. English
 // first, with the Arabic names and a few Arabic words beside them. Made for a phone first.
 
-type Brand = Pick<CompanyBrand, 'logoVersion'> & { nameEn: string; nameAr: string | null };
+type Brand = Pick<CompanyBrand, 'logoVersion' | 'thumbnailVersion'> & { nameEn: string; nameAr: string | null };
 
+/** The company's logo (or its thumbnail when there is no logo, or its initial without either) and names. */
 function CompanyHeader({ brand }: { brand: Brand }) {
+  const mark = brandMark(brand).full;
   return (
     <header className="mb-6 flex items-center gap-3 sm:mb-8">
-      {brand.logoVersion !== null ? (
+      {mark ? (
         <span className="relative block size-12 shrink-0 overflow-hidden rounded-lg border border-line bg-white">
-          <Image src={logoUrl(brand.logoVersion)} alt="" fill unoptimized className="object-contain p-1" />
+          <Image src={mark} alt="" fill unoptimized className="object-contain p-1" />
         </span>
       ) : (
         <span aria-hidden="true" className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-sidebar text-xl font-bold text-white">
@@ -132,7 +134,12 @@ async function CandidateOffer({ params }: { params: Promise<{ token: string }> }
     );
   }
   const o = result.data;
-  const brand: Brand = { nameEn: o.companyNameEn || logo.nameEn, nameAr: o.companyNameAr ?? logo.nameAr, logoVersion: logo.logoVersion };
+  const brand: Brand = {
+    nameEn: o.companyNameEn || logo.nameEn,
+    nameAr: o.companyNameAr ?? logo.nameAr,
+    logoVersion: logo.logoVersion,
+    thumbnailVersion: logo.thumbnailVersion,
+  };
   const firstName = o.fullNameEn.trim().split(/\s+/)[0] ?? o.fullNameEn;
 
   // a sent offer past its last day (in Cairo) is expired, whether or not the API has said so yet

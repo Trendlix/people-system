@@ -1,20 +1,26 @@
 import { Suspense } from 'react';
-import { logoUrl } from '@/components/brand';
 import { apiGet } from '@/lib/api';
+import { logoUrl, thumbnailUrl } from '@/lib/brand';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { Company } from '@/lib/types';
 import { BackLink, Loading, RequireEditor } from '../../ui';
 import { CompanyForm } from './company-form';
-import { LogoForm } from './logo-form';
+import { CompanyImageForm } from './image-form';
 
 async function EditCompany() {
   const [user, company] = await Promise.all([getCurrentUser(), apiGet<Company>('/company')]);
   const logoSrc = company.hasLogo && company.logoUpdatedAt ? logoUrl(company.logoUpdatedAt) : null;
+  const thumbnailSrc = company.hasThumbnail && company.thumbnailUpdatedAt ? thumbnailUrl(company.thumbnailUpdatedAt) : null;
+  const canRemove = canDelete(user);
   return (
     <RequireEditor>
       <div className="space-y-6">
-        <LogoForm name={company.nameEn} logoSrc={logoSrc} canRemove={canDelete(user)} />
+        {/* the logo and the thumbnail beside it (owner's request, 15 October 2026): side by side on a wide screen */}
+        <div className="grid max-w-5xl gap-6 lg:grid-cols-2">
+          <CompanyImageForm image="logo" name={company.nameEn} src={logoSrc} canRemove={canRemove} />
+          <CompanyImageForm image="thumbnail" name={company.nameEn} src={thumbnailSrc} canRemove={canRemove} />
+        </div>
         <CompanyForm company={company} />
       </div>
     </RequireEditor>

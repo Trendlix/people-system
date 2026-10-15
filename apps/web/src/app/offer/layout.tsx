@@ -1,14 +1,18 @@
 import type { Metadata } from 'next';
+import { brandMetadata } from '@/components/brand';
 
 // The candidate's side of a job offer (owner's request, 15 October 2026): a plain page, no sidebar and no sign-in, opened
 // from the link HR sends. Kept out of search engines, and the link (its token is the key) is never passed on to other
-// sites as a referrer.
+// sites as a referrer. The browser tab icon is the company's thumbnail when there is one.
 
-export const metadata: Metadata = {
-  title: 'Job Offer',
-  robots: { index: false, follow: false },
-  referrer: 'no-referrer',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: 'Job Offer',
+    robots: { index: false, follow: false },
+    referrer: 'no-referrer',
+    ...(await brandMetadata()),
+  };
+}
 
 export default function OfferLayout({ children }: { children: React.ReactNode }) {
   return (

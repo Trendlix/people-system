@@ -1,6 +1,7 @@
 import type { Role } from '@trendlix/shared';
+import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { Brand, BrandFallback } from '@/components/brand';
+import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
 import { COMING_SOON } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { UserMenu } from '@/components/user-menu';
@@ -66,6 +67,11 @@ async function ConfirmBanner() {
       </div>
     </section>
   );
+}
+
+/** The browser tab icon: the company's thumbnail when there is one. */
+export function generateMetadata(): Promise<Metadata> {
+  return brandMetadata();
 }
 
 export default function AppLayout({ children }: LayoutProps<'/'>) {

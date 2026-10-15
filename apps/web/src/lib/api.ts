@@ -71,7 +71,7 @@ export function apiFetch(path: string): Promise<Response> {
   return call(path);
 }
 
-/** Public company name and logo version, for the sidebar and the sign-in page. Never throws. */
+/** Public company name and logo and thumbnail versions, for the sidebar, the sign-in page and the browser tab icon. Never throws. */
 export async function getBrand(): Promise<CompanyBrand> {
   try {
     const res = await fetch(`${API_URL}/api/company/brand`);
@@ -79,5 +79,5 @@ export async function getBrand(): Promise<CompanyBrand> {
   } catch {
     // fall through to the default
   }
-  return { nameEn: 'People System', nameAr: null, logoVersion: null };
+  return { nameEn: 'People System', nameAr: null, logoVersion: null, thumbnailVersion: null };
 }

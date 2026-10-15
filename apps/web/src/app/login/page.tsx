@@ -1,9 +1,12 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { Brand, BrandFallback } from '@/components/brand';
+import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
 import { LoginForm } from './login-form';
 
-export const metadata: Metadata = { title: 'Sign In · People System' };
+/** The browser tab icon: the company's thumbnail when there is one. */
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: 'Sign In · People System', ...(await brandMetadata()) };
+}
 
 export default function LoginPage() {
   return (

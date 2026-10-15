@@ -149,13 +149,18 @@ export interface Company {
   repNationalIdMasked: string | null;
   hasLogo: boolean;
   logoUpdatedAt: string | null;
+  /** The square brand mark beside the logo (owner's request, 15 October 2026); its upload time is its version. */
+  hasThumbnail: boolean;
+  thumbnailUpdatedAt: string | null;
   updatedAt: string;
 }
 
+/** GET /company/brand (public): a version is null when there is no such image. */
 export interface CompanyBrand {
   nameEn: string;
   nameAr: string | null;
   logoVersion: number | null;
+  thumbnailVersion: number | null;
 }
 
 // ---------- the org chart: Organization → Departments & Job Titles → Org chart (owner's request, 15 October 2026) ----------

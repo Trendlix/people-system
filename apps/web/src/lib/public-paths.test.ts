@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { isPublicPath } from './public-paths';
 
 describe('pages open without signing in', () => {
-  it('are the sign-in page and the company logo', () => {
+  it('are the sign-in page and the company logo and thumbnail', () => {
     expect(isPublicPath('/login')).toBe(true);
     expect(isPublicPath('/company-logo')).toBe(true);
+    expect(isPublicPath('/company-thumbnail')).toBe(true);
     expect(isPublicPath('/')).toBe(false);
     expect(isPublicPath('/employees')).toBe(false);
   });
