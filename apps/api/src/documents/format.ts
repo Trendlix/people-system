@@ -162,6 +162,9 @@ export function printedProbation(months: number, language: PrintedLanguage): str
   return language === 'ar' ? arabicMonths(months) : `${months} ${months === 1 ? 'month' : 'months'}`;
 }
 
+/** Digits written as Arabic-Indic digits ٠-٩ (owner, 15 October 2026: the national ID on the Arabic side). */
+export const arabicDigits = (s: string): string => s.replace(/[0-9]/g, (d) => String.fromCharCode(0x0660 + Number(d)));
+
 /** Whether text has Arabic letters in it. */
 export const hasArabic = (s: string | null | undefined): boolean => !!s && /[؀-ۿ]/.test(s);
 

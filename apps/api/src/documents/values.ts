@@ -15,19 +15,7 @@ import { fromDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { arabicAmountInWords, arabicDuration, arabicWeekday, englishAmountInWords, isBlankValue, type TagValue } from './engine/index.js';
-import {
-  EMPLOYMENT_TYPES_AR,
-  hasArabic,
-  inLanguage,
-  printedAddress,
-  printedDate,
-  printedMoney,
-  printedMonth,
-  printedPhone,
-  printedProbation,
-  printedShift,
-  type PrintedLanguage,
-} from './format.js';
+import { arabicDigits, EMPLOYMENT_TYPES_AR, hasArabic, inLanguage, printedAddress, printedDate, printedMoney, printedMonth, printedPhone, printedProbation, printedShift, type PrintedLanguage } from './format.js';
 import { TYPED_TAGS } from './offer.js';
 
 // Every tag's value for one document (spec §8; owner's request, 15 October 2026), from the employee's profile, their
@@ -216,6 +204,7 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     insurance_no: () => text(e.insuranceNo),
 
     national_id: () => text(id?.nationalId),
+    national_id_ar: () => arabicDigits(text(id?.nationalId)),
     id_printed_no: () => text(id?.printedNo),
     id_issue_date: () => printedMonth(ymd(id?.issueDate)),
 
@@ -312,6 +301,7 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     company_rep_name_en: () => text(co?.repNameEn),
     company_rep_title_en: () => text(co?.repTitleEn),
     company_rep_national_id: () => text(co?.repNationalId),
+    company_rep_national_id_ar: () => arabicDigits(text(co?.repNationalId)),
 
     day_name: () => arabicWeekday(src.documentDate),
     date: () => printedDate(src.documentDate),
@@ -360,6 +350,7 @@ const WHERE: Record<string, Where> = {
   qualification: { tab: 'education', key: 'qualificationAr' },
   insurance_no: BASIC('insuranceNo'),
   national_id: BASIC('nationalId'),
+  national_id_ar: BASIC('nationalId'),
   id_printed_no: BASIC('printedNo'),
   id_issue_date: BASIC('idIssueDate'),
   job_title: EMPLOYMENT('jobTitle'),
@@ -445,6 +436,7 @@ const WHERE: Record<string, Where> = {
   company_rep_name_en: COMPANY('repNameEn'),
   company_rep_title_en: COMPANY('repTitleEn'),
   company_rep_national_id: COMPANY('repNationalId'),
+  company_rep_national_id_ar: COMPANY('repNationalId'),
 };
 
 const TAGS = new Map(TEMPLATE_TAGS.map((t) => [t.tag, t]));

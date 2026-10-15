@@ -379,3 +379,26 @@ describe("the company's address and representative", () => {
     expect(missingTags(empty, ['company_address_en'])).toEqual([{ tag: 'company_address_en', label: 'Company address (English)', where: { tab: 'company', key: 'addressEn' } }]);
   });
 });
+
+describe('the national ID in Arabic digits', () => {
+  it('prints {{national_id_ar}} with ٠-٩ and {{national_id}} with 0-9, for each side of a bilingual document', async () => {
+    const { resolveValues } = await import('./values.js');
+    const sources = {
+      language: 'bilingual',
+      employee: { employeeCode: 'EMP-1', fullNameEn: 'A', fullNameAr: 'أ' },
+      identity: { nationalId: '29001011234567', printedNo: null, issueDate: null },
+      bank: null,
+      employment: null,
+      contract: null,
+      ending: null,
+      company: { nameEn: 'TrendLIX', repNationalId: '28501011234567' },
+      documentDate: '2026-10-15',
+      inputs: {},
+    } as unknown as Parameters<typeof resolveValues>[0];
+    expect(resolveValues(sources, ['national_id', 'national_id_ar', 'company_rep_national_id_ar'])).toEqual({
+      national_id: '29001011234567',
+      national_id_ar: '٢٩٠٠١٠١١٢٣٤٥٦٧',
+      company_rep_national_id_ar: '٢٨٥٠١٠١١٢٣٤٥٦٧',
+    });
+  });
+});
