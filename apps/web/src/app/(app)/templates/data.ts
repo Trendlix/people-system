@@ -1,7 +1,7 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
-import type { TemplateDetail, TemplateSlotView } from '@/lib/types';
+import type { TemplateDetail, TemplateSlotView, TemplateVersionLines } from '@/lib/types';
 
 // Reading the template library (GET /templates, GET /templates/:slot; October 2026). An API from before it answers 404,
 // which here means "not available yet" rather than the 404 page (the template pages check the slot's key against
@@ -40,4 +40,9 @@ export function loadLibrary(): Promise<Loaded<TemplateSlotView[]>> {
 /** One slot and all the versions of its file, newest first. */
 export function loadTemplate(key: string): Promise<Loaded<TemplateDetail>> {
   return load<TemplateDetail>(`/templates/${encodeURIComponent(key)}`);
+}
+
+/** A version's lines, with their tags, blanks and suggested fields, for Map Fields (HR and Admin). */
+export function loadVersionLines(versionId: string): Promise<Loaded<TemplateVersionLines>> {
+  return load<TemplateVersionLines>(`/templates/versions/${encodeURIComponent(versionId)}/lines`);
 }

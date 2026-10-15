@@ -875,6 +875,67 @@ export interface TemplateDetail extends TemplateSlotView {
   versions: TemplateVersion[];
 }
 
+// Map Fields (owner's request, 15 October 2026: "I want a manual mapping fix"): HR places, changes or removes tags in a
+// version inside the system; saving makes a new draft (the uploaded file never changes). Offsets are character offsets
+// in a line's `text`; a range is [from, to).
+
+/** A range of a line's text. */
+export interface TextRange {
+  from: number;
+  to: number;
+}
+
+/** A {{tag}} found in a line: `known` when it is in the tag list (TEMPLATE_TAGS). */
+export interface LineTag extends TextRange {
+  tag: string;
+  known: boolean;
+}
+
+/**
+ * A field the API suggests for a line: from === to puts it in there; from < to fills that blank. `text` is exactly what
+ * to send with from and to ("{{tag}}" for a blank, " {{tag}}" for an insertion, or "{{tag}}" where from is past a space).
+ */
+export interface LineSuggestion extends TextRange {
+  tag: string;
+  label: string;
+  text: string;
+}
+
+/** One line (paragraph) of the Word file, in order. */
+export interface TemplateLine {
+  id: string;
+  /** The part of the file it is in, and how it is named on screen ('Body', 'Header', 'Footer', …). */
+  part: string;
+  partLabel: string;
+  index: number;
+  text: string;
+  tags: LineTag[];
+  /** Runs of dots or underscores where a value is written by hand. */
+  blanks: TextRange[];
+  suggestions: LineSuggestion[];
+}
+
+/** GET /templates/versions/:id/lines (HR, Admin): a version's lines, for Map Fields. */
+export interface TemplateVersionLines {
+  versionId: string;
+  version: number;
+  slotKey: string;
+  language: TemplateLanguage;
+  lines: TemplateLine[];
+}
+
+/** One change of POST /templates/versions/:id/map: `text` ('' or one {{tag}}) takes the place of [from, to) of a line. */
+export interface FieldEdit extends TextRange {
+  line: string;
+  text: string;
+}
+
+/** The body of POST /templates/versions/:id/map, answered by the new draft (a TemplateVersion). */
+export interface MapFieldsRequest {
+  edits: FieldEdit[];
+  note?: string;
+}
+
 // ---------- documents generated from the templates: the profile's Contracts tab ----------
 // The company issues them from its published templates; each one goes Generated → Printed → Signed copy uploaded →
 // Verified. HR generates and moves them along, the CEO views and downloads them, only a Super Admin deletes one. Dates

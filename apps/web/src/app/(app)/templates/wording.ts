@@ -83,6 +83,9 @@ export const versionFileHref = (id: string) => `/templates/versions/${encodeURIC
 /** The same file as a PDF, shown in a new tab (Preview). */
 export const versionPreviewHref = (id: string) => `${versionFileHref(id)}?format=pdf`;
 
+/** Where HR places, changes or removes the tags of a version (Map Fields); saving makes a new draft. */
+export const mapFieldsHref = (key: string, id: string) => `${templateHref(key)}/versions/${encodeURIComponent(id)}/map`;
+
 /** The name of the slot a copy is printed from, by its key (from the API's list, else the shared list). */
 export function sourceName(key: string, slots: readonly Pick<TemplateSlotView, 'key' | 'name'>[] = []): string {
   return slots.find((s) => s.key === key)?.name ?? TEMPLATE_SLOTS.find((s) => s.key === key)?.name ?? key;
