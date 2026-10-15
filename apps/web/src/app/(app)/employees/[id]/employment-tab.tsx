@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { END_REASON_LABELS, LABELS } from '@trendlix/shared';
+import { apiGet } from '@/lib/api';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
-import type { EmployeeProfile, Employment } from '@/lib/types';
+import type { EmployeeProfile, Employment, Grade } from '@/lib/types';
 import { deleteEmployment } from '../employment-actions';
 import { arrangementLabel, FieldGrid, gradeLabel, periodLabel, ProfileSection, shiftLabel, StatusBadge, type GridField } from '../ui';
 import { DeleteRowButton } from './inline-forms';
@@ -17,17 +18,21 @@ const small = 'btn min-h-9 px-3';
 /** "Marketing › Content Team", or a department itself (e.g. for Head of Marketing, a title of the department's own). */
 const placeLabel = (e: Employment) => (e.department && !e.department.parent ? 'Department' : 'Team');
 
-/** The current employment's details, in the profile's field grid. */
-function employmentFields(e: Employment, linkPeople: boolean): GridField[] {
+/**
+ * The current employment's details, in the profile's field grid. Its team, job title, grade, shift and manager count in
+ * the profile's completeness (the manager except for the top grade, who reports to nobody), so they are Required.
+ */
+function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean): GridField[] {
   const grade = e.grade; // the person's own grade in this employment (within the job title's range, if it has one)
   return [
     { key: 'employmentType', label: 'Employment type', value: LABELS.employmentType[e.employmentType] },
     { key: 'status', label: 'Status', value: <StatusBadge status={e.status} /> },
-    { key: 'team', label: placeLabel(e), value: e.department && departmentName(e.department) },
+    { key: 'team', label: placeLabel(e), value: e.department && departmentName(e.department), required: true },
     {
       key: 'jobTitle',
       label: 'Job title',
       value: e.jobTitle?.titleEn,
+      required: true,
       note: e.jobTitle?.titleAr && (
         <span lang="ar" dir="rtl">
           {e.jobTitle.titleAr}
@@ -38,6 +43,7 @@ function employmentFields(e: Employment, linkPeople: boolean): GridField[] {
       key: 'grade',
       label: 'Grade',
       value: grade && gradeLabel(grade),
+      required: true,
       note: grade?.levelAr && (
         <span lang="ar" dir="rtl">
           {grade.levelAr}
@@ -48,11 +54,12 @@ function employmentFields(e: Employment, linkPeople: boolean): GridField[] {
       key: 'manager',
       label: 'Direct manager',
       value: e.manager && (linkPeople ? <Link href={`/employees/${e.manager.id}`}>{e.manager.fullNameEn}</Link> : e.manager.fullNameEn),
+      required: !topGrade,
     },
     { key: 'joinDate', label: 'Join date', value: formatDate(e.joinDate) },
     { key: 'probationEnd', label: 'Probation end date', value: formatDate(e.probationEnd) },
     { key: 'workArrangement', label: 'Work arrangement', value: arrangementLabel(e) },
-    { key: 'shift', label: 'Shift', value: e.shift && shiftLabel(e.shift) },
+    { key: 'shift', label: 'Shift', value: e.shift && shiftLabel(e.shift), required: true },
     {
       key: 'jdAcknowledgedAt',
       label: 'Job description acknowledged',
@@ -161,7 +168,7 @@ function DirectReports({ profile: p }: { profile: EmployeeProfile }) {
   );
 }
 
-export function EmploymentTab({
+export async function EmploymentTab({
   profile: p,
   linkPeople,
   justAdded = false,
@@ -174,6 +181,9 @@ export function EmploymentTab({
   const e = p.employment;
   const base = `/employees/${p.id}`;
   const lastEnded = e ? null : p.employments.find((x) => x.endDate);
+  // the top grade (the highest rank in the grades table, as the API counts it) has no manager to fill in
+  const rank = e?.grade?.rank;
+  const topGrade = rank !== undefined && (await apiGet<Grade[]>('/grades')).every((g) => g.rank <= rank);
 
   return (
     <div className="space-y-8">
@@ -199,7 +209,7 @@ export function EmploymentTab({
             )
           }
         >
-          <FieldGrid fields={employmentFields(e, linkPeople)} />
+          <FieldGrid fields={employmentFields(e, linkPeople, topGrade)} />
         </ProfileSection>
       ) : (
         <ProfileSection title="Current Employment">

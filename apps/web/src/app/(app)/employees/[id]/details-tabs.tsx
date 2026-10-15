@@ -54,7 +54,7 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
           fields={[
             { key: 'fullNameEn', label: 'Full name (English)', value: p.fullNameEn, required: true },
             { key: 'fullNameAr', label: 'Full name (Arabic)', value: p.fullNameAr, required: true, ar: true },
-            { key: 'displayName', label: 'Display name', value: p.displayName },
+            { key: 'displayName', label: 'Display name', value: p.displayName, required: true },
             { key: 'employeeCode', label: 'Employee code', value: number(p.employeeCode) },
             {
               key: 'insuranceNo',
@@ -81,24 +81,35 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
       <ProfileSection title="Contact & Address" editHref={editLink(p, 'personal')}>
         <FieldGrid
           fields={[
-            { key: 'workEmail', label: 'Work email', value: p.workEmail && <a href={`mailto:${p.workEmail}`}>{p.workEmail}</a> },
-            { key: 'personalEmail', label: 'Personal email', value: p.personalEmail && <a href={`mailto:${p.personalEmail}`}>{p.personalEmail}</a> },
+            {
+              key: 'workEmail',
+              label: 'Work email',
+              value: p.workEmail && <a href={`mailto:${p.workEmail}`}>{p.workEmail}</a>,
+              // needed while employed
+              required: Boolean(p.employment),
+            },
+            {
+              key: 'personalEmail',
+              label: 'Personal email',
+              value: p.personalEmail && <a href={`mailto:${p.personalEmail}`}>{p.personalEmail}</a>,
+              required: true,
+            },
             { key: 'mobile', label: 'Mobile', value: number(p.mobile), required: true },
             { key: 'mobile2', label: 'Second mobile', value: number(p.mobile2) },
             { key: 'governorate', label: 'Governorate', value: p.governorate, required: true },
-            { key: 'city', label: 'City', value: p.city, ar: true },
+            { key: 'city', label: 'City', value: p.city, required: true, ar: true },
             { key: 'addressAr', label: 'Address (Arabic)', value: p.addressAr, required: true, ar: true },
           ]}
         />
       </ProfileSection>
 
-      <ProfileSection title="Emergency Contact" editHref={editLink(p, 'personal')} note="Name and mobile are required.">
+      {/* not counted in the profile's completeness (owner's decision, 15 October 2026), nor is the second mobile */}
+      <ProfileSection title="Emergency Contact" editHref={editLink(p, 'personal')}>
         <FieldGrid
           fields={[
-            // the completeness item "Emergency contact" points at the name
-            { key: 'emergency', label: 'Name', value: p.emergencyName, required: true },
+            { key: 'emergencyName', label: 'Name', value: p.emergencyName },
             { key: 'emergencyRelation', label: 'Relation', value: p.emergencyRelation },
-            { key: 'emergencyMobile', label: 'Mobile', value: number(p.emergencyMobile), required: true },
+            { key: 'emergencyMobile', label: 'Mobile', value: number(p.emergencyMobile) },
           ]}
         />
       </ProfileSection>
@@ -129,10 +140,11 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
                     {!idNumber && revealId}
                   </>
                 ),
+                required: true,
                 protected: true,
                 note: !idNumber && printedNo && recorded,
               },
-              { key: 'issueDate', label: 'Issue date', value: formatDate(p.identity?.issueDate) },
+              { key: 'idIssueDate', label: 'Issue date', value: formatDate(p.identity?.issueDate), required: true },
               {
                 key: 'idExpiry',
                 label: 'Expiry date',
@@ -153,9 +165,9 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
         <ProfileSection title="Bank & Payment" restricted editHref={editLink(p, 'bank')}>
           <FieldGrid
             fields={[
-              { key: 'bankName', label: 'Bank', value: bankShown(p.bank?.bankName) },
+              { key: 'bankName', label: 'Bank', value: bankShown(p.bank?.bankName), required: true },
               { key: 'bankBic', label: 'SWIFT/BIC', value: bankNamed(p.bank?.bankName)?.bic },
-              { key: 'branch', label: 'Branch', value: p.bank?.branch },
+              { key: 'branch', label: 'Branch', value: p.bank?.branch, required: true },
               {
                 key: 'accountNo',
                 label: 'Account number',
@@ -165,6 +177,7 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
                     {revealBank}
                   </>
                 ),
+                required: true,
                 protected: true,
                 note: accountNo && recorded,
               },
@@ -181,7 +194,7 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
                 protected: true,
                 note: !accountNo && iban && recorded,
               },
-              { key: 'holderName', label: 'Account holder', value: p.bank?.holderName },
+              { key: 'holderName', label: 'Account holder', value: p.bank?.holderName, required: true },
             ]}
           />
         </ProfileSection>
@@ -208,16 +221,18 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
 
 /** Education: what the profile records of the employee's studies. Changed on the Personal Details page. */
 export function EducationTab({ profile: p }: { profile: EmployeeProfile }) {
+  // university, faculty and major are not asked of a high-school degree
+  const studied = p.degree !== 'high_school';
   return (
     <ProfileSection title="Education" editHref={editLink(p, 'education')}>
       <FieldGrid
         fields={[
-          { key: 'university', label: 'University', value: p.university, required: true },
-          { key: 'faculty', label: 'Faculty', value: p.faculty },
+          { key: 'university', label: 'University', value: p.university, required: studied },
+          { key: 'faculty', label: 'Faculty', value: p.faculty, required: studied },
           { key: 'degree', label: 'Degree', value: p.degree && LABELS.degree[p.degree], required: true },
-          { key: 'major', label: 'Major', value: p.major },
+          { key: 'major', label: 'Major', value: p.major, required: studied },
           { key: 'graduationYear', label: 'Graduation year', value: p.graduationYear && String(p.graduationYear), required: true },
-          { key: 'educationGrade', label: 'Grade', value: p.educationGrade && LABELS.educationGrade[p.educationGrade] },
+          { key: 'educationGrade', label: 'Grade', value: p.educationGrade && LABELS.educationGrade[p.educationGrade], required: true },
           { key: 'qualificationAr', label: 'Qualification (Arabic)', value: p.qualificationAr, required: true, ar: true },
         ]}
       />

@@ -216,11 +216,14 @@ export interface EmployeeSummary {
   lastEnded: { endDate: string; endReason: EndReason } | null;
 }
 
-/** One thing a profile still lacks, and the profile tab where it is filled in. */
+/**
+ * One thing a profile still lacks, and the profile tab where it is filled in: `key` is the field's cell there
+ * (#field-<key>), or on Documents the paper's row (#paper-<key>).
+ */
 export interface ProfileGap {
   key: string;
   label: string;
-  tab: 'basic' | 'education' | 'documents';
+  tab: 'basic' | 'education' | 'employment' | 'documents';
 }
 
 /**
@@ -285,7 +288,10 @@ export interface EmployeeProfile {
     accountNoMasked: string | null;
     ibanMasked: string | null;
   } | null;
-  /** How complete the profile is: the fields HR fills in and the papers the employee file needs. */
+  /**
+   * How complete the profile is: all its data and the papers the employee file needs, except the emergency contact and
+   * the second mobile (owner's decision, 15 October 2026).
+   */
   completeness: { percent: number; missing: ProfileGap[] };
   /** What the caller may do: edit (HR), delete (HR and Admin), see the national ID, see the bank details. */
   access: { edit: boolean; delete: boolean; identity: boolean; bank: boolean };

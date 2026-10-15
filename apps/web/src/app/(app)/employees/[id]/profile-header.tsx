@@ -8,12 +8,24 @@ import { Avatar, gradeLabel, PROFILE_TABS, profileHref, standingOf, StandingBadg
 
 // Above the profile's tabs: who it is, where they stand, their current job, and how complete the profile is.
 
-/** Where a missing item is filled in: the field's cell on Basic Data or Education, or the paper's row on Documents. */
+/** Where a missing item is filled in: the field's cell on Basic Data, Education or Employment, or the paper's row on Documents. */
 function gapHref(id: string, gap: ProfileGap): string {
   return `${profileHref(id, gap.tab)}#${gap.tab === 'documents' ? 'paper' : 'field'}-${gap.key}`;
 }
 
-/** "Profile 80% complete", a meter, and what is missing, grouped by tab; each item links to where it is filled in. */
+// The national ID and bank cells are on Basic Data only for those who may see them; the list names them for everyone.
+const IDENTITY_KEYS: ReadonlySet<string> = new Set(['nationalId', 'printedNo', 'idIssueDate', 'idExpiry']);
+const BANK_KEYS: ReadonlySet<string> = new Set(['bankName', 'branch', 'accountNo', 'iban', 'holderName']);
+
+/** Whether the caller can open where a missing item is filled in: its tab and, for the national ID and bank, that section. */
+function reachable(gap: ProfileGap, access: EmployeeProfile['access'], tabs: ReadonlySet<ProfileTabKey>): boolean {
+  if (!tabs.has(gap.tab)) return false;
+  if (gap.tab === 'basic' && IDENTITY_KEYS.has(gap.key)) return access.identity;
+  if (gap.tab === 'basic' && BANK_KEYS.has(gap.key)) return access.bank;
+  return true;
+}
+
+/** "Profile 80% complete", a meter, and what is missing, grouped by tab; each item links to where it is filled in, when the caller can open it. */
 function Completeness({ profile, tabs }: { profile: EmployeeProfile; tabs: ReadonlySet<ProfileTabKey> }) {
   const { percent, missing } = profile.completeness;
   const groups = PROFILE_TABS.map((t) => ({ ...t, gaps: missing.filter((m) => m.tab === t.key) })).filter((g) => g.gaps.length > 0);
@@ -40,7 +52,7 @@ function Completeness({ profile, tabs }: { profile: EmployeeProfile; tabs: Reado
               {g.gaps.map((gap, i) => (
                 <Fragment key={gap.key}>
                   {i > 0 && ', '}
-                  {tabs.has(g.key) ? (
+                  {reachable(gap, profile.access, tabs) ? (
                     <Link href={gapHref(profile.id, gap)} className="text-accent hover:underline">
                       {gap.label}
                     </Link>
