@@ -320,3 +320,33 @@ describe('the added fields', () => {
     for (const tag of ['personal_email', 'manager_name', 'shift', 'work_arrangement', 'probation_months', 'grade_level']) expect(rightFor(tag), tag).toBeNull();
   });
 });
+
+describe('amounts in English words', () => {
+  it('prints the gross, net, insured and total salary in English words beside the Arabic', async () => {
+    const { resolveValues } = await import('./values.js');
+    const { Prisma } = await import('../generated/prisma/client.js');
+    const d = (n: number) => new Prisma.Decimal(n);
+    const sources = {
+      language: 'en',
+      employee: { employeeCode: 'EMP-1', fullNameEn: 'A', fullNameAr: 'أ', displayName: null, nationality: null, dateOfBirth: null, addressAr: null, city: null, governorate: null, mobile: null, workEmail: null, personalEmail: null, qualificationAr: null, insuranceNo: null },
+      identity: null,
+      bank: null,
+      employment: null,
+      contract: {
+        number: 'CON-1', form: 'fixed', status: 'draft', startDate: new Date('2026-11-01'), endDate: null, durationMonths: 12, probationEnd: null, probationMonths: 3,
+        grossSalary: d(15000), basicPercent: 80, netSalary: d(13069.65), insuredSalary: d(15000), jobTitleEn: null, jobTitleAr: null, gradeCode: null,
+        payBasis: 'monthly', hourlyRate: null, hoursPerWeek: null, daysPerWeek: null, allowances: [{ nameEn: 'Transport', nameAr: 'انتقال', amount: d(1000) }],
+      },
+      ending: null,
+      company: null,
+      documentDate: '2026-10-15',
+      inputs: {},
+    } as unknown as Parameters<typeof resolveValues>[0];
+    const values = resolveValues(sources, ['gross_salary_words', 'gross_salary_words_en', 'net_salary_words_en', 'insured_salary_words_en', 'total_salary_words_en']);
+    expect(values.gross_salary_words).toMatch(/لا غير$/);
+    expect(values.gross_salary_words_en).toBe('Fifteen thousand Egyptian pounds only');
+    expect(values.net_salary_words_en).toBe('Thirteen thousand sixty-nine Egyptian pounds and sixty-five piasters only');
+    expect(values.insured_salary_words_en).toBe('Fifteen thousand Egyptian pounds only');
+    expect(values.total_salary_words_en).toBe('Sixteen thousand Egyptian pounds only');
+  });
+});

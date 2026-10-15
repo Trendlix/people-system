@@ -107,7 +107,7 @@ describe('the Fields Guide', () => {
     expect(row('payslip_ar').slice(4, 5)).toEqual(['Not signed']);
     // the social insurance copy's salary tags read the insured salary
     expect(row('contract_full_time_insurance')[1]).toBe(
-      'On this template, {{gross_salary}} prints the value of {{insured_salary}} and {{gross_salary_words}} the value of {{insured_salary_words}}.',
+      'On this template, {{gross_salary}} prints the value of {{insured_salary}}, {{gross_salary_words}} the value of {{insured_salary_words}} and {{gross_salary_words_en}} the value of {{insured_salary_words_en}}.',
     );
   });
 

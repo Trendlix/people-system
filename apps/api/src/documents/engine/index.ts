@@ -13,3 +13,4 @@
 export { fillTemplate } from './fill.js';
 export { isBlankValue, valueText, type RichValue, type TagValue } from './rich.js';
 export { arabicAmountInWords, arabicDayName, arabicDuration, arabicMonths, arabicWeekday } from './arabic.js';
+export { englishAmountInWords } from './english.js';

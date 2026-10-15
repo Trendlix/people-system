@@ -14,7 +14,7 @@ import {
 import { fromDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
-import { arabicAmountInWords, arabicDuration, arabicWeekday, isBlankValue, type TagValue } from './engine/index.js';
+import { arabicAmountInWords, arabicDuration, arabicWeekday, englishAmountInWords, isBlankValue, type TagValue } from './engine/index.js';
 import {
   EMPLOYMENT_TYPES_AR,
   hasArabic,
@@ -139,6 +139,8 @@ const ymd = (d: Date | null | undefined) => (d ? fromDateOnly(d) : null);
 const text = (s: string | null | undefined) => s?.trim() ?? '';
 const amount = (d: Decimal | null | undefined): number | null => (d === null || d === undefined ? null : d.toNumber());
 const words = (n: number | null) => (n === null ? '' : arabicAmountInWords(n));
+/** The same in English (owner, 15 October 2026): "Fifteen thousand Egyptian pounds only". */
+const wordsEn = (n: number | null) => (n === null ? '' : englishAmountInWords(n));
 
 /** The gross split into basic and variable salary by the contract's basic share, to the piastre (as contractView). */
 function split(c: NonNullable<ValueSources['contract']>) {
@@ -254,13 +256,16 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
 
     gross_salary: () => printedMoney(amount(c?.grossSalary)),
     gross_salary_words: () => words(amount(c?.grossSalary)),
+    gross_salary_words_en: () => wordsEn(amount(c?.grossSalary)),
     basic_salary: () => (c ? printedMoney(split(c).basic) : ''),
     basic_percent: () => (c ? `${c.basicPercent}%` : ''),
     variable_salary: () => (c ? printedMoney(split(c).variable) : ''),
     net_salary: () => printedMoney(net),
     net_salary_words: () => words(net),
+    net_salary_words_en: () => wordsEn(net),
     insured_salary: () => printedMoney(amount(c?.insuredSalary)),
     insured_salary_words: () => words(amount(c?.insuredSalary)),
+    insured_salary_words_en: () => wordsEn(amount(c?.insuredSalary)),
     hourly_rate: () => printedMoney(amount(c?.hourlyRate)),
     net_hourly_rate: () => printedMoney(netHourly),
     allowances: () => allowances(language),
@@ -269,6 +274,7 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     allowances_total: () => printedMoney(allowancesTotal),
     total_salary: () => printedMoney(totalSalary),
     total_salary_words: () => words(totalSalary),
+    total_salary_words_en: () => wordsEn(totalSalary),
     offer_number: () => text(src.offer?.number),
     offer_expiry: () => printedDate(ymd(src.offer?.expiresOn)),
 
@@ -395,17 +401,21 @@ const WHERE: Record<string, Where> = {
   allowances_total: CONTRACTS('allowances'),
   total_salary: CONTRACTS('grossSalary'),
   total_salary_words: CONTRACTS('grossSalary'),
+  total_salary_words_en: CONTRACTS('grossSalary'),
   offer_number: { tab: 'offer', key: 'number' },
   offer_expiry: { tab: 'offer', key: 'expiresOn' },
   gross_salary: CONTRACTS('grossSalary'),
   gross_salary_words: CONTRACTS('grossSalary'),
+  gross_salary_words_en: CONTRACTS('grossSalary'),
   basic_salary: CONTRACTS('grossSalary'),
   basic_percent: CONTRACTS('basicPercent'),
   variable_salary: CONTRACTS('grossSalary'),
   net_salary: CONTRACTS('netSalary'),
   net_salary_words: CONTRACTS('netSalary'),
+  net_salary_words_en: CONTRACTS('netSalary'),
   insured_salary: CONTRACTS('insuredSalary'),
   insured_salary_words: CONTRACTS('insuredSalary'),
+  insured_salary_words_en: CONTRACTS('insuredSalary'),
   bank_name: BASIC('bankName'),
   bank_bic: BASIC('bankName'), // a bank not on the EG-ACH list has no BIC: choose it from the list
   account_no: BASIC('accountNo'),
