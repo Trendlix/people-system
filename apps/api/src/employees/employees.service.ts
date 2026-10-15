@@ -240,9 +240,9 @@ const check = (value: unknown, key: string, label: string, tab: Missing['tab']):
  * Owner's decision, 15 October 2026: everything counts (employment, bank, city, faculty, the work email …) except
  * the emergency contact and the second mobile. Also never counted: the employee code (always set), the work
  * arrangement (always has a value), the probation end date and the job description acknowledgement. Some items
- * count only where they apply: the social insurance number for a current full-time employment, the work email and
- * the employment items while employed, the university, faculty and major unless the degree is high school, and the
- * direct manager unless the grade is the top rank (the CEO has no manager).
+ * count only where they apply: the work email and the employment items while employed, the university, faculty and
+ * major unless the degree is high school, and the direct manager unless the grade is the top rank (the CEO has no
+ * manager). The social insurance number counts for everyone (owner, 15 October 2026).
  */
 function completeness({ employee: e, identity, bank, employment, latestType, topRank, papers }: ProfileOnFile): { percent: number; missing: Missing[] } {
   const highSchool = e.degree === 'high_school';
@@ -257,8 +257,8 @@ function completeness({ employee: e, identity, bank, employment, latestType, top
     check(e.maritalStatus, 'maritalStatus', 'Marital status', 'basic'),
     // a woman's military status is always Not applicable (owner's rule), which counts as filled in
     check(e.gender === 'female' ? 'not_applicable' : e.militaryStatus, 'militaryStatus', 'Military status', 'basic'),
-    // insured with Form 1 when hired full time, so a full-time file needs the number
-    ...(employment?.employmentType === 'full_time' ? [check(e.insuranceNo, 'insuranceNo', 'Social insurance number', 'basic')] : []),
+    // every file needs it (owner, 15 October 2026): it is on the social insurance print
+    check(e.insuranceNo, 'insuranceNo', 'Social insurance number', 'basic'),
     // the work email only while employed
     ...(employment ? [check(e.workEmail, 'workEmail', 'Work email', 'basic')] : []),
     check(e.personalEmail, 'personalEmail', 'Personal email', 'basic'),

@@ -8,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   StreamableFile,
   UploadedFile,
   UseFilters,
@@ -18,8 +19,9 @@ import { TEMPLATE_TAGS } from '@trendlix/shared';
 import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
-import { PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
-import { attachment } from './template-file.js';
+import { contentDisposition, PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
+import { PdfService } from '../pdf/pdf.service.js';
+import { attachment, fileFormat } from './template-file.js';
 import { UploadTemplateDto } from './templates.dto.js';
 import { TemplatesService } from './templates.service.js';
 
@@ -33,7 +35,10 @@ const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 
 
 @Controller('templates')
 export class TemplatesController {
-  constructor(private readonly templates: TemplatesService) {}
+  constructor(
+    private readonly templates: TemplatesService,
+    private readonly pdf: PdfService,
+  ) {}
 
   @Roles('hr', 'admin', 'ceo')
   @Get()
@@ -79,9 +84,15 @@ export class TemplatesController {
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
   @Header('Content-Security-Policy', "default-src 'none'")
-  async file(@Param('id', ParseUUIDPipe) id: string): Promise<StreamableFile> {
-    const { data, type, fileName } = await this.templates.file(id);
-    return new StreamableFile(data, { type, length: data.length, disposition: attachment(fileName) });
+  async file(@Param('id', ParseUUIDPipe) id: string, @Query('format') format?: string): Promise<StreamableFile> {
+    const wanted = fileFormat(format);
+    const file = await this.templates.file(id);
+    if (wanted === 'pdf') {
+      // Preview: the file as uploaded, its {{tags}} as they are, shown in the browser
+      const { data, type, fileName } = await this.pdf.preview(file);
+      return new StreamableFile(data, { type, length: data.length, disposition: contentDisposition(fileName) });
+    }
+    return new StreamableFile(file.data, { type: file.type, length: file.data.length, disposition: attachment(file.fileName) });
   }
 
   @DeletesRecords()

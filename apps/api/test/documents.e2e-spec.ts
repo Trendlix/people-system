@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { arabicAmountInWords } from '../src/documents/engine/index.js';
+import { PdfService } from '../src/pdf/pdf.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { paragraphTexts, readDocx, textParts } from '../src/templates/docx-tags.js';
 import { readZip } from '../src/templates/zip.js';
@@ -439,6 +440,19 @@ describe('Documents (e2e)', () => {
       expect(res.body.message).toBe(
         `A signed copy of ${ft.contractNumber}'s documents is uploaded, which shows it was signed, so its signing stays on record. For other terms, add a new version.`,
       );
+    });
+
+    it('previews a document as a PDF in the browser, once the server has a PDF converter', async () => {
+      const doc = (await generate(pt.id, { slotKey: 'nda' }).expect(201)).body as Doc;
+      const preview = (session = hr) => api().get(`/api/documents/${doc.id}/file?format=pdf`).set('Cookie', session);
+      expect((await preview().expect(409)).body.message).toMatch(/^The PDF converter isn't set up/);
+      const convert = vi.spyOn(app.get(PdfService), 'fromDocx').mockResolvedValue(Buffer.from('%PDF-1.7 preview'));
+      const shown = await preview(ceo).buffer(true).parse(bytes).expect(200);
+      expect(shown.headers['content-type']).toBe('application/pdf');
+      expect(shown.headers['content-disposition']).toMatch(/^inline; .*\.pdf/);
+      convert.mockRestore();
+      await api().get(`/api/documents/${doc.id}/file?format=odt`).set('Cookie', hr).expect(400);
+      await api().delete(`/api/documents/${doc.id}`).set('Cookie', superAdmin).expect(204);
     });
 
     it('only a Super Admin deletes a document', async () => {

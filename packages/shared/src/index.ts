@@ -93,6 +93,7 @@ export const PAPERWORK_KINDS = [
   'birth_certificate',
   'military_certificate',
   'criminal_record',
+  'insurance_print', // برنت التأمينات: the social insurance statement of the person's insured periods (owner, 15 October 2026)
   'personal_photo',
   'syndicate_card', // كارنيه النقابة, for members of a professional syndicate: optional, never on the checklist
   'other',
@@ -106,6 +107,7 @@ export const PAPERWORK_LABELS: Record<PaperworkKind, string> = {
   birth_certificate: 'Birth certificate',
   military_certificate: 'Military status certificate',
   criminal_record: 'Criminal record certificate',
+  insurance_print: 'Social insurance print',
   personal_photo: 'Personal photo',
   syndicate_card: 'Syndicate card',
   other: 'Other document',
@@ -119,7 +121,8 @@ export const RESTRICTED_PAPERWORK: readonly PaperworkKind[] = ['national_id_fron
  * military papers for men only (a woman's military status is always Not applicable). Other employment types: the
  * national ID (their signed job offer and NDA come from document generation). While the gender is not recorded,
  * military papers are listed as needed. Someone not employed yet (null) needs the full-time list: HR collects the
- * papers before the start date, and full time is the usual hire (owner, 15 October 2026).
+ * papers before the start date, and full time is the usual hire (owner, 15 October 2026). The social insurance print
+ * is on the full-time list too (owner, 15 October 2026).
  * The bank account letter and the social insurance forms (Form 1 …) are not scans HR collects: the system generates
  * them from templates HR adds (owner, 15 October 2026).
  */
@@ -132,6 +135,7 @@ export function requiredPaperwork(employmentType: EmploymentType | null, gender:
     'birth_certificate',
     ...(gender === 'female' ? [] : (['military_certificate'] as const)),
     'criminal_record',
+    'insurance_print',
     'personal_photo',
   ];
 }

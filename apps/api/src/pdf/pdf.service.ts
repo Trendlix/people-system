@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 // Turns a filled Word document into a PDF (job offers, owner's request, 15 October 2026), through the converter beside
@@ -42,5 +42,15 @@ export class PdfService {
       throw new ServiceUnavailableException('The PDF converter could not convert the document. Please try again in a minute.');
     }
     return Buffer.from(await res.arrayBuffer());
+  }
+
+  /**
+   * A Word file to show in the browser (Preview: templates, generated documents; owner's request, 15 October 2026), as
+   * a PDF named like it. Refused (409) without a converter: the Word file can still be downloaded.
+   */
+  async preview(file: { data: Buffer; fileName: string }): Promise<{ data: Buffer; type: string; fileName: string }> {
+    const pdf = await this.fromDocx(file.data, file.fileName);
+    if (!pdf) throw new ConflictException("The PDF converter isn't set up on the server, so there is no preview: download the Word file instead.");
+    return { data: pdf, type: 'application/pdf', fileName: `${file.fileName.replace(/\.docx$/i, '')}.pdf` };
   }
 }

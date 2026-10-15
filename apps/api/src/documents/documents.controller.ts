@@ -19,7 +19,8 @@ import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
-import { attachment } from '../templates/template-file.js';
+import { PdfService } from '../pdf/pdf.service.js';
+import { attachment, fileFormat } from '../templates/template-file.js';
 import { CheckDocumentDto, GenerateDocumentDto } from './documents.dto.js';
 import { DocumentsService } from './documents.service.js';
 
@@ -57,17 +58,25 @@ export class EmployeeDocumentsController {
 
 @Controller('documents')
 export class DocumentsController {
-  constructor(private readonly documents: DocumentsService) {}
+  constructor(
+    private readonly documents: DocumentsService,
+    private readonly pdf: PdfService,
+  ) {}
 
-  /** The filled Word file, downloaded. */
+  /** The filled Word file, downloaded; ?format=pdf: the same as a PDF, shown in the browser (Preview). */
   @Roles('hr', 'ceo')
   @Get(':id/file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
   @Header('Content-Security-Policy', "default-src 'none'")
-  async file(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
-    const { data, type, fileName } = await this.documents.file(id, user);
-    return new StreamableFile(data, { type, length: data.length, disposition: attachment(fileName) });
+  async file(@Param('id', ParseUUIDPipe) id: string, @Query('format') format: string | undefined, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
+    const wanted = fileFormat(format);
+    const file = await this.documents.file(id, user);
+    if (wanted === 'pdf') {
+      const { data, type, fileName } = await this.pdf.preview(file);
+      return new StreamableFile(data, { type, length: data.length, disposition: contentDisposition(fileName) });
+    }
+    return new StreamableFile(file.data, { type: file.type, length: file.data.length, disposition: attachment(file.fileName) });
   }
 
   @Roles('hr')

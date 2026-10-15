@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { contentDisposition } from '../paperwork/paperwork-file.js';
 
 // The uploaded template's name, cleaned as paperwork's are (paperwork-file.ts) before it is stored, shown or sent
@@ -38,4 +39,15 @@ function isHidden(code: number): boolean {
 /** Downloaded, not shown: browsers can't show a Word file. The exact name as well as an ASCII stand-in (RFC 6266, 8187). */
 export function attachment(fileName: string): string {
   return contentDisposition(fileName).replace(/^inline;/, 'attachment;');
+}
+
+/** How a Word file is asked for: as uploaded or filled (docx, the default), or as a PDF to preview in the browser. */
+export const FILE_FORMATS = ['docx', 'pdf'] as const;
+export type FileFormat = (typeof FILE_FORMATS)[number];
+
+/** ?format= read: docx unless pdf is asked for; anything else is refused (400). */
+export function fileFormat(format: string | undefined): FileFormat {
+  if (format === undefined || format === '' || format === 'docx') return 'docx';
+  if (format === 'pdf') return 'pdf';
+  throw new BadRequestException('Choose the format: pdf or docx.');
 }

@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { TEMPLATE_SLOTS, TEMPLATE_TAGS } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { PdfService } from '../src/pdf/pdf.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { CONTRACT_TAGS, docx, p, r, realTemplate, RESIGNATION_TAGS, TEMPLATE_TYPE } from './fixtures/docx.js';
 import { createApp, createUser, signIn } from './helpers.js';
@@ -243,6 +244,17 @@ describe('Templates (e2e)', () => {
     expect(res.headers['cache-control']).toBe('private, no-store');
     expect(Buffer.compare(res.body as Buffer, realTemplate('Contract'))).toBe(0);
     await api().get('/api/templates/versions/00000000-0000-4000-8000-000000000000/file').set('Cookie', hr).expect(404);
+
+    // Preview: the same file as a PDF shown in the browser, once the server has a PDF converter
+    const preview = () => api().get(`/api/templates/versions/${published!.id}/file?format=pdf`).set('Cookie', ceo);
+    expect((await preview().expect(409)).body.message).toMatch(/^The PDF converter isn't set up/);
+    const convert = vi.spyOn(app.get(PdfService), 'fromDocx').mockResolvedValue(Buffer.from('%PDF-1.7 preview'));
+    const shown = await preview().buffer(true).parse(bytes).expect(200);
+    expect(shown.headers['content-type']).toBe('application/pdf');
+    expect(shown.headers['content-disposition']).toMatch(/^inline; .*\.pdf/);
+    expect(convert).toHaveBeenCalledWith(expect.any(Buffer), 'عقد العمل.docx');
+    convert.mockRestore();
+    await api().get(`/api/templates/versions/${published!.id}/file?format=odt`).set('Cookie', ceo).expect(400);
   });
 
   it('only a Super Admin deletes, and only a draft', async () => {
