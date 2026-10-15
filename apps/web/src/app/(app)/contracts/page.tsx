@@ -42,6 +42,7 @@ export default function ContractsPage({ searchParams }: PageProps<'/contracts'>)
         Every employee&apos;s contracts in one place; each is drafted, signed and renewed on the employee&apos;s Employment tab. Their{' '}
         <Link href="/organization/contracts">defaults and ending rules</Link> are under Organization → Contracts &amp; Endings.
       </p>
+      <Link href="/contracts/calculator" className="btn btn-secondary mt-4">Salary calculator</Link>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Contracts searchParams={searchParams} />

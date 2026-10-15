@@ -78,7 +78,11 @@ export function sourceName(key: string, slots: readonly Pick<TemplateSlotView, '
   return slots.find((s) => s.key === key)?.name ?? TEMPLATE_SLOTS.find((s) => s.key === key)?.name ?? key;
 }
 
-/** Said on a copy slot (the full-time contract's social insurance copy), in place of its own files. */
+/** Said on a template whose salary tags read the insured salary (the full-time contract's social insurance copy). */
+export const OVERRIDES_NOTE =
+  'On this template, {{gross_salary}} and {{gross_salary_words}} print the insured salary: the gross, capped at the maximum insurable wage.';
+
+/** Said on a copy slot (printed from another slot's file), in place of its own files. */
 export const COPY_NOTE = "Printed from the official copy's file. On this copy, the salary reads the insured salary.";
 
 type Draft = NonNullable<TemplateSlotView['latestDraft']>;

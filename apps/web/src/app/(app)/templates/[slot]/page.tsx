@@ -27,6 +27,7 @@ import {
   templateHref,
   versionFileHref,
   WHO_SEES,
+  OVERRIDES_NOTE,
 } from '../wording';
 
 // One template (spec §8): what it is and where it stands; for HR and Admin, uploading a new version of its Word file as
@@ -267,6 +268,7 @@ function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
   const inUse = detail.published?.version ?? versions.find((v) => v.status === 'published')?.version ?? null;
   return (
     <div className="space-y-8">
+      {Object.keys(detail.overrides ?? {}).length > 0 && <p className="rounded-lg bg-accent-soft px-4 py-3 text-sm">{OVERRIDES_NOTE}</p>}
       {manages && (
         <section id="upload" className="card scroll-mt-6 p-6">
           <UploadTemplateForm action={uploadTemplateVersion.bind(null, detail.key)} language={detail.language} hasFile={versions.length > 0} />

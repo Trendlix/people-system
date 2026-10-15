@@ -813,3 +813,96 @@ export interface TemplateVersion {
 export interface TemplateDetail extends TemplateSlotView {
   versions: TemplateVersion[];
 }
+
+// ---------- documents generated from the templates: the profile's Contracts tab ----------
+// The company issues them from its published templates; each one goes Generated → Printed → Signed copy uploaded →
+// Verified. HR generates and moves them along, the CEO views and downloads them, only a Super Admin deletes one. Dates
+// are "YYYY-MM-DD"; moments are ISO.
+
+/** The parts of the Contracts tab, in this order. */
+export type DocumentSectionKey = 'contract' | 'hiring' | 'insurance' | 'letters' | 'leaving';
+
+/** Where a generated document stands. */
+export type GeneratedDocumentStatus = 'generated' | 'printed' | 'signed' | 'verified';
+
+/** One document generated for an employee: its Word file (.docx), and the signed copy once it is uploaded. */
+export interface GeneratedDocument {
+  id: string;
+  status: GeneratedDocumentStatus;
+  /** The Word file's name. */
+  fileName: string;
+  sizeBytes: number;
+  /** The template version it was filled in from. */
+  templateVersion: number;
+  /** The date written on it. */
+  documentDate: string;
+  generatedBy: { email: string } | null;
+  generatedAt: string;
+  printedAt: string | null;
+  /** Null for a step not done, or an account since deleted. */
+  printedBy?: { email: string } | null;
+  signedUploadedAt: string | null;
+  signedUploadedBy?: { email: string } | null;
+  verifiedAt: string | null;
+  verifiedBy: { email: string } | null;
+  /** The signed copy's file name (a photo or a PDF); null until it is uploaded. */
+  signedFileName: string | null;
+  /** The signed copy's type (image/jpeg, image/png, image/webp or application/pdf); else told from its name. */
+  signedMime?: string | null;
+  signedSize?: number | null;
+  /** What was typed when generating it (an HR letter: `letter_to`, `letter_purpose`). */
+  inputs?: Record<string, string> | null;
+  /** It holds restricted data (national ID, salary, bank). */
+  hasRestricted?: boolean;
+  note: string | null;
+}
+
+/**
+ * One document an employee may be given (a template slot), with what has been generated from it, newest first. A
+ * contract's documents name the contract version (full time: the official and the social insurance copies; other
+ * types: one contract). `needsInputs`: what is typed when generating it (an HR letter: `letter_to`, `letter_purpose`).
+ */
+export interface DocumentItem {
+  slotKey: string;
+  name: string;
+  contractId?: string | null;
+  contractNumber?: string | null;
+  contractVersion?: number | null;
+  /** No template yet, only drafts, or a published version to generate from. */
+  templateStatus: TemplateSlotStatus;
+  /** The published version's number; null when none is published. */
+  templateVersion: number | null;
+  needsInputs: string[];
+  documents: GeneratedDocument[];
+}
+
+/** GET /employees/:id/documents (HR and the CEO): the Contracts tab's documents, part by part. */
+export interface DocumentsTab {
+  sections: { key: DocumentSectionKey; items: DocumentItem[] }[];
+}
+
+/**
+ * Where a missing detail is filled in: a profile tab and the field's cell there (#field-<key>, on Documents the paper's
+ * row #paper-<key>), the company profile (`company`), or the contract on the Contracts tab (`contracts`).
+ */
+export interface DocumentDetailPlace {
+  tab: ProfileGap['tab'] | 'contracts' | 'company';
+  key: string;
+}
+
+/** One detail a template needs that this employee's records lack. */
+export interface MissingDocumentDetail {
+  /** The template's {{tag}}. */
+  tag: string;
+  label: string;
+  where: DocumentDetailPlace;
+}
+
+/**
+ * GET /employees/:id/documents/check?slotKey=&contractId= (HR): what generating would lack, before it is tried.
+ * `usesRestricted`: the template uses restricted data (national ID, salary, bank). 404 when nothing is published.
+ */
+export interface DocumentCheck {
+  missing: MissingDocumentDetail[];
+  usesRestricted: boolean;
+}

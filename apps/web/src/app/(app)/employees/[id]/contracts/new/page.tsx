@@ -9,11 +9,11 @@ import { loadContractSettings, loadContracts } from '../data';
 import { addDays } from '../dates';
 
 // Drafting the current employment's contract: its first one, or the renewal of the signed one (fixed-term contracts
-// are renewed in writing before they end). It is saved as a draft, one at a time, and signed on the Employment tab.
+// are renewed in writing before they end). It is saved as a draft, one at a time, and signed on the Contracts tab.
 
 async function NewContract({ params }: { params: Promise<{ id: string }> }) {
   const employee = await loadEmployee(params);
-  const back = profileHref(employee.id, 'employment');
+  const back = profileHref(employee.id, 'contracts');
   const e = employee.employment;
   const [contracts, settings] = employee.access.edit && e ? await Promise.all([loadContracts(employee.id, e.id), loadContractSettings()]) : [null, null];
   const today = todayInCairo();
@@ -30,7 +30,7 @@ async function NewContract({ params }: { params: Promise<{ id: string }> }) {
     body = (
       <Empty>
         Version {draft.version} is already drafted. <Link href={`/employees/${employee.id}/contracts/${draft.id}/edit`}>Change the draft</Link>, or sign it
-        on the <Link href={back}>Employment tab</Link>. Only a Super Admin can delete it.
+        on the <Link href={back}>Contracts tab</Link>. Only a Super Admin can delete it.
       </Empty>
     );
   } else if (previous && !previous.endDate) {
@@ -66,7 +66,7 @@ async function NewContract({ params }: { params: Promise<{ id: string }> }) {
           {previous?.endDate
             ? `Version ${previous.version + 1}, renewing version ${previous.version} (${previous.number}), which ends on ${formatDate(previous.endDate)}.`
             : `The first contract of the employment since ${formatDate(e.joinDate)}.`}{' '}
-          It is saved as a draft: sign it on the Employment tab once the employee and the company have signed it.
+          It is saved as a draft: sign it on the Contracts tab once the employee and the company have signed it.
         </p>
         <ContractForm
           action={createContract.bind(null, employee.id, e.id, Boolean(previous))}

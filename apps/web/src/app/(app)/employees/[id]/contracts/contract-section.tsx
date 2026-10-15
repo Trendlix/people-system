@@ -10,7 +10,7 @@ import { loadContracts } from './data';
 import { daysBetween } from './dates';
 import { formatEgp } from './salary';
 
-// The Contract section of the Employment tab: the signed contract (its number, term, probation, signing and filing
+// The Contract section of the Contracts tab: the signed contract (its number, term, probation, signing and filing
 // dates, and the salary for HR, Finance and the CEO), a draft waiting to be signed, and every version. HR drafts the
 // first contract or a renewal, signs a draft or changes it, and sets a signed one's filing dates and note; only a Super
 // Admin deletes a draft (owner's decision, 15 October 2026).
@@ -81,7 +81,7 @@ function contractFields(c: Contract): GridField[] {
         protected: true,
         note: c.basicPercent !== null && `${c.basicPercent}% basic; the variable part follows the monthly performance reports`,
       },
-      { key: 'contract-net', label: 'Approximate net salary', value: c.netSalary !== null && formatEgp(c.netSalary), protected: true },
+      { key: 'contract-net', label: 'Net salary', value: c.netSalary !== null && formatEgp(c.netSalary), protected: true },
       {
         key: 'contract-insured',
         label: 'Insured salary',

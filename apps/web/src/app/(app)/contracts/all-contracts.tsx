@@ -93,7 +93,7 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
   return (
     <tr>
       <td>
-        <Link href={profileHref(c.employee.id, 'employment')} className="font-semibold">
+        <Link href={profileHref(c.employee.id, 'contracts')} className="font-semibold">
           {c.employee.fullNameEn}
         </Link>
         <div className="text-xs text-muted">

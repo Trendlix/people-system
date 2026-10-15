@@ -5,14 +5,17 @@ import { decidesChangeRequests } from '../../approvals/data';
 import { loadEmployee } from '../data';
 import { BackLink, Loading, PROFILE_TABS, profileHref, seesEveryone, todayInCairo, type ProfileTabKey } from '../ui';
 import { BasicTab, EducationTab } from './details-tabs';
+import { ContractsTab } from './documents/contracts-tab';
 import { EmployeeFile, EmployeeFileLoading } from './employee-file';
 import { EmploymentTab } from './employment-tab';
 import { ProfileHeader } from './profile-header';
 import { ProfileTabs } from './profile-tabs';
 
 // An employee's profile (after Prime ERP's owner profile): who they are and how complete the profile is above the tabs
-// Basic Data, Education, Employment and Documents. The open tab is in the address (?tab=), so it survives a reload, and
-// only it is rendered. The profile and the employment are separate records: someone who leaves keeps their profile.
+// Basic Data, Education, Employment, Contracts and Documents. Contracts holds what the company issues (the contract and
+// the documents generated from templates); Documents, the papers the employee brings. The open tab is in the address
+// (?tab=), so it survives a reload, and only it is rendered. The profile and the employment are separate records:
+// someone who leaves keeps their profile.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -38,6 +41,8 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
           <EducationTab profile={p} />
         ) : tab === 'employment' ? (
           <EmploymentTab profile={p} linkPeople={linkPeople} justAdded={one(query.added) === '1'} />
+        ) : tab === 'contracts' ? (
+          <ContractsTab profile={p} />
         ) : tab === 'documents' ? (
           // loads on its own, so a slow file list doesn't hold up the profile
           <Suspense fallback={<EmployeeFileLoading />}>

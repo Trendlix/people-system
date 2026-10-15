@@ -145,13 +145,16 @@ describe('where a slot stands', () => {
 
 describe('progress', () => {
   it('counts the templates in use, not the copy slots', () => {
+    // the social insurance copy of the full-time contract has its own file, so every slot counts
     const slots = library();
-    expect(progress(slots)).toEqual({ inUse: 0, total: 22, text: '0 of 22 templates in use' });
+    expect(progress(slots)).toEqual({ inUse: 0, total: 23, text: '0 of 23 templates in use' });
 
     slots[0].published = published(1); // the full-time contract (official copy)
-    slots[1].published = published(1); // its insurance copy follows it: not counted
+    slots[1].published = published(1); // its social insurance copy, a template of its own
     slots[5].latestDraft = draft(1); // a draft isn't in use
-    expect(progress(slots).text).toBe('1 of 22 templates in use');
+    expect(progress(slots).text).toBe('2 of 23 templates in use');
+    // a slot printed from another's file is not counted
+    expect(progress([{ copyOf: 'contract_full_time', published: published(1) }, { copyOf: null, published: published(1) }]).text).toBe('1 of 1 template in use');
   });
 
   it('says one template in the singular', () => {

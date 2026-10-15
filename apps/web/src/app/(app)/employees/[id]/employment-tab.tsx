@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { Suspense } from 'react';
 import { END_REASON_LABELS, LABELS } from '@trendlix/shared';
 import { apiGet } from '@/lib/api';
 import { departmentName } from '@/lib/departments';
@@ -7,17 +6,17 @@ import { formatDate } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import type { EmployeeProfile, Employment, Grade } from '@/lib/types';
 import { deleteEmployment } from '../employment-actions';
-import { arrangementLabel, FieldGrid, gradeLabel, periodLabel, ProfileSection, shiftLabel, StatusBadge, todayInCairo, type GridField } from '../ui';
-import { ContractSection, ContractSectionLoading, termLabel } from './contracts/contract-section';
+import { arrangementLabel, FieldGrid, gradeLabel, periodLabel, ProfileSection, profileHref, shiftLabel, StatusBadge, todayInCairo, type GridField } from '../ui';
+import { termLabel } from './contracts/contract-section';
 import { ProbationBanner } from './contracts/probation-banner';
 import { EndingPanel } from './ending/ending-panel';
 import { DeleteRowButton } from './inline-forms';
 
-// The Employment tab: the probation banner and an ending in progress, the current employment (Edit, End employment)
-// and its contract, or a way to add one; every employment in the history, newest first; and the people who report to
-// this person now. HR changes employments, drafts and signs contracts, confirms probation and records endings; the CEO
-// approves or rejects endings here; only a Super Admin may delete an employment added by mistake (the API checks all of
-// it again).
+// The Employment tab: the probation banner and an ending in progress, the current employment (Edit, End employment),
+// or a way to add one; every employment in the history, newest first; and the people who report to this person now.
+// HR changes employments, confirms probation and records endings; the CEO approves or rejects endings here; only a
+// Super Admin may delete an employment added by mistake (the API checks all of it again). The contract (its versions,
+// New contract and Renew, signing and filing dates) is on the Contracts tab.
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -76,8 +75,8 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
   ];
 }
 
-/** An ending waiting for the CEO or approved: the employment is on its way out. */
-const inProgress = (e: Employment) => e.ending?.status === 'pending_ceo' || e.ending?.status === 'approved';
+/** An ending waiting for the CEO or approved: the employment is on its way out (and its contract isn't renewed). */
+export const endingInProgress = (e: Employment) => e.ending?.status === 'pending_ceo' || e.ending?.status === 'approved';
 
 /** What an employment was, for a confirmation: "the Full-time employment as Senior Designer, 01/03/2024 – now". */
 function described(e: Employment): string {
@@ -216,7 +215,7 @@ export async function EmploymentTab({
   ]);
   const isCeo = user.roles.includes('ceo');
   const today = todayInCairo();
-  const ending = e && inProgress(e) ? e.ending : null;
+  const ending = e && endingInProgress(e) ? e.ending : null;
   // how the last employment ended through the approvals, with its deadlines
   const lastEnding = lastEnded?.ending?.status === 'completed' ? lastEnded.ending : null;
 
@@ -230,33 +229,31 @@ export async function EmploymentTab({
       {e && <ProbationBanner employee={p} employment={e} today={today} endingInProgress={Boolean(ending)} />}
       {ending && <EndingPanel ending={ending} employeeName={p.fullNameEn} canEdit={p.access.edit} isCeo={isCeo} today={today} />}
       {e ? (
-        <>
-          <ProfileSection
-            title="Current Employment"
-            note={`Since ${formatDate(e.joinDate)}`}
-            actions={
-              p.access.edit && (
-                <>
-                  <Link href={`${base}/employment/${e.id}/edit`} className={`${small} btn-secondary`}>
-                    Edit<span className="sr-only"> current employment</span>
+        <ProfileSection
+          title="Current Employment"
+          note={`Since ${formatDate(e.joinDate)}`}
+          actions={
+            p.access.edit && (
+              <>
+                <Link href={`${base}/employment/${e.id}/edit`} className={`${small} btn-secondary`}>
+                  Edit<span className="sr-only"> current employment</span>
+                </Link>
+                {/* an ending in progress is withdrawn (or completed) in its panel */}
+                {!ending && (
+                  <Link href={`${base}/ending/new`} className={`${small} btn-danger`}>
+                    End employment
                   </Link>
-                  {/* an ending in progress is withdrawn (or completed) in its panel */}
-                  {!ending && (
-                    <Link href={`${base}/ending/new`} className={`${small} btn-danger`}>
-                      End employment
-                    </Link>
-                  )}
-                </>
-              )
-            }
-          >
-            <FieldGrid fields={employmentFields(e, linkPeople, topGrade)} />
-          </ProfileSection>
-          {/* loads on its own, so a slow contract list doesn't hold up the tab */}
-          <Suspense fallback={<ContractSectionLoading />}>
-            <ContractSection employee={p} employment={e} endingInProgress={Boolean(ending)} />
-          </Suspense>
-        </>
+                )}
+              </>
+            )
+          }
+        >
+          <FieldGrid fields={employmentFields(e, linkPeople, topGrade)} />
+          <p className="text-sm text-muted">
+            {e.contract ? `Contract ${e.contract.number}, version ${e.contract.version}. ` : ''}The contract, its versions and the documents generated from
+            the templates are on the <Link href={profileHref(p.id, 'contracts')}>Contracts tab</Link>.
+          </p>
+        </ProfileSection>
       ) : (
         <ProfileSection title="Current Employment">
           <div className="card space-y-4 px-6 py-8 text-center">

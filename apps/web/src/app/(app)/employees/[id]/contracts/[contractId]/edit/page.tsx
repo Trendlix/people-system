@@ -8,12 +8,12 @@ import { ContractForm } from '../../contract-form';
 import { loadContractSettings, loadContracts } from '../../data';
 
 // Changing a draft of the current employment's contract, before it is signed. A signed version changes only in its
-// filing dates and note, on the Employment tab.
+// filing dates and note, on the Contracts tab.
 
 async function EditContract({ params }: { params: Promise<{ id: string; contractId: string }> }) {
   const { contractId } = await params;
   const employee = await loadEmployee(params);
-  const back = profileHref(employee.id, 'employment');
+  const back = profileHref(employee.id, 'contracts');
   const e = employee.employment;
   const [contracts, settings] = employee.access.edit && e ? await Promise.all([loadContracts(employee.id, e.id), loadContractSettings()]) : [null, null];
   const today = todayInCairo();
@@ -27,7 +27,7 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
     body = (
       <Empty>
         Version {contract.version} ({contract.number}) was signed{contract.signedOn && ` on ${formatDate(contract.signedOn)}`}: only its filing dates and note
-        can change, on the Employment tab. A change of terms is a new version.
+        can change, on the Contracts tab. A change of terms is a new version.
       </Empty>
     );
   } else {
@@ -35,7 +35,7 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
     body = (
       <div className="max-w-3xl space-y-4">
         <p className="text-sm text-muted">
-          Draft of version {contract.version} ({contract.number}){renewal ? `, renewing version ${contract.version - 1}` : ''}. Sign it on the Employment tab
+          Draft of version {contract.version} ({contract.number}){renewal ? `, renewing version ${contract.version - 1}` : ''}. Sign it on the Contracts tab
           once the employee and the company have signed it.
         </p>
         <ContractForm

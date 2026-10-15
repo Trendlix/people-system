@@ -8,11 +8,32 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import { formatDate, parseDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 import { contractEnd, probationEnd } from './dates';
-import { formatAmount, formatEgp, insuredFor, parseAmount, splitSalary } from './salary';
+import {
+  basisFrom,
+  breakdownRows,
+  formatAmount,
+  formatEgp,
+  insuredFor,
+  plainAmount,
+  SALARY_BASES,
+  SALARY_BASIS_LABELS,
+  salaryFor,
+  savedNetChange,
+  splitSalary,
+  switchBasis,
+  workedOutGross,
+} from './salary';
+import { SalaryBreakdownList } from './salary-breakdown';
 
 // The form of the New contract, Renew and Edit draft pages. While HR types, it shows when the contract ends, when
-// probation ends, the basic and variable parts of the gross and, for a full-time contract, the insured salary on the
-// social insurance copy. The API works these out again when it saves.
+// probation ends, the basic and variable parts of the gross, for a full-time contract the insured salary on the social
+// insurance copy, and the salary's breakdown down to the net. The API works the dates and parts out again when it saves.
+//
+// The salary (owner, 15 October 2026: "add the calculation method to calculate the net and gross salary"): HR starts
+// from the gross, and the net is worked out, or from the net wanted, and the gross is worked out in whole pounds, as the
+// Ministry of Finance's salary tax system does for the contract's start year. The form sends both as grossSalary and
+// netSalary, so the contract's {{net_salary}} is the calculated net; the typed net (wantedNet) and the switch
+// (salaryBasis) go along only to be kept if the save is refused.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -30,6 +51,7 @@ export type ContractDefaults = {
 
 const amountText = (n: number | null) => (n === null ? '' : String(n));
 const optional = <span className="font-normal text-muted">(optional)</span>;
+const NET_INVALID = 'Enter the net salary as an amount in EGP, e.g. 13,000.';
 
 export function ContractForm({
   action,
@@ -49,7 +71,7 @@ export function ContractForm({
   probationHint?: string;
   /** Full-time contracts have a social insurance copy, whose salary is the insured salary. */
   fullTime: boolean;
-  /** YYYY-MM-DD, for the insured salary's year while there is no start date. */
+  /** YYYY-MM-DD, for the salary's year (its insurable wage limits) while there is no start date. */
   today: string;
   cancelHref: string;
   submitLabel: string;
@@ -64,13 +86,11 @@ export function ContractForm({
     startDate: valueOf(state, 'startDate', formatDate(defaults.startDate)),
     durationMonths: valueOf(state, 'durationMonths', String(defaults.durationMonths)),
     probationMonths: valueOf(state, 'probationMonths', String(defaults.probationMonths)),
+    salaryBasis: valueOf(state, 'salaryBasis', 'gross'),
     grossSalary: valueOf(state, 'grossSalary', amountText(defaults.grossSalary)),
+    wantedNet: valueOf(state, 'wantedNet', ''),
     basicPercent: valueOf(state, 'basicPercent', String(defaults.basicPercent)),
   }));
-  function track(e: React.FormEvent<HTMLFormElement>) {
-    const t = e.target;
-    if ((t instanceof HTMLInputElement || t instanceof HTMLSelectElement) && t.name) setTyped((v) => ({ ...v, [t.name]: t.value }));
-  }
 
   const fixed = typed.form === 'fixed';
   const start = renewal ? renewal.startDate : parseDate(typed.startDate) || null;
@@ -78,11 +98,32 @@ export function ContractForm({
   const end = fixed && start && Number.isInteger(months) && months >= 1 ? contractEnd(start, months) : null;
   const probation = renewal ? 0 : Number(typed.probationMonths);
   const probationEnds = start && Number.isInteger(probation) && probation > 0 && probation <= 3 ? probationEnd(start, probation) : null;
-  const gross = parseAmount(typed.grossSalary);
-  const grossOk = gross !== null && !Number.isNaN(gross) && gross > 0;
+  // the salary, with the insurable wage limits of the year the contract starts (this year while there is no start date)
+  const year = Number((start ?? today).slice(0, 4));
+  const basis = basisFrom(typed.salaryBasis);
+  const salary = salaryFor(basis, basis === 'net' ? typed.wantedNet : typed.grossSalary, year);
+  const calc = salary.kind === 'ok' ? salary.breakdown : null;
+  const gross = calc?.gross ?? null;
   const basicPercent = Number(typed.basicPercent);
-  const split = grossOk && Number.isInteger(basicPercent) && basicPercent >= 1 && basicPercent <= 100 ? splitSalary(gross, basicPercent) : null;
-  const insured = grossOk ? insuredFor(gross, Number((start ?? today).slice(0, 4))) : null;
+  const split = gross !== null && Number.isInteger(basicPercent) && basicPercent >= 1 && basicPercent <= 100 ? splitSalary(gross, basicPercent) : null;
+  const insured = gross !== null ? insuredFor(gross, year) : null;
+  const insuredText = fullTime && insured ? `Insured salary on the social insurance copy: ${formatAmount(insured.amount)}, ${insured.why}.` : null;
+  const savedNet = savedNetChange({ gross: defaults.grossSalary, net: defaults.netSalary }, calc);
+
+  function track(e: React.FormEvent<HTMLFormElement>) {
+    const t = e.target;
+    if (!((t instanceof HTMLInputElement || t instanceof HTMLSelectElement) && t.name)) return;
+    const { name, value } = t;
+    if (name === 'salaryBasis') {
+      // the other field starts with what this one gives, so the salary stays the same
+      setTyped((v) => {
+        const s = switchBasis(basisFrom(value), { gross: v.grossSalary, net: v.wantedNet }, year);
+        return { ...v, salaryBasis: value, grossSalary: s.gross, wantedNet: s.net };
+      });
+      return;
+    }
+    setTyped((v) => ({ ...v, [name]: value }));
+  }
 
   return (
     <form {...form} onChange={track} className="card max-w-3xl space-y-6 p-6">
@@ -194,66 +235,120 @@ export function ContractForm({
         </div>
       </div>
 
-      <div className="grid gap-5 border-t border-line pt-6 sm:grid-cols-2">
-        <div>
-          <label htmlFor={fid('grossSalary')} className="label">
-            Gross salary (EGP)
-          </label>
-          <input
-            id={fid('grossSalary')}
-            name="grossSalary"
-            inputMode="decimal"
-            autoComplete="off"
-            required
-            aria-describedby={fid('grossSalary-hint')}
-            defaultValue={valueOf(state, 'grossSalary', amountText(defaults.grossSalary))}
-            className="input tabular-nums"
-          />
-          <p id={fid('grossSalary-hint')} className="hint">
-            {fullTime && insured
-              ? `Insured salary on the social insurance copy: ${formatAmount(insured.amount)}, ${insured.why}.`
-              : fullTime
-                ? 'The actual monthly gross. The social insurance copy shows it capped at the maximum insurable wage.'
-                : 'The actual monthly gross.'}
+      <div className="space-y-5 border-t border-line pt-6">
+        <fieldset aria-describedby={fid('salaryBasis-hint')}>
+          <legend className="label">Start from</legend>
+          <div className="flex flex-wrap gap-2">
+            {SALARY_BASES.map((b) => (
+              <label
+                key={b}
+                className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft"
+              >
+                <input type="radio" name="salaryBasis" value={b} defaultChecked={basis === b} className="size-4 accent-accent" />
+                {SALARY_BASIS_LABELS[b]}
+              </label>
+            ))}
+          </div>
+          <p id={fid('salaryBasis-hint')} className="hint">
+            {basis === 'net' ? 'Type the net wanted: the gross is worked out, in whole pounds.' : 'Type the gross: the net is worked out.'}
           </p>
+        </fieldset>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          {basis === 'gross' ? (
+            <div key="gross">
+              <label htmlFor={fid('grossSalary')} className="label">
+                Gross salary (EGP)
+              </label>
+              <input
+                id={fid('grossSalary')}
+                name="grossSalary"
+                inputMode="decimal"
+                autoComplete="off"
+                required
+                aria-describedby={fid('grossSalary-hint')}
+                defaultValue={typed.grossSalary}
+                className="input tabular-nums"
+              />
+              <p id={fid('grossSalary-hint')} className="hint">
+                {insuredText ??
+                  (fullTime
+                    ? 'The actual monthly gross. The social insurance copy shows it capped at the maximum insurable wage.'
+                    : 'The actual monthly gross.')}
+              </p>
+            </div>
+          ) : (
+            <div key="net">
+              <label htmlFor={fid('wantedNet')} className="label">
+                Net salary wanted (EGP)
+              </label>
+              <input
+                id={fid('wantedNet')}
+                name="wantedNet"
+                inputMode="decimal"
+                autoComplete="off"
+                required
+                aria-describedby={fid('wantedNet-hint')}
+                defaultValue={typed.wantedNet}
+                // only the gross worked out from it is saved, so a mistake is caught here rather than as a missing gross
+                ref={(el) => el?.setCustomValidity(salary.kind === 'invalid' ? NET_INVALID : '')}
+                className="input tabular-nums"
+              />
+              <p id={fid('wantedNet-hint')} className="hint">
+                {salary.kind === 'ok' ? `${workedOutGross(salary.typed, salary.breakdown)}${insuredText ? ` ${insuredText}` : ''}` : 'The monthly net to pay.'}
+              </p>
+              {/* what is saved: the gross worked out */}
+              <input type="hidden" name="grossSalary" value={calc ? plainAmount(calc.gross) : ''} />
+            </div>
+          )}
+          <div>
+            <label htmlFor={fid('basicPercent')} className="label">
+              Basic part (%)
+            </label>
+            <input
+              id={fid('basicPercent')}
+              name="basicPercent"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={100}
+              step={1}
+              aria-describedby={fid('basicPercent-hint')}
+              defaultValue={valueOf(state, 'basicPercent', String(defaults.basicPercent))}
+              className="input tabular-nums"
+            />
+            <p id={fid('basicPercent-hint')} className="hint">
+              {split
+                ? `Basic ${formatEgp(split.basic)} · variable ${formatEgp(split.variable)}, which follows the monthly performance reports.`
+                : 'The rest of the gross is variable, following the monthly performance reports.'}
+            </p>
+          </div>
         </div>
+
         <div>
-          <label htmlFor={fid('basicPercent')} className="label">
-            Basic part (%)
-          </label>
-          <input
-            id={fid('basicPercent')}
-            name="basicPercent"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={100}
-            step={1}
-            aria-describedby={fid('basicPercent-hint')}
-            defaultValue={valueOf(state, 'basicPercent', String(defaults.basicPercent))}
-            className="input tabular-nums"
-          />
-          <p id={fid('basicPercent-hint')} className="hint">
-            {split
-              ? `Basic ${formatEgp(split.basic)} · variable ${formatEgp(split.variable)}, which follows the monthly performance reports.`
-              : 'The rest of the gross is variable, following the monthly performance reports.'}
+          <p id={fid('breakdown')} className="label">
+            Monthly breakdown
           </p>
-        </div>
-        <div>
-          <label htmlFor={fid('netSalary')} className="label">
-            Approximate net salary (EGP) {optional}
-          </label>
-          <input
-            id={fid('netSalary')}
-            name="netSalary"
-            inputMode="decimal"
-            autoComplete="off"
-            aria-describedby={fid('netSalary-hint')}
-            defaultValue={valueOf(state, 'netSalary', amountText(defaults.netSalary))}
-            className="input tabular-nums"
-          />
-          <p id={fid('netSalary-hint')} className="hint">
-            As agreed with the employee, for the official copy.
+          {calc ? (
+            <SalaryBreakdownList rows={breakdownRows(calc)} labelledBy={fid('breakdown')} />
+          ) : (
+            <p className="rounded-lg border border-dashed border-line px-4 py-3 text-sm text-muted">
+              {salary.kind === 'invalid'
+                ? `Enter the ${basis === 'net' ? 'net' : 'gross'} salary as an amount in EGP to see the breakdown, e.g. 15,000.`
+                : `Enter the ${basis === 'net' ? 'net' : 'gross'} salary to see the breakdown.`}
+            </p>
+          )}
+          {/* what is saved, and goes into the contract as {{net_salary}}: the net worked out */}
+          <input type="hidden" name="netSalary" value={calc ? plainAmount(calc.net) : ''} />
+          {savedNet && (
+            <p className="mt-2 rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
+              The net saved before, {formatEgp(savedNet.saved)}, was typed by hand. Saving now uses the calculated {formatEgp(savedNet.calculated)}.
+            </p>
+          )}
+          <p className="hint">
+            Calculated as the Ministry of Finance&apos;s salary tax system does: social insurance on the insured wage, salary tax in Law 7/2024&apos;s brackets,
+            and the Martyrs&apos; Fund. Assumes the full gross, including the variable part, is paid. Uses the insurable wage limits for {year}, the year the
+            contract starts.
           </p>
         </div>
       </div>

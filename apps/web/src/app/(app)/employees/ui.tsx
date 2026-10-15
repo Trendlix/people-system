@@ -258,17 +258,6 @@ export function EditHeading({
   );
 }
 
-/** The profile's tabs, as `?tab=` in its address (Basic Data has none). */
-export const PROFILE_TABS = [
-  { key: 'basic', label: 'Basic Data' },
-  { key: 'education', label: 'Education' },
-  { key: 'employment', label: 'Employment' },
-  { key: 'documents', label: 'Documents' },
-] as const;
-
-export type ProfileTabKey = (typeof PROFILE_TABS)[number]['key'];
-
-/** The address of a profile tab, e.g. /employees/<id>?tab=employment. */
-export function profileHref(id: string, tab: ProfileTabKey = 'basic'): string {
-  return tab === 'basic' ? `/employees/${id}` : `/employees/${id}?tab=${tab}`;
-}
+// The profile's tabs (Basic Data | Education | Employment | Contracts | Documents) and their addresses live in pure code,
+// for tested helpers that link to a tab.
+export { PROFILE_TABS, profileHref, type ProfileTabKey } from './tab-list';
