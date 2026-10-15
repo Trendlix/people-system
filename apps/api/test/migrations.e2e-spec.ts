@@ -164,6 +164,50 @@ describe('Migrations (e2e)', () => {
     await expect(db.query('INSERT INTO contract_settings (id, updated_at) VALUES (2, now())')).rejects.toThrow(/contract_settings_one_row/);
   });
 
+  it('the occupation on the employee: each gets their current job title’s, and the job titles lose it (owner, 16 October 2026)', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_occupation_on_employee'))!;
+    await migratedUpTo(migration);
+
+    // before: titles with an occupation and one without; people under them now, and before
+    await db.query(`
+      INSERT INTO departments (id, name_en, updated_at) VALUES ('00000000-0000-4000-8000-0000000000d1', 'Sales', now());
+      INSERT INTO job_titles (id, department_id, title_en, occupation_code, updated_at) VALUES
+        ('00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000d1', 'Sales Manager', '212300', now()),
+        ('00000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-0000000000d1', 'Sales Assistant', NULL, now()),
+        ('00000000-0000-4000-8000-0000000000a3', '00000000-0000-4000-8000-0000000000d1', 'Chemist', '011100', now());
+      INSERT INTO employees (id, employee_code, full_name_en, full_name_ar, updated_at) VALUES
+        ('00000000-0000-4000-8000-0000000000e1', 'EMP-0001', 'Omar', 'عمر', now()),
+        ('00000000-0000-4000-8000-0000000000e2', 'EMP-0002', 'Nour', 'نور', now()),
+        ('00000000-0000-4000-8000-0000000000e3', 'EMP-0003', 'Salma', 'سلمى', now()),
+        ('00000000-0000-4000-8000-0000000000e4', 'EMP-0004', 'Karim', 'كريم', now()),
+        ('00000000-0000-4000-8000-0000000000e5', 'EMP-0005', 'Hana', 'هنا', now());
+      INSERT INTO employments (id, employee_id, employment_type, job_title_id, join_date, end_date, end_reason, updated_at) VALUES
+        ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000e1', 'full_time', '00000000-0000-4000-8000-0000000000a1', '2025-01-01', NULL, NULL, now()),
+        ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-0000000000e2', 'full_time', '00000000-0000-4000-8000-0000000000a3', '2024-01-01', '2025-06-30', 'resigned', now()),
+        ('00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-0000000000e2', 'full_time', '00000000-0000-4000-8000-0000000000a2', '2025-09-01', NULL, NULL, now()),
+        ('00000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-0000000000e3', 'full_time', '00000000-0000-4000-8000-0000000000a1', '2024-01-01', '2025-06-30', 'resigned', now()),
+        ('00000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-0000000000e4', 'part_time', '00000000-0000-4000-8000-0000000000a3', '2026-02-01', NULL, NULL, now());
+    `);
+
+    await db.query(sql(migration));
+
+    const { rows } = await db.query<{ code: string; occupation: string | null }>('SELECT employee_code AS code, occupation_code AS occupation FROM employees ORDER BY employee_code');
+    expect(rows).toEqual([
+      { code: 'EMP-0001', occupation: '212300' }, // their current title's
+      { code: 'EMP-0002', occupation: null }, // their current title has none; the ended one's is not taken
+      { code: 'EMP-0003', occupation: null }, // only an ended employment
+      { code: 'EMP-0004', occupation: '011100' }, // whatever the employment type
+      { code: 'EMP-0005', occupation: null }, // never employed
+    ]);
+    // the job titles' occupation is gone; the employee's is checked by the database as it was
+    const { rows: left } = await db.query(
+      "SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'job_titles' AND column_name = 'occupation_code'",
+      [SCHEMA],
+    );
+    expect(left).toEqual([]);
+    await expect(db.query("UPDATE employees SET occupation_code = '12345' WHERE employee_code = 'EMP-0005'")).rejects.toThrow(/employees_occupation_code_check/);
+  });
+
   describe('super admin: the role, given to the original admin account only (owner’s decision, 15 October 2026)', () => {
     const migration = () => readdirSync(MIGRATIONS).find((m) => m.endsWith('_super_admin'))!;
     const superAdmins = async () =>

@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import type { TemplateLanguage, TemplateSlot } from '@trendlix/shared';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
+import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
 import { isBlankValue } from '../documents/engine/index.js';
 import { filledFileName, FILLED_FROM, fillVersion, requiredTags } from '../documents/fill-version.js';
 import { documentStem } from '../documents/format.js';
@@ -31,18 +32,20 @@ export interface FilledOffer {
 
 /**
  * A ValueSources for an offer, as if the candidate were an employee with a draft contract made from it: the candidate's
- * name, mobile and email (as the personal email; a former employee's code); no address; the position as the
- * employment, with the selected role's duties (`role.jdDuties`, its job title's, as saved: owner's request, 15 October
- * 2026) and its social insurance occupation (`role.occupationCode`, owner, 15 October 2026), the manager, the shift and
- * the work arrangement; the terms as contract version 1, numbered with the offer's number, starting on the join date;
- * the offer's number and last day; the company's details.
+ * name, mobile and email (as the personal email; a former employee's code); no address, and none of what an
+ * employee's Social Insurance tab holds (the occupation, the subscription start and the wages: owner, 16 October 2026;
+ * the basic wage is then the contract settings' default, `insuranceBasicDefault`); the position as the employment, with
+ * the selected role's duties (`jdDuties`, its job title's, as saved: owner's request, 15 October 2026), the manager, the
+ * shift and the work arrangement; the terms as contract version 1, numbered with the offer's number, starting on the
+ * join date; the offer's number and last day; the company's details.
  */
 export function offerSources(
   o: OfferRow,
   company: ValueSources['company'],
   language: TemplateLanguage,
   documentDate: string,
-  role: { jdDuties: string | null; occupationCode: string | null } | null = null,
+  jdDuties: string | null = null,
+  insuranceBasicDefault = INSURANCE_BASIC_DEFAULT,
 ): ValueSources {
   const joinDate = fromDateOnly(o.joinDate);
   const { endDate, probationEnd } = termDates(joinDate, o.durationMonths, o.probationMonths);
@@ -55,6 +58,7 @@ export function offerSources(
       fullNameAr: o.fullNameAr,
       displayName: null,
       nationality: null,
+      gender: null,
       dateOfBirth: null,
       addressAr: null,
       city: null,
@@ -65,13 +69,18 @@ export function offerSources(
       personalEmail: o.email,
       qualificationAr: null,
       insuranceNo: null,
+      occupationCode: null,
+      insuranceStartDate: null,
+      insuranceBasicWage: null,
+      insuranceInsuredWage: null,
+      insuranceComprehensiveWage: null,
     },
     identity: null,
     bank: null,
     employment: {
       employmentType: o.employmentType,
       joinDate: o.joinDate,
-      jobTitle: o.jobTitle && { titleEn: o.jobTitle.titleEn, titleAr: o.jobTitle.titleAr, jdDuties: role?.jdDuties ?? null, occupationCode: role?.occupationCode ?? null },
+      jobTitle: o.jobTitle && { titleEn: o.jobTitle.titleEn, titleAr: o.jobTitle.titleAr, jdDuties },
       department: o.department && { nameEn: o.department.nameEn, nameAr: o.department.nameAr },
       grade: o.grade && { code: o.grade.code, levelEn: o.grade.levelEn, levelAr: o.grade.levelAr },
       manager: o.manager && { fullNameEn: o.manager.fullNameEn, fullNameAr: o.manager.fullNameAr },
@@ -103,6 +112,7 @@ export function offerSources(
     ending: null,
     offer: { number: o.number, expiresOn: o.expiresOn },
     company,
+    insuranceBasicDefault,
     documentDate,
     inputs: {},
   };
@@ -175,7 +185,9 @@ export class OfferDocumentsService {
     const empty = new Set([...template.tags.filter((tag) => isBlankValue(values[tag])), ...TYPED_TAGS]);
     const preview = previewValues(template.tags, values, empty, slot.overrides, may);
     // a PDF form's optional fields with no value print blank, as on the document
-    const data = template.data ? await fillVersion({ ...template, format: template.format ?? 'docx', data: template.data }, preview.values, new Set(preview.placeholders)) : null;
+    const data = template.data
+      ? await fillVersion({ ...template, slotKey: slot.key, format: template.format ?? 'docx', data: template.data }, preview.values, new Set(preview.placeholders))
+      : null;
     return { filled: preview.filled, total: preview.total, shown: data ? preview.shown : [], data };
   }
 
@@ -209,21 +221,24 @@ export class OfferDocumentsService {
    * previews a draft offer with a draft of its template while none is published.
    */
   async check(o: OfferRow, slot: TemplateSlot, template: { language: string; tags: string[]; pdfFields?: Prisma.JsonValue | null }, documentDate: string) {
-    const [company, role] = await Promise.all([
+    const [company, role, settings] = await Promise.all([
       this.prisma.company.findUnique({ where: { id: 1 } }),
-      // the selected role's duties and occupation, read here rather than with every offer (the offer's view doesn't show them)
-      o.jobTitleId ? this.prisma.jobTitle.findUnique({ where: { id: o.jobTitleId }, select: { jdDuties: true, occupationCode: true } }) : null,
+      // the selected role's duties, read here rather than with every offer (the offer's view doesn't show them)
+      o.jobTitleId ? this.prisma.jobTitle.findUnique({ where: { id: o.jobTitleId }, select: { jdDuties: true } }) : null,
+      // the basic wage social insurance forms print by default (owner, 16 October 2026)
+      this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }),
     ]);
-    const sources = offerSources(o, company, template.language as TemplateLanguage, documentDate, role);
+    const basic = settings?.insuranceBasicDefault.toNumber();
+    const sources = offerSources(o, company, template.language as TemplateLanguage, documentDate, role?.jdDuties ?? null, basic);
     const values = resolveValues(sources, template.tags, slot.overrides);
-    return { values, missing: offerMissing(missingTags(values, requiredTags(template), slot.overrides, true), slot.overrides, o.jobTitleId !== null) };
+    return { values, missing: offerMissing(missingTags(values, requiredTags(template), slot.overrides, true), slot.overrides) };
   }
 
   private published(slot: TemplateSlot): Promise<{ id: string; version: number; language: string; tags: string[]; format: string; pdfFields: Prisma.JsonValue | null } | null>;
   private published(
     slot: TemplateSlot,
     withFile: true,
-  ): Promise<{ id: string; version: number; language: string; tags: string[]; format: string; data: Uint8Array; pdfFields: Prisma.JsonValue | null } | null>;
+  ): Promise<{ id: string; version: number; language: string; tags: string[]; format: string; data: Uint8Array; pdfFields: Prisma.JsonValue | null; slotKey: string } | null>;
   private published(slot: TemplateSlot, withFile = false): Promise<unknown> {
     return this.prisma.templateVersion.findFirst({
       where: { slotKey: slot.copyOf ?? slot.key, status: 'published' },

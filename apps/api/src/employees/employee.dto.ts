@@ -4,6 +4,7 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -21,12 +22,14 @@ import {
   EDUCATION_GRADES,
   GENDERS,
   GOVERNORATES,
+  insurableWageLimits,
   MARITAL_STATUSES,
   MILITARY_STATUSES,
+  occupationName,
   phoneOk,
   phoneTidy,
 } from '@trendlix/shared';
-import { IsDateOnly } from '../common/date-only.js';
+import { IsDateOnly, todayInCairo } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
 import { isValidEgyptianIban, normalizeIban } from './checks.js';
 
@@ -62,6 +65,41 @@ const INSURANCE_NO_MESSAGE = 'Enter the social insurance number as digits only (
 // a building number as written on the address: digits and letters (12, 12أ, 7B), with spaces, dashes or slashes (12/3)
 const BUILDING_NO = /^(?=.*[\p{L}\p{N}])[\p{L}\p{N} /-]+$/u;
 const BUILDING_NO_MESSAGE = 'Enter the building number as letters and digits, e.g. 12, 12أ or 12/3.';
+/** The message when the occupation isn't one of the social insurance table's. */
+const OCCUPATION_MESSAGE = 'Choose the occupation from the social insurance list.';
+
+/** A six-digit code of the social insurance occupations table (packages/shared occupations.ts). */
+const IsOccupation = () =>
+  ValidateBy({
+    name: 'isOccupation',
+    validator: { validate: (v) => typeof v === 'string' && /^\d{6}$/.test(v) && occupationName(v) !== null, defaultMessage: () => OCCUPATION_MESSAGE },
+  });
+// the social insurance wages Form 1 prints (owner, 16 October 2026), to the piastre: the basic wage fits Form 1's five
+// boxes of pounds; the comprehensive wage goes up to 999,999.99
+const BASIC_WAGE_MESSAGE = 'Enter the basic wage as an amount of more than 0 and up to 99,999.99, e.g. 410 or 2500.50.';
+const COMPREHENSIVE_WAGE_MESSAGE = 'Enter the comprehensive wage as an amount of more than 0 and up to 999,999.99, e.g. 15000 or 16700.50.';
+const INSURED_WAGE_MESSAGE = 'Enter the insured wage as an amount, e.g. 14500 or 14500.50.';
+const egp = (n: number) => `EGP ${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+
+/**
+ * Within the insurable wage's limits of this year in Cairo, or of the latest year known (packages/shared contracts.ts):
+ * "The insured wage for 2026 is between EGP 2,700 and EGP 16,700."
+ */
+const IsInsurable = () =>
+  ValidateBy({
+    name: 'isInsurable',
+    validator: {
+      // anything but a number is IsNumber's to refuse
+      validate: (v) => {
+        const { min, max } = insurableWageLimits(Number(todayInCairo().slice(0, 4)));
+        return typeof v !== 'number' || (v >= min && v <= max);
+      },
+      defaultMessage: () => {
+        const { year, min, max } = insurableWageLimits(Number(todayInCairo().slice(0, 4)));
+        return `The insured wage for ${year} is between ${egp(min)} and ${egp(max)}.`;
+      },
+    },
+  });
 const CODE = /^EMP-\d{4,6}$/;
 const CODE_MESSAGE = 'Employee code: EMP- and 4 digits, e.g. EMP-0142. Leave it empty to number automatically.';
 
@@ -73,6 +111,56 @@ class EmployeeDetailsDto {
   /** الرقم التأميني: the social insurance number. */
   @LatinDigits() @Digits() @IsOptional() @Matches(INSURANCE_NO, { message: INSURANCE_NO_MESSAGE })
   insuranceNo?: string | null;
+
+  /**
+   * The occupation in the social insurance table, by its six-digit code (كود المهنة, printed on Form 1); null clears it.
+   * The employee's own, set by HR on the profile's Social Insurance tab (owner's decision, 16 October 2026: no longer
+   * the job title's). Not one of the details the employee confirms or asks to change (CONFIRM_FIELDS).
+   */
+  @LatinDigits()
+  @TrimOrNull()
+  @IsOptional()
+  @IsOccupation()
+  occupationCode?: string | null;
+
+  /**
+   * The social insurance subscription start (تاريخ بدء الاشتراك on Form 1), the employee's own (owner, 16 October 2026);
+   * null clears it, and Form 1 then prints the current employment's join date.
+   */
+  @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real subscription start date.')
+  insuranceStartDate?: string | null;
+
+  /**
+   * The basic wage on social insurance Form 1 (أجر أساسي، لحساب ٧٪ وفقاً لقانون العمل), the employee's own (owner, 16
+   * October 2026); null clears it, and the default in the contract settings is printed. Salary data: set only by those
+   * who see salaries (EmployeesService). Not the contract's basic salary, which stays the gross × its basic share.
+   */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: BASIC_WAGE_MESSAGE })
+  @Min(0.01, { message: BASIC_WAGE_MESSAGE })
+  @Max(99_999.99, { message: BASIC_WAGE_MESSAGE })
+  insuranceBasicWage?: number | null;
+
+  /**
+   * The insured wage on social insurance Form 1 (أجر / دخل الاشتراك), the employee's own (owner, 16 October 2026),
+   * within this year's insurable limits; null clears it, and the contract's insured salary is printed. Salary data, as
+   * the basic wage.
+   */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: INSURED_WAGE_MESSAGE })
+  @IsInsurable()
+  insuranceInsuredWage?: number | null;
+
+  /**
+   * The comprehensive wage on social insurance Form 1 (الأجر الشامل، لحساب اشتراك التأمين الصحي الشامل), the employee's
+   * own (owner, 16 October 2026); null clears it, and the contract's gross and allowances are printed. Salary data, as
+   * the basic wage.
+   */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: COMPREHENSIVE_WAGE_MESSAGE })
+  @Min(0.01, { message: COMPREHENSIVE_WAGE_MESSAGE })
+  @Max(999_999.99, { message: COMPREHENSIVE_WAGE_MESSAGE })
+  insuranceComprehensiveWage?: number | null;
 
   /** The short name the person goes by (e.g. Hazem Magdy), as the email signature shows it. */
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(80)

@@ -1,7 +1,6 @@
 import { Transform } from 'class-transformer';
-import { occupationName } from '@trendlix/shared';
-import { ArrayMaxSize, IsArray, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, ValidateBy } from 'class-validator';
-import { LatinDigits, Trim, TrimOrNull } from '../../common/transforms.js';
+import { ArrayMaxSize, IsArray, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { Trim, TrimOrNull } from '../../common/transforms.js';
 import { JD_HTML_MAX, JD_HTML_RAW_MAX, sanitizeJdHtml } from './jd-html.js';
 
 // Trims each duty and drops blank lines.
@@ -19,16 +18,6 @@ const CleanDuties = () =>
  */
 const JdHtml = () =>
   Transform(({ value }) => (typeof value === 'string' && value.length <= JD_HTML_RAW_MAX ? sanitizeJdHtml(value) : value));
-
-/** The message when the occupation isn't one of the social insurance table's. */
-export const OCCUPATION_MESSAGE = 'Choose the occupation from the social insurance list.';
-
-/** A six-digit code of the social insurance occupations table (packages/shared occupations.ts). */
-const IsOccupation = () =>
-  ValidateBy({
-    name: 'isOccupation',
-    validator: { validate: (v) => typeof v === 'string' && /^\d{6}$/.test(v) && occupationName(v) !== null, defaultMessage: () => OCCUPATION_MESSAGE },
-  });
 
 const tooLong = (field: string) => ({
   message: `Shorten the ${field}: it can take up to ${JD_HTML_MAX.toLocaleString('en')} characters, formatting included.`,
@@ -61,16 +50,6 @@ export class CreateJobTitleDto {
   @IsOptional()
   @IsUUID('all', { message: 'Choose the highest grade.' })
   maxGradeId?: string | null;
-
-  /**
-   * Its occupation in the social insurance table, by its six-digit code (كود المهنة, printed on Form 1 for everyone
-   * with the title: owner, 15 October 2026); null clears it.
-   */
-  @LatinDigits()
-  @TrimOrNull()
-  @IsOptional()
-  @IsOccupation()
-  occupationCode?: string | null;
 
   /** The job description's purpose, as HTML. */
   @JdHtml()
@@ -134,16 +113,6 @@ export class UpdateJobTitleDto {
   @IsOptional()
   @IsUUID('all', { message: 'Choose the highest grade.' })
   maxGradeId?: string | null;
-
-  /**
-   * Its occupation in the social insurance table, by its six-digit code (كود المهنة, printed on Form 1 for everyone
-   * with the title: owner, 15 October 2026); null clears it.
-   */
-  @LatinDigits()
-  @TrimOrNull()
-  @IsOptional()
-  @IsOccupation()
-  occupationCode?: string | null;
 
   /** The job description's purpose, as HTML. */
   @JdHtml()

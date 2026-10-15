@@ -163,3 +163,73 @@ describe('fillPdfTemplate', () => {
     expect(printedText(undefined, 'ar')).toBe('');
   });
 });
+
+// A text field that takes more than one line (owner, 16 October 2026: Form 1's qualification printed tiny on its one
+// line): its space split into rows from the bottom, the value wrapped at its spaces, made smaller only when it doesn't
+// fit in all of them.
+describe('fillPdfTemplate: a field of more than one line', () => {
+  const qualification = 'بكالوريوس التجارة - شعبة المحاسبة - جامعة طنطا';
+  /** The glyphs printed for one field. */
+  const printed = async (f: Partial<PdfField>, value: string) =>
+    shownGlyphs(await fillPdfTemplate(await formPdf(), [field({ id: 'q', kind: 'text', tag: 'qualification', ...f })], { qualification: value }, 'ar'));
+  /**
+   * Lines each printed alone, as they read back: Arabic as seen (reversed), a letter that shares its shape with others
+   * but for its dots (ج ح, س ش) read back as the font's first of them; so printed lines are compared with these.
+   */
+  const seen = async (...lines: string[]) => Promise.all(lines.map(async (line) => shownLines(await printed({ x: 50, width: 500, y: 50, height: 20 }, line))[0]));
+
+  it('prints a value that fits one row in the bottom row, exactly where a one-line field of that row would', async () => {
+    const two = await printed({ y: 100, height: 30, lines: 2 }, 'محمد');
+    const one = await printed({ y: 115, height: 15 }, 'محمد');
+    expect(two.map(({ text, x, y, size }) => ({ text, x, y, size }))).toEqual(one.map(({ text, x, y, size }) => ({ text, x, y, size })));
+  });
+
+  it('wraps a long Arabic value onto the row above in reading order, the first words on the top line, at its size when it fits', async () => {
+    // 212 points wide at 12 points: one line of 200 would shrink it, two rows take it as it is
+    const glyphs = await printed({ x: 100, width: 200, y: 100, height: 30, lines: 2, shrinkToFit: true }, qualification);
+    const [top, bottom] = ['بكالوريوس التجارة - شعبة المحاسبة - جامعة', 'طنطا'];
+    expect(shownLines(glyphs)).toEqual(await seen(top, bottom));
+    expect(new Set(glyphs.map((g) => g.size))).toEqual(new Set([12]));
+    // each line where a one-line field of its row prints it: the top row 100 to 115, the bottom one 115 to 130
+    const ys = [...new Set(glyphs.filter((g) => g.text).map((g) => Math.round(g.y * 100) / 100))].sort((a, b) => b - a);
+    const alone = async (y: number, value: string) => (await printed({ x: 100, width: 200, y, height: 15 }, value)).find((g) => g.text)!.y;
+    expect(ys).toEqual([await alone(100, top), await alone(115, bottom)].map((y) => Math.round(y * 100) / 100));
+    // right-aligned, each line ending at the field's right edge (1 point inside it)
+    for (const y of ys) {
+      const line = glyphs.filter((g) => g.text && Math.abs(g.y - y) < 0.01);
+      expect(Math.max(...line.map((g) => g.x))).toBeLessThan(300);
+      expect(Math.max(...line.map((g) => g.x))).toBeGreaterThan(285);
+    }
+  });
+
+  it('uses the rows from the bottom: two lines on three rows take the lower two', async () => {
+    const three = await printed({ x: 100, width: 200, y: 100, height: 45, lines: 3, shrinkToFit: true }, qualification);
+    const two = await printed({ x: 100, width: 200, y: 115, height: 30, lines: 2, shrinkToFit: true }, qualification);
+    expect(three.map(({ text, x, y }) => ({ text, x, y }))).toEqual(two.map(({ text, x, y }) => ({ text, x, y })));
+  });
+
+  it('makes it smaller only once it doesn’t fit in all the rows, still on all of them', async () => {
+    // Form 1's qualification: 100 points wide, two rows
+    const glyphs = await printed({ x: 429.2, y: 324.5, width: 99.9, height: 25.3, fontSize: 12, lines: 2, shrinkToFit: true }, qualification);
+    expect(shownLines(glyphs)).toEqual(await seen('بكالوريوس التجارة - شعبة', 'المحاسبة - جامعة طنطا'));
+    const size = glyphs[0].size;
+    expect(size).toBeLessThan(12);
+    // far larger than on one line, where it had to shrink to about 5.5 points
+    expect(size).toBeGreaterThan(10);
+    expect(new Set(glyphs.map((g) => g.size)).size).toBe(1);
+    // inside the field
+    expect(Math.min(...glyphs.map((g) => g.x))).toBeGreaterThanOrEqual(429.2);
+    const one = await printed({ x: 429.2, y: 334.8, width: 99.9, height: 15, fontSize: 12, shrinkToFit: true }, qualification);
+    expect(one[0].size).toBeLessThan(6);
+    // without shrinking: at its size, spread over both rows
+    const asIs = await printed({ x: 429.2, y: 324.5, width: 99.9, height: 25.3, fontSize: 12, lines: 2 }, qualification);
+    expect(shownLines(asIs)).toHaveLength(2);
+    expect(new Set(asIs.map((g) => g.size))).toEqual(new Set([12]));
+  });
+
+  it('draws a field of one line exactly as one without lines', async () => {
+    const fill = async (f: Partial<PdfField>) =>
+      fillerContent(await fillPdfTemplate(await formPdf(), [field({ id: 'q', kind: 'text', tag: 'qualification', width: 100, shrinkToFit: true, ...f })], { qualification }, 'ar'));
+    expect(await fill({ lines: 1 })).toBe(await fill({}));
+  });
+});

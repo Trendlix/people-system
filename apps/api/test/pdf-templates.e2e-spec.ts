@@ -213,6 +213,19 @@ describe('PDF templates (e2e)', () => {
     });
   });
 
+  // a text field that wraps onto more than one line (owner, 16 October 2026: Form 1's المؤهل printed tiny on one)
+  it('keeps a text field’s lines, 1 to 4, on text and fixed text only; a sample prints with them', async () => {
+    const qualification: PdfField = { id: 'qualification', kind: 'text', tag: 'qualification', page: 1, x: 429.2, y: 324.5, width: 99.9, height: 25.3, fontSize: 12, align: 'right', shrinkToFit: true, lines: 2 };
+    const saved = await save(form1.id, [...FORM_1, qualification]).expect(200);
+    expect(saved.body.fields.at(-1)).toEqual(qualification);
+    expect((await fieldsOf(form1.id).expect(200)).body.fields.at(-1)).toEqual(qualification);
+    await sample(form1.id, [qualification], hr).expect(200);
+    expect((await save(form1.id, [{ ...qualification, lines: 5 }]).expect(400)).body.message).toMatch(/: choose 1 to 4 lines\.$/);
+    expect((await save(form1.id, [{ ...FORM_1[0], lines: 2 }]).expect(400)).body.message).toMatch(/can't take more than one line: only a text field or fixed text wraps\.$/);
+    // as it was, for the tests after this one
+    await save(form1.id, FORM_1, admin).expect(200);
+  });
+
   it('fills a sample in with made-up values where the fields sent place them, unprotected, shown in the browser', async () => {
     const res = await sample(form1.id, FORM_1.slice(0, 2), ceo).expect(200);
     expect(res.headers['content-type']).toBe('application/pdf');
@@ -223,9 +236,10 @@ describe('PDF templates (e2e)', () => {
     const pdf = res.body as Buffer;
     expect(hasEncrypt(pdf)).toBe(false);
     expect((await PDFDocument.load(pdf)).getPageCount()).toBe(2);
-    // the national ID's boxes with a made-up number, the name's line with the field's name (read as seen, reversed)
+    // the national ID's boxes with a made-up number, the name's line with the field's name (read as seen, reversed); a
+    // social insurance form prints its numbers in ٠-٩ whatever the fields say (owner, 16 October 2026)
     const lines = shownLines(await shownGlyphs(pdf));
-    expect(lines[0]).toBe('29001011234567');
+    expect(lines[0]).toBe('٢٩٠٠١٠١١٢٣٤٥٦٧');
     expect(lines[1].replace(/\s+/g, '').length).toBeGreaterThan(5);
     // the fields sent are checked as for saving, and nothing is saved
     expect(messageOf(await sample(form1.id, [{ ...FORM_1[0], fontSize: 2 }]).expect(400))).toBe(
@@ -279,7 +293,9 @@ describe('PDF templates (e2e)', () => {
     // read back as seen, the Arabic reversed; a letter with a hamza is drawn as its letter and the hamza, and may read
     // back without it
     const lines = shownLines(await shownGlyphs(kept)).map((l) => l.replace(/[أإآ]/g, 'ا'));
-    expect(lines).toEqual(['7' + DIGITS, NATIONAL_ID, 'نمحرلا دبع دمحا دمحم', '20260115']);
+    // every number in ٠-٩ on a social insurance form (owner, 16 October 2026)
+    const ar = (digits: string) => digits.replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]);
+    expect(lines).toEqual([ar('7' + DIGITS), ar(NATIONAL_ID), 'نمحرلا دبع دمحا دمحم', ar('20260115')]);
     expect(shownLines(await shownGlyphs(kept), 2)).toEqual(['يقدلا بتكم']);
 
     // given out protected, with no converter

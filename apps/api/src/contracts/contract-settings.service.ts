@@ -8,15 +8,28 @@ import type { UpdateContractSettingsDto } from './contracts.dto.js';
 const ENTITY = 'contract_settings';
 const ID = 1;
 
+/**
+ * The basic wage social insurance Form 1 prints for an employee who has none of their own (owner, 16 October 2026):
+ * the column's default, used where the settings row is missing.
+ */
+export const INSURANCE_BASIC_DEFAULT = 410;
+
 export interface ContractSettingsView {
   probationMonths: number;
   durationMonths: number;
+  insuranceBasicDefault: number;
 }
 
-const view = (s: ContractSettings): ContractSettingsView => ({ probationMonths: s.probationMonths, durationMonths: s.durationMonths });
+const view = (s: ContractSettings): ContractSettingsView => ({
+  probationMonths: s.probationMonths,
+  durationMonths: s.durationMonths,
+  insuranceBasicDefault: s.insuranceBasicDefault.toNumber(),
+});
 
 // The defaults for new contracts (owner's decisions, 15 October 2026): 3 months of probation, the most the law allows
-// (Art. 90), and a fixed term of 12 months. One row, id 1, seeded by the contracts migration and prisma/seed.ts.
+// (Art. 90), and a fixed term of 12 months; and the basic wage social insurance Form 1 prints for an employee who has
+// none of their own, 410 EGP to start with (owner, 16 October 2026). One row, id 1, seeded by the contracts migration
+// and prisma/seed.ts.
 @Injectable()
 export class ContractSettingsService {
   constructor(
@@ -35,7 +48,7 @@ export class ContractSettingsService {
 
   async update(dto: UpdateContractSettingsDto, user: SessionUser): Promise<ContractSettingsView> {
     const before = await this.row();
-    const data = { probationMonths: dto.probationMonths, durationMonths: dto.durationMonths };
+    const data = { probationMonths: dto.probationMonths, durationMonths: dto.durationMonths, insuranceBasicDefault: dto.insuranceBasicDefault };
     const after = await this.prisma.contractSettings.update({ where: { id: ID }, data });
     const diff = changes(view(before) as unknown as Record<string, unknown>, data);
     if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, diff });

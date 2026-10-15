@@ -95,13 +95,22 @@ export const INSURABLE_WAGE: Readonly<Record<number, { min: number; max: number 
 };
 
 /**
+ * The insurable wage's limits in a year, and the year of the table they are from: a year not in the table uses the
+ * latest one known before it (the earliest known for a year before the table).
+ */
+export function insurableWageLimits(year: number): { year: number; min: number; max: number } {
+  const known = Object.keys(INSURABLE_WAGE).map(Number).sort((a, b) => a - b);
+  const from = INSURABLE_WAGE[year] ? year : (known.filter((y) => y <= year).at(-1) ?? known[0]);
+  return { year: from, ...INSURABLE_WAGE[from] };
+}
+
+/**
  * The salary on the social insurance copy: the actual gross, capped at the year's maximum insurable wage (owner's
  * decision) and never below its minimum. A year not in the table uses the latest one known. With allowances, pass the
  * gross and the insured allowances together (see insuredWageOf).
  */
 export function insuredSalary(gross: number, year: number): number {
-  const known = Object.keys(INSURABLE_WAGE).map(Number).sort((a, b) => a - b);
-  const limits = INSURABLE_WAGE[year] ?? INSURABLE_WAGE[known.filter((y) => y <= year).at(-1) ?? known[0]];
+  const limits = insurableWageLimits(year);
   return Math.min(Math.max(gross, limits.min), limits.max);
 }
 

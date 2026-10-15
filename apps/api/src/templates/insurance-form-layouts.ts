@@ -74,15 +74,18 @@ export const FORM_1_FIELDS: PdfField[] = inArabicDigits([
   { id: 'national-id', kind: 'boxes', tag: 'national_id', page: 1, x: 211.3, y: 284, width: 277.8, height: 19.9, fontSize: 12, boxes: 14 },
   line('name', 'full_name_ar', 313.2, 492.9, 322.2),
   line('nationality', 'nationality', 105, 190.9, 322.2),
-  line('qualification', 'qualification', 429.2, 529.1, 348.1),
-  // the occupation (the job title's, from the social insurance table): its code, XXX / XXX, and its name after it
+  // the qualification on two lines (owner, 16 October 2026: "بكالوريوس التجارة - شعبة المحاسبة - جامعة طنطا" printed
+  // tiny on its 100 pt line): its dotted line and the room above it, up to the name's dots (322.2); a short one on the dots
+  { id: 'qualification', kind: 'text', tag: 'qualification', page: 1, x: 429.2, y: 323.3, width: 99.9, height: 25.3, fontSize: 12, lines: 2, align: 'right', shrinkToFit: true },
+  // the occupation (the employee's, from the social insurance table): its code, XXX / XXX, and its name after it
   { id: 'occupation-code', kind: 'boxes', tag: 'occupation_code', page: 1, x: 223, y: 331.3, width: 133.5, height: 19.8, fontSize: 12, boxes: 6, groups: [3, 3], groupGap: 14.7 },
   line('occupation-name', 'occupation_name', 64.5, 164.1, 348.1),
-  // the subscription's start, YYYY / MM / DD left to right; the month's boxes sit 1.45 pt left of an even spread
+  // the subscription's start (the employee's own, else the join date), YYYY / MM / DD left to right; the month's boxes
+  // sit 1.45 pt left of an even spread
   {
     id: 'start',
     kind: 'boxes',
-    tag: 'join_date',
+    tag: 'insurance_start_date',
     page: 1,
     x: 289,
     y: 358.2,
@@ -95,13 +98,15 @@ export const FORM_1_FIELDS: PdfField[] = inArabicDigits([
     dateOrder: 'YMD',
     nudges: [still, still, still, still, { dx: -1.45, dy: 0 }, { dx: -1.45, dy: 0 }],
   },
-  // the wages, pounds and piastres: basic (for the yearly raise), insured, and comprehensive (gross and allowances)
-  money('basic-pounds', 'basic_salary', 'pounds', 440.7, 448.2, 55.5, 5),
-  money('basic-piastres', 'basic_salary', 'piasters', 496.2, 448.2, 28.9, 2),
-  money('insured-pounds', 'insured_salary', 'pounds', 235.7, 448.1, 55.6, 5),
-  money('insured-piastres', 'insured_salary', 'piasters', 291.3, 448.1, 28.8, 2),
-  money('total-pounds', 'total_salary', 'pounds', 47.3, 448.1, 55.6, 5),
-  money('total-piastres', 'total_salary', 'piasters', 102.9, 448.1, 28.8, 2),
+  // the wages, pounds and piastres, each the employee's own from the Social Insurance tab (owner, 16 October 2026):
+  // basic (for the yearly raise; else the contract settings' default), insured (else the contract's insured salary),
+  // and comprehensive (else the contract's gross and allowances)
+  money('basic-pounds', 'insurance_basic_salary', 'pounds', 440.7, 448.2, 55.5, 5),
+  money('basic-piastres', 'insurance_basic_salary', 'piasters', 496.2, 448.2, 28.9, 2),
+  money('insured-pounds', 'insurance_insured_salary', 'pounds', 235.7, 448.1, 55.6, 5),
+  money('insured-piastres', 'insurance_insured_salary', 'piasters', 291.3, 448.1, 28.8, 2),
+  money('total-pounds', 'insurance_total_salary', 'pounds', 47.3, 448.1, 55.6, 5),
+  money('total-piastres', 'insurance_total_salary', 'piasters', 102.9, 448.1, 28.8, 2),
   // residence (Form 1 has only code boxes for the district and governorate: the whole address goes on the street line),
   // phone, email
   { id: 'building-no', kind: 'boxes', tag: 'building_no', page: 1, x: 433.7, y: 592.6, width: 79.3, height: 19.9, fontSize: 12, boxes: 4, boxAlign: 'right', optional: true },

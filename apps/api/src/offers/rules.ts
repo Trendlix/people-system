@@ -68,8 +68,6 @@ const OFFER_FIELDS: Record<string, string> = {
   job_title_ar: 'jobTitleId',
   job_title_en: 'jobTitleId',
   job_duties: 'jobTitleId', // the selected role, whose duties are written under Organization
-  occupation_code: 'jobTitleId', // the selected role's social insurance occupation, set under Organization
-  occupation_name: 'jobTitleId',
   department: 'departmentId',
   department_ar: 'departmentId',
   department_en: 'departmentId',
@@ -84,6 +82,7 @@ const OFFER_FIELDS: Record<string, string> = {
   employment_type_ar: 'employmentType',
   employment_type_en: 'employmentType',
   join_date: 'joinDate',
+  insurance_start_date: 'joinDate', // an offer has no subscription start of its own: its join date
   work_arrangement: 'workArrangement',
   work_arrangement_ar: 'workArrangement',
   work_arrangement_en: 'workArrangement',
@@ -117,6 +116,8 @@ const OFFER_FIELDS: Record<string, string> = {
   total_salary: 'grossSalary',
   total_salary_words: 'grossSalary',
   total_salary_words_en: 'grossSalary',
+  insurance_insured_salary: 'grossSalary', // an offer has no insured wage of its own: its gross, capped
+  insurance_total_salary: 'grossSalary', // an offer has no comprehensive wage of its own: its gross and allowances
   net_salary: 'netSalary',
   net_salary_words: 'netSalary',
   net_salary_words_en: 'netSalary',
@@ -129,15 +130,16 @@ const OFFER_FIELDS: Record<string, string> = {
 };
 
 /**
- * Where an offer's empty value is filled in: the company's details in Company, as for an employee's documents, and the
- * selected job title's social insurance occupation on the job title (`departments`; the job title itself on the offer
- * while it has none: `hasJobTitle` false); anything else on the offer (`{ tab: 'offer', key: <the offer's field> }`), or
- * `{ tab: 'offer', key: 'template' }` for a value an offer never has (a national ID, an address, bank details …): the
- * template prints something that belongs on a document for an employee, so it is the template that needs changing.
+ * Where an offer's empty value is filled in: the company's details in Company, as for an employee's documents; anything
+ * else on the offer (`{ tab: 'offer', key: <the offer's field> }`), or `{ tab: 'offer', key: 'template' }` for a value an
+ * offer never has (a national ID, an address, the social insurance occupation, bank details …): the template prints
+ * something that belongs on a document for an employee, so it is the template that needs changing. The occupation is
+ * the employee's own, set on their profile's Social Insurance tab (owner's decision, 16 October 2026), so an offer,
+ * made before there is an employee, never has one.
  */
-export function offerMissing(missing: readonly MissingTag[], overrides: Readonly<Record<string, string>> = {}, hasJobTitle = true): MissingTag[] {
+export function offerMissing(missing: readonly MissingTag[], overrides: Readonly<Record<string, string>> = {}): MissingTag[] {
   return missing.map((m) => {
-    if (m.where.tab === 'company' || (m.where.tab === 'departments' && hasJobTitle)) return m;
+    if (m.where.tab === 'company') return m;
     const where: Where = { tab: 'offer', key: OFFER_FIELDS[sourceTag(m.tag, overrides)] ?? 'template' };
     return { ...m, where };
   });

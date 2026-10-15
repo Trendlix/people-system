@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   accountLengthOk,
   accountLengthText,
@@ -16,9 +16,9 @@ import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import { changeRequestView, CONFIRMATION_INCLUDE, confirmationView, REQUEST_INCLUDE } from '../confirmations/views.js';
+import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
 import { CONTRACT_INCLUDE, contractView, ENDING_INCLUDE, endingView, type ContractContext } from '../contracts/views.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
-import { withOccupation } from '../organisation/job-titles/occupation-view.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   deletesEmployees,
@@ -33,22 +33,26 @@ import {
 } from './access.js';
 import { birthDateFromNationalId, maskTail } from './checks.js';
 import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
+import { withOccupation } from './occupation-view.js';
 
 const ENTITY = 'employee';
-const DATE_FIELDS = ['dateOfBirth'] as const;
+const DATE_FIELDS = ['dateOfBirth', 'insuranceStartDate'] as const;
+/**
+ * The social insurance wages Form 1 prints (owner, 16 October 2026): salary data, so seen and set only by those who see
+ * salaries, and never written to the audit log, only the fact that they changed (as a contract's salary).
+ */
+const WAGE_FIELDS = ['insuranceBasicWage', 'insuranceInsuredWage', 'insuranceComprehensiveWage'] as const;
 
 /** A grade as employments name it. */
 const GRADE = { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } } as const;
 
 /**
  * Where an employment places someone: their department, or their team with its department; their job title, and their
- * own grade (owner's decision, 15 October 2026: no longer the job title's). The job title comes with its social
- * insurance occupation and the department it is under, for the Social Insurance tab and its link to the job title
- * (owner, 16 October 2026).
+ * own grade (owner's decision, 15 October 2026: no longer the job title's).
  */
 const PLACE = {
   department: { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
-  jobTitle: { select: { id: true, departmentId: true, titleEn: true, titleAr: true, jdVersion: true, occupationCode: true } },
+  jobTitle: { select: { id: true, titleEn: true, titleAr: true, jdVersion: true } },
   grade: GRADE,
 } satisfies Prisma.EmploymentInclude;
 
@@ -74,17 +78,15 @@ interface EmploymentContext extends Omit<ContractContext, 'workingDays'> {
 }
 
 /**
- * An employment as the API sends it: dates as YYYY-MM-DD, office days in order, shift times as HH:mm; its job title
- * with its occupation's name; its signed contract (salary restricted to HR, Finance and the CEO) and its newest ending
- * (HR, Admin and the CEO), or null.
+ * An employment as the API sends it: dates as YYYY-MM-DD, office days in order, shift times as HH:mm; its signed
+ * contract (salary restricted to HR, Finance and the CEO) and its newest ending (HR, Admin and the CEO), or null.
  */
 export function employmentView(e: EmploymentRow, { seesEndings, ...ctx }: EmploymentContext) {
-  const { shift, joinDate, probationEnd, jdAcknowledgedAt, endDate, officeDays, contracts, endings, jobTitle, ...rest } = e;
+  const { shift, joinDate, probationEnd, jdAcknowledgedAt, endDate, officeDays, contracts, endings, ...rest } = e;
   const [contract] = contracts;
   const [ending] = endings;
   return {
     ...rest,
-    jobTitle: jobTitle && withOccupation(jobTitle),
     joinDate: fromDateOnly(joinDate),
     probationEnd: fromDateOnly(probationEnd),
     jdAcknowledgedAt: fromDateOnly(jdAcknowledgedAt),
@@ -97,11 +99,33 @@ export function employmentView(e: EmploymentRow, { seesEndings, ...ctx }: Employ
 }
 
 type DateField = (typeof DATE_FIELDS)[number];
-type EmployeeFields = Omit<Employee, DateField> & Record<DateField, string | null>;
+type WageField = (typeof WAGE_FIELDS)[number];
+type EmployeeFields = Omit<Employee, DateField | WageField> & Record<DateField, string | null> & Record<WageField, number | null>;
 
-/** The profile's own columns as the API sends them: dates as YYYY-MM-DD. */
+/** The profile's own columns as the API sends them: dates as YYYY-MM-DD, amounts as numbers. */
 function fields(e: Employee): EmployeeFields {
-  return { ...e, dateOfBirth: fromDateOnly(e.dateOfBirth) };
+  return {
+    ...e,
+    dateOfBirth: fromDateOnly(e.dateOfBirth),
+    insuranceStartDate: fromDateOnly(e.insuranceStartDate),
+    insuranceBasicWage: e.insuranceBasicWage?.toNumber() ?? null,
+    insuranceInsuredWage: e.insuranceInsuredWage?.toNumber() ?? null,
+    insuranceComprehensiveWage: e.insuranceComprehensiveWage?.toNumber() ?? null,
+  };
+}
+
+/** The wages in an audit diff, a profile's as created or what changed: only that they were set or changed. */
+function wagesMasked<T extends Record<string, unknown>>(diff: T): T {
+  const out: Record<string, unknown> = { ...diff };
+  for (const key of WAGE_FIELDS) if (out[key] !== undefined && out[key] !== null) out[key] = 'changed';
+  return out as T;
+}
+
+/** The wages are set only by those who see salaries; today HR alone changes a profile, and HR sees them. */
+function assertSetsWages(user: SessionUser, dto: CreateEmployeeDto | UpdateEmployeeDto) {
+  if (WAGE_FIELDS.some((key) => dto[key] !== undefined) && !seesSalary(user)) {
+    throw new ForbiddenException('Only HR, Finance and the CEO see salaries, so only they set the social insurance wages.');
+  }
 }
 
 /** What Prisma writes: YYYY-MM-DD strings become dates. */
@@ -244,8 +268,9 @@ const check = (value: unknown, key: string, label: string, tab: Missing['tab']):
  *
  * Owner's decision, 15 October 2026: everything counts (employment, bank, city, faculty, the work email …) except
  * the emergency contact and the second mobile. Also never counted: the employee code (always set), the work
- * arrangement (always has a value), the probation end date and the job description acknowledgement. Some items
- * count only where they apply: the work email and the employment items while employed, the university, faculty and
+ * arrangement (always has a value), the probation end date, the job description acknowledgement, and the social
+ * insurance occupation, subscription start and wages (HR's, on the Social Insurance tab: owner, 16 October 2026). Some
+ * items count only where they apply: the work email and the employment items while employed, the university, faculty and
  * major unless the degree is high school, and the direct manager unless the grade is the top rank (the CEO has no
  * manager). The social insurance number counts for everyone (owner, 15 October 2026).
  */
@@ -380,7 +405,9 @@ export class EmployeesService {
    * A profile: personal details, the national ID and bank (masked, for those who may see them), the current
    * employment and the history of employments, the people who report to this person now, and how complete it is.
    * Also the employee's own confirmation of their details and their change requests (owner's decision, 15 October
-   * 2026), and whether the signed-in user is this employee (`isSelf`: only they confirm or ask for a change).
+   * 2026), and whether the signed-in user is this employee (`isSelf`: only they confirm or ask for a change). The social
+   * insurance occupation comes with its name (owner's decision, 16 October 2026: the employee's, on the Social Insurance
+   * tab); the social insurance wages and the default basic wage only for those who see salaries.
    */
   async get(id: string, user: SessionUser) {
     const identity = seesIdentity(user);
@@ -413,14 +440,25 @@ export class EmployeesService {
       : null;
     const history = employments.map((x) => employmentView(x, { seesSalary: seesSalary(user), seesEndings: seesEndings(user), nonRenewal }));
     const current = history.find((x) => x.endDate === null) ?? null;
+    const salary = seesSalary(user);
     // the top rank is only needed to know whether a graded employment needs a manager
-    const [papers, top, changeRequests] = await Promise.all([
+    const [papers, top, changeRequests, settings] = await Promise.all([
       this.prisma.paperworkItem.findMany({ where: { employeeId: id }, select: { kind: true }, distinct: ['kind'] }),
       current?.grade ? this.prisma.grade.aggregate({ _max: { rank: true } }) : null,
       self || seesChangeRequests(user) ? this.changeRequestsOf(id) : [],
+      salary ? this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }) : null,
     ]);
+    const { insuranceBasicWage, insuranceInsuredWage, insuranceComprehensiveWage, ...open } = withOccupation(fields(own));
     return {
-      ...fields(own),
+      ...open,
+      // the social insurance wages, with the default basic wage printed for an employee who has none: salary data, for
+      // those who see salaries only (owner, 16 October 2026)
+      ...(salary && {
+        insuranceBasicWage,
+        insuranceInsuredWage,
+        insuranceComprehensiveWage,
+        insuranceBasicDefault: settings?.insuranceBasicDefault.toNumber() ?? INSURANCE_BASIC_DEFAULT,
+      }),
       employment: current,
       employments: history,
       reports: managing.map((m) => ({ ...m.employee, status: m.status, jobTitle: m.jobTitle })),
@@ -468,6 +506,7 @@ export class EmployeesService {
    */
   async create(dto: CreateEmployeeDto, user: SessionUser) {
     const { employeeCode: code, identity: sentIdentity, ...given } = dto;
+    assertSetsWages(user, dto);
     const employeeCode = code ?? (await this.nextCode());
     await this.assertCompanyDomain(dto.workEmail);
     await this.assertFree({ employeeCode, workEmail: dto.workEmail, insuranceNo: dto.insuranceNo });
@@ -482,7 +521,7 @@ export class EmployeesService {
       if (identity) await tx.employeeIdentity.create({ data: { employeeId: row.id, ...identityData(identity) } });
       return row;
     });
-    const { id: _id, createdAt: _c, updatedAt: _u, ...created } = fields(e);
+    const { id: _id, createdAt: _c, updatedAt: _u, ...created } = wagesMasked(fields(e));
     const diff = identity ? { ...created, identity: identityChanges(null, identity) } : created;
     await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, entityId: e.id, diff });
     return this.get(e.id, user);
@@ -499,11 +538,12 @@ export class EmployeesService {
    * as HR's own edit; an Admin may approve without seeing the profile.
    */
   async edit(id: string, dto: UpdateEmployeeDto, user: SessionUser): Promise<void> {
+    assertSetsWages(user, dto);
     const before = await this.row(id);
     const values = await this.updateValues(before, dto);
 
     await this.prisma.employee.update({ where: { id }, data: toData(values) });
-    const diff = changes(fields(before), values);
+    const diff = wagesMasked(changes(fields(before), values));
     if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: id, diff });
   }
 

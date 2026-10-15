@@ -1,4 +1,4 @@
-import { charScript, visualRuns } from './text.js';
+import { charScript, naturalWidth, paragraphDirection, visualRuns } from './text.js';
 
 // One line as a PDF prints it (owner's decision, 15 October 2026): runs of one font and one direction, left to right
 // as seen. A right-to-left run of Arabic letters is given in reading order, for the font engine to join its letters and
@@ -45,6 +45,29 @@ describe('visualRuns', () => {
       ['arabic', 'محمد', 'rtl'],
       ['latin', ' at TrendLIX', 'ltr'],
     ]);
+  });
+});
+
+// A line of a value that wraps (owner, 16 October 2026) reads as the whole value does, whatever its own first word.
+describe('lines of a value that wraps', () => {
+  it('reads a value as its first strong character does', () => {
+    expect(paragraphDirection('بكالوريوس التجارة')).toBe('rtl');
+    expect(paragraphDirection('15/10/2026 رقم')).toBe('rtl');
+    expect(paragraphDirection('CIB بنك')).toBe('ltr');
+    expect(paragraphDirection('2026')).toBe('ltr');
+    expect(paragraphDirection('')).toBe('ltr');
+  });
+
+  it('lays a line out right to left when told, though it starts with a Latin word', () => {
+    expect(visualRuns('CIB بنك').map((r) => r.text)).toEqual(['CIB ', 'بنك']);
+    expect(visualRuns('CIB بنك', false, 'rtl').map((r) => r.text)).toEqual([' بنك', 'CIB']);
+  });
+
+  it('measures a line at 1 point, its runs as the PDF prints them', () => {
+    expect(naturalWidth('')).toBe(0);
+    expect(naturalWidth('Omar Khaled')).toBeGreaterThan(naturalWidth('Omar'));
+    // the same line, whichever way it reads
+    expect(naturalWidth('محمد أحمد', false, 'rtl')).toBeCloseTo(naturalWidth('محمد أحمد'), 6);
   });
 });
 

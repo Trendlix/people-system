@@ -1,4 +1,5 @@
 import { Prisma } from '../generated/prisma/client.js';
+import { nationalityAr } from '@trendlix/shared';
 import { missingTags, resolveValues, rightFor, type ValueSources } from './values.js';
 
 // The values a document prints, from its sources: here the role's duties (owner's request, 15 October 2026), which keep
@@ -17,6 +18,7 @@ function sources(jobTitle: JobTitle, language: ValueSources['language'] = 'ar'):
       fullNameAr: 'عمر خالد',
       displayName: null,
       nationality: null,
+      gender: null,
       dateOfBirth: null,
       addressAr: null,
       city: null,
@@ -27,6 +29,11 @@ function sources(jobTitle: JobTitle, language: ValueSources['language'] = 'ar'):
       personalEmail: null,
       qualificationAr: null,
       insuranceNo: null,
+      occupationCode: null,
+      insuranceStartDate: null,
+      insuranceBasicWage: null,
+      insuranceInsuredWage: null,
+      insuranceComprehensiveWage: null,
     },
     identity: null,
     bank: null,
@@ -43,13 +50,14 @@ function sources(jobTitle: JobTitle, language: ValueSources['language'] = 'ar'):
     contract: null,
     ending: null,
     company: null,
+    insuranceBasicDefault: 410,
     documentDate: '2026-10-15',
     inputs: {},
   };
 }
 
 describe("a document's values", () => {
-  const role = { titleEn: 'Account Manager', titleAr: 'مدير حسابات', jdDuties: DUTIES, occupationCode: null };
+  const role = { titleEn: 'Account Manager', titleAr: 'مدير حسابات', jdDuties: DUTIES };
 
   it("{{job_duties}} is the role's duties as written, with their formatting, in any template language", () => {
     for (const language of ['ar', 'en', 'bilingual'] as const) {
@@ -325,8 +333,8 @@ describe('the added fields', () => {
 });
 
 // What social insurance Forms 1 and 6 print that the system didn't hold (owner, 15 October 2026): the address in its
-// parts and the building number, the job title's occupation in the social insurance table, and the company's
-// insurance office and sector code.
+// parts and the building number, the employee's occupation in the social insurance table (owner's decision, 16 October
+// 2026: no longer the job title's), and the company's insurance office and sector code.
 describe('the social insurance details', () => {
   const COMPANY: NonNullable<ValueSources['company']> = {
     nameEn: 'TrendLIX',
@@ -345,11 +353,12 @@ describe('the social insurance details', () => {
     repNationalId: null,
   };
   const TAGS = ['address_line', 'city', 'governorate', 'building_no', 'occupation_code', 'occupation_name', 'insurance_office', 'insurance_sector_code'];
+  const ACCOUNTANT = { titleEn: 'Accountant', titleAr: 'محاسب', jdDuties: null };
   function insured(language: ValueSources['language'] = 'ar'): ValueSources {
-    const base = sources({ titleEn: 'Accountant', titleAr: 'محاسب', jdDuties: null, occupationCode: '012100' }, language);
+    const base = sources(ACCOUNTANT, language);
     return {
       ...base,
-      employee: { ...base.employee, addressAr: '15 شارع عباس العقاد،', city: 'مدينة نصر', governorate: 'Cairo', buildingNo: '12أ' },
+      employee: { ...base.employee, addressAr: '15 شارع عباس العقاد،', city: 'مدينة نصر', governorate: 'Cairo', buildingNo: '12أ', occupationCode: '012100' },
       company: COMPANY,
     };
   }
@@ -371,16 +380,18 @@ describe('the social insurance details', () => {
     expect(resolveValues(insured(), ['address']).address).toBe('15 شارع عباس العقاد، مدينة نصر، القاهرة');
   });
 
-  it('the occupation is the employment’s job title’s: none without one set, a job title or an employment', () => {
-    const none = { titleEn: 'Accountant', titleAr: null, jdDuties: null, occupationCode: null };
-    expect(resolveValues(sources(none), ['occupation_code', 'occupation_name'])).toEqual({ occupation_code: '', occupation_name: '' });
-    expect(resolveValues(sources(null), ['occupation_code', 'occupation_name'])).toEqual({ occupation_code: '', occupation_name: '' });
-    expect(resolveValues({ ...insured(), employment: null }, ['occupation_code'])).toEqual({ occupation_code: '' });
+  it('the occupation is the employee’s own, whatever their job title, even with no job title or employment', () => {
+    const tags = ['occupation_code', 'occupation_name'];
+    expect(resolveValues(sources(ACCOUNTANT), tags)).toEqual({ occupation_code: '', occupation_name: '' });
+    const own = (src: ValueSources): ValueSources => ({ ...src, employee: { ...src.employee, occupationCode: '194200' } });
+    expect(resolveValues(own(sources(null)), tags)).toEqual({ occupation_code: '194200', occupation_name: 'اخصائي موارد بشريه' });
+    expect(resolveValues(own({ ...sources(ACCOUNTANT), employment: null }), tags)).toEqual({ occupation_code: '194200', occupation_name: 'اخصائي موارد بشريه' });
     // a code no longer in the table prints as stored, without a name
-    expect(resolveValues(sources({ ...none, occupationCode: '000001' }), ['occupation_code', 'occupation_name'])).toEqual({ occupation_code: '000001', occupation_name: '' });
+    const gone = sources(null);
+    expect(resolveValues({ ...gone, employee: { ...gone.employee, occupationCode: '000001' } }, tags)).toEqual({ occupation_code: '000001', occupation_name: '' });
   });
 
-  it('says where each missing one is filled in: the profile, the job title under Departments, the company profile', () => {
+  it('says where each missing one is filled in: the profile’s tabs (the occupation on Social Insurance), the company profile', () => {
     const values = resolveValues(sources(null), TAGS);
     expect(Object.values(values).every((v) => v === '')).toBe(true);
     expect(missingTags(values, TAGS)).toEqual([
@@ -388,8 +399,8 @@ describe('the social insurance details', () => {
       { tag: 'city', label: 'City or district (Arabic)', where: { tab: 'basic', key: 'city' } },
       { tag: 'governorate', label: 'Governorate (Arabic)', where: { tab: 'basic', key: 'governorate' } },
       { tag: 'building_no', label: 'Building number', where: { tab: 'basic', key: 'buildingNo' } },
-      { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'departments', key: 'occupationCode' } },
-      { tag: 'occupation_name', label: 'Occupation (social insurance)', where: { tab: 'departments', key: 'occupationCode' } },
+      { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'insurance', key: 'occupationCode' } },
+      { tag: 'occupation_name', label: 'Occupation (social insurance)', where: { tab: 'insurance', key: 'occupationCode' } },
       { tag: 'insurance_office', label: 'Social insurance office', where: { tab: 'company', key: 'insuranceOffice' } },
       { tag: 'insurance_sector_code', label: 'Sector code (social insurance)', where: { tab: 'company', key: 'insuranceSectorCode' } },
     ]);
@@ -401,6 +412,137 @@ describe('the social insurance details', () => {
   });
 });
 
+// What Form 1 prints that is each employee's own on the Social Insurance tab (owner, 16 October 2026): the
+// subscription start and the three wages, each with what is printed while the employee has none of their own.
+describe('the Social Insurance tab’s dates and wages', () => {
+  const d = (n: number) => new Prisma.Decimal(n);
+  const TAGS = ['insurance_start_date', 'insurance_basic_salary', 'insurance_insured_salary', 'insurance_total_salary'];
+  /** A draft contract: gross 15,000, insured 14,500, a transport allowance of 1,000. */
+  const CONTRACT: NonNullable<ValueSources['contract']> = {
+    number: 'CON-2026-0001',
+    form: 'fixed',
+    status: 'draft',
+    startDate: new Date('2026-01-15T00:00:00Z'),
+    endDate: null,
+    durationMonths: 12,
+    probationMonths: 3,
+    probationEnd: null,
+    grossSalary: d(15000),
+    basicPercent: 80,
+    netSalary: null,
+    insuredSalary: d(14500),
+    jobTitleEn: null,
+    jobTitleAr: null,
+    gradeCode: null,
+    payBasis: 'monthly',
+    hourlyRate: null,
+    hoursPerWeek: null,
+    daysPerWeek: null,
+    allowances: [{ nameEn: 'Transport', nameAr: 'انتقال', amount: d(1000) }],
+  };
+  const withContract = (): ValueSources => ({ ...sources(null), contract: CONTRACT });
+
+  it('without the employee’s own: the join date, the contract settings’ default, the contract’s insured salary, its gross and allowances', () => {
+    expect(resolveValues(withContract(), TAGS)).toEqual({
+      insurance_start_date: '15/01/2026',
+      insurance_basic_salary: '410',
+      insurance_insured_salary: '14,500',
+      insurance_total_salary: '16,000',
+    });
+    // the default as the contract settings say; the contract's basic salary (the gross × its share) is not it
+    expect(resolveValues({ ...withContract(), insuranceBasicDefault: 512.5 }, ['insurance_basic_salary', 'basic_salary'])).toEqual({
+      insurance_basic_salary: '512.50',
+      basic_salary: '12,000',
+    });
+  });
+
+  it('the employee’s own, whatever the contract says', () => {
+    const src = withContract();
+    const own: ValueSources = {
+      ...src,
+      employee: {
+        ...src.employee,
+        insuranceStartDate: new Date('2026-02-01T00:00:00Z'),
+        insuranceBasicWage: d(2500.5),
+        insuranceInsuredWage: d(9000),
+        insuranceComprehensiveWage: d(17250.75),
+      },
+    };
+    expect(resolveValues(own, TAGS)).toEqual({
+      insurance_start_date: '01/02/2026',
+      insurance_basic_salary: '2,500.50',
+      insurance_insured_salary: '9,000',
+      insurance_total_salary: '17,250.75',
+    });
+    // the contract's own tags are unchanged
+    expect(resolveValues(own, ['join_date', 'insured_salary', 'total_salary'])).toEqual({ join_date: '15/01/2026', insured_salary: '14,500', total_salary: '16,000' });
+  });
+
+  it('missing only with neither the employee’s own nor what stands in for it, filled in on the Social Insurance tab', () => {
+    const none: ValueSources = { ...sources(null), employment: null };
+    const values = resolveValues(none, TAGS);
+    // the basic wage always has the default
+    expect(values.insurance_basic_salary).toBe('410');
+    expect(missingTags(values, TAGS)).toEqual([
+      { tag: 'insurance_start_date', label: 'Subscription start (social insurance)', where: { tab: 'insurance', key: 'insuranceStartDate' } },
+      { tag: 'insurance_insured_salary', label: 'Insured wage (social insurance)', where: { tab: 'insurance', key: 'insuranceInsuredWage' } },
+      { tag: 'insurance_total_salary', label: 'Comprehensive wage (social insurance)', where: { tab: 'insurance', key: 'insuranceComprehensiveWage' } },
+    ]);
+    // without a contract, still the Social Insurance tab (not the contract)
+    expect(missingTags(values, TAGS, {}, false).map((m) => m.where.tab)).toEqual(['insurance', 'insurance', 'insurance']);
+  });
+
+  it('the wages are restricted like the salary; the start date is not', () => {
+    expect(rightFor('insurance_basic_salary')).toBe('salary');
+    expect(rightFor('insurance_insured_salary')).toBe('salary');
+    expect(rightFor('insurance_total_salary')).toBe('salary');
+    expect(rightFor('insurance_start_date')).toBeNull();
+  });
+});
+
+// The nationality on an Arabic document (owner, 16 October 2026: Form 1 printed "Egyptian"): in Arabic, in the
+// person's gender; as typed on an English one.
+describe('the nationality', () => {
+  it('in Arabic in the person’s gender, matched in any capitals and ignoring spaces; else as typed', () => {
+    expect(nationalityAr('Egyptian', 'male')).toBe('مصري');
+    expect(nationalityAr('Egyptian', 'female')).toBe('مصرية');
+    expect(nationalityAr('  EGYPTIAN ', null)).toBe('مصري'); // masculine when the gender isn't known
+    expect(nationalityAr('saudi', 'female')).toBe('سعودية');
+    expect(nationalityAr('Filipino', 'female')).toBe('فلبينية');
+    expect(nationalityAr('Ethi opian', 'male')).toBe('إثيوبي');
+    // already Arabic, or not in the table: as it is
+    expect(nationalityAr('مصرية', 'male')).toBe('مصرية');
+    expect(nationalityAr(' Icelandic ', 'female')).toBe('Icelandic');
+    expect(nationalityAr(null, 'male')).toBe('');
+    expect(nationalityAr('', null)).toBe('');
+  });
+
+  function of(nationality: string | null, gender: string | null, language: ValueSources['language'] = 'ar'): ValueSources {
+    const base = sources(null, language);
+    return { ...base, employee: { ...base.employee, nationality, gender } };
+  }
+  const TAGS = ['nationality', 'nationality_ar', 'nationality_en'];
+
+  it('{{nationality}} in the template’s language (a bilingual one’s in Arabic); its _ar and _en forms in theirs', () => {
+    expect(resolveValues(of('Egyptian', 'female', 'ar'), TAGS)).toEqual({ nationality: 'مصرية', nationality_ar: 'مصرية', nationality_en: 'Egyptian' });
+    expect(resolveValues(of('Egyptian', 'female', 'bilingual'), TAGS)).toEqual({ nationality: 'مصرية', nationality_ar: 'مصرية', nationality_en: 'Egyptian' });
+    expect(resolveValues(of('Egyptian', 'female', 'en'), TAGS)).toEqual({ nationality: 'Egyptian', nationality_ar: 'مصرية', nationality_en: 'Egyptian' });
+    // no gender recorded (a job offer has none): the masculine
+    expect(resolveValues(of('Egyptian', null, 'ar'), ['nationality'])).toEqual({ nationality: 'مصري' });
+    // typed in Arabic: as typed in either
+    expect(resolveValues(of('مصري', 'male', 'en'), TAGS)).toEqual({ nationality: 'مصري', nationality_ar: 'مصري', nationality_en: 'مصري' });
+  });
+
+  it('missing without one, to be filled in on Basic Data; not restricted', () => {
+    expect(missingTags(resolveValues(of(null, 'male'), TAGS), TAGS).map((m) => [m.tag, m.where])).toEqual([
+      ['nationality', { tab: 'basic', key: 'nationality' }],
+      ['nationality_ar', { tab: 'basic', key: 'nationality' }],
+      ['nationality_en', { tab: 'basic', key: 'nationality' }],
+    ]);
+    for (const tag of TAGS) expect(rightFor(tag), tag).toBeNull();
+  });
+});
+
 describe('amounts in English words', () => {
   it('prints the gross, net, insured and total salary in English words beside the Arabic', async () => {
     const { resolveValues } = await import('./values.js');
@@ -408,7 +550,7 @@ describe('amounts in English words', () => {
     const d = (n: number) => new Prisma.Decimal(n);
     const sources = {
       language: 'en',
-      employee: { employeeCode: 'EMP-1', fullNameEn: 'A', fullNameAr: 'أ', displayName: null, nationality: null, dateOfBirth: null, addressAr: null, city: null, governorate: null, mobile: null, workEmail: null, personalEmail: null, qualificationAr: null, insuranceNo: null },
+      employee: { employeeCode: 'EMP-1', fullNameEn: 'A', fullNameAr: 'أ', displayName: null, nationality: null, gender: null, dateOfBirth: null, addressAr: null, city: null, governorate: null, mobile: null, workEmail: null, personalEmail: null, qualificationAr: null, insuranceNo: null, occupationCode: null, insuranceStartDate: null, insuranceBasicWage: null, insuranceInsuredWage: null, insuranceComprehensiveWage: null },
       identity: null,
       bank: null,
       employment: null,

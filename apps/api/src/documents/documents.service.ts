@@ -12,6 +12,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { toDateOnly, todayInCairo } from '../common/date-only.js';
+import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
 import { seesBank, seesIdentity, seesSalary } from '../employees/access.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { detectPaperworkType, extensionOf, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from '../paperwork/paperwork-file.js';
@@ -42,7 +43,7 @@ const EMPLOYMENT = {
   joinDate: true,
   endDate: true,
   // its duties for {{job_duties}} (owner's request, 15 October 2026)
-  jobTitle: { select: { titleEn: true, titleAr: true, jdDuties: true, occupationCode: true } },
+  jobTitle: { select: { titleEn: true, titleAr: true, jdDuties: true } },
   department: { select: { nameEn: true, nameAr: true } },
   // the grade's level, the manager, the shift and the work arrangement for their tags (owner's request, 15 October 2026)
   grade: { select: { code: true, levelEn: true, levelAr: true } },
@@ -448,7 +449,9 @@ export class DocumentsService {
     const empty = new Set([...template.tags.filter((tag) => isBlankValue(values[tag])), ...TYPED_TAGS]);
     const preview = previewValues(template.tags, values, empty, slot.overrides, { identity: seesIdentity(user), salary: seesSalary(user), bank: seesBank(user) });
     // a PDF form's optional fields with no value print blank, as on the document
-    const data = template.data ? await fillVersion({ ...template, format: template.format ?? 'docx', data: template.data }, preview.values, new Set(preview.placeholders)) : null;
+    const data = template.data
+      ? await fillVersion({ ...template, slotKey: slot.key, format: template.format ?? 'docx', data: template.data }, preview.values, new Set(preview.placeholders))
+      : null;
     return { employee: ctx.employee, filled: preview.filled, total: preview.total, shown: data ? preview.shown : [], data };
   }
 
@@ -493,7 +496,7 @@ export class DocumentsService {
       contract = termsContract(employment.contracts);
     }
 
-    const [person, company, offer] = await Promise.all([
+    const [person, company, offer, settings] = await Promise.all([
       this.prisma.employee.findUniqueOrThrow({
         where: { id: employeeId },
         select: {
@@ -502,6 +505,7 @@ export class DocumentsService {
           fullNameAr: true,
           displayName: true,
           nationality: true,
+          gender: true,
           dateOfBirth: true,
           addressAr: true,
           city: true,
@@ -512,6 +516,12 @@ export class DocumentsService {
           personalEmail: true,
           qualificationAr: true,
           insuranceNo: true,
+          // what the Social Insurance tab holds (owner, 16 October 2026): the occupation, the subscription start, the wages
+          occupationCode: true,
+          insuranceStartDate: true,
+          insuranceBasicWage: true,
+          insuranceInsuredWage: true,
+          insuranceComprehensiveWage: true,
           identity: { select: { nationalId: true, printedNo: true, issueDate: true } },
           bank: { select: { bankName: true, accountNo: true, iban: true, holderName: true } },
         },
@@ -523,16 +533,19 @@ export class DocumentsService {
         orderBy: [{ respondedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
         select: { number: true, expiresOn: true },
       }),
+      // the basic wage social insurance forms print for an employee who has none of their own (owner, 16 October 2026)
+      this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }),
     ]);
     const { identity, bank, ...own } = person;
     const ending = employment.endings[0] ?? null;
+    const insuranceBasicDefault = settings?.insuranceBasicDefault.toNumber() ?? INSURANCE_BASIC_DEFAULT;
     return {
       slot,
       employee,
       employment,
       contract,
       ending,
-      sources: { employee: own, identity, bank, employment, contract, ending, offer, company },
+      sources: { employee: own, identity, bank, employment, contract, ending, offer, company, insuranceBasicDefault },
     };
   }
 
@@ -541,7 +554,7 @@ export class DocumentsService {
   private published(
     slot: TemplateSlot,
     withFile: true,
-  ): Promise<{ id: string; version: number; language: string; tags: string[]; format: string; data: Uint8Array; pdfFields: Prisma.JsonValue | null } | null>;
+  ): Promise<{ id: string; version: number; language: string; tags: string[]; format: string; data: Uint8Array; pdfFields: Prisma.JsonValue | null; slotKey: string } | null>;
   private published(slot: TemplateSlot, withFile = false): Promise<unknown> {
     return this.prisma.templateVersion.findFirst({
       where: { slotKey: fileSlot(slot), status: 'published' },

@@ -124,6 +124,35 @@ describe('optional fields', () => {
   });
 });
 
+// A value that wraps onto the rows above (owner, 16 October 2026): 1 to 4 lines, on a text field or fixed text.
+describe('lines', () => {
+  const fixed = (f: Partial<PdfField> = {}): PdfField => ({ id: 'f', kind: 'fixed', tag: null, text: 'مكتب الدقي', page: 1, x: 10, y: 40, width: 200, height: 30, fontSize: 12, ...f });
+  const check = (f: Partial<PdfField> = {}): PdfField => ({ id: 'c', kind: 'check', tag: null, page: 1, x: 10, y: 10, width: 20, height: 20, fontSize: 12, ...f });
+
+  it('takes 1 to 4 lines on a text field and on fixed text', () => {
+    expect(problem(text({ lines: 2, height: 26 }), fixed({ lines: 4 }))).toBeNull();
+    expect(problem(text({ lines: 1 }))).toBeNull();
+    // one line is no different from not set, whatever the kind
+    expect(problem(boxes({ lines: 1 }), check({ lines: 1 }))).toBeNull();
+  });
+
+  it('refuses a number of lines outside 1 to 4 or not whole, and more than one on boxes or a check box', () => {
+    const name = 'The text field for "Full name (Arabic)" on page 1';
+    expect(problem(text({ lines: 0 }))).toBe(`${name}: choose 1 to 4 lines.`);
+    expect(problem(text({ lines: 5 }))).toBe(`${name}: choose 1 to 4 lines.`);
+    expect(problem(text({ lines: 1.5 }))).toBe(`${name}: choose 1 to 4 lines.`);
+    expect(problem(text({ lines: '2' as unknown as number }))).toBe(`${name}: choose 1 to 4 lines.`);
+    expect(problem(boxes({ lines: 2 }))).toBe('The boxes for "National ID number" on page 1 can\'t take more than one line: only a text field or fixed text wraps.');
+    expect(problem(check({ lines: 3 }))).toBe("A check box on page 1 can't take more than one line: only a text field or fixed text wraps.");
+  });
+
+  it('is kept when saving, and left out when not set', () => {
+    expect(plainPdfFields([text({ lines: 2 })])[0]).toEqual({ ...text(), lines: 2 });
+    expect(plainPdfFields([fixed({ lines: 3 })])[0].lines).toBe(3);
+    expect(plainPdfFields([text()])[0]).not.toHaveProperty('lines');
+  });
+});
+
 describe('pdfFieldTags', () => {
   it('lists the tags printed, each once, down the pages: by page, then from the top, then from the left', () => {
     const fields: PdfField[] = [

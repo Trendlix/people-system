@@ -158,9 +158,6 @@ model JobTitle {
   jdDuties       String?        @map("jd_duties") // HTML; the duty rows are its list items and paragraphs
   jdRequirements String?        @map("jd_requirements") // HTML
   jdVersion      Int            @default(1) @map("jd_version")
-  // its occupation in the social insurance table (packages/shared occupations.ts), printed on Form 1 as كود المهنة
-  // (owner, 15 October 2026): six digits, checked by the database too; the name is the table's, never stored
-  occupationCode String?        @map("occupation_code") @db.Char(6)
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
   duties         JobTitleDuty[]
@@ -236,49 +233,62 @@ enum WorkArrangement {
 
 // Lists stored as text (gender, marital status, degree …) take their values from packages/shared.
 model Employee {
-  id                String                 @id @default(uuid()) @db.Uuid
-  employeeCode      String                 @unique @map("employee_code") // EMP-0142: shown everywhere, different from the national ID
-  insuranceNo       String?                @unique @map("insurance_no") // الرقم التأميني, the social insurance number: digits only
-  fullNameEn        String                 @map("full_name_en")
-  fullNameAr        String                 @map("full_name_ar") // as printed on contracts
-  displayName       String?                @map("display_name") // the short name the person goes by (e.g. Hazem Magdy), for the email signature
-  dateOfBirth       DateTime?              @map("date_of_birth") @db.Date
-  gender            String?
-  nationality       String?
-  maritalStatus     String?                @map("marital_status")
-  militaryStatus    String?                @map("military_status")
+  id                         String                 @id @default(uuid()) @db.Uuid
+  employeeCode               String                 @unique @map("employee_code") // EMP-0142: shown everywhere, different from the national ID
+  insuranceNo                String?                @unique @map("insurance_no") // الرقم التأميني, the social insurance number: digits only
+  // the occupation in the social insurance table (packages/shared occupations.ts), printed on Form 1 as كود المهنة: six
+  // digits, checked by the database too; the name is the table's, never stored. HR sets it on the profile's Social
+  // Insurance tab (owner's decision, 16 October 2026: the employee's, no longer their job title's)
+  occupationCode             String?                @map("occupation_code") @db.Char(6)
+  // what Form 1 prints that is the employee's own, set by HR on the Social Insurance tab (owner, 16 October 2026): the
+  // subscription start (تاريخ بدء الاشتراك; none: the current employment's join date), and the wages, salary data, each
+  // more than 0: the basic wage (أجر أساسي; none: the default in the contract settings), the insured wage (أجر
+  // الاشتراك, within the year's insurable limits; none: the contract's insured salary) and the comprehensive wage
+  // (الأجر الشامل; none: the contract's gross and allowances)
+  insuranceStartDate         DateTime?              @map("insurance_start_date") @db.Date
+  insuranceBasicWage         Decimal?               @map("insurance_basic_wage") @db.Decimal(12, 2)
+  insuranceInsuredWage       Decimal?               @map("insurance_insured_wage") @db.Decimal(12, 2)
+  insuranceComprehensiveWage Decimal?               @map("insurance_comprehensive_wage") @db.Decimal(12, 2)
+  fullNameEn                 String                 @map("full_name_en")
+  fullNameAr                 String                 @map("full_name_ar") // as printed on contracts
+  displayName                String?                @map("display_name") // the short name the person goes by (e.g. Hazem Magdy), for the email signature
+  dateOfBirth                DateTime?              @map("date_of_birth") @db.Date
+  gender                     String?
+  nationality                String?
+  maritalStatus              String?                @map("marital_status")
+  militaryStatus             String?                @map("military_status")
   // contact: phones are text, so the leading 0 is kept
-  workEmail         String?                @unique @map("work_email") // lower case; a sign-in account with this email is this employee
-  personalEmail     String?                @map("personal_email")
-  mobile            String?
-  mobile2           String? // a second mobile number
-  addressAr         String?                @map("address_ar")
-  city              String? // the city or district, in Arabic as on the ID card (e.g. مدينة نصر)
-  governorate       String?
-  buildingNo        String?                @map("building_no") // the address's building number (عقار رقم) on social insurance Forms 1 and 6, up to 10 characters (owner, 15 October 2026)
-  emergencyName     String?                @map("emergency_name")
-  emergencyRelation String?                @map("emergency_relation")
-  emergencyMobile   String?                @map("emergency_mobile")
+  workEmail                  String?                @unique @map("work_email") // lower case; a sign-in account with this email is this employee
+  personalEmail              String?                @map("personal_email")
+  mobile                     String?
+  mobile2                    String? // a second mobile number
+  addressAr                  String?                @map("address_ar")
+  city                       String? // the city or district, in Arabic as on the ID card (e.g. مدينة نصر)
+  governorate                String?
+  buildingNo                 String?                @map("building_no") // the address's building number (عقار رقم) on social insurance Forms 1 and 6, up to 10 characters (owner, 15 October 2026)
+  emergencyName              String?                @map("emergency_name")
+  emergencyRelation          String?                @map("emergency_relation")
+  emergencyMobile            String?                @map("emergency_mobile")
   // education (the main qualification; qualification_ar is printed on contracts)
-  university        String?
-  faculty           String?
-  degree            String?
-  major             String?
-  graduationYear    Int?                   @map("graduation_year") @db.SmallInt
-  educationGrade    String?                @map("education_grade")
-  qualificationAr   String?                @map("qualification_ar")
-  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime               @updatedAt @map("updated_at") @db.Timestamptz
-  identity          EmployeeIdentity?
-  bank              EmployeeBank?
-  paperwork         PaperworkItem[]
-  employments       Employment[]           @relation("Employments")
-  managing          Employment[]           @relation("Manager") // the employments this person is the manager of
-  confirmations     ProfileConfirmation[]
-  changeRequests    ProfileChangeRequest[]
-  documents         GeneratedDocument[]
-  offers            JobOffer[]             @relation("OfferPerson") // offers made to this person: as a former employee, or the offer they were hired from
-  offersManaging    JobOffer[]             @relation("OfferManager") // offers whose position reports to this person
+  university                 String?
+  faculty                    String?
+  degree                     String?
+  major                      String?
+  graduationYear             Int?                   @map("graduation_year") @db.SmallInt
+  educationGrade             String?                @map("education_grade")
+  qualificationAr            String?                @map("qualification_ar")
+  createdAt                  DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                  DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  identity                   EmployeeIdentity?
+  bank                       EmployeeBank?
+  paperwork                  PaperworkItem[]
+  employments                Employment[]           @relation("Employments")
+  managing                   Employment[]           @relation("Manager") // the employments this person is the manager of
+  confirmations              ProfileConfirmation[]
+  changeRequests             ProfileChangeRequest[]
+  documents                  GeneratedDocument[]
+  offers                     JobOffer[]             @relation("OfferPerson") // offers made to this person: as a former employee, or the offer they were hired from
+  offersManaging             JobOffer[]             @relation("OfferManager") // offers whose position reports to this person
 
   @@map("employees")
 }
@@ -410,10 +420,12 @@ model OcrCorrection {
 // The defaults for new contracts (one row, id 1): how many months of probation (the law's cap is 3, Art. 90) and how
 // long a fixed term runs.
 model ContractSettings {
-  id              Int      @id @default(1) // always 1
-  probationMonths Int      @default(3) @map("probation_months") // 0–3
-  durationMonths  Int      @default(12) @map("duration_months") // 1–60
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id                    Int      @id @default(1) // always 1
+  probationMonths       Int      @default(3) @map("probation_months") // 0–3
+  durationMonths        Int      @default(12) @map("duration_months") // 1–60
+  // the basic wage social insurance Form 1 prints for an employee who has none of their own (owner, 16 October 2026)
+  insuranceBasicDefault Decimal  @default(410) @map("insurance_basic_default") @db.Decimal(12, 2)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("contract_settings")
 }

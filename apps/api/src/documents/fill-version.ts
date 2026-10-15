@@ -1,4 +1,4 @@
-import type { PdfField } from '@trendlix/shared';
+import { withSlotDigits, type PdfField } from '@trendlix/shared';
 import type { Prisma } from '../generated/prisma/client.js';
 import { pdfOptionalTags } from '../templates/pdf-fields.js';
 import { formatOf, templateFileName } from '../templates/template-file.js';
@@ -8,12 +8,15 @@ import { fillPdfTemplate } from './pdf-engine/index.js';
 // Every document filled in from a template goes through here (generated documents, job offers, previews): a Word
 // template has its {{tags}} replaced (engine/), a PDF form has the values printed where its fields were placed
 // (pdf-engine/, owner's decision, 15 October 2026). Either way the result leaves the system only as a protected PDF.
+// A social insurance form prints every number in ٠-٩ but an email's, whatever its fields were saved with (owner, 16
+// October 2026): the rule is applied here, so every way a form is filled (generated, previewed) follows it.
 
 /** What filling a version in reads of it, beside its tags. */
-export const FILLED_FROM = { format: true, data: true, pdfFields: true, language: true } satisfies Prisma.TemplateVersionSelect;
+export const FILLED_FROM = { slotKey: true, format: true, data: true, pdfFields: true, language: true } satisfies Prisma.TemplateVersionSelect;
 
-/** A version to fill in: its file, its format and (a PDF) its fields, and its language. */
+/** A version to fill in: the slot it is filled in for (its folder's digit rule), its file, its format and (a PDF) its fields, and its language. */
 export interface FillableVersion {
+  slotKey: string;
   format: string;
   data: Uint8Array;
   pdfFields?: Prisma.JsonValue | null;
@@ -33,13 +36,14 @@ export function requiredTags(version: { tags: readonly string[]; pdfFields?: Pri
 }
 
 /**
- * The version filled in with the values (by tag): a .docx for a Word template, a PDF for a PDF form. `blank`: tags with
- * no value that a preview prints as their label, whose optional fields on a PDF form print nothing instead.
+ * The version filled in with the values (by tag): a .docx for a Word template, a PDF for a PDF form, its fields under
+ * the slot's digit rule (withSlotDigits). `blank`: tags with no value that a preview prints as their label, whose
+ * optional fields on a PDF form print nothing instead.
  */
 export async function fillVersion(version: FillableVersion, values: Readonly<Record<string, TagValue>>, blank: ReadonlySet<string> = new Set()): Promise<Buffer> {
   if (formatOf(version.format) === 'pdf') {
     const left = (f: PdfField) => f.optional === true && (f.kind === 'text' || f.kind === 'boxes') && f.tag !== null && blank.has(f.tag);
-    const fields = pdfFieldsOf(version.pdfFields).map((f) => (left(f) ? { ...f, tag: null } : f));
+    const fields = withSlotDigits(version.slotKey, pdfFieldsOf(version.pdfFields)).map((f) => (left(f) ? { ...f, tag: null } : f));
     return fillPdfTemplate(version.data, fields, values, version.language);
   }
   return fillTemplate(Buffer.from(version.data), values);

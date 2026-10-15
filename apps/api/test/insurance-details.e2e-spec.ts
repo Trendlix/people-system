@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import type { PdfField } from '@trendlix/shared';
+import { insurableWageLimits, PROFILE_DISCLAIMER, type PdfField } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { todayInCairo } from '../src/common/date-only.js';
@@ -13,13 +13,25 @@ import { formPdf, shownGlyphs, shownLines } from './fixtures/pdf-form.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
 // What social insurance Forms 1 and 6 print that the system didn't hold (owner, 15 October 2026): the company's
-// insurance office and sector code, each job title's occupation in the social insurance table, and the building number
-// of an employee's address; printed by their tags on employee documents and job offers. And a PDF form's optional
-// fields: left blank when their value is missing, rather than stopping the document.
+// insurance office and sector code, the occupation in the social insurance table, and the building number of an
+// employee's address; printed by their tags on employee documents and job offers. And a PDF form's optional fields:
+// left blank when their value is missing, rather than stopping the document.
+// The occupation is the employee's own, set by HR on the Social Insurance tab, no longer the job title's (owner's
+// decision, 16 October 2026); so are Form 1's subscription start and its three wages, with the contract settings'
+// default basic wage. Every number on the social insurance forms prints in ٠-٩ (owner, 16 October 2026).
 
 const RUN = Date.now().toString(36);
 const PAGE = { width: 612, height: 1008 };
 const OCCUPATION = 'Choose the occupation from the social insurance list.';
+const BASIC_WAGE = 'Enter the basic wage as an amount of more than 0 and up to 99,999.99, e.g. 410 or 2500.50.';
+const COMPREHENSIVE_WAGE = 'Enter the comprehensive wage as an amount of more than 0 and up to 999,999.99, e.g. 15000 or 16700.50.';
+const DEFAULT_BASIC = 'Enter the default basic wage as an amount of more than 0 and up to 99,999.99, e.g. 410.';
+/** This year's insurable limits, as the API checks the insured wage against them. */
+const LIMITS = insurableWageLimits(Number(todayInCairo().slice(0, 4)));
+const egp = (n: number) => `EGP ${n.toLocaleString('en-US')}`;
+/** Digits as a social insurance form prints them, ٠-٩ (owner, 16 October 2026). */
+const ar = (text: string) => text.replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]);
+const INSURED_WAGE = `The insured wage for ${LIMITS.year} is between ${egp(LIMITS.min)} and ${egp(LIMITS.max)}.`;
 
 /** Form 1's fields for these tests: a name, the occupation's boxes and the insurance office (needed), the building number and the sector code's boxes (optional). */
 const FORM: PdfField[] = [
@@ -36,6 +48,8 @@ describe('Social insurance details (e2e)', () => {
   let hr: string;
   let hrId: string;
   let staff: string;
+  let finance: string;
+  let ceo: string;
   let companyBefore: { emailDomain: string | null; insuranceOffice: string | null; insuranceSectorCode: string | null } | null;
   let departmentId: string;
   let gradeId: string;
@@ -63,6 +77,8 @@ describe('Social insurance details (e2e)', () => {
     hr = await signIn(app, hrEmail);
     hrId = (await prisma.user.findUniqueOrThrow({ where: { email: hrEmail } })).id;
     staff = await signIn(app, await createUser(prisma, ['employee']));
+    finance = await signIn(app, await createUser(prisma, ['finance']));
+    ceo = await signIn(app, await createUser(prisma, ['ceo']));
     await prisma.generatedDocument.deleteMany();
     await prisma.jobOffer.deleteMany();
     await prisma.templateVersion.deleteMany();
@@ -80,6 +96,7 @@ describe('Social insurance details (e2e)', () => {
     await prisma.jobOffer.deleteMany();
     await prisma.templateVersion.deleteMany();
     if (companyBefore) await prisma.company.update({ where: { id: 1 }, data: companyBefore });
+    await prisma.contractSettings.update({ where: { id: 1 }, data: { insuranceBasicDefault: 410 } });
     await app.close();
   });
 
@@ -116,70 +133,194 @@ describe('Social insurance details (e2e)', () => {
   });
 
   describe('job titles', () => {
-    it('take an occupation from the social insurance table, shown with its name in the list and the detail', async () => {
-      const job = await newJobTitle(`Physicist ${RUN}`, { occupationCode: '012100' });
-      expect(job).toMatchObject({ occupationCode: '012100', occupationName: 'فيزيائي عام' });
-      expect((await api().get(`/api/job-titles/${job.id}`).set('Cookie', staff).expect(200)).body).toMatchObject({ occupationCode: '012100', occupationName: 'فيزيائي عام' });
-      const list = (await api().get(`/api/job-titles?departmentId=${departmentId}`).set('Cookie', staff).expect(200)).body as { id: string }[];
-      expect(list.find((j) => j.id === job.id)).toMatchObject({ occupationCode: '012100', occupationName: 'فيزيائي عام' });
-      expect((await auditOf('job_title', job.id))[0]).toMatchObject({ action: 'create', diff: { occupationCode: '012100' } });
-
-      // one without: both null
-      const plain = await newJobTitle(`Clerk ${RUN}`);
-      expect(plain).toMatchObject({ occupationCode: null, occupationName: null });
-      expect((await api().get('/api/job-titles').set('Cookie', hr).expect(200)).body.find((j: { id: string }) => j.id === plain.id)).toMatchObject({ occupationCode: null, occupationName: null });
-    });
-
-    it('change it (Arabic-Indic digits as 0-9), clear it with null, and log each change', async () => {
-      const job = await newJobTitle(`Site engineer ${RUN}`);
-      expect((await jobTitle(job.id, { occupationCode: '٠٢٢١٢٠' }).expect(200)).body).toMatchObject({ occupationCode: '022120', occupationName: 'مهندس موقع' });
-      // sending the same again changes nothing
-      await jobTitle(job.id, { occupationCode: '022120' }).expect(200);
-      expect((await jobTitle(job.id, { occupationCode: null }).expect(200)).body).toMatchObject({ occupationCode: null, occupationName: null });
-      expect((await auditOf('job_title', job.id)).slice(1).map((a) => a.diff)).toEqual([{ occupationCode: { from: null, to: '022120' } }, { occupationCode: { from: '022120', to: null } }]);
-    });
-
-    it('refuse a code not in the table, or not six digits', async () => {
-      const job = await newJobTitle(`Analyst ${RUN}`);
-      for (const code of ['000001', '12345', '0121000', 'abcdef', '012 100']) {
-        expect((await jobTitle(job.id, { occupationCode: code }).expect(400)).body.message).toEqual([OCCUPATION]);
-      }
-      expect((await jobTitle(job.id, { occupationCode: 12100 }).expect(400)).body.message).toEqual([OCCUPATION]);
-      expect((await api().post('/api/job-titles').set('Cookie', hr).send({ departmentId, titleEn: `Nobody ${RUN}`, occupationCode: '999998' }).expect(400)).body.message).toEqual([OCCUPATION]);
-      expect((await api().get(`/api/job-titles/${job.id}`).set('Cookie', hr).expect(200)).body.occupationCode).toBeNull();
-    });
-
-    it('the database refuses a code that isn’t six digits', async () => {
-      const job = await newJobTitle(`Checked ${RUN}`);
-      await refused(prisma.$executeRaw`UPDATE job_titles SET occupation_code = '12345' WHERE id = ${job.id}::uuid`);
-      await refused(prisma.$executeRaw`UPDATE job_titles SET occupation_code = 'abcdef' WHERE id = ${job.id}::uuid`);
+    it('no longer take an occupation: it is the employee’s, on the Social Insurance tab', async () => {
+      const job = await newJobTitle(`Physicist ${RUN}`);
+      expect(job).not.toHaveProperty('occupationCode');
+      expect(job).not.toHaveProperty('occupationName');
+      const unknown = ['property occupationCode should not exist'];
+      expect((await jobTitle(job.id, { occupationCode: '012100' }).expect(400)).body.message).toEqual(unknown);
+      expect((await api().post('/api/job-titles').set('Cookie', hr).send({ departmentId, titleEn: `Nobody ${RUN}`, occupationCode: '012100' }).expect(400)).body.message).toEqual(unknown);
+      expect((await api().get(`/api/job-titles/${job.id}`).set('Cookie', staff).expect(200)).body).not.toHaveProperty('occupationCode');
+      const list = (await api().get(`/api/job-titles?departmentId=${departmentId}`).set('Cookie', staff).expect(200)).body as object[];
+      for (const j of list) expect(j).not.toHaveProperty('occupationCode');
+      // nor is it logged with the job title
+      expect((await auditOf('job_title', job.id))[0].diff).not.toHaveProperty('occupationCode');
     });
   });
 
-  describe('the employee profile', () => {
-    it('names the job title’s occupation in the employment, for the Social Insurance tab', async () => {
-      const job = await newJobTitle(`Sales manager ${RUN}`, { occupationCode: '212300' });
-      const e = await newEmployee('Occupied Person');
+  describe('the occupation, on the employee', () => {
+    it('HR sets it (Arabic-Indic digits as 0-9), the profile shows it with its name, and each change is logged', async () => {
+      const e = await newEmployee('Site Engineer');
+      expect((await api().get(`/api/employees/${e.id}`).set('Cookie', hr).expect(200)).body).toMatchObject({ occupationCode: null, occupationName: null });
+      expect((await employee(e.id, { occupationCode: '٠٢٢١٢٠' }).expect(200)).body).toMatchObject({ occupationCode: '022120', occupationName: 'مهندس موقع' });
+      // sending the same again changes nothing
+      await employee(e.id, { occupationCode: '022120' }).expect(200);
+      expect((await employee(e.id, { occupationCode: '' }).expect(200)).body).toMatchObject({ occupationCode: null, occupationName: null });
+      await employee(e.id, { occupationCode: '194200' }).expect(200);
+      expect((await employee(e.id, { occupationCode: null }).expect(200)).body).toMatchObject({ occupationCode: null, occupationName: null });
+      expect((await auditOf('employee', e.id)).slice(1).map((a) => a.diff)).toEqual([
+        { occupationCode: { from: null, to: '022120' } },
+        { occupationCode: { from: '022120', to: null } },
+        { occupationCode: { from: null, to: '194200' } },
+        { occupationCode: { from: '194200', to: null } },
+      ]);
+      // set when adding the employee too
+      const added = await newEmployee('Added Physicist', { occupationCode: '012100' });
+      expect((await api().get(`/api/employees/${added.id}`).set('Cookie', hr).expect(200)).body).toMatchObject({ occupationCode: '012100', occupationName: 'فيزيائي عام' });
+      expect((await auditOf('employee', added.id))[0].diff).toMatchObject({ occupationCode: '012100' });
+    });
+
+    it('refuses a code not in the table, or not six digits; only HR sets it', async () => {
+      const e = await newEmployee('Analyst');
+      for (const code of ['000001', '12345', '0121000', 'abcdef', '012 100']) {
+        expect((await employee(e.id, { occupationCode: code }).expect(400)).body.message).toEqual([OCCUPATION]);
+      }
+      expect((await employee(e.id, { occupationCode: 12100 }).expect(400)).body.message).toEqual([OCCUPATION]);
+      expect((await api().post('/api/employees').set('Cookie', hr).send({ fullNameEn: `Nobody ${RUN}`, fullNameAr: 'موظف', occupationCode: '999998' }).expect(400)).body.message).toEqual([OCCUPATION]);
+      for (const session of [staff, finance, ceo]) await api().patch(`/api/employees/${e.id}`).set('Cookie', session).send({ occupationCode: '012100' }).expect(403);
+      expect((await api().get(`/api/employees/${e.id}`).set('Cookie', hr).expect(200)).body.occupationCode).toBeNull();
+    });
+
+    it('isn’t the employee’s to confirm or ask to change, nor counted in the profile’s completeness', async () => {
+      const email = await createUser(prisma, ['employee']);
+      const e = await newEmployee('Occupied Self', { workEmail: email });
+      const self = await signIn(app, email);
+      await api().post(`/api/employees/${e.id}/confirm`).set('Cookie', self).send({ accept: true, disclaimerVersion: PROFILE_DISCLAIMER.version }).expect(201);
+      const before = (await api().get(`/api/employees/${e.id}`).set('Cookie', hr).expect(200)).body;
+
+      await employee(e.id, { occupationCode: '194200' }).expect(200);
+      const after = (await api().get(`/api/employees/${e.id}`).set('Cookie', hr).expect(200)).body;
+      // the confirmation stays up to date, and the completeness is the same
+      expect(after.confirmation).toMatchObject({ upToDate: true, changedFields: [] });
+      expect(after.completeness).toEqual(before.completeness);
+      expect(after.completeness.missing.map((m: { key: string }) => m.key)).not.toContain('occupationCode');
+      // the employee sees it on their own profile, but can't ask for it to change
+      expect((await api().get(`/api/employees/${e.id}`).set('Cookie', self).expect(200)).body).toMatchObject({ occupationCode: '194200', occupationName: 'اخصائي موارد بشريه' });
+      const asked = await api().post(`/api/employees/${e.id}/change-requests`).set('Cookie', self).send({ changes: { occupationCode: '012100' } }).expect(400);
+      expect(asked.body.message).toBe("occupationCode can't be changed by request.");
+    });
+
+    it('the employment’s job title no longer carries one', async () => {
+      const job = await newJobTitle(`Sales manager ${RUN}`);
+      const e = await newEmployee('Employed Person', { occupationCode: '212300' });
       await api()
         .post(`/api/employees/${e.id}/employments`)
         .set('Cookie', hr)
         .send({ employmentType: 'full_time', joinDate: '2026-01-15', departmentId, jobTitleId: job.id, gradeId, shiftId })
         .expect(201);
       const profile = (await api().get(`/api/employees/${e.id}`).set('Cookie', hr).expect(200)).body;
-      expect(profile.employment.jobTitle).toEqual({
-        id: job.id,
-        departmentId,
-        titleEn: `Sales manager ${RUN}`,
-        titleAr: null,
-        jdVersion: 1,
-        occupationCode: '212300',
-        occupationName: 'مدير مبيعات',
-      });
-      expect(profile.employments[0].jobTitle).toEqual(profile.employment.jobTitle);
+      expect(profile.employment.jobTitle).toEqual({ id: job.id, titleEn: `Sales manager ${RUN}`, titleAr: null, jdVersion: 1 });
+      expect(profile).toMatchObject({ occupationCode: '212300', occupationName: 'مدير مبيعات' });
+    });
 
-      // read from the job title each time: cleared there, none here
-      await jobTitle(job.id, { occupationCode: null }).expect(200);
-      expect((await api().get(`/api/employees/${e.id}`).set('Cookie', hr).expect(200)).body.employment.jobTitle).toMatchObject({ occupationCode: null, occupationName: null });
+    it('the database refuses a code that isn’t six digits', async () => {
+      const e = await newEmployee('Checked Occupation');
+      await refused(prisma.$executeRaw`UPDATE employees SET occupation_code = '12345' WHERE id = ${e.id}::uuid`);
+      await refused(prisma.$executeRaw`UPDATE employees SET occupation_code = 'abcdef' WHERE id = ${e.id}::uuid`);
+    });
+  });
+
+  describe('the subscription start and the wages, on the employee', () => {
+    const profileOf = async (id: string, session = hr) => (await api().get(`/api/employees/${id}`).set('Cookie', session).expect(200)).body;
+
+    it('HR sets the subscription start (YYYY-MM-DD), clears it, and each change is logged', async () => {
+      const e = await newEmployee('Subscriber', { insuranceStartDate: '2026-02-01' });
+      expect((await profileOf(e.id)).insuranceStartDate).toBe('2026-02-01');
+      expect((await profileOf(e.id, finance)).insuranceStartDate).toBe('2026-02-01');
+      expect((await employee(e.id, { insuranceStartDate: '2026-03-01' }).expect(200)).body.insuranceStartDate).toBe('2026-03-01');
+      expect((await employee(e.id, { insuranceStartDate: '' }).expect(200)).body.insuranceStartDate).toBeNull();
+      for (const bad of ['2026-02-30', '01/02/2026', 'soon']) {
+        expect((await employee(e.id, { insuranceStartDate: bad }).expect(400)).body.message).toEqual(['Enter a real subscription start date.']);
+      }
+      const audit = await auditOf('employee', e.id);
+      expect(audit[0].diff).toMatchObject({ insuranceStartDate: '2026-02-01' });
+      expect(audit.slice(1).map((a) => a.diff)).toEqual([
+        { insuranceStartDate: { from: '2026-02-01', to: '2026-03-01' } },
+        { insuranceStartDate: { from: '2026-03-01', to: null } },
+      ]);
+    });
+
+    it('HR sets the three wages; those who see salaries see them with the default basic wage, nobody else', async () => {
+      const email = await createUser(prisma, ['employee']);
+      const e = await newEmployee('Waged Person', { workEmail: email });
+      const self = await signIn(app, email);
+      const set = await employee(e.id, { insuranceBasicWage: 2500.5, insuranceInsuredWage: LIMITS.min + 300, insuranceComprehensiveWage: 17250.75 }).expect(200);
+      expect(set.body).toMatchObject({ insuranceBasicWage: 2500.5, insuranceInsuredWage: LIMITS.min + 300, insuranceComprehensiveWage: 17250.75, insuranceBasicDefault: 410 });
+      for (const session of [finance, ceo]) {
+        expect(await profileOf(e.id, session)).toMatchObject({ insuranceBasicWage: 2500.5, insuranceInsuredWage: LIMITS.min + 300, insuranceComprehensiveWage: 17250.75, insuranceBasicDefault: 410 });
+      }
+      // the employee sees their profile, not these (as their contract's salary)
+      const own = await profileOf(e.id, self);
+      for (const key of ['insuranceBasicWage', 'insuranceInsuredWage', 'insuranceComprehensiveWage', 'insuranceBasicDefault']) expect(own).not.toHaveProperty(key);
+      expect(own).toHaveProperty('insuranceStartDate', null);
+
+      // none of their own: null, and the default stands in for the basic wage
+      const cleared = await employee(e.id, { insuranceBasicWage: null, insuranceInsuredWage: null, insuranceComprehensiveWage: null }).expect(200);
+      expect(cleared.body).toMatchObject({ insuranceBasicWage: null, insuranceInsuredWage: null, insuranceComprehensiveWage: null, insuranceBasicDefault: 410 });
+      // only HR sets them
+      for (const session of [finance, ceo, self]) await api().patch(`/api/employees/${e.id}`).set('Cookie', session).send({ insuranceBasicWage: 500 }).expect(403);
+    });
+
+    it('logs only that a wage was set or changed, never the amount', async () => {
+      const e = await newEmployee('Masked Wages', { insuranceBasicWage: 600 });
+      await employee(e.id, { insuranceBasicWage: 700, insuranceComprehensiveWage: 15000 }).expect(200);
+      await employee(e.id, { insuranceBasicWage: null }).expect(200);
+      const audit = await auditOf('employee', e.id);
+      expect(audit[0].diff).toMatchObject({ insuranceBasicWage: 'changed', insuranceInsuredWage: null, insuranceComprehensiveWage: null });
+      expect(audit.slice(1).map((a) => a.diff)).toEqual([{ insuranceBasicWage: 'changed', insuranceComprehensiveWage: 'changed' }, { insuranceBasicWage: 'changed' }]);
+      expect(JSON.stringify(audit.map((a) => a.diff))).not.toMatch(/600|700|15000/);
+    });
+
+    it('refuses amounts out of range, the insured wage outside this year’s insurable limits', async () => {
+      const e = await newEmployee('Checked Wages');
+      const say = async (body: object) => (await employee(e.id, body).expect(400)).body.message as string[];
+      for (const bad of [0, -5, 100000, 1.234]) expect(await say({ insuranceBasicWage: bad })).toContain(BASIC_WAGE);
+      expect(await say({ insuranceBasicWage: '410' })).toContain(BASIC_WAGE);
+      for (const bad of [0, 1000000, 1.005]) expect(await say({ insuranceComprehensiveWage: bad })).toContain(COMPREHENSIVE_WAGE);
+      expect(await say({ insuranceInsuredWage: LIMITS.min - 0.01 })).toEqual([INSURED_WAGE]);
+      expect(await say({ insuranceInsuredWage: LIMITS.max + 1 })).toEqual([INSURED_WAGE]);
+      expect(INSURED_WAGE).toMatch(/^The insured wage for \d{4} is between EGP [\d,]+ and EGP [\d,]+\.$/);
+      // the limits themselves are within them
+      expect((await employee(e.id, { insuranceInsuredWage: LIMITS.min, insuranceBasicWage: 99999.99, insuranceComprehensiveWage: 999999.99 }).expect(200)).body).toMatchObject({
+        insuranceInsuredWage: LIMITS.min,
+        insuranceBasicWage: 99999.99,
+        insuranceComprehensiveWage: 999999.99,
+      });
+      expect((await employee(e.id, { insuranceInsuredWage: LIMITS.max }).expect(200)).body.insuranceInsuredWage).toBe(LIMITS.max);
+    });
+
+    it('aren’t the employee’s to ask to change', async () => {
+      const email = await createUser(prisma, ['employee']);
+      const e = await newEmployee('Asking Wages', { workEmail: email });
+      const self = await signIn(app, email);
+      for (const field of ['insuranceStartDate', 'insuranceBasicWage', 'insuranceInsuredWage', 'insuranceComprehensiveWage']) {
+        const asked = await api().post(`/api/employees/${e.id}/change-requests`).set('Cookie', self).send({ changes: { [field]: field === 'insuranceStartDate' ? '2026-01-01' : 5000 } }).expect(400);
+        expect(asked.body.message).toBe(`${field} can't be changed by request.`);
+      }
+    });
+
+    it('the default basic wage is in the contract settings: anyone signed in reads it, HR and Admin change it, logged', async () => {
+      expect((await api().get('/api/contract-settings').set('Cookie', staff).expect(200)).body.insuranceBasicDefault).toBe(410);
+      await api().patch('/api/contract-settings').set('Cookie', finance).send({ insuranceBasicDefault: 500 }).expect(403);
+      expect((await api().patch('/api/contract-settings').set('Cookie', hr).send({ insuranceBasicDefault: 512.5 }).expect(200)).body).toMatchObject({ insuranceBasicDefault: 512.5 });
+      const e = await newEmployee('Defaulted');
+      expect((await profileOf(e.id)).insuranceBasicDefault).toBe(512.5);
+      for (const bad of [0, -1, 100000, 1.234, null, '410']) {
+        expect((await api().patch('/api/contract-settings').set('Cookie', hr).send({ insuranceBasicDefault: bad }).expect(400)).body.message).toContain(DEFAULT_BASIC);
+      }
+      await api().patch('/api/contract-settings').set('Cookie', hr).send({ insuranceBasicDefault: 410 }).expect(200);
+      expect((await auditOf('contract_settings')).slice(-2).map((a) => a.diff)).toEqual([
+        { insuranceBasicDefault: { from: 410, to: 512.5 } },
+        { insuranceBasicDefault: { from: 512.5, to: 410 } },
+      ]);
+    });
+
+    it('the database refuses a wage of 0 or less', async () => {
+      const e = await newEmployee('Database Wages');
+      await refused(prisma.$executeRaw`UPDATE employees SET insurance_basic_wage = 0 WHERE id = ${e.id}::uuid`);
+      await refused(prisma.$executeRaw`UPDATE employees SET insurance_insured_wage = -1 WHERE id = ${e.id}::uuid`);
+      await refused(prisma.$executeRaw`UPDATE employees SET insurance_comprehensive_wage = 0 WHERE id = ${e.id}::uuid`);
+      await refused(prisma.$executeRaw`UPDATE contract_settings SET insurance_basic_default = 0 WHERE id = 1`);
     });
   });
 
@@ -236,7 +377,7 @@ describe('Social insurance details (e2e)', () => {
     const saveFields = (fields: PdfField[]) => api().put(`/api/templates/versions/${versionId}/fields`).set('Cookie', hr).send({ fields });
     const printed = async (id: string) => shownLines(await shownGlyphs((await prisma.generatedDocument.findUniqueOrThrow({ where: { id }, select: { data: true } })).data));
     const NEEDED = [
-      { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'departments', key: 'occupationCode' } },
+      { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'insurance', key: 'occupationCode' } },
       { tag: 'insurance_office', label: 'Social insurance office', where: { tab: 'company', key: 'insuranceOffice' } },
     ];
 
@@ -277,12 +418,14 @@ describe('Social insurance details (e2e)', () => {
       expect(refusedDoc.body).toEqual({ statusCode: 422, message: 'Fill in the missing details first.', missing: NEEDED });
     });
 
-    it('generates once they are filled in, the optional fields left blank', async () => {
-      await jobTitle(jobTitleId, { occupationCode: '012100' }).expect(200);
+    it('generates once they are filled in, the optional fields left blank; every number in ٠-٩', async () => {
+      // the occupation is the employee's, set on their profile (owner's decision, 16 October 2026)
+      await employee(employeeId, { occupationCode: '012100' }).expect(200);
       await company({ insuranceOffice: 'مكتب الدقي' }).expect(200);
       expect((await check().expect(200)).body.missing).toEqual([]);
       const doc = await generate().expect(201);
-      expect(await printed(doc.body.id)).toEqual([`Insured Person ${RUN}`, '012100', 'يقدلا بتكم']);
+      // saved without Arabic digits, yet a social insurance form prints ٠-٩ (owner, 16 October 2026)
+      expect(await printed(doc.body.id)).toEqual([ar(`Insured Person ${RUN}`), '٠١٢١٠٠', 'يقدلا بتكم']);
     });
 
     it('prints the optional ones when they have a value', async () => {
@@ -290,10 +433,10 @@ describe('Social insurance details (e2e)', () => {
       await company({ insuranceSectorCode: '07' }).expect(200);
       const doc = await generate().expect(201);
       const lines = await printed(doc.body.id);
-      expect(lines.slice(0, 3)).toEqual([`Insured Person ${RUN}`, '012100', 'يقدلا بتكم']);
+      expect(lines.slice(0, 3)).toEqual([ar(`Insured Person ${RUN}`), '٠١٢١٠٠', 'يقدلا بتكم']);
       expect(lines).toHaveLength(5);
-      expect(lines[3]).toContain('12');
-      expect(lines[4]).toBe('07');
+      expect(lines[3]).toContain('١٢');
+      expect(lines[4]).toBe('٠٧');
     });
 
     it('a tag any field prints without being optional still stops it', async () => {
@@ -312,14 +455,72 @@ describe('Social insurance details (e2e)', () => {
       const preview = await app.get(DocumentsService).previewFill(employeeId, 'insurance_form_1', version, { id: hrId, email: 'hr@test.local', roles: ['hr'] });
       expect([preview.filled, preview.total]).toEqual([3, 5]);
       const lines = shownLines(await shownGlyphs(preview.data!));
-      expect(lines.slice(0, 3)).toEqual([`Insured Person ${RUN}`, '012100', 'يقدلا بتكم']);
+      expect(lines.slice(0, 3)).toEqual([ar(`Insured Person ${RUN}`), '٠١٢١٠٠', 'يقدلا بتكم']);
       // the building number's needed field as its label, its optional one blank; the sector code's boxes blank
       expect(lines.slice(3)).toEqual(['[Building number]']);
     });
   });
 
+  // Form 1's subscription start and wages: each the employee's own from the Social Insurance tab, else the join date,
+  // the contract settings' default basic wage, the contract's insured salary, its gross and allowances (owner, 16
+  // October 2026)
+  describe('Form 1’s subscription start and wages', () => {
+    let employeeId: string;
+    const pounds = (id: string, tag: string, y: number): PdfField => ({ id, kind: 'boxes', tag, page: 1, x: 100, y, width: 100, height: 18, fontSize: 12, boxes: 5, boxAlign: 'right', amountPart: 'pounds' });
+    const FIELDS: PdfField[] = [
+      { id: 'start', kind: 'boxes', tag: 'insurance_start_date', page: 1, x: 100, y: 100, width: 160, height: 18, fontSize: 12, boxes: 8, dateOrder: 'YMD' },
+      pounds('basic', 'insurance_basic_salary', 150),
+      pounds('insured', 'insurance_insured_salary', 200),
+      pounds('total', 'insurance_total_salary', 250),
+    ];
+    const generate = () => api().post(`/api/employees/${employeeId}/documents`).set('Cookie', hr).send({ slotKey: 'insurance_form_1' });
+    const check = () => api().get(`/api/employees/${employeeId}/documents/check?slotKey=insurance_form_1`).set('Cookie', hr);
+    const printed = async (id: string) => shownLines(await shownGlyphs((await prisma.generatedDocument.findUniqueOrThrow({ where: { id }, select: { data: true } })).data));
+
+    beforeAll(async () => {
+      const job = await newJobTitle(`Waged clerk ${RUN}`);
+      employeeId = (await newEmployee('Waged Insured')).id;
+      await api()
+        .post(`/api/employees/${employeeId}/employments`)
+        .set('Cookie', hr)
+        .send({ employmentType: 'full_time', joinDate: '2026-01-15', departmentId, jobTitleId: job.id, gradeId, shiftId })
+        .expect(201);
+      const upload = await api().post('/api/templates/insurance_form_1/versions').set('Cookie', hr).attach('file', await formPdf([PAGE]), 'Form 1.pdf').expect(201);
+      await api().put(`/api/templates/versions/${upload.body.id}/fields`).set('Cookie', hr).send({ fields: FIELDS }).expect(200);
+      await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', hr).expect(200);
+    });
+
+    it('without a contract or the employee’s own, the insured and comprehensive wages are missing, set on the Social Insurance tab', async () => {
+      expect((await check().expect(200)).body).toEqual({
+        missing: [
+          { tag: 'insurance_insured_salary', label: 'Insured wage (social insurance)', where: { tab: 'insurance', key: 'insuranceInsuredWage' } },
+          { tag: 'insurance_total_salary', label: 'Comprehensive wage (social insurance)', where: { tab: 'insurance', key: 'insuranceComprehensiveWage' } },
+        ],
+        // the wages are salary data
+        usesRestricted: true,
+      });
+    });
+
+    it('prints the employee’s own, else the join date and the default basic wage, in ٠-٩', async () => {
+      await employee(employeeId, { insuranceInsuredWage: LIMITS.min + 300, insuranceComprehensiveWage: 17250.75 }).expect(200);
+      let doc = await generate().expect(201);
+      expect(await printed(doc.body.id)).toEqual([ar('20260115'), ar('410'), ar(String(LIMITS.min + 300)), ar('17250')]);
+
+      await employee(employeeId, { insuranceStartDate: '2026-02-01', insuranceBasicWage: 2500.5 }).expect(200);
+      await api().patch('/api/contract-settings').set('Cookie', hr).send({ insuranceBasicDefault: 600 }).expect(200);
+      doc = await generate().expect(201);
+      expect(await printed(doc.body.id)).toEqual([ar('20260201'), ar('2500'), ar(String(LIMITS.min + 300)), ar('17250')]);
+
+      // the employee's own basic wage cleared: the default as the contract settings say now
+      await employee(employeeId, { insuranceBasicWage: null }).expect(200);
+      doc = await generate().expect(201);
+      expect((await printed(doc.body.id))[1]).toBe(ar('600'));
+      await api().patch('/api/contract-settings').set('Cookie', hr).send({ insuranceBasicDefault: 410 }).expect(200);
+    });
+  });
+
   describe('job offers', () => {
-    let withOccupation: string;
+    let physicist: string;
     let without: string;
     const offerRow = (id: string) => prisma.jobOffer.findUniqueOrThrow({ where: { id }, include: OFFER_INCLUDE, omit: WITHOUT_FILES });
     const draft = async (name: string, jobTitleId: string) =>
@@ -343,7 +544,7 @@ describe('Social insurance details (e2e)', () => {
     const missingOf = async (id: string) => (await api().get(`/api/offers/${id}`).set('Cookie', hr).expect(200)).body.missing;
 
     beforeAll(async () => {
-      withOccupation = (await newJobTitle(`Offered physicist ${RUN}`, { occupationCode: '012100' })).id;
+      physicist = (await newJobTitle(`Offered physicist ${RUN}`)).id;
       without = (await newJobTitle(`Offered clerk ${RUN}`)).id;
       await company({ insuranceOffice: 'مكتب الدقي', insuranceSectorCode: null }).expect(200);
       const body = p(r('{{full_name_en}} {{occupation_code}} {{occupation_name}} {{insurance_office}} {{insurance_sector_code}} {{city}}'));
@@ -351,26 +552,39 @@ describe('Social insurance details (e2e)', () => {
       await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', hr).expect(200);
     });
 
-    it('prints the selected job title’s occupation and the company’s insurance details', async () => {
-      const o = await draft('Offered Physicist', withOccupation);
+    it('prints the company’s insurance details; never an occupation, which is the employee’s own', async () => {
+      const o = await draft('Offered Physicist', physicist);
       const row = await offerRow(o.id);
       const template = await prisma.templateVersion.findFirstOrThrow({ where: { slotKey: 'offer_full_time', status: 'published' }, select: { language: true, tags: true, pdfFields: true } });
       await company({ insuranceSectorCode: '07' }).expect(200);
       const { values } = await app.get(OfferDocumentsService).check(row, offerSlot('full_time'), template, todayInCairo());
-      expect(values).toMatchObject({ occupation_code: '012100', occupation_name: 'فيزيائي عام', insurance_office: 'مكتب الدقي', insurance_sector_code: '07', city: '' });
+      expect(values).toMatchObject({ occupation_code: '', occupation_name: '', insurance_office: 'مكتب الدقي', insurance_sector_code: '07', city: '' });
       await company({ insuranceSectorCode: null }).expect(200);
     });
 
-    it('says where each missing one is filled in: the job title, the company, or the template for the address an offer never has', async () => {
+    it('prints the Social Insurance tab’s start and wages from the offer: its join date, the default basic wage, its insured salary, its gross', async () => {
+      const o = await draft('Offered Wages', without);
+      const row = await offerRow(o.id);
+      const tags = ['insurance_start_date', 'insurance_basic_salary', 'insurance_insured_salary', 'insurance_total_salary', 'insured_salary'];
+      const { values, missing } = await app.get(OfferDocumentsService).check(row, offerSlot('full_time'), { language: 'ar', tags, pdfFields: null }, todayInCairo());
+      expect(values).toMatchObject({ insurance_start_date: '01/12/2026', insurance_basic_salary: '410', insurance_total_salary: '20,000' });
+      // the gross of 20,000, capped at the year's maximum insurable wage, as {{insured_salary}} prints it
+      expect(values.insurance_insured_salary).toBe(values.insured_salary);
+      expect(values.insurance_insured_salary).toMatch(/^\d{1,2},\d{3}$/);
+      expect(missing).toEqual([]);
+    });
+
+    it('says where each missing one is filled in: the company, or the template for the address and occupation an offer never has', async () => {
       const o = await draft('Offered Clerk', without);
       expect(await missingOf(o.id)).toEqual([
-        { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'departments', key: 'occupationCode' } },
-        { tag: 'occupation_name', label: 'Occupation (social insurance)', where: { tab: 'departments', key: 'occupationCode' } },
+        { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'offer', key: 'template' } },
+        { tag: 'occupation_name', label: 'Occupation (social insurance)', where: { tab: 'offer', key: 'template' } },
         { tag: 'insurance_sector_code', label: 'Sector code (social insurance)', where: { tab: 'company', key: 'insuranceSectorCode' } },
         { tag: 'city', label: 'City or district (Arabic)', where: { tab: 'offer', key: 'template' } },
       ]);
-      const chosen = await draft('Offered Physicist Two', withOccupation);
-      expect((await missingOf(chosen.id)).map((m: { tag: string }) => m.tag)).toEqual(['insurance_sector_code', 'city']);
+      // whichever job title is chosen
+      const chosen = await draft('Offered Physicist Two', physicist);
+      expect((await missingOf(chosen.id)).map((m: { tag: string }) => m.tag)).toEqual(['occupation_code', 'occupation_name', 'insurance_sector_code', 'city']);
     });
 
     it('a PDF form’s optional fields don’t stop an offer; a needed one does', async () => {

@@ -135,6 +135,11 @@ class PdfFieldDto implements PdfField {
   @IsOptional()
   @IsBoolean({ message: SHAPE })
   optional?: boolean;
+
+  /** text and fixed: the most lines the value may take, 1 to 4 (owner, 16 October 2026); checked by pdfFieldsProblem. */
+  @IsOptional()
+  @IsInt({ message: SHAPE })
+  lines?: number;
 }
 
 /** All the fields of a PDF template, saved together ([] clears them), or sent for a sample. */

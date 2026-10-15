@@ -3,6 +3,8 @@
 // is the original PDF with the values printed where the fields were placed. Word templates stay for the company's own
 // documents, whose text flows.
 
+import { TEMPLATE_SLOTS, type TemplateFolder } from './templates.js';
+
 /**
  * How a field prints:
  * - text: one line on the form's line or in its space (a name, an address, a job title);
@@ -48,6 +50,13 @@ export interface PdfField {
   align?: PdfFieldAlign;
   /** text and fixed: a value too long for the width is printed smaller rather than past the end. */
   shrinkToFit?: boolean;
+  /**
+   * text and fixed, 1 (the default) to 4: the most lines the value may take (owner, 16 October 2026: a qualification
+   * printed tiny on a one-line field). The rect is split into `lines` equal rows, from the bottom: a value that fits one
+   * row prints in the bottom one (on the form's dotted line, as a one-line field), a longer one wraps at spaces onto the
+   * rows above; only when it doesn't fit in all of them does shrinkToFit make it smaller.
+   */
+  lines?: number;
   /** boxes: how many boxes the field covers; the characters are spread one per box, centred, left to right. */
   boxes?: number;
   /** boxes: the boxes split into groups left to right, e.g. [4, 2, 2] for a date; they add up to `boxes`. */
@@ -171,4 +180,33 @@ export function pdfBoxCharacters(field: Pick<PdfField, 'boxes' | 'boxAlign' | 'd
 export function pdfCheckTicked(field: Pick<PdfField, 'tag' | 'equals'>, value: string | undefined): boolean {
   if (!field.tag) return true;
   return (value ?? '').trim() !== '' && (value ?? '').trim() === (field.equals ?? '').trim();
+}
+
+// ---------- digits: social insurance forms print ٠-٩ ----------
+
+/**
+ * The template folders whose PDF forms print every number in Arabic-Indic digits ٠-٩, whatever a field was saved with
+ * (owner, 16 October 2026: "all numbers in the social insurance forms to be printed in ٠-٩ digits").
+ */
+export const ARABIC_DIGIT_FOLDERS: readonly TemplateFolder[] = ['social_insurance'];
+
+/** A tag that prints an email address, which keeps its own digits. */
+export const isEmailTag = (tag: string | null | undefined): boolean => !!tag && /(^|_)email$/.test(tag);
+
+/**
+ * Whether a field prints ٠-٩ by its slot's rule: on a social insurance form, yes for every text, boxes and fixed text
+ * but one printing an email, no for that one. Null elsewhere, and for a check box: the field's own setting stands.
+ */
+export function slotArabicDigits(slotKey: string | null | undefined, field: Pick<PdfField, 'kind' | 'tag'>): boolean | null {
+  const folder = TEMPLATE_SLOTS.find((s) => s.key === slotKey)?.folder;
+  if (!folder || !ARABIC_DIGIT_FOLDERS.includes(folder) || field.kind === 'check') return null;
+  return !isEmailTag(field.tag);
+}
+
+/** The fields as they print on the slot's template: the slot's digit rule over what each field was saved with. */
+export function withSlotDigits<F extends PdfField>(slotKey: string | null | undefined, fields: readonly F[]): F[] {
+  return fields.map((f) => {
+    const rule = slotArabicDigits(slotKey, f);
+    return rule === null || (f.arabicDigits === true) === rule ? f : { ...f, arabicDigits: rule };
+  });
 }

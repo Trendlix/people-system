@@ -1,7 +1,7 @@
 import { employmentView } from './employees.service.js';
 
-// The employee profile's employment as the API sends it: here, its job title with the social insurance occupation the
-// Social Insurance tab shows (owner, 16 October 2026).
+// The employee profile's employment as the API sends it: here, its job title, which no longer carries the social
+// insurance occupation (owner's decision, 16 October 2026: the employee's own, on the Social Insurance tab).
 
 type Row = Parameters<typeof employmentView>[0];
 
@@ -26,16 +26,14 @@ function row(jobTitle: object | null): Row {
 }
 
 describe('a profile’s employment', () => {
-  it('names its job title’s occupation and the department the title is under', () => {
-    const job = { id: 'j1', departmentId: 'd1', titleEn: 'Sales Manager', titleAr: 'مدير مبيعات', jdVersion: 2, occupationCode: '212300' };
+  it('names its job title as it is, with no occupation of its own', () => {
+    const job = { id: 'j1', titleEn: 'Sales Manager', titleAr: 'مدير مبيعات', jdVersion: 2 };
     const view = employmentView(row(job), CONTEXT);
-    expect(view.jobTitle).toEqual({ ...job, occupationName: 'مدير مبيعات' });
+    expect(view.jobTitle).toEqual(job);
     expect(view.joinDate).toBe('2026-01-15');
   });
 
-  it('a job title without an occupation has none, and an employment without a job title stays without', () => {
-    const job = { id: 'j2', departmentId: 'd1', titleEn: 'Clerk', titleAr: null, jdVersion: 1, occupationCode: null };
-    expect(employmentView(row(job), CONTEXT).jobTitle).toMatchObject({ occupationCode: null, occupationName: null });
+  it('an employment without a job title stays without', () => {
     expect(employmentView(row(null), CONTEXT).jobTitle).toBeNull();
   });
 });

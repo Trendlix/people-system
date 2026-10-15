@@ -146,7 +146,10 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'full_name_ar', group: 'employee', labelEn: 'Full name (Arabic)', labelAr: 'الاسم الكامل بالعربي', source: 'Profile' },
   { tag: 'full_name_en', group: 'employee', labelEn: 'Full name (English)', labelAr: 'الاسم بالإنجليزية', source: 'Profile' },
   { tag: 'display_name', group: 'employee', labelEn: 'Display name', labelAr: 'الاسم المختصر', source: 'Profile' },
-  { tag: 'nationality', group: 'employee', labelEn: 'Nationality', labelAr: 'الجنسية', source: 'Profile' },
+  // in the template's language (owner, 16 October 2026: Form 1 printed "Egyptian"): in Arabic, in the person's gender
+  { tag: 'nationality', group: 'employee', labelEn: 'Nationality', labelAr: 'الجنسية', source: 'Profile: in the template’s language' },
+  { tag: 'nationality_ar', group: 'employee', labelEn: 'Nationality (Arabic)', labelAr: 'الجنسية بالعربي', source: 'Profile: in Arabic, in the person’s gender' },
+  { tag: 'nationality_en', group: 'employee', labelEn: 'Nationality (English)', labelAr: 'الجنسية بالإنجليزية', source: 'Profile: as typed' },
   { tag: 'date_of_birth', group: 'employee', labelEn: 'Date of birth', labelAr: 'تاريخ الميلاد', source: 'Profile', note: 'DD/MM/YYYY' },
   { tag: 'address', group: 'employee', labelEn: 'Address (Arabic)', labelAr: 'المقيم في / العنوان', source: 'Profile: address, city and governorate' },
   // social insurance Forms 1 and 6 (owner, 15 October 2026): the address in its parts, and the building number
@@ -169,9 +172,10 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'job_title', group: 'job_contract', labelEn: 'Job title', labelAr: 'الوظيفة', source: 'Employment: in the template’s language' },
   { tag: 'job_title_ar', group: 'job_contract', labelEn: 'Job title (Arabic)', labelAr: 'الوظيفة بالعربي', source: 'Employment' },
   { tag: 'job_title_en', group: 'job_contract', labelEn: 'Job title (English)', labelAr: 'الوظيفة بالإنجليزية', source: 'Employment' },
-  // the occupation in the social insurance table (occupations.ts) the job title carries (owner, 15 October 2026)
-  { tag: 'occupation_code', group: 'job_contract', labelEn: 'Occupation code (social insurance)', labelAr: 'كود المهنة', source: 'Job title: its occupation in the social insurance table', note: '6 digits' },
-  { tag: 'occupation_name', group: 'job_contract', labelEn: 'Occupation (social insurance)', labelAr: 'المسمى (المهنة)', source: 'Job title: its occupation in the social insurance table' },
+  // the employee's occupation in the social insurance table (occupations.ts), set on the profile's Social Insurance tab
+  // (owner's decision, 16 October 2026: no longer the job title's); none on a job offer
+  { tag: 'occupation_code', group: 'job_contract', labelEn: 'Occupation code (social insurance)', labelAr: 'كود المهنة', source: 'Social Insurance tab: the employee’s occupation in the social insurance table', note: '6 digits' },
+  { tag: 'occupation_name', group: 'job_contract', labelEn: 'Occupation (social insurance)', labelAr: 'المسمى (المهنة)', source: 'Social Insurance tab: the employee’s occupation in the social insurance table' },
   // the selected role's duties on its job offer (owner's request, 15 October 2026: "map each job description to the
   // selected role"; then "we can just add the duties and responsibilities section")
   {
@@ -196,6 +200,9 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'employment_type_ar', group: 'job_contract', labelEn: 'Employment type (Arabic)', labelAr: 'نوع التعاقد بالعربي', source: 'Employment' },
   { tag: 'employment_type_en', group: 'job_contract', labelEn: 'Employment type (English)', labelAr: 'نوع التعاقد بالإنجليزية', source: 'Employment' },
   { tag: 'join_date', group: 'job_contract', labelEn: 'Join date', labelAr: 'تاريخ الالتحاق', source: 'Employment', note: 'DD/MM/YYYY' },
+  // the social insurance subscription start Form 1 prints, the employee's own on the Social Insurance tab (owner, 16
+  // October 2026)
+  { tag: 'insurance_start_date', group: 'job_contract', labelEn: 'Subscription start (social insurance)', labelAr: 'تاريخ بدء الاشتراك', source: 'Social Insurance tab: the employee’s, else the join date', note: 'DD/MM/YYYY' },
   {
     tag: 'work_arrangement',
     group: 'job_contract',
@@ -271,6 +278,11 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'total_salary', group: 'pay', labelEn: 'Gross salary and allowances', labelAr: 'إجمالي الراتب والبدلات', source: 'Contract or offer: a month', restricted: true },
   { tag: 'total_salary_words', group: 'pay', labelEn: 'Gross salary and allowances in words (Arabic)', labelAr: 'تفقيط إجمالي الراتب والبدلات', source: 'Contract or offer: in Arabic words', restricted: true },
   { tag: 'total_salary_words_en', group: 'pay', labelEn: 'Gross salary and allowances in words (English)', labelAr: 'تفقيط إجمالي الراتب والبدلات بالإنجليزية', source: 'Contract or offer: in English words', restricted: true },
+  // the wages social insurance Form 1 prints, each the employee's own on the Social Insurance tab (owner, 16 October
+  // 2026): the basic wage (أجر أساسي), the insured wage (أجر الاشتراك) and the comprehensive wage (الأجر الشامل)
+  { tag: 'insurance_basic_salary', group: 'pay', labelEn: 'Basic wage (social insurance)', labelAr: 'أجر أساسي (التأمينات)', source: 'Social Insurance tab: the employee’s, else the default in contract settings', restricted: true },
+  { tag: 'insurance_insured_salary', group: 'pay', labelEn: 'Insured wage (social insurance)', labelAr: 'أجر الاشتراك (التأمينات)', source: 'Social Insurance tab: the employee’s, else the contract’s insured salary', restricted: true },
+  { tag: 'insurance_total_salary', group: 'pay', labelEn: 'Comprehensive wage (social insurance)', labelAr: 'الأجر الشامل (التأمينات)', source: 'Social Insurance tab: the employee’s, else the contract’s gross and allowances', restricted: true },
   { tag: 'offer_number', group: 'offer', labelEn: 'Offer number', labelAr: 'رقم العرض', source: 'Job offer' },
   { tag: 'offer_expiry', group: 'offer', labelEn: 'Offer valid until', labelAr: 'العرض سارٍ حتى', source: 'Job offer: its last day to accept', note: 'DD/MM/YYYY' },
   { tag: 'bank_name', group: 'bank', labelEn: 'Bank', labelAr: 'البنك', source: 'Bank details' },

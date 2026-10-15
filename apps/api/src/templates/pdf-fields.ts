@@ -25,6 +25,8 @@ export const PDF_NUDGE_MAX = 20;
 export const PDF_FIELD_ID_MAX = 40;
 export const PDF_FIELD_TEXT_MAX = 200;
 export const PDF_FIELD_EQUALS_MAX = 100;
+/** The most lines a text field or fixed text may wrap onto. */
+export const PDF_LINES_MAX = 4;
 
 const KIND_NAMES: Record<string, string> = { text: 'text field', boxes: 'boxes', check: 'check box', fixed: 'fixed text' };
 
@@ -90,6 +92,11 @@ function fieldProblem(f: PdfField, pages: readonly PdfPageSize[]): string | null
       return `${name} can't be optional: only a text field or boxes are left blank when their value is missing.`;
     }
   }
+  // a value that wraps onto the rows above (owner, 16 October 2026): text and fixed text only, 1 (as not set) on any kind
+  if (f.lines !== undefined && f.lines !== null) {
+    if (!Number.isInteger(f.lines) || f.lines < 1 || f.lines > PDF_LINES_MAX) return `${name}: choose 1 to ${PDF_LINES_MAX} lines.`;
+    if (f.lines > 1 && f.kind !== 'text' && f.kind !== 'fixed') return `${name} can't take more than one line: only a text field or fixed text wraps.`;
+  }
   if (f.kind === 'boxes') {
     if (!Number.isInteger(f.boxes) || f.boxes! < 1 || f.boxes! > PDF_BOXES_MAX) return `${name} must cover 1 to ${PDF_BOXES_MAX} boxes.`;
     const boxes = f.boxes!;
@@ -150,7 +157,7 @@ export function pdfOptionalTags(fields: readonly PdfField[]): string[] {
 export function plainPdfFields(fields: readonly PdfField[]): PdfField[] {
   return fields.map((f) => {
     const plain: PdfField = { id: f.id, kind: f.kind, tag: f.tag ?? null, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height, fontSize: f.fontSize };
-    const optional = ['text', 'equals', 'bold', 'align', 'shrinkToFit', 'boxes', 'groups', 'groupGap', 'boxGap', 'boxAlign', 'dateOrder', 'amountPart', 'arabicDigits', 'optional'] as const;
+    const optional = ['text', 'equals', 'bold', 'align', 'shrinkToFit', 'boxes', 'groups', 'groupGap', 'boxGap', 'boxAlign', 'dateOrder', 'amountPart', 'arabicDigits', 'optional', 'lines'] as const;
     for (const key of optional) if (f[key] !== undefined && f[key] !== null) Object.assign(plain, { [key]: Array.isArray(f[key]) ? [...(f[key] as number[])] : f[key] });
     if (f.nudges) plain.nudges = f.nudges.map((n) => ({ dx: n.dx, dy: n.dy }));
     return plain;

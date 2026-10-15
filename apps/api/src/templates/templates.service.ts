@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { TEMPLATE_SLOTS, type PdfField, type PdfPageSize, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
+import { TEMPLATE_SLOTS, withSlotDigits, type PdfField, type PdfPageSize, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -208,7 +208,8 @@ export class TemplatesService {
     const problem = pdfFieldsProblem(sent, pagesOf(v));
     if (problem) throw new BadRequestException(problem);
     const sample = pdfSample(plainPdfFields(sent), v.language);
-    const data = await fillPdfTemplate(v.data, sample.fields, sample.values, v.language);
+    // as the documents print it: a social insurance form's numbers in ٠-٩ (owner, 16 October 2026)
+    const data = await fillPdfTemplate(v.data, withSlotDigits(v.slotKey, sample.fields), sample.values, v.language);
     const name = SLOTS.get(v.slotKey)?.name ?? 'Template';
     return { data, fileName: templateFileName(`${name} v${v.version} - sample.pdf`, 'pdf') };
   }

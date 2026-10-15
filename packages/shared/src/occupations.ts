@@ -1,8 +1,8 @@
 // The social insurance occupation codes (owner's file "جدول أكواد المهن", 15 October 2026): 3,052 occupations, each with
-// the six-digit code social insurance Form 1 prints (كود المهنة). A job title carries one; every employee with the title
-// prints it. The names are the table's own, spelling and all (ه for ة, ى for ي), except where the PDF it came in had
-// dropped the alef of every لا / لأ / لإ / لآ (الكميائيون الخرون → الكميائيون الآخرون) and reversed the brackets: both
-// were put back.
+// the six-digit code social insurance Form 1 prints (كود المهنة). Each employee has one, set by HR on the profile's
+// Social Insurance tab (owner's decision, 16 October 2026; before, a job title carried it for everyone with the title).
+// The names are the table's own, spelling and all (ه for ة, ى for ي), except where the PDF it came in had dropped the
+// alef of every لا / لأ / لإ / لآ (الكميائيون الخرون → الكميائيون الآخرون) and reversed the brackets: both were put back.
 
 /** [code, Arabic name], in code order. */
 export const OCCUPATIONS: readonly (readonly [string, string])[] = [

@@ -20,12 +20,14 @@ import { blockText, isRich, richBlocks, type TagValue } from '../engine/rich.js'
 import { EmbeddedFont, glyphText, type LaidOutRun } from './embed.js';
 import { fontFile, type FontScript } from './fonts.js';
 import { shownPage, type ShownPage } from './pages.js';
-import { charScript, visualRuns, type TextRun } from './text.js';
+import { charScript, naturalWidth, paragraphDirection, visualRuns, type TextRun } from './text.js';
+import { wrapText } from './wrap.js';
 
 // Filling a PDF template in (owner's decision, 15 October 2026): the official form exactly as uploaded, its pages never
-// laid out again, with each value printed on top where HR placed its field. A text field prints one line in its space,
-// a boxes field one character per box, a check field its mark, a fixed field its own text. What is printed comes back
-// unprotected: it is protected on its way out like every filled document (PdfService.protectedFile).
+// laid out again, with each value printed on top where HR placed its field. A text field prints one line in its space
+// (or wraps onto the rows above, when it may take more), a boxes field one character per box, a check field its mark, a
+// fixed field its own text. What is printed comes back unprotected: it is protected on its way out like every filled
+// document (PdfService.protectedFile).
 
 /** Room kept between a line of text and its field's left and right edges, in points. */
 const PADDING = 1;
@@ -130,6 +132,38 @@ function drawLine(
   ops.push(endText());
 }
 
+/**
+ * A text field's value (or a fixed text) drawn in its space: on one line as drawLine draws it, unless the field may take
+ * more (owner, 16 October 2026). Then its space is split into `lines` equal rows and the value wrapped at its spaces
+ * (wrap.ts), every line at one size, each drawn as a one-line field of its row would be, the rows used from the bottom:
+ * a value that fits one row prints in the bottom one, on the form's line; a longer one goes up, its first words on the
+ * top line it uses. Each line reads as the whole value does (Arabic: right to left), aligned as the field is.
+ */
+function drawText(
+  canvas: Canvas,
+  field: PdfField,
+  text: string,
+  options: { size: number; bold: boolean; align: 'right' | 'center' | 'left'; shrink: boolean },
+): void {
+  const rows = Math.max(1, Math.floor(field.lines ?? 1));
+  if (!(rows > 1)) return drawLine(canvas, field, visualRuns(text, options.bold), options);
+  const direction = paragraphDirection(text);
+  const widths = new Map<string, number>();
+  const width = (line: string) => {
+    let w = widths.get(line);
+    if (w === undefined) widths.set(line, (w = naturalWidth(line, options.bold, direction)));
+    return w;
+  };
+  const room = Math.max(0, field.width - 2 * PADDING);
+  const { lines, size } = wrapText(text, { rows, room, size: options.size, shrink: options.shrink, smallest: SMALLEST, width });
+  const height = field.height / rows;
+  lines.forEach((line, i) => {
+    const row = rows - lines.length + i;
+    const rect = { x: field.x, y: field.y + row * height, width: field.width, height };
+    drawLine(canvas, rect, visualRuns(line, options.bold, direction), { ...options, size, shrink: false });
+  });
+}
+
 /** A tick in the rectangle: two strokes, as no font here has the ✓ sign. */
 function drawTick(canvas: Canvas, rect: PdfRect): void {
   const side = Math.min(rect.width, rect.height) * 0.7;
@@ -172,7 +206,7 @@ export async function fillPdfTemplate(
       if (field.kind === 'text' || field.kind === 'fixed') {
         let text = field.kind === 'fixed' ? (field.text ?? '').replace(/\s+/g, ' ').trim() : valueOf(field.tag);
         if (field.arabicDigits) text = toArabicDigits(text);
-        drawLine(canvas, field, visualRuns(text, bold), { size: field.fontSize, bold, align: field.align ?? 'right', shrink: field.shrinkToFit === true });
+        drawText(canvas, field, text, { size: field.fontSize, bold, align: field.align ?? 'right', shrink: field.shrinkToFit === true });
       } else if (field.kind === 'boxes') {
         const chars = pdfBoxCharacters(field, valueOf(field.tag));
         const boxes = pdfFieldBoxes(field);

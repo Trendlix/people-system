@@ -1,6 +1,7 @@
 import {
   bankNamed,
   LABELS,
+  nationalityAr,
   occupationName,
   PAY_BASIS_LABELS,
   PAY_BASIS_LABELS_AR,
@@ -51,7 +52,10 @@ export interface ValueSources {
     fullNameEn: string;
     fullNameAr: string;
     displayName: string | null;
+    /** As typed, usually in English ("Egyptian"); an Arabic document prints it in Arabic, in the person's gender. */
     nationality: string | null;
+    /** GENDERS: male, female; null when not recorded (always on a job offer): the masculine is printed. */
+    gender: string | null;
     dateOfBirth: Date | null;
     addressAr: string | null;
     city: string | null;
@@ -64,17 +68,24 @@ export interface ValueSources {
     personalEmail: string | null;
     qualificationAr: string | null;
     insuranceNo: string | null;
+    /** The occupation's code in the social insurance table (null for none set); none on a job offer. */
+    occupationCode: string | null;
+    /**
+     * What social insurance Form 1 prints that is the employee's own (owner, 16 October 2026), null for none of their
+     * own (always on a job offer): the subscription start, and the basic, insured and comprehensive wages.
+     */
+    insuranceStartDate: Date | null;
+    insuranceBasicWage: Decimal | null;
+    insuranceInsuredWage: Decimal | null;
+    insuranceComprehensiveWage: Decimal | null;
   };
   identity: { nationalId: string | null; printedNo: string | null; issueDate: Date | null } | null;
   bank: { bankName: string | null; accountNo: string | null; iban: string | null; holderName: string | null } | null;
   employment: {
     employmentType: EmploymentType;
     joinDate: Date;
-    /**
-     * The role: its titles, its duties and responsibilities as saved (HTML; null for none), and its occupation's code in
-     * the social insurance table (null for none set).
-     */
-    jobTitle: { titleEn: string; titleAr: string | null; jdDuties: string | null; occupationCode: string | null } | null;
+    /** The role: its titles, and its duties and responsibilities as saved (HTML; null for none). */
+    jobTitle: { titleEn: string; titleAr: string | null; jdDuties: string | null } | null;
     department: { nameEn: string; nameAr: string | null } | null;
     grade: { code: string; levelEn: string; levelAr: string | null } | null;
     /** The direct manager (an employee). */
@@ -127,6 +138,8 @@ export interface ValueSources {
     repTitleEn: string | null;
     repNationalId: string | null;
   } | null;
+  /** The basic wage Form 1 prints for an employee who has none of their own: the contract settings' default. */
+  insuranceBasicDefault: number;
   /** YYYY-MM-DD: {{date}}, {{contract_date}} and {{day_name}}. */
   documentDate: string;
   /** What was typed when generating. */
@@ -134,12 +147,12 @@ export interface ValueSources {
 }
 
 /**
- * The profile tab where a value is filled in, and the field; or the company profile (`company`), a job offer's field
- * (`offer`), or a job title's under Organization › Departments & Job Titles (`departments`: its social insurance
- * occupation).
+ * The profile tab where a value is filled in, and the field (`insurance`: the Social Insurance tab, where the social
+ * insurance occupation, subscription start and wages are set); or the company profile (`company`), or a job offer's
+ * field (`offer`).
  */
 export interface Where {
-  tab: 'basic' | 'education' | 'employment' | 'contracts' | 'company' | 'offer' | 'departments';
+  tab: 'basic' | 'education' | 'employment' | 'contracts' | 'insurance' | 'company' | 'offer';
   key: string;
 }
 
@@ -188,6 +201,8 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
   const jobTitle = (lang: Lang) =>
     signed && (c.jobTitleEn || c.jobTitleAr) ? inLanguage(lang, c.jobTitleEn, c.jobTitleAr) : inLanguage(lang, job?.jobTitle?.titleEn, job?.jobTitle?.titleAr);
   const department = (lang: Lang) => inLanguage(lang, job?.department?.nameEn, job?.department?.nameAr);
+  // in Arabic in the person's gender ("Egyptian" → مصري / مصرية), else as typed (owner, 16 October 2026)
+  const nationality = (lang: Lang) => (lang === 'ar' ? nationalityAr(e.nationality, e.gender) : text(e.nationality));
   const employmentType = (lang: Lang) => (job ? (lang === 'ar' ? EMPLOYMENT_TYPES_AR[job.employmentType] : LABELS.employmentType[job.employmentType]) : '');
   const payBasis = (lang: Lang) => (c ? ((lang === 'ar' ? PAY_BASIS_LABELS_AR : PAY_BASIS_LABELS)[c.payBasis as PayBasis] ?? '') : '');
   const managerName = (lang: Lang) => inLanguage(lang, job?.manager?.fullNameEn, job?.manager?.fullNameAr);
@@ -221,7 +236,9 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     full_name_ar: () => text(e.fullNameAr),
     full_name_en: () => text(e.fullNameEn),
     display_name: () => text(e.displayName),
-    nationality: () => text(e.nationality),
+    nationality: () => nationality(language),
+    nationality_ar: () => nationality('ar'),
+    nationality_en: () => nationality('en'),
     date_of_birth: () => printedDate(ymd(e.dateOfBirth)),
     address: () => printedAddress(e.addressAr, e.city, e.governorate),
     // the address in its parts, as social insurance Forms 1 and 6 print it (owner, 15 October 2026)
@@ -234,6 +251,10 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     personal_email: () => text(e.personalEmail),
     qualification: () => text(e.qualificationAr),
     insurance_no: () => text(e.insuranceNo),
+    // the employee's occupation in the social insurance table (owner's decision, 16 October 2026: no longer the job
+    // title's): the code as stored, the name the table's
+    occupation_code: () => text(e.occupationCode),
+    occupation_name: () => occupationName(e.occupationCode) ?? '',
 
     national_id: () => text(id?.nationalId),
     national_id_ar: () => arabicDigits(text(id?.nationalId)),
@@ -244,10 +265,6 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     job_title_ar: () => jobTitle('ar'),
     job_title_en: () => jobTitle('en'),
     job_duties: duties,
-    // the job title's occupation in the social insurance table (owner, 15 October 2026): the code as stored, the name
-    // the table's
-    occupation_code: () => text(job?.jobTitle?.occupationCode),
-    occupation_name: () => occupationName(job?.jobTitle?.occupationCode) ?? '',
     department: () => department(language),
     department_ar: () => department('ar'),
     department_en: () => department('en'),
@@ -262,6 +279,8 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     employment_type_ar: () => employmentType('ar'),
     employment_type_en: () => employmentType('en'),
     join_date: () => printedDate(ymd(job?.joinDate)),
+    // the subscription start Form 1 prints (owner, 16 October 2026): the employee's own, else the join date
+    insurance_start_date: () => printedDate(ymd(e.insuranceStartDate ?? job?.joinDate)),
     work_arrangement: () => workArrangement(language),
     work_arrangement_ar: () => workArrangement('ar'),
     work_arrangement_en: () => workArrangement('en'),
@@ -303,6 +322,12 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     total_salary: () => printedMoney(totalSalary),
     total_salary_words: () => words(totalSalary),
     total_salary_words_en: () => wordsEn(totalSalary),
+    // the wages Form 1 prints (owner, 16 October 2026), each the employee's own, else: the basic wage, the contract
+    // settings' default (not the contract's basic salary); the insured wage, the contract's insured salary; the
+    // comprehensive wage, the gross and allowances
+    insurance_basic_salary: () => printedMoney(amount(e.insuranceBasicWage) ?? src.insuranceBasicDefault),
+    insurance_insured_salary: () => printedMoney(amount(e.insuranceInsuredWage) ?? amount(c?.insuredSalary)),
+    insurance_total_salary: () => printedMoney(amount(e.insuranceComprehensiveWage) ?? totalSalary),
     offer_number: () => text(src.offer?.number),
     offer_expiry: () => printedDate(ymd(src.offer?.expiresOn)),
 
@@ -368,13 +393,12 @@ const BASIC = (key: string): Where => ({ tab: 'basic', key });
 const EMPLOYMENT = (key: string): Where => ({ tab: 'employment', key });
 const CONTRACTS = (key: string): Where => ({ tab: 'contracts', key });
 const COMPANY = (key: string): Where => ({ tab: 'company', key });
-const DEPARTMENTS = (key: string): Where => ({ tab: 'departments', key });
 
 /**
  * Where each tag's value is filled in: the profile's tab and field, with the keys the profile's completeness uses
  * (nationalId, idIssueDate, team …); a contract's terms on the Contracts tab (`contract` when there is no contract
- * version at all); the ending on the Employment tab; the company's details in Company; the job title's occupation
- * under Departments & Job Titles.
+ * version at all); the ending on the Employment tab; the social insurance occupation, subscription start and wages on
+ * the Social Insurance tab; the company's details in Company.
  */
 const WHERE: Record<string, Where> = {
   employee_code: BASIC('employeeCode'),
@@ -382,6 +406,8 @@ const WHERE: Record<string, Where> = {
   full_name_en: BASIC('fullNameEn'),
   display_name: BASIC('displayName'),
   nationality: BASIC('nationality'),
+  nationality_ar: BASIC('nationality'),
+  nationality_en: BASIC('nationality'),
   date_of_birth: BASIC('dateOfBirth'),
   address: BASIC('addressAr'),
   address_line: BASIC('addressAr'),
@@ -393,6 +419,9 @@ const WHERE: Record<string, Where> = {
   personal_email: BASIC('personalEmail'),
   qualification: { tab: 'education', key: 'qualificationAr' },
   insurance_no: BASIC('insuranceNo'),
+  // the employee's own, set on the profile's Social Insurance tab (owner's decision, 16 October 2026)
+  occupation_code: { tab: 'insurance', key: 'occupationCode' },
+  occupation_name: { tab: 'insurance', key: 'occupationCode' },
   national_id: BASIC('nationalId'),
   national_id_ar: BASIC('nationalId'),
   id_printed_no: BASIC('printedNo'),
@@ -401,9 +430,6 @@ const WHERE: Record<string, Where> = {
   job_title_ar: EMPLOYMENT('jobTitle'),
   job_title_en: EMPLOYMENT('jobTitle'),
   job_duties: EMPLOYMENT('jobTitle'), // the employment's job title, whose duties are written under Organization
-  // set on the job title itself, under Organization › Departments & Job Titles
-  occupation_code: DEPARTMENTS('occupationCode'),
-  occupation_name: DEPARTMENTS('occupationCode'),
   department: EMPLOYMENT('team'),
   department_ar: EMPLOYMENT('team'),
   department_en: EMPLOYMENT('team'),
@@ -418,6 +444,8 @@ const WHERE: Record<string, Where> = {
   employment_type_ar: EMPLOYMENT('employmentType'),
   employment_type_en: EMPLOYMENT('employmentType'),
   join_date: EMPLOYMENT('joinDate'),
+  // the employee's own, or the join date; both empty: set it on the Social Insurance tab
+  insurance_start_date: { tab: 'insurance', key: 'insuranceStartDate' },
   work_arrangement: EMPLOYMENT('workArrangement'),
   work_arrangement_ar: EMPLOYMENT('workArrangement'),
   work_arrangement_en: EMPLOYMENT('workArrangement'),
@@ -446,6 +474,10 @@ const WHERE: Record<string, Where> = {
   total_salary: CONTRACTS('grossSalary'),
   total_salary_words: CONTRACTS('grossSalary'),
   total_salary_words_en: CONTRACTS('grossSalary'),
+  // set on the Social Insurance tab; the basic wage is never missing (the contract settings' default)
+  insurance_basic_salary: { tab: 'insurance', key: 'insuranceBasicWage' },
+  insurance_insured_salary: { tab: 'insurance', key: 'insuranceInsuredWage' },
+  insurance_total_salary: { tab: 'insurance', key: 'insuranceComprehensiveWage' },
   offer_number: { tab: 'offer', key: 'number' },
   offer_expiry: { tab: 'offer', key: 'expiresOn' },
   gross_salary: CONTRACTS('grossSalary'),
