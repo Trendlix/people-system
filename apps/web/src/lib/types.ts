@@ -1085,8 +1085,11 @@ export interface OfferView {
   message: string | null;
   /** For HR only. */
   note: string | null;
-  /** The job offer template of the employment type (offerSlotKey) and where it stands. */
-  template: { slotKey: string; name: string; status: TemplateSlotStatus; version: number | null };
+  /**
+   * The job offer template of the employment type (offerSlotKey) and where it stands. `previewVersion`: while none is
+   * published, the newest draft's, which a draft offer is previewed with (sending needs a published one).
+   */
+  template: { slotKey: string; name: string; status: TemplateSlotStatus; version: number | null; previewVersion: number | null };
   /** A draft's: what filling in the template would lack. */
   missing: OfferMissingValue[];
   /** The document as sent; null for a draft (filled in afresh at each preview). */

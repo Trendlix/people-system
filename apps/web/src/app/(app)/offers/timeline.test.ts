@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OfferView } from '../../../lib/types';
-import { canBeSent, missingHelp, offerTimeline, templateProblem, waitingText } from './timeline';
+import { canBeSent, documentLabels, draftTemplateVersion, missingHelp, offerTimeline, templateProblem, waitingText } from './timeline';
 
 /** An offer as GET /offers/:id sends it, with only what a test sets changed. */
 function offer(o: Partial<OfferView> = {}): OfferView {
@@ -40,7 +40,7 @@ function offer(o: Partial<OfferView> = {}): OfferView {
     expiresOn: '2026-10-22',
     message: null,
     note: null,
-    template: { slotKey: 'offer_full_time', name: 'Job offer · Full-time', status: 'published', version: 2 },
+    template: { slotKey: 'offer_full_time', name: 'Job offer · Full-time', status: 'published', version: 2, previewVersion: null },
     missing: [],
     document: null,
     sentVia: null,
@@ -164,20 +164,44 @@ describe('what the template lacks', () => {
 
   it('says to publish the template when there is none in use', () => {
     expect(templateProblem(offer())).toBeNull();
-    expect(templateProblem(offer({ template: { slotKey: 'offer_full_time', name: 'Job offer · Full-time', status: 'missing', version: null } }))).toEqual({
+    expect(
+      templateProblem(offer({ template: { slotKey: 'offer_full_time', name: 'Job offer · Full-time', status: 'missing', version: null, previewVersion: null } })),
+    ).toEqual({
       text: 'There is no job offer template for Full-time yet. Upload and publish “Job offer · Full-time” in Templates.',
       href: '/templates/offer_full_time',
     });
-    expect(templateProblem(offer({ template: { slotKey: 'offer_sales', name: 'Job offer · Sales', status: 'draft', version: null } }))?.text).toMatch(
-      /only a draft\. Publish it in Templates/,
-    );
+    expect(
+      templateProblem(offer({ status: 'sent', template: { slotKey: 'offer_sales', name: 'Job offer · Sales', status: 'draft', version: null, previewVersion: 1 } }))?.text,
+    ).toMatch(/only a draft\. Publish it in Templates/);
+  });
+
+  it('a draft offer is previewed with the draft template meanwhile, but it has to be published before the offer is sent', () => {
+    const draftOnly = { slotKey: 'offer_sales', name: 'Job offer · Sales', status: 'draft', version: null, previewVersion: 3 } as const;
+    expect(templateProblem(offer({ employmentType: 'sales', template: draftOnly }))).toEqual({
+      text: 'The job offer template “Job offer · Sales” is only a draft: the offer is previewed with draft v3, but the template still has to be published in Templates before the offer can be sent.',
+      href: '/templates/offer_sales',
+    });
+    expect(draftTemplateVersion(offer({ template: draftOnly }))).toBe(3);
+    // a published template, none at all, or an offer already sent (its document is as sent): no draft is used
+    expect(draftTemplateVersion(offer())).toBeNull();
+    expect(draftTemplateVersion(offer({ template: { ...draftOnly, status: 'missing', previewVersion: null } }))).toBeNull();
+    expect(draftTemplateVersion(offer({ status: 'sent', template: draftOnly }))).toBeNull();
+
+    expect(documentLabels(null)).toEqual({ pdf: 'Preview PDF', word: 'Download Word' });
+    expect(documentLabels(3)).toEqual({ pdf: 'Preview (draft template v3)', word: 'Download Word (draft template v3)' });
   });
 });
 
 describe('sending', () => {
   const today = '2026-10-15';
   const missingValue = { tag: 'job_title_ar', label: 'Job title (Arabic)', where: { tab: 'offer', key: 'jobTitleId' } };
-  const unpublished = (status: 'draft' | 'missing') => ({ slotKey: 'offer_part_time', name: 'Job offer · Part-time', status, version: null });
+  const unpublished = (status: 'draft' | 'missing') => ({
+    slotKey: 'offer_part_time',
+    name: 'Job offer · Part-time',
+    status,
+    version: null,
+    previewVersion: status === 'draft' ? 1 : null,
+  });
 
   it('is offered for a draft or a sent offer whose document can be made, before its last day', () => {
     expect(canBeSent(offer(), today)).toBe(true);
@@ -189,6 +213,7 @@ describe('sending', () => {
 
   it('is left out while the template is not published, or a draft lacks values', () => {
     expect(canBeSent(offer({ employmentType: 'part_time', template: unpublished('missing') }), today)).toBe(false);
+    // a draft previewed with a draft template is not sent from it
     expect(canBeSent(offer({ template: unpublished('draft') }), today)).toBe(false);
     // sending again fills the document in afresh, from the published template
     expect(canBeSent(offer({ status: 'sent', template: unpublished('draft') }), today)).toBe(false);

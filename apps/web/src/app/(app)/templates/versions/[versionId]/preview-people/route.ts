@@ -4,8 +4,9 @@ import { readPeople } from '../../../preview-people';
 
 // The people to preview a version of a template with, best first (owner's request, 15 October 2026), for the template
 // page's "Preview as": read from the API with the caller's session only when asked, as working out how much of the
-// template each person has filled in takes the server a moment. Answers JSON: the people, or { message } with the
-// API's reason. The API checks the role (HR, Admin, CEO).
+// template each person has filled in takes the server a moment. For a job offer template, the job offers of its
+// employment type instead, while there are any. Answers JSON: the people (or offers), or { message } with the API's
+// reason. The API checks the role (HR, Admin, CEO).
 
 const ID = /^[0-9a-z-]{1,64}$/i;
 

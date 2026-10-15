@@ -4,8 +4,9 @@ import { ApiError, apiFetch } from '@/lib/api';
 
 // Serves an offer's document from the API under the web domain, with the caller's session: the browser never talks to
 // the API. ?format=pdf (the default) is shown in the page (Preview PDF); ?format=docx is downloaded (Download Word). A
-// draft's is filled in afresh each time; a sent one's is as sent. The API checks the role (HR, CEO). When the document
-// can't be made (values missing, no published template, no PDF converter), the reason is shown as plain text in its
+// draft's is filled in afresh each time (from the newest draft of its template while none is published, which the
+// API's X-Template-Draft header names, passed on); a sent one's is as sent. The API checks the role (HR, CEO). When
+// the document can't be made (values missing, no template, no PDF converter), the reason is shown as plain text in its
 // place. Links here are plain links, never prefetched.
 
 const ID = /^[0-9a-f-]{36}$/i;
@@ -59,6 +60,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     'x-content-type-options': 'nosniff',
     ...(format === 'docx' && { 'content-security-policy': "default-src 'none'" }),
   });
+  const draft = res.headers.get('x-template-draft');
+  if (draft && /^\d{1,6}$/.test(draft)) headers.set('x-template-draft', draft);
   // fetch unpacks a compressed body, so the length only holds when nothing was compressed on the way
   const length = res.headers.get('content-length');
   if (length && !res.headers.has('content-encoding')) headers.set('content-length', length);

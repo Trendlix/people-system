@@ -131,25 +131,46 @@ export function missingHelp(o: Pick<OfferView, 'id' | 'status' | 'missing' | 'te
 }
 
 /**
- * Why the offer's document can't be made, when its template isn't published: none uploaded for this employment type
- * yet, or only a draft. Null once one is published.
+ * The draft of the job offer template a draft offer is previewed with while none is published (owner's request, 15
+ * October 2026: "Job offer preview should call data from the offer tab, even if not published yet"): its version; null
+ * with a published template or none at all, and for an offer that is no longer a draft (its document is as sent).
  */
-export function templateProblem(o: Pick<OfferView, 'template' | 'employmentType'>): { text: string; href: string } | null {
+export function draftTemplateVersion(o: Pick<OfferView, 'status' | 'template'>): number | null {
+  const t = o.template;
+  return o.status === 'draft' && t?.status === 'draft' ? (t.previewVersion ?? null) : null;
+}
+
+/** The labels of the document's buttons: "Preview PDF" and "Download Word", saying so when a draft template is used. */
+export function documentLabels(draftVersion: number | null): { pdf: string; word: string } {
+  if (draftVersion === null) return { pdf: 'Preview PDF', word: 'Download Word' };
+  return { pdf: `Preview (draft template v${draftVersion})`, word: `Download Word (draft template v${draftVersion})` };
+}
+
+/**
+ * Why the offer's document can't be made, when its template isn't published: none uploaded for this employment type
+ * yet, or only a draft. A draft offer is previewed with the draft meanwhile, but can't be sent until it is published.
+ * Null once one is published.
+ */
+export function templateProblem(o: Pick<OfferView, 'template' | 'employmentType' | 'status'>): { text: string; href: string } | null {
   const t = o.template;
   if (!t || t.status === 'published') return null;
   const type = LABELS.employmentType[o.employmentType] ?? o.employmentType;
+  const draft = draftTemplateVersion(o);
   const text =
-    t.status === 'draft'
-      ? `The job offer template “${t.name}” is only a draft. Publish it in Templates to make the offer's document.`
-      : `There is no job offer template for ${type} yet. Upload and publish “${t.name}” in Templates.`;
+    t.status !== 'draft'
+      ? `There is no job offer template for ${type} yet. Upload and publish “${t.name}” in Templates.`
+      : draft !== null
+        ? `The job offer template “${t.name}” is only a draft: the offer is previewed with draft v${draft}, but the template still has to be published in Templates before the offer can be sent.`
+        : `The job offer template “${t.name}” is only a draft. Publish it in Templates to make the offer's document.`;
   return { text, href: templateHref(t.slotKey) };
 }
 
 /**
  * Whether Send by email and Copy link are offered: for a draft or a sent offer before its last day has passed, whose
- * document can be made. Sending fills the document in afresh, so it needs the employment type's published template,
- * and for a draft every value the template prints (the API refuses it otherwise). When it can't be made, the page's
- * warning says why, once, and the sending buttons are left out.
+ * document can be made. Sending fills the document in afresh, so it needs the employment type's published template
+ * (a draft offer previewed with a draft of it can't be sent yet), and for a draft every value the template prints (the
+ * API refuses it otherwise). When it can't be made, the page's warning says why, once, and the sending buttons are
+ * left out.
  */
 export function canBeSent(o: Pick<OfferView, 'status' | 'expiresOn' | 'template' | 'missing'>, today: string): boolean {
   if ((o.status !== 'draft' && o.status !== 'sent') || o.expiresOn < today) return false;

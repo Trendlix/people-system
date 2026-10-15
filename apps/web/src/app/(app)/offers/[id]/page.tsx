@@ -15,7 +15,7 @@ import { BackLink, Empty, Loading } from '../../organization/ui';
 import { answerOffer, deleteOffer, emailOffer, extendOffer, hireFromOffer, linkOffer, withdrawOffer } from '../actions';
 import { loadOffer } from '../data';
 import { canSeeOffers, managesOffers, offerDocumentHref, placeName, shownStatus, WHO_SEES } from '../list';
-import { canBeSent, missingHelp, offerTimeline, templateProblem, waitingText, type TimelineEvent } from '../timeline';
+import { canBeSent, documentLabels, draftTemplateVersion, missingHelp, offerTimeline, templateProblem, waitingText, type TimelineEvent } from '../timeline';
 import { OfferStatusBadge } from '../ui';
 import { ExtendOffer, RecordAnswer, SendOffer, WithdrawOffer } from './offer-actions';
 
@@ -28,19 +28,22 @@ const small = 'btn min-h-9 px-3';
 
 /**
  * The offer's document: whether it can be shown now, as PDF and as Word, and why not. A draft's missing template or
- * values give no reason here: the warning at the top of the page says it, once (MissingValues).
+ * values give no reason here: the warning at the top of the page says it, once (MissingValues). While its template is
+ * only a draft, a draft offer is previewed with that draft (`draftTemplate`, its version), though it can't be sent.
  */
-function documentState(o: OfferView): { word: boolean; pdf: boolean; why: string | null } {
+function documentState(o: OfferView): { word: boolean; pdf: boolean; why: string | null; draftTemplate: number | null } {
   if (o.status === 'draft') {
-    if (templateProblem(o) || o.missing.length > 0) return { word: false, pdf: false, why: null };
+    const draftTemplate = draftTemplateVersion(o);
+    if ((templateProblem(o) && draftTemplate === null) || o.missing.length > 0) return { word: false, pdf: false, why: null, draftTemplate: null };
     return {
       word: true,
       pdf: o.pdfAvailable,
       why: o.pdfAvailable ? null : "The PDF can't be made: the server's PDF converter isn't set up. Download the Word file instead.",
+      draftTemplate,
     };
   }
-  if (!o.document) return { word: false, pdf: false, why: o.status === 'withdrawn' ? null : 'No document was kept for this offer.' };
-  return { word: true, pdf: o.document.hasPdf, why: o.document.hasPdf ? null : 'It was sent as a Word file: no PDF was made.' };
+  if (!o.document) return { word: false, pdf: false, why: o.status === 'withdrawn' ? null : 'No document was kept for this offer.', draftTemplate: null };
+  return { word: true, pdf: o.document.hasPdf, why: o.document.hasPdf ? null : 'It was sent as a Word file: no PDF was made.', draftTemplate: null };
 }
 
 /**
@@ -54,7 +57,11 @@ function MissingValues({ offer: o, status }: { offer: OfferView; status: OfferVi
   return (
     <section aria-labelledby="offer-missing" role="alert" className="space-y-2 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
       <h2 id="offer-missing" className="font-semibold">
-        {problem ? "The Offer's Document Can't Be Made Yet" : `The Job Offer Template Needs ${help.length === 1 ? 'One More Value' : `${help.length} More Values`}`}
+        {problem
+          ? draftTemplateVersion(o) !== null
+            ? "The Offer Can't Be Sent Yet"
+            : "The Offer's Document Can't Be Made Yet"
+          : `The Job Offer Template Needs ${help.length === 1 ? 'One More Value' : `${help.length} More Values`}`}
       </h2>
       {problem && (
         <p>
@@ -202,7 +209,9 @@ function offerFields(o: OfferView, open: boolean): GridField[] {
             ? `Version ${o.template.version} in use`
             : 'Published'
           : o.template.status === 'draft'
-            ? 'Only a draft: publish it first'
+            ? o.template.previewVersion !== null
+              ? `Only draft v${o.template.previewVersion}: previews use it; publish it to send the offer`
+              : 'Only a draft: publish it first'
             : 'Not uploaded yet',
     },
     {
@@ -278,6 +287,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
   const hireError = status === 'accepted' && !o.hiredAt && typeof hireErrorParam === 'string' ? hireErrorParam.slice(0, 500) : null;
   const manages = managesOffers(user);
   const doc = documentState(o);
+  const labels = documentLabels(doc.draftTemplate);
   const open = status === 'draft' || status === 'sent';
   const name = `offer ${o.number}`;
   // the actions card only when it has something in it (e.g. not for the CEO on a withdrawn offer without a document)
@@ -320,16 +330,16 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
           <div className="flex flex-wrap items-start gap-3">
             {doc.pdf && (
               <DocumentViewer
-                title={`Job offer ${o.number}: ${o.fullNameEn}`}
+                title={`Job offer ${o.number}: ${o.fullNameEn}${doc.draftTemplate !== null ? ` (draft template v${doc.draftTemplate})` : ''}`}
                 files={[{ alt: `Job offer ${o.number}`, src: offerDocumentHref(o.id, 'pdf'), mimeType: 'application/pdf' }]}
                 className={`${small} btn-secondary`}
               >
-                Preview PDF
+                {labels.pdf}
               </DocumentViewer>
             )}
             {doc.word && (
               <a href={offerDocumentHref(o.id, 'docx')} className={`${small} btn-secondary`}>
-                Download Word
+                {labels.word}
               </a>
             )}
             {manages && (status === 'draft' || status === 'sent' || status === 'expired') && (
