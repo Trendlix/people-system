@@ -116,6 +116,8 @@ model Shift {
 // A job title takes a range of grades, not one grade (owner's decision, 15 October 2026): a Junior and a Senior Account
 // Manager are both Account Managers, at different grades. The range is the lowest and the highest grade, either or
 // both optional (none: any grade); each employment has the person's own grade within it.
+// The job description (purpose, duties, requirements) is simple rich text, saved as cleaned HTML (owner's request, 15
+// October 2026); the duty rows, which KPIs will be linked to, are read from the duties' HTML.
 model JobTitle {
   id             String         @id @default(uuid()) @db.Uuid
   departmentId   String         @map("department_id") @db.Uuid
@@ -126,8 +128,9 @@ model JobTitle {
   minGrade       Grade?         @relation("JobTitleMinGrade", fields: [minGradeId], references: [id], onDelete: Restrict)
   maxGradeId     String?        @map("max_grade_id") @db.Uuid // the highest grade it takes; empty: no upper limit
   maxGrade       Grade?         @relation("JobTitleMaxGrade", fields: [maxGradeId], references: [id], onDelete: Restrict)
-  jdPurpose      String?        @map("jd_purpose")
-  jdRequirements String?        @map("jd_requirements")
+  jdPurpose      String?        @map("jd_purpose") // HTML
+  jdDuties       String?        @map("jd_duties") // HTML; the duty rows are its list items and paragraphs
+  jdRequirements String?        @map("jd_requirements") // HTML
   jdVersion      Int            @default(1) @map("jd_version")
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz

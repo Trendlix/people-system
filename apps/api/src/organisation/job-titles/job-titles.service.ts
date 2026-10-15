@@ -3,12 +3,16 @@ import { AuditService, changes } from '../../audit/audit.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { gradeRange } from '../grades/grade-range.js';
 import type { CreateJobTitleDto, UpdateJobTitleDto } from './job-title.dto.js';
+import { dutiesFromHtml, dutyRow, htmlFromLines, sameJdHtml, sanitizeJdHtml } from './jd-html.js';
 
 const ENTITY = 'job_title';
 const GRADE = { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } } as const;
 /** The range of grades the job title takes: its lowest and highest grade, either or both empty. */
 const RANGE = { minGrade: GRADE, maxGrade: GRADE } as const;
 const DEPARTMENT = { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } } as const;
+
+/** The job description fields saved as HTML (owner's request, 15 October 2026). */
+const JD_FIELDS = ['jdPurpose', 'jdDuties', 'jdRequirements'] as const;
 
 /** An end of a job title's range of grades; null when open. */
 type RangeEnd = { code: string; rank: number } | null;
@@ -40,7 +44,12 @@ export class JobTitlesService {
   async create(dto: CreateJobTitleDto, userId: string) {
     await this.ensurePlace(dto.departmentId);
     await this.checkedRange(dto.minGradeId ?? null, dto.maxGradeId ?? null);
-    const duties = dto.duties ?? [];
+    const jd = {
+      jdPurpose: dto.jdPurpose ?? null,
+      jdDuties: sentDutiesHtml(dto) ?? null,
+      jdRequirements: dto.jdRequirements ?? null,
+    };
+    const duties = dutiesFromHtml(jd.jdDuties);
     const job = await this.prisma.jobTitle.create({
       data: {
         departmentId: dto.departmentId,
@@ -48,18 +57,19 @@ export class JobTitlesService {
         titleAr: dto.titleAr ?? null,
         minGradeId: dto.minGradeId ?? null,
         maxGradeId: dto.maxGradeId ?? null,
-        jdPurpose: dto.jdPurpose ?? null,
-        jdRequirements: dto.jdRequirements ?? null,
+        ...jd,
         duties: { create: duties.map((duty, i) => ({ duty, position: i + 1 })) },
       },
     });
-    const { departmentId, titleEn, titleAr, minGradeId, maxGradeId, jdPurpose, jdRequirements } = dto;
+    const { departmentId, titleEn, titleAr, minGradeId, maxGradeId } = dto;
+    // the job description's HTML is long: only which of its fields were filled in, and the duty rows
+    const filled = Object.fromEntries(JD_FIELDS.filter((f) => jd[f] !== null).map((f) => [f, 'changed']));
     await this.audit.record({
       userId,
       action: 'create',
       entityType: ENTITY,
       entityId: job.id,
-      diff: { departmentId, titleEn, titleAr, minGradeId, maxGradeId, jdPurpose, jdRequirements, duties },
+      diff: { departmentId, titleEn, titleAr, minGradeId, maxGradeId, ...filled, duties },
     });
     return this.get(job.id);
   }
@@ -77,12 +87,17 @@ export class JobTitlesService {
       if (minGradeId !== before.minGradeId || maxGradeId !== before.maxGradeId) await this.assertHoldersFit(id, range);
     }
 
+    // The job description as sent (undefined: leave as it is), against what is saved, both cleaned the same way, so
+    // sending the same text again changes nothing. The duty rows follow the duties' HTML.
+    const sent = { jdPurpose: dto.jdPurpose, jdDuties: sentDutiesHtml(dto), jdRequirements: dto.jdRequirements };
+    const edited = JD_FIELDS.filter((f) => sent[f] !== undefined && !sameJdHtml(sent[f], sanitizeJdHtml(before[f])));
     const oldDuties = before.duties.map((d) => d.duty);
-    const dutiesChanged = dto.duties !== undefined && JSON.stringify(dto.duties) !== JSON.stringify(oldDuties);
-    const jdChanged =
-      dutiesChanged ||
-      (dto.jdPurpose !== undefined && dto.jdPurpose !== before.jdPurpose) ||
-      (dto.jdRequirements !== undefined && dto.jdRequirements !== before.jdRequirements);
+    const duties = sent.jdDuties === undefined ? undefined : dutiesFromHtml(sent.jdDuties);
+    const dutiesChanged = duties !== undefined && !sameList(duties, oldDuties);
+    // rows saved before 15 October 2026 may still start with the bullets typed in; read the same way, they are the same
+    // duties, so rewriting them without their bullets is not a new version of the job description
+    const sameDuties = duties === undefined || sameList(duties, oldDuties.map(dutyRow).filter((d) => d !== null));
+    const jdChanged = edited.length > 0 || !sameDuties;
 
     const moved = dto.departmentId !== undefined && dto.departmentId !== before.departmentId;
     let holdersMoved = 0;
@@ -95,7 +110,7 @@ export class JobTitlesService {
       if (dutiesChanged) {
         await tx.jobTitleDuty.deleteMany({ where: { jobTitleId: id } });
         await tx.jobTitleDuty.createMany({
-          data: dto.duties!.map((duty, i) => ({ jobTitleId: id, duty, position: i + 1 })),
+          data: duties.map((duty, i) => ({ jobTitleId: id, duty, position: i + 1 })),
         });
       }
       await tx.jobTitle.update({
@@ -106,15 +121,15 @@ export class JobTitlesService {
           titleAr: dto.titleAr,
           minGradeId: dto.minGradeId,
           maxGradeId: dto.maxGradeId,
-          jdPurpose: dto.jdPurpose,
-          jdRequirements: dto.jdRequirements,
+          ...sent,
           jdVersion: jdChanged ? { increment: 1 } : undefined,
         },
       });
     });
 
-    const { duties, ...fields } = dto;
+    const { duties: _lines, jdPurpose: _p, jdDuties: _d, jdRequirements: _r, ...fields } = dto;
     const diff: Record<string, unknown> = changes(before, fields);
+    for (const field of edited) diff[field] = 'changed'; // the HTML is long: only the fact that it changed
     if (dutiesChanged) diff.duties = { from: oldDuties, to: duties };
     if (jdChanged) diff.jdVersion = { from: before.jdVersion, to: before.jdVersion + 1 };
     if (holdersMoved) diff.holdersMoved = holdersMoved;
@@ -175,4 +190,18 @@ export class JobTitlesService {
     const place = await this.prisma.department.count({ where: { id } });
     if (!place) throw new NotFoundException('Department or team not found.');
   }
+}
+
+/**
+ * The duties' HTML that was sent: `jdDuties` (null clears it), which wins over `duties`; else made from the lines of
+ * `duties`, as sent before 15 October 2026; undefined when neither was sent.
+ */
+function sentDutiesHtml(dto: { jdDuties?: string | null; duties?: string[] }): string | null | undefined {
+  if (dto.jdDuties !== undefined) return dto.jdDuties;
+  if (dto.duties !== undefined) return htmlFromLines(dto.duties);
+  return undefined;
+}
+
+function sameList(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
 }

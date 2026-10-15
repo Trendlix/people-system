@@ -370,6 +370,9 @@ describe('Organisation (e2e)', () => {
         [1, 'Maintain employee files'],
         [2, 'Track attendance and leave'],
       ]);
+      // duties sent one per line, as before 15 October 2026, fill the duties' HTML too
+      expect(res.body.jdDuties).toBe('<p>Maintain employee files</p><p>Track attendance and leave</p>');
+      expect(res.body.jdPurpose).toBe('Run day-to-day HR operations.');
     });
 
     it('raises the JD version only when the job description changes', async () => {
@@ -491,6 +494,170 @@ describe('Organisation (e2e)', () => {
       expect(lost.body.message).toBe('Department or team not found.');
       expect((await api().get(`/api/job-titles/${job.body.id}`).set('Cookie', session).expect(200)).body.departmentId).toBe(departmentId);
       await api().post('/api/job-titles').set('Cookie', session).send({ departmentId, titleEn: 'HR Specialist' }).expect(409);
+    });
+
+    // simple rich text, like an email composer (owner's request, 15 October 2026), saved as clean HTML
+    describe('job description as rich text', () => {
+      const rows = (body: { duties: { duty: string; position: number }[] }) => body.duties.map((d) => [d.position, d.duty]);
+      const purpose = '<p class="lead" style="color: red"><b>Run</b> day-to-day <i>HR</i> operations &amp; <u>records</u>.</p>';
+      const duties =
+        '<h2>1. Recruitment &amp; Onboarding</h2><ul><li>Post job vacancies<ul><li onclick="alert(1)">On LinkedIn</li></ul></li>' +
+        '<li><p>Screen candidates</p></li></ul><p data-indent="2">____</p><div data-indent="9">2. Personnel</div><ol><li>• Maintain records</li></ol>';
+      const requirements = '<p data-indent="1">Bachelor’s degree<br>3+ years</p><p><a href="https://example.com">CIPD</a> a plus</p><p></p>';
+      let id: string;
+
+      it('saves the HTML cleaned, and reads the duty rows from the duties', async () => {
+        const res = await api()
+          .post('/api/job-titles')
+          .set('Cookie', session)
+          .send({ departmentId, titleEn: 'People Partner', jdPurpose: purpose, jdDuties: duties, jdRequirements: requirements })
+          .expect(201);
+        id = res.body.id;
+        expect(res.body).toMatchObject({
+          jdVersion: 1,
+          jdPurpose: '<p><strong>Run</strong> day-to-day <em>HR</em> operations &amp; <u>records</u>.</p>',
+          jdDuties:
+            '<p>1. Recruitment &amp; Onboarding</p><ul><li>Post job vacancies<ul><li>On LinkedIn</li></ul></li>' +
+            '<li><p>Screen candidates</p></li></ul><p data-indent="2">____</p><p>2. Personnel</p><ol><li>• Maintain records</li></ol>',
+          jdRequirements: '<p data-indent="1">Bachelor’s degree<br />3+ years</p><p>CIPD a plus</p><p></p>',
+        });
+        expect(rows(res.body)).toEqual([
+          [1, '1. Recruitment & Onboarding'],
+          [2, 'Post job vacancies'],
+          [3, 'On LinkedIn'],
+          [4, 'Screen candidates'],
+          [5, '2. Personnel'],
+          [6, 'Maintain records'],
+        ]);
+        // in the list too, next to the count of rows
+        const listed = await api().get(`/api/job-titles?departmentId=${departmentId}`).set('Cookie', session).expect(200);
+        expect((listed.body as { id: string }[]).find((j) => j.id === id)).toMatchObject({ jdDuties: res.body.jdDuties, _count: { duties: 6 } });
+        // the audit log says which fields were filled in, not the HTML
+        const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'job_title', entityId: id, action: 'create' } });
+        expect(audit.diff).toMatchObject({ jdPurpose: 'changed', jdDuties: 'changed', jdRequirements: 'changed' });
+      });
+
+      it('is not a new version when the same text is sent again, cleaned or not', async () => {
+        const saved = await api().get(`/api/job-titles/${id}`).set('Cookie', session).expect(200);
+        const rowIds = saved.body.duties.map((d: { id: string }) => d.id);
+        for (const body of [
+          { jdPurpose: purpose, jdDuties: duties, jdRequirements: requirements },
+          { jdPurpose: saved.body.jdPurpose, jdDuties: saved.body.jdDuties, jdRequirements: saved.body.jdRequirements },
+        ]) {
+          const res = await api().patch(`/api/job-titles/${id}`).set('Cookie', session).send(body).expect(200);
+          expect(res.body.jdVersion).toBe(1);
+          expect(res.body.duties.map((d: { id: string }) => d.id)).toEqual(rowIds); // the rows KPIs will link to stay
+        }
+        expect(await prisma.auditLog.count({ where: { entityType: 'job_title', entityId: id, action: 'update' } })).toBe(0);
+      });
+
+      it('is a new version when the duties change, and the rows are replaced', async () => {
+        const res = await api()
+          .patch(`/api/job-titles/${id}`)
+          .set('Cookie', session)
+          .send({ jdDuties: '<ul><li>Post job vacancies</li><li>Run <b>onboarding</b> days</li></ul>' })
+          .expect(200);
+        expect(res.body.jdVersion).toBe(2);
+        expect(res.body.jdDuties).toBe('<ul><li>Post job vacancies</li><li>Run <strong>onboarding</strong> days</li></ul>');
+        expect(rows(res.body)).toEqual([
+          [1, 'Post job vacancies'],
+          [2, 'Run onboarding days'],
+        ]);
+        expect(await prisma.jobTitleDuty.count({ where: { jobTitleId: id } })).toBe(2);
+        const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'job_title', entityId: id, action: 'update' }, orderBy: { id: 'desc' } });
+        expect(audit.diff).toEqual({
+          jdDuties: 'changed',
+          duties: {
+            from: ['1. Recruitment & Onboarding', 'Post job vacancies', 'On LinkedIn', 'Screen candidates', '2. Personnel', 'Maintain records'],
+            to: ['Post job vacancies', 'Run onboarding days'],
+          },
+          jdVersion: { from: 1, to: 2 },
+        });
+
+        // formatting alone is a new version too; the rows stay
+        const bolder = await api()
+          .patch(`/api/job-titles/${id}`)
+          .set('Cookie', session)
+          .send({ jdDuties: '<ul><li><b>Post</b> job vacancies</li><li>Run <b>onboarding</b> days</li></ul>' })
+          .expect(200);
+        expect(bolder.body.jdVersion).toBe(3);
+        expect(rows(bolder.body)).toEqual(rows(res.body));
+
+        // emptied, the duties and their rows are cleared
+        const cleared = await api().patch(`/api/job-titles/${id}`).set('Cookie', session).send({ jdDuties: '<p><br></p>', jdPurpose: '' }).expect(200);
+        expect(cleared.body).toMatchObject({ jdVersion: 4, jdDuties: null, jdPurpose: null, duties: [] });
+      });
+
+      it('still takes the duties one per line, and the duties’ HTML wins when both are sent', async () => {
+        const res = await api()
+          .post('/api/job-titles')
+          .set('Cookie', session)
+          .send({ departmentId, titleEn: 'Payroll Officer', duties: ['Run payroll & insurance', '· Monthly', '· Yearly', '____'] })
+          .expect(201);
+        expect(res.body.jdDuties).toBe('<p>Run payroll &amp; insurance</p><ul><li>Monthly</li><li>Yearly</li></ul><p>____</p>');
+        expect(rows(res.body)).toEqual([
+          [1, 'Run payroll & insurance'],
+          [2, 'Monthly'],
+          [3, 'Yearly'],
+        ]);
+
+        const both = await api()
+          .patch(`/api/job-titles/${res.body.id}`)
+          .set('Cookie', session)
+          .send({ duties: ['Ignored'], jdDuties: '<p>Run payroll</p>' })
+          .expect(200);
+        expect(both.body).toMatchObject({ jdVersion: 2, jdDuties: '<p>Run payroll</p>' });
+        expect(rows(both.body)).toEqual([[1, 'Run payroll']]);
+      });
+
+      it('rewrites rows saved before 15 October 2026 without their bullets, which is not a new version', async () => {
+        // as the migration left a title: its duties' HTML made from its rows, the rows as typed, bullets and all
+        const html = '<p>1. Recruitment &amp; Onboarding</p><ul><li>Post job vacancies</li></ul><p>____</p>';
+        const job = await prisma.jobTitle.create({
+          data: {
+            departmentId,
+            titleEn: 'Recruiter',
+            jdDuties: html,
+            duties: { create: ['1. Recruitment & Onboarding', '· Post job vacancies', '____'].map((duty, i) => ({ duty, position: i + 1 })) },
+          },
+        });
+        // opened in the web's editor and saved unchanged: its list items hold their text in paragraphs
+        const edited = '<p>1. Recruitment &amp; Onboarding</p><ul><li><p>Post job vacancies</p></li></ul><p>____</p>';
+        const res = await api().patch(`/api/job-titles/${job.id}`).set('Cookie', session).send({ jdDuties: edited }).expect(200);
+        expect(res.body.jdVersion).toBe(1);
+        expect(rows(res.body)).toEqual([
+          [1, '1. Recruitment & Onboarding'],
+          [2, 'Post job vacancies'],
+        ]);
+        const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'job_title', entityId: job.id, action: 'update' } });
+        expect(audit.diff).toEqual({
+          duties: { from: ['1. Recruitment & Onboarding', '· Post job vacancies', '____'], to: ['1. Recruitment & Onboarding', 'Post job vacancies'] },
+        });
+      });
+
+      it('stores an XSS attempt clean', async () => {
+        const attack = '<p>Hi<img src=x onerror="alert(1)"></p><script>alert(document.cookie)</script><p onmouseover="alert(2)">there</p>';
+        const res = await api()
+          .post('/api/job-titles')
+          .set('Cookie', session)
+          .send({ departmentId, titleEn: 'Test Title XSS', jdPurpose: attack, jdDuties: attack, jdRequirements: `<iframe src="javascript:alert(3)"></iframe>${attack}` })
+          .expect(201);
+        const saved = await prisma.jobTitle.findUniqueOrThrow({ where: { id: res.body.id } });
+        expect(saved).toMatchObject({ jdPurpose: '<p>Hi</p><p>there</p>', jdDuties: '<p>Hi</p><p>there</p>', jdRequirements: '<p>Hi</p><p>there</p>' });
+        expect(rows(res.body)).toEqual([
+          [1, 'Hi'],
+          [2, 'there'],
+        ]);
+      });
+
+      it('refuses a field longer than 20,000 characters', async () => {
+        const long = `<p>${'x'.repeat(20_000)}</p>`;
+        const res = await api().post('/api/job-titles').set('Cookie', session).send({ departmentId, titleEn: 'Too Long', jdDuties: long }).expect(400);
+        expect(res.body.message).toEqual(['Shorten the duties: it can take up to 20,000 characters, formatting included.']);
+        // what is cleaned away does not count
+        const padded = `<p>${'<span style="color: red">x</span>'.repeat(1000)}</p>`;
+        await api().post('/api/job-titles').set('Cookie', session).send({ departmentId, titleEn: 'Pasted', jdPurpose: padded }).expect(201);
+      });
     });
   });
 

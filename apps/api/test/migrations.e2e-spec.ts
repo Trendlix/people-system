@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { dutiesFromHtml, dutyRow, htmlFromLines } from '../src/organisation/job-titles/jd-html.js';
 import { assertTestDatabase } from './test-env.js';
 
 // Migrations that move data, replayed into a schema of their own in the test database (the tables the other tests use
@@ -77,5 +78,70 @@ describe('Migrations (e2e)', () => {
       [SCHEMA],
     );
     expect(left).toEqual([]);
+  });
+
+  it('job description as rich text: plain text becomes HTML, the duties too from their rows, which stay as they are', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_job_description_rich_text'))!;
+    await migratedUpTo(migration);
+
+    // before: the owner's kind of job description (numbered sections, middle-dot bullets, a line of underscores between
+    // sections), saved as plain text and as duty rows one per line; and a title with nothing written
+    const purpose = 'Run day-to-day HR operations & keep records <accurate>.\r\n\r\n  Report to the HR Manager.  ';
+    const requirements = "Bachelor's degree in HR or Business\n- 3+ years in HR\n- Fluent English & Arabic\n----\nCIPD a plus";
+    const duties = [
+      '1. Recruitment & Onboarding',
+      '· Post job vacancies on LinkedIn & Wuzzuf',
+      '· Screen candidates and arrange interviews',
+      '____',
+      '2. Personnel & Attendance',
+      '· Maintain records',
+    ];
+    await db.query("INSERT INTO departments (id, name_en, updated_at) VALUES ('00000000-0000-4000-8000-0000000000d1', 'Human Resources', now())");
+    await db.query(
+      `INSERT INTO job_titles (id, department_id, title_en, jd_purpose, jd_requirements, updated_at) VALUES
+        ('00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000d1', 'HR Specialist', $1, $2, now()),
+        ('00000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-0000000000d1', 'HR Assistant', NULL, $3, now())`,
+      [purpose, requirements, ' \n '],
+    );
+    // rows written out of order: the HTML follows their positions
+    for (const i of [3, 0, 5, 1, 4, 2]) {
+      await db.query('INSERT INTO job_title_duties (id, job_title_id, position, duty) VALUES (gen_random_uuid(), $1, $2, $3)', [
+        '00000000-0000-4000-8000-0000000000a1',
+        i + 1,
+        duties[i],
+      ]);
+    }
+
+    await db.query(sql(migration));
+
+    const { rows } = await db.query<{ title: string; purpose: string | null; requirements: string | null; duties: string | null }>(
+      'SELECT title_en AS title, jd_purpose AS purpose, jd_requirements AS requirements, jd_duties AS duties FROM job_titles ORDER BY title_en',
+    );
+    expect(rows).toEqual([
+      { title: 'HR Assistant', purpose: null, requirements: null, duties: null },
+      {
+        title: 'HR Specialist',
+        purpose: '<p>Run day-to-day HR operations &amp; keep records &lt;accurate&gt;.</p><p>Report to the HR Manager.</p>',
+        requirements:
+          "<p>Bachelor's degree in HR or Business</p><ul><li>3+ years in HR</li><li>Fluent English &amp; Arabic</li></ul><p>----</p><p>CIPD a plus</p>",
+        duties:
+          '<p>1. Recruitment &amp; Onboarding</p>' +
+          '<ul><li>Post job vacancies on LinkedIn &amp; Wuzzuf</li><li>Screen candidates and arrange interviews</li></ul>' +
+          '<p>____</p><p>2. Personnel &amp; Attendance</p><ul><li>Maintain records</li></ul>',
+      },
+    ]);
+    // the API converts plain text the same way, and reads back the same duties as the rows hold, so the first save after
+    // the migration is not a new version of the job description
+    const [, specialist] = rows;
+    expect(htmlFromLines([purpose])).toBe(specialist.purpose);
+    expect(htmlFromLines([requirements])).toBe(specialist.requirements);
+    expect(htmlFromLines(duties)).toBe(specialist.duties);
+    expect(dutiesFromHtml(specialist.duties)).toEqual(duties.map(dutyRow).filter((d) => d !== null));
+
+    // the duty rows stay as they were, and the conversion function is gone
+    const { rows: kept } = await db.query<{ duty: string }>('SELECT duty FROM job_title_duties ORDER BY position');
+    expect(kept.map((r) => r.duty)).toEqual(duties);
+    const { rows: fn } = await db.query("SELECT 1 FROM pg_proc WHERE proname = 'jd_lines_to_html'");
+    expect(fn).toEqual([]);
   });
 });
