@@ -3,14 +3,14 @@ import { TEMPLATE_SLOTS, type TemplateLanguage, type TemplateSlot } from '@trend
 import { AuditService } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { shownDate, todayInCairo } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB } from '../paperwork/paperwork-file.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { DOCX_MIME, DocxError, readDocx, type TagReading } from './docx-tags.js';
-import { MapFieldsError, mapFields, templateLines, type MappedFile } from './map-fields.js';
-import { mappedFileName, templateFileName } from './template-file.js';
-import type { MapFieldsDto, UploadTemplateDto } from './templates.dto.js';
-import { ZipError } from './zip.js';
+import { FIELDS_GUIDE_FILE_NAME, fieldsGuideDocx } from './fields-guide.js';
+import { templateFileName } from './template-file.js';
+import type { UploadTemplateDto } from './templates.dto.js';
 import { slotView, VERSION, versionView, type VersionRow } from './views.js';
 
 const ENTITY = 'template_version';
@@ -37,19 +37,9 @@ export function publishProblem(v: Pick<TagReading, 'unknownTags' | 'broken'>): s
   return `${parts.join(' ')} Fix them in Word and upload it again.`;
 }
 
-/** What reading a stored version's file gives; a 400 if it can no longer be read (checked on upload, so unlikely). */
-function readable<T>(version: number, read: () => T): T {
-  try {
-    return read();
-  } catch (err) {
-    if (err instanceof ZipError) throw new BadRequestException(`Version ${version}'s Word file can't be read. Upload it again.`);
-    throw err;
-  }
-}
-
-// The template library (spec §8; owner's request, 15 October 2026). HR and Admin upload, map fields and publish; the
-// CEO views and downloads (the controller says who); only a Super Admin deletes, and only a draft. Filling a template
-// in for an employee comes next: it takes the published version's file, tags and language.
+// The template library (spec §8; owner's request, 15 October 2026). HR and Admin upload and publish; the CEO views
+// and downloads (the controller says who); only a Super Admin deletes, and only a draft. Filling a template in for an
+// employee comes next: it takes the published version's file, tags and language.
 @Injectable()
 export class TemplatesService {
   constructor(
@@ -169,74 +159,11 @@ export class TemplatesService {
     return versionView(row);
   }
 
-  /** Map Fields: the version's lines, with their tags, blanks and the fields suggested for them. */
-  async lines(id: string) {
-    const v = await this.prisma.templateVersion.findUnique({ where: { id }, select: { id: true, slotKey: true, version: true, language: true, data: true } });
-    if (!v) throw new NotFoundException('Template version not found.');
-    const language = v.language as TemplateLanguage;
-    const lines = readable(v.version, () => templateLines(Buffer.from(v.data), language));
-    return { versionId: v.id, version: v.version, slotKey: v.slotKey, language, lines };
-  }
-
-  /**
-   * Map Fields (owner's request, 15 October 2026: "I want a manual mapping fix"): tags placed, changed or removed in a
-   * version inside the system make a new draft version of the slot, as an upload would, checked and published as
-   * usual. The version mapped, a draft or the one in use, keeps its own file; a replaced one can't be mapped.
-   */
-  async map(id: string, dto: MapFieldsDto, user: SessionUser) {
-    const source = await this.prisma.templateVersion.findUnique({ where: { id }, select: { ...VERSION, data: true } });
-    if (!source) throw new NotFoundException('Template version not found.');
-    if (source.status === 'retired') {
-      throw new ConflictException(`Version ${source.version} was replaced, so its fields can't be mapped. Map the version in use or a newer draft.`);
-    }
-    let mapped: MappedFile;
-    let reading: TagReading;
-    try {
-      mapped = readable(source.version, () => mapFields(Buffer.from(source.data), dto.edits));
-      reading = readDocx(mapped.file); // read again, exactly as an upload
-    } catch (err) {
-      if (err instanceof MapFieldsError || err instanceof DocxError) throw new BadRequestException(err.message);
-      throw err;
-    }
-
-    const row = await this.prisma.$transaction(async (tx) => {
-      await lockSlot(tx, source.slotKey);
-      const { _max } = await tx.templateVersion.aggregate({ where: { slotKey: source.slotKey }, _max: { version: true } });
-      return tx.templateVersion.create({
-        data: {
-          slotKey: source.slotKey,
-          version: (_max.version ?? 0) + 1,
-          fileName: mappedFileName(source.fileName),
-          mimeType: DOCX_MIME,
-          sizeBytes: mapped.file.length,
-          data: new Uint8Array(mapped.file),
-          language: source.language,
-          ...reading,
-          note: dto.note ?? `Fields mapped in People System from v${source.version}`,
-          uploadedById: user.id,
-        },
-        select: VERSION,
-      });
-    });
-    await this.audit.record({
-      userId: user.id,
-      action: 'map',
-      entityType: ENTITY,
-      entityId: row.id,
-      diff: {
-        slot: row.slotKey,
-        version: row.version,
-        from: { id: source.id, version: source.version },
-        fileName: row.fileName,
-        inserted: mapped.inserted,
-        changed: mapped.changed,
-        removed: mapped.removed,
-        tags: row.tags.length,
-        unknownTags: row.unknownTags.length,
-        broken: row.broken.length,
-      },
-    });
-    return versionView(row);
+  /** The Fields Guide as a Word file: every tag and template, from the shared lists, with the company's name and today's date. */
+  async fieldsGuide(): Promise<{ data: Buffer; type: string; fileName: string }> {
+    const company = await this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true } });
+    const data = fieldsGuideDocx({ companyName: company?.nameEn ?? null, date: shownDate(todayInCairo()) });
+    return { data, type: DOCX_MIME, fileName: FIELDS_GUIDE_FILE_NAME };
   }
 
   /** The file as uploaded. */

@@ -24,18 +24,6 @@ export function templateFileName(name: string | undefined): string {
   return `${short || 'template'}.${EXTENSION}`;
 }
 
-// A version made by Map Fields (owner's request, 15 October 2026) is named after the one it was made from:
-// "Contract.docx" gives "Contract (fields mapped).docx", and mapping that again gives the same name, not a longer one.
-const MAPPED = ' (fields mapped)';
-
-export function mappedFileName(source: string): string {
-  const stem = templateFileName(source)
-    .slice(0, -(EXTENSION.length + 1))
-    .replace(/ \(fields mapped\)$/, '');
-  const short = Array.from(stem).slice(0, NAME_MAX - EXTENSION.length - 1 - MAPPED.length).join('').trim();
-  return `${short || 'template'}${MAPPED}.${EXTENSION}`;
-}
-
 /** Control characters, and the invisible marks that change the direction or joining of text (as paperwork-file.ts). */
 function isHidden(code: number): boolean {
   return (
