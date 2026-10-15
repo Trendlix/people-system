@@ -202,6 +202,9 @@ export function missingLinks(employeeId: string, missing: readonly MissingDocume
 export const documentFileHref = (employeeId: string, documentId: string) =>
   `/employees/${encodeURIComponent(employeeId)}/documents/${encodeURIComponent(documentId)}/file`;
 
+/** The same as a PDF, shown in a new tab (Preview). */
+export const documentPreviewHref = (employeeId: string, documentId: string) => `${documentFileHref(employeeId, documentId)}?format=pdf`;
+
 /** Where the browser opens the signed copy, the same way. */
 export const signedFileHref = (employeeId: string, documentId: string) =>
   `/employees/${encodeURIComponent(employeeId)}/documents/${encodeURIComponent(documentId)}/signed-file`;

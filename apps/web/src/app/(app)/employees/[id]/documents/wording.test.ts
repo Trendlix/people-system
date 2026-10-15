@@ -4,6 +4,7 @@ import {
   contractGroups,
   contractGroupTitle,
   documentFileHref,
+  documentPreviewHref,
   inputsText,
   isMissingRoute,
   itemContext,
@@ -160,6 +161,7 @@ describe('a generated document', () => {
 
   it('is downloaded and viewed through the web server', () => {
     expect(documentFileHref(ID, 'doc-1')).toBe('/employees/emp-1/documents/doc-1/file');
+    expect(documentPreviewHref(ID, 'doc-1')).toBe('/employees/emp-1/documents/doc-1/file?format=pdf');
     expect(signedFileHref(ID, 'doc-1')).toBe('/employees/emp-1/documents/doc-1/signed-file');
   });
 

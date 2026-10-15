@@ -2,23 +2,36 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 
 // Serves a generated document's Word file (the Contracts tab's Download .docx) from the API under the web domain, with
-// the caller's session: the browser never talks to the API. The API checks the role (HR, CEO). Always downloaded, never
-// opened in the page, and links here are plain links, never prefetched.
+// the caller's session: the browser never talks to the API. The API checks the role (HR, CEO). The Word file is always
+// downloaded; ?format=pdf is the same as a PDF, shown in the browser (Preview, owner's request, 15 October 2026). Links
+// here are plain links, never prefetched.
 
 const ID = /^[0-9a-z-]{1,64}$/i;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const FILE_TYPES = new Set([DOCX, 'application/octet-stream']);
+const PDF = 'application/pdf';
+
+/** The API's reason, as text. */
+async function messageOf(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { message?: string | string[] };
+    return (Array.isArray(body.message) ? body.message.join(' ') : body.message) || 'There is no preview of this file.';
+  } catch {
+    return 'There is no preview of this file.';
+  }
+}
 
 const text = (body: string, status: number) =>
   new Response(body, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'private, no-store' } });
 
-export async function GET(_req: Request, ctx: RouteContext<'/employees/[id]/documents/[documentId]/file'>) {
+export async function GET(req: Request, ctx: RouteContext<'/employees/[id]/documents/[documentId]/file'>) {
   const { documentId } = await ctx.params;
   if (!ID.test(documentId)) return text('Not found.', 404);
+  const pdf = new URL(req.url).searchParams.get('format') === 'pdf';
 
   let res: Response;
   try {
-    res = await apiFetch(`/documents/${encodeURIComponent(documentId)}/file`);
+    res = await apiFetch(`/documents/${encodeURIComponent(documentId)}/file${pdf ? '?format=pdf' : ''}`);
   } catch (err) {
     if (err instanceof ApiError) return text(err.message, err.status);
     throw err;
@@ -26,18 +39,22 @@ export async function GET(_req: Request, ctx: RouteContext<'/employees/[id]/docu
   if (res.status === 401) redirect('/login');
   if (res.status === 403) return text('Only HR and the CEO can download generated documents.', 403);
   if (res.status === 404) return text('Not found.', 404);
+  // no PDF converter on the server: the API says so, and the Word file can still be downloaded
+  if (res.status === 409 || res.status === 503) return text(await messageOf(res), res.status);
   if (!res.ok) return text('This file could not be loaded. Please try again.', 502);
 
   const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
-  if (!FILE_TYPES.has(type)) return text('This file could not be loaded. Please try again.', 502);
+  if (pdf ? type !== PDF : !FILE_TYPES.has(type)) return text('This file could not be loaded. Please try again.', 502);
 
+  const disposition = res.headers.get('content-disposition') ?? `attachment; filename="document.${pdf ? 'pdf' : 'docx'}"`;
   const headers = new Headers({
     'content-type': type,
-    // saved, never shown in the browser; the API sends the file's name
-    'content-disposition': (res.headers.get('content-disposition') ?? 'attachment; filename="document.docx"').replace(/^\s*inline/i, 'attachment'),
+    // the PDF opens in the browser; the Word file is saved. The API sends the file's name
+    'content-disposition': pdf ? disposition.replace(/^\s*attachment/i, 'inline') : disposition.replace(/^\s*inline/i, 'attachment'),
     'cache-control': 'private, no-store',
     'x-content-type-options': 'nosniff',
-    'content-security-policy': "default-src 'none'",
+    // the browser's PDF viewer doesn't open under default-src 'none'
+    ...(!pdf && { 'content-security-policy': "default-src 'none'" }),
   });
   // fetch unpacks a compressed body, so the length only holds when nothing was compressed on the way
   const length = res.headers.get('content-length');

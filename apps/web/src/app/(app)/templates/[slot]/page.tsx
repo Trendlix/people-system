@@ -26,6 +26,7 @@ import {
   statusLines,
   templateHref,
   versionFileHref,
+  versionPreviewHref,
   WHO_SEES,
   OVERRIDES_NOTE,
 } from '../wording';
@@ -181,7 +182,10 @@ function VersionRow({ version: v, slotKey, deletes }: { version: TemplateVersion
       </td>
       <td>
         <div className="flex items-center justify-end gap-4">
-          {/* a plain link: never prefetched */}
+          {/* plain links: never prefetched */}
+          <a href={versionPreviewHref(v.id)} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center text-sm font-semibold">
+            Preview<span className="sr-only"> v{v.version} ({v.fileName}) as a PDF, in a new tab</span>
+          </a>
           <a href={versionFileHref(v.id)} className="inline-flex min-h-9 items-center text-sm font-semibold">
             Download<span className="sr-only"> v{v.version} ({v.fileName})</span>
           </a>

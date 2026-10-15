@@ -60,8 +60,8 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
               key: 'insuranceNo',
               label: 'Social insurance number',
               value: p.insuranceNo && number(p.insuranceNo),
-              // needed once insured, i.e. hired full time (Form 1)
-              required: p.employment?.employmentType === 'full_time',
+              // every file needs it (owner, 15 October 2026)
+              required: true,
             },
             { key: 'dateOfBirth', label: 'Date of birth', value: formatDate(p.dateOfBirth), required: true },
             { key: 'gender', label: 'Gender', value: p.gender && LABELS.gender[p.gender], required: true },

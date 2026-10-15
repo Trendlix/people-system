@@ -82,7 +82,7 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
         max: 20,
         hint: (
           <>
-            The <span lang="ar">الرقم التأميني</span>, digits only. Needed once hired full time.
+            The <span lang="ar">الرقم التأميني</span>, digits only, as on the social insurance print.
           </>
         ),
       },

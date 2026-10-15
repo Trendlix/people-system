@@ -80,6 +80,9 @@ export const templateHref = (key: string) => `/templates/${encodeURIComponent(ke
 /** Where the browser downloads a version's Word file: the web server fetches it from the API with the session. */
 export const versionFileHref = (id: string) => `/templates/versions/${encodeURIComponent(id)}/file`;
 
+/** The same file as a PDF, shown in a new tab (Preview). */
+export const versionPreviewHref = (id: string) => `${versionFileHref(id)}?format=pdf`;
+
 /** The name of the slot a copy is printed from, by its key (from the API's list, else the shared list). */
 export function sourceName(key: string, slots: readonly Pick<TemplateSlotView, 'key' | 'name'>[] = []): string {
   return slots.find((s) => s.key === key)?.name ?? TEMPLATE_SLOTS.find((s) => s.key === key)?.name ?? key;

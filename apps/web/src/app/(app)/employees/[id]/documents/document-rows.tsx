@@ -15,6 +15,7 @@ import {
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_STATUS_TONE,
   documentFileHref,
+  documentPreviewHref,
   inputsText,
   itemContext,
   itemTemplateHref,
@@ -93,7 +94,10 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
       <Progress document={d} />
       {d.note && <p className="text-sm text-muted">{d.note}</p>}
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
-        {/* a plain link, never prefetched: the web server fetches the file from the API with the session */}
+        {/* plain links, never prefetched: the web server fetches the file from the API with the session */}
+        <a href={documentPreviewHref(employee.id, d.id)} target="_blank" rel="noopener" className={`${VIEW_BUTTON} text-accent`}>
+          Preview<span className="sr-only"> ({what}) as a PDF, in a new tab</span>
+        </a>
         <a href={documentFileHref(employee.id, d.id)} download className={`${VIEW_BUTTON} text-accent`}>
           Download .docx<span className="sr-only"> ({what})</span>
         </a>
