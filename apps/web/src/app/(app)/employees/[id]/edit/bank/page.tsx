@@ -17,7 +17,7 @@ async function EditBank({ params }: { params: Promise<{ id: string }> }) {
         {bank && (
           <>
             <p className="text-sm text-muted">Restricted. Opening this page is recorded, because it shows the full numbers.</p>
-            <BankForm action={updateBank.bind(null, employee.id)} employeeId={employee.id} bank={bank} />
+            <BankForm action={updateBank.bind(null, employee.id)} employeeId={employee.id} bank={bank} profileName={employee.fullNameEn} />
           </>
         )}
       </RequireHr>

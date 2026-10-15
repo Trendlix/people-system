@@ -71,7 +71,7 @@ export interface Grade extends GradeRef {
 
 export interface JobTitleSummary {
   id: string;
-  /** Its team (a few older job titles may still sit directly in a department until HR moves them). */
+  /** Its department or team: a department itself (e.g. Head of Marketing) or one of its teams (owner's decision, 15 October 2026). */
   departmentId: string;
   titleEn: string;
   titleAr: string | null;
@@ -143,7 +143,7 @@ export interface FormState {
 // ---------- employees ----------
 // Dates are "YYYY-MM-DD" (or null), times "HH:mm"; createdAt / updatedAt are ISO moments.
 
-/** A team (or, from before teams, a department) as an employment names it: `parent` is the team's department. */
+/** A department or a team as an employment names it: `parent` is a team's department, null for a department. */
 export type EmploymentPlace = DepartmentRef & { parent: DepartmentRef | null };
 
 /**

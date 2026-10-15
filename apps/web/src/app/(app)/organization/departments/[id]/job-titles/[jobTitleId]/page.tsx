@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { DeleteForm } from '@/components/form';
+import { JdLines } from '@/components/jd-lines';
 import { apiGet } from '@/lib/api';
 import { departmentName } from '@/lib/departments';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
@@ -32,17 +33,14 @@ function JobDescription({ jobTitle }: { jobTitle: JobTitle }) {
       </div>
       <Part title="Purpose of the Role">{jobTitle.jdPurpose ? <p className="whitespace-pre-line">{jobTitle.jdPurpose}</p> : notSet}</Part>
       <Part title="Duties & Responsibilities">
+        {/* as HR typed them, points indented under their heading; not numbered */}
         {jobTitle.duties.length > 0 ? (
-          <ol className="list-decimal space-y-1 pl-5">
-            {jobTitle.duties.map((d) => (
-              <li key={d.id}>{d.duty}</li>
-            ))}
-          </ol>
+          <JdLines lines={jobTitle.duties.map((d) => d.duty)} />
         ) : (
           notSet
         )}
       </Part>
-      <Part title="Requirements">{jobTitle.jdRequirements ? <p className="whitespace-pre-line">{jobTitle.jdRequirements}</p> : notSet}</Part>
+      <Part title="Requirements">{jobTitle.jdRequirements ? <JdLines lines={jobTitle.jdRequirements.split('\n')} /> : notSet}</Part>
     </section>
   );
 }
@@ -60,8 +58,6 @@ async function JobTitleDetails({ params }: { params: Promise<{ id: string; jobTi
   if (jobTitle.departmentId !== id) redirect(`/organization/departments/${jobTitle.departmentId}/job-titles/${jobTitleId}`);
   const canEdit = canEditOrganisation(user);
   const back = `/organization/departments/${id}`;
-  // From before job titles belonged to teams only: still directly in a department until it is moved into a team.
-  const notInTeam = !jobTitle.department.parent;
   // The grades people with this title can have, e.g. "G3–G6"; none when any grade is allowed.
   const range = gradeRangeLabel(jobTitle);
 
@@ -89,13 +85,6 @@ async function JobTitleDetails({ params }: { params: Promise<{ id: string; jobTi
           </a>
         )}
       </div>
-
-      {notInTeam && (
-        <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          <span className="font-semibold">Not in a team yet.</span> This job title is directly in the {jobTitle.department.nameEn} department,
-          from before job titles belonged to teams.{canEdit && ' Move it into a team: choose one under Edit job title.'}
-        </p>
-      )}
 
       <JobDescription jobTitle={jobTitle} />
 

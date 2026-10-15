@@ -71,8 +71,9 @@ export async function reorderDepartments(parentId: string | null, _prev: FormSta
 
 // ---------- job titles ----------
 
-// `departmentId` is the job title's team (job titles belong to teams only). `minGradeId` / `maxGradeId`: the grades
-// people with this title can have, lowest and highest; "" leaves that end open ("Any", "No limit").
+// `departmentId` is where the job title belongs: a department itself (e.g. Head of Marketing) or one of its teams.
+// `minGradeId` / `maxGradeId`: the grades people with this title can have, lowest and highest; "" leaves that end open
+// ("Any", "No limit").
 const jobTitleBody = (fd: FormData) => ({
   departmentId: text(fd, 'departmentId'),
   titleEn: text(fd, 'titleEn'),

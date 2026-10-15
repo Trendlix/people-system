@@ -1,9 +1,10 @@
 import type { Department } from './types';
 
 // Departments and their teams (owner's words: Department → Team → Job title, e.g. Marketing → Content Team → Senior
-// Content Creator). One level only: a team belongs to a department and has no teams of its own. GET /departments
-// returns departments and teams in one list, in the order an Admin set (then by name); these helpers put each team
-// under its department and keep that order: never sort them again.
+// Content Creator). One level only: a team belongs to a department and has no teams of its own. A job title belongs to
+// a department itself (e.g. Head of Marketing) or to one of its teams (owner's decision, 15 October 2026). GET
+// /departments returns departments and teams in one list, in the order an Admin set (then by name); these helpers put
+// each team under its department and keep that order: never sort them again.
 
 /** "Marketing › Content Team" for a team, "Marketing" for a department. */
 export function departmentName(d: { nameEn: string; parent?: { nameEn: string } | null }): string {
@@ -29,11 +30,21 @@ export function departmentOptions(departments: Department[]): { id: string; labe
 }
 
 /**
- * The choices of a team picker (job titles belong to teams only): each department that has teams, with its teams, both
- * in the API's order. For `<optgroup label={department.nameEn}>` with an option per team.
+ * The choices of a department-or-team picker, for where a job title or an employment is: each department, in the API's
+ * order, as a group with the department itself first ("Marketing (department)") and then its teams in theirs, under
+ * their own names. For `<optgroup label={label}>` with an option each.
  */
-export function teamGroups(departments: Department[]): { department: Department; teams: Department[] }[] {
-  return groupDepartments(departments).filter(({ department, teams }) => !department.parentId && teams.length > 0);
+export function placeGroups(departments: Department[]): { id: string; label: string; options: { id: string; label: string }[] }[] {
+  return groupDepartments(departments).map(({ department, teams }) =>
+    department.parentId
+      ? // a team whose department is missing from the list comes back as a group of its own
+        { id: department.id, label: department.parent?.nameEn ?? '', options: [{ id: department.id, label: department.nameEn }] }
+      : {
+          id: department.id,
+          label: department.nameEn,
+          options: [{ id: department.id, label: `${department.nameEn} (department)` }, ...teams.map((t) => ({ id: t.id, label: t.nameEn }))],
+        },
+  );
 }
 
 /** The department and its teams' ids: choosing a department also covers the people and job titles in its teams. */

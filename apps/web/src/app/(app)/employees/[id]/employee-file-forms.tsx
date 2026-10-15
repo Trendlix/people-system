@@ -13,6 +13,9 @@ import { withSmallerPhotos } from '../shrink-photo';
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
+/** What the upload form takes: everything but the national ID, which is scanned (both sides together) on its own page. */
+const UPLOAD_KINDS = PAPERWORK_KINDS.filter((k) => k !== 'national_id_front' && k !== 'national_id_back');
+
 export function UploadPaperworkForm({ action, defaultKind }: { action: Action; defaultKind: PaperworkKind }) {
   const [state, formAction, uploading] = useActionState(action, {});
   const fid = useFieldIds();
@@ -38,7 +41,7 @@ export function UploadPaperworkForm({ action, defaultKind }: { action: Action; d
             Document
           </label>
           <select id={fid('kind')} name="kind" defaultValue={defaultKind} className="input">
-            {PAPERWORK_KINDS.map((k) => (
+            {UPLOAD_KINDS.map((k) => (
               <option key={k} value={k}>
                 {PAPERWORK_LABELS[k]}
               </option>

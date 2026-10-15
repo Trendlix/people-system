@@ -6,7 +6,7 @@ import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, PaperworkItem } from '@/lib/types';
 import { describePaperwork } from '../paper-details-actions';
 import { formatSize, idScanTitle, OCR_LABEL, paperworkHref } from '../paperwork';
-import { deletePaperwork, rereadPaperwork, uploadPaperwork } from '../paperwork-actions';
+import { deletePaperwork, deletePaperworkItems, rereadPaperwork, uploadPaperwork } from '../paperwork-actions';
 import { EXPIRY_WARNING_DAYS, ExpiryChip, Loading, ProfileSection } from '../ui';
 import { DeleteFileButton, RereadButton, UploadPaperworkForm } from './employee-file-forms';
 import { PaperDetails } from './inline-forms';
@@ -20,7 +20,6 @@ type Employee = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'employment' | 'gend
 
 const label = (kind: PaperworkKind) => PAPERWORK_LABELS[kind] ?? kind;
 const NATIONAL_ID: readonly PaperworkKind[] = ['national_id_front', 'national_id_back'];
-const otherKind = (kind: PaperworkKind): PaperworkKind => (kind === 'national_id_front' ? 'national_id_back' : 'national_id_front');
 
 /** A paper of the checklist: one kind, or the national ID's two sides together. */
 type Paper = { key: string; label: string; kinds: PaperworkKind[] };
@@ -63,18 +62,10 @@ const viewed = (item: PaperworkItem, side?: 'Front' | 'Back'): ViewerFile => ({
   mimeType: item.mimeType,
 });
 
-/**
- * One uploaded file: when, its name, size, uploader and whether its text was read; View, and for HR re-read and
- * delete. A side of the national ID opens with the other side (`pair`), front and back side by side.
- */
-function FileLine({ item, pair, owner, canEdit }: { item: PaperworkItem; pair?: PaperworkItem; owner: string; canEdit: boolean }) {
+/** One uploaded file: when, its name, size, uploader and whether its text was read; View, and for HR re-read and delete. */
+function FileLine({ item, owner, canEdit }: { item: PaperworkItem; owner: string; canEdit: boolean }) {
   const name = label(item.kind);
-  const front = item.kind === 'national_id_front' ? item : pair;
-  const back = item.kind === 'national_id_back' ? item : pair;
-  const view =
-    pair && front && back
-      ? { title: idScanTitle({ front: true, back: true }, owner), files: [viewed(front, 'Front'), viewed(back, 'Back')], what: 'the national ID, front and back' }
-      : { title: `${name} · ${owner}`, files: [viewed(item)], what: name };
+  const view = { title: `${name} · ${owner}`, files: [viewed(item)], what: name };
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
       <div className="min-w-0">
@@ -100,6 +91,69 @@ function FileLine({ item, pair, owner, canEdit }: { item: PaperworkItem; pair?: 
             action={deletePaperwork.bind(null, item.id)}
             name={name}
             confirmText={`Delete ${name} (${item.fileName}) from the employee file? This cannot be undone.`}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** A national ID scan: one document, its front and back (either may be missing), uploaded together. */
+type IdScan = { front?: PaperworkItem; back?: PaperworkItem };
+const scannedOn = (scan: IdScan) => (scan.front ?? scan.back)!.uploadedAt;
+
+/** The national ID's scans, newest first: each front with the back uploaded closest in time to it, then any back left over. */
+function idScans(fronts: PaperworkItem[], backs: PaperworkItem[]): IdScan[] {
+  const left = [...backs];
+  const scans: IdScan[] = fronts.map((front) => {
+    const back = otherSide(front, left);
+    if (back) left.splice(left.indexOf(back), 1);
+    return { front, back };
+  });
+  return [...scans, ...left.map((back) => ({ back }))].sort((a, b) => Date.parse(scannedOn(b)) - Date.parse(scannedOn(a)));
+}
+
+/**
+ * A national ID scan as one document: when, its files, whether their text was read; View opens both sides together,
+ * and for HR, Delete removes both (and Re-read reads a side whose text wasn't read).
+ */
+function IdScanLine({ scan, owner, canEdit }: { scan: IdScan; owner: string; canEdit: boolean }) {
+  const { front, back } = scan;
+  const items = [front, back].filter((x): x is PaperworkItem => !!x);
+  const sides = front && back ? 'front and back' : front ? 'front only' : 'back only';
+  const files = [front && viewed(front, 'Front'), back && viewed(back, 'Back')].filter((f): f is ViewerFile => !!f);
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+      <div className="min-w-0">
+        <p className="flex flex-wrap items-center gap-x-2 text-sm">
+          <span className="font-semibold text-ok">
+            <span aria-hidden="true">✓ </span>Uploaded
+          </span>
+          <span className="text-muted tabular-nums">{formatDate(scannedOn(scan))}</span>
+          <span className="text-muted">· {sides}</span>
+          {!(front && back) && <span className="badge bg-warn-soft text-warn">{front ? 'Back missing' : 'Front missing'}</span>}
+        </p>
+        {items.map((item) => (
+          <p key={item.id} className="text-xs break-all text-muted">
+            {item.kind === 'national_id_front' ? 'Front' : 'Back'}: <bdi>{item.fileName}</bdi> · {formatSize(item.sizeBytes)}
+            {item.uploadedBy && ` · by ${item.uploadedBy.email}`} · {OCR_LABEL[item.ocrStatus] ?? OCR_LABEL.pending}
+          </p>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4">
+        {/* Loaded only when opened: each download of a national ID scan is written to the audit log. */}
+        <DocumentViewer title={idScanTitle({ front: !!front, back: !!back }, owner)} files={files}>
+          View<span className="sr-only"> the national ID scan</span>
+        </DocumentViewer>
+        {canEdit &&
+          items
+            .filter((item) => item.ocrStatus !== 'done')
+            .map((item) => <RereadButton key={item.id} action={rereadPaperwork.bind(null, item.id)} name={label(item.kind)} />)}
+        {canEdit && (
+          <DeleteFileButton
+            action={deletePaperworkItems.bind(null, items.map((item) => item.id))}
+            name="the national ID scan"
+            confirmText={`Delete this national ID scan (${sides}) from the employee file? This cannot be undone.`}
           />
         )}
       </div>
@@ -155,7 +209,6 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
   const byKind = new Map<PaperworkKind, PaperworkItem[]>();
   for (const item of items) byKind.set(item.kind, [...(byKind.get(item.kind) ?? []), item]); // newest first, as listed
   const others = items.filter((item) => !required.includes(item.kind));
-  const uploaded = required.filter((kind) => byKind.has(kind)).length;
   const canEdit = employee.access.edit;
 
   // The national ID's two sides are one paper, with the number and expiry of the profile's national ID.
@@ -164,6 +217,8 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
     ...(idKinds.length > 0 ? [{ key: 'national_id', label: 'National ID', kinds: idKinds }] : []),
     ...required.filter((k) => !NATIONAL_ID.includes(k)).map((k) => ({ key: k, label: label(k), kinds: [k] })),
   ];
+  // The national ID counts as uploaded once both its sides are: it is one paper, like the others.
+  const uploaded = papers.filter((paper) => paper.kinds.every((k) => byKind.has(k))).length;
   // A paper's number and expiry are its newest file's.
   const newest = (kind: PaperworkKind) => byKind.get(kind)?.[0];
   const expiryOf = (paper: Paper) => (paper.key === 'national_id' ? employee.identity?.expiryDate : newest(paper.kinds[0])?.expiresOn);
@@ -182,7 +237,7 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
     <div className="space-y-4">
       <Title>
         <span className="tabular-nums">
-          {uploaded} of {required.length} uploaded
+          {uploaded} of {papers.length} uploaded
         </span>
       </Title>
       <p className="text-sm text-muted">
@@ -242,31 +297,48 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
                 )
               )}
 
-              <div className="space-y-2">
-                {paper.kinds.map((kind) => {
-                  const files = byKind.get(kind) ?? [];
-                  return (
-                    <div key={kind} id={`paper-${kind}`} className="scroll-mt-6 rounded-md target:ring-2 target:ring-accent target:ring-offset-4">
-                      {paper.kinds.length > 1 && <p className="text-xs font-semibold tracking-wide text-muted uppercase">{kind.endsWith('front') ? 'Front' : 'Back'}</p>}
-                      {files.length > 0 ? (
-                        <div className="space-y-2">
-                          {files.map((item) => (
-                            <FileLine
-                              key={item.id}
-                              item={item}
-                              pair={isId ? otherSide(item, byKind.get(otherKind(kind)) ?? []) : undefined}
-                              owner={employee.fullNameEn}
-                              canEdit={canEdit}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="badge bg-warn-soft text-warn">Missing</span>
+              {isId ? (
+                // the national ID is one document: each scan shows its front and back together
+                <div id="paper-national_id" className="scroll-mt-6 space-y-2 rounded-md target:ring-2 target:ring-accent target:ring-offset-4">
+                  {anyFile ? (
+                    idScans(byKind.get('national_id_front') ?? [], byKind.get('national_id_back') ?? []).map((scan) => (
+                      <IdScanLine key={(scan.front ?? scan.back)!.id} scan={scan} owner={employee.fullNameEn} canEdit={canEdit} />
+                    ))
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-x-3">
+                      <span className="badge bg-warn-soft text-warn">Missing</span>
+                      {canEdit && (
+                        <Link
+                          href={`/employees/${employee.id}/edit/national-id`}
+                          prefetch={false}
+                          className="inline-flex min-h-9 items-center text-sm font-semibold text-accent hover:underline"
+                        >
+                          Scan the ID card
+                        </Link>
                       )}
                     </div>
-                  );
-                })}
-              </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {paper.kinds.map((kind) => {
+                    const files = byKind.get(kind) ?? [];
+                    return (
+                      <div key={kind} id={`paper-${kind}`} className="scroll-mt-6 rounded-md target:ring-2 target:ring-accent target:ring-offset-4">
+                        {files.length > 0 ? (
+                          <div className="space-y-2">
+                            {files.map((item) => (
+                              <FileLine key={item.id} item={item} owner={employee.fullNameEn} canEdit={canEdit} />
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="badge bg-warn-soft text-warn">Missing</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </li>
           );
         })}
@@ -295,7 +367,7 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
 
       {canEdit && (
         <div className="card p-6">
-          <UploadPaperworkForm action={uploadPaperwork.bind(null, employee.id)} defaultKind={required.find((kind) => !byKind.has(kind)) ?? 'other'} />
+          <UploadPaperworkForm action={uploadPaperwork.bind(null, employee.id)} defaultKind={required.find((kind) => !NATIONAL_ID.includes(kind) && !byKind.has(kind)) ?? 'other'} />
         </div>
       )}
     </div>

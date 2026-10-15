@@ -2,15 +2,17 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { TeamOptions } from '@/components/department-options';
+import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { Department, FormState, Grade, JobTitle } from '@/lib/types';
 import { gradeLabel } from '../grades/label';
 
 /**
- * A job title and its job description. It belongs to a team (Department → Team → Job title), which comes preselected
- * from the team page the form was opened on; choosing another one moves the job title there.
- * `departments`: every department and team (GET /departments), for the team picker. `grades`: GET /grades, lowest first.
+ * A job title and its job description. It belongs to a department itself (e.g. Head of Marketing, under Marketing) or to
+ * one of its teams (e.g. Senior Content Creator, under Marketing → Content Team): owner's decision, 15 October 2026.
+ * The department or team comes preselected from the page the form was opened on (`defaultDepartmentId`); choosing
+ * another one moves the job title there.
+ * `departments`: every department and team (GET /departments), for the picker. `grades`: GET /grades, lowest first.
  *
  * A job title has no grade of its own (owner's decision: a junior and a senior account manager are both Account
  * Managers, with different grades). It may limit the grades people with it can have to a range, either end of which
@@ -21,14 +23,14 @@ export function JobTitleForm({
   departments,
   grades,
   jobTitle,
-  defaultTeamId,
+  defaultDepartmentId,
   cancelHref,
 }: {
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
   departments: Department[];
   grades: Grade[];
   jobTitle?: JobTitle;
-  defaultTeamId?: string;
+  defaultDepartmentId?: string;
   cancelHref: string;
 }) {
   const { state, pending, form } = useKeptForm(action);
@@ -41,15 +43,6 @@ export function JobTitleForm({
   const minGrade = grades.find((g) => g.id === minId);
   // (a saved choice stays listed, so the API can say what is wrong with it)
   const highest = grades.filter((g) => !minGrade || g.rank >= minGrade.rank || g.id === maxId);
-  const hasTeams = departments.some((d) => d.parentId);
-  // A job title from before teams may sit directly in a department: no team is chosen until one is picked for it.
-  const inDepartment = jobTitle && !jobTitle.department.parent ? jobTitle.department : null;
-  const savedTeam = jobTitle ? (inDepartment ? '' : jobTitle.departmentId) : defaultTeamId;
-  const teamHint = inDepartment
-    ? `This job title is directly in the ${inDepartment.nameEn} department, from before teams. Choose a team for it.`
-    : !hasTeams
-      ? 'No teams yet. Add a team to a department first (Departments & Job Titles, Add team).'
-      : null;
 
   return (
     <form {...form} className="card max-w-2xl space-y-5 p-6">
@@ -57,24 +50,23 @@ export function JobTitleForm({
 
       <div>
         <label htmlFor={fid('departmentId')} className="label">
-          Team
+          Department or team
         </label>
         <select
           id={fid('departmentId')}
           name="departmentId"
           required
-          defaultValue={valueOf(state, 'departmentId', savedTeam)}
-          aria-describedby={teamHint ? fid('departmentId-hint') : undefined}
+          defaultValue={valueOf(state, 'departmentId', jobTitle?.departmentId ?? defaultDepartmentId)}
+          aria-describedby={fid('departmentId-hint')}
           className="input"
         >
-          <option value="">Choose a team</option>
-          <TeamOptions departments={departments} />
+          <option value="">Choose a department or team</option>
+          <DepartmentOrTeamOptions departments={departments} />
         </select>
-        {teamHint && (
-          <p id={fid('departmentId-hint')} className={`hint ${inDepartment ? 'text-warn' : ''}`}>
-            {teamHint}
-          </p>
-        )}
+        <p id={fid('departmentId-hint')} className="hint">
+          The department itself for a job title over the whole department, e.g. Head of Marketing; otherwise one of its teams,
+          e.g. Content Team for Senior Content Creator.
+        </p>
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LABELS } from '@trendlix/shared';
+import { bankNamed, LABELS } from '@trendlix/shared';
 import { DeleteForm } from '@/components/form';
 import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/format';
@@ -154,6 +154,7 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
           <FieldGrid
             fields={[
               { key: 'bankName', label: 'Bank', value: bankShown(p.bank?.bankName) },
+              { key: 'bankBic', label: 'SWIFT/BIC', value: bankNamed(p.bank?.bankName)?.bic },
               { key: 'branch', label: 'Branch', value: p.bank?.branch },
               {
                 key: 'accountNo',

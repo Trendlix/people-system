@@ -10,17 +10,61 @@ import { BackLink, Loading, UUID } from '../../ui';
 import { AnchorSection } from '../anchor-section';
 import { DepartmentForm } from '../department-form';
 import { JobTitlesTable } from '../job-titles-table';
-import { NotInTeam } from '../not-in-team';
 import { ReorderList } from '../reorder-list';
 
-// Department → Team → Job title: a department's page lists its teams; a team's page (a team is a department with a
-// parent) lists its job titles, under a breadcrumb back to its department. Job titles belong to teams only; any from
-// before that rule, still directly in the department, are listed on its page as not in a team yet.
+// Department → Team → Job title, and a job title may also belong to a department itself (owner's decision, 15 October
+// 2026): a department's page lists its own job titles (e.g. Head of Marketing) and its teams; a team's page (a team is
+// a department with a parent) lists its job titles, under a breadcrumb back to its department.
 
 type Query = Record<string, string | string[] | undefined>;
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const dash = <span className="text-muted">—</span>;
+
+/**
+ * The job titles directly in this department or team (`id`), with Add job title. `intro`: a line under the heading;
+ * `empty`: what to say when it has none.
+ */
+function JobTitles({
+  id,
+  heading,
+  intro,
+  empty,
+  jobTitles,
+  canEdit,
+}: {
+  id: string;
+  heading: string;
+  intro?: string;
+  empty: string;
+  jobTitles: JobTitleSummary[];
+  canEdit: boolean;
+}) {
+  return (
+    <section className="card">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+        <div className="min-w-0">
+          <h3 className="font-semibold">
+            {heading} <span className="font-normal text-muted">· {jobTitles.length}</span>
+          </h3>
+          {intro && <p className="mt-1 text-sm text-muted">{intro}</p>}
+        </div>
+        {canEdit && (
+          <Link href={`/organization/departments/${id}/job-titles/new`} className="btn btn-primary">
+            Add job title
+          </Link>
+        )}
+      </div>
+      {jobTitles.length === 0 ? (
+        <p className="border-t border-line px-5 py-4 text-sm text-muted">{empty}</p>
+      ) : (
+        <div className="border-t border-line">
+          <JobTitlesTable jobTitles={jobTitles} />
+        </div>
+      )}
+    </section>
+  );
+}
 
 /** A department's teams, in their saved order, each with how many job titles it has. `canReorder`: Admin, 2+ teams. */
 function Teams({ department, canEdit, canReorder }: { department: Department; canEdit: boolean; canReorder: boolean }) {
@@ -46,7 +90,7 @@ function Teams({ department, canEdit, canReorder }: { department: Department; ca
       </div>
       {teams.length === 0 ? (
         <p className="border-t border-line px-5 py-4 text-sm text-muted">
-          No teams in this department yet. A team is a group inside it, e.g. Content Team in Marketing; job titles belong to teams.
+          No teams in this department yet. A team is a group inside it with job titles of its own, e.g. Content Team in Marketing.
         </p>
       ) : (
         <div className="overflow-x-auto border-t border-line">
@@ -129,27 +173,16 @@ async function DepartmentDetails({ params, searchParams }: { params: Promise<{ i
       </div>
 
       {parent ? (
-        <section className="card">
-          <div className="flex flex-wrap items-center justify-between gap-3 p-5">
-            <h3 className="font-semibold">
-              Job Titles <span className="font-normal text-muted">· {jobTitles.length}</span>
-            </h3>
-            {canEdit && (
-              <Link href={`/organization/departments/${id}/job-titles/new`} className="btn btn-primary">
-                Add job title
-              </Link>
-            )}
-          </div>
-          {jobTitles.length === 0 ? (
-            <p className="border-t border-line px-5 py-4 text-sm text-muted">No job titles in this team yet.</p>
-          ) : (
-            <div className="border-t border-line">
-              <JobTitlesTable jobTitles={jobTitles} />
-            </div>
-          )}
-        </section>
+        <JobTitles id={id} heading="Job Titles" empty="No job titles in this team yet." jobTitles={jobTitles} canEdit={canEdit} />
       ) : (
-        jobTitles.length > 0 && <NotInTeam jobTitles={jobTitles} canEdit={canEdit} />
+        <JobTitles
+          id={id}
+          heading="Department-Level Job Titles"
+          intro={`Job titles of ${department.nameEn} itself rather than of one of its teams, e.g. Head of ${department.nameEn}.`}
+          empty={`No job titles of ${department.nameEn} itself yet.`}
+          jobTitles={jobTitles}
+          canEdit={canEdit}
+        />
       )}
 
       {!parent &&

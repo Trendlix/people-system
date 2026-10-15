@@ -66,6 +66,19 @@ export async function deletePaperwork(itemId: string): Promise<FormState> {
   return {};
 }
 
+/** A national ID scan is one document: its front and back files are deleted together. */
+export async function deletePaperworkItems(itemIds: string[]): Promise<FormState> {
+  for (const id of itemIds) {
+    const errors = await attempt(() => apiSend('DELETE', `/paperwork/${id}`));
+    if (errors) {
+      refresh();
+      return { errors };
+    }
+  }
+  refresh();
+  return {};
+}
+
 /**
  * The ID card files chosen in the form (front needed, back optional), each a photo or a PDF scan, ready to send; or
  * what is wrong with them. A PDF with both sides may come as the front alone: the API reads its page 2 as the back.

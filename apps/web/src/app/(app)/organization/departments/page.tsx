@@ -7,12 +7,11 @@ import type { Department, JobTitleSummary } from '@/lib/types';
 import { reorderDepartments } from '../actions';
 import { Empty, Loading } from '../ui';
 import { JobTitlesTable } from './job-titles-table';
-import { NotInTeam } from './not-in-team';
 import { ReorderList } from './reorder-list';
 
-// Owner's words: Department → Team → Job title (e.g. Marketing → Content Team → Senior Content Creator). Each
-// department is a card with its teams, each team with its job titles: job titles belong to teams only. Job titles from
-// before that rule, still directly in a department, are shown on its card as not in a team yet.
+// Owner's words: Department → Team → Job title (e.g. Marketing → Content Team → Senior Content Creator), and a job
+// title may also belong to a department itself (e.g. Head of Marketing; owner's decision, 15 October 2026). Each
+// department is a card with its own job titles and its teams, each team with its job titles.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -49,7 +48,7 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
     );
   }
 
-  // The API sorts job titles by title within each team.
+  // The API sorts job titles by title within each department and team.
   const titlesOf = new Map<string, JobTitleSummary[]>();
   for (const j of jobTitles) {
     const list = titlesOf.get(j.departmentId);
@@ -70,10 +69,10 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
   };
   const sections = groups.flatMap(({ department, teams }) => {
     const whole = named(department);
-    const own = withTitles(department, whole); // not in a team yet
+    const own = withTitles(department, whole); // the department's own job titles
     const allTeams = teams.map((t) => withTitles(t, whole || named(t)));
     const shownTeams = allTeams.filter((team) => whole || named(team.department) || team.shown.length > 0);
-    const counts = { titles: 0, shown: 0 }; // the department's job titles, in its teams or not
+    const counts = { titles: 0, shown: 0 }; // the department's job titles: its own and its teams'
     for (const t of [own, ...allTeams]) {
       counts.titles += t.all.length;
       counts.shown += t.shown.length;
@@ -175,6 +174,9 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
                 </div>
                 {canEdit && (
                   <div className="flex flex-wrap gap-2">
+                    <Link href={`/organization/departments/${d.id}/job-titles/new`} className="btn btn-secondary">
+                      Add job title<span className="sr-only"> to {d.nameEn}</span>
+                    </Link>
                     <Link href={`/organization/departments/new?parentId=${d.id}`} className="btn btn-secondary">
                       Add team<span className="sr-only"> to {d.nameEn}</span>
                     </Link>
@@ -185,15 +187,12 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
                 )}
               </div>
               {shown.length > 0 && (
-                <div className="border-t border-line px-5 py-4">
-                  <NotInTeam jobTitles={shown} canEdit={canEdit} />
+                <div className="border-t border-line">
+                  <h4 className="px-5 pt-4 text-xs font-semibold tracking-wide text-muted uppercase">Department-Level Job Titles</h4>
+                  <JobTitlesTable jobTitles={shown} />
                 </div>
               )}
-              {teamTotal === 0 && (
-                <p className="border-t border-line px-5 py-4 text-sm text-muted">
-                  No teams in this department yet.{canEdit && ' Add a team, then its job titles.'}
-                </p>
-              )}
+              {teamTotal === 0 && <p className="border-t border-line px-5 py-4 text-sm text-muted">No teams in this department yet.</p>}
 
               {teams.length > 0 && (
                 <div className="space-y-3 rounded-b-xl border-t border-line bg-canvas p-3 sm:p-4">

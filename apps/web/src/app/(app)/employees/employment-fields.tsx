@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { EMPLOYEE_STATUSES, EMPLOYMENT_TYPES, LABELS, PROBATION_MONTHS, WORK_ARRANGEMENTS } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
+import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
-import { groupDepartments } from '@/lib/departments';
 import { formatDate, formatTime } from '@/lib/format';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
@@ -38,20 +38,6 @@ const CURRENT_STATUSES = EMPLOYEE_STATUSES.filter((s) => s !== 'resigned' && s !
 /** Only people with a current employment can be picked as a new manager. */
 const EMPLOYED: readonly string[] = ['active', 'probation', 'on_leave', 'notice_period'];
 
-/**
- * The Team picker (Department → Team → Job title): each department, in the API's order, as a group of its teams. A
- * department itself is only listed when the employee is already in it (from before teams), so saving doesn't lose it.
- */
-function teamGroups(departments: Department[], keepId: string | null | undefined) {
-  return groupDepartments(departments).flatMap(({ department, teams }) => {
-    // a team whose department is missing from the list comes back as a group of its own
-    if (department.parentId) return [{ id: department.id, label: department.parent?.nameEn ?? '', options: [{ id: department.id, label: department.nameEn }] }];
-    const options = teams.map((t) => ({ id: t.id, label: t.nameEn }));
-    if (department.id === keepId) options.unshift({ id: department.id, label: `${department.nameEn} (department)` });
-    return options.length > 0 ? [{ id: department.id, label: department.nameEn, options }] : [];
-  });
-}
-
 /** The office days ticked before a failed save, else the saved ones. */
 function officeDaysOf(state: FormState, saved: number[]): Set<number> {
   if (!state.values) return new Set(saved);
@@ -72,18 +58,19 @@ export function EmploymentFields({
   employment?: Employment;
 }) {
   const router = useRouter();
-  // Kept in state: office days show only for Hybrid, and the job titles listed are the chosen team's.
+  // Kept in state: office days show only for Hybrid, and the job titles listed are the chosen department's or team's.
   const [arrangement, setArrangement] = useState(() => valueOf(state, 'workArrangement', employment?.workArrangement ?? 'office'));
   const [jobTitleId, setJobTitleId] = useState(() => valueOf(state, 'jobTitleId', employment?.jobTitleId));
-  // A job title without a department on the employment brings its own team, so it stays selected.
+  // A job title without a department on the employment brings its own department or team, so it stays selected.
   const savedDepartmentId = employment?.departmentId ?? pickers.jobTitles.find((j) => j.id === employment?.jobTitleId)?.departmentId;
   const [departmentId, setDepartmentId] = useState(() => valueOf(state, 'departmentId', savedDepartmentId));
   // The person's own grade. A job title may allow only a range of grades (Account Manager: G3 to G6).
   const [gradeId, setGradeId] = useState(() => valueOf(state, 'gradeId', employment?.gradeId));
   const [clearedGrade, setClearedGrade] = useState<{ grade: Grade; title: string } | null>(null);
 
-  // Job titles belong to teams: only the chosen team's are listed (and the current one, so it stays shown). A few
-  // older job titles still sit directly in a department until HR moves them into a team.
+  // A job title belongs to a department itself (e.g. Head of Marketing) or to one of its teams (owner's decision, 15
+  // October 2026): only the chosen department's own job titles, or the chosen team's, are listed (and the current one,
+  // so it stays shown).
   const titles = departmentId ? pickers.jobTitles.filter((j) => j.departmentId === departmentId || j.id === jobTitleId) : [];
   const chosen = pickers.departments.find((d) => d.id === departmentId);
   const noTitles = chosen !== undefined && titles.length === 0;
@@ -97,7 +84,8 @@ export function EmploymentFields({
   const range = pickedTitle && gradeRangeSentence(pickedTitle.titleEn, pickedTitle);
   const outOfRange = grade && !allowed(grade);
 
-  // HR may add the team's first job title in another tab: coming back here lists it, keeping everything typed.
+  // HR may add the department's or team's first job title in another tab: coming back here lists it, keeping everything
+  // typed.
   useEffect(() => {
     if (!noTitles) return;
     const refresh = () => router.refresh();
@@ -184,9 +172,9 @@ export function EmploymentFields({
 
         <div>
           <label htmlFor={fid('departmentId')} className="label">
-            Team
+            Department or team
           </label>
-          {/* Teams under their department's name; typing a team's first letters still picks it. */}
+          {/* Each department as a group: the department itself first, then its teams; typing a team's first letters still picks it. */}
           <select
             id={fid('departmentId')}
             name="departmentId"
@@ -194,23 +182,15 @@ export function EmploymentFields({
             onChange={(e) => pickDepartment(e.target.value)}
             className="input"
           >
-            <option value="">No team</option>
-            {teamGroups(pickers.departments, savedDepartmentId).map((g) => (
-              <optgroup key={g.id} label={g.label}>
-                {g.options.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
+            <option value="">No department or team</option>
+            <DepartmentOrTeamOptions departments={pickers.departments} />
           </select>
         </div>
         <div>
           <label htmlFor={fid('jobTitleId')} className="label">
             Job title
           </label>
-          {/* Disabled (and so not sent) until a team with job titles is chosen: no job title is saved then. */}
+          {/* Disabled (and so not sent) until a department or team with job titles is chosen: no job title is saved then. */}
           <select
             id={fid('jobTitleId')}
             name="jobTitleId"
@@ -220,7 +200,7 @@ export function EmploymentFields({
             aria-describedby={noTitles ? fid('jobTitleId-hint') : undefined}
             className="input disabled:cursor-not-allowed disabled:bg-canvas disabled:text-muted"
           >
-            <option value="">{departmentId ? 'No job title' : 'Choose a team first'}</option>
+            <option value="">{departmentId ? 'No job title' : 'Choose a department or team first'}</option>
             {titles.map((j) => (
               <option key={j.id} value={j.id}>
                 {j.titleEn}
@@ -229,17 +209,11 @@ export function EmploymentFields({
           </select>
           {noTitles && (
             <p id={fid('jobTitleId-hint')} className="hint">
-              {chosen.parentId ? (
-                <>
-                  No job titles in this team yet.{' '}
-                  <Link href={`/organization/departments/${chosen.id}`} target="_blank" rel="noopener">
-                    Add one on the team&apos;s page
-                  </Link>{' '}
-                  (opens in a new tab).
-                </>
-              ) : (
-                'No job titles directly in this department. Choose one of its teams.'
-              )}
+              {chosen.parentId ? 'No job titles in this team yet.' : 'No job titles of the department itself yet.'}{' '}
+              <Link href={`/organization/departments/${chosen.id}`} target="_blank" rel="noopener">
+                Add one on the {chosen.parentId ? 'team' : 'department'}&apos;s page
+              </Link>{' '}
+              (opens in a new tab){!chosen.parentId && chosen._count.children > 0 && ', or choose one of its teams'}.
             </p>
           )}
         </div>

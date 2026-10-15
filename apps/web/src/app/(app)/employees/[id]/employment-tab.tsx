@@ -14,7 +14,7 @@ import { DeleteRowButton } from './inline-forms';
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
 
-/** "Marketing › Content Team"; older employments may sit directly in a department, from before teams. */
+/** "Marketing › Content Team", or a department itself (e.g. for Head of Marketing, a title of the department's own). */
 const placeLabel = (e: Employment) => (e.department && !e.department.parent ? 'Department' : 'Team');
 
 /** The current employment's details, in the profile's field grid. */

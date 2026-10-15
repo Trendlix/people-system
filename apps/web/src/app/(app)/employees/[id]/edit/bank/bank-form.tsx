@@ -21,10 +21,13 @@ export function BankForm({
   action,
   employeeId,
   bank,
+  profileName,
 }: {
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
   employeeId: string;
   bank: EmployeeBank;
+  /** The profile's full name (English): the account holder until one is saved. */
+  profileName: string;
 }) {
   // Kept form: a refused save (e.g. an account number of the wrong length) leaves the bank as it was chosen.
   const { state, pending, form } = useKeptForm(action);
@@ -64,6 +67,13 @@ export function BankForm({
           />
           <p id={fid('bankName-hint')} className="hint">
             As on the EG-ACH banks list. Not on it? Choose Other.
+            {/* the SWIFT code (BIC) is the list's, so it is not typed or saved: it follows the bank */}
+            {bankNamed(bankName)?.bic && (
+              <>
+                {' '}
+                SWIFT/BIC: <span className="tabular-nums">{bankNamed(bankName)!.bic}</span>.
+              </>
+            )}
           </p>
         </div>
         <div>
@@ -128,11 +138,11 @@ export function BankForm({
             name="holderName"
             maxLength={150}
             aria-describedby={fid('holderName-hint')}
-            defaultValue={valueOf(state, 'holderName', bank.holderName)}
+            defaultValue={valueOf(state, 'holderName', bank.holderName ?? profileName)}
             className="input"
           />
           <p id={fid('holderName-hint')} className="hint">
-            As registered at the bank.
+            As registered at the bank.{!bank.holderName && ' Filled in from the profile: change it if the bank has it otherwise.'}
           </p>
         </div>
       </div>
