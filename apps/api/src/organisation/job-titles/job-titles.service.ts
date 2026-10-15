@@ -1,5 +1,4 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { occupationName } from '@trendlix/shared';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import { assertDeletes } from '../../auth/roles.js';
 import type { SessionUser } from '../../auth/session-user.js';
@@ -7,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { gradeRange } from '../grades/grade-range.js';
 import type { CreateJobTitleDto, UpdateJobTitleDto } from './job-title.dto.js';
 import { dutiesFromHtml, dutyRow, htmlFromLines, sameJdHtml, sanitizeJdHtml } from './jd-html.js';
+import { withOccupation } from './occupation-view.js';
 
 const ENTITY = 'job_title';
 const GRADE = { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } } as const;
@@ -16,14 +16,6 @@ const DEPARTMENT = { select: { id: true, nameEn: true, nameAr: true, parent: { s
 
 /** The job description fields saved as HTML (owner's request, 15 October 2026). */
 const JD_FIELDS = ['jdPurpose', 'jdDuties', 'jdRequirements'] as const;
-
-/**
- * A job title as the API sends it: with its occupation's name in the social insurance table beside its code (owner, 15
- * October 2026), read from the table (occupations.ts), never stored.
- */
-function withOccupation<T extends { occupationCode: string | null }>(job: T): T & { occupationName: string | null } {
-  return { ...job, occupationName: occupationName(job.occupationCode) };
-}
 
 /** An end of a job title's range of grades; null when open. */
 type RangeEnd = { code: string; rank: number } | null;

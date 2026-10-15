@@ -156,6 +156,33 @@ describe('Social insurance details (e2e)', () => {
     });
   });
 
+  describe('the employee profile', () => {
+    it('names the job title’s occupation in the employment, for the Social Insurance tab', async () => {
+      const job = await newJobTitle(`Sales manager ${RUN}`, { occupationCode: '212300' });
+      const e = await newEmployee('Occupied Person');
+      await api()
+        .post(`/api/employees/${e.id}/employments`)
+        .set('Cookie', hr)
+        .send({ employmentType: 'full_time', joinDate: '2026-01-15', departmentId, jobTitleId: job.id, gradeId, shiftId })
+        .expect(201);
+      const profile = (await api().get(`/api/employees/${e.id}`).set('Cookie', hr).expect(200)).body;
+      expect(profile.employment.jobTitle).toEqual({
+        id: job.id,
+        departmentId,
+        titleEn: `Sales manager ${RUN}`,
+        titleAr: null,
+        jdVersion: 1,
+        occupationCode: '212300',
+        occupationName: 'مدير مبيعات',
+      });
+      expect(profile.employments[0].jobTitle).toEqual(profile.employment.jobTitle);
+
+      // read from the job title each time: cleared there, none here
+      await jobTitle(job.id, { occupationCode: null }).expect(200);
+      expect((await api().get(`/api/employees/${e.id}`).set('Cookie', hr).expect(200)).body.employment.jobTitle).toMatchObject({ occupationCode: null, occupationName: null });
+    });
+  });
+
   describe('the building number', () => {
     it('is kept on the profile, Arabic-Indic digits as 0-9, cleared by empty, and logged', async () => {
       const e = await newEmployee('Building Owner', { buildingNo: ' ١٢/٣ ' });

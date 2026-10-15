@@ -18,6 +18,7 @@ import { fromTimeOfDay } from '../common/time-of-day.js';
 import { changeRequestView, CONFIRMATION_INCLUDE, confirmationView, REQUEST_INCLUDE } from '../confirmations/views.js';
 import { CONTRACT_INCLUDE, contractView, ENDING_INCLUDE, endingView, type ContractContext } from '../contracts/views.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
+import { withOccupation } from '../organisation/job-titles/occupation-view.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   deletesEmployees,
@@ -41,11 +42,13 @@ const GRADE = { select: { id: true, code: true, rank: true, levelEn: true, level
 
 /**
  * Where an employment places someone: their department, or their team with its department; their job title, and their
- * own grade (owner's decision, 15 October 2026: no longer the job title's).
+ * own grade (owner's decision, 15 October 2026: no longer the job title's). The job title comes with its social
+ * insurance occupation and the department it is under, for the Social Insurance tab and its link to the job title
+ * (owner, 16 October 2026).
  */
 const PLACE = {
   department: { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
-  jobTitle: { select: { id: true, titleEn: true, titleAr: true, jdVersion: true } },
+  jobTitle: { select: { id: true, departmentId: true, titleEn: true, titleAr: true, jdVersion: true, occupationCode: true } },
   grade: GRADE,
 } satisfies Prisma.EmploymentInclude;
 
@@ -71,15 +74,17 @@ interface EmploymentContext extends Omit<ContractContext, 'workingDays'> {
 }
 
 /**
- * An employment as the API sends it: dates as YYYY-MM-DD, office days in order, shift times as HH:mm; its signed
- * contract (salary restricted to HR, Finance and the CEO) and its newest ending (HR, Admin and the CEO), or null.
+ * An employment as the API sends it: dates as YYYY-MM-DD, office days in order, shift times as HH:mm; its job title
+ * with its occupation's name; its signed contract (salary restricted to HR, Finance and the CEO) and its newest ending
+ * (HR, Admin and the CEO), or null.
  */
 export function employmentView(e: EmploymentRow, { seesEndings, ...ctx }: EmploymentContext) {
-  const { shift, joinDate, probationEnd, jdAcknowledgedAt, endDate, officeDays, contracts, endings, ...rest } = e;
+  const { shift, joinDate, probationEnd, jdAcknowledgedAt, endDate, officeDays, contracts, endings, jobTitle, ...rest } = e;
   const [contract] = contracts;
   const [ending] = endings;
   return {
     ...rest,
+    jobTitle: jobTitle && withOccupation(jobTitle),
     joinDate: fromDateOnly(joinDate),
     probationEnd: fromDateOnly(probationEnd),
     jdAcknowledgedAt: fromDateOnly(jdAcknowledgedAt),
