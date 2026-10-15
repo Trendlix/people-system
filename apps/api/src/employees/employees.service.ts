@@ -1,5 +1,14 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { PAPERWORK_LABELS, requiredPaperwork, type EmploymentType, type Gender, type Standing } from '@trendlix/shared';
+import {
+  accountLengthOk,
+  accountLengthText,
+  bankNamed,
+  PAPERWORK_LABELS,
+  requiredPaperwork,
+  type EmploymentType,
+  type Gender,
+  type Standing,
+} from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
@@ -98,6 +107,33 @@ function maskedBank(row: EmployeeBank | null) {
   if (!row) return null;
   const { accountNo, iban, ...rest } = bankView(row);
   return { ...rest, accountNoMasked: maskTail(accountNo), ibanMasked: maskTail(iban) };
+}
+
+/** The same bank: by the EG-ACH list's name when on it, so "NBE" typed before the list and "National Bank of Egypt" are one. */
+function sameBank(a: string | null, b: string | null): boolean {
+  return (bankNamed(a)?.name ?? a) === (bankNamed(b)?.name ?? b);
+}
+
+/**
+ * The account number must have a length its bank uses, when the bank is on the EG-ACH banks list (the owner's EG-ACH
+ * file, 15 October 2026): 19 digits at the National Bank of Egypt, 12 or 16 at Audi Bank …, digits only. The bank and
+ * the number as they will be saved (sent, else on file) are checked together, and only when either of them changes,
+ * so details already on file never stop something else being saved. A bank the list gives no length for (Central
+ * Bank of Egypt …) or one not on the list takes any number (UpdateBankDto checks it is 4–34 letters and digits).
+ * The number is restricted, so the message never repeats it.
+ */
+function assertAccountFitsBank(before: EmployeeBank | null, dto: UpdateBankDto) {
+  const saved = bankView(before);
+  const bankChanged = dto.bankName !== undefined && !sameBank(dto.bankName, saved.bankName);
+  const accountChanged = dto.accountNo !== undefined && dto.accountNo !== saved.accountNo;
+  if (!bankChanged && !accountChanged) return;
+
+  const bank = bankNamed(dto.bankName !== undefined ? dto.bankName : saved.bankName);
+  const accountNo = dto.accountNo !== undefined ? dto.accountNo : saved.accountNo;
+  const length = bank && accountLengthText(bank);
+  if (bank && length && accountNo && !accountLengthOk(bank, accountNo)) {
+    throw new BadRequestException(`${bank.name} account numbers have ${length}. Check the number against the bank's letter.`);
+  }
 }
 
 /** The fields that were sent (undefined means "leave as it is"), as a plain object. */
@@ -286,12 +322,15 @@ export class EmployeesService {
     return identityView(row);
   }
 
-  /** The full bank details (restricted): every call is written to the audit log. */
+  /**
+   * The full bank details (restricted): every call is written to the audit log. With the bank's BIC code from the
+   * EG-ACH list, or null for a bank not on it.
+   */
   async bank(id: string, user: SessionUser) {
     await this.row(id);
     const row = await this.prisma.employeeBank.findUnique({ where: { employeeId: id } });
     await this.audit.record({ userId: user.id, action: 'view_restricted', entityType: ENTITY, entityId: id, diff: { fields: ['accountNo', 'iban'] } });
-    return bankView(row);
+    return { ...bankView(row), bankBic: bankNamed(row?.bankName)?.bic ?? null };
   }
 
   /**
@@ -358,6 +397,7 @@ export class EmployeesService {
   async updateBank(id: string, dto: UpdateBankDto, user: SessionUser) {
     await this.row(id);
     const before = await this.prisma.employeeBank.findUnique({ where: { employeeId: id } });
+    assertAccountFitsBank(before, dto);
     const data = { bankName: dto.bankName, branch: dto.branch, accountNo: dto.accountNo, iban: dto.iban, holderName: dto.holderName };
     const row = await this.prisma.employeeBank.upsert({ where: { employeeId: id }, update: data, create: { employeeId: id, ...data } });
 

@@ -16,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import {
+  bankNamed,
   DEGREES,
   EDUCATION_GRADES,
   GENDERS,
@@ -69,6 +70,10 @@ class EmployeeDetailsDto {
   /** الرقم التأميني: the social insurance number. */
   @LatinDigits() @Digits() @IsOptional() @Matches(INSURANCE_NO, { message: INSURANCE_NO_MESSAGE })
   insuranceNo?: string | null;
+
+  /** The short name the person goes by (e.g. Hazem Magdy), as the email signature shows it. */
+  @TrimOrNull() @IsOptional() @IsString() @MaxLength(80)
+  displayName?: string | null;
 
   // ---------- identity ----------
   @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real date of birth.')
@@ -185,16 +190,30 @@ export class UpdateEmployeeDto extends EmployeeDetailsDto {
   fullNameAr?: string;
 }
 
-/** Bank and payment (restricted). */
+// The bank is one of the EG-ACH banks list, which salaries go through (the owner's EG-ACH file, 15 October 2026):
+// a bank on the list, typed by its name or abbreviation in any capitals ("nbe"), is saved under the list's name
+// ("National Bank of Egypt"). Any other bank ("Other") is kept as typed.
+const BankName = () =>
+  Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const typed = value.trim();
+    return typed ? (bankNamed(typed)?.name ?? typed) : null;
+  });
+
+/**
+ * Bank and payment (restricted). The account number must also have a length its bank uses, when the bank is on the
+ * EG-ACH list: checked with the saved details (EmployeesService.updateBank).
+ */
 export class UpdateBankDto {
-  @TrimOrNull() @IsOptional() @IsString() @MaxLength(100)
+  @BankName() @IsOptional() @IsString() @MaxLength(100)
   bankName?: string | null;
 
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(100)
   branch?: string | null;
 
+  // spaces and dashes dropped, as the number is written on the bank's letter: "100-123 4567" → "1001234567"
   @LatinDigits()
-  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/\s+/g, '') || null : value))
+  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/[\s-]+/g, '') || null : value))
   @IsOptional()
   @Matches(/^[A-Za-z0-9]{4,34}$/, { message: 'Enter the account number as letters and digits only.' })
   accountNo?: string | null;

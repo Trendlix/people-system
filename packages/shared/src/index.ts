@@ -151,3 +151,7 @@ export * from './phone.js';
 // ---------- education: Egyptian universities and faculties ----------
 
 export * from './education.js';
+
+// ---------- banks (EG-ACH list) ----------
+
+export * from './banks.js';

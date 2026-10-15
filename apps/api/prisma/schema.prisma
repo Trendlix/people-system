@@ -204,6 +204,7 @@ model Employee {
   insuranceNo       String?           @unique @map("insurance_no") // الرقم التأميني, the social insurance number: digits only
   fullNameEn        String            @map("full_name_en")
   fullNameAr        String            @map("full_name_ar") // as printed on contracts
+  displayName       String?           @map("display_name") // the short name the person goes by (e.g. Hazem Magdy), for the email signature
   dateOfBirth       DateTime?         @map("date_of_birth") @db.Date
   gender            String?
   nationality       String?

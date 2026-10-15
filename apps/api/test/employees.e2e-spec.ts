@@ -796,6 +796,14 @@ describe('Employees (e2e)', () => {
     expect(cleared.body).toMatchObject({ mobile2: null, city: null });
   });
 
+  it('keeps a display name for the email signature, apart from the full names', async () => {
+    const e = await addEmployee('Hazem Magdy Soliman', { displayName: '  Hazem Magdy ' });
+    expect(e).toMatchObject({ displayName: 'Hazem Magdy', fullNameEn: `Hazem Magdy Soliman ${RUN}` });
+    await api().patch(`/api/employees/${e.id}`).set('Cookie', hr).send({ displayName: 'x'.repeat(81) }).expect(400);
+    const cleared = await api().patch(`/api/employees/${e.id}`).set('Cookie', hr).send({ displayName: '' }).expect(200);
+    expect(cleared.body.displayName).toBeNull();
+  });
+
   it('keeps the social insurance number as digits, and no two people share one', async () => {
     const no = String(Date.now()).slice(-9);
     const e = await addEmployee('Insured One', { insuranceNo: `${no.slice(0, 4)} ${no.slice(4)}` });
@@ -1084,15 +1092,96 @@ describe('Employees (e2e)', () => {
       await api().patch(`/api/employees/${e.id}/bank`).set('Cookie', finance).send({ bankName: 'NBE' }).expect(403);
 
       const profile = await api().get(`/api/employees/${e.id}`).set('Cookie', finance).expect(200);
-      expect(profile.body.bank).toEqual({ bankName: 'CIB', branch: null, holderName: 'Banked', accountNoMasked: '•••• 6789', ibanMasked: '•••• 0002' });
+      expect(profile.body.bank).toEqual({
+        bankName: 'Commercial International Bank', // CIB on the EG-ACH list
+        branch: null,
+        holderName: 'Banked',
+        accountNoMasked: '•••• 6789',
+        ibanMasked: '•••• 0002',
+      });
 
       const full = await api().get(`/api/employees/${e.id}/bank`).set('Cookie', finance).expect(200);
-      expect(full.body).toMatchObject({ accountNo: '100123456789', iban: VALID_IBAN });
+      expect(full.body).toMatchObject({ accountNo: '100123456789', iban: VALID_IBAN, bankBic: 'CIBEEGCXXXX' });
 
       const audit = await prisma.auditLog.findMany({ where: { entityType: 'employee', entityId: e.id }, orderBy: { id: 'asc' } });
       expect(audit.map((a) => a.action)).toEqual(['create', 'update', 'view_restricted']);
-      expect(audit[1].diff).toEqual({ bank: { bankName: { from: null, to: 'CIB' }, accountNo: 'changed', iban: 'changed', holderName: { from: null, to: 'Banked' } } });
+      expect(audit[1].diff).toEqual({
+        bank: { bankName: { from: null, to: 'Commercial International Bank' }, accountNo: 'changed', iban: 'changed', holderName: { from: null, to: 'Banked' } },
+      });
       expect(JSON.stringify(audit.map((a) => a.diff))).not.toContain('263180002');
+    });
+
+    describe('bank on the EG-ACH list', () => {
+      const saveBank = (id: string, body: object) => api().patch(`/api/employees/${id}/bank`).set('Cookie', hr).send(body);
+      const fullBank = async (id: string) => (await api().get(`/api/employees/${id}/bank`).set('Cookie', hr).expect(200)).body as Record<string, unknown>;
+      const lengthMessage = (bank: string, length: string) => `${bank} account numbers have ${length}. Check the number against the bank's letter.`;
+      const NBE_MESSAGE = lengthMessage('National Bank of Egypt', '19 digits');
+
+      it('a bank typed by its abbreviation is saved under the list’s name; its account number must have the bank’s length', async () => {
+        const e = await addEmployee('Ahli');
+        const named = await saveBank(e.id, { bankName: 'nbe' }).expect(200);
+        expect(named.body.bankName).toBe('National Bank of Egypt');
+
+        const short = await saveBank(e.id, { bankName: 'NBE', accountNo: '1001 2345 6789' }).expect(400);
+        expect(short.body.message).toBe(NBE_MESSAGE);
+        expect(JSON.stringify(short.body)).not.toContain('6789'); // restricted: the number is never repeated
+        const letters = await saveBank(e.id, { accountNo: '100200123456780000A' }).expect(400); // 19 characters, one a letter
+        expect(letters.body.message).toBe(NBE_MESSAGE);
+
+        // written with spaces and dashes, in Arabic digits: kept as the 19 digits
+        await saveBank(e.id, { bankName: 'National bank of egypt', accountNo: arabicDigits('100 200-1234 5678-00001') }).expect(200);
+        expect(await fullBank(e.id)).toMatchObject({ bankName: 'National Bank of Egypt', accountNo: '1002001234567800001', bankBic: 'NBEGEGCXXXX' });
+
+        const audit = await prisma.auditLog.findMany({ where: { entityType: 'employee', entityId: e.id }, orderBy: { id: 'asc' } });
+        expect(JSON.stringify(audit.map((a) => a.diff))).not.toContain('1002001234567800001');
+      });
+
+      it('each bank’s lengths: Audi Bank 12 or 16, ABK up to 10, Central Bank of Egypt any; a bank not on the list as typed', async () => {
+        const e = await addEmployee('Lengths');
+        await saveBank(e.id, { bankName: 'Audi Bank', accountNo: '001234567890' }).expect(200);
+        await saveBank(e.id, { bankName: 'AUDI', accountNo: '0012345678901234' }).expect(200);
+        const audi = await saveBank(e.id, { bankName: 'Audi Bank', accountNo: '00123456789012' }).expect(400);
+        expect(audi.body.message).toBe(lengthMessage('Audi Bank', '12 or 16 digits'));
+
+        await saveBank(e.id, { bankName: 'abk', accountNo: '1234567890' }).expect(200);
+        const abk = await saveBank(e.id, { bankName: 'ABK', accountNo: '12345678901' }).expect(400);
+        expect(abk.body.message).toBe(lengthMessage('Al Ahli Bank of Kuwait – Egypt', 'up to 10 digits'));
+
+        // the list gives no length for the Central Bank of Egypt: any number that is 4–34 letters and digits
+        for (const accountNo of ['12345', '1234567890123456789012345', 'CBE0012345']) {
+          await saveBank(e.id, { bankName: 'CBE', accountNo }).expect(200);
+        }
+        expect(await fullBank(e.id)).toMatchObject({ bankName: 'Central Bank of Egypt', accountNo: 'CBE0012345', bankBic: 'CBEGEGCXXXX' });
+        await saveBank(e.id, { bankName: 'CBE', accountNo: '123' }).expect(400); // still 4 to 34
+
+        // a bank not on the list ("Other"): kept as typed, its number letters and digits
+        const other = await saveBank(e.id, { bankName: '  Bank of Elsewhere  ', accountNo: 'GB12 ABCD-3456 7890' }).expect(200);
+        expect(other.body.bankName).toBe('Bank of Elsewhere');
+        expect(await fullBank(e.id)).toMatchObject({ bankName: 'Bank of Elsewhere', accountNo: 'GB12ABCD34567890', bankBic: null });
+      });
+
+      it('details already on file never block saving something else; a new bank must fit the number on file', async () => {
+        // saved before the list: "NBE" typed freely, with 12 digits (the API no longer takes these)
+        const e = await addEmployee('Legacy');
+        await prisma.employeeBank.create({ data: { employeeId: e.id, bankName: 'NBE', accountNo: '100123456789', holderName: 'Old Name' } });
+        await saveBank(e.id, { holderName: 'New Name' }).expect(200);
+        // the whole form sent back as it is, as the web app sends it
+        const form = { bankName: 'NBE', branch: null, accountNo: '100123456789', iban: null, holderName: 'Newer Name' };
+        const saved = await saveBank(e.id, form).expect(200);
+        expect(saved.body).toMatchObject({ bankName: 'National Bank of Egypt', holderName: 'Newer Name', accountNoMasked: '•••• 6789' });
+        // a new number must fit
+        const changed = await saveBank(e.id, { ...form, accountNo: '100123456780' }).expect(400);
+        expect(changed.body.message).toBe(NBE_MESSAGE);
+
+        // a new bank: the number on file must fit it
+        const moved = await addEmployee('Moved');
+        await saveBank(moved.id, { bankName: 'CIB', accountNo: '100123456789' }).expect(200);
+        const toNbe = await saveBank(moved.id, { bankName: 'National Bank of Egypt' }).expect(400);
+        expect(toNbe.body.message).toBe(NBE_MESSAGE);
+        expect(JSON.stringify(toNbe.body)).not.toContain('6789');
+        await saveBank(moved.id, { bankName: 'National Bank of Egypt', accountNo: '1002001234567800001' }).expect(200);
+        expect(await fullBank(moved.id)).toMatchObject({ bankName: 'National Bank of Egypt', accountNo: '1002001234567800001' });
+      });
     });
   });
 });
