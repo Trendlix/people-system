@@ -4,7 +4,7 @@ import { useId, useState } from 'react';
 import type { PdfField } from '@trendlix/shared';
 import { titleCase } from '@/lib/format';
 import { matchesTag } from '../../../../tag-check';
-import { fieldLabel, TAGS_BY_GROUP, type PaletteItem } from './samples';
+import { fieldLabel, isOptional, TAGS_BY_GROUP, type PaletteItem } from './samples';
 
 // The left of Place Fields. To place fields (HR, Admin): every tag, searched by its name or its English or Arabic label
 // and listed by group, then Check mark and Fixed text; one is picked, then placed on the form with a click or a drag.
@@ -106,6 +106,7 @@ export function FieldList({ fields, selected, onSelect, pageCount }: { fields: r
                         {f.tag}
                       </code>
                     )}
+                    {isOptional(f) && <span className="text-[11px] text-muted">Optional: left blank when there’s no value</span>}
                   </button>
                 </li>
               ))}

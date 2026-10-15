@@ -99,6 +99,7 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
             { key: 'governorate', label: 'Governorate', value: p.governorate, required: true },
             { key: 'city', label: 'City', value: p.city, required: true, ar: true },
             { key: 'addressAr', label: 'Address (Arabic)', value: p.addressAr, required: true, ar: true },
+            { key: 'buildingNo', label: 'Building number', value: p.buildingNo },
           ]}
         />
       </ProfileSection>

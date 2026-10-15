@@ -13,6 +13,7 @@ import { gradeRangeLabel } from '../../../../grades/label';
 import { BackLink, Loading, UUID } from '../../../../ui';
 import { AnchorSection } from '../../../anchor-section';
 import { JobTitleForm } from '../../../job-title-form';
+import { OccupationText } from '../../../job-titles-table';
 
 const notSet = <span className="text-muted">Not set</span>;
 
@@ -74,6 +75,15 @@ async function JobTitleDetails({ params }: { params: Promise<{ id: string; jobTi
             {departmentName(jobTitle.department)}
             {range && (
               <span className="badge">Grades: {range}</span>
+            )}
+          </p>
+          {/* the code social insurance Form 1 prints for everyone with this title */}
+          <p className="mt-1 text-sm text-muted">
+            Insurance occupation:{' '}
+            {jobTitle.occupationCode ? (
+              <OccupationText code={jobTitle.occupationCode} name={jobTitle.occupationName} className="text-ink" />
+            ) : (
+              'Not set'
             )}
           </p>
         </div>

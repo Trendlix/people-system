@@ -13,7 +13,9 @@ type TextField = {
   type?: 'text' | 'email' | 'tel';
   max: number;
   multiline?: boolean;
-  hint?: string;
+  /** Digits only, in a narrow box. */
+  numeric?: boolean;
+  hint?: React.ReactNode;
 };
 
 const GROUPS: { title: string; hint?: string; fields: TextField[] }[] = [
@@ -31,6 +33,29 @@ const GROUPS: { title: string; hint?: string; fields: TextField[] }[] = [
       { name: 'commercialRegNo', label: 'Commercial registration (السجل التجاري)', max: 50 },
       { name: 'taxRegNo', label: 'Tax registration number', max: 30 },
       { name: 'insuranceEmployerNo', label: 'Social insurance employer number', max: 30 },
+      // for social insurance Form 1 (owner, 15 October 2026)
+      {
+        name: 'insuranceOffice',
+        label: 'Social insurance office',
+        ar: true,
+        max: 120,
+        hint: (
+          <>
+            The office the company is registered with, e.g. <span lang="ar">مكتب تأمينات الدقي</span>.
+          </>
+        ),
+      },
+      {
+        name: 'insuranceSectorCode',
+        label: 'Sector code',
+        max: 2,
+        numeric: true,
+        hint: (
+          <>
+            1 or 2 digits, as the insurance office gave it. Printed in the <span lang="ar">قطاع المنشأة</span> boxes of Form 1.
+          </>
+        ),
+      },
     ],
   },
   {
@@ -82,7 +107,9 @@ export function CompanyForm({ company }: { company: Company }) {
               maxLength: f.max,
               required: f.name === 'nameEn',
               defaultValue: valueOf(state, f.name, typeof saved === 'string' ? saved : null),
-              className: 'input',
+              'aria-describedby': f.hint ? fid(`${f.name}-hint`) : undefined,
+              className: f.numeric ? 'input max-w-24 tabular-nums' : 'input',
+              ...(f.numeric ? { inputMode: 'numeric' as const, autoComplete: 'off' } : {}),
               ...(f.ar ? { lang: 'ar', dir: 'rtl' as const } : {}),
             };
             return (
@@ -91,7 +118,11 @@ export function CompanyForm({ company }: { company: Company }) {
                   {f.label}
                 </label>
                 {f.multiline ? <textarea rows={2} {...common} /> : <input type={f.type ?? 'text'} {...common} />}
-                {f.hint && <p className="hint">{f.hint}</p>}
+                {f.hint && (
+                  <p id={fid(`${f.name}-hint`)} className="hint">
+                    {f.hint}
+                  </p>
+                )}
               </div>
             );
           })}

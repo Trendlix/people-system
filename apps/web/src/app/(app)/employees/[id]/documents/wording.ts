@@ -152,21 +152,25 @@ export function contractGroupTitle(group: Pick<ContractGroup, 'contractNumber' |
 
 // ---------- where a missing detail is filled in ----------
 
+/** What is set on the employee's job title (its duties, its insurance occupation): under Organization. */
+const JOB_TITLE_PLACE = 'Job title, under Organization › Departments & Job Titles';
+
 /**
  * The link to where a missing detail is filled in: the field's cell on a profile tab (`#field-<key>`, a paper's row
- * `#paper-<key>` on Documents), the company profile, or the contract on the Contracts tab. Null for a place the screens
- * don't know.
+ * `#paper-<key>` on Documents), the company profile, the contract on the Contracts tab, or the job titles under
+ * Organization (the job title's insurance occupation). Null for a place the screens don't know.
  */
 export function missingHref(employeeId: string, where: Pick<DocumentDetailPlace, 'key'> & { tab: string }): string | null {
   const key = encodeURIComponent(where.key ?? '');
   if (where.tab === 'company') return '/organization/company';
+  if (where.tab === 'departments') return '/organization/departments';
   if (where.tab === 'contracts') return `${profileHref(employeeId, 'contracts')}#contract`;
   if (!isProfileTab(where.tab)) return null;
   const anchor = where.tab === 'documents' ? 'paper' : 'field';
   return key ? `${profileHref(employeeId, where.tab)}#${anchor}-${key}` : profileHref(employeeId, where.tab);
 }
 
-/** Where it is filled in, in words: "Basic Data", "Company profile", "Contract". */
+/** Where it is filled in, in words: "Basic Data", "Company profile", "Contract", "Job title, under Organization › …". */
 export function placeLabel(tab: string): string {
   const named: Record<string, string> = {
     basic: 'Basic Data',
@@ -175,6 +179,7 @@ export function placeLabel(tab: string): string {
     contracts: 'Contract',
     documents: 'Employee file',
     company: 'Company profile',
+    departments: JOB_TITLE_PLACE,
   };
   return named[tab] ?? tab;
 }
@@ -191,7 +196,7 @@ export function missingLinks(employeeId: string, missing: readonly MissingDocume
   return missing.map((m) => {
     const label = m.label || m.tag;
     // the duties are written on the job title itself, under Organization (owner, 15 October 2026)
-    if (m.tag === 'job_duties') return { tag: m.tag, label, place: 'Job title, under Organization › Departments & Job Titles', href: '/organization/departments' };
+    if (m.tag === 'job_duties') return { tag: m.tag, label, place: JOB_TITLE_PLACE, href: '/organization/departments' };
     return { tag: m.tag, label, place: placeLabel(m.where?.tab ?? ''), href: m.where ? missingHref(employeeId, m.where) : null };
   });
 }

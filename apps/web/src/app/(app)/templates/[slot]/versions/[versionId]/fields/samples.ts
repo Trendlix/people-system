@@ -131,6 +131,22 @@ export function newField(item: PaletteItem, id: string, page: number, rect: PdfR
   return { ...base, kind: 'text', tag: item.tag, align: defaultAlign(language), shrinkToFit: true };
 }
 
+/** Whether a field of this kind can be optional: text and boxes, which print a tag's value. */
+export const canBeOptional = (kind: PdfFieldKind) => kind === 'text' || kind === 'boxes';
+
+/**
+ * Whether the field is left blank when its tag has no value (a building number, a personal email), rather than stopping
+ * the document as a Word template's missing value does. Text and boxes only.
+ */
+export const isOptional = (field: Pick<PdfField, 'kind' | 'optional'>) => canBeOptional(field.kind) && !!field.optional;
+
+/** The field made optional, or not: `optional: true`, or nothing at all when it isn't (as it is saved). */
+export function withOptional(field: PdfField, optional: boolean): PdfField {
+  const next = { ...field };
+  delete next.optional;
+  return optional && canBeOptional(field.kind) ? { ...next, optional: true } : next;
+}
+
 /** What every kind keeps: where the field is and its font. */
 function common(field: PdfField): PdfField {
   const { id, page, x, y, width, height, fontSize, bold } = field;
@@ -139,11 +155,11 @@ function common(field: PdfField): PdfField {
 
 /**
  * A field turned into another kind, with that kind's defaults: Boxes takes its tag's boxes (defaultBoxes); a check keeps
- * the tag, to compare with; fixed text drops it.
+ * the tag, to compare with; fixed text drops it. Text and boxes stay optional when they were.
  */
 export function changeKind(field: PdfField, kind: PdfFieldKind, language: TemplateLanguage): PdfField {
   if (kind === field.kind) return field;
-  const base = { ...common(field), kind };
+  const base = { ...common(field), kind, ...(isOptional(field) && canBeOptional(kind) && { optional: true }) };
   if (kind === 'boxes') return { ...base, ...defaultBoxes(field.tag, language), boxGap: 0, groupGap: 0 };
   if (kind === 'check') return { ...base, equals: '' };
   if (kind === 'fixed') return { ...base, tag: null, text: '', align: field.align ?? defaultAlign(language) };

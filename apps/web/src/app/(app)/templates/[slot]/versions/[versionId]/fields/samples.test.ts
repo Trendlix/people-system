@@ -1,6 +1,21 @@
 import { TEMPLATE_TAGS, type PdfField } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { boxSamples, changeKind, changeTag, dateKind, defaultBoxes, fieldLabel, isAmountTag, newField, sampleText, sampleValue, TAGS_BY_GROUP } from './samples';
+import {
+  boxSamples,
+  canBeOptional,
+  changeKind,
+  changeTag,
+  dateKind,
+  defaultBoxes,
+  fieldLabel,
+  isAmountTag,
+  isOptional,
+  newField,
+  sampleText,
+  sampleValue,
+  TAGS_BY_GROUP,
+  withOptional,
+} from './samples';
 
 const field = (over: Partial<PdfField> = {}): PdfField => ({ id: 'a1b2c3d4', kind: 'text', tag: 'full_name_ar', page: 1, x: 100, y: 200, width: 150, height: 16, fontSize: 11, ...over });
 
@@ -105,5 +120,45 @@ describe('new fields and their kinds', () => {
     const id = changeKind(field({ tag: 'national_id' }), 'boxes', 'ar');
     expect(changeTag({ ...id, boxGap: 1.5 }, 'join_date', 'ar')).toMatchObject({ tag: 'join_date', boxes: 8, groups: [4, 2, 2], dateOrder: 'YMD', boxGap: 1.5 });
     expect(changeTag(field(), 'full_name_en', 'ar')).toMatchObject({ kind: 'text', tag: 'full_name_en' });
+  });
+});
+
+describe('optional fields', () => {
+  it('lets text and boxes be optional, not a check mark or fixed text', () => {
+    expect(canBeOptional('text')).toBe(true);
+    expect(canBeOptional('boxes')).toBe(true);
+    expect(canBeOptional('check')).toBe(false);
+    expect(canBeOptional('fixed')).toBe(false);
+  });
+
+  it('makes a field optional, and back, leaving nothing behind when it is not', () => {
+    const on = withOptional(field({ tag: 'building_no' }), true);
+    expect(on.optional).toBe(true);
+    expect(isOptional(on)).toBe(true);
+    const off = withOptional(on, false);
+    expect(off).not.toHaveProperty('optional');
+    expect(isOptional(off)).toBe(false);
+    expect(off).toEqual(field({ tag: 'building_no' }));
+  });
+
+  it('never makes a check mark or fixed text optional', () => {
+    expect(withOptional(field({ kind: 'check' }), true)).not.toHaveProperty('optional');
+    expect(isOptional(field({ kind: 'fixed', optional: true }))).toBe(false);
+  });
+
+  it('stays optional between text and boxes, and stops being so as a check mark or fixed text', () => {
+    const text = field({ tag: 'building_no', optional: true });
+    const boxes = changeKind(text, 'boxes', 'ar');
+    expect(boxes.optional).toBe(true);
+    expect(changeKind(boxes, 'text', 'ar').optional).toBe(true);
+    expect(changeKind(text, 'check', 'ar')).not.toHaveProperty('optional');
+    expect(changeKind(text, 'fixed', 'ar')).not.toHaveProperty('optional');
+    expect(changeKind(field({ tag: 'building_no' }), 'boxes', 'ar')).not.toHaveProperty('optional');
+  });
+
+  it('keeps it when the tag changes', () => {
+    const boxes = changeKind(field({ tag: 'building_no', optional: true }), 'boxes', 'ar');
+    expect(changeTag(boxes, 'insurance_no', 'ar').optional).toBe(true);
+    expect(changeTag(field({ optional: true }), 'personal_email', 'ar').optional).toBe(true);
   });
 });

@@ -57,6 +57,7 @@ const PERSONAL_TEXT = [
   'addressAr',
   'city',
   'governorate',
+  'buildingNo',
   'emergencyName',
   'emergencyRelation',
   'emergencyMobile',

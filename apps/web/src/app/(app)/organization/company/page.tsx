@@ -92,6 +92,10 @@ async function CompanyProfile() {
           <Row label="Commercial registration">{company.commercialRegNo}</Row>
           <Row label="Tax registration number">{company.taxRegNo}</Row>
           <Row label="Social insurance employer no.">{company.insuranceEmployerNo}</Row>
+          <Row label="Social insurance office" ar>
+            {company.insuranceOffice}
+          </Row>
+          <Row label="Sector code">{company.insuranceSectorCode}</Row>
           <Row label="Business activity" ar>
             {company.activity}
           </Row>

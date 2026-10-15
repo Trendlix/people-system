@@ -170,6 +170,15 @@ describe('fields', () => {
     expect(fieldsDirty([boxes], [{ ...boxes, nudges: [{ dx: 0, dy: 1 }] }])).toBe(true);
   });
 
+  it('sees a field made optional as a change, and optional turned off as none', () => {
+    const saved = [field()];
+    expect(fieldsDirty(saved, [field({ optional: true })])).toBe(true);
+    expect(fieldsDirty(saved, [field({ optional: false })])).toBe(false);
+    expect(fieldsDirty([field({ optional: true })], [field({ optional: true })])).toBe(false);
+    expect(cleanField(field({ optional: false }))).not.toHaveProperty('optional');
+    expect(cleanField(field({ optional: true }))).toMatchObject({ optional: true });
+  });
+
   it('keeps a field as it is sent: rounded, without empty options, the tag always there', () => {
     expect(cleanField({ ...field({ x: 10.123, bold: false, text: '', groups: [] }), tag: null })).toEqual({
       fontSize: 11,

@@ -16,6 +16,8 @@ const FIELDS = [
   'commercialRegNo',
   'taxRegNo',
   'insuranceEmployerNo',
+  'insuranceOffice',
+  'insuranceSectorCode',
   'addressAr',
   'addressEn',
   'city',

@@ -120,6 +120,18 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
         ),
       },
       { name: 'addressAr', label: 'Address (Arabic)', ar: true, multiline: true, max: 300, wide: true, hint: 'As printed on contracts.' },
+      // asked for apart from the address on social insurance Form 1 (owner, 15 October 2026)
+      {
+        name: 'buildingNo',
+        label: 'Building number',
+        max: 10,
+        placeholder: 'e.g. 12',
+        hint: (
+          <>
+            Printed as <span lang="ar">عقار رقم</span> on social insurance Form 1.
+          </>
+        ),
+      },
     ],
   },
   {

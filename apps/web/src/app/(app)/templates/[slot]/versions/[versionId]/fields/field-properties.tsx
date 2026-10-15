@@ -12,10 +12,10 @@ import {
 } from '@trendlix/shared';
 import { useFieldIds } from '@/components/form';
 import { BOXES_MAX, boxCount, clampRect, groupsText, parseGroups, round2, setBoxCount, withRect } from './place';
-import { changeKind, changeTag, dateKind, fieldLabel, isAmountTag, KIND_LABELS, TAGS_BY_GROUP } from './samples';
+import { canBeOptional, changeKind, changeTag, dateKind, fieldLabel, isAmountTag, KIND_LABELS, TAGS_BY_GROUP, withOptional } from './samples';
 
 // The right of Place Fields: the selected field's settings, each applied as it is changed (Save sends them all). Its
-// tag and kind; its font; for text, how it lines up and whether a long value shrinks; for boxes, how many, their groups
+// tag and kind; for text and boxes, whether it is left blank when the tag has no value; its font; for text, how it lines up and whether a long value shrinks; for boxes, how many, their groups
 // ("4+2+2"), the gaps between them, which side a short value keeps to, a date's order, an amount's part, Arabic digits
 // and the boxes moved on their own; for a check mark, when it is ticked and its mark; for fixed text, the text; and its
 // exact place, in points. Read-only, the same settings, greyed.
@@ -229,6 +229,15 @@ export function FieldProperties({
       </div>
 
       {field.kind !== 'fixed' && <TagSelect field={field} language={language} onChange={onChange} />}
+
+      {canBeOptional(field.kind) && (
+        <Check
+          label="Leave blank when there’s no value"
+          hint="Otherwise a missing value stops the document, as in a Word template."
+          checked={!!field.optional}
+          onChange={(optional) => onChange((f) => withOptional(f, optional))}
+        />
+      )}
 
       {field.kind === 'check' && (
         <>

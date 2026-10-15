@@ -177,6 +177,7 @@ function Help({ editable, fields, pages }: { editable: boolean; fields: number; 
           <li>Arrow keys move it half a point; with Shift, 5 points.</li>
           <li>Delete removes it; Ctrl+D (⌘D on a Mac) duplicates it; Esc lets it go.</li>
           <li>Alt-click (Option-click on a Mac) a box of a Boxes field to move that box alone.</li>
+          <li>Dashed lines mark an optional field: it is left blank when there’s no value.</li>
           <li>Test print shows the form filled with sample values, exactly as it will print.</li>
         </ul>
       )}

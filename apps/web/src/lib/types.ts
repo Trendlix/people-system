@@ -105,6 +105,13 @@ export interface JobTitleSummary {
   minGrade: GradeRef | null;
   maxGrade: GradeRef | null;
   jdVersion: number;
+  /**
+   * Its occupation in the social insurance table (packages/shared occupations.ts), the six-digit code printed on Form 1
+   * (كود المهنة) for every employee with this title, and its Arabic name; null when not chosen. Optional: left out by an
+   * API from before October 2026.
+   */
+  occupationCode?: string | null;
+  occupationName?: string | null;
   department: DepartmentRef & { parent: DepartmentRef | null };
   _count: { duties: number };
 }
@@ -138,6 +145,13 @@ export interface Company {
   commercialRegNo: string | null;
   taxRegNo: string | null;
   insuranceEmployerNo: string | null;
+  /**
+   * For social insurance Form 1: the insurance office the company is registered with, in Arabic (e.g. مكتب تأمينات
+   * الدقي), and its sector code, one or two digits as the office gave it (قطاع المنشأة). Optional: left out by an API from
+   * before October 2026.
+   */
+  insuranceOffice?: string | null;
+  insuranceSectorCode?: string | null;
   addressAr: string | null;
   addressEn: string | null;
   city: string | null;
@@ -327,6 +341,11 @@ export interface EmployeeProfile {
   /** The city or district, in Arabic as on the ID card (e.g. مدينة نصر). */
   city: string | null;
   governorate: string | null;
+  /**
+   * عقار رقم: the building number, which social insurance Form 1 asks for apart from the address. Optional: left out by
+   * an API from before October 2026.
+   */
+  buildingNo?: string | null;
   emergencyName: string | null;
   emergencyRelation: string | null;
   emergencyMobile: string | null;
@@ -983,10 +1002,12 @@ export interface DocumentsTab {
 
 /**
  * Where a missing detail is filled in: a profile tab and the field's cell there (#field-<key>, on Documents the paper's
- * row #paper-<key>), the company profile (`company`), or the contract on the Contracts tab (`contracts`).
+ * row #paper-<key>), the company profile (`company`), the contract on the Contracts tab (`contracts`), or the employee's
+ * job title, under Organization › Departments & Job Titles (`departments`, e.g. key `occupationCode`: its insurance
+ * occupation).
  */
 export interface DocumentDetailPlace {
-  tab: ProfileGap['tab'] | 'contracts' | 'company';
+  tab: ProfileGap['tab'] | 'contracts' | 'company' | 'departments';
   key: string;
 }
 
@@ -1073,7 +1094,10 @@ export interface OfferListItem {
 export interface OfferMissingValue {
   tag: string;
   label: string;
-  /** `tab`: 'offer' (a field of the offer: `key`), 'company' (the company profile), or another place the API names. */
+  /**
+   * `tab`: 'offer' (a field of the offer: `key`), 'company' (the company profile), 'departments' (the offer's job title,
+   * e.g. key `occupationCode`: its insurance occupation), or another place the API names.
+   */
   where: { tab: string; key: string };
 }
 

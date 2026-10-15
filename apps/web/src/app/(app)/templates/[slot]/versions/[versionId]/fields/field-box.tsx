@@ -3,11 +3,12 @@
 import { memo } from 'react';
 import { pdfFieldBoxes, type PdfField, type PdfFieldKind, type TemplateLanguage } from '@trendlix/shared';
 import { GRIPS, type Grip } from './place';
-import { boxSamples, fieldLabel, sampleText } from './samples';
+import { boxSamples, fieldLabel, isOptional, sampleText } from './samples';
 
 // One field drawn over its page on Place Fields: an outlined, lightly filled rectangle (each box of a boxes field as the
 // filled PDF prints into it, pdfFieldBoxes), with sample content inside so its place can be judged by eye, and, once
-// selected, the handles it is resized by. The pointer and the keys are the editor's (field-editor.tsx): this only says
+// selected, the handles it is resized by. An optional field (left blank when its tag has no value) is outlined with
+// dashes: a text field's outline, a boxes field's boxes. The pointer and the keys are the editor's (field-editor.tsx): this only says
 // which field (data-field), handle (data-grip) or box was pressed.
 
 const KIND_STYLE: Record<PdfFieldKind, string> = {
@@ -54,6 +55,7 @@ export const FieldBox = memo(function FieldBox({
   language: TemplateLanguage;
   editable: boolean;
 }) {
+  const optional = isOptional(field);
   const width = field.width * scale;
   const height = field.height * scale;
   const font = { fontSize: field.fontSize * scale, fontWeight: field.bold ? 700 : 400, lineHeight: 1 };
@@ -69,14 +71,16 @@ export const FieldBox = memo(function FieldBox({
       role="button"
       tabIndex={0}
       aria-pressed={selected}
-      aria-label={`${fieldLabel(field)}, page ${field.page}`}
+      aria-label={`${fieldLabel(field)}${optional ? ', optional' : ''}, page ${field.page}`}
       className={`absolute box-border border outline-accent ${needsTag(field) ? 'border-danger bg-danger/10' : KIND_STYLE[field.kind]} ${
+        optional && field.kind === 'text' ? 'border-dashed' : ''
+      } ${
         selected ? 'z-10 outline-2 outline-offset-2' : 'hover:outline hover:outline-offset-1'
       } ${editable ? 'cursor-move' : 'cursor-pointer'} focus-visible:outline-2 focus-visible:outline-offset-2`}
       style={{ left: field.x * scale, top: field.y * scale, width, height }}
     >
       {field.kind === 'boxes' ? (
-        <BoxesInside field={field} scale={scale} samples={samples} box={box} font={font} />
+        <BoxesInside field={field} scale={scale} samples={samples} box={box} font={font} dashed={optional} />
       ) : (
         text && (
           <span className={`pointer-events-none absolute inset-0 flex items-center overflow-hidden px-[1px] whitespace-nowrap text-ink ${JUSTIFY[align]}`} style={font}>
@@ -98,8 +102,22 @@ export const FieldBox = memo(function FieldBox({
   );
 });
 
-/** The boxes of a boxes field, where the filled PDF prints into them, each with its sample character. */
-function BoxesInside({ field, scale, samples, box, font }: { field: PdfField; scale: number; samples: boolean; box: number | null; font: React.CSSProperties }) {
+/** The boxes of a boxes field, where the filled PDF prints into them, each with its sample character; `dashed` when optional. */
+function BoxesInside({
+  field,
+  scale,
+  samples,
+  box,
+  font,
+  dashed,
+}: {
+  field: PdfField;
+  scale: number;
+  samples: boolean;
+  box: number | null;
+  font: React.CSSProperties;
+  dashed: boolean;
+}) {
   const rects = pdfFieldBoxes(field);
   const chars = samples ? boxSamples(field) : [];
   return rects.map((r, i) => (
@@ -108,7 +126,7 @@ function BoxesInside({ field, scale, samples, box, font }: { field: PdfField; sc
       data-box={i}
       className={`pointer-events-none absolute box-border flex items-center justify-center border text-ink tabular-nums ${
         box === i ? 'z-10 border-2 border-warn bg-warn/20' : 'border-ok bg-ok/10'
-      }`}
+      } ${dashed ? 'border-dashed' : ''}`}
       style={{ left: (r.x - field.x) * scale, top: (r.y - field.y) * scale, width: r.width * scale, height: r.height * scale, ...font }}
     >
       {chars[i]}

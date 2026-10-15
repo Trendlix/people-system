@@ -158,6 +158,26 @@ describe('what the template lacks', () => {
     expect(missingHelp(offer({ missing: [duties] }))[0].href).toBe('/organization/departments');
   });
 
+  it('sends a missing insurance occupation to the job title, under Organization, whatever the offer’s status', () => {
+    const occupation = { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'departments', key: 'occupationCode' } };
+    const help = missingHelp({ ...offer({ missing: [occupation] }), jobTitle: { id: 'jt-1', titleEn: 'Sales Manager', titleAr: null } });
+    expect(help).toEqual([
+      {
+        tag: 'occupation_code',
+        label: 'Occupation code (social insurance)',
+        what: 'Choose the insurance occupation of the Sales Manager job title under Organization › Departments & Job Titles.',
+        href: '/organization/departments?q=Sales%20Manager',
+        linkText: 'Departments & Job Titles',
+      },
+    ]);
+    expect(missingHelp(offer({ status: 'sent', missing: [occupation] }))[0]).toMatchObject({
+      what: 'Choose the insurance occupation of the job title under Organization › Departments & Job Titles.',
+      href: '/organization/departments',
+    });
+    const other = { tag: 'something', label: 'Something', where: { tab: 'departments', key: 'other' } };
+    expect(missingHelp(offer({ missing: [other] }))[0].what).toBe('Fill it in on the job title under Organization › Departments & Job Titles.');
+  });
+
   it("doesn't link to editing an offer that was sent", () => {
     expect(missingHelp(offer({ status: 'sent', missing: [missing[0]] }))[0]).toMatchObject({ href: null, what: 'It was left empty on the offer.' });
   });

@@ -13,6 +13,7 @@ import {
   newestFirst,
   nextSteps,
   orderedSections,
+  placeLabel,
   progressSteps,
   sectionTitle,
   signedFileHref,
@@ -66,6 +67,26 @@ describe('where a missing detail is filled in', () => {
     expect(missingHref(ID, { tab: 'company', key: 'taxRegNo' })).toBe('/organization/company');
     expect(missingHref(ID, { tab: 'contracts', key: 'grossSalary' })).toBe('/employees/emp-1?tab=contracts#contract');
     expect(missingHref(ID, { tab: 'contracts', key: 'contract' })).toBe('/employees/emp-1?tab=contracts#contract');
+  });
+
+  it('sends what is set on the job title, its insurance occupation, to Departments & Job Titles', () => {
+    expect(missingHref(ID, { tab: 'departments', key: 'occupationCode' })).toBe('/organization/departments');
+    expect(missingHref(ID, { tab: 'departments', key: '' })).toBe('/organization/departments');
+    expect(placeLabel('departments')).toBe('Job title, under Organization › Departments & Job Titles');
+    expect(
+      missingLinks(ID, [
+        { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'departments', key: 'occupationCode' } },
+        { tag: 'occupation_name', label: '', where: { tab: 'departments', key: 'occupationCode' } },
+      ]),
+    ).toEqual([
+      {
+        tag: 'occupation_code',
+        label: 'Occupation code (social insurance)',
+        place: 'Job title, under Organization › Departments & Job Titles',
+        href: '/organization/departments',
+      },
+      { tag: 'occupation_name', label: 'occupation_name', place: 'Job title, under Organization › Departments & Job Titles', href: '/organization/departments' },
+    ]);
   });
 
   it('gives no link for a place it doesn’t know, and the tab alone without a key', () => {

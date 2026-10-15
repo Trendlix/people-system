@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useState } from 'react';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
@@ -7,6 +8,12 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import { RichTextEditor } from '@/components/rich-text-editor';
 import type { Department, FormState, Grade, JobTitle } from '@/lib/types';
 import { gradeLabel } from '../grades/label';
+
+// The Insurance occupation picker brings the social insurance occupation table (3,052 rows) with it: loaded on its own,
+// so the table ships only with the pages that have this form.
+const OccupationPicker = dynamic(() => import('./occupation-picker').then((m) => m.OccupationPicker), {
+  loading: () => <p className="input flex max-w-lg items-center text-muted">Loading the occupations…</p>,
+});
 
 /**
  * A job title and its job description. It belongs to a department itself (e.g. Head of Marketing, under Marketing) or to
@@ -21,6 +28,9 @@ import { gradeLabel } from '../grades/label';
  *
  * The job description's purpose, duties and requirements are simple rich text, like an email's (owner's request,
  * 15 October 2026): bold, italic, underline, bulleted and numbered lists, and indents, sent as HTML.
+ *
+ * Its Insurance occupation is the social insurance table's (owner, 15 October 2026): every employee with the title gets
+ * its code on Form 1.
  */
 export function JobTitleForm({
   action,
@@ -93,6 +103,21 @@ export function JobTitleForm({
             className="input"
           />
         </div>
+      </div>
+
+      <div>
+        <label htmlFor={fid('occupationCode')} className="label">
+          Insurance occupation
+        </label>
+        <OccupationPicker
+          id={fid('occupationCode')}
+          name="occupationCode"
+          defaultValue={valueOf(state, 'occupationCode', jobTitle?.occupationCode)}
+          describedBy={fid('occupationCode-hint')}
+        />
+        <p id={fid('occupationCode-hint')} className="hint">
+          Printed on social insurance Form 1 (<span lang="ar">كود المهنة</span>). Every employee with this job title gets it.
+        </p>
       </div>
 
       <fieldset aria-describedby={fid('grades-hint')} className="max-w-lg">
