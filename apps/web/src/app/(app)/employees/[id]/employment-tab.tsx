@@ -16,7 +16,7 @@ import { DeleteRowButton } from './inline-forms';
 // or a way to add one; every employment in the history, newest first; and the people who report to this person now.
 // HR changes employments, confirms probation and records endings; the CEO approves or rejects endings here; only a
 // Super Admin may delete an employment added by mistake (the API checks all of it again). The contract (its versions,
-// New contract and Renew, signing and filing dates) is on the Contracts tab.
+// New contract and Renew, signing and filing dates) is on the Contracts tab; the social insurance work on its own tab.
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -251,7 +251,8 @@ export async function EmploymentTab({
           <FieldGrid fields={employmentFields(e, linkPeople, topGrade)} />
           <p className="text-sm text-muted">
             {e.contract ? `Contract ${e.contract.number}, version ${e.contract.version}. ` : ''}The contract, its versions and the documents generated from
-            the templates are on the <Link href={profileHref(p.id, 'contracts')}>Contracts tab</Link>.
+            the templates are on the <Link href={profileHref(p.id, 'contracts')}>Contracts tab</Link>; the social insurance forms are on the{' '}
+            <Link href={profileHref(p.id, 'insurance')}>Social Insurance tab</Link>.
           </p>
         </ProfileSection>
       ) : (

@@ -260,7 +260,19 @@ export interface Employment {
   updatedAt: string;
   /** May be a team: then `parent` is its department. */
   department: EmploymentPlace | null;
-  jobTitle: { id: string; titleEn: string; titleAr: string | null; jdVersion: number } | null;
+  /**
+   * With the department the title is under and its social insurance occupation (code and Arabic name, null when not
+   * chosen), for the Social Insurance tab (owner, 16 October 2026). Those three are left out by an API from before it.
+   */
+  jobTitle: {
+    id: string;
+    titleEn: string;
+    titleAr: string | null;
+    jdVersion: number;
+    departmentId?: string;
+    occupationCode?: string | null;
+    occupationName?: string | null;
+  } | null;
   /** The person's own grade in this employment; within the job title's range when the title has one. */
   gradeId: string | null;
   grade: GradeRef | null;
@@ -930,12 +942,12 @@ export interface TemplateFields {
   editable: boolean;
 }
 
-// ---------- documents generated from the templates: the profile's Contracts tab ----------
+// ---------- documents generated from the templates: the profile's Contracts and Social Insurance tabs ----------
 // The company issues them from its published templates; each one goes Generated → Printed → Signed copy uploaded →
 // Verified. HR generates and moves them along, the CEO views and downloads them, only a Super Admin deletes one. Dates
 // are "YYYY-MM-DD"; moments are ISO.
 
-/** The parts of the Contracts tab, in this order. */
+/** The parts of the documents, in this order; social insurance is listed on its own tab, the others on Contracts. */
 export type DocumentSectionKey = 'contract' | 'hiring' | 'insurance' | 'letters' | 'leaving';
 
 /** Where a generated document stands. */

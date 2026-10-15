@@ -11,8 +11,8 @@ import { SIGNER_LABELS, templateHref } from '../../../templates/wording';
 import { isProfileTab, profileHref } from '../../tab-list';
 
 // How the profile's Contracts tab words the documents generated from templates (its sections, a document's progress,
-// where a template stands) and where each missing detail is filled in. Pure code (no server-only), tested; relative
-// imports, as vitest doesn't know the @/ paths.
+// where a template stands) and where each missing detail is filled in; the Social Insurance tab words its forms the
+// same way. Pure code (no server-only), tested; relative imports, as vitest doesn't know the @/ paths.
 //
 // These are the documents the company issues (Generated → Printed → Signed copy uploaded → Verified); the papers the
 // employee brings are the employee file, on the Documents tab.
@@ -39,6 +39,15 @@ export function orderedSections<S extends { key: string }>(sections: readonly S[
 
 export function sectionTitle(key: string): string {
   return SECTION_TITLES[key as DocumentSectionKey] ?? key;
+}
+
+/**
+ * The sections the Contracts tab lists, in its order: all but social insurance, whose forms are on the Social Insurance
+ * tab (owner's request, 16 October 2026). The contract's social insurance copy is a copy of the contract: it stays with
+ * the contract's documents.
+ */
+export function contractsTabSections<S extends { key: string }>(sections: readonly S[]): S[] {
+  return orderedSections(sections).filter((s) => s.key !== 'insurance');
 }
 
 // ---------- a generated document's progress ----------

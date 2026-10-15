@@ -3,6 +3,7 @@ import type { DocumentItem, GeneratedDocument } from '../../../../../lib/types';
 import {
   contractGroups,
   contractGroupTitle,
+  contractsTabSections,
   documentDownloadHref,
   documentFileHref,
   inputsText,
@@ -115,6 +116,11 @@ describe('the sections', () => {
       (s) => s.key,
     );
     expect(keys).toEqual(['contract', 'hiring', 'insurance', 'letters', 'leaving', 'other']);
+  });
+
+  it('leave social insurance to its own tab: the Contracts tab lists the others, in its order', () => {
+    const sections = [{ key: 'leaving' }, { key: 'insurance' }, { key: 'contract' }, { key: 'hiring' }, { key: 'letters' }];
+    expect(contractsTabSections(sections).map((s) => s.key)).toEqual(['contract', 'hiring', 'letters', 'leaving']);
   });
 
   it('are titled for the screen', () => {

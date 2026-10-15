@@ -15,19 +15,22 @@ import { limitFileSize, PAPERWORK_ACCEPT, PDF_MAX_BYTES } from '../../paperwork'
 import { withSmallerPhotos } from '../../shrink-photo';
 import { INPUT_LABELS, inputLabel, type CheckResult, type GenerateResult, type MissingLink } from './wording';
 
-// The HR-only parts of a document row on the Contracts tab: Generate (check first, then what is typed and the date) and
-// uploading the signed copy (chosen, dropped or scanned, checked, then confirmed).
+// The HR-only parts of a document row on the Contracts and Social Insurance tabs: Generate (check first, then what is
+// typed and the date) and uploading the signed copy (chosen, dropped or scanned, checked, then confirmed).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
 const small = 'btn min-h-9 px-3';
 const TRY_AGAIN = 'Cannot reach the server. Please try again in a moment.';
 
-/** The details a template still lacks, each linked to where it is filled in. Nothing was generated. */
-function MissingList({ missing }: { missing: MissingLink[] }) {
+/**
+ * The details a template still lacks, each linked to where it is filled in: after Generate (nothing was generated, said
+ * at once), or on the Social Insurance tab's readiness (`title`, shown as the page loads, so not announced).
+ */
+export function MissingList({ missing, title = 'Fill these in first. Nothing was generated.', alert = true }: { missing: MissingLink[]; title?: string; alert?: boolean }) {
   return (
-    <div role="alert" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-      <p className="font-semibold">Fill these in first. Nothing was generated.</p>
+    <div role={alert ? 'alert' : undefined} className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+      <p className="font-semibold">{title}</p>
       <ul className="mt-2 list-disc space-y-1 pl-5">
         {missing.map((m, i) => (
           <li key={`${m.tag}-${i}`}>

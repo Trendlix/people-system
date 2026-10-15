@@ -10,8 +10,9 @@ import { GeneratedDocuments, GeneratedDocumentsLoading } from './document-rows';
 
 // The profile's Contracts tab: what the company issues. First the current employment's contract (its signed version,
 // a draft to sign, New contract or Renew, the filing dates, every version), moved here from the Employment tab; then the
-// documents generated from the templates, per contract version and for hiring, social insurance, letters and leaving.
-// The papers the employee brings stay on the Documents tab.
+// documents generated from the templates, per contract version and for hiring, letters and leaving. Social insurance
+// (its details and Forms 1 and 6) has its own tab since 16 October 2026 (owner's request); the contract's social
+// insurance copy stays here, with the contract. The papers the employee brings stay on the Documents tab.
 //
 // Whoever sees the Employment details sees the contract, as before; the generated documents are HR's and the CEO's
 // (HR generates and moves them along, the CEO views and downloads; the API checks this again).

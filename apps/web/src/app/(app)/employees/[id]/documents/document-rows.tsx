@@ -3,15 +3,15 @@ import { DocumentViewer, VIEW_BUTTON } from '@/components/document-viewer';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
 import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import type { DocumentItem, EmployeeProfile, GeneratedDocument, GeneratedDocumentStatus } from '@/lib/types';
-import { FieldGrid, Loading, ProfileSection, profileHref, todayInCairo, type GridField } from '../../ui';
+import { Loading, ProfileSection, todayInCairo } from '../../ui';
 import { ActionButton } from '../contracts/contract-buttons';
-import { formatEgp } from '../contracts/salary';
 import { loadDocuments } from './data';
 import { checkDocument, deleteDocument, generateDocument, markPrinted, uploadSignedCopy, verifyDocument } from './document-actions';
 import { GenerateDocument, UploadSignedCopy } from './document-forms';
 import {
   contractGroups,
   contractGroupTitle,
+  contractsTabSections,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_STATUS_TONE,
   documentDownloadHref,
@@ -23,7 +23,6 @@ import {
   newestFirst,
   nextSteps,
   NOT_AVAILABLE,
-  orderedSections,
   progressSteps,
   sectionTitle,
   signedFileHref,
@@ -34,13 +33,15 @@ import {
 } from './wording';
 
 // The documents generated from templates, on the profile's Contracts tab: per contract version its documents (the
-// official and social insurance copies), then Hiring, Social Insurance, Letters & Certificates and Leaving. Each item
-// says where its template stands; HR generates it (after a check of what it needs) and takes each document through
-// Generated → Printed → Signed copy uploaded → Verified; the CEO views and downloads; a Super Admin deletes. A document
-// is opened and saved only as a protected PDF, never as a Word file (owner's request, 15 October 2026: "No doc file
-// export, just a protected PDF").
+// official and social insurance copies), then Hiring, Letters & Certificates and Leaving. Social insurance Forms 1 and 6
+// are listed the same way on the Social Insurance tab (owner's request, 16 October 2026). Each item says where its
+// template stands; HR generates it (after a check of what it needs) and takes each document through Generated → Printed
+// → Signed copy uploaded → Verified; the CEO views and downloads; a Super Admin deletes. A document is opened and saved
+// only as a protected PDF, never as a Word file (owner's request, 15 October 2026: "No doc file export, just a protected
+// PDF").
 
-type Employee = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'insuranceNo' | 'employment' | 'access'>;
+export type DocumentEmployee = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'employment' | 'access'>;
+type Employee = DocumentEmployee;
 
 /** What the caller may do: `act` (HR) generate and move documents along, `delete` (a Super Admin) delete them. */
 export type DocumentAccess = { act: boolean; delete: boolean };
@@ -209,56 +210,14 @@ function ItemRow({ item, employee, can, today }: { item: DocumentItem; employee:
   );
 }
 
-function Items({ items, employee, can, today }: { items: DocumentItem[]; employee: Employee; can: DocumentAccess; today: string }) {
+/** Documents the employee may be given, one row each; `today` (DD/MM/YYYY) is the date Generate starts with. */
+export function DocumentItems({ items, employee, can, today }: { items: DocumentItem[]; employee: Employee; can: DocumentAccess; today: string }) {
   return (
     <ul className="card">
       {items.map((item) => (
         <ItemRow key={`${item.slotKey}-${item.contractId ?? ''}`} item={item} employee={employee} can={can} today={today} />
       ))}
     </ul>
-  );
-}
-
-/**
- * What the social insurance forms rest on: the insurance number (from the profile), the insured salary (from the signed
- * contract, when the caller may see it) and the contract's filing dates.
- */
-function InsuranceFacts({ employee: p }: { employee: Employee }) {
-  const c = p.employment?.contract ?? null;
-  const notYet = <span className="text-muted">Not yet</span>;
-  const noContract = <span className="text-muted">No signed contract yet</span>;
-  const fields: GridField[] = [
-    {
-      key: 'insurance-number',
-      label: 'Social insurance number',
-      value: p.insuranceNo && <span className="tabular-nums">{p.insuranceNo}</span>,
-      // needed once insured, i.e. hired full time (Form 1)
-      required: p.employment?.employmentType === 'full_time',
-      note: p.access.edit && !p.insuranceNo && <Link href={`${profileHref(p.id, 'basic')}#field-insuranceNo`}>Add it on Basic Data</Link>,
-    },
-  ];
-  if (c && !c.salaryHidden && c.insuredSalary !== null) {
-    fields.push({
-      key: 'insurance-salary',
-      label: 'Insured salary',
-      value: formatEgp(c.insuredSalary),
-      protected: true,
-      note: `Contract ${c.number}, version ${c.version}: the gross and the insured allowances, capped at the maximum insurable wage`,
-    });
-  }
-  fields.push(
-    { key: 'insurance-filed', label: 'Contract filed with social insurance', value: c ? (c.insuranceFiledOn ? formatDate(c.insuranceFiledOn) : notYet) : noContract },
-    {
-      key: 'insurance-labour-office',
-      label: 'Contract filed with the labour office',
-      value: c ? (c.labourOfficeFiledOn ? formatDate(c.labourOfficeFiledOn) : notYet) : noContract,
-    },
-  );
-  return (
-    <div className="space-y-2">
-      <FieldGrid fields={fields} />
-      {c && p.access.edit && <p className="text-xs text-muted">The filing dates are set on the contract above, with Edit filing dates and note.</p>}
-    </div>
   );
 }
 
@@ -285,20 +244,22 @@ export async function GeneratedDocuments({ employee, can }: { employee: Employee
   if (load.kind === 'unavailable') {
     return (
       <Unavailable>
-        {NOT_AVAILABLE} Documents generated from the templates (the contract copies, the job offer and NDA, the social insurance forms, letters and
-        certificates, and the leaving papers) will be listed here.
+        {NOT_AVAILABLE} Documents generated from the templates (the contract copies, the job offer and NDA, letters and certificates, and the
+        leaving papers) will be listed here.
       </Unavailable>
     );
   }
   if (load.kind === 'failed') return <Unavailable>The documents could not be loaded. Please try again in a moment.</Unavailable>;
 
   const today = formatDate(todayInCairo());
-  if (!load.tab.sections.some((s) => s.items.length > 0)) {
+  // social insurance has its own tab
+  const listed = contractsTabSections(load.tab.sections);
+  if (!listed.some((s) => s.items.length > 0)) {
     return <Unavailable>No documents apply to {employee.fullNameEn} yet: they follow the employment and its contract.</Unavailable>;
   }
-  const sections = orderedSections(load.tab.sections).filter((s) => s.key === 'contract' || s.items.length > 0);
+  const sections = listed.filter((s) => s.key === 'contract' || s.items.length > 0);
   // said once, under the first part, once there is a document to open
-  const anyDocument = load.tab.sections.some((s) => s.items.some((i) => (i.documents ?? []).length > 0));
+  const anyDocument = listed.some((s) => s.items.some((i) => (i.documents ?? []).length > 0));
 
   return (
     <>
@@ -306,27 +267,29 @@ export async function GeneratedDocuments({ employee, can }: { employee: Employee
         if (section.key === 'contract') {
           const groups = contractGroups(section.items);
           return (
-            <ProfileSection key={section.key} title={sectionTitle(section.key)} note="Generated from the templates for each contract version, to print and sign">
-              {groups.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">
-                  No contract version to generate documents for yet.{can.act && employee.employment && ' Draft the contract first, with New contract above.'}
-                </p>
-              ) : (
-                groups.map((group) => (
-                  <div key={group.contractId} className="space-y-2">
-                    <h3 className="text-sm font-semibold">{contractGroupTitle(group)}</h3>
-                    <Items items={group.items} employee={employee} can={can} today={today} />
-                  </div>
-                ))
-              )}
-              {anyDocument && <p className="text-xs text-muted">{PROTECTED_PDF_HINT}</p>}
-            </ProfileSection>
+            // where the Social Insurance tab points for the contract's social insurance copy (#contract-documents)
+            <div key={section.key} id="contract-documents" className="scroll-mt-6">
+              <ProfileSection title={sectionTitle(section.key)} note="Generated from the templates for each contract version, to print and sign">
+                {groups.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">
+                    No contract version to generate documents for yet.{can.act && employee.employment && ' Draft the contract first, with New contract above.'}
+                  </p>
+                ) : (
+                  groups.map((group) => (
+                    <div key={group.contractId} className="space-y-2">
+                      <h3 className="text-sm font-semibold">{contractGroupTitle(group)}</h3>
+                      <DocumentItems items={group.items} employee={employee} can={can} today={today} />
+                    </div>
+                  ))
+                )}
+                {anyDocument && <p className="text-xs text-muted">{PROTECTED_PDF_HINT}</p>}
+              </ProfileSection>
+            </div>
           );
         }
         return (
           <ProfileSection key={section.key} title={sectionTitle(section.key)}>
-            {section.key === 'insurance' && <InsuranceFacts employee={employee} />}
-            <Items items={section.items} employee={employee} can={can} today={today} />
+            <DocumentItems items={section.items} employee={employee} can={can} today={today} />
           </ProfileSection>
         );
       })}

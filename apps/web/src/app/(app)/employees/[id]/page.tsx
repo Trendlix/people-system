@@ -8,14 +8,16 @@ import { BasicTab, EducationTab } from './details-tabs';
 import { ContractsTab } from './documents/contracts-tab';
 import { EmployeeFile, EmployeeFileLoading } from './employee-file';
 import { EmploymentTab } from './employment-tab';
+import { InsuranceTab } from './insurance/insurance-tab';
 import { ProfileHeader } from './profile-header';
 import { ProfileTabs } from './profile-tabs';
 
 // An employee's profile (after Prime ERP's owner profile): who they are and how complete the profile is above the tabs
-// Basic Data, Education, Employment, Contracts and Documents. Contracts holds what the company issues (the contract and
-// the documents generated from templates); Documents, the papers the employee brings. The open tab is in the address
-// (?tab=), so it survives a reload, and only it is rendered. The profile and the employment are separate records:
-// someone who leaves keeps their profile.
+// Basic Data, Education, Employment, Contracts, Social Insurance and Documents. Contracts holds what the company issues
+// (the contract and the documents generated from templates); Social Insurance, all the social insurance work (owner's
+// request, 16 October 2026); Documents, the papers the employee brings. The open tab is in the address (?tab=), so it
+// survives a reload, and only it is rendered. The profile and the employment are separate records: someone who leaves
+// keeps their profile.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -24,7 +26,8 @@ const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '
 async function Profile({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Query> }) {
   const [user, p, query] = await Promise.all([getCurrentUser(), loadEmployee(params), searchParams]);
   const today = todayInCairo();
-  // The employee file is HR's and the CEO's, exactly those who may see the national ID.
+  // The employee file is HR's and the CEO's, exactly those who may see the national ID. Social Insurance is everyone's
+  // who sees Contracts (everyone who sees the profile); what is restricted on it is left out or masked there.
   const tabs = PROFILE_TABS.filter((t) => t.key !== 'documents' || p.access.identity);
   const visible = new Set<ProfileTabKey>(tabs.map((t) => t.key));
   const asked = one(query.tab) as ProfileTabKey;
@@ -43,6 +46,8 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
           <EmploymentTab profile={p} linkPeople={linkPeople} justAdded={one(query.added) === '1'} />
         ) : tab === 'contracts' ? (
           <ContractsTab profile={p} />
+        ) : tab === 'insurance' ? (
+          <InsuranceTab profile={p} />
         ) : tab === 'documents' ? (
           // loads on its own, so a slow file list doesn't hold up the profile
           <Suspense fallback={<EmployeeFileLoading />}>

@@ -1,9 +1,9 @@
 'use server';
 
-// Actions on the documents generated from templates (the profile's Contracts tab): checking what a template would lack,
-// generating a document, marking it printed, uploading its signed copy, verifying it, and deleting it. Each one forwards
-// to the API, which checks the session and the role (HR; a Super Admin for deleting), so calling these directly can't
-// bypass permissions. Dates are typed as DD/MM/YYYY and sent as YYYY-MM-DD.
+// Actions on the documents generated from templates (the profile's Contracts and Social Insurance tabs): checking what a
+// template would lack, generating a document, marking it printed, uploading its signed copy, verifying it, and deleting
+// it. Each one forwards to the API, which checks the session and the role (HR; a Super Admin for deleting), so calling
+// these directly can't bypass permissions. Dates are typed as DD/MM/YYYY and sent as YYYY-MM-DD.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch, apiSend, apiUpload, messagesOf } from '@/lib/api';

@@ -3,9 +3,9 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
 import type { DocumentsTab } from '@/lib/types';
 
-// Loading the documents generated from templates for the profile's Contracts tab. They came with document generation
-// (October 2026): an API from before it answers 404, which here means "not available yet" rather than the 404 page, so
-// the moved contract section and the rest of the profile keep working.
+// Loading the documents generated from templates for the profile's Contracts and Social Insurance tabs. They came with
+// document generation (October 2026): an API from before it answers 404, which here means "not available yet" rather
+// than the 404 page, so the moved contract section and the rest of the profile keep working.
 
 export type DocumentsLoad =
   | { kind: 'ok'; tab: DocumentsTab }
