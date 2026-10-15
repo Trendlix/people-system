@@ -174,24 +174,31 @@ export class TemplatesService {
   }
 
   /** A Super Admin deletes a draft; a version that was published is kept with the documents made from it. */
+  /**
+   * A Super Admin deletes a version that nothing was made from: a draft, the version in use or one it replaced (owner,
+   * 15 October 2026: "I don't want to keep wrong templates"). A version documents or job offers were made from is kept
+   * with them: they say which version they came from. Deleting the version in use leaves the template without one
+   * until another is published.
+   */
   async remove(id: string, user: SessionUser): Promise<void> {
     assertDeletes(user);
     const v = await this.row(id);
-    const { count } = await this.prisma.templateVersion.deleteMany({ where: { id, status: 'draft' } });
-    if (!count) {
-      const now = await this.row(id); // published since it was read, perhaps
-      throw new ConflictException(
-        now.status === 'published'
-          ? `Version ${now.version} is in use, so it is kept. Only drafts can be deleted.`
-          : `Version ${now.version} was in use, so it is kept with the documents made from it. Only drafts can be deleted.`,
-      );
+    const used = v._count.documents + v._count.offers;
+    if (used) throw new ConflictException(usedMessage(v.version, used));
+    try {
+      await this.prisma.templateVersion.delete({ where: { id } });
+    } catch (err) {
+      // a document made from it in the meantime: the database keeps the version for it
+      const now = await this.prisma.templateVersion.findUnique({ where: { id }, select: VERSION });
+      if (now && now._count.documents + now._count.offers) throw new ConflictException(usedMessage(now.version, now._count.documents + now._count.offers));
+      throw err;
     }
     await this.audit.record({
       userId: user.id,
       action: 'delete',
       entityType: ENTITY,
       entityId: id,
-      diff: { slot: v.slotKey, version: v.version, fileName: v.fileName },
+      diff: { slot: v.slotKey, version: v.version, fileName: v.fileName, status: v.status },
     });
   }
 
@@ -218,4 +225,9 @@ export class TemplatesService {
     if (!v) throw new NotFoundException('Template version not found.');
     return v;
   }
+}
+
+/** Why a version is kept: what was made from it. */
+function usedMessage(version: number, used: number): string {
+  return `${used === 1 ? 'A document was' : `${used} documents were`} made from version ${version}, so it is kept with them.`;
 }

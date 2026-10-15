@@ -479,6 +479,14 @@ describe('Documents (e2e)', () => {
       await api().delete(`/api/documents/${doc.id}`).set('Cookie', superAdmin).expect(204);
     });
 
+    it('a template version documents were made from is kept: not even a Super Admin deletes it', async () => {
+      const slot = (await api().get('/api/templates/contract_full_time').set('Cookie', hr).expect(200)).body as { versions: { id: string; status: string; usedBy: number }[] };
+      const used = slot.versions.find((v) => v.status === 'published')!;
+      expect(used.usedBy).toBeGreaterThan(0);
+      const res = await api().delete(`/api/templates/versions/${used.id}`).set('Cookie', superAdmin).expect(409);
+      expect(res.body.message).toMatch(/made from version \d+, so it is kept with them\.$/);
+    });
+
     it('only a Super Admin deletes a document', async () => {
       const doc = (await generate(pt.id, { slotKey: 'nda' }).expect(201)).body as Doc;
       expect((await api().delete(`/api/documents/${doc.id}`).set('Cookie', hr).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN);

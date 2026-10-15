@@ -103,6 +103,7 @@ describe('Templates (e2e)', () => {
       uploadedAt: expect.any(String),
       publishedBy: null,
       publishedAt: null,
+      usedBy: 0,
     });
 
     const slot = await slotOf('contract_full_time');
@@ -257,25 +258,25 @@ describe('Templates (e2e)', () => {
     await api().get(`/api/templates/versions/${published!.id}/file?format=odt`).set('Cookie', ceo).expect(400);
   });
 
-  it('only a Super Admin deletes, and only a draft', async () => {
+  it('only a Super Admin deletes, any version nothing was made from', async () => {
     await upload('contract_full_time', realTemplate('Contract'), 'عقد العمل.docx').expect(201); // a new draft, version 3
     const { published, latestDraft } = await slotOf('contract_full_time');
     expect((await api().delete(`/api/templates/versions/${latestDraft!.id}`).set('Cookie', hr).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN);
     await api().delete(`/api/templates/versions/${latestDraft!.id}`).set('Cookie', admin).expect(403);
 
-    const inUse = await api().delete(`/api/templates/versions/${published!.id}`).set('Cookie', superAdmin).expect(409);
-    expect(inUse.body.message).toBe('Version 2 is in use, so it is kept. Only drafts can be deleted.');
+    // the version it replaced, which nothing was made from, goes too (owner, 15 October 2026); a used one is kept (documents spec)
     const detail = await api().get('/api/templates/contract_full_time').set('Cookie', hr).expect(200);
+    expect(detail.body.versions.map((v: { usedBy: number }) => v.usedBy)).toEqual([0, 0, 0]);
     const retired = detail.body.versions.find((v: { status: string }) => v.status === 'retired');
-    const kept = await api().delete(`/api/templates/versions/${retired.id}`).set('Cookie', superAdmin).expect(409);
-    expect(kept.body.message).toBe('Version 1 was in use, so it is kept with the documents made from it. Only drafts can be deleted.');
+    await api().delete(`/api/templates/versions/${retired.id}`).set('Cookie', superAdmin).expect(204);
+    expect(published).toBeTruthy(); // the version in use could go too; it is kept here for the tests that follow
 
     await api().delete(`/api/templates/versions/${latestDraft!.id}`).set('Cookie', superAdmin).expect(204);
     const after = await slotOf('contract_full_time');
-    expect(after).toMatchObject({ status: 'published', latestDraft: null, versionCount: 2 });
+    expect(after).toMatchObject({ status: 'published', latestDraft: null, versionCount: 1 });
     expect((await auditOf(latestDraft!.id)).map((a) => [a.action, a.diff])).toEqual([
       ['create', expect.objectContaining({ version: 3 })],
-      ['delete', { slot: 'contract_full_time', version: 3, fileName: 'عقد العمل.docx' }],
+      ['delete', { slot: 'contract_full_time', version: 3, fileName: 'عقد العمل.docx', status: 'draft' }],
     ]);
     await api().delete(`/api/templates/versions/${latestDraft!.id}`).set('Cookie', superAdmin).expect(404);
   });

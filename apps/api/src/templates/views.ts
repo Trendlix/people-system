@@ -21,6 +21,7 @@ export const VERSION = {
   uploadedAt: true,
   publishedBy: { select: { email: true } },
   publishedAt: true,
+  _count: { select: { documents: true, offers: true } },
 } satisfies Prisma.TemplateVersionSelect;
 
 export type VersionRow = Prisma.TemplateVersionGetPayload<{ select: typeof VERSION }>;
@@ -42,6 +43,8 @@ export function versionView(v: VersionRow) {
     uploadedAt: v.uploadedAt,
     publishedBy: v.publishedBy,
     publishedAt: v.publishedAt,
+    /** Documents and job offers made from it: a version that was used is kept with them, never deleted. */
+    usedBy: v._count.documents + v._count.offers,
   };
 }
 
