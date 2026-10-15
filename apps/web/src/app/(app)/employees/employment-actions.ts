@@ -56,7 +56,6 @@ function employmentBody(fd: FormData, errors: string[], withStatus: boolean) {
     gradeId: text(fd, 'gradeId'),
     managerId: text(fd, 'managerId'),
     joinDate: dateFrom(fd, 'joinDate', 'join date', errors),
-    probationEnd: dateFrom(fd, 'probationEnd', 'probation end date', errors),
     workArrangement,
     officeDays: workArrangement === 'hybrid' ? fd.getAll('officeDays').map(Number) : [],
     shiftId: text(fd, 'shiftId'),

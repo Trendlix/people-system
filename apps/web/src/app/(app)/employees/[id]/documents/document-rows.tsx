@@ -15,6 +15,7 @@ import {
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_STATUS_TONE,
   documentDownloadHref,
+  documentESignHref,
   documentFileHref,
   inputsText,
   itemContext,
@@ -104,6 +105,16 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
         <a href={documentDownloadHref(employee.id, d.id)} className={`${VIEW_BUTTON} text-accent`}>
           Download PDF<span className="sr-only"> ({what})</span>
         </a>
+        {/* HR only: Adobe Sign and DocuSign refuse the protected PDF (owner, 15 October 2026); every download is recorded */}
+        {can.act && (
+          <a
+            href={documentESignHref(employee.id, d.id)}
+            title="Unprotected, to upload to Adobe Sign or DocuSign. Every download is recorded."
+            className={`${VIEW_BUTTON} text-accent`}
+          >
+            PDF for e-signature<span className="sr-only"> ({what}): unprotected, to upload to Adobe Sign or DocuSign; every download is recorded</span>
+          </a>
+        )}
         {hasSigned && (
           <DocumentViewer
             title={`Signed Copy · ${item.name} · ${employee.fullNameEn}`}

@@ -282,20 +282,18 @@ export function EmploymentFields({
           <label htmlFor={fid('joinDate')} className="label">
             Join date
           </label>
-          <DateInput id={fid('joinDate')} name="joinDate" required defaultValue={valueOf(state, 'joinDate', formatDate(employment?.joinDate))} />
-        </div>
-        <div>
-          <label htmlFor={fid('probationEnd')} className="label">
-            Probation end date
-          </label>
           <DateInput
-            id={fid('probationEnd')}
-            name="probationEnd"
-            aria-describedby={fid('probationEnd-hint')}
-            defaultValue={valueOf(state, 'probationEnd', formatDate(employment?.probationEnd))}
+            id={fid('joinDate')}
+            name="joinDate"
+            required
+            aria-describedby={fid('joinDate-hint')}
+            defaultValue={valueOf(state, 'joinDate', formatDate(employment?.joinDate))}
           />
-          <p id={fid('probationEnd-hint')} className="hint">
-            Leave empty for the join date + {PROBATION_MONTHS} months.
+          {/* the probation end is worked out, never typed (owner, 15 October 2026) */}
+          <p id={fid('joinDate-hint')} className="hint">
+            Probation is worked out from it: {PROBATION_MONTHS} months, or none for someone who worked here before (Labour Law Art. 90). Once the first
+            contract is drafted, its probation applies.
+            {employment?.probationEnd && ` Probation ends ${formatDate(employment.probationEnd)}.`}
           </p>
         </div>
 

@@ -9,14 +9,14 @@ import { getCurrentUser } from '@/lib/session';
 import type { SessionUser, TemplateDetail, TemplateVersion } from '@/lib/types';
 import { formatSize } from '../../employees/paperwork';
 import { BackLink, Empty, Loading } from '../../organization/ui';
-import { deleteTemplateVersion, publishTemplateVersion, uploadTemplateVersion } from '../actions';
+import { deleteTemplateVersion, publishTemplateVersion, renameTemplateVersion, uploadTemplateVersion } from '../actions';
 import { loadTemplate } from '../data';
 import { SlotDetails, StatusLines, Tag } from '../parts';
 import { isOfferSlot, previewHint } from '../preview-people';
 import { PreviewWithData } from '../preview-with-data';
 import { checkTags, count, tagCount } from '../tag-check';
 import { UploadTemplateForm } from '../upload-form';
-import { DeleteDraftButton, PublishButton } from '../version-buttons';
+import { DeleteDraftButton, PublishButton, RenameFileButton } from '../version-buttons';
 import {
   COPY_NOTE,
   folderLabel,
@@ -169,7 +169,7 @@ function Who({ email, at }: { email: string | null | undefined; at: string | nul
   );
 }
 
-function VersionRow({ version: v, slotKey, deletes }: { version: TemplateVersion; slotKey: string; deletes: boolean }) {
+function VersionRow({ version: v, slotKey, deletes, manages }: { version: TemplateVersion; slotKey: string; deletes: boolean; manages: boolean }) {
   const check = v.status === 'draft' ? checkTags(v) : null;
   const problems = check ? check.unknown.length + check.broken.length : 0;
   // the actions go on a line of their own under the version, so the table fits without scrolling sideways and the
@@ -181,6 +181,7 @@ function VersionRow({ version: v, slotKey, deletes }: { version: TemplateVersion
       <td className="max-w-64 break-all">
         {v.fileName}
         <span className="block text-xs whitespace-nowrap text-muted tabular-nums">{formatSize(v.sizeBytes)}</span>
+        {manages && <RenameFileButton action={renameTemplateVersion.bind(null, v.id)} fileName={v.fileName} />}
       </td>
       <td>{LANGUAGE_LABELS[v.language] ?? v.language}</td>
       <td>
@@ -233,7 +234,7 @@ function VersionRow({ version: v, slotKey, deletes }: { version: TemplateVersion
   );
 }
 
-function VersionsTable({ versions, slotKey, deletes }: { versions: TemplateVersion[]; slotKey: string; deletes: boolean }) {
+function VersionsTable({ versions, slotKey, deletes, manages }: { versions: TemplateVersion[]; slotKey: string; deletes: boolean; manages: boolean }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table">
@@ -252,7 +253,7 @@ function VersionsTable({ versions, slotKey, deletes }: { versions: TemplateVersi
         </thead>
         <tbody>
           {versions.map((v) => (
-            <VersionRow key={v.id} version={v} slotKey={slotKey} deletes={deletes} />
+            <VersionRow key={v.id} version={v} slotKey={slotKey} deletes={deletes} manages={manages} />
           ))}
         </tbody>
       </table>
@@ -339,7 +340,7 @@ function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
             </p>
           )}
         </div>
-        {versions.length === 0 ? <Empty>No file yet.</Empty> : <VersionsTable versions={versions} slotKey={detail.key} deletes={canDelete(user)} />}
+        {versions.length === 0 ? <Empty>No file yet.</Empty> : <VersionsTable versions={versions} slotKey={detail.key} deletes={canDelete(user)} manages={manages} />}
       </section>
     </div>
   );

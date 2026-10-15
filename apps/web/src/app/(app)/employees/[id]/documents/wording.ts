@@ -209,6 +209,10 @@ export const documentFileHref = (employeeId: string, documentId: string) =>
 /** The same PDF, saved (Download PDF). */
 export const documentDownloadHref = (employeeId: string, documentId: string) => `${documentFileHref(employeeId, documentId)}?download=1`;
 
+/** An unprotected PDF for an e-signature service (Adobe Sign, DocuSign), saved: HR only, every download recorded. */
+export const documentESignHref = (employeeId: string, documentId: string) =>
+  `/employees/${encodeURIComponent(employeeId)}/documents/${encodeURIComponent(documentId)}/esign`;
+
 /** Where the browser opens the signed copy, the same way. */
 export const signedFileHref = (employeeId: string, documentId: string) =>
   `/employees/${encodeURIComponent(employeeId)}/documents/${encodeURIComponent(documentId)}/signed-file`;

@@ -73,7 +73,21 @@ export async function publishTemplateVersion(slotKey: string, versionId: string,
   redirect(`${templateHref(slotKey)}?published=${version}`);
 }
 
-/** Deletes a draft: a Super Admin only (owner's decision, 15 October 2026); a published or replaced version stays. */
+/** Renames a version's file (HR, Admin; owner, 15 October 2026): only the name the library shows changes. */
+export async function renameTemplateVersion(versionId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const fileName = String(fd.get('fileName') ?? '').trim();
+  if (!fileName) return { errors: ['Enter the file name.'] };
+  try {
+    await apiSend('PATCH', `/templates/versions/${encodeURIComponent(versionId)}`, { fileName });
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: messages(err), values: { fileName } };
+    throw err;
+  }
+  refresh();
+  return { message: 'Renamed.' };
+}
+
+/** Deletes a version nothing was made from: a Super Admin only (owner's decision, 15 October 2026). */
 export async function deleteTemplateVersion(slotKey: string, versionId: string, version: number): Promise<FormState> {
   const refused = await deleteRefusal();
   if (refused) return { errors: refused };
