@@ -1,4 +1,4 @@
-import { annualSalaryTax, grossToNet, insuredWageOf, monthlyFromHourly, netToGross, type AllowanceTerms } from '@trendlix/shared';
+import { annualSalaryTax, grossToNet, hourlyRateFromNet, insuredWageOf, monthlyFromHourly, netToGross, type AllowanceTerms } from '@trendlix/shared';
 
 // The shared salary calculation (packages/shared/src/salary.ts), checked against the Ministry of Finance's salary tax
 // printout (February 2026) and the Tax Authority's own worked figures in its 2025 annual settlement guide.
@@ -136,5 +136,23 @@ describe('salary: by the hour', () => {
     expect(monthlyFromHourly(150, 24)).toBe(15_600);
     expect(monthlyFromHourly(162.5, 22.5)).toBe(15_843.75);
     expect(monthlyFromHourly(100, 10.5)).toBe(4_550);
+  });
+});
+
+describe('salary: by the hour from a net rate', () => {
+  it('finds the lowest gross hourly rate whose month gives the net rate\'s month', () => {
+    const { hourlyRate, breakdown } = hourlyRateFromNet(120, 16, 2026);
+    const target = Math.round(120 * 16 * (52 / 12) * 100) / 100; // 8,320
+    expect(breakdown.net).toBeGreaterThanOrEqual(target);
+    expect(breakdown.gross).toBe(monthlyFromHourly(hourlyRate, 16));
+    // a piaster less falls short
+    expect(grossToNet(monthlyFromHourly(Math.round((hourlyRate - 0.01) * 100) / 100, 16), 2026).net).toBeLessThan(target);
+  });
+
+  it('counts the allowances in the net, and gives nothing for no rate or no hours', () => {
+    const transport = [{ amount: 500, taxable: true, insured: false }];
+    expect(hourlyRateFromNet(120, 16, 2026, transport).hourlyRate).toBeLessThan(hourlyRateFromNet(120, 16, 2026).hourlyRate);
+    expect(hourlyRateFromNet(0, 16, 2026).hourlyRate).toBe(0);
+    expect(hourlyRateFromNet(120, 0, 2026).hourlyRate).toBe(0);
   });
 });

@@ -5,7 +5,7 @@
 // 15 October 2026) are paid on top of the gross: the taxable ones are taxed with it and the insured ones insured with
 // it; every allowance is in the net.
 
-import { insuredSalary, insuredWageOf, type AllowanceTerms } from './contracts.js';
+import { insuredSalary, insuredWageOf, monthlyFromHourly, WEEKS_PER_MONTH, type AllowanceTerms } from './contracts.js';
 
 export const SALARY_RULES = {
   /** The employee's and the company's shares of social insurance, on the insured wage (Law 148/2019). */
@@ -178,4 +178,29 @@ export function netToGross(net: number, year = new Date().getFullYear(), step: 1
     return grossToNet(a / per, year, allowances);
   }
   return grossToNet(stretches.at(-1)![1] / per, year, allowances);
+}
+
+/**
+ * By the hour, from an agreed net rate (owner's request, 15 October 2026): the lowest gross hourly rate, to the
+ * piaster, whose monthly estimate (rate × hours a week × 52 ÷ 12) gives at least the net of the net rate's month, with
+ * its breakdown. The contract keeps the gross rate: tax and insurance are worked out from the gross. Rates rounded to
+ * the piaster can't always give the net exactly; the breakdown says what this rate gives.
+ */
+export function hourlyRateFromNet(
+  netHourly: number,
+  hoursPerWeek: number,
+  year = new Date().getFullYear(),
+  allowances: readonly AllowanceTerms[] = [],
+): { hourlyRate: number; breakdown: SalaryBreakdown } {
+  if (!(netHourly > 0) || !(hoursPerWeek > 0)) return { hourlyRate: 0, breakdown: grossToNet(0, year, allowances) };
+  const target = piasters(netHourly * hoursPerWeek * WEEKS_PER_MONTH);
+  const monthly = netToGross(target, year, 0.01, allowances);
+  // the rate whose monthly estimate is that gross, rounded up to the piaster, then up again while its net falls short
+  let rate = Math.ceil(piasters((monthly.gross / (hoursPerWeek * WEEKS_PER_MONTH)) * 100)) / 100;
+  let breakdown = grossToNet(monthlyFromHourly(rate, hoursPerWeek), year, allowances);
+  for (let i = 0; i < 100 && breakdown.net < target; i++) {
+    rate = piasters(rate + 0.01);
+    breakdown = grossToNet(monthlyFromHourly(rate, hoursPerWeek), year, allowances);
+  }
+  return { hourlyRate: rate, breakdown };
 }
