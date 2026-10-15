@@ -74,6 +74,7 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
     fields: [
       { name: 'fullNameEn', label: 'Full name (English)', max: 150, required: true },
       { name: 'fullNameAr', label: 'Full name (Arabic)', ar: true, max: 150, required: true, hint: 'As printed on contracts.' },
+      { name: 'displayName', label: 'Display name', max: 80, placeholder: 'e.g. Hazem Magdy', hint: 'The short name they go by, as shown in the email signature.' },
       { name: 'employeeCode', label: 'Employee code', max: 20, required: true, placeholder: 'EMP-0000' },
       {
         name: 'insuranceNo',

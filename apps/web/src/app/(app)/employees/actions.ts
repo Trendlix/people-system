@@ -44,6 +44,7 @@ const PERSONAL_TEXT = [
   'insuranceNo',
   'fullNameEn',
   'fullNameAr',
+  'displayName',
   'gender',
   'nationality',
   'maritalStatus',

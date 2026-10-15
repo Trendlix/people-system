@@ -228,6 +228,8 @@ export interface EmployeeProfile {
   insuranceNo: string | null;
   fullNameEn: string;
   fullNameAr: string;
+  /** The short name the person goes by (e.g. Hazem Magdy), for the email signature. */
+  displayName: string | null;
   dateOfBirth: string | null;
   gender: Gender | null;
   nationality: string | null;

@@ -32,6 +32,7 @@ export function ListOrOther({
   defaultValue,
   max,
   onValue,
+  otherPlaceholder = 'As written on the certificate',
   'aria-describedby': describedBy,
 }: {
   /** Goes on the list, for the field's label. */
@@ -47,6 +48,8 @@ export function ListOrOther({
   max?: number;
   /** Called with the value the form will send, each time it changes. */
   onValue?: (value: string) => void;
+  /** The example in the Other box: where the name is copied from. */
+  otherPlaceholder?: string;
   'aria-describedby'?: string;
 }) {
   const [start] = useState(() => startOf(defaultValue ?? '', groups, aliases));
@@ -97,7 +100,7 @@ export function ListOrOther({
             onValue?.(e.target.value.trim());
           }}
           maxLength={max}
-          placeholder="As written on the certificate"
+          placeholder={otherPlaceholder}
           className="input"
         />
       )}

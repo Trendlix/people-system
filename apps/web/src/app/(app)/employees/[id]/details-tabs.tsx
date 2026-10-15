@@ -6,6 +6,7 @@ import { formatDate } from '@/lib/format';
 import type { EmployeeBank, EmployeeIdentity, EmployeeProfile } from '@/lib/types';
 import { deleteEmployee } from '../actions';
 import { ExpiryChip, FieldGrid, ProfileSection } from '../ui';
+import { bankShown } from './edit/bank/bank-rules';
 
 // The Basic Data and Education tabs: the profile's fields in a grid, label above value. Fields counted in the profile's
 // completeness are tagged Required and shown as not captured while empty (the same list as the API's completeness);
@@ -53,6 +54,7 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
           fields={[
             { key: 'fullNameEn', label: 'Full name (English)', value: p.fullNameEn, required: true },
             { key: 'fullNameAr', label: 'Full name (Arabic)', value: p.fullNameAr, required: true, ar: true },
+            { key: 'displayName', label: 'Display name', value: p.displayName },
             { key: 'employeeCode', label: 'Employee code', value: number(p.employeeCode) },
             {
               key: 'insuranceNo',
@@ -151,7 +153,7 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
         <ProfileSection title="Bank & Payment" restricted editHref={editLink(p, 'bank')}>
           <FieldGrid
             fields={[
-              { key: 'bankName', label: 'Bank', value: p.bank?.bankName },
+              { key: 'bankName', label: 'Bank', value: bankShown(p.bank?.bankName) },
               { key: 'branch', label: 'Branch', value: p.bank?.branch },
               {
                 key: 'accountNo',
