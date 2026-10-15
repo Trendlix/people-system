@@ -116,10 +116,14 @@ async function CompanyProfile() {
         </Section>
 
         <Section title="Company Representative" hint="Signs documents on the company's behalf, such as the clearance form.">
-          <Row label="Name" ar>
+          <Row label="Name (Arabic)" ar>
             {company.repName}
           </Row>
-          <Row label="Job title">{company.repTitle}</Row>
+          <Row label="Name (English)">{company.repNameEn}</Row>
+          <Row label="Job title (Arabic)" ar>
+            {company.repTitle}
+          </Row>
+          <Row label="Job title (English)">{company.repTitleEn}</Row>
           <Row label="National ID">{company.repNationalIdMasked}</Row>
         </Section>
       </div>

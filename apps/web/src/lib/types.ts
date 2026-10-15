@@ -146,6 +146,8 @@ export interface Company {
   emailDomain: string | null;
   repName: string | null;
   repTitle: string | null;
+  repNameEn: string | null;
+  repTitleEn: string | null;
   repNationalIdMasked: string | null;
   hasLogo: boolean;
   logoUpdatedAt: string | null;

@@ -54,8 +54,10 @@ const GROUPS: { title: string; hint?: string; fields: TextField[] }[] = [
     title: 'Company Representative',
     hint: 'Signs documents on the company’s behalf, such as the clearance form.',
     fields: [
-      { name: 'repName', label: 'Name', ar: true, max: 150, hint: 'As printed on documents.' },
-      { name: 'repTitle', label: 'Job title', max: 100 },
+      { name: 'repName', label: 'Name (Arabic)', ar: true, max: 150, hint: 'As printed on documents.' },
+      { name: 'repNameEn', label: 'Name (English)', max: 150, hint: 'For the English side of bilingual documents.' },
+      { name: 'repTitle', label: 'Job title (Arabic)', ar: true, max: 100 },
+      { name: 'repTitleEn', label: 'Job title (English)', max: 100 },
     ],
   },
 ];

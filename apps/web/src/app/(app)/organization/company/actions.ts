@@ -24,7 +24,9 @@ const FIELDS = [
   'website',
   'emailDomain',
   'repName',
+  'repNameEn',
   'repTitle',
+  'repTitleEn',
 ] as const;
 
 const IMAGE_MAX_BYTES = 1024 * 1024;
