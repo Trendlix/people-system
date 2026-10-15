@@ -1,7 +1,7 @@
 import 'server-only';
 import { notFound } from 'next/navigation';
 import { apiGet } from '@/lib/api';
-import type { Department, EmployeeProfile, EmployeeSummary, Employment, JobTitleSummary, Shift } from '@/lib/types';
+import type { Company, Department, EmployeeProfile, EmployeeSummary, Employment, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import type { EmploymentPickers } from './employment-fields';
 
 // Data loading shared by the Employees pages.
@@ -26,13 +26,20 @@ export async function loadEmployment(
   return { employee, employment };
 }
 
+/** The company's work email domain (e.g. trendlix.com), which every work email must end in; null when there is none. */
+export async function loadEmailDomain(): Promise<string | null> {
+  const company = await apiGet<Company>('/company');
+  return company.emailDomain || null;
+}
+
 /** The lists behind the Employment fields. `employeeId` is left out of the managers, so nobody reports to themselves. */
 export async function loadPickers(employeeId?: string): Promise<EmploymentPickers> {
-  const [departments, jobTitles, shifts, employees] = await Promise.all([
+  const [departments, jobTitles, grades, shifts, employees] = await Promise.all([
     apiGet<Department[]>('/departments'),
     apiGet<JobTitleSummary[]>('/job-titles'),
+    apiGet<Grade[]>('/grades'),
     apiGet<Shift[]>('/shifts'),
     apiGet<EmployeeSummary[]>('/employees'),
   ]);
-  return { departments, jobTitles, shifts, managers: employees.filter((e) => e.id !== employeeId) };
+  return { departments, jobTitles, grades, shifts, managers: employees.filter((e) => e.id !== employeeId) };
 }

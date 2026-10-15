@@ -8,13 +8,17 @@ import { DateInput } from '@/components/date-time-inputs';
 import { valueOf } from '@/components/form';
 import { groupDepartments } from '@/lib/departments';
 import { formatDate, formatTime } from '@/lib/format';
-import type { Department, EmployeeSummary, Employment, FormState, JobTitleSummary, Shift } from '@/lib/types';
+import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
+import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
 
 // The fields of an employment, used by the Add employment and Edit employment pages.
 
 export type EmploymentPickers = {
   departments: Department[];
+  /** Each with the grades it allows (`minGrade`, `maxGrade`), for the Grade picker. */
   jobTitles: JobTitleSummary[];
+  /** GET /grades, lowest first. */
+  grades: Grade[];
   shifts: Shift[];
   /** Who can be picked as direct manager (GET /employees), without the employee themself. */
   managers: EmployeeSummary[];
@@ -74,12 +78,24 @@ export function EmploymentFields({
   // A job title without a department on the employment brings its own team, so it stays selected.
   const savedDepartmentId = employment?.departmentId ?? pickers.jobTitles.find((j) => j.id === employment?.jobTitleId)?.departmentId;
   const [departmentId, setDepartmentId] = useState(() => valueOf(state, 'departmentId', savedDepartmentId));
+  // The person's own grade. A job title may allow only a range of grades (Account Manager: G3 to G6).
+  const [gradeId, setGradeId] = useState(() => valueOf(state, 'gradeId', employment?.gradeId));
+  const [clearedGrade, setClearedGrade] = useState<{ grade: Grade; title: string } | null>(null);
 
   // Job titles belong to teams: only the chosen team's are listed (and the current one, so it stays shown). A few
   // older job titles still sit directly in a department until HR moves them into a team.
   const titles = departmentId ? pickers.jobTitles.filter((j) => j.departmentId === departmentId || j.id === jobTitleId) : [];
   const chosen = pickers.departments.find((d) => d.id === departmentId);
   const noTitles = chosen !== undefined && titles.length === 0;
+
+  // Only the grades the chosen job title allows (all of them without one). A saved grade outside the range (in the
+  // history, from before the range was narrowed) stays listed and flagged: the API keeps it while neither changes.
+  const pickedTitle = titles.find((j) => j.id === jobTitleId);
+  const grade = pickers.grades.find((g) => g.id === gradeId);
+  const allowed = (g: Grade) => !pickedTitle || inGradeRange(g, pickedTitle);
+  const grades = pickers.grades.filter((g) => allowed(g) || g.id === gradeId);
+  const range = pickedTitle && gradeRangeSentence(pickedTitle.titleEn, pickedTitle);
+  const outOfRange = grade && !allowed(grade);
 
   // HR may add the team's first job title in another tab: coming back here lists it, keeping everything typed.
   useEffect(() => {
@@ -101,6 +117,18 @@ export function EmploymentFields({
     setDepartmentId(id);
     const title = pickers.jobTitles.find((j) => j.id === jobTitleId);
     if (title && title.departmentId !== id) setJobTitleId('');
+  }
+
+  /** A grade the newly chosen job title doesn't allow is cleared, and the form says so. */
+  function pickJobTitle(id: string) {
+    setJobTitleId(id);
+    const next = pickers.jobTitles.find((j) => j.id === id);
+    if (next && grade && !inGradeRange(grade, next)) {
+      setGradeId('');
+      setClearedGrade({ grade, title: next.titleEn });
+    } else {
+      setClearedGrade(null);
+    }
   }
 
   return (
@@ -187,7 +215,7 @@ export function EmploymentFields({
             id={fid('jobTitleId')}
             name="jobTitleId"
             value={jobTitleId}
-            onChange={(e) => setJobTitleId(e.target.value)}
+            onChange={(e) => pickJobTitle(e.target.value)}
             disabled={titles.length === 0}
             aria-describedby={noTitles ? fid('jobTitleId-hint') : undefined}
             className="input disabled:cursor-not-allowed disabled:bg-canvas disabled:text-muted"
@@ -195,7 +223,7 @@ export function EmploymentFields({
             <option value="">{departmentId ? 'No job title' : 'Choose a team first'}</option>
             {titles.map((j) => (
               <option key={j.id} value={j.id}>
-                {j.grade ? `${j.titleEn} · ${j.grade.code}` : j.titleEn}
+                {j.titleEn}
               </option>
             ))}
           </select>
@@ -216,7 +244,44 @@ export function EmploymentFields({
           )}
         </div>
 
-        <div className="sm:col-span-2">
+        <div>
+          <label htmlFor={fid('gradeId')} className="label">
+            Grade
+          </label>
+          <select
+            id={fid('gradeId')}
+            name="gradeId"
+            value={gradeId}
+            onChange={(e) => {
+              setGradeId(e.target.value);
+              setClearedGrade(null);
+            }}
+            aria-describedby={range || outOfRange ? fid('gradeId-hint') : undefined}
+            aria-invalid={outOfRange || undefined}
+            className="input"
+          >
+            <option value="">No grade</option>
+            {grades.map((g) => (
+              <option key={g.id} value={g.id}>
+                {gradeLabel(g)}
+              </option>
+            ))}
+          </select>
+          {(range || outOfRange) && (
+            <p id={fid('gradeId-hint')} className={`hint ${outOfRange ? 'text-warn' : ''}`}>
+              {outOfRange ? `${range} ${gradeLabel(grade)} was set before that, and can stay as it is.` : range}
+            </p>
+          )}
+          <div role="status">
+            {clearedGrade && (
+              <p className="hint text-warn">
+                {gradeLabel(clearedGrade.grade)} was cleared: {clearedGrade.title} doesn&apos;t take it. Choose a grade again.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div>
           <label htmlFor={fid('managerId')} className="label">
             Direct manager
           </label>

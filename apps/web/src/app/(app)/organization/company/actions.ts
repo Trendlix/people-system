@@ -19,6 +19,7 @@ const FIELDS = [
   'phone',
   'email',
   'website',
+  'emailDomain',
   'repName',
   'repTitle',
 ] as const;

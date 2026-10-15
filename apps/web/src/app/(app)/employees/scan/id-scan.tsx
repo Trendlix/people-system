@@ -1,6 +1,6 @@
 'use client';
 
-import { startTransition, useCallback, useRef, useState, useTransition } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { DocumentViewer } from '@/components/document-viewer';
 import { FileDrop } from '@/components/file-drop';
 import { FormErrors, useFieldIds } from '@/components/form';
@@ -9,7 +9,8 @@ import { idScanTitle, PAPERWORK_ACCEPT, PAPERWORK_MAX_BYTES, PDF_MAX_BYTES, PDF_
 import { prepareIdCard } from '../paperwork-actions';
 import { shrinkPhoto } from '../shrink-photo';
 import { CARD_TOL, cardDims, cardOff, cardRect, CARD_MM, fineOf, foundRect, frameCard, quarterFor, startRect, turnCard, type Card, type Rect, type Side } from './card';
-import { Cropper, FrameSays, RotateBar } from './crop';
+import { Cropper, degrees, FrameSays, RotateBar } from './crop';
+import { fitEdges, pixelsOf } from './edges';
 import { base64File, canvasFrom, cardJpeg, cutCard, turnCanvas } from './image';
 
 // The ID scan, shared by the Add employee page and the National ID page (after the scan dialog of Prime ERP, Trendlix,
@@ -142,8 +143,17 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
   const runs = useRef(0);
 
   const [adjust, setAdjust] = useState<Adjust | null>(null);
-  const [adjustSays, setAdjustSays] = useState('');
+  // what the framing step says; after "Fit to the card's edges" it also keeps the frame from before, for Undo the fit
+  const [said, setSaid] = useState<{ text: string; before?: Pick<Adjust, 'rect' | 'fine'> }>({ text: '' });
+  const adjustSays = said.text;
+  const setAdjustSays = (text: string, before?: Pick<Adjust, 'rect' | 'fine'>) => setSaid({ text, before });
   const [opening, setOpening] = useState(false);
+  const [fitting, setFitting] = useState(false);
+  /** The frame as it stands now: "Fit to the card's edges" looks a moment after it is pressed, and leaves a frame moved meanwhile alone. */
+  const adjustNow = useRef<Adjust | null>(null);
+  useEffect(() => {
+    adjustNow.current = adjust;
+  }, [adjust]);
   /** The pages as canvases, opened once each; a new scan starts again. */
   const pageCanvases = useRef(new Map<number, Promise<HTMLCanvasElement>>());
   const adjustButtons = useRef<Partial<Record<Side, HTMLButtonElement | null>>>({});
@@ -255,11 +265,61 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
   }
 
   function turn() {
+    setAdjustSays('');
     setAdjust((a) => {
       if (!a) return a;
       const work = turnCanvas(a.work, 90);
       return { ...a, work, quarter: (a.quarter + 90) % 360, base: 0, fine: 0, rect: cardRect(startRect(), work.width, work.height) };
     });
+  }
+
+  /**
+   * "Fit to the card's edges": the card's own edges are looked for near the frame (edges.ts), and the frame is laid on
+   * them in the shape of an ID card, with the card turned level on the slider. The person checks it, and may still move
+   * it, before Use this frame. When no edges show, the frame is left as it was.
+   */
+  function fitToEdges() {
+    const st = adjust;
+    if (!st || fitting) return;
+    setFitting(true);
+    // the button says it is looking before the search starts: a few hundredths of a second, more on a slow phone
+    requestAnimationFrame(() =>
+      setTimeout(() => {
+        let fit: ReturnType<typeof fitEdges> | undefined;
+        try {
+          fit = fitEdges(pixelsOf(st.work), st);
+        } catch {
+          // a browser that gives no canvas to read (fit stays undefined)
+        }
+        setFitting(false);
+        if (adjustNow.current !== st) return; // the frame was moved, or put away, meanwhile
+        if (fit === undefined) {
+          setAdjustSays('The card could not be looked at in this browser. Frame it by hand.');
+          return;
+        }
+        if (!fit) {
+          setAdjustSays("The card's edges couldn't be found near the frame, so it was left as it was. Frame the card more closely and try again.");
+          return;
+        }
+        const { rect, fine } = fit;
+        const turned = Math.round((fine - st.fine) * 10) / 10;
+        setAdjust((a) => (a === st ? { ...a, rect, fine } : a));
+        setAdjustSays(
+          turned
+            ? `The frame has been fitted to the card's edges and the card turned by ${degrees(turned)}. Check it, then press Use this frame.`
+            : "The frame has been fitted to the card's edges, and the card was already level. Check it, then press Use this frame.",
+          { rect: st.rect, fine: st.fine },
+        );
+      }, 0),
+    );
+  }
+
+  /** Undo the fit: the frame and the slider go back to where they were before "Fit to the card's edges". */
+  function undoFit() {
+    const before = said.before;
+    if (!before) return;
+    setAdjust((a) => a && { ...a, rect: before.rect, fine: before.fine });
+    setAdjustSays('The frame is back where it was.');
   }
 
   /** The framed card becomes the picture of that side: cut out with its margin and brought to the size of an ID card. */
@@ -421,8 +481,9 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
         >
           <p id={fid('adjust-how')} className="text-sm">
             <b>{SIDE_LABEL[adjust.side]}: frame the card by hand.</b> Drag the frame over the card, or drag its handles to resize it. Rotate the card
-            until it lies exactly level: up to 10 degrees either way, a tenth of a degree at a time. With the keyboard, the arrow keys move the frame
-            and Shift with the arrow keys resizes it.
+            until it lies exactly level: up to 10 degrees either way, a tenth of a degree at a time. Or frame it roughly and press Fit to the
+            card&apos;s edges: the frame snaps onto the card&apos;s own edges and the card is turned level. With the keyboard, the arrow keys move
+            the frame and Shift with the arrow keys resizes it.
           </p>
           {set.pages.length > 1 && (
             <div role="group" aria-label="Page of the scan" className="flex flex-wrap items-center gap-2">
@@ -447,12 +508,30 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
             </button>
             <button
               type="button"
-              onClick={() => setAdjust((a) => a && { ...a, rect: cardRect(a.rect, a.work.width, a.work.height) })}
+              onClick={() => {
+                setAdjust((a) => a && { ...a, rect: cardRect(a.rect, a.work.width, a.work.height) });
+                setAdjustSays('');
+              }}
               className="btn btn-secondary"
             >
               ID card shape
             </button>
-            <RotateBar fine={adjust.fine} onFine={(v) => setAdjust((a) => a && { ...a, fine: fineOf(v) })} />
+            {/* aria-disabled rather than disabled while it looks, so that the button keeps the keyboard's focus */}
+            <button
+              type="button"
+              onClick={fitToEdges}
+              aria-disabled={fitting}
+              className="btn btn-secondary aria-disabled:cursor-wait aria-disabled:opacity-60"
+            >
+              {fitting ? 'Finding the edges…' : "Fit to the card's edges"}
+            </button>
+            <RotateBar
+              fine={adjust.fine}
+              onFine={(v) => {
+                setAdjust((a) => a && { ...a, fine: fineOf(v) });
+                setAdjustSays('');
+              }}
+            />
           </div>
           <Cropper
             work={adjust.work}
@@ -470,11 +549,22 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
           <p className="text-sm text-muted" aria-live="polite">
             <FrameSays rect={adjust.rect} W={adjust.work.width} H={adjust.work.height} tilt={adjust.base + adjust.fine} />
           </p>
-          {adjustSays && (
-            <p role="alert" className="text-sm text-warn">
-              {adjustSays}
-            </p>
-          )}
+          {adjustSays &&
+            (said.before ? (
+              // a fit is news, not a warning: said quietly, with the way back beside it
+              <div className="flex flex-wrap items-center gap-3">
+                <p role="status" className="text-sm text-ok">
+                  {adjustSays}
+                </p>
+                <button type="button" onClick={undoFit} className="btn btn-secondary">
+                  Undo the fit
+                </button>
+              </div>
+            ) : (
+              <p role="alert" className="text-sm text-warn">
+                {adjustSays}
+              </p>
+            ))}
           <div className="flex flex-wrap gap-3">
             <button type="button" onClick={() => void applyFrame()} className="btn btn-primary">
               Use this frame

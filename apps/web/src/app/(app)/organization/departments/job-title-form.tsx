@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { TeamOptions } from '@/components/department-options';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { Department, FormState, Grade, JobTitle } from '@/lib/types';
@@ -9,7 +10,11 @@ import { gradeLabel } from '../grades/label';
 /**
  * A job title and its job description. It belongs to a team (Department → Team → Job title), which comes preselected
  * from the team page the form was opened on; choosing another one moves the job title there.
- * `departments`: every department and team (GET /departments), for the team picker. `grades`: GET /grades.
+ * `departments`: every department and team (GET /departments), for the team picker. `grades`: GET /grades, lowest first.
+ *
+ * A job title has no grade of its own (owner's decision: a junior and a senior account manager are both Account
+ * Managers, with different grades). It may limit the grades people with it can have to a range, either end of which
+ * can be left open; each employment then has the person's own grade, in that range.
  */
 export function JobTitleForm({
   action,
@@ -29,6 +34,13 @@ export function JobTitleForm({
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
   const duties = jobTitle?.duties.map((d) => d.duty).join('\n');
+  // The range's ends, kept in state so "To" only offers grades from "From" up.
+  const [minId, setMinId] = useState(() => valueOf(state, 'minGradeId', jobTitle?.minGradeId));
+  const [maxId, setMaxId] = useState(() => valueOf(state, 'maxGradeId', jobTitle?.maxGradeId));
+  const [clearedMax, setClearedMax] = useState<Grade | null>(null);
+  const minGrade = grades.find((g) => g.id === minId);
+  // (a saved choice stays listed, so the API can say what is wrong with it)
+  const highest = grades.filter((g) => !minGrade || g.rank >= minGrade.rank || g.id === maxId);
   const hasTeams = departments.some((d) => d.parentId);
   // A job title from before teams may sit directly in a department: no team is chosen until one is picked for it.
   const inDepartment = jobTitle && !jobTitle.department.parent ? jobTitle.department : null;
@@ -88,19 +100,73 @@ export function JobTitleForm({
         </div>
       </div>
 
-      <div className="max-w-xs">
-        <label htmlFor={fid('gradeId')} className="label">
-          Grade
-        </label>
-        <select id={fid('gradeId')} name="gradeId" defaultValue={valueOf(state, 'gradeId', jobTitle?.grade?.id)} className="input">
-          <option value="">No grade</option>
-          {grades.map((g) => (
-            <option key={g.id} value={g.id}>
-              {gradeLabel(g)}
-            </option>
-          ))}
-        </select>
-      </div>
+      <fieldset aria-describedby={fid('grades-hint')} className="max-w-lg">
+        <legend className="label">Grades</legend>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor={fid('minGradeId')} className="mb-1 block text-sm text-muted">
+              From
+            </label>
+            <select
+              id={fid('minGradeId')}
+              name="minGradeId"
+              value={minId}
+              onChange={(e) => {
+                const from = grades.find((g) => g.id === e.target.value);
+                const to = grades.find((g) => g.id === maxId);
+                setMinId(e.target.value);
+                // a highest grade below the new lowest one would be the wrong way round: let it go, and say so
+                if (from && to && to.rank < from.rank) {
+                  setMaxId('');
+                  setClearedMax(to);
+                } else {
+                  setClearedMax(null);
+                }
+              }}
+              className="input"
+            >
+              <option value="">Any</option>
+              {grades.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {gradeLabel(g)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor={fid('maxGradeId')} className="mb-1 block text-sm text-muted">
+              To
+            </label>
+            <select
+              id={fid('maxGradeId')}
+              name="maxGradeId"
+              value={maxId}
+              onChange={(e) => {
+                setMaxId(e.target.value);
+                setClearedMax(null);
+              }}
+              className="input"
+            >
+              <option value="">No limit</option>
+              {highest.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {gradeLabel(g)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <p id={fid('grades-hint')} className="hint">
+          The grades people with this title can have, e.g. G3 to G6 for Account Manager. Leave empty to allow any grade.
+        </p>
+        <div role="status">
+          {clearedMax && minGrade && (
+            <p className="hint text-warn">
+              &ldquo;To&rdquo; was {gradeLabel(clearedMax)}, below {gradeLabel(minGrade)}, so it was cleared. Choose the highest grade again.
+            </p>
+          )}
+        </div>
+      </fieldset>
 
       <fieldset className="space-y-5 border-t border-line pt-5">
         <legend className="pr-2 font-semibold">Job Description</legend>

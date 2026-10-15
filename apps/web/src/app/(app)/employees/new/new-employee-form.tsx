@@ -45,7 +45,8 @@ function stepFor(errors: string[]): Step {
   return errors.length > 0 && errors.every((e) => EDUCATION_WORDS.test(e)) ? 3 : 2;
 }
 
-export function NewEmployeeForm() {
+/** `emailDomain`: the company's work email domain, which the work email must end in (null when there is none). */
+export function NewEmployeeForm({ emailDomain }: { emailDomain: string | null }) {
   const fid = useFieldIds();
   const [step, setStep] = useState<Step>(1);
   const profile = useRef<HTMLElement>(null);
@@ -188,7 +189,14 @@ export function NewEmployeeForm() {
           <div key={cardsRead} className="space-y-8">
             {/* what the reading suggested, to learn from what HR corrects (see learnCorrections) */}
             <ReadValues suggestions={card?.reading.suggestions} />
-            <PersonalFields state={FRESH} fid={fid} part="profile" suggestions={card?.reading.suggestions} corrected={card?.reading.corrected} />
+            <PersonalFields
+              state={FRESH}
+              fid={fid}
+              part="profile"
+              suggestions={card?.reading.suggestions}
+              corrected={card?.reading.corrected}
+              emailDomain={emailDomain}
+            />
             <fieldset className="space-y-5">
               <legend className="font-semibold">
                 National ID <span className="badge ml-2 bg-line-soft align-middle text-muted">Restricted</span>

@@ -71,8 +71,8 @@ export function ProfileHeader({
   const e = p.employment;
   const standing = standingOf(p);
   const lastEnded = e ? null : p.employments.find((x) => x.endDate);
-  const grade = e?.jobTitle?.grade; // an employee's grade is their job title's
-  // "Senior Graphic Designer · G4 · Senior · Marketing › Content Team"
+  const grade = e?.grade; // the person's own grade in their current employment
+  // "Graphic Designer · G4 · Senior · Marketing › Content Team"
   const role = e && [e.jobTitle?.titleEn, grade && gradeLabel(grade), e.department && departmentName(e.department)].filter(Boolean).join(' · ');
 
   return (

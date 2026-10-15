@@ -135,7 +135,6 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
                 ),
                 required: true,
               },
-              { key: 'issuingOffice', label: 'Issuing office', value: p.identity?.issuingOffice, ar: true },
             ]}
           />
         </ProfileSection>

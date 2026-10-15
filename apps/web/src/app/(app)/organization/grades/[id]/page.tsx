@@ -12,7 +12,13 @@ async function EditGrade({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const grade = await apiGet<Grade>(`/grades/${id}`);
-  const used = grade._count.jobTitles;
+  // A grade a job title's range starts or ends at, or that an employment has, stays (the API refuses too).
+  const { jobTitles, employments } = grade._count;
+  const uses = [
+    jobTitles === 1 && '1 job title takes it as its lowest or highest grade',
+    jobTitles > 1 && `${jobTitles} job titles take it as their lowest or highest grade`,
+    employments > 0 && `${employments} ${employments === 1 ? 'employment has' : 'employments have'} it (ended ones included)`,
+  ].filter(Boolean);
   return (
     <RequireEditor>
       <h2 className="text-lg font-semibold">Grade {gradeLabel(grade)}</h2>
@@ -20,9 +26,9 @@ async function EditGrade({ params }: { params: Promise<{ id: string }> }) {
         <GradeForm action={updateGrade.bind(null, id)} grade={grade} />
         <section className="max-w-xl space-y-2">
           <h3 className="font-semibold">Delete Grade</h3>
-          {used > 0 ? (
+          {uses.length > 0 ? (
             <p className="text-sm text-muted">
-              {used} {used === 1 ? 'job title has' : 'job titles have'} this grade. Give {used === 1 ? 'it' : 'them'} another grade first.
+              {grade.code} is in use: {uses.join(', and ')}. Change {jobTitles + employments === 1 ? 'it' : 'them'} first.
             </p>
           ) : (
             <DeleteForm

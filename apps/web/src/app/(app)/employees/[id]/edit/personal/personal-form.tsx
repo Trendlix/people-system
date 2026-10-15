@@ -10,11 +10,14 @@ export function PersonalForm({
   action,
   employee,
   part,
+  emailDomain,
   cancelHref,
 }: {
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
   employee: EmployeeProfile;
   part?: Part;
+  /** The company's work email domain, for the work email (on the Personal Details page). */
+  emailDomain?: string | null;
   cancelHref: string;
 }) {
   // Kept form: a refused save leaves the selects (gender, marital status…) as they were chosen.
@@ -25,7 +28,7 @@ export function PersonalForm({
     <form {...form} className="card max-w-3xl space-y-8 p-6">
       <FormErrors errors={state.errors} />
 
-      <PersonalFields state={state} fid={fid} employee={employee} part={part} />
+      <PersonalFields state={state} fid={fid} employee={employee} part={part} emailDomain={emailDomain} />
 
       <div className="flex flex-wrap gap-3 border-t border-line pt-6">
         <SubmitButton busy={pending}>Save changes</SubmitButton>

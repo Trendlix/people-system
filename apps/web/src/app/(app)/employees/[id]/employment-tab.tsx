@@ -19,7 +19,7 @@ const placeLabel = (e: Employment) => (e.department && !e.department.parent ? 'D
 
 /** The current employment's details, in the profile's field grid. */
 function employmentFields(e: Employment, linkPeople: boolean): GridField[] {
-  const grade = e.jobTitle?.grade; // an employee's grade is their job title's
+  const grade = e.grade; // the person's own grade in this employment (within the job title's range, if it has one)
   return [
     { key: 'employmentType', label: 'Employment type', value: LABELS.employmentType[e.employmentType] },
     { key: 'status', label: 'Status', value: <StatusBadge status={e.status} /> },
@@ -102,7 +102,7 @@ function History({ profile: p }: { profile: EmployeeProfile }) {
               <td className="whitespace-nowrap">{LABELS.employmentType[e.employmentType]}</td>
               <td>{e.department ? departmentName(e.department) : dash}</td>
               <td>{e.jobTitle?.titleEn ?? dash}</td>
-              <td className="whitespace-nowrap">{e.jobTitle?.grade ? gradeLabel(e.jobTitle.grade) : dash}</td>
+              <td className="whitespace-nowrap">{e.grade ? gradeLabel(e.grade) : dash}</td>
               <td>
                 {e.endDate ? (
                   <span className="badge bg-line-soft text-muted">{e.endReason ? END_REASON_LABELS[e.endReason] : LABELS.status[e.status]}</span>

@@ -8,13 +8,12 @@ import { BackLink, canSeeCardFixes, Empty, Loading } from '../ui';
 import { DeleteFixButton } from './delete-fix-button';
 
 // The fixes the ID card reader learned from HR's corrections (HR and Admin): a word or phrase it read wrong in the
-// Arabic name, the address or the issuing office, and how HR corrected it before saving. Each fix is applied to the next
-// readings (the fields it changes are marked for checking); one learned by mistake can be deleted.
+// Arabic name or the address, and how HR corrected it before saving. Each fix is applied to the next readings (the
+// fields it changes are marked for checking); one learned by mistake can be deleted.
 
 const FIELD_LABEL: Record<LearnedField, string> = {
   fullNameAr: 'Arabic name',
   addressAr: 'Address',
-  issuingOffice: 'Issuing office',
 };
 
 function Arabic({ children }: { children: string }) {
@@ -86,9 +85,8 @@ export default function CardCorrectionsPage() {
       <div>
         <h1 className="text-2xl font-semibold">Card Reading Fixes</h1>
         <p className="mt-1 max-w-3xl text-muted">
-          Words the ID card reader got wrong and HR corrected before saving: in the Arabic name, the address and the issuing office, never in
-          numbers or dates. Each fix is applied to the next card readings, and the fields it changes are marked for checking. Delete a fix if it
-          was learned by mistake.
+          Words the ID card reader got wrong and HR corrected before saving: in the Arabic name and the address, never in numbers or dates. Each
+          fix is applied to the next card readings, and the fields it changes are marked for checking. Delete a fix if it was learned by mistake.
         </p>
       </div>
       <Suspense fallback={<Loading />}>

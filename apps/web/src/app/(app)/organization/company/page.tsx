@@ -97,6 +97,7 @@ async function CompanyProfile() {
               </a>
             )}
           </Row>
+          <Row label="Work email domain">{company.emailDomain}</Row>
         </Section>
 
         <Section title="Company Representative" hint="Signs documents on the company's behalf, such as the clearance form.">

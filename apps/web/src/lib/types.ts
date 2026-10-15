@@ -47,7 +47,10 @@ export interface Department extends DepartmentRef {
   children?: (DepartmentRef & { sortOrder: number; _count: { jobTitles: number } })[];
 }
 
-/** A grade as job titles and employees name it: G1 Entry Level … G9 Executive; rank 1 is the lowest. */
+/**
+ * A grade as job titles and employments name it: G1 Entry Level … G9 Executive; rank 1 is the lowest. A job title may
+ * allow a range of grades (Account Manager: G3 to G6); each employment has the person's own grade.
+ */
 export interface GradeRef {
   id: string;
   code: string;
@@ -59,7 +62,11 @@ export interface GradeRef {
 /** GET /grades, lowest rank first. */
 export interface Grade extends GradeRef {
   description: string | null;
-  _count: { jobTitles: number };
+  /**
+   * Where it is used, which keeps it from being deleted: `jobTitles`, the job titles whose grade range starts or ends at
+   * it; `employments`, the employments with it (ended ones included).
+   */
+  _count: { jobTitles: number; employments: number };
 }
 
 export interface JobTitleSummary {
@@ -68,8 +75,15 @@ export interface JobTitleSummary {
   departmentId: string;
   titleEn: string;
   titleAr: string | null;
-  gradeId: string | null;
-  grade: GradeRef | null;
+  /**
+   * The grades people with this title can have (owner's decision: Junior and Senior Account Manager are both Account
+   * Managers, with different grades): the lowest and the highest. Either may be open (only a lowest, only a highest);
+   * both null = any grade.
+   */
+  minGradeId: string | null;
+  maxGradeId: string | null;
+  minGrade: GradeRef | null;
+  maxGrade: GradeRef | null;
   jdVersion: number;
   department: DepartmentRef & { parent: DepartmentRef | null };
   _count: { duties: number };
@@ -103,6 +117,8 @@ export interface Company {
   phone: string | null;
   email: string | null;
   website: string | null;
+  /** The domain every employee's work email must end in, after the @ (e.g. trendlix.com); null when any is allowed. */
+  emailDomain: string | null;
   repName: string | null;
   repTitle: string | null;
   repNationalIdMasked: string | null;
@@ -158,8 +174,10 @@ export interface Employment {
   updatedAt: string;
   /** May be a team: then `parent` is its department. */
   department: EmploymentPlace | null;
-  /** `grade` is the employee's grade: their job title's. */
-  jobTitle: { id: string; titleEn: string; titleAr: string | null; jdVersion: number; grade: GradeRef | null } | null;
+  jobTitle: { id: string; titleEn: string; titleAr: string | null; jdVersion: number } | null;
+  /** The person's own grade in this employment; within the job title's range when the title has one. */
+  gradeId: string | null;
+  grade: GradeRef | null;
   manager: { id: string; employeeCode: string; fullNameEn: string } | null;
   shift: { id: string; code: string; startTime: string; endTime: string } | null;
 }
@@ -181,8 +199,10 @@ export interface EmployeeSummary {
     joinDate: string;
     /** May be a team: then `parent` is its department. */
     department: EmploymentPlace | null;
-    /** `grade` is the employee's grade: their job title's. */
-    jobTitle: { id: string; titleEn: string; grade: Omit<GradeRef, 'levelAr'> | null } | null;
+    jobTitle: { id: string; titleEn: string } | null;
+    /** The person's own grade in this employment. */
+    gradeId: string | null;
+    grade: GradeRef | null;
     manager: { id: string; fullNameEn: string } | null;
   } | null;
   /** How the last employment ended, when there is no current one. */
@@ -213,6 +233,7 @@ export interface EmployeeProfile {
   militaryStatus: MilitaryStatus | null;
   workEmail: string | null;
   personalEmail: string | null;
+  /** Mobile numbers (this, mobile2 and emergencyMobile) are kept as the country code and the number in one run, e.g. +201012345678. */
   mobile: string | null;
   /** A second mobile number. */
   mobile2: string | null;
@@ -244,7 +265,6 @@ export interface EmployeeProfile {
     printedNoMasked: string | null;
     issueDate: string | null;
     expiryDate: string | null;
-    issuingOffice: string | null;
   } | null;
   /** HR, Finance and CEO only; null = nothing recorded. */
   bank?: {
@@ -266,7 +286,6 @@ export interface EmployeeIdentity {
   printedNo: string | null;
   issueDate: string | null;
   expiryDate: string | null;
-  issuingOffice: string | null;
 }
 
 /** GET /employees/:id/bank: the full bank details (each call is audited). */
@@ -336,7 +355,6 @@ export interface IdCardScan {
     issueDate?: string;
     expiryDate?: string;
     printedNo?: string;
-    issuingOffice?: string;
     /** Printed on the back. */
     maritalStatus?: MaritalStatus;
     /** The governorate the address ends in. */
@@ -407,7 +425,7 @@ export interface IdCardPrepared {
 }
 
 /** The fields whose corrections are learned: never national ID numbers or dates. */
-export type LearnedField = 'fullNameAr' | 'addressAr' | 'issuingOffice';
+export type LearnedField = 'fullNameAr' | 'addressAr';
 
 /** GET /id-card/corrections (HR and Admin): a word or phrase the card reader got wrong, and how HR corrected it. */
 export interface CardCorrection {

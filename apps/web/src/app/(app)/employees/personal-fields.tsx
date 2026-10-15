@@ -1,9 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { DEGREES, EDUCATION_GRADES, GENDERS, GOVERNORATES, LABELS, MARITAL_STATUSES, MILITARY_STATUSES } from '@trendlix/shared';
+import {
+  DEGREES,
+  EDUCATION_GRADES,
+  FACULTIES,
+  GENDERS,
+  GOVERNORATES,
+  LABELS,
+  MARITAL_STATUSES,
+  MILITARY_STATUSES,
+  UNIVERSITIES,
+  UNIVERSITY_KIND_LABELS,
+  UNIVERSITY_KINDS,
+} from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
+import { ListOrOther, type ListGroup } from '@/components/list-or-other';
 import { valueOf } from '@/components/form';
+import { PhoneInput } from '@/components/phone-input';
 import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, FormState } from '@/lib/types';
 import { cardMarks, type CardSuggestions } from './id-card';
@@ -19,7 +33,8 @@ export type Part = 'profile' | 'education';
 type Field = {
   name: keyof EmployeeProfile & string;
   label: string;
-  kind?: 'text' | 'email' | 'tel' | 'date' | 'year' | 'select';
+  /** `tel`: a country code and a number (PhoneInput). `list`: a standard list with Other (ListOrOther). */
+  kind?: 'text' | 'email' | 'tel' | 'date' | 'year' | 'select' | 'list';
   max?: number;
   ar?: boolean;
   multiline?: boolean;
@@ -27,11 +42,29 @@ type Field = {
   hint?: React.ReactNode;
   placeholder?: string;
   options?: readonly Option[];
+  /** For `list`: the choices, and the other ways a value on file may be written. */
+  list?: { groups: readonly ListGroup[]; aliases: ReadonlyMap<string, string> };
   /** Takes the whole row on wide screens. */
   wide?: boolean;
 };
 
 const options = <T extends string>(values: readonly T[], labels: Record<T, string>): Option[] => values.map((v) => ({ value: v, label: labels[v] }));
+
+// The universities, by kind, and the faculties (packages/shared education.ts), so that the same one is always written
+// the same way. Kept in English; the Arabic name is shown beside it, and a value saved in Arabic is recognised.
+const bilingual = (x: { en: string; ar: string }) => ({ value: x.en, label: `${x.en} · ${x.ar}` });
+const UNIVERSITY_LIST = {
+  groups: UNIVERSITY_KINDS.map((k) => ({ label: UNIVERSITY_KIND_LABELS[k], choices: UNIVERSITIES.filter((u) => u.kind === k).map(bilingual) })),
+  aliases: new Map(UNIVERSITIES.flatMap((u) => [[u.ar, u.en], [u.en.toLowerCase(), u.en]] as const)),
+};
+const FACULTY_LIST = {
+  groups: [{ choices: FACULTIES.map(bilingual) }],
+  aliases: new Map(
+    FACULTIES.flatMap(
+      (f) => [[f.ar, f.en], [`كلية ${f.ar}`, f.en], [f.en.toLowerCase(), f.en], [`faculty of ${f.en.toLowerCase()}`, f.en]] as const,
+    ),
+  ),
+};
 
 const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
   {
@@ -60,8 +93,8 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
         hint: 'A sign-in account with this email is linked to this employee.',
       },
       { name: 'personalEmail', label: 'Personal email', kind: 'email', max: 254 },
-      { name: 'mobile', label: 'Mobile', kind: 'tel', max: 30 },
-      { name: 'mobile2', label: 'Second mobile', kind: 'tel', max: 30 },
+      { name: 'mobile', label: 'Mobile', kind: 'tel', hint: 'The number without the 0 in front.' },
+      { name: 'mobile2', label: 'Second mobile', kind: 'tel', hint: 'The number without the 0 in front.' },
       { name: 'governorate', label: 'Governorate', kind: 'select', options: GOVERNORATES.map((g) => ({ value: g, label: g })) },
       {
         name: 'city',
@@ -83,15 +116,15 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
     fields: [
       { name: 'emergencyName', label: 'Name', max: 150 },
       { name: 'emergencyRelation', label: 'Relation', max: 50, placeholder: 'e.g. Sister' },
-      { name: 'emergencyMobile', label: 'Mobile', kind: 'tel', max: 30 },
+      { name: 'emergencyMobile', label: 'Mobile', kind: 'tel', hint: 'The number without the 0 in front.' },
     ],
   },
   {
     title: 'Education',
     part: 'education',
     fields: [
-      { name: 'university', label: 'University', max: 150 },
-      { name: 'faculty', label: 'Faculty', max: 150 },
+      { name: 'university', label: 'University', kind: 'list', list: UNIVERSITY_LIST, max: 150, hint: 'Not on the list? Choose Other and type it.' },
+      { name: 'faculty', label: 'Faculty', kind: 'list', list: FACULTY_LIST, max: 150, hint: 'The subject, without "Faculty of". Not on the list? Choose Other.' },
       { name: 'degree', label: 'Degree', kind: 'select', options: options(DEGREES, LABELS.degree) },
       { name: 'major', label: 'Major', max: 150 },
       { name: 'graduationYear', label: 'Graduation year', kind: 'year' },
@@ -103,6 +136,12 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
 
 /** A new employee's code may be left empty: the API gives the next number. */
 const NEW_CODE: Partial<Field> = { required: false, hint: 'Leave empty to give the next number automatically.' };
+
+/** With the company's work email domain set (e.g. trendlix.com), every work email must end in it; the API checks this. */
+const inDomain = (domain: string): Partial<Field> => ({
+  placeholder: `name@${domain}`,
+  hint: `Must end in @${domain}. A sign-in account with this email is linked to this employee.`,
+});
 
 /** The value a field starts with, as the field shows it (dates as DD/MM/YYYY, numbers as text): saved, or read from the card. */
 function startText(f: Field, employee?: EmployeeProfile, card?: CardSuggestions): string {
@@ -123,6 +162,7 @@ export function PersonalFields({
   suggestions,
   corrected,
   part,
+  emailDomain,
 }: {
   state: FormState;
   fid: (name: string) => string;
@@ -131,6 +171,8 @@ export function PersonalFields({
   corrected?: readonly string[];
   /** Only these groups; all of them when left out. */
   part?: Part;
+  /** The company's work email domain (e.g. trendlix.com), which the work email must end in; null or left out when there is none. */
+  emailDomain?: string | null;
 }) {
   const card = cardMarks(fid, suggestions, corrected);
   const [gender, setGender] = useState(() => valueOf(state, 'gender', employee?.gender ?? suggestions?.gender));
@@ -153,6 +195,24 @@ export function PersonalFields({
       );
     }
     if (f.kind === 'date') return <DateInput id={id} name={f.name} aria-describedby={describedBy} defaultValue={value} />;
+    if (f.kind === 'list' && f.list) {
+      return (
+        <ListOrOther
+          id={id}
+          name={f.name}
+          label={f.label}
+          groups={f.list.groups}
+          aliases={f.list.aliases}
+          defaultValue={value}
+          max={f.max}
+          aria-describedby={describedBy}
+        />
+      );
+    }
+    if (f.kind === 'tel') {
+      const label = f.name === 'emergencyMobile' ? 'Emergency contact’s mobile' : f.label;
+      return <PhoneInput id={id} name={f.name} label={label} aria-describedby={describedBy} defaultValue={value} />;
+    }
     if (f.kind === 'select') {
       // A stored value that is no longer in the list (e.g. imported) stays selectable, so saving doesn't clear it.
       const list = saved && !f.options?.some((o) => o.value === saved) ? [...(f.options ?? []), { value: saved, label: saved }] : (f.options ?? []);
@@ -196,6 +256,7 @@ export function PersonalFields({
       <div className="grid gap-5 sm:grid-cols-2">
         {group.fields
           .map((f) => (!employee && f.name === 'employeeCode' ? { ...f, ...NEW_CODE } : f))
+          .map((f) => (emailDomain && f.name === 'workEmail' ? { ...f, ...inDomain(emailDomain) } : f))
           .map((f) => (
             <div key={f.name} className={f.wide ? 'sm:col-span-2' : undefined}>
               <label htmlFor={fid(f.name)} className="label">

@@ -6,7 +6,7 @@ import { departmentName } from '@/lib/departments';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Department, Grade, JobTitle } from '@/lib/types';
 import { deleteJobTitle, updateJobTitle } from '../../../../actions';
-import { gradeLabel } from '../../../../grades/label';
+import { gradeRangeLabel } from '../../../../grades/label';
 import { BackLink, Loading, UUID } from '../../../../ui';
 import { AnchorSection } from '../../../anchor-section';
 import { JobTitleForm } from '../../../job-title-form';
@@ -62,6 +62,8 @@ async function JobTitleDetails({ params }: { params: Promise<{ id: string; jobTi
   const back = `/organization/departments/${id}`;
   // From before job titles belonged to teams only: still directly in a department until it is moved into a team.
   const notInTeam = !jobTitle.department.parent;
+  // The grades people with this title can have, e.g. "G3–G6"; none when any grade is allowed.
+  const range = gradeRangeLabel(jobTitle);
 
   return (
     <>
@@ -76,11 +78,8 @@ async function JobTitleDetails({ params }: { params: Promise<{ id: string; jobTi
           )}
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
             {departmentName(jobTitle.department)}
-            {jobTitle.grade && (
-              <span className="badge">
-                <span className="sr-only">Grade </span>
-                {gradeLabel(jobTitle.grade)}
-              </span>
+            {range && (
+              <span className="badge">Grades: {range}</span>
             )}
           </p>
         </div>

@@ -87,7 +87,7 @@ function Placement({ employee: e }: { employee: EmployeeSummary }) {
     <>
       <td>{job?.department ? departmentName(job.department) : dash}</td>
       <td>{job?.jobTitle?.titleEn ?? dash}</td>
-      <td className="whitespace-nowrap">{job?.jobTitle?.grade ? gradeLabel(job.jobTitle.grade) : dash}</td>
+      <td className="whitespace-nowrap">{job?.grade ? gradeLabel(job.grade) : dash}</td>
       <td>{job?.manager?.fullNameEn ?? dash}</td>
     </>
   );
@@ -113,14 +113,14 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   }
 
   // Counts follow the search, department and grade filters, so each chip shows how many rows it would list. A
-  // department also covers the people in its teams. An employee's grade is their job title's. Both are the current
-  // employment's: a former employee is in no department now.
+  // department also covers the people in its teams. The grade is the employee's own, set on their employment. Both are
+  // the current employment's: a former employee is in no department now.
   const inDepartment = f.departmentId ? withTeams(departments, f.departmentId) : null;
   const base = everyone.filter(
     (e) =>
       matches(e, f.q) &&
       (!inDepartment || (e.employment?.department != null && inDepartment.has(e.employment.department.id))) &&
-      (!f.gradeId || e.employment?.jobTitle?.grade?.id === f.gradeId),
+      (!f.gradeId || e.employment?.grade?.id === f.gradeId),
   );
   const rows = f.standing ? base.filter((e) => e.standing === f.standing) : base;
   const counts = new Map<Standing, number>();

@@ -80,5 +80,5 @@ export const SCANS_TOO_LARGE =
  * The fields whose corrections the card reader learns from (POST /id-card/corrections). What the reading suggested for
  * each travels with the form in a hidden field (`readKey`), never in a URL, so the save can compare it with what HR saved.
  */
-export const LEARNED_FIELDS: readonly LearnedField[] = ['fullNameAr', 'addressAr', 'issuingOffice'];
+export const LEARNED_FIELDS: readonly LearnedField[] = ['fullNameAr', 'addressAr'];
 export const readKey = (field: LearnedField) => `read_${field}`;

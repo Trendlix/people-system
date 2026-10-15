@@ -5,7 +5,7 @@ import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import { endEmployment } from '../../../../employment-actions';
 import { loadEmployment } from '../../../../data';
-import { EditHeading, Empty, Loading, profileHref, RequireHr } from '../../../../ui';
+import { EditHeading, Empty, gradeLabel, Loading, profileHref, RequireHr } from '../../../../ui';
 import { EndEmploymentForm } from '../../employment-form';
 
 // Ending the current employment: resignation, termination, the end of a contract. The profile stays, and the person is
@@ -15,7 +15,14 @@ import { EndEmploymentForm } from '../../employment-form';
 async function EndEmployment({ params }: { params: Promise<{ id: string; employmentId: string }> }) {
   const { employee, employment: e } = await loadEmployment(params);
   const back = profileHref(employee.id, 'employment');
-  const what = [LABELS.employmentType[e.employmentType], e.jobTitle?.titleEn, e.department && departmentName(e.department)].filter(Boolean).join(' · ');
+  const what = [
+    LABELS.employmentType[e.employmentType],
+    e.jobTitle?.titleEn,
+    e.grade && gradeLabel(e.grade),
+    e.department && departmentName(e.department),
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <>

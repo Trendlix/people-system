@@ -42,6 +42,12 @@ const GROUPS: { title: string; hint?: string; fields: TextField[] }[] = [
       { name: 'phone', label: 'Phone', type: 'tel', max: 30 },
       { name: 'email', label: 'Email', type: 'email', max: 254 },
       { name: 'website', label: 'Website', max: 200, hint: 'e.g. trendlix.com' },
+      {
+        name: 'emailDomain',
+        label: 'Work email domain',
+        max: 253,
+        hint: 'e.g. trendlix.com. Every employee’s work email must then end in @trendlix.com. Leave empty to allow any work email.',
+      },
     ],
   },
   {

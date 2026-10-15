@@ -77,7 +77,7 @@ export function GradeForm({ action, grade }: { action: (prev: FormState, fd: For
           className="input"
         />
         <p id={fid('description-hint')} className="hint">
-          Job titles at this level, as a guide when choosing a job title&apos;s grade.
+          The roles at this level, as a guide when choosing an employee&apos;s grade or the grades a job title allows.
         </p>
       </div>
       <div className="flex flex-wrap gap-3">

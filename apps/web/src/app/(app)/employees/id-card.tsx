@@ -98,8 +98,8 @@ export function CardTextDetails({ front, back }: { front: string | null; back: s
 }
 
 /**
- * The national ID details: number, printed number, issue and expiry dates, issuing office. They start with what the
- * card says (`suggestions`, marked for checking), else the saved `identity`.
+ * The national ID details: number, printed number, issue and expiry dates. They start with what the card says
+ * (`suggestions`, marked for checking), else the saved `identity`.
  */
 export function NationalIdFields({
   state,
@@ -183,25 +183,6 @@ export function NationalIdFields({
           defaultValue={valueOf(state, 'expiryDate', formatDate(s.expiryDate ?? identity?.expiryDate))}
         />
         {card.note('expiryDate')}
-      </div>
-      <div className="sm:col-span-2">
-        <label htmlFor={fid('issuingOffice')} className="label">
-          Issuing office{' '}
-          <span lang="ar" className="font-normal text-muted">
-            (جهة الإصدار)
-          </span>
-        </label>
-        <input
-          id={fid('issuingOffice')}
-          name="issuingOffice"
-          lang="ar"
-          dir="rtl"
-          maxLength={150}
-          aria-describedby={card.describedBy('issuingOffice')}
-          defaultValue={valueOf(state, 'issuingOffice', s.issuingOffice ?? identity?.issuingOffice)}
-          className="input"
-        />
-        {card.note('issuingOffice')}
       </div>
     </div>
   );

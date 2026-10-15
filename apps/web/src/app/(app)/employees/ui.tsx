@@ -84,7 +84,7 @@ export function Avatar({ name, size = 'sm' }: { name: string; size?: 'sm' | 'lg'
   );
 }
 
-/** "G4 · Senior": an employee's grade is their job title's. */
+/** "G4 · Senior": an employee's grade (each employment has its own, within the job title's range if it has one). */
 export function gradeLabel(grade: { code: string; levelEn: string }): string {
   return `${grade.code} · ${grade.levelEn}`;
 }

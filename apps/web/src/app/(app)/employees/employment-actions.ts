@@ -41,7 +41,8 @@ async function save(employeeId: string, fd: FormData, errors: string[], request:
 
 /**
  * The employment's fields (employment-fields.tsx). `withStatus`: a current employment's status (an ended one's follows
- * why it ended). A job title picker left disabled sends nothing, which clears the job title.
+ * why it ended). A job title picker left disabled sends nothing, which clears the job title. `gradeId`: the person's
+ * own grade ("" clears it); the API refuses one outside the job title's range.
  */
 function employmentBody(fd: FormData, errors: string[], withStatus: boolean) {
   const workArrangement = text(fd, 'workArrangement');
@@ -51,6 +52,7 @@ function employmentBody(fd: FormData, errors: string[], withStatus: boolean) {
     // the form keeps the team in line with the job title, so the API gets a matching pair
     departmentId: text(fd, 'departmentId'),
     jobTitleId: text(fd, 'jobTitleId'),
+    gradeId: text(fd, 'gradeId'),
     managerId: text(fd, 'managerId'),
     joinDate: dateFrom(fd, 'joinDate', 'join date', errors),
     probationEnd: dateFrom(fd, 'probationEnd', 'probation end date', errors),

@@ -90,7 +90,6 @@ function identityBody(fd: FormData, errors: string[]) {
     printedNo: text(fd, 'printedNo'),
     issueDate: dateFrom(fd, 'issueDate', 'issue date', errors),
     expiryDate: dateFrom(fd, 'expiryDate', 'expiry date', errors),
-    issuingOffice: text(fd, 'issuingOffice'),
   };
 }
 
@@ -99,9 +98,9 @@ function identityBody(fd: FormData, errors: string[]) {
 const plain = (v: string) => v.replace(/\s+/g, ' ').trim();
 
 /**
- * Teaches the card reader HR's corrections (POST /id-card/corrections): for the Arabic name, the address and the issuing
- * office, what the reading suggested (sent with the form, see readKey) and what was saved, when both are filled in and
- * they differ. Called after a save went through, and never stops or undoes it: a failure here is passed over.
+ * Teaches the card reader HR's corrections (POST /id-card/corrections): for the Arabic name and the address, what the
+ * reading suggested (sent with the form, see readKey) and what was saved, when both are filled in and they differ.
+ * Called after a save went through, and never stops or undoes it: a failure here is passed over.
  */
 async function learnCorrections(fd: FormData, saved: Partial<Record<LearnedField, string>>) {
   const corrections = LEARNED_FIELDS.flatMap((field) => {
@@ -170,7 +169,7 @@ export async function createEmployee(_prev: FormState, fd: FormData): Promise<Fo
       const created = await apiSend<EmployeeProfile>('POST', '/employees', body);
       if (created) {
         await keepCardPhotos(created.id, photos);
-        await learnCorrections(fd, { fullNameAr: text(fd, 'fullNameAr'), addressAr: text(fd, 'addressAr'), issuingOffice: identity.issuingOffice });
+        await learnCorrections(fd, { fullNameAr: text(fd, 'fullNameAr'), addressAr: text(fd, 'addressAr') });
       }
       return created;
     },
@@ -214,17 +213,15 @@ export async function updateIdentity(id: string, _prev: FormState, fd: FormData)
       // The API checks the national ID against the profile's date of birth, so a ticked date of birth goes first.
       if (dateOfBirth !== undefined) await apiSend('PATCH', `/employees/${id}`, { dateOfBirth });
       await apiSend('PATCH', `/employees/${id}/identity`, body);
-      // what was saved is learned from: the issuing office, and the Arabic name and address when ticked and saved
-      const saved: Partial<Record<LearnedField, string>> = { issuingOffice: body.issuingOffice };
-      if (Object.keys(personal).length === 0) return learnCorrections(fd, saved);
+      if (Object.keys(personal).length === 0) return; // nothing ticked: nothing more to save or to learn from
       try {
         await apiSend('PATCH', `/employees/${id}`, personal);
       } catch (err) {
-        await learnCorrections(fd, saved);
         if (err instanceof ApiError) throw new ApiError(err.status, [`The national ID was saved, but not the personal details: ${err.messages.join(' ')}`]);
         throw err;
       }
-      await learnCorrections(fd, { ...saved, ...personal });
+      // what was saved is learned from: the Arabic name and address, when ticked and saved
+      await learnCorrections(fd, personal);
     },
     `/employees/${id}`,
   );
