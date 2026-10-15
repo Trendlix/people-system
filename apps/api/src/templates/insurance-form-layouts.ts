@@ -46,8 +46,19 @@ const money = (id: string, tag: string, part: 'pounds' | 'piasters', x: number, 
 
 const still = { dx: 0, dy: 0 };
 
+/**
+ * Every number on the forms in Arabic-Indic digits ٠-٩ (owner, 16 October 2026), but an email's: an address keeps its
+ * own. In boxes a third larger (as high as 85% of the box), as Naskh draws ٠-٩ smaller than 0-9.
+ */
+const inArabicDigits = (fields: PdfField[]): PdfField[] =>
+  fields.map((f) => {
+    if (f.kind === 'check' || f.tag === 'personal_email') return f;
+    if (f.kind !== 'boxes') return { ...f, arabicDigits: true };
+    return { ...f, arabicDigits: true, fontSize: Math.min(Math.round(f.fontSize * 2.6) / 2, Math.floor(f.height * 0.85 * 2) / 2) };
+  });
+
 /** Form 1 (طلب اشتراك مؤمن عليه): joining. */
-export const FORM_1_FIELDS: PdfField[] = [
+export const FORM_1_FIELDS: PdfField[] = inArabicDigits([
   // the category: employees of others (عاملين لدى الغير)
   { id: 'category', kind: 'check', tag: null, page: 1, x: 397.2, y: 108.2, width: 19.8, height: 19.8, fontSize: 14 },
   // the employer
@@ -97,10 +108,10 @@ export const FORM_1_FIELDS: PdfField[] = [
   line('p2-employer-no', 'insurance_employer_no', 31.4, 160.2, 518.9, { page: 2 }),
   line('p2-company-address', 'company_address_ar', 31.1, 496, 544.6, { page: 2 }),
   line('p2-name', 'full_name_ar', 323.4, 527.6, 723.5, { page: 2 }),
-];
+]);
 
 /** Form 6 (إخطار بانتهاء اشتراك مؤمن عليه): leaving. */
-export const FORM_6_FIELDS: PdfField[] = [
+export const FORM_6_FIELDS: PdfField[] = inArabicDigits([
   { id: 'employer-no', kind: 'boxes', tag: 'insurance_employer_no', page: 1, x: 343.1, y: 120.7, width: 158.9, height: 19.9, fontSize: 12, boxes: 8, boxAlign: 'right' },
   line('company-name', 'company_name_ar', 84.7, 235.4, 135.6),
   // the tax number above the printed "----- / --- / ---" (dashes drawn mid-height): the first group moved left, clear of
@@ -136,4 +147,4 @@ export const FORM_6_FIELDS: PdfField[] = [
   line('p2-company-address', 'company_address_ar', 62.1, 493.5, 478.5, { page: 2 }),
   line('p2-name', 'full_name_ar', 292.2, 456.9, 496.9, { page: 2 }),
   { id: 'p2-insurance-no', kind: 'boxes', tag: 'insurance_no', page: 2, x: 14.5, y: 484.7, width: 178.8, height: 19.9, fontSize: 12, boxes: 9, boxAlign: 'right' },
-];
+]);
