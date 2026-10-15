@@ -3,7 +3,7 @@ import { PROBATION_MONTHS } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { addMonths, fromDateOnly, toDateOnly } from '../common/date-only.js';
+import { addDays, addMonths, fromDateOnly, toDateOnly } from '../common/date-only.js';
 import type { Employment, Prisma } from '../generated/prisma/client.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -263,17 +263,29 @@ export class EmploymentsService {
       derived.officeDays = arrangement === 'hybrid' ? days : [];
     }
 
-    // Probation ends PROBATION_MONTHS after joining unless HR sets another date (left empty: the default).
-    // A default end date moves with the join date.
+    // the probation end is never typed (owner, 15 October 2026): worked out again at every save
     const joinDate = dto.joinDate ?? current!.joinDate!;
-    const wasDefault = current !== null && current.probationEnd === addMonths(current.joinDate!, PROBATION_MONTHS);
-    if (dto.probationEnd === null || (dto.probationEnd === undefined && (!current || (dto.joinDate && wasDefault)))) {
-      derived.probationEnd = addMonths(joinDate, PROBATION_MONTHS);
-    }
-    const probationEnd = derived.probationEnd ?? dto.probationEnd ?? current?.probationEnd ?? null;
-    if (probationEnd && probationEnd < joinDate) throw new BadRequestException('Probation must end on or after the join date.');
+    derived.probationEnd = await this.probationEnd(employeeId, before, joinDate);
 
     return derived;
+  }
+
+  /**
+   * When probation ends (Labour Law Art. 90: at most 3 months, once per employer): the first contract's probation once
+   * there is one, drafted or signed (a draft made from a job offer has the offer's, which the employment was given
+   * when it was made); before that the contract settings' months from the join date, to the day before (as the
+   * contract will have it); none for someone who already worked for the company.
+   */
+  private async probationEnd(employeeId: string, before: Employment | null, joinDate: string): Promise<string | null> {
+    if (before) {
+      const first = await this.prisma.contract.findFirst({ where: { employmentId: before.id, version: 1 }, select: { probationEnd: true } });
+      if (first) return fromDateOnly(first.probationEnd);
+    }
+    const earlier = await this.prisma.employment.count({ where: { employeeId, ...(before && { id: { not: before.id } }), joinDate: { lt: toDateOnly(joinDate) } } });
+    if (earlier) return null;
+    const settings = await this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { probationMonths: true } });
+    const months = settings?.probationMonths ?? PROBATION_MONTHS;
+    return months > 0 ? addDays(addMonths(joinDate, months), -1) : null;
   }
 
   /**

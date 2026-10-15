@@ -274,7 +274,7 @@ describe('Employees (e2e)', () => {
         employmentType: 'full_time',
         status: 'probation',
         joinDate: '2026-01-15',
-        probationEnd: '2026-04-15',
+        probationEnd: '2026-04-14', // 3 months, to the day before (as the contract will have it)
         departmentId,
         jobTitleId,
         managerId: null,
@@ -318,7 +318,7 @@ describe('Employees (e2e)', () => {
 
       const audit = await prisma.auditLog.findMany({ where: { entityType: 'employment', entityId: hired.employment.id } });
       expect(audit.map((a) => a.action)).toEqual(['create']);
-      expect(audit[0].diff).toMatchObject({ employeeId: e.id, employmentType: 'full_time', joinDate: '2026-01-15', probationEnd: '2026-04-15', departmentId, jobTitleId });
+      expect(audit[0].diff).toMatchObject({ employeeId: e.id, employmentType: 'full_time', joinDate: '2026-01-15', probationEnd: '2026-04-14', departmentId, jobTitleId });
       // the profile itself did not change
       expect(await prisma.auditLog.count({ where: { entityType: 'employee', entityId: e.id } })).toBe(1);
     });
@@ -329,8 +329,9 @@ describe('Employees (e2e)', () => {
       await startEmployment(e.id, { employmentType: 'full_time' }).expect(400); // no join date
       await startEmployment(e.id, job({ joinDate: '2026-02-30' })).expect(400);
       await startEmployment(e.id, job({ employmentType: 'contractor' })).expect(400);
-      const early = await startEmployment(e.id, job({ probationEnd: '2026-01-01' })).expect(400);
-      expect(early.body.message).toBe('Probation must end on or after the join date.');
+      // the probation end is worked out, never typed (owner, 15 October 2026)
+      const typed = await startEmployment(e.id, job({ probationEnd: '2026-04-30' })).expect(400);
+      expect(typed.body.message).toEqual(['property probationEnd should not exist']);
       const ended = await startEmployment(e.id, job({ status: 'resigned' })).expect(400);
       expect(ended.body.message).toEqual(['Choose Active, Probation, On leave or Notice period. To end an employment, use End employment.']);
       await startEmployment(e.id, job({ endDate: '2026-06-30' })).expect(400); // ending is a step of its own
@@ -371,22 +372,35 @@ describe('Employees (e2e)', () => {
       expect(await prisma.employment.count({ where: { employeeId: e.id } })).toBe(0);
     });
 
-    it('moves a default probation end with the join date, keeps one HR chose, and records only what changed', async () => {
+    it('the probation end always follows the join date (+ 3 months − 1 day), is never typed, a rehire has none, and only what changed is recorded', async () => {
       const e = await addHired('Mover');
+      expect(e.employment.probationEnd).toBe('2026-04-14');
       const moved = await changeEmployment(e.id, e.employment.id, { joinDate: '2026-03-01', status: 'active' }).expect(200);
-      expect(moved.body.employment).toMatchObject({ joinDate: '2026-03-01', probationEnd: '2026-06-01', status: 'active' });
+      expect(moved.body.employment).toMatchObject({ joinDate: '2026-03-01', probationEnd: '2026-05-31', status: 'active' });
 
-      const update = await prisma.auditLog.findFirst({ where: { entityType: 'employment', entityId: e.employment.id, action: 'update' } });
-      expect(update?.diff).toEqual({
-        employeeId: e.id,
-        joinDate: { from: '2026-01-15', to: '2026-03-01' },
-        probationEnd: { from: '2026-04-15', to: '2026-06-01' },
-        status: { from: 'probation', to: 'active' },
-      });
+      // worked out, never typed (owner, 15 October 2026): refused as a field the employment does not take
+      const typed = await changeEmployment(e.id, e.employment.id, { probationEnd: '2026-05-20' }).expect(400);
+      expect(typed.body.message).toEqual(['property probationEnd should not exist']);
+      const again = await changeEmployment(e.id, e.employment.id, { joinDate: '2026-03-02' }).expect(200);
+      expect(again.body.employment).toMatchObject({ joinDate: '2026-03-02', probationEnd: '2026-06-01' });
+      await changeEmployment(e.id, e.employment.id, { status: 'active' }).expect(200); // nothing changes
 
-      await changeEmployment(e.id, e.employment.id, { probationEnd: '2026-05-20' }).expect(200);
-      const kept = await changeEmployment(e.id, e.employment.id, { joinDate: '2026-03-02' }).expect(200);
-      expect(kept.body.employment).toMatchObject({ joinDate: '2026-03-02', probationEnd: '2026-05-20' });
+      const updates = await prisma.auditLog.findMany({ where: { entityType: 'employment', entityId: e.employment.id, action: 'update' }, orderBy: { id: 'asc' } });
+      expect(updates.map((u) => u.diff)).toEqual([
+        {
+          employeeId: e.id,
+          joinDate: { from: '2026-01-15', to: '2026-03-01' },
+          probationEnd: { from: '2026-04-14', to: '2026-05-31' },
+          status: { from: 'probation', to: 'active' },
+        },
+        { employeeId: e.id, joinDate: { from: '2026-03-01', to: '2026-03-02' }, probationEnd: { from: '2026-05-31', to: '2026-06-01' } },
+      ]);
+
+      // hired again: no probation, the law allows it once per employer (Art. 90); the earlier employment keeps its own
+      await endEmployment(e.id, e.employment.id, { endDate: '2026-06-30', endReason: 'resigned' }).expect(200);
+      const back = await hire(e.id, { joinDate: '2026-08-01', status: 'active' });
+      expect(back.employment).toMatchObject({ joinDate: '2026-08-01', probationEnd: null });
+      expect(back.employments[1]).toMatchObject({ id: e.employment.id, joinDate: '2026-03-02', probationEnd: '2026-06-01' });
     });
 
     it('refuses a reporting loop and being one’s own manager', async () => {
@@ -490,7 +504,7 @@ describe('Employees (e2e)', () => {
       const fixed = await changeEmployment(e.id, e.employment.id, { joinDate: '2025-02-01', jdAcknowledgedAt: '2025-02-03' }).expect(200);
       expect(fixed.body.employment).toBeNull();
       expect(fixed.body.employments).toEqual([
-        expect.objectContaining({ joinDate: '2025-02-01', probationEnd: '2025-05-01', jdAcknowledgedAt: '2025-02-03', status: 'resigned', endDate: '2025-09-30' }),
+        expect.objectContaining({ joinDate: '2025-02-01', probationEnd: '2025-04-30', jdAcknowledgedAt: '2025-02-03', status: 'resigned', endDate: '2025-09-30' }),
       ]);
 
       const status = await changeEmployment(e.id, e.employment.id, { status: 'active' }).expect(400);

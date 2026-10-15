@@ -294,6 +294,26 @@ export class DocumentsService {
     return { data: Buffer.from(d.data), type: DOCX_MIME, fileName: d.fileName };
   }
 
+  /**
+   * The filled .docx for an unprotected PDF to send for e-signature (HR only): every download is recorded, whatever the
+   * document prints (owner, 15 October 2026: Adobe Sign refuses the protected PDF).
+   */
+  async eSignatureFile(id: string, user: SessionUser): Promise<{ data: Buffer; type: string; fileName: string }> {
+    const d = await this.prisma.generatedDocument.findUnique({
+      where: { id },
+      select: { employeeId: true, slotKey: true, fileName: true, data: true, templateVersion: { select: { tags: true } } },
+    });
+    if (!d) throw new NotFoundException('Document not found.');
+    await this.audit.record({
+      userId: user.id,
+      action: 'download_unprotected',
+      entityType: ENTITY,
+      entityId: id,
+      diff: { employeeId: d.employeeId, slot: d.slotKey, purpose: 'e-signature', fields: this.restrictedOf(d.slotKey, d.templateVersion.tags) },
+    });
+    return { data: Buffer.from(d.data), type: DOCX_MIME, fileName: d.fileName };
+  }
+
   /** Generated → printed. */
   async printed(id: string, user: SessionUser) {
     const { count } = await this.prisma.generatedDocument.updateMany({

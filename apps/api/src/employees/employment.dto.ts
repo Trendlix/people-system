@@ -41,9 +41,6 @@ class EmploymentFieldsDto {
   @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a manager.' })
   managerId?: string | null;
 
-  @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real probation end date.')
-  probationEnd?: string | null;
-
   @Sent() @IsIn(WORK_ARRANGEMENTS, { message: 'Choose Office, Work from home or Hybrid.' })
   workArrangement?: WorkArrangement;
 

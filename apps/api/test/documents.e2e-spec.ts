@@ -487,6 +487,17 @@ describe('Documents (e2e)', () => {
       expect(res.body.message).toMatch(/made from version \d+, so it is kept with them\.$/);
     });
 
+    it('HR saves an unprotected PDF for an e-signature service; every download is recorded; nobody else may', async () => {
+      const esign = (session = hr) => api().get(`/api/documents/${contractDoc.id}/esign-file`).set('Cookie', session).buffer(true).parse(bytes);
+      const res = await esign().expect(200);
+      expect(res.headers['content-type']).toBe('application/pdf');
+      expect(res.headers['content-disposition']).toMatch(/^attachment; .*\(for e-signature\)\.pdf/);
+      expect(hasEncrypt(res.body as Buffer)).toBe(false); // Adobe Sign and DocuSign refuse a protected PDF
+      await esign(ceo).expect(403);
+      const audit = await auditOf(contractDoc.id);
+      expect(audit.filter((a) => a.action === 'download_unprotected').at(-1)?.diff).toMatchObject({ employeeId: ft.id, slot: 'contract_full_time', purpose: 'e-signature' });
+    });
+
     it('only a Super Admin deletes a document', async () => {
       const doc = (await generate(pt.id, { slotKey: 'nda' }).expect(201)).body as Doc;
       expect((await api().delete(`/api/documents/${doc.id}`).set('Cookie', hr).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN);

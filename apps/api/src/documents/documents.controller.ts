@@ -84,6 +84,20 @@ export class DocumentsController {
     return pdfFile(await this.pdf.protectedFile(file), wantsDownload(download));
   }
 
+  /**
+   * The document as an UNPROTECTED PDF, saved, for HR to upload to an e-signature service (Adobe Sign, DocuSign), which
+   * refuses protected PDFs. HR only, and every download is recorded.
+   */
+  @Roles('hr')
+  @Get(':id/esign-file')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Content-Security-Policy', "default-src 'none'")
+  async eSignatureFile(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
+    const file = await this.documents.eSignatureFile(id, user);
+    return pdfFile(await this.pdf.forESignature(file), true);
+  }
+
   @Roles('hr')
   @Post(':id/printed')
   @HttpCode(200)

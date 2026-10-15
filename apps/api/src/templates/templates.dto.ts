@@ -1,5 +1,5 @@
 import { TEMPLATE_LANGUAGES, type TemplateLanguage } from '@trendlix/shared';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { TrimOrNull } from '../common/transforms.js';
 
 /** The form fields sent with an uploaded template. */
@@ -16,4 +16,12 @@ export class UploadTemplateDto {
   @IsString()
   @MaxLength(500, { message: 'Keep the note to 500 characters or fewer.' })
   note?: string | null;
+}
+
+/** A version's file name, as the library shows it (owner, 15 October 2026: "can I rename the file?"). */
+export class RenameTemplateVersionDto {
+  @IsString({ message: 'Enter the file name.' })
+  @IsNotEmpty({ message: 'Enter the file name.' })
+  @MaxLength(200, { message: 'Keep the file name to 200 characters or fewer.' })
+  fileName: string;
 }

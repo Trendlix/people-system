@@ -7,6 +7,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   StreamableFile,
@@ -22,7 +23,7 @@ import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
 import { PdfService } from '../pdf/pdf.service.js';
 import { attachment, fileFormat } from './template-file.js';
-import { UploadTemplateDto } from './templates.dto.js';
+import { RenameTemplateVersionDto, UploadTemplateDto } from './templates.dto.js';
 import { TemplatesService } from './templates.service.js';
 
 // The template library (spec §8; owner's request, 15 October 2026: "Start working on the templates tab; I need to
@@ -89,6 +90,13 @@ export class TemplatesController {
     @CurrentUser() user: SessionUser,
   ) {
     return this.templates.upload(slot, dto, file, user);
+  }
+
+  /** A version's file name, as the library shows it; ".docx" is kept. Nothing else about the version changes. */
+  @Roles('hr', 'admin')
+  @Patch('versions/:id')
+  rename(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RenameTemplateVersionDto, @CurrentUser() user: SessionUser) {
+    return this.templates.rename(id, dto.fileName, user);
   }
 
   @Roles('hr', 'admin')

@@ -258,6 +258,18 @@ describe('Templates (e2e)', () => {
     await api().get(`/api/templates/versions/${published!.id}/file?format=odt`).set('Cookie', ceo).expect(400);
   });
 
+  it('HR or Admin renames a version’s file: cleaned like an upload, .docx kept, recorded; nobody else may', async () => {
+    const { published } = await slotOf('contract_full_time');
+    const rename = (fileName: string, session = hr) => api().patch(`/api/templates/versions/${published!.id}`).set('Cookie', session).send({ fileName });
+    expect((await rename('NDA Bilingual').expect(200)).body.fileName).toBe('NDA Bilingual.docx');
+    expect((await rename('  Contract: official copy.doc ', admin).expect(200)).body.fileName).toBe('Contract_ official copy.docx');
+    await rename('X', ceo).expect(403);
+    expect((await rename('').expect(400)).body.message).toEqual(['Enter the file name.']);
+    const audit = await auditOf(published!.id);
+    expect(audit.at(-1)).toMatchObject({ action: 'update', diff: { fileName: { from: 'NDA Bilingual.docx', to: 'Contract_ official copy.docx' } } });
+    await rename('عقد العمل').expect(200); // back to the name the later tests expect
+  });
+
   it('only a Super Admin deletes, any version nothing was made from', async () => {
     await upload('contract_full_time', realTemplate('Contract'), 'عقد العمل.docx').expect(201); // a new draft, version 3
     const { published, latestDraft } = await slotOf('contract_full_time');

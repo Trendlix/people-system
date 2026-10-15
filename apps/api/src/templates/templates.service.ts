@@ -116,6 +116,22 @@ export class TemplatesService {
    * A draft becomes the version in use, and the one in use before it is retired (kept, with the documents made from
    * it). Refused while it has unknown or broken tags, and for a draft older than the version in use.
    */
+  /** Renames a version's file (as uploaded names often aren't telling); cleaned as an upload's name is, ".docx" kept. */
+  async rename(id: string, name: string, user: SessionUser) {
+    const before = await this.row(id);
+    const fileName = templateFileName(name);
+    if (fileName === before.fileName) return versionView(before);
+    const row = await this.prisma.templateVersion.update({ where: { id }, data: { fileName }, select: VERSION });
+    await this.audit.record({
+      userId: user.id,
+      action: 'update',
+      entityType: ENTITY,
+      entityId: id,
+      diff: { slot: before.slotKey, version: before.version, fileName: { from: before.fileName, to: fileName } },
+    });
+    return versionView(row);
+  }
+
   async publish(id: string, user: SessionUser) {
     const { slotKey } = await this.row(id);
     const { row, retired } = await this.prisma.$transaction(async (tx) => {

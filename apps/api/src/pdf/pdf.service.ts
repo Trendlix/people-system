@@ -163,6 +163,17 @@ export class PdfService {
   }
 
   /**
+   * A filled document as an UNPROTECTED PDF, for HR to upload to an e-signature service (Adobe Sign, DocuSign), which
+   * refuses a protected PDF because it adds the signature fields itself (owner, 15 October 2026). The service locks the
+   * signed PDF itself; the signed copy comes back to the document. Refused (409) without a converter.
+   */
+  async forESignature(file: { data: Buffer; fileName: string }): Promise<{ data: Buffer; type: string; fileName: string }> {
+    const pdf = await this.fromDocx(file.data, file.fileName);
+    if (!pdf) throw new ConflictException(PDF_NOT_SET_UP);
+    return { data: pdf, type: 'application/pdf', fileName: pdfName(file.fileName).replace(/\.pdf$/i, ' (for e-signature).pdf') };
+  }
+
+  /**
    * A Word file of HR's own to show in the browser (Preview: a template as uploaded, the Fields Guide; owner's request,
    * 15 October 2026), as a PDF named like it. Refused (409) without a converter: the Word file can still be downloaded.
    */
