@@ -9,7 +9,10 @@ Internal only: no sign-in, and reachable only on People System's Docker network,
   POST /cards             multipart field "file": JPEG, PNG, WebP or PDF (its first 2 pages), up to 15 MB
        200 {"pages": [{"width", "height", "image"}], "cards": [{"page", "box": {"cx", "cy", "w", "h", "angle"},
             "frame": [left, top, right, bottom], "image", "side", "confidence"}]}  (see app/cards.py, README.md)
-  both: 400 {"detail": "..."} for an unsupported or unreadable file, 413 for one too large, 503 while loading
+  POST /pages             multipart field "file": JPEG, PNG, WebP or PDF (every page, up to 20), up to 15 MB
+       200 {"pages": [{"width", "height", "image"}]}: the pages as pictures, for cropping and adjusting by hand; nothing
+            is read and no card is looked for. A PDF of more than 20 pages: 400 {"detail": "...", "pages": its pages}
+  all: 400 {"detail": "..."} for an unsupported or unreadable file, 413 for one too large, 503 while loading
 
 /read: lines are in reading order: top to bottom, and within a row right to left (ar) or left to right (en). Boxes,
 width and height are in pixels of the picture as uploaded, turned the right way up; for a PDF, of the page rendered
@@ -21,6 +24,7 @@ logged.
 
 import base64
 import logging
+import math
 import os
 import sys
 import threading
@@ -34,7 +38,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from . import cards as id_cards
-from .documents import Document, UnreadableFile, sniff
+from .documents import MAX_PDF_PAGES, Document, TooManyPages, UnreadableFile, sniff
 from .layout import Line, reading_order
 from .upload import UploadError, read_file
 
@@ -48,6 +52,22 @@ CARDS_PDF_PAGES = 2
 PAGE_SIDE = 2000
 PAGE_QUALITY = 85
 CARD_QUALITY = 90
+
+# /pages: every page of a PDF, or the picture, to be cropped and adjusted by hand in the web app, which then stores the
+# result in place of the file. A PDF page is rendered at 200 dpi, as /read reads it, and a page or a picture is at most
+# PAGES_SIDE large (an A4 page: 1414 x 2000). All the pages reach the browser in one answer of at most 4.5 MB (a Vercel
+# server action), so together they are kept within PAGES_BUDGET bytes of JPEG, 4 MB once in base64: each page may take
+# an equal share of what is left, and one over its share is made at a lower quality, down to PAGES_MIN_QUALITY, then
+# smaller, down to PAGES_MIN_SIDE. An A4 page full of text, or scanned, is 0.3 to 0.6 MB at 80 and full size: a typed
+# 10-page contract keeps its full size at 70 to 75; 10 scanned pages come out at about 0.27 MB and 1650 to 1800 px a
+# page, 20 at about 0.14 MB and 1000 to 1300 px (README.md). Only 20 pages crammed with text can go a little over, at
+# the floors (4.1 MB in base64).
+PAGES_PDF_DPI = 200
+PAGES_SIDE = 2000
+PAGES_QUALITY = 80
+PAGES_MIN_QUALITY = 60
+PAGES_MIN_SIDE = 1000
+PAGES_BUDGET = 3_000_000
 
 log = logging.getLogger("ocr")
 
@@ -175,6 +195,32 @@ def create_app(make_engine: Callable = _default_engine, on_load_failure: Callabl
         )
         return result
 
+    @app.post("/pages")
+    async def pages(request: Request):
+        got, refusal = await upload(request, "pages")
+        if refusal is not None:
+            return refusal
+        data, kind = got
+        try:
+            shown, seconds = await run_in_threadpool(_show_pages, work, data, kind)
+        except TooManyPages as e:
+            detail = f"The PDF has {e.pages} pages; at most {MAX_PDF_PAGES} pages can be shown."
+            return _refuse(400, detail, len(data), kind, what="pages", more={"pages": e.pages})
+        except UnreadableFile as e:
+            return _refuse(400, str(e), len(data), kind, what="pages")
+        except Exception:
+            log.exception("pages failed: %s, %d bytes", kind, len(data))
+            return JSONResponse({"detail": "The OCR service failed to show the pages of this file."}, status_code=500)
+        log.info(
+            "pages: %s, %d bytes, %d page(s), %d bytes of JPEG, %.2f s",
+            kind,
+            len(data),
+            len(shown),
+            sum(len(page["image"]) for page in shown) * 3 // 4,
+            seconds,
+        )
+        return {"pages": shown}
+
     return app
 
 
@@ -222,6 +268,46 @@ def _find_cards(engine, work: threading.Lock, data: bytes, kind: str):
         return result, found, time.perf_counter() - started
 
 
+def _show_pages(work: threading.Lock, data: bytes, kind: str):
+    """The pages of /pages, and the time it took. One page is in memory at a time, besides the JPEGs made so far."""
+    with work:
+        started = time.perf_counter()
+        shown = []
+        with Document(data, kind, max_side=PAGES_SIDE, pdf_dpi=PAGES_PDF_DPI) as document:
+            left = PAGES_BUDGET
+            for index, page in enumerate(document.pages()):
+                image, size, encoded = _jpeg_within(page.image, max(left, 0) // (document.page_count - index))
+                del page  # before the next page is rendered
+                left -= size
+                shown.append(
+                    {
+                        "width": image.shape[1],
+                        "height": image.shape[0],
+                        "image": base64.b64encode(encoded).decode("ascii"),
+                    }
+                )
+                del image, encoded
+        return shown, time.perf_counter() - started
+
+
+def _jpeg_within(image, budget: int):
+    """(the picture, its size, its JPEG): a JPEG of at most `budget` bytes, at PAGES_QUALITY, else at a lower quality,
+    else smaller, as far as the floors allow (a page that still does not fit is sent as it is then). Sizes are those of
+    baseline JPEGs, which are quick to make (5 ms for an A4 page); the JPEG sent is progressive, which takes 30 ms, is
+    about an eighth smaller at the same settings, and is shown the same by every browser."""
+    quality = PAGES_QUALITY
+    size = len(_encoded(image, quality))
+    while size > budget and quality > PAGES_MIN_QUALITY:
+        quality = max(quality - 5, PAGES_MIN_QUALITY)
+        size = len(_encoded(image, quality))
+    while size > budget and max(image.shape[:2]) > PAGES_MIN_SIDE:
+        # a JPEG's size goes about with its number of pixels
+        ratio = math.sqrt(budget / size) * 0.98 if budget > 0 else 0
+        image = id_cards.shrunk(image, max(round(max(image.shape[:2]) * ratio), PAGES_MIN_SIDE))
+        size = len(_encoded(image, quality))
+    return image, size, _encoded(image, quality, progressive=True)
+
+
 def _card_json(card: "id_cards.Card") -> dict:
     box = card.box
     return {
@@ -242,18 +328,30 @@ def _card_json(card: "id_cards.Card") -> dict:
 
 
 def _jpeg(image, quality: int) -> str:
-    ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return base64.b64encode(_encoded(image, quality)).decode("ascii")
+
+
+def _encoded(image, quality: int, progressive: bool = False) -> bytes:
+    params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+    if progressive:
+        params += [cv2.IMWRITE_JPEG_PROGRESSIVE, 1, cv2.IMWRITE_JPEG_OPTIMIZE, 1]
+    ok, encoded = cv2.imencode(".jpg", image, params)
     if not ok:
         raise RuntimeError("JPEG encoding failed")
-    return base64.b64encode(encoded.tobytes()).decode("ascii")
+    return encoded.tobytes()
 
 
 def _refuse(
-    status: int, detail: str, size: int | None = None, kind: str | None = None, what: str = "read"
+    status: int,
+    detail: str,
+    size: int | None = None,
+    kind: str | None = None,
+    what: str = "read",
+    more: dict | None = None,
 ) -> JSONResponse:
     about = ", ".join(part for part in (kind, f"{size} bytes" if size is not None else None) if part)
     log.info("%s refused (%d): %s%s", what, status, detail, f" [{about}]" if about else "")
-    return JSONResponse({"detail": detail}, status_code=status)
+    return JSONResponse({"detail": detail, **(more or {})}, status_code=status)
 
 
 if not logging.getLogger().handlers:

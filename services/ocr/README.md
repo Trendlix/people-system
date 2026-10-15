@@ -1,7 +1,9 @@
 # OCR service
 
 Reads the text of Egyptian national ID cards (phone photos, front and back), scanned certificates and signed
-contracts, and later CVs; and finds the ID cards on a scan or a photo, cut out, straightened and the right way up. The API calls it over People System's private Docker network (`OCR_URL`, `http://ocr:8000`).
+contracts, and later CVs; finds the ID cards on a scan or a photo, cut out, straightened and the right way up; and
+shows the pages of a PDF or a photo as pictures, for adjusting by hand. The API calls it over People System's private
+Docker network (`OCR_URL`, `http://ocr:8000`).
 It has no port on the server and no sign-in. Pictures are read in memory and never written to disk or to the log.
 
 Python 3.12, FastAPI, and [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) 3.7 running on ONNX Runtime, CPU only.
@@ -90,6 +92,43 @@ the right way up and says which side it is. See `app/cards.py` for how.
 - About 0.55 s on a laptop (2 threads) for an A4 scan with both sides on it or a two-page PDF, 0.4 s for a 12-megapixel
   phone photo, 0.2 s for a card cut out already and 0.1 s for a page with no card. The response is about 0.5 MB.
 
+### Pages to adjust
+
+`POST /pages`, multipart field `file`: JPEG, PNG, WebP or PDF, up to 15 MB. Every page of a PDF (at most 20), or the
+picture, as a JPEG, for cropping, straightening and turning by hand in the web app (through the API's
+`POST /paperwork/prepare`). Nothing is read and no card is looked for, so the models are not used.
+
+```json
+{ "pages": [ { "width": 1414, "height": 2000, "image": "<base64 JPEG>" } ] }
+```
+
+- The pages are in order. A PDF page is rendered at 200 dpi, as `/read` reads it, the right way up (its own rotation
+  applied), on white; a picture is turned the right way up by its EXIF orientation. Either is at most 2000 px on its
+  long side (an A4 page: 1414 x 2000). `width` and `height` are the size of `image`.
+- `image` is a progressive JPEG, quality 80 when it fits. All the pages reach the browser in one answer of at most
+  4.5 MB (a Vercel server action), so together they are kept within 3 MB of JPEG (4 MB in base64): each page may take an
+  equal share of what is left by the pages before it, and a page over its share is made at a lower quality, down to 60,
+  then smaller, down to 1000 px on its long side, never cut. A page still over its share then is sent as it is.
+- Measured on a laptop (made-up A4 documents; a page full of text or scanned is 0.3 to 0.6 MB at quality 80 and full
+  size):
+
+  | PDF | Pages as sent | In base64, all together | Time |
+  |---|---|---|---|
+  | 10 pages of a typed contract (11 pt, margins of 2.5 cm) | 2000 px, quality 70 to 75 | 3.3 MB | 0.4 s |
+  | 5 pages crammed with typed text | 2000 px, quality 70 to 75 | 3.5 MB | 0.3 s |
+  | 10 pages crammed with typed text | 1400 to 1750 px, quality 60 | 3.6 MB | 0.6 s |
+  | 10 scanned pages (colour or grey, scanned at 200 or 300 dpi) | 1650 to 1800 px, quality 60 | 3.6 MB | 0.8 to 1 s |
+  | 20 scanned pages | 1000 to 1300 px, quality 60 | 3.7 MB | 1.2 s |
+  | 20 pages crammed with typed text | 1000 px, quality 60 | 4.1 MB | 0.9 s |
+
+  At quality 80 and full size, the 10-page contract would be 3.8 MB in base64 and the 10 scanned pages 6 to 7 MB. One
+  page is in memory at a time: the call takes about 30 MB at most, whatever the number of pages.
+- A PDF of more than 20 pages: `400 {"detail": "The PDF has 25 pages; at most 20 pages can be shown.", "pages": 25}`.
+  Other refusals are as for `/read`: `400 {"detail": "…"}` for an unsupported or unreadable file (a PDF protected by a
+  password, say), `413` over 15 MB, `503` while the models load.
+- An OCR service built before `/pages` answers it `404`; the API then shows the pages that `/cards` gives (a PDF's
+  first 2 pages), and refuses a longer PDF until the image is rebuilt.
+
 ## Models
 
 All are official PaddleOCR models, fetched while the image is built (about 20 MB in all). See `app/engine.py`.
@@ -117,6 +156,7 @@ PADDLE_PDX_CACHE_HOME=$PWD/models .venv/bin/pytest  # also runs tests/test_cards
 PADDLE_PDX_CACHE_HOME=$PWD/models .venv/bin/uvicorn app.main:app --port 8000
 curl -F file=@card.jpg 'http://127.0.0.1:8000/read?lang=ar'
 curl -F file=@scan.pdf http://127.0.0.1:8000/cards
+curl -F file=@contract.pdf http://127.0.0.1:8000/pages
 ```
 
 The tests draw made-up cards (`tests/synthetic_cards.py`), never real ones; the card tests with the real models also

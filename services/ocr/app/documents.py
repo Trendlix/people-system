@@ -24,6 +24,14 @@ class UnreadableFile(Exception):
     """The file is not one we read, or it is damaged. The message is shown to the caller."""
 
 
+class TooManyPages(UnreadableFile):
+    """A PDF longer than MAX_PDF_PAGES: `pages` is how many it has."""
+
+    def __init__(self, pages: int):
+        super().__init__(f"The PDF has {pages} pages; at most {MAX_PDF_PAGES} pages are read.")
+        self.pages = pages
+
+
 def sniff(data: bytes) -> str | None:
     """The kind of file, from its first bytes (never from its name or the type the client claims)."""
     if data.startswith(b"\xff\xd8\xff"):
@@ -78,7 +86,7 @@ class Document:
                 count = min(count, first_pages)
             elif count > MAX_PDF_PAGES:
                 self.close()
-                raise UnreadableFile(f"The PDF has {count} pages; at most {MAX_PDF_PAGES} pages are read.")
+                raise TooManyPages(count)
             self.page_count = count
         elif kind in _PILLOW_FORMATS:
             self._picture = _decode_picture(data, _PILLOW_FORMATS[kind], max_side)
