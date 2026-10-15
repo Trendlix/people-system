@@ -43,7 +43,7 @@ describe('Egyptian ID card reader', () => {
       nationalId: '29503120123456',
       dateOfBirth: '1995-03-12',
       fullNameAr: 'محمد أحمد محمود عبد الله',
-      addressAr: '١٥ شارع مكرم عبيد، أول مدينة نصر - القاهرة',
+      addressAr: '١٥ شارع مكرم عبيد',
       gender: 'male',
       issueDate: '2020-07-01',
       expiryDate: '2027-07-11',
@@ -51,7 +51,7 @@ describe('Egyptian ID card reader', () => {
       printedNo: 'FA1234567',
       maritalStatus: 'single',
       governorate: 'Cairo',
-      city: 'أول مدينة نصر',
+      city: 'مدينة نصر',
       nationality: 'Egyptian',
     });
   });
@@ -61,14 +61,14 @@ describe('Egyptian ID card reader', () => {
       nationalId: '30102281604562',
       dateOfBirth: '2001-02-28',
       fullNameAr: 'سارة محمود علي حسن',
-      addressAr: '٣ ش الجمهورية - عمارة ٧، مركز طنطا - الغربية',
+      addressAr: '٣ ش الجمهورية - عمارة ٧',
       gender: 'female',
       issueDate: '2019-05-01',
       expiryDate: '2026-05-14',
       issuingOffice: 'سجل مدنى طنطا أول',
       maritalStatus: 'single',
       governorate: 'Gharbia',
-      city: 'مركز طنطا',
+      city: 'طنطا',
       nationality: 'Egyptian',
     });
   });
@@ -110,7 +110,7 @@ describe('Egyptian ID card reader', () => {
     const front = FRONT.replace('جمهورية مصر العربية\nبطاقة تحقيق الشخصية', 'جمهوريـة مصر\nالعربية\nبطاقه\nتحقيق الشخصيه');
     expect(readIdCard(front, null, TODAY).fullNameAr).toBe('محمد أحمد محمود عبد الله');
     const street = readIdCard(FRONT.replace('١٥ شارع مكرم عبيد', '١٥ شارع الجمهورية'), null, TODAY);
-    expect(street.addressAr).toBe('١٥ شارع الجمهورية، أول مدينة نصر - القاهرة');
+    expect(street.addressAr).toBe('١٥ شارع الجمهورية');
   });
 
   it('keeps the name but not the address when the ID line is missing', () => {

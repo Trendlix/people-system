@@ -107,16 +107,20 @@ export function readIdCardWithNotes(front: CardSide, back: CardSide, today = tod
       'The national ID number could not be read completely: its zeros are printed as small dots, which the reader can miss. Type it in from the card.',
     );
   }
-  Object.assign(out, readNameAndAddress(frontKept, topCut));
+  const { fullNameAr, addressLines } = readNameAndAddress(frontKept, topCut);
+  if (fullNameAr) out.fullNameAr = fullNameAr;
+  if (addressLines) {
+    // the street in the address, the city and the governorate each in their own field, never twice (owner's rule)
+    const place = splitAddress(addressLines);
+    if (place.address) out.addressAr = place.address;
+    if (place.city) out.city = place.city;
+    if (place.governorate) out.governorate = place.governorate;
+  }
 
   const gender = readGender(backLines);
   if (gender) out.gender = gender;
   const marital = readMaritalStatus(backLines);
   if (marital) out.maritalStatus = marital;
-  const governorate = out.addressAr ? governorateIn(out.addressAr) : undefined;
-  if (governorate) out.governorate = governorate;
-  const city = out.addressAr ? cityIn(out.addressAr) : undefined;
-  if (city) out.city = city;
   if (out.nationalId || frontKept.some((l) => isHeader(l.text))) out.nationality = 'Egyptian';
 
   const expiry = readExpiry(backLines);
@@ -190,17 +194,17 @@ function pickNationalId(front: string[], back: string[], today: string): string 
  * or lines lost at the top, never shift the name into the address. Without that row, the name is the first two lines
  * (unless the top was cut) and the address unknown.
  */
-function readNameAndAddress(all: CardLine[], topCut = false): Pick<IdCardSuggestions, 'fullNameAr' | 'addressAr'> {
+function readNameAndAddress(all: CardLine[], topCut = false): { fullNameAr?: string; addressLines?: string[] } {
   const anchor = numberRowIndex(all);
   const above = anchor >= 0 ? all.slice(0, anchor) : all;
   const block = above
     .filter((l) => (l.confidence ?? 1) >= SURE && (l.right ?? 1) >= RIGHT_PART && !isHeader(l.text) && letterCount(l.text) >= 2)
     .map((l) => l.text);
-  const out: Pick<IdCardSuggestions, 'fullNameAr' | 'addressAr'> = {};
+  const out: { fullNameAr?: string; addressLines?: string[] } = {};
 
   if (anchor >= 0) {
-    const address = block.length >= 2 ? addressOf(block.slice(-2)) : undefined;
-    if (address) out.addressAr = address;
+    const lines = block.length >= 2 ? addressLinesOf(block.slice(-2)) : undefined;
+    if (lines) out.addressLines = lines;
     const name = block.length >= 4 ? nameOf(block[block.length - 4], block[block.length - 3]) : undefined;
     if (name) out.fullNameAr = name;
     return out;
@@ -236,10 +240,10 @@ function nameOf(first: string, rest: string): string | undefined {
   return words >= 3 && words <= 8 ? name : undefined;
 }
 
-/** One to three address lines, joined with "، ". */
-function addressOf(lines: string[]): string | undefined {
+/** One to three address lines, cleaned of OCR noise. */
+function addressLinesOf(lines: string[]): string[] | undefined {
   const address = lines.filter((l) => !LATIN_LETTER.test(l)).map(addressText).filter(Boolean);
-  return address.length >= 1 && address.length <= 3 ? address.join('، ') : undefined;
+  return address.length >= 1 && address.length <= 3 ? address : undefined;
 }
 
 function isHeader(line: string): boolean {
@@ -323,17 +327,51 @@ export function governorateIn(address: string): string | undefined {
   return found.length === 1 ? found[0] : undefined;
 }
 
+// A district number beside a city (مدينة نصر أول: its 1st section), and what names a district rather than the city.
+const DISTRICT_NUMBERS = ['اول', 'ثان', 'ثاني', 'ثالث', 'رابع', 'خامس'];
+const DISTRICT_WORDS = ['قسم', 'مركز'];
+
 /**
- * The city or district an address names: its last line (after the last "، ") reads "<city> - <governorate>", so the
- * part before the dash, when the part after it is a governorate. As printed, without digits; 1 to 4 words.
+ * The address split into the street, the city and the governorate (owner's rule: each in its own field, never twice).
+ * The card's last address line reads "<city> - <governorate>", with or without the dash (the reader may drop it): the
+ * governorate is the one it names at its end, the city what stands before it, without a district number (أول, ثان …,
+ * also when glued on: نصرأول) or the word قسم or مركز. The street is the line(s) above. When the last line can't be
+ * split with confidence, it stays in the address.
  */
-export function cityIn(address: string): string | undefined {
-  const last = address.split('،').at(-1)?.trim() ?? '';
-  const parts = last.split(/\s*[-–]\s*/).map((p) => p.trim()).filter(Boolean);
-  if (parts.length < 2 || !governorateIn(parts.at(-1)!)) return undefined;
-  const city = parts.slice(0, -1).join(' - ').replace(/[0-9٠-٩۰-۹]/g, '').replace(/\s+/g, ' ').trim();
-  const words = city.split(' ').filter(Boolean).length;
-  return words >= 1 && words <= 4 && letterCount(city) >= 2 ? city : undefined;
+export function splitAddress(lines: string[]): { address?: string; city?: string; governorate?: string } {
+  const last = lines.at(-1) ?? '';
+  const words = last.split(/\s*[-–]\s*|\s+/).filter(Boolean);
+  const plain = words.map((w) => normalizeArabic(w));
+  // the governorate: one or two words at the end of the line
+  let governorate: string | undefined;
+  let cityWords = words;
+  for (const [name, en] of GOVERNORATE_NAMES) {
+    const n = name.split(' ').length;
+    if (plain.length >= n && plain.slice(-n).join(' ') === name) {
+      governorate = en;
+      cityWords = words.slice(0, -n);
+      break;
+    }
+  }
+  if (!governorate) return { address: lines.join('، ') };
+
+  const kept = cityWords
+    .map((w) => {
+      const n = normalizeArabic(w);
+      const glued = DISTRICT_NUMBERS.find((d) => n.length > d.length + 2 && n.endsWith(d));
+      return glued ? w.slice(0, w.length - glued.length) : w; // نصرأول → نصر
+    })
+    .filter((w) => !DISTRICT_NUMBERS.includes(normalizeArabic(w)) && !DISTRICT_WORDS.includes(normalizeArabic(w)))
+    .map((w) => w.replace(/[0-9٠-٩۰-۹]/g, '').trim())
+    .filter(Boolean);
+  const city = kept.join(' ');
+  const cityOk = kept.length >= 1 && kept.length <= 4 && letterCount(city) >= 2;
+  const street = lines.slice(0, -1);
+  return {
+    address: cityOk ? street.join('، ') || undefined : [...street, cityWords.join(' ')].filter(Boolean).join('، ') || undefined,
+    city: cityOk ? city : undefined,
+    governorate,
+  };
 }
 
 function hasWord(text: string, word: string): boolean {

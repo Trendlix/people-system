@@ -41,14 +41,14 @@ describe('a scan cut short', () => {
       nationalId: '29503120123456',
       dateOfBirth: '1995-03-12',
       fullNameAr: 'محمد أحمد محمود عبد الله',
-      addressAr: '١٥ شارع مكرم عبيد، أول مدينة نصر - القاهرة',
+      addressAr: '١٥ شارع مكرم عبيد',
       gender: 'male',
       issueDate: '2020-07-01',
       expiryDate: '2027-07-11',
       issuingOffice: 'سجل مدني مدينة نصر',
       maritalStatus: 'single',
       governorate: 'Cairo',
-      city: 'أول مدينة نصر',
+      city: 'مدينة نصر',
       nationality: 'Egyptian',
     });
   });

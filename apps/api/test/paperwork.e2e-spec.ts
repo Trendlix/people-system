@@ -43,14 +43,14 @@ const SUGGESTIONS = {
   nationalId: '29503120123456',
   dateOfBirth: '1995-03-12',
   fullNameAr: 'محمد أحمد محمود عبد الله',
-  addressAr: '١٥ شارع مكرم عبيد، أول مدينة نصر - القاهرة',
+  addressAr: '١٥ شارع مكرم عبيد',
   gender: 'male',
   issueDate: '2020-07-01',
   expiryDate: '2027-07-11',
   issuingOffice: 'سجل مدني مدينة نصر',
   maritalStatus: 'single',
   governorate: 'Cairo',
-  city: 'أول مدينة نصر',
+  city: 'مدينة نصر',
   nationality: 'Egyptian',
 };
 
@@ -527,7 +527,7 @@ describe('Paperwork (e2e)', () => {
 
     it('learns the words HR corrected and fixes them in the next reading', async () => {
       const first = await api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('LEARN'), 'f.jpg').expect(200);
-      expect(first.body.suggestions.addressAr).toBe(`١٥ شارع ${misread} عبيد، أول مدينة نصر - القاهرة`);
+      expect(first.body.suggestions.addressAr).toBe(`١٥ شارع ${misread} عبيد`);
       expect(first.body.corrected).toEqual([]);
 
       await api()

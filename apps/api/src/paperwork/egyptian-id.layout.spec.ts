@@ -30,14 +30,14 @@ const WHOLE = {
   nationalId: '29503120123456',
   dateOfBirth: '1995-03-12',
   fullNameAr: 'محمد أحمد محمود عبد الله',
-  addressAr: '١٥ب شارع مكرم عبيد، أول مدينة نصر - القاهرة',
+  addressAr: '١٥ب شارع مكرم عبيد',
   gender: 'male',
   issueDate: '2020-07-01',
   expiryDate: '2027-07-11',
   printedNo: 'KH1234567',
   maritalStatus: 'single',
   governorate: 'Cairo',
-  city: 'أول مدينة نصر',
+  city: 'مدينة نصر',
   nationality: 'Egyptian',
 };
 
@@ -110,7 +110,20 @@ describe('the card as the reader really reads it', () => {
     expect(city('الشروق ٢ - القاهرة')).toBe('الشروق');
     expect(city('مدينة نصر')).toBeUndefined(); // without a governorate after it, not certain
     expect(city('القاهرة')).toBeUndefined(); // only the governorate
-    expect(place('الجيزة - القاهرة')).toBeUndefined(); // two named: not certain
+    // the dash dropped by the reader and the district number glued on, as on the owner's card
+    expect(city('مدينة نصرأول القاهره')).toBe('مدينة نصر');
+    expect(city('ثان المنتزه - الاسكندرية')).toBe('المنتزه');
+    expect(city('قسم الدقي - الجيزة')).toBe('الدقي');
+  });
+
+  it('keeps the street in the address, the city and the governorate each in their own field, never twice', () => {
+    const read = (text: string) => readIdCardWithNotes(FRONT.map((l) => (l.text.startsWith('أول مدينة') ? { ...l, text } : l)), BACK, TODAY).suggestions;
+    expect(read('مدينة نصرأول القاهره')).toMatchObject({ addressAr: '١٥ب شارع مكرم عبيد', city: 'مدينة نصر', governorate: 'Cairo' });
+    // a last line that names no governorate stays in the address, and nothing is guessed
+    const unsplit = read('مدينة نصر');
+    expect(unsplit).toMatchObject({ addressAr: '١٥ب شارع مكرم عبيد، مدينة نصر' });
+    expect(unsplit).not.toHaveProperty('city');
+    expect(unsplit).not.toHaveProperty('governorate');
   });
 
   it('takes no 6- or 8-digit group for a date unless it is one', () => {
