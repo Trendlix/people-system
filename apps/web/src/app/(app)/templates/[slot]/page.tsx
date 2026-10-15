@@ -172,11 +172,16 @@ function Who({ email, at }: { email: string | null | undefined; at: string | nul
 function VersionRow({ version: v, slotKey, deletes }: { version: TemplateVersion; slotKey: string; deletes: boolean }) {
   const check = v.status === 'draft' ? checkTags(v) : null;
   const problems = check ? check.unknown.length + check.broken.length : 0;
+  // the actions go on a line of their own under the version, so the table fits without scrolling sideways and the
+  // version number stays in sight (owner, 15 October 2026: v2 was deleted instead of v1, the number scrolled away)
   return (
-    <tr>
-      <td className="font-medium tabular-nums">v{v.version}</td>
-      <td className="max-w-56 break-all">{v.fileName}</td>
-      <td className="whitespace-nowrap tabular-nums">{formatSize(v.sizeBytes)}</td>
+    <>
+    <tr className="[&>td]:border-b-0">
+      <td className="font-semibold tabular-nums">v{v.version}</td>
+      <td className="max-w-64 break-all">
+        {v.fileName}
+        <span className="block text-xs whitespace-nowrap text-muted tabular-nums">{formatSize(v.sizeBytes)}</span>
+      </td>
       <td>{LANGUAGE_LABELS[v.language] ?? v.language}</td>
       <td>
         <span className={`badge ${STATUS_STYLE[v.status] ?? ''}`}>{TEMPLATE_VERSION_STATUS_LABELS[v.status] ?? v.status}</span>
@@ -196,8 +201,11 @@ function VersionRow({ version: v, slotKey, deletes }: { version: TemplateVersion
           </a>
         )}
       </td>
-      <td>
-        <div className="flex items-center justify-end gap-4">
+    </tr>
+    <tr>
+      <td colSpan={8} className="pt-0">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+          <span className="text-xs font-semibold text-muted">v{v.version}:</span>
           {/* plain links: never prefetched */}
           <a href={versionPreviewHref(v.id)} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center text-sm font-semibold">
             Preview<span className="sr-only"> v{v.version} ({v.fileName}) as a PDF, in a new tab</span>
@@ -221,6 +229,7 @@ function VersionRow({ version: v, slotKey, deletes }: { version: TemplateVersion
         </div>
       </td>
     </tr>
+    </>
   );
 }
 
@@ -233,16 +242,12 @@ function VersionsTable({ versions, slotKey, deletes }: { versions: TemplateVersi
           <tr>
             <th>Version</th>
             <th>File</th>
-            <th>Size</th>
             <th>Language</th>
             <th>Status</th>
             <th>Uploaded</th>
             <th>Published</th>
             <th>What Changed</th>
             <th>Tags</th>
-            <th>
-              <span className="sr-only">Actions</span>
-            </th>
           </tr>
         </thead>
         <tbody>
