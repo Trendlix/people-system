@@ -993,13 +993,54 @@ describe('Employees (e2e)', () => {
 
   describe('completeness', () => {
     const missing = (p: Profile) => p.completeness.missing.map((m) => m.key);
+    const onTab = (p: Profile, tab: string) => p.completeness.missing.filter((m) => m.tab === tab);
     const change = async (id: string, body: object) => (await api().patch(`/api/employees/${id}`).set('Cookie', hr).send(body).expect(200)).body as Profile;
+    const changed = async (p: Hired, body: object) => (await changeEmployment(p.id, p.employment.id, body).expect(200)).body as Hired;
+    const addPaper = (id: string, kind: string) =>
+      api().post(`/api/employees/${id}/paperwork`).set('Cookie', hr).field('kind', kind).attach('file', PNG, `${kind}.png`).expect(201);
+
+    /**
+     * Everything a profile with only the names lacks before any hire, in the order listed: all the data and scans but
+     * the emergency contact and the second mobile (owner's decision, 15 October 2026).
+     */
+    const BEFORE_HIRE = [
+      'displayName',
+      'dateOfBirth',
+      'gender',
+      'nationality',
+      'maritalStatus',
+      'militaryStatus',
+      'personalEmail',
+      'mobile',
+      'city',
+      'governorate',
+      'addressAr',
+      'nationalId',
+      'printedNo',
+      'idIssueDate',
+      'idExpiry',
+      'bankName',
+      'branch',
+      'accountNo',
+      'iban',
+      'holderName',
+      'degree',
+      'university',
+      'faculty',
+      'major',
+      'graduationYear',
+      'educationGrade',
+      'qualificationAr',
+      'national_id',
+    ];
+    /** Never on the checklist, filled in or not. */
+    const NEVER = ['emergency', 'emergencyName', 'emergencyRelation', 'emergencyMobile', 'mobile2', 'employeeCode', 'workArrangement', 'probationEnd', 'jdAcknowledgedAt'];
 
     it('counts the fields and the papers the file needs, says on which tab each missing one goes, and rises as they are added', async () => {
-      // before any hire: 18 fields and the national ID (front and back), of which the names are there
+      // before any hire: 29 fields and the national ID (front and back), of which the names are there
       const e = await addEmployee('Incomplete');
-      expect(e.completeness.percent).toBe(11); // 2 of 19
-      expect(e.completeness.missing).toHaveLength(17);
+      expect(e.completeness.percent).toBe(7); // 2 of 30
+      expect(e.completeness.missing).toHaveLength(28);
       expect(e.completeness.missing).toEqual(
         expect.arrayContaining([
           { key: 'dateOfBirth', label: 'Date of birth', tab: 'basic' },
@@ -1012,40 +1053,209 @@ describe('Employees (e2e)', () => {
       expect(missing(e)).not.toContain('criminal_record');
       expect(missing(e)).not.toContain('insuranceNo'); // needed once hired full time
 
-      // hired full time: the full list of papers, the military certificate too while the gender is not recorded
+      // hired full time: the work email, the social insurance number, the five employment items and the full list of
+      // papers, the military certificate too while the gender is not recorded
       const hired = await hire(e.id);
-      expect(hired.completeness.percent).toBe(8); // 2 of 25
-      expect(missing(hired)).toEqual(expect.arrayContaining(['insuranceNo', 'military_certificate', 'criminal_record', 'personal_photo']));
+      expect(hired.completeness.percent).toBe(5); // 2 of 42
+      expect(missing(hired)).toEqual(expect.arrayContaining(['insuranceNo', 'workEmail', 'team', 'military_certificate', 'criminal_record', 'personal_photo']));
       // generated from templates, not scans HR collects
       expect(missing(hired)).not.toContain('bank_letter');
       expect(missing(hired)).not.toContain('insurance_form_1');
 
       const man = await change(e.id, { gender: 'male' });
-      expect(man.completeness.percent).toBe(12); // 3 of 25
+      expect(man.completeness.percent).toBe(7); // 3 of 42
       expect(missing(man)).toContain('military_certificate');
 
       // a woman's file needs no military certificate, and her military status is Not applicable
       const woman = await change(e.id, { gender: 'female' });
-      expect(woman.completeness.percent).toBe(17); // 4 of 24
+      expect(woman.completeness.percent).toBe(10); // 4 of 41
       expect(missing(woman)).not.toContain('military_certificate');
       expect(missing(woman)).not.toContain('militaryStatus');
 
       const filled = await change(e.id, { nationality: 'Egyptian', mobile: '01012345678', degree: 'bachelor', university: 'Cairo University', graduationYear: 2018 });
-      expect(filled.completeness.percent).toBe(38); // 9 of 24
+      expect(filled.completeness.percent).toBe(22); // 9 of 41
 
-      await api().post(`/api/employees/${e.id}/paperwork`).set('Cookie', hr).field('kind', 'personal_photo').attach('file', PNG, 'photo.png').expect(201);
+      await addPaper(e.id, 'personal_photo');
       const papered = await profileOf(e.id);
-      expect(papered.completeness.percent).toBe(42); // 10 of 24
+      expect(papered.completeness.percent).toBe(24); // 10 of 41
       expect(missing(papered)).not.toContain('personal_photo');
 
       // the national ID number (with the date of birth it holds) and its expiry
       await api().patch(`/api/employees/${e.id}/identity`).set('Cookie', hr).send({ nationalId: newNationalId(), expiryDate: '2031-05-01' }).expect(200);
       const identified = await profileOf(e.id);
-      expect(identified.completeness.percent).toBe(54); // 13 of 24
+      expect(identified.completeness.percent).toBe(32); // 13 of 41
       expect(identified.dateOfBirth).toBe('1995-03-12');
       expect(missing(identified)).not.toContain('dateOfBirth');
       expect(missing(identified)).not.toContain('nationalId');
       expect(missing(identified)).not.toContain('idExpiry');
+    });
+
+    it('not employed: every field and scan but the emergency contact and the second mobile; no employment items, social insurance number or work email', async () => {
+      const e = await addEmployee('Unhired', { emergencyName: 'Sara', emergencyRelation: 'Sister', emergencyMobile: '01098765432', mobile2: '01011112222' });
+      expect(missing(e)).toEqual(BEFORE_HIRE);
+      expect(e.completeness.percent).toBe(7); // 2 of 30: the emergency contact and the second mobile add nothing
+      expect(onTab(e, 'employment')).toEqual([]);
+      expect(missing(e)).not.toContain('insuranceNo');
+      expect(missing(e)).not.toContain('workEmail');
+      expect(e.completeness.missing).toEqual(
+        expect.arrayContaining([
+          { key: 'displayName', label: 'Display name', tab: 'basic' },
+          { key: 'personalEmail', label: 'Personal email', tab: 'basic' },
+          { key: 'city', label: 'City', tab: 'basic' },
+          { key: 'printedNo', label: 'National ID printed number', tab: 'basic' },
+          { key: 'idIssueDate', label: 'National ID issue date', tab: 'basic' },
+          { key: 'idExpiry', label: 'National ID expiry date', tab: 'basic' },
+          { key: 'bankName', label: 'Bank', tab: 'basic' },
+          { key: 'branch', label: 'Bank branch', tab: 'basic' },
+          { key: 'accountNo', label: 'Account number', tab: 'basic' },
+          { key: 'holderName', label: 'Account holder', tab: 'basic' },
+          { key: 'university', label: 'University', tab: 'education' },
+          { key: 'faculty', label: 'Faculty', tab: 'education' },
+          { key: 'major', label: 'Major', tab: 'education' },
+          { key: 'educationGrade', label: 'Education grade', tab: 'education' },
+        ]),
+      );
+
+      // emptying the emergency contact and the second mobile changes nothing either
+      const emptied = await change(e.id, { emergencyName: null, emergencyRelation: null, emergencyMobile: null, mobile2: null });
+      expect(emptied.completeness.percent).toBe(7); // still 2 of 30
+      expect(missing(emptied)).toEqual(BEFORE_HIRE);
+      for (const key of NEVER) expect(missing(emptied)).not.toContain(key);
+
+      // the bank details count each on their own; only whether they are there is read, never the values
+      await api().patch(`/api/employees/${e.id}/bank`).set('Cookie', hr).send({ bankName: 'CIB', accountNo: '1001 2345 6789' }).expect(200);
+      const banked = await profileOf(e.id);
+      expect(banked.completeness.percent).toBe(13); // 4 of 30
+      expect(missing(banked)).toEqual(expect.arrayContaining(['branch', 'iban', 'holderName']));
+      expect(JSON.stringify(banked.completeness)).not.toContain('100123456789');
+    });
+
+    it('hired full time: the employment items, the social insurance number and the work email; part time: no insurance number; none once it ends', async () => {
+      const e = await addEmployee('Employed');
+      const hired = await hire(e.id);
+      expect(hired.completeness.percent).toBe(5); // 2 of 42
+      expect(onTab(hired, 'employment')).toEqual([
+        { key: 'team', label: 'Department or team', tab: 'employment' },
+        { key: 'jobTitle', label: 'Job title', tab: 'employment' },
+        { key: 'grade', label: 'Grade', tab: 'employment' },
+        { key: 'shift', label: 'Shift', tab: 'employment' },
+        { key: 'manager', label: 'Direct manager', tab: 'employment' },
+      ]);
+      expect(hired.completeness.missing).toEqual(
+        expect.arrayContaining([
+          { key: 'insuranceNo', label: 'Social insurance number', tab: 'basic' },
+          { key: 'workEmail', label: 'Work email', tab: 'basic' },
+        ]),
+      );
+      for (const key of NEVER) expect(missing(hired)).not.toContain(key);
+
+      // the job title places them in its team; with a shift, three of the five are there
+      const shifts = (await api().get('/api/shifts').set('Cookie', hr).expect(200)).body as { id: string }[];
+      const placed = await changed(hired, { jobTitleId, shiftId: shifts[0].id });
+      expect(placed.completeness.percent).toBe(12); // 5 of 42
+      expect(onTab(placed, 'employment').map((m) => m.key)).toEqual(['grade', 'manager']);
+
+      const emailed = await change(e.id, { workEmail: `employed.${RUN}@test.local` });
+      expect(emailed.completeness.percent).toBe(14); // 6 of 42
+      expect(missing(emailed)).not.toContain('workEmail');
+
+      // part time: not insured with Form 1, so no social insurance number; only the national ID scan
+      const partTime = await changed(hired, { employmentType: 'part_time' });
+      expect(partTime.completeness.percent).toBe(17); // 6 of 36
+      expect(missing(partTime)).not.toContain('insuranceNo');
+      expect(missing(partTime)).toEqual(expect.arrayContaining(['grade', 'manager']));
+
+      // ended: the checklist of someone not employed, the work email on file no longer counting
+      const ended = (await endEmployment(e.id, hired.employment.id, { endDate: '2026-06-30', endReason: 'resigned' }).expect(200)).body as Profile;
+      expect(ended.completeness.percent).toBe(7); // 2 of 30
+      expect(missing(ended)).toEqual(BEFORE_HIRE);
+    });
+
+    it('a high school degree needs no university, faculty or major', async () => {
+      const e = await addEmployee('School', { degree: 'high_school' });
+      expect(e.completeness.percent).toBe(11); // 3 of 27
+      expect(onTab(e, 'education').map((m) => m.key)).toEqual(['graduationYear', 'educationGrade', 'qualificationAr']);
+
+      const bachelor = await change(e.id, { degree: 'bachelor' });
+      expect(bachelor.completeness.percent).toBe(10); // 3 of 30
+      expect(onTab(bachelor, 'education').map((m) => m.key)).toEqual(['university', 'faculty', 'major', 'graduationYear', 'educationGrade', 'qualificationAr']);
+    });
+
+    it('the top grade (the CEO) needs no direct manager; a lower grade does', async () => {
+      const grades = (await api().get('/api/grades').set('Cookie', hr).expect(200)).body as { id: string; rank: number }[];
+      const top = grades.reduce((a, b) => (b.rank > a.rank ? b : a)); // G9 Executive, unless a higher rank was added
+      const boss = await addEmployee('Board');
+      // the names, these ten fields and the grade are there
+      const basics = {
+        displayName: 'Chief',
+        gender: 'male',
+        nationality: 'Egyptian',
+        maritalStatus: 'married',
+        militaryStatus: 'completed',
+        personalEmail: 'chief@example.com',
+        mobile: '01012345678',
+        city: 'مدينة نصر',
+        governorate: 'Cairo',
+        addressAr: '١ شارع التحرير',
+      };
+      const ceo = await addHired('Chief', { gradeId: top.id }, basics);
+      expect(ceo.completeness.percent).toBe(32); // 13 of 41
+      expect(onTab(ceo, 'employment').map((m) => m.key)).toEqual(['team', 'jobTitle', 'shift']);
+
+      const lower = await changed(ceo, { gradeId: grade('G1') });
+      expect(lower.completeness.percent).toBe(31); // 13 of 42
+      expect(onTab(lower, 'employment').map((m) => m.key)).toEqual(['team', 'jobTitle', 'shift', 'manager']);
+
+      // no grade: whether they are the CEO is not known, so the manager counts
+      const ungraded = await changed(ceo, { gradeId: null });
+      expect(ungraded.completeness.percent).toBe(29); // 12 of 42
+      expect(missing(ungraded)).toEqual(expect.arrayContaining(['grade', 'manager']));
+
+      const managed = await changed(ceo, { gradeId: grade('G1'), managerId: boss.id });
+      expect(managed.completeness.percent).toBe(33); // 14 of 42
+      expect(missing(managed)).not.toContain('manager');
+    });
+
+    it('a profile with everything filled in, hired full time with every paper, is 100% complete', async () => {
+      const boss = await addEmployee('Complete Boss');
+      const shifts = (await api().get('/api/shifts').set('Cookie', hr).expect(200)).body as { id: string }[];
+      const e = await addEmployee('Complete', {
+        displayName: 'Complete',
+        gender: 'male',
+        nationality: 'Egyptian',
+        maritalStatus: 'single',
+        militaryStatus: 'completed',
+        insuranceNo: String(Date.now()).slice(-12),
+        workEmail: `complete.${RUN}@test.local`,
+        personalEmail: 'complete@example.com',
+        mobile: '01012345678',
+        city: 'مدينة نصر',
+        governorate: 'Cairo',
+        addressAr: '١ شارع التحرير',
+        degree: 'bachelor',
+        university: 'Cairo University',
+        faculty: 'Faculty of Engineering',
+        major: 'Computer Engineering',
+        graduationYear: 2017,
+        educationGrade: 'very_good',
+        qualificationAr: 'بكالوريوس الهندسة',
+        identity: { nationalId: newNationalId(), printedNo: 'AB123456', issueDate: '2024-05-01', expiryDate: '2031-05-01' },
+      });
+      await api()
+        .patch(`/api/employees/${e.id}/bank`)
+        .set('Cookie', hr)
+        .send({ bankName: 'CIB', branch: 'Nasr City', accountNo: '1001 2345 6789', iban: VALID_IBAN, holderName: 'Complete' })
+        .expect(200);
+      const hired = await hire(e.id, { jobTitleId, gradeId: grade('G3'), managerId: boss.id, shiftId: shifts[0].id });
+      expect(hired.completeness.missing.map((m) => m.tab)).toEqual(Array(6).fill('documents')); // 36 of 42: only the papers
+      for (const kind of ['national_id_front', 'national_id_back', 'qualification_certificate', 'birth_certificate', 'military_certificate', 'criminal_record', 'personal_photo']) {
+        await addPaper(e.id, kind);
+      }
+
+      const complete = await profileOf(e.id);
+      expect(complete.completeness).toEqual({ percent: 100, missing: [] }); // 42 of 42
+      // never asked for: the emergency contact, the second mobile, the job description acknowledgement
+      expect(complete).toMatchObject({ emergencyName: null, emergencyMobile: null, mobile2: null, employment: { jdAcknowledgedAt: null } });
     });
   });
 

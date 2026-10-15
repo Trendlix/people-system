@@ -167,48 +167,110 @@ function identityData(dto: UpdateIdentityDto) {
 export interface Missing {
   key: string;
   label: string;
-  tab: 'basic' | 'education' | 'documents';
+  tab: 'basic' | 'education' | 'employment' | 'documents';
 }
+
+/** The current employment as completeness checks it: which of its links are set, and its grade's rank. */
+interface CurrentEmployment {
+  employmentType: EmploymentType;
+  departmentId: string | null;
+  jobTitleId: string | null;
+  gradeId: string | null;
+  managerId: string | null;
+  shiftId: string | null;
+  grade: { rank: number } | null;
+}
+
+/** What a profile's completeness is worked out from. */
+interface ProfileOnFile {
+  employee: Employee;
+  identity: EmployeeIdentity | null;
+  bank: EmployeeBank | null;
+  /** The current employment; null when not employed. */
+  employment: CurrentEmployment | null;
+  /** The highest rank in the grades table (the CEO's grade); null when it was not needed. */
+  topRank: number | null;
+  /** The kinds of paper in the employee file. */
+  papers: string[];
+}
+
+type Check = [boolean, Missing];
+
+/** One item of the checklist: there when the value is (only whether it is there is read, never the value itself). */
+const check = (value: unknown, key: string, label: string, tab: Missing['tab']): Check => [!!value, { key, label, tab }];
 
 /**
  * How complete a profile is: the fields HR fills in and the papers the employee file needs (by the current
  * employment; see requiredPaperwork). Only whether each is there counts, so restricted values are never read here
  * for the result.
+ *
+ * Owner's decision, 15 October 2026: everything counts (employment, bank, city, faculty, the work email …) except
+ * the emergency contact and the second mobile. Also never counted: the employee code (always set), the work
+ * arrangement (always has a value), the probation end date and the job description acknowledgement. Some items
+ * count only where they apply: the social insurance number for a current full-time employment, the work email and
+ * the employment items while employed, the university, faculty and major unless the degree is high school, and the
+ * direct manager unless the grade is the top rank (the CEO has no manager).
  */
-function completeness(
-  e: Employee,
-  identity: EmployeeIdentity | null,
-  bank: EmployeeBank | null,
-  employmentType: EmploymentType | null,
-  papers: string[],
-): { percent: number; missing: Missing[] } {
-  const checks: [boolean, Missing][] = [
-    [!!e.fullNameEn, { key: 'fullNameEn', label: 'Full name (English)', tab: 'basic' }],
-    [!!e.fullNameAr, { key: 'fullNameAr', label: 'Full name (Arabic)', tab: 'basic' }],
-    [!!e.dateOfBirth, { key: 'dateOfBirth', label: 'Date of birth', tab: 'basic' }],
-    [!!e.gender, { key: 'gender', label: 'Gender', tab: 'basic' }],
-    [!!e.nationality, { key: 'nationality', label: 'Nationality', tab: 'basic' }],
-    [!!e.maritalStatus, { key: 'maritalStatus', label: 'Marital status', tab: 'basic' }],
-    [!!e.militaryStatus, { key: 'militaryStatus', label: 'Military status', tab: 'basic' }],
-    [!!e.mobile, { key: 'mobile', label: 'Mobile', tab: 'basic' }],
-    [!!e.addressAr, { key: 'addressAr', label: 'Address (Arabic)', tab: 'basic' }],
-    [!!e.governorate, { key: 'governorate', label: 'Governorate', tab: 'basic' }],
-    [!!e.emergencyName && !!e.emergencyMobile, { key: 'emergency', label: 'Emergency contact', tab: 'basic' }],
-    [!!identity?.nationalId, { key: 'nationalId', label: 'National ID number', tab: 'basic' }],
-    [!!identity?.expiryDate, { key: 'idExpiry', label: 'National ID expiry date', tab: 'basic' }],
-    [!!bank?.iban, { key: 'iban', label: 'IBAN', tab: 'basic' }],
+function completeness({ employee: e, identity, bank, employment, topRank, papers }: ProfileOnFile): { percent: number; missing: Missing[] } {
+  const highSchool = e.degree === 'high_school';
+  const topGrade = !!employment?.grade && topRank !== null && employment.grade.rank >= topRank;
+  const checks: Check[] = [
+    check(e.fullNameEn, 'fullNameEn', 'Full name (English)', 'basic'),
+    check(e.fullNameAr, 'fullNameAr', 'Full name (Arabic)', 'basic'),
+    check(e.displayName, 'displayName', 'Display name', 'basic'),
+    check(e.dateOfBirth, 'dateOfBirth', 'Date of birth', 'basic'),
+    check(e.gender, 'gender', 'Gender', 'basic'),
+    check(e.nationality, 'nationality', 'Nationality', 'basic'),
+    check(e.maritalStatus, 'maritalStatus', 'Marital status', 'basic'),
+    // a woman's military status is always Not applicable (owner's rule), which counts as filled in
+    check(e.gender === 'female' ? 'not_applicable' : e.militaryStatus, 'militaryStatus', 'Military status', 'basic'),
     // insured with Form 1 when hired full time, so a full-time file needs the number
-    ...(employmentType === 'full_time'
-      ? [[!!e.insuranceNo, { key: 'insuranceNo', label: 'Social insurance number', tab: 'basic' }] satisfies [boolean, Missing]]
+    ...(employment?.employmentType === 'full_time' ? [check(e.insuranceNo, 'insuranceNo', 'Social insurance number', 'basic')] : []),
+    // the work email only while employed
+    ...(employment ? [check(e.workEmail, 'workEmail', 'Work email', 'basic')] : []),
+    check(e.personalEmail, 'personalEmail', 'Personal email', 'basic'),
+    check(e.mobile, 'mobile', 'Mobile', 'basic'),
+    check(e.city, 'city', 'City', 'basic'),
+    check(e.governorate, 'governorate', 'Governorate', 'basic'),
+    check(e.addressAr, 'addressAr', 'Address (Arabic)', 'basic'),
+    check(identity?.nationalId, 'nationalId', 'National ID number', 'basic'),
+    check(identity?.printedNo, 'printedNo', 'National ID printed number', 'basic'),
+    check(identity?.issueDate, 'idIssueDate', 'National ID issue date', 'basic'),
+    check(identity?.expiryDate, 'idExpiry', 'National ID expiry date', 'basic'),
+    check(bank?.bankName, 'bankName', 'Bank', 'basic'),
+    check(bank?.branch, 'branch', 'Bank branch', 'basic'),
+    check(bank?.accountNo, 'accountNo', 'Account number', 'basic'),
+    check(bank?.iban, 'iban', 'IBAN', 'basic'),
+    check(bank?.holderName, 'holderName', 'Account holder', 'basic'),
+
+    check(e.degree, 'degree', 'Degree', 'education'),
+    // a high school diploma has no university, faculty or major
+    ...(highSchool
+      ? []
+      : [
+          check(e.university, 'university', 'University', 'education'),
+          check(e.faculty, 'faculty', 'Faculty', 'education'),
+          check(e.major, 'major', 'Major', 'education'),
+        ]),
+    check(e.graduationYear, 'graduationYear', 'Graduation year', 'education'),
+    check(e.educationGrade, 'educationGrade', 'Education grade', 'education'),
+    check(e.qualificationAr, 'qualificationAr', 'Qualification (Arabic)', 'education'),
+
+    ...(employment
+      ? [
+          check(employment.departmentId, 'team', 'Department or team', 'employment'),
+          check(employment.jobTitleId, 'jobTitle', 'Job title', 'employment'),
+          check(employment.gradeId, 'grade', 'Grade', 'employment'),
+          check(employment.shiftId, 'shift', 'Shift', 'employment'),
+          // the CEO has no manager: none is needed at the top rank (the highest in the grades table)
+          ...(topGrade ? [] : [check(employment.managerId, 'manager', 'Direct manager', 'employment')]),
+        ]
       : []),
-    [!!e.degree, { key: 'degree', label: 'Degree', tab: 'education' }],
-    [!!e.university, { key: 'university', label: 'University', tab: 'education' }],
-    [!!e.graduationYear, { key: 'graduationYear', label: 'Graduation year', tab: 'education' }],
-    [!!e.qualificationAr, { key: 'qualificationAr', label: 'Qualification (Arabic)', tab: 'education' }],
+
     // the national ID's front and back are one paper: its scan counts once, when both sides are there
-    ...requiredPaperwork(employmentType, (e.gender as Gender | null) ?? null)
+    ...requiredPaperwork(employment?.employmentType ?? null, (e.gender as Gender | null) ?? null)
       .filter((kind) => kind !== 'national_id_back')
-      .map((kind): [boolean, Missing] =>
+      .map((kind): Check =>
         kind === 'national_id_front'
           ? [papers.includes('national_id_front') && papers.includes('national_id_back'), { key: 'national_id', label: 'National ID scan (front and back)', tab: 'documents' }]
           : [papers.includes(kind), { key: kind, label: PAPERWORK_LABELS[kind], tab: 'documents' }],
@@ -306,7 +368,11 @@ export class EmployeesService {
     const { identity: idRow, bank: bankRow, employments, managing, ...own } = e;
     const history = employments.map(employmentView);
     const current = history.find((x) => x.endDate === null) ?? null;
-    const papers = await this.prisma.paperworkItem.findMany({ where: { employeeId: id }, select: { kind: true }, distinct: ['kind'] });
+    // the top rank is only needed to know whether a graded employment needs a manager
+    const [papers, top] = await Promise.all([
+      this.prisma.paperworkItem.findMany({ where: { employeeId: id }, select: { kind: true }, distinct: ['kind'] }),
+      current?.grade ? this.prisma.grade.aggregate({ _max: { rank: true } }) : null,
+    ]);
     return {
       ...fields(own),
       employment: current,
@@ -314,7 +380,14 @@ export class EmployeesService {
       reports: managing.map((m) => ({ ...m.employee, status: m.status, jobTitle: m.jobTitle })),
       ...(identity && { identity: maskedIdentity(idRow) }),
       ...(bank && { bank: maskedBank(bankRow) }),
-      completeness: completeness(own, idRow, bankRow, current?.employmentType ?? null, papers.map((x) => x.kind)),
+      completeness: completeness({
+        employee: own,
+        identity: idRow,
+        bank: bankRow,
+        employment: current,
+        topRank: top?._max.rank ?? null,
+        papers: papers.map((x) => x.kind),
+      }),
       access: { edit: editsEmployees(user), delete: deletesEmployees(user), identity, bank },
     };
   }
