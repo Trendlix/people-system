@@ -875,6 +875,8 @@ export interface TemplateVersion {
   uploadedAt: string;
   publishedBy: { email: string } | null;
   publishedAt: string | null;
+  /** Documents and job offers made from it: only a version nothing was made from can be deleted (a Super Admin). */
+  usedBy: number;
 }
 
 /** GET /templates/:slot: the slot and every version of its file, newest first ([] for a copy slot). */

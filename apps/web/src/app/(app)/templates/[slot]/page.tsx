@@ -206,11 +206,16 @@ function VersionRow({ version: v, slotKey, deletes }: { version: TemplateVersion
           <a href={versionFileHref(v.id)} className="inline-flex min-h-9 items-center text-sm font-semibold">
             Download<span className="sr-only"> v{v.version} ({v.fileName})</span>
           </a>
-          {deletes && v.status === 'draft' && (
+          {/* a Super Admin deletes any version nothing was made from (owner, 15 October 2026) */}
+          {deletes && v.usedBy === 0 && (
             <DeleteDraftButton
               action={deleteTemplateVersion.bind(null, slotKey, v.id, v.version)}
-              label={`draft v${v.version}`}
-              confirmText={`Delete draft v${v.version} (${v.fileName})? This can't be undone.`}
+              label={v.status === 'draft' ? `draft v${v.version}` : `v${v.version}`}
+              confirmText={
+                v.status === 'published'
+                  ? `Delete v${v.version} (${v.fileName})? It is the version in use: until another version is published, no document can be made from this template. This can't be undone.`
+                  : `Delete v${v.version} (${v.fileName})? This can't be undone.`
+              }
             />
           )}
         </div>
@@ -258,7 +263,7 @@ function doneMessage(query: Record<string, string | string[] | undefined>): stri
   const published = n('published');
   if (published) return `v${published} is now in use: new documents are made from it. Documents made earlier keep the version they were made with.`;
   const deleted = n('deleted');
-  if (deleted) return `Draft v${deleted} deleted.`;
+  if (deleted) return `Version ${deleted} deleted.`;
   return null;
 }
 
