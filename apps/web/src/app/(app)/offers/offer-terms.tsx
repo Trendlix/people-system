@@ -248,7 +248,7 @@ export function OfferTerms({
             type="number"
             inputMode="numeric"
             min={1}
-            max={7}
+            max={6}
             step={1}
             aria-describedby={fid('daysPerWeek-hint')}
             defaultValue={valueOf(state, 'daysPerWeek', defaults.daysPerWeek === null ? '' : String(defaults.daysPerWeek))}

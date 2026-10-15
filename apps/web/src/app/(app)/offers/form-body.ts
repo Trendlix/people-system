@@ -125,7 +125,7 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
       ? amountFrom(fd, 'grossSalary', 'gross salary', errors, 'Enter the net salary wanted as an amount in EGP, e.g. 13,000.')
       : amountFrom(fd, 'grossSalary', 'gross salary', errors, 'Enter the gross salary, e.g. 15,000.');
   }
-  const daysPerWeek = wholeFrom(fd, 'daysPerWeek', 1, 7, 'Enter the working days a week as a whole number from 1 to 7, e.g. 3.', errors);
+  const daysPerWeek = wholeFrom(fd, 'daysPerWeek', 1, 6, 'Enter the working days a week as a whole number from 1 to 6, e.g. 3.', errors);
   const basicPercent = wholeFrom(fd, 'basicPercent', 1, 100, 'Enter the basic part as a whole percent of the gross, from 1 to 100, e.g. 80.', errors);
   const netSalary = amountFrom(fd, 'netSalary', 'net salary', errors);
   const probationMonths = wholeFrom(fd, 'probationMonths', 0, 3, 'Enter the probation as a whole number of months, from 0 to 3.', errors);

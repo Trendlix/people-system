@@ -1,13 +1,21 @@
 'use client';
 
-import { startTransition, useActionState, useId } from 'react';
+import { startTransition, useActionState, useEffect, useId, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { FormState } from '@/lib/types';
 
 export function FormErrors({ errors }: { errors?: string[] }) {
+  const box = useRef<HTMLDivElement>(null);
+  // a refused save lists its reasons here, at the top of the form, while the person is at the button below: bring them
+  // into view each time (owner, 15 October 2026: "editing a job offer is not saved" was a refusal out of sight)
+  useEffect(() => {
+    if (!errors?.length) return;
+    box.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    box.current?.focus({ preventScroll: true });
+  }, [errors]);
   if (!errors?.length) return null;
   return (
-    <div role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
+    <div ref={box} tabIndex={-1} role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger outline-none">
       {errors.length === 1 ? (
         errors[0]
       ) : (

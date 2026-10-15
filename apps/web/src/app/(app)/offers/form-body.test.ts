@@ -162,8 +162,9 @@ describe('pay by the hour', () => {
 
   it('checks the days a week', () => {
     const errors: string[] = [];
-    offerBody(form({ ...hourly, daysPerWeek: '8' }), errors, { draft: false, allowances: [] });
-    expect(errors).toEqual(['Enter the working days a week as a whole number from 1 to 7, e.g. 3.']);
+    // at most 6, as the server allows (the legal working week)
+    offerBody(form({ ...hourly, daysPerWeek: '7' }), errors, { draft: false, allowances: [] });
+    expect(errors).toEqual(['Enter the working days a week as a whole number from 1 to 6, e.g. 3.']);
   });
 });
 
