@@ -5,26 +5,28 @@ import { AllowanceRows } from '@/components/allowance-rows';
 import { valueOf } from '@/components/form';
 import { allowanceTerms, type AllowanceRow } from '@/lib/allowances';
 import type { AllowanceType, FormState } from '@/lib/types';
-import { formatEgp, parseAmount, plainAmount, SALARY_BASES, SALARY_BASIS_LABELS, splitSalary, workedOutGross } from '../employees/[id]/contracts/salary';
+import {
+  formatEgp,
+  netPerHourText,
+  parseAmount,
+  plainAmount,
+  RATE_BASIS_LABELS,
+  SALARY_BASES,
+  SALARY_BASIS_LABELS,
+  splitSalary,
+  workedOutGross,
+  workedOutRate,
+} from '../employees/[id]/contracts/salary';
 import { SalaryBreakdownList } from '../employees/[id]/contracts/salary-breakdown';
 import type { OfferDefaults } from './form-body';
-import {
-  estimateText,
-  insuredAllowancesOf,
-  offerBreakdownRows,
-  offerSalary,
-  parseHours,
-  payBasisFrom,
-  salaryStartFrom,
-  totalPay,
-  type TermsTyped,
-} from './terms';
+import { estimateText, insuredAllowancesOf, offerBreakdownRows, offerSalary, payBasisFrom, salaryStartFrom, totalPay, type TermsTyped } from './terms';
 
 // The Terms part of the offer form: the pay basis (owner's request, 15 October 2026), a monthly salary typed as the gross
-// or as the net wanted, or by the hour (the hourly rate and the hours a week, whose monthly estimate is the gross); the
-// working days a week, the basic part, the allowances, and the probation and the contract's length. While HR types, the
-// month's breakdown down to the net is shown with the allowances in it (terms.ts), for the year of the join date. The
-// form sends the gross worked out (grossSalary) and the net worked out (netSalary), as the contract form does.
+// or as the net wanted, or by the hour (the hourly rate, typed as the gross or as the net per hour agreed, and the hours
+// a week, whose monthly estimate is the gross); the working days a week, the basic part, the allowances, and the
+// probation and the contract's length. While HR types, the month's breakdown down to the net is shown with the
+// allowances in it (terms.ts), for the year of the join date. The form sends the gross worked out (grossSalary), the
+// gross rate worked out from a net rate (hourlyRate) and the net worked out (netSalary), as the contract form does.
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
 const radio =
@@ -56,13 +58,14 @@ export function OfferTerms({
 }) {
   const hourly = payBasisFrom(typed.payBasis) === 'hourly';
   const start = salaryStartFrom(typed.salaryBasis);
+  const rateStart = salaryStartFrom(typed.rateBasis);
   const terms = allowanceTerms(rows, allowanceTypes);
   const salary = offerSalary(typed, year, terms);
   const calc = salary.kind === 'ok' ? salary.breakdown : null;
   const basicPercent = Number(basicTyped);
   const split = calc && Number.isInteger(basicPercent) && basicPercent >= 1 && basicPercent <= 100 ? splitSalary(calc.gross, basicPercent) : null;
-  const rate = parseAmount(typed.hourlyRate);
-  const hours = parseHours(typed.hoursPerWeek);
+  // by the hour: the gross rate, typed or worked out from the net rate, and the hours
+  const perHour = salary.kind === 'ok' && salary.hourly ? { ...salary.hourly, breakdown: salary.breakdown } : null;
 
   return (
     <div className="space-y-5">
@@ -84,43 +87,94 @@ export function OfferTerms({
       </fieldset>
 
       {hourly ? (
-        <div key="hourly" className="grid gap-5 sm:grid-cols-2">
-          <div id="field-hourlyRate" className="scroll-mt-6">
-            <label htmlFor={fid('hourlyRate')} className="label">
-              Hourly rate (EGP)
-            </label>
-            <input
-              id={fid('hourlyRate')}
-              name="hourlyRate"
-              inputMode="decimal"
-              autoComplete="off"
-              required
-              defaultValue={typed.hourlyRate}
-              aria-invalid={(salary.kind === 'invalid' && salary.field === 'hourlyRate') || undefined}
-              className="input tabular-nums"
-            />
-          </div>
-          <div id="field-hoursPerWeek" className="scroll-mt-6">
-            <label htmlFor={fid('hoursPerWeek')} className="label">
-              Hours a week
-            </label>
-            <input
-              id={fid('hoursPerWeek')}
-              name="hoursPerWeek"
-              inputMode="decimal"
-              autoComplete="off"
-              required
-              aria-describedby={fid('hoursPerWeek-hint')}
-              defaultValue={typed.hoursPerWeek}
-              aria-invalid={(salary.kind === 'invalid' && salary.field === 'hoursPerWeek') || undefined}
-              className="input tabular-nums"
-            />
-            <p id={fid('hoursPerWeek-hint')} className="hint">
-              {salary.kind === 'ok' && salary.estimate !== null && rate && hours ? estimateText(rate, hours, salary.estimate) : 'E.g. 20, or 22.5: at most 48, the legal working week.'}
+        <div key="hourly" className="space-y-5">
+          <fieldset aria-describedby={fid('rateBasis-hint')}>
+            <legend className="label">Start from</legend>
+            <div className="flex flex-wrap gap-2">
+              {SALARY_BASES.map((b) => (
+                <label key={b} className={radio}>
+                  <input type="radio" name="rateBasis" value={b} defaultChecked={rateStart === b} className="size-4 accent-accent" />
+                  {RATE_BASIS_LABELS[b]}
+                </label>
+              ))}
+            </div>
+            <p id={fid('rateBasis-hint')} className="hint">
+              {rateStart === 'net'
+                ? 'Type the net per hour agreed, allowances included: the gross rate is worked out, to the piaster.'
+                : 'Type the gross per hour: the net is worked out.'}
             </p>
+          </fieldset>
+          <div className="grid gap-5 sm:grid-cols-2">
+            {rateStart === 'net' ? (
+              <div key="net" id="field-hourlyRate" className="scroll-mt-6">
+                <label htmlFor={fid('netRate')} className="label">
+                  Net per hour (EGP)
+                </label>
+                <input
+                  id={fid('netRate')}
+                  name="netRate"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  required
+                  aria-describedby={fid('netRate-hint')}
+                  defaultValue={typed.netRate}
+                  // only the gross rate worked out from it is saved, so a mistake is caught here rather than as a missing rate
+                  ref={(el) => el?.setCustomValidity(salary.kind === 'invalid' && salary.field === 'netRate' ? salary.reason : '')}
+                  className="input tabular-nums"
+                />
+                <p id={fid('netRate-hint')} className="hint">
+                  {perHour
+                    ? workedOutRate(perHour)
+                    : salary.kind === 'invalid' && salary.field === 'netRate'
+                      ? salary.reason
+                      : 'The net pay agreed for an hour of work, allowances included.'}
+                </p>
+                {/* what is saved: the gross rate worked out */}
+                <input type="hidden" name="hourlyRate" value={perHour ? plainAmount(perHour.rate) : ''} />
+              </div>
+            ) : (
+              <div key="gross" id="field-hourlyRate" className="scroll-mt-6">
+                <label htmlFor={fid('hourlyRate')} className="label">
+                  Hourly rate (EGP)
+                </label>
+                <input
+                  id={fid('hourlyRate')}
+                  name="hourlyRate"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  required
+                  aria-describedby={fid('hourlyRate-hint')}
+                  defaultValue={typed.hourlyRate}
+                  aria-invalid={(salary.kind === 'invalid' && salary.field === 'hourlyRate') || undefined}
+                  className="input tabular-nums"
+                />
+                <p id={fid('hourlyRate-hint')} className="hint">
+                  The gross pay for an hour of work{perHour ? `: ${netPerHourText(perHour.breakdown.net, perHour.hours)}.` : '.'}
+                </p>
+              </div>
+            )}
+            <div id="field-hoursPerWeek" className="scroll-mt-6">
+              <label htmlFor={fid('hoursPerWeek')} className="label">
+                Hours a week
+              </label>
+              <input
+                id={fid('hoursPerWeek')}
+                name="hoursPerWeek"
+                inputMode="decimal"
+                autoComplete="off"
+                required
+                aria-describedby={fid('hoursPerWeek-hint')}
+                defaultValue={typed.hoursPerWeek}
+                aria-invalid={(salary.kind === 'invalid' && salary.field === 'hoursPerWeek') || undefined}
+                className="input tabular-nums"
+              />
+              <p id={fid('hoursPerWeek-hint')} className="hint">
+                {perHour ? estimateText(perHour.rate, perHour.hours, perHour.breakdown.gross) : 'E.g. 20, or 22.5: at most 48, the legal working week.'}
+              </p>
+            </div>
+            {/* what is saved as the gross: the monthly estimate */}
+            <input type="hidden" name="grossSalary" value={calc ? plainAmount(calc.gross) : ''} />
           </div>
-          {/* what is saved as the gross: the monthly estimate */}
-          <input type="hidden" name="grossSalary" value={calc ? plainAmount(calc.gross) : ''} />
         </div>
       ) : (
         <div key="monthly" className="space-y-5">

@@ -9,7 +9,7 @@ import { FieldGrid, Loading, ProfileSection, todayInCairo, type GridField } from
 import { ActionButton, SignContract, SignedContractDetails } from './contract-buttons';
 import { loadContracts } from './data';
 import { daysBetween } from './dates';
-import { allowancesLabel, daysLabel, formatEgp, hourlyTerms, payLabel } from './salary';
+import { allowancesLabel, daysLabel, formatEgp, hourlyNetTerms, hourlyTerms, payLabel } from './salary';
 
 // The Contract section of the Contracts tab: the signed contract (its number, term, probation, signing and filing
 // dates, its pay basis and working days, and the salary and allowances for HR, Finance and the CEO), a draft waiting to
@@ -91,8 +91,8 @@ function contractFields(c: Contract): GridField[] {
       key: 'contract-pay-basis',
       label: 'Pay basis',
       value: PAY_BASIS_LABELS[c.payBasis] ?? PAY_BASIS_LABELS.monthly,
-      // by the hour: the rate (for those who see the salary) and the hours a week
-      note: hourlyTerms(c),
+      // by the hour: the rate (for those who see the salary) and the hours a week, then the net per hour it comes to
+      note: [hourlyTerms(c), hourlyNetTerms(c)].filter(Boolean).join(' · ') || null,
       protected: hourly && !c.salaryHidden,
     },
     { key: 'contract-days', label: 'Working days', value: daysLabel(c.daysPerWeek ?? null) ?? "The shift's week" },
@@ -196,6 +196,7 @@ function DraftCard({
     termLabel(d),
     d.probationMonths > 0 ? `${d.probationMonths} months' probation` : 'no probation',
     payLabel(d),
+    hourlyNetTerms(d),
     !d.salaryHidden && d.grossSalary !== null && `gross ${formatEgp(d.grossSalary)}`,
     !d.salaryHidden && allowances.length > 0 && `allowances ${allowancesLabel(allowances)}`,
     !d.salaryHidden && allowances.length > 0 && d.totalSalary !== null && `${formatEgp(d.totalSalary)} a month in all`,

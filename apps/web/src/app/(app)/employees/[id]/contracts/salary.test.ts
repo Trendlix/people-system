@@ -1,4 +1,4 @@
-import { grossToNet } from '@trendlix/shared';
+import { grossToNet, hourlyRateFromNet, monthlyFromHourly } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
   allowancesLabel,
@@ -12,12 +12,16 @@ import {
   formatPercent,
   hourlyFor,
   hourlyLabel,
+  hourlyNetTerms,
+  hourlyPayFor,
   hourlyTerms,
   hoursLabel,
   insurableLimits,
   insuredFor,
   insuredWageNote,
   monthlyEstimateText,
+  netPerHour,
+  netPerHourText,
   parseAmount,
   parseHours,
   payLabel,
@@ -26,7 +30,9 @@ import {
   savedNetChange,
   splitSalary,
   switchBasis,
+  switchRateBasis,
   workedOutGross,
+  workedOutRate,
 } from './salary';
 
 const TAXED = { amount: 1000, taxable: true, insured: false };
@@ -269,5 +275,75 @@ describe('pay by the hour and working days', () => {
     expect(payLabel({ payBasis: 'monthly', hourlyRate: null, hoursPerWeek: null, daysPerWeek: 5 })).toBe('Monthly salary · 5 days a week');
     expect(hourlyTerms({ payBasis: 'monthly', hourlyRate: 150, hoursPerWeek: 20, daysPerWeek: null })).toBeNull();
     expect(hourlyTerms(hourly)).toBe('EGP 150 an hour × 20 hours a week');
+  });
+});
+
+describe('by the hour, from the net rate', () => {
+  it('gives a month’s net as a rate: the net ÷ (hours a week × 52 ÷ 12)', () => {
+    expect(netPerHour(10437, 20)).toBe(120.43);
+    expect(netPerHour(8320.33, 16)).toBe(120);
+    expect(netPerHourText(10437, 20)).toBe('≈ EGP 120.43 net per hour');
+  });
+
+  it('works the gross rate out from the net per hour agreed, to the piaster', () => {
+    // the owner’s example: 120 net an hour × 16 hours a week
+    const r = hourlyPayFor('net', '120', '16', 2026);
+    expect(r).toEqual({ kind: 'ok', rate: 144.59, hours: 16, gross: 10024.91, breakdown: hourlyRateFromNet(120, 16, 2026).breakdown });
+    expect(r.kind === 'ok' && r.breakdown.net).toBe(8320.33);
+    expect(r.kind === 'ok' && r.gross).toBe(monthlyFromHourly(144.59, 16));
+    if (r.kind === 'ok') expect(workedOutRate(r)).toBe('EGP 144.59 gross per hour, which gives ≈ EGP 120 net per hour.');
+  });
+
+  it('counts the allowances in the net per hour', () => {
+    const transport = { amount: 1000, taxable: false, insured: false };
+    const r = hourlyPayFor('net', '120', '16', 2026, [transport]);
+    expect(r).toMatchObject({ kind: 'ok', rate: 124.32, gross: 8619.52 });
+    expect(r.kind === 'ok' && r.breakdown.net).toBeGreaterThanOrEqual(monthlyFromHourly(120, 16));
+  });
+
+  it('takes the gross rate as typed, with its breakdown', () => {
+    expect(hourlyPayFor('gross', '150', '20', 2026)).toEqual({ kind: 'ok', rate: 150, hours: 20, gross: 13000, breakdown: grossToNet(13000, 2026) });
+  });
+
+  it('keeps the gross rate typed before while it gives the net rate', () => {
+    // 150 gives 120.43 net an hour, and is kept; the lowest rate reaching 120.43 is 150.01
+    expect(hourlyPayFor('net', '120.43', '20', 2026)).toMatchObject({ rate: 150.01 });
+    expect(hourlyPayFor('net', '120.43', '20', 2026, [], '150')).toMatchObject({ rate: 150, gross: 13000 });
+    // not for another net rate, or other hours
+    expect(hourlyPayFor('net', '125', '20', 2026, [], '150')).toMatchObject({ rate: hourlyRateFromNet(125, 20, 2026).hourlyRate });
+    expect(hourlyPayFor('net', '120.43', '16', 2026, [], '150')).toMatchObject({ rate: hourlyRateFromNet(120.43, 16, 2026).hourlyRate });
+  });
+
+  it('says when the allowances alone give the net rate’s month, or what is missing or wrong', () => {
+    expect(hourlyPayFor('net', '10', '4', 2026, [{ amount: 3000, taxable: false, insured: false }])).toEqual({ kind: 'belowAllowances', net: 3000 });
+    expect(belowAllowancesText(3000, true)).toBe('The allowances alone give a net of EGP 3,000 a month: enter a higher net rate, or fewer allowances.');
+    expect(hourlyPayFor('net', '', '16', 2026)).toEqual({ kind: 'empty' });
+    expect(hourlyPayFor('net', 'abc', '16', 2026)).toEqual({ kind: 'invalid', field: 'rate' });
+    expect(hourlyPayFor('net', '120', '50', 2026)).toEqual({ kind: 'invalid', field: 'hours' });
+  });
+
+  it('switches between the gross and the net per hour, keeping the pay the same', () => {
+    const typed = { rate: '150', netRate: '', hours: '20' };
+    const toNet = switchRateBasis('net', typed, 2026);
+    expect(toNet).toEqual({ rate: '150', netRate: '120.43' });
+    expect(switchRateBasis('gross', { ...typed, ...toNet }, 2026)).toEqual({ rate: '150', netRate: '120.43' });
+    // from a net rate typed anew: the gross rate worked out
+    expect(switchRateBasis('gross', { rate: '150', netRate: '120', hours: '16' }, 2026)).toEqual({ rate: '144.59', netRate: '120' });
+    expect(switchRateBasis('net', { rate: '144.59', netRate: '120', hours: '16' }, 2026)).toEqual({ rate: '144.59', netRate: '120' });
+  });
+
+  it('leaves the rates as they were when there is nothing to work from', () => {
+    expect(switchRateBasis('net', { rate: '', netRate: '99', hours: '20' }, 2026)).toEqual({ rate: '', netRate: '99' });
+    expect(switchRateBasis('gross', { rate: '150', netRate: 'abc', hours: '20' }, 2026)).toEqual({ rate: '150', netRate: 'abc' });
+    expect(switchRateBasis('net', { rate: '150', netRate: '', hours: '' }, 2026)).toEqual({ rate: '150', netRate: '' });
+  });
+
+  it('words a saved contract’s or offer’s net per hour, only when the salary is shown', () => {
+    const hourly = { payBasis: 'hourly' as const, hourlyRate: 150, hoursPerWeek: 20, daysPerWeek: 3, netSalary: 10437 };
+    expect(hourlyNetTerms(hourly)).toBe('≈ EGP 120.43 net per hour');
+    expect(hourlyNetTerms({ ...hourly, salaryHidden: true })).toBeNull();
+    expect(hourlyNetTerms({ ...hourly, netSalary: null })).toBeNull();
+    expect(hourlyNetTerms({ ...hourly, hoursPerWeek: null })).toBeNull();
+    expect(hourlyNetTerms({ ...hourly, payBasis: 'monthly' })).toBeNull();
   });
 });

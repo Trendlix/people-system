@@ -76,7 +76,8 @@ export interface OfferAllowanceInput {
  * The offer form's fields (offer-form.tsx) as POST /offers takes them, or a draft's PATCH. `draft`: changing a draft,
  * where an emptied optional field is cleared (null) and the other pay basis's fields too; a new offer leaves them out.
  * `allowances`: the rows, already read (allowancesFrom). By the hour, `grossSalary` is the monthly estimate the form
- * worked out; typing the net, it is the gross worked out from it; `netSalary` is the net worked out, either way.
+ * worked out, and typing the net per hour (rateBasis 'net'), `hourlyRate` is the gross rate worked out from it; typing
+ * the net, `grossSalary` is the gross worked out from it; `netSalary` is the net worked out, either way.
  */
 export function offerBody(fd: FormData, errors: string[], { draft, allowances }: { draft: boolean; allowances: OfferAllowanceInput[] }) {
   const cleared = draft ? null : undefined;
@@ -104,11 +105,14 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
   const payBasis: PayBasis = payBasisFrom(text(fd, 'payBasis'));
   const hourly = payBasis === 'hourly';
   const net = text(fd, 'salaryBasis') === 'net';
+  const netRate = text(fd, 'rateBasis') === 'net';
   let hourlyRate: number | null | undefined = cleared;
   let hoursPerWeek: number | null | undefined = cleared;
   let grossSalary: number | null;
   if (hourly) {
-    hourlyRate = amountFrom(fd, 'hourlyRate', 'hourly rate', errors, 'Enter the hourly rate, e.g. 150.');
+    hourlyRate = netRate
+      ? amountFrom(fd, 'hourlyRate', 'hourly rate', errors, 'Enter the net per hour as an amount in EGP, e.g. 120.')
+      : amountFrom(fd, 'hourlyRate', 'hourly rate', errors, 'Enter the hourly rate, e.g. 150.');
     const hours = parseHours(text(fd, 'hoursPerWeek'));
     if (hours === null) errors.push('Enter the hours a week, e.g. 20.');
     const hoursOk = hours !== null && !Number.isNaN(hours) && hours > 0 && hours <= MAX_HOURS_PER_WEEK;

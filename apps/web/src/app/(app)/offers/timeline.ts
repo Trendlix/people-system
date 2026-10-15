@@ -133,3 +133,15 @@ export function templateProblem(o: Pick<OfferView, 'template' | 'employmentType'
       : `There is no job offer template for ${type} yet. Upload and publish “${t.name}” in Templates.`;
   return { text, href: templateHref(t.slotKey) };
 }
+
+/**
+ * Whether Send by email and Copy link are offered: for a draft or a sent offer before its last day has passed, whose
+ * document can be made. Sending fills the document in afresh, so it needs the employment type's published template,
+ * and for a draft every value the template prints (the API refuses it otherwise). When it can't be made, the page's
+ * warning says why, once, and the sending buttons are left out.
+ */
+export function canBeSent(o: Pick<OfferView, 'status' | 'expiresOn' | 'template' | 'missing'>, today: string): boolean {
+  if ((o.status !== 'draft' && o.status !== 'sent') || o.expiresOn < today) return false;
+  if (o.template && o.template.status !== 'published') return false;
+  return o.status !== 'draft' || (o.missing ?? []).length === 0;
+}

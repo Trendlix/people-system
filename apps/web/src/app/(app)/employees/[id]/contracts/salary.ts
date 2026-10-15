@@ -1,11 +1,13 @@
 import {
   grossToNet,
+  hourlyRateFromNet,
   INSURABLE_WAGE,
   insuredWageOf,
   monthlyFromHourly,
   netToGross,
   PAY_BASIS_LABELS,
   SALARY_RULES,
+  WEEKS_PER_MONTH,
   type AllowanceTerms,
   type PayBasis,
   type SalaryBreakdown,
@@ -18,7 +20,9 @@ import {
 //
 // The owner's requests of 15 October 2026: allowances are paid every month on top of the gross, each kind taxed or not
 // and insured or not, and the net and the insured salary include them; and part-time pay can be by the hour, when the
-// gross is the monthly estimate, rate × hours a week × 52 ÷ 12 (monthlyFromHourly in @trendlix/shared).
+// gross is the monthly estimate, rate × hours a week × 52 ÷ 12 (monthlyFromHourly in @trendlix/shared). By the hour,
+// HR can also start from an agreed net rate, and the gross rate is worked out (hourlyRateFromNet); the contract keeps
+// the gross rate.
 
 const money = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
@@ -123,9 +127,11 @@ export function salaryFor(basis: SalaryBasis, input: string, year: number, allow
   return allowancesNet < n && b.gross > 0 ? { kind: 'ok', typed: n, breakdown: b } : { kind: 'belowAllowances', net: allowancesNet };
 }
 
-/** Why there is no gross for a net: the allowances alone give it. */
-export function belowAllowancesText(net: number): string {
-  return `The allowances alone give a net of ${formatEgp(net)}: enter a higher net, or fewer allowances.`;
+/** Why there is no gross for a net (`hourly`: no gross rate for a net rate): the allowances alone give it, a month. */
+export function belowAllowancesText(net: number, hourly = false): string {
+  return hourly
+    ? `The allowances alone give a net of ${formatEgp(net)} a month: enter a higher net rate, or fewer allowances.`
+    : `The allowances alone give a net of ${formatEgp(net)}: enter a higher net, or fewer allowances.`;
 }
 
 /** An amount as the form sends it and the address holds it: 13069.65 → "13069.65", 16700 → "16700". */
@@ -266,6 +272,92 @@ export function hourlyLabel(rate: number, hours: number): string {
 /** How the monthly estimate is worked out: "EGP 150 an hour × 20 hours a week × 52 ÷ 12 = EGP 13,000 a month". */
 export function monthlyEstimateText(h: { rate: number; hours: number; gross: number }): string {
   return `${hourlyLabel(h.rate, h.hours)} × 52 ÷ 12 = ${formatEgp(h.gross)} a month`;
+}
+
+// ---------- by the hour, from the net rate ----------
+
+/** By the hour, what HR types the rate as: the gross per hour, or the net per hour agreed (the gross rate is worked out). */
+export const RATE_BASIS_LABELS: Record<SalaryBasis, string> = { gross: 'Gross per hour', net: 'Net per hour' };
+
+/** A month's net as an hourly rate: the net ÷ (hours a week × 52 ÷ 12), to the piaster. */
+export function netPerHour(net: number, hours: number): number {
+  return cents(net / (hours * WEEKS_PER_MONTH));
+}
+
+/** "≈ EGP 120 net per hour", for a month's net and the hours a week. */
+export function netPerHourText(net: number, hours: number): string {
+  return `≈ ${formatEgp(netPerHour(net, hours))} net per hour`;
+}
+
+export type HourlyPayResult =
+  | { kind: 'empty' }
+  | { kind: 'invalid'; field: 'rate' | 'hours' }
+  /** A net rate whose month the allowances alone already give (`net`, a month): there is no gross rate to work out. */
+  | { kind: 'belowAllowances'; net: number }
+  /** `rate`: the gross rate, as typed or worked out; `gross`: its monthly estimate. */
+  | { kind: 'ok'; rate: number; hours: number; gross: number; breakdown: SalaryBreakdown };
+
+/**
+ * By the hour, the pay for the rate as typed (see `hourlyFor`), with the month's breakdown: from the gross rate, or
+ * from the net rate agreed, when the gross rate is the lowest, to the piaster, whose monthly estimate's net (allowances
+ * included) reaches the net rate's month (hourlyRateFromNet). `kept`: the gross rate typed before, kept while its net
+ * per hour is the net rate, so switching from the gross and back changes nothing.
+ */
+export function hourlyPayFor(
+  basis: SalaryBasis,
+  rateInput: string,
+  hoursInput: string,
+  year: number,
+  allowances: readonly AllowanceTerms[] = [],
+  kept = '',
+): HourlyPayResult {
+  const typed = hourlyFor(rateInput, hoursInput);
+  if (typed.kind !== 'ok') return typed;
+  const { rate, hours } = typed;
+  if (basis === 'gross') return { ...typed, breakdown: grossToNet(typed.gross, year, allowances) };
+  const before = hourlyFor(kept, hoursInput);
+  if (before.kind === 'ok') {
+    const breakdown = grossToNet(before.gross, year, allowances);
+    if (netPerHour(breakdown.net, hours) === rate) return { ...before, breakdown };
+  }
+  // asked first: just above 0 the insured wage jumps to the year's minimum, so a tiny gross could seem to reach it
+  // (typed.gross is the net rate's month here)
+  const allowancesNet = allowances.length > 0 ? grossToNet(0, year, allowances).net : 0;
+  if (allowancesNet >= typed.gross) return { kind: 'belowAllowances', net: allowancesNet };
+  const worked = hourlyRateFromNet(rate, hours, year, allowances);
+  if (!(worked.hourlyRate > 0)) return { kind: 'belowAllowances', net: allowancesNet };
+  return { kind: 'ok', rate: worked.hourlyRate, hours, gross: worked.breakdown.gross, breakdown: worked.breakdown };
+}
+
+/** For a net rate typed: the gross rate worked out, and the net per hour it gives. */
+export function workedOutRate(p: { rate: number; hours: number; breakdown: SalaryBreakdown }): string {
+  return `${formatEgp(p.rate)} gross per hour, which gives ${netPerHourText(p.breakdown.net, p.hours)}.`;
+}
+
+/**
+ * Switching what HR types the hourly rate as: the other field starts with what the current one gives, so the pay
+ * stays the same (the net rate to the piaster; coming back, the gross rate typed before while it gives that net rate).
+ * Left as it was when there is nothing to work from.
+ */
+export function switchRateBasis(
+  to: SalaryBasis,
+  typed: { rate: string; netRate: string; hours: string },
+  year: number,
+  allowances: readonly AllowanceTerms[] = [],
+): { rate: string; netRate: string } {
+  const unchanged = { rate: typed.rate, netRate: typed.netRate };
+  if (to === 'net') {
+    const from = hourlyPayFor('gross', typed.rate, typed.hours, year, allowances);
+    return from.kind === 'ok' ? { ...unchanged, netRate: plainAmount(netPerHour(from.breakdown.net, from.hours)) } : unchanged;
+  }
+  const from = hourlyPayFor('net', typed.netRate, typed.hours, year, allowances, typed.rate);
+  return from.kind === 'ok' ? { ...unchanged, rate: plainAmount(from.rate) } : unchanged;
+}
+
+/** By the hour, a saved contract's or offer's net as a rate: "≈ EGP 120 net per hour". Null when hidden or not known. */
+export function hourlyNetTerms(c: PayTerms & { netSalary: number | null }): string | null {
+  if (c.payBasis !== 'hourly' || c.salaryHidden || c.netSalary === null || c.netSalary === undefined || !c.hoursPerWeek) return null;
+  return netPerHourText(c.netSalary, c.hoursPerWeek);
 }
 
 /** "3 days a week", "1 day a week"; null (the shift's week) → null. */

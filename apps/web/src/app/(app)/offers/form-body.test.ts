@@ -137,6 +137,23 @@ describe('pay by the hour', () => {
     expect(errors).toEqual(['Enter the hourly rate, e.g. 150.', 'Enter the hours a week, e.g. 20.']);
   });
 
+  it('sends the gross rate worked out from the net per hour', () => {
+    const errors: string[] = [];
+    const fromNet = { ...hourly, rateBasis: 'net', netRate: '120', hourlyRate: '144.59', hoursPerWeek: '16', grossSalary: '10024.91', netSalary: '8320.33' };
+    const body = offerBody(form(fromNet), errors, { draft: false, allowances: [] });
+    expect(errors).toEqual([]);
+    expect(body).toMatchObject({ payBasis: 'hourly', hourlyRate: 144.59, hoursPerWeek: 16, grossSalary: 10024.91, netSalary: 8320.33 });
+    // the net rate and the switch are kept only for a refused save
+    expect(body).not.toHaveProperty('netRate');
+    expect(body).not.toHaveProperty('rateBasis');
+  });
+
+  it('asks for the net per hour when the gross rate was to be worked out from it', () => {
+    const errors: string[] = [];
+    offerBody(form({ ...hourly, rateBasis: 'net', netRate: 'abc', hourlyRate: '', grossSalary: '' }), errors, { draft: false, allowances: [] });
+    expect(errors).toEqual(['Enter the net per hour as an amount in EGP, e.g. 120.']);
+  });
+
   it('keeps the hours within the legal working week', () => {
     const errors: string[] = [];
     expect(offerBody(form({ ...hourly, hoursPerWeek: '60' }), errors, { draft: false, allowances: [] }).hoursPerWeek).toBeNull();

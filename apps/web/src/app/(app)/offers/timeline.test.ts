@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OfferView } from '../../../lib/types';
-import { missingHelp, offerTimeline, templateProblem, waitingText } from './timeline';
+import { canBeSent, missingHelp, offerTimeline, templateProblem, waitingText } from './timeline';
 
 /** An offer as GET /offers/:id sends it, with only what a test sets changed. */
 function offer(o: Partial<OfferView> = {}): OfferView {
@@ -163,5 +163,29 @@ describe('what the template lacks', () => {
     expect(templateProblem(offer({ template: { slotKey: 'offer_sales', name: 'Job offer · Sales', status: 'draft', version: null } }))?.text).toMatch(
       /only a draft\. Publish it in Templates/,
     );
+  });
+});
+
+describe('sending', () => {
+  const today = '2026-10-15';
+  const missingValue = { tag: 'job_title_ar', label: 'Job title (Arabic)', where: { tab: 'offer', key: 'jobTitleId' } };
+  const unpublished = (status: 'draft' | 'missing') => ({ slotKey: 'offer_part_time', name: 'Job offer · Part-time', status, version: null });
+
+  it('is offered for a draft or a sent offer whose document can be made, before its last day', () => {
+    expect(canBeSent(offer(), today)).toBe(true);
+    expect(canBeSent(offer({ status: 'sent' }), today)).toBe(true);
+    expect(canBeSent(offer({ expiresOn: today }), today)).toBe(true);
+    expect(canBeSent(offer({ expiresOn: '2026-10-14' }), today)).toBe(false);
+    for (const status of ['expired', 'accepted', 'declined', 'withdrawn'] as const) expect(canBeSent(offer({ status }), today)).toBe(false);
+  });
+
+  it('is left out while the template is not published, or a draft lacks values', () => {
+    expect(canBeSent(offer({ employmentType: 'part_time', template: unpublished('missing') }), today)).toBe(false);
+    expect(canBeSent(offer({ template: unpublished('draft') }), today)).toBe(false);
+    // sending again fills the document in afresh, from the published template
+    expect(canBeSent(offer({ status: 'sent', template: unpublished('draft') }), today)).toBe(false);
+    expect(canBeSent(offer({ missing: [missingValue] }), today)).toBe(false);
+    // the API lists missing values for drafts only
+    expect(canBeSent(offer({ status: 'sent', missing: [missingValue] }), today)).toBe(true);
   });
 });

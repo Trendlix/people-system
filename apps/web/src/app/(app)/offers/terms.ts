@@ -1,23 +1,27 @@
-import { grossToNet, monthlyFromHourly, netToGross, SALARY_RULES, type AllowanceTerms, type PayBasis, type SalaryBreakdown } from '@trendlix/shared';
+import { grossToNet, netToGross, SALARY_RULES, type AllowanceTerms, type PayBasis, type SalaryBreakdown } from '@trendlix/shared';
 import {
+  belowAllowancesText,
   formatAmount,
   formatEgp,
   formatPercent,
+  hourlyPayFor,
   insuredWageNote,
   MAX_HOURS_PER_WEEK,
   parseAmount,
   plainAmount,
+  switchRateBasis,
   type BreakdownRow,
 } from '../employees/[id]/contracts/salary';
 
 // An offer's pay, as the offer form previews it while HR types (pure code, tested; relative imports for the tests).
 // The pay basis (owner's request, 15 October 2026): a monthly salary, typed as the gross (the net is worked out) or as
 // the net wanted (the gross is worked out, in whole pounds), or by the hour (part-time, e.g. two or three days a week),
-// when the gross is the monthly estimate, hourly rate × hours a week × 52 ÷ 12 (monthlyFromHourly). Allowances are paid
-// on top of the gross; the taxed ones are taxed with it, the insured ones insured with it, and all are in the net
-// (grossToNet in @trendlix/shared). The API works the same amounts out again when it saves.
+// when the gross is the monthly estimate, hourly rate × hours a week × 52 ÷ 12 (monthlyFromHourly), the rate typed as
+// the gross per hour or as the net per hour agreed (the gross rate is worked out, as on the contract form). Allowances
+// are paid on top of the gross; the taxed ones are taxed with it, the insured ones insured with it, and all are in the
+// net (grossToNet in @trendlix/shared). The API works the same amounts out again when it saves.
 
-/** What HR types the monthly salary as: the gross, or the net wanted. */
+/** What HR types the monthly salary as, the gross or the net wanted; by the hour, the rate as the gross or the net per hour. */
 export type SalaryStart = 'gross' | 'net';
 
 /** The salary fields as typed (text), by the form's field names. */
@@ -26,17 +30,20 @@ export interface TermsTyped {
   salaryBasis: string;
   grossSalary: string;
   wantedNet: string;
+  /** By the hour: the rate typed as the gross per hour (hourlyRate) or the net per hour (netRate). */
+  rateBasis: string;
   hourlyRate: string;
+  netRate: string;
   hoursPerWeek: string;
 }
 
-export type TermsField = 'grossSalary' | 'wantedNet' | 'hourlyRate' | 'hoursPerWeek';
+export type TermsField = 'grossSalary' | 'wantedNet' | 'hourlyRate' | 'netRate' | 'hoursPerWeek';
 
 export type TermsResult =
   | { kind: 'empty'; reason: string }
   | { kind: 'invalid'; field: TermsField; reason: string }
-  /** `estimate`: by the hour, the monthly estimate (the gross); null for a monthly salary. */
-  | { kind: 'ok'; breakdown: SalaryBreakdown; estimate: number | null };
+  /** `estimate`: by the hour, the monthly estimate (the gross), of `hourly`'s gross rate; null for a monthly salary. */
+  | { kind: 'ok'; breakdown: SalaryBreakdown; estimate: number | null; hourly?: { rate: number; hours: number } };
 
 export const payBasisFrom = (value: unknown): PayBasis => (value === 'hourly' ? 'hourly' : 'monthly');
 export const salaryStartFrom = (value: unknown): SalaryStart => (value === 'net' ? 'net' : 'gross');
@@ -49,23 +56,28 @@ export function parseHours(input: string): number | null {
 }
 
 export const RATE_INVALID = 'Enter the hourly rate as an amount in EGP, e.g. 150.';
+export const NET_RATE_INVALID = 'Enter the net per hour as an amount in EGP, e.g. 120.';
 export const HOURS_INVALID = `Enter the hours a week as a number up to ${MAX_HOURS_PER_WEEK}, the legal working week, e.g. 20 or 22.5.`;
 export const GROSS_INVALID = 'Enter the gross salary as an amount in EGP, e.g. 15,000.';
 export const NET_INVALID = 'Enter the net salary as an amount in EGP, e.g. 13,000.';
 
 /**
  * The month's breakdown for what is typed, in `year` (its insurable wage limits), with the allowances: by the hour, of
- * the monthly estimate; else of the gross typed, or of the lowest whole-pound gross whose net reaches the net typed.
+ * the monthly estimate of the gross rate typed, or worked out from the net per hour typed (hourlyPayFor, which keeps
+ * the gross rate typed before while it gives that net rate); else of the gross typed, or of the lowest whole-pound
+ * gross whose net reaches the net typed.
  */
 export function offerSalary(t: TermsTyped, year: number, allowances: readonly AllowanceTerms[] = []): TermsResult {
   if (payBasisFrom(t.payBasis) === 'hourly') {
-    const rate = parseAmount(t.hourlyRate);
-    const hours = parseHours(t.hoursPerWeek);
-    if (rate !== null && (Number.isNaN(rate) || rate <= 0)) return { kind: 'invalid', field: 'hourlyRate', reason: RATE_INVALID };
-    if (hours !== null && (Number.isNaN(hours) || hours <= 0 || hours > MAX_HOURS_PER_WEEK)) return { kind: 'invalid', field: 'hoursPerWeek', reason: HOURS_INVALID };
-    if (rate === null || hours === null) return { kind: 'empty', reason: 'Enter the hourly rate and the hours a week to see the monthly estimate and the net.' };
-    const estimate = monthlyFromHourly(rate, hours);
-    return { kind: 'ok', breakdown: grossToNet(estimate, year, allowances), estimate };
+    const net = salaryStartFrom(t.rateBasis) === 'net';
+    const pay = hourlyPayFor(net ? 'net' : 'gross', net ? t.netRate : t.hourlyRate, t.hoursPerWeek, year, allowances, t.hourlyRate);
+    if (pay.kind === 'invalid' && pay.field === 'hours') return { kind: 'invalid', field: 'hoursPerWeek', reason: HOURS_INVALID };
+    if (pay.kind === 'invalid') return net ? { kind: 'invalid', field: 'netRate', reason: NET_RATE_INVALID } : { kind: 'invalid', field: 'hourlyRate', reason: RATE_INVALID };
+    if (pay.kind === 'belowAllowances') return { kind: 'invalid', field: 'netRate', reason: belowAllowancesText(pay.net, true) };
+    if (pay.kind === 'empty') {
+      return { kind: 'empty', reason: `Enter the ${net ? 'net per hour' : 'hourly rate'} and the hours a week to see the monthly estimate and the net.` };
+    }
+    return { kind: 'ok', breakdown: pay.breakdown, estimate: pay.gross, hourly: { rate: pay.rate, hours: pay.hours } };
   }
   const start = salaryStartFrom(t.salaryBasis);
   const n = parseAmount(start === 'net' ? t.wantedNet : t.grossSalary);
@@ -86,6 +98,15 @@ export function switchStart(to: SalaryStart, typed: TermsTyped, year: number, al
   return to === 'net'
     ? { ...typed, salaryBasis: to, wantedNet: plainAmount(from.breakdown.net) }
     : { ...typed, salaryBasis: to, grossSalary: plainAmount(from.breakdown.gross) };
+}
+
+/**
+ * Switching between typing the gross per hour and the net per hour: the other rate starts with what the current one
+ * gives, so the pay stays the same (see switchRateBasis). Left as it was when there is nothing to work from.
+ */
+export function switchRate(to: SalaryStart, typed: TermsTyped, year: number, allowances: readonly AllowanceTerms[] = []): TermsTyped {
+  const s = switchRateBasis(to, { rate: typed.hourlyRate, netRate: typed.netRate, hours: typed.hoursPerWeek }, year, allowances);
+  return { ...typed, rateBasis: to, hourlyRate: s.rate, netRate: s.netRate };
 }
 
 /** "EGP 150 × 20 hours a week × 52 ÷ 12 = EGP 13,000 a month", for the hourly fields' hint. */

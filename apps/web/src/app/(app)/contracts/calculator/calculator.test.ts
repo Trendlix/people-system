@@ -1,4 +1,4 @@
-import { annualSalaryTax, grossToNet, netToGross, TAX_TIER_LIMITS } from '@trendlix/shared';
+import { annualSalaryTax, grossToNet, hourlyRateFromNet, netToGross, TAX_TIER_LIMITS } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import type { AllowanceType } from '../../../../lib/types';
 import {
@@ -20,7 +20,9 @@ const input = (o: Partial<CalculatorInput> = {}): CalculatorInput => ({
   pay: 'monthly',
   basis: 'gross',
   amount: '',
+  rateBasis: 'gross',
   rate: '',
+  netRate: '',
   hours: '',
   year: 2026,
   allowances: [],
@@ -65,6 +67,23 @@ describe('the salary calculator', () => {
     ]);
     expect(readCalculatorQuery({ allowance: 'h1' }, 2026).allowances).toEqual([{ allowanceTypeId: 'h1', amount: '' }]);
     expect(readCalculatorQuery({ allowance: Array.from({ length: 30 }, (_, i) => `k${i}:1`) }, 2026).allowances).toHaveLength(20);
+  });
+
+  it('reads a net per hour from the address, the gross rate winning when both are given', () => {
+    expect(readCalculatorQuery({ netRate: '120', hours: '16' }, 2026)).toEqual(input({ pay: 'hourly', rateBasis: 'net', netRate: '120', hours: '16' }));
+    expect(readCalculatorQuery({ netRate: '' }, 2026)).toEqual(input({ pay: 'hourly', rateBasis: 'net' }));
+    expect(readCalculatorQuery({ rate: '150', netRate: '120', hours: '20' }, 2026)).toEqual(input({ pay: 'hourly', rate: '150', hours: '20' }));
+    // a monthly amount is ignored by the hour, as with the gross rate
+    expect(readCalculatorQuery({ netRate: '120', hours: '16', net: '9000' }, 2026)).toEqual(input({ pay: 'hourly', rateBasis: 'net', netRate: '120', hours: '16' }));
+  });
+
+  it('writes a net per hour to the address, and reads it back', () => {
+    const fromNet = input({ pay: 'hourly', rateBasis: 'net', netRate: '١٢٠', rate: '150', hours: '16' });
+    expect(calculatorSearch(fromNet)).toBe('?netRate=120&hours=16&year=2026');
+    expect(calculatorSearch(input({ pay: 'hourly', rateBasis: 'net' }))).toBe('?netRate=&hours=&year=2026');
+    expect(readCalculatorQuery(Object.fromEntries(new URLSearchParams(calculatorSearch(fromNet))), 2026)).toEqual(
+      input({ pay: 'hourly', rateBasis: 'net', netRate: '120', hours: '16' }),
+    );
   });
 
   it('writes the input to the address, so a result can be shared', () => {
@@ -165,9 +184,21 @@ describe('the salary calculator', () => {
     );
   });
 
-  it('explains a gross estimated from an hourly rate', () => {
+  it('explains a gross estimated from an hourly rate, and the net per hour it gives', () => {
     const { employee } = calculatorRows(grossToNet(13000, 2026), 2026, [], { rate: 150, hours: 20 });
     expect(employee[0].how).toBe('The monthly estimate: EGP 150 an hour × 20 hours a week × 52 ÷ 12 = EGP 13,000 a month');
+    expect(employee.at(-1)?.how).toBe('The gross less the deductions, ≈ EGP 120.43 net per hour');
+    // a monthly salary has no rate
+    expect(calculatorRows(grossToNet(13000, 2026), 2026).employee.at(-1)?.how).toBe('The gross less the deductions');
+  });
+
+  it('explains a gross rate worked out from the net per hour', () => {
+    const { hourlyRate, breakdown } = hourlyRateFromNet(120, 16, 2026);
+    const { employee } = calculatorRows(breakdown, 2026, [], { rate: hourlyRate, hours: 16, netRate: 120 });
+    expect(employee[0].how).toBe(
+      'The monthly estimate: EGP 144.59 an hour × 16 hours a week × 52 ÷ 12 = EGP 10,024.91 a month, the gross rate worked out from EGP 120 net per hour',
+    );
+    expect(employee.at(-1)).toMatchObject({ amount: 8320.33, how: 'The gross less the deductions, ≈ EGP 120 net per hour' });
   });
 
   it('says what the allowances add to the net', () => {

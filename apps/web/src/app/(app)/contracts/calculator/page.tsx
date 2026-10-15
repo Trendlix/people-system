@@ -83,6 +83,11 @@ function HowItsCalculated() {
           From a net (allowances included): the lowest whole-pound gross whose net reaches it, so its net can be up to a pound more than asked. Just past a
           tier&apos;s limit a higher gross gives a lower net, as the tax jumps.
         </li>
+        <li>
+          By the hour, from a net per hour (allowances included): the lowest gross rate, to the piaster, whose monthly estimate&apos;s net reaches the net per
+          hour × the hours a week × 52 ÷ 12, so its net per hour can be a piaster or so more than asked. A gross rate typed before that already gives that net
+          per hour is kept. The net per hour shown is the month&apos;s net ÷ (the hours a week × 52 ÷ 12).
+        </li>
       </ol>
       <p className="hint">Assumes the full gross, including the variable part, is paid, and the same salary all year.</p>
     </section>
@@ -97,8 +102,8 @@ export default function SalaryCalculatorPage({ searchParams }: PageProps<'/contr
         <h1 className="text-2xl font-semibold">Salary Calculator</h1>
         <p className="mt-1 max-w-3xl text-muted">
           A gross salary&apos;s net, or the gross for a net, step by step, as the Ministry of Finance&apos;s salary tax system works it out: social insurance
-          on the insured wage, salary tax in Law 7/2024&apos;s brackets, and the Martyrs&apos; Fund. For a monthly salary or pay by the hour, with any
-          allowances on top. The address keeps what you type, to share a result.
+          on the insured wage, salary tax in Law 7/2024&apos;s brackets, and the Martyrs&apos; Fund. For a monthly salary or pay by the hour (from the gross
+          or the net per hour), with any allowances on top. The address keeps what you type, to share a result.
         </p>
       </div>
       <Suspense fallback={<Loading />}>

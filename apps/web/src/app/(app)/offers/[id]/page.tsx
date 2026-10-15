@@ -9,13 +9,13 @@ import { getCurrentUser } from '@/lib/session';
 import type { OfferView } from '@/lib/types';
 import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
 import { addDays } from '../../employees/[id]/contracts/dates';
-import { formatEgp } from '../../employees/[id]/contracts/salary';
+import { formatEgp, hourlyNetTerms } from '../../employees/[id]/contracts/salary';
 import { arrangementLabel, FieldGrid, todayInCairo, type GridField } from '../../employees/ui';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { answerOffer, deleteOffer, emailOffer, extendOffer, hireFromOffer, linkOffer, withdrawOffer } from '../actions';
 import { loadOffer } from '../data';
 import { canSeeOffers, managesOffers, offerDocumentHref, placeName, shownStatus, WHO_SEES } from '../list';
-import { missingHelp, offerTimeline, templateProblem, waitingText, type TimelineEvent } from '../timeline';
+import { canBeSent, missingHelp, offerTimeline, templateProblem, waitingText, type TimelineEvent } from '../timeline';
 import { OfferStatusBadge } from '../ui';
 import { ExtendOffer, RecordAnswer, SendOffer, WithdrawOffer } from './offer-actions';
 
@@ -26,12 +26,13 @@ import { ExtendOffer, RecordAnswer, SendOffer, WithdrawOffer } from './offer-act
 
 const small = 'btn min-h-9 px-3';
 
-/** The offer's document: whether it can be shown now, as PDF and as Word, and why not. */
+/**
+ * The offer's document: whether it can be shown now, as PDF and as Word, and why not. A draft's missing template or
+ * values give no reason here: the warning at the top of the page says it, once (MissingValues).
+ */
 function documentState(o: OfferView): { word: boolean; pdf: boolean; why: string | null } {
   if (o.status === 'draft') {
-    const problem = templateProblem(o);
-    if (problem) return { word: false, pdf: false, why: problem.text };
-    if (o.missing.length > 0) return { word: false, pdf: false, why: 'Fill in what the template needs (listed above) to see the document.' };
+    if (templateProblem(o) || o.missing.length > 0) return { word: false, pdf: false, why: null };
     return {
       word: true,
       pdf: o.pdfAvailable,
@@ -42,10 +43,14 @@ function documentState(o: OfferView): { word: boolean; pdf: boolean; why: string
   return { word: true, pdf: o.document.hasPdf, why: o.document.hasPdf ? null : 'It was sent as a Word file: no PDF was made.' };
 }
 
-function MissingValues({ offer: o }: { offer: OfferView }) {
+/**
+ * Why the offer's document can't be made: the one place the page says it (the sending buttons are left out meanwhile).
+ * For a draft, or a sent offer that would be sent again (`status`: as shown, so not one past its last day).
+ */
+function MissingValues({ offer: o, status }: { offer: OfferView; status: OfferView['status'] }) {
   const problem = templateProblem(o);
-  const help = missingHelp(o);
-  if (o.status !== 'draft' || (!problem && help.length === 0)) return null;
+  const help = o.status === 'draft' ? missingHelp(o) : [];
+  if ((status !== 'draft' && status !== 'sent') || (!problem && help.length === 0)) return null;
   return (
     <section aria-labelledby="offer-missing" role="alert" className="space-y-2 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
       <h2 id="offer-missing" className="font-semibold">
@@ -71,6 +76,7 @@ function MissingValues({ offer: o }: { offer: OfferView }) {
           ))}
         </ul>
       )}
+      <p>{o.status === 'draft' ? 'Sending it by email or as a link waits for this.' : 'Sending it again waits for this.'}</p>
     </section>
   );
 }
@@ -125,7 +131,7 @@ function termsFields(o: OfferView): GridField[] {
         label: 'Hourly rate',
         value: o.hourlyRate !== null && formatEgp(o.hourlyRate),
         protected: true,
-        note: o.hoursPerWeek !== null && `${o.hoursPerWeek} hours a week`,
+        note: [o.hoursPerWeek !== null && `${o.hoursPerWeek} hours a week`, hourlyNetTerms(o)].filter(Boolean).join(' · ') || null,
       });
     }
     fields.push(
@@ -299,7 +305,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
         </p>
       </div>
 
-      <MissingValues offer={o} />
+      <MissingValues offer={o} status={status} />
 
       {status === 'accepted' && !o.hiredAt && (
         <p role="alert" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
@@ -359,7 +365,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
             )}
           </div>
           {doc.why && <p className="text-xs text-muted">{doc.why}</p>}
-          {manages && answerable && (
+          {manages && canBeSent(o, today) && (
             <div className="border-t border-line pt-4">
               <SendOffer
                 emailAction={emailOffer.bind(null, o.id)}

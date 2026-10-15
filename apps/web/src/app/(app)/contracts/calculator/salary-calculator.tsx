@@ -1,28 +1,34 @@
 'use client';
 
 import { useState } from 'react';
-import { grossToNet, PAY_BASES, PAY_BASIS_LABELS } from '@trendlix/shared';
+import { PAY_BASES, PAY_BASIS_LABELS } from '@trendlix/shared';
 import { AllowanceRows } from '@/components/allowance-rows';
 import { useFieldIds } from '@/components/form';
 import type { AllowanceType } from '@/lib/types';
 import {
   belowAllowancesText,
   formatEgp,
-  hourlyFor,
   hourlyLabel,
+  hourlyPayFor,
   MAX_HOURS_PER_WEEK,
+  netPerHourText,
+  parseAmount,
+  RATE_BASIS_LABELS,
   SALARY_BASES,
   SALARY_BASIS_LABELS,
   salaryFor,
+  switchRateBasis,
   workedOutGross,
+  workedOutRate,
   type SalaryResult,
 } from '../../employees/[id]/contracts/salary';
 import { allowancesEffect, calculatorRows, calculatorSearch, namedAllowances, type CalculatorInput, type CalculatorRow } from './calculator';
 
 // The Salary Calculator's form and table, worked out in the browser as it is typed (no API). The address keeps the
-// input (?gross=… or ?net=…, or ?rate=…&hours=… by the hour, the year and the allowances), so a result can be shared;
-// it is replaced, not added to the history. As on the contract form, the allowances are of the kinds HR sets in
-// Organization → Allowances, on top of the gross, each taxed and insured as its kind says.
+// input (?gross=… or ?net=…, or ?rate=…&hours=… or ?netRate=…&hours=… by the hour, the year and the allowances), so a
+// result can be shared; it is replaced, not added to the history. As on the contract form, the allowances are of the
+// kinds HR sets in Organization → Allowances, on top of the gross, each taxed and insured as its kind says, and by the
+// hour the rate can be the net per hour agreed, when the gross rate is worked out.
 
 const ROW: Record<CalculatorRow['kind'], string> = {
   amount: '',
@@ -53,15 +59,18 @@ function Rows({ rows }: { rows: CalculatorRow[] }) {
 export function SalaryCalculator({ initial, years, allowanceTypes }: { initial: CalculatorInput; years: number[]; allowanceTypes: readonly AllowanceType[] }) {
   const fid = useFieldIds();
   const [input, setInput] = useState(initial);
-  const { pay, basis, amount, rate, hours, year } = input;
+  const { pay, basis, amount, rateBasis, rate, netRate, hours, year } = input;
   const hourly = pay === 'hourly';
+  const fromNetRate = rateBasis === 'net';
   const allowances = namedAllowances(input.allowances, allowanceTypes);
-  const perHour = hourlyFor(rate, hours);
+  // by the hour: the gross rate typed, or worked out from the net rate (keeping the gross rate typed before while it gives it)
+  const perHour = hourlyPayFor(rateBasis, fromNetRate ? netRate : rate, hours, year, allowances, rate);
   const salary: SalaryResult = !hourly
     ? salaryFor(basis, amount, year, allowances)
     : perHour.kind === 'ok'
-      ? { kind: 'ok', typed: perHour.gross, breakdown: grossToNet(perHour.gross, year, allowances) }
+      ? { kind: 'ok', typed: perHour.gross, breakdown: perHour.breakdown }
       : perHour;
+  const rateWrong = perHour.kind === 'invalid' && perHour.field === 'rate';
 
   function change(next: Partial<CalculatorInput>) {
     const v = { ...input, ...next };
@@ -69,7 +78,11 @@ export function SalaryCalculator({ initial, years, allowanceTypes }: { initial: 
     window.history.replaceState(null, '', `${window.location.pathname}${calculatorSearch(v)}`);
   }
 
-  const rows = salary.kind === 'ok' ? calculatorRows(salary.breakdown, year, allowances, perHour.kind === 'ok' && hourly ? perHour : undefined) : null;
+  const askedRate = fromNetRate ? (parseAmount(netRate) ?? undefined) : undefined;
+  const rows =
+    salary.kind === 'ok'
+      ? calculatorRows(salary.breakdown, year, allowances, perHour.kind === 'ok' && hourly ? { rate: perHour.rate, hours: perHour.hours, netRate: askedRate } : undefined)
+      : null;
   const effect = salary.kind === 'ok' && allowances.length > 0 ? allowancesEffect(salary.breakdown, year) : null;
 
   let summary = '';
@@ -80,6 +93,7 @@ export function SalaryCalculator({ initial, years, allowanceTypes }: { initial: 
       !hourly && basis === 'net'
         ? workedOutGross(salary.typed, b)
         : `Net ${formatEgp(b.net)} for ${formatEgp(b.gross)} gross${estimate}${b.allowances > 0 ? ` and ${formatEgp(b.allowances)} allowances` : ''}.`;
+    if (hourly && fromNetRate && perHour.kind === 'ok') summary = `${workedOutRate(perHour)} ${summary}`;
     if (effect !== null) summary += ` The allowances add ${formatEgp(effect)} to the net.`;
   }
 
@@ -99,49 +113,100 @@ export function SalaryCalculator({ initial, years, allowanceTypes }: { initial: 
         </fieldset>
 
         {hourly ? (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-1">
-            <div>
-              <label htmlFor={fid('rate')} className="label">
-                Hourly rate (EGP)
-              </label>
-              <input
-                id={fid('rate')}
-                inputMode="decimal"
-                autoComplete="off"
-                value={rate}
-                onChange={(e) => change({ rate: e.target.value })}
-                aria-describedby={fid('rate-hint')}
-                aria-invalid={(perHour.kind === 'invalid' && perHour.field === 'rate') || undefined}
-                className="input tabular-nums"
-              />
-              <p id={fid('rate-hint')} className={perHour.kind === 'invalid' && perHour.field === 'rate' ? 'mt-1 text-xs text-danger' : 'hint'}>
-                {perHour.kind === 'invalid' && perHour.field === 'rate' ? 'Enter an amount in EGP above 0, e.g. 150.' : 'The gross pay for an hour of work.'}
-              </p>
+          <>
+            <fieldset key="rateBasis">
+              <legend className="label">Start from</legend>
+              <div className="flex flex-wrap gap-2">
+                {SALARY_BASES.map((b) => (
+                  <label key={b} className={choice}>
+                    <input
+                      type="radio"
+                      name="rateBasis"
+                      value={b}
+                      checked={rateBasis === b}
+                      // the other rate starts with what this one gives, so the pay stays the same
+                      onChange={() => change({ rateBasis: b, ...switchRateBasis(b, { rate, netRate, hours }, year, allowances) })}
+                      className="size-4 accent-accent"
+                    />
+                    {RATE_BASIS_LABELS[b]}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <div key="rates" className="grid gap-5 sm:grid-cols-2 lg:grid-cols-1">
+              {fromNetRate ? (
+                <div key="netRate">
+                  <label htmlFor={fid('netRate')} className="label">
+                    Net per hour (EGP)
+                  </label>
+                  <input
+                    id={fid('netRate')}
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={netRate}
+                    onChange={(e) => change({ netRate: e.target.value })}
+                    aria-describedby={fid('netRate-hint')}
+                    aria-invalid={rateWrong || perHour.kind === 'belowAllowances' || undefined}
+                    className="input tabular-nums"
+                  />
+                  <p id={fid('netRate-hint')} className={rateWrong || perHour.kind === 'belowAllowances' ? 'mt-1 text-xs text-danger' : 'hint'}>
+                    {rateWrong
+                      ? 'Enter an amount in EGP above 0, e.g. 120.'
+                      : perHour.kind === 'belowAllowances'
+                        ? belowAllowancesText(perHour.net, true)
+                        : perHour.kind === 'ok'
+                          ? workedOutRate(perHour)
+                          : 'The net pay agreed for an hour of work, allowances included: the gross rate is worked out, to the piaster.'}
+                  </p>
+                </div>
+              ) : (
+                <div key="rate">
+                  <label htmlFor={fid('rate')} className="label">
+                    Hourly rate (EGP)
+                  </label>
+                  <input
+                    id={fid('rate')}
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={rate}
+                    onChange={(e) => change({ rate: e.target.value })}
+                    aria-describedby={fid('rate-hint')}
+                    aria-invalid={rateWrong || undefined}
+                    className="input tabular-nums"
+                  />
+                  <p id={fid('rate-hint')} className={rateWrong ? 'mt-1 text-xs text-danger' : 'hint'}>
+                    {rateWrong
+                      ? 'Enter an amount in EGP above 0, e.g. 150.'
+                      : `The gross pay for an hour of work${perHour.kind === 'ok' ? `: ${netPerHourText(perHour.breakdown.net, perHour.hours)}` : ''}.`}
+                  </p>
+                </div>
+              )}
+              <div>
+                <label htmlFor={fid('hours')} className="label">
+                  Hours a week
+                </label>
+                <input
+                  id={fid('hours')}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={hours}
+                  onChange={(e) => change({ hours: e.target.value })}
+                  aria-describedby={fid('hours-hint')}
+                  aria-invalid={(perHour.kind === 'invalid' && perHour.field === 'hours') || undefined}
+                  className="input tabular-nums"
+                />
+                <p id={fid('hours-hint')} className={perHour.kind === 'invalid' && perHour.field === 'hours' ? 'mt-1 text-xs text-danger' : 'hint'}>
+                  {perHour.kind === 'invalid' && perHour.field === 'hours'
+                    ? `Enter the hours as a number above 0, up to ${MAX_HOURS_PER_WEEK}, e.g. 20 or 22.5.`
+                    : 'The gross is the monthly estimate: rate × hours a week × 52 ÷ 12.'}
+                </p>
+              </div>
             </div>
-            <div>
-              <label htmlFor={fid('hours')} className="label">
-                Hours a week
-              </label>
-              <input
-                id={fid('hours')}
-                inputMode="decimal"
-                autoComplete="off"
-                value={hours}
-                onChange={(e) => change({ hours: e.target.value })}
-                aria-describedby={fid('hours-hint')}
-                aria-invalid={(perHour.kind === 'invalid' && perHour.field === 'hours') || undefined}
-                className="input tabular-nums"
-              />
-              <p id={fid('hours-hint')} className={perHour.kind === 'invalid' && perHour.field === 'hours' ? 'mt-1 text-xs text-danger' : 'hint'}>
-                {perHour.kind === 'invalid' && perHour.field === 'hours'
-                  ? `Enter the hours as a number above 0, up to ${MAX_HOURS_PER_WEEK}, e.g. 20 or 22.5.`
-                  : 'The gross is the monthly estimate: rate × hours a week × 52 ÷ 12.'}
-              </p>
-            </div>
-          </div>
+          </>
         ) : (
           <>
-            <fieldset>
+            <fieldset key="basis">
               <legend className="label">Start from</legend>
               <div className="flex flex-wrap gap-2">
                 {SALARY_BASES.map((b) => (
@@ -246,9 +311,9 @@ export function SalaryCalculator({ initial, years, allowanceTypes }: { initial: 
         ) : (
           <p className="px-4 pt-1 pb-6 text-sm text-muted">
             {salary.kind === 'belowAllowances'
-              ? belowAllowancesText(salary.net)
+              ? belowAllowancesText(salary.net, hourly)
               : hourly
-                ? `Enter the hourly rate and the hours a week to see how the pay breaks down${salary.kind === 'invalid' ? ', as numbers' : ''}.`
+                ? `Enter the ${fromNetRate ? 'net per hour' : 'hourly rate'} and the hours a week to see how the pay breaks down${salary.kind === 'invalid' ? ', as numbers' : ''}.`
                 : `Enter the ${basis === 'net' ? 'net' : 'gross'} salary to see how it breaks down${salary.kind === 'invalid' ? ', as an amount in EGP' : ''}.`}
           </p>
         )}

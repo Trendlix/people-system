@@ -1,4 +1,4 @@
-import { grossToNet, monthlyFromHourly, netToGross } from '@trendlix/shared';
+import { grossToNet, hourlyRateFromNet, monthlyFromHourly, netToGross } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
   estimateText,
@@ -7,6 +7,7 @@ import {
   offerSalary,
   parseHours,
   payBasisFrom,
+  switchRate,
   switchStart,
   totalPay,
   type TermsTyped,
@@ -17,7 +18,9 @@ const typed = (t: Partial<TermsTyped>): TermsTyped => ({
   salaryBasis: 'gross',
   grossSalary: '',
   wantedNet: '',
+  rateBasis: 'gross',
   hourlyRate: '',
+  netRate: '',
   hoursPerWeek: '',
   ...t,
 });
@@ -70,8 +73,31 @@ describe('pay by the hour', () => {
   it('takes the monthly estimate as the gross', () => {
     const r = offerSalary(typed({ payBasis: 'hourly', hourlyRate: '150', hoursPerWeek: '20' }), 2026);
     const estimate = monthlyFromHourly(150, 20);
-    expect(r).toEqual({ kind: 'ok', breakdown: grossToNet(estimate, 2026), estimate });
+    expect(r).toEqual({ kind: 'ok', breakdown: grossToNet(estimate, 2026), estimate, hourly: { rate: 150, hours: 20 } });
     expect(estimate).toBe(13000);
+  });
+
+  it('works the gross rate out from the net per hour, with the allowances in the net', () => {
+    const r = offerSalary(typed({ payBasis: 'hourly', rateBasis: 'net', netRate: '120', hourlyRate: '999', hoursPerWeek: '16' }), 2026);
+    const worked = hourlyRateFromNet(120, 16, 2026);
+    expect(r).toEqual({ kind: 'ok', breakdown: worked.breakdown, estimate: 10024.91, hourly: { rate: 144.59, hours: 16 } });
+    const withTransport = offerSalary(typed({ payBasis: 'hourly', rateBasis: 'net', netRate: '120', hoursPerWeek: '16' }), 2026, [transport]);
+    expect(withTransport.kind === 'ok' && withTransport.hourly?.rate).toBe(hourlyRateFromNet(120, 16, 2026, [transport]).hourlyRate);
+  });
+
+  it('flags a wrong net per hour, or one the allowances alone give', () => {
+    const net = { payBasis: 'hourly', rateBasis: 'net', hoursPerWeek: '16' };
+    expect(offerSalary(typed({ ...net }), 2026)).toEqual({
+      kind: 'empty',
+      reason: 'Enter the net per hour and the hours a week to see the monthly estimate and the net.',
+    });
+    expect(offerSalary(typed({ ...net, netRate: 'abc' }), 2026)).toEqual({ kind: 'invalid', field: 'netRate', reason: 'Enter the net per hour as an amount in EGP, e.g. 120.' });
+    expect(offerSalary(typed({ ...net, netRate: '10', hoursPerWeek: '4' }), 2026, [{ amount: 3000, taxable: false, insured: false }])).toMatchObject({
+      kind: 'invalid',
+      field: 'netRate',
+      reason: 'The allowances alone give a net of EGP 3,000 a month: enter a higher net rate, or fewer allowances.',
+    });
+    expect(offerSalary(typed({ ...net, netRate: '120', hoursPerWeek: '60' }), 2026)).toMatchObject({ kind: 'invalid', field: 'hoursPerWeek' });
   });
 
   it('ignores the monthly fields', () => {
@@ -104,6 +130,21 @@ describe('switching between typing the gross and the net', () => {
 
   it('only switches when there is nothing to work from', () => {
     expect(switchStart('net', typed({}), 2026)).toEqual(typed({ salaryBasis: 'net' }));
+  });
+});
+
+describe('switching between the gross and the net per hour', () => {
+  it('fills the other rate so the pay stays the same, and back', () => {
+    const toNet = switchRate('net', typed({ payBasis: 'hourly', hourlyRate: '150', hoursPerWeek: '20' }), 2026);
+    expect(toNet).toEqual(typed({ payBasis: 'hourly', rateBasis: 'net', hourlyRate: '150', netRate: '120.43', hoursPerWeek: '20' }));
+    expect(offerSalary(toNet, 2026)).toMatchObject({ estimate: 13000, hourly: { rate: 150 } });
+    expect(switchRate('gross', toNet, 2026)).toEqual({ ...toNet, rateBasis: 'gross' });
+  });
+
+  it('starts the gross rate from a net rate typed anew', () => {
+    const t = typed({ payBasis: 'hourly', rateBasis: 'net', hourlyRate: '150', netRate: '120', hoursPerWeek: '16' });
+    expect(switchRate('gross', t, 2026)).toMatchObject({ rateBasis: 'gross', hourlyRate: '144.59', netRate: '120' });
+    expect(switchRate('net', typed({ payBasis: 'hourly' }), 2026)).toEqual(typed({ payBasis: 'hourly', rateBasis: 'net' }));
   });
 });
 

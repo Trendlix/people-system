@@ -4,10 +4,12 @@ import {
   allowanceTotals,
   basisFrom,
   formatAmount,
+  formatEgp,
   formatPercent,
   insurableLimits,
   insuredWageNote,
   monthlyEstimateText,
+  netPerHourText,
   parseAmount,
   parseHours,
   plainAmount,
@@ -20,16 +22,21 @@ import type { AllowanceType } from '../../../../lib/types';
 // writes to the address, the years it offers, the rows of its table and the tax brackets of its "How it's calculated"
 // list. The calculation itself is grossToNet / netToGross in @trendlix/shared. Relative imports: the tests run without
 // the "@/" alias. As on the contract form (owner's requests, 15 October 2026), the pay can be by the hour, when the
-// gross is the monthly estimate (rate × hours a week × 52 ÷ 12), and allowances of HR's kinds come on top of the gross.
+// gross is the monthly estimate (rate × hours a week × 52 ÷ 12) of the gross rate typed or worked out from a net rate,
+// and allowances of HR's kinds come on top of the gross.
 
 export interface CalculatorInput {
-  /** A monthly salary, or by the hour (then there is no starting from the net). */
+  /** A monthly salary, or by the hour. */
   pay: PayBasis;
+  /** A monthly salary: what it starts from, the gross or the net. */
   basis: SalaryBasis;
   /** The gross or the net, as typed (a monthly salary). */
   amount: string;
-  /** By the hour: the rate and the hours a week, as typed. */
+  /** By the hour: what it starts from, the gross rate or the net rate. */
+  rateBasis: SalaryBasis;
+  /** By the hour: the gross rate, the net rate and the hours a week, as typed. */
   rate: string;
+  netRate: string;
   hours: string;
   year: number;
   /** The allowance rows: the kind's id and the amount a month as typed. */
@@ -49,22 +56,27 @@ export function calculatorYears(thisYear: number): number[] {
 }
 
 /**
- * ?gross=16700&year=2026 or ?net=13000: from the gross unless only a net is given; ?rate=150&hours=20: by the hour; a
- * year not offered → this year. Each ?allowance=<kind id>:<amount> is an allowance row.
+ * ?gross=16700&year=2026 or ?net=13000: from the gross unless only a net is given; ?rate=150&hours=20 or
+ * ?netRate=120&hours=16: by the hour, from the gross rate unless only a net rate is given; a year not offered → this
+ * year. Each ?allowance=<kind id>:<amount> is an allowance row.
  */
 export function readCalculatorQuery(q: Query, thisYear: number): CalculatorInput {
   const gross = first(q.gross);
   const net = first(q.net);
   const rate = first(q.rate);
+  const netRate = first(q.netRate);
   const hours = first(q.hours);
-  const pay: PayBasis = rate !== undefined || hours !== undefined ? 'hourly' : 'monthly';
+  const pay: PayBasis = rate !== undefined || netRate !== undefined || hours !== undefined ? 'hourly' : 'monthly';
   const basis = basisFrom(pay === 'monthly' && gross === undefined && net !== undefined ? 'net' : 'gross');
+  const rateBasis = basisFrom(pay === 'hourly' && rate === undefined && netRate !== undefined ? 'net' : 'gross');
   const year = Number(first(q.year));
   return {
     pay,
     basis,
     amount: pay === 'hourly' ? '' : ((basis === 'net' ? net : gross) ?? ''),
+    rateBasis,
     rate: rate ?? '',
+    netRate: rateBasis === 'net' ? (netRate ?? '') : '',
     hours: hours ?? '',
     year: calculatorYears(thisYear).includes(year) ? year : thisYear,
     allowances: all(q.allowance)
@@ -84,13 +96,14 @@ function plain(typed: string, parse: (s: string) => number | null): string {
 
 /**
  * The address's query for an input, so a result can be shared: "?gross=16700&year=2026", "?rate=150&hours=20&year=2026"
- * (amounts written plainly), then the allowances: "&allowance=<kind id>:1000".
+ * or "?netRate=120&hours=16&year=2026" (amounts written plainly), then the allowances: "&allowance=<kind id>:1000".
  */
-export function calculatorSearch({ pay, basis, amount, rate, hours, year, allowances }: CalculatorInput): string {
+export function calculatorSearch({ pay, basis, amount, rateBasis, rate, netRate, hours, year, allowances }: CalculatorInput): string {
   const p = new URLSearchParams();
   if (pay === 'hourly') {
-    // both kept, even empty, so the page still opens by the hour
-    p.set('rate', plain(rate, parseAmount));
+    // both kept, even empty, so the page still opens by the hour, from the same rate
+    if (rateBasis === 'net') p.set('netRate', plain(netRate, parseAmount));
+    else p.set('rate', plain(rate, parseAmount));
     p.set('hours', plain(hours, parseHours));
   } else {
     const value = plain(amount, parseAmount);
@@ -136,14 +149,14 @@ export interface CalculatorRow {
 
 /**
  * The table: the employee's side (gross down to net, monthly unless the label says a year), then the company's.
- * `allowances`: those `b` was worked out with, each listed under the gross; `hourly`: the rate and hours a week the
- * gross was estimated from.
+ * `allowances`: those `b` was worked out with, each listed under the gross; `hourly`: the gross rate and hours a week
+ * the gross was estimated from, and the net rate typed when the gross rate was worked out from it.
  */
 export function calculatorRows(
   b: SalaryBreakdown,
   year: number,
   allowances: readonly NamedAllowance[] = [],
-  hourly?: { rate: number; hours: number },
+  hourly?: { rate: number; hours: number; netRate?: number },
 ): { employee: CalculatorRow[]; company: CalculatorRow[] } {
   const r = SALARY_RULES;
   const limits = insurableLimits(year);
@@ -154,7 +167,9 @@ export function calculatorRows(
     employee: [
       {
         label: 'Gross salary',
-        how: hourly ? `The monthly estimate: ${monthlyEstimateText({ ...hourly, gross: b.gross })}` : 'The monthly gross, the variable part included',
+        how: hourly
+          ? `The monthly estimate: ${monthlyEstimateText({ ...hourly, gross: b.gross })}${hourly.netRate !== undefined ? `, the gross rate worked out from ${formatEgp(hourly.netRate)} net per hour` : ''}`
+          : 'The monthly gross, the variable part included',
         amount: b.gross,
         kind: 'amount',
       },
@@ -189,7 +204,12 @@ export function calculatorRows(
       { label: 'Monthly tax', how: 'The annual tax ÷ 12', amount: b.monthlyTax, kind: 'deduction' },
       { label: "Martyrs' Fund", how: `${formatPercent(r.martyrsRate)} of ${taxed}`, amount: b.martyrsFund, kind: 'deduction' },
       { label: 'Total deductions', how: "Social insurance, tax and the Martyrs' Fund", amount: b.deductions, kind: 'subtotal' },
-      { label: 'Net salary', how: withAllowances ? 'The gross and the allowances, less the deductions' : 'The gross less the deductions', amount: b.net, kind: 'total' },
+      {
+        label: 'Net salary',
+        how: `${withAllowances ? 'The gross and the allowances, less the deductions' : 'The gross less the deductions'}${hourly ? `, ${netPerHourText(b.net, hourly.hours)}` : ''}`,
+        amount: b.net,
+        kind: 'total',
+      },
     ],
     company: [
       {

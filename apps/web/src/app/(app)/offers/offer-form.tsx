@@ -13,7 +13,7 @@ import { plainAmount } from '../employees/[id]/contracts/salary';
 import type { OfferDefaults } from './form-body';
 import { OfferPositionFields } from './offer-position';
 import { OfferTerms } from './offer-terms';
-import { salaryStartFrom, switchStart, type TermsTyped } from './terms';
+import { salaryStartFrom, switchRate, switchStart, type TermsTyped } from './terms';
 
 // The form of the New offer and Edit draft pages, in four parts: the candidate (a candidate is not an employee: their
 // names, personal email and mobile, and a former employee's profile when one is offered again), the position, the terms
@@ -32,7 +32,7 @@ const optional = <span className="font-normal text-muted">(optional)</span>;
 const amountText = (n: number | null) => (n === null ? '' : plainAmount(n));
 
 /** The fields the previews follow, by name (the allowance rows tell theirs through onChange). */
-const TRACKED = ['joinDate', 'payBasis', 'salaryBasis', 'grossSalary', 'wantedNet', 'hourlyRate', 'hoursPerWeek', 'basicPercent'] as const;
+const TRACKED = ['joinDate', 'payBasis', 'salaryBasis', 'grossSalary', 'wantedNet', 'rateBasis', 'hourlyRate', 'netRate', 'hoursPerWeek', 'basicPercent'] as const;
 type Tracked = Record<(typeof TRACKED)[number], string>;
 
 /** One part of the form, under its heading. */
@@ -73,7 +73,9 @@ export function OfferForm({
     salaryBasis: valueOf(state, 'salaryBasis', 'gross'),
     grossSalary: valueOf(state, 'grossSalary', amountText(defaults.grossSalary)),
     wantedNet: valueOf(state, 'wantedNet', ''),
+    rateBasis: valueOf(state, 'rateBasis', 'gross'),
     hourlyRate: valueOf(state, 'hourlyRate', amountText(defaults.hourlyRate)),
+    netRate: valueOf(state, 'netRate', ''),
     hoursPerWeek: valueOf(state, 'hoursPerWeek', defaults.hoursPerWeek === null ? '' : String(defaults.hoursPerWeek)),
     basicPercent: valueOf(state, 'basicPercent', String(defaults.basicPercent)),
   }));
@@ -92,6 +94,11 @@ export function OfferForm({
     if (name === 'salaryBasis') {
       // the other field starts with what this one gives, so the salary stays the same
       setTyped((v) => ({ ...v, ...switchStart(salaryStartFrom(value), v, year, allowanceTerms(rows, pickers.allowanceTypes)) }));
+      return;
+    }
+    if (name === 'rateBasis') {
+      // the same by the hour: the other rate starts with what this one gives
+      setTyped((v) => ({ ...v, ...switchRate(salaryStartFrom(value), v, year, allowanceTerms(rows, pickers.allowanceTypes)) }));
       return;
     }
     setTyped((v) => ({ ...v, [name]: value }));

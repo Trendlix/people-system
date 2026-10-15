@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { grossToNet, PAY_BASES, PAY_BASIS_LABELS, type PayBasis } from '@trendlix/shared';
+import { PAY_BASES, PAY_BASIS_LABELS, type PayBasis } from '@trendlix/shared';
 import { AllowanceRows } from '@/components/allowance-rows';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
@@ -16,18 +16,22 @@ import {
   breakdownRows,
   formatAmount,
   formatEgp,
-  hourlyFor,
+  hourlyPayFor,
   insuredFor,
   MAX_HOURS_PER_WEEK,
   monthlyEstimateText,
+  netPerHourText,
   plainAmount,
+  RATE_BASIS_LABELS,
   SALARY_BASES,
   SALARY_BASIS_LABELS,
   salaryFor,
   savedNetChange,
   splitSalary,
   switchBasis,
+  switchRateBasis,
   workedOutGross,
+  workedOutRate,
   type SalaryResult,
 } from './salary';
 import { SalaryBreakdownList } from './salary-breakdown';
@@ -45,9 +49,12 @@ import { SalaryBreakdownList } from './salary-breakdown';
 //
 // The owner's requests of the same day: the pay can be a monthly salary or by the hour (part-time, e.g. two or three
 // days a week), when the gross is the monthly estimate, rate × hours a week × 52 ÷ 12, which the API works out itself
-// (so no grossSalary is sent, and there is no starting from the net); the working days a week, for part-time; and
-// allowances a month on top of the gross, of the kinds HR sets in Organization → Allowances, which the net, the insured
-// salary and the company cost include.
+// (so no grossSalary is sent); the working days a week, for part-time; and allowances a month on top of the gross, of
+// the kinds HR sets in Organization → Allowances, which the net, the insured salary and the company cost include.
+//
+// By the hour, HR can also start from the net rate agreed, e.g. 120 net an hour × 16 hours a week (owner, the same
+// day): the gross rate is worked out to the piaster and sent as hourlyRate, with the net worked out; the typed net rate
+// (netRate) and the switch (rateBasis) go along only to be kept if the save is refused.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -71,6 +78,7 @@ const amountText = (n: number | null) => (n === null ? '' : String(n));
 const optional = <span className="font-normal text-muted">(optional)</span>;
 const NET_INVALID = 'Enter the net salary as an amount in EGP, e.g. 13,000.';
 const RATE_INVALID = 'Enter the hourly rate as an amount in EGP, e.g. 150.';
+const NET_RATE_INVALID = 'Enter the net per hour as an amount in EGP, e.g. 120.';
 const HOURS_INVALID = `Enter the hours a week as a number above 0, up to ${MAX_HOURS_PER_WEEK}, e.g. 20 or 22.5.`;
 const choice =
   'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
@@ -114,7 +122,9 @@ export function ContractForm({
     salaryBasis: valueOf(state, 'salaryBasis', 'gross'),
     grossSalary: valueOf(state, 'grossSalary', amountText(defaults.grossSalary)),
     wantedNet: valueOf(state, 'wantedNet', ''),
+    rateBasis: valueOf(state, 'rateBasis', 'gross'),
     hourlyRate: valueOf(state, 'hourlyRate', amountText(defaults.hourlyRate)),
+    netRate: valueOf(state, 'netRate', ''),
     hoursPerWeek: valueOf(state, 'hoursPerWeek', amountText(defaults.hoursPerWeek)),
     basicPercent: valueOf(state, 'basicPercent', String(defaults.basicPercent)),
   }));
@@ -130,13 +140,15 @@ export function ContractForm({
   const year = Number((start ?? today).slice(0, 4));
   const hourly = typed.payBasis === 'hourly';
   const terms = allowanceTerms(rows, allowanceTypes);
-  // by the hour, the gross is the monthly estimate and there is no starting from the net
+  // by the hour, the gross is the monthly estimate of the gross rate, typed or worked out from the net rate
   const basis = hourly ? 'gross' : basisFrom(typed.salaryBasis);
-  const pay = hourlyFor(typed.hourlyRate, typed.hoursPerWeek);
+  const rateBasis = basisFrom(typed.rateBasis);
+  const fromNetRate = rateBasis === 'net';
+  const pay = hourlyPayFor(rateBasis, fromNetRate ? typed.netRate : typed.hourlyRate, typed.hoursPerWeek, year, terms, typed.hourlyRate);
   const salary: SalaryResult = !hourly
     ? salaryFor(basis, basis === 'net' ? typed.wantedNet : typed.grossSalary, year, terms)
     : pay.kind === 'ok'
-      ? { kind: 'ok', typed: pay.gross, breakdown: grossToNet(pay.gross, year, terms) }
+      ? { kind: 'ok', typed: pay.gross, breakdown: pay.breakdown }
       : pay;
   const calc = salary.kind === 'ok' ? salary.breakdown : null;
   const gross = calc?.gross ?? null;
@@ -146,7 +158,7 @@ export function ContractForm({
   const insuredText = fullTime && insured ? `Insured salary on the social insurance copy: ${formatAmount(insured.amount)}, ${insured.why}.` : null;
   // only for the same gross and allowances: a change of either changes the net anyway
   const savedNet = sameAllowances(rows, defaults.allowances) ? savedNetChange({ gross: defaults.grossSalary, net: defaults.netSalary }, calc) : null;
-  const what = hourly ? 'hourly rate and the hours a week' : `${basis === 'net' ? 'net' : 'gross'} salary`;
+  const what = hourly ? `${fromNetRate ? 'net per hour' : 'hourly rate'} and the hours a week` : `${basis === 'net' ? 'net' : 'gross'} salary`;
 
   function track(e: React.FormEvent<HTMLFormElement>) {
     const t = e.target;
@@ -159,6 +171,14 @@ export function ContractForm({
       setTyped((v) => {
         const s = switchBasis(basisFrom(value), { gross: v.grossSalary, net: v.wantedNet }, year, terms);
         return { ...v, salaryBasis: value, grossSalary: s.gross, wantedNet: s.net };
+      });
+      return;
+    }
+    if (name === 'rateBasis') {
+      // the same by the hour: the other rate starts with what this one gives
+      setTyped((v) => {
+        const s = switchRateBasis(basisFrom(value), { rate: v.hourlyRate, netRate: v.netRate, hours: v.hoursPerWeek }, year, terms);
+        return { ...v, rateBasis: value, hourlyRate: s.rate, netRate: s.netRate };
       });
       return;
     }
@@ -268,8 +288,25 @@ export function ContractForm({
           </p>
         </fieldset>
 
-        {!hourly && (
-          <fieldset aria-describedby={fid('salaryBasis-hint')}>
+        {hourly ? (
+          <fieldset key="rateBasis" aria-describedby={fid('rateBasis-hint')}>
+            <legend className="label">Start from</legend>
+            <div className="flex flex-wrap gap-2">
+              {SALARY_BASES.map((b) => (
+                <label key={b} className={choice}>
+                  <input type="radio" name="rateBasis" value={b} defaultChecked={rateBasis === b} className="size-4 accent-accent" />
+                  {RATE_BASIS_LABELS[b]}
+                </label>
+              ))}
+            </div>
+            <p id={fid('rateBasis-hint')} className="hint">
+              {fromNetRate
+                ? 'Type the net per hour agreed, allowances included: the gross rate is worked out, to the piaster.'
+                : 'Type the gross per hour: the net is worked out.'}
+            </p>
+          </fieldset>
+        ) : (
+          <fieldset key="salaryBasis" aria-describedby={fid('salaryBasis-hint')}>
             <legend className="label">Start from</legend>
             <div className="flex flex-wrap gap-2">
               {SALARY_BASES.map((b) => (
@@ -290,25 +327,58 @@ export function ContractForm({
         <div className="grid gap-5 sm:grid-cols-2">
           {hourly ? (
             <>
-              <div key="hourlyRate">
-                <label htmlFor={fid('hourlyRate')} className="label">
-                  Hourly rate (EGP)
-                </label>
-                <input
-                  id={fid('hourlyRate')}
-                  name="hourlyRate"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  required
-                  aria-describedby={fid('hourlyRate-hint')}
-                  defaultValue={typed.hourlyRate}
-                  ref={(el) => el?.setCustomValidity(pay.kind === 'invalid' && pay.field === 'rate' ? RATE_INVALID : '')}
-                  className="input tabular-nums"
-                />
-                <p id={fid('hourlyRate-hint')} className="hint">
-                  The gross pay for an hour of work.
-                </p>
-              </div>
+              {fromNetRate ? (
+                <div key="netRate">
+                  <label htmlFor={fid('netRate')} className="label">
+                    Net per hour (EGP)
+                  </label>
+                  <input
+                    id={fid('netRate')}
+                    name="netRate"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    required
+                    aria-describedby={fid('netRate-hint')}
+                    defaultValue={typed.netRate}
+                    // only the gross rate worked out from it is saved, so a mistake is caught here rather than as a missing rate
+                    ref={(el) =>
+                      el?.setCustomValidity(
+                        pay.kind === 'invalid' && pay.field === 'rate' ? NET_RATE_INVALID : pay.kind === 'belowAllowances' ? belowAllowancesText(pay.net, true) : '',
+                      )
+                    }
+                    className="input tabular-nums"
+                  />
+                  <p id={fid('netRate-hint')} className="hint">
+                    {pay.kind === 'ok'
+                      ? workedOutRate(pay)
+                      : pay.kind === 'belowAllowances'
+                        ? belowAllowancesText(pay.net, true)
+                        : 'The net pay agreed for an hour of work, allowances included.'}
+                  </p>
+                  {/* what is saved: the gross rate worked out */}
+                  <input type="hidden" name="hourlyRate" value={pay.kind === 'ok' ? plainAmount(pay.rate) : ''} />
+                </div>
+              ) : (
+                <div key="hourlyRate">
+                  <label htmlFor={fid('hourlyRate')} className="label">
+                    Hourly rate (EGP)
+                  </label>
+                  <input
+                    id={fid('hourlyRate')}
+                    name="hourlyRate"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    required
+                    aria-describedby={fid('hourlyRate-hint')}
+                    defaultValue={typed.hourlyRate}
+                    ref={(el) => el?.setCustomValidity(pay.kind === 'invalid' && pay.field === 'rate' ? RATE_INVALID : '')}
+                    className="input tabular-nums"
+                  />
+                  <p id={fid('hourlyRate-hint')} className="hint">
+                    The gross pay for an hour of work{pay.kind === 'ok' ? `: ${netPerHourText(pay.breakdown.net, pay.hours)}.` : '.'}
+                  </p>
+                </div>
+              )}
               <div key="hoursPerWeek">
                 <label htmlFor={fid('hoursPerWeek')} className="label">
                   Hours a week
@@ -443,9 +513,9 @@ export function ContractForm({
           ) : (
             <p className="rounded-lg border border-dashed border-line px-4 py-3 text-sm text-muted">
               {salary.kind === 'belowAllowances'
-                ? belowAllowancesText(salary.net)
+                ? belowAllowancesText(salary.net, hourly)
                 : salary.kind === 'invalid'
-                  ? `Enter the ${what} as ${hourly ? 'numbers' : 'an amount in EGP'} to see the breakdown, e.g. ${hourly ? '150 an hour for 20 hours' : '15,000'}.`
+                  ? `Enter the ${what} as ${hourly ? 'numbers' : 'an amount in EGP'} to see the breakdown, e.g. ${hourly ? `${fromNetRate ? '120' : '150'} an hour for 20 hours` : '15,000'}.`
                   : `Enter the ${what} to see the breakdown.`}
             </p>
           )}
