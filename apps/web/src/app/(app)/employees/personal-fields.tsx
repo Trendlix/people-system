@@ -21,6 +21,7 @@ import { PhoneInput } from '@/components/phone-input';
 import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, FormState } from '@/lib/types';
 import { cardMarks, type CardSuggestions } from './id-card';
+import { proposeQualification, type Education } from './qualification';
 
 // The profile fields (personal, contact and address, emergency contact, education), used by the Add employee page
 // (the profile, then education, as two steps) and the Personal Details and Education edit pages.
@@ -134,6 +135,13 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
   },
 ];
 
+/** The education fields the Arabic qualification is proposed from. */
+const EDUCATION_KEYS: readonly string[] = ['degree', 'faculty', 'major', 'university'] satisfies (keyof Education)[];
+
+/** "the major", "the major and the university" … */
+const named = (things: readonly string[]) =>
+  things.map((t) => `the ${t}`).reduce((all, t, i, list) => (i === 0 ? t : `${all}${i === list.length - 1 ? ' and ' : ', '}${t}`), '');
+
 /** A new employee's code may be left empty: the API gives the next number. */
 const NEW_CODE: Partial<Field> = { required: false, hint: 'Leave empty to give the next number automatically.' };
 
@@ -178,7 +186,44 @@ export function PersonalFields({
   const [gender, setGender] = useState(() => valueOf(state, 'gender', employee?.gender ?? suggestions?.gender));
   // a woman's military status is always Not applicable: no military papers are needed (owner's rule)
   const noMilitary = (f: Field) => f.name === 'militaryStatus' && gender === 'female';
-  const hintOf = (f: Field) => (noMilitary(f) ? 'Women need no military papers.' : f.hint);
+
+  // The Arabic qualification is proposed from the degree, faculty, major and university as they are chosen. While the
+  // field is empty it shows the proposal (and sends it); once typed in, or saved, it is kept, with the proposal beside it.
+  const [edu, setEdu] = useState<Education>(() => ({
+    degree: valueOf(state, 'degree', employee?.degree),
+    faculty: valueOf(state, 'faculty', employee?.faculty),
+    major: valueOf(state, 'major', employee?.major),
+    university: valueOf(state, 'university', employee?.university),
+  }));
+  const noteEducation = (name: string, value: string) => {
+    if (EDUCATION_KEYS.includes(name)) setEdu((e) => ({ ...e, [name]: value }));
+  };
+  const proposal = proposeQualification(edu);
+  const [qual, setQual] = useState(() => valueOf(state, 'qualificationAr', employee?.qualificationAr));
+  const [ownQual, setOwnQual] = useState(() => qual !== '');
+  const qualHint = (
+    <>
+      As printed on contracts.
+      {!ownQual && proposal.text && ' Proposed from the details above: check it, and edit it as needed.'}
+      {ownQual && proposal.text && proposal.text !== qual && (
+        <>
+          {' '}
+          Proposed:{' '}
+          <span lang="ar" dir="rtl">
+            {proposal.text}
+          </span>{' '}
+          <button type="button" onClick={() => setQual(proposal.text)} className="font-semibold text-accent hover:underline">
+            Use it
+          </button>
+        </>
+      )}
+      {proposal.text &&
+        proposal.left.length > 0 &&
+        ` ${named(proposal.left).replace(/^t/, 'T')} ${proposal.left.length > 1 ? 'are' : 'is'} in English, so left out: add ${proposal.left.length > 1 ? 'them' : 'it'} in Arabic.`}
+    </>
+  );
+
+  const hintOf = (f: Field) => (noMilitary(f) ? 'Women need no military papers.' : f.name === 'qualificationAr' ? qualHint : f.hint);
 
   function control(f: Field) {
     const saved = startText(f, employee, suggestions);
@@ -205,6 +250,7 @@ export function PersonalFields({
           aliases={f.list.aliases}
           defaultValue={value}
           max={f.max}
+          onValue={(v) => noteEducation(f.name, v)}
           aria-describedby={describedBy}
         />
       );
@@ -222,7 +268,10 @@ export function PersonalFields({
           name={f.name}
           aria-describedby={describedBy}
           defaultValue={value}
-          onChange={f.name === 'gender' ? (e) => setGender(e.target.value) : undefined}
+          onChange={(e) => {
+            if (f.name === 'gender') setGender(e.target.value);
+            noteEducation(f.name, e.target.value);
+          }}
           className="input"
         >
           <option value="">Not set</option>
@@ -245,6 +294,21 @@ export function PersonalFields({
       className: f.name === 'employeeCode' ? 'input uppercase' : 'input',
       ...(f.ar ? { lang: 'ar', dir: 'rtl' as const } : {}),
     };
+    if (f.name === 'qualificationAr') {
+      return (
+        <input
+          type="text"
+          {...common}
+          defaultValue={undefined}
+          value={ownQual ? qual : proposal.text}
+          onChange={(e) => {
+            setQual(e.target.value);
+            setOwnQual(e.target.value !== ''); // emptied: the proposal fills it in again
+          }}
+        />
+      );
+    }
+    if (f.name === 'major') return <input type="text" {...common} onChange={(e) => noteEducation('major', e.target.value)} />;
     if (f.multiline) return <textarea rows={2} {...common} />;
     if (f.kind === 'year') return <input type="text" inputMode="numeric" autoComplete="off" {...common} />;
     return <input type={f.kind ?? 'text'} {...common} />;

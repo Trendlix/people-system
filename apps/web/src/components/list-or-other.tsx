@@ -31,6 +31,7 @@ export function ListOrOther({
   aliases,
   defaultValue,
   max,
+  onValue,
   'aria-describedby': describedBy,
 }: {
   /** Goes on the list, for the field's label. */
@@ -44,6 +45,8 @@ export function ListOrOther({
   aliases?: ReadonlyMap<string, string>;
   defaultValue?: string | null;
   max?: number;
+  /** Called with the value the form will send, each time it changes. */
+  onValue?: (value: string) => void;
   'aria-describedby'?: string;
 }) {
   const [start] = useState(() => startOf(defaultValue ?? '', groups, aliases));
@@ -66,6 +69,7 @@ export function ListOrOther({
         aria-describedby={describedBy}
         onChange={(e) => {
           setPick(e.target.value);
+          onValue?.(e.target.value === OTHER ? text.trim() : e.target.value);
           if (e.target.value === OTHER) requestAnimationFrame(() => otherBox.current?.focus());
         }}
         className="input"
@@ -88,7 +92,10 @@ export function ListOrOther({
           aria-label={`${label}, not on the list`}
           aria-describedby={describedBy}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            onValue?.(e.target.value.trim());
+          }}
           maxLength={max}
           placeholder="As written on the certificate"
           className="input"
