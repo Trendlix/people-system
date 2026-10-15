@@ -437,12 +437,21 @@ describe('Contracts (e2e)', () => {
       await api().patch(`/api/employees/${e.id}/employments/${e.employmentId}`).set('Cookie', hr).send({ shiftId: null }).expect(200);
       expect(((await contractsOf(e).expect(200)).body as Contract[])[0].shiftCode).toBe('A');
 
-      // a probation already over (hired in January): Active, and the last day for non-renewal notice is 45 working
-      // days (Sunday to Thursday) before the end, 14 January 2027
+      // a probation already over (hired in January, so Active from the start): it stays Active, and the last day for
+      // non-renewal notice is 45 working days (Sunday to Thursday) before the end, 14 January 2027
       const past = await newHire('Past Probation');
+      expect((await profileOf(past.id)).employment).toMatchObject({ status: 'active', probationEnd: '2026-04-14' });
       const pc = await signedContract(past);
       expect(pc).toMatchObject({ probationEnd: '2026-04-14', endDate: '2027-01-14', nonRenewalNoticeBy: '2026-11-14' });
       expect((await profileOf(past.id)).employment).toMatchObject({ status: 'active', probationEnd: '2026-04-14' });
+
+      // on probation, and the contract's shorter probation is already over: Active, with the contract's probation end
+      const shortJoin = addDays(today, -40);
+      const short = await newHire('Short Probation', { joinDate: shortJoin });
+      expect((await profileOf(short.id)).employment).toMatchObject({ status: 'probation', probationEnd: addDays(addMonths(shortJoin, 3), -1) });
+      const sc = await signedContract(short, { probationMonths: 1 });
+      expect(sc.probationEnd).toBe(addDays(addMonths(shortJoin, 1), -1));
+      expect((await profileOf(short.id)).employment).toMatchObject({ status: 'active', probationEnd: sc.probationEnd });
 
       // no probation: Active, no probation end
       const none = await newHire('No Probation');
@@ -451,13 +460,16 @@ describe('Contracts (e2e)', () => {
       expect((await profileOf(none.id)).employment).toMatchObject({ status: 'active', probationEnd: null });
 
       // the employment's probation end is worked out as the contract's (join date + 3 months − 1 day), so the signing
-      // records only what it changed: nothing while on probation, the status once the probation is over, and the
-      // probation end of a contract without one
+      // records only what it changed: nothing while on probation or already Active, the probation end and status of a
+      // shorter probation already over, and the probation end of a contract without one
       const updates = async (h: Hire) =>
         (await prisma.auditLog.findMany({ where: { entityType: 'employment', entityId: h.employmentId, action: 'update' }, orderBy: { id: 'asc' } })).map((a) => a.diff);
       expect(await updates(e)).toEqual([{ employeeId: e.id, shiftId: { from: shiftA, to: null } }]);
-      expect(await updates(past)).toEqual([{ employeeId: past.id, contract: pc.number, status: { from: 'probation', to: 'active' } }]);
-      expect(await updates(none)).toEqual([{ employeeId: none.id, contract: nc.number, probationEnd: { from: '2026-04-14', to: null }, status: { from: 'probation', to: 'active' } }]);
+      expect(await updates(past)).toEqual([]);
+      expect(await updates(short)).toEqual([
+        { employeeId: short.id, contract: sc.number, probationEnd: { from: addDays(addMonths(shortJoin, 3), -1), to: sc.probationEnd }, status: { from: 'probation', to: 'active' } },
+      ]);
+      expect(await updates(none)).toEqual([{ employeeId: none.id, contract: nc.number, probationEnd: { from: '2026-04-14', to: null } }]);
     });
 
     it('a renewal starts the day after the version before ends, with no probation, and supersedes it when signed', async () => {
@@ -506,8 +518,8 @@ describe('Contracts (e2e)', () => {
       // hired again (an earlier employment): no probation end, wherever the join date moves; the earlier one keeps its own
       const first = await newHire('Back Again', { joinDate: '2025-01-01' });
       await api().post(`/api/employees/${first.id}/employments/${first.employmentId}/end`).set('Cookie', hr).send({ endDate: '2025-12-31', endReason: 'resigned' }).expect(200);
-      const again = await hire(first.id, { joinDate: '2026-03-01', status: 'active' });
-      expect((await profileOf(again.id)).employment).toMatchObject({ probationEnd: null });
+      const again = await hire(first.id, { joinDate: '2026-03-01' });
+      expect((await profileOf(again.id)).employment).toMatchObject({ probationEnd: null, status: 'active' });
       const moved = (await save(again, { joinDate: '2026-03-15' })).body as Profile;
       expect(moved.employment).toMatchObject({ joinDate: '2026-03-15', probationEnd: null });
       expect(moved.employments[1]).toMatchObject({ id: first.employmentId, joinDate: '2025-01-01', probationEnd: '2025-03-31' });
@@ -788,17 +800,24 @@ describe('Contracts (e2e)', () => {
       expect((await profileOf(confirmed.id)).employment).toMatchObject({ status: 'active', probationEnd: confirmed.contract.probationEnd });
       expect(confirmed.contract.probationEnd).toBe(addDays(addMonths(addDays(today, -20), 3), -1));
 
-      // hired in January: signing found the probation over and made it Active; undoing it goes back to how it was (the
-      // probation end, the same as the contract's, never changed)
-      const past = await newHire('Past Then Undone');
+      // on probation, with a first contract whose shorter probation is already over: signing made it Active with the
+      // contract's probation end; undoing it goes back to how it was (Probation, to the end worked out from the join date)
+      const join = addDays(today, -40);
+      const probationEnd = addDays(addMonths(join, 3), -1);
+      const past = await newHire('Past Then Undone', { joinDate: join });
       const before = (await profileOf(past.id)).employment!;
-      expect(before).toMatchObject({ status: 'probation', probationEnd: '2026-04-14' });
-      const c = await signedContract(past);
-      expect((await profileOf(past.id)).employment).toMatchObject({ status: 'active', probationEnd: '2026-04-14' });
+      expect(before).toMatchObject({ status: 'probation', probationEnd });
+      const c = await signedContract(past, { probationMonths: 1 });
+      expect((await profileOf(past.id)).employment).toMatchObject({ status: 'active', probationEnd: c.probationEnd });
       await unsign(c.id).expect(200);
-      expect((await profileOf(past.id)).employment).toMatchObject({ status: 'probation', probationEnd: '2026-04-14' });
+      expect((await profileOf(past.id)).employment).toMatchObject({ status: 'probation', probationEnd });
       const undone = await prisma.auditLog.findMany({ where: { entityType: 'employment', entityId: past.employmentId, action: 'update' }, orderBy: { id: 'asc' } });
-      expect(undone.at(-1)!.diff).toEqual({ employeeId: past.id, signingUndone: c.number, status: { from: 'active', to: 'probation' } });
+      expect(undone.at(-1)!.diff).toEqual({
+        employeeId: past.id,
+        signingUndone: c.number,
+        probationEnd: { from: c.probationEnd, to: probationEnd },
+        status: { from: 'active', to: 'probation' },
+      });
     });
 
     it('a renewal: the version before is the contract again; refused for a replaced version or with the next one drafted', async () => {
@@ -877,7 +896,11 @@ describe('Contracts (e2e)', () => {
       await signedContract(active);
       const notOn = await postEnding(active, { ruleKey: 'probation', initiator: 'company', noticeGivenOn: today }).expect(400);
       expect(notOn.body.message).toBe(`Past Probation Leaver ${RUN} is not on probation. Choose another way to end the employment.`);
-      const late = await newHire('Late Probation Notice'); // still Probation, its probation end 14 April 2026 (no contract)
+      // on probation, then its join date corrected to 15 January: still Probation (not confirmed), its probation end 14
+      // April 2026 (no contract)
+      const late = await newHire('Late Probation Notice', { joinDate: addDays(today, -20) });
+      const corrected = await api().patch(`/api/employees/${late.id}/employments/${late.employmentId}`).set('Cookie', hr).send({ joinDate: '2026-01-15' }).expect(200);
+      expect(corrected.body.employment).toMatchObject({ status: 'probation', probationEnd: '2026-04-14' });
       const after = await postEnding(late, { ruleKey: 'probation', initiator: 'company', noticeGivenOn: '2026-04-15' }).expect(400);
       expect(after.body.message).toBe('The probation ended on 14/04/2026: notice during probation must be given by then. Choose another way to end the employment.');
     });
@@ -985,7 +1008,7 @@ describe('Contracts (e2e)', () => {
       // the employment goes on; the rejected ending stays on the profile, with the CEO's note, until a new one is
       // started (contracts review, 15 October 2026)
       expect((await profileOf(other.id)).employment).toMatchObject({
-        status: 'probation',
+        status: 'active',
         ending: { id: rejected.id, status: 'rejected', ceoNote: 'We need this role', ceoDecidedBy: { email: ceoEmail } },
       });
       const next = await addEnding(other, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-02' });
@@ -1041,6 +1064,28 @@ describe('Contracts (e2e)', () => {
       const pending = await addEnding(a, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01' });
       await act(pending.id, 'withdraw', hr).expect(200);
       expect((await profileOf(a.id)).employment!.status).toBe('active');
+    });
+
+    it('while the approved ending runs its notice, HR does not change the status; withdrawn, HR chooses again (owner’s decision, 16 October 2026)', async () => {
+      const e = await newHire('Working Their Notice'); // hired in January: Active
+      const change = (body: object) => api().patch(`/api/employees/${e.id}/employments/${e.employmentId}`).set('Cookie', hr).send(body);
+      const ending = await addEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01' });
+      await act(ending.id, 'approve', ceo).expect(200);
+      expect((await profileOf(e.id)).employment!.status).toBe('notice_period');
+
+      for (const status of ['active', 'on_leave']) {
+        const refused = await change({ status, shiftId: shiftA }).expect(400);
+        expect(refused.body.message).toBe(`Working Their Notice ${RUN} is working out their notice: the status follows the approved ending (withdraw it to go back).`);
+      }
+      const named = await change({ status: 'notice_period' }).expect(400);
+      expect(named.body.message).toEqual(['Choose Active or On leave. Probation and Notice period are set by the system.']);
+      // nothing saved; the rest of the employment changes without the status
+      expect((await profileOf(e.id)).employment).toMatchObject({ status: 'notice_period', shiftId: null });
+      expect((await change({ shiftId: shiftA }).expect(200)).body.employment).toMatchObject({ status: 'notice_period', shiftId: shiftA });
+
+      await act(ending.id, 'withdraw', hr).expect(200);
+      expect((await profileOf(e.id)).employment!.status).toBe('active');
+      expect((await change({ status: 'on_leave' }).expect(200)).body.employment.status).toBe('on_leave');
     });
 
     it('completes on or after the last working day: the employment ends for the rule’s reason, and the contract ends', async () => {

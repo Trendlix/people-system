@@ -1,10 +1,10 @@
 import { ArrayUnique, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import {
-  EMPLOYEE_STATUSES,
+  CHOSEN_STATUSES,
   EMPLOYMENT_TYPES,
   END_REASONS,
   WORK_ARRANGEMENTS,
-  type EmployeeStatus,
+  type ChosenStatus,
   type EmploymentType,
   type EndReason,
   type WorkArrangement,
@@ -17,13 +17,7 @@ import { TrimOrNull } from '../common/transforms.js';
 /** Present (even as null) means "change it"; for fields that cannot be empty, null is then refused. */
 const Sent = () => ValidateIf((_o, v) => v !== undefined);
 
-/** The statuses of a current employment; Resigned and Terminated come from ending it. */
-const CURRENT_STATUSES = EMPLOYEE_STATUSES.filter((s) => s !== 'resigned' && s !== 'terminated');
-
 class EmploymentFieldsDto {
-  @Sent() @IsIn(CURRENT_STATUSES, { message: 'Choose Active, Probation, On leave or Notice period. To end an employment, use End employment.' })
-  status?: EmployeeStatus;
-
   /**
    * A department or one of its teams. With a job title, the one the job title belongs to (a department itself or a
    * team: owner's decision, 15 October 2026); it follows the job title when left out.
@@ -60,6 +54,10 @@ class EmploymentFieldsDto {
   jdAcknowledgedAt?: string | null;
 }
 
+/**
+ * No status: the system sets it, Probation while the worked-out probation runs, else Active (owner's decision, 16
+ * October 2026). Sent, it is refused as a field the employment does not take, like the probation end.
+ */
 export class CreateEmploymentDto extends EmploymentFieldsDto {
   @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
   employmentType: EmploymentType;
@@ -69,6 +67,13 @@ export class CreateEmploymentDto extends EmploymentFieldsDto {
 }
 
 export class UpdateEmploymentDto extends EmploymentFieldsDto {
+  /**
+   * HR chooses Active or On leave only, and only while the employment is one of them: Probation and Notice period are
+   * the system's, and Resigned and Terminated come from ending it (owner's decision, 16 October 2026).
+   */
+  @Sent() @IsIn(CHOSEN_STATUSES, { message: 'Choose Active or On leave. Probation and Notice period are set by the system.' })
+  status?: ChosenStatus;
+
   @Sent() @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
   employmentType?: EmploymentType;
 

@@ -3,7 +3,7 @@ import { PROBATION_MONTHS } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { addDays, addMonths, fromDateOnly, toDateOnly } from '../common/date-only.js';
+import { addDays, addMonths, fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import type { Employment, Prisma } from '../generated/prisma/client.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -46,7 +46,11 @@ export class EmploymentsService {
     private readonly employees: EmployeesService,
   ) {}
 
-  /** Hires someone: a new current employment. Not while they have one, nor starting before their last one ended. */
+  /**
+   * Hires someone: a new current employment. Not while they have one, nor starting before their last one ended. The
+   * status is the system's (owner's decision, 16 October 2026): Probation while the worked-out probation runs, else
+   * Active (a rehire, no probation in the contract settings, a hire back-dated past its probation).
+   */
   async create(employeeId: string, dto: CreateEmploymentDto, user: SessionUser) {
     const person = await this.person(employeeId);
     const current = await this.prisma.employment.findFirst({ where: { employeeId, endDate: null }, select: { joinDate: true } });
@@ -60,7 +64,8 @@ export class EmploymentsService {
     }
     const derived = await this.checked(employeeId, null, dto);
     const { employmentType, joinDate, ...rest } = dto;
-    const values = { employmentType, joinDate, ...rest, ...derived };
+    const status = derived.probationEnd && derived.probationEnd >= todayInCairo() ? ('probation' as const) : ('active' as const);
+    const values = { employmentType, joinDate, ...rest, ...derived, status };
 
     const row = await this.prisma.employment.create({ data: toData({ ...values, employeeId }) });
     const { id: _id, createdAt: _c, updatedAt: _u, ...created } = fields(row);
@@ -70,7 +75,8 @@ export class EmploymentsService {
 
   /**
    * Changes an employment: the current one, or an ended one in the history (e.g. a wrong date, including how and
-   * when it ended). An employment never overlaps another of the same person.
+   * when it ended). An employment never overlaps another of the same person. HR moves a current one between Active and
+   * On leave; Probation and Notice period are the system's (owner's decision, 16 October 2026).
    */
   async update(employeeId: string, employmentId: string, dto: UpdateEmploymentDto, user: SessionUser) {
     const before = await this.row(employeeId, employmentId);
@@ -79,6 +85,7 @@ export class EmploymentsService {
     if (before.endDate && dto.status !== undefined) {
       throw new BadRequestException('This employment has ended: its status follows why it ended.');
     }
+    if (dto.status !== undefined && dto.status !== before.status) await this.assertStatusChosen(employeeId, before);
     const derived = await this.checked(employeeId, before, dto);
     const { ...sent } = dto;
     // the status of an ended employment follows the reason it ended
@@ -182,6 +189,21 @@ export class EmploymentsService {
   }
 
   // ---------- helpers ----------
+
+  /**
+   * HR changes the status of a current employment only while it is Active or On leave. Probation ends with Confirm
+   * probation, and Notice period follows the approved ending, back as it was if the ending is withdrawn (owner's
+   * decision, 16 October 2026).
+   */
+  private async assertStatusChosen(employeeId: string, before: Employment) {
+    if (before.status !== 'probation' && before.status !== 'notice_period') return;
+    const person = await this.person(employeeId);
+    throw new BadRequestException(
+      before.status === 'probation'
+        ? `${person.fullNameEn} is on probation: the status becomes Active with Confirm probation.`
+        : `${person.fullNameEn} is working out their notice: the status follows the approved ending (withdraw it to go back).`,
+    );
+  }
 
   /** The period from `joinDate` to `endDate` (open while current) must not overlap another employment of the person. */
   private async assertNoOverlap(employeeId: string, exceptId: string, joinDate: string, endDate: string | null) {
