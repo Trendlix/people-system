@@ -22,13 +22,14 @@ import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
 import { PdfService } from '../pdf/pdf.service.js';
 import { attachment, fileFormat } from './template-file.js';
-import { UploadTemplateDto } from './templates.dto.js';
+import { MapFieldsDto, UploadTemplateDto } from './templates.dto.js';
 import { TemplatesService } from './templates.service.js';
 
 // The template library (spec §8; owner's request, 15 October 2026: "Start working on the templates tab; I need to
 // upload the templates"). HR, Admin and Super Admin manage it; the CEO views it and downloads the files; nobody else
 // sees it. Only a Super Admin deletes, and only a draft (owner's decision, 15 October 2026). The tag dictionary is
-// for everyone signed in.
+// for everyone signed in. Map Fields (owner's request, 15 October 2026: "I want a manual mapping fix") is HR's and
+// Admin's: it makes a new draft, as an upload does.
 
 // One Word file of up to 10 MB, as paperwork's; its name read as UTF-8, so Arabic names arrive intact.
 const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 }, defParamCharset: 'utf8' };
@@ -77,6 +78,20 @@ export class TemplatesController {
   @HttpCode(200)
   publish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
     return this.templates.publish(id, user);
+  }
+
+  /** Map Fields: the version's lines, with their tags, blanks and suggested fields. */
+  @Roles('hr', 'admin')
+  @Get('versions/:id/lines')
+  lines(@Param('id', ParseUUIDPipe) id: string) {
+    return this.templates.lines(id);
+  }
+
+  /** Map Fields: tags placed, changed or removed, saved as a new draft version (201, the new version). */
+  @Roles('hr', 'admin')
+  @Post('versions/:id/map')
+  map(@Param('id', ParseUUIDPipe) id: string, @Body() dto: MapFieldsDto, @CurrentUser() user: SessionUser) {
+    return this.templates.map(id, dto, user);
   }
 
   @Roles('hr', 'admin', 'ceo')
