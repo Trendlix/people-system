@@ -434,6 +434,13 @@ describe('Documents (e2e)', () => {
       expect((await step(doc.id, 'printed').expect(409)).body.message).toBe('This document already has its signed copy uploaded: only a generated document is marked printed.');
     });
 
+    it('a contract whose signed copy is uploaded keeps its signing: not even a Super Admin undoes it', async () => {
+      const res = await api().post(`/api/contracts/${ft.contractId}/unsign`).set('Cookie', superAdmin).expect(409);
+      expect(res.body.message).toBe(
+        `A signed copy of ${ft.contractNumber}'s documents is uploaded, which shows it was signed, so its signing stays on record. For other terms, add a new version.`,
+      );
+    });
+
     it('only a Super Admin deletes a document', async () => {
       const doc = (await generate(pt.id, { slotKey: 'nda' }).expect(201)).body as Doc;
       expect((await api().delete(`/api/documents/${doc.id}`).set('Cookie', hr).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN);

@@ -3,8 +3,8 @@
 // Contract and ending actions on the profile's Contracts and Employment tabs: drafting a contract or its renewal, signing it, its
 // filing dates; confirming probation; recording an ending (HR, which counts as HR's approval), the CEO's decision on
 // it, withdrawing and completing it. Each one forwards to the API, which checks the session and the role (HR; the
-// CEO for the decision; a Super Admin for deleting a draft), so calling these directly can't bypass permissions. Dates
-// are typed as DD/MM/YYYY and sent as YYYY-MM-DD.
+// CEO for the decision; a Super Admin for deleting a draft or undoing a signing), so calling these directly can't
+// bypass permissions. Dates are typed as DD/MM/YYYY and sent as YYYY-MM-DD.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
@@ -161,6 +161,14 @@ export async function signContract(contractId: string, _prev: FormState, fd: For
   const signedOn = requiredDate(fd, 'signedOn', 'date it was signed', errors);
   if (errors.length) return { errors, values: submitted(fd) };
   return act(() => apiSend('POST', `/contracts/${contractId}/sign`, { signedOn }), 'Signed.', fd);
+}
+
+/**
+ * Undoes a signing recorded by mistake: the contract is a draft again, and what signing did is undone. A Super Admin
+ * only (owner's decision, 15 October 2026); the API refuses it once a signed copy of its documents is uploaded.
+ */
+export async function unsignContract(contractId: string): Promise<FormState> {
+  return act(() => apiSend('POST', `/contracts/${contractId}/unsign`), 'Signing undone.');
 }
 
 /** A signed version's dates (signed, filed with the insurance office and the labour office) and its note. */

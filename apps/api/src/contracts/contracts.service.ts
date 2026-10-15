@@ -1,12 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { insuredSalary, type ContractForm, type ContractStatus } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
-import { assertDeletes } from '../auth/roles.js';
+import { assertDeletes, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { seesSalary } from '../employees/access.js';
 import { EmployeesService } from '../employees/employees.service.js';
-import type { Contract, Prisma } from '../generated/prisma/client.js';
+import type { Contract, EmployeeStatus, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ContractSettingsService } from './contract-settings.service.js';
 import { PROBATION_CAP_MESSAGE, type CreateContractDto, type ListContractsDto, type SignContractDto, type UpdateContractDto } from './contracts.dto.js';
@@ -21,6 +21,8 @@ import {
 } from './views.js';
 
 const ENTITY = 'contract';
+/** Undoing a signing is for a Super Admin only, like deleting (owner's decision, 15 October 2026). */
+export const ONLY_SUPER_ADMIN_UNSIGNS = 'Only a Super Admin can undo a signing.';
 const DATE_FIELDS = ['startDate', 'endDate', 'probationEnd', 'signedOn', 'insuranceFiledOn', 'labourOfficeFiledOn'] as const;
 /** Restricted (HR, Finance, CEO): the audit log only says they changed, as for bank details. */
 const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary'];
@@ -322,6 +324,85 @@ export class ContractsService {
   }
 
   /**
+   * Undoes a signing recorded by mistake (a Super Admin only, owner's decision, 15 October 2026): the contract is a
+   * draft again, to correct and sign again, or delete. What the signing did is undone: the version before it is the
+   * employment's contract again, and for version 1 the employment's probation end and status go back to what they were
+   * (each unless changed since). Refused once a signed copy of one of its documents is uploaded, which shows it was
+   * really signed; for a version already replaced or ended; with the next version drafted; or while an ending is open.
+   */
+  async unsign(id: string, user: SessionUser) {
+    if (!isSuperAdmin(user)) throw new ForbiddenException(ONLY_SUPER_ADMIN_UNSIGNS);
+    const before = await this.row(id);
+    if (before.status === 'draft') throw new ConflictException(`${before.number} is not signed.`);
+    if (before.status === 'superseded') throw new ConflictException(`${before.number} was replaced by a later version. Undo that version's signing first.`);
+    if (before.status !== 'active') throw new ConflictException(`${before.number} has ended, so its signing stays on record.`);
+    const employment = await this.employmentOf(before);
+    assertCurrent(employment);
+
+    const [next, ending, signedCopies] = await Promise.all([
+      this.prisma.contract.findFirst({ where: { employmentId: before.employmentId, version: { gt: before.version } }, orderBy: { version: 'asc' } }),
+      this.prisma.employmentEnding.findFirst({ where: { employmentId: before.employmentId, status: { in: ['pending_ceo', 'approved'] } }, select: { id: true } }),
+      this.prisma.generatedDocument.count({ where: { contractId: id, status: { in: ['signed', 'verified'] } } }),
+    ]);
+    if (next) throw new ConflictException(`Version ${next.version} (${next.number}) follows it as a draft. Delete that draft first.`);
+    if (ending) throw new ConflictException('An ending of this employment is in progress. Withdraw it first, or keep the contract signed.');
+    if (signedCopies) {
+      throw new ConflictException(`A signed copy of ${before.number}'s documents is uploaded, which shows it was signed, so its signing stays on record. For other terms, add a new version.`);
+    }
+
+    const restored =
+      before.version > 1
+        ? await this.prisma.contract.findFirst({ where: { employmentId: before.employmentId, version: before.version - 1, status: 'superseded' }, select: { id: true, number: true } })
+        : null;
+    const employmentChange = before.version === 1 ? await this.beforeSigning(employment, before.number) : null;
+
+    const row = await this.prisma.$transaction(async (tx) => {
+      const draft = await tx.contract.update({
+        where: { id },
+        data: {
+          status: 'draft',
+          signedOn: null,
+          insuranceFiledOn: null,
+          labourOfficeFiledOn: null,
+          jobTitleEn: null,
+          jobTitleAr: null,
+          gradeCode: null,
+          departmentName: null,
+          shiftCode: null,
+        },
+      });
+      if (restored) await tx.contract.update({ where: { id: restored.id }, data: { status: 'active' } });
+      if (employmentChange) {
+        await tx.employment.update({
+          where: { id: employment.id },
+          data: toData({ ...employmentChange }),
+        });
+      }
+      return draft;
+    });
+
+    const was = fields(before);
+    await this.audit.record({
+      userId: user.id,
+      action: 'unsign',
+      entityType: ENTITY,
+      entityId: id,
+      diff: {
+        employmentId: before.employmentId,
+        number: before.number,
+        version: before.version,
+        ...changes(was, { status: 'draft', signedOn: null, insuranceFiledOn: null, labourOfficeFiledOn: null }),
+        ...(restored && { restored: restored.number }),
+      },
+    });
+    if (employmentChange) {
+      const diff = changes({ probationEnd: fromDateOnly(employment.probationEnd), status: employment.status }, employmentChange);
+      await this.audit.record({ userId: user.id, action: 'update', entityType: 'employment', entityId: employment.id, diff: { employeeId: employment.employeeId, signingUndone: before.number, ...diff } });
+    }
+    return contractView(row, await this.context(user, employment));
+  }
+
+  /**
    * Signed fixed-term contracts of current employments that end within `within` days, soonest first, with the last
    * day to give non-renewal notice and whether a renewal is drafted. Contracts already past their end, with the
    * employment still current, are listed too: they need a renewal (or an ending) most of all.
@@ -429,6 +510,27 @@ export class ContractsService {
   private async hadProbation(e: EmploymentRow): Promise<boolean> {
     const earlier = await this.prisma.employment.count({ where: { employeeId: e.employeeId, id: { not: e.id }, joinDate: { lt: e.joinDate } } });
     return earlier > 0;
+  }
+
+  /**
+   * What signing version 1 changed on the employment, as it was before (from the audit entry the signing wrote), for
+   * the fields still as the signing left them: a probation confirmed since, or a date changed by hand, stays. Null when
+   * there is nothing to put back.
+   */
+  private async beforeSigning(e: EmploymentRow, number: string): Promise<{ probationEnd?: string | null; status?: EmployeeStatus } | null> {
+    const entry = await this.prisma.auditLog.findFirst({
+      where: { entityType: 'employment', entityId: e.id, action: 'update', diff: { path: ['contract'], equals: number } },
+      orderBy: { id: 'desc' },
+      select: { diff: true },
+    });
+    const diff = (entry?.diff ?? {}) as Record<string, { from: unknown; to: unknown } | undefined>;
+    const now: Record<string, unknown> = { probationEnd: fromDateOnly(e.probationEnd), status: e.status };
+    const out: { probationEnd?: string | null; status?: EmployeeStatus } = {};
+    for (const key of ['probationEnd', 'status'] as const) {
+      const change = diff[key];
+      if (change && now[key] === change.to) out[key] = change.from as never;
+    }
+    return Object.keys(out).length ? out : null;
   }
 
   /** The next free number for a contract starting that year: CON-2026-0001, CON-2026-0002 … */

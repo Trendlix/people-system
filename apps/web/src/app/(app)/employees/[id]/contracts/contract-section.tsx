@@ -3,7 +3,7 @@ import { CONTRACT_FORM_LABELS, CONTRACT_STATUS_LABELS, type ContractStatus } fro
 import { ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import type { Contract, EmployeeProfile, Employment } from '@/lib/types';
-import { deleteContract, signContract, updateSignedContract } from '../../contract-actions';
+import { deleteContract, signContract, unsignContract, updateSignedContract } from '../../contract-actions';
 import { FieldGrid, Loading, ProfileSection, todayInCairo, type GridField } from '../../ui';
 import { ActionButton, SignContract, SignedContractDetails } from './contract-buttons';
 import { loadContracts } from './data';
@@ -13,7 +13,7 @@ import { formatEgp } from './salary';
 // The Contract section of the Contracts tab: the signed contract (its number, term, probation, signing and filing
 // dates, and the salary for HR, Finance and the CEO), a draft waiting to be signed, and every version. HR drafts the
 // first contract or a renewal, signs a draft or changes it, and sets a signed one's filing dates and note; only a Super
-// Admin deletes a draft (owner's decision, 15 October 2026).
+// Admin deletes a draft, or undoes a signing recorded by mistake (owner's decision, 15 October 2026).
 
 /** A fixed-term contract gets a warning this many days before it ends, if no renewal is drafted. */
 const RENEWAL_WARNING_DAYS = 60;
@@ -187,6 +187,36 @@ function DraftCard({
   );
 }
 
+/**
+ * Undo signing, for a Super Admin: a contract marked signed by mistake becomes a draft again, to correct and sign
+ * again, or delete. Not while the next version is drafted or an ending is open; the API also refuses it once a signed
+ * copy of its documents is uploaded.
+ */
+function UndoSigning({ contract: c, draft, endingInProgress }: { contract: Contract; draft: Contract | undefined; endingInProgress: boolean }) {
+  const name = `version ${c.version} (${c.number})`;
+  const blocked = draft
+    ? `Version ${draft.version} is drafted after it: delete that draft first.`
+    : endingInProgress
+      ? 'An ending of this employment is in progress.'
+      : undefined;
+  const after =
+    c.version > 1
+      ? `it becomes a draft again and version ${c.version - 1} is the contract again`
+      : 'it becomes a draft again and the probation is as before the signing';
+  return (
+    <ActionButton
+      action={unsignContract.bind(null, c.id)}
+      pendingText="Undoing…"
+      variant="danger"
+      disabled={!!blocked}
+      disabledNote={blocked}
+      confirmText={`Undo the signing of ${name}? Only for a contract marked signed by mistake: ${after}.`}
+    >
+      Undo signing<span className="sr-only"> of {name}</span>
+    </ActionButton>
+  );
+}
+
 /** Every version, newest first. */
 function Versions({ contracts }: { contracts: Contract[] }) {
   return (
@@ -297,6 +327,7 @@ export async function ContractSection({
           <FieldGrid fields={contractFields(active)} />
           {active.salaryHidden && <p className="text-xs text-muted">The salary is shown to HR, Finance and the CEO only.</p>}
           {canEdit && <SignedContractDetails action={updateSignedContract.bind(null, active.id)} contract={active} />}
+          {employee.access.delete && <UndoSigning contract={active} draft={draft} endingInProgress={endingInProgress} />}
         </div>
       ) : previous ? (
         <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">

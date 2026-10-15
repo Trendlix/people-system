@@ -1,8 +1,8 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, SetMetadata } from '@nestjs/common';
+import { CurrentUser, DeletesRecords, FORBIDDEN_MESSAGE, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { CreateContractDto, ListContractsDto, SignContractDto, UpdateContractDto, WithinDto } from './contracts.dto.js';
-import { ContractsService } from './contracts.service.js';
+import { ContractsService, ONLY_SUPER_ADMIN_UNSIGNS } from './contracts.service.js';
 
 // Contracts under each employment, the company-wide list, and the alerts for HR and the CEO (contracts ending,
 // probations ending). HR adds, changes and signs contracts; anyone who may see the employment reads them, the salary
@@ -62,6 +62,15 @@ export class ContractsController {
   @HttpCode(200)
   sign(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SignContractDto, @CurrentUser() user: SessionUser) {
     return this.contracts.sign(id, dto, user);
+  }
+
+  /** Undoes a signing recorded by mistake: the contract is a draft again. A Super Admin only. */
+  @Roles('super_admin')
+  @SetMetadata(FORBIDDEN_MESSAGE, ONLY_SUPER_ADMIN_UNSIGNS)
+  @Post('contracts/:id/unsign')
+  @HttpCode(200)
+  unsign(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.contracts.unsign(id, user);
   }
 
   /** Current employments whose probation ends within `within` days (30 unless sent). */

@@ -486,6 +486,96 @@ describe('Contracts (e2e)', () => {
     });
   });
 
+  describe('undoing a signing', () => {
+    const unsign = (id: string, session = superAdmin) => api().post(`/api/contracts/${id}/unsign`).set('Cookie', session);
+    const ONLY_SUPER_ADMIN_UNSIGNS = 'Only a Super Admin can undo a signing.';
+
+    it('a Super Admin only: version 1 is a draft again, and the employment’s probation is as before the signing', async () => {
+      const join = addDays(today, -30);
+      const e = await newHire('Signed By Mistake', { joinDate: join, jobTitleId, gradeId: gradeG4, shiftId: shiftA });
+      const c = await signedContract(e);
+      await patchContract(c.id, { insuranceFiledOn: today }).expect(200);
+      expect((await profileOf(e.id)).employment).toMatchObject({ status: 'probation', probationEnd: addDays(addMonths(join, 3), -1) });
+
+      for (const session of [hr, admin, ceo]) expect((await unsign(c.id, session).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN_UNSIGNS);
+      const res = await unsign(c.id).expect(200);
+      expect(res.body).toMatchObject({
+        id: c.id,
+        number: c.number,
+        status: 'draft',
+        signedOn: null,
+        insuranceFiledOn: null,
+        jobTitleEn: null,
+        gradeCode: null,
+        departmentName: null,
+        shiftCode: null,
+        probationEnd: c.probationEnd,
+      });
+      // the employment's own probation end, from the join date, as before the signing
+      expect((await profileOf(e.id)).employment).toMatchObject({ status: 'probation', probationEnd: addMonths(join, 3), contract: null });
+      expect((await unsign(c.id).expect(409)).body.message).toBe(`${c.number} is not signed.`);
+
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'contract', entityId: c.id }, orderBy: { id: 'asc' } });
+      expect(audit.map((a) => a.action)).toEqual(['create', 'sign', 'update', 'unsign']);
+      expect(audit[3].diff).toMatchObject({ number: c.number, status: { from: 'active', to: 'draft' }, signedOn: { from: join, to: null }, insuranceFiledOn: { from: today, to: null } });
+      const employmentAudit = await prisma.auditLog.findMany({ where: { entityType: 'employment', entityId: e.employmentId, action: 'update' }, orderBy: { id: 'asc' } });
+      expect(employmentAudit.at(-1)!.diff).toMatchObject({ signingUndone: c.number, probationEnd: { from: addDays(addMonths(join, 3), -1), to: addMonths(join, 3) } });
+
+      // corrected and signed again, or deleted
+      await patchContract(c.id, { grossSalary: 13000 }).expect(200);
+      expect((await signContract(c.id, today).expect(200)).body).toMatchObject({ status: 'active', grossSalary: 13000, jobTitleEn: 'Account Manager' });
+      expect((await unsign(c.id).expect(200)).body.status).toBe('draft');
+      await api().delete(`/api/contracts/${c.id}`).set('Cookie', superAdmin).expect(204);
+    });
+
+    it('keeps the status a probation confirmed since; puts back Probation when the signing ended it', async () => {
+      const confirmed = await onProbation('Confirmed Then Undone');
+      await api().post(`/api/employees/${confirmed.id}/employments/${confirmed.employmentId}/confirm-probation`).set('Cookie', hr).expect(200);
+      await unsign(confirmed.contract.id).expect(200);
+      expect((await profileOf(confirmed.id)).employment).toMatchObject({ status: 'active', probationEnd: addMonths(addDays(today, -20), 3) });
+
+      // hired in January: signing found the probation over and made it Active; undoing it goes back to how it was
+      const past = await newHire('Past Then Undone');
+      const before = (await profileOf(past.id)).employment!;
+      const c = await signedContract(past);
+      expect((await profileOf(past.id)).employment).toMatchObject({ status: 'active', probationEnd: '2026-04-14' });
+      await unsign(c.id).expect(200);
+      expect((await profileOf(past.id)).employment).toMatchObject({ status: before.status, probationEnd: before.probationEnd });
+    });
+
+    it('a renewal: the version before is the contract again; refused for a replaced version or with the next one drafted', async () => {
+      const e = await newHire('Renewal Undone');
+      const v1 = await signedContract(e);
+      const v2 = await addContract(e, { grossSalary: 14000 });
+      expect((await unsign(v1.id).expect(409)).body.message).toBe(`Version 2 (${v2.number}) follows it as a draft. Delete that draft first.`);
+
+      await signContract(v2.id, today).expect(200);
+      expect((await unsign(v1.id).expect(409)).body.message).toBe(`${v1.number} was replaced by a later version. Undo that version's signing first.`);
+      expect((await unsign(v2.id).expect(200)).body).toMatchObject({ version: 2, status: 'draft', signedOn: null });
+      const versions = (await contractsOf(e).expect(200)).body as Contract[];
+      expect(versions.map((v) => [v.version, v.status])).toEqual([
+        [2, 'draft'],
+        [1, 'active'],
+      ]);
+      expect((await profileOf(e.id)).employment).toMatchObject({ status: 'active', probationEnd: '2026-04-14', contract: { id: v1.id } });
+      const audit = await prisma.auditLog.findFirst({ where: { entityType: 'contract', entityId: v2.id, action: 'unsign' } });
+      expect(audit!.diff).toMatchObject({ restored: v1.number });
+    });
+
+    it('refused while an ending is open, and for a contract ended with the employment', async () => {
+      const e = await onProbation('Ending Not Undone');
+      const ending = await addEnding(e, { ruleKey: 'probation', initiator: 'company', noticeGivenOn: today });
+      expect((await unsign(e.contract.id).expect(409)).body.message).toBe('An ending of this employment is in progress. Withdraw it first, or keep the contract signed.');
+      await act(ending.id, 'withdraw', hr).expect(200);
+      await unsign(e.contract.id).expect(200);
+
+      const gone = await newHire('Ended Not Undone', { joinDate: '2025-01-01' });
+      const c = await signedContract(gone, { startDate: '2025-01-01' });
+      await api().post(`/api/employees/${gone.id}/employments/${gone.employmentId}/end`).set('Cookie', hr).send({ endDate: '2025-12-31', endReason: 'resigned' }).expect(200);
+      expect((await unsign(c.id).expect(409)).body.message).toBe(`${c.number} has ended, so its signing stays on record.`);
+    });
+  });
+
   describe('endings', () => {
     it('during probation: 2 weeks’ notice, a resignation when the employee ends it and a termination when the company does', async () => {
       const a = await onProbation('Probation Leaver');
