@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { formatDateTime, titleCase } from '@/lib/format';
+import { PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser, TemplateDetail, TemplateVersion } from '@/lib/types';
@@ -35,7 +36,9 @@ import {
 
 // One template (spec §8): what it is and where it stands; for HR and Admin, uploading a new version of its Word file as
 // a draft; the check of each draft's tags (unknown or broken ones block publishing), with Publish; and every version,
-// to download (the CEO too). A Super Admin can delete a draft. The API checks every request.
+// to download (the CEO too). A version previewed with data is a protected PDF, never a Word file (owner's request, 15
+// October 2026: "No doc file export, just a protected PDF"); the uploaded Word file itself stays HR's to download. A
+// Super Admin can delete a draft. The API checks every request.
 
 const none = <span className="text-muted">—</span>;
 
@@ -320,7 +323,11 @@ function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
             New documents are made from the version in use. A newer published version replaces it; documents made earlier keep the version they were made
             with.
           </p>
-          {versions.length > 0 && <p className="hint">{previewHint(detail.key)}</p>}
+          {versions.length > 0 && (
+            <p className="hint">
+              {previewHint(detail.key)} {PROTECTED_PDF_HINT}
+            </p>
+          )}
         </div>
         {versions.length === 0 ? <Empty>No file yet.</Empty> : <VersionsTable versions={versions} slotKey={detail.key} deletes={canDelete(user)} />}
       </section>

@@ -13,9 +13,10 @@ import { candidateView, isOfferToken } from './candidate';
 
 // The candidate's page of a job offer (owner's request, 15 October 2026): opened from the link HR sends, with no account
 // and no sign-in (proxy.ts lets /offer/... through; the token in the link is the key). It shows the company, the
-// position and start date, how long the offer is open, HR's message and the offer itself (its PDF in the page, or the
-// file to download), then Accept and Decline. Once answered, withdrawn or past its last day, it says so instead. English
-// first, with the Arabic names and a few Arabic words beside them. Made for a phone first.
+// position and start date, how long the offer is open, HR's message and the offer itself (its PDF in the page, to
+// download too), then Accept and Decline. Once answered, withdrawn or past its last day, it says so instead. English
+// first, with the Arabic names and a few Arabic words beside them. Made for a phone first. The offer is only ever a
+// protected PDF, never a Word file (owner's request, 15 October 2026: "No doc file export, just a protected PDF").
 
 type Brand = Pick<CompanyBrand, 'logoVersion' | 'thumbnailVersion'> & { nameEn: string; nameAr: string | null };
 
@@ -73,23 +74,13 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-/** The offer itself: its PDF in the page with a download link, or just the file to download. */
+/**
+ * The offer itself: its PDF in the page, with a download link. One sent as a Word file before (no PDF kept) is made into
+ * a PDF when it is opened; when the server can't, the page in the frame says so.
+ */
 function OfferDocument({ token, offer }: { token: string; offer: PublicOffer }) {
   const src = `/offer/${encodeURIComponent(token)}/document`;
   if (!offer.document) return null;
-  if (!offer.document.hasPdf) {
-    return (
-      <section aria-labelledby="offer-document" className="card space-y-3 p-5 sm:p-6">
-        <h2 id="offer-document" className="font-semibold">
-          The Offer
-        </h2>
-        <p className="text-sm text-muted">The offer is a Word file. Download it to read it before you answer.</p>
-        <a href={src} className="btn btn-primary">
-          Download the offer
-        </a>
-      </section>
-    );
-  }
   return (
     <section aria-labelledby="offer-document" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">

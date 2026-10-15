@@ -198,12 +198,16 @@ export function missingLinks(employeeId: string, missing: readonly MissingDocume
 
 // ---------- files ----------
 
-/** Where the browser downloads the Word file: the web server fetches it from the API with the session. */
+/**
+ * Where the browser opens a generated document, in a new tab (Preview (PDF)): the web server fetches it from the API
+ * with the session. It is only ever a protected PDF (owner's request, 15 October 2026: "No doc file export, just a
+ * protected PDF").
+ */
 export const documentFileHref = (employeeId: string, documentId: string) =>
   `/employees/${encodeURIComponent(employeeId)}/documents/${encodeURIComponent(documentId)}/file`;
 
-/** The same as a PDF, shown in a new tab (Preview). */
-export const documentPreviewHref = (employeeId: string, documentId: string) => `${documentFileHref(employeeId, documentId)}?format=pdf`;
+/** The same PDF, saved (Download PDF). */
+export const documentDownloadHref = (employeeId: string, documentId: string) => `${documentFileHref(employeeId, documentId)}?download=1`;
 
 /** Where the browser opens the signed copy, the same way. */
 export const signedFileHref = (employeeId: string, documentId: string) =>

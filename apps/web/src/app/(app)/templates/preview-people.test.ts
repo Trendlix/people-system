@@ -18,13 +18,13 @@ const EMP = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 const OFF = 'c0ffee00-1234-4abc-8def-0123456789ab';
 
 describe('a template previewed with data', () => {
-  it('opens the PDF for the best choice, or for the employee or job offer chosen; the Word file when asked', () => {
+  it('opens the PDF for the best choice, or for the employee or job offer chosen; saves it when asked, never as a Word file', () => {
     expect(dataPreviewHref(ID)).toBe(`/templates/versions/${ID}/preview`);
     expect(dataPreviewHref(ID, { kind: 'employee', id: EMP })).toBe(`/templates/versions/${ID}/preview?employeeId=${EMP}`);
-    expect(dataPreviewHref(ID, { kind: 'employee', id: EMP }, 'docx')).toBe(`/templates/versions/${ID}/preview?employeeId=${EMP}&format=docx`);
+    expect(dataPreviewHref(ID, { kind: 'employee', id: EMP }, true)).toBe(`/templates/versions/${ID}/preview?employeeId=${EMP}&download=1`);
     expect(dataPreviewHref(ID, { kind: 'offer', id: OFF })).toBe(`/templates/versions/${ID}/preview?offerId=${OFF}`);
-    expect(dataPreviewHref(ID, { kind: 'offer', id: OFF }, 'docx')).toBe(`/templates/versions/${ID}/preview?offerId=${OFF}&format=docx`);
-    expect(dataPreviewHref(ID, null, 'docx')).toBe(`/templates/versions/${ID}/preview?format=docx`);
+    expect(dataPreviewHref(ID, { kind: 'offer', id: OFF }, true)).toBe(`/templates/versions/${ID}/preview?offerId=${OFF}&download=1`);
+    expect(dataPreviewHref(ID, null, true)).toBe(`/templates/versions/${ID}/preview?download=1`);
     expect(dataPreviewHref('a/b?c')).toBe('/templates/versions/a%2Fb%3Fc/preview');
     expect(previewPeopleHref(ID)).toBe(`/templates/versions/${ID}/preview-people`);
     // the "Preview as" select is named after what it lists

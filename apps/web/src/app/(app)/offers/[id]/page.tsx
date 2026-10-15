@@ -4,6 +4,7 @@ import { LABELS, OFFER_VALID_DAYS, PAY_BASIS_LABELS } from '@trendlix/shared';
 import { DocumentViewer } from '@/components/document-viewer';
 import { getBrand } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { OfferView } from '@/lib/types';
@@ -15,36 +16,18 @@ import { BackLink, Empty, Loading } from '../../organization/ui';
 import { answerOffer, deleteOffer, emailOffer, extendOffer, hireFromOffer, linkOffer, withdrawOffer } from '../actions';
 import { loadOffer } from '../data';
 import { canSeeOffers, managesOffers, offerDocumentHref, placeName, shownStatus, WHO_SEES } from '../list';
-import { canBeSent, documentLabels, draftTemplateVersion, missingHelp, offerTimeline, templateProblem, waitingText, type TimelineEvent } from '../timeline';
+import { canBeSent, documentLabels, documentState, draftTemplateVersion, missingHelp, offerTimeline, templateProblem, waitingText, type TimelineEvent } from '../timeline';
 import { OfferStatusBadge } from '../ui';
 import { ExtendOffer, RecordAnswer, SendOffer, WithdrawOffer } from './offer-actions';
 
 // One job offer: what it says, where it stands (a timeline from drafted to the profile made), what filling in its
-// template lacks, and what HR can do next: preview the PDF, edit, send it by email or copy the link, extend it,
-// withdraw it, record an answer given another way, make the profile once accepted; a Super Admin deletes one that
-// wasn't accepted (owner's decisions, 15 October 2026). The CEO sees all of it, without the actions.
+// template lacks, and what HR can do next: preview or download the PDF, edit, send it by email or copy the link,
+// extend it, withdraw it, record an answer given another way, make the profile once accepted; a Super Admin deletes one
+// that wasn't accepted (owner's decisions, 15 October 2026). The CEO sees all of it, without the actions. Its document
+// is only ever a protected PDF, never a Word file (owner's request, 15 October 2026: "No doc file export, just a
+// protected PDF"): without the server's PDF converter, it can't be made or sent (timeline.ts, documentState).
 
 const small = 'btn min-h-9 px-3';
-
-/**
- * The offer's document: whether it can be shown now, as PDF and as Word, and why not. A draft's missing template or
- * values give no reason here: the warning at the top of the page says it, once (MissingValues). While its template is
- * only a draft, a draft offer is previewed with that draft (`draftTemplate`, its version), though it can't be sent.
- */
-function documentState(o: OfferView): { word: boolean; pdf: boolean; why: string | null; draftTemplate: number | null } {
-  if (o.status === 'draft') {
-    const draftTemplate = draftTemplateVersion(o);
-    if ((templateProblem(o) && draftTemplate === null) || o.missing.length > 0) return { word: false, pdf: false, why: null, draftTemplate: null };
-    return {
-      word: true,
-      pdf: o.pdfAvailable,
-      why: o.pdfAvailable ? null : "The PDF can't be made: the server's PDF converter isn't set up. Download the Word file instead.",
-      draftTemplate,
-    };
-  }
-  if (!o.document) return { word: false, pdf: false, why: o.status === 'withdrawn' ? null : 'No document was kept for this offer.', draftTemplate: null };
-  return { word: true, pdf: o.document.hasPdf, why: o.document.hasPdf ? null : 'It was sent as a Word file: no PDF was made.', draftTemplate: null };
-}
 
 /**
  * Why the offer's document can't be made: the one place the page says it (the sending buttons are left out meanwhile).
@@ -217,7 +200,8 @@ function offerFields(o: OfferView, open: boolean): GridField[] {
     {
       key: 'offer-document',
       label: 'Document',
-      value: o.document?.fileName,
+      // the name of the PDF it is given out as
+      value: o.document && pdfFileName(o.document.fileName),
       note: o.document ? `Dated ${formatDate(o.document.documentDate)}` : o.status === 'draft' ? 'Filled in afresh at each preview until it is sent' : undefined,
     },
   ];
@@ -286,12 +270,12 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
   const hireErrorParam = (await searchParams).hireError;
   const hireError = status === 'accepted' && !o.hiredAt && typeof hireErrorParam === 'string' ? hireErrorParam.slice(0, 500) : null;
   const manages = managesOffers(user);
-  const doc = documentState(o);
+  const doc = documentState(o, status);
   const labels = documentLabels(doc.draftTemplate);
   const open = status === 'draft' || status === 'sent';
   const name = `offer ${o.number}`;
   // the actions card only when it has something in it (e.g. not for the CEO on a withdrawn offer without a document)
-  const hasActions = doc.pdf || doc.word || Boolean(doc.why) || Boolean(o.hiredAt) || canDelete(user) || (manages && status !== 'withdrawn' && status !== 'declined');
+  const hasActions = doc.pdf || Boolean(doc.why) || Boolean(o.hiredAt) || canDelete(user) || (manages && status !== 'withdrawn' && status !== 'declined');
   const mail = {
     to: o.email,
     name: o.fullNameEn,
@@ -329,18 +313,20 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
         <section aria-label="Actions" className="card space-y-4 p-4 sm:px-6">
           <div className="flex flex-wrap items-start gap-3">
             {doc.pdf && (
-              <DocumentViewer
-                title={`Job offer ${o.number}: ${o.fullNameEn}${doc.draftTemplate !== null ? ` (draft template v${doc.draftTemplate})` : ''}`}
-                files={[{ alt: `Job offer ${o.number}`, src: offerDocumentHref(o.id, 'pdf'), mimeType: 'application/pdf' }]}
-                className={`${small} btn-secondary`}
-              >
-                {labels.pdf}
-              </DocumentViewer>
-            )}
-            {doc.word && (
-              <a href={offerDocumentHref(o.id, 'docx')} className={`${small} btn-secondary`}>
-                {labels.word}
-              </a>
+              <>
+                <DocumentViewer
+                  title={`Job offer ${o.number}: ${o.fullNameEn}${doc.draftTemplate !== null ? ` (draft template v${doc.draftTemplate})` : ''}`}
+                  files={[{ alt: `Job offer ${o.number}`, src: offerDocumentHref(o.id), mimeType: 'application/pdf' }]}
+                  className={`${small} btn-secondary`}
+                >
+                  {labels.preview}
+                </DocumentViewer>
+                {/* a plain link, never prefetched: the web server fetches the PDF from the API with the session */}
+                <a href={offerDocumentHref(o.id, true)} className={`${small} btn-secondary`}>
+                  {labels.download}
+                  <span className="sr-only"> ({name})</span>
+                </a>
+              </>
             )}
             {manages && (status === 'draft' || status === 'sent' || status === 'expired') && (
               <Link href={`/offers/${o.id}/edit`} className={`${small} btn-secondary`}>
@@ -374,6 +360,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
               </ActionButton>
             )}
           </div>
+          {doc.pdf && <p className="text-xs text-muted">{PROTECTED_PDF_HINT}</p>}
           {doc.why && <p className="text-xs text-muted">{doc.why}</p>}
           {manages && canBeSent(o, today) && (
             <div className="border-t border-line pt-4">

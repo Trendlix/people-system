@@ -151,8 +151,8 @@ export function SendOffer({
               className="input"
             />
             <p id={fid('to-hint')} className="hint">
-              The candidate&apos;s personal email. The email has the offer&apos;s PDF (or Word file) and the link to accept or decline it; answers to it
-              come back to you.
+              The candidate&apos;s personal email. The email has the offer as a protected PDF and the link to accept or decline it; answers to it come
+              back to you.
             </p>
           </div>
           {again && <p className="text-sm text-warn">Sending again makes a new link: the one sent before stops working.</p>}

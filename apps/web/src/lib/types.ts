@@ -891,11 +891,14 @@ export type DocumentSectionKey = 'contract' | 'hiring' | 'insurance' | 'letters'
 /** Where a generated document stands. */
 export type GeneratedDocumentStatus = 'generated' | 'printed' | 'signed' | 'verified';
 
-/** One document generated for an employee: its Word file (.docx), and the signed copy once it is uploaded. */
+/**
+ * One document generated for an employee: kept by the API as the filled Word file (.docx), given out only as a protected
+ * PDF (owner's request, 15 October 2026); and the signed copy once it is uploaded.
+ */
 export interface GeneratedDocument {
   id: string;
   status: GeneratedDocumentStatus;
-  /** The Word file's name. */
+  /** The kept Word file's name; the PDF is named like it (pdfFileName). */
   fileName: string;
   sizeBytes: number;
   /** The template version it was filled in from. */
@@ -1092,7 +1095,10 @@ export interface OfferView {
   template: { slotKey: string; name: string; status: TemplateSlotStatus; version: number | null; previewVersion: number | null };
   /** A draft's: what filling in the template would lack. */
   missing: OfferMissingValue[];
-  /** The document as sent; null for a draft (filled in afresh at each preview). */
+  /**
+   * The document as sent; null for a draft (filled in afresh at each preview). Given out only as a protected PDF;
+   * `hasPdf`: a PDF was kept when it was sent (else the API makes one when it is opened, with the converter).
+   */
   document: { fileName: string; hasPdf: boolean; documentDate: string } | null;
   sentVia: OfferWay | null;
   sentTo: string | null;
@@ -1113,7 +1119,7 @@ export interface OfferView {
   hiredAt: string | null;
   /** Whether the server can send email (SMTP is set up); without it, HR copies the link. */
   emailConfigured: boolean;
-  /** Whether the server can make PDFs (the converter is set up). */
+  /** Whether the server can make PDFs (the converter is set up): without it, the offer's document can't be made or sent. */
   pdfAvailable: boolean;
   createdAt: string;
   createdBy: { email: string } | null;

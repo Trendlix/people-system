@@ -1,11 +1,11 @@
-import { LABELS } from '@trendlix/shared';
+import { LABELS, type OfferShownStatus } from '@trendlix/shared';
 import { formatDate } from '../../../lib/format';
 import type { OfferView } from '../../../lib/types';
 import { templateHref } from '../templates/wording';
 
 // What an offer's page says about its progress and what it lacks (pure code, tested; relative imports for the tests):
-// the timeline (drafted, sent, opened by the candidate, answered, withdrawn, profile made), what it waits for, and what
-// filling in the job offer template lacks, with where to fix it.
+// the timeline (drafted, sent, opened by the candidate, answered, withdrawn, profile made), what it waits for, what
+// filling in the job offer template lacks, with where to fix it, and whether its document can be opened and sent.
 
 export interface TimelineEvent {
   key: 'drafted' | 'sent' | 'viewed' | 'answered' | 'withdrawn' | 'hired';
@@ -140,10 +140,39 @@ export function draftTemplateVersion(o: Pick<OfferView, 'status' | 'template'>):
   return o.status === 'draft' && t?.status === 'draft' ? (t.previewVersion ?? null) : null;
 }
 
-/** The labels of the document's buttons: "Preview PDF" and "Download Word", saying so when a draft template is used. */
-export function documentLabels(draftVersion: number | null): { pdf: string; word: string } {
-  if (draftVersion === null) return { pdf: 'Preview PDF', word: 'Download Word' };
-  return { pdf: `Preview (draft template v${draftVersion})`, word: `Download Word (draft template v${draftVersion})` };
+/** The labels of the document's buttons: "Preview (PDF)" and "Download PDF", saying so when a draft template is used. */
+export function documentLabels(draftVersion: number | null): { preview: string; download: string } {
+  if (draftVersion === null) return { preview: 'Preview (PDF)', download: 'Download PDF' };
+  return { preview: `Preview (PDF, draft template v${draftVersion})`, download: `Download PDF (draft template v${draftVersion})` };
+}
+
+/** The start of what the page says while the server has no PDF converter (`pdfAvailable` false). */
+const NO_CONVERTER = "The PDF converter isn't set up on the server yet, so";
+
+/**
+ * The offer's document on its page: whether it can be opened now (Preview (PDF), Download PDF), and why not. It is only
+ * ever a protected PDF (owner's request, 15 October 2026: "No doc file export, just a protected PDF"), so there is no
+ * Word file instead: a draft's is made with the server's PDF converter, and sending needs it too; a sent one's is the
+ * PDF kept when it was sent, else made from the Word file kept, with the converter. A draft's missing template or
+ * values give no reason here: the warning at the top of the page says it, once (MissingValues). While its template is
+ * only a draft, a draft offer is previewed with that draft (`draftTemplate`, its version), though it can't be sent.
+ * `status`: as shown (a sent offer past its last day is expired).
+ */
+export function documentState(
+  o: Pick<OfferView, 'status' | 'template' | 'employmentType' | 'missing' | 'document' | 'pdfAvailable'>,
+  status: OfferShownStatus,
+): { pdf: boolean; why: string | null; draftTemplate: number | null } {
+  if (o.status === 'draft') {
+    const draftTemplate = draftTemplateVersion(o);
+    if ((templateProblem(o) && draftTemplate === null) || o.missing.length > 0) return { pdf: false, why: null, draftTemplate: null };
+    return { pdf: o.pdfAvailable, why: o.pdfAvailable ? null : `${NO_CONVERTER} the offer's document can't be opened or sent.`, draftTemplate };
+  }
+  if (!o.document) return { pdf: false, why: o.status === 'withdrawn' ? null : 'No document was kept for this offer.', draftTemplate: null };
+  if (o.pdfAvailable) return { pdf: true, why: null, draftTemplate: null };
+  // an offer still open would be sent again otherwise
+  const again = status === 'sent';
+  if (!o.document.hasPdf) return { pdf: false, why: `${NO_CONVERTER} the offer's document can't be opened${again ? ' or sent again' : ''}.`, draftTemplate: null };
+  return { pdf: true, why: again ? `${NO_CONVERTER} the offer can't be sent again.` : null, draftTemplate: null };
 }
 
 /**
@@ -169,11 +198,12 @@ export function templateProblem(o: Pick<OfferView, 'template' | 'employmentType'
  * Whether Send by email and Copy link are offered: for a draft or a sent offer before its last day has passed, whose
  * document can be made. Sending fills the document in afresh, so it needs the employment type's published template
  * (a draft offer previewed with a draft of it can't be sent yet), and for a draft every value the template prints (the
- * API refuses it otherwise). When it can't be made, the page's warning says why, once, and the sending buttons are
- * left out.
+ * API refuses it otherwise). It goes as a protected PDF only (owner's request, 15 October 2026), so it needs the
+ * server's PDF converter too. When it can't be made, the page says why, once, and the sending buttons are left out.
  */
-export function canBeSent(o: Pick<OfferView, 'status' | 'expiresOn' | 'template' | 'missing'>, today: string): boolean {
+export function canBeSent(o: Pick<OfferView, 'status' | 'expiresOn' | 'template' | 'missing' | 'pdfAvailable'>, today: string): boolean {
   if ((o.status !== 'draft' && o.status !== 'sent') || o.expiresOn < today) return false;
   if (o.template && o.template.status !== 'published') return false;
+  if (!o.pdfAvailable) return false;
   return o.status !== 'draft' || (o.missing ?? []).length === 0;
 }

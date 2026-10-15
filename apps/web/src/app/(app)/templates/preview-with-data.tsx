@@ -6,8 +6,9 @@ import { choiceOption, choiceParam, dataPreviewHref, previewPeopleHref, readPeop
 // "Preview with data" beside a version's Preview (owner's request, 15 October 2026: "When previewing a template, fetch
 // any demo data already uploaded"): the version filled in with the data of the best person to preview it with, as a
 // PDF in a new tab; and "Preview as…", which loads the people to choose from and opens the preview for the one chosen,
-// or its Word file. The people are loaded only when asked: working out how much of the template each has filled in
-// takes the server a moment. Nothing is saved; the API masks restricted data the viewer may not see. A job offer
+// or saves it (Download PDF). Filled in, it is only ever a protected PDF, never a Word file (owner's request, 15 October
+// 2026: "No doc file export, just a protected PDF"). The people are loaded only when asked: working out how much of the
+// template each has filled in takes the server a moment. Nothing is saved; the API masks restricted data the viewer may not see. A job offer
 // template (`offers`) is previewed with a job offer's data: the list holds the offers of its employment type, or the
 // people while there is none.
 
@@ -82,8 +83,8 @@ export function PreviewWithData({
           <button type="submit" className={`${textButton} text-accent`}>
             Open<span className="sr-only"> the preview as a PDF, in a new tab</span>
           </button>
-          <button type="submit" name="format" value="docx" className={`${textButton} text-accent`}>
-            Word file<span className="sr-only"> of the preview, to download</span>
+          <button type="submit" name="download" value="1" className={`${textButton} text-accent`}>
+            Download PDF<span className="sr-only"> of the preview</span>
           </button>
         </form>
       ) : people.kind === 'ok' ? (

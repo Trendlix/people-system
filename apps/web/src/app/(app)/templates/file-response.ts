@@ -1,6 +1,7 @@
 // Passing a Word file from the API on to the browser, for the route handlers that serve one under the web domain with
 // the caller's session (a template version's file, the Fields Guide): the Word file is downloaded; as a PDF it opens
-// in the browser.
+// in the browser. These are HR's own and the system's own files, so they stay Word files; a filled document is given
+// only as a protected PDF (owner's request, 15 October 2026; lib/protected-pdf.ts).
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const FILE_TYPES = new Set([DOCX, 'application/octet-stream']);

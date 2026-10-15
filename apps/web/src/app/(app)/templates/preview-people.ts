@@ -55,13 +55,14 @@ const versionPath = (versionId: string) => `/templates/versions/${encodeURICompo
 export const choiceParam = (kind: PreviewChoice['kind']) => (kind === 'offer' ? 'offerId' : 'employeeId');
 
 /**
- * Where the browser opens a version filled in with someone's data (the best choice when no one is chosen): a PDF
- * shown in a new tab, or the Word file. The web server fetches it from the API with the session.
+ * Where the browser opens a version filled in with someone's data (the best choice when no one is chosen): a protected
+ * PDF shown in a new tab, or saved (`download`); never a Word file (owner's request, 15 October 2026: "No doc file
+ * export, just a protected PDF"). The web server fetches it from the API with the session.
  */
-export function dataPreviewHref(versionId: string, chosen?: Pick<PreviewChoice, 'kind' | 'id'> | null, format: 'pdf' | 'docx' = 'pdf'): string {
+export function dataPreviewHref(versionId: string, chosen?: Pick<PreviewChoice, 'kind' | 'id'> | null, download = false): string {
   const query = new URLSearchParams();
   if (chosen?.id) query.set(choiceParam(chosen.kind), chosen.id);
-  if (format === 'docx') query.set('format', 'docx');
+  if (download) query.set('download', '1');
   const q = query.toString();
   return `${versionPath(versionId)}/preview${q ? `?${q}` : ''}`;
 }

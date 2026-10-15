@@ -3,8 +3,8 @@ import type { DocumentItem, GeneratedDocument } from '../../../../../lib/types';
 import {
   contractGroups,
   contractGroupTitle,
+  documentDownloadHref,
   documentFileHref,
-  documentPreviewHref,
   inputsText,
   isMissingRoute,
   itemContext,
@@ -161,9 +161,10 @@ describe('a generated document', () => {
     expect(nextSteps('verified')).toEqual({ print: false, upload: false, reupload: false, verify: false });
   });
 
-  it('is downloaded and viewed through the web server', () => {
+  it('is opened and saved through the web server, as a PDF only', () => {
     expect(documentFileHref(ID, 'doc-1')).toBe('/employees/emp-1/documents/doc-1/file');
-    expect(documentPreviewHref(ID, 'doc-1')).toBe('/employees/emp-1/documents/doc-1/file?format=pdf');
+    expect(documentDownloadHref(ID, 'doc-1')).toBe('/employees/emp-1/documents/doc-1/file?download=1');
+    expect(documentFileHref('a/b', 'c?d')).toBe('/employees/a%2Fb/documents/c%3Fd/file');
     expect(signedFileHref(ID, 'doc-1')).toBe('/employees/emp-1/documents/doc-1/signed-file');
   });
 

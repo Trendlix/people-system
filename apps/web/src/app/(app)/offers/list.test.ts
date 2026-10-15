@@ -103,8 +103,9 @@ describe('an offer as shown', () => {
     expect(placeName(null)).toBeNull();
   });
 
-  it('serves its document from the web server', () => {
-    expect(offerDocumentHref('abc', 'pdf')).toBe('/offers/abc/document?format=pdf');
-    expect(offerDocumentHref('abc', 'docx')).toBe('/offers/abc/document?format=docx');
+  it('serves its document from the web server, as a PDF to open or to save', () => {
+    expect(offerDocumentHref('abc')).toBe('/offers/abc/document');
+    expect(offerDocumentHref('abc', true)).toBe('/offers/abc/document?download=1');
+    expect(offerDocumentHref('a/b')).toBe('/offers/a%2Fb/document');
   });
 });

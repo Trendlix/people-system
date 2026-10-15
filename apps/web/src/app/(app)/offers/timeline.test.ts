@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OfferView } from '../../../lib/types';
-import { canBeSent, documentLabels, draftTemplateVersion, missingHelp, offerTimeline, templateProblem, waitingText } from './timeline';
+import { canBeSent, documentLabels, documentState, draftTemplateVersion, missingHelp, offerTimeline, templateProblem, waitingText } from './timeline';
 
 /** An offer as GET /offers/:id sends it, with only what a test sets changed. */
 function offer(o: Partial<OfferView> = {}): OfferView {
@@ -187,8 +187,49 @@ describe('what the template lacks', () => {
     expect(draftTemplateVersion(offer({ template: { ...draftOnly, status: 'missing', previewVersion: null } }))).toBeNull();
     expect(draftTemplateVersion(offer({ status: 'sent', template: draftOnly }))).toBeNull();
 
-    expect(documentLabels(null)).toEqual({ pdf: 'Preview PDF', word: 'Download Word' });
-    expect(documentLabels(3)).toEqual({ pdf: 'Preview (draft template v3)', word: 'Download Word (draft template v3)' });
+    expect(documentLabels(null)).toEqual({ preview: 'Preview (PDF)', download: 'Download PDF' });
+    expect(documentLabels(3)).toEqual({ preview: 'Preview (PDF, draft template v3)', download: 'Download PDF (draft template v3)' });
+  });
+});
+
+describe('the document, a protected PDF only', () => {
+  const kept = (hasPdf: boolean) => ({ fileName: 'Job offer - OFF-2026-0001.docx', hasPdf, documentDate: '2026-10-15' });
+  const noConverter = { pdfAvailable: false };
+
+  it('opens a draft’s, filled in afresh, with the converter; without it there is no Word file instead', () => {
+    expect(documentState(offer(), 'draft')).toEqual({ pdf: true, why: null, draftTemplate: null });
+    expect(documentState(offer(noConverter), 'draft')).toEqual({
+      pdf: false,
+      why: "The PDF converter isn't set up on the server yet, so the offer's document can't be opened or sent.",
+      draftTemplate: null,
+    });
+    // previewed with the draft template meanwhile
+    const draftOnly = { slotKey: 'offer_sales', name: 'Job offer · Sales', status: 'draft', version: null, previewVersion: 3 } as const;
+    expect(documentState(offer({ employmentType: 'sales', template: draftOnly }), 'draft')).toEqual({ pdf: true, why: null, draftTemplate: 3 });
+    // missing values or no template at all: the warning at the top says why, once
+    const missing = [{ tag: 'job_title_ar', label: 'Job title (Arabic)', where: { tab: 'offer', key: 'jobTitleId' } }];
+    expect(documentState(offer({ missing }), 'draft')).toEqual({ pdf: false, why: null, draftTemplate: null });
+    expect(documentState(offer({ template: { ...draftOnly, status: 'missing', previewVersion: null } }), 'draft')).toEqual({ pdf: false, why: null, draftTemplate: null });
+  });
+
+  it('opens a sent one’s as sent: the PDF kept, else made from the Word file kept, with the converter', () => {
+    expect(documentState(offer({ status: 'sent', document: kept(false) }), 'sent')).toEqual({ pdf: true, why: null, draftTemplate: null });
+    expect(documentState(offer({ status: 'accepted', document: kept(true), ...noConverter }), 'accepted')).toEqual({ pdf: true, why: null, draftTemplate: null });
+    expect(documentState(offer({ status: 'sent', document: kept(true), ...noConverter }), 'sent').why).toBe(
+      "The PDF converter isn't set up on the server yet, so the offer can't be sent again.",
+    );
+    expect(documentState(offer({ status: 'sent', document: kept(false), ...noConverter }), 'sent')).toEqual({
+      pdf: false,
+      why: "The PDF converter isn't set up on the server yet, so the offer's document can't be opened or sent again.",
+      draftTemplate: null,
+    });
+    // past its last day it isn't sent again
+    expect(documentState(offer({ status: 'sent', document: kept(false), ...noConverter }), 'expired').why).toBe(
+      "The PDF converter isn't set up on the server yet, so the offer's document can't be opened.",
+    );
+    expect(documentState(offer({ status: 'sent', document: kept(true), ...noConverter }), 'expired').why).toBeNull();
+    expect(documentState(offer({ status: 'declined' }), 'declined')).toEqual({ pdf: false, why: 'No document was kept for this offer.', draftTemplate: null });
+    expect(documentState(offer({ status: 'withdrawn' }), 'withdrawn')).toEqual({ pdf: false, why: null, draftTemplate: null });
   });
 });
 
@@ -220,5 +261,10 @@ describe('sending', () => {
     expect(canBeSent(offer({ missing: [missingValue] }), today)).toBe(false);
     // the API lists missing values for drafts only
     expect(canBeSent(offer({ status: 'sent', missing: [missingValue] }), today)).toBe(true);
+  });
+
+  it('is left out without the server’s PDF converter: the offer goes as a protected PDF only', () => {
+    expect(canBeSent(offer({ pdfAvailable: false }), today)).toBe(false);
+    expect(canBeSent(offer({ status: 'sent', pdfAvailable: false }), today)).toBe(false);
   });
 });

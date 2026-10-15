@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { DocumentViewer, VIEW_BUTTON } from '@/components/document-viewer';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
+import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import type { DocumentItem, EmployeeProfile, GeneratedDocument, GeneratedDocumentStatus } from '@/lib/types';
-import { formatSize } from '../../paperwork';
 import { FieldGrid, Loading, ProfileSection, profileHref, todayInCairo, type GridField } from '../../ui';
 import { ActionButton } from '../contracts/contract-buttons';
 import { formatEgp } from '../contracts/salary';
@@ -14,8 +14,8 @@ import {
   contractGroupTitle,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_STATUS_TONE,
+  documentDownloadHref,
   documentFileHref,
-  documentPreviewHref,
   inputsText,
   itemContext,
   itemTemplateHref,
@@ -35,7 +35,9 @@ import {
 // The documents generated from templates, on the profile's Contracts tab: per contract version its documents (the
 // official and social insurance copies), then Hiring, Social Insurance, Letters & Certificates and Leaving. Each item
 // says where its template stands; HR generates it (after a check of what it needs) and takes each document through
-// Generated → Printed → Signed copy uploaded → Verified; the CEO views and downloads; a Super Admin deletes.
+// Generated → Printed → Signed copy uploaded → Verified; the CEO views and downloads; a Super Admin deletes. A document
+// is opened and saved only as a protected PDF, never as a Word file (owner's request, 15 October 2026: "No doc file
+// export, just a protected PDF").
 
 type Employee = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'insuranceNo' | 'employment' | 'access'>;
 
@@ -72,7 +74,7 @@ function Progress({ document: d }: { document: GeneratedDocument }) {
   );
 }
 
-/** One generated document: its status, file and progress; Download .docx and View signed copy; HR's next step; Delete. */
+/** One generated document: its status, file and progress; Preview (PDF), Download PDF and View signed copy; HR's next step; Delete. */
 function DocumentLine({ document: d, item, employee, can }: { document: GeneratedDocument; item: DocumentItem; employee: Employee; can: DocumentAccess }) {
   const steps = nextSteps(d.status);
   const what = `${item.name}, generated ${formatDate(d.generatedAt)}`;
@@ -87,7 +89,8 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
           Dated <span className="tabular-nums">{formatDate(d.documentDate)}</span>
         </span>
         <span className="text-xs break-all text-muted">
-          <bdi>{d.fileName}</bdi> · {formatSize(d.sizeBytes)} · template v{d.templateVersion}
+          {/* the PDF it is given out as; the size of the Word file it is kept as would not be the PDF's */}
+          <bdi>{pdfFileName(d.fileName)}</bdi> · template v{d.templateVersion}
         </span>
       </div>
       {typed && <p className="text-sm break-words">{typed}</p>}
@@ -95,11 +98,11 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
       {d.note && <p className="text-sm text-muted">{d.note}</p>}
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
         {/* plain links, never prefetched: the web server fetches the file from the API with the session */}
-        <a href={documentPreviewHref(employee.id, d.id)} target="_blank" rel="noopener" className={`${VIEW_BUTTON} text-accent`}>
-          Preview<span className="sr-only"> ({what}) as a PDF, in a new tab</span>
+        <a href={documentFileHref(employee.id, d.id)} target="_blank" rel="noopener" className={`${VIEW_BUTTON} text-accent`}>
+          Preview (PDF)<span className="sr-only"> ({what}), in a new tab</span>
         </a>
-        <a href={documentFileHref(employee.id, d.id)} download className={`${VIEW_BUTTON} text-accent`}>
-          Download .docx<span className="sr-only"> ({what})</span>
+        <a href={documentDownloadHref(employee.id, d.id)} className={`${VIEW_BUTTON} text-accent`}>
+          Download PDF<span className="sr-only"> ({what})</span>
         </a>
         {hasSigned && (
           <DocumentViewer
@@ -277,6 +280,8 @@ export async function GeneratedDocuments({ employee, can }: { employee: Employee
     return <Unavailable>No documents apply to {employee.fullNameEn} yet: they follow the employment and its contract.</Unavailable>;
   }
   const sections = orderedSections(load.tab.sections).filter((s) => s.key === 'contract' || s.items.length > 0);
+  // said once, under the first part, once there is a document to open
+  const anyDocument = load.tab.sections.some((s) => s.items.some((i) => (i.documents ?? []).length > 0));
 
   return (
     <>
@@ -297,6 +302,7 @@ export async function GeneratedDocuments({ employee, can }: { employee: Employee
                   </div>
                 ))
               )}
+              {anyDocument && <p className="text-xs text-muted">{PROTECTED_PDF_HINT}</p>}
             </ProfileSection>
           );
         }

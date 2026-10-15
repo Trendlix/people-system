@@ -126,5 +126,9 @@ export function placeName(d: OfferView['department']): string | null {
 /** The offer's page. */
 export const offerHref = (id: string) => `/offers/${encodeURIComponent(id)}`;
 
-/** Where the browser previews the PDF or downloads the Word file: the web server fetches it from the API with the session. */
-export const offerDocumentHref = (id: string, format: 'pdf' | 'docx') => `/offers/${encodeURIComponent(id)}/document?format=${format}`;
+/**
+ * Where the browser opens the offer's document, or saves it (`download`): the web server fetches it from the API with
+ * the session. It is only ever a protected PDF (owner's request, 15 October 2026: "No doc file export, just a protected
+ * PDF").
+ */
+export const offerDocumentHref = (id: string, download = false) => `/offers/${encodeURIComponent(id)}/document${download ? '?download=1' : ''}`;

@@ -1,15 +1,14 @@
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
+import { passPdfOn, wantsDownload } from '@/lib/protected-pdf';
 
-// Serves a generated document's Word file (the Contracts tab's Download .docx) from the API under the web domain, with
-// the caller's session: the browser never talks to the API. The API checks the role (HR, CEO). The Word file is always
-// downloaded; ?format=pdf is the same as a PDF, shown in the browser (Preview, owner's request, 15 October 2026). Links
-// here are plain links, never prefetched.
+// Serves a generated document from the API under the web domain, with the caller's session: the browser never talks to
+// the API. The API checks the role (HR, CEO). It is only ever a protected PDF (owner's request, 15 October 2026: "No doc
+// file export, just a protected PDF"): opened in the browser (the Contracts tab's Preview (PDF)), or saved with
+// ?download=1 (Download PDF). Without the server's PDF converter there is no document to give out, and the API's reason
+// is shown as plain text. Links here are plain links, never prefetched.
 
 const ID = /^[0-9a-z-]{1,64}$/i;
-const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const FILE_TYPES = new Set([DOCX, 'application/octet-stream']);
-const PDF = 'application/pdf';
 
 /** The API's reason, as text. */
 async function messageOf(res: Response): Promise<string> {
@@ -27,11 +26,11 @@ const text = (body: string, status: number) =>
 export async function GET(req: Request, ctx: RouteContext<'/employees/[id]/documents/[documentId]/file'>) {
   const { documentId } = await ctx.params;
   if (!ID.test(documentId)) return text('Not found.', 404);
-  const pdf = new URL(req.url).searchParams.get('format') === 'pdf';
+  const download = wantsDownload(new URL(req.url).searchParams);
 
   let res: Response;
   try {
-    res = await apiFetch(`/documents/${encodeURIComponent(documentId)}/file${pdf ? '?format=pdf' : ''}`);
+    res = await apiFetch(`/documents/${encodeURIComponent(documentId)}/file${download ? '?download=1' : ''}`);
   } catch (err) {
     if (err instanceof ApiError) return text(err.message, err.status);
     throw err;
@@ -39,25 +38,8 @@ export async function GET(req: Request, ctx: RouteContext<'/employees/[id]/docum
   if (res.status === 401) redirect('/login');
   if (res.status === 403) return text('Only HR and the CEO can download generated documents.', 403);
   if (res.status === 404) return text('Not found.', 404);
-  // no PDF converter on the server: the API says so, and the Word file can still be downloaded
+  // no PDF converter on the server (409), or it failed (503): the API says so; there is no Word file instead
   if (res.status === 409 || res.status === 503) return text(await messageOf(res), res.status);
   if (!res.ok) return text('This file could not be loaded. Please try again.', 502);
-
-  const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
-  if (pdf ? type !== PDF : !FILE_TYPES.has(type)) return text('This file could not be loaded. Please try again.', 502);
-
-  const disposition = res.headers.get('content-disposition') ?? `attachment; filename="document.${pdf ? 'pdf' : 'docx'}"`;
-  const headers = new Headers({
-    'content-type': type,
-    // the PDF opens in the browser; the Word file is saved. The API sends the file's name
-    'content-disposition': pdf ? disposition.replace(/^\s*attachment/i, 'inline') : disposition.replace(/^\s*inline/i, 'attachment'),
-    'cache-control': 'private, no-store',
-    'x-content-type-options': 'nosniff',
-    // the browser's PDF viewer doesn't open under default-src 'none'
-    ...(!pdf && { 'content-security-policy': "default-src 'none'" }),
-  });
-  // fetch unpacks a compressed body, so the length only holds when nothing was compressed on the way
-  const length = res.headers.get('content-length');
-  if (length && !res.headers.has('content-encoding')) headers.set('content-length', length);
-  return new Response(res.body, { headers });
+  return passPdfOn(res, { download, fallbackName: 'document.pdf' }) ?? text('This file could not be loaded. Please try again.', 502);
 }
