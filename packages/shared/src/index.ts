@@ -77,8 +77,8 @@ export const PAPERWORK_KINDS = [
   'birth_certificate',
   'military_certificate',
   'criminal_record',
-  'insurance_form_1',
   'personal_photo',
+  'syndicate_card', // كارنيه النقابة, for members of a professional syndicate: optional, never on the checklist
   'other',
 ] as const;
 export type PaperworkKind = (typeof PAPERWORK_KINDS)[number];
@@ -90,8 +90,8 @@ export const PAPERWORK_LABELS: Record<PaperworkKind, string> = {
   birth_certificate: 'Birth certificate',
   military_certificate: 'Military status certificate',
   criminal_record: 'Criminal record certificate',
-  insurance_form_1: 'Social insurance Form 1',
   personal_photo: 'Personal photo',
+  syndicate_card: 'Syndicate card',
   other: 'Other document',
 };
 
@@ -102,8 +102,8 @@ export const RESTRICTED_PAPERWORK: readonly PaperworkKind[] = ['national_id_fron
  * The scans an employee's file needs (spec §8.5), by their current employment. Full-time: the full list; military papers for men only (a woman's
  * military status is always Not applicable). Other employment types: the national ID (their signed job offer and NDA
  * come from document generation). While the gender is not recorded, military papers are listed as needed.
- * The bank account letter is not a scan: the system generates it for the employee to open a bank account, from a
- * template HR adds (owner, 15 October 2026).
+ * The bank account letter and the social insurance forms (Form 1 …) are not scans HR collects: the system generates
+ * them from templates HR adds (owner, 15 October 2026).
  */
 export function requiredPaperwork(employmentType: EmploymentType | null, gender: Gender | null): PaperworkKind[] {
   if (employmentType !== 'full_time') return ['national_id_front', 'national_id_back']; // also before anyone is hired
@@ -114,7 +114,6 @@ export function requiredPaperwork(employmentType: EmploymentType | null, gender:
     'birth_certificate',
     ...(gender === 'female' ? [] : (['military_certificate'] as const)),
     'criminal_record',
-    'insurance_form_1',
     'personal_photo',
   ];
 }

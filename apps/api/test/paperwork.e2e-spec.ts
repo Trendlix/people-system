@@ -179,10 +179,10 @@ describe('Paperwork (e2e)', () => {
   });
 
   it('stores a document, reads its text in Arabic, and lists the file newest first without its bytes or text', async () => {
-    const form = await upload(pdf('RECEIPT'), 'استمارة ١.pdf', 'insurance_form_1');
+    const form = await upload(pdf('RECEIPT'), 'استمارة ١.pdf', 'other');
     expect(form).toEqual({
       id: expect.any(String),
-      kind: 'insurance_form_1',
+      kind: 'other',
       fileName: 'استمارة ١.pdf',
       mimeType: 'application/pdf',
       sizeBytes: pdf('RECEIPT').length,
@@ -204,7 +204,14 @@ describe('Paperwork (e2e)', () => {
 
     const audit = await auditOf(form.id);
     expect(audit.map((a) => a.action)).toEqual(['create']); // not restricted: reading the text is not logged
-    expect(audit[0].diff).toEqual({ employeeId, kind: 'insurance_form_1', fileName: 'استمارة ١.pdf', sizeBytes: pdf('RECEIPT').length });
+    expect(audit[0].diff).toEqual({ employeeId, kind: 'other', fileName: 'استمارة ١.pdf', sizeBytes: pdf('RECEIPT').length });
+  });
+
+  it('takes a syndicate card, which is optional: it is never counted as missing', async () => {
+    const card = await upload(png('NONE'), 'كارنيه النقابة.png', 'syndicate_card');
+    expect(card.kind).toBe('syndicate_card');
+    const profile = await api().get(`/api/employees/${employeeId}`).set('Cookie', hr).expect(200);
+    expect(profile.body.completeness.missing.map((m: { key: string }) => m.key)).not.toContain('syndicate_card');
   });
 
   it('serves the file with safe headers, and logs every view of a national ID scan', async () => {
@@ -250,9 +257,11 @@ describe('Paperwork (e2e)', () => {
     expect((await post().field('kind', 'other').expect(400)).body.message).toBe('Choose a file to upload.');
     await post().attach('file', png('NONE'), 'x.png').expect(400); // no kind
     await post().field('kind', 'passport').attach('file', png('NONE'), 'x.png').expect(400);
-    // the bank account letter is generated for the employee to open an account, not a scan HR collects
-    const letter = await post().field('kind', 'bank_letter').attach('file', png('NONE'), 'letter.png').expect(400);
-    expect(letter.body.message).toEqual(['Choose what kind of document this is.']);
+    // the bank account letter and the social insurance forms are generated from templates, not scans HR collects
+    for (const kind of ['bank_letter', 'insurance_form_1']) {
+      const generated = await post().field('kind', kind).attach('file', png('NONE'), 'letter.png').expect(400);
+      expect(generated.body.message).toEqual(['Choose what kind of document this is.']);
+    }
     await api()
       .post('/api/employees/00000000-0000-4000-8000-000000000000/paperwork')
       .set('Cookie', hr)

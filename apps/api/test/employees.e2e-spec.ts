@@ -796,6 +796,24 @@ describe('Employees (e2e)', () => {
     expect(cleared.body).toMatchObject({ mobile2: null, city: null });
   });
 
+  it('keeps the social insurance number as digits, and no two people share one', async () => {
+    const no = String(Date.now()).slice(-9);
+    const e = await addEmployee('Insured One', { insuranceNo: `${no.slice(0, 4)} ${no.slice(4)}` });
+    expect(e.insuranceNo).toBe(no);
+    const arabic = no.replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]);
+    const other = await addEmployee('Insured Two');
+    const taken = await api().patch(`/api/employees/${other.id}`).set('Cookie', hr).send({ insuranceNo: arabic }).expect(409);
+    expect(taken.body.message).toBe(`The social insurance number ${no} already belongs to ${e.employeeCode}.`);
+    for (const bad of ['12a456', '12345', '123456789012345']) {
+      const res = await api().patch(`/api/employees/${other.id}`).set('Cookie', hr).send({ insuranceNo: bad }).expect(400);
+      expect(res.body.message).toEqual(['Enter the social insurance number as digits only (6 to 14 of them).']);
+    }
+    // saving the profile again with its own number is not a clash
+    await api().patch(`/api/employees/${e.id}`).set('Cookie', hr).send({ insuranceNo: no, nationality: 'Egyptian' }).expect(200);
+    const cleared = await api().patch(`/api/employees/${e.id}`).set('Cookie', hr).send({ insuranceNo: '' }).expect(200);
+    expect(cleared.body.insuranceNo).toBeNull();
+  });
+
   describe('mobile numbers, kept as Prime ERP keeps them', () => {
     const change = (id: string, body: object) => api().patch(`/api/employees/${id}`).set('Cookie', hr).send(body);
 
@@ -980,12 +998,15 @@ describe('Employees (e2e)', () => {
       );
       expect(missing(e)).not.toContain('fullNameEn');
       expect(missing(e)).not.toContain('criminal_record');
+      expect(missing(e)).not.toContain('insuranceNo'); // needed once hired full time
 
       // hired full time: the full list of papers, the military certificate too while the gender is not recorded
       const hired = await hire(e.id);
       expect(hired.completeness.percent).toBe(8); // 2 of 26
-      expect(missing(hired)).toEqual(expect.arrayContaining(['military_certificate', 'criminal_record', 'insurance_form_1', 'personal_photo']));
-      expect(missing(hired)).not.toContain('bank_letter'); // generated for the employee, not a scan HR collects
+      expect(missing(hired)).toEqual(expect.arrayContaining(['insuranceNo', 'military_certificate', 'criminal_record', 'personal_photo']));
+      // generated from templates, not scans HR collects
+      expect(missing(hired)).not.toContain('bank_letter');
+      expect(missing(hired)).not.toContain('insurance_form_1');
 
       const man = await change(e.id, { gender: 'male' });
       expect(man.completeness.percent).toBe(12); // 3 of 26

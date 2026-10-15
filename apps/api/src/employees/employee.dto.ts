@@ -53,6 +53,11 @@ const IsPhone = (what: string) =>
       defaultMessage: () => `Enter the ${what} with its country code, e.g. +201012345678.`,
     },
   });
+// the social insurance number: spaces and dashes dropped. Older numbers have 7 to 10 digits; newer insureds may be
+// registered under their 14-digit national ID.
+const Digits = () => Transform(({ value }) => (typeof value === 'string' ? value.replace(/[\s-]/g, '') || null : value));
+const INSURANCE_NO = /^\d{6,14}$/;
+const INSURANCE_NO_MESSAGE = 'Enter the social insurance number as digits only (6 to 14 of them).';
 const CODE = /^EMP-\d{4,6}$/;
 const CODE_MESSAGE = 'Employee code: EMP- and 4 digits, e.g. EMP-0142. Leave it empty to number automatically.';
 
@@ -60,6 +65,10 @@ const CODE_MESSAGE = 'Employee code: EMP- and 4 digits, e.g. EMP-0142. Leave it 
 class EmployeeDetailsDto {
   @Code() @IsOptional() @Matches(CODE, { message: CODE_MESSAGE })
   employeeCode?: string | null;
+
+  /** الرقم التأميني: the social insurance number. */
+  @LatinDigits() @Digits() @IsOptional() @Matches(INSURANCE_NO, { message: INSURANCE_NO_MESSAGE })
+  insuranceNo?: string | null;
 
   // ---------- identity ----------
   @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real date of birth.')

@@ -161,6 +161,10 @@ function completeness(
     [!!identity?.nationalId, { key: 'nationalId', label: 'National ID number', tab: 'basic' }],
     [!!identity?.expiryDate, { key: 'idExpiry', label: 'National ID expiry date', tab: 'basic' }],
     [!!bank?.iban, { key: 'iban', label: 'IBAN', tab: 'basic' }],
+    // insured with Form 1 when hired full time, so a full-time file needs the number
+    ...(employmentType === 'full_time'
+      ? [[!!e.insuranceNo, { key: 'insuranceNo', label: 'Social insurance number', tab: 'basic' }] satisfies [boolean, Missing]]
+      : []),
     [!!e.degree, { key: 'degree', label: 'Degree', tab: 'education' }],
     [!!e.university, { key: 'university', label: 'University', tab: 'education' }],
     [!!e.graduationYear, { key: 'graduationYear', label: 'Graduation year', tab: 'education' }],
@@ -299,7 +303,7 @@ export class EmployeesService {
     const { employeeCode: code, identity: sentIdentity, ...given } = dto;
     const employeeCode = code ?? (await this.nextCode());
     await this.assertCompanyDomain(dto.workEmail);
-    await this.assertFree({ employeeCode, workEmail: dto.workEmail });
+    await this.assertFree({ employeeCode, workEmail: dto.workEmail, insuranceNo: dto.insuranceNo });
     const derived = await this.checked(null, dto);
     // national ID details with nothing filled in are not saved at all
     const identity = sentIdentity && Object.values(sentIdentity).some((v) => v !== null && v !== undefined) ? sentIdentity : null;
@@ -323,7 +327,8 @@ export class EmployeesService {
     // only a new work email is checked: one on file that is not changed never stops other fields being saved
     const workEmail = dto.workEmail !== before.workEmail ? dto.workEmail : undefined;
     await this.assertCompanyDomain(workEmail);
-    await this.assertFree({ employeeCode: employeeCode !== before.employeeCode ? employeeCode : undefined, workEmail }, id);
+    const insuranceNo = dto.insuranceNo !== before.insuranceNo ? dto.insuranceNo : undefined;
+    await this.assertFree({ employeeCode: employeeCode !== before.employeeCode ? employeeCode : undefined, workEmail, insuranceNo }, id);
     const derived = await this.checked(before, dto);
     const values = { ...rest, ...(employeeCode ? { employeeCode } : {}), ...derived }; // the code cannot be emptied
 
@@ -407,7 +412,7 @@ export class EmployeesService {
     return `EMP-${String((max ?? 0) + 1).padStart(4, '0')}`;
   }
 
-  private async assertFree(values: { employeeCode?: string | null; workEmail?: string | null }, exceptId?: string) {
+  private async assertFree(values: { employeeCode?: string | null; workEmail?: string | null; insuranceNo?: string | null }, exceptId?: string) {
     const not = exceptId ? { id: { not: exceptId } } : {};
     if (values.employeeCode) {
       const taken = await this.prisma.employee.findFirst({ where: { employeeCode: values.employeeCode, ...not }, select: { fullNameEn: true } });
@@ -416,6 +421,10 @@ export class EmployeesService {
     if (values.workEmail) {
       const taken = await this.prisma.employee.findFirst({ where: { workEmail: values.workEmail, ...not }, select: { employeeCode: true } });
       if (taken) throw new ConflictException(`The work email ${values.workEmail} already belongs to ${taken.employeeCode}.`);
+    }
+    if (values.insuranceNo) {
+      const taken = await this.prisma.employee.findFirst({ where: { insuranceNo: values.insuranceNo, ...not }, select: { employeeCode: true } });
+      if (taken) throw new ConflictException(`The social insurance number ${values.insuranceNo} already belongs to ${taken.employeeCode}.`);
     }
   }
 
