@@ -11,7 +11,8 @@ const CleanDuties = () =>
   );
 
 export class CreateJobTitleDto {
-  @IsUUID('all', { message: 'Choose a department.' })
+  /** Where it belongs: a department itself, or one of its teams (owner's decision, 15 October 2026). */
+  @IsUUID('all', { message: 'Choose a department or team.' })
   departmentId: string;
 
   @Trim()
@@ -59,8 +60,9 @@ export class CreateJobTitleDto {
 }
 
 export class UpdateJobTitleDto {
+  /** Where it belongs: a department itself, or one of its teams (owner's decision, 15 October 2026). */
   @IsOptional()
-  @IsUUID('all', { message: 'Choose a department.' })
+  @IsUUID('all', { message: 'Choose a department or team.' })
   departmentId?: string;
 
   @Trim()

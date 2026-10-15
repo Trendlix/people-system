@@ -24,8 +24,11 @@ class EmploymentFieldsDto {
   @Sent() @IsIn(CURRENT_STATUSES, { message: 'Choose Active, Probation, On leave or Notice period. To end an employment, use End employment.' })
   status?: EmployeeStatus;
 
-  /** A team (job titles belong to teams), or a department for someone without a job title. */
-  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a team.' })
+  /**
+   * A department or one of its teams. With a job title, the one the job title belongs to (a department itself or a
+   * team: owner's decision, 15 October 2026); it follows the job title when left out.
+   */
+  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a department or team.' })
   departmentId?: string | null;
 
   @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a job title.' })

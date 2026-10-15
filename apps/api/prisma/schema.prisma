@@ -80,7 +80,8 @@ model Company {
 // ---------- organisation ----------
 
 // A department (parent_id empty) or one of its teams (parent_id = the department), e.g. Marketing → Content Team.
-// One level only: a team has no teams of its own. Job titles and employees can belong to either.
+// One level only: a team has no teams of its own. Job titles and employees can belong to either (job titles directly
+// in a department, e.g. Head of Marketing: owner's decision, 15 October 2026).
 model Department {
   id          String       @id @default(uuid()) @db.Uuid
   nameEn      String       @map("name_en") // unique among a department's teams; among departments, checked by the API

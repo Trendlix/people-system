@@ -5,7 +5,7 @@ import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
 // Unique names per run: the test files share one database (emptied at the start of each run).
-const NOT_A_TEAM = '00000000-0000-4000-8000-000000000000';
+const NOT_A_TEAM = '00000000-0000-4000-8000-000000000000'; // neither a department nor a team
 const RUN = Date.now().toString(36).toUpperCase();
 const name = (base: string) => `${base} ${RUN}`;
 
@@ -22,7 +22,7 @@ describe('Organisation (e2e)', () => {
     const hired = await api().post(`/api/employees/${e.body.id}/employments`).set('Cookie', session).send(employment).expect(201);
     return hired.body as { id: string; employment: { id: string; department: unknown; gradeId: string | null; grade: unknown } };
   };
-  /** A new department with one team in it; job titles belong to teams. */
+  /** A new department with one team in it; answers the team. */
   const newTeam = async (department: string, team = 'Core Team') => {
     const dept = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name(department) }).expect(201);
     const res = await api().post('/api/departments').set('Cookie', session).send({ nameEn: team, parentId: dept.body.id }).expect(201);
@@ -114,14 +114,12 @@ describe('Organisation (e2e)', () => {
       const refused = await api().delete(`/api/departments/${marketing.body.id}`).set('Cookie', session).expect(409);
       expect(refused.body.message).toContain('1 team');
 
-      // a team with job titles stays in a department: job titles belong to teams
-      const stays = await api().patch(`/api/departments/${content.body.id}`).set('Cookie', session).send({ parentId: '' }).expect(400);
-      expect(stays.body.message).toContain('job titles belong to teams');
-      await api().delete(`/api/job-titles/${job.body.id}`).set('Cookie', session).expect(204);
-
-      // without job titles, taking the team out makes it a department of its own
+      // taking the team out makes it a department of its own, which keeps the team's job titles: a job title can belong
+      // to a department directly (owner's decision, 15 October 2026)
       const moved = await api().patch(`/api/departments/${content.body.id}`).set('Cookie', session).send({ parentId: '' }).expect(200);
-      expect(moved.body).toMatchObject({ parentId: null, parent: null });
+      expect(moved.body).toMatchObject({ parentId: null, parent: null, _count: { jobTitles: 1 } });
+      const kept = await api().get(`/api/job-titles/${job.body.id}`).set('Cookie', session).expect(200);
+      expect(kept.body.department).toEqual({ id: content.body.id, nameEn: name('Content Team'), nameAr: 'فريق المحتوى', parent: null });
       const audit = await prisma.auditLog.findFirst({ where: { entityType: 'department', entityId: content.body.id, action: 'update' } });
       expect(audit?.diff).toEqual({ parentId: { from: marketing.body.id, to: null } });
     });
@@ -144,6 +142,27 @@ describe('Organisation (e2e)', () => {
       expect(e.employment.department).toEqual({ id: team.body.id, nameEn: 'Recruiting', nameAr: null, parent: { id: ops.body.id, nameEn: name('People Ops'), nameAr: null } });
       const list = await api().get('/api/employees').set('Cookie', session).expect(200);
       expect(list.body.find((x: { id: string }) => x.id === e.id).employment.department.parent.nameEn).toBe(name('People Ops'));
+    });
+
+    it('places an employee with a department’s own job title in that department, not in one of its teams', async () => {
+      const team = await newTeam('Brand', 'Social Team');
+      const dept = team.parentId;
+      const head = await api().post('/api/job-titles').set('Cookie', session).send({ departmentId: dept, titleEn: 'Head of Brand' }).expect(201);
+
+      // the department chosen with it, or left out: it follows the job title
+      const chosen = await addHired(name('Head of Brand'), { employmentType: 'full_time', joinDate: '2026-02-01', jobTitleId: head.body.id, departmentId: dept });
+      expect(chosen.employment.department).toEqual({ id: dept, nameEn: name('Brand'), nameAr: null, parent: null });
+      const followed = await addHired(name('Acting Head'), { employmentType: 'full_time', joinDate: '2026-02-01', jobTitleId: head.body.id });
+      expect(followed.employment.department).toMatchObject({ id: dept, parent: null });
+
+      // the job title belongs to the department itself, so one of its teams is not its place
+      const e = await api().post('/api/employees').set('Cookie', session).send({ fullNameEn: name('Misplaced Head'), fullNameAr: 'موظف' }).expect(201);
+      const refused = await api()
+        .post(`/api/employees/${e.body.id}/employments`)
+        .set('Cookie', session)
+        .send({ employmentType: 'full_time', joinDate: '2026-02-01', jobTitleId: head.body.id, departmentId: team.id })
+        .expect(400);
+      expect(refused.body.message).toBe(`The job title "Head of Brand" belongs to ${name('Brand')}. Choose that department, or another job title.`);
     });
   });
 
@@ -266,16 +285,61 @@ describe('Organisation (e2e)', () => {
   });
 
   describe('job titles', () => {
-    let departmentId: string; // a team: job titles belong to teams
+    let departmentId: string; // a team (a job title can also belong to a department directly)
 
     beforeAll(async () => {
       departmentId = (await newTeam('Human Resources', 'People Team')).id;
     });
 
-    it('only goes in a team, never directly in a department', async () => {
-      const dept = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name('No Teams Yet') }).expect(201);
-      const res = await api().post('/api/job-titles').set('Cookie', session).send({ departmentId: dept.body.id, titleEn: 'Loose Role' }).expect(400);
-      expect(res.body.message).toContain('belong to a team');
+    it('goes directly in a department, e.g. Head of Marketing (owner’s decision, 15 October 2026)', async () => {
+      const dept = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name('Marketing Direct') }).expect(201);
+      const res = await api()
+        .post('/api/job-titles')
+        .set('Cookie', session)
+        .send({ departmentId: dept.body.id, titleEn: 'Head of Marketing', maxGradeId: grade('G7') })
+        .expect(201);
+      expect(res.body).toMatchObject({ departmentId: dept.body.id, department: { id: dept.body.id, nameEn: name('Marketing Direct'), parent: null } });
+
+      // counted on the department, listed under it, and in the audit log
+      expect((await api().get(`/api/departments/${dept.body.id}`).set('Cookie', session).expect(200)).body._count.jobTitles).toBe(1);
+      const listed = await api().get(`/api/job-titles?departmentId=${dept.body.id}`).set('Cookie', session).expect(200);
+      expect(listed.body.map((j: { titleEn: string }) => j.titleEn)).toEqual(['Head of Marketing']);
+      const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'job_title', entityId: res.body.id, action: 'create' } });
+      expect(audit.diff).toMatchObject({ departmentId: dept.body.id, titleEn: 'Head of Marketing' });
+
+      // unique within the department, as within a team; the department can't be deleted while it holds a job title
+      await api().post('/api/job-titles').set('Cookie', session).send({ departmentId: dept.body.id, titleEn: 'Head of Marketing' }).expect(409);
+      const kept = await api().delete(`/api/departments/${dept.body.id}`).set('Cookie', session).expect(409);
+      expect(kept.body.message).toBe('This department has 1 job title(s). Move or delete them before deleting the department.');
+    });
+
+    it('moves between a department and one of its teams, both ways, taking its current holders along, with audit entries', async () => {
+      const team = await newTeam('Studio', 'Design Team');
+      const dept = team.parentId;
+      const created = await api().post('/api/job-titles').set('Cookie', session).send({ departmentId: dept, titleEn: 'Creative Director' }).expect(201);
+      const id = created.body.id as string;
+      const move = (departmentId: string) => api().patch(`/api/job-titles/${id}`).set('Cookie', session).send({ departmentId });
+      const holder = await addHired(name('Creative Lead'), { employmentType: 'full_time', joinDate: '2026-02-01', jobTitleId: id });
+      const placeOf = async () => (await prisma.employment.findUniqueOrThrow({ where: { id: holder.employment.id } })).departmentId;
+
+      const intoTeam = await move(team.id).expect(200);
+      expect(intoTeam.body.department).toEqual({ id: team.id, nameEn: 'Design Team', nameAr: null, parent: { id: dept, nameEn: name('Studio'), nameAr: null } });
+      expect(await placeOf()).toBe(team.id); // the holder moved with the title
+      const backUp = await move(dept).expect(200);
+      expect(backUp.body.department).toEqual({ id: dept, nameEn: name('Studio'), nameAr: null, parent: null });
+      expect(await placeOf()).toBe(dept);
+      // and HR can still save the holder's employment as it now is
+      await api().patch(`/api/employees/${holder.id}/employments/${holder.employment.id}`).set('Cookie', session).send({ departmentId: dept, jobTitleId: id }).expect(200);
+      // a rename alone leaves it where it is
+      const renamed = await api().patch(`/api/job-titles/${id}`).set('Cookie', session).send({ titleEn: 'Executive Creative Director' }).expect(200);
+      expect(renamed.body.departmentId).toBe(dept);
+
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'job_title', entityId: id, action: 'update' }, orderBy: { id: 'asc' } });
+      expect(audit.map((a) => a.diff)).toEqual([
+        { departmentId: { from: dept, to: team.id }, holdersMoved: 1 },
+        { departmentId: { from: team.id, to: dept }, holdersMoved: 1 },
+        { titleEn: { from: 'Creative Director', to: 'Executive Creative Director' } },
+      ]);
     });
 
     it('creates a job title with its job description and duties in order', async () => {
@@ -419,12 +483,13 @@ describe('Organisation (e2e)', () => {
       expect(history.body.employments[0]).toMatchObject({ gradeId: grade('G5'), grade: { code: 'G5' } });
     });
 
-    it('rejects an unknown team and a duplicate title in the same team', async () => {
-      await api()
-        .post('/api/job-titles')
-        .set('Cookie', session)
-        .send({ departmentId: '00000000-0000-4000-8000-000000000000', titleEn: 'Ghost' })
-        .expect(404);
+    it('rejects an unknown department or team, when created and when moved, and a duplicate title in the same team', async () => {
+      const ghost = await api().post('/api/job-titles').set('Cookie', session).send({ departmentId: NOT_A_TEAM, titleEn: 'Ghost' }).expect(404);
+      expect(ghost.body.message).toBe('Department or team not found.');
+      const job = await api().post('/api/job-titles').set('Cookie', session).send({ departmentId, titleEn: 'HR Coordinator' }).expect(201);
+      const lost = await api().patch(`/api/job-titles/${job.body.id}`).set('Cookie', session).send({ departmentId: NOT_A_TEAM }).expect(404);
+      expect(lost.body.message).toBe('Department or team not found.');
+      expect((await api().get(`/api/job-titles/${job.body.id}`).set('Cookie', session).expect(200)).body.departmentId).toBe(departmentId);
       await api().post('/api/job-titles').set('Cookie', session).send({ departmentId, titleEn: 'HR Specialist' }).expect(409);
     });
   });

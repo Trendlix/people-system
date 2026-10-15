@@ -169,30 +169,32 @@ export class EmploymentsService {
   }
 
   /**
-   * Checks that span several fields or other records, and the values that follow from them: the team of the chosen
-   * job title, a grade the job title takes, office days only for Hybrid, the default probation end. Returns the values
-   * to write as well.
+   * Checks that span several fields or other records, and the values that follow from them: the department or team
+   * of the chosen job title, a grade the job title takes, office days only for Hybrid, the default probation end.
+   * Returns the values to write as well.
    */
   private async checked(employeeId: string, before: Employment | null, dto: CreateEmploymentDto | UpdateEmploymentDto) {
     const derived: { departmentId?: string | null; officeDays?: number[]; probationEnd?: string | null } = {};
     const current = before ? fields(before) : null;
 
-    // the team (or department) follows the job title
+    // the department or team follows the job title: the one it belongs to, a department itself (e.g. Head of
+    // Marketing, in Marketing) or one of its teams (owner's decision, 15 October 2026)
     if (dto.jobTitleId !== undefined || dto.departmentId !== undefined) {
       const jobTitleId = dto.jobTitleId !== undefined ? dto.jobTitleId : (before?.jobTitleId ?? null);
       if (jobTitleId) {
         const job = await this.prisma.jobTitle.findUnique({
           where: { id: jobTitleId },
-          select: { titleEn: true, departmentId: true, department: { select: { nameEn: true } } },
+          select: { titleEn: true, departmentId: true, department: { select: { nameEn: true, parentId: true } } },
         });
         if (!job) throw new BadRequestException('Job title not found. Choose one from the list.');
         if (dto.departmentId && dto.departmentId !== job.departmentId) {
-          throw new BadRequestException(`The job title "${job.titleEn}" belongs to ${job.department.nameEn}. Choose that team, or another job title.`);
+          const place = job.department.parentId ? 'that team' : 'that department';
+          throw new BadRequestException(`The job title "${job.titleEn}" belongs to ${job.department.nameEn}. Choose ${place}, or another job title.`);
         }
         derived.departmentId = job.departmentId;
       } else if (dto.departmentId) {
         const exists = await this.prisma.department.count({ where: { id: dto.departmentId } });
-        if (!exists) throw new BadRequestException('Team not found. Choose one from the list.');
+        if (!exists) throw new BadRequestException('Department or team not found. Choose one from the list.');
       }
     }
 

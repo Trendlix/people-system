@@ -38,7 +38,7 @@ export class JobTitlesService {
   }
 
   async create(dto: CreateJobTitleDto, userId: string) {
-    await this.ensureTeam(dto.departmentId);
+    await this.ensurePlace(dto.departmentId);
     await this.checkedRange(dto.minGradeId ?? null, dto.maxGradeId ?? null);
     const duties = dto.duties ?? [];
     const job = await this.prisma.jobTitle.create({
@@ -66,8 +66,9 @@ export class JobTitlesService {
 
   async update(id: string, dto: UpdateJobTitleDto, userId: string) {
     const before = await this.get(id);
-    // also when it stays: a job title still held directly by a department (from before teams) must move into a team
-    if (dto.departmentId) await this.ensureTeam(dto.departmentId);
+    // to a department or to one of its teams (owner's decision, 15 October 2026): a job title held directly by a
+    // department is where it belongs, and no longer has to move into a team
+    if (dto.departmentId) await this.ensurePlace(dto.departmentId);
     // the range as it will be: what was sent, the rest as saved
     if (dto.minGradeId !== undefined || dto.maxGradeId !== undefined) {
       const minGradeId = dto.minGradeId !== undefined ? dto.minGradeId : before.minGradeId;
@@ -83,7 +84,14 @@ export class JobTitlesService {
       (dto.jdPurpose !== undefined && dto.jdPurpose !== before.jdPurpose) ||
       (dto.jdRequirements !== undefined && dto.jdRequirements !== before.jdRequirements);
 
+    const moved = dto.departmentId !== undefined && dto.departmentId !== before.departmentId;
+    let holdersMoved = 0;
     await this.prisma.$transaction(async (tx) => {
+      // the people who hold the title now move with it, so their department or team stays the title's own; ended
+      // employments keep where they were, as history
+      if (moved) {
+        holdersMoved = (await tx.employment.updateMany({ where: { jobTitleId: id, endDate: null }, data: { departmentId: dto.departmentId } })).count;
+      }
       if (dutiesChanged) {
         await tx.jobTitleDuty.deleteMany({ where: { jobTitleId: id } });
         await tx.jobTitleDuty.createMany({
@@ -109,6 +117,7 @@ export class JobTitlesService {
     const diff: Record<string, unknown> = changes(before, fields);
     if (dutiesChanged) diff.duties = { from: oldDuties, to: duties };
     if (jdChanged) diff.jdVersion = { from: before.jdVersion, to: before.jdVersion + 1 };
+    if (holdersMoved) diff.holdersMoved = holdersMoved;
     if (Object.keys(diff).length) {
       await this.audit.record({ userId, action: 'update', entityType: ENTITY, entityId: id, diff });
     }
@@ -157,14 +166,13 @@ export class JobTitlesService {
     );
   }
 
-  /** Job titles belong to teams only (Department → Team → Job title; owner's rule, 14 October 2026). */
-  private async ensureTeam(id: string) {
-    const team = await this.prisma.department.findUnique({ where: { id }, select: { parentId: true, nameEn: true } });
-    if (!team) throw new NotFoundException('Team not found.');
-    if (!team.parentId) {
-      throw new BadRequestException(
-        `Job titles belong to a team, not directly to a department. Choose one of the teams of ${team.nameEn}, or add a team to it first.`,
-      );
-    }
+  /**
+   * A job title belongs to a department itself (e.g. Head of Marketing, under Marketing) or to one of its teams (e.g.
+   * Senior Content Creator, under Marketing → Content Team): owner's decision, 15 October 2026, replacing the rule of
+   * 14 October that job titles belong to teams only. Either way the place must exist; its English title is unique there.
+   */
+  private async ensurePlace(id: string) {
+    const place = await this.prisma.department.count({ where: { id } });
+    if (!place) throw new NotFoundException('Department or team not found.');
   }
 }

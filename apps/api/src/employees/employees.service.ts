@@ -26,8 +26,8 @@ const DATE_FIELDS = ['dateOfBirth'] as const;
 const GRADE = { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } } as const;
 
 /**
- * Where an employment places someone: their team (or department) with its department, their job title, and their own
- * grade (owner's decision, 15 October 2026: no longer the job title's).
+ * Where an employment places someone: their department, or their team with its department; their job title, and their
+ * own grade (owner's decision, 15 October 2026: no longer the job title's).
  */
 const PLACE = {
   department: { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
@@ -205,9 +205,14 @@ function completeness(
     [!!e.university, { key: 'university', label: 'University', tab: 'education' }],
     [!!e.graduationYear, { key: 'graduationYear', label: 'Graduation year', tab: 'education' }],
     [!!e.qualificationAr, { key: 'qualificationAr', label: 'Qualification (Arabic)', tab: 'education' }],
-    ...requiredPaperwork(employmentType, (e.gender as Gender | null) ?? null).map(
-      (kind): [boolean, Missing] => [papers.includes(kind), { key: kind, label: PAPERWORK_LABELS[kind], tab: 'documents' }],
-    ),
+    // the national ID's front and back are one paper: its scan counts once, when both sides are there
+    ...requiredPaperwork(employmentType, (e.gender as Gender | null) ?? null)
+      .filter((kind) => kind !== 'national_id_back')
+      .map((kind): [boolean, Missing] =>
+        kind === 'national_id_front'
+          ? [papers.includes('national_id_front') && papers.includes('national_id_back'), { key: 'national_id', label: 'National ID scan (front and back)', tab: 'documents' }]
+          : [papers.includes(kind), { key: kind, label: PAPERWORK_LABELS[kind], tab: 'documents' }],
+      ),
   ];
   const done = checks.filter(([ok]) => ok).length;
   return { percent: Math.round((done / checks.length) * 100), missing: checks.filter(([ok]) => !ok).map(([, m]) => m) };

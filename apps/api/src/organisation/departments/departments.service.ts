@@ -9,7 +9,9 @@ const COUNTS = { select: { jobTitles: true, children: true } } as const;
 const ORDER = [{ sortOrder: 'asc' }, { nameEn: 'asc' }] as const;
 
 // Departments and their teams (e.g. Marketing → Content Team). One level only: a team has no teams of its own.
-// In the database a team is a department with a parent (parent_id).
+// In the database a team is a department with a parent (parent_id). Job titles and employees belong to a department
+// itself or to one of its teams (owner's decision, 15 October 2026); a department's count of job titles is its own,
+// without its teams'.
 @Injectable()
 export class DepartmentsService {
   constructor(
@@ -117,10 +119,11 @@ export class DepartmentsService {
   /**
    * Where a department may go: into a department as a team (never into itself or into a team), and only if it has
    * no teams of its own; and its English name must be free among the departments, or among the teams of the same
-   * department.
+   * department. Its job titles go with it, wherever it goes: a team taken out of its department becomes a department
+   * that holds them itself (owner's decision, 15 October 2026; until then job titles belonged to teams only).
    */
   private async checkPlace(
-    self: { id: string; parentId: string | null; _count: { children: number; jobTitles: number } } | null,
+    self: { id: string; _count: { children: number } } | null,
     parentId: string | null,
     nameEn: string,
   ) {
@@ -134,11 +137,6 @@ export class DepartmentsService {
       if (self && self._count.children > 0) {
         throw new BadRequestException('This department has teams, so it cannot become a team itself. Move its teams first.');
       }
-    } else if (self?.parentId && self._count.jobTitles > 0) {
-      // taking a team out of its department would leave its job titles directly in a department
-      throw new BadRequestException(
-        `This team has ${self._count.jobTitles} job title(s), and job titles belong to teams. Move them to another team first.`,
-      );
     }
     const twin = await this.prisma.department.findFirst({
       where: { parentId, nameEn: { equals: nameEn, mode: 'insensitive' }, ...(self && { id: { not: self.id } }) },

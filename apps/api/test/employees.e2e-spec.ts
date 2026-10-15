@@ -122,7 +122,8 @@ describe('Employees (e2e)', () => {
     admin = await signIn(app, await createUser(prisma, ['admin']));
     const dept = await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Web ${RUN}` }).expect(201);
     webId = dept.body.id;
-    // job titles belong to teams, so the Frontend Developer's department is the Frontend team
+    // the Frontend Developer belongs to the Frontend team of Web, so that team is where the employment places someone
+    // (a job title can also belong to a department directly: owner's decision, 15 October 2026)
     const team = await api().post('/api/departments').set('Cookie', hr).send({ nameEn: 'Frontend', parentId: webId }).expect(201);
     departmentId = team.body.id;
     const other = await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Media ${RUN}` }).expect(201);
@@ -342,13 +343,17 @@ describe('Employees (e2e)', () => {
       expect(office.body.employment.officeDays).toEqual([]);
     });
 
-    it('refuses a job title from another team, and an unknown team, manager or shift', async () => {
+    it('refuses a job title from another department or team, and an unknown department, team, manager or shift', async () => {
       const e = await addEmployee('Mismatch');
       const res = await startEmployment(e.id, job({ jobTitleId, departmentId: otherDepartmentId })).expect(400);
-      expect(res.body.message).toContain('Frontend Developer');
+      expect(res.body.message).toBe('The job title "Frontend Developer" belongs to Frontend. Choose that team, or another job title.');
+      // the team's department is not the team: the job title belongs to the team only
+      const parent = await startEmployment(e.id, job({ jobTitleId, departmentId: webId })).expect(400);
+      expect(parent.body.message).toBe('The job title "Frontend Developer" belongs to Frontend. Choose that team, or another job title.');
       const manager = await startEmployment(e.id, job({ managerId: NOWHERE })).expect(400);
       expect(manager.body.message).toBe('Manager not found. Choose one from the list.');
-      await startEmployment(e.id, job({ departmentId: NOWHERE })).expect(400);
+      const nowhere = await startEmployment(e.id, job({ departmentId: NOWHERE })).expect(400);
+      expect(nowhere.body.message).toBe('Department or team not found. Choose one from the list.');
       await startEmployment(e.id, job({ jobTitleId: NOWHERE })).expect(400);
       await startEmployment(e.id, job({ shiftId: NOWHERE })).expect(400);
       expect(await prisma.employment.count({ where: { employeeId: e.id } })).toBe(0);
@@ -993,15 +998,14 @@ describe('Employees (e2e)', () => {
     it('counts the fields and the papers the file needs, says on which tab each missing one goes, and rises as they are added', async () => {
       // before any hire: 18 fields and the national ID (front and back), of which the names are there
       const e = await addEmployee('Incomplete');
-      expect(e.completeness.percent).toBe(10); // 2 of 20
-      expect(e.completeness.missing).toHaveLength(18);
+      expect(e.completeness.percent).toBe(11); // 2 of 19
+      expect(e.completeness.missing).toHaveLength(17);
       expect(e.completeness.missing).toEqual(
         expect.arrayContaining([
           { key: 'dateOfBirth', label: 'Date of birth', tab: 'basic' },
           { key: 'iban', label: 'IBAN', tab: 'basic' },
           { key: 'degree', label: 'Degree', tab: 'education' },
-          { key: 'national_id_front', label: 'National ID (front)', tab: 'documents' },
-          { key: 'national_id_back', label: 'National ID (back)', tab: 'documents' },
+          { key: 'national_id', label: 'National ID scan (front and back)', tab: 'documents' }, // one paper, both sides
         ]),
       );
       expect(missing(e)).not.toContain('fullNameEn');
@@ -1010,34 +1014,34 @@ describe('Employees (e2e)', () => {
 
       // hired full time: the full list of papers, the military certificate too while the gender is not recorded
       const hired = await hire(e.id);
-      expect(hired.completeness.percent).toBe(8); // 2 of 26
+      expect(hired.completeness.percent).toBe(8); // 2 of 25
       expect(missing(hired)).toEqual(expect.arrayContaining(['insuranceNo', 'military_certificate', 'criminal_record', 'personal_photo']));
       // generated from templates, not scans HR collects
       expect(missing(hired)).not.toContain('bank_letter');
       expect(missing(hired)).not.toContain('insurance_form_1');
 
       const man = await change(e.id, { gender: 'male' });
-      expect(man.completeness.percent).toBe(12); // 3 of 26
+      expect(man.completeness.percent).toBe(12); // 3 of 25
       expect(missing(man)).toContain('military_certificate');
 
       // a woman's file needs no military certificate, and her military status is Not applicable
       const woman = await change(e.id, { gender: 'female' });
-      expect(woman.completeness.percent).toBe(16); // 4 of 25
+      expect(woman.completeness.percent).toBe(17); // 4 of 24
       expect(missing(woman)).not.toContain('military_certificate');
       expect(missing(woman)).not.toContain('militaryStatus');
 
       const filled = await change(e.id, { nationality: 'Egyptian', mobile: '01012345678', degree: 'bachelor', university: 'Cairo University', graduationYear: 2018 });
-      expect(filled.completeness.percent).toBe(36); // 9 of 25
+      expect(filled.completeness.percent).toBe(38); // 9 of 24
 
       await api().post(`/api/employees/${e.id}/paperwork`).set('Cookie', hr).field('kind', 'personal_photo').attach('file', PNG, 'photo.png').expect(201);
       const papered = await profileOf(e.id);
-      expect(papered.completeness.percent).toBe(40); // 10 of 25
+      expect(papered.completeness.percent).toBe(42); // 10 of 24
       expect(missing(papered)).not.toContain('personal_photo');
 
       // the national ID number (with the date of birth it holds) and its expiry
       await api().patch(`/api/employees/${e.id}/identity`).set('Cookie', hr).send({ nationalId: newNationalId(), expiryDate: '2031-05-01' }).expect(200);
       const identified = await profileOf(e.id);
-      expect(identified.completeness.percent).toBe(52); // 13 of 25
+      expect(identified.completeness.percent).toBe(54); // 13 of 24
       expect(identified.dateOfBirth).toBe('1995-03-12');
       expect(missing(identified)).not.toContain('dateOfBirth');
       expect(missing(identified)).not.toContain('nationalId');
