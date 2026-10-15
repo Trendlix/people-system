@@ -6,7 +6,9 @@ import { missingTags, resolveValues, rightFor, type ValueSources } from './value
 
 const DUTIES = '<p>Leads the <strong>sales</strong> team.</p><ul><li><p>Plans the targets</p></li></ul>';
 
-function sources(jobTitle: { titleEn: string; titleAr: string | null; jdDuties: string | null } | null, language: ValueSources['language'] = 'ar'): ValueSources {
+type JobTitle = NonNullable<ValueSources['employment']>['jobTitle'];
+
+function sources(jobTitle: JobTitle, language: ValueSources['language'] = 'ar'): ValueSources {
   return {
     language,
     employee: {
@@ -19,6 +21,7 @@ function sources(jobTitle: { titleEn: string; titleAr: string | null; jdDuties: 
       addressAr: null,
       city: null,
       governorate: null,
+      buildingNo: null,
       mobile: null,
       workEmail: null,
       personalEmail: null,
@@ -46,7 +49,7 @@ function sources(jobTitle: { titleEn: string; titleAr: string | null; jdDuties: 
 }
 
 describe("a document's values", () => {
-  const role = { titleEn: 'Account Manager', titleAr: 'مدير حسابات', jdDuties: DUTIES };
+  const role = { titleEn: 'Account Manager', titleAr: 'مدير حسابات', jdDuties: DUTIES, occupationCode: null };
 
   it("{{job_duties}} is the role's duties as written, with their formatting, in any template language", () => {
     for (const language of ['ar', 'en', 'bilingual'] as const) {
@@ -318,6 +321,83 @@ describe('the added fields', () => {
     expect(rightFor('net_hourly_rate')).toBe('salary');
     expect(rightFor('basic_percent')).toBe('salary');
     for (const tag of ['personal_email', 'manager_name', 'shift', 'work_arrangement', 'probation_months', 'grade_level']) expect(rightFor(tag), tag).toBeNull();
+  });
+});
+
+// What social insurance Forms 1 and 6 print that the system didn't hold (owner, 15 October 2026): the address in its
+// parts and the building number, the job title's occupation in the social insurance table, and the company's
+// insurance office and sector code.
+describe('the social insurance details', () => {
+  const COMPANY: NonNullable<ValueSources['company']> = {
+    nameEn: 'TrendLIX',
+    nameAr: 'تريندلكس',
+    addressAr: null,
+    addressEn: null,
+    commercialRegNo: null,
+    taxRegNo: null,
+    insuranceEmployerNo: '1234567',
+    insuranceOffice: 'مكتب تأمينات الدقي',
+    insuranceSectorCode: '07',
+    repName: null,
+    repTitle: null,
+    repNameEn: null,
+    repTitleEn: null,
+    repNationalId: null,
+  };
+  const TAGS = ['address_line', 'city', 'governorate', 'building_no', 'occupation_code', 'occupation_name', 'insurance_office', 'insurance_sector_code'];
+  function insured(language: ValueSources['language'] = 'ar'): ValueSources {
+    const base = sources({ titleEn: 'Accountant', titleAr: 'محاسب', jdDuties: null, occupationCode: '012100' }, language);
+    return {
+      ...base,
+      employee: { ...base.employee, addressAr: '15 شارع عباس العقاد،', city: 'مدينة نصر', governorate: 'Cairo', buildingNo: '12أ' },
+      company: COMPANY,
+    };
+  }
+
+  it('prints each from where it is kept, the same in every template language', () => {
+    for (const language of ['ar', 'en', 'bilingual'] as const) {
+      expect(resolveValues(insured(language), TAGS)).toEqual({
+        address_line: '15 شارع عباس العقاد',
+        city: 'مدينة نصر',
+        governorate: 'القاهرة',
+        building_no: '12أ',
+        occupation_code: '012100',
+        occupation_name: 'فيزيائي عام',
+        insurance_office: 'مكتب تأمينات الدقي',
+        insurance_sector_code: '07', // as stored, its leading 0 kept
+      });
+    }
+    // {{address}} still prints the whole address
+    expect(resolveValues(insured(), ['address']).address).toBe('15 شارع عباس العقاد، مدينة نصر، القاهرة');
+  });
+
+  it('the occupation is the employment’s job title’s: none without one set, a job title or an employment', () => {
+    const none = { titleEn: 'Accountant', titleAr: null, jdDuties: null, occupationCode: null };
+    expect(resolveValues(sources(none), ['occupation_code', 'occupation_name'])).toEqual({ occupation_code: '', occupation_name: '' });
+    expect(resolveValues(sources(null), ['occupation_code', 'occupation_name'])).toEqual({ occupation_code: '', occupation_name: '' });
+    expect(resolveValues({ ...insured(), employment: null }, ['occupation_code'])).toEqual({ occupation_code: '' });
+    // a code no longer in the table prints as stored, without a name
+    expect(resolveValues(sources({ ...none, occupationCode: '000001' }), ['occupation_code', 'occupation_name'])).toEqual({ occupation_code: '000001', occupation_name: '' });
+  });
+
+  it('says where each missing one is filled in: the profile, the job title under Departments, the company profile', () => {
+    const values = resolveValues(sources(null), TAGS);
+    expect(Object.values(values).every((v) => v === '')).toBe(true);
+    expect(missingTags(values, TAGS)).toEqual([
+      { tag: 'address_line', label: 'Street address (Arabic)', where: { tab: 'basic', key: 'addressAr' } },
+      { tag: 'city', label: 'City or district (Arabic)', where: { tab: 'basic', key: 'city' } },
+      { tag: 'governorate', label: 'Governorate (Arabic)', where: { tab: 'basic', key: 'governorate' } },
+      { tag: 'building_no', label: 'Building number', where: { tab: 'basic', key: 'buildingNo' } },
+      { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'departments', key: 'occupationCode' } },
+      { tag: 'occupation_name', label: 'Occupation (social insurance)', where: { tab: 'departments', key: 'occupationCode' } },
+      { tag: 'insurance_office', label: 'Social insurance office', where: { tab: 'company', key: 'insuranceOffice' } },
+      { tag: 'insurance_sector_code', label: 'Sector code (social insurance)', where: { tab: 'company', key: 'insuranceSectorCode' } },
+    ]);
+    expect(missingTags(resolveValues(insured(), TAGS), TAGS)).toEqual([]);
+  });
+
+  it('none is restricted', () => {
+    for (const tag of TAGS) expect(rightFor(tag), tag).toBeNull();
   });
 });
 

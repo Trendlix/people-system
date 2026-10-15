@@ -66,6 +66,11 @@ export interface PdfField {
   amountPart?: 'pounds' | 'piasters';
   /** Print digits as Arabic-Indic ٠-٩ instead of 0-9. */
   arabicDigits?: boolean;
+  /**
+   * text and boxes: the document is made even when the tag has no value, the field left blank (a building number, a
+   * personal email); otherwise a tag with no value stops it, as in a Word template.
+   */
+  optional?: boolean;
 }
 
 /** A PDF template's pages, in points: the editor draws the fields to scale on them. */

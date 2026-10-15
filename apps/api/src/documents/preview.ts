@@ -32,6 +32,11 @@ export interface PreviewValues<V> {
   total: number;
   /** The restricted tags printed with their value: a view of restricted data, for the audit log. */
   shown: string[];
+  /**
+   * The tags printed as their placeholder (no value, and not masked): a PDF form's optional fields print these blank,
+   * as the document would (owner, 15 October 2026).
+   */
+  placeholders: string[];
 }
 
 /**
@@ -47,6 +52,7 @@ export function previewValues<V>(
 ): PreviewValues<V> {
   const out: Record<string, V | string> = {};
   const shown: string[] = [];
+  const placeholders: string[] = [];
   let filled = 0;
   for (const tag of new Set(tags)) {
     const has = !empty.has(tag) && values[tag] !== undefined;
@@ -56,10 +62,11 @@ export function previewValues<V>(
       out[tag] = MASK;
     } else if (!has) {
       out[tag] = placeholder(tag);
+      placeholders.push(tag);
     } else {
       out[tag] = values[tag];
       if (rights.length) shown.push(tag);
     }
   }
-  return { values: out, filled, total: Object.keys(out).length, shown };
+  return { values: out, filled, total: Object.keys(out).length, shown, placeholders };
 }

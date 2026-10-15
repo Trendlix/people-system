@@ -31,6 +31,8 @@ export const CONFIRM_FIELDS = [
   { key: 'governorate', label: 'Governorate', section: 'contact' },
   { key: 'city', label: 'City', section: 'contact' },
   { key: 'addressAr', label: 'Address (Arabic)', section: 'contact' },
+  // social insurance Forms 1 and 6 print it on its own (owner, 15 October 2026)
+  { key: 'buildingNo', label: 'Building number', section: 'contact' },
   { key: 'emergencyName', label: 'Name', section: 'emergency' },
   { key: 'emergencyRelation', label: 'Relation', section: 'emergency' },
   { key: 'emergencyMobile', label: 'Mobile', section: 'emergency' },

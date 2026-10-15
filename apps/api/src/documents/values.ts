@@ -1,6 +1,7 @@
 import {
   bankNamed,
   LABELS,
+  occupationName,
   PAY_BASIS_LABELS,
   PAY_BASIS_LABELS_AR,
   TEMPLATE_TAGS,
@@ -15,7 +16,22 @@ import { fromDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { arabicAmountInWords, arabicDuration, arabicWeekday, englishAmountInWords, isBlankValue, type TagValue } from './engine/index.js';
-import { arabicDigits, EMPLOYMENT_TYPES_AR, hasArabic, inLanguage, printedAddress, printedDate, printedMoney, printedMonth, printedPhone, printedProbation, printedShift, type PrintedLanguage } from './format.js';
+import {
+  arabicDigits,
+  EMPLOYMENT_TYPES_AR,
+  hasArabic,
+  inLanguage,
+  printedAddress,
+  printedAddressLine,
+  printedDate,
+  printedGovernorate,
+  printedMoney,
+  printedMonth,
+  printedPhone,
+  printedProbation,
+  printedShift,
+  type PrintedLanguage,
+} from './format.js';
 import { TYPED_TAGS } from './offer.js';
 
 // Every tag's value for one document (spec §8; owner's request, 15 October 2026), from the employee's profile, their
@@ -40,6 +56,8 @@ export interface ValueSources {
     addressAr: string | null;
     city: string | null;
     governorate: string | null;
+    /** The address's building number (social insurance Forms 1 and 6); none on a job offer. */
+    buildingNo: string | null;
     mobile: string | null;
     workEmail: string | null;
     /** The profile's; on a job offer, the email it is sent to. */
@@ -52,8 +70,11 @@ export interface ValueSources {
   employment: {
     employmentType: EmploymentType;
     joinDate: Date;
-    /** The role: its titles, and its duties and responsibilities as saved (HTML; null for none). */
-    jobTitle: { titleEn: string; titleAr: string | null; jdDuties: string | null } | null;
+    /**
+     * The role: its titles, its duties and responsibilities as saved (HTML; null for none), and its occupation's code in
+     * the social insurance table (null for none set).
+     */
+    jobTitle: { titleEn: string; titleAr: string | null; jdDuties: string | null; occupationCode: string | null } | null;
     department: { nameEn: string; nameAr: string | null } | null;
     grade: { code: string; levelEn: string; levelAr: string | null } | null;
     /** The direct manager (an employee). */
@@ -98,6 +119,8 @@ export interface ValueSources {
     commercialRegNo: string | null;
     taxRegNo: string | null;
     insuranceEmployerNo: string | null;
+    insuranceOffice: string | null;
+    insuranceSectorCode: string | null;
     repName: string | null;
     repTitle: string | null;
     repNameEn: string | null;
@@ -110,9 +133,13 @@ export interface ValueSources {
   inputs: Readonly<Record<string, string | undefined>>;
 }
 
-/** The profile tab where a value is filled in, and the field. */
+/**
+ * The profile tab where a value is filled in, and the field; or the company profile (`company`), a job offer's field
+ * (`offer`), or a job title's under Organization › Departments & Job Titles (`departments`: its social insurance
+ * occupation).
+ */
 export interface Where {
-  tab: 'basic' | 'education' | 'employment' | 'contracts' | 'company' | 'offer';
+  tab: 'basic' | 'education' | 'employment' | 'contracts' | 'company' | 'offer' | 'departments';
   key: string;
 }
 
@@ -197,6 +224,11 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     nationality: () => text(e.nationality),
     date_of_birth: () => printedDate(ymd(e.dateOfBirth)),
     address: () => printedAddress(e.addressAr, e.city, e.governorate),
+    // the address in its parts, as social insurance Forms 1 and 6 print it (owner, 15 October 2026)
+    address_line: () => printedAddressLine(e.addressAr),
+    city: () => text(e.city),
+    governorate: () => printedGovernorate(e.governorate),
+    building_no: () => text(e.buildingNo),
     phone: () => printedPhone(e.mobile),
     work_email: () => text(e.workEmail),
     personal_email: () => text(e.personalEmail),
@@ -212,6 +244,10 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     job_title_ar: () => jobTitle('ar'),
     job_title_en: () => jobTitle('en'),
     job_duties: duties,
+    // the job title's occupation in the social insurance table (owner, 15 October 2026): the code as stored, the name
+    // the table's
+    occupation_code: () => text(job?.jobTitle?.occupationCode),
+    occupation_name: () => occupationName(job?.jobTitle?.occupationCode) ?? '',
     department: () => department(language),
     department_ar: () => department('ar'),
     department_en: () => department('en'),
@@ -296,6 +332,8 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     commercial_reg_no: () => text(co?.commercialRegNo),
     tax_reg_no: () => text(co?.taxRegNo),
     insurance_employer_no: () => text(co?.insuranceEmployerNo),
+    insurance_office: () => text(co?.insuranceOffice),
+    insurance_sector_code: () => text(co?.insuranceSectorCode),
     company_rep_name: () => text(co?.repName),
     company_rep_title: () => text(co?.repTitle),
     company_rep_name_en: () => text(co?.repNameEn),
@@ -330,11 +368,13 @@ const BASIC = (key: string): Where => ({ tab: 'basic', key });
 const EMPLOYMENT = (key: string): Where => ({ tab: 'employment', key });
 const CONTRACTS = (key: string): Where => ({ tab: 'contracts', key });
 const COMPANY = (key: string): Where => ({ tab: 'company', key });
+const DEPARTMENTS = (key: string): Where => ({ tab: 'departments', key });
 
 /**
  * Where each tag's value is filled in: the profile's tab and field, with the keys the profile's completeness uses
  * (nationalId, idIssueDate, team …); a contract's terms on the Contracts tab (`contract` when there is no contract
- * version at all); the ending on the Employment tab; the company's details in Company.
+ * version at all); the ending on the Employment tab; the company's details in Company; the job title's occupation
+ * under Departments & Job Titles.
  */
 const WHERE: Record<string, Where> = {
   employee_code: BASIC('employeeCode'),
@@ -344,6 +384,10 @@ const WHERE: Record<string, Where> = {
   nationality: BASIC('nationality'),
   date_of_birth: BASIC('dateOfBirth'),
   address: BASIC('addressAr'),
+  address_line: BASIC('addressAr'),
+  city: BASIC('city'),
+  governorate: BASIC('governorate'),
+  building_no: BASIC('buildingNo'),
   phone: BASIC('mobile'),
   work_email: BASIC('workEmail'),
   personal_email: BASIC('personalEmail'),
@@ -357,6 +401,9 @@ const WHERE: Record<string, Where> = {
   job_title_ar: EMPLOYMENT('jobTitle'),
   job_title_en: EMPLOYMENT('jobTitle'),
   job_duties: EMPLOYMENT('jobTitle'), // the employment's job title, whose duties are written under Organization
+  // set on the job title itself, under Organization › Departments & Job Titles
+  occupation_code: DEPARTMENTS('occupationCode'),
+  occupation_name: DEPARTMENTS('occupationCode'),
   department: EMPLOYMENT('team'),
   department_ar: EMPLOYMENT('team'),
   department_en: EMPLOYMENT('team'),
@@ -431,6 +478,8 @@ const WHERE: Record<string, Where> = {
   commercial_reg_no: COMPANY('commercialRegNo'),
   tax_reg_no: COMPANY('taxRegNo'),
   insurance_employer_no: COMPANY('insuranceEmployerNo'),
+  insurance_office: COMPANY('insuranceOffice'),
+  insurance_sector_code: COMPANY('insuranceSectorCode'),
   company_rep_name: COMPANY('repName'),
   company_rep_title: COMPANY('repTitle'),
   company_rep_name_en: COMPANY('repNameEn'),

@@ -130,6 +130,11 @@ class PdfFieldDto implements PdfField {
   @IsOptional()
   @IsBoolean({ message: SHAPE })
   arabicDigits?: boolean;
+
+  /** text and boxes: left blank when the value is missing, rather than stopping the document (owner, 15 October 2026). */
+  @IsOptional()
+  @IsBoolean({ message: SHAPE })
+  optional?: boolean;
 }
 
 /** All the fields of a PDF template, saved together ([] clears them), or sent for a sample. */

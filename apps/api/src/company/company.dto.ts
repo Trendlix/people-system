@@ -30,6 +30,17 @@ export class UpdateCompanyDto {
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(30)
   insuranceEmployerNo?: string | null;
 
+  /** The social insurance office the company is registered with (مكتب التأمينات), as Forms 1 and 6 print it (owner, 15 October 2026). */
+  @TrimOrNull() @IsOptional() @IsString() @MaxLength(120, { message: 'Keep the insurance office to 120 characters or fewer.' })
+  insuranceOffice?: string | null;
+
+  /** The sector code the insurance office gave the company (قطاع المنشأة): one or two digits, printed as stored. */
+  @LatinDigits()
+  @TrimOrNull()
+  @IsOptional()
+  @Matches(/^\d{1,2}$/, { message: 'Enter the sector code as 1 or 2 digits, as the insurance office gave it.' })
+  insuranceSectorCode?: string | null;
+
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(300)
   addressAr?: string | null;
 

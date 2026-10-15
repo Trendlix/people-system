@@ -1,5 +1,5 @@
 import { PDF_FIELDS_MAX, type PdfField, type PdfPageSize } from '@trendlix/shared';
-import { pdfFieldsProblem, pdfFieldTags, plainPdfFields } from './pdf-fields.js';
+import { pdfFieldsProblem, pdfFieldTags, pdfOptionalTags, plainPdfFields } from './pdf-fields.js';
 
 // The fields placed on a PDF template, checked before they are saved (owner's decision, 15 October 2026): each problem
 // named by the field's tag (else its kind) and page.
@@ -91,6 +91,39 @@ describe('pdfFieldsProblem', () => {
   });
 });
 
+// A field left blank when its value is missing (owner, 15 October 2026): a text field or boxes only.
+describe('optional fields', () => {
+  const check = (f: Partial<PdfField> = {}): PdfField => ({ id: 'c', kind: 'check', tag: null, page: 1, x: 10, y: 10, width: 20, height: 20, fontSize: 12, ...f });
+  const fixed = (f: Partial<PdfField> = {}): PdfField => ({ id: 'f', kind: 'fixed', tag: null, text: 'مكتب الدقي', page: 1, x: 10, y: 40, width: 200, height: 16, fontSize: 12, ...f });
+
+  it('takes optional on a text field and on boxes, on or off', () => {
+    expect(problem(text({ tag: 'building_no', optional: true }), boxes({ optional: false }))).toBeNull();
+    // off is no different from not set, whatever the kind
+    expect(problem(check({ optional: false }), fixed({ optional: false }))).toBeNull();
+  });
+
+  it('refuses it on a check box and on fixed text, and anything but on or off', () => {
+    expect(problem(check({ optional: true }))).toBe("A check box on page 1 can't be optional: only a text field or boxes are left blank when their value is missing.");
+    expect(problem(fixed({ optional: true }))).toBe("A fixed text on page 1 can't be optional: only a text field or boxes are left blank when their value is missing.");
+    expect(problem(text({ optional: 'yes' as unknown as boolean }))).toBe('The text field for "Full name (Arabic)" on page 1: optional is on or off.');
+  });
+
+  it('a tag only optional fields print may be left blank; one any other field prints may not', () => {
+    const fields: PdfField[] = [
+      text({ id: 'a', tag: 'building_no', optional: true }),
+      boxes({ id: 'b', tag: 'national_id', optional: true }),
+      boxes({ id: 'c', tag: 'national_id', y: 500 }), // the same tag printed again, not optional
+      text({ id: 'd', tag: 'personal_email', optional: true, page: 2 }),
+      check({ id: 'e', tag: 'gender', equals: 'ذكر' }),
+      text({ id: 'f', tag: 'full_name_ar' }),
+    ];
+    expect(pdfOptionalTags(fields)).toEqual(['building_no', 'personal_email']);
+    // a check box that depends on a tag needs its value: the tag isn't optional even when its text field is
+    expect(pdfOptionalTags([text({ tag: 'employment_type_ar', optional: true }), check({ tag: 'employment_type_ar', equals: 'دوام كامل' })])).toEqual([]);
+    expect(pdfOptionalTags([])).toEqual([]);
+  });
+});
+
 describe('pdfFieldTags', () => {
   it('lists the tags printed, each once, down the pages: by page, then from the top, then from the left', () => {
     const fields: PdfField[] = [
@@ -114,5 +147,11 @@ describe('plainPdfFields', () => {
     expect(plain).toEqual({ id: 'nid', kind: 'boxes', tag: 'national_id', page: 1, x: 200, y: 280, width: 280, height: 20, fontSize: 12, boxes: 14, groups: [7, 7], nudges: [{ dx: 1, dy: 2 }] });
     expect(Object.getPrototypeOf(plain)).toBe(Object.prototype);
     expect(plainPdfFields([{ ...text(), tag: undefined as unknown as null }])[0].tag).toBeNull();
+  });
+
+  it('keeps whether a field is optional', () => {
+    expect(plainPdfFields([text({ optional: true })])[0]).toEqual({ ...text(), optional: true });
+    expect(plainPdfFields([boxes({ optional: false })])[0].optional).toBe(false);
+    expect(plainPdfFields([text()])[0]).not.toHaveProperty('optional');
   });
 });

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { occupationName } from '@trendlix/shared';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import { assertDeletes } from '../../auth/roles.js';
 import type { SessionUser } from '../../auth/session-user.js';
@@ -16,6 +17,14 @@ const DEPARTMENT = { select: { id: true, nameEn: true, nameAr: true, parent: { s
 /** The job description fields saved as HTML (owner's request, 15 October 2026). */
 const JD_FIELDS = ['jdPurpose', 'jdDuties', 'jdRequirements'] as const;
 
+/**
+ * A job title as the API sends it: with its occupation's name in the social insurance table beside its code (owner, 15
+ * October 2026), read from the table (occupations.ts), never stored.
+ */
+function withOccupation<T extends { occupationCode: string | null }>(job: T): T & { occupationName: string | null } {
+  return { ...job, occupationName: occupationName(job.occupationCode) };
+}
+
 /** An end of a job title's range of grades; null when open. */
 type RangeEnd = { code: string; rank: number } | null;
 
@@ -26,12 +35,13 @@ export class JobTitlesService {
     private readonly audit: AuditService,
   ) {}
 
-  list(departmentId?: string) {
-    return this.prisma.jobTitle.findMany({
+  async list(departmentId?: string) {
+    const rows = await this.prisma.jobTitle.findMany({
       where: departmentId ? { departmentId } : undefined,
       orderBy: [{ department: { nameEn: 'asc' } }, { titleEn: 'asc' }],
       include: { department: DEPARTMENT, ...RANGE, _count: { select: { duties: true } } },
     });
+    return rows.map(withOccupation);
   }
 
   async get(id: string) {
@@ -40,7 +50,7 @@ export class JobTitlesService {
       include: { department: DEPARTMENT, ...RANGE, duties: { orderBy: { position: 'asc' } } },
     });
     if (!job) throw new NotFoundException('Job title not found.');
-    return job;
+    return withOccupation(job);
   }
 
   async create(dto: CreateJobTitleDto, userId: string) {
@@ -59,11 +69,12 @@ export class JobTitlesService {
         titleAr: dto.titleAr ?? null,
         minGradeId: dto.minGradeId ?? null,
         maxGradeId: dto.maxGradeId ?? null,
+        occupationCode: dto.occupationCode ?? null,
         ...jd,
         duties: { create: duties.map((duty, i) => ({ duty, position: i + 1 })) },
       },
     });
-    const { departmentId, titleEn, titleAr, minGradeId, maxGradeId } = dto;
+    const { departmentId, titleEn, titleAr, minGradeId, maxGradeId, occupationCode } = dto;
     // the job description's HTML is long: only which of its fields were filled in, and the duty rows
     const filled = Object.fromEntries(JD_FIELDS.filter((f) => jd[f] !== null).map((f) => [f, 'changed']));
     await this.audit.record({
@@ -71,7 +82,7 @@ export class JobTitlesService {
       action: 'create',
       entityType: ENTITY,
       entityId: job.id,
-      diff: { departmentId, titleEn, titleAr, minGradeId, maxGradeId, ...filled, duties },
+      diff: { departmentId, titleEn, titleAr, minGradeId, maxGradeId, occupationCode, ...filled, duties },
     });
     return this.get(job.id);
   }
@@ -123,6 +134,7 @@ export class JobTitlesService {
           titleAr: dto.titleAr,
           minGradeId: dto.minGradeId,
           maxGradeId: dto.maxGradeId,
+          occupationCode: dto.occupationCode,
           ...sent,
           jdVersion: jdChanged ? { increment: 1 } : undefined,
         },

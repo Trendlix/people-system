@@ -68,6 +68,8 @@ const OFFER_FIELDS: Record<string, string> = {
   job_title_ar: 'jobTitleId',
   job_title_en: 'jobTitleId',
   job_duties: 'jobTitleId', // the selected role, whose duties are written under Organization
+  occupation_code: 'jobTitleId', // the selected role's social insurance occupation, set under Organization
+  occupation_name: 'jobTitleId',
   department: 'departmentId',
   department_ar: 'departmentId',
   department_en: 'departmentId',
@@ -127,14 +129,15 @@ const OFFER_FIELDS: Record<string, string> = {
 };
 
 /**
- * Where an offer's empty value is filled in: the company's details in Company, as for an employee's documents; anything
- * else on the offer (`{ tab: 'offer', key: <the offer's field> }`), or `{ tab: 'offer', key: 'template' }` for a value an
- * offer never has (a national ID, an address, bank details …): the template prints something that belongs on a
- * document for an employee, so it is the template that needs changing.
+ * Where an offer's empty value is filled in: the company's details in Company, as for an employee's documents, and the
+ * selected job title's social insurance occupation on the job title (`departments`; the job title itself on the offer
+ * while it has none: `hasJobTitle` false); anything else on the offer (`{ tab: 'offer', key: <the offer's field> }`), or
+ * `{ tab: 'offer', key: 'template' }` for a value an offer never has (a national ID, an address, bank details …): the
+ * template prints something that belongs on a document for an employee, so it is the template that needs changing.
  */
-export function offerMissing(missing: readonly MissingTag[], overrides: Readonly<Record<string, string>> = {}): MissingTag[] {
+export function offerMissing(missing: readonly MissingTag[], overrides: Readonly<Record<string, string>> = {}, hasJobTitle = true): MissingTag[] {
   return missing.map((m) => {
-    if (m.where.tab === 'company') return m;
+    if (m.where.tab === 'company' || (m.where.tab === 'departments' && hasJobTitle)) return m;
     const where: Where = { tab: 'offer', key: OFFER_FIELDS[sourceTag(m.tag, overrides)] ?? 'template' };
     return { ...m, where };
   });

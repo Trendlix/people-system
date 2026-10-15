@@ -26,6 +26,8 @@ describe("a preview's values", () => {
     expect(p.values).toEqual({ full_name_en: 'Omar Khaled', job_title: '[Job title]', letter_to: '[Addressed to]' });
     expect([p.filled, p.total]).toEqual([1, 3]);
     expect(p.shown).toEqual([]);
+    // the tags printed as their label, for a PDF form's optional fields to print blank instead
+    expect(p.placeholders).toEqual(['job_title', 'letter_to']);
   });
 
   it('masks restricted data the caller may not see, empty or not, and counts it all the same', () => {
@@ -35,6 +37,8 @@ describe("a preview's values", () => {
     expect(hidden.values).toEqual({ national_id: MASK, gross_salary: MASK, iban: MASK, full_name_en: 'Omar' });
     expect([hidden.filled, hidden.total]).toEqual([3, 4]);
     expect(hidden.shown).toEqual([]);
+    // masked, empty or not: never left blank, which would say it is empty
+    expect(hidden.placeholders).toEqual([]);
 
     const seen = previewValues(tags, values, new Set(['iban']), undefined, ALL);
     expect(seen.values).toEqual({ national_id: '29503121234567', gross_salary: '20,000', iban: '[IBAN]', full_name_en: 'Omar' });

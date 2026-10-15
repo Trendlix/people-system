@@ -441,16 +441,18 @@ export class OffersService {
    * The newest draft of the employment type's job offer template while it has no published version: what a draft
    * offer is previewed with meanwhile. Null once one is published, or with no draft either.
    */
-  private async previewTemplate(employmentType: string): Promise<{ id: string; version: number; language: string; tags: string[] } | null> {
+  private async previewTemplate(
+    employmentType: string,
+  ): Promise<{ id: string; version: number; language: string; tags: string[]; pdfFields: Prisma.JsonValue | null } | null> {
     const slot = offerSlot(employmentType);
     const versions = await this.prisma.templateVersion.findMany({
       where: { slotKey: slot.copyOf ?? slot.key, status: { in: ['draft', 'published'] } },
-      select: { id: true, version: true, status: true, language: true, tags: true },
+      select: { id: true, version: true, status: true, language: true, tags: true, pdfFields: true },
       orderBy: { version: 'desc' },
     });
     if (versions.some((v) => v.status === 'published')) return null;
     const draft = versions[0];
-    return draft ? { id: draft.id, version: draft.version, language: draft.language, tags: draft.tags } : null;
+    return draft ? { id: draft.id, version: draft.version, language: draft.language, tags: draft.tags, pdfFields: draft.pdfFields } : null;
   }
 
   /**
@@ -459,7 +461,7 @@ export class OffersService {
    */
   private async fillFromDraft(
     o: OfferRow,
-    template: { id: string; language: string; tags: string[] },
+    template: { id: string; language: string; tags: string[]; pdfFields: Prisma.JsonValue | null },
   ): Promise<{ data: Buffer; fileName: string; restricted: string[] }> {
     const slot = offerSlot(o.employmentType);
     const { values, missing } = await this.documents.check(o, slot, template, todayInCairo());

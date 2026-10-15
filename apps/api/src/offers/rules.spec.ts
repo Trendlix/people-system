@@ -44,6 +44,30 @@ describe('job offer rules', () => {
     ]);
   });
 
+  it('the job title’s social insurance occupation is set on the job title; the address in its parts is never on an offer', () => {
+    const occupation = { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'departments', key: 'occupationCode' } } as const;
+    const missing = [
+      occupation,
+      { tag: 'occupation_name', label: 'Occupation (social insurance)', where: { tab: 'departments', key: 'occupationCode' } },
+      { tag: 'building_no', label: 'Building number', where: { tab: 'basic', key: 'buildingNo' } },
+      { tag: 'address_line', label: 'Street address (Arabic)', where: { tab: 'basic', key: 'addressAr' } },
+      { tag: 'city', label: 'City or district (Arabic)', where: { tab: 'basic', key: 'city' } },
+      { tag: 'governorate', label: 'Governorate (Arabic)', where: { tab: 'basic', key: 'governorate' } },
+      { tag: 'insurance_office', label: 'Social insurance office', where: { tab: 'company', key: 'insuranceOffice' } },
+    ] satisfies Parameters<typeof offerMissing>[0];
+    expect(offerMissing(missing).map((m) => m.where)).toEqual([
+      { tab: 'departments', key: 'occupationCode' },
+      { tab: 'departments', key: 'occupationCode' },
+      { tab: 'offer', key: 'template' },
+      { tab: 'offer', key: 'template' },
+      { tab: 'offer', key: 'template' },
+      { tab: 'offer', key: 'template' },
+      { tab: 'company', key: 'insuranceOffice' },
+    ]);
+    // an offer with no job title chosen yet: the job title first
+    expect(offerMissing([occupation], {}, false)[0].where).toEqual({ tab: 'offer', key: 'jobTitleId' });
+  });
+
   it("the fields added on 15 October 2026 are filled in on the offer's own fields", () => {
     const fields = {
       personal_email: 'email',

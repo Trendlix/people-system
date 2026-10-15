@@ -229,3 +229,6 @@ export * from './offers.js';
 
 // PDF templates: an official form uploaded as a PDF, with its fields placed on it
 export * from './pdf-fields.js';
+
+// the social insurance occupation codes a job title carries (Form 1's كود المهنة)
+export * from './occupations.js';

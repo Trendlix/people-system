@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { pdfFieldsProblem } from './pdf-fields.js';
+import { pdfFieldsProblem, pdfOptionalTags } from './pdf-fields.js';
 import { STARTER_LAYOUTS, starterLayoutFor, type StarterLayout } from './starter-layouts.js';
 
 // Starter layouts (owner's decision, 15 October 2026): the fields of a known form, placed when that form (the same
@@ -32,6 +32,8 @@ describe('starterLayoutFor', () => {
     expect(STARTER_LAYOUTS.map((l) => l.slotKey)).toEqual(['insurance_form_1', 'insurance_form_6']);
     for (const l of STARTER_LAYOUTS) {
       expect(pdfFieldsProblem(l.fields, l.pages)).toBeNull();
+      // only the building number and the personal email are left blank when missing; every other tag still stops a document
+      expect(pdfOptionalTags(l.fields).sort()).toEqual(['building_no', 'personal_email']);
       expect(l.sha256.every((s) => /^[0-9a-f]{64}$/.test(s))).toBe(true);
     }
     expect(starterLayoutFor('insurance_form_1', OTHER, STARTER_LAYOUTS[0].pages)).toBe(STARTER_LAYOUTS[0]);

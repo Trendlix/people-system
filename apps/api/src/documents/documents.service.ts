@@ -19,8 +19,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { isPdf } from '../pdf/pdf-file.js';
 import { DOCX_MIME } from '../templates/docx-tags.js';
 import type { CheckDocumentDto, GenerateDocumentDto } from './documents.dto.js';
-import type { TagValue } from './engine/index.js';
-import { filledFileName, FILLED_FROM, fillVersion } from './fill-version.js';
+import { isBlankValue, type TagValue } from './engine/index.js';
+import { filledFileName, FILLED_FROM, fillVersion, requiredTags } from './fill-version.js';
 import { documentStem } from './format.js';
 import { ENDING_SLOTS, isContractSlot, offered, offeredSlots, SECTION_KEYS, sectionOf, SLOTS, TYPED_TAGS, type SectionKey, type Situation } from './offer.js';
 import { previewValues } from './preview.js';
@@ -42,7 +42,7 @@ const EMPLOYMENT = {
   joinDate: true,
   endDate: true,
   // its duties for {{job_duties}} (owner's request, 15 October 2026)
-  jobTitle: { select: { titleEn: true, titleAr: true, jdDuties: true } },
+  jobTitle: { select: { titleEn: true, titleAr: true, jdDuties: true, occupationCode: true } },
   department: { select: { nameEn: true, nameAr: true } },
   // the grade's level, the manager, the shift and the work arrangement for their tags (owner's request, 15 October 2026)
   grade: { select: { code: true, levelEn: true, levelAr: true } },
@@ -61,8 +61,8 @@ const EMPLOYMENT = {
 type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
 type ContractRow = EmploymentRow['contracts'][number];
 
-/** The published version a document is filled in from. */
-const PUBLISHED = { id: true, version: true, language: true, tags: true, format: true } satisfies Prisma.TemplateVersionSelect;
+/** The published version a document is filled in from; a PDF form's fields say which tags may be left blank. */
+const PUBLISHED = { id: true, version: true, language: true, tags: true, format: true, pdfFields: true } satisfies Prisma.TemplateVersionSelect;
 
 /** Whose versions a slot stands on: its own, or its source's for a copy (as the template library). */
 const fileSlot = (slot: TemplateSlot) => slot.copyOf ?? slot.key;
@@ -423,8 +423,8 @@ export class DocumentsService {
   /**
    * A template version (a draft too) filled in with one employee's data, to preview it (owner's request, 15 October
    * 2026): from what generation reads, whether or not the Contracts tab offers the document to them. Nothing is refused
-   * and nothing saved: a tag with no value prints as its label in square brackets, a restricted value the caller may
-   * not see as •••• (preview.ts). Without the version's file (`data`), only how many of its tags have a value. The
+   * and nothing saved: a tag with no value prints as its label in square brackets (a PDF form's optional field, blank,
+   * as on the document), a restricted value the caller may not see as •••• (preview.ts). Without the version's file (`data`), only how many of its tags have a value. The
    * restricted values printed (`shown`) are for the caller to write to the audit log once the file is handed over.
    */
   async previewFill(
@@ -443,11 +443,12 @@ export class DocumentsService {
     const offers = employment ? SECTION_KEYS.flatMap((k) => offeredSlots(situation(employment))[k]).filter((k) => !isContractSlot(k)) : [];
     const through = offers.includes(slot.key) ? slot.key : (offers[0] ?? slot.key);
     const ctx: Context = { ...(await this.context(employeeId, through, undefined)), slot };
-    const { values, missing } = this.fill(ctx, template, todayInCairo(), {});
-    // nothing is typed for a preview
-    const empty = new Set([...missing.map((m) => m.tag), ...TYPED_TAGS]);
+    const { values } = this.fill(ctx, template, todayInCairo(), {});
+    // every tag with no value, those optional fields print too; nothing is typed for a preview
+    const empty = new Set([...template.tags.filter((tag) => isBlankValue(values[tag])), ...TYPED_TAGS]);
     const preview = previewValues(template.tags, values, empty, slot.overrides, { identity: seesIdentity(user), salary: seesSalary(user), bank: seesBank(user) });
-    const data = template.data ? await fillVersion({ ...template, format: template.format ?? 'docx', data: template.data }, preview.values) : null;
+    // a PDF form's optional fields with no value print blank, as on the document
+    const data = template.data ? await fillVersion({ ...template, format: template.format ?? 'docx', data: template.data }, preview.values, new Set(preview.placeholders)) : null;
     return { employee: ctx.employee, filled: preview.filled, total: preview.total, shown: data ? preview.shown : [], data };
   }
 
@@ -505,6 +506,7 @@ export class DocumentsService {
           addressAr: true,
           city: true,
           governorate: true,
+          buildingNo: true,
           mobile: true,
           workEmail: true,
           personalEmail: true,
@@ -534,8 +536,8 @@ export class DocumentsService {
     };
   }
 
-  /** The slot's published version: its tags, language and format, and its file (a PDF's fields too) when it is to be filled in. */
-  private published(slot: TemplateSlot): Promise<{ id: string; version: number; language: string; tags: string[]; format: string } | null>;
+  /** The slot's published version: its tags, language, format and (a PDF) fields, and its file when it is to be filled in. */
+  private published(slot: TemplateSlot): Promise<{ id: string; version: number; language: string; tags: string[]; format: string; pdfFields: Prisma.JsonValue | null } | null>;
   private published(
     slot: TemplateSlot,
     withFile: true,
@@ -547,11 +549,19 @@ export class DocumentsService {
     });
   }
 
-  /** The values of the tags the template prints, and those of them still empty. */
-  private fill(ctx: Context, template: { language: string; tags: string[] }, documentDate: string, inputs: Record<string, string>): { values: Record<string, TagValue>; missing: MissingTag[] } {
+  /**
+   * The values of the tags the template prints, and those of them still empty that stop the document: on a PDF form,
+   * not those only optional fields print (owner, 15 October 2026), which are left blank.
+   */
+  private fill(
+    ctx: Context,
+    template: { language: string; tags: string[]; pdfFields?: Prisma.JsonValue | null },
+    documentDate: string,
+    inputs: Record<string, string>,
+  ): { values: Record<string, TagValue>; missing: MissingTag[] } {
     const sources: ValueSources = { ...ctx.sources, language: template.language as TemplateLanguage, documentDate, inputs };
     const values = resolveValues(sources, template.tags, ctx.slot.overrides);
-    return { values, missing: missingTags(values, template.tags, ctx.slot.overrides, ctx.contract !== null) };
+    return { values, missing: missingTags(values, requiredTags(template), ctx.slot.overrides, ctx.contract !== null) };
   }
 
   /** The restricted tags a document of this slot prints, from its template version's tags. */

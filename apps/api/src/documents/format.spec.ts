@@ -1,4 +1,4 @@
-import { documentStem, inLanguage, printedAddress, printedDate, printedMoney, printedMonth, printedPhone } from './format.js';
+import { documentStem, inLanguage, printedAddress, printedAddressLine, printedDate, printedGovernorate, printedMoney, printedMonth, printedPhone } from './format.js';
 
 describe('how values are printed', () => {
   it('dates as DD/MM/YYYY, the ID card’s issue date as MM/YYYY', () => {
@@ -32,6 +32,15 @@ describe('how values are printed', () => {
     expect(printedAddress('ش البحر', 'الاسكندرية', 'Alexandria')).toBe('ش البحر، الاسكندرية');
     expect(printedAddress('ش البحر', null, null)).toBe('ش البحر');
     expect(printedAddress(null, 'مدينة نصر', 'Cairo')).toBe('');
+  });
+
+  it('the address in its parts for the social insurance forms: the address alone, the governorate in Arabic', () => {
+    expect(printedAddressLine('15 شارع عباس العقاد، ')).toBe('15 شارع عباس العقاد');
+    expect(printedAddressLine(null)).toBe('');
+    expect(printedGovernorate('Cairo')).toBe('القاهرة');
+    expect(printedGovernorate('Kafr El Sheikh')).toBe('كفر الشيخ');
+    expect(printedGovernorate(' Somewhere ')).toBe('Somewhere');
+    expect(printedGovernorate(null)).toBe('');
   });
 
   it('a name in the template’s language, falling back to the other', () => {

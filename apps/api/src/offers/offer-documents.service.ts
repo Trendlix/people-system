@@ -1,7 +1,8 @@
 import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import type { TemplateLanguage, TemplateSlot } from '@trendlix/shared';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
-import { filledFileName, FILLED_FROM, fillVersion } from '../documents/fill-version.js';
+import { isBlankValue } from '../documents/engine/index.js';
+import { filledFileName, FILLED_FROM, fillVersion, requiredTags } from '../documents/fill-version.js';
 import { documentStem } from '../documents/format.js';
 import { TYPED_TAGS } from '../documents/offer.js';
 import { previewValues } from '../documents/preview.js';
@@ -15,8 +16,8 @@ import { offerPay, type OfferContext, type OfferRow } from './views.js';
 /** The message of the 422 when the template prints values the offer doesn't have. */
 export const FILL_IN = 'Fill in the missing details first.';
 
-/** The published version an offer is filled in from. */
-const PUBLISHED = { id: true, version: true, language: true, tags: true, format: true } satisfies Prisma.TemplateVersionSelect;
+/** The published version an offer is filled in from; a PDF form's fields say which tags may be left blank. */
+const PUBLISHED = { id: true, version: true, language: true, tags: true, format: true, pdfFields: true } satisfies Prisma.TemplateVersionSelect;
 
 /** A filled job offer: the .docx (or, from a PDF form, the PDF), its name, and the version it was filled in from. */
 export interface FilledOffer {
@@ -30,17 +31,18 @@ export interface FilledOffer {
 
 /**
  * A ValueSources for an offer, as if the candidate were an employee with a draft contract made from it: the candidate's
- * name, mobile and email (as the personal email; a former employee's code); the position as the employment, with the
- * selected role's duties (`jdDuties`, its job title's, as saved: owner's request, 15 October 2026), the manager, the
- * shift and the work arrangement; the terms as contract version 1, numbered with the offer's number, starting on the
- * join date; the offer's number and last day; the company's details.
+ * name, mobile and email (as the personal email; a former employee's code); no address; the position as the
+ * employment, with the selected role's duties (`role.jdDuties`, its job title's, as saved: owner's request, 15 October
+ * 2026) and its social insurance occupation (`role.occupationCode`, owner, 15 October 2026), the manager, the shift and
+ * the work arrangement; the terms as contract version 1, numbered with the offer's number, starting on the join date;
+ * the offer's number and last day; the company's details.
  */
 export function offerSources(
   o: OfferRow,
   company: ValueSources['company'],
   language: TemplateLanguage,
   documentDate: string,
-  jdDuties: string | null = null,
+  role: { jdDuties: string | null; occupationCode: string | null } | null = null,
 ): ValueSources {
   const joinDate = fromDateOnly(o.joinDate);
   const { endDate, probationEnd } = termDates(joinDate, o.durationMonths, o.probationMonths);
@@ -57,6 +59,7 @@ export function offerSources(
       addressAr: null,
       city: null,
       governorate: null,
+      buildingNo: null,
       mobile: o.mobile,
       workEmail: null,
       personalEmail: o.email,
@@ -68,7 +71,7 @@ export function offerSources(
     employment: {
       employmentType: o.employmentType,
       joinDate: o.joinDate,
-      jobTitle: o.jobTitle && { titleEn: o.jobTitle.titleEn, titleAr: o.jobTitle.titleAr, jdDuties },
+      jobTitle: o.jobTitle && { titleEn: o.jobTitle.titleEn, titleAr: o.jobTitle.titleAr, jdDuties: role?.jdDuties ?? null, occupationCode: role?.occupationCode ?? null },
       department: o.department && { nameEn: o.department.nameEn, nameAr: o.department.nameAr },
       grade: o.grade && { code: o.grade.code, levelEn: o.grade.levelEn, levelAr: o.grade.levelAr },
       manager: o.manager && { fullNameEn: o.manager.fullNameEn, fullNameAr: o.manager.fullNameAr },
@@ -158,7 +161,7 @@ export class OfferDocumentsService {
    * A given template version (a draft too) filled in with the offer's values, as fill() works them out, for the
    * template library's preview (owner's request, 15 October 2026: "Job offer preview should call data from the offer
    * tab, even if not published yet"): nothing refused and nothing saved. An empty value prints as its label in square
-   * brackets, a restricted one the caller may not see (`may`) as ••••; read through `slot`'s overrides. Without the
+   * brackets (in a PDF form's optional field, blank), a restricted one the caller may not see (`may`) as ••••; read through `slot`'s overrides. Without the
    * file, only how many of its tags have a value; `shown`: the restricted tags printed with their value, for the audit log.
    */
   async previewFill(
@@ -167,11 +170,12 @@ export class OfferDocumentsService {
     template: { language: string; tags: string[]; data?: Uint8Array; format?: string; pdfFields?: Prisma.JsonValue | null },
     may: Readonly<Record<RestrictedRight, boolean>>,
   ): Promise<{ filled: number; total: number; shown: string[]; data: Buffer | null }> {
-    const { values, missing } = await this.check(o, slot, template, todayInCairo());
-    // nothing is typed for a preview
-    const empty = new Set([...missing.map((m) => m.tag), ...TYPED_TAGS]);
+    const { values } = await this.check(o, slot, template, todayInCairo());
+    // every tag with no value, those optional fields print too; nothing is typed for a preview
+    const empty = new Set([...template.tags.filter((tag) => isBlankValue(values[tag])), ...TYPED_TAGS]);
     const preview = previewValues(template.tags, values, empty, slot.overrides, may);
-    const data = template.data ? await fillVersion({ ...template, format: template.format ?? 'docx', data: template.data }, preview.values) : null;
+    // a PDF form's optional fields with no value print blank, as on the document
+    const data = template.data ? await fillVersion({ ...template, format: template.format ?? 'docx', data: template.data }, preview.values, new Set(preview.placeholders)) : null;
     return { filled: preview.filled, total: preview.total, shown: data ? preview.shown : [], data };
   }
 
@@ -201,20 +205,21 @@ export class OfferDocumentsService {
 
   /**
    * The values of the tags `template` prints for the offer on `documentDate`, and those still empty with where to fill
-   * each in. Also how OffersService previews a draft offer with a draft of its template while none is published.
+   * each in (on a PDF form, not those only optional fields print: owner, 15 October 2026). Also how OffersService
+   * previews a draft offer with a draft of its template while none is published.
    */
-  async check(o: OfferRow, slot: TemplateSlot, template: { language: string; tags: string[] }, documentDate: string) {
+  async check(o: OfferRow, slot: TemplateSlot, template: { language: string; tags: string[]; pdfFields?: Prisma.JsonValue | null }, documentDate: string) {
     const [company, role] = await Promise.all([
       this.prisma.company.findUnique({ where: { id: 1 } }),
-      // the selected role's duties, read here rather than with every offer (the offer's view doesn't show them)
-      o.jobTitleId ? this.prisma.jobTitle.findUnique({ where: { id: o.jobTitleId }, select: { jdDuties: true } }) : null,
+      // the selected role's duties and occupation, read here rather than with every offer (the offer's view doesn't show them)
+      o.jobTitleId ? this.prisma.jobTitle.findUnique({ where: { id: o.jobTitleId }, select: { jdDuties: true, occupationCode: true } }) : null,
     ]);
-    const sources = offerSources(o, company, template.language as TemplateLanguage, documentDate, role?.jdDuties ?? null);
+    const sources = offerSources(o, company, template.language as TemplateLanguage, documentDate, role);
     const values = resolveValues(sources, template.tags, slot.overrides);
-    return { values, missing: offerMissing(missingTags(values, template.tags, slot.overrides, true), slot.overrides) };
+    return { values, missing: offerMissing(missingTags(values, requiredTags(template), slot.overrides, true), slot.overrides, o.jobTitleId !== null) };
   }
 
-  private published(slot: TemplateSlot): Promise<{ id: string; version: number; language: string; tags: string[]; format: string } | null>;
+  private published(slot: TemplateSlot): Promise<{ id: string; version: number; language: string; tags: string[]; format: string; pdfFields: Prisma.JsonValue | null } | null>;
   private published(
     slot: TemplateSlot,
     withFile: true,

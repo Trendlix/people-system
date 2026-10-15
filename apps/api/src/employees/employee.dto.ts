@@ -59,6 +59,9 @@ const IsPhone = (what: string) =>
 const Digits = () => Transform(({ value }) => (typeof value === 'string' ? value.replace(/[\s-]/g, '') || null : value));
 const INSURANCE_NO = /^\d{6,14}$/;
 const INSURANCE_NO_MESSAGE = 'Enter the social insurance number as digits only (6 to 14 of them).';
+// a building number as written on the address: digits and letters (12, 12أ, 7B), with spaces, dashes or slashes (12/3)
+const BUILDING_NO = /^(?=.*[\p{L}\p{N}])[\p{L}\p{N} /-]+$/u;
+const BUILDING_NO_MESSAGE = 'Enter the building number as letters and digits, e.g. 12, 12أ or 12/3.';
 const CODE = /^EMP-\d{4,6}$/;
 const CODE_MESSAGE = 'Employee code: EMP- and 4 digits, e.g. EMP-0142. Leave it empty to number automatically.';
 
@@ -113,6 +116,14 @@ class EmployeeDetailsDto {
 
   @TrimOrNull() @IsOptional() @IsIn(GOVERNORATES, { message: 'Choose a governorate from the list.' })
   governorate?: string | null;
+
+  /** The address's building number (عقار رقم), which social insurance Forms 1 and 6 print on its own (owner, 15 October 2026). */
+  @LatinDigits()
+  @TrimOrNull()
+  @IsOptional()
+  @MaxLength(10, { message: 'Keep the building number to 10 characters or fewer.' })
+  @Matches(BUILDING_NO, { message: BUILDING_NO_MESSAGE })
+  buildingNo?: string | null;
 
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(150)
   emergencyName?: string | null;

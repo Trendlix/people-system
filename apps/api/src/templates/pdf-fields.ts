@@ -83,6 +83,13 @@ function fieldProblem(f: PdfField, pages: readonly PdfPageSize[]): string | null
   if ([f.bold, f.shrinkToFit, f.arabicDigits].some((flag) => flag !== undefined && typeof flag !== 'boolean')) {
     return `${name}: bold, shrink to fit and Arabic digits are each on or off.`;
   }
+  // a field left blank when its value is missing (owner, 15 October 2026): only one that prints a value
+  if (f.optional !== undefined && f.optional !== null) {
+    if (typeof f.optional !== 'boolean') return `${name}: optional is on or off.`;
+    if (f.optional && f.kind !== 'text' && f.kind !== 'boxes') {
+      return `${name} can't be optional: only a text field or boxes are left blank when their value is missing.`;
+    }
+  }
   if (f.kind === 'boxes') {
     if (!Number.isInteger(f.boxes) || f.boxes! < 1 || f.boxes! > PDF_BOXES_MAX) return `${name} must cover 1 to ${PDF_BOXES_MAX} boxes.`;
     const boxes = f.boxes!;
@@ -128,11 +135,22 @@ export function pdfFieldTags(fields: readonly PdfField[]): string[] {
   return [...new Set(ordered.map((f) => f.tag))];
 }
 
+/**
+ * The tags only optional fields print (owner, 15 October 2026): every text or boxes field printing them is marked
+ * optional, and no check box depends on them. A document is made without their value, those fields left blank; a tag
+ * that any other field prints still stops it while it has no value.
+ */
+export function pdfOptionalTags(fields: readonly PdfField[]): string[] {
+  const optional = (f: PdfField) => f.optional === true && (f.kind === 'text' || f.kind === 'boxes');
+  const required = new Set(fields.filter((f) => f.kind !== 'fixed' && isString(f.tag) && !optional(f)).map((f) => f.tag));
+  return pdfFieldTags(fields).filter((tag) => !required.has(tag));
+}
+
 /** The fields as plain objects with only what a field has (what a request sends is a DTO instance), to keep as JSON. */
 export function plainPdfFields(fields: readonly PdfField[]): PdfField[] {
   return fields.map((f) => {
     const plain: PdfField = { id: f.id, kind: f.kind, tag: f.tag ?? null, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height, fontSize: f.fontSize };
-    const optional = ['text', 'equals', 'bold', 'align', 'shrinkToFit', 'boxes', 'groups', 'groupGap', 'boxGap', 'boxAlign', 'dateOrder', 'amountPart', 'arabicDigits'] as const;
+    const optional = ['text', 'equals', 'bold', 'align', 'shrinkToFit', 'boxes', 'groups', 'groupGap', 'boxGap', 'boxAlign', 'dateOrder', 'amountPart', 'arabicDigits', 'optional'] as const;
     for (const key of optional) if (f[key] !== undefined && f[key] !== null) Object.assign(plain, { [key]: Array.isArray(f[key]) ? [...(f[key] as number[])] : f[key] });
     if (f.nudges) plain.nudges = f.nudges.map((n) => ({ dx: n.dx, dy: n.dy }));
     return plain;

@@ -73,6 +73,10 @@ model Company {
   commercialRegNo     String?   @map("commercial_reg_no") // السجل التجاري
   taxRegNo            String?   @map("tax_reg_no")
   insuranceEmployerNo String?   @map("insurance_employer_no") // رقم المنشأة في التأمينات
+  // social insurance Forms 1 and 6 (owner, 15 October 2026): the office (مكتب التأمينات), up to 120 characters, and the
+  // sector code (قطاع المنشأة), one or two digits as the office gave it; both checked by the database too
+  insuranceOffice     String?   @map("insurance_office")
+  insuranceSectorCode String?   @map("insurance_sector_code")
   addressAr           String?   @map("address_ar") // as printed on contracts
   addressEn           String?   @map("address_en")
   city                String?
@@ -154,6 +158,9 @@ model JobTitle {
   jdDuties       String?        @map("jd_duties") // HTML; the duty rows are its list items and paragraphs
   jdRequirements String?        @map("jd_requirements") // HTML
   jdVersion      Int            @default(1) @map("jd_version")
+  // its occupation in the social insurance table (packages/shared occupations.ts), printed on Form 1 as كود المهنة
+  // (owner, 15 October 2026): six digits, checked by the database too; the name is the table's, never stored
+  occupationCode String?        @map("occupation_code") @db.Char(6)
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
   duties         JobTitleDuty[]
@@ -248,6 +255,7 @@ model Employee {
   addressAr         String?                @map("address_ar")
   city              String? // the city or district, in Arabic as on the ID card (e.g. مدينة نصر)
   governorate       String?
+  buildingNo        String?                @map("building_no") // the address's building number (عقار رقم) on social insurance Forms 1 and 6, up to 10 characters (owner, 15 October 2026)
   emergencyName     String?                @map("emergency_name")
   emergencyRelation String?                @map("emergency_relation")
   emergencyMobile   String?                @map("emergency_mobile")

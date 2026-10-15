@@ -149,6 +149,11 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'nationality', group: 'employee', labelEn: 'Nationality', labelAr: 'الجنسية', source: 'Profile' },
   { tag: 'date_of_birth', group: 'employee', labelEn: 'Date of birth', labelAr: 'تاريخ الميلاد', source: 'Profile', note: 'DD/MM/YYYY' },
   { tag: 'address', group: 'employee', labelEn: 'Address (Arabic)', labelAr: 'المقيم في / العنوان', source: 'Profile: address, city and governorate' },
+  // social insurance Forms 1 and 6 (owner, 15 October 2026): the address in its parts, and the building number
+  { tag: 'address_line', group: 'employee', labelEn: 'Street address (Arabic)', labelAr: 'شارع / حارة', source: 'Profile: the address, without the city and governorate' },
+  { tag: 'city', group: 'employee', labelEn: 'City or district (Arabic)', labelAr: 'قسم / مركز', source: 'Profile' },
+  { tag: 'governorate', group: 'employee', labelEn: 'Governorate (Arabic)', labelAr: 'محافظة', source: 'Profile' },
+  { tag: 'building_no', group: 'employee', labelEn: 'Building number', labelAr: 'عقار رقم', source: 'Profile: address' },
   { tag: 'phone', group: 'employee', labelEn: 'Mobile', labelAr: 'تليفون', source: 'Profile', note: 'As dialled in Egypt (010…) for an Egyptian number' },
   { tag: 'work_email', group: 'employee', labelEn: 'Work email', labelAr: 'البريد الإلكتروني للعمل', source: 'Profile' },
   // the owner's request of 15 October 2026, "add the missing fields": this one and, further down, the direct manager,
@@ -164,6 +169,9 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'job_title', group: 'job_contract', labelEn: 'Job title', labelAr: 'الوظيفة', source: 'Employment: in the template’s language' },
   { tag: 'job_title_ar', group: 'job_contract', labelEn: 'Job title (Arabic)', labelAr: 'الوظيفة بالعربي', source: 'Employment' },
   { tag: 'job_title_en', group: 'job_contract', labelEn: 'Job title (English)', labelAr: 'الوظيفة بالإنجليزية', source: 'Employment' },
+  // the occupation in the social insurance table (occupations.ts) the job title carries (owner, 15 October 2026)
+  { tag: 'occupation_code', group: 'job_contract', labelEn: 'Occupation code (social insurance)', labelAr: 'كود المهنة', source: 'Job title: its occupation in the social insurance table', note: '6 digits' },
+  { tag: 'occupation_name', group: 'job_contract', labelEn: 'Occupation (social insurance)', labelAr: 'المسمى (المهنة)', source: 'Job title: its occupation in the social insurance table' },
   // the selected role's duties on its job offer (owner's request, 15 October 2026: "map each job description to the
   // selected role"; then "we can just add the duties and responsibilities section")
   {
@@ -285,6 +293,8 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'commercial_reg_no', group: 'company', labelEn: 'Commercial register number', labelAr: 'السجل التجاري', source: 'Company profile' },
   { tag: 'tax_reg_no', group: 'company', labelEn: 'Tax registration number', labelAr: 'رقم التسجيل الضريبي', source: 'Company profile' },
   { tag: 'insurance_employer_no', group: 'company', labelEn: 'Employer insurance number', labelAr: 'رقم المنشأة في التأمينات', source: 'Company profile' },
+  { tag: 'insurance_office', group: 'company', labelEn: 'Social insurance office', labelAr: 'مكتب التأمينات', source: 'Company profile' },
+  { tag: 'insurance_sector_code', group: 'company', labelEn: 'Sector code (social insurance)', labelAr: 'قطاع المنشأة', source: 'Company profile', note: 'As the insurance office gave it' },
   { tag: 'company_rep_name', group: 'company', labelEn: 'Company representative (Arabic)', labelAr: 'ممثل الشركة', source: 'Company profile' },
   { tag: 'company_rep_name_en', group: 'company', labelEn: 'Company representative (English)', labelAr: 'ممثل الشركة بالإنجليزية', source: 'Company profile' },
   { tag: 'company_rep_title', group: 'company', labelEn: 'Representative’s title (Arabic)', labelAr: 'صفة ممثل الشركة', source: 'Company profile' },

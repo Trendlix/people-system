@@ -72,17 +72,24 @@ const comparable = (s: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+/** The address as typed on the profile, alone (without its city and governorate): its trailing commas dropped. */
+export const printedAddressLine = (addressAr: string | null): string => addressAr?.trim().replace(/[،,\s]+$/, '') ?? '';
+
+/** The governorate in Arabic (it is kept in English, from the list): القاهرة for Cairo; one not on the list as kept. */
+export const printedGovernorate = (governorate: string | null): string =>
+  governorate ? (GOVERNORATES_AR[governorate as Governorate] ?? governorate.trim()) : '';
+
 /**
  * The address as printed: the Arabic address, then the city and the governorate (in Arabic), joined with Arabic commas
  * ("15 شارع عباس العقاد، مدينة نصر، القاهرة"). A part the address already says is not repeated, nor a city that is the
  * governorate's name. Empty without the Arabic address itself: a city alone is no address.
  */
 export function printedAddress(addressAr: string | null, city: string | null, governorate: string | null): string {
-  const address = addressAr?.trim().replace(/[،,\s]+$/, '');
+  const address = printedAddressLine(addressAr);
   if (!address) return '';
   const parts = [address];
   const said = () => comparable(parts.join(' '));
-  const governorateAr = governorate ? (GOVERNORATES_AR[governorate as Governorate] ?? governorate) : null;
+  const governorateAr = printedGovernorate(governorate) || null;
   for (const part of [city?.trim(), governorateAr]) {
     if (part && !said().includes(comparable(part))) parts.push(part);
   }
