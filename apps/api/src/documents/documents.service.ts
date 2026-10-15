@@ -22,6 +22,7 @@ import type { CheckDocumentDto, GenerateDocumentDto } from './documents.dto.js';
 import { fillTemplate, type TagValue } from './engine/index.js';
 import { documentStem } from './format.js';
 import { ENDING_SLOTS, isContractSlot, offered, offeredSlots, SECTION_KEYS, sectionOf, SLOTS, TYPED_TAGS, type SectionKey, type Situation } from './offer.js';
+import { previewValues } from './preview.js';
 import { missingTags, resolveValues, restrictedTags, rightFor, sourceTag, type MissingTag, type RestrictedRight, type ValueSources } from './values.js';
 import { DOCUMENT, documentView, type DocumentRow, type DocumentStatus } from './views.js';
 
@@ -388,6 +389,37 @@ export class DocumentsService {
       entityId: id,
       diff: { employeeId: row.employeeId, slot: row.slotKey, status: row.status, fileName: row.fileName, signedFileName: row.signedFileName },
     });
+  }
+
+  /**
+   * A template version (a draft too) filled in with one employee's data, to preview it (owner's request, 15 October
+   * 2026): from what generation reads, whether or not the Contracts tab offers the document to them. Nothing is refused
+   * and nothing saved: a tag with no value prints as its label in square brackets, a restricted value the caller may
+   * not see as •••• (preview.ts). Without the version's file (`data`), only how many of its tags have a value. The
+   * restricted values printed (`shown`) are for the caller to write to the audit log once the file is handed over.
+   */
+  async previewFill(
+    employeeId: string,
+    slotKey: string,
+    template: { language: string; tags: string[]; data?: Uint8Array },
+    user: SessionUser,
+  ): Promise<{ employee: { id: string; employeeCode: string; fullNameEn: string }; filled: number; total: number; shown: string[]; data: Buffer | null }> {
+    const slot = SLOTS.get(slotKey);
+    if (!slot) throw new NotFoundException('Template not found.');
+    // context() refuses a document the tab doesn't offer them (a resignation request before any ending) and a contract
+    // copy without its version. What it reads doesn't depend on the document but for the contract, which here is the one
+    // other documents print (the signed one, else the newest draft); so it is read through the document itself when the
+    // tab offers it, else through one the tab does, and the document's own slot (its overrides) is put back.
+    const employment = await this.employmentOf(employeeId);
+    const offers = employment ? SECTION_KEYS.flatMap((k) => offeredSlots(situation(employment))[k]).filter((k) => !isContractSlot(k)) : [];
+    const through = offers.includes(slot.key) ? slot.key : (offers[0] ?? slot.key);
+    const ctx: Context = { ...(await this.context(employeeId, through, undefined)), slot };
+    const { values, missing } = this.fill(ctx, template, todayInCairo(), {});
+    // nothing is typed for a preview
+    const empty = new Set([...missing.map((m) => m.tag), ...TYPED_TAGS]);
+    const preview = previewValues(template.tags, values, empty, slot.overrides, { identity: seesIdentity(user), salary: seesSalary(user), bank: seesBank(user) });
+    const data = template.data ? fillTemplate(Buffer.from(template.data), preview.values) : null;
+    return { employee: ctx.employee, filled: preview.filled, total: preview.total, shown: data ? preview.shown : [], data };
   }
 
   // ---------- helpers ----------
