@@ -106,11 +106,14 @@ export interface ValueSources {
     nameEn: string;
     nameAr: string | null;
     addressAr: string | null;
+    addressEn: string | null;
     commercialRegNo: string | null;
     taxRegNo: string | null;
     insuranceEmployerNo: string | null;
     repName: string | null;
     repTitle: string | null;
+    repNameEn: string | null;
+    repTitleEn: string | null;
     repNationalId: string | null;
   } | null;
   /** YYYY-MM-DD: {{date}}, {{contract_date}} and {{day_name}}. */
@@ -300,11 +303,14 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     company_name_ar: () => text(co?.nameAr),
     company_name_en: () => text(co?.nameEn),
     company_address_ar: () => text(co?.addressAr),
+    company_address_en: () => text(co?.addressEn),
     commercial_reg_no: () => text(co?.commercialRegNo),
     tax_reg_no: () => text(co?.taxRegNo),
     insurance_employer_no: () => text(co?.insuranceEmployerNo),
     company_rep_name: () => text(co?.repName),
     company_rep_title: () => text(co?.repTitle),
+    company_rep_name_en: () => text(co?.repNameEn),
+    company_rep_title_en: () => text(co?.repTitleEn),
     company_rep_national_id: () => text(co?.repNationalId),
 
     day_name: () => arabicWeekday(src.documentDate),
@@ -430,11 +436,14 @@ const WHERE: Record<string, Where> = {
   company_name_ar: COMPANY('nameAr'),
   company_name_en: COMPANY('nameEn'),
   company_address_ar: COMPANY('addressAr'),
+  company_address_en: COMPANY('addressEn'),
   commercial_reg_no: COMPANY('commercialRegNo'),
   tax_reg_no: COMPANY('taxRegNo'),
   insurance_employer_no: COMPANY('insuranceEmployerNo'),
   company_rep_name: COMPANY('repName'),
   company_rep_title: COMPANY('repTitle'),
+  company_rep_name_en: COMPANY('repNameEn'),
+  company_rep_title_en: COMPANY('repTitleEn'),
   company_rep_national_id: COMPANY('repNationalId'),
 };
 

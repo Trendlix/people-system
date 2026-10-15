@@ -350,3 +350,32 @@ describe('amounts in English words', () => {
     expect(values.total_salary_words_en).toBe('Sixteen thousand Egyptian pounds only');
   });
 });
+
+describe("the company's address and representative", () => {
+  it('print in Arabic and in English, each from its own field of the company profile', async () => {
+    const { resolveValues, missingTags } = await import('./values.js');
+    const sources = {
+      language: 'bilingual',
+      employee: { employeeCode: 'EMP-1', fullNameEn: 'A', fullNameAr: 'أ' },
+      identity: null,
+      bank: null,
+      employment: null,
+      contract: null,
+      ending: null,
+      company: { nameEn: 'TrendLIX', nameAr: 'تريندلكس', addressAr: 'القاهرة', addressEn: '5 Street, Nasr City, Cairo', repName: 'حازم مجدي', repTitle: 'المدير التنفيذي', repNameEn: 'Hazem Magdy', repTitleEn: 'Chief Executive Officer' },
+      documentDate: '2026-10-15',
+      inputs: {},
+    } as unknown as Parameters<typeof resolveValues>[0];
+    const values = resolveValues(sources, ['company_address_ar', 'company_address_en', 'company_rep_name', 'company_rep_name_en', 'company_rep_title', 'company_rep_title_en']);
+    expect(values).toEqual({
+      company_address_ar: 'القاهرة',
+      company_address_en: '5 Street, Nasr City, Cairo',
+      company_rep_name: 'حازم مجدي',
+      company_rep_name_en: 'Hazem Magdy',
+      company_rep_title: 'المدير التنفيذي',
+      company_rep_title_en: 'Chief Executive Officer',
+    });
+    const empty = resolveValues({ ...sources, company: { ...sources.company!, addressEn: null } }, ['company_address_en']);
+    expect(missingTags(empty, ['company_address_en'])).toEqual([{ tag: 'company_address_en', label: 'Company address (English)', where: { tab: 'company', key: 'addressEn' } }]);
+  });
+});

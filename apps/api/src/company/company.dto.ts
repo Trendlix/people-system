@@ -67,6 +67,13 @@ export class UpdateCompanyDto {
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(100)
   repTitle?: string | null;
 
+  /** The representative's name and title in English, for bilingual documents. */
+  @TrimOrNull() @IsOptional() @IsString() @MaxLength(150)
+  repNameEn?: string | null;
+
+  @TrimOrNull() @IsOptional() @IsString() @MaxLength(100)
+  repTitleEn?: string | null;
+
   @LatinDigits()
   @TrimOrNull()
   @IsOptional()

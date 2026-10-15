@@ -91,9 +91,11 @@ describe('Company profile (e2e)', () => {
     const res = await api()
       .patch('/api/company')
       .set('Cookie', hr)
-      .send({ repName: 'أحمد محمد', repNationalId: arabicDigits }) // Arabic digits are accepted
+      .send({ repName: 'أحمد محمد', repNameEn: 'Ahmed Mohamed', repTitleEn: 'Managing Director', repNationalId: arabicDigits }) // Arabic digits are accepted
       .expect(200);
     expect(res.body.repNationalIdMasked).toBe(`•••••••••• ${nationalId.slice(-4)}`);
+    // the name and title in English too, for bilingual documents
+    expect(res.body).toMatchObject({ repName: 'أحمد محمد', repNameEn: 'Ahmed Mohamed', repTitleEn: 'Managing Director' });
     expect(JSON.stringify(res.body)).not.toContain(nationalId);
 
     const row = await prisma.company.findUniqueOrThrow({ where: { id: 1 } });

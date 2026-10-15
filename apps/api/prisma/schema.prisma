@@ -80,8 +80,10 @@ model Company {
   email               String?
   website             String?
   emailDomain         String?   @map("email_domain") // the domain every work email must use, e.g. trendlix.com
-  repName             String?   @map("rep_name") // company representative who signs documents
-  repTitle            String?   @map("rep_title")
+  repName             String?   @map("rep_name") // company representative who signs documents, in Arabic
+  repTitle            String?   @map("rep_title") // in Arabic
+  repNameEn           String?   @map("rep_name_en") // the same in English (owner, 15 October 2026: bilingual documents)
+  repTitleEn          String?   @map("rep_title_en")
   repNationalId       String?   @map("rep_national_id") @db.Char(14) // RESTRICTED: never returned in full
   logo                Bytes?
   logoMimeType        String?   @map("logo_mime_type")
