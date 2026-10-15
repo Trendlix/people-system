@@ -1,4 +1,4 @@
-import { TEMPLATE_TAGS } from '@trendlix/shared';
+import { offerSlotKey, TEMPLATE_TAGS, type TemplateSlot } from '@trendlix/shared';
 import { rightFor, sourceTag, type RestrictedRight } from './values.js';
 
 // Previewing a template version with a real employee's data (owner's request, 15 October 2026: "When previewing a
@@ -7,6 +7,13 @@ import { rightFor, sourceTag, type RestrictedRight } from './values.js';
 // title]"), so the gap shows where it falls on the page; a restricted value (national ID, salary, bank account) the
 // caller may not see prints as ••••, whether there is one or not. Pure: DocumentsService.previewFill resolves the values
 // and says which are empty.
+
+/**
+ * Whether a slot is an employment type's job offer template (offerSlotKey): previewed with a job offer's data rather
+ * than an employee's (owner's request, 15 October 2026: "Job offer preview should call data from the offer tab, even if
+ * not published yet").
+ */
+export const isOfferSlot = (slot: Pick<TemplateSlot, 'key' | 'appliesTo'>): boolean => slot.appliesTo.some((t) => offerSlotKey(t) === slot.key);
 
 /** What a restricted value the caller may not see prints as. */
 export const MASK = '••••';

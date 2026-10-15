@@ -1,4 +1,4 @@
-import { arabicAmountInWords, arabicDuration, arabicWeekday } from './index.js';
+import { arabicAmountInWords, arabicDayName, arabicDuration, arabicMonths, arabicWeekday } from './index.js';
 
 describe('amounts in Arabic words', () => {
   it('words a net salary as the Ministry of Finance printout does (جنيهاً with its tanween)', () => {
@@ -103,6 +103,23 @@ describe('durations in Arabic', () => {
   });
 });
 
+describe('months in Arabic, always in months (a probation period)', () => {
+  it.each([
+    [1, 'شهر واحد'],
+    [2, 'شهران'],
+    [3, 'ثلاثة أشهر'],
+    [6, 'ستة أشهر'],
+    [12, 'اثنا عشر شهراً'],
+    [24, 'أربعة و عشرون شهراً'],
+  ])('%d months → %s', (months, words) => {
+    expect(arabicMonths(months)).toBe(words);
+  });
+
+  it('refuses what is not a whole number of months, none included (no probation is worded by its tag)', () => {
+    for (const months of [0, -1, 1.5, NaN]) expect(() => arabicMonths(months)).toThrow(RangeError);
+  });
+});
+
 describe('weekdays in Arabic', () => {
   it.each([
     ['2026-10-11', 'الأحد'],
@@ -117,6 +134,11 @@ describe('weekdays in Arabic', () => {
     ['2026-12-31', 'الخميس'],
   ])('%s → %s', (date, day) => {
     expect(arabicWeekday(date)).toBe(day);
+  });
+
+  it('names a day of the week as a shift keeps it, 0 = Sunday … 6 = Saturday', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map(arabicDayName)).toEqual(['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']);
+    for (const day of [-1, 7, 1.5, NaN]) expect(() => arabicDayName(day)).toThrow(RangeError);
   });
 
   it('reads the calendar date, whatever the time zone', () => {

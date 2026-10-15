@@ -43,7 +43,11 @@ const EMPLOYMENT = {
   // its duties for {{job_duties}} (owner's request, 15 October 2026)
   jobTitle: { select: { titleEn: true, titleAr: true, jdDuties: true } },
   department: { select: { nameEn: true, nameAr: true } },
-  grade: { select: { code: true } },
+  // the grade's level, the manager, the shift and the work arrangement for their tags (owner's request, 15 October 2026)
+  grade: { select: { code: true, levelEn: true, levelAr: true } },
+  manager: { select: { fullNameEn: true, fullNameAr: true } },
+  shift: { select: { startTime: true, endTime: true, workingDays: true } },
+  workArrangement: true,
   contracts: { orderBy: { version: 'desc' }, include: { allowances: { select: { nameEn: true, nameAr: true, amount: true }, orderBy: ALLOWANCE_ORDER } } },
   endings: {
     where: { status: { in: LIVE_ENDINGS } },
@@ -478,6 +482,7 @@ export class DocumentsService {
           governorate: true,
           mobile: true,
           workEmail: true,
+          personalEmail: true,
           qualificationAr: true,
           insuranceNo: true,
           identity: { select: { nationalId: true, printedNo: true, issueDate: true } },

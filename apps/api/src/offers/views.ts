@@ -18,9 +18,11 @@ export const OFFER_INCLUDE = {
   employee: PERSON,
   department: { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
   jobTitle: { select: { id: true, titleEn: true, titleAr: true } },
-  grade: { select: { id: true, code: true, levelEn: true } },
-  manager: PERSON,
-  shift: { select: { id: true, code: true, workingDays: true } },
+  // the grade's Arabic level, the manager's Arabic name and the shift's times are for the document's tags (owner's
+  // request, 15 October 2026)
+  grade: { select: { id: true, code: true, levelEn: true, levelAr: true } },
+  manager: { select: { id: true, employeeCode: true, fullNameEn: true, fullNameAr: true } },
+  shift: { select: { id: true, code: true, workingDays: true, startTime: true, endTime: true } },
   allowances: { orderBy: ALLOWANCE_ORDER },
   templateVersion: { select: { version: true, tags: true } },
   sentBy: { select: { email: true } },
@@ -39,6 +41,11 @@ export interface OfferContext {
   seesSalary: boolean;
   /** The employment type's job offer template, as the template library has it now. */
   template: { slotKey: string; name: string; status: 'published' | 'draft' | 'missing'; version: number | null };
+  /**
+   * While the template has no published version, the newest draft's: a draft offer is previewed with it meanwhile (its
+   * document only: sending needs a published one). Shown as `template.previewVersion`.
+   */
+  previewVersion: number | null;
   /** A draft's: what its template prints that the offer has no value for; [] otherwise. */
   missing: MissingTag[];
   /** Whether the stored document has its PDF. */
@@ -80,7 +87,7 @@ export function offerView(o: OfferRow, ctx: OfferContext) {
     jobTitle: o.jobTitle,
     grade: o.grade,
     manager: o.manager,
-    shift: o.shift,
+    shift: o.shift && { id: o.shift.id, code: o.shift.code, workingDays: o.shift.workingDays },
     workArrangement: o.workArrangement,
     officeDays: [...o.officeDays].sort((a, b) => a - b),
     joinDate: fromDateOnly(o.joinDate),
@@ -101,7 +108,7 @@ export function offerView(o: OfferRow, ctx: OfferContext) {
     expiresOn: fromDateOnly(o.expiresOn),
     message: o.message,
     note: o.note,
-    template: ctx.template,
+    template: { ...ctx.template, previewVersion: ctx.previewVersion },
     missing: ctx.missing,
     document: o.fileName ? { fileName: o.fileName, hasPdf: ctx.hasPdf, documentDate: fromDateOnly(o.documentDate) } : null,
     sentVia: o.sentVia,

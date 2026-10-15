@@ -44,6 +44,31 @@ describe('job offer rules', () => {
     ]);
   });
 
+  it("the fields added on 15 October 2026 are filled in on the offer's own fields", () => {
+    const fields = {
+      personal_email: 'email',
+      manager_name: 'managerId',
+      manager_name_ar: 'managerId',
+      manager_name_en: 'managerId',
+      shift: 'shiftId',
+      shift_ar: 'shiftId',
+      shift_en: 'shiftId',
+      work_arrangement: 'workArrangement',
+      work_arrangement_ar: 'workArrangement',
+      work_arrangement_en: 'workArrangement',
+      probation_months: 'probationMonths',
+      probation_months_ar: 'probationMonths',
+      probation_months_en: 'probationMonths',
+      grade_level: 'gradeId',
+      grade_level_ar: 'gradeId',
+      grade_level_en: 'gradeId',
+      net_hourly_rate: 'netSalary',
+      basic_percent: 'basicPercent',
+    };
+    const missing = offerMissing(Object.keys(fields).map((tag) => ({ tag, label: tag, where: { tab: 'basic', key: tag } })));
+    expect(Object.fromEntries(missing.map((m) => [m.tag, m.where]))).toEqual(Object.fromEntries(Object.entries(fields).map(([tag, key]) => [tag, { tab: 'offer', key }])));
+  });
+
   it("the link's origin is the web app's address alone", () => {
     expect(isWebOrigin('https://people.example.com')).toBe(true);
     expect(isWebOrigin('https://people.example.com/')).toBe(true);

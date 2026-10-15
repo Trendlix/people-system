@@ -11,8 +11,10 @@ import { createApp, createUser, signIn } from './helpers.js';
 
 // A template version previewed with a real employee's data (owner's request, 15 October 2026: "When previewing a
 // template, fetch any demo data already uploaded"): the people to preview with, best first, and the version (a draft
-// too) filled in for one of them, nothing saved. Other test files' employees may be in the database as well, so the
-// lists are read for this file's people (their names end in RUN).
+// too) filled in for one of them, nothing saved. A job offer template is previewed with job offers instead ("Job offer
+// preview should call data from the offer tab, even if not published yet"), or the people while there is no offer of
+// its employment type. Other test files' employees may be in the database as well, so the lists are read for this
+// file's people and offers (their names end in RUN).
 
 const RUN = Date.now().toString(36);
 const DIGITS = String((Date.now() + 7) % 10_000_000).padStart(7, '0');
@@ -20,6 +22,7 @@ const NATIONAL_ID = `2950312${DIGITS}`; // born 12 March 1995
 const IBAN = 'EG380019000500000000263180002';
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const NO_ONE = 'There is no one to preview this template with yet: add an employee first.';
+const NO_OFFER = 'There is nothing to preview this template with yet: draft a job offer first.';
 const MASK = '••••';
 const LABEL = new Map(TEMPLATE_TAGS.map((t) => [t.tag, t.labelEn]));
 
@@ -42,8 +45,11 @@ function textOf(file: Buffer): string {
 const fileNameOf = (disposition: string) => decodeURIComponent(/filename\*=UTF-8''([^;]+)/.exec(disposition)?.[1] ?? '');
 
 interface Person {
+  kind: 'employee' | 'offer';
   id: string;
-  employeeCode: string;
+  employeeCode?: string;
+  number?: string;
+  status?: string;
   fullNameEn: string;
   employmentType: string | null;
   filled: number;
@@ -72,6 +78,11 @@ describe('Template preview with data (e2e)', () => {
   let letter: { id: string; version: number };
   let contractV: { id: string; version: number };
   let resignation: { id: string; version: number };
+  // job offers: full-time ones, the oldest with less filled in, and an allowance kind for them
+  let housingId: string;
+  let sparse: { id: string; number: string };
+  let amira: { id: string; number: string };
+  let celine: { id: string; number: string };
   const api = () => request(app.getHttpServer());
 
   const people = async (versionId: string, session = hr): Promise<Person[]> =>
@@ -108,6 +119,16 @@ describe('Template preview with data (e2e)', () => {
   async function contract(e: { id: string }, employmentId: string, body: object, signed: boolean) {
     const res = await api().post(`/api/employees/${e.id}/employments/${employmentId}/contracts`).set('Cookie', hr).send(body).expect(201);
     if (signed) await api().post(`/api/contracts/${res.body.id}/sign`).set('Cookie', hr).send({ signedOn: '2026-01-15' }).expect(200);
+  }
+
+  async function offer(name: string, extra: object = {}) {
+    const email = `${name.toLowerCase().replace(/\s+/g, '.')}.${RUN}@mail.test`;
+    const res = await api()
+      .post('/api/offers')
+      .set('Cookie', hr)
+      .send({ fullNameEn: `${name} ${RUN}`, fullNameAr: 'عمر خالد محمود', email, employmentType: 'full_time', joinDate: '2026-12-01', grossSalary: 20000, ...extra })
+      .expect(201);
+    return { id: res.body.id as string, number: res.body.number as string };
   }
 
   beforeAll(async () => {
@@ -151,9 +172,18 @@ describe('Template preview with data (e2e)', () => {
     adam = await person('Adam Minimal');
     await hire(adam, 'full_time');
     dina = await person('Dina Never Employed');
+
+    // job offers, newest last: one without a mobile or a job title, then two with everything (the same filled in)
+    housingId = (await prisma.allowanceType.create({ data: { nameEn: `Housing ${RUN}`, nameAr: 'بدل سكن', taxable: true, insured: true } })).id;
+    const complete = { mobile: '+201012345678', jobTitleId, gradeId, shiftId, allowances: [{ allowanceTypeId: housingId, amount: 1500 }] };
+    sparse = await offer('Bilal Sparse');
+    amira = await offer('Amira Complete', complete);
+    celine = await offer('Celine Complete', complete);
   });
 
   afterAll(async () => {
+    await prisma.jobOffer.deleteMany({ where: { id: { in: [sparse, amira, celine].filter(Boolean).map((o) => o.id) } } });
+    if (housingId) await prisma.allowanceType.deleteMany({ where: { id: housingId } }).catch(() => undefined);
     await app.close();
   });
 
@@ -178,9 +208,9 @@ describe('Template preview with data (e2e)', () => {
     const list = await people(letter.id);
     // the letter prints 8 tags (one twice); the typed one and the ending's never have a value here
     expect(mine(list)).toEqual([
-      { id: aaron.id, employeeCode: aaron.code, fullNameEn: `Aaron Complete ${RUN}`, employmentType: 'full_time', filled: 6, total: 8 },
-      { id: abla.id, employeeCode: abla.code, fullNameEn: `Abla Part ${RUN}`, employmentType: 'part_time', filled: 4, total: 8 },
-      { id: adam.id, employeeCode: adam.code, fullNameEn: `Adam Minimal ${RUN}`, employmentType: 'full_time', filled: 2, total: 8 },
+      { kind: 'employee', id: aaron.id, employeeCode: aaron.code, fullNameEn: `Aaron Complete ${RUN}`, employmentType: 'full_time', filled: 6, total: 8 },
+      { kind: 'employee', id: abla.id, employeeCode: abla.code, fullNameEn: `Abla Part ${RUN}`, employmentType: 'part_time', filled: 4, total: 8 },
+      { kind: 'employee', id: adam.id, employeeCode: adam.code, fullNameEn: `Adam Minimal ${RUN}`, employmentType: 'full_time', filled: 2, total: 8 },
     ]);
     expect(list.some((x) => x.id === dina.id)).toBe(false);
     expect(list.length).toBeLessThanOrEqual(50);
@@ -287,6 +317,134 @@ describe('Template preview with data (e2e)', () => {
     } finally {
       convert.mockRestore();
     }
+  });
+
+  describe('a job offer template', () => {
+    // the full-time offer template, a draft: what the offer has, and a bank detail an offer never has
+    let offerV: { id: string; version: number };
+    const OFFER_BODY =
+      p(r('{{full_name_en}} — {{full_name_ar}} — {{job_title}}')) +
+      p(r('Gross {{gross_salary}}; allowances {{allowances_en}}; total {{total_salary}}')) +
+      p(r('Mobile {{phone}}; IBAN {{iban}}; {{offer_number}}'));
+    const mineOffers = (list: Person[]) => mine(list).filter((x) => x.kind === 'offer');
+
+    beforeAll(async () => {
+      offerV = await draft('offer_full_time', docx({ body: OFFER_BODY }), 'en');
+    });
+
+    it('lists the offers of its employment type, newest first among those with as many filled in', async () => {
+      const list = await people(offerV.id);
+      expect(list.length).toBeGreaterThan(0);
+      expect(list.every((x) => x.kind === 'offer' && x.employmentType === 'full_time')).toBe(true);
+      const offer = (o: { id: string; number: string }, name: string, filled: number) => ({
+        kind: 'offer',
+        id: o.id,
+        number: o.number,
+        fullNameEn: `${name} ${RUN}`,
+        employmentType: 'full_time',
+        status: 'draft',
+        filled,
+        total: 9,
+      });
+      // 9 tags; an offer never has the IBAN, and the first lacks the mobile and the job title too
+      expect(mineOffers(list)).toEqual([offer(celine, 'Celine Complete', 8), offer(amira, 'Amira Complete', 8), offer(sparse, 'Bilal Sparse', 6)]);
+      expect(list.length).toBeLessThanOrEqual(50);
+      for (let i = 1; i < list.length; i++) expect(list[i - 1].filled).toBeGreaterThanOrEqual(list[i].filled);
+      // the salary is counted whoever asks, but never sent
+      expect(mineOffers(await people(offerV.id, admin))).toEqual(mineOffers(list));
+    });
+
+    it("fills the draft in with the offer's data: the names, the job title, the salary and the allowances (and logs the view)", async () => {
+      const res = await preview(offerV.id, { offerId: amira.id, format: 'docx' }).expect(200);
+      expect(res.headers['content-type']).toBe(DOCX);
+      expect(res.headers['x-preview-offer']).toBe(amira.id);
+      expect(res.headers['x-preview-employee']).toBeUndefined();
+      expect(fileNameOf(res.headers['content-disposition'])).toBe(`Job offer · Full-time v${offerV.version} - preview - ${amira.number} - Amira Complete ${RUN}.docx`);
+      expect(textOf(res.body as Buffer).split('\n')).toEqual([
+        `Amira Complete ${RUN} — عمر خالد محمود — Account Manager`,
+        `Gross 20,000; allowances Housing ${RUN}: 1,500; total 21,500`,
+        `Mobile 01012345678; IBAN [IBAN]; ${amira.number}`,
+      ]);
+      const views = await viewsOf(offerV.id);
+      expect(views).toHaveLength(1);
+      expect(views[0].diff).toEqual({
+        offerId: amira.id,
+        slot: 'offer_full_time',
+        version: offerV.version,
+        fields: ['gross_salary', 'allowances_en', 'total_salary'],
+        seen: 'preview',
+      });
+      // nothing is saved on the offer
+      expect(await prisma.jobOffer.findUniqueOrThrow({ where: { id: amira.id }, select: { status: true, fileName: true, templateVersionId: true } })).toEqual({
+        status: 'draft',
+        fileName: null,
+        templateVersionId: null,
+      });
+
+      // the one with less: its gaps as labels
+      const little = textOf((await preview(offerV.id, { offerId: sparse.id, format: 'docx' }).expect(200)).body as Buffer);
+      expect(little).toContain(`Bilal Sparse ${RUN} — عمر خالد محمود — [Job title]`);
+      expect(little).toContain(`Mobile [Mobile]; IBAN [IBAN]; ${sparse.number}`);
+    });
+
+    it('masks the salary for a role that may not see it (an Admin), and shows it to the CEO', async () => {
+      const before = (await viewsOf(offerV.id)).length;
+      const masked = textOf((await preview(offerV.id, { offerId: amira.id, format: 'docx' }, admin).expect(200)).body as Buffer);
+      expect(masked.split('\n')).toEqual([
+        `Amira Complete ${RUN} — عمر خالد محمود — Account Manager`,
+        `Gross ${MASK}; allowances ${MASK}; total ${MASK}`,
+        `Mobile 01012345678; IBAN ${MASK}; ${amira.number}`,
+      ]);
+      expect(masked).not.toContain('20,000');
+      expect((await viewsOf(offerV.id)).filter((v) => v.userId === adminId)).toEqual([]);
+
+      const shown = textOf((await preview(offerV.id, { offerId: amira.id, format: 'docx' }, ceo).expect(200)).body as Buffer);
+      expect(shown).toContain('Gross 20,000; allowances');
+      expect(await viewsOf(offerV.id)).toHaveLength(before + 1);
+    });
+
+    it('previews with the best offer unless one is chosen; an employee may still be chosen', async () => {
+      const [best] = await people(offerV.id);
+      const res = await preview(offerV.id, { format: 'docx' }).expect(200);
+      expect(res.headers['x-preview-offer']).toBe(best.id);
+      const asEmployee = await preview(offerV.id, { employeeId: aaron.id, format: 'docx' }).expect(200);
+      expect(asEmployee.headers['x-preview-employee']).toBe(aaron.id);
+      expect(textOf(asEmployee.body as Buffer)).toContain(`Aaron Complete ${RUN} — عمر خالد محمود — Account Manager`);
+    });
+
+    it('with no offer of its employment type: the people, as for any other template', async () => {
+      expect(await prisma.jobOffer.count({ where: { employmentType: 'part_time' } }), 'no part-time offer is left by other test files').toBe(0);
+      const partTime = await draft('offer_part_time', docx({ body: p(r('{{full_name_en}} — {{job_title}}')) }), 'en');
+      const list = await people(partTime.id);
+      expect(list.every((x) => x.kind === 'employee' && x.employmentType === 'part_time')).toBe(true);
+      expect(mine(list).map((x) => [x.kind, x.id, x.filled, x.total])).toEqual([['employee', abla.id, 2, 2]]);
+      const res = await preview(partTime.id, { format: 'docx' }).expect(200);
+      expect(res.headers['x-preview-employee']).toBe(list[0].id);
+
+      // nobody of the type at all: nothing to preview with
+      const SLOT_OF: Partial<Record<EmploymentType, string>> = { internship: 'offer_internship', freelance: 'offer_freelance', sales: 'offer_sales' };
+      let slot: string | undefined;
+      for (const [type, key] of Object.entries(SLOT_OF)) {
+        const t = type as EmploymentType;
+        if ((await prisma.employment.count({ where: { employmentType: t } })) === 0 && (await prisma.jobOffer.count({ where: { employmentType: t } })) === 0) {
+          slot = key;
+          break;
+        }
+      }
+      expect(slot, 'every employment type has someone or an offer in the test database').toBeDefined();
+      const empty = await draft(slot!, docx({ body: p(r('{{full_name_en}}')) }), 'en');
+      expect(await people(empty.id)).toEqual([]);
+      expect((await preview(empty.id, { format: 'docx' }).expect(409)).body.toString()).toContain(NO_OFFER);
+    });
+
+    it('the offer checked: for a job offer template only, not with an employee as well, and it must exist', async () => {
+      const unknown = '00000000-0000-4000-8000-000000000000';
+      expect((await preview(letter.id, { offerId: amira.id, format: 'docx' }).expect(400)).body.toString()).toContain('only a job offer template takes a job offer');
+      expect((await preview(offerV.id, { offerId: amira.id, employeeId: aaron.id, format: 'docx' }).expect(400)).body.toString()).toContain('not both');
+      expect((await preview(offerV.id, { offerId: unknown, format: 'docx' }).expect(404)).body.toString()).toContain('Job offer not found.');
+      await preview(offerV.id, { offerId: 'nothing', format: 'docx' }).expect(400);
+      await preview(offerV.id, { offerId: amira.id, format: 'docx' }, staff).expect(403);
+    });
   });
 
   it('only HR, Admin and the CEO; the version, the employee and the format checked', async () => {

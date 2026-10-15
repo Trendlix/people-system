@@ -87,6 +87,18 @@ export const LABELS = {
   educationGrade: Record<EducationGrade, string>;
 };
 
+/**
+ * The work arrangements in Arabic, as an Arabic document prints them ({{work_arrangement_ar}}: owner's request, 15
+ * October 2026); the screens show LABELS.workArrangement.
+ */
+export const WORK_ARRANGEMENT_LABELS_AR: Record<WorkArrangement, string> = {
+  office: 'داخل المكتب',
+  outdoor: 'ميداني (خارج المكتب)',
+  indoor_outdoor: 'داخل المكتب وخارجه',
+  hybrid: 'هجين (المكتب والمنزل)',
+  wfh: 'العمل من المنزل',
+};
+
 /** Months of probation after the join date, unless HR sets another end date. */
 export const PROBATION_MONTHS = 3;
 

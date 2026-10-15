@@ -3,7 +3,9 @@ import type { TemplateLanguage, TemplateSlot } from '@trendlix/shared';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fillTemplate } from '../documents/engine/index.js';
 import { documentStem } from '../documents/format.js';
-import { missingTags, resolveValues, restrictedTags, type MissingTag, type ValueSources } from '../documents/values.js';
+import { TYPED_TAGS } from '../documents/offer.js';
+import { previewValues } from '../documents/preview.js';
+import { missingTags, resolveValues, restrictedTags, type MissingTag, type RestrictedRight, type ValueSources } from '../documents/values.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { PdfService } from '../pdf/pdf.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -29,9 +31,10 @@ export interface FilledOffer {
 
 /**
  * A ValueSources for an offer, as if the candidate were an employee with a draft contract made from it: the candidate's
- * name and mobile (a former employee's code); the position as the employment, with the selected role's duties
- * (`jdDuties`, its job title's, as saved: owner's request, 15 October 2026); the terms as contract version 1, numbered
- * with the offer's number, starting on the join date; the offer's number and last day; the company's details.
+ * name, mobile and email (as the personal email; a former employee's code); the position as the employment, with the
+ * selected role's duties (`jdDuties`, its job title's, as saved: owner's request, 15 October 2026), the manager, the
+ * shift and the work arrangement; the terms as contract version 1, numbered with the offer's number, starting on the
+ * join date; the offer's number and last day; the company's details.
  */
 export function offerSources(
   o: OfferRow,
@@ -57,6 +60,7 @@ export function offerSources(
       governorate: null,
       mobile: o.mobile,
       workEmail: null,
+      personalEmail: o.email,
       qualificationAr: null,
       insuranceNo: null,
     },
@@ -67,7 +71,10 @@ export function offerSources(
       joinDate: o.joinDate,
       jobTitle: o.jobTitle && { titleEn: o.jobTitle.titleEn, titleAr: o.jobTitle.titleAr, jdDuties },
       department: o.department && { nameEn: o.department.nameEn, nameAr: o.department.nameAr },
-      grade: o.grade && { code: o.grade.code },
+      grade: o.grade && { code: o.grade.code, levelEn: o.grade.levelEn, levelAr: o.grade.levelAr },
+      manager: o.manager && { fullNameEn: o.manager.fullNameEn, fullNameAr: o.manager.fullNameAr },
+      shift: o.shift && { startTime: o.shift.startTime, endTime: o.shift.endTime, workingDays: o.shift.workingDays },
+      workArrangement: o.workArrangement,
     },
     contract: {
       number: o.number,
@@ -76,6 +83,7 @@ export function offerSources(
       startDate: o.joinDate,
       endDate: toDateOnly(endDate),
       durationMonths: o.durationMonths,
+      probationMonths: o.probationMonths,
       probationEnd: probationEnd ? toDateOnly(probationEnd) : null,
       grossSalary: o.grossSalary,
       basicPercent: o.basicPercent,
@@ -146,6 +154,27 @@ export class OfferDocumentsService {
     };
   }
 
+  /**
+   * A given template version (a draft too) filled in with the offer's values, as fill() works them out, for the
+   * template library's preview (owner's request, 15 October 2026: "Job offer preview should call data from the offer
+   * tab, even if not published yet"): nothing refused and nothing saved. An empty value prints as its label in square
+   * brackets, a restricted one the caller may not see (`may`) as ••••; read through `slot`'s overrides. Without the
+   * file, only how many of its tags have a value; `shown`: the restricted tags printed with their value, for the audit log.
+   */
+  async previewFill(
+    o: OfferRow,
+    slot: TemplateSlot,
+    template: { language: string; tags: string[]; data?: Uint8Array },
+    may: Readonly<Record<RestrictedRight, boolean>>,
+  ): Promise<{ filled: number; total: number; shown: string[]; data: Buffer | null }> {
+    const { values, missing } = await this.check(o, slot, template, todayInCairo());
+    // nothing is typed for a preview
+    const empty = new Set([...missing.map((m) => m.tag), ...TYPED_TAGS]);
+    const preview = previewValues(template.tags, values, empty, slot.overrides, may);
+    const data = template.data ? fillTemplate(Buffer.from(template.data), preview.values) : null;
+    return { filled: preview.filled, total: preview.total, shown: data ? preview.shown : [], data };
+  }
+
   /** "<Slot name> - <OFF number> - <full name>.docx", cleaned as documents' names are. */
   fileName(o: Pick<OfferRow, 'employmentType' | 'number' | 'fullNameEn'>): string {
     return templateFileName(`${documentStem(offerSlot(o.employmentType).name, o.number, o.fullNameEn)}.docx`);
@@ -165,7 +194,11 @@ export class OfferDocumentsService {
     return this.pdf.available;
   }
 
-  private async check(o: OfferRow, slot: TemplateSlot, template: { language: string; tags: string[] }, documentDate: string) {
+  /**
+   * The values of the tags `template` prints for the offer on `documentDate`, and those still empty with where to fill
+   * each in. Also how OffersService previews a draft offer with a draft of its template while none is published.
+   */
+  async check(o: OfferRow, slot: TemplateSlot, template: { language: string; tags: string[] }, documentDate: string) {
     const [company, role] = await Promise.all([
       this.prisma.company.findUnique({ where: { id: 1 } }),
       // the selected role's duties, read here rather than with every offer (the offer's view doesn't show them)

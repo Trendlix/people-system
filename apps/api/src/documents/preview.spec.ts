@@ -1,4 +1,5 @@
-import { MASK, placeholder, previewValues } from './preview.js';
+import { TEMPLATE_SLOTS } from '@trendlix/shared';
+import { isOfferSlot, MASK, placeholder, previewValues } from './preview.js';
 
 // What a template's preview with an employee's data prints (owner's request, 15 October 2026): their values, the
 // label of each empty tag in square brackets, and •••• for restricted data the caller may not see.
@@ -54,5 +55,13 @@ describe("a preview's values", () => {
   it('keeps a value with formatting as it is', () => {
     const duties = { html: '<p>Leads the team.</p>' };
     expect(previewValues(['job_duties'], { job_duties: duties }, new Set(), undefined, NONE).values.job_duties).toBe(duties);
+  });
+
+  it('previews the job offer templates with job offers, every other template with employees', () => {
+    const offers = TEMPLATE_SLOTS.filter(isOfferSlot).map((s) => s.key);
+    expect(offers.sort()).toEqual(['offer_freelance', 'offer_full_time', 'offer_internship', 'offer_part_time', 'offer_sales']);
+    expect(isOfferSlot({ key: 'contract_full_time', appliesTo: ['full_time'] })).toBe(false);
+    // the key must be the type's own offer slot
+    expect(isOfferSlot({ key: 'offer_full_time', appliesTo: ['part_time'] })).toBe(false);
   });
 });

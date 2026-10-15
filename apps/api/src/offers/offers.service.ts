@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { monthlyFromHourly, OFFER_VALID_DAYS, type OfferShownStatus } from '@trendlix/shared';
 import { AllowancesService } from '../allowances/allowances.service.js';
@@ -19,9 +20,10 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { MailService } from '../mail/mail.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { fillTemplate } from '../documents/engine/index.js';
 import { restrictedTags } from '../documents/values.js';
 import { DOCX_MIME } from '../templates/docx-tags.js';
-import { OfferDocumentsService } from './offer-documents.service.js';
+import { FILL_IN, OfferDocumentsService } from './offer-documents.service.js';
 import { OfferHiringService, salaryMasked, type HireResult } from './offer-hiring.service.js';
 import { offerEmail } from './offer-mail.js';
 import type { AnswerOfferDto, CreateOfferDto, ListOffersDto, SendOfferDto, UpdateOfferDto, WithdrawOfferDto } from './offers.dto.js';
@@ -219,18 +221,28 @@ export class OffersService {
   /**
    * The offer's document: a draft filled in afresh (dated today), any other the copy as sent. As PDF from the
    * converter (or the PDF kept when it was sent), else the Word file. Every view is audited, as the terms are restricted.
+   * While the employment type's template has no published version, a draft offer is previewed with the newest draft
+   * of it (owner's request, 15 October 2026: "Job offer preview should call data from the offer tab, even if not
+   * published yet"), whose number `templateDraft` gives (the X-Template-Draft header); sending still needs a published one.
    */
-  async document(id: string, format: 'pdf' | 'docx', user: SessionUser): Promise<{ data: Buffer; type: string; fileName: string; inline: boolean }> {
+  async document(
+    id: string,
+    format: 'pdf' | 'docx',
+    user: SessionUser,
+  ): Promise<{ data: Buffer; type: string; fileName: string; inline: boolean; templateDraft: number | null }> {
     const o = await this.row(id);
     let docx: Buffer;
     let fileName: string;
     let pdf: Buffer | null = null;
     let restricted: string[];
+    let templateDraft: number | null = null;
 
     if (o.status === 'draft') {
       if (format === 'pdf' && !this.documents.pdfAvailable) throw new ConflictException(PDF_NOT_SET_UP);
-      const filled = await this.documents.fill(o, todayInCairo());
+      const draft = await this.previewTemplate(o.employmentType);
+      const filled = draft ? await this.fillFromDraft(o, draft) : await this.documents.fill(o, todayInCairo());
       ({ data: docx, fileName, restricted } = filled);
+      templateDraft = draft?.version ?? null;
       if (format === 'pdf') pdf = await this.documents.toPdf(docx, fileName);
     } else {
       const files = await this.prisma.jobOffer.findUniqueOrThrow({ where: { id }, select: { data: true, pdf: true } });
@@ -246,10 +258,11 @@ export class OffersService {
     }
 
     if (restricted.length) {
-      await this.audit.record({ userId: user.id, action: 'view_restricted', entityType: ENTITY, entityId: id, diff: { number: o.number, fields: restricted, seen: 'document', format } });
+      const diff = { number: o.number, fields: restricted, seen: 'document', format, ...(templateDraft !== null && { templateDraft }) };
+      await this.audit.record({ userId: user.id, action: 'view_restricted', entityType: ENTITY, entityId: id, diff });
     }
-    if (pdf) return { data: pdf, type: 'application/pdf', fileName: this.documents.pdfName(fileName), inline: true };
-    return { data: docx, type: DOCX_MIME, fileName, inline: false };
+    if (pdf) return { data: pdf, type: 'application/pdf', fileName: this.documents.pdfName(fileName), inline: true, templateDraft };
+    return { data: docx, type: DOCX_MIME, fileName, inline: false, templateDraft };
   }
 
   /**
@@ -420,12 +433,58 @@ export class OffersService {
   }
 
   private async view(o: OfferRow, user: SessionUser): Promise<OfferView> {
-    const [template, missing, hasPdf] = await Promise.all([
+    const [template, draft, hasPdf] = await Promise.all([
       this.documents.template(o.employmentType),
-      o.status === 'draft' ? this.documents.missing(o) : Promise.resolve([]),
+      this.previewTemplate(o.employmentType),
       o.fileName ? this.hasPdf(o.id) : Promise.resolve(false),
     ]);
-    return offerView(o, { seesSalary: seesSalary(user), template, missing, hasPdf, emailConfigured: this.mail.configured, pdfAvailable: this.documents.pdfAvailable });
+    // a draft's missing values: from the published template, else from the draft it is previewed with
+    const missing =
+      o.status !== 'draft'
+        ? []
+        : draft
+          ? (await this.documents.check(o, offerSlot(o.employmentType), draft, todayInCairo())).missing
+          : await this.documents.missing(o);
+    return offerView(o, {
+      seesSalary: seesSalary(user),
+      template,
+      previewVersion: draft?.version ?? null,
+      missing,
+      hasPdf,
+      emailConfigured: this.mail.configured,
+      pdfAvailable: this.documents.pdfAvailable,
+    });
+  }
+
+  /**
+   * The newest draft of the employment type's job offer template while it has no published version: what a draft
+   * offer is previewed with meanwhile. Null once one is published, or with no draft either.
+   */
+  private async previewTemplate(employmentType: string): Promise<{ id: string; version: number; language: string; tags: string[] } | null> {
+    const slot = offerSlot(employmentType);
+    const versions = await this.prisma.templateVersion.findMany({
+      where: { slotKey: slot.copyOf ?? slot.key, status: { in: ['draft', 'published'] } },
+      select: { id: true, version: true, status: true, language: true, tags: true },
+      orderBy: { version: 'desc' },
+    });
+    if (versions.some((v) => v.status === 'published')) return null;
+    const draft = versions[0];
+    return draft ? { id: draft.id, version: draft.version, language: draft.language, tags: draft.tags } : null;
+  }
+
+  /**
+   * A draft offer filled in from a draft of its template, dated today, as OfferDocumentsService.fill fills it from the
+   * published one: refused (422, with what is missing and where to fill it in) while a value is missing.
+   */
+  private async fillFromDraft(
+    o: OfferRow,
+    template: { id: string; language: string; tags: string[] },
+  ): Promise<{ data: Buffer; fileName: string; restricted: string[] }> {
+    const slot = offerSlot(o.employmentType);
+    const { values, missing } = await this.documents.check(o, slot, template, todayInCairo());
+    if (missing.length) throw new UnprocessableEntityException({ statusCode: 422, message: FILL_IN, missing });
+    const { data } = await this.prisma.templateVersion.findUniqueOrThrow({ where: { id: template.id }, select: { data: true } });
+    return { data: fillTemplate(Buffer.from(data), values), fileName: this.documents.fileName(o), restricted: restrictedTags(template.tags, slot.overrides) };
   }
 
   /** Whether the stored document has its PDF, without loading either file. */

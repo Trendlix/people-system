@@ -1,5 +1,6 @@
 import { phoneSplit, type EmploymentType, type Governorate, type TemplateLanguage } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
+import { arabicDayName, arabicMonths } from './engine/index.js';
 
 // How values are written on a printed document (owner's request, 15 October 2026): dates as DD/MM/YYYY, money as
 // 15,000, an Egyptian mobile as it is dialled in Egypt, the address in Arabic with its city and governorate. Pure: no
@@ -100,6 +101,66 @@ export const EMPLOYMENT_TYPES_AR: Record<EmploymentType, string> = {
 /** A name in the template's language: the Arabic one on an Arabic template when there is one, else the English. */
 export const inLanguage = (language: TemplateLanguage, en: string | null | undefined, ar: string | null | undefined): string =>
   (language === 'en' ? en?.trim() || ar?.trim() : ar?.trim() || en?.trim()) ?? '';
+
+/** The language a value is written in (a bilingual template's tags that depend on it print in Arabic). */
+export type PrintedLanguage = 'ar' | 'en';
+
+/**
+ * A time of day (HH:mm, as a shift keeps it) on the 12-hour clock, as the screens show it (the web's formatTime):
+ * "09:00" → "9:00 AM", in Arabic "9:00 ص"; "17:30" → "5:30 PM" / "5:30 م".
+ */
+export function printedTime(hhmm: string, language: PrintedLanguage): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const half = h < 12 ? (language === 'ar' ? 'ص' : 'AM') : language === 'ar' ? 'م' : 'PM';
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${half}`;
+}
+
+const DAY_NAMES_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * A shift's working days (0 = Sunday … 6 = Saturday), in week order (owner's request, 15 October 2026): three or more
+ * that follow each other as a range, across the weekend too ("Sunday to Thursday", "من الأحد إلى الخميس"; "Saturday
+ * to Thursday"); otherwise listed ("Sunday, Tuesday and Thursday", "أيام الأحد والثلاثاء والخميس"; "Friday and
+ * Saturday", "يومي الجمعة والسبت"; "Friday", "يوم الجمعة"). Empty for none.
+ */
+export function printedDays(workingDays: readonly number[], language: PrintedLanguage): string {
+  const days = [...new Set(workingDays)].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort((a, b) => a - b);
+  if (!days.length) return '';
+  const name = (d: number) => (language === 'ar' ? arabicDayName(d) : DAY_NAMES_EN[d]);
+  // one run of days when a single day starts one (its day before isn't worked), or all seven are worked; then in order
+  // from its first day (from Sunday for the whole week), else from Sunday
+  const starts = days.filter((d) => !days.includes((d + 6) % 7));
+  const oneRun = days.length === 7 || starts.length === 1;
+  const first = days.length === 7 ? 0 : starts[0];
+  const ordered = oneRun ? days.map((_, i) => (first + i) % 7) : days;
+  if (oneRun && ordered.length >= 3) {
+    const [from, to] = [name(ordered[0]), name(ordered[ordered.length - 1])];
+    return language === 'ar' ? `من ${from} إلى ${to}` : `${from} to ${to}`;
+  }
+  const names = ordered.map(name);
+  if (language === 'ar') return `${['يوم', 'يومي', 'أيام'][Math.min(names.length, 3) - 1]} ${names.join(' و')}`;
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * A shift as printed: its times, then its working days (owner's request, 15 October 2026): "9:00 AM – 5:00 PM, Sunday
+ * to Thursday"; in Arabic "من 9:00 ص إلى 5:00 م، من الأحد إلى الخميس". The times alone when it has no working days.
+ */
+export function printedShift(shift: { startTime: string; endTime: string; workingDays: readonly number[] }, language: PrintedLanguage): string {
+  const [start, end] = [printedTime(shift.startTime, language), printedTime(shift.endTime, language)];
+  const days = printedDays(shift.workingDays, language);
+  const times = language === 'ar' ? `من ${start} إلى ${end}` : `${start} – ${end}`;
+  return days ? `${times}${language === 'ar' ? '،' : ','} ${days}` : times;
+}
+
+/**
+ * A probation period in months as printed (owner's request, 15 October 2026): "3 months", "1 month", "No probation";
+ * in Arabic "ثلاثة أشهر", "شهر واحد", "شهران", "لا توجد فترة اختبار". None is a value too.
+ */
+export function printedProbation(months: number, language: PrintedLanguage): string {
+  if (months <= 0) return language === 'ar' ? 'لا توجد فترة اختبار' : 'No probation';
+  return language === 'ar' ? arabicMonths(months) : `${months} ${months === 1 ? 'month' : 'months'}`;
+}
 
 /** Whether text has Arabic letters in it. */
 export const hasArabic = (s: string | null | undefined): boolean => !!s && /[؀-ۿ]/.test(s);

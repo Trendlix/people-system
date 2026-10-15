@@ -8,10 +8,12 @@ import { PublicOffersService } from './public-offers.service.js';
 
 // Job offers: drafted, sent (by email or as a link), answered by the candidate on the offer's page, and turned into a
 // profile, an employment and a draft contract once accepted. Uses the allowances module for the allowances' kinds;
-// email and the PDF converter are global (MailModule, PdfModule).
+// email and the PDF converter are global (MailModule, PdfModule). OfferDocumentsService is shared with the template
+// library's preview (DocumentsModule), which fills a job offer template in with an offer's data.
 @Module({
   imports: [AllowancesModule],
   controllers: [OffersController, PublicOffersController],
   providers: [OffersService, PublicOffersService, OfferDocumentsService, OfferHiringService],
+  exports: [OfferDocumentsService],
 })
 export class OffersModule {}

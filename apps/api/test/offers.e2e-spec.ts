@@ -123,7 +123,7 @@ describe('Job offers (e2e)', () => {
     return { offer: res.body.offer as Offer, secret: secretOf(res.body.link as string) };
   }
 
-  async function publish(slot: string, file: Buffer, language?: 'ar' | 'en', draftOnly = false) {
+  async function publish(slot: string, file: Buffer, language?: 'ar' | 'en' | 'bilingual', draftOnly = false) {
     const upload = api().post(`/api/templates/${slot}/versions`).set('Cookie', hr).attach('file', file, `${slot}.docx`);
     const res = await (language ? upload.field('language', language) : upload).expect(201);
     if (!draftOnly) await api().post(`/api/templates/versions/${res.body.id}/publish`).set('Cookie', hr).expect(200);
@@ -268,7 +268,7 @@ describe('Job offers (e2e)', () => {
         durationMonths: 12,
         expiresOn: addDays(TODAY, 7),
         message: 'We look forward to working with you.',
-        template: { slotKey: 'offer_full_time', name: 'Job offer · Full-time', status: 'published', version: 1 },
+        template: { slotKey: 'offer_full_time', name: 'Job offer · Full-time', status: 'published', version: 1, previewVersion: null },
         missing: [],
         document: null,
         sentVia: null,
@@ -390,12 +390,63 @@ describe('Job offers (e2e)', () => {
 
     it('refused without a published template for the employment type', async () => {
       const intern = await draft('Ivan Intern', { employmentType: 'internship' });
-      expect(intern.template).toEqual({ slotKey: 'offer_internship', name: 'Job offer · Internship', status: 'missing', version: null });
+      expect(intern.template).toEqual({ slotKey: 'offer_internship', name: 'Job offer · Internship', status: 'missing', version: null, previewVersion: null });
       const res = await documentOf(intern.id).expect(409);
       expect(JSON.parse((res.body as Buffer).toString('utf8')).message).toBe('Publish the Job offer · Internship template first (Templates).');
       const sales = await draft('Sara Sales', { employmentType: 'sales' });
       expect(sales.template).toMatchObject({ slotKey: 'offer_sales', status: 'draft', version: null });
-      await send(sales.id, { via: 'link', origin: ORIGIN }).expect(409);
+      const refused = await send(sales.id, { via: 'link', origin: ORIGIN }).expect(409);
+      expect(refused.body.message).toBe('Publish the Job offer · Sales template first (Templates).');
+    });
+
+    it('a draft is previewed with the newest draft of its template while none is published; sending still needs a published one', async () => {
+      // owner's request, 15 October 2026: "Job offer preview should call data from the offer tab, even if not published yet"
+      const o = await draft('Sami Sales', { employmentType: 'sales' });
+      expect(o.template).toEqual({ slotKey: 'offer_sales', name: 'Job offer · Sales', status: 'draft', version: null, previewVersion: 1 });
+      expect(o.missing).toEqual([]);
+      const res = await documentOf(o.id).expect(200);
+      expect(res.headers['x-template-draft']).toBe('1');
+      expect(res.headers['content-type']).toBe(DOCX);
+      expect(decodeURIComponent(res.headers['content-disposition'])).toContain(`Job offer · Sales - ${o.number} - Sami Sales ${RUN}.docx`);
+      expect(textOf(res.body as Buffer)).toBe(`Sami Sales ${RUN}`);
+      const available = vi.spyOn(pdf, 'available', 'get').mockReturnValue(true);
+      const convert = vi.spyOn(pdf, 'fromDocx').mockResolvedValue(FAKE_PDF);
+      try {
+        const shown = await documentOf(o.id, 'pdf').expect(200);
+        expect(shown.headers['content-type']).toBe('application/pdf');
+        expect(shown.headers['x-template-draft']).toBe('1');
+      } finally {
+        available.mockRestore();
+        convert.mockRestore();
+      }
+
+      // a newer draft is used: here one printing the salary, and a value the offer lacks until it is filled in
+      await publish('offer_sales', docx({ body: p(r('{{full_name_en}}: {{gross_salary}} over {{days_per_week}} days')) }), 'en', true);
+      const now = await getOffer(o.id);
+      expect(now.template).toMatchObject({ status: 'draft', version: null, previewVersion: 2 });
+      const missing = [{ tag: 'days_per_week', label: expect.any(String), where: { tab: 'offer', key: 'daysPerWeek' } }];
+      expect(now.missing).toEqual(missing);
+      const lacking = await documentOf(o.id).expect(422);
+      expect(JSON.parse((lacking.body as Buffer).toString('utf8'))).toMatchObject({ message: 'Fill in the missing details first.', missing });
+      await patch(o.id, { daysPerWeek: 5 }).expect(200);
+      const filled = await documentOf(o.id).expect(200);
+      expect(filled.headers['x-template-draft']).toBe('2');
+      expect(textOf(filled.body as Buffer)).toBe(`Sami Sales ${RUN}: 20,000 over 5 days`);
+      // the salary seen: audited, with the draft it was filled in from
+      const audit = await prisma.auditLog.findFirst({ where: { entityType: 'job_offer', entityId: o.id, action: 'view_restricted' }, orderBy: { id: 'desc' } });
+      expect(audit?.diff).toEqual({ number: o.number, fields: ['gross_salary'], seen: 'document', format: 'docx', templateDraft: 2 });
+      // the CEO may preview it too
+      await documentOf(o.id, 'docx', ceo).expect(200);
+
+      // sending still needs a published template, and nothing was kept
+      const refused = await send(o.id, { via: 'link', origin: ORIGIN }).expect(409);
+      expect(refused.body.message).toBe('Publish the Job offer · Sales template first (Templates).');
+      expect(await prisma.jobOffer.findUniqueOrThrow({ where: { id: o.id }, select: { status: true, fileName: true } })).toEqual({ status: 'draft', fileName: null });
+
+      // with a published template, nothing is said of a draft
+      const full = await draft('Fay Fulltime');
+      expect(full.template.previewVersion).toBeNull();
+      expect((await documentOf(full.id).expect(200)).headers['x-template-draft']).toBeUndefined();
     });
 
     it('as PDF from the converter; without one, the Word file is offered instead', async () => {
@@ -443,6 +494,64 @@ describe('Job offers (e2e)', () => {
       expect(document).toContain(
         '<w:t xml:space="preserve">In short: Visits clients in the field.</w:t><w:br/><w:t xml:space="preserve">1. Collects orders</w:t><w:br/><w:t xml:space="preserve">2. Reports daily</w:t>',
       );
+    });
+
+    it('prints the fields added on 15 October 2026, missing until the offer has them, each on its own field', async () => {
+      // owner's request, "add the missing fields"; a bilingual template: the tags that depend on the language in Arabic
+      await publish(
+        'offer_internship',
+        docx({
+          body:
+            p(r('{{personal_email}} | {{manager_name}} | {{manager_name_en}}')) +
+            p(r('{{shift}} | {{shift_en}}')) +
+            p(r('{{work_arrangement}} | {{work_arrangement_en}}')) +
+            p(r('{{probation_months}} | {{probation_months_en}}')) +
+            p(r('{{grade_level}} | {{grade_level_en}}')) +
+            p(r('{{hourly_rate}} | {{net_hourly_rate}} | {{basic_percent}}')),
+        }),
+        'bilingual',
+      );
+      // by the hour, 100 for 24 hours a week (104 hours a month); no manager, shift or net yet
+      const o = await draft('Iman Intern', {
+        employmentType: 'internship',
+        shiftId: undefined,
+        payBasis: 'hourly',
+        hourlyRate: 100,
+        hoursPerWeek: 24,
+        grossSalary: undefined,
+        probationMonths: 1,
+        basicPercent: 70,
+      });
+      expect(o.missing.map((m: { tag: string; where: object }) => [m.tag, m.where])).toEqual([
+        ['manager_name', { tab: 'offer', key: 'managerId' }],
+        ['manager_name_en', { tab: 'offer', key: 'managerId' }],
+        ['shift', { tab: 'offer', key: 'shiftId' }],
+        ['shift_en', { tab: 'offer', key: 'shiftId' }],
+        ['net_hourly_rate', { tab: 'offer', key: 'netSalary' }],
+      ]);
+      await documentOf(o.id).expect(422);
+
+      await patch(o.id, { managerId, shiftId, netSalary: 9000, workArrangement: 'hybrid', officeDays: [0, 2] }).expect(200);
+      expect((await getOffer(o.id)).missing).toEqual([]);
+      const grade = await prisma.grade.findUniqueOrThrow({ where: { id: gradeId }, select: { levelAr: true } });
+      await prisma.grade.update({ where: { id: gradeId }, data: { levelAr: 'أول' } });
+      try {
+        // shift A: 9 to 6, Sunday to Thursday; the manager's Arabic name is موظف
+        expect(textOf((await documentOf(o.id).expect(200)).body as Buffer)).toBe(
+          [
+            `${o.email} | موظف | Mona Manager ${RUN}`,
+            'من 9:00 ص إلى 6:00 م، من الأحد إلى الخميس | 9:00 AM – 6:00 PM, Sunday to Thursday',
+            'هجين (المكتب والمنزل) | Hybrid (office and home)',
+            'شهر واحد | 1 month',
+            'أول | Senior',
+            '100 | 86.54 | 70%',
+          ].join('\n'),
+        );
+      } finally {
+        await prisma.grade.update({ where: { id: gradeId }, data: { levelAr: grade.levelAr } });
+      }
+      // the view still shows the shift as before, without its times
+      expect((await getOffer(o.id)).shift).toEqual({ id: shiftId, code: 'A', workingDays: [0, 1, 2, 3, 4] });
     });
   });
 

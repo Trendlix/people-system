@@ -141,11 +141,31 @@ export function arabicAmountInWords(amount: number): string {
  * 24 → "سنتان ميلاديتان", 36 → "ثلاث سنوات ميلادية"), in months otherwise (6 → "ستة أشهر", 18 → "ثمانية عشر شهراً").
  */
 export function arabicDuration(months: number): string {
-  if (!Number.isInteger(months) || months < 1 || months > 999_999_999) throw new RangeError(`Not a number of months: ${months}`);
+  checkMonths(months);
   return months % 12 === 0 ? counted(months / 12, YEAR) : counted(months, MONTH);
 }
 
+/**
+ * A number of months in Arabic, always in months, as a probation period is written (owner's request, 15 October 2026):
+ * 1 → "شهر واحد", 2 → "شهران", 3 → "ثلاثة أشهر", 12 → "اثنا عشر شهراً".
+ */
+export function arabicMonths(months: number): string {
+  checkMonths(months);
+  return counted(months, MONTH);
+}
+
+function checkMonths(months: number): void {
+  if (!Number.isInteger(months) || months < 1 || months > 999_999_999) throw new RangeError(`Not a number of months: ${months}`);
+}
+
 const WEEKDAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+/** The Arabic name of a day of the week as a shift keeps it: 0 = Sunday ("الأحد") … 6 = Saturday ("السبت"). */
+export function arabicDayName(day: number): string {
+  const name = WEEKDAYS[day];
+  if (!Number.isInteger(day) || name === undefined) throw new RangeError(`Not a day of the week (0–6): ${day}`);
+  return name;
+}
 
 /** The Arabic name of a calendar date's weekday (YYYY-MM-DD, no time zone involved), e.g. 2026-10-15 → "الخميس". */
 export function arabicWeekday(date: string): string {

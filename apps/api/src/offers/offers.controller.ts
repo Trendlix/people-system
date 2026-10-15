@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, StreamableFile } from '@nestjs/common';
-import type { Request } from 'express';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { CurrentUser, DeletesRecords, Public, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { contentDisposition } from '../paperwork/paperwork-file.js';
@@ -53,14 +53,24 @@ export class OffersController {
     return this.offers.remove(id, user);
   }
 
-  /** The offer's document (?format=pdf|docx, the Word file unless sent): a draft filled in afresh, else the copy as sent. */
+  /**
+   * The offer's document (?format=pdf|docx, the Word file unless sent): a draft filled in afresh, else the copy as sent.
+   * A draft previewed with a draft of its template, none being published, says which: X-Template-Draft: <its version>.
+   */
   @Roles('hr', 'ceo')
   @Get(':id/document')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
   @Header('Content-Security-Policy', "default-src 'none'")
-  async document(@Param('id', ParseUUIDPipe) id: string, @Query() query: OfferDocumentQueryDto, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
-    return fileOf(await this.offers.document(id, query.format ?? 'docx', user));
+  async document(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: OfferDocumentQueryDto,
+    @CurrentUser() user: SessionUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const file = await this.offers.document(id, query.format ?? 'docx', user);
+    if (file.templateDraft !== null) res.setHeader('X-Template-Draft', String(file.templateDraft));
+    return fileOf(file);
   }
 
   /** Sends the offer by email, or makes its link for HR to send: { offer, link }. */

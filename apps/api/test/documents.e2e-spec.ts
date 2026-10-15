@@ -573,4 +573,62 @@ describe('Documents (e2e)', () => {
       expect(document).not.toContain('w:numPr');
     });
   });
+
+  describe('the fields added on 15 October 2026', () => {
+    // owner's request, "add the missing fields": the personal email, the direct manager, the working hours, the work
+    // arrangement, the probation period, the grade's level, the net per hour and the basic salary's share
+    it('missing until filled in, each pointing to its field; then printed in Arabic and in English', async () => {
+      await publish(
+        'hr_letter_ar',
+        docx({
+          body:
+            p(r('{{personal_email}} | {{manager_name}} | {{manager_name_en}}')) +
+            p(r('{{shift}} | {{shift_en}}')) +
+            p(r('{{work_arrangement}} | {{work_arrangement_en}}')) +
+            p(r('{{probation_months}} | {{probation_months_en}}')) +
+            p(r('{{grade_level}} | {{grade_level_en}}')) +
+            p(r('{{hourly_rate}} | {{net_hourly_rate}} | {{basic_percent}}')),
+        }),
+      );
+      const manager = await hire('Mona Manager', 'full_time', { fullNameAr: 'منى عادل' });
+      // part time, by the hour: 100 an hour for 24 hours a week (104 hours a month), 9,000 net
+      const hala = await hire('Hala Hourly', 'part_time');
+      await contract(hala, { payBasis: 'hourly', hourlyRate: 100, hoursPerWeek: 24, netSalary: 9000, basicPercent: 75, probationMonths: 2 });
+
+      const missing = (await check(hala.id, { slotKey: 'hr_letter_ar' }).expect(200)).body as { missing: Missing[]; usesRestricted: boolean };
+      expect(missing).toEqual({
+        missing: [
+          { tag: 'personal_email', label: 'Personal email', where: { tab: 'basic', key: 'personalEmail' } },
+          { tag: 'manager_name', label: 'Direct manager', where: { tab: 'employment', key: 'manager' } },
+          { tag: 'manager_name_en', label: 'Direct manager (English)', where: { tab: 'employment', key: 'manager' } },
+        ],
+        usesRestricted: true,
+      });
+
+      await api().patch(`/api/employees/${hala.id}`).set('Cookie', hr).send({ personalEmail: `hala.${RUN}@mail.test` }).expect(200);
+      await api().patch(`/api/employees/${hala.id}/employments/${hala.employmentId}`).set('Cookie', hr).send({ managerId: manager.id, workArrangement: 'outdoor' }).expect(200);
+      const grade = await prisma.grade.findUniqueOrThrow({ where: { id: gradeId }, select: { levelAr: true } });
+      await prisma.grade.update({ where: { id: gradeId }, data: { levelAr: 'أول' } });
+      try {
+        const res = await generate(hala.id, { slotKey: 'hr_letter_ar' }).expect(201);
+        expect(res.body.hasRestricted).toBe(true);
+        // shift A: 9 to 6, Sunday to Thursday; the employment's grade, G4
+        expect(textOf((await fileOf(res.body.id).expect(200)).body as Buffer)).toBe(
+          [
+            `hala.${RUN}@mail.test | منى عادل | Mona Manager ${RUN}`,
+            'من 9:00 ص إلى 6:00 م، من الأحد إلى الخميس | 9:00 AM – 6:00 PM, Sunday to Thursday',
+            'ميداني (خارج المكتب) | Outdoor (field work)',
+            'شهران | 2 months',
+            'أول | Senior',
+            '100 | 86.54 | 75%',
+          ].join('\n'),
+        );
+        // the net per hour and the basic share are restricted like the salary
+        const viewed = (await auditOf(res.body.id)).find((a) => a.action === 'view_restricted');
+        expect(viewed?.diff).toMatchObject({ seen: 'generated', fields: ['hourly_rate', 'net_hourly_rate', 'basic_percent'] });
+      } finally {
+        await prisma.grade.update({ where: { id: gradeId }, data: { levelAr: grade.levelAr } });
+      }
+    });
+  });
 });
