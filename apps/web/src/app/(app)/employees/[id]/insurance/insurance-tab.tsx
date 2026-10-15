@@ -5,40 +5,52 @@ import { ApiError, apiGet } from '@/lib/api';
 import { formatDate, titleCase } from '@/lib/format';
 import { PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import { canDelete } from '@/lib/roles';
-import { canEditOrganisation, getCurrentUser } from '@/lib/session';
-import type { Company, DocumentItem, EmployeeProfile, PaperworkItem } from '@/lib/types';
-import { OccupationText } from '../../../organization/departments/job-titles-table';
+import { getCurrentUser } from '@/lib/session';
+import type { DocumentItem, EmployeeProfile, PaperworkItem } from '@/lib/types';
+import { saveInsuranceDetail } from '../../insurance-actions';
 import { canSeeEmployeeFiles, FieldGrid, Loading, ProfileSection, profileHref, todayInCairo, type GridField } from '../../ui';
-import { formatEgp } from '../contracts/salary';
+import { formatEgp, plainAmount } from '../contracts/salary';
 import { loadDocuments } from '../documents/data';
 import { checkDocument } from '../documents/document-actions';
 import { MissingList } from '../documents/document-forms';
 import { DocumentItems, type DocumentAccess } from '../documents/document-rows';
 import { itemTemplateHref, NOT_AVAILABLE, type CheckResult } from '../documents/wording';
 import {
+  basicPrinted,
+  comprehensivePrinted,
   formsGap,
   formsToCheck,
   hasInsuranceCopy,
+  insurableLimitsText,
   insuranceCopyHref,
   insuranceForms,
   insuredEmployment,
-  jobTitleHref,
+  insuredPrinted,
   printHref,
   printRequired,
   printStatus,
   readiness,
-  withJobTitleLinks,
+  showsWages,
+  startPrinted,
+  type Printed,
   type Readiness,
 } from './insurance';
+import { OccupationDetail, StartDateDetail, WageDetail } from './insurance-fields';
 
 // The profile's Social Insurance tab: all the social insurance work in one place (owner's request, 16 October 2026:
 // "creating a tab here for all social insurance work"), moved out of the Contracts tab. The insurance details (the
-// number, the insured salary, the subscription start, the job title's occupation, the company's office and employer
-// number, the contract's filing dates); for HR, whether Forms 1 and 6 can be generated or what they still need, each
-// with its link; the forms themselves, generated and taken through printing, the signed copy and verifying as on the
-// Contracts tab; and the social insurance print from the employee file.
+// occupation, the subscription start, the basic, insured and comprehensive wages, the contract's filing dates); for HR,
+// whether Forms 1 and 6 can be generated or what they still need, each with its link; the forms themselves, generated
+// and taken through printing, the signed copy and verifying as on the Contracts tab; and the social insurance print
+// from the employee file. The insurance number (Basic Data) and the company's insurance office and employer number (the
+// company profile) are not repeated here (owner, 16 October 2026): a form missing one lists it under Readiness, with
+// where to fill it in.
 //
-// Whoever sees the Contracts tab sees this one, and the insured salary only with the right to see salaries, as before.
+// The occupation, the subscription start and the wages are the employee's own, changed here in place by HR (owner's
+// decisions, 16 October 2026: the occupation no longer the job title's); while one isn't set, Form 1 prints what stands
+// in for it, which the item says (the join date, the default, the contract's).
+//
+// Whoever sees the Contracts tab sees this one, and the wages only with the right to see salaries, as before.
 // The forms are HR's and the CEO's (HR generates and moves them along, the CEO views and downloads); the print is the
 // employee file's, for those who see the national ID (HR and the CEO). The API checks all of it again.
 
@@ -58,100 +70,145 @@ function Dashed({ children }: { children: React.ReactNode }) {
   return <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">{children}</p>;
 }
 
-/** The company's social insurance details; null when they can't be loaded (the rest of the tab still shows). */
-async function loadCompany(): Promise<Company | null> {
-  try {
-    return await apiGet<Company>('/company');
-  } catch (err) {
-    if (err instanceof ApiError) return null;
-    throw err;
-  }
+/** An occupation as written: "194200 · اخصائي موارد بشريه", the code first and the name right to left. */
+function OccupationText({ code, name }: { code: string; name?: string | null }) {
+  return (
+    <span dir="ltr">
+      <span className="tabular-nums">{code}</span>
+      {name && (
+        <>
+          {' · '}
+          <span lang="ar" dir="rtl">
+            {name}
+          </span>
+        </>
+      )}
+    </span>
+  );
 }
 
+/** What Form 1 prints for an item: the employee's own, or what stands in for it ("EGP 410 · default"), or Not set. */
+function PrintedText({ printed, none = 'Not set' }: { printed: Printed; none?: string }) {
+  if (!printed) return <span className="text-muted">{none}</span>;
+  return (
+    <span>
+      <span className="tabular-nums">{printed.text}</span>
+      {printed.from && <span className="text-muted"> · {printed.from}</span>}
+    </span>
+  );
+}
+
+/** An amount as the wage forms take it: "2500.5", or "" for none. */
+const typedAmount = (n: number | null | undefined) => (typeof n === 'number' ? plainAmount(n) : '');
+
 /**
- * What the forms print about the insured person and the company: the insurance number (from the profile), the insured
- * salary (from the signed contract, for those who may see salaries), the subscription start (the join date), the
- * occupation (from the job title), the company's insurance office and employer number, and the contract's filing dates.
+ * What Form 1 prints that is the employee's own: the occupation, the subscription start and the three wages (set here,
+ * else what stands in for them; the wages for those who may see salaries), and the contract's filing dates. HR changes
+ * the employee's own in place.
  */
-async function InsuranceDetails({ profile: p, editsOrganization }: { profile: EmployeeProfile; editsOrganization: boolean }) {
-  const company = await loadCompany();
+function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
   const e = insuredEmployment(p);
   const c = e?.contract ?? null;
-  const job = e?.jobTitle ?? null;
+  // HR changes the employee's own; the wages only come with the right to see salaries (HR has it)
+  const edit = (field: Parameters<typeof saveInsuranceDetail>[1]) => (p.access.edit ? saveInsuranceDetail.bind(null, p.id, field) : null);
   // an ended employment's contract is no longer the signed one the profile sends
   const noContract = <span className="text-muted">{e?.endDate ? 'Contract ended' : 'No signed contract yet'}</span>;
-  const fromCompany = (missing: boolean) =>
-    missing && editsOrganization ? (
-      <Link href="/organization/company/edit" className={LINK}>
-        Set it in the company profile
-      </Link>
-    ) : (
-      'From the company profile'
-    );
 
   const fields: GridField[] = [
     {
-      key: 'insurance-number',
-      label: 'Social insurance number',
-      value: p.insuranceNo && <span className="tabular-nums">{p.insuranceNo}</span>,
-      // needed once insured, i.e. hired full time (Form 1)
-      required: e?.employmentType === 'full_time',
-      note: p.access.edit && !p.insuranceNo && (
-        <Link href={`${profileHref(p.id, 'basic')}#field-insuranceNo`} className={LINK}>
-          Add it on Basic Data
-        </Link>
+      key: 'occupationCode',
+      label: 'Occupation',
+      value: (
+        <OccupationDetail action={edit('occupationCode')} code={p.occupationCode ?? null}>
+          {p.occupationCode ? <OccupationText code={p.occupationCode} name={p.occupationName} /> : <span className="text-muted">Not set</span>}
+        </OccupationDetail>
+      ),
+    },
+    {
+      key: 'insuranceStartDate',
+      label: 'Subscription start',
+      value: (
+        <StartDateDetail action={edit('insuranceStartDate')} value={formatDate(p.insuranceStartDate)}>
+          <PrintedText printed={startPrinted(p, e)} none="Not yet" />
+        </StartDateDetail>
       ),
     },
   ];
-  if (c && !c.salaryHidden && c.insuredSalary !== null) {
-    fields.push({
-      key: 'insurance-salary',
-      label: 'Insured salary',
-      value: formatEgp(c.insuredSalary),
-      protected: true,
-      note: `Contract ${c.number}, version ${c.version}: the gross and the insured allowances, capped at the maximum insurable wage`,
-    });
+  // salary data: for those who see salaries only, as the contract's salary (the API leaves them out for anyone else)
+  if (showsWages(p)) {
+    const insured = insuredPrinted(p, c);
+    fields.push(
+      {
+        key: 'insuranceBasicWage',
+        label: 'Basic wage (social insurance)',
+        protected: true,
+        value: (
+          <WageDetail
+            action={edit('insuranceBasicWage')}
+            field="insuranceBasicWage"
+            name="basic wage"
+            label="Basic wage (EGP)"
+            value={typedAmount(p.insuranceBasicWage)}
+            hint={
+              <>
+                Printed in Form 1&apos;s <bdi lang="ar">أجر أساسي</bdi> boxes. Leave empty to use the default ({formatEgp(p.insuranceBasicDefault ?? 0)}).
+              </>
+            }
+          >
+            <PrintedText printed={basicPrinted(p)} />
+          </WageDetail>
+        ),
+      },
+      {
+        key: 'insuranceInsuredWage',
+        label: 'Insured wage (social insurance)',
+        protected: true,
+        value: (
+          <WageDetail
+            action={edit('insuranceInsuredWage')}
+            field="insuranceInsuredWage"
+            name="insured wage"
+            label="Insured wage (EGP)"
+            value={typedAmount(p.insuranceInsuredWage)}
+            hint={
+              <>
+                Printed in Form 1&apos;s <bdi lang="ar">أجر الاشتراك</bdi> boxes, within the year&apos;s limits ({insurableLimitsText(Number(todayInCairo().slice(0, 4)))}). Leave
+                empty to use the contract&apos;s insured salary.
+              </>
+            }
+          >
+            <PrintedText printed={insured} />
+          </WageDetail>
+        ),
+        note:
+          insured?.from && c
+            ? `Contract ${c.number}, version ${c.version}: the gross and the insured allowances, capped at the maximum insurable wage`
+            : undefined,
+      },
+      {
+        key: 'insuranceComprehensiveWage',
+        label: 'Comprehensive wage (social insurance)',
+        protected: true,
+        value: (
+          <WageDetail
+            action={edit('insuranceComprehensiveWage')}
+            field="insuranceComprehensiveWage"
+            name="comprehensive wage"
+            label="Comprehensive wage (EGP)"
+            value={typedAmount(p.insuranceComprehensiveWage)}
+            hint={
+              <>
+                Printed in Form 1&apos;s <bdi lang="ar">الأجر الشامل</bdi> boxes. Leave empty to use the contract&apos;s gross and allowances.
+              </>
+            }
+          >
+            <PrintedText printed={comprehensivePrinted(p, c)} />
+          </WageDetail>
+        ),
+      },
+    );
   }
   fields.push(
-    { key: 'insurance-start', label: 'Subscription start', value: e && formatDate(e.joinDate), note: e && 'The join date' },
-    {
-      key: 'insurance-occupation',
-      label: 'Occupation',
-      value: job?.occupationCode ? (
-        <OccupationText code={job.occupationCode} name={job.occupationName} />
-      ) : job ? (
-        <span className="text-muted">Not set</span>
-      ) : (
-        e && <span className="text-muted">No job title yet</span>
-      ),
-      note: job ? (
-        <>
-          From the job title {job.titleEn}
-          {!job.occupationCode && editsOrganization && (
-            <>
-              {' · '}
-              <Link href={jobTitleHref(job)} className={LINK}>
-                Set it on the job title
-              </Link>
-            </>
-          )}
-        </>
-      ) : (
-        e &&
-        p.access.edit && (
-          <Link href={`${profileHref(p.id, 'employment')}#field-jobTitle`} className={LINK}>
-            Choose the job title on Employment
-          </Link>
-        )
-      ),
-    },
-    { key: 'insurance-office', label: 'Social insurance office', value: company?.insuranceOffice, ar: true, note: company && fromCompany(!company.insuranceOffice) },
-    {
-      key: 'insurance-employer-number',
-      label: 'Employer number',
-      value: company?.insuranceEmployerNo && <span className="tabular-nums">{company.insuranceEmployerNo}</span>,
-      note: company && fromCompany(!company.insuranceEmployerNo),
-    },
     { key: 'insurance-filed', label: 'Contract filed with social insurance', value: c ? (c.insuranceFiledOn ? formatDate(c.insuranceFiledOn) : notYet) : noContract },
     {
       key: 'insurance-labour-office',
@@ -191,7 +248,7 @@ function readyText(r: Readiness): string {
 }
 
 /** For HR: whether each form offered can be generated now, or the details it still needs, each linked to where it is filled in. */
-function FormsReadiness({ forms, checks, jobTitle }: { forms: DocumentItem[]; checks: (CheckResult | null)[]; jobTitle: { id: string; departmentId?: string } | null }) {
+function FormsReadiness({ forms, checks }: { forms: DocumentItem[]; checks: (CheckResult | null)[] }) {
   return (
     <ProfileSection title="Readiness" note="Checked against what each form's template prints">
       <ul className="card">
@@ -209,7 +266,7 @@ function FormsReadiness({ forms, checks, jobTitle }: { forms: DocumentItem[]; ch
                   </Link>
                 )}
               </div>
-              {r.state === 'missing' && <MissingList missing={withJobTitleLinks(r.missing, jobTitle)} title="Fill these in before generating it." alert={false} />}
+              {r.state === 'missing' && <MissingList missing={r.missing} title="Fill these in before generating it." alert={false} />}
               {r.state === 'unchecked' && <p className="text-sm text-muted">{r.errors.join(' ')}</p>}
             </li>
           );
@@ -263,7 +320,7 @@ async function InsuranceForms({ profile: p, can }: { profile: EmployeeProfile; c
 
   return (
     <>
-      {can.act && forms.length > 0 && <FormsReadiness forms={forms} checks={checks} jobTitle={e?.jobTitle ?? null} />}
+      {can.act && forms.length > 0 && <FormsReadiness forms={forms} checks={checks} />}
       <ProfileSection title="Forms" note={forms.length > 0 ? 'Generated from the templates, to print and sign' : undefined}>
         {forms.length > 0 ? <DocumentItems items={forms} employee={p} can={can} today={today} /> : <Dashed>{gapText ?? 'No social insurance forms apply yet.'}</Dashed>}
         {forms.length > 0 && gapText && <p className="text-sm text-muted">{gapText}</p>}
@@ -349,10 +406,8 @@ export async function InsuranceTab({ profile: p }: { profile: EmployeeProfile })
   const user = await getCurrentUser();
   return (
     <div className="space-y-8">
-      {/* each part loads on its own, so a slow one doesn't hold up the others */}
-      <Suspense fallback={<SectionLoading title="Insurance Details" />}>
-        <InsuranceDetails profile={p} editsOrganization={canEditOrganisation(user)} />
-      </Suspense>
+      {/* from the profile itself; each part below loads on its own, so a slow one doesn't hold up the others */}
+      <InsuranceDetails profile={p} />
       {canSeeEmployeeFiles(user) && (
         <Suspense fallback={<SectionLoading title="Forms" />}>
           <InsuranceForms profile={p} can={{ act: p.access.edit, delete: canDelete(user) }} />

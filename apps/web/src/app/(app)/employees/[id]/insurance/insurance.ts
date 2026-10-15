@@ -1,8 +1,10 @@
-import { LABELS, paperworkType, requiredPaperwork } from '@trendlix/shared';
-import type { DocumentItem, DocumentsTab, EmployeeProfile, Employment, PaperworkItem } from '../../../../../lib/types';
-import { occupationLabel } from '../../../organization/departments/occupation';
+import { insurableWageLimits, LABELS, paperworkType, requiredPaperwork } from '@trendlix/shared';
+import { formatDate } from '../../../../../lib/format';
+import type { Contract, DocumentItem, DocumentsTab, EmployeeProfile, Employment, PaperworkItem } from '../../../../../lib/types';
 import { profileHref } from '../../tab-list';
+import { formatEgp } from '../contracts/salary';
 import { templateStateText, type CheckResult, type MissingLink } from '../documents/wording';
+import { occupationLabel } from './occupation';
 
 // The profile's Social Insurance tab (owner's request, 16 October 2026: "creating a tab here for all social insurance
 // work"): which employment and forms it is about, whether each form can be generated, where the social insurance print
@@ -48,29 +50,54 @@ export function formsGap(employment: Pick<Employment, 'employmentType'> | null, 
   return null;
 }
 
-// ---------- the job title's insurance occupation ----------
+// ---------- what Form 1 prints from this tab ----------
+// The occupation, the subscription start and the three wages are the employee's own, set by HR here (owner's decisions,
+// 16 October 2026: the occupation no longer the job title's); while one isn't set, Form 1 prints what stands in for it.
 
-/** The occupation Form 1 prints, from the employment's job title: "212300 · مدير مبيعات"; null when the title has none. */
-export function occupationText(jobTitle: Employment['jobTitle']): string | null {
-  return occupationLabel(jobTitle?.occupationCode, jobTitle?.occupationName) || null;
+/** The occupation as written: "194200 · اخصائي موارد بشريه"; null when none is set. */
+export function occupationText(p: Pick<EmployeeProfile, 'occupationCode' | 'occupationName'>): string | null {
+  return occupationLabel(p.occupationCode, p.occupationName) || null;
 }
 
 /**
- * Where the job title's insurance occupation is set: the job title's page under Organization, at Edit job title; the
- * job titles' list when the API doesn't say the department the title is under.
+ * Whether the profile came with the social insurance wages: only for those who see salaries (HR, Finance, the CEO);
+ * the API leaves them out for anyone else, so the tab doesn't show them.
  */
-export function jobTitleHref(jobTitle: { id: string; departmentId?: string | null }): string {
-  if (!jobTitle.departmentId) return '/organization/departments';
-  return `/organization/departments/${encodeURIComponent(jobTitle.departmentId)}/job-titles/${encodeURIComponent(jobTitle.id)}#edit`;
+export const showsWages = (p: Pick<EmployeeProfile, 'insuranceBasicDefault'>): boolean => typeof p.insuranceBasicDefault === 'number';
+
+/** What Form 1 prints for an item: the employee's own (`from` null), or what stands in for it ("the join date" …); null for nothing. */
+export type Printed = { text: string; from: string | null } | null;
+
+/** The subscription start: the employee's own, else the join date of the employment the forms are about. */
+export function startPrinted(p: Pick<EmployeeProfile, 'insuranceStartDate'>, e: Pick<Employment, 'joinDate'> | null): Printed {
+  if (p.insuranceStartDate) return { text: formatDate(p.insuranceStartDate), from: null };
+  return e ? { text: formatDate(e.joinDate), from: 'the join date' } : null;
 }
 
-/**
- * Missing details as the check lists them, with what is set on the job title (its insurance occupation) linked to this
- * employee's job title itself rather than to the list of job titles; the others as they are.
- */
-export function withJobTitleLinks(missing: readonly MissingLink[], jobTitle: { id: string; departmentId?: string | null } | null): MissingLink[] {
-  if (!jobTitle?.departmentId) return [...missing];
-  return missing.map((m) => (m.href === '/organization/departments' ? { ...m, href: jobTitleHref(jobTitle) } : m));
+/** The basic wage: the employee's own, else the contract settings' default ("EGP 410 · default"). */
+export function basicPrinted(p: Pick<EmployeeProfile, 'insuranceBasicWage' | 'insuranceBasicDefault'>): Printed {
+  if (typeof p.insuranceBasicWage === 'number') return { text: formatEgp(p.insuranceBasicWage), from: null };
+  return typeof p.insuranceBasicDefault === 'number' ? { text: formatEgp(p.insuranceBasicDefault), from: 'default' } : null;
+}
+
+type ContractWages = Pick<Contract, 'insuredSalary' | 'totalSalary' | 'salaryHidden'> | null | undefined;
+
+/** The insured wage: the employee's own, else the contract's insured salary; null with neither. */
+export function insuredPrinted(p: Pick<EmployeeProfile, 'insuranceInsuredWage'>, c: ContractWages): Printed {
+  if (typeof p.insuranceInsuredWage === 'number') return { text: formatEgp(p.insuranceInsuredWage), from: null };
+  return c && !c.salaryHidden && typeof c.insuredSalary === 'number' ? { text: formatEgp(c.insuredSalary), from: 'from the contract' } : null;
+}
+
+/** The comprehensive wage: the employee's own, else the contract's gross and allowances; null with neither. */
+export function comprehensivePrinted(p: Pick<EmployeeProfile, 'insuranceComprehensiveWage'>, c: ContractWages): Printed {
+  if (typeof p.insuranceComprehensiveWage === 'number') return { text: formatEgp(p.insuranceComprehensiveWage), from: null };
+  return c && !c.salaryHidden && typeof c.totalSalary === 'number' ? { text: formatEgp(c.totalSalary), from: 'from the contract' } : null;
+}
+
+/** This year's insurable wage limits, in words: "EGP 2,700 to 16,700 in 2026" (the latest year known when this one isn't). */
+export function insurableLimitsText(year: number): string {
+  const limits = insurableWageLimits(year);
+  return `${formatEgp(limits.min)} to ${formatEgp(limits.max).replace('EGP ', '')} in ${limits.year}`;
 }
 
 // ---------- whether a form can be generated now ----------

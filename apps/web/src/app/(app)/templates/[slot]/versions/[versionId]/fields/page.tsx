@@ -67,6 +67,7 @@ async function Fields({ params, searchParams }: PageProps<'/templates/[slot]/ver
     <div className="space-y-4">
       {back}
       <FieldEditor
+        slotKey={key}
         slotName={slot.kind === 'ok' ? slot.data.name : known.name}
         version={{ id: versionId, version: version.version, fileName: version.fileName, status: version.status, language: version.language }}
         pages={pages ?? []}

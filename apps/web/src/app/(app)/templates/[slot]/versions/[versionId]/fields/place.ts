@@ -2,8 +2,8 @@ import { pdfFieldBoxes, pdfFieldGroups, type PdfField, type PdfPageSize, type Pd
 
 // The arithmetic of Place Fields (a PDF template's fields placed on the form, owner's decision, 15 October 2026): screen
 // pixels and PDF points, a field moved, resized or drawn without leaving its page, the boxes of a boxes field (their
-// groups typed as "4+2+2", one box nudged on its own), a field duplicated, whether anything changed since the last save,
-// and which field the API's refusal names. Points run from the page's top-left corner, as pdf.js shows the page at
+// groups typed as "4+2+2", one box nudged on its own), the rows of a field that takes more than one line, a field
+// duplicated, whether anything changed since the last save, and which field the API's refusal names. Points run from the page's top-left corner, as pdf.js shows the page at
 // scale 1, so a screen pixel is a point × the zoom. Pure code, tested; no "@/" imports.
 
 export interface Point {
@@ -165,6 +165,27 @@ export function nudgeBox(field: PdfField, index: number, dx: number, dy: number,
   return { ...field, nudges: cleanNudges(nudges, boxes) };
 }
 
+// ---------- lines ----------
+
+/** The most lines a text field or fixed text can take (the API's PDF_LINES_MAX). */
+export const LINES_MAX = 4;
+
+/**
+ * How many rows a field's box is split into (owner, 16 October 2026): the lines a text field or fixed text may take,
+ * 1 to LINES_MAX; 1 for any other kind.
+ */
+export function rowCount(field: Pick<PdfField, 'kind' | 'lines'>): number {
+  if (field.kind !== 'text' && field.kind !== 'fixed') return 1;
+  const n = Math.floor(field.lines ?? 1);
+  return Number.isFinite(n) ? clamp(n, 1, LINES_MAX) : 1;
+}
+
+/** Where the rows of a field meet, in points from its top: none for a field of one line. */
+export function rowDividers(field: Pick<PdfField, 'kind' | 'lines' | 'height'>): number[] {
+  const rows = rowCount(field);
+  return Array.from({ length: rows - 1 }, (_, i) => round2((field.height * (i + 1)) / rows));
+}
+
 // ---------- fields ----------
 
 /** A short id no other field of the version has (crypto's where the browser gives it, as on http://localhost or https). */
@@ -188,7 +209,7 @@ export function duplicateField(field: PdfField, id: string, page: PdfPageSize, o
 
 /**
  * A field as it is kept and compared: rounded to a hundredth of a point, keys in one order, and what means nothing left
- * out (an option off, an empty text or list, boxes that aren't moved).
+ * out (an option off, an empty text or list, boxes that aren't moved, one line or lines on a kind that doesn't wrap).
  */
 export function cleanField(field: PdfField): PdfField {
   const out: Record<string, unknown> = {};
@@ -197,6 +218,7 @@ export function cleanField(field: PdfField): PdfField {
     if (key === 'tag') value = value || null;
     else if (key === 'nudges') value = cleanNudges(field.nudges, boxCount(field));
     else if (key === 'groups') value = field.groups && field.groups.length > 1 ? [...field.groups] : undefined;
+    else if (key === 'lines') value = rowCount(field) > 1 ? rowCount(field) : undefined;
     else if (typeof value === 'number') value = round2(value);
     if (key !== 'tag' && (value === undefined || value === null || value === false || value === '')) continue;
     out[key] = value;

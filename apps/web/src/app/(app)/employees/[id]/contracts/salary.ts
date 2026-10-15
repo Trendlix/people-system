@@ -25,13 +25,15 @@ import {
 // the gross rate.
 
 const money = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+const pounds = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+const piastres = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** 16700 → "EGP 16,700". */
+/** 16700 → "EGP 16,700"; with piastres always two digits of them, 2500.5 → "EGP 2,500.50". */
 export function formatEgp(amount: number): string {
-  return `EGP ${money.format(amount)}`;
+  return `EGP ${(Math.round(amount * 100) % 100 === 0 ? pounds : piastres).format(amount)}`;
 }
 
-/** 16700 → "16,700". */
+/** 16700 → "16,700"; 22.5 → "22.5" (hours as well as amounts). */
 export function formatAmount(amount: number): string {
   return money.format(amount);
 }

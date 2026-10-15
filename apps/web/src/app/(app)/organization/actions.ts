@@ -84,15 +84,12 @@ export async function reorderDepartments(parentId: string | null, _prev: FormSta
 // ("Any", "No limit").
 // The job description's purpose, duties and requirements are the rich text editors' HTML ("" clears one); the API
 // cleans it, and reads the duties' rows (to link KPIs to later) from the duties' HTML itself.
-// `occupationCode`: the social insurance occupation's six-digit code, or null for none. Left out when the form had no
-// picker yet (it is loaded on its own), so a save made before it came keeps the occupation as it was.
 const jobTitleBody = (fd: FormData) => ({
   departmentId: text(fd, 'departmentId'),
   titleEn: text(fd, 'titleEn'),
   titleAr: text(fd, 'titleAr'),
   minGradeId: text(fd, 'minGradeId'),
   maxGradeId: text(fd, 'maxGradeId'),
-  ...(fd.has('occupationCode') && { occupationCode: text(fd, 'occupationCode').trim() || null }),
   jdPurpose: text(fd, 'jdPurpose'),
   jdDuties: text(fd, 'jdDuties'),
   jdRequirements: text(fd, 'jdRequirements'),

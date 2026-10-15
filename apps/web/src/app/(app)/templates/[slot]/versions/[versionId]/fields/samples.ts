@@ -1,8 +1,10 @@
 import {
   pdfBoxCharacters,
+  slotArabicDigits,
   TAG_GROUP_LABELS,
   TAG_GROUPS,
   TEMPLATE_TAGS,
+  toArabicDigits,
   type PdfField,
   type PdfFieldAlign,
   type PdfFieldKind,
@@ -11,11 +13,11 @@ import {
   type TemplateLanguage,
   type TemplateTag,
 } from '@trendlix/shared';
-import { boxCount, round2 } from './place';
+import { boxCount, round2, rowCount } from './place';
 
 // What Place Fields draws in each field so its place can be judged by eye (the tag's label, or sample characters in the
-// boxes: no one's real data), the defaults of a new field of each kind, and the words that name a field. Pure code,
-// tested; no "@/" imports.
+// boxes: no one's real data), in the digits the form prints, the defaults of a new field of each kind, and the words that
+// name a field. Pure code, tested; no "@/" imports.
 
 const TAGS: ReadonlyMap<string, TemplateTag> = new Map(TEMPLATE_TAGS.map((t) => [t.tag, t]));
 
@@ -61,9 +63,26 @@ export function sampleValue(tag: string | null | undefined, length = 10): string
   return DIGITS.repeat(Math.ceil(n / DIGITS.length)).slice(0, n);
 }
 
+// ---------- digits ----------
+
+/**
+ * Whether a field prints ٠-٩: as its template's slot says (a social insurance form, owner 16 October 2026: every
+ * number in ٠-٩ but an email's), else as the field is set. `slotKey`: the template's, e.g. insurance_form_1.
+ */
+export function printsArabicDigits(field: Pick<PdfField, 'kind' | 'tag' | 'arabicDigits'>, slotKey?: string | null): boolean {
+  return slotArabicDigits(slotKey, field) ?? !!field.arabicDigits;
+}
+
+/** What the Arabic digits setting shows: ticked or not, and, when the slot decides it, locked and why (else null). */
+export function digitsSetting(field: Pick<PdfField, 'kind' | 'tag' | 'arabicDigits'>, slotKey?: string | null): { checked: boolean; locked: string | null } {
+  const rule = slotArabicDigits(slotKey, field);
+  if (rule === null) return { checked: !!field.arabicDigits, locked: null };
+  return { checked: rule, locked: rule ? 'Social insurance forms always print ٠-٩.' : 'Emails keep their own digits.' };
+}
+
 /** The characters a boxes field shows in its boxes, from its tag's sample value, as the filled PDF would print them. */
-export function boxSamples(field: PdfField): string[] {
-  return pdfBoxCharacters(field, sampleValue(field.tag, boxCount(field)));
+export function boxSamples(field: PdfField, slotKey?: string | null): string[] {
+  return pdfBoxCharacters({ ...field, arabicDigits: printsArabicDigits(field, slotKey) }, sampleValue(field.tag, boxCount(field)));
 }
 
 /** The mark a check field prints: ✓ unless it says another. */
@@ -71,15 +90,20 @@ export const checkMark = (field: Pick<PdfField, 'text'>) => field.text?.trim() |
 
 /**
  * What a text, check or fixed field shows: the tag's label in the template's language (Arabic but for an English
- * template), the check's mark, or the fixed text.
+ * template), the check's mark, or the fixed text; a text's digits as the form prints them (printsArabicDigits).
  */
-export function sampleText(field: PdfField, language: TemplateLanguage): string {
+export function sampleText(field: PdfField, language: TemplateLanguage, slotKey?: string | null): string {
   if (field.kind === 'check') return checkMark(field);
-  if (field.kind === 'fixed') return field.text ?? '';
   const t = tagInfo(field.tag);
-  if (!t) return field.tag ?? '';
-  return language === 'en' ? t.labelEn : t.labelAr;
+  const text = field.kind === 'fixed' ? (field.text ?? '') : !t ? (field.tag ?? '') : language === 'en' ? t.labelEn : t.labelAr;
+  return printsArabicDigits(field, slotKey) ? toArabicDigits(text) : text;
 }
+
+/**
+ * A sample as it wraps on screen, as the filled PDF wraps it: at its spaces, but a sign standing alone (the dash of
+ * "التجارة - شعبة") kept with the word before it, so that no line starts with it.
+ */
+export const asItWraps = (text: string) => text.replace(/ (?=[^\p{L}\p{N}\s]+(?: |$))/gu, '\u00a0');
 
 export const KIND_LABELS: Record<PdfFieldKind, string> = { text: 'Text', boxes: 'Boxes', check: 'Check mark', fixed: 'Fixed text' };
 
@@ -147,6 +171,20 @@ export function withOptional(field: PdfField, optional: boolean): PdfField {
   return optional && canBeOptional(field.kind) ? { ...next, optional: true } : next;
 }
 
+/** Whether a field of this kind can take more than one line: text and fixed text. */
+export const canWrap = (kind: PdfFieldKind) => kind === 'text' || kind === 'fixed';
+
+/**
+ * The field given the most lines its value may take (owner, 16 October 2026), 1 to LINES_MAX: `lines` when more than
+ * one, nothing at all for one (as it is saved). Text and fixed text only.
+ */
+export function withLines(field: PdfField, lines: number): PdfField {
+  const next = { ...field };
+  delete next.lines;
+  const rows = rowCount({ kind: field.kind, lines: Math.round(lines) });
+  return rows > 1 ? { ...next, lines: rows } : next;
+}
+
 /** What every kind keeps: where the field is and its font. */
 function common(field: PdfField): PdfField {
   const { id, page, x, y, width, height, fontSize, bold } = field;
@@ -155,11 +193,18 @@ function common(field: PdfField): PdfField {
 
 /**
  * A field turned into another kind, with that kind's defaults: Boxes takes its tag's boxes (defaultBoxes); a check keeps
- * the tag, to compare with; fixed text drops it. Text and boxes stay optional when they were.
+ * the tag, to compare with; fixed text drops it. Text and boxes stay optional when they were; text and fixed text keep
+ * their lines.
  */
 export function changeKind(field: PdfField, kind: PdfFieldKind, language: TemplateLanguage): PdfField {
   if (kind === field.kind) return field;
-  const base = { ...common(field), kind, ...(isOptional(field) && canBeOptional(kind) && { optional: true }) };
+  const lines = rowCount(field);
+  const base = {
+    ...common(field),
+    kind,
+    ...(isOptional(field) && canBeOptional(kind) && { optional: true }),
+    ...(lines > 1 && canWrap(kind) && { lines }),
+  };
   if (kind === 'boxes') return { ...base, ...defaultBoxes(field.tag, language), boxGap: 0, groupGap: 0 };
   if (kind === 'check') return { ...base, equals: '' };
   if (kind === 'fixed') return { ...base, tag: null, text: '', align: field.align ?? defaultAlign(language) };

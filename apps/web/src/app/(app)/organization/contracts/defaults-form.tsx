@@ -2,8 +2,12 @@
 
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { ContractSettings, FormState } from '@/lib/types';
+import { plainAmount } from '../../employees/[id]/contracts/salary';
 
-/** What a new contract starts with (HR and Admin): the probation and the contract's length, in months. */
+/**
+ * What a new contract starts with (HR and Admin): the probation and the contract's length, in months; and the basic wage
+ * social insurance Form 1 prints for an employee who has none of their own (owner, 16 October 2026).
+ */
 export function ContractDefaultsForm({
   action,
   settings,
@@ -57,6 +61,27 @@ export function ContractDefaultsForm({
             Contracts are fixed-term: each runs this long, then is renewed or ends.
           </p>
         </div>
+        {settings.insuranceBasicDefault !== undefined && (
+          <div className="sm:col-span-2 sm:max-w-sm">
+            <label htmlFor={fid('insuranceBasicDefault')} className="label">
+              Basic wage on social insurance forms (default)
+            </label>
+            <input
+              id={fid('insuranceBasicDefault')}
+              name="insuranceBasicDefault"
+              required
+              inputMode="decimal"
+              autoComplete="off"
+              defaultValue={valueOf(state, 'insuranceBasicDefault', plainAmount(settings.insuranceBasicDefault))}
+              aria-describedby={fid('insuranceBasicDefault-hint')}
+              className="input tabular-nums"
+            />
+            <p id={fid('insuranceBasicDefault-hint')} className="hint">
+              In EGP. Printed in Form 1&apos;s <bdi lang="ar">أجر أساسي</bdi> boxes for an employee without a basic wage of their own on the
+              Social Insurance tab. The contract&apos;s basic salary is not changed by it.
+            </p>
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton busy={pending}>Save</SubmitButton>

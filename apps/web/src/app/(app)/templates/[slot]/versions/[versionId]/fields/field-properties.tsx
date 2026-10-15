@@ -11,14 +11,16 @@ import {
   type TemplateLanguage,
 } from '@trendlix/shared';
 import { useFieldIds } from '@/components/form';
-import { BOXES_MAX, boxCount, clampRect, groupsText, parseGroups, round2, setBoxCount, withRect } from './place';
-import { canBeOptional, changeKind, changeTag, dateKind, fieldLabel, isAmountTag, KIND_LABELS, TAGS_BY_GROUP, withOptional } from './samples';
+import { BOXES_MAX, boxCount, clampRect, groupsText, LINES_MAX, parseGroups, round2, rowCount, setBoxCount, withRect } from './place';
+import { canBeOptional, changeKind, changeTag, dateKind, digitsSetting, fieldLabel, isAmountTag, KIND_LABELS, TAGS_BY_GROUP, withLines, withOptional } from './samples';
 
 // The right of Place Fields: the selected field's settings, each applied as it is changed (Save sends them all). Its
-// tag and kind; for text and boxes, whether it is left blank when the tag has no value; its font; for text, how it lines up and whether a long value shrinks; for boxes, how many, their groups
-// ("4+2+2"), the gaps between them, which side a short value keeps to, a date's order, an amount's part, Arabic digits
-// and the boxes moved on their own; for a check mark, when it is ticked and its mark; for fixed text, the text; and its
-// exact place, in points. Read-only, the same settings, greyed.
+// tag and kind; for text and boxes, whether it is left blank when the tag has no value; its font; for text and fixed
+// text, how it lines up, how many lines a long value may wrap onto and whether it shrinks; for boxes, how many, their
+// groups ("4+2+2"), the gaps between them, which side a short value keeps to, a date's order, an amount's part and the
+// boxes moved on their own; Arabic digits, ticked and locked where the template's slot decides them (a social insurance
+// form); for a check mark, when it is ticked and its mark; for fixed text, the text; and its exact place, in points.
+// Read-only, the same settings, greyed.
 
 type Update = (change: (field: PdfField) => PdfField) => void;
 
@@ -93,15 +95,44 @@ function Choice<T extends string>({ legend, value, options, onValue }: { legend:
   );
 }
 
-function Check({ label, checked, onChange, hint }: { label: string; checked: boolean; onChange: (checked: boolean) => void; hint?: string }) {
+function Check({
+  label,
+  checked,
+  onChange,
+  hint,
+  disabled,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  hint?: string;
+  disabled?: boolean;
+}) {
   return (
     <label className="flex items-start gap-2 text-sm">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent" />
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent disabled:opacity-60" />
       <span>
         {label}
         {hint && <span className="block text-xs text-muted">{hint}</span>}
       </span>
     </label>
+  );
+}
+
+/**
+ * Whether the field prints ٠-٩: its own setting, unless the template's slot decides it (a social insurance form prints
+ * every number in ٠-٩ but an email's, owner 16 October 2026), when it shows the rule, locked, and why.
+ */
+function DigitsCheck({ field, slotKey, onChange }: { field: PdfField; slotKey: string | null | undefined; onChange: Update }) {
+  const { checked, locked } = digitsSetting(field, slotKey);
+  return (
+    <Check
+      label="Arabic digits"
+      hint={locked ?? '٠١٢٣ instead of 0123.'}
+      checked={checked}
+      disabled={locked !== null}
+      onChange={(arabicDigits) => onChange((f) => ({ ...f, arabicDigits }))}
+    />
   );
 }
 
@@ -181,11 +212,12 @@ function TagSelect({ field, language, onChange }: { field: PdfField; language: T
 
 /**
  * `pages`: every page's size (a field moved to another page stays on it); `box`: the box of a boxes field picked with
- * Alt-click, which the arrow keys move alone.
+ * Alt-click, which the arrow keys move alone; `slotKey`: the template's, whose rule may decide the digits.
  */
 export function FieldProperties({
   field,
   language,
+  slotKey,
   editable,
   pages,
   box,
@@ -195,6 +227,7 @@ export function FieldProperties({
 }: {
   field: PdfField;
   language: TemplateLanguage;
+  slotKey?: string | null;
   editable: boolean;
   pages: readonly PdfPageSize[];
   box: number | null;
@@ -207,7 +240,8 @@ export function FieldProperties({
   const page = pages[field.page - 1] ?? { width: 612, height: 792 };
   const place = (patch: Partial<PdfField>) => onChange((f) => withRect(f, clampRect({ ...f, ...patch }, page)));
   const date = dateKind(field.tag);
-  const lines = field.kind === 'text' || field.kind === 'fixed';
+  const printsText = field.kind === 'text' || field.kind === 'fixed';
+  const rows = rowCount(field);
   const moved = (field.nudges ?? []).some((n) => n && (n.dx || n.dy));
 
   return (
@@ -281,7 +315,7 @@ export function FieldProperties({
         </div>
       </div>
 
-      {lines && (
+      {printsText && (
         <>
           <Choice<PdfFieldAlign>
             legend="Align"
@@ -293,7 +327,24 @@ export function FieldProperties({
             ]}
             onValue={(align) => set({ align })}
           />
-          <Check label="Shrink to fit" hint="A value too long for the box prints smaller." checked={!!field.shrinkToFit} onChange={(shrinkToFit) => set({ shrinkToFit })} />
+          <div>
+            <label htmlFor={fid('lines')} className="label">
+              Lines
+            </label>
+            <NumberInput id={fid('lines')} value={rows} onValue={(n) => onChange((f) => withLines(f, n))} min={1} max={LINES_MAX} step={1} className={`${SMALL_INPUT} w-24`} />
+            <p className="hint">
+              {rows > 1
+                ? `The box is split into ${rows} rows: a short value sits on the bottom one, a longer one wraps onto the rows above.`
+                : 'More than 1 lets a long value wrap onto the rows above instead of printing small.'}
+            </p>
+          </div>
+          <Check
+            label="Shrink to fit"
+            hint={rows > 1 ? 'A value too long for all its lines prints smaller.' : 'A value too long for the box prints smaller.'}
+            checked={!!field.shrinkToFit}
+            onChange={(shrinkToFit) => set({ shrinkToFit })}
+          />
+          <DigitsCheck field={field} slotKey={slotKey} onChange={onChange} />
         </>
       )}
 
@@ -355,7 +406,7 @@ export function FieldProperties({
               </select>
             </div>
           )}
-          <Check label="Arabic digits" hint="٠١٢٣ instead of 0123." checked={!!field.arabicDigits} onChange={(arabicDigits) => set({ arabicDigits })} />
+          <DigitsCheck field={field} slotKey={slotKey} onChange={onChange} />
           <div className="space-y-2">
             <p className="text-xs text-muted">
               {box !== null

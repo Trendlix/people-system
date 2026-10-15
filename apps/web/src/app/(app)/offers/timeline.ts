@@ -89,11 +89,10 @@ export interface MissingHelp {
 }
 
 /**
- * Where each missing value is filled in: the company profile ({tab: 'company'}), the offer's job title under
- * Organization ({tab: 'departments'}, e.g. its insurance occupation), or a field of the offer ({tab: 'offer',
- * key: its field}: on its Edit page while it is a draft, at the field's anchor #field-<key>). {tab: 'offer', key:
- * 'template'}: the template prints something an offer never has (a national ID, an address, bank details …), so the tag
- * comes out of the job offer template, in Templates.
+ * Where each missing value is filled in: the company profile ({tab: 'company'}), or a field of the offer ({tab:
+ * 'offer', key: its field}: on its Edit page while it is a draft, at the field's anchor #field-<key>). {tab: 'offer',
+ * key: 'template'}: the template prints something an offer never has (a national ID, an address, the social insurance
+ * occupation, bank details …), so the tag comes out of the job offer template, in Templates.
  */
 export function missingHelp(o: Pick<OfferView, 'id' | 'status' | 'missing' | 'template'> & { jobTitle?: OfferView['jobTitle'] }): MissingHelp[] {
   return (o.missing ?? []).map((m) => {
@@ -111,21 +110,6 @@ export function missingHelp(o: Pick<OfferView, 'id' | 'status' | 'missing' | 'te
     }
     if (m.where?.tab === 'company') {
       return { tag: m.tag, label, what: 'Fill it in on the company profile.', href: '/organization/company', linkText: 'Company profile' };
-    }
-    // set on the offer's job title, under Organization: its insurance occupation (owner, 15 October 2026)
-    if (m.where?.tab === 'departments') {
-      const title = o.jobTitle?.titleEn;
-      const jobTitle = title ? `the ${title} job title` : 'the job title';
-      return {
-        tag: m.tag,
-        label,
-        what:
-          m.where.key === 'occupationCode'
-            ? `Choose the insurance occupation of ${jobTitle} under Organization › Departments & Job Titles.`
-            : `Fill it in on ${jobTitle} under Organization › Departments & Job Titles.`,
-        href: title ? `/organization/departments?q=${encodeURIComponent(title)}` : '/organization/departments',
-        linkText: 'Departments & Job Titles',
-      };
     }
     if (m.where?.tab === 'offer' && m.where.key === 'template') {
       return {

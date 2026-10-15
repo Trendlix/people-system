@@ -154,7 +154,10 @@ export type GridField = {
 
 const isEmpty = (v: React.ReactNode) => v === null || v === undefined || v === '' || v === false;
 
-/** One cell per field, label above value. A required field that is empty is highlighted as not captured yet. */
+/**
+ * One cell per field, label above value. A required field that is empty is highlighted as not captured yet. A cell
+ * holding a form that is open (`data-editing`, e.g. the Social Insurance tab's occupation) takes the whole row.
+ */
 export function FieldGrid({ fields }: { fields: GridField[] }) {
   return (
     <dl className="grid grid-cols-[repeat(auto-fill,minmax(13.5rem,1fr))] overflow-hidden rounded-lg border border-line bg-card">
@@ -165,7 +168,7 @@ export function FieldGrid({ fields }: { fields: GridField[] }) {
           <div
             key={f.key}
             id={`field-${f.key}`}
-            className={`-mr-px -mb-px min-w-0 scroll-mt-6 border-r border-b border-line px-4 py-3 target:ring-2 target:ring-accent target:ring-inset ${missing ? 'bg-warn-soft' : ''}`}
+            className={`-mr-px -mb-px min-w-0 scroll-mt-6 border-r border-b border-line px-4 py-3 target:ring-2 target:ring-accent target:ring-inset has-[[data-editing]]:col-span-full ${missing ? 'bg-warn-soft' : ''}`}
           >
             <dt className="text-[11px] font-medium tracking-wide text-muted uppercase">
               {f.label}

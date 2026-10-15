@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { ContractSettings, EndingRule } from '@/lib/types';
+import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { Empty, Loading } from '../ui';
 import { updateContractSettings } from './actions';
 import { ContractDefaultsForm } from './defaults-form';
@@ -47,7 +48,7 @@ async function ContractsAndEndings() {
 
       <section className="card p-6">
         <h2 className="font-semibold">Contract Defaults</h2>
-        <p className="mt-1 text-sm text-muted">What every new contract starts with.</p>
+        <p className="mt-1 text-sm text-muted">What every new contract starts with, and the basic wage social insurance forms print by default.</p>
         {canEdit ? (
           <ContractDefaultsForm action={updateContractSettings} settings={settings} />
         ) : (
@@ -59,6 +60,12 @@ async function ContractsAndEndings() {
               {monthsLabel(settings.probationMonths, 'No probation')}
               <span className="text-muted"> · the law allows it once per employer, up to 3 months (Art. 90)</span>
             </Row>
+            {settings.insuranceBasicDefault !== undefined && (
+              <Row label="Basic wage on social insurance forms (default)">
+                <span className="tabular-nums">{formatEgp(settings.insuranceBasicDefault)}</span>
+                <span className="text-muted"> · for an employee without a basic wage of their own</span>
+              </Row>
+            )}
           </dl>
         )}
       </section>

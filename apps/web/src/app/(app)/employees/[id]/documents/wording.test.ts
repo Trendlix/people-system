@@ -70,24 +70,30 @@ describe('where a missing detail is filled in', () => {
     expect(missingHref(ID, { tab: 'contracts', key: 'contract' })).toBe('/employees/emp-1?tab=contracts#contract');
   });
 
-  it('sends what is set on the job title, its insurance occupation, to Departments & Job Titles', () => {
-    expect(missingHref(ID, { tab: 'departments', key: 'occupationCode' })).toBe('/organization/departments');
-    expect(missingHref(ID, { tab: 'departments', key: '' })).toBe('/organization/departments');
-    expect(placeLabel('departments')).toBe('Job title, under Organization › Departments & Job Titles');
+  it('sends the occupation, subscription start and wages to their item on the Social Insurance tab', () => {
+    // the employee's own, no longer the job title's (owner's decision, 16 October 2026)
+    expect(missingHref(ID, { tab: 'insurance', key: 'occupationCode' })).toBe('/employees/emp-1?tab=insurance#field-occupationCode');
+    expect(missingHref(ID, { tab: 'insurance', key: 'insuranceInsuredWage' })).toBe('/employees/emp-1?tab=insurance#field-insuranceInsuredWage');
+    expect(placeLabel('insurance')).toBe('Social Insurance tab');
     expect(
       missingLinks(ID, [
-        { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'departments', key: 'occupationCode' } },
-        { tag: 'occupation_name', label: '', where: { tab: 'departments', key: 'occupationCode' } },
+        { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'insurance', key: 'occupationCode' } },
+        { tag: 'occupation_name', label: '', where: { tab: 'insurance', key: 'occupationCode' } },
+        { tag: 'insurance_start_date', label: 'Subscription start (social insurance)', where: { tab: 'insurance', key: 'insuranceStartDate' } },
       ]),
     ).toEqual([
+      { tag: 'occupation_code', label: 'Occupation code (social insurance)', place: 'Social Insurance tab', href: '/employees/emp-1?tab=insurance#field-occupationCode' },
+      { tag: 'occupation_name', label: 'occupation_name', place: 'Social Insurance tab', href: '/employees/emp-1?tab=insurance#field-occupationCode' },
       {
-        tag: 'occupation_code',
-        label: 'Occupation code (social insurance)',
-        place: 'Job title, under Organization › Departments & Job Titles',
-        href: '/organization/departments',
+        tag: 'insurance_start_date',
+        label: 'Subscription start (social insurance)',
+        place: 'Social Insurance tab',
+        href: '/employees/emp-1?tab=insurance#field-insuranceStartDate',
       },
-      { tag: 'occupation_name', label: 'occupation_name', place: 'Job title, under Organization › Departments & Job Titles', href: '/organization/departments' },
     ]);
+    // nothing is set on a job title any more but its duties
+    expect(placeLabel('departments')).toBe('departments');
+    expect(missingHref(ID, { tab: 'departments', key: 'occupationCode' })).toBeNull();
   });
 
   it('gives no link for a place it doesn’t know, and the tab alone without a key', () => {

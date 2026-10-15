@@ -17,6 +17,8 @@ import {
   parseGroups,
   pointOnPage,
   resizeRect,
+  rowCount,
+  rowDividers,
   setBoxCount,
   toPoints,
   toScreen,
@@ -200,5 +202,33 @@ describe('fields', () => {
     expect(fieldInMessage('The national_id field has 15 boxes.', fields)).toBe('f1aaaaaa');
     expect(fieldInMessage('The join_date field is too small.', fields)).toBeNull();
     expect(fieldInMessage('Something went wrong.', fields)).toBeNull();
+  });
+});
+
+// A text field that takes more than one line (owner, 16 October 2026): its box split into equal rows.
+describe('the rows of a field of more than one line', () => {
+  it('splits text and fixed text into 1 to 4 rows; any other kind is one', () => {
+    expect(rowCount(field())).toBe(1);
+    expect(rowCount(field({ lines: 2 }))).toBe(2);
+    expect(rowCount(field({ kind: 'fixed', lines: 4 }))).toBe(4);
+    expect(rowCount(field({ lines: 7 }))).toBe(4);
+    expect(rowCount(field({ lines: 0 }))).toBe(1);
+    expect(rowCount(field({ lines: Number.NaN }))).toBe(1);
+    expect(rowCount(field({ kind: 'boxes', lines: 3 }))).toBe(1);
+  });
+
+  it('says where the rows meet, from the field’s top', () => {
+    expect(rowDividers(field({ height: 25.3, lines: 2 }))).toEqual([12.65]);
+    expect(rowDividers(field({ height: 30, lines: 3 }))).toEqual([10, 20]);
+    expect(rowDividers(field({ height: 30 }))).toEqual([]);
+    expect(rowDividers(field({ kind: 'check', height: 30, lines: 2 }))).toEqual([]);
+  });
+
+  it('keeps lines when there are more than one on text or fixed text, and nothing otherwise', () => {
+    expect(cleanField(field({ lines: 2 }))).toMatchObject({ lines: 2 });
+    expect(cleanField(field({ lines: 1 }))).not.toHaveProperty('lines');
+    expect(cleanField(field({ kind: 'boxes', boxes: 3, lines: 2 }))).not.toHaveProperty('lines');
+    expect(fieldsDirty([field()], [field({ lines: 1 })])).toBe(false);
+    expect(fieldsDirty([field()], [field({ lines: 2 })])).toBe(true);
   });
 });

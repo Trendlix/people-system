@@ -186,6 +186,7 @@ function Help({ editable, fields, pages }: { editable: boolean; fields: number; 
 }
 
 export function FieldEditor({
+  slotKey,
   slotName,
   version,
   pages: given,
@@ -196,6 +197,8 @@ export function FieldEditor({
   copyFrom,
   offers,
 }: {
+  /** The template's slot, e.g. insurance_form_1: a social insurance form prints its numbers in ٠-٩ (samples.ts). */
+  slotKey: string;
   slotName: string;
   version: EditorVersion;
   pages: PdfPageSize[];
@@ -582,6 +585,7 @@ export function FieldEditor({
                         box={f.id === selected ? box : null}
                         samples={samples}
                         language={version.language}
+                        slotKey={slotKey}
                         editable={canEdit}
                       />
                     ))}
@@ -608,6 +612,7 @@ export function FieldEditor({
               key={current.id}
               field={current}
               language={version.language}
+              slotKey={slotKey}
               editable={canEdit}
               pages={pages}
               box={box}

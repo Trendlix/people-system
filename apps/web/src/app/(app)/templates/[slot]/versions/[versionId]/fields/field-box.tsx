@@ -2,14 +2,16 @@
 
 import { memo } from 'react';
 import { pdfFieldBoxes, type PdfField, type PdfFieldKind, type TemplateLanguage } from '@trendlix/shared';
-import { GRIPS, type Grip } from './place';
-import { boxSamples, fieldLabel, isOptional, sampleText } from './samples';
+import { GRIPS, rowCount, rowDividers, type Grip } from './place';
+import { asItWraps, boxSamples, fieldLabel, isOptional, sampleText } from './samples';
 
 // One field drawn over its page on Place Fields: an outlined, lightly filled rectangle (each box of a boxes field as the
 // filled PDF prints into it, pdfFieldBoxes), with sample content inside so its place can be judged by eye, and, once
 // selected, the handles it is resized by. An optional field (left blank when its tag has no value) is outlined with
-// dashes: a text field's outline, a boxes field's boxes. The pointer and the keys are the editor's (field-editor.tsx): this only says
-// which field (data-field), handle (data-grip) or box was pressed.
+// dashes: a text field's outline, a boxes field's boxes. A field of more than one line shows its rows, faintly divided,
+// its sample wrapped onto them from the bottom row up, as the filled PDF prints it (roughly: Test print is exact). The
+// samples are in the digits the form prints (samples.ts). The pointer and the keys are the editor's (field-editor.tsx):
+// this only says which field (data-field), handle (data-grip) or box was pressed.
 
 const KIND_STYLE: Record<PdfFieldKind, string> = {
   text: 'border-accent bg-accent/10',
@@ -30,13 +32,15 @@ const GRIP_STYLE: Record<Grip, string> = {
 };
 
 const JUSTIFY = { right: 'justify-end', center: 'justify-center', left: 'justify-start' } as const;
+const TEXT_ALIGN = { right: 'text-right', center: 'text-center', left: 'text-left' } as const;
 
 /** Whether a text or boxes field still needs its tag (drawn in red until it has one). */
 export const needsTag = (field: Pick<PdfField, 'kind' | 'tag'>) => (field.kind === 'text' || field.kind === 'boxes') && !field.tag;
 
 /**
  * `scale`: screen pixels a point; `box`: the box of a selected boxes field that the arrow keys move alone; `samples`:
- * show what would print; `editable`: the handles are shown once selected.
+ * show what would print; `slotKey`: the template's, whose rule may set the digits; `editable`: the handles are shown
+ * once selected.
  */
 export const FieldBox = memo(function FieldBox({
   field,
@@ -45,6 +49,7 @@ export const FieldBox = memo(function FieldBox({
   box,
   samples,
   language,
+  slotKey,
   editable,
 }: {
   field: PdfField;
@@ -53,13 +58,15 @@ export const FieldBox = memo(function FieldBox({
   box: number | null;
   samples: boolean;
   language: TemplateLanguage;
+  slotKey?: string | null;
   editable: boolean;
 }) {
   const optional = isOptional(field);
   const width = field.width * scale;
   const height = field.height * scale;
   const font = { fontSize: field.fontSize * scale, fontWeight: field.bold ? 700 : 400, lineHeight: 1 };
-  const text = samples && field.kind !== 'boxes' ? sampleText(field, language) : '';
+  const text = samples && field.kind !== 'boxes' ? sampleText(field, language, slotKey) : '';
+  const rows = rowCount(field);
   const arabic = field.kind === 'text' && language !== 'en';
   const align = field.kind === 'check' ? 'center' : (field.align ?? 'right');
   // the edge handles would cover a small field (a check box, a line of text): its corners are enough, small and centred
@@ -79,16 +86,27 @@ export const FieldBox = memo(function FieldBox({
       } ${editable ? 'cursor-move' : 'cursor-pointer'} focus-visible:outline-2 focus-visible:outline-offset-2`}
       style={{ left: field.x * scale, top: field.y * scale, width, height }}
     >
+      {rowDividers(field).map((at) => (
+        <i key={at} aria-hidden="true" className="pointer-events-none absolute inset-x-0 border-t border-dashed border-ink/20" style={{ top: at * scale }} />
+      ))}
       {field.kind === 'boxes' ? (
-        <BoxesInside field={field} scale={scale} samples={samples} box={box} font={font} dashed={optional} />
+        <BoxesInside field={field} scale={scale} samples={samples} box={box} font={font} dashed={optional} slotKey={slotKey} />
       ) : (
-        text && (
+        text &&
+        (rows > 1 ? (
+          // a line a row, the bottom one first: what doesn't fit one wraps onto the rows above
+          <span className="pointer-events-none absolute inset-0 flex flex-col justify-end overflow-hidden px-[1px] text-ink" style={{ ...font, lineHeight: `${height / rows}px` }}>
+            <span lang={arabic ? 'ar' : undefined} dir={arabic ? 'rtl' : 'auto'} className={`block ${TEXT_ALIGN[align]}`}>
+              {asItWraps(text)}
+            </span>
+          </span>
+        ) : (
           <span className={`pointer-events-none absolute inset-0 flex items-center overflow-hidden px-[1px] whitespace-nowrap text-ink ${JUSTIFY[align]}`} style={font}>
             <span lang={arabic ? 'ar' : undefined} dir={arabic ? 'rtl' : 'auto'}>
               {text}
             </span>
           </span>
-        )
+        ))
       )}
       {grips.map((g) => (
         <i
@@ -110,6 +128,7 @@ function BoxesInside({
   box,
   font,
   dashed,
+  slotKey,
 }: {
   field: PdfField;
   scale: number;
@@ -117,9 +136,10 @@ function BoxesInside({
   box: number | null;
   font: React.CSSProperties;
   dashed: boolean;
+  slotKey?: string | null;
 }) {
   const rects = pdfFieldBoxes(field);
-  const chars = samples ? boxSamples(field) : [];
+  const chars = samples ? boxSamples(field, slotKey) : [];
   return rects.map((r, i) => (
     <span
       key={i}

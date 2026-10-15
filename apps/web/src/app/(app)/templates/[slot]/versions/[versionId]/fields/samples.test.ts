@@ -1,19 +1,24 @@
 import { TEMPLATE_TAGS, type PdfField } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  asItWraps,
   boxSamples,
   canBeOptional,
+  canWrap,
   changeKind,
   changeTag,
   dateKind,
   defaultBoxes,
+  digitsSetting,
   fieldLabel,
   isAmountTag,
   isOptional,
   newField,
+  printsArabicDigits,
   sampleText,
   sampleValue,
   TAGS_BY_GROUP,
+  withLines,
   withOptional,
 } from './samples';
 
@@ -160,5 +165,80 @@ describe('optional fields', () => {
     const boxes = changeKind(field({ tag: 'building_no', optional: true }), 'boxes', 'ar');
     expect(changeTag(boxes, 'insurance_no', 'ar').optional).toBe(true);
     expect(changeTag(field({ optional: true }), 'personal_email', 'ar').optional).toBe(true);
+  });
+});
+
+// A text field that takes more than one line (owner, 16 October 2026): text and fixed text, 1 to 4 lines.
+describe('lines', () => {
+  it('lets text and fixed text wrap, not boxes or a check mark', () => {
+    expect(['text', 'fixed', 'boxes', 'check'].map((k) => canWrap(k as PdfField['kind']))).toEqual([true, true, false, false]);
+  });
+
+  it('gives a field 1 to 4 lines, leaving nothing behind for one', () => {
+    expect(withLines(field(), 2).lines).toBe(2);
+    expect(withLines(field({ kind: 'fixed', tag: null, text: 'x' }), 4).lines).toBe(4);
+    expect(withLines(field(), 9).lines).toBe(4);
+    expect(withLines(field(), 2.6).lines).toBe(3);
+    expect(withLines(field({ lines: 3 }), 1)).toEqual(field());
+    expect(withLines(field({ lines: 3 }), 0)).not.toHaveProperty('lines');
+    expect(withLines(field({ kind: 'boxes', boxes: 4 }), 2)).not.toHaveProperty('lines');
+  });
+
+  it('keeps its lines between text and fixed text, and drops them as boxes or a check mark', () => {
+    const text = field({ lines: 2 });
+    expect(changeKind(text, 'fixed', 'ar').lines).toBe(2);
+    expect(changeKind(changeKind(text, 'fixed', 'ar'), 'text', 'ar').lines).toBe(2);
+    expect(changeKind(text, 'boxes', 'ar')).not.toHaveProperty('lines');
+    expect(changeKind(text, 'check', 'ar')).not.toHaveProperty('lines');
+    expect(changeKind(field(), 'fixed', 'ar')).not.toHaveProperty('lines');
+  });
+
+  it('wraps a sample as the PDF does: never starting a line with a sign standing alone', () => {
+    expect(asItWraps('بكالوريوس التجارة - شعبة المحاسبة - جامعة طنطا')).toBe('بكالوريوس التجارة\u00a0- شعبة المحاسبة\u00a0- جامعة طنطا');
+    expect(asItWraps('Omar Khaled')).toBe('Omar Khaled');
+    expect(asItWraps('a / b')).toBe('a\u00a0/ b');
+    expect(asItWraps('end -')).toBe('end\u00a0-');
+  });
+});
+
+// A social insurance form prints every number in ٠-٩ but an email's, whatever a field was saved with (owner, 16 October
+// 2026); any other template, as each field is set.
+describe('the digits a field prints', () => {
+  const FORM_1 = 'insurance_form_1';
+
+  it('follows the slot’s rule on a social insurance form, else the field’s own setting', () => {
+    expect(printsArabicDigits(field({ tag: 'insurance_no' }), FORM_1)).toBe(true);
+    expect(printsArabicDigits(field({ kind: 'boxes', tag: 'national_id', arabicDigits: false }), 'insurance_form_6')).toBe(true);
+    expect(printsArabicDigits(field({ kind: 'fixed', tag: null }), FORM_1)).toBe(true);
+    expect(printsArabicDigits(field({ tag: 'personal_email', arabicDigits: true }), FORM_1)).toBe(false);
+    expect(printsArabicDigits(field({ kind: 'boxes', tag: 'national_id' }), 'nda')).toBe(false);
+    expect(printsArabicDigits(field({ kind: 'boxes', tag: 'national_id', arabicDigits: true }), 'nda')).toBe(true);
+    expect(printsArabicDigits(field({ kind: 'boxes', tag: 'national_id', arabicDigits: true }))).toBe(true);
+  });
+
+  it('shows the setting ticked and locked on a social insurance form, unticked and locked for an email, free elsewhere', () => {
+    expect(digitsSetting(field({ kind: 'boxes', tag: 'national_id' }), FORM_1)).toEqual({ checked: true, locked: 'Social insurance forms always print ٠-٩.' });
+    expect(digitsSetting(field({ tag: 'personal_email', arabicDigits: true }), FORM_1)).toEqual({ checked: false, locked: 'Emails keep their own digits.' });
+    expect(digitsSetting(field({ kind: 'boxes', tag: 'national_id', arabicDigits: true }), 'nda')).toEqual({ checked: true, locked: null });
+    expect(digitsSetting(field({ kind: 'boxes', tag: 'national_id' }), null)).toEqual({ checked: false, locked: null });
+    // a check mark prints no digits: as it is set
+    expect(digitsSetting(field({ kind: 'check', tag: null }), FORM_1)).toEqual({ checked: false, locked: null });
+  });
+
+  it('shows the boxes’ samples in ٠-٩ on a social insurance form', () => {
+    const id = field({ kind: 'boxes', tag: 'national_id', boxes: 14 });
+    expect(boxSamples(id, FORM_1).join('')).toBe('٢٩٠٠١٠١١٢٣٤٥٦٧');
+    expect(boxSamples(field({ kind: 'boxes', tag: 'join_date', boxes: 8, dateOrder: 'YMD' }), 'insurance_form_6').join('')).toBe('٢٠٢٦١٠١٥');
+    expect(boxSamples(id, 'nda').join('')).toBe('29001011234567');
+    expect(boxSamples(id).join('')).toBe('29001011234567');
+  });
+
+  it('shows a fixed text’s digits in ٠-٩ on a social insurance form, an email’s label as it is', () => {
+    const office = field({ kind: 'fixed', tag: null, text: 'مكتب 12' });
+    expect(sampleText(office, 'ar', FORM_1)).toBe('مكتب ١٢');
+    expect(sampleText(office, 'ar', 'nda')).toBe('مكتب 12');
+    expect(sampleText(office, 'ar')).toBe('مكتب 12');
+    expect(sampleText({ ...office, arabicDigits: true }, 'ar')).toBe('مكتب ١٢');
+    expect(sampleText(field({ tag: 'personal_email' }), 'en', FORM_1)).toBe(sampleText(field({ tag: 'personal_email' }), 'en'));
   });
 });

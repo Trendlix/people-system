@@ -53,7 +53,9 @@ describe('a contract’s money', () => {
 
   it('shows amounts in EGP', () => {
     expect(formatEgp(16700)).toBe('EGP 16,700');
-    expect(formatEgp(1234.5)).toBe('EGP 1,234.5');
+    expect(formatEgp(1234.5)).toBe('EGP 1,234.50');
+    expect(formatEgp(1234.567)).toBe('EGP 1,234.57');
+    expect(formatEgp(1234.999)).toBe('EGP 1,235');
   });
 
   it('splits the gross into basic and variable', () => {
@@ -226,7 +228,7 @@ describe('allowances on top of the gross', () => {
   });
 
   it('lists a contract’s allowances with their amounts', () => {
-    expect(allowancesLabel([{ nameEn: 'Transport', amount: 1000 }, { nameEn: 'Mobile', amount: 500.5 }])).toBe('Transport EGP 1,000 · Mobile EGP 500.5');
+    expect(allowancesLabel([{ nameEn: 'Transport', amount: 1000 }, { nameEn: 'Mobile', amount: 500.5 }])).toBe('Transport EGP 1,000 · Mobile EGP 500.50');
     expect(allowancesLabel([])).toBe('');
   });
 });

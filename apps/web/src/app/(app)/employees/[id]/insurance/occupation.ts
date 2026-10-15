@@ -1,7 +1,8 @@
-// The social insurance occupation a job title carries (Form 1's كود المهنة; owner, 15 October 2026): how it is written,
-// and what the Insurance occupation picker lists and how its keys move through the list. Pure code, tested; no "@/"
-// imports, and not the occupation table itself (packages/shared occupations.ts): the search is passed in, so the table
-// is only loaded with the picker.
+// An employee's social insurance occupation (Form 1's كود المهنة; owner, 15 October 2026), set on the profile's Social
+// Insurance tab (owner's decision, 16 October 2026: no longer the job title's): how it is written, and what the
+// occupation picker lists and how its keys move through the list. Pure code, tested; no "@/" imports, and not the
+// occupation table itself (packages/shared occupations.ts): the search is passed in, so the table is only loaded with
+// the picker.
 
 /** An occupation of the table: its six-digit code and its Arabic name. */
 export type Occupation = readonly [code: string, name: string];

@@ -2,19 +2,23 @@ import { describe, expect, it } from 'vitest';
 import type { DocumentItem, Employment } from '../../../../../lib/types';
 import type { MissingLink } from '../documents/wording';
 import {
+  basicPrinted,
+  comprehensivePrinted,
   formsGap,
   formsToCheck,
   hasInsuranceCopy,
+  insurableLimitsText,
   insuranceCopyHref,
   insuranceForms,
   insuredEmployment,
-  jobTitleHref,
+  insuredPrinted,
   occupationText,
   printHref,
   printRequired,
   printStatus,
   readiness,
-  withJobTitleLinks,
+  showsWages,
+  startPrinted,
 } from './insurance';
 
 const ID = 'emp-1';
@@ -31,7 +35,7 @@ const item = (slotKey: string, over: Partial<DocumentItem> = {}): DocumentItem =
 
 const employment = (over: Partial<Employment> = {}) => ({ employmentType: 'full_time', endDate: null, ...over }) as Employment;
 
-const OCCUPATION: MissingLink = { tag: 'occupation_code', label: 'Occupation code (social insurance)', place: 'Job title, under Organization › Departments & Job Titles', href: '/organization/departments' };
+const OCCUPATION: MissingLink = { tag: 'occupation_code', label: 'Occupation code (social insurance)', place: 'Social Insurance tab', href: '/employees/emp-1?tab=insurance#field-occupationCode' };
 const OFFICE: MissingLink = { tag: 'insurance_office', label: 'Social insurance office', place: 'Company profile', href: '/organization/company' };
 
 describe('the employment the tab is about', () => {
@@ -84,7 +88,7 @@ describe('whether a form can be generated', () => {
   it('is ready, or lists what is missing, or says why it couldn’t be checked', () => {
     const form = item('insurance_form_1');
     expect(readiness(form, { missing: [], usesRestricted: false })).toEqual({ state: 'ready' });
-    expect(readiness(form, { missing: [OFFICE] })).toEqual({ state: 'missing', missing: [OFFICE] });
+    expect(readiness(form, { missing: [OCCUPATION, OFFICE] })).toEqual({ state: 'missing', missing: [OCCUPATION, OFFICE] });
     expect(readiness(form, { errors: ['Not available yet.'] })).toEqual({ state: 'unchecked', errors: ['Not available yet.'] });
   });
 
@@ -97,25 +101,51 @@ describe('whether a form can be generated', () => {
   });
 });
 
-describe('the job title’s occupation', () => {
-  const job = { id: 'job-1', departmentId: 'dep-1', titleEn: 'Sales Manager', titleAr: null, jdVersion: 1 };
-
-  it('is written as its code and name, or not at all', () => {
-    expect(occupationText({ ...job, occupationCode: '212300', occupationName: 'مدير مبيعات' })).toBe('212300 · مدير مبيعات');
-    expect(occupationText({ ...job, occupationCode: '212300', occupationName: null })).toBe('212300');
-    expect(occupationText({ ...job, occupationCode: null })).toBeNull();
-    expect(occupationText(null)).toBeNull();
+// The employee's own on this tab (owner's decisions, 16 October 2026), each with what Form 1 prints while none is set.
+describe('the occupation, subscription start and wages', () => {
+  it('the occupation is written as its code and name, or not at all', () => {
+    expect(occupationText({ occupationCode: '194200', occupationName: 'اخصائي موارد بشريه' })).toBe('194200 · اخصائي موارد بشريه');
+    expect(occupationText({ occupationCode: '194200', occupationName: null })).toBe('194200');
+    expect(occupationText({ occupationCode: null, occupationName: null })).toBeNull();
+    // an API from before it
+    expect(occupationText({})).toBeNull();
   });
 
-  it('is set on the job title’s page, at Edit job title; on the list when the department isn’t known', () => {
-    expect(jobTitleHref(job)).toBe('/organization/departments/dep-1/job-titles/job-1#edit');
-    expect(jobTitleHref({ id: 'job-1' })).toBe('/organization/departments');
+  it('the subscription start: the employee’s own, else the join date, else none', () => {
+    expect(startPrinted({ insuranceStartDate: '2026-02-01' }, { joinDate: '2026-01-15' })).toEqual({ text: '01/02/2026', from: null });
+    expect(startPrinted({ insuranceStartDate: null }, { joinDate: '2026-09-01' })).toEqual({ text: '01/09/2026', from: 'the join date' });
+    expect(startPrinted({ insuranceStartDate: null }, null)).toBeNull();
   });
 
-  it('a missing occupation links to the employee’s job title itself; the other details as they were', () => {
-    expect(withJobTitleLinks([OCCUPATION, OFFICE], job)).toEqual([{ ...OCCUPATION, href: '/organization/departments/dep-1/job-titles/job-1#edit' }, OFFICE]);
-    expect(withJobTitleLinks([OCCUPATION, OFFICE], null)).toEqual([OCCUPATION, OFFICE]);
-    expect(withJobTitleLinks([OCCUPATION], { id: 'job-1' })).toEqual([OCCUPATION]);
+  it('the wages come only for those who see salaries', () => {
+    expect(showsWages({ insuranceBasicDefault: 410 })).toBe(true);
+    expect(showsWages({})).toBe(false);
+  });
+
+  it('the basic wage: the employee’s own, else the contract settings’ default', () => {
+    expect(basicPrinted({ insuranceBasicWage: 2500.5, insuranceBasicDefault: 410 })).toEqual({ text: 'EGP 2,500.50', from: null });
+    expect(basicPrinted({ insuranceBasicWage: null, insuranceBasicDefault: 410 })).toEqual({ text: 'EGP 410', from: 'default' });
+    expect(basicPrinted({})).toBeNull();
+  });
+
+  it('the insured and comprehensive wages: the employee’s own, else the contract’s, else none', () => {
+    const contract = { insuredSalary: 14500, totalSalary: 15000, salaryHidden: false };
+    expect(insuredPrinted({ insuranceInsuredWage: 9000 }, contract)).toEqual({ text: 'EGP 9,000', from: null });
+    expect(insuredPrinted({ insuranceInsuredWage: null }, contract)).toEqual({ text: 'EGP 14,500', from: 'from the contract' });
+    expect(insuredPrinted({ insuranceInsuredWage: null }, null)).toBeNull();
+    expect(comprehensivePrinted({ insuranceComprehensiveWage: 17250.75 }, contract)).toEqual({ text: 'EGP 17,250.75', from: null });
+    expect(comprehensivePrinted({ insuranceComprehensiveWage: null }, contract)).toEqual({ text: 'EGP 15,000', from: 'from the contract' });
+    expect(comprehensivePrinted({ insuranceComprehensiveWage: null }, undefined)).toBeNull();
+    // a contract whose salary the caller may not see stands in for nothing
+    const hidden = { insuredSalary: null, totalSalary: null, salaryHidden: true };
+    expect(insuredPrinted({}, hidden)).toBeNull();
+    expect(comprehensivePrinted({}, hidden)).toBeNull();
+  });
+
+  it('the insured wage’s limits, of the year or the latest known', () => {
+    expect(insurableLimitsText(2026)).toBe('EGP 2,700 to 16,700 in 2026');
+    expect(insurableLimitsText(2025)).toBe('EGP 2,300 to 14,500 in 2025');
+    expect(insurableLimitsText(2031)).toBe('EGP 2,700 to 16,700 in 2026');
   });
 });
 

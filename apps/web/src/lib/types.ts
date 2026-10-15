@@ -105,13 +105,6 @@ export interface JobTitleSummary {
   minGrade: GradeRef | null;
   maxGrade: GradeRef | null;
   jdVersion: number;
-  /**
-   * Its occupation in the social insurance table (packages/shared occupations.ts), the six-digit code printed on Form 1
-   * (كود المهنة) for every employee with this title, and its Arabic name; null when not chosen. Optional: left out by an
-   * API from before October 2026.
-   */
-  occupationCode?: string | null;
-  occupationName?: string | null;
   department: DepartmentRef & { parent: DepartmentRef | null };
   _count: { duties: number };
 }
@@ -260,19 +253,7 @@ export interface Employment {
   updatedAt: string;
   /** May be a team: then `parent` is its department. */
   department: EmploymentPlace | null;
-  /**
-   * With the department the title is under and its social insurance occupation (code and Arabic name, null when not
-   * chosen), for the Social Insurance tab (owner, 16 October 2026). Those three are left out by an API from before it.
-   */
-  jobTitle: {
-    id: string;
-    titleEn: string;
-    titleAr: string | null;
-    jdVersion: number;
-    departmentId?: string;
-    occupationCode?: string | null;
-    occupationName?: string | null;
-  } | null;
+  jobTitle: { id: string; titleEn: string; titleAr: string | null; jdVersion: number } | null;
   /** The person's own grade in this employment; within the job title's range when the title has one. */
   gradeId: string | null;
   grade: GradeRef | null;
@@ -334,6 +315,27 @@ export interface EmployeeProfile {
   employeeCode: string;
   /** الرقم التأميني: the social insurance number, digits only. */
   insuranceNo: string | null;
+  /**
+   * The employee's occupation in the social insurance table (packages/shared occupations.ts): the six-digit code Form 1
+   * prints (كود المهنة) and its Arabic name; null when not chosen. HR sets it on the Social Insurance tab (owner's
+   * decision, 16 October 2026: no longer the job title's). Optional: left out by an API from before it.
+   */
+  occupationCode?: string | null;
+  occupationName?: string | null;
+  /**
+   * What else Form 1 prints that is the employee's own, set by HR on the Social Insurance tab (owner, 16 October 2026),
+   * null for none of their own: the subscription start (YYYY-MM-DD; none: the join date is printed) …
+   */
+  insuranceStartDate?: string | null;
+  /**
+   * … and the wages, salary data: only for those who see salaries (HR, Finance, the CEO), left out for anyone else.
+   * The basic wage (none: `insuranceBasicDefault`, the contract settings' default), the insured wage (none: the
+   * contract's insured salary) and the comprehensive wage (none: the contract's gross and allowances).
+   */
+  insuranceBasicWage?: number | null;
+  insuranceInsuredWage?: number | null;
+  insuranceComprehensiveWage?: number | null;
+  insuranceBasicDefault?: number;
   fullNameEn: string;
   fullNameAr: string;
   /** The short name the person goes by (e.g. Hazem Magdy), for the email signature. */
@@ -633,6 +635,11 @@ export interface ContractSettings {
   probationMonths: number;
   /** How long a fixed-term contract runs, in months (12 by default). */
   durationMonths: number;
+  /**
+   * The basic wage social insurance Form 1 prints for an employee who has none of their own (410 EGP by default; owner,
+   * 16 October 2026). Optional: left out by an API from before it.
+   */
+  insuranceBasicDefault?: number;
 }
 
 /**
@@ -1014,12 +1021,11 @@ export interface DocumentsTab {
 
 /**
  * Where a missing detail is filled in: a profile tab and the field's cell there (#field-<key>, on Documents the paper's
- * row #paper-<key>), the company profile (`company`), the contract on the Contracts tab (`contracts`), or the employee's
- * job title, under Organization › Departments & Job Titles (`departments`, e.g. key `occupationCode`: its insurance
- * occupation).
+ * row #paper-<key>; `insurance`: the Social Insurance tab, e.g. key `occupationCode`), the company profile (`company`),
+ * or the contract on the Contracts tab (`contracts`).
  */
 export interface DocumentDetailPlace {
-  tab: ProfileGap['tab'] | 'contracts' | 'company' | 'departments';
+  tab: ProfileGap['tab'] | 'contracts' | 'insurance' | 'company';
   key: string;
 }
 
@@ -1107,8 +1113,8 @@ export interface OfferMissingValue {
   tag: string;
   label: string;
   /**
-   * `tab`: 'offer' (a field of the offer: `key`), 'company' (the company profile), 'departments' (the offer's job title,
-   * e.g. key `occupationCode`: its insurance occupation), or another place the API names.
+   * `tab`: 'offer' (a field of the offer: `key`; `template` for what an offer never has, such as the social insurance
+   * occupation), 'company' (the company profile), or another place the API names.
    */
   where: { tab: string; key: string };
 }
