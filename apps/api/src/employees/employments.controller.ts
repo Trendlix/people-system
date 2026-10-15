@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
-import { CurrentUser, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { CreateEmploymentDto, EndEmploymentDto, UpdateEmploymentDto } from './employment.dto.js';
 import { EmploymentsService } from './employments.service.js';
@@ -46,7 +46,7 @@ export class EmploymentsController {
     return this.employments.confirmProbation(id, employmentId, user);
   }
 
-  @Roles('hr', 'admin')
+  @DeletesRecords()
   @Delete(':employmentId')
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string, @Param('employmentId', ParseUUIDPipe) employmentId: string, @CurrentUser() user: SessionUser) {

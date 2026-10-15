@@ -205,4 +205,109 @@ describe('Users (e2e)', () => {
     await api().patch(`/api/users/${id}`).set('Cookie', admin).send({ isActive: false }).expect(200);
     await api().get('/api/users').set('Cookie', other).expect(401);
   });
+
+  describe('Super Admin (owner’s decision, 15 October 2026)', () => {
+    const ROLE_ONLY = 'Only a Super Admin can give or take away the Super Admin role.';
+    const ACCOUNT_ONLY = "Only a Super Admin can change a Super Admin's account.";
+    let superAdmin: string;
+    let superAdminId: string;
+
+    beforeAll(async () => {
+      // a Super Admin without the admin role itself: it has an Admin's powers all the same
+      const email = await createUser(prisma, ['super_admin']);
+      superAdminId = (await prisma.user.findUniqueOrThrow({ where: { email } })).id;
+      superAdmin = await signIn(app, email);
+    });
+
+    it('is a role only a Super Admin gives or takes away', async () => {
+      const refused = await api().post('/api/users').set('Cookie', admin).send({ email: newEmail(), password: TEMPORARY, roles: ['super_admin'] }).expect(403);
+      expect(refused.body.message).toBe(ROLE_ONLY);
+      const id = await createAccount(newEmail(), ['hr']);
+      const promote = await api().patch(`/api/users/${id}`).set('Cookie', admin).send({ roles: ['hr', 'super_admin'] }).expect(403);
+      expect(promote.body.message).toBe(ROLE_ONLY);
+      const self = await api().patch(`/api/users/${adminId}`).set('Cookie', admin).send({ roles: ['admin', 'super_admin'] }).expect(403);
+      expect(self.body.message).toBe(ROLE_ONLY);
+      expect((await api().get(`/api/users/${id}`).set('Cookie', admin).expect(200)).body.roles).toEqual(['hr']);
+
+      // a Super Admin can, on a new account and an existing one, and both are audited
+      const created = await api()
+        .post('/api/users')
+        .set('Cookie', superAdmin)
+        .send({ email: newEmail(), password: TEMPORARY, roles: ['super_admin', 'admin'] })
+        .expect(201);
+      expect(created.body.roles).toEqual(['admin', 'super_admin']);
+      const promoted = await api().patch(`/api/users/${id}`).set('Cookie', superAdmin).send({ roles: ['hr', 'super_admin'] }).expect(200);
+      expect(promoted.body.roles).toEqual(['hr', 'super_admin']);
+      const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'user', entityId: id, action: 'update' } });
+      expect(audit).toMatchObject({ userId: superAdminId, diff: { roles: { from: ['hr'], to: ['hr', 'super_admin'] } } });
+
+      // and takes it away again
+      const demoted = await api().patch(`/api/users/${id}`).set('Cookie', superAdmin).send({ roles: ['hr'] }).expect(200);
+      expect(demoted.body.roles).toEqual(['hr']);
+    });
+
+    it('protects a Super Admin’s account from an Admin: roles, active, password', async () => {
+      const email = newEmail();
+      const id = (await api().post('/api/users').set('Cookie', superAdmin).send({ email, password: TEMPORARY, roles: ['super_admin'] }).expect(201)).body.id;
+
+      // an Admin can see the account, not change it
+      await api().get(`/api/users/${id}`).set('Cookie', admin).expect(200);
+      const roles = await api().patch(`/api/users/${id}`).set('Cookie', admin).send({ roles: ['super_admin', 'hr'] }).expect(403);
+      expect(roles.body.message).toBe(ACCOUNT_ONLY);
+      const demote = await api().patch(`/api/users/${id}`).set('Cookie', admin).send({ roles: ['admin'] }).expect(403);
+      expect(demote.body.message).toBe(ROLE_ONLY);
+      const deactivate = await api().patch(`/api/users/${id}`).set('Cookie', admin).send({ isActive: false }).expect(403);
+      expect(deactivate.body.message).toBe(ACCOUNT_ONLY);
+      const password = await api().put(`/api/users/${id}/password`).set('Cookie', admin).send({ password: 'admin-chosen-pass' }).expect(403);
+      expect(password.body.message).toBe(ACCOUNT_ONLY);
+      await api().patch(`/api/users/${id}`).set('Cookie', admin).send({ email: newEmail() }).expect(400); // nobody changes an email
+      await api().post('/api/auth/login').send({ email, password: TEMPORARY }).expect(200);
+      expect(await prisma.auditLog.count({ where: { entityType: 'user', entityId: id, userId: adminId } })).toBe(0);
+
+      // another Super Admin can
+      await api().patch(`/api/users/${id}`).set('Cookie', superAdmin).send({ roles: ['super_admin', 'hr'] }).expect(200);
+      await api().put(`/api/users/${id}/password`).set('Cookie', superAdmin).send({ password: 'super-chosen-pass' }).expect(204);
+      await api().post('/api/auth/login').send({ email, password: 'super-chosen-pass' }).expect(200);
+      await api().patch(`/api/users/${id}`).set('Cookie', superAdmin).send({ isActive: false }).expect(200);
+      const audits = await prisma.auditLog.findMany({ where: { entityType: 'user', entityId: id, userId: superAdminId }, orderBy: { id: 'asc' } });
+      expect(audits.map((a) => a.action)).toEqual(['create', 'update', 'password_reset', 'update']);
+      expect(audits[3].diff).toEqual({ isActive: { from: true, to: false } });
+    });
+
+    it('lets a Super Admin manage accounts as an Admin does, without the admin role itself', async () => {
+      await api().get('/api/users').set('Cookie', superAdmin).expect(200);
+      const id = await createAccount(newEmail(), ['admin']);
+      await api().patch(`/api/users/${id}`).set('Cookie', superAdmin).send({ roles: ['hr'] }).expect(200);
+      await api().put(`/api/users/${id}/password`).set('Cookie', superAdmin).send({ password: 'another-temporary-3' }).expect(204);
+    });
+
+    it('always leaves at least one active Super Admin', async () => {
+      // this Super Admin made the only active one for the test (other test files add their own)
+      const others = await prisma.user.findMany({
+        where: { id: { not: superAdminId }, isActive: true, roles: { some: { role: { key: 'super_admin' } } } },
+        select: { id: true },
+      });
+      await prisma.user.updateMany({ where: { id: { in: others.map((o) => o.id) } }, data: { isActive: false } });
+      try {
+        const last = await api().patch(`/api/users/${superAdminId}`).set('Cookie', superAdmin).send({ roles: ['admin'] }).expect(409);
+        expect(last.body.message).toBe('There must always be at least one active Super Admin.');
+        const off = await api().patch(`/api/users/${superAdminId}`).set('Cookie', superAdmin).send({ isActive: false }).expect(409);
+        expect(off.body.message).toContain('You cannot deactivate your own account');
+        expect((await api().get(`/api/users/${superAdminId}`).set('Cookie', superAdmin).expect(200)).body).toMatchObject({
+          isActive: true,
+          roles: ['super_admin'],
+        });
+
+        // with a second Super Admin, the first can step down to Admin
+        const second = await api().post('/api/users').set('Cookie', superAdmin).send({ email: newEmail(), password: TEMPORARY, roles: ['super_admin'] }).expect(201);
+        const stepped = await api().patch(`/api/users/${superAdminId}`).set('Cookie', superAdmin).send({ roles: ['admin'] }).expect(200);
+        expect(stepped.body.roles).toEqual(['admin']);
+        // and is an Admin now: the remaining Super Admin's account is out of reach
+        const reach = await api().patch(`/api/users/${second.body.id}`).set('Cookie', superAdmin).send({ isActive: false }).expect(403);
+        expect(reach.body.message).toBe(ACCOUNT_ONLY);
+      } finally {
+        await prisma.user.updateMany({ where: { id: { in: others.map((o) => o.id) } }, data: { isActive: true } });
+      }
+    });
+  });
 });

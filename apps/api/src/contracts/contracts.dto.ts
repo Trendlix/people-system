@@ -1,11 +1,15 @@
-import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength, ValidateBy, ValidateIf } from 'class-validator';
 import {
   CONTRACT_FORMS,
+  CONTRACT_STATUSES,
+  EMPLOYMENT_TYPES,
   ENDING_RULES,
   ENDING_STATUSES,
   NOTICE_UNITS,
   type ContractForm,
+  type ContractStatus,
+  type EmploymentType,
   type EndingRuleKey,
   type EndingStatus,
   type NoticeUnit,
@@ -118,6 +122,44 @@ export class UpdateContractDto extends ContractTermsDto {
 export class SignContractDto {
   @IsDateOnly('Enter the date the contract was signed.')
   signedOn: string;
+}
+
+/** A query parameter sent empty (e.g. a filter left on "All") counts as not sent; text is trimmed. */
+const EmptyIsUnset = () =>
+  Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return trimmed === '' ? undefined : trimmed;
+  });
+
+const ENDING_WITHIN_MESSAGE = 'Enter endingWithin as a whole number of days, 0 to 1830 (e.g. 30).';
+
+/** The company-wide list (GET /contracts): every filter is optional. */
+export class ListContractsDto {
+  /** Draft and active (signed) contracts unless sent. */
+  @EmptyIsUnset() @IsOptional() @IsIn(CONTRACT_STATUSES, { message: 'Choose a status: draft, active, ended or superseded.' })
+  status?: ContractStatus;
+
+  /** The employee's name (English or Arabic), employee code or the contract number; case doesn't matter. */
+  @EmptyIsUnset() @IsOptional() @IsString({ message: 'Search with one text, e.g. a name or a contract number.' }) @MaxLength(100, { message: 'Search with at most 100 characters.' })
+  q?: string;
+
+  @EmptyIsUnset() @IsOptional() @IsIn(CONTRACT_FORMS, { message: 'Choose a form: fixed or open_ended.' })
+  form?: ContractForm;
+
+  /** The employment's type. */
+  @EmptyIsUnset() @IsOptional() @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type: full_time, part_time, internship, freelance or sales.' })
+  type?: EmploymentType;
+
+  /** Signed contracts that end within this many days of today, those already past their end included. */
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return trimmed === '' ? undefined : Number(trimmed); // not a number: NaN, refused below
+  })
+  @IsOptional()
+  @ValidateBy({ name: 'isDays', validator: { validate: (v) => Number.isInteger(v) && v >= 0 && v <= 1830, defaultMessage: () => ENDING_WITHIN_MESSAGE } })
+  endingWithin?: number;
 }
 
 /** ?within=N: how many days ahead the alert lists look. */

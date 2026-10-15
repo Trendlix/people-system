@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service.js';
+import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyCorrections, changedPhrases, LEARNED_FIELDS, type LearnedField } from './corrections.js';
@@ -63,7 +64,9 @@ export class CorrectionsService {
     });
   }
 
+  /** Forgets a learned correction: a Super Admin only, like every deletion (owner's decision, 15 October 2026). */
   async remove(id: string, user: SessionUser) {
+    assertDeletes(user);
     const fix = await this.prisma.ocrCorrection.findUnique({ where: { id }, select: { field: true } });
     if (!fix) throw new NotFoundException('Correction not found.');
     await this.prisma.ocrCorrection.delete({ where: { id } });

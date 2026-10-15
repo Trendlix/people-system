@@ -12,7 +12,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { CurrentUser, Public, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, Public, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { UpdateCompanyDto } from './company.dto.js';
 import { CompanyService } from './company.service.js';
@@ -56,10 +56,10 @@ export class CompanyController {
     return this.company.setLogo(file, user.id);
   }
 
-  @Roles('hr', 'admin')
+  @DeletesRecords()
   @Delete('logo')
   @HttpCode(204)
   removeLogo(@CurrentUser() user: SessionUser) {
-    return this.company.removeLogo(user.id);
+    return this.company.removeLogo(user);
   }
 }

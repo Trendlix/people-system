@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, UploadedFiles, UseFilters, UseInterceptors } from '@nestjs/common';
-import { CurrentUser, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { CorrectionsService } from './corrections.service.js';
 import { FileTooLargeFilter } from './file-too-large.filter.js';
@@ -39,7 +39,7 @@ export class IdCardController {
     return this.corrections.learn(dto.corrections, user);
   }
 
-  @Roles('hr', 'admin')
+  @DeletesRecords()
   @Delete('corrections/:id')
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {

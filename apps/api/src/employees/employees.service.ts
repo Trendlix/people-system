@@ -11,6 +11,7 @@ import {
   type Standing,
 } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
+import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
@@ -530,8 +531,12 @@ export class EmployeesService {
     return maskedBank(row);
   }
 
-  /** Deletes a profile added by mistake, with its employments. Not while it is anyone's manager on record. */
+  /**
+   * Deletes a profile added by mistake, with its employments: a Super Admin only (owner's decision, 15 October 2026).
+   * Not while it is anyone's manager on record.
+   */
   async remove(id: string, user: SessionUser) {
+    assertDeletes(user);
     const e = await this.row(id);
     const now = await this.prisma.employment.count({ where: { managerId: id, endDate: null } });
     if (now > 0) {

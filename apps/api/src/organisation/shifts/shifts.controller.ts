@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
-import { CurrentUser, Roles } from '../../auth/decorators.js';
+import { CurrentUser, DeletesRecords, Roles } from '../../auth/decorators.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import { CreateShiftDto, UpdateShiftDto } from './shift.dto.js';
 import { ShiftsService } from './shifts.service.js';
@@ -30,10 +30,10 @@ export class ShiftsController {
     return this.shifts.update(id, dto, user.id);
   }
 
-  @Roles('hr', 'admin')
+  @DeletesRecords()
   @Delete(':id')
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
-    return this.shifts.remove(id, user.id);
+    return this.shifts.remove(id, user);
   }
 }

@@ -1,8 +1,8 @@
 // Starting data: roles, the two shifts, the grades G1–G9, the contract settings and ending rules, and the first admin
-// account. Safe to run more than once; existing rows are left as they are.
+// account (Admin, HR and Super Admin). Safe to run more than once; existing rows are left as they are.
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { ENDING_RULE_DEFAULTS, ENDING_RULES } from '@trendlix/shared';
+import { ENDING_RULE_DEFAULTS, ENDING_RULES, ROLE_LABELS, ROLES } from '@trendlix/shared';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 import { hashPassword } from '../src/auth/password.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
@@ -10,15 +10,6 @@ import { toTimeOfDay } from '../src/common/time-of-day.js';
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 });
-
-const ROLES = [
-  { key: 'employee', name: 'Employee' },
-  { key: 'manager', name: 'Direct manager' },
-  { key: 'hr', name: 'HR' },
-  { key: 'finance', name: 'Finance' },
-  { key: 'ceo', name: 'CEO' },
-  { key: 'admin', name: 'Admin' },
-];
 
 const SHIFTS = [
   { code: 'A', start: '09:00', end: '18:00' },
@@ -52,8 +43,9 @@ const COMPANY = {
 async function main() {
   await prisma.company.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...COMPANY } });
 
-  for (const role of ROLES) {
-    await prisma.role.upsert({ where: { key: role.key }, update: {}, create: role });
+  // every role packages/shared lists, Super Admin among them (the super admin migration adds it to existing databases)
+  for (const key of ROLES) {
+    await prisma.role.upsert({ where: { key }, update: {}, create: { key, name: ROLE_LABELS[key] } });
   }
 
   for (const g of GRADES) {
@@ -86,16 +78,17 @@ async function main() {
     console.log(`Admin account ${email} already exists; left unchanged.`);
     return;
   }
-  const admin = await prisma.role.findUniqueOrThrow({ where: { key: 'admin' } });
-  const hr = await prisma.role.findUniqueOrThrow({ where: { key: 'hr' } });
+  // the first account is also the first Super Admin, the only role that deletes records (owner's decision, 15 October
+  // 2026); there must always be one
+  const roles = await prisma.role.findMany({ where: { key: { in: ['admin', 'hr', 'super_admin'] } }, select: { id: true } });
   await prisma.user.create({
     data: {
       email,
       passwordHash: await hashPassword(password),
-      roles: { create: [{ roleId: admin.id }, { roleId: hr.id }] },
+      roles: { create: roles.map((r) => ({ roleId: r.id })) },
     },
   });
-  console.log(`Created admin account ${email}.`);
+  console.log(`Created admin account ${email} (Admin, HR and Super Admin).`);
 }
 
 main()

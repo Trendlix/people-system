@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService, changes } from '../../audit/audit.service.js';
+import { assertDeletes } from '../../auth/roles.js';
+import type { SessionUser } from '../../auth/session-user.js';
 import { fromTimeOfDay, toTimeOfDay } from '../../common/time-of-day.js';
 import type { Shift } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -84,7 +86,8 @@ export class ShiftsService {
     return result;
   }
 
-  async remove(id: string, userId: string) {
+  async remove(id: string, user: SessionUser) {
+    assertDeletes(user);
     const shift = await this.get(id);
     // employments that ended keep their shift in the history
     const now = await this.prisma.employment.count({ where: { shiftId: id, endDate: null } });
@@ -92,6 +95,6 @@ export class ShiftsService {
     const before = await this.prisma.employment.count({ where: { shiftId: id } });
     if (before > 0) throw new ConflictException(`Shift ${shift.code} is in the history of ${before} past employment(s), so it is kept.`);
     await this.prisma.shift.delete({ where: { id } });
-    await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { code: shift.code } });
+    await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: id, diff: { code: shift.code } });
   }
 }

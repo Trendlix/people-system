@@ -12,7 +12,9 @@ const name = (base: string) => `${base} ${RUN}`;
 describe('Organisation (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
-  let session: string;
+  let session: string; // HR
+  let superAdmin: string; // the only role that deletes (owner's decision, 15 October 2026)
+  let superAdminId: string;
   let gradeIds: Map<string, string>;
   const api = () => request(app.getHttpServer());
   const grade = (code: string) => gradeIds.get(code);
@@ -32,6 +34,9 @@ describe('Organisation (e2e)', () => {
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
     session = await signIn(app, await createUser(prisma, ['hr']));
+    const superAdminEmail = await createUser(prisma, ['super_admin']);
+    superAdminId = (await prisma.user.findUniqueOrThrow({ where: { email: superAdminEmail } })).id;
+    superAdmin = await signIn(app, superAdminEmail);
     const grades = await api().get('/api/grades').set('Cookie', session).expect(200);
     gradeIds = new Map((grades.body as { id: string; code: string }[]).map((g) => [g.code, g.id]));
   });
@@ -56,7 +61,7 @@ describe('Organisation (e2e)', () => {
       const list = await api().get('/api/departments').set('Cookie', session).expect(200);
       expect(list.body.find((d: { id: string }) => d.id === id)._count.jobTitles).toBe(0);
 
-      await api().delete(`/api/departments/${id}`).set('Cookie', session).expect(204);
+      await api().delete(`/api/departments/${id}`).set('Cookie', superAdmin).expect(204);
       await api().get(`/api/departments/${id}`).set('Cookie', session).expect(404);
 
       const actions = await prisma.auditLog.findMany({ where: { entityType: 'department', entityId: id }, orderBy: { id: 'asc' } });
@@ -77,7 +82,7 @@ describe('Organisation (e2e)', () => {
     it('will not delete a team that still has job titles', async () => {
       const team = await newTeam('Video');
       await api().post('/api/job-titles').set('Cookie', session).send({ departmentId: team.id, titleEn: 'Video Producer' }).expect(201);
-      const res = await api().delete(`/api/departments/${team.id}`).set('Cookie', session).expect(409);
+      const res = await api().delete(`/api/departments/${team.id}`).set('Cookie', superAdmin).expect(409);
       expect(res.body.message).toContain('1 job title');
     });
   });
@@ -111,7 +116,7 @@ describe('Organisation (e2e)', () => {
       // a department with teams can't become a team, nor be deleted
       const other = await api().post('/api/departments').set('Cookie', session).send({ nameEn: name('Sales') }).expect(201);
       await api().patch(`/api/departments/${marketing.body.id}`).set('Cookie', session).send({ parentId: other.body.id }).expect(400);
-      const refused = await api().delete(`/api/departments/${marketing.body.id}`).set('Cookie', session).expect(409);
+      const refused = await api().delete(`/api/departments/${marketing.body.id}`).set('Cookie', superAdmin).expect(409);
       expect(refused.body.message).toContain('1 team');
 
       // taking the team out makes it a department of its own, which keeps the team's job titles: a job title can belong
@@ -202,7 +207,7 @@ describe('Organisation (e2e)', () => {
         .set('Cookie', session)
         .send({ departmentId: team.id, titleEn: 'Trial Role', minGradeId: created.body.id, maxGradeId: created.body.id })
         .expect(201);
-      const refused = await api().delete(`/api/grades/${created.body.id}`).set('Cookie', session).expect(409);
+      const refused = await api().delete(`/api/grades/${created.body.id}`).set('Cookie', superAdmin).expect(409);
       expect(refused.body.message).toBe(`${code} is used by 1 job title range. Give them another grade before deleting it.`);
 
       // an employee's grade is their employment's own (owner's decision, 15 October 2026)
@@ -219,14 +224,14 @@ describe('Organisation (e2e)', () => {
         (g) => g.id === created.body.id,
       );
       expect(listed?._count).toEqual({ jobTitles: 2, employments: 1 });
-      const used = await api().delete(`/api/grades/${created.body.id}`).set('Cookie', session).expect(409);
+      const used = await api().delete(`/api/grades/${created.body.id}`).set('Cookie', superAdmin).expect(409);
       expect(used.body.message).toBe(`${code} is used by 2 job title ranges and 1 employment. Give them another grade before deleting it.`);
 
-      await api().delete(`/api/employees/${e.id}`).set('Cookie', session).expect(204);
-      await api().delete(`/api/job-titles/${other.body.id}`).set('Cookie', session).expect(204);
+      await api().delete(`/api/employees/${e.id}`).set('Cookie', superAdmin).expect(204);
+      await api().delete(`/api/job-titles/${other.body.id}`).set('Cookie', superAdmin).expect(204);
       await api().patch(`/api/job-titles/${job.body.id}`).set('Cookie', session).send({ minGradeId: '', maxGradeId: null }).expect(200);
       expect((await api().get(`/api/grades/${created.body.id}`).set('Cookie', session).expect(200)).body._count).toEqual({ jobTitles: 0, employments: 0 });
-      await api().delete(`/api/grades/${created.body.id}`).set('Cookie', session).expect(204);
+      await api().delete(`/api/grades/${created.body.id}`).set('Cookie', superAdmin).expect(204);
     });
 
     it('refuses an unknown grade on a job title', async () => {
@@ -309,7 +314,7 @@ describe('Organisation (e2e)', () => {
 
       // unique within the department, as within a team; the department can't be deleted while it holds a job title
       await api().post('/api/job-titles').set('Cookie', session).send({ departmentId: dept.body.id, titleEn: 'Head of Marketing' }).expect(409);
-      const kept = await api().delete(`/api/departments/${dept.body.id}`).set('Cookie', session).expect(409);
+      const kept = await api().delete(`/api/departments/${dept.body.id}`).set('Cookie', superAdmin).expect(409);
       expect(kept.body.message).toBe('This department has 1 job title(s). Move or delete them before deleting the department.');
     });
 
@@ -698,6 +703,38 @@ describe('Organisation (e2e)', () => {
         .send({ code: 'D', startTime: '09:00', endTime: '18:00', workingDays: [7] })
         .expect(400);
       await api().post('/api/shifts').set('Cookie', session).send({ code: 'A', startTime: '09:00', endTime: '18:00' }).expect(409);
+    });
+  });
+
+  describe('deleting', () => {
+    it('is for a Super Admin only: HR and Admin get no delete (owner’s decision, 15 October 2026)', async () => {
+      const admin = await signIn(app, await createUser(prisma, ['admin', 'hr']));
+      const team = await newTeam('Deleted');
+      const job = await api().post('/api/job-titles').set('Cookie', session).send({ departmentId: team.id, titleEn: 'Temporary Role' }).expect(201);
+      const taken = new Set(((await api().get('/api/grades').set('Cookie', session).expect(200)).body as { rank: number }[]).map((g) => g.rank));
+      let rank = 70;
+      while (taken.has(rank)) rank++;
+      const grade = await api().post('/api/grades').set('Cookie', session).send({ code: `D${RUN}`, rank, levelEn: 'Doomed' }).expect(201);
+      const shift = await api()
+        .post('/api/shifts')
+        .set('Cookie', session)
+        .send({ code: `D${RUN.slice(-6)}`, startTime: '07:00', endTime: '15:00' })
+        .expect(201);
+
+      const paths = [`/api/job-titles/${job.body.id}`, `/api/departments/${team.id}`, `/api/departments/${team.parentId}`, `/api/grades/${grade.body.id}`, `/api/shifts/${shift.body.id}`];
+      for (const path of paths) {
+        for (const who of [session, admin]) {
+          const refused = await api().delete(path).set('Cookie', who).expect(403);
+          expect(refused.body.message).toBe('Only a Super Admin can delete records.');
+        }
+      }
+      // nothing went, then everything goes (the job title before its team, the team before its department)
+      await api().get(`/api/job-titles/${job.body.id}`).set('Cookie', session).expect(200);
+      for (const path of paths) await api().delete(path).set('Cookie', superAdmin).expect(204);
+      await api().get(`/api/departments/${team.parentId}`).set('Cookie', session).expect(404);
+
+      const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'shift', entityId: shift.body.id, action: 'delete' } });
+      expect(audit.userId).toBe(superAdminId);
     });
   });
 });

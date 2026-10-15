@@ -4,7 +4,7 @@ import type { Role } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { hashPassword, verifyPassword } from './password.js';
-import { SESSION_HOURS, type SessionUser } from './session-user.js';
+import { SESSION_HOURS, type Me, type SessionUser } from './session-user.js';
 
 const INVALID = 'Invalid email or password.';
 
@@ -52,6 +52,12 @@ export class AuthService {
       token,
       user: { id: user.id, email: user.email, roles: user.roles.map((r) => r.role.key as Role) },
     };
+  }
+
+  /** The signed-in user and the id of their own employee profile, if they have one. */
+  async me(user: SessionUser): Promise<Me> {
+    const own = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } });
+    return { ...user, employeeId: own?.id ?? null };
   }
 
   /** A signed-in person changes their own password; the current one is asked for again. */

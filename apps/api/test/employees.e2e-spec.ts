@@ -58,6 +58,7 @@ describe('Employees (e2e)', () => {
   let hr: string;
   let finance: string;
   let admin: string;
+  let superAdmin: string; // the only role that deletes (owner's decision, 15 October 2026)
   let webId: string;
   let departmentId: string;
   let otherDepartmentId: string;
@@ -90,7 +91,7 @@ describe('Employees (e2e)', () => {
     api().patch(`/api/employees/${employeeId}/employments/${employmentId}`).set('Cookie', session).send(body);
   const endEmployment = (employeeId: string, employmentId: string, body: object, session = hr) =>
     api().post(`/api/employees/${employeeId}/employments/${employmentId}/end`).set('Cookie', session).send(body);
-  const deleteEmployment = (employeeId: string, employmentId: string, session = hr) =>
+  const deleteEmployment = (employeeId: string, employmentId: string, session = superAdmin) =>
     api().delete(`/api/employees/${employeeId}/employments/${employmentId}`).set('Cookie', session);
 
   /** Hires someone whose profile exists; answers the updated profile. */
@@ -120,6 +121,7 @@ describe('Employees (e2e)', () => {
     hr = await signIn(app, await createUser(prisma, ['hr']));
     finance = await signIn(app, await createUser(prisma, ['finance']));
     admin = await signIn(app, await createUser(prisma, ['admin']));
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     const dept = await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Web ${RUN}` }).expect(201);
     webId = dept.body.id;
     // the Frontend Developer belongs to the Frontend team of Web, so that team is where the employment places someone
@@ -152,7 +154,7 @@ describe('Employees (e2e)', () => {
         employment: null,
         employments: [],
         reports: [],
-        access: { edit: true, delete: true, identity: true, bank: true },
+        access: { edit: true, delete: false, identity: true, bank: true }, // only a Super Admin deletes
         identity: null,
         bank: null,
       });
@@ -238,14 +240,24 @@ describe('Employees (e2e)', () => {
       expect(update?.diff).toEqual({ nationality: { from: null, to: 'Egyptian' } });
     });
 
-    it('lets an Admin delete a profile', async () => {
+    it('lets only a Super Admin delete a profile, not HR nor an Admin (owner’s decision, 15 October 2026)', async () => {
       const e = await addEmployee('Added By Mistake');
       await api().patch(`/api/employees/${e.id}`).set('Cookie', admin).send({ nationality: 'X' }).expect(403);
-      await api().delete(`/api/employees/${e.id}`).set('Cookie', admin).expect(204);
+      for (const who of [hr, admin]) {
+        const refused = await api().delete(`/api/employees/${e.id}`).set('Cookie', who).expect(403);
+        expect(refused.body.message).toBe('Only a Super Admin can delete records.');
+      }
+      // the profile says who may delete it: a Super Admin (here one who is HR too, so sees every profile)
+      const hrSuperAdmin = await signIn(app, await createUser(prisma, ['hr', 'super_admin']));
+      expect((await profileOf(e.id, hrSuperAdmin)).access).toEqual({ edit: true, delete: true, identity: true, bank: true });
+
+      await api().delete(`/api/employees/${e.id}`).set('Cookie', superAdmin).expect(204);
       await api().get(`/api/employees/${e.id}`).set('Cookie', hr).expect(404);
+      const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'employee', entityId: e.id, action: 'delete' } });
+      expect(audit.diff).toEqual({ employeeCode: e.employeeCode, fullNameEn: e.fullNameEn });
     });
 
-    it('only HR adds, changes and deletes', async () => {
+    it('only HR adds and changes, and Finance does not delete', async () => {
       await api().post('/api/employees').set('Cookie', finance).send(person('Nope')).expect(403);
       const e = await addEmployee('Protected');
       await api().patch(`/api/employees/${e.id}`).set('Cookie', finance).send({ nationality: 'X' }).expect(403);
@@ -390,9 +402,9 @@ describe('Employees (e2e)', () => {
         { id: lead.id, employeeCode: lead.employeeCode, fullNameEn: `Lead ${RUN}`, status: 'probation', jobTitle: null },
       ]);
 
-      const res = await api().delete(`/api/employees/${lead.id}`).set('Cookie', hr).expect(409);
+      const res = await api().delete(`/api/employees/${lead.id}`).set('Cookie', superAdmin).expect(409);
       expect(res.body.message).toContain('1 employee');
-      await api().delete(`/api/employees/${dev.id}`).set('Cookie', hr).expect(204);
+      await api().delete(`/api/employees/${dev.id}`).set('Cookie', superAdmin).expect(204);
       await api().get(`/api/employees/${dev.id}`).set('Cookie', hr).expect(404);
       expect(await prisma.employment.count({ where: { employeeId: dev.id } })).toBe(0); // the employments go with the profile
     });
@@ -518,14 +530,17 @@ describe('Employees (e2e)', () => {
       await changeEmployment(e.id, e.employment.id, { endDate: '2025-01-14' }).expect(200);
     });
 
-    it('deletes an employment added by mistake (HR and Admin), and the profile stays', async () => {
+    it('deletes an employment added by mistake (a Super Admin only), and the profile stays', async () => {
       const e = await addHired('Wrong Hire');
       const other = await addHired('Someone Else');
       await deleteEmployment(other.id, e.employment.id).expect(404); // not theirs
       await changeEmployment(other.id, e.employment.id, { status: 'active' }).expect(404);
-      await deleteEmployment(e.id, e.employment.id, finance).expect(403);
+      for (const who of [finance, hr, admin]) {
+        const refused = await deleteEmployment(e.id, e.employment.id, who).expect(403);
+        expect(refused.body.message).toBe('Only a Super Admin can delete records.');
+      }
 
-      await deleteEmployment(e.id, e.employment.id, admin).expect(204);
+      await deleteEmployment(e.id, e.employment.id).expect(204);
       await deleteEmployment(e.id, e.employment.id).expect(404);
       expect(await profileOf(e.id)).toMatchObject({ employment: null, employments: [] });
       expect(await listed(e.id)).toMatchObject({ standing: 'not_employed', employment: null, lastEnded: null });
@@ -634,7 +649,7 @@ describe('Employees (e2e)', () => {
 
   describe('what the history keeps', () => {
     it('will not delete a department, team, job title or shift that a current or past employment uses', async () => {
-      const remove = (path: string) => api().delete(path).set('Cookie', hr);
+      const remove = (path: string) => api().delete(path).set('Cookie', superAdmin);
       const shift = (
         await api()
           .post('/api/shifts')
@@ -693,18 +708,18 @@ describe('Employees (e2e)', () => {
     it('keeps the profile of the manager on record of past employments', async () => {
       const boss = await addHired('Past Boss');
       const member = await addHired('Past Member', { managerId: boss.id });
-      const now = await api().delete(`/api/employees/${boss.id}`).set('Cookie', hr).expect(409);
+      const now = await api().delete(`/api/employees/${boss.id}`).set('Cookie', superAdmin).expect(409);
       expect(now.body.message).toBe(`1 employee(s) report to Past Boss ${RUN}. Choose another manager for them before deleting.`);
 
       await endEmployment(member.id, member.employment.id, { endDate: '2026-03-31', endReason: 'resigned' }).expect(200);
-      const before = await api().delete(`/api/employees/${boss.id}`).set('Cookie', hr).expect(409);
+      const before = await api().delete(`/api/employees/${boss.id}`).set('Cookie', superAdmin).expect(409);
       expect(before.body.message).toBe(`Past Boss ${RUN} is the manager on record of 1 past employment(s), so the profile is kept.`);
       expect((await profileOf(member.id)).employments[0].manager).toEqual({ id: boss.id, employeeCode: boss.employeeCode, fullNameEn: `Past Boss ${RUN}` });
       expect((await profileOf(boss.id)).reports).toEqual([]);
 
       // once that history is gone (here with the member's profile), the profile can be deleted with its own employments
-      await api().delete(`/api/employees/${member.id}`).set('Cookie', hr).expect(204);
-      await api().delete(`/api/employees/${boss.id}`).set('Cookie', hr).expect(204);
+      await api().delete(`/api/employees/${member.id}`).set('Cookie', superAdmin).expect(204);
+      await api().delete(`/api/employees/${boss.id}`).set('Cookie', superAdmin).expect(204);
       expect(await prisma.employment.count({ where: { employeeId: boss.id } })).toBe(0);
     });
   });

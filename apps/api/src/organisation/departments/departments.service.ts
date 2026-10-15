@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService, changes } from '../../audit/audit.service.js';
+import { assertDeletes } from '../../auth/roles.js';
+import type { SessionUser } from '../../auth/session-user.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateDepartmentDto, UpdateDepartmentDto } from './department.dto.js';
 
@@ -72,7 +74,8 @@ export class DepartmentsService {
     return this.get(id);
   }
 
-  async remove(id: string, userId: string) {
+  async remove(id: string, user: SessionUser) {
+    assertDeletes(user);
     const dept = await this.get(id);
     if (dept._count.children > 0) {
       throw new ConflictException(
@@ -90,7 +93,7 @@ export class DepartmentsService {
     const before = await this.prisma.employment.count({ where: { departmentId: id } });
     if (before > 0) throw new ConflictException(`This department is in the history of ${before} past employment(s), so it is kept.`);
     await this.prisma.department.delete({ where: { id } });
-    await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { nameEn: dept.nameEn } });
+    await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: id, diff: { nameEn: dept.nameEn } });
   }
 
   /**

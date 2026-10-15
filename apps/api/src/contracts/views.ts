@@ -80,6 +80,66 @@ export function contractView(c: Contract, ctx: ContractContext) {
 
 export type ContractView = ReturnType<typeof contractView>;
 
+/** The department as a contract names it: a team as "Department › Team", as the screens show it. */
+export function departmentName(d: { nameEn: string; parent: { nameEn: string } | null } | null): string | null {
+  if (!d) return null;
+  return d.parent ? `${d.parent.nameEn} › ${d.nameEn}` : d.nameEn;
+}
+
+/** What the company-wide contracts list loads with each contract: its employment, person, job title, department and shift. */
+export const CONTRACT_LIST_INCLUDE = {
+  employment: {
+    select: {
+      id: true,
+      employmentType: true,
+      endDate: true,
+      employee: { select: { id: true, employeeCode: true, fullNameEn: true, fullNameAr: true } },
+      jobTitle: { select: { titleEn: true } },
+      department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
+      shift: { select: { workingDays: true } },
+    },
+  },
+} satisfies Prisma.ContractInclude;
+
+export type ContractListRow = Prisma.ContractGetPayload<{ include: typeof CONTRACT_LIST_INCLUDE }>;
+
+/**
+ * A contract in the company-wide list (GET /contracts), with its person and employment. The job title and department
+ * are what was signed (the contract's snapshot); a draft, not signed yet, shows the employment's current ones. The
+ * salary follows contractView's rule.
+ */
+export function contractListView(c: ContractListRow, ctx: ContractContext) {
+  const v = contractView(c, ctx);
+  const e = c.employment;
+  const signed = c.status !== 'draft';
+  return {
+    id: v.id,
+    number: v.number,
+    version: v.version,
+    form: v.form,
+    status: v.status,
+    startDate: v.startDate,
+    endDate: v.endDate,
+    probationMonths: v.probationMonths,
+    probationEnd: v.probationEnd,
+    signedOn: v.signedOn,
+    insuranceFiledOn: v.insuranceFiledOn,
+    labourOfficeFiledOn: v.labourOfficeFiledOn,
+    nonRenewalNoticeBy: v.nonRenewalNoticeBy,
+    grossSalary: v.grossSalary,
+    insuredSalary: v.insuredSalary,
+    salaryHidden: v.salaryHidden,
+    employee: { id: e.employee.id, employeeCode: e.employee.employeeCode, fullNameEn: e.employee.fullNameEn, fullNameAr: e.employee.fullNameAr },
+    employmentId: e.id,
+    employmentType: e.employmentType,
+    employmentCurrent: e.endDate === null,
+    jobTitleEn: signed ? c.jobTitleEn : (e.jobTitle?.titleEn ?? null),
+    departmentName: signed ? c.departmentName : departmentName(e.department),
+  };
+}
+
+export type ContractListView = ReturnType<typeof contractListView>;
+
 /** What an ending is shown with: its rule, who approved it, and the end date of its employment once it ended. */
 export const ENDING_INCLUDE = {
   rule: { select: { label: true, endReason: true } },

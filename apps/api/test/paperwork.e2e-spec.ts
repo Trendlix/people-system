@@ -139,6 +139,8 @@ describe('Paperwork (e2e)', () => {
   let ceo: string;
   let finance: string;
   let staff: string;
+  let admin: string;
+  let superAdmin: string; // the only role that deletes (owner's decision, 15 October 2026)
   let employeeId: string;
   const api = () => request(app.getHttpServer());
 
@@ -163,6 +165,8 @@ describe('Paperwork (e2e)', () => {
     ceo = await signIn(app, await createUser(prisma, ['ceo']));
     finance = await signIn(app, await createUser(prisma, ['finance']));
     staff = await signIn(app, await createUser(prisma, ['employee']));
+    admin = await signIn(app, await createUser(prisma, ['admin']));
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     const e = await api()
       .post('/api/employees')
       .set('Cookie', hr)
@@ -286,14 +290,26 @@ describe('Paperwork (e2e)', () => {
     await api().get(`/api/paperwork/${item.id}/file`).set('Cookie', ceo).expect(200);
   });
 
-  it('deletes a document, keeping a record of it in the audit log', async () => {
+  it('deletes a document, a Super Admin only, keeping a record of it in the audit log', async () => {
     const item = await upload(png('NONE'), 'old.png', 'other');
-    await api().delete(`/api/paperwork/${item.id}`).set('Cookie', hr).expect(204);
+    // HR, who added it, and an Admin get no delete (owner's decision, 15 October 2026)
+    for (const who of [hr, admin]) {
+      const refused = await api().delete(`/api/paperwork/${item.id}`).set('Cookie', who).expect(403);
+      expect(refused.body.message).toBe('Only a Super Admin can delete records.');
+    }
+    await api().delete(`/api/paperwork/${item.id}`).set('Cookie', superAdmin).expect(204);
     await api().get(`/api/paperwork/${item.id}/file`).set('Cookie', hr).expect(404);
-    await api().delete(`/api/paperwork/${item.id}`).set('Cookie', hr).expect(404);
+    await api().delete(`/api/paperwork/${item.id}`).set('Cookie', superAdmin).expect(404);
     const audit = await auditOf(item.id);
     expect(audit.map((a) => a.action)).toEqual(['create', 'delete']);
     expect(audit[1].diff).toEqual({ employeeId, kind: 'other', fileName: 'old.png', sizeBytes: png('NONE').length });
+
+    // both sides of the national ID the same way
+    for (const kind of ['national_id_front', 'national_id_back']) {
+      const side = await upload(png('NONE'), `${kind}.png`, kind);
+      await api().delete(`/api/paperwork/${side.id}`).set('Cookie', hr).expect(403);
+      await api().delete(`/api/paperwork/${side.id}`).set('Cookie', superAdmin).expect(204);
+    }
   });
 
   describe('the number printed on a paper and when it expires', () => {
@@ -569,7 +585,12 @@ describe('Paperwork (e2e)', () => {
       const audit = await prisma.auditLog.findFirst({ where: { entityType: 'ocr_correction', action: 'learn' }, orderBy: { id: 'desc' } });
       expect(audit?.diff).toEqual({ fixes: 1 });
 
-      await api().delete(`/api/id-card/corrections/${fix.id}`).set('Cookie', hr).expect(204);
+      // forgetting a correction is a deletion: a Super Admin only (owner's decision, 15 October 2026)
+      for (const who of [hr, admin]) {
+        const refused = await api().delete(`/api/id-card/corrections/${fix.id}`).set('Cookie', who).expect(403);
+        expect(refused.body.message).toBe('Only a Super Admin can delete records.');
+      }
+      await api().delete(`/api/id-card/corrections/${fix.id}`).set('Cookie', superAdmin).expect(204);
       const after = await api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('LEARN'), 'f.jpg').expect(200);
       expect(after.body.corrected).toEqual([]);
     });

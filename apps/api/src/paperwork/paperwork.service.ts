@@ -2,6 +2,7 @@ import { BadGatewayException, BadRequestException, Injectable, NotFoundException
 import { RESTRICTED_PAPERWORK, type PaperworkKind } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { fromDateOnly, toDateOnly } from '../common/date-only.js';
+import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -9,7 +10,7 @@ import { NORMALIZE_FROM, NORMALIZE_TO, normalizeArabic, snippet } from './arabic
 import { readIdCardWithNotes, type CardLine } from './egyptian-id.js';
 import { CorrectionsService } from './corrections.service.js';
 import { assignSides } from './id-card-sides.js';
-import { OCR_PDF_PAGES, OcrClient, type OcrPage, type OcrPageRead, type OcrRead } from './ocr.client.js';
+import { OCR_CARDS_PDF_PAGES, OcrClient, type OcrPage, type OcrPageRead, type OcrRead, type OcrShownPages } from './ocr.client.js';
 import { detectPaperworkType, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, replacementName, safeFileName, type PaperworkType } from './paperwork-file.js';
 import type { UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
 import { countPdfPages } from './pdf-pages.js';
@@ -66,13 +67,17 @@ function unread(status: 'failed' | 'unavailable', say: Unread) {
   return status === 'unavailable' ? new ServiceUnavailableException(say.unavailable) : new BadGatewayException(say.failed);
 }
 
-/**
- * Pages shown for adjusting at most: a longer PDF is refused. For now, also a PDF longer than the OCR service shows
- * (OCR_PDF_PAGES): its pages cannot all be shown.
- */
+/** Pages shown for adjusting at most, as many as the OCR service shows (POST /pages): a longer PDF is refused. */
 const ADJUST_MAX_PAGES = 20;
-const adjustMaxPages = Math.min(ADJUST_MAX_PAGES, OCR_PDF_PAGES);
-const FOR_NOW = adjustMaxPages < ADJUST_MAX_PAGES ? ' for now' : '';
+
+/**
+ * The 400 for a PDF with more pages than can be shown: `upTo` at most, which is fewer than ADJUST_MAX_PAGES only while
+ * the OCR service is older than POST /pages ("for now").
+ */
+function tooLong(upTo: number, has: string): BadRequestException {
+  const forNow = upTo < ADJUST_MAX_PAGES ? ' for now' : '';
+  return new BadRequestException(`Only PDFs of up to ${upTo} pages can be adjusted${forNow}; this one ${has}.`);
+}
 
 /** A page as a picture, for adjusting in the browser: base64 JPEG, and its size as shown. */
 export interface PreparedPage {
@@ -254,7 +259,9 @@ export class PaperworkService {
     return updated;
   }
 
+  /** Deletes a stored paper, the national ID's sides too: a Super Admin only (owner's decision, 15 October 2026). */
   async remove(itemId: string, user: SessionUser) {
+    assertDeletes(user);
     const item = await this.prisma.paperworkItem.findUnique({
       where: { id: itemId },
       select: { employeeId: true, kind: true, fileName: true, sizeBytes: true },
@@ -423,27 +430,36 @@ export class PaperworkService {
   private async photoPage({ data, type }: Upload): Promise<PreparedPage> {
     const size = photoSize(data, type);
     if (size && type === 'image/jpeg') return { image: data.toString('base64'), ...size };
-    const shown = await this.ocr.pages(data, type);
+    let shown: OcrShownPages = await this.ocr.pages(data, type);
+    if (shown.status === 'old') shown = await this.ocr.cardPages(data, type);
     if (shown.status === 'done' && shown.pages.length === 1) return preparedPage(shown.pages[0]);
     if (size) return { image: data.toString('base64'), ...size };
     throw new BadRequestException('This photo could not be opened: it may be damaged. Try another file.');
   }
 
   /**
-   * The pages of a PDF, rendered by the OCR service (503 without it). Never fewer than the PDF has: the adjusted file
-   * replaces the whole document, so a PDF whose pages cannot all be shown is refused.
+   * The pages of a PDF, rendered by the OCR service (503 without it), up to ADJUST_MAX_PAGES. Never fewer than the PDF
+   * has: the adjusted file replaces the whole document, so a PDF whose pages cannot all be shown is refused. An OCR
+   * service older than POST /pages (the API deployed before its image is rebuilt) shows a PDF's first 2 pages, from
+   * /cards: until then, a longer PDF is refused.
    */
   private async pdfPages({ data, type }: Upload): Promise<PreparedPage[]> {
     const count = countPdfPages(data);
-    const tooLong = (has: string) => new BadRequestException(`Only PDFs of up to ${adjustMaxPages} pages can be adjusted${FOR_NOW}; this one ${has}.`);
-    if (count !== null && count > adjustMaxPages) throw tooLong(`has ${count}`);
-    const shown = await this.ocr.pages(data, type);
+    if (count !== null && count > ADJUST_MAX_PAGES) throw tooLong(ADJUST_MAX_PAGES, `has ${count}`);
+    let upTo = ADJUST_MAX_PAGES;
+    let shown: OcrShownPages = await this.ocr.pages(data, type);
+    if (shown.status === 'old') {
+      upTo = OCR_CARDS_PDF_PAGES;
+      if (count !== null && count > upTo) throw tooLong(upTo, `has ${count}`);
+      shown = await this.ocr.cardPages(data, type);
+    }
+    if (shown.status === 'tooLong') throw tooLong(ADJUST_MAX_PAGES, `has ${shown.pages}`);
     if (shown.status !== 'done') throw unread(shown.status, PDF_PAGES_UNREAD);
     const { pages } = shown;
     if (!pages.length || (count !== null && pages.length < count)) throw new BadGatewayException(PDF_PAGES_UNREAD.failed);
-    if (pages.length > adjustMaxPages) throw tooLong(`has ${pages.length}`);
-    // when the page count cannot be told, as many pages as the service shows at most may be only the first ones
-    if (count === null && pages.length >= OCR_PDF_PAGES) throw tooLong('may have more');
+    if (pages.length > upTo) throw tooLong(upTo, `has ${pages.length}`);
+    // when the page count cannot be told, as many pages as /cards shows at most may be only the first ones
+    if (count === null && upTo < ADJUST_MAX_PAGES && pages.length >= upTo) throw tooLong(upTo, 'may have more');
     return pages.map(preparedPage);
   }
 

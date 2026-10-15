@@ -4,7 +4,8 @@ import type { SessionUser } from '../auth/session-user.js';
 import { CreateUserDto, SetPasswordDto, UpdateUserDto } from './user.dto.js';
 import { UsersService } from './users.service.js';
 
-// Only admins manage sign-in accounts: the role applies to every endpoint here.
+// Only admins manage sign-in accounts: the role applies to every endpoint here. A Super Admin is an admin too; only a
+// Super Admin gives or takes away that role, or changes a Super Admin's account (see UsersService).
 @Roles('admin')
 @Controller('users')
 export class UsersController {
@@ -22,7 +23,7 @@ export class UsersController {
 
   @Post()
   create(@Body() dto: CreateUserDto, @CurrentUser() user: SessionUser) {
-    return this.users.create(dto, user.id);
+    return this.users.create(dto, user);
   }
 
   @Patch(':id')
@@ -33,6 +34,6 @@ export class UsersController {
   @Put(':id/password')
   @HttpCode(204)
   setPassword(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetPasswordDto, @CurrentUser() user: SessionUser) {
-    return this.users.setPassword(id, dto, user.id);
+    return this.users.setPassword(id, dto, user);
   }
 }

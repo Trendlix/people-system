@@ -1,5 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService, changes } from '../../audit/audit.service.js';
+import { assertDeletes } from '../../auth/roles.js';
+import type { SessionUser } from '../../auth/session-user.js';
 import type { Grade } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateGradeDto, UpdateGradeDto } from './grade.dto.js';
@@ -49,7 +51,8 @@ export class GradesService {
     return this.get(id);
   }
 
-  async remove(id: string, userId: string) {
+  async remove(id: string, user: SessionUser) {
+    assertDeletes(user);
     const grade = await this.get(id);
     const { jobTitles, employments } = grade._count;
     if (jobTitles > 0 || employments > 0) {
@@ -57,7 +60,7 @@ export class GradesService {
       throw new ConflictException(`${grade.code} is used by ${uses.filter(Boolean).join(' and ')}. Give them another grade before deleting it.`);
     }
     await this.prisma.grade.delete({ where: { id } });
-    await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { code: grade.code, levelEn: grade.levelEn } });
+    await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: id, diff: { code: grade.code, levelEn: grade.levelEn } });
   }
 
   /**

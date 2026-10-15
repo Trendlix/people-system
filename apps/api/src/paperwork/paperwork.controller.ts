@@ -18,15 +18,16 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
-import { CurrentUser, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { FileTooLargeFilter } from './file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from './paperwork-file.js';
 import { SearchPaperworkDto, UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
 import { PaperworkService, type IdCardFiles } from './paperwork.service.js';
 
-// The employee file is HR and CEO only: both read it, only HR adds, adjusts, re-reads and deletes. National ID scans
-// are restricted data on top of that: every view is written to the audit log (see PaperworkService).
+// The employee file is HR and CEO only: both read it, only HR adds, adjusts and re-reads. Only a Super Admin deletes a
+// paper (owner's decision, 15 October 2026). National ID scans are restricted data on top of that: every view is
+// written to the audit log (see PaperworkService).
 
 // File names are read as UTF-8, so Arabic names arrive intact.
 const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 }, defParamCharset: 'utf8' };
@@ -154,7 +155,7 @@ export class PaperworkController {
     return this.paperwork.describe(itemId, dto, user);
   }
 
-  @Roles('hr')
+  @DeletesRecords()
   @Delete(':itemId')
   @HttpCode(204)
   remove(@Param('itemId', ParseUUIDPipe) itemId: string, @CurrentUser() user: SessionUser) {

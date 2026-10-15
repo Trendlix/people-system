@@ -15,12 +15,16 @@ describe('Company profile (e2e)', () => {
   let prisma: PrismaService;
   let hr: string;
   let employee: string;
+  let admin: string;
+  let superAdmin: string; // the only role that deletes (owner's decision, 15 October 2026)
   const api = () => request(app.getHttpServer());
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
     hr = await signIn(app, await createUser(prisma, ['hr']));
     employee = await signIn(app, await createUser(prisma, ['employee']));
+    admin = await signIn(app, await createUser(prisma, ['admin']));
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
   });
 
   afterAll(async () => {
@@ -130,8 +134,13 @@ describe('Company profile (e2e)', () => {
       await api().delete('/api/company/logo').set('Cookie', employee).expect(403);
     });
 
-    it('can be removed', async () => {
-      await api().delete('/api/company/logo').set('Cookie', hr).expect(204);
+    it('can be removed by a Super Admin only: removing it deletes it (owner’s decision, 15 October 2026)', async () => {
+      for (const who of [hr, admin]) {
+        const refused = await api().delete('/api/company/logo').set('Cookie', who).expect(403);
+        expect(refused.body.message).toBe('Only a Super Admin can delete records.');
+      }
+      expect((await api().get('/api/company/brand')).body.logoVersion).not.toBeNull();
+      await api().delete('/api/company/logo').set('Cookie', superAdmin).expect(204);
       await api().get('/api/company/logo').expect(404);
       expect((await api().get('/api/company/brand')).body.logoVersion).toBeNull();
     });

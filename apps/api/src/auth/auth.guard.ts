@@ -4,7 +4,8 @@ import { JwtService } from '@nestjs/jwt';
 import type { Role } from '@trendlix/shared';
 import type { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { IS_PUBLIC, REQUIRED_ROLES } from './decorators.js';
+import { FORBIDDEN_MESSAGE, IS_PUBLIC, REQUIRED_ROLES } from './decorators.js';
+import { actsAs } from './roles.js';
 import { SESSION_COOKIE, type SessionUser } from './session-user.js';
 
 // Global guard: every endpoint needs a valid session unless marked @Public().
@@ -41,8 +42,9 @@ export class AuthGuard implements CanActivate {
     req.user = { id: user.id, email: user.email, roles: user.roles.map((r) => r.role.key as Role) };
 
     const required = this.reflector.getAllAndOverride<Role[] | undefined>(REQUIRED_ROLES, targets);
-    if (required?.length && !required.some((r) => req.user!.roles.includes(r))) {
-      throw new ForbiddenException('You do not have permission to do this.');
+    if (required?.length && !actsAs(req.user.roles, required)) {
+      const message = this.reflector.getAllAndOverride<string | undefined>(FORBIDDEN_MESSAGE, targets);
+      throw new ForbiddenException(message ?? 'You do not have permission to do this.');
     }
     return true;
   }

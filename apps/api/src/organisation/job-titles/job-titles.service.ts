@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService, changes } from '../../audit/audit.service.js';
+import { assertDeletes } from '../../auth/roles.js';
+import type { SessionUser } from '../../auth/session-user.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { gradeRange } from '../grades/grade-range.js';
 import type { CreateJobTitleDto, UpdateJobTitleDto } from './job-title.dto.js';
@@ -139,7 +141,8 @@ export class JobTitlesService {
     return this.get(id);
   }
 
-  async remove(id: string, userId: string) {
+  async remove(id: string, user: SessionUser) {
+    assertDeletes(user);
     const job = await this.get(id);
     // employments that ended keep their job title in the history
     const now = await this.prisma.employment.count({ where: { jobTitleId: id, endDate: null } });
@@ -147,7 +150,7 @@ export class JobTitlesService {
     const before = await this.prisma.employment.count({ where: { jobTitleId: id } });
     if (before > 0) throw new ConflictException(`This job title is in the history of ${before} past employment(s), so it is kept.`);
     await this.prisma.jobTitle.delete({ where: { id } });
-    await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { titleEn: job.titleEn } });
+    await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: id, diff: { titleEn: job.titleEn } });
   }
 
   /** Both ends of a range must be grades on the list, the lowest at or below the highest. Answers the two grades. */

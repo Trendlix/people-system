@@ -4,7 +4,7 @@ import { AuthService } from './auth.service.js';
 import { CurrentUser, Public } from './decorators.js';
 import { LoginDto } from './login.dto.js';
 import { ChangePasswordDto } from './password.dto.js';
-import { SESSION_COOKIE, SESSION_HOURS, type SessionUser } from './session-user.js';
+import { SESSION_COOKIE, SESSION_HOURS, type Me, type SessionUser } from './session-user.js';
 
 @Controller('auth')
 export class AuthController {
@@ -33,8 +33,8 @@ export class AuthController {
   }
 
   @Get('me')
-  me(@CurrentUser() user: SessionUser): SessionUser {
-    return user;
+  me(@CurrentUser() user: SessionUser): Promise<Me> {
+    return this.auth.me(user);
   }
 
   @Post('change-password')

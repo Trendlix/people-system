@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { CurrentUser, Roles } from '../../auth/decorators.js';
+import { CurrentUser, DeletesRecords, Roles } from '../../auth/decorators.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import { CreateJobTitleDto, UpdateJobTitleDto } from './job-title.dto.js';
 import { JobTitlesService } from './job-titles.service.js';
@@ -30,10 +30,10 @@ export class JobTitlesController {
     return this.jobTitles.update(id, dto, user.id);
   }
 
-  @Roles('hr', 'admin')
+  @DeletesRecords()
   @Delete(':id')
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
-    return this.jobTitles.remove(id, user.id);
+    return this.jobTitles.remove(id, user);
   }
 }

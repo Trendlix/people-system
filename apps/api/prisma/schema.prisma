@@ -16,7 +16,7 @@ datasource db {
 
 model Role {
   id    String     @id @default(uuid()) @db.Uuid
-  key   String     @unique // employee, manager, hr, finance, ceo, admin
+  key   String     @unique // employee, manager, hr, finance, ceo, admin, super_admin
   name  String
   users UserRole[]
 
@@ -40,6 +40,8 @@ model User {
   confirmations     ProfileConfirmation[] // the times this user confirmed their own details
   changesRequested  ProfileChangeRequest[] @relation("ChangeRequester") // changes this user asked for to their own details
   changesDecided    ProfileChangeRequest[] @relation("ChangeDecision") // change requests this user approved, rejected or cancelled
+  uploadedVersions  TemplateVersion[]      @relation("TemplateUpload") // template versions this user uploaded
+  publishedVersions TemplateVersion[]      @relation("TemplatePublication") // template versions this user published
 
   @@map("users")
 }
@@ -524,6 +526,41 @@ model ProfileChangeRequest {
   @@index([status])
   @@index([employeeId])
   @@map("profile_change_requests")
+}
+
+// ---------- document templates ----------
+// The template library (spec §8; owner's request, 15 October 2026: "Start working on the templates tab; I need to
+// upload the templates"). HR uploads each Word file exactly as used today, with merge tags such as {{full_name_ar}}
+// where the data goes; the system never changes the wording, it only replaces the tags. Each upload is a new version
+// of its slot (packages/shared TEMPLATE_SLOTS): a draft until it is published, and publishing retires the version in
+// use. A version that was in use is kept, so documents made from it keep their version; only a draft can be deleted.
+
+// One uploaded version of a template. The tags are read from the file when it is uploaded; a version with tags the
+// dictionary doesn't have (unknown_tags) or with broken ones can't be published. At most one version per slot is
+// published (checked by the API, in a transaction).
+model TemplateVersion {
+  id            String    @id @default(uuid()) @db.Uuid
+  slotKey       String    @map("slot_key") // a TEMPLATE_SLOTS key (checked by the API); never a copy's (copyOf)
+  version       Int // 1, 2 … within the slot
+  fileName      String    @map("file_name")
+  mimeType      String    @map("mime_type") // always a Word document (.docx), checked by its content
+  sizeBytes     Int       @map("size_bytes")
+  data          Bytes
+  language      String // TEMPLATE_LANGUAGES: ar, en
+  tags          String[] // the dictionary's tags found, in order of first appearance
+  unknownTags   String[]  @map("unknown_tags") // well-formed tags the dictionary doesn't have
+  broken        String[] // fragments that look like a tag but aren't one, e.g. "{{ full_name_ar" (at most 20)
+  status        String    @default("draft") // TEMPLATE_VERSION_STATUSES: draft, published, retired
+  note          String?
+  uploadedById  String?   @map("uploaded_by") @db.Uuid
+  uploadedBy    User?     @relation("TemplateUpload", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedAt    DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz
+  publishedById String?   @map("published_by") @db.Uuid
+  publishedBy   User?     @relation("TemplatePublication", fields: [publishedById], references: [id], onDelete: SetNull)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz
+
+  @@unique([slotKey, version])
+  @@map("template_versions")
 }
 
 // ---------- audit ----------

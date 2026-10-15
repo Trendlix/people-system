@@ -1,10 +1,12 @@
 import type { Role } from '@trendlix/shared';
+import { actsAs, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 
 // Who sees which employees and which restricted fields (spec §1). Managers and employees are matched to their own
 // employee record by work email: a sign-in account whose email is an employee's work email is that employee.
 
-const has = (user: SessionUser, roles: Role[]) => user.roles.some((r) => roles.includes(r));
+// a Super Admin counts as an Admin here, as everywhere (see auth/roles.ts)
+const has = (user: SessionUser, roles: Role[]) => actsAs(user.roles, roles);
 
 /** HR, CEO and Finance see every employee. Managers see themselves and their direct reports; anyone else, themselves. */
 export const seesEveryone = (user: SessionUser) => has(user, ['hr', 'ceo', 'finance']);
@@ -21,8 +23,11 @@ export const seesSalary = seesBank;
 /** Only HR adds and changes employees. */
 export const editsEmployees = (user: SessionUser) => has(user, ['hr']);
 
-/** HR and Admin (the top role) can delete an employee record, e.g. one added by mistake. */
-export const deletesEmployees = (user: SessionUser) => has(user, ['hr', 'admin']);
+/**
+ * Deleting an employee record, e.g. one added by mistake: a Super Admin only, like every other deletion (owner's
+ * decision, 15 October 2026). Before, HR and Admin could.
+ */
+export const deletesEmployees = (user: SessionUser) => isSuperAdmin(user);
 
 /**
  * How an employment ends (its ending, with the CEO's decision and note): HR, Admin and the CEO only, not the employee

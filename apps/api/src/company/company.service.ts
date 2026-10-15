@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService, changes } from '../audit/audit.service.js';
+import { assertDeletes } from '../auth/roles.js';
+import type { SessionUser } from '../auth/session-user.js';
 import type { Company } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { UpdateCompanyDto } from './company.dto.js';
@@ -83,10 +85,12 @@ export class CompanyService {
     return view(updated);
   }
 
-  async removeLogo(userId: string): Promise<void> {
+  /** Removing the logo deletes it, so a Super Admin only (owner's decision, 15 October 2026); replacing it is an update. */
+  async removeLogo(user: SessionUser): Promise<void> {
+    assertDeletes(user);
     await this.row();
     await this.prisma.company.update({ where: { id: ID }, data: { logo: null, logoMimeType: null, logoUpdatedAt: null } });
-    await this.audit.record({ userId, action: 'update', entityType: ENTITY, diff: { logo: 'removed' } });
+    await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, diff: { logo: 'removed' } });
   }
 
   async logo(): Promise<{ data: Buffer; type: string }> {

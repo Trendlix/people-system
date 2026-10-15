@@ -11,10 +11,11 @@ import { VersionController } from './health/version.controller.js';
 import { OrganisationModule } from './organisation/organisation.module.js';
 import { PaperworkModule } from './paperwork/paperwork.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { TemplatesModule } from './templates/templates.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, AuditModule, AuthModule, CompanyModule, OrganisationModule, EmployeesModule, ContractsModule, ConfirmationsModule, PaperworkModule, UsersModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, AuditModule, AuthModule, CompanyModule, OrganisationModule, EmployeesModule, ContractsModule, ConfirmationsModule, PaperworkModule, TemplatesModule, UsersModule],
   controllers: [HealthController, VersionController],
 })
 export class AppModule {}

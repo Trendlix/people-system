@@ -74,6 +74,7 @@ describe('Contracts (e2e)', () => {
   let ceo: string;
   let finance: string;
   let admin: string;
+  let superAdmin: string; // the only role that deletes (owner's decision, 15 October 2026)
   let shiftA: string;
   let teamId: string;
   let jobTitleId: string;
@@ -148,6 +149,7 @@ describe('Contracts (e2e)', () => {
     ceo = await signIn(app, ceoEmail);
     finance = await signIn(app, await createUser(prisma, ['finance']));
     admin = await signIn(app, await createUser(prisma, ['admin']));
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
 
     const shifts = await api().get('/api/shifts').set('Cookie', hr).expect(200);
     shiftA = (shifts.body as { id: string; code: string }[]).find((s) => s.code === 'A')!.id;
@@ -304,7 +306,7 @@ describe('Contracts (e2e)', () => {
       const e = await newHire('High Earner');
       const capped = await addContract(e, { grossSalary: 25000, basicPercent: 60, netSalary: 19500.5 });
       expect(capped).toMatchObject({ grossSalary: 25000, insuredSalary: 16700, basicSalary: 15000, variableSalary: 10000, netSalary: 19500.5 });
-      await api().delete(`/api/contracts/${capped.id}`).set('Cookie', hr).expect(204);
+      await api().delete(`/api/contracts/${capped.id}`).set('Cookie', superAdmin).expect(204);
 
       const earlier = await newHire('Hired In 2025', { joinDate: '2025-03-01' });
       expect(await addContract(earlier, { grossSalary: 20000 })).toMatchObject({ startDate: '2025-03-01', insuredSalary: 14500 });
@@ -366,7 +368,12 @@ describe('Contracts (e2e)', () => {
       const moved = await patchContract(draft.id, { startDate: '2027-01-01' }).expect(200);
       expect(moved.body.number).toMatch(/^CON-2027-\d{4}$/);
 
-      await api().delete(`/api/contracts/${draft.id}`).set('Cookie', hr).expect(204);
+      // only a Super Admin deletes a draft: HR, who wrote it, and an Admin get no delete (owner's decision, 15 October 2026)
+      for (const who of [hr, admin]) {
+        const refused = await api().delete(`/api/contracts/${draft.id}`).set('Cookie', who).expect(403);
+        expect(refused.body.message).toBe('Only a Super Admin can delete records.');
+      }
+      await api().delete(`/api/contracts/${draft.id}`).set('Cookie', superAdmin).expect(204);
       expect((await contractsOf(e).expect(200)).body).toEqual([]);
 
       const again = await addContract(e);
@@ -381,7 +388,7 @@ describe('Contracts (e2e)', () => {
       expect(filed.body).toMatchObject({ insuranceFiledOn: '2026-01-20', labourOfficeFiledOn: '2026-01-25', note: 'Form 1 sent', grossSalary: 12000 });
       await patchContract(again.id, { signedOn: addDays(today, 1) }).expect(400);
       await patchContract(again.id, { signedOn: null }).expect(400);
-      const gone = await api().delete(`/api/contracts/${again.id}`).set('Cookie', hr).expect(409);
+      const gone = await api().delete(`/api/contracts/${again.id}`).set('Cookie', superAdmin).expect(409);
       expect(gone.body.message).toBe(`${again.number} is signed: only a draft can be deleted, and a signed contract stays on record.`);
       await signContract((await addContract(await newHire('Future Signing'))).id, addDays(today, 1)).expect(400);
     });
@@ -458,7 +465,7 @@ describe('Contracts (e2e)', () => {
       const again = await hire(first.id, { joinDate: '2026-03-01' });
       const c = await addContract(again, { grossSalary: 9000 });
       expect(c).toMatchObject({ startDate: '2026-03-01', probationMonths: 0, probationEnd: null });
-      await api().delete(`/api/contracts/${c.id}`).set('Cookie', hr).expect(204);
+      await api().delete(`/api/contracts/${c.id}`).set('Cookie', superAdmin).expect(204);
 
       const refused = await postContract(again, { grossSalary: 9000, probationMonths: 3 }).expect(400);
       expect(refused.body.message).toBe(`Rehired ${RUN} already had a probation with the company; the law allows it once (Art. 90).`);

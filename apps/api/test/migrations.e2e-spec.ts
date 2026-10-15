@@ -163,4 +163,64 @@ describe('Migrations (e2e)', () => {
     await expect(db.query('UPDATE contract_settings SET probation_months = 4')).rejects.toThrow(/contract_settings_probation_months_check/);
     await expect(db.query('INSERT INTO contract_settings (id, updated_at) VALUES (2, now())')).rejects.toThrow(/contract_settings_one_row/);
   });
+
+  describe('super admin: the role, given to the original admin account only (owner’s decision, 15 October 2026)', () => {
+    const migration = () => readdirSync(MIGRATIONS).find((m) => m.endsWith('_super_admin'))!;
+    const superAdmins = async () =>
+      (
+        await db.query<{ email: string }>(`
+          SELECT u.email FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
+          WHERE r.key = 'super_admin' ORDER BY u.email`)
+      ).rows.map((r) => r.email);
+
+    /** The roles the seed gave, and users created at the given times with the given roles. */
+    async function before(users: { email: string; createdAt: string; roles: string[] }[]) {
+      await migratedUpTo(migration());
+      await db.query(`INSERT INTO roles (id, key, name) VALUES
+        (gen_random_uuid(), 'employee', 'Employee'), (gen_random_uuid(), 'hr', 'HR'), (gen_random_uuid(), 'admin', 'Admin')`);
+      for (const u of users) {
+        const { rows } = await db.query<{ id: string }>(
+          'INSERT INTO users (id, email, created_at, updated_at) VALUES (gen_random_uuid(), $1, $2, now()) RETURNING id',
+          [u.email, u.createdAt],
+        );
+        await db.query('INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE key = ANY($2)', [rows[0].id, u.roles]);
+      }
+    }
+
+    it('adds the role and gives it to admin@trendlix.com, even when another admin is older', async () => {
+      await before([
+        { email: 'first.admin@trendlix.com', createdAt: '2026-10-01T09:00:00Z', roles: ['admin'] },
+        { email: 'admin@trendlix.com', createdAt: '2026-10-02T09:00:00Z', roles: ['admin', 'hr'] },
+        { email: 'later.admin@trendlix.com', createdAt: '2026-10-03T09:00:00Z', roles: ['admin'] },
+      ]);
+      await db.query(sql(migration()));
+
+      const { rows: role } = await db.query("SELECT name FROM roles WHERE key = 'super_admin'");
+      expect(role).toEqual([{ name: 'Super Admin' }]);
+      expect(await superAdmins()).toEqual(['admin@trendlix.com']);
+      // their other roles stay
+      const { rows } = await db.query<{ key: string }>(`
+        SELECT r.key FROM user_roles ur JOIN roles r ON r.id = ur.role_id JOIN users u ON u.id = ur.user_id
+        WHERE u.email = 'admin@trendlix.com' ORDER BY r.key`);
+      expect(rows.map((r) => r.key)).toEqual(['admin', 'hr', 'super_admin']);
+    });
+
+    it('without admin@trendlix.com, gives it to the earliest-created admin, and to nobody else', async () => {
+      await before([
+        { email: 'staff@trendlix.com', createdAt: '2026-09-01T09:00:00Z', roles: ['employee'] }, // older, not an admin
+        { email: 'later.admin@trendlix.com', createdAt: '2026-10-03T09:00:00Z', roles: ['admin'] },
+        { email: 'first.admin@trendlix.com', createdAt: '2026-10-01T09:00:00Z', roles: ['admin', 'hr'] },
+      ]);
+      await db.query(sql(migration()));
+      expect(await superAdmins()).toEqual(['first.admin@trendlix.com']);
+    });
+
+    it('on a new database (no users yet), only adds the role: the seed gives it to the first account', async () => {
+      await migratedUpTo(migration());
+      await db.query(sql(migration()));
+      const { rows } = await db.query('SELECT key, name FROM roles');
+      expect(rows).toEqual([{ key: 'super_admin', name: 'Super Admin' }]);
+      expect(await superAdmins()).toEqual([]);
+    });
+  });
 });

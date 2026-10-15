@@ -68,10 +68,12 @@ interface FakeOcr {
 }
 
 /**
- * A stand-in for services/ocr. POST /cards: MARK:PAGESn shows n pages (one otherwise), MARK:FAIL answers 500. POST
- * /read: the text for the file's mark.
+ * A stand-in for services/ocr. POST /pages: MARK:PAGESn shows n pages (one otherwise); a PDF of more than 20 is
+ * refused, as the service does, saying how many pages it has. POST /cards, which shows the pages for a service older
+ * than /pages: the same, but a PDF's first 2 pages at most. MARK:FAIL answers 500. POST /read: the text for the file's
+ * mark. Every call is noted, even one answered 404. `pages: false`: a service built before /pages, which answers it 404.
  */
-async function fakeOcr(texts: Record<string, string>): Promise<FakeOcr> {
+async function fakeOcr(texts: Record<string, string>, { pages: hasPages = true } = {}): Promise<FakeOcr> {
   const calls: string[] = [];
   let held: Promise<void> = Promise.resolve();
   const server = createServer((req, res) => {
@@ -79,15 +81,19 @@ async function fakeOcr(texts: Record<string, string>): Promise<FakeOcr> {
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
     req.on('end', () => {
       const url = new URL(req.url ?? '/', 'http://ocr');
-      if (req.method !== 'POST' || !['/cards', '/read'].includes(url.pathname)) return void res.writeHead(404).end();
       calls.push(url.pathname);
+      const json = (body: object, status = 200) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+      const paths = hasPages ? ['/pages', '/cards', '/read'] : ['/cards', '/read'];
+      if (req.method !== 'POST' || !paths.includes(url.pathname)) return void json({ detail: 'Not Found' }, 404);
       const mark = /MARK:(\w+)/.exec(Buffer.concat(chunks).toString('latin1'))?.[1] ?? '';
       if (mark === 'FAIL') return void res.writeHead(500).end('Internal Server Error');
-      const json = (body: object) => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body));
-      if (url.pathname === '/cards') {
-        const pages = Array.from({ length: Number(/^PAGES(\d+)$/.exec(mark)?.[1] ?? 1) }, (_, i) => shownPage(i));
-        return void json({ pages, cards: [] });
+      const count = Number(/^PAGES(\d+)$/.exec(mark)?.[1] ?? 1);
+      const pages = (n: number) => Array.from({ length: n }, (_, i) => shownPage(i));
+      if (url.pathname === '/pages') {
+        if (count > 20) return void json({ detail: `The PDF has ${count} pages; at most 20 pages can be shown.`, pages: count }, 400);
+        return void json({ pages: pages(count) });
       }
+      if (url.pathname === '/cards') return void json({ pages: pages(Math.min(count, 2)), cards: [] });
       const text = texts[mark] ?? 'مستند';
       const answer = () => json({ lang: 'ar', pages: [{ lines: [{ text, confidence: 0.9, box: [0, 0, 100, 20] }] }], text });
       if (mark === 'SLOW') void held.then(answer);
@@ -122,6 +128,7 @@ async function deadUrl(): Promise<string> {
   return `http://127.0.0.1:${port}`;
 }
 
+const PDF_FAILED = "The PDF's pages could not be shown: it may be damaged or protected by a password. Try again, or upload a photo.";
 const OLD_TEXT = `شهادة ميلاد قديمة ${RUN}`;
 const NEW_TEXT = `شهادة ميلاد بعد القص ${RUN}`;
 const UNKNOWN = '00000000-0000-4000-8000-000000000000';
@@ -129,8 +136,10 @@ const UNKNOWN = '00000000-0000-4000-8000-000000000000';
 describe('Adjusting paperwork (e2e)', () => {
   const ocrUrlBefore = process.env.OCR_URL;
   let ocr: FakeOcr;
+  let oldOcr: FakeOcr; // an OCR service built before POST /pages
   let app: INestApplication<App>;
   let down: INestApplication<App>; // the same API with the OCR service not running
+  let old: INestApplication<App>; // the same API with the older OCR service
   let prisma: PrismaService;
   let hrEmail: string;
   let hrId: string;
@@ -146,6 +155,9 @@ describe('Adjusting paperwork (e2e)', () => {
     ({ app, prisma } = await createApp());
     process.env.OCR_URL = await deadUrl();
     ({ app: down } = await createApp());
+    oldOcr = await fakeOcr({}, { pages: false });
+    process.env.OCR_URL = oldOcr.url;
+    ({ app: old } = await createApp());
     hrEmail = await createUser(prisma, ['hr']);
     hrId = (await prisma.user.findUniqueOrThrow({ where: { email: hrEmail }, select: { id: true } })).id;
     hr = await signIn(app, hrEmail);
@@ -158,7 +170,9 @@ describe('Adjusting paperwork (e2e)', () => {
   afterAll(async () => {
     await app.close();
     await down.close();
+    await old.close();
     await ocr.close();
+    await oldOcr.close();
     if (ocrUrlBefore === undefined) delete process.env.OCR_URL;
     else process.env.OCR_URL = ocrUrlBefore;
   });
@@ -174,7 +188,7 @@ describe('Adjusting paperwork (e2e)', () => {
       const res = await prepare().attach('file', png('PHOTO'), 'certificate.png').expect(200);
       expect(res.body).toEqual({ pages: [shownPage(0)] });
       expect(Buffer.from(res.body.pages[0].image, 'base64').subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff])); // a JPEG
-      expect(ocr.calls.slice(calls)).toEqual(['/cards']);
+      expect(ocr.calls.slice(calls)).toEqual(['/pages']);
 
       expect(await stored()).toBe(storedBefore);
       expect(await logged()).toBe(loggedBefore);
@@ -189,31 +203,65 @@ describe('Adjusting paperwork (e2e)', () => {
       expect(ocr.calls.length).toBe(calls);
     });
 
-    it('gives every page of a PDF, in order, rendered by the OCR service', async () => {
+    it('gives every page of a PDF, up to 20, in order, rendered by the OCR service', async () => {
+      const calls = ocr.calls.length;
+      const five = await prepare().attach('file', pdf(5, 'PAGES5'), 'contract.pdf').expect(200);
+      expect(five.body).toEqual({ pages: [shownPage(0), shownPage(1), shownPage(2), shownPage(3), shownPage(4)] });
+      expect(ocr.calls.slice(calls)).toEqual(['/pages']);
       const two = await prepare().attach('file', pdf(2, 'PAGES2'), 'certificate.pdf').expect(200);
       expect(two.body).toEqual({ pages: [shownPage(0), shownPage(1)] });
       const one = await prepare().attach('file', pdf(1, 'PAGES1'), 'one.pdf').expect(200);
       expect(one.body).toEqual({ pages: [shownPage(0)] });
+      const twenty = await prepare().attach('file', pdf(20, 'PAGES20'), 'long.pdf').expect(200);
+      expect(twenty.body.pages.map((p: { width: number }) => p.width)).toEqual(Array.from({ length: 20 }, (_, i) => 1000 + i));
+
+      // a PDF whose page count cannot be told: every page the service shows
+      const odd = await prepare().attach('file', Buffer.from('%PDF-1.4\n% MARK:PAGES3\n%%EOF\n'), 'odd.pdf').expect(200);
+      expect(odd.body).toEqual({ pages: [shownPage(0), shownPage(1), shownPage(2)] });
     });
 
-    it('refuses a PDF whose pages cannot all be shown, rather than show only some of them', async () => {
+    it('refuses a PDF of more than 20 pages, or whose pages cannot all be shown', async () => {
       const calls = ocr.calls.length;
-      // the OCR service shows a PDF's first 2 pages: a longer PDF is refused before it is sent
-      const three = await prepare().attach('file', pdf(3, 'PAGES2'), 'long.pdf').expect(400);
-      expect(three.body.message).toBe('Only PDFs of up to 2 pages can be adjusted for now; this one has 3.');
-      const long = await prepare().attach('file', pdf(25, 'PAGES2'), 'long.pdf').expect(400);
-      expect(long.body.message).toBe('Only PDFs of up to 2 pages can be adjusted for now; this one has 25.');
+      // refused before it is sent
+      const long = await prepare().attach('file', pdf(21, 'PAGES21'), 'long.pdf').expect(400);
+      expect(long.body.message).toBe('Only PDFs of up to 20 pages can be adjusted; this one has 21.');
+      const longer = await prepare().attach('file', pdf(25, 'PAGES25'), 'long.pdf').expect(400);
+      expect(longer.body.message).toBe('Only PDFs of up to 20 pages can be adjusted; this one has 25.');
       expect(ocr.calls.length).toBe(calls);
 
-      // a PDF whose page count cannot be told: as many pages as the service shows may not be all of them
-      const unknown = await prepare().attach('file', Buffer.from('%PDF-1.4\n% MARK:PAGES2\n%%EOF\n'), 'odd.pdf').expect(400);
-      expect(unknown.body.message).toBe('Only PDFs of up to 2 pages can be adjusted for now; this one may have more.');
-      const fewer = await prepare().attach('file', Buffer.from('%PDF-1.4\n% MARK:PAGES1\n%%EOF\n'), 'odd.pdf').expect(200);
-      expect(fewer.body.pages).toHaveLength(1);
+      // a PDF whose page count cannot be told: the OCR service counts its pages, and refuses it
+      const unknown = await prepare().attach('file', Buffer.from('%PDF-1.4\n% MARK:PAGES30\n%%EOF\n'), 'odd.pdf').expect(400);
+      expect(unknown.body.message).toBe('Only PDFs of up to 20 pages can be adjusted; this one has 30.');
 
       // fewer pages shown than the PDF has
-      const missing = await prepare().attach('file', pdf(2, 'PAGES1'), 'two.pdf').expect(502);
-      expect(missing.body.message).toBe("The PDF's pages could not be shown: it may be damaged or protected by a password. Try again, or upload a photo.");
+      const missing = await prepare().attach('file', pdf(5, 'PAGES4'), 'five.pdf').expect(502);
+      expect(missing.body.message).toBe(PDF_FAILED);
+    });
+
+    it('falls back to /cards with an OCR service built before /pages: a photo, or a PDF of up to 2 pages', async () => {
+      const calls = oldOcr.calls.length;
+      const photo = await prepare(hr, old).attach('file', png('PHOTO'), 'certificate.png').expect(200);
+      expect(photo.body).toEqual({ pages: [shownPage(0)] });
+      const two = await prepare(hr, old).attach('file', pdf(2, 'PAGES2'), 'certificate.pdf').expect(200);
+      expect(two.body).toEqual({ pages: [shownPage(0), shownPage(1)] });
+      expect(oldOcr.calls.slice(calls)).toEqual(['/pages', '/cards', '/pages', '/cards']);
+
+      // a longer PDF is refused as before, without asking /cards; one whose page count cannot be told, when /cards shows 2
+      const more = oldOcr.calls.length;
+      const three = await prepare(hr, old).attach('file', pdf(3, 'PAGES3'), 'long.pdf').expect(400);
+      expect(three.body.message).toBe('Only PDFs of up to 2 pages can be adjusted for now; this one has 3.');
+      const unknown = await prepare(hr, old).attach('file', Buffer.from('%PDF-1.4\n% MARK:PAGES5\n%%EOF\n'), 'odd.pdf').expect(400);
+      expect(unknown.body.message).toBe('Only PDFs of up to 2 pages can be adjusted for now; this one may have more.');
+      const fewer = await prepare(hr, old).attach('file', Buffer.from('%PDF-1.4\n% MARK:PAGES1\n%%EOF\n'), 'odd.pdf').expect(200);
+      expect(fewer.body).toEqual({ pages: [shownPage(0)] });
+      // more than 20 pages: refused before it is sent, as always
+      const long = await prepare(hr, old).attach('file', pdf(25, 'PAGES25'), 'long.pdf').expect(400);
+      expect(long.body.message).toBe('Only PDFs of up to 20 pages can be adjusted; this one has 25.');
+      expect(oldOcr.calls.slice(more)).toEqual(['/pages', '/pages', '/cards', '/pages', '/cards']);
+
+      // failing as before: 502
+      const failed = await prepare(hr, old).attach('file', pdf(1, 'FAIL'), 'certificate.pdf').expect(502);
+      expect(failed.body.message).toBe(PDF_FAILED);
     });
 
     it('is for HR only, and takes a photo or a PDF of up to 10 MB', async () => {
@@ -232,7 +280,7 @@ describe('Adjusting paperwork (e2e)', () => {
       const pdfDown = await prepare(hr, down).attach('file', pdf(1, 'PAGES1'), 'certificate.pdf').expect(503);
       expect(pdfDown.body.message).toBe("PDF pages can't be shown right now; try again in a minute, or upload a photo.");
       const failed = await prepare().attach('file', pdf(1, 'FAIL'), 'certificate.pdf').expect(502);
-      expect(failed.body.message).toBe("The PDF's pages could not be shown: it may be damaged or protected by a password. Try again, or upload a photo.");
+      expect(failed.body.message).toBe(PDF_FAILED);
 
       const photo = jpeg('PHOTO');
       const jpegDown = await prepare(hr, down).attach('file', photo, 'phone.jpg').expect(200);

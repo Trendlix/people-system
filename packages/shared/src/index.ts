@@ -1,8 +1,24 @@
 // Values shared by the web app and the API.
 // Source of truth: the enums in trendlix-hrms-handoff/db/schema.sql.
 
-export const ROLES = ['employee', 'manager', 'hr', 'finance', 'ceo', 'admin'] as const;
+/**
+ * Super Admin sits above Admin: it can do everything an Admin can, and it is the only role that deletes records
+ * (owner's decision, 15 October 2026). It does not bring the HR, CEO, Finance or manager powers: someone who needs
+ * those holds those roles too.
+ */
+export const ROLES = ['employee', 'manager', 'hr', 'finance', 'ceo', 'admin', 'super_admin'] as const;
 export type Role = (typeof ROLES)[number];
+
+/** Role names as the screens show them, and as the database seed stores them (apps/api/prisma/seed.ts). */
+export const ROLE_LABELS: Record<Role, string> = {
+  employee: 'Employee',
+  manager: 'Direct manager',
+  hr: 'HR',
+  finance: 'Finance',
+  ceo: 'CEO',
+  admin: 'Admin',
+  super_admin: 'Super Admin',
+};
 
 export const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'internship', 'freelance', 'sales'] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
@@ -177,3 +193,7 @@ export * from './contracts.js';
 // ---------- the employee's own check of their data ----------
 
 export * from './profile-confirmation.js';
+
+// ---------- document templates ----------
+
+export * from './templates.js';

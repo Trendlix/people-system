@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PROBATION_MONTHS } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
+import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addMonths, fromDateOnly, toDateOnly } from '../common/date-only.js';
 import type { Employment, Prisma } from '../generated/prisma/client.js';
@@ -159,8 +160,12 @@ export class EmploymentsService {
     return this.employees.get(employeeId, user);
   }
 
-  /** Deletes an employment added by mistake. A current one not while people report to this person. */
+  /**
+   * Deletes an employment added by mistake: a Super Admin only (owner's decision, 15 October 2026). A current one not
+   * while people report to this person.
+   */
   async remove(employeeId: string, employmentId: string, user: SessionUser) {
+    assertDeletes(user);
     const e = await this.row(employeeId, employmentId);
     if (!e.endDate) {
       const reports = await this.prisma.employment.count({ where: { managerId: employeeId, endDate: null } });

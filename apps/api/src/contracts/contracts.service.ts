@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { insuredSalary, type ContractForm } from '@trendlix/shared';
+import { insuredSalary, type ContractForm, type ContractStatus } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
+import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { seesSalary } from '../employees/access.js';
@@ -8,8 +9,16 @@ import { EmployeesService } from '../employees/employees.service.js';
 import type { Contract, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ContractSettingsService } from './contract-settings.service.js';
-import { PROBATION_CAP_MESSAGE, type CreateContractDto, type SignContractDto, type UpdateContractDto } from './contracts.dto.js';
-import { contractView, nonRenewalNoticeBy, type ContractContext, type NonRenewalNotice } from './views.js';
+import { PROBATION_CAP_MESSAGE, type CreateContractDto, type ListContractsDto, type SignContractDto, type UpdateContractDto } from './contracts.dto.js';
+import {
+  CONTRACT_LIST_INCLUDE,
+  contractListView,
+  contractView,
+  departmentName,
+  nonRenewalNoticeBy,
+  type ContractContext,
+  type NonRenewalNotice,
+} from './views.js';
 
 const ENTITY = 'contract';
 const DATE_FIELDS = ['startDate', 'endDate', 'probationEnd', 'signedOn', 'insuranceFiledOn', 'labourOfficeFiledOn'] as const;
@@ -37,6 +46,19 @@ const EMPLOYMENT = {
 } satisfies Prisma.EmploymentSelect;
 
 type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
+
+/** At most this many contracts in the company-wide list. */
+const LIST_CAP = 500;
+
+/**
+ * The company-wide list's order, a group at a time: signed contracts by end date, soonest first (open-ended last),
+ * then drafts, newest first, then the rest (ended, superseded) by start date, newest first.
+ */
+const LIST_GROUPS: { statuses: readonly ContractStatus[]; orderBy: Prisma.ContractOrderByWithRelationInput[] }[] = [
+  { statuses: ['active'], orderBy: [{ endDate: { sort: 'asc', nulls: 'last' } }, { number: 'asc' }] },
+  { statuses: ['draft'], orderBy: [{ createdAt: 'desc' }, { number: 'desc' }] },
+  { statuses: ['ended', 'superseded'], orderBy: [{ startDate: 'desc' }, { number: 'desc' }] },
+];
 
 /** The terms to work out a contract from: as sent, or as the draft has them. */
 interface TermsInput {
@@ -85,12 +107,6 @@ function salaryMasked<T extends Record<string, unknown>>(diff: T): T {
   return out as T;
 }
 
-/** The department as a contract names it: a team as "Department › Team", as the screens show it. */
-function departmentName(d: EmploymentRow['department']): string | null {
-  if (!d) return null;
-  return d.parent ? `${d.parent.nameEn} › ${d.nameEn}` : d.nameEn;
-}
-
 function assertCurrent(e: EmploymentRow) {
   if (e.endDate) {
     throw new ConflictException(`This employment ended on ${shownDate(fromDateOnly(e.endDate))}: contracts are only added and signed for a current employment.`);
@@ -122,6 +138,41 @@ export class ContractsService {
     const rows = await this.prisma.contract.findMany({ where: { employmentId }, orderBy: { version: 'desc' } });
     const ctx = await this.context(user, employment);
     return rows.map((c) => contractView(c, ctx));
+  }
+
+  /**
+   * Every contract in the company (HR, Finance and the CEO), with its person and employment: draft and active ones
+   * unless a status is asked for, filtered by form, employment type and a search on the person's name, code or the
+   * contract number. `endingWithin` keeps signed contracts ending within that many days, those already past their
+   * end included. At most 500, in the order of LIST_GROUPS.
+   */
+  async listAll(query: ListContractsDto, user: SessionUser) {
+    const wanted: readonly ContractStatus[] = query.status ? [query.status] : ['draft', 'active'];
+    const statuses = query.endingWithin === undefined ? wanted : wanted.filter((s) => s === 'active');
+    const text = query.q ? { contains: query.q, mode: 'insensitive' as const } : null;
+    const where: Prisma.ContractWhereInput = {
+      ...(query.form && { form: query.form }),
+      ...(query.type && { employment: { employmentType: query.type } }),
+      ...(query.endingWithin !== undefined && { endDate: { lte: toDateOnly(addDays(todayInCairo(), query.endingWithin)) } }),
+      ...(text && {
+        OR: [{ number: text }, { employment: { employee: { OR: [{ fullNameEn: text }, { fullNameAr: text }, { employeeCode: text }] } } }],
+      }),
+    };
+    const [groups, nonRenewal] = await Promise.all([
+      Promise.all(
+        LIST_GROUPS.map(({ statuses: group, orderBy }) => {
+          const these = group.filter((s) => statuses.includes(s));
+          if (!these.length) return Promise.resolve([]);
+          return this.prisma.contract.findMany({ where: { ...where, status: { in: these } }, orderBy, take: LIST_CAP, include: CONTRACT_LIST_INCLUDE });
+        }),
+      ),
+      this.nonRenewal(),
+    ]);
+    const sees = seesSalary(user);
+    return groups
+      .flat()
+      .slice(0, LIST_CAP)
+      .map((c) => contractListView(c, { seesSalary: sees, workingDays: c.employment.shift?.workingDays ?? null, nonRenewal }));
   }
 
   /** A new version: the first contract, or a renewal of the signed one. One draft at a time. */
@@ -190,8 +241,9 @@ export class ContractsService {
     return contractView(row, await this.context(user, employment));
   }
 
-  /** Deletes a draft. A signed contract stays on record. */
+  /** Deletes a draft (a Super Admin only, owner's decision, 15 October 2026). A signed contract stays on record. */
   async remove(id: string, user: SessionUser) {
+    assertDeletes(user);
     const c = await this.row(id);
     if (c.status !== 'draft') throw new ConflictException(`${c.number} is signed: only a draft can be deleted, and a signed contract stays on record.`);
     await this.prisma.contract.delete({ where: { id } });
