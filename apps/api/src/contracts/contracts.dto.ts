@@ -7,13 +7,16 @@ import {
   ENDING_RULES,
   ENDING_STATUSES,
   NOTICE_UNITS,
+  PAY_BASES,
   type ContractForm,
   type ContractStatus,
   type EmploymentType,
   type EndingRuleKey,
   type EndingStatus,
   type NoticeUnit,
+  type PayBasis,
 } from '@trendlix/shared';
+import { AllowanceRows, type AllowanceAmountDto } from '../allowances/allowances.dto.js';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
 
@@ -25,8 +28,15 @@ const Sent = () => ValidateIf((_o, v) => v !== undefined);
 
 export const PROBATION_CAP_MESSAGE = "Probation can't be longer than 3 months (Labour Law Art. 90).";
 const DURATION_MESSAGE = 'A fixed term runs for 1 to 60 months.';
+/** The company has no open-ended contracts (owner, 15 October 2026). */
+export const FIXED_ONLY_MESSAGE = 'Every contract runs for a fixed term: leave the form out, or send fixed.';
 /** decimal(12, 2) holds up to 9,999,999,999.99 */
-const MAX_MONEY = 9_999_999_999.99;
+export const MAX_MONEY = 9_999_999_999.99;
+/** decimal(10, 2) holds up to 99,999,999.99 */
+const MAX_HOURLY_RATE = 99_999_999.99;
+const HOURLY_RATE_MESSAGE = 'Enter the hourly rate as an amount of more than 0, e.g. 150 or 162.50.';
+const HOURS_MESSAGE = 'Enter the hours a week as a number of more than 0 and up to 48, e.g. 24 or 22.5.';
+const DAYS_MESSAGE = 'Enter the working days a week as a whole number, 1 to 6.';
 
 // ---------- settings ----------
 
@@ -59,17 +69,20 @@ export class UpdateEndingRuleDto {
 
 // ---------- contracts ----------
 
-/** A contract's terms: what HR types. The end date, probation end and insured salary follow from them. */
+/**
+ * A contract's terms: what HR types. The end date, probation end and insured salary follow from them, and by the hour
+ * the gross too.
+ */
 class ContractTermsDto {
-  /** Fixed term (the owner's choice for every employment type) unless sent. */
-  @Sent() @IsIn(CONTRACT_FORMS, { message: 'Choose Fixed term or Open-ended.' })
+  /** Always a fixed term: the company has no open-ended contracts (owner, 15 October 2026). */
+  @Sent() @IsIn(CONTRACT_FORMS, { message: FIXED_ONLY_MESSAGE })
   form?: ContractForm;
 
   /** Version 1: the join date unless sent; a renewal: the day after the version before ends. */
   @Sent() @IsDateOnly('Enter the start date.')
   startDate?: string;
 
-  /** Fixed term only; the settings' duration (12 months) unless sent. */
+  /** The settings' duration (12 months) unless sent. */
   @Sent() @IsInt({ message: DURATION_MESSAGE }) @Min(1, { message: DURATION_MESSAGE }) @Max(60, { message: DURATION_MESSAGE })
   durationMonths?: number;
 
@@ -81,32 +94,54 @@ class ContractTermsDto {
   @Sent() @IsInt({ message: 'Enter the basic salary as a whole percentage, 1 to 100.' }) @Min(1, { message: 'Enter the basic salary as 1 to 100% of the gross.' }) @Max(100, { message: 'Enter the basic salary as 1 to 100% of the gross.' })
   basicPercent?: number;
 
-  /** The approximate net, typed by HR. */
+  /** The approximate net, typed by HR: the pay in hand, allowances included. */
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Enter the net salary as an amount, e.g. 9500 or 9500.50.' }) @Min(0, { message: 'The net salary cannot be negative.' }) @Max(MAX_MONEY)
   netSalary?: number | null;
 
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(1000)
   note?: string | null;
-}
 
-export class CreateContractDto extends ContractTermsDto {
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Enter the gross salary as an amount, e.g. 12000 or 12000.50.' })
-  @Min(0.01, { message: 'Enter a gross salary of more than 0.' })
-  @Max(MAX_MONEY)
-  grossSalary: number;
-}
-
-/**
- * A draft takes any of its terms; a signed contract only the dates it was signed and filed, and its note (checked by
- * the service).
- */
-export class UpdateContractDto extends ContractTermsDto {
+  /**
+   * The gross a month. Required for a monthly salary; by the hour it is worked out (rate × hours a week × 52 ÷ 12), so
+   * it may be left out, and is replaced if sent.
+   */
   @Sent()
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Enter the gross salary as an amount, e.g. 12000 or 12000.50.' })
   @Min(0.01, { message: 'Enter a gross salary of more than 0.' })
   @Max(MAX_MONEY)
   grossSalary?: number;
 
+  /** How the pay is set (owner's request, 15 October 2026): a monthly salary unless sent, or by the hour. */
+  @Sent() @IsIn(PAY_BASES, { message: 'Choose how the pay is set: monthly or hourly.' })
+  payBasis?: PayBasis;
+
+  /** By the hour only (required then); empty for a monthly salary. */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }, { message: HOURLY_RATE_MESSAGE }) @Min(0.01, { message: HOURLY_RATE_MESSAGE }) @Max(MAX_HOURLY_RATE, { message: HOURLY_RATE_MESSAGE })
+  hourlyRate?: number | null;
+
+  /** By the hour only (required then): the contracted hours a week, up to the legal 48, to one decimal. */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 1 }, { message: HOURS_MESSAGE }) @Min(0.1, { message: HOURS_MESSAGE }) @Max(48, { message: HOURS_MESSAGE })
+  hoursPerWeek?: number | null;
+
+  /** The working days a week (part-time: 2, 3 …), any employment type; empty: the shift's week. */
+  @IsOptional() @IsInt({ message: DAYS_MESSAGE }) @Min(1, { message: DAYS_MESSAGE }) @Max(6, { message: DAYS_MESSAGE })
+  daysPerWeek?: number | null;
+
+  /**
+   * Paid every month on top of the gross: a draft's whole set ([] for none). Left out, a draft keeps its own, and a new
+   * renewal copies the version before's as they are.
+   */
+  @AllowanceRows()
+  allowances?: AllowanceAmountDto[];
+}
+
+export class CreateContractDto extends ContractTermsDto {}
+
+/**
+ * A draft takes any of its terms; a signed contract only the dates it was signed and filed, and its note (checked by
+ * the service).
+ */
+export class UpdateContractDto extends ContractTermsDto {
   @Sent() @IsDateOnly('Enter the date the contract was signed.')
   signedOn?: string;
 
@@ -144,7 +179,8 @@ export class ListContractsDto {
   @EmptyIsUnset() @IsOptional() @IsString({ message: 'Search with one text, e.g. a name or a contract number.' }) @MaxLength(100, { message: 'Search with at most 100 characters.' })
   q?: string;
 
-  @EmptyIsUnset() @IsOptional() @IsIn(CONTRACT_FORMS, { message: 'Choose a form: fixed or open_ended.' })
+  /** Every contract is fixed-term now; kept so a filter sent as before still works. */
+  @EmptyIsUnset() @IsOptional() @IsIn(CONTRACT_FORMS, { message: FIXED_ONLY_MESSAGE })
   form?: ContractForm;
 
   /** The employment's type. */

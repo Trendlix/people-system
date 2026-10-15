@@ -1,6 +1,7 @@
 # People System's backend on the Hostinger VPS (owner's decision, 14 October 2026: srv2055591.hstgr.cloud, port 8443).
-# Five containers on a network of their own: PostgreSQL, the API, the OCR service that reads ID cards and scanned
-# documents for the API, Caddy for HTTPS, and a daily backup of the database.
+# Six containers on a network of their own: PostgreSQL, the API, the OCR service that reads ID cards and scanned
+# documents for the API, the PDF converter that turns filled Word documents into PDFs (job offers), Caddy for HTTPS,
+# and a daily backup of the database.
 #
 # Only Caddy is reachable from outside, on port 8443. Ports 80 and 443 of this server belong to another system, so
 # Caddy issues its certificate from a private authority of its own; see Caddyfile. Nothing here touches anything else
@@ -48,6 +49,14 @@ services:
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
       OCR_URL: http://ocr:8000   # not in depends_on: the API starts and works without it; only reading documents needs it
+      PDF_URL: http://pdf:3000   # the same: without it, offers are sent as Word files
+      # email through the company's provider (job offers); without SMTP_HOST and MAIL_FROM nothing is emailed and
+      # HR sends the offer's link by hand. See .env.example.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-}
       TZ: Africa/Cairo
     networks: [inside]
     logging: *logs
@@ -67,6 +76,24 @@ services:
       retries: 3
       start_period: 120s
     networks: [inside]      # no port: only the API reaches it, as http://ocr:8000; ID photos never leave the server
+    logging: *logs
+
+  pdf:
+    # Gotenberg's LibreOffice image: POST /forms/libreoffice/convert turns a .docx into a PDF. It has Arabic fonts
+    # (Noto, Amiri); a template set in a font it lacks is printed in the nearest one it has.
+    image: gotenberg/gotenberg:8.37.0-libreoffice
+    restart: unless-stopped
+    command: ["gotenberg", "--api-timeout=60s", "--libreoffice-restart-after=20", "--log-level=warn"]
+    environment:
+      TZ: Africa/Cairo
+    mem_limit: 1g           # LibreOffice uses a few hundred MB while converting; the server's memory is shared with Prime ERP
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks: [inside]      # no port: only the API reaches it, as http://pdf:3000; documents never leave the server
     logging: *logs
 
   caddy:

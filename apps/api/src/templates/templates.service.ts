@@ -12,7 +12,7 @@ import type { UploadTemplateDto } from './templates.dto.js';
 import { slotView, VERSION, versionView, type VersionRow } from './views.js';
 
 const ENTITY = 'template_version';
-const LANGUAGE_NAMES: Record<TemplateLanguage, string> = { ar: 'Arabic', en: 'English' };
+const LANGUAGE_NAMES: Record<TemplateLanguage, string> = { ar: 'Arabic', en: 'English', bilingual: 'Arabic and English' };
 const SLOTS = new Map(TEMPLATE_SLOTS.map((s) => [s.key, s]));
 
 /** Whose versions a slot stands on: its own, or its source's for a copy. */

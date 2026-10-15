@@ -7,6 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { LABELS, type EmploymentType, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
+import { ALLOWANCE_ORDER } from '../allowances/rows.js';
 import { AuditService } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -41,7 +42,7 @@ const EMPLOYMENT = {
   jobTitle: { select: { titleEn: true, titleAr: true } },
   department: { select: { nameEn: true, nameAr: true } },
   grade: { select: { code: true } },
-  contracts: { orderBy: { version: 'desc' } },
+  contracts: { orderBy: { version: 'desc' }, include: { allowances: { select: { nameEn: true, nameAr: true, amount: true }, orderBy: ALLOWANCE_ORDER } } },
   endings: {
     where: { status: { in: LIVE_ENDINGS } },
     orderBy: { createdAt: 'desc' },
@@ -429,7 +430,7 @@ export class DocumentsService {
       contract = termsContract(employment.contracts);
     }
 
-    const [person, company] = await Promise.all([
+    const [person, company, offer] = await Promise.all([
       this.prisma.employee.findUniqueOrThrow({
         where: { id: employeeId },
         select: {
@@ -451,6 +452,12 @@ export class DocumentsService {
         },
       }),
       this.prisma.company.findUnique({ where: { id: 1 } }),
+      // {{offer_number}} and {{offer_expiry}} on an employee's documents: the job offer they accepted (the latest)
+      this.prisma.jobOffer.findFirst({
+        where: { employeeId, status: 'accepted' },
+        orderBy: [{ respondedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+        select: { number: true, expiresOn: true },
+      }),
     ]);
     const { identity, bank, ...own } = person;
     const ending = employment.endings[0] ?? null;
@@ -460,7 +467,7 @@ export class DocumentsService {
       employment,
       contract,
       ending,
-      sources: { employee: own, identity, bank, employment, contract, ending, company },
+      sources: { employee: own, identity, bank, employment, contract, ending, offer, company },
     };
   }
 

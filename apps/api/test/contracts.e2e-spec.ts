@@ -14,6 +14,7 @@ const RUN = Date.now().toString(36).toLowerCase();
 const PROBATION_CAP = "Probation can't be longer than 3 months (Labour Law Art. 90).";
 const LEGAL_NOTICE = "The law requires at least 3 months' notice for this (Art. 156); it can be longer, not shorter.";
 const CERTIFIED = { certifiedOffice: 'Nasr City labour office', certifiedSerial: 'R-2026-118', certifiedOn: '2026-09-30' };
+const FIXED_ONLY = 'Every contract runs for a fixed term: leave the form out, or send fixed.';
 
 /** A contract version as the API sends it. */
 interface Contract {
@@ -275,12 +276,19 @@ describe('Contracts (e2e)', () => {
         durationMonths: 12,
         probationMonths: 3,
         probationEnd: '2026-04-14',
+        payBasis: 'monthly',
+        hoursPerWeek: null,
+        daysPerWeek: null,
         grossSalary: 12000,
         basicPercent: 80,
         basicSalary: 9600,
         variableSalary: 2400,
         netSalary: null,
         insuredSalary: 12000,
+        hourlyRate: null,
+        allowances: [],
+        allowancesTotal: 0,
+        totalSalary: 12000,
         jobTitleEn: null,
         jobTitleAr: null,
         gradeCode: null,
@@ -330,7 +338,18 @@ describe('Contracts (e2e)', () => {
       const staffSession = await signIn(app, staffEmail);
       const c = await signedContract(report, { grossSalary: 15000, netSalary: 12000 });
 
-      const hidden = { grossSalary: null, basicSalary: null, variableSalary: null, netSalary: null, insuredSalary: null, salaryHidden: true };
+      const hidden = {
+        grossSalary: null,
+        basicSalary: null,
+        variableSalary: null,
+        netSalary: null,
+        insuredSalary: null,
+        hourlyRate: null,
+        allowances: null,
+        allowancesTotal: null,
+        totalSalary: null,
+        salaryHidden: true,
+      };
       for (const session of [managerSession, staffSession]) {
         const [seen] = (await contractsOf(report, session).expect(200)).body as Contract[];
         expect(seen).toMatchObject({ id: c.id, number: c.number, basicPercent: 80, startDate: '2026-01-15', ...hidden });
@@ -354,9 +373,9 @@ describe('Contracts (e2e)', () => {
       // the end, probation end and insured salary follow the terms
       const changed = await patchContract(draft.id, { durationMonths: 6, grossSalary: 18000, startDate: '2026-02-01', probationMonths: 2, note: 'Offer accepted' }).expect(200);
       expect(changed.body).toMatchObject({ number: draft.number, startDate: '2026-02-01', durationMonths: 6, endDate: '2026-07-31', probationMonths: 2, probationEnd: '2026-03-31', grossSalary: 18000, insuredSalary: 16700, note: 'Offer accepted' });
-      const open = await patchContract(draft.id, { form: 'open_ended' }).expect(200);
-      expect(open.body).toMatchObject({ form: 'open_ended', endDate: null, durationMonths: null });
-      await patchContract(draft.id, { form: 'fixed' }).expect(200);
+      // every contract runs for a fixed term: the company has no open-ended contracts (owner, 15 October 2026)
+      expect((await patchContract(draft.id, { form: 'open_ended' }).expect(400)).body.message).toEqual([FIXED_ONLY]);
+      expect((await patchContract(draft.id, { form: 'fixed' }).expect(200)).body).toMatchObject({ form: 'fixed', endDate: '2026-07-31' });
       const early = await patchContract(draft.id, { startDate: '2026-01-01' }).expect(400);
       expect(early.body.message).toBe("The contract can't start before the join date, 15/01/2026.");
       const long = await patchContract(draft.id, { durationMonths: 2, probationMonths: 3 }).expect(400);
@@ -483,6 +502,204 @@ describe('Contracts (e2e)', () => {
       expect(again.body.message).toBe(`Confirmed ${RUN} is not on probation, so there is nothing to confirm.`);
       const audit = await prisma.auditLog.findMany({ where: { entityType: 'employment', entityId: e.employmentId, action: 'confirm_probation' } });
       expect(audit[0].diff).toMatchObject({ status: { from: 'probation', to: 'active' } });
+    });
+  });
+
+  // How the pay is set and what is paid on top of it (owner's requests, 15 October 2026): a monthly salary or by the
+  // hour, the working days a week, and allowances whose kinds HR sets up, each taxed or not and insured or not.
+  describe('pay and allowances', () => {
+    const HOURLY_NEEDS_BOTH = 'Enter the hourly rate and the hours a week: pay by the hour needs both.';
+    const MONTHLY_NO_HOURS = 'A monthly salary has no hourly rate or hours a week. Clear them, or choose pay by the hour.';
+    const HOURS = 'Enter the hours a week as a number of more than 0 and up to 48, e.g. 24 or 22.5.';
+    const DAYS = 'Enter the working days a week as a whole number, 1 to 6.';
+    let transport: string; // taxed, not insured
+    let housing: string; // taxed and insured
+    let mobile: string; // made inactive below
+
+    const addKind = async (nameEn: string, body: object = {}) =>
+      (await api().post('/api/allowance-types').set('Cookie', hr).send({ nameEn: `${nameEn} ${RUN}`, nameAr: 'بدل', ...body }).expect(201)).body.id as string;
+
+    beforeAll(async () => {
+      transport = await addKind('Transport');
+      housing = await addKind('Housing', { insured: true });
+      mobile = await addKind('Mobile', { taxable: false });
+    });
+
+    it('rejects an open-ended contract: every contract runs for a fixed term', async () => {
+      const e = await newHire('Open Ended Refused');
+      expect((await postContract(e, { grossSalary: 9000, form: 'open_ended' }).expect(400)).body.message).toEqual([FIXED_ONLY]);
+      expect(await addContract(e, { form: 'fixed' })).toMatchObject({ form: 'fixed', durationMonths: 12, endDate: '2027-01-14' });
+    });
+
+    it('by the hour: the gross is rate × hours a week × 52 ÷ 12, worked out by the server', async () => {
+      const e = await newHire('Hourly Part Timer', { employmentType: 'part_time' });
+      // a gross sent with it is replaced
+      const c = await addContract(e, { payBasis: 'hourly', hourlyRate: 150, hoursPerWeek: 24, daysPerWeek: 3, grossSalary: 1 });
+      expect(c).toMatchObject({
+        payBasis: 'hourly',
+        hourlyRate: 150,
+        hoursPerWeek: 24,
+        daysPerWeek: 3,
+        grossSalary: 15600,
+        basicSalary: 12480,
+        insuredSalary: 15600,
+        totalSalary: 15600,
+      });
+
+      // the hours change: the gross follows; a gross sent alone is replaced too
+      const changed = await patchContract(c.id, { hoursPerWeek: 22.5, hourlyRate: 162.5 }).expect(200);
+      expect(changed.body).toMatchObject({ hourlyRate: 162.5, hoursPerWeek: 22.5, grossSalary: 15843.75, insuredSalary: 15843.75 });
+      expect((await patchContract(c.id, { grossSalary: 20000 }).expect(200)).body.grossSalary).toBe(15843.75);
+
+      // switched to a monthly salary: the hourly terms go, the monthly estimate stays the gross unless one is sent
+      const monthly = await patchContract(c.id, { payBasis: 'monthly' }).expect(200);
+      expect(monthly.body).toMatchObject({ payBasis: 'monthly', hourlyRate: null, hoursPerWeek: null, daysPerWeek: 3, grossSalary: 15843.75 });
+      expect((await patchContract(c.id, { grossSalary: 9000 }).expect(200)).body).toMatchObject({ grossSalary: 9000, insuredSalary: 9000 });
+      // and back: the rate and hours are needed again
+      expect((await patchContract(c.id, { payBasis: 'hourly' }).expect(400)).body.message).toBe(HOURLY_NEEDS_BOTH);
+      expect((await patchContract(c.id, { payBasis: 'hourly', hourlyRate: 100, hoursPerWeek: 10.5 }).expect(200)).body.grossSalary).toBe(4550);
+
+      // the salary audit: the hourly rate is masked like the gross; the hours are not restricted
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'contract', entityId: c.id }, orderBy: { id: 'asc' } });
+      expect(audit[0].diff).toMatchObject({ payBasis: 'hourly', hourlyRate: 'changed', hoursPerWeek: 24, daysPerWeek: 3, grossSalary: 'changed' });
+      expect(audit[1].diff).toMatchObject({ hourlyRate: 'changed', hoursPerWeek: { from: 24, to: 22.5 }, grossSalary: 'changed' });
+      for (const { diff } of audit) {
+        for (const key of ['hourlyRate', 'grossSalary', 'insuredSalary']) expect((diff as Record<string, unknown>)[key] ?? 'changed').toBe('changed');
+      }
+    });
+
+    it('refuses hourly terms that are missing, too many hours, or hourly terms on a monthly salary', async () => {
+      const e = await newHire('Hourly Refused', { employmentType: 'part_time' });
+      expect((await postContract(e, { payBasis: 'hourly', hourlyRate: 150 }).expect(400)).body.message).toBe(HOURLY_NEEDS_BOTH);
+      expect((await postContract(e, { payBasis: 'hourly', hoursPerWeek: 20 }).expect(400)).body.message).toBe(HOURLY_NEEDS_BOTH);
+      expect((await postContract(e, { grossSalary: 9000, hourlyRate: 150 }).expect(400)).body.message).toBe(MONTHLY_NO_HOURS);
+      expect((await postContract(e, { payBasis: 'monthly', hoursPerWeek: 20 }).expect(400)).body.message).toBe(MONTHLY_NO_HOURS);
+      expect((await postContract(e, { payBasis: 'monthly' }).expect(400)).body.message).toBe('Enter the gross salary as an amount, e.g. 12000 or 12000.50.');
+      for (const hoursPerWeek of [49, 0, 22.55]) {
+        expect((await postContract(e, { payBasis: 'hourly', hourlyRate: 150, hoursPerWeek }).expect(400)).body.message).toEqual([HOURS]);
+      }
+      await postContract(e, { payBasis: 'hourly', hourlyRate: 0, hoursPerWeek: 20 }).expect(400);
+      await postContract(e, { payBasis: 'weekly', grossSalary: 9000 }).expect(400);
+      expect(await addContract(e, { payBasis: 'hourly', hourlyRate: 120.5, hoursPerWeek: 48 })).toMatchObject({ grossSalary: 25064 }); // 120.5 × 48 × 52 ÷ 12
+    });
+
+    it('days a week: any employment type, optional, 1 to 6; cleared with null', async () => {
+      const e = await newHire('Days A Week');
+      const c = await addContract(e, { daysPerWeek: 5 });
+      expect(c).toMatchObject({ payBasis: 'monthly', daysPerWeek: 5, hoursPerWeek: null });
+      for (const daysPerWeek of [0, 7, 2.5]) expect((await patchContract(c.id, { daysPerWeek }).expect(400)).body.message).toEqual([DAYS]);
+      expect((await patchContract(c.id, { daysPerWeek: null }).expect(200)).body.daysPerWeek).toBeNull();
+    });
+
+    it('allowances: paid on top of the gross, in the kinds’ order; the insured ones count in the insured salary, within the cap', async () => {
+      const e = await newHire('With Allowances');
+      const c = await addContract(e, { grossSalary: 12000, allowances: [{ allowanceTypeId: housing, amount: 3000 }, { allowanceTypeId: transport, amount: 750.5 }] });
+      expect(c).toMatchObject({
+        grossSalary: 12000,
+        allowances: [
+          { allowanceTypeId: transport, nameEn: `Transport ${RUN}`, nameAr: 'بدل', taxable: true, insured: false, amount: 750.5 },
+          { allowanceTypeId: housing, nameEn: `Housing ${RUN}`, nameAr: 'بدل', taxable: true, insured: true, amount: 3000 },
+        ],
+        allowancesTotal: 3750.5,
+        totalSalary: 15750.5,
+        insuredSalary: 15000, // the gross and the insured housing allowance, not the transport
+      });
+      // over the cap: the insured salary stops at the year's maximum insurable wage
+      expect((await patchContract(c.id, { grossSalary: 15000 }).expect(200)).body).toMatchObject({ insuredSalary: 16700, totalSalary: 18750.5 });
+
+      // the net may include the allowances, but not exceed the gross and the allowances together
+      expect((await patchContract(c.id, { netSalary: 16000 }).expect(200)).body.netSalary).toBe(16000);
+      const tooMuch = await patchContract(c.id, { netSalary: 18750.51 }).expect(400);
+      expect(tooMuch.body.message).toBe("The net salary can't be more than the gross salary and the allowances together.");
+
+      // sent again, the set is replaced; [] clears it
+      const replaced = await patchContract(c.id, { allowances: [{ allowanceTypeId: mobile, amount: 200 }], netSalary: null }).expect(200);
+      expect(replaced.body).toMatchObject({ allowances: [{ allowanceTypeId: mobile, taxable: false, insured: false, amount: 200 }], allowancesTotal: 200, insuredSalary: 15000 });
+      const cleared = await patchContract(c.id, { allowances: [] }).expect(200);
+      expect(cleared.body).toMatchObject({ allowances: [], allowancesTotal: 0, totalSalary: 15000 });
+
+      // the audit log only says they changed
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'contract', entityId: c.id }, orderBy: { id: 'asc' } });
+      expect(audit[0].diff).toMatchObject({ allowances: 'changed', insuredSalary: 'changed' });
+      expect(audit.at(-1)!.diff).toMatchObject({ allowances: 'changed' });
+      expect(JSON.stringify(audit.map((a) => a.diff))).not.toContain('amount');
+
+      // HR, Finance and the CEO see them; a manager and the employee themself do not (salaryHidden)
+      await patchContract(c.id, { allowances: [{ allowanceTypeId: transport, amount: 500 }] }).expect(200);
+      const signed = (await signContract(c.id, '2026-01-15').expect(200)).body as Contract;
+      expect((await profileOf(e.id, finance)).employment!.contract).toMatchObject({ id: signed.id, allowances: [{ allowanceTypeId: transport, amount: 500 }], totalSalary: 15500 });
+    });
+
+    it('refuses an unknown kind, the same kind twice, an amount of 0, and an inactive kind unless the draft already has it', async () => {
+      const e = await newHire('Allowances Refused');
+      const unknown = await postContract(e, { grossSalary: 9000, allowances: [{ allowanceTypeId: '00000000-0000-4000-8000-000000000000', amount: 100 }] }).expect(400);
+      expect(unknown.body.message).toBe('One of the allowances is no longer on the list. Reload the page and choose it again.');
+      const twice = await postContract(e, { grossSalary: 9000, allowances: [{ allowanceTypeId: transport, amount: 100 }, { allowanceTypeId: transport, amount: 200 }] }).expect(400);
+      expect(twice.body.message).toEqual(['Add each allowance once.']);
+      for (const amount of [0, -5, 10.555]) {
+        const bad = await postContract(e, { grossSalary: 9000, allowances: [{ allowanceTypeId: transport, amount }] }).expect(400);
+        expect(bad.body.message).toEqual(['Enter each allowance as an amount of more than 0, e.g. 500 or 750.50.']);
+      }
+      await postContract(e, { grossSalary: 9000, allowances: null }).expect(400);
+      await postContract(e, { grossSalary: 9000, allowances: [{ allowanceTypeId: transport }] }).expect(400);
+      await postContract(e, { grossSalary: 9000, allowances: [{ allowanceTypeId: transport, amount: 100, taxable: false }] }).expect(400);
+
+      // a draft with the kind keeps it once it is made inactive, and may be saved with it again; a new contract may not
+      const draft = await addContract(e, { allowances: [{ allowanceTypeId: mobile, amount: 300 }] });
+      await api().patch(`/api/allowance-types/${mobile}`).set('Cookie', hr).send({ active: false }).expect(200);
+      try {
+        expect((await patchContract(draft.id, { allowances: [{ allowanceTypeId: mobile, amount: 350 }] }).expect(200)).body.allowances).toMatchObject([{ allowanceTypeId: mobile, amount: 350 }]);
+        const other = await newHire('Inactive Allowance');
+        const inactive = await postContract(other, { grossSalary: 9000, allowances: [{ allowanceTypeId: mobile, amount: 100 }] }).expect(400);
+        expect(inactive.body.message).toBe(`Mobile ${RUN} is inactive, so it can't be added. Choose another allowance, or make it active again under Organization → Allowances.`);
+      } finally {
+        await api().patch(`/api/allowance-types/${mobile}`).set('Cookie', hr).send({ active: true }).expect(200);
+      }
+      // a draft with allowances is deleted with them
+      await api().delete(`/api/contracts/${draft.id}`).set('Cookie', superAdmin).expect(204);
+      expect(await prisma.contractAllowance.count({ where: { contractId: draft.id } })).toBe(0);
+    });
+
+    it('a renewal copies the version before’s allowances as they are, unless others are sent; a signed contract keeps them', async () => {
+      const kind = await addKind('Renewal Bonus');
+      const e = await newHire('Renewed With Allowances');
+      const v1 = await signedContract(e, { grossSalary: 10000, allowances: [{ allowanceTypeId: kind, amount: 1000 }, { allowanceTypeId: housing, amount: 2000 }] });
+      expect(v1).toMatchObject({ insuredSalary: 12000, totalSalary: 13000 });
+
+      // allowances and pay are terms: a signed contract never changes them
+      const SIGNED = 'This contract is signed: only the signing and filing dates and the note can be changed. For other changes, add a new version.';
+      for (const body of [{ allowances: [] }, { payBasis: 'hourly' }, { daysPerWeek: 4 }, { hoursPerWeek: 10 }, { hourlyRate: 10 }]) {
+        expect((await patchContract(v1.id, body).expect(400)).body.message).toBe(SIGNED);
+      }
+
+      // the kind is renamed and made inactive since: the renewal still copies it as the first version has it
+      await api().patch(`/api/allowance-types/${kind}`).set('Cookie', hr).send({ nameEn: `Renamed Bonus ${RUN}`, taxable: false, active: false }).expect(200);
+      const v2 = await addContract(e, { grossSalary: 11000 });
+      expect(v2).toMatchObject({
+        version: 2,
+        allowances: [
+          { allowanceTypeId: housing, nameEn: `Housing ${RUN}`, insured: true, amount: 2000 },
+          { allowanceTypeId: kind, nameEn: `Renewal Bonus ${RUN}`, taxable: true, amount: 1000 },
+        ],
+        insuredSalary: 13000,
+        totalSalary: 14000,
+      });
+      // the first version is unchanged
+      expect(((await contractsOf(e).expect(200)).body as Contract[]).find((c) => c.id === v1.id)).toMatchObject({ allowances: v1.allowances });
+      await api().delete(`/api/contracts/${v2.id}`).set('Cookie', superAdmin).expect(204);
+
+      // sent, they replace the copy; the inactive kind the version before has may stay, with its name as it is now
+      const v2b = await addContract(e, { grossSalary: 11000, allowances: [{ allowanceTypeId: kind, amount: 1200 }] });
+      expect(v2b).toMatchObject({ allowances: [{ allowanceTypeId: kind, nameEn: `Renamed Bonus ${RUN}`, taxable: false, amount: 1200 }], insuredSalary: 11000 });
+      await api().delete(`/api/contracts/${v2b.id}`).set('Cookie', superAdmin).expect(204);
+      const none = await addContract(e, { grossSalary: 11000, allowances: [] });
+      expect(none).toMatchObject({ allowances: [], totalSalary: 11000 });
+
+      // undoing the signing keeps the allowances
+      await api().delete(`/api/contracts/${none.id}`).set('Cookie', superAdmin).expect(204);
+      await api().post(`/api/contracts/${v1.id}/unsign`).set('Cookie', superAdmin).expect(200);
+      const [unsigned] = (await contractsOf(e).expect(200)).body as Contract[];
+      expect(unsigned).toMatchObject({ id: v1.id, status: 'draft', allowances: v1.allowances, insuredSalary: 12000 });
     });
   });
 
@@ -659,9 +876,6 @@ describe('Contracts (e2e)', () => {
       const noContract = await newHire('No Contract Yet');
       const refused = await postEnding(noContract, { ruleKey: 'non_renewal', noticeGivenOn: '2026-10-15' }).expect(400);
       expect(refused.body.message).toBe('Only a signed fixed-term contract can end by not being renewed. Sign one first, or choose another way to end the employment.');
-      const open = await newHire('Open Ended');
-      await signedContract(open, { form: 'open_ended' });
-      await postEnding(open, { ruleKey: 'non_renewal', noticeGivenOn: '2026-10-15' }).expect(400);
     });
 
     it('company notice: 3 months, or paid in lieu with the notice date as the last working day', async () => {

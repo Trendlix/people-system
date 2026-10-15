@@ -99,7 +99,7 @@ export const EMPLOYMENT_TYPES_AR: Record<EmploymentType, string> = {
 
 /** A name in the template's language: the Arabic one on an Arabic template when there is one, else the English. */
 export const inLanguage = (language: TemplateLanguage, en: string | null | undefined, ar: string | null | undefined): string =>
-  (language === 'ar' ? ar?.trim() || en?.trim() : en?.trim() || ar?.trim()) ?? '';
+  (language === 'en' ? en?.trim() || ar?.trim() : ar?.trim() || en?.trim()) ?? '';
 
 /** Whether text has Arabic letters in it. */
 export const hasArabic = (s: string | null | undefined): boolean => !!s && /[؀-ۿ]/.test(s);

@@ -1,4 +1,4 @@
-import { annualSalaryTax, grossToNet, netToGross } from '@trendlix/shared';
+import { annualSalaryTax, grossToNet, insuredWageOf, monthlyFromHourly, netToGross, type AllowanceTerms } from '@trendlix/shared';
 
 // The shared salary calculation (packages/shared/src/salary.ts), checked against the Ministry of Finance's salary tax
 // printout (February 2026) and the Tax Authority's own worked figures in its 2025 annual settlement guide.
@@ -66,5 +66,75 @@ describe('salary: net to gross', () => {
     const b = netToGross(8_302.5, 2026, 0.01);
     expect(b.gross).toBe(9_999.81);
     expect(b.net).toBe(8_302.5);
+  });
+});
+
+// Allowances paid on top of the gross (owner's request, 15 October 2026): a taxable one is taxed with the gross (Law
+// 91/2005 Art. 9: a cash allowance is taxed), an insured one is insured with it within the insurable wage limits, and
+// every one is in the net.
+describe('salary: allowances', () => {
+  const transport = (amount: number, taxable = true): AllowanceTerms => ({ amount, taxable, insured: false });
+  const insured = (amount: number): AllowanceTerms => ({ amount, taxable: true, insured: true });
+
+  it('taxes a taxable allowance with the gross; an untaxed one only adds to the net', () => {
+    const plain = grossToNet(10_000, 2026);
+    // taxed: 1,000 more taxable income, so 200 more tax a month (the 20% band) and 0.50 more to the Martyrs' Fund
+    expect(grossToNet(10_000, 2026, [transport(1_000)])).toMatchObject({
+      gross: 10_000,
+      allowances: 1_000,
+      taxableAllowances: 1_000,
+      insuredWage: 10_000,
+      employeeInsurance: 1_100,
+      monthlyTaxable: 9_900,
+      monthlyTax: 792.5,
+      martyrsFund: 5.5,
+      net: 9_102,
+      companyCost: 12_875,
+    });
+    // untaxed: the same deductions as the gross alone, and the whole allowance in the net
+    const untaxed = grossToNet(10_000, 2026, [transport(1_000, false)]);
+    expect(untaxed).toMatchObject({ allowances: 1_000, taxableAllowances: 0, monthlyTaxable: plain.monthlyTaxable, deductions: plain.deductions, net: plain.net + 1_000 });
+    // not insured: the insurance is on the gross alone, unlike a gross 1,000 higher
+    expect(grossToNet(11_000, 2026).employeeInsurance).toBe(1_210);
+  });
+
+  it('insures an insured allowance with the gross, within the maximum insurable wage', () => {
+    expect(insuredWageOf(12_000, [insured(3_000)], 2026)).toBe(15_000);
+    expect(insuredWageOf(15_000, [insured(3_000)], 2026)).toBe(16_700); // capped
+    expect(insuredWageOf(12_000, [transport(3_000)], 2026)).toBe(12_000); // not insured
+    expect(insuredWageOf(12_000, [], 2026)).toBe(12_000);
+    expect(grossToNet(12_000, 2026, [insured(3_000)])).toMatchObject({ insuredWage: 15_000, employeeInsurance: 1_650, employerInsurance: 2_812.5, net: 11_860 });
+    expect(grossToNet(15_000, 2026, [insured(3_000)])).toMatchObject({ insuredWage: 16_700, employeeInsurance: 1_837, employerInsurance: 3_131.25 });
+  });
+
+  it('puts every allowance in the net and the company cost', () => {
+    const b = grossToNet(10_000, 2026, [transport(1_000), transport(500, false), insured(250)]);
+    expect(b.allowances).toBe(1_750);
+    expect(b.taxableAllowances).toBe(1_250);
+    expect(b.net).toBe(Math.round((10_000 + 1_750 - b.deductions) * 100) / 100);
+    expect(b.companyCost).toBe(Math.round((10_000 + 1_750 + b.employerInsurance) * 100) / 100);
+  });
+
+  it('grosses up a net that includes the allowances', () => {
+    const allowances = [transport(1_000), transport(1_000, false)];
+    const b = netToGross(10_000, 2026, 1, allowances);
+    expect(b).toMatchObject({ gross: 9_857, allowances: 2_000, net: 10_000.3 });
+    expect(grossToNet(b.gross - 1, 2026, allowances).net).toBeLessThan(10_000);
+    // the allowances lower the gross needed for the same net
+    expect(b.gross).toBeLessThan(netToGross(10_000, 2026).gross);
+    for (const net of [6_000, 15_000, 60_000]) {
+      const g = netToGross(net, 2026, 1, [insured(2_000), transport(750)]);
+      expect(g.net).toBeGreaterThanOrEqual(net);
+      expect(grossToNet(g.gross - 1, 2026, [insured(2_000), transport(750)]).net).toBeLessThan(net);
+    }
+  });
+});
+
+// Pay by the hour (owner's request, 15 October 2026): the monthly gross is rate × hours a week × 52 ÷ 12.
+describe('salary: by the hour', () => {
+  it('works out the monthly estimate to the piaster', () => {
+    expect(monthlyFromHourly(150, 24)).toBe(15_600);
+    expect(monthlyFromHourly(162.5, 22.5)).toBe(15_843.75);
+    expect(monthlyFromHourly(100, 10.5)).toBe(4_550);
   });
 });

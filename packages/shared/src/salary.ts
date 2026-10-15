@@ -1,9 +1,11 @@
 // Gross to net salary in Egypt, as the Ministry of Finance's salary tax system works it out (owner, 15 October 2026,
 // checked against its printout and the Tax Authority's payroll guides): social insurance on the insured wage, salary tax
 // on the annual net income in Law 7/2024's tiers, and the Martyrs' Fund. Comprehensive health insurance doesn't apply in
-// Cairo yet, and the salary stamp tax applies to public business-sector companies only.
+// Cairo yet, and the salary stamp tax applies to public business-sector companies only. Allowances (owner's request,
+// 15 October 2026) are paid on top of the gross: the taxable ones are taxed with it and the insured ones insured with
+// it; every allowance is in the net.
 
-import { insuredSalary } from './contracts.js';
+import { insuredSalary, insuredWageOf, type AllowanceTerms } from './contracts.js';
 
 export const SALARY_RULES = {
   /** The employee's and the company's shares of social insurance, on the insured wage (Law 148/2019). */
@@ -73,11 +75,15 @@ export function annualSalaryTax(income: number): number {
 
 export interface SalaryBreakdown {
   gross: number;
-  /** The wage social insurance is paid on: the gross, capped at the year's maximum insurable wage (and at least its minimum). */
+  /** All the allowances a month, on top of the gross. */
+  allowances: number;
+  /** The allowances taxed with the gross. */
+  taxableAllowances: number;
+  /** The wage social insurance is paid on: the gross and the insured allowances, capped at the year's maximum insurable wage (and at least its minimum). */
   insuredWage: number;
   employeeInsurance: number;
   healthInsurance: number;
-  /** Gross less what is deducted before the tax. */
+  /** Gross and taxable allowances, less what is deducted before the tax. */
   monthlyTaxable: number;
   /** × 12, less the personal exemption, rounded down to ten pounds. */
   annualNetIncome: number;
@@ -88,30 +94,39 @@ export interface SalaryBreakdown {
   deductions: number;
   net: number;
   employerInsurance: number;
-  /** What the employee costs the company a month: gross and the company's insurance share. */
+  /** What the employee costs the company a month: gross, allowances and the company's insurance share. */
   companyCost: number;
 }
 
+/** The total of some allowances, to the piaster. */
+const total = (allowances: readonly AllowanceTerms[], which: (a: AllowanceTerms) => boolean = () => true) =>
+  piasters(allowances.reduce((sum, a) => sum + (which(a) ? Math.max(0, a.amount) : 0), 0));
+
 /**
- * A monthly gross salary's net, step by step, for `year` (its insurable wage limits). With the same salary all year
- * the monthly tax is the annual tax ÷ 12, which is what the Ministry's system gives each month.
+ * A monthly gross salary's net, step by step, for `year` (its insurable wage limits), with its allowances. With the
+ * same salary all year the monthly tax is the annual tax ÷ 12, which is what the Ministry's system gives each month.
  */
-export function grossToNet(gross: number, year = new Date().getFullYear()): SalaryBreakdown {
+export function grossToNet(gross: number, year = new Date().getFullYear(), allowances: readonly AllowanceTerms[] = []): SalaryBreakdown {
   const r = SALARY_RULES;
   const g = Math.max(0, piasters(gross));
-  const insuredWage = g > 0 ? insuredSalary(g, year) : 0;
+  const all = total(allowances);
+  const taxableAllowances = total(allowances, (a) => a.taxable);
+  const insuredWage = g > 0 ? insuredWageOf(g, allowances, year) : 0;
   const employeeInsurance = piasters(insuredWage * r.employeeInsuranceRate);
-  const healthInsurance = piasters(g * r.healthInsuranceRate);
-  const monthlyTaxable = piasters(g - employeeInsurance - healthInsurance);
+  const taxedPay = piasters(g + taxableAllowances);
+  const healthInsurance = piasters(taxedPay * r.healthInsuranceRate);
+  const monthlyTaxable = piasters(taxedPay - employeeInsurance - healthInsurance);
   const yearly = monthlyTaxable * 12 - r.personalExemption;
   const annualNetIncome = yearly > 0 ? Math.floor(yearly / r.roundIncomeDownTo) * r.roundIncomeDownTo : 0;
   const annualTax = annualSalaryTax(annualNetIncome);
   const monthlyTax = piasters(annualTax / 12);
-  const martyrsFund = piasters(g * r.martyrsRate);
+  const martyrsFund = piasters(taxedPay * r.martyrsRate);
   const deductions = piasters(employeeInsurance + healthInsurance + monthlyTax + martyrsFund);
   const employerInsurance = piasters(insuredWage * r.employerInsuranceRate);
   return {
     gross: g,
+    allowances: all,
+    taxableAllowances,
     insuredWage,
     employeeInsurance,
     healthInsurance,
@@ -121,36 +136,38 @@ export function grossToNet(gross: number, year = new Date().getFullYear()): Sala
     monthlyTax,
     martyrsFund,
     deductions,
-    net: piasters(g - deductions),
+    net: piasters(g + all - deductions),
     employerInsurance,
-    companyCost: piasters(g + employerInsurance),
+    companyCost: piasters(g + all + employerInsurance),
   };
 }
 
 /**
- * The lowest monthly gross whose net is at least `net`: grossing up. The net rises with the gross except where the
- * tax jumps at a tier's limit, so some nets can't be reached exactly; then the gross just past the gap is given and its
- * own net is in the breakdown. Searched within each stretch between the jumps, in whole pounds by default (`step`
- * 0.01 for piasters): with the income rounded down to ten pounds, several grosses a few piasters apart give one net.
+ * The lowest monthly gross whose net (allowances included) is at least `net`: grossing up. The net rises with the
+ * gross except where the tax jumps at a tier's limit, so some nets can't be reached exactly; then the gross just past
+ * the gap is given and its own net is in the breakdown. Searched within each stretch between the jumps, in whole pounds
+ * by default (`step` 0.01 for piasters): with the income rounded down to ten pounds, several grosses a few piasters
+ * apart give one net.
  */
-export function netToGross(net: number, year = new Date().getFullYear(), step: 1 | 0.01 = 1): SalaryBreakdown {
+export function netToGross(net: number, year = new Date().getFullYear(), step: 1 | 0.01 = 1, allowances: readonly AllowanceTerms[] = []): SalaryBreakdown {
   const target = piasters(net);
-  if (target <= 0) return grossToNet(0, year);
+  if (target <= 0) return grossToNet(0, year, allowances);
   const r = SALARY_RULES;
   const maxInsurance = insuredSalary(Number.MAX_SAFE_INTEGER, year) * r.employeeInsuranceRate;
   // counted in units of `step`: the gross at which the annual net income reaches each tier's limit (all far above the
   // insurable cap) ends a stretch
   const per = Math.round(1 / step);
-  const limits = TAX_TIER_LIMITS.map((income) => Math.floor(((income + r.personalExemption) / 12 + maxInsurance) * per));
+  const taxableAllowances = total(allowances, (a) => a.taxable);
+  const limits = TAX_TIER_LIMITS.map((income) => Math.max(0, Math.floor(((income + r.personalExemption) / 12 + maxInsurance - taxableAllowances) * per)));
   const stretches: [number, number][] = [];
   let from = 0;
   for (const limit of [...limits, Math.max(Math.ceil(target * 3 * per), (limits.at(-1) ?? 0) * 2)]) {
     stretches.push([from, limit]);
     from = limit + 1;
   }
-  const netAt = (u: number) => grossToNet(u / per, year).net;
+  const netAt = (u: number) => grossToNet(u / per, year, allowances).net;
   for (const [lo, hi] of stretches) {
-    if (netAt(hi) < target) continue;
+    if (hi < lo || netAt(hi) < target) continue;
     let a = lo;
     let b = hi;
     while (a < b) {
@@ -158,7 +175,7 @@ export function netToGross(net: number, year = new Date().getFullYear(), step: 1
       if (netAt(mid) >= target) b = mid;
       else a = mid + 1;
     }
-    return grossToNet(a / per, year);
+    return grossToNet(a / per, year, allowances);
   }
-  return grossToNet(stretches.at(-1)![1] / per, year);
+  return grossToNet(stretches.at(-1)![1] / per, year, allowances);
 }

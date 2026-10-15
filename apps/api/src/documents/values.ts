@@ -1,4 +1,4 @@
-import { bankNamed, LABELS, TEMPLATE_TAGS, type EmploymentType, type TemplateLanguage } from '@trendlix/shared';
+import { bankNamed, LABELS, PAY_BASIS_LABELS, PAY_BASIS_LABELS_AR, TEMPLATE_TAGS, type EmploymentType, type PayBasis, type TemplateLanguage } from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { arabicAmountInWords, arabicDuration, arabicWeekday } from './engine/index.js';
@@ -6,7 +6,7 @@ import { EMPLOYMENT_TYPES_AR, hasArabic, inLanguage, printedAddress, printedDate
 import { TYPED_TAGS } from './offer.js';
 
 // Every tag's value for one document (spec §8; owner's request, 15 October 2026), from the employee's profile, their
-// employment, a contract version, an ending, the company profile and the document's date, written as the document
+// employment, a contract version (or a job offer's terms), an ending, the company profile and the document's date, written as the document
 // prints it (format.ts). A slot's overrides are applied last: on the social insurance copy, {{gross_salary}} prints the
 // insured salary. Only the tags asked for are worked out, so a template that doesn't print an amount in words never
 // needs it.
@@ -56,8 +56,17 @@ export interface ValueSources {
     jobTitleEn: string | null;
     jobTitleAr: string | null;
     gradeCode: string | null;
+    /** PAY_BASES: monthly, hourly (the gross is then the monthly estimate). */
+    payBasis: string;
+    hourlyRate: Decimal | null;
+    hoursPerWeek: Decimal | null;
+    daysPerWeek: number | null;
+    /** A month each, as on the contract or offer. */
+    allowances: readonly { nameEn: string; nameAr: string; amount: Decimal }[];
   } | null;
   ending: { noticeGivenOn: Date; lastWorkingDay: Date; reason: string | null } | null;
+  /** The job offer: the one being sent, or for an employee the offer they accepted. */
+  offer?: { number: string; expiresOn: Date } | null;
   company: {
     nameEn: string;
     nameAr: string | null;
@@ -77,7 +86,7 @@ export interface ValueSources {
 
 /** The profile tab where a value is filled in, and the field. */
 export interface Where {
-  tab: 'basic' | 'education' | 'employment' | 'contracts' | 'company';
+  tab: 'basic' | 'education' | 'employment' | 'contracts' | 'company' | 'offer';
   key: string;
 }
 
@@ -103,12 +112,37 @@ function split(c: NonNullable<ValueSources['contract']>) {
   return { basic: basicCents / 100, variable: (grossCents - basicCents) / 100 };
 }
 
+/** The language a value is written in. */
+type Lang = 'ar' | 'en';
+
 /** How each tag's value is worked out, from the sources. */
 function resolvers(src: ValueSources): Record<string, () => string> {
-  const { employee: e, identity: id, bank, employment: job, contract: c, ending, company: co, language } = src;
+  const { employee: e, identity: id, bank, employment: job, contract: c, ending, company: co } = src;
+  // a bilingual template's tags that depend on the language print in Arabic; their _ar and _en forms in that language
+  const language: Lang = src.language === 'en' ? 'en' : 'ar';
   // a signed contract keeps the job title and grade agreed; a draft has none yet, so the employment's are printed
   const signed = c !== null && c.status !== 'draft';
   const net = amount(c?.netSalary);
+  const allowancesTotal = c ? Math.round(c.allowances.reduce((sum, a) => sum + a.amount.toNumber(), 0) * 100) / 100 : null;
+  const totalSalary = c && allowancesTotal !== null ? Math.round((c.grossSalary.toNumber() + allowancesTotal) * 100) / 100 : null;
+  const hours = amount(c?.hoursPerWeek);
+
+  // the values that depend on the language, in either
+  const jobTitle = (lang: Lang) =>
+    signed && (c.jobTitleEn || c.jobTitleAr) ? inLanguage(lang, c.jobTitleEn, c.jobTitleAr) : inLanguage(lang, job?.jobTitle?.titleEn, job?.jobTitle?.titleAr);
+  const department = (lang: Lang) => inLanguage(lang, job?.department?.nameEn, job?.department?.nameAr);
+  const employmentType = (lang: Lang) => (job ? (lang === 'ar' ? EMPLOYMENT_TYPES_AR[job.employmentType] : LABELS.employmentType[job.employmentType]) : '');
+  const payBasis = (lang: Lang) => (c ? ((lang === 'ar' ? PAY_BASIS_LABELS_AR : PAY_BASIS_LABELS)[c.payBasis as PayBasis] ?? '') : '');
+  // none is a value too: "لا يوجد" / "None"
+  const allowances = (lang: Lang) =>
+    !c
+      ? ''
+      : c.allowances.length === 0
+        ? lang === 'ar'
+          ? 'لا يوجد'
+          : 'None'
+        : c.allowances.map((a) => `${inLanguage(lang, a.nameEn, a.nameAr)}: ${printedMoney(a.amount.toNumber())}`).join(lang === 'ar' ? '، ' : ', ');
+
   return {
     employee_code: () => e.employeeCode,
     full_name_ar: () => text(e.fullNameAr),
@@ -126,17 +160,27 @@ function resolvers(src: ValueSources): Record<string, () => string> {
     id_printed_no: () => text(id?.printedNo),
     id_issue_date: () => printedMonth(ymd(id?.issueDate)),
 
-    job_title: () =>
-      signed && (c.jobTitleEn || c.jobTitleAr) ? inLanguage(language, c.jobTitleEn, c.jobTitleAr) : inLanguage(language, job?.jobTitle?.titleEn, job?.jobTitle?.titleAr),
-    department: () => inLanguage(language, job?.department?.nameEn, job?.department?.nameAr),
+    job_title: () => jobTitle(language),
+    job_title_ar: () => jobTitle('ar'),
+    job_title_en: () => jobTitle('en'),
+    department: () => department(language),
+    department_ar: () => department('ar'),
+    department_en: () => department('en'),
     grade: () => text(signed && c.gradeCode ? c.gradeCode : job?.grade?.code),
-    employment_type: () => (job ? (language === 'ar' ? EMPLOYMENT_TYPES_AR[job.employmentType] : LABELS.employmentType[job.employmentType]) : ''),
+    employment_type: () => employmentType(language),
+    employment_type_ar: () => employmentType('ar'),
+    employment_type_en: () => employmentType('en'),
     join_date: () => printedDate(ymd(job?.joinDate)),
     contract_number: () => text(c?.number),
-    duration: () => (!c ? '' : c.form === 'open_ended' ? 'غير محدد المدة' : c.durationMonths ? arabicDuration(c.durationMonths) : ''),
+    duration: () => (c?.durationMonths ? arabicDuration(c.durationMonths) : ''),
     start_date: () => printedDate(ymd(c?.startDate)),
     end_date: () => printedDate(ymd(c?.endDate)),
     probation_end: () => printedDate(ymd(c?.probationEnd)),
+    pay_basis: () => payBasis(language),
+    pay_basis_ar: () => payBasis('ar'),
+    pay_basis_en: () => payBasis('en'),
+    days_per_week: () => (c?.daysPerWeek ? String(c.daysPerWeek) : ''),
+    hours_per_week: () => (hours === null ? '' : String(hours)),
 
     gross_salary: () => printedMoney(amount(c?.grossSalary)),
     gross_salary_words: () => words(amount(c?.grossSalary)),
@@ -146,6 +190,15 @@ function resolvers(src: ValueSources): Record<string, () => string> {
     net_salary_words: () => words(net),
     insured_salary: () => printedMoney(amount(c?.insuredSalary)),
     insured_salary_words: () => words(amount(c?.insuredSalary)),
+    hourly_rate: () => printedMoney(amount(c?.hourlyRate)),
+    allowances: () => allowances(language),
+    allowances_ar: () => allowances('ar'),
+    allowances_en: () => allowances('en'),
+    allowances_total: () => printedMoney(allowancesTotal),
+    total_salary: () => printedMoney(totalSalary),
+    total_salary_words: () => words(totalSalary),
+    offer_number: () => text(src.offer?.number),
+    offer_expiry: () => printedDate(ymd(src.offer?.expiresOn)),
 
     bank_name: () => text(bank?.bankName),
     bank_bic: () => bankNamed(bank?.bankName)?.bic ?? '',
@@ -164,7 +217,6 @@ function resolvers(src: ValueSources): Record<string, () => string> {
 
     // payslips come from payroll, which isn't built yet
     pay_month: () => '',
-    allowances: () => '',
     deductions: () => '',
 
     company_name_ar: () => text(co?.nameAr),
@@ -226,15 +278,35 @@ const WHERE: Record<string, Where> = {
   id_printed_no: BASIC('printedNo'),
   id_issue_date: BASIC('idIssueDate'),
   job_title: EMPLOYMENT('jobTitle'),
+  job_title_ar: EMPLOYMENT('jobTitle'),
+  job_title_en: EMPLOYMENT('jobTitle'),
   department: EMPLOYMENT('team'),
+  department_ar: EMPLOYMENT('team'),
+  department_en: EMPLOYMENT('team'),
   grade: EMPLOYMENT('grade'),
   employment_type: EMPLOYMENT('employmentType'),
+  employment_type_ar: EMPLOYMENT('employmentType'),
+  employment_type_en: EMPLOYMENT('employmentType'),
   join_date: EMPLOYMENT('joinDate'),
   contract_number: CONTRACTS('contract'),
   duration: CONTRACTS('durationMonths'),
   start_date: CONTRACTS('startDate'),
   end_date: CONTRACTS('endDate'),
   probation_end: CONTRACTS('probationEnd'),
+  pay_basis: CONTRACTS('payBasis'),
+  pay_basis_ar: CONTRACTS('payBasis'),
+  pay_basis_en: CONTRACTS('payBasis'),
+  days_per_week: CONTRACTS('daysPerWeek'),
+  hours_per_week: CONTRACTS('hoursPerWeek'),
+  hourly_rate: CONTRACTS('hourlyRate'),
+  allowances: CONTRACTS('allowances'),
+  allowances_ar: CONTRACTS('allowances'),
+  allowances_en: CONTRACTS('allowances'),
+  allowances_total: CONTRACTS('allowances'),
+  total_salary: CONTRACTS('grossSalary'),
+  total_salary_words: CONTRACTS('grossSalary'),
+  offer_number: { tab: 'offer', key: 'number' },
+  offer_expiry: { tab: 'offer', key: 'expiresOn' },
   gross_salary: CONTRACTS('grossSalary'),
   gross_salary_words: CONTRACTS('grossSalary'),
   basic_salary: CONTRACTS('grossSalary'),
@@ -253,7 +325,6 @@ const WHERE: Record<string, Where> = {
   last_working_day: EMPLOYMENT('ending'),
   reason_ar: EMPLOYMENT('ending'),
   pay_month: EMPLOYMENT('payroll'),
-  allowances: EMPLOYMENT('payroll'),
   deductions: EMPLOYMENT('payroll'),
   company_name_ar: COMPANY('nameAr'),
   company_name_en: COMPANY('nameEn'),

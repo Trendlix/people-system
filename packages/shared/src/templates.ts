@@ -45,7 +45,11 @@ export const TEMPLATE_TRIGGER_LABELS: Record<TemplateTrigger, string> = {
   end_of_internship: 'At the end of an internship',
 };
 
-export const TEMPLATE_LANGUAGES = ['ar', 'en'] as const;
+/**
+ * A template's language. A bilingual one (owner's NDA, 15 October 2026) has both side by side: its tags that depend on
+ * the language print in Arabic, and their _ar and _en forms ({{job_title_en}} …) print the language they name.
+ */
+export const TEMPLATE_LANGUAGES = ['ar', 'en', 'bilingual'] as const;
 export type TemplateLanguage = (typeof TEMPLATE_LANGUAGES)[number];
 
 /** Who signs the printed document. */
@@ -108,13 +112,14 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
 ];
 
 /** The groups the tags are listed in. */
-export const TAG_GROUPS = ['employee', 'national_id', 'job_contract', 'pay', 'bank', 'ending', 'letters', 'payslip', 'company', 'auto'] as const;
+export const TAG_GROUPS = ['employee', 'national_id', 'job_contract', 'pay', 'offer', 'bank', 'ending', 'letters', 'payslip', 'company', 'auto'] as const;
 export type TagGroup = (typeof TAG_GROUPS)[number];
 export const TAG_GROUP_LABELS: Record<TagGroup, string> = {
   employee: 'Employee',
   national_id: 'National ID',
   job_contract: 'Job and contract',
   pay: 'Pay',
+  offer: 'Job offer',
   bank: 'Bank',
   ending: 'Resignation and ending',
   letters: 'Letters and certificates',
@@ -152,15 +157,26 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'id_printed_no', group: 'national_id', labelEn: 'Printed number', labelAr: 'رقم مطبوع', source: 'National ID', restricted: true },
   { tag: 'id_issue_date', group: 'national_id', labelEn: 'Issue date', labelAr: 'تاريخ الإصدار', source: 'National ID', note: 'MM/YYYY' },
   { tag: 'job_title', group: 'job_contract', labelEn: 'Job title', labelAr: 'الوظيفة', source: 'Employment: in the template’s language' },
-  { tag: 'department', group: 'job_contract', labelEn: 'Department or team', labelAr: 'الإدارة', source: 'Employment' },
+  { tag: 'job_title_ar', group: 'job_contract', labelEn: 'Job title (Arabic)', labelAr: 'الوظيفة بالعربي', source: 'Employment' },
+  { tag: 'job_title_en', group: 'job_contract', labelEn: 'Job title (English)', labelAr: 'الوظيفة بالإنجليزية', source: 'Employment' },
+  { tag: 'department', group: 'job_contract', labelEn: 'Department or team', labelAr: 'الإدارة', source: 'Employment: in the template’s language' },
+  { tag: 'department_ar', group: 'job_contract', labelEn: 'Department or team (Arabic)', labelAr: 'الإدارة بالعربي', source: 'Employment' },
+  { tag: 'department_en', group: 'job_contract', labelEn: 'Department or team (English)', labelAr: 'الإدارة بالإنجليزية', source: 'Employment' },
   { tag: 'grade', group: 'job_contract', labelEn: 'Grade', labelAr: 'الدرجة', source: 'Employment' },
-  { tag: 'employment_type', group: 'job_contract', labelEn: 'Employment type', labelAr: 'نوع التعاقد', source: 'Employment' },
+  { tag: 'employment_type', group: 'job_contract', labelEn: 'Employment type', labelAr: 'نوع التعاقد', source: 'Employment: in the template’s language' },
+  { tag: 'employment_type_ar', group: 'job_contract', labelEn: 'Employment type (Arabic)', labelAr: 'نوع التعاقد بالعربي', source: 'Employment' },
+  { tag: 'employment_type_en', group: 'job_contract', labelEn: 'Employment type (English)', labelAr: 'نوع التعاقد بالإنجليزية', source: 'Employment' },
   { tag: 'join_date', group: 'job_contract', labelEn: 'Join date', labelAr: 'تاريخ الالتحاق', source: 'Employment', note: 'DD/MM/YYYY' },
   { tag: 'contract_number', group: 'job_contract', labelEn: 'Contract number', labelAr: 'رقم العقد', source: 'Contract' },
   { tag: 'duration', group: 'job_contract', labelEn: 'Duration', labelAr: 'المدة', source: 'Contract', note: 'In Arabic, e.g. سنة ميلادية واحدة' },
   { tag: 'start_date', group: 'job_contract', labelEn: 'Start date', labelAr: 'اعتبارا من', source: 'Contract', note: 'DD/MM/YYYY' },
   { tag: 'end_date', group: 'job_contract', labelEn: 'End date', labelAr: 'وحتى / انتهاء المدة', source: 'Contract', note: 'DD/MM/YYYY' },
   { tag: 'probation_end', group: 'job_contract', labelEn: 'Probation end date', labelAr: 'نهاية فترة الاختبار', source: 'Contract', note: 'DD/MM/YYYY' },
+  { tag: 'pay_basis', group: 'job_contract', labelEn: 'Pay basis', labelAr: 'طريقة الأجر', source: 'Contract or offer: in the template’s language', note: 'Monthly salary / By the hour' },
+  { tag: 'pay_basis_ar', group: 'job_contract', labelEn: 'Pay basis (Arabic)', labelAr: 'طريقة الأجر بالعربي', source: 'Contract or offer', note: 'راتب شهري / بالساعة' },
+  { tag: 'pay_basis_en', group: 'job_contract', labelEn: 'Pay basis (English)', labelAr: 'طريقة الأجر بالإنجليزية', source: 'Contract or offer', note: 'Monthly salary / By the hour' },
+  { tag: 'days_per_week', group: 'job_contract', labelEn: 'Working days a week', labelAr: 'أيام العمل أسبوعياً', source: 'Contract or offer' },
+  { tag: 'hours_per_week', group: 'job_contract', labelEn: 'Hours a week', labelAr: 'ساعات العمل أسبوعياً', source: 'Contract or offer: by the hour' },
   { tag: 'gross_salary', group: 'pay', labelEn: 'Gross salary', labelAr: 'راتب شامل', source: 'Contract', restricted: true },
   { tag: 'gross_salary_words', group: 'pay', labelEn: 'Gross salary in words', labelAr: 'تفقيط الراتب', source: 'Contract: in Arabic words, فقط … لا غير', restricted: true },
   { tag: 'basic_salary', group: 'pay', labelEn: 'Basic salary', labelAr: 'الأساسي', source: 'Contract or payroll', restricted: true },
@@ -169,6 +185,15 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'net_salary_words', group: 'pay', labelEn: 'Net salary in words', labelAr: 'تفقيط الصافي', source: 'Contract: in Arabic words', restricted: true },
   { tag: 'insured_salary', group: 'pay', labelEn: 'Insured salary', labelAr: 'المبلغ التأميني', source: 'Contract: the gross, capped at the maximum insurable wage', restricted: true },
   { tag: 'insured_salary_words', group: 'pay', labelEn: 'Insured salary in words', labelAr: 'تفقيط المبلغ التأميني', source: 'Contract: in Arabic words', restricted: true },
+  { tag: 'hourly_rate', group: 'pay', labelEn: 'Hourly rate', labelAr: 'أجر الساعة', source: 'Contract or offer: by the hour', restricted: true },
+  { tag: 'allowances', group: 'pay', labelEn: 'Allowances', labelAr: 'البدلات', source: 'Contract or offer: each allowance and its amount a month, in the template’s language', restricted: true },
+  { tag: 'allowances_ar', group: 'pay', labelEn: 'Allowances (Arabic)', labelAr: 'البدلات بالعربي', source: 'Contract or offer: each allowance and its amount a month', restricted: true },
+  { tag: 'allowances_en', group: 'pay', labelEn: 'Allowances (English)', labelAr: 'البدلات بالإنجليزية', source: 'Contract or offer: each allowance and its amount a month', restricted: true },
+  { tag: 'allowances_total', group: 'pay', labelEn: 'Allowances in total', labelAr: 'إجمالي البدلات', source: 'Contract or offer: a month', restricted: true },
+  { tag: 'total_salary', group: 'pay', labelEn: 'Gross salary and allowances', labelAr: 'إجمالي الراتب والبدلات', source: 'Contract or offer: a month', restricted: true },
+  { tag: 'total_salary_words', group: 'pay', labelEn: 'Gross salary and allowances in words', labelAr: 'تفقيط إجمالي الراتب والبدلات', source: 'Contract or offer: in Arabic words', restricted: true },
+  { tag: 'offer_number', group: 'offer', labelEn: 'Offer number', labelAr: 'رقم العرض', source: 'Job offer' },
+  { tag: 'offer_expiry', group: 'offer', labelEn: 'Offer valid until', labelAr: 'العرض سارٍ حتى', source: 'Job offer: its last day to accept', note: 'DD/MM/YYYY' },
   { tag: 'bank_name', group: 'bank', labelEn: 'Bank', labelAr: 'البنك', source: 'Bank details' },
   { tag: 'bank_bic', group: 'bank', labelEn: 'SWIFT/BIC', labelAr: 'كود السويفت', source: 'Bank details: from the EG-ACH list' },
   { tag: 'account_no', group: 'bank', labelEn: 'Account number', labelAr: 'رقم الحساب', source: 'Bank details', restricted: true },
@@ -181,7 +206,6 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'letter_to', group: 'letters', labelEn: 'Addressed to', labelAr: 'موجه إلى', source: 'Typed when generating' },
   { tag: 'letter_purpose', group: 'letters', labelEn: 'Purpose of the letter', labelAr: 'الغرض من الخطاب', source: 'Typed when generating' },
   { tag: 'pay_month', group: 'payslip', labelEn: 'Pay month', labelAr: 'شهر الراتب', source: 'Payroll' },
-  { tag: 'allowances', group: 'payslip', labelEn: 'Allowances', labelAr: 'البدلات', source: 'Payroll', restricted: true },
   { tag: 'deductions', group: 'payslip', labelEn: 'Deductions', labelAr: 'الاستقطاعات', source: 'Payroll', restricted: true },
   { tag: 'company_name_ar', group: 'company', labelEn: 'Company name (Arabic)', labelAr: 'اسم الشركة', source: 'Company profile' },
   { tag: 'company_name_en', group: 'company', labelEn: 'Company name (English)', labelAr: 'اسم الشركة بالإنجليزية', source: 'Company profile' },

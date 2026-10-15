@@ -1,4 +1,5 @@
-import { ENDING_RULE_DEFAULTS, type EndReason, type NoticeUnit } from '@trendlix/shared';
+import { ENDING_RULE_DEFAULTS, type EndReason, type NoticeUnit, type PayBasis } from '@trendlix/shared';
+import { ALLOWANCE_ORDER, allowancesTotal, allowanceView } from '../allowances/rows.js';
 import { addDays, fromDateOnly } from '../common/date-only.js';
 import type { Contract, Prisma } from '../generated/prisma/client.js';
 import { latestNoticeDay } from './notice.js';
@@ -25,6 +26,12 @@ export interface ContractContext {
 /** An amount of money as a number, to the piastre. */
 const money = (value: Prisma.Decimal | null): number | null => (value === null ? null : value.toNumber());
 
+/** What a contract is always loaded with: its allowances, in the kinds' order. */
+export const CONTRACT_INCLUDE = { allowances: { orderBy: ALLOWANCE_ORDER } } satisfies Prisma.ContractInclude;
+
+/** A contract with its allowances. */
+export type ContractRow = Prisma.ContractGetPayload<{ include: typeof CONTRACT_INCLUDE }>;
+
 /**
  * The last day to give notice that a fixed term won't be renewed: the non-renewal rule's notice counted back from the
  * end date (45 working days, by the employment's shift). Signed (active) fixed-term contracts only, else null.
@@ -36,12 +43,16 @@ export function nonRenewalNoticeBy(c: Pick<Contract, 'form' | 'status' | 'endDat
 }
 
 /**
- * A contract version. The basic salary is `basic_percent` of the gross, the variable salary the rest. Salary fields are
- * null for anyone but HR, Finance and the CEO, with `salaryHidden: true`.
+ * A contract version. The basic salary is `basic_percent` of the gross, the variable salary the rest; the allowances
+ * are paid on top of the gross, and the total salary is the two together. By the hour, the gross is the monthly
+ * estimate (rate × hours a week × 52 ÷ 12). Salary fields (the hourly rate and the allowances too) are null for anyone
+ * but HR, Finance and the CEO, with `salaryHidden: true`.
  */
-export function contractView(c: Contract, ctx: ContractContext) {
+export function contractView(c: ContractRow, ctx: ContractContext) {
   const grossCents = Math.round(c.grossSalary.toNumber() * 100);
   const basicCents = Math.round((grossCents * c.basicPercent) / 100);
+  const allowances = c.allowances.map(allowanceView);
+  const allowancesCents = Math.round(allowancesTotal(allowances) * 100);
   const salary = ctx.seesSalary
     ? {
         grossSalary: grossCents / 100,
@@ -50,8 +61,23 @@ export function contractView(c: Contract, ctx: ContractContext) {
         variableSalary: (grossCents - basicCents) / 100,
         netSalary: money(c.netSalary),
         insuredSalary: money(c.insuredSalary),
+        hourlyRate: money(c.hourlyRate),
+        allowances,
+        allowancesTotal: allowancesCents / 100,
+        totalSalary: (grossCents + allowancesCents) / 100,
       }
-    : { grossSalary: null, basicPercent: c.basicPercent, basicSalary: null, variableSalary: null, netSalary: null, insuredSalary: null };
+    : {
+        grossSalary: null,
+        basicPercent: c.basicPercent,
+        basicSalary: null,
+        variableSalary: null,
+        netSalary: null,
+        insuredSalary: null,
+        hourlyRate: null,
+        allowances: null,
+        allowancesTotal: null,
+        totalSalary: null,
+      };
   return {
     id: c.id,
     number: c.number,
@@ -62,6 +88,9 @@ export function contractView(c: Contract, ctx: ContractContext) {
     durationMonths: c.durationMonths,
     probationMonths: c.probationMonths,
     probationEnd: fromDateOnly(c.probationEnd),
+    payBasis: c.payBasis as PayBasis,
+    hoursPerWeek: money(c.hoursPerWeek),
+    daysPerWeek: c.daysPerWeek,
     ...salary,
     jobTitleEn: c.jobTitleEn,
     jobTitleAr: c.jobTitleAr,
@@ -86,8 +115,12 @@ export function departmentName(d: { nameEn: string; parent: { nameEn: string } |
   return d.parent ? `${d.parent.nameEn} › ${d.nameEn}` : d.nameEn;
 }
 
-/** What the company-wide contracts list loads with each contract: its employment, person, job title, department and shift. */
+/**
+ * What the company-wide contracts list loads with each contract: its allowances, and its employment, person, job title,
+ * department and shift.
+ */
 export const CONTRACT_LIST_INCLUDE = {
+  ...CONTRACT_INCLUDE,
   employment: {
     select: {
       id: true,
@@ -126,7 +159,14 @@ export function contractListView(c: ContractListRow, ctx: ContractContext) {
     insuranceFiledOn: v.insuranceFiledOn,
     labourOfficeFiledOn: v.labourOfficeFiledOn,
     nonRenewalNoticeBy: v.nonRenewalNoticeBy,
+    payBasis: v.payBasis,
+    hoursPerWeek: v.hoursPerWeek,
+    daysPerWeek: v.daysPerWeek,
     grossSalary: v.grossSalary,
+    hourlyRate: v.hourlyRate,
+    allowances: v.allowances,
+    allowancesTotal: v.allowancesTotal,
+    totalSalary: v.totalSalary,
     insuredSalary: v.insuredSalary,
     salaryHidden: v.salaryHidden,
     employee: { id: e.employee.id, employeeCode: e.employee.employeeCode, fullNameEn: e.employee.fullNameEn, fullNameAr: e.employee.fullNameAr },

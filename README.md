@@ -8,13 +8,14 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 | Module | Status |
 |---|---|
 | Sign-in, roles (Employee, Manager, HR, Finance, CEO, Admin, Super Admin), audit log | Done. **Only a Super Admin deletes records**; Super Admin has Admin's rights plus deleting, and only a Super Admin grants the role |
-| 1 · Organization: company profile and logo, departments and their teams, job titles (on a department or a team) with grade ranges and rich-text job descriptions, grades, shifts | Done. HR and Admin edit, everyone else views |
+| 1 · Organization: company profile and logo, departments and their teams, job titles (on a department or a team) with grade ranges and rich-text job descriptions, grades, shifts, allowance kinds (taxed / insured or not), org chart (PDF A4/A3, PNG, SVG) | Done. HR and Admin edit, everyone else views |
 | Users: sign-in accounts, roles, temporary passwords; everyone can change their own password | Done. Admin and Super Admin |
 | 2 · Employees: directory, profile (personal, contact, education, employment with grade), national ID and bank (restricted, every view audited), completeness of all data and papers | Done. HR edits; HR, CEO and Finance see everyone, a manager their team, an employee themself |
 | Employees confirm their own details (statement in English and Arabic) and ask for changes, approved by HR or Admin | Done |
 | Employee file: scanned paperwork per employment type, text read by OCR and searchable, "Fill from ID card photos", scanning from network scanners (`tools/scan-helper`), crop and adjust | Done. HR and CEO |
-| 3 · Contracts: versions per employment (fixed term, 3-month probation once per employer), ending rules, endings approved by HR then the CEO (Labour Law 14/2025) | Phase 1 done; document generation (templates) next |
-| Templates: the document library (23 slots), Word templates uploaded as drafts, their {{tags}} checked against the tag list, published versions, tag reference | Library done (HR, Admin; CEO views); filling templates in for employees next |
+| 3 · Contracts: versions per employment (fixed term only, 3-month probation once per employer), monthly or hourly pay, days a week, allowances, ending rules, endings approved by HR then the CEO (Labour Law 14/2025), undo signing (Super Admin), salary calculator | Done |
+| Job offers: drafted by HR, filled in from the offer template, sent by email (SMTP) or as a link, accepted or declined by the candidate on a public page; accepting makes the profile, employment and draft contract | Done. HR; CEO views. Email needs the SMTP settings (DEPLOY.md) |
+| Templates: the document library (23 slots), Word templates in Arabic, English or both, their {{tags}} checked against the tag list, published versions, tag reference; documents filled in for each employee | Done (HR, Admin; CEO views) |
 
 ## Layout
 
@@ -26,7 +27,7 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 | `packages/shared` | Types and value lists used by both apps |
 | `tools/scan-helper` | TrendLIX Scan Helper (Go): runs on HR's computers and scans from the office's network scanners for the web app ([README](tools/scan-helper/README.md)) |
 | `services/ocr` | OCR service (Python, PaddleOCR): reads national ID cards and scanned documents for the API; internal only, port 8000 on the Docker network ([README](services/ocr/README.md)) |
-| `deploy/` | What the server runs: Docker Compose (PostgreSQL, API, OCR, daily backup), `deploy.sh`, `ci-key.sh` ([DEPLOY.md](DEPLOY.md)) |
+| `deploy/` | What the server runs: Docker Compose (PostgreSQL, API, OCR, PDF converter, daily backup), `deploy.sh`, `ci-key.sh` ([DEPLOY.md](DEPLOY.md)) |
 | `.github/workflows/backend.yml` | CI/CD: deploys the API to the server on every push to `main` that touches it |
 
 ## Conventions

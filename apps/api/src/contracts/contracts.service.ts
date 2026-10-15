@@ -1,22 +1,33 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { insuredSalary, type ContractForm, type ContractStatus } from '@trendlix/shared';
+import { insuredWageOf, monthlyFromHourly, type ContractForm, type ContractStatus, type PayBasis } from '@trendlix/shared';
+import { AllowancesService } from '../allowances/allowances.service.js';
+import { allowanceData, allowancesTotal, allowanceView, type AllowanceSnapshot } from '../allowances/rows.js';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { assertDeletes, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { seesSalary } from '../employees/access.js';
 import { EmployeesService } from '../employees/employees.service.js';
-import type { Contract, EmployeeStatus, Prisma } from '../generated/prisma/client.js';
+import type { EmployeeStatus, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ContractSettingsService } from './contract-settings.service.js';
-import { PROBATION_CAP_MESSAGE, type CreateContractDto, type ListContractsDto, type SignContractDto, type UpdateContractDto } from './contracts.dto.js';
 import {
+  MAX_MONEY,
+  PROBATION_CAP_MESSAGE,
+  type CreateContractDto,
+  type ListContractsDto,
+  type SignContractDto,
+  type UpdateContractDto,
+} from './contracts.dto.js';
+import {
+  CONTRACT_INCLUDE,
   CONTRACT_LIST_INCLUDE,
   contractListView,
   contractView,
   departmentName,
   nonRenewalNoticeBy,
   type ContractContext,
+  type ContractRow,
   type NonRenewalNotice,
 } from './views.js';
 
@@ -25,9 +36,23 @@ const ENTITY = 'contract';
 export const ONLY_SUPER_ADMIN_UNSIGNS = 'Only a Super Admin can undo a signing.';
 const DATE_FIELDS = ['startDate', 'endDate', 'probationEnd', 'signedOn', 'insuranceFiledOn', 'labourOfficeFiledOn'] as const;
 /** Restricted (HR, Finance, CEO): the audit log only says they changed, as for bank details. */
-const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary'];
+const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary', 'hourlyRate', 'allowances'];
 /** A contract's terms: a draft takes them, a signed contract never changes them. */
-const TERMS = ['form', 'startDate', 'durationMonths', 'probationMonths', 'grossSalary', 'basicPercent', 'netSalary'] as const;
+const TERMS = [
+  'form',
+  'startDate',
+  'durationMonths',
+  'probationMonths',
+  'grossSalary',
+  'basicPercent',
+  'netSalary',
+  'payBasis',
+  'hourlyRate',
+  'hoursPerWeek',
+  'daysPerWeek',
+  'allowances',
+] as const;
+const GROSS_MESSAGE = 'Enter the gross salary as an amount, e.g. 12000 or 12000.50.';
 
 /** An employee as the alert lists name them. */
 const EMPLOYEE_REF = { select: { id: true, employeeCode: true, fullNameEn: true } } as const;
@@ -53,8 +78,8 @@ type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
 const LIST_CAP = 500;
 
 /**
- * The company-wide list's order, a group at a time: signed contracts by end date, soonest first (open-ended last),
- * then drafts, newest first, then the rest (ended, superseded) by start date, newest first.
+ * The company-wide list's order, a group at a time: signed contracts by end date, soonest first, then drafts, newest
+ * first, then the rest (ended, superseded) by start date, newest first.
  */
 const LIST_GROUPS: { statuses: readonly ContractStatus[]; orderBy: Prisma.ContractOrderByWithRelationInput[] }[] = [
   { statuses: ['active'], orderBy: [{ endDate: { sort: 'asc', nulls: 'last' } }, { number: 'asc' }] },
@@ -64,17 +89,30 @@ const LIST_GROUPS: { statuses: readonly ContractStatus[]; orderBy: Prisma.Contra
 
 /** The terms to work out a contract from: as sent, or as the draft has them. */
 interface TermsInput {
-  form?: ContractForm;
   startDate?: string;
   durationMonths?: number | null;
   probationMonths?: number;
-  grossSalary: number;
   basicPercent?: number;
   netSalary?: number | null;
+  payBasis: PayBasis;
+  /** A monthly salary's gross; by the hour it is worked out from the next two. */
+  grossSalary?: number | null;
+  hourlyRate?: number | null;
+  hoursPerWeek?: number | null;
+  daysPerWeek?: number | null;
+  /** With their kinds' names and treatment (see AllowancesService.snapshot). */
+  allowances: readonly AllowanceSnapshot[];
+}
+
+/** A contract's allowances in one order (by kind), to compare them. */
+function comparable(rows: readonly AllowanceSnapshot[]) {
+  return [...rows]
+    .sort((a, b) => a.allowanceTypeId.localeCompare(b.allowanceTypeId))
+    .map(({ allowanceTypeId, nameEn, nameAr, taxable, insured, amount }) => ({ allowanceTypeId, nameEn, nameAr, taxable, insured, amount }));
 }
 
 /** A contract's own columns as the API sends them (dates as YYYY-MM-DD, money as numbers), for comparing and the audit log. */
-function fields(c: Contract) {
+function fields(c: ContractRow) {
   return {
     number: c.number,
     form: c.form as ContractForm,
@@ -83,10 +121,15 @@ function fields(c: Contract) {
     durationMonths: c.durationMonths,
     probationMonths: c.probationMonths,
     probationEnd: fromDateOnly(c.probationEnd),
+    payBasis: c.payBasis as PayBasis,
     grossSalary: c.grossSalary.toNumber(),
+    hourlyRate: c.hourlyRate?.toNumber() ?? null,
+    hoursPerWeek: c.hoursPerWeek?.toNumber() ?? null,
+    daysPerWeek: c.daysPerWeek,
     basicPercent: c.basicPercent,
     netSalary: c.netSalary?.toNumber() ?? null,
     insuredSalary: c.insuredSalary.toNumber(),
+    allowances: comparable(c.allowances.map(allowanceView)),
     status: c.status,
     signedOn: fromDateOnly(c.signedOn),
     insuranceFiledOn: fromDateOnly(c.insuranceFiledOn),
@@ -102,10 +145,16 @@ function toData<T extends Record<string, unknown>>(values: T): T {
   return data as T;
 }
 
-/** Salary values never go to the audit log: only the fact that they were set or changed. */
+/**
+ * Salary values (the hourly rate and the allowances too) never go to the audit log: only the fact that they were set or
+ * changed. One left empty says nothing, so it stays as it is.
+ */
 function salaryMasked<T extends Record<string, unknown>>(diff: T): T {
   const out: Record<string, unknown> = { ...diff };
-  for (const key of SALARY_FIELDS) if (key in out) out[key] = 'changed';
+  for (const key of SALARY_FIELDS) {
+    const value = out[key];
+    if (value !== undefined && value !== null && !(Array.isArray(value) && value.length === 0)) out[key] = 'changed';
+  }
   return out as T;
 }
 
@@ -120,11 +169,14 @@ function assertNotFuture(date: string | null | undefined, what: string) {
 }
 
 // Contracts (owner's decisions, 15 October 2026, checked against Labour Law 14/2025): every employment type has a
-// fixed-term contract of 12 months, renewed in writing before it expires. Version 1 starts on the join date with 3
-// months of probation, once per employer (Art. 90): none for someone who already had one with the company. A renewal
-// is a new version, starting the day after the one before ends, with no probation; signing it supersedes the one
-// before. The insured salary is the gross, capped at the start year's maximum insurable wage. HR adds, changes and
-// signs contracts; anyone who may see the employment reads them, the salary only HR, Finance and the CEO.
+// fixed-term contract of 12 months, renewed in writing before it expires; the company has no open-ended contracts.
+// Version 1 starts on the join date with 3 months of probation, once per employer (Art. 90): none for someone who
+// already had one with the company. A renewal is a new version, starting the day after the one before ends, with no
+// probation; signing it supersedes the one before. The pay is a monthly gross, or by the hour (part-time), when the
+// gross is the monthly estimate, rate × hours a week × 52 ÷ 12; allowances are paid on top of it, each kind taxed or not
+// and insured or not (owner's requests, 15 October 2026). The insured salary is the gross and the insured allowances,
+// capped at the start year's maximum insurable wage. HR adds, changes and signs contracts; anyone who may see the
+// employment reads them, the salary only HR, Finance and the CEO.
 @Injectable()
 export class ContractsService {
   constructor(
@@ -132,12 +184,13 @@ export class ContractsService {
     private readonly audit: AuditService,
     private readonly employees: EmployeesService,
     private readonly settings: ContractSettingsService,
+    private readonly allowances: AllowancesService,
   ) {}
 
   /** An employment's contract versions, newest first. */
   async list(employeeId: string, employmentId: string, user: SessionUser) {
     const employment = await this.employment(employeeId, employmentId, user);
-    const rows = await this.prisma.contract.findMany({ where: { employmentId }, orderBy: { version: 'desc' } });
+    const rows = await this.prisma.contract.findMany({ where: { employmentId }, orderBy: { version: 'desc' }, include: CONTRACT_INCLUDE });
     const ctx = await this.context(user, employment);
     return rows.map((c) => contractView(c, ctx));
   }
@@ -177,20 +230,50 @@ export class ContractsService {
       .map((c) => contractListView(c, { seesSalary: sees, workingDays: c.employment.shift?.workingDays ?? null, nonRenewal }));
   }
 
-  /** A new version: the first contract, or a renewal of the signed one. One draft at a time. */
+  /**
+   * A new version: the first contract, or a renewal of the signed one. One draft at a time. A renewal copies the
+   * version before's allowances as they are unless others are sent; its pay is sent afresh.
+   */
   async create(employeeId: string, employmentId: string, dto: CreateContractDto, user: SessionUser) {
     const employment = await this.employment(employeeId, employmentId, user);
     assertCurrent(employment);
-    const versions = await this.prisma.contract.findMany({ where: { employmentId }, orderBy: { version: 'desc' } });
+    const versions = await this.prisma.contract.findMany({ where: { employmentId }, orderBy: { version: 'desc' }, include: CONTRACT_INCLUDE });
     const draft = versions.find((v) => v.status === 'draft');
     if (draft) throw new ConflictException(`Version ${draft.version} (${draft.number}) is still a draft. Sign or delete it before adding another.`);
     const previous = versions[0] ?? null;
     if (previous && previous.status !== 'active') throw new ConflictException(`Sign version ${previous.version} first: a renewal follows a signed contract.`);
 
-    const terms = await this.terms(employment, previous, dto);
+    // a kind made inactive since stays allowed on the renewal of a version that has it
+    const previousAllowances = previous?.allowances.map(allowanceView) ?? [];
+    const allowances =
+      dto.allowances !== undefined
+        ? await this.allowances.snapshot(dto.allowances, { allowInactive: previousAllowances.map((a) => a.allowanceTypeId) })
+        : previousAllowances;
+    const { allowances: rows, ...terms } = await this.terms(employment, previous, {
+      startDate: dto.startDate,
+      durationMonths: dto.durationMonths,
+      probationMonths: dto.probationMonths,
+      basicPercent: dto.basicPercent,
+      netSalary: dto.netSalary,
+      payBasis: dto.payBasis ?? 'monthly',
+      grossSalary: dto.grossSalary,
+      hourlyRate: dto.hourlyRate,
+      hoursPerWeek: dto.hoursPerWeek,
+      daysPerWeek: dto.daysPerWeek,
+      allowances,
+    });
     const values = { ...terms, number: await this.nextNumber(terms.startDate), version: (previous?.version ?? 0) + 1, note: dto.note ?? null };
-    const row = await this.prisma.contract.create({ data: toData({ ...values, employmentId }) });
-    await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, entityId: row.id, diff: salaryMasked({ employeeId, employmentId, ...values }) });
+    const row = await this.prisma.contract.create({
+      data: { ...toData({ ...values, employmentId }), allowances: { create: allowanceData(rows) } },
+      include: CONTRACT_INCLUDE,
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'create',
+      entityType: ENTITY,
+      entityId: row.id,
+      diff: salaryMasked({ employeeId, employmentId, ...values, allowances: comparable(rows) }),
+    });
     return contractView(row, await this.context(user, employment));
   }
 
@@ -203,6 +286,8 @@ export class ContractsService {
     const employment = await this.employmentOf(before);
     const was = fields(before);
     let values: Record<string, unknown>;
+    /** The draft's new set of allowances, when sent. */
+    let allowances: AllowanceSnapshot[] | undefined;
 
     if (before.status === 'draft') {
       if (dto.signedOn !== undefined || dto.insuranceFiledOn !== undefined || dto.labourOfficeFiledOn !== undefined) {
@@ -213,14 +298,26 @@ export class ContractsService {
         where: { employmentId: before.employmentId, version: { lt: before.version } },
         orderBy: { version: 'desc' },
       });
-      const terms = await this.terms(employment, previous, {
-        form: dto.form ?? was.form,
+      // sent: the whole set, with the kinds' names and treatment as they are now; a kind the draft already has may be
+      // inactive since
+      if (dto.allowances !== undefined) {
+        allowances = await this.allowances.snapshot(dto.allowances, { allowInactive: before.allowances.map((a) => a.allowanceTypeId) });
+      }
+      // switched to a monthly salary: the hourly terms go, and the monthly estimate stays the gross unless one is sent
+      const payBasis = dto.payBasis ?? was.payBasis;
+      const hourly = payBasis === 'hourly';
+      const { allowances: _rows, ...terms } = await this.terms(employment, previous, {
         startDate: dto.startDate ?? was.startDate,
         durationMonths: dto.durationMonths ?? was.durationMonths,
         probationMonths: dto.probationMonths ?? was.probationMonths,
-        grossSalary: dto.grossSalary ?? was.grossSalary,
         basicPercent: dto.basicPercent ?? was.basicPercent,
         netSalary: dto.netSalary !== undefined ? dto.netSalary : was.netSalary,
+        payBasis,
+        grossSalary: dto.grossSalary ?? was.grossSalary,
+        hourlyRate: dto.hourlyRate !== undefined ? dto.hourlyRate : hourly ? was.hourlyRate : null,
+        hoursPerWeek: dto.hoursPerWeek !== undefined ? dto.hoursPerWeek : hourly ? was.hoursPerWeek : null,
+        daysPerWeek: dto.daysPerWeek !== undefined ? dto.daysPerWeek : was.daysPerWeek,
+        allowances: allowances ?? before.allowances.map(allowanceView),
       });
       // numbered by the start year: a draft moved to another year takes that year's next number
       const number = terms.startDate.slice(0, 4) === was.startDate.slice(0, 4) ? before.number : await this.nextNumber(terms.startDate);
@@ -235,8 +332,12 @@ export class ContractsService {
       values = { signedOn: dto.signedOn, insuranceFiledOn: dto.insuranceFiledOn, labourOfficeFiledOn: dto.labourOfficeFiledOn, note: dto.note };
     }
 
-    const row = await this.prisma.contract.update({ where: { id }, data: toData(values) });
-    const diff = salaryMasked(changes(was, values));
+    const row = await this.prisma.contract.update({
+      where: { id },
+      data: { ...toData(values), ...(allowances && { allowances: { deleteMany: {}, create: allowanceData(allowances) } }) },
+      include: CONTRACT_INCLUDE,
+    });
+    const diff = salaryMasked(changes(was, { ...values, ...(allowances && { allowances: comparable(allowances) }) }));
     if (Object.keys(diff).length) {
       await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: id, diff: { employmentId: before.employmentId, number: before.number, ...diff } });
     }
@@ -288,7 +389,7 @@ export class ContractsService {
         : await this.prisma.contract.findMany({ where: { employmentId: before.employmentId, status: 'active' }, select: { id: true, number: true } });
 
     const row = await this.prisma.$transaction(async (tx) => {
-      const signed = await tx.contract.update({ where: { id }, data: { status: 'active', signedOn: toDateOnly(dto.signedOn), ...snapshot } });
+      const signed = await tx.contract.update({ where: { id }, data: { status: 'active', signedOn: toDateOnly(dto.signedOn), ...snapshot }, include: CONTRACT_INCLUDE });
       if (superseded.length) await tx.contract.updateMany({ where: { id: { in: superseded.map((s) => s.id) } }, data: { status: 'superseded' } });
       if (employmentChange) {
         await tx.employment.update({
@@ -370,6 +471,7 @@ export class ContractsService {
           departmentName: null,
           shiftCode: null,
         },
+        include: CONTRACT_INCLUDE,
       });
       if (restored) await tx.contract.update({ where: { id: restored.id }, data: { status: 'active' } });
       if (employmentChange) {
@@ -448,11 +550,11 @@ export class ContractsService {
 
   /**
    * A contract's terms and what follows from them: the start (version 1: the join date; a renewal: the day after the
-   * version before ends), the duration and end of a fixed term, the probation and its end, and the insured salary.
+   * version before ends), the duration and end of the fixed term, the probation and its end, the pay (by the hour, the
+   * gross), and the insured salary.
    */
-  private async terms(employment: EmploymentRow, previous: Contract | null, input: TermsInput) {
+  private async terms(employment: EmploymentRow, previous: { version: number; startDate: Date; endDate: Date | null } | null, input: TermsInput) {
     const settings = await this.settings.get();
-    const form = input.form ?? 'fixed';
     const joinDate = fromDateOnly(employment.joinDate);
     let startDate: string;
     let probationMonths: number;
@@ -461,9 +563,9 @@ export class ContractsService {
       // a renewal (or a change of terms): after the version before, and no probation (once per employer, Art. 90)
       const previousStart = fromDateOnly(previous.startDate);
       const previousEnd = fromDateOnly(previous.endDate);
-      if (input.startDate) startDate = input.startDate;
-      else if (previousEnd) startDate = addDays(previousEnd, 1);
-      else throw new BadRequestException(`Enter the start date: version ${previous.version} is open-ended, so the next version has no default start.`);
+      const start = input.startDate ?? (previousEnd && addDays(previousEnd, 1));
+      if (!start) throw new BadRequestException('Enter the start date.');
+      startDate = start;
       if (startDate <= previousStart) {
         throw new BadRequestException(`Version ${previous.version + 1} must start after version ${previous.version} started, on ${shownDate(previousStart)}.`);
       }
@@ -480,26 +582,56 @@ export class ContractsService {
     }
     if (probationMonths > 3) throw new BadRequestException(PROBATION_CAP_MESSAGE); // the DTO refuses it first
 
-    const durationMonths = form === 'fixed' ? (input.durationMonths ?? settings.durationMonths) : null;
-    const endDate = durationMonths ? addDays(addMonths(startDate, durationMonths), -1) : null;
+    // every contract runs for a fixed term (owner, 15 October 2026)
+    const durationMonths = input.durationMonths ?? settings.durationMonths;
+    const endDate = addDays(addMonths(startDate, durationMonths), -1);
     const probationEnd = probationMonths > 0 ? addDays(addMonths(startDate, probationMonths), -1) : null;
-    if (endDate && probationEnd && probationEnd > endDate) {
+    if (probationEnd && probationEnd > endDate) {
       throw new BadRequestException(`The probation would end after the contract, on ${shownDate(probationEnd)}. Shorten the probation or lengthen the contract.`);
     }
+    const pay = this.pay(input);
+    const allowances = [...input.allowances];
+    const total = allowancesTotal(allowances);
     const netSalary = input.netSalary ?? null;
-    if (netSalary !== null && netSalary > input.grossSalary) throw new BadRequestException("The net salary can't be more than the gross salary.");
+    if (netSalary !== null && Math.round(netSalary * 100) > Math.round((pay.grossSalary + total) * 100)) {
+      throw new BadRequestException(allowances.length ? "The net salary can't be more than the gross salary and the allowances together." : "The net salary can't be more than the gross salary.");
+    }
     return {
-      form,
+      form: 'fixed' as const,
       startDate,
       durationMonths,
       endDate,
       probationMonths,
       probationEnd,
-      grossSalary: input.grossSalary,
+      ...pay,
       basicPercent: input.basicPercent ?? 80,
       netSalary,
-      insuredSalary: insuredSalary(input.grossSalary, Number(startDate.slice(0, 4))),
+      insuredSalary: insuredWageOf(pay.grossSalary, allowances, Number(startDate.slice(0, 4))),
+      allowances,
     };
+  }
+
+  /**
+   * How the pay is set (owner's request, 15 October 2026). A monthly salary: the gross as sent, with no hourly terms. By
+   * the hour: the rate and the hours a week, and the gross is the monthly estimate, rate × hours × 52 ÷ 12 (whatever
+   * gross was sent). The working days a week go with either.
+   */
+  private pay(input: TermsInput) {
+    const daysPerWeek = input.daysPerWeek ?? null;
+    if (input.payBasis === 'hourly') {
+      if (input.hourlyRate == null || input.hoursPerWeek == null) {
+        throw new BadRequestException('Enter the hourly rate and the hours a week: pay by the hour needs both.');
+      }
+      const grossSalary = monthlyFromHourly(input.hourlyRate, input.hoursPerWeek);
+      if (grossSalary < 0.01) throw new BadRequestException('The hourly rate and the hours a week come to less than 0.01 a month. Check them.');
+      if (grossSalary > MAX_MONEY) throw new BadRequestException('The hourly rate and the hours a week come to more than a monthly salary can be. Check them.');
+      return { payBasis: 'hourly' as PayBasis, grossSalary, hourlyRate: input.hourlyRate, hoursPerWeek: input.hoursPerWeek, daysPerWeek };
+    }
+    if (input.hourlyRate != null || input.hoursPerWeek != null) {
+      throw new BadRequestException('A monthly salary has no hourly rate or hours a week. Clear them, or choose pay by the hour.');
+    }
+    if (input.grossSalary == null) throw new BadRequestException(GROSS_MESSAGE);
+    return { payBasis: 'monthly' as PayBasis, grossSalary: input.grossSalary, hourlyRate: null, hoursPerWeek: null, daysPerWeek };
   }
 
   /**
@@ -560,12 +692,12 @@ export class ContractsService {
     return e;
   }
 
-  private employmentOf(c: Contract): Promise<EmploymentRow> {
+  private employmentOf(c: { employmentId: string }): Promise<EmploymentRow> {
     return this.prisma.employment.findUniqueOrThrow({ where: { id: c.employmentId }, select: EMPLOYMENT });
   }
 
-  private async row(id: string): Promise<Contract> {
-    const c = await this.prisma.contract.findUnique({ where: { id } });
+  private async row(id: string): Promise<ContractRow> {
+    const c = await this.prisma.contract.findUnique({ where: { id }, include: CONTRACT_INCLUDE });
     if (!c) throw new NotFoundException('Contract not found.');
     return c;
   }

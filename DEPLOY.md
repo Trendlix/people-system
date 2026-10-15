@@ -5,6 +5,8 @@
 | Web (Next.js, `apps/web`) | Vercel, project `people-system` | `https://people.trendlix.com` |
 | API (NestJS, `apps/api`) + PostgreSQL | Hostinger VPS (`srv2055591.hstgr.cloud`), Docker Compose in `/opt/people-system` | `https://srv2055591.hstgr.cloud:8443` |
 | OCR (Python, `services/ocr`) | Same server, same Docker Compose | None outside: the API calls it at `http://ocr:8000` |
+| PDF converter (Gotenberg, LibreOffice) | Same server, same Docker Compose | None outside: the API calls it at `http://pdf:3000` |
+| Email (job offers) | The company's own email provider, by SMTP | Set in `deploy/.env` (see [Email](#email-job-offers)) |
 
 The browser only talks to the web app on Vercel. Vercel calls the API server-to-server, so the API needs no CORS setup
 and its address is never shown to browsers.
@@ -14,7 +16,7 @@ and its address is never shown to browsers.
 Owner's decision, 14 October 2026: same server as Prime ERP, its own port.
 
 - People System has its **own** containers (`deploy/docker-compose.yml`): PostgreSQL 17, the API, the OCR service,
-  Caddy for HTTPS, and a daily backup, on a Docker network of their own. Only Caddy opens a port: **8443**.
+  the PDF converter, Caddy for HTTPS, and a daily backup, on a Docker network of their own. Only Caddy opens a port: **8443**.
 - Ports 80/443 belong to Prime ERP, and a public certificate can only be obtained through them. So People System's Caddy
   issues its certificate from a **private authority** of its own (`tls internal`, see `deploy/Caddyfile`). The web app
   on Vercel trusts exactly that authority through the setting `API_CA_CERT` (printed by `deploy/ca-cert.sh`); so does
@@ -151,6 +153,43 @@ docker compose logs -f ocr            # one line per file read: kind, size, page
 docker stats --no-stream              # memory of each container
 ```
 
+## The PDF converter
+
+Job offers are sent as PDFs (owner's request, 15 October 2026): the API fills the Word template, then the `pdf`
+container (Gotenberg's LibreOffice image, `gotenberg/gotenberg:8.37.0-libreoffice`) turns it into a PDF.
+
+- **Internal only**, like the OCR service: no port, reached by the API at `http://pdf:3000` (`PDF_URL`); documents are
+  converted in memory and never leave the server.
+- **Memory and disk.** A few hundred MB while converting; Docker stops it at 1 GB. The image is about 1.5 GB and is
+  downloaded by the first deploy that has it.
+- **Fonts.** It has Arabic fonts (Noto, Amiri). A template set in a font it lacks (e.g. a Windows-only Arabic font) is
+  printed in the nearest one it has, so check the first PDF of each template. To print a font exactly, its files can be
+  added to the image later.
+- **If it is down,** offers are sent with the Word file instead.
+
+```bash
+docker compose ps pdf                 # "healthy"
+docker compose logs -f pdf
+```
+
+## Email (job offers)
+
+The API sends job offers through the company's own email provider by SMTP. Until it is set up, HR copies each offer's
+link and sends it from their own mailbox; nothing else needs email. To set it up, add to `deploy/.env` on the server
+(see `deploy/.env.example`), then run `./deploy.sh` (or push any backend change):
+
+| Setting | Example |
+|---|---|
+| `SMTP_HOST` | `smtp.gmail.com` (Google Workspace), `smtp.office365.com` (Microsoft 365), `smtp.zoho.com` (Zoho) |
+| `SMTP_PORT` | `587` (STARTTLS), or `465` if the provider says so |
+| `SMTP_USER` | the sending mailbox, e.g. `hr@trendlix.com` |
+| `SMTP_PASS` | its password, or an app password (Google Workspace needs one; Microsoft 365 needs SMTP AUTH turned on for the mailbox) |
+| `MAIL_FROM` | the sender candidates see: `"TrendLIX HR <hr@trendlix.com>"` |
+
+The candidate's answers go to the HR user who sent the offer (reply-to), and the system emails them when the candidate
+accepts or declines. The offer page candidates open is on the web app (`https://people.trendlix.com/offer/…`), never on
+this server.
+
 ## On the server
 
 | Task | Command (in `/opt/people-system/deploy`) |
@@ -158,6 +197,7 @@ docker stats --no-stream              # memory of each container
 | Deploy by hand | `./deploy.sh` |
 | API log | `docker compose logs -f api` |
 | OCR log | `docker compose logs -f ocr` |
+| PDF converter log | `docker compose logs -f pdf` |
 | Container state | `docker compose ps` |
 | Restore a save | `docker compose exec -T db pg_restore -U people -d people_system --clean --if-exists < backups/<file>` |
 

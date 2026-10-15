@@ -66,10 +66,8 @@ describe('Contracts list (e2e)', () => {
   let soonC: Contract;
   let overdue: Hire; // signed, ended about 6 days ago, the employment still current
   let overdueC: Contract;
-  let later: Hire; // part time, signed, ends in about 9 months
+  let later: Hire; // part time, paid by the hour with an allowance, signed, ends in about 9 months
   let laterC: Contract;
-  let open: Hire; // internship, signed, open-ended
-  let openC: Contract;
   let moved: Hire; // signed in the Desk team 9 months ago, then moved to the Field team; a renewal drafted since
   let movedV1: Contract;
   let movedV2: Contract;
@@ -140,10 +138,12 @@ describe('Contracts list (e2e)', () => {
     soonC = await sign(await draft(soon));
     overdue = await hire('Overdue Contract', { joinDate: addDays(addMonths(today, -12), -5) });
     overdueC = await sign(await draft(overdue));
+    // by the hour, 3 days a week, with a transport allowance (owner's requests, 15 October 2026)
+    const transport = await api().post('/api/allowance-types').set('Cookie', hr).send({ nameEn: `List Transport ${RUN}`, nameAr: 'بدل انتقال' }).expect(201);
     later = await hire('Later Ending', { employmentType: 'part_time', joinDate: addDays(today, -100) });
-    laterC = await sign(await draft(later));
-    open = await hire('Open Ended', { employmentType: 'internship', joinDate: addDays(today, -30) });
-    openC = await sign(await draft(open, { form: 'open_ended' }));
+    laterC = await sign(
+      await draft(later, { payBasis: 'hourly', hourlyRate: 150, hoursPerWeek: 24, daysPerWeek: 3, allowances: [{ allowanceTypeId: transport.body.id, amount: 400 }] }),
+    );
 
     // signed in the Desk team, then moved to the Field team: the signed version keeps what was signed, the renewal
     // drafted after the move shows where the person is now
@@ -193,9 +193,9 @@ describe('Contracts list (e2e)', () => {
     expect(everyone.every((i) => i.status === 'draft' || i.status === 'active')).toBe(true);
 
     const items = await mine();
-    // signed: the end date soonest first (past it first), open-ended last; then the drafts, the newest first
+    // signed: the end date soonest first (past it first); then the drafts, the newest first
     expect(items.map((i) => [i.number, i.status, i.endDate])).toEqual(
-      [overdueC, soonC, movedV1, renewedV3, laterC, openC, draftedC, movedV2].map((c) => [c.number, c.status, c.endDate]),
+      [overdueC, soonC, movedV1, renewedV3, laterC, draftedC, movedV2].map((c) => [c.number, c.status, c.endDate]),
     );
     // the same order for every contract listed
     const everyActive = everyone.filter((i) => i.status === 'active');
@@ -227,11 +227,10 @@ describe('Contracts list (e2e)', () => {
     expect((await list({ status: 'ended' })).every((i) => i.status === 'ended')).toBe(true);
   });
 
-  it('filters by form and by employment type', async () => {
-    expect(ids(await mine({ form: 'open_ended' }))).toEqual([openC.id]);
+  it('filters by form (every contract is fixed-term) and by employment type', async () => {
     const fixed = await mine({ form: 'fixed' });
     expect(fixed.every((i) => i.form === 'fixed')).toBe(true);
-    expect(ids(fixed).toSorted()).toEqual([soonC, overdueC, laterC, movedV1, renewedV3, movedV2, draftedC].map((c) => c.id).toSorted());
+    expect(ids(fixed)).toEqual(ids(await mine()));
 
     expect(ids(await mine({ type: 'part_time' }))).toEqual([laterC.id]);
     expect(ids(await mine({ type: 'sales' }))).toEqual([draftedC.id]);
@@ -298,7 +297,14 @@ describe('Contracts list (e2e)', () => {
       insuranceFiledOn: null,
       labourOfficeFiledOn: null,
       nonRenewalNoticeBy: movedV1.nonRenewalNoticeBy,
+      payBasis: 'monthly',
+      hoursPerWeek: null,
+      daysPerWeek: null,
       grossSalary: 15000,
+      hourlyRate: null,
+      allowances: [],
+      allowancesTotal: 0,
+      totalSalary: 15000,
       insuredSalary: 15000,
       salaryHidden: false,
       employee: { id: moved.id, employeeCode: moved.employeeCode, fullNameEn: moved.fullNameEn, fullNameAr: moved.fullNameAr },
@@ -329,13 +335,26 @@ describe('Contracts list (e2e)', () => {
     expect(items.find((i) => i.id === draftedC.id)).toMatchObject({ jobTitleEn: 'Ops Head', departmentName: deptName, employmentType: 'sales' });
     // signed without a job title: none, even though the snapshot is what counts
     expect(items.find((i) => i.id === soonC.id)).toMatchObject({ jobTitleEn: null, departmentName: null, nonRenewalNoticeBy: soonC.nonRenewalNoticeBy });
-    expect(items.find((i) => i.id === openC.id)).toMatchObject({ form: 'open_ended', endDate: null, nonRenewalNoticeBy: null, employmentType: 'internship' });
+    // by the hour: the monthly estimate (150 × 24 × 52 ÷ 12) and the allowance on top
+    expect(items.find((i) => i.id === laterC.id)).toMatchObject({
+      payBasis: 'hourly',
+      hourlyRate: 150,
+      hoursPerWeek: 24,
+      daysPerWeek: 3,
+      grossSalary: 15600,
+      allowances: [{ nameEn: `List Transport ${RUN}`, nameAr: 'بدل انتقال', taxable: true, insured: false, amount: 400 }],
+      allowancesTotal: 400,
+      totalSalary: 16000,
+      insuredSalary: 15600,
+      employmentType: 'part_time',
+    });
   });
 
-  it('refuses an unknown status, form or type, and endingWithin that is not a number of days', async () => {
+  it('refuses an unknown status, a form other than fixed, an unknown type, and endingWithin that is not a number of days', async () => {
     const bad = async (query: Record<string, string>) => (await api().get('/api/contracts').query(query).set('Cookie', hr).expect(400)).body.message as string[];
     expect(await bad({ status: 'signed' })).toEqual(['Choose a status: draft, active, ended or superseded.']);
-    expect(await bad({ form: 'temporary' })).toEqual(['Choose a form: fixed or open_ended.']);
+    expect(await bad({ form: 'temporary' })).toEqual(['Every contract runs for a fixed term: leave the form out, or send fixed.']);
+    expect(await bad({ form: 'open_ended' })).toEqual(['Every contract runs for a fixed term: leave the form out, or send fixed.']);
     expect(await bad({ type: 'contractor' })).toEqual(['Choose an employment type: full_time, part_time, internship, freelance or sales.']);
     for (const endingWithin of ['soon', '1.5', '-1', '1831']) {
       expect(await bad({ endingWithin })).toEqual(['Enter endingWithin as a whole number of days, 0 to 1830 (e.g. 30).']);

@@ -16,7 +16,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import { changeRequestView, CONFIRMATION_INCLUDE, confirmationView, REQUEST_INCLUDE } from '../confirmations/views.js';
-import { contractView, ENDING_INCLUDE, endingView, type ContractContext } from '../contracts/views.js';
+import { CONTRACT_INCLUDE, contractView, ENDING_INCLUDE, endingView, type ContractContext } from '../contracts/views.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
@@ -55,7 +55,7 @@ const EMPLOYMENT = {
   shift: { select: { id: true, code: true, startTime: true, endTime: true, workingDays: true } },
   // the newest signed contract (contracts module, 15 October 2026), and the newest ending whatever its status
   // (contracts review, 15 October 2026): a rejected one stays, with the CEO's note, until a new ending is started
-  contracts: { where: { status: 'active' }, orderBy: { version: 'desc' }, take: 1 },
+  contracts: { where: { status: 'active' }, orderBy: { version: 'desc' }, take: 1, include: CONTRACT_INCLUDE },
   endings: { orderBy: { createdAt: 'desc' }, take: 1, include: ENDING_INCLUDE },
 } satisfies Prisma.EmploymentInclude;
 

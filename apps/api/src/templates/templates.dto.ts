@@ -7,7 +7,7 @@ export class UploadTemplateDto {
   /** Needed when the slot's language is set on upload; otherwise the slot's, and only the slot's. */
   @TrimOrNull()
   @IsOptional()
-  @IsIn(TEMPLATE_LANGUAGES, { message: 'Choose the language of the template: Arabic or English.' })
+  @IsIn(TEMPLATE_LANGUAGES, { message: 'Choose the language of the template: Arabic, English, or both.' })
   language?: TemplateLanguage | null;
 
   /** What changed in this version, for HR's own record. */

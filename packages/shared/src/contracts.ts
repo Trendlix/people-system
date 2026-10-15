@@ -2,10 +2,27 @@
 // 2025 (in force 1 September 2025): contracts are fixed-term for a year, the first three months are probation (once per
 // employer, Art. 90), resignation needs three months' notice (Art. 156), and an ending is approved by HR, then the CEO.
 
-/** A contract runs for a fixed term (the owner's choice for every employment type) or is open-ended. */
-export const CONTRACT_FORMS = ['fixed', 'open_ended'] as const;
+/** Every contract runs for a fixed term: the company has no open-ended contracts (owner, 15 October 2026). */
+export const CONTRACT_FORMS = ['fixed'] as const;
 export type ContractForm = (typeof CONTRACT_FORMS)[number];
-export const CONTRACT_FORM_LABELS: Record<ContractForm, string> = { fixed: 'Fixed term', open_ended: 'Open-ended' };
+export const CONTRACT_FORM_LABELS: Record<ContractForm, string> = { fixed: 'Fixed term' };
+
+/**
+ * How a contract's or an offer's pay is set (owner's request, 15 October 2026): a monthly salary, or by the hour
+ * (part-time, e.g. two or three days a week), when the gross is the monthly estimate (see monthlyFromHourly).
+ */
+export const PAY_BASES = ['monthly', 'hourly'] as const;
+export type PayBasis = (typeof PAY_BASES)[number];
+export const PAY_BASIS_LABELS: Record<PayBasis, string> = { monthly: 'Monthly salary', hourly: 'By the hour' };
+export const PAY_BASIS_LABELS_AR: Record<PayBasis, string> = { monthly: 'راتب شهري', hourly: 'بالساعة' };
+
+/** Weeks in a month on average: 52 ÷ 12. */
+export const WEEKS_PER_MONTH = 52 / 12;
+
+/** By the hour: the monthly estimate, rate × hours a week × 52 ÷ 12, to the piaster. */
+export function monthlyFromHourly(hourlyRate: number, hoursPerWeek: number): number {
+  return Math.round((hourlyRate * hoursPerWeek * WEEKS_PER_MONTH + Number.EPSILON) * 100) / 100;
+}
 
 /** A contract version's progress. Signed versions are never edited; a renewal or a change is a new version. */
 export const CONTRACT_STATUSES = ['draft', 'active', 'ended', 'superseded'] as const;
@@ -79,7 +96,8 @@ export const INSURABLE_WAGE: Readonly<Record<number, { min: number; max: number 
 
 /**
  * The salary on the social insurance copy: the actual gross, capped at the year's maximum insurable wage (owner's
- * decision) and never below its minimum. A year not in the table uses the latest one known.
+ * decision) and never below its minimum. A year not in the table uses the latest one known. With allowances, pass the
+ * gross and the insured allowances together (see insuredWageOf).
  */
 export function insuredSalary(gross: number, year: number): number {
   const known = Object.keys(INSURABLE_WAGE).map(Number).sort((a, b) => a - b);
@@ -88,3 +106,16 @@ export function insuredSalary(gross: number, year: number): number {
 }
 
 import type { EndReason } from './index.js';
+
+/** An allowance as the salary is worked out from it: its amount a month, and how it is treated. */
+export interface AllowanceTerms {
+  amount: number;
+  taxable: boolean;
+  insured: boolean;
+}
+
+/** The insured wage of a gross and its allowances: the gross and the insured allowances, within the year's limits. */
+export function insuredWageOf(gross: number, allowances: readonly AllowanceTerms[], year: number): number {
+  const insured = allowances.reduce((sum, a) => sum + (a.insured ? a.amount : 0), 0);
+  return insuredSalary(Math.round((gross + insured) * 100) / 100, year);
+}

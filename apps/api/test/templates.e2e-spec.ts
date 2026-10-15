@@ -121,6 +121,9 @@ describe('Templates (e2e)', () => {
     await upload('nda', file, 'NDA.docx').field('language', 'fr').expect(400);
     const nda = await upload('nda', file, 'NDA.docx', admin).field('language', 'en').expect(201);
     expect([nda.body.language, nda.body.tags, nda.body.uploadedBy]).toEqual(['en', ['full_name_en', 'date'], { email: expect.any(String) }]);
+    // Arabic and English side by side (the owner's NDA): the tags that name their language print in it
+    const both = await upload('nda', docx({ body: p(r('{{job_title_ar}} / {{job_title_en}}')) }), 'NDA both.docx').field('language', 'bilingual').expect(201);
+    expect([both.body.language, both.body.tags]).toEqual(['bilingual', ['job_title_ar', 'job_title_en']]);
 
     const wrong = await upload('hr_letter_ar', file, 'letter.docx').field('language', 'en').expect(400);
     expect(wrong.body.message).toBe('HR letter · Arabic is always in Arabic.');

@@ -201,3 +201,6 @@ export * from './templates.js';
 // ---------- salary: gross to net ----------
 
 export * from './salary.js';
+
+// job offers: statuses, how long an offer stays open, the template slot of each employment type
+export * from './offers.js';
