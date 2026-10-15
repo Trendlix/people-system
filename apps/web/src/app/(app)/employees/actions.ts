@@ -41,6 +41,7 @@ async function save<T>(fd: FormData, errors: string[], request: () => Promise<T>
 
 const PERSONAL_TEXT = [
   'employeeCode',
+  'insuranceNo',
   'fullNameEn',
   'fullNameAr',
   'gender',

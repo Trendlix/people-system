@@ -75,6 +75,16 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
       { name: 'fullNameEn', label: 'Full name (English)', max: 150, required: true },
       { name: 'fullNameAr', label: 'Full name (Arabic)', ar: true, max: 150, required: true, hint: 'As printed on contracts.' },
       { name: 'employeeCode', label: 'Employee code', max: 20, required: true, placeholder: 'EMP-0000' },
+      {
+        name: 'insuranceNo',
+        label: 'Social insurance number',
+        max: 20,
+        hint: (
+          <>
+            The <span lang="ar">الرقم التأميني</span>, digits only. Needed once hired full time.
+          </>
+        ),
+      },
       { name: 'dateOfBirth', label: 'Date of birth', kind: 'date' },
       { name: 'gender', label: 'Gender', kind: 'select', options: options(GENDERS, LABELS.gender) },
       { name: 'nationality', label: 'Nationality', max: 60, placeholder: 'e.g. Egyptian' },
@@ -292,6 +302,7 @@ export function PersonalFields({
       'aria-describedby': describedBy,
       defaultValue: value,
       className: f.name === 'employeeCode' ? 'input uppercase' : 'input',
+      ...(f.name === 'insuranceNo' ? { inputMode: 'numeric' as const, autoComplete: 'off' } : {}),
       ...(f.ar ? { lang: 'ar', dir: 'rtl' as const } : {}),
     };
     if (f.name === 'qualificationAr') {

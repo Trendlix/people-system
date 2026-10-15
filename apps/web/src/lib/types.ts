@@ -224,6 +224,8 @@ export interface ProfileGap {
 export interface EmployeeProfile {
   id: string;
   employeeCode: string;
+  /** الرقم التأميني: the social insurance number, digits only. */
+  insuranceNo: string | null;
   fullNameEn: string;
   fullNameAr: string;
   dateOfBirth: string | null;

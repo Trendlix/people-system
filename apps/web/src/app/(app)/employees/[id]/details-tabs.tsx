@@ -54,6 +54,13 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
             { key: 'fullNameEn', label: 'Full name (English)', value: p.fullNameEn, required: true },
             { key: 'fullNameAr', label: 'Full name (Arabic)', value: p.fullNameAr, required: true, ar: true },
             { key: 'employeeCode', label: 'Employee code', value: number(p.employeeCode) },
+            {
+              key: 'insuranceNo',
+              label: 'Social insurance number',
+              value: p.insuranceNo && number(p.insuranceNo),
+              // needed once insured, i.e. hired full time (Form 1)
+              required: p.employment?.employmentType === 'full_time',
+            },
             { key: 'dateOfBirth', label: 'Date of birth', value: formatDate(p.dateOfBirth), required: true },
             { key: 'gender', label: 'Gender', value: p.gender && LABELS.gender[p.gender], required: true },
             { key: 'nationality', label: 'Nationality', value: p.nationality, required: true },
