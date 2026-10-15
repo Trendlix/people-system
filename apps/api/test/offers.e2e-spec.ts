@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
+import { PDFDocument } from '@cantoo/pdf-lib';
 import { ServiceUnavailableException, type INestApplication } from '@nestjs/common';
 import { insuredWageOf, monthlyFromHourly } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import type { MockInstance } from 'vitest';
 import { addDays, addMonths, shownDate, todayInCairo } from '../src/common/date-only.js';
 import { MailService } from '../src/mail/mail.service.js';
 import { PdfService } from '../src/pdf/pdf.service.js';
@@ -10,11 +12,15 @@ import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { paragraphTexts, textParts } from '../src/templates/docx-tags.js';
 import { readZip } from '../src/templates/zip.js';
 import { docx, p, r } from './fixtures/docx.js';
+import { convertedPdf, hasEncrypt } from './fixtures/pdf.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
 // Job offers (owner's request, 15 October 2026): drafting, the document, sending by email or as a link, the offer's
 // page where the candidate answers, HR recording an answer, and the profile, employment and draft contract made on
-// acceptance. Email is kept in MailService's outbox (MAIL_TRANSPORT=memory); the PDF converter is stubbed.
+// acceptance. Email is kept in MailService's outbox (MAIL_TRANSPORT=memory). The document is given and sent only as a
+// protected PDF (owner's request, 15 October 2026: "No doc file export, just a protected PDF"): the converter is
+// stubbed with a PDF made here, which is protected for real; what was filled in is read from the Word file handed to
+// it, or kept with the offer.
 process.env.MAIL_TRANSPORT = 'memory';
 
 const RUN = Date.now().toString(36);
@@ -22,11 +28,12 @@ const TODAY = todayInCairo();
 const YEAR = TODAY.slice(0, 4);
 /** The expected first day: in three weeks. */
 const JOIN = addDays(TODAY, 21);
-const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const ORIGIN = 'https://people.example.com';
 const NOT_VALID = 'This offer link is not valid. It may have been replaced by a newer email.';
 const ONLY_SUPER_ADMIN = 'Only a Super Admin can delete records.';
-const FAKE_PDF = Buffer.from('%PDF-1.4\n% offer\n%%EOF\n');
+const PDF_ONLY = 'Documents are given as protected PDFs only.';
+const PDF_NOT_SET_UP = "The PDF converter isn't set up on the server, so documents can't be given out yet: they are given as protected PDFs only.";
+const NOT_SENT_WITHOUT_PDF = "The PDF converter isn't set up on the server, so the offer can't be sent: it goes as a protected PDF only.";
 
 /** Reads a response body as bytes, whatever its type. */
 const bytes = (res: request.Response, done: (err: Error | null, body: Buffer) => void) => {
@@ -63,6 +70,9 @@ describe('Job offers (e2e)', () => {
   let prisma: PrismaService;
   let mail: MailService;
   let pdf: PdfService;
+  let convert: MockInstance<PdfService['fromDocx']>;
+  let available: MockInstance<() => boolean>;
+  let converted: Buffer;
   let hrEmail: string;
   let hr: string;
   let hr2Email: string;
@@ -92,8 +102,18 @@ describe('Job offers (e2e)', () => {
   const patch = (id: string, body: object, session = hr) => api().patch(`/api/offers/${id}`).set('Cookie', session).send(body);
   const send = (id: string, body: object, session = hr) => api().post(`/api/offers/${id}/send`).set('Cookie', session).send(body);
   const answer = (id: string, body: object, session = hr) => api().post(`/api/offers/${id}/answer`).set('Cookie', session).send(body);
-  const documentOf = (id: string, format?: 'pdf' | 'docx', session = hr) =>
-    api().get(`/api/offers/${id}/document`).query(format ? { format } : {}).set('Cookie', session).buffer(true).parse(bytes);
+  const documentOf = (id: string, query: Record<string, string> = {}, session = hr) =>
+    api().get(`/api/offers/${id}/document`).query(query).set('Cookie', session).buffer(true).parse(bytes);
+  /** The Word file last handed to the converter: what the document was filled in with. */
+  const lastFilled = () => Buffer.from(convert.mock.lastCall![0]);
+  /** A draft's document: a protected PDF, its text read from the Word file filled in for it. */
+  const documentText = async (id: string, session = hr) => {
+    await documentOf(id, {}, session).expect(200);
+    return textOf(lastFilled());
+  };
+  /** The Word file kept with a sent offer (never given out). */
+  const keptDocx = async (id: string) => Buffer.from((await prisma.jobOffer.findUniqueOrThrow({ where: { id }, select: { data: true } })).data!);
+  const messageOf = (res: request.Response) => (JSON.parse((res.body as Buffer).toString('utf8')) as { message: string }).message;
   const page = (secret: string) => api().get(`/api/public/offers/${secret}`);
   const accept = (secret: string, body: object) => api().post(`/api/public/offers/${secret}/accept`).send(body);
   const decline = (secret: string, body: object) => api().post(`/api/public/offers/${secret}/decline`).send(body);
@@ -146,6 +166,10 @@ describe('Job offers (e2e)', () => {
     ({ app, prisma } = await createApp());
     mail = app.get(MailService);
     pdf = app.get(PdfService);
+    // the converter (Gotenberg) can't run here: it is said to be set up, its PDF stood in for, and protected for real
+    converted = await convertedPdf();
+    available = vi.spyOn(pdf, 'available', 'get').mockReturnValue(true);
+    convert = vi.spyOn(pdf, 'fromDocx').mockImplementation(async () => converted);
     await prisma.generatedDocument.deleteMany();
     await prisma.jobOffer.deleteMany();
     await prisma.templateVersion.deleteMany();
@@ -275,7 +299,7 @@ describe('Job offers (e2e)', () => {
         sentCount: 0,
         hiredAt: null,
         emailConfigured: true,
-        pdfAvailable: false,
+        pdfAvailable: true,
         createdBy: { email: hrEmail },
       });
       const next = await draft('Omar Next');
@@ -352,13 +376,15 @@ describe('Job offers (e2e)', () => {
   });
 
   describe('the document', () => {
-    it("a draft is filled in afresh: the Word file, named after the slot, the number and the candidate", async () => {
+    it('a draft is filled in afresh: a protected PDF, named after the slot, the number and the candidate', async () => {
       const o = await draft('Dina Document', { allowances: [{ allowanceTypeId: housingId, amount: 1500 }] });
       const res = await documentOf(o.id).expect(200);
-      expect(res.headers['content-type']).toBe(DOCX);
-      expect(res.headers['content-disposition']).toContain('attachment;');
-      expect(decodeURIComponent(res.headers['content-disposition'])).toContain(`Job offer · Full-time - ${o.number} - Dina Document ${RUN}.docx`);
-      const text = textOf(res.body as Buffer);
+      expect(res.headers['content-type']).toBe('application/pdf');
+      expect(res.headers['content-disposition']).toMatch(/^inline;/);
+      expect(decodeURIComponent(res.headers['content-disposition'])).toContain(`Job offer · Full-time - ${o.number} - Dina Document ${RUN}.pdf`);
+      expect(hasEncrypt(res.body as Buffer)).toBe(true);
+      expect(convert.mock.lastCall![1]).toBe(`Job offer · Full-time - ${o.number} - Dina Document ${RUN}.docx`);
+      const text = textOf(lastFilled());
       const probationEnd = addDays(addMonths(JOIN, 3), -1);
       const end = addDays(addMonths(JOIN, 12), -1);
       expect(text).toBe(
@@ -371,9 +397,14 @@ describe('Job offers (e2e)', () => {
       );
       // the terms are restricted: every view is audited
       const audit = await prisma.auditLog.findFirst({ where: { entityType: 'job_offer', entityId: o.id, action: 'view_restricted' } });
-      expect(audit?.diff).toMatchObject({ number: o.number, seen: 'document', format: 'docx' });
-      // the CEO may download it too
-      await documentOf(o.id, 'docx', ceo).expect(200);
+      expect(audit?.diff).toMatchObject({ number: o.number, seen: 'document' });
+      // the CEO may download it too: saved rather than shown
+      const saved = await documentOf(o.id, { download: '1' }, ceo).expect(200);
+      expect(saved.headers['content-type']).toBe('application/pdf');
+      expect(saved.headers['content-disposition']).toMatch(/^attachment;/);
+      // protected (AES-256): opens without a password, the converter's page in it
+      expect((await PDFDocument.load(saved.body as Buffer, { password: '' })).getPageCount()).toBe(1);
+      await expect(PDFDocument.load(saved.body as Buffer)).rejects.toThrow();
     });
 
     it('refused while the template prints a value the offer lacks, and where to fill it in', async () => {
@@ -384,7 +415,7 @@ describe('Job offers (e2e)', () => {
       expect(JSON.parse((res.body as Buffer).toString('utf8'))).toMatchObject({ message: 'Fill in the missing details first.', missing });
       await send(o.id, { via: 'link', origin: ORIGIN }).expect(422);
       await patch(o.id, { daysPerWeek: 3 }).expect(200);
-      const text = textOf((await documentOf(o.id).expect(200)).body as Buffer);
+      const text = await documentText(o.id);
       expect(text).toBe(`Pia Parttime ${RUN}: By the hour, 100 an hour, 20 hours over 3 days (${monthlyFromHourly(100, 20).toLocaleString('en-US')} a month)`);
     });
 
@@ -406,19 +437,9 @@ describe('Job offers (e2e)', () => {
       expect(o.missing).toEqual([]);
       const res = await documentOf(o.id).expect(200);
       expect(res.headers['x-template-draft']).toBe('1');
-      expect(res.headers['content-type']).toBe(DOCX);
-      expect(decodeURIComponent(res.headers['content-disposition'])).toContain(`Job offer · Sales - ${o.number} - Sami Sales ${RUN}.docx`);
-      expect(textOf(res.body as Buffer)).toBe(`Sami Sales ${RUN}`);
-      const available = vi.spyOn(pdf, 'available', 'get').mockReturnValue(true);
-      const convert = vi.spyOn(pdf, 'fromDocx').mockResolvedValue(FAKE_PDF);
-      try {
-        const shown = await documentOf(o.id, 'pdf').expect(200);
-        expect(shown.headers['content-type']).toBe('application/pdf');
-        expect(shown.headers['x-template-draft']).toBe('1');
-      } finally {
-        available.mockRestore();
-        convert.mockRestore();
-      }
+      expect(res.headers['content-type']).toBe('application/pdf');
+      expect(decodeURIComponent(res.headers['content-disposition'])).toContain(`Job offer · Sales - ${o.number} - Sami Sales ${RUN}.pdf`);
+      expect(textOf(lastFilled())).toBe(`Sami Sales ${RUN}`);
 
       // a newer draft is used: here one printing the salary, and a value the offer lacks until it is filled in
       await publish('offer_sales', docx({ body: p(r('{{full_name_en}}: {{gross_salary}} over {{days_per_week}} days')) }), 'en', true);
@@ -431,12 +452,12 @@ describe('Job offers (e2e)', () => {
       await patch(o.id, { daysPerWeek: 5 }).expect(200);
       const filled = await documentOf(o.id).expect(200);
       expect(filled.headers['x-template-draft']).toBe('2');
-      expect(textOf(filled.body as Buffer)).toBe(`Sami Sales ${RUN}: 20,000 over 5 days`);
+      expect(textOf(lastFilled())).toBe(`Sami Sales ${RUN}: 20,000 over 5 days`);
       // the salary seen: audited, with the draft it was filled in from
       const audit = await prisma.auditLog.findFirst({ where: { entityType: 'job_offer', entityId: o.id, action: 'view_restricted' }, orderBy: { id: 'desc' } });
-      expect(audit?.diff).toEqual({ number: o.number, fields: ['gross_salary'], seen: 'document', format: 'docx', templateDraft: 2 });
+      expect(audit?.diff).toEqual({ number: o.number, fields: ['gross_salary'], seen: 'document', templateDraft: 2 });
       // the CEO may preview it too
-      await documentOf(o.id, 'docx', ceo).expect(200);
+      await documentOf(o.id, {}, ceo).expect(200);
 
       // sending still needs a published template, and nothing was kept
       const refused = await send(o.id, { via: 'link', origin: ORIGIN }).expect(409);
@@ -449,23 +470,20 @@ describe('Job offers (e2e)', () => {
       expect((await documentOf(full.id).expect(200)).headers['x-template-draft']).toBeUndefined();
     });
 
-    it('as PDF from the converter; without one, the Word file is offered instead', async () => {
+    it('only as a protected PDF: the Word file refused; without a converter, none at all', async () => {
       const o = await draft('Paul Pdf');
-      const none = await documentOf(o.id, 'pdf').expect(409);
-      expect(JSON.parse((none.body as Buffer).toString('utf8')).message).toBe("The PDF converter isn't set up: download the Word file.");
-      const available = vi.spyOn(pdf, 'available', 'get').mockReturnValue(true);
-      const convert = vi.spyOn(pdf, 'fromDocx').mockResolvedValue(FAKE_PDF);
+      expect(messageOf(await documentOf(o.id, { format: 'docx' }).expect(400))).toBe(PDF_ONLY);
+      const res = await documentOf(o.id, { format: 'pdf' }).expect(200);
+      expect(res.headers['content-type']).toBe('application/pdf');
+      expect(decodeURIComponent(res.headers['content-disposition'])).toContain(`${o.number} - Paul Pdf ${RUN}.pdf`);
+      expect(hasEncrypt(res.body as Buffer)).toBe(true);
+
+      available.mockReturnValue(false);
       try {
-        const res = await documentOf(o.id, 'pdf').expect(200);
-        expect(res.headers['content-type']).toBe('application/pdf');
-        expect(res.headers['content-disposition']).toMatch(/^inline;/);
-        expect(decodeURIComponent(res.headers['content-disposition'])).toContain(`${o.number} - Paul Pdf ${RUN}.pdf`);
-        expect(res.body).toEqual(FAKE_PDF);
-        expect(convert).toHaveBeenCalledOnce();
-        expect((await getOffer(o.id)).pdfAvailable).toBe(true);
+        expect((await getOffer(o.id)).pdfAvailable).toBe(false);
+        expect(messageOf(await documentOf(o.id).expect(409))).toBe(PDF_NOT_SET_UP);
       } finally {
-        available.mockRestore();
-        convert.mockRestore();
+        available.mockReturnValue(true);
       }
     });
 
@@ -482,7 +500,8 @@ describe('Job offers (e2e)', () => {
       const duties = '<p>Visits <strong>clients</strong> in the field.</p><ol><li><p>Collects orders</p></li><li><p>Reports <em>daily</em></p></li></ol>';
       await api().patch(`/api/job-titles/${role.body.id}`).set('Cookie', hr).send({ jdDuties: duties }).expect(200);
       expect((await getOffer(o.id)).missing).toEqual([]);
-      const filled = (await documentOf(o.id).expect(200)).body as Buffer;
+      await documentOf(o.id).expect(200);
+      const filled = lastFilled();
       expect(textOf(filled)).toBe(
         [`Fadi Freelance ${RUN} — Field Agent ${RUN}`, 'Visits clients in the field.', '1.Collects orders', '2.Reports daily', 'In short: Visits clients in the field.1. Collects orders2. Reports daily'].join('\n'),
       );
@@ -537,7 +556,7 @@ describe('Job offers (e2e)', () => {
       await prisma.grade.update({ where: { id: gradeId }, data: { levelAr: 'أول' } });
       try {
         // shift A: 9 to 6, Sunday to Thursday; the manager's Arabic name is موظف
-        expect(textOf((await documentOf(o.id).expect(200)).body as Buffer)).toBe(
+        expect(await documentText(o.id)).toBe(
           [
             `${o.email} | موظف | Mona Manager ${RUN}`,
             'من 9:00 ص إلى 6:00 م، من الأحد إلى الخميس | 9:00 AM – 6:00 PM, Sunday to Thursday',
@@ -570,7 +589,7 @@ describe('Job offers (e2e)', () => {
         sentCount: 1,
         sentBy: { email: hrEmail },
         viewedAt: null,
-        document: { fileName: `Job offer · Full-time - ${o.number} - Leila Link ${RUN}.docx`, hasPdf: false, documentDate: TODAY },
+        document: { fileName: `Job offer · Full-time - ${o.number} - Leila Link ${RUN}.docx`, hasPdf: true, documentDate: TODAY },
         missing: [],
       });
       expect(mail.outbox.some((m) => m.to === o.email)).toBe(false);
@@ -599,8 +618,10 @@ describe('Job offers (e2e)', () => {
       expect(m.text).toContain(`This offer is open until ${shownDate(addDays(TODAY, 7))}.`);
       expect(m.text).not.toContain('20,000');
       expect(m.html).toContain(`<a href="${res.body.link}">`);
-      expect(m.attachments).toEqual([expect.objectContaining({ filename: `Job offer · Full-time - ${o.number} - Emad Email ${RUN}.docx`, contentType: DOCX })]);
-      expect(textOf(attached(m.attachments![0]))).toContain(`Emad Email ${RUN} — Account Manager`);
+      // the protected PDF only, never the Word file
+      expect(m.attachments).toEqual([expect.objectContaining({ filename: `Job offer · Full-time - ${o.number} - Emad Email ${RUN}.pdf`, contentType: 'application/pdf' })]);
+      expect(hasEncrypt(attached(m.attachments![0]))).toBe(true);
+      expect(textOf(await keptDocx(o.id))).toContain(`Emad Email ${RUN} — Account Manager`);
     });
 
     it("by email when email isn't set up: refused, and the offer stays as it was", async () => {
@@ -616,30 +637,62 @@ describe('Job offers (e2e)', () => {
       expect(await getOffer(o.id)).toMatchObject({ status: 'draft', sentCount: 0, document: null });
     });
 
-    it('with the PDF when the converter answers, attached instead of the Word file; without it when it fails', async () => {
-      const available = vi.spyOn(pdf, 'available', 'get').mockReturnValue(true);
-      const convert = vi.spyOn(pdf, 'fromDocx').mockResolvedValue(FAKE_PDF);
-      try {
-        const o = await draft('Pam Pdf');
-        const res = await send(o.id, { via: 'email', origin: ORIGIN }).expect(200);
-        expect(res.body.offer.document).toMatchObject({ hasPdf: true });
-        const [attachment] = mail.outbox.at(-1)!.attachments!;
-        expect(attachment).toMatchObject({ filename: `Job offer · Full-time - ${o.number} - Pam Pdf ${RUN}.pdf`, contentType: 'application/pdf' });
-        expect(attached(attachment)).toEqual(FAKE_PDF);
-        // the copy as sent, without converting again
-        convert.mockClear();
-        const file = await documentOf(o.id, 'pdf').expect(200);
-        expect(file.body).toEqual(FAKE_PDF);
-        expect(convert).not.toHaveBeenCalled();
+    it('keeps the protected PDF it sent; refused without a converter, or when it fails, rather than sent with the Word file', async () => {
+      const o = await draft('Pam Pdf');
+      const res = await send(o.id, { via: 'email', origin: ORIGIN }).expect(200);
+      expect(res.body.offer.document).toMatchObject({ hasPdf: true });
+      const [attachment] = mail.outbox.at(-1)!.attachments!;
+      expect(attachment).toMatchObject({ filename: `Job offer · Full-time - ${o.number} - Pam Pdf ${RUN}.pdf`, contentType: 'application/pdf' });
+      const kept = await prisma.jobOffer.findUniqueOrThrow({ where: { id: o.id }, select: { pdf: true } });
+      expect(attached(attachment)).toEqual(Buffer.from(kept.pdf!));
+      expect(hasEncrypt(kept.pdf!)).toBe(true);
+      // the copy as sent, without converting again
+      convert.mockClear();
+      const file = await documentOf(o.id).expect(200);
+      expect(file.body).toEqual(Buffer.from(kept.pdf!));
+      expect(convert).not.toHaveBeenCalled();
 
-        convert.mockRejectedValue(new ServiceUnavailableException('The PDF converter is not answering. Please try again in a minute.'));
-        const failing = await draft('Fay Fails');
-        const sentAnyway = await send(failing.id, { via: 'email', origin: ORIGIN }).expect(200);
-        expect(sentAnyway.body.offer.document).toMatchObject({ hasPdf: false });
-        expect(mail.outbox.at(-1)!.attachments![0].contentType).toBe(DOCX);
+      // without a converter: not sent, and the offer stays as it was
+      const before = mail.outbox.length;
+      const unsent = await draft('Una Unsent');
+      available.mockReturnValue(false);
+      try {
+        for (const via of ['email', 'link']) expect((await send(unsent.id, { via, origin: ORIGIN }).expect(409)).body.message).toBe(NOT_SENT_WITHOUT_PDF);
       } finally {
-        available.mockRestore();
-        convert.mockRestore();
+        available.mockReturnValue(true);
+      }
+      // the converter failing: not sent either
+      convert.mockRejectedValueOnce(new ServiceUnavailableException('The PDF converter is not answering. Please try again in a minute.'));
+      expect((await send(unsent.id, { via: 'email', origin: ORIGIN }).expect(503)).body.message).toBe('The PDF converter is not answering. Please try again in a minute.');
+      expect(mail.outbox.length).toBe(before);
+      expect(await getOffer(unsent.id)).toMatchObject({ status: 'draft', sentCount: 0, document: null });
+    });
+
+    it('a copy kept without its PDF, or with one from before PDFs were protected, is given protected', async () => {
+      const { offer, secret } = await sent('Olga Older');
+      // as an offer sent before 15 October 2026 might be kept: its PDF not protected, or none
+      await prisma.jobOffer.update({ where: { id: offer.id }, data: { pdf: new Uint8Array(converted) } });
+      for (const get of [() => documentOf(offer.id), () => api().get(`/api/public/offers/${secret}/document`).buffer(true).parse(bytes)]) {
+        const res = await get().expect(200);
+        expect(res.headers['content-type']).toBe('application/pdf');
+        expect(hasEncrypt(res.body as Buffer)).toBe(true);
+      }
+      await prisma.jobOffer.update({ where: { id: offer.id }, data: { pdf: null } });
+      convert.mockClear();
+      const fresh = await documentOf(offer.id).expect(200);
+      expect(hasEncrypt(fresh.body as Buffer)).toBe(true);
+      expect(Buffer.from(convert.mock.calls[0][0])).toEqual(await keptDocx(offer.id));
+      // without a converter, nothing to give
+      available.mockReturnValue(false);
+      convert.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      try {
+        expect(messageOf(await documentOf(offer.id).expect(409))).toBe(PDF_NOT_SET_UP);
+        const none = await api().get(`/api/public/offers/${secret}/document`).buffer(true).parse(bytes).expect(409);
+        expect(messageOf(none)).toBe("The offer's document can't be opened yet. Please try again later, or contact HR.");
+      } finally {
+        available.mockReturnValue(true);
+        convert.mockReset();
+        convert.mockImplementation(async () => converted);
       }
     });
 
@@ -691,7 +744,7 @@ describe('Job offers (e2e)', () => {
         companyNameEn: companyName,
         companyNameAr: 'تريندليكس',
         message: 'Hello!',
-        document: { hasPdf: false },
+        document: { hasPdf: true },
         respondedAt: null,
         acceptedName: null,
       });
@@ -699,10 +752,16 @@ describe('Job offers (e2e)', () => {
       expect(viewedAt).not.toBeNull();
       await page(secret).expect(200);
       expect((await getOffer(offer.id)).viewedAt).toBe(viewedAt);
-      // the document as sent: the Word file without a PDF
+      // the document as sent: the protected PDF kept, shown, or saved with ?download=1
       const file = await api().get(`/api/public/offers/${secret}/document`).buffer(true).parse(bytes).expect(200);
-      expect(file.headers['content-type']).toBe(DOCX);
-      expect(textOf(file.body as Buffer)).toContain(`Pia Page ${RUN} — Account Manager`);
+      expect(file.headers['content-type']).toBe('application/pdf');
+      expect(file.headers['content-disposition']).toMatch(/^inline; .*\.pdf/);
+      const kept = await prisma.jobOffer.findUniqueOrThrow({ where: { id: offer.id }, select: { pdf: true } });
+      expect(file.body).toEqual(Buffer.from(kept.pdf!));
+      expect(hasEncrypt(file.body as Buffer)).toBe(true);
+      const saved = await api().get(`/api/public/offers/${secret}/document?download=1`).buffer(true).parse(bytes).expect(200);
+      expect(saved.headers['content-disposition']).toMatch(/^attachment; .*\.pdf/);
+      expect(textOf(await keptDocx(offer.id))).toContain(`Pia Page ${RUN} — Account Manager`);
       // any other secret: not valid
       expect((await page('x'.repeat(43)).expect(404)).body.message).toBe(NOT_VALID);
       expect((await page('short').expect(404)).body.message).toBe(NOT_VALID);
@@ -795,8 +854,8 @@ describe('Job offers (e2e)', () => {
 
       // the employee's own documents can print the offer they accepted
       const nda = await api().post(`/api/employees/${o.employeeId}/documents`).set('Cookie', hr).send({ slotKey: 'nda' }).expect(201);
-      const ndaFile = await api().get(`/api/documents/${nda.body.id}/file`).set('Cookie', hr).buffer(true).parse(bytes).expect(200);
-      expect(textOf(ndaFile.body as Buffer)).toBe(`Ahmed Accept ${RUN} accepted ${offer.number}`);
+      const ndaFile = await prisma.generatedDocument.findUniqueOrThrow({ where: { id: nda.body.id }, select: { data: true } });
+      expect(textOf(Buffer.from(ndaFile.data))).toBe(`Ahmed Accept ${RUN} accepted ${offer.number}`);
     });
 
     it('declining, with a reason; HR is told', async () => {

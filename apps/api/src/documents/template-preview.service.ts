@@ -9,15 +9,15 @@ import { shownStatus } from '../offers/rules.js';
 import { OFFER_INCLUDE, WITHOUT_FILES, type OfferRow } from '../offers/views.js';
 import { PdfService } from '../pdf/pdf.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { DOCX_MIME } from '../templates/docx-tags.js';
-import { templateFileName, type FileFormat } from '../templates/template-file.js';
+import { templateFileName } from '../templates/template-file.js';
 import { DocumentsService } from './documents.service.js';
 import { SLOTS } from './offer.js';
 import { isOfferSlot } from './preview.js';
 
 // A template version previewed with a real employee's data (owner's request, 15 October 2026: "When previewing a
 // template, fetch any demo data already uploaded"): any version, a draft too, filled in for someone already in the
-// system, as a PDF to look at (or the Word file), nothing saved. The people to choose from are those whose employment
+// system, as a protected PDF to look at (owner's request, 15 October 2026: "No doc file export, just a protected
+// PDF"), nothing saved. The people to choose from are those whose employment
 // type the template is for, those with the most of its tags filled in first; a document the Contracts tab wouldn't
 // offer them yet (a resignation request before any ending) is previewed all the same, its empty tags showing as
 // "[Label]". The filling is DocumentsService.previewFill, from what generation reads.
@@ -120,10 +120,10 @@ export class TemplatePreviewService {
 
   /**
    * The version filled in for the employee, or (a job offer template only) the job offer; else for the first of
-   * people(). As a PDF to show (409 without a PDF converter) or the Word file. Restricted data printed is a view of
-   * it, written to the audit log.
+   * people(). As a protected PDF (409 without a PDF converter). Restricted data printed is a view of it, written to
+   * the audit log.
    */
-  async file(versionId: string, chosen: { employeeId?: string; offerId?: string }, format: FileFormat, user: SessionUser) {
+  async file(versionId: string, chosen: { employeeId?: string; offerId?: string }, user: SessionUser) {
     const { version, slot } = await this.version(versionId);
     if (chosen.employeeId && chosen.offerId) throw new BadRequestException('Choose an employee or a job offer to preview with, not both.');
     if (chosen.offerId && !isOfferSlot(slot)) {
@@ -149,8 +149,7 @@ export class TemplatePreviewService {
       filled = forEmployee;
       whose = forEmployee.employee.fullNameEn;
     }
-    const docx = { data: filled.data!, type: DOCX_MIME, fileName: templateFileName(`${slot.name} v${version.version} - preview - ${whose}.docx`) };
-    const file = format === 'pdf' ? await this.pdf.preview(docx) : docx;
+    const file = await this.pdf.protectedFile({ data: filled.data!, fileName: templateFileName(`${slot.name} v${version.version} - preview - ${whose}.docx`) });
     if (filled.shown.length) {
       await this.audit.record({
         userId: user.id,

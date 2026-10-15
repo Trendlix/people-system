@@ -41,7 +41,10 @@ export function attachment(fileName: string): string {
   return contentDisposition(fileName).replace(/^inline;/, 'attachment;');
 }
 
-/** How a Word file is asked for: as uploaded or filled (docx, the default), or as a PDF to preview in the browser. */
+/**
+ * How a Word file of HR's own is asked for (a template as uploaded, the Fields Guide): docx, the default, or a PDF to
+ * preview in the browser. A filled document is given only as a protected PDF (pdf/pdf-file.ts).
+ */
 export const FILE_FORMATS = ['docx', 'pdf'] as const;
 export type FileFormat = (typeof FILE_FORMATS)[number];
 

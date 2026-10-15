@@ -3,7 +3,6 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  Logger,
   NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
@@ -22,7 +21,7 @@ import { MailService } from '../mail/mail.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { fillTemplate } from '../documents/engine/index.js';
 import { restrictedTags } from '../documents/values.js';
-import { DOCX_MIME } from '../templates/docx-tags.js';
+import { PDF_NOT_SET_UP } from '../pdf/pdf.service.js';
 import { FILL_IN, OfferDocumentsService } from './offer-documents.service.js';
 import { OfferHiringService, salaryMasked, type HireResult } from './offer-hiring.service.js';
 import { offerEmail } from './offer-mail.js';
@@ -37,7 +36,8 @@ const LIST_CAP = 500;
 const RANGE_END = { select: { code: true, rank: true } } as const;
 /** As MailService says it, before anything is filled in or changed. */
 const EMAIL_NOT_SET_UP = "Email isn't set up on the server yet. Send the offer's link yourself instead.";
-const PDF_NOT_SET_UP = "The PDF converter isn't set up: download the Word file.";
+/** Sent only as a protected PDF (owner's request, 15 October 2026: "No doc file export, just a protected PDF"). */
+const NOT_SENT_WITHOUT_PDF = "The PDF converter isn't set up on the server, so the offer can't be sent: it goes as a protected PDF only.";
 const PROBATION_AFTER_END = (end: string) => `The probation would end after the contract, on ${shownDate(end)}. Shorten the probation or lengthen the contract.`;
 
 /** What a sent offer can still change; anything else needs a new offer. */
@@ -108,8 +108,6 @@ const allowanceNames = (rows: readonly AllowanceSnapshot[]) => rows.map((a) => a
 // CEO read; the amounts only for those who see salaries; only a Super Admin deletes.
 @Injectable()
 export class OffersService {
-  private readonly logger = new Logger(OffersService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -219,57 +217,49 @@ export class OffersService {
   }
 
   /**
-   * The offer's document: a draft filled in afresh (dated today), any other the copy as sent. As PDF from the
-   * converter (or the PDF kept when it was sent), else the Word file. Every view is audited, as the terms are restricted.
-   * While the employment type's template has no published version, a draft offer is previewed with the newest draft
-   * of it (owner's request, 15 October 2026: "Job offer preview should call data from the offer tab, even if not
-   * published yet"), whose number `templateDraft` gives (the X-Template-Draft header); sending still needs a published one.
+   * The offer's document, as a protected PDF only (owner's request, 15 October 2026: "No doc file export, just a
+   * protected PDF"): a draft filled in afresh (dated today) and converted, any other the PDF kept when it was sent (or,
+   * kept without one, the copy as sent converted). Refused (409) without a PDF converter when there is no PDF to give.
+   * Every view is audited, as the terms are restricted. While the employment type's template has no published version,
+   * a draft offer is previewed with the newest draft of it (owner's request, 15 October 2026: "Job offer preview should
+   * call data from the offer tab, even if not published yet"), whose number `templateDraft` gives (the X-Template-Draft
+   * header); sending still needs a published one.
    */
-  async document(
-    id: string,
-    format: 'pdf' | 'docx',
-    user: SessionUser,
-  ): Promise<{ data: Buffer; type: string; fileName: string; inline: boolean; templateDraft: number | null }> {
+  async document(id: string, user: SessionUser): Promise<{ data: Buffer; fileName: string; templateDraft: number | null }> {
     const o = await this.row(id);
-    let docx: Buffer;
     let fileName: string;
-    let pdf: Buffer | null = null;
+    let pdf: Buffer;
     let restricted: string[];
     let templateDraft: number | null = null;
 
     if (o.status === 'draft') {
-      if (format === 'pdf' && !this.documents.pdfAvailable) throw new ConflictException(PDF_NOT_SET_UP);
+      if (!this.documents.pdfAvailable) throw new ConflictException(PDF_NOT_SET_UP);
       const draft = await this.previewTemplate(o.employmentType);
       const filled = draft ? await this.fillFromDraft(o, draft) : await this.documents.fill(o, todayInCairo());
-      ({ data: docx, fileName, restricted } = filled);
+      ({ fileName, restricted } = filled);
       templateDraft = draft?.version ?? null;
-      if (format === 'pdf') pdf = await this.documents.toPdf(docx, fileName);
+      pdf = await this.protectedPdf(filled.data, fileName, PDF_NOT_SET_UP);
     } else {
       const files = await this.prisma.jobOffer.findUniqueOrThrow({ where: { id }, select: { data: true, pdf: true } });
       if (!files.data || !o.fileName) throw new NotFoundException(`${o.number} was never sent, so there is no copy of it.`);
-      docx = Buffer.from(files.data);
       fileName = o.fileName;
       restricted = this.restrictedOf(o);
-      if (format === 'pdf') {
-        if (files.pdf) pdf = Buffer.from(files.pdf);
-        else if (!this.documents.pdfAvailable) throw new ConflictException(PDF_NOT_SET_UP);
-        else pdf = await this.documents.toPdf(docx, fileName);
-      }
+      pdf = files.pdf ? await this.documents.storedPdf(files.pdf) : await this.protectedPdf(files.data, fileName, PDF_NOT_SET_UP);
     }
 
     if (restricted.length) {
-      const diff = { number: o.number, fields: restricted, seen: 'document', format, ...(templateDraft !== null && { templateDraft }) };
+      const diff = { number: o.number, fields: restricted, seen: 'document', ...(templateDraft !== null && { templateDraft }) };
       await this.audit.record({ userId: user.id, action: 'view_restricted', entityType: ENTITY, entityId: id, diff });
     }
-    if (pdf) return { data: pdf, type: 'application/pdf', fileName: this.documents.pdfName(fileName), inline: true, templateDraft };
-    return { data: docx, type: DOCX_MIME, fileName, inline: false, templateDraft };
+    return { data: pdf, fileName: this.documents.pdfName(fileName), templateDraft };
   }
 
   /**
-   * Sends a draft, or sends a sent offer again: the document is filled in now (dated today) and kept with its PDF
-   * when the converter answers (without it, the Word file); a new link replaces the one before, which stops working.
-   * By email: to the candidate, the answer going to the HR user, with the document attached. Refused once the last day
-   * has passed (set a later one first), and for an answered or withdrawn offer.
+   * Sends a draft, or sends a sent offer again: the document is filled in now (dated today) and kept with its protected
+   * PDF; a new link replaces the one before, which stops working. By email: to the candidate, the answer going to the
+   * HR user, with the protected PDF attached, never the Word file (owner's request, 15 October 2026: "No doc file
+   * export, just a protected PDF"). Refused without a PDF converter (409) or when it fails (503): the offer is then left
+   * as it was. Refused once the last day has passed (set a later one first), and for an answered or withdrawn offer.
    */
   async send(id: string, dto: SendOfferDto, user: SessionUser): Promise<{ offer: OfferView; link: string }> {
     const o = await this.row(id);
@@ -278,18 +268,12 @@ export class OffersService {
       throw new ConflictException(`The offer's last day, ${shownDate(fromDateOnly(o.expiresOn))}, has passed. Set a later last day, then send it again.`);
     }
     if (dto.via === 'email' && !this.mail.configured) throw new ServiceUnavailableException(EMAIL_NOT_SET_UP);
+    if (!this.documents.pdfAvailable) throw new ConflictException(NOT_SENT_WITHOUT_PDF);
 
     const documentDate = todayInCairo();
     const filled = await this.documents.fill(o, documentDate);
-    let pdf: Buffer | null = null;
-    if (this.documents.pdfAvailable) {
-      try {
-        pdf = await this.documents.toPdf(filled.data, filled.fileName);
-      } catch (err) {
-        // sent all the same, with the Word file
-        this.logger.warn(`${o.number} goes without its PDF: ${(err as Error).message}`);
-      }
-    }
+    // refused (503) when the converter fails: never sent with the Word file instead
+    const pdf = await this.protectedPdf(filled.data, filled.fileName, NOT_SENT_WITHOUT_PDF);
 
     const secret = randomBytes(32).toString('base64url');
     const link = `${new URL(dto.origin).origin}/offer/${secret}`;
@@ -306,9 +290,7 @@ export class OffersService {
         message: o.message,
         link,
       });
-      const attachment = pdf
-        ? { filename: this.documents.pdfName(filled.fileName), content: pdf, contentType: 'application/pdf' }
-        : { filename: filled.fileName, content: filled.data, contentType: DOCX_MIME };
+      const attachment = { filename: this.documents.pdfName(filled.fileName), content: pdf, contentType: 'application/pdf' };
       // refused (503) when the provider refuses it: the offer is then left as it was
       await this.mail.send({ to, replyTo: user.email, ...mail, attachments: [attachment] });
     }
@@ -322,7 +304,7 @@ export class OffersService {
         documentDate: toDateOnly(documentDate),
         fileName: filled.fileName,
         data: new Uint8Array(filled.data),
-        pdf: pdf ? new Uint8Array(pdf) : null,
+        pdf: new Uint8Array(pdf),
         tokenHash: tokenHash(secret),
         sentVia: dto.via,
         sentTo: to,
@@ -347,7 +329,6 @@ export class OffersService {
         templateVersion: filled.templateVersion,
         documentDate,
         fileName: filled.fileName,
-        pdf: pdf !== null,
       },
     });
     return { offer: await this.get(id, user), link };
@@ -485,6 +466,13 @@ export class OffersService {
     if (missing.length) throw new UnprocessableEntityException({ statusCode: 422, message: FILL_IN, missing });
     const { data } = await this.prisma.templateVersion.findUniqueOrThrow({ where: { id: template.id }, select: { data: true } });
     return { data: fillTemplate(Buffer.from(data), values), fileName: this.documents.fileName(o), restricted: restrictedTags(template.tags, slot.overrides) };
+  }
+
+  /** The filled .docx as a protected PDF; refused (409, `notSetUp`) without a PDF converter, (503) when it fails. */
+  private async protectedPdf(docx: Uint8Array, fileName: string, notSetUp: string): Promise<Buffer> {
+    const pdf = await this.documents.toPdf(docx, fileName);
+    if (!pdf) throw new ConflictException(notSetUp);
+    return pdf;
   }
 
   /** Whether the stored document has its PDF, without loading either file. */

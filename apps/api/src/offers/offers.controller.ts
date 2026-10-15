@@ -2,20 +2,16 @@ import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, 
 import type { Request, Response } from 'express';
 import { CurrentUser, DeletesRecords, Public, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { contentDisposition } from '../paperwork/paperwork-file.js';
-import { attachment } from '../templates/template-file.js';
+import { pdfFile, pdfOnly, wantsDownload } from '../pdf/pdf-file.js';
 import { AcceptOfferDto, AnswerOfferDto, CreateOfferDto, DeclineOfferDto, ListOffersDto, OfferDocumentQueryDto, SendOfferDto, UpdateOfferDto, WithdrawOfferDto } from './offers.dto.js';
 import { OffersService } from './offers.service.js';
 import { PublicOffersService, type ResponseOrigin } from './public-offers.service.js';
 
 // Job offers (owner's request, 15 October 2026). HR drafts, sends, withdraws offers and records answers given another
 // way; HR and the CEO read them (the amounts only for those who see salaries); only a Super Admin deletes one. The
-// candidate answers on the offer's page, without signing in, by the link's secret (PublicOffersController).
-
-/** A file as the browser gets it: a PDF shown, a Word file downloaded. */
-function fileOf(f: { data: Buffer; type: string; fileName: string; inline: boolean }): StreamableFile {
-  return new StreamableFile(f.data, { type: f.type, length: f.data.length, disposition: f.inline ? contentDisposition(f.fileName) : attachment(f.fileName) });
-}
+// candidate answers on the offer's page, without signing in, by the link's secret (PublicOffersController). The offer's
+// document is given only as a protected PDF (owner's request, 15 October 2026: "No doc file export, just a protected
+// PDF"), shown in the browser, or saved with ?download=1.
 
 @Controller('offers')
 export class OffersController {
@@ -54,8 +50,9 @@ export class OffersController {
   }
 
   /**
-   * The offer's document (?format=pdf|docx, the Word file unless sent): a draft filled in afresh, else the copy as sent.
-   * A draft previewed with a draft of its template, none being published, says which: X-Template-Draft: <its version>.
+   * The offer's document as a protected PDF (?format=docx is refused; ?download=1 saves it): a draft filled in afresh,
+   * else the copy as sent. A draft previewed with a draft of its template, none being published, says which:
+   * X-Template-Draft: <its version>.
    */
   @Roles('hr', 'ceo')
   @Get(':id/document')
@@ -68,9 +65,10 @@ export class OffersController {
     @CurrentUser() user: SessionUser,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const file = await this.offers.document(id, query.format ?? 'docx', user);
+    pdfOnly(query.format);
+    const file = await this.offers.document(id, user);
     if (file.templateDraft !== null) res.setHeader('X-Template-Draft', String(file.templateDraft));
-    return fileOf(file);
+    return pdfFile(file, wantsDownload(query.download));
   }
 
   /** Sends the offer by email, or makes its link for HR to send: { offer, link }. */
@@ -121,14 +119,14 @@ export class PublicOffersController {
     return this.offers.view(token);
   }
 
-  /** The offer as sent: the PDF shown in the browser, or the Word file. */
+  /** The offer as sent, as a protected PDF: shown in the browser, or saved with ?download=1. */
   @Get(':token/document')
   @Header('Cache-Control', 'no-store')
   @Header('Referrer-Policy', 'no-referrer')
   @Header('X-Content-Type-Options', 'nosniff')
   @Header('Content-Security-Policy', "default-src 'none'")
-  async document(@Param('token') token: string): Promise<StreamableFile> {
-    return fileOf(await this.offers.file(token));
+  async document(@Param('token') token: string, @Query('download') download: string | undefined): Promise<StreamableFile> {
+    return pdfFile(await this.offers.file(token), wantsDownload(download));
   }
 
   @Post(':token/accept')

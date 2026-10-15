@@ -1,23 +1,27 @@
+import { PDFDocument } from '@cantoo/pdf-lib';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import type { MockInstance } from 'vitest';
 import { arabicAmountInWords } from '../src/documents/engine/index.js';
 import { PdfService } from '../src/pdf/pdf.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { paragraphTexts, readDocx, textParts } from '../src/templates/docx-tags.js';
 import { readZip } from '../src/templates/zip.js';
 import { docx, p, r, realTemplate } from './fixtures/docx.js';
+import { convertedPdf, hasEncrypt } from './fixtures/pdf.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
 // Documents generated from the published templates: the profile's Contracts tab (owner's request, 15 October 2026).
 // The templates are published through the templates API in setup: the owner's real contract, resignation and
-// clearance templates, and small ones built here for the other slots.
+// clearance templates, and small ones built here for the other slots. A document is given out only as a protected PDF
+// (owner's request, 15 October 2026: "No doc file export, just a protected PDF"): the converter is stubbed with a PDF
+// made here, which is protected for real; what was filled in is read from the Word file kept in the database.
 
 const RUN = Date.now().toString(36);
 const DIGITS = String(Date.now() % 10_000_000).padStart(7, '0');
 const NATIONAL_ID = `2950312${DIGITS}`; // born 12 March 1995
 const REP_NATIONAL_ID = '28001011234567';
-const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const ONLY_SUPER_ADMIN = 'Only a Super Admin can delete records.';
 const FILL_IN = 'Fill in the missing details first.';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
@@ -97,6 +101,7 @@ describe('Documents (e2e)', () => {
   let ft: { id: string; employmentId: string; code: string; contractId: string; contractNumber: string };
   let pt: { id: string; employmentId: string; contractId: string };
   let contractDoc: Doc;
+  let convert: MockInstance<PdfService['fromDocx']>;
   const api = () => request(app.getHttpServer());
 
   const tabOf = async (id: string, session = hr): Promise<Tab> => (await api().get(`/api/employees/${id}/documents`).set('Cookie', session).expect(200)).body as Tab;
@@ -106,6 +111,8 @@ describe('Documents (e2e)', () => {
   const step = (docId: string, action: 'printed' | 'verify', session = hr) => api().post(`/api/documents/${docId}/${action}`).set('Cookie', session);
   const sign = (docId: string, file: Buffer, name: string, session = hr) => api().post(`/api/documents/${docId}/signed`).set('Cookie', session).attach('file', file, name);
   const fileOf = (docId: string, session = hr) => api().get(`/api/documents/${docId}/file`).set('Cookie', session).buffer(true).parse(bytes);
+  /** The filled Word file as kept (it is never given out). */
+  const docxOf = async (docId: string) => Buffer.from((await prisma.generatedDocument.findUniqueOrThrow({ where: { id: docId }, select: { data: true } })).data);
   const auditOf = (id: string) => prisma.auditLog.findMany({ where: { entityType: 'generated_document', entityId: id }, orderBy: { id: 'asc' }, include: { user: { select: { email: true } } } });
 
   async function publish(slot: string, file: Buffer, language?: 'ar' | 'en', draftOnly = false) {
@@ -136,6 +143,9 @@ describe('Documents (e2e)', () => {
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
+    // the converter (Gotenberg) can't run here: its PDF is stood in for, and protected for real
+    const converted = await convertedPdf();
+    convert = vi.spyOn(app.get(PdfService), 'fromDocx').mockImplementation(async () => converted);
     await prisma.generatedDocument.deleteMany();
     await prisma.templateVersion.deleteMany();
     hrEmail = await createUser(prisma, ['hr']);
@@ -186,6 +196,7 @@ describe('Documents (e2e)', () => {
     // the template versions are left for the templates tests to clear, which they can't while documents use them
     await prisma.generatedDocument.deleteMany();
     if (companyBefore) await prisma.company.update({ where: { id: 1 }, data: companyBefore });
+    vi.restoreAllMocks();
     await app.close();
   });
 
@@ -296,10 +307,12 @@ describe('Documents (e2e)', () => {
         note: null,
       });
 
+      // given out as a protected PDF, shown in the browser
       const file = await fileOf(contractDoc.id).expect(200);
-      expect(file.headers['content-type']).toBe(DOCX);
-      expect(file.headers['content-disposition']).toMatch(/^attachment; filename="Contract _ Full-time[^"]*"; filename\*=UTF-8''Contract%20%C2%B7%20Full-time/);
-      const filled = file.body as Buffer;
+      expect(file.headers['content-type']).toBe('application/pdf');
+      expect(file.headers['content-disposition']).toMatch(/^inline; filename="Contract _ Full-time[^"]*\.pdf"; filename\*=UTF-8''Contract%20%C2%B7%20Full-time.*\.pdf$/);
+      expect(hasEncrypt(file.body as Buffer)).toBe(true);
+      const filled = await docxOf(contractDoc.id);
       expect(filled.length).toBe(contractDoc.sizeBytes);
       expect(readDocx(filled)).toEqual({ tags: [], unknownTags: [], broken: [] }); // no tag left
       const text = textOf(filled);
@@ -326,7 +339,7 @@ describe('Documents (e2e)', () => {
 
     it('the social insurance copy prints the insured salary as the gross', async () => {
       const res = await generate(ft.id, { slotKey: 'contract_full_time_insurance', contractId: ft.contractId }).expect(201);
-      const text = textOf((await fileOf(res.body.id).expect(200)).body as Buffer);
+      const text = textOf(await docxOf(res.body.id));
       // 20,000 capped at 2026's maximum insurable wage
       expect(text).toContain(`راتب شامل وقدره 16,700 جنيهاً مصريا (${arabicAmountInWords(16700)})`);
       expect(text).not.toContain('20,000');
@@ -335,10 +348,10 @@ describe('Documents (e2e)', () => {
 
     it('a template in English prints the job title and employment type in English', async () => {
       const res = await generate(pt.id, { slotKey: 'contract_part_time', contractId: pt.contractId }).expect(201);
-      expect(textOf((await fileOf(res.body.id).expect(200)).body as Buffer)).toBe(`Nour Docs ${RUN} works as Account Manager (Part-time) for EGP 8,000 from 15/01/2026.`);
+      expect(textOf(await docxOf(res.body.id))).toBe(`Nour Docs ${RUN} works as Account Manager (Part-time) for EGP 8,000 from 15/01/2026.`);
       const offer = await generate(ft.id, { slotKey: 'offer_full_time' }).expect(201);
       expect(offer.body.hasRestricted).toBe(false);
-      expect(textOf((await fileOf(offer.body.id).expect(200)).body as Buffer)).toBe('عمر خالد محمود — مدير حسابات — الحسابات');
+      expect(textOf(await docxOf(offer.body.id))).toBe('عمر خالد محمود — مدير حسابات — الحسابات');
       expect((await auditOf(offer.body.id)).map((a) => a.action)).toEqual(['generate']); // nothing restricted: no view logged
     });
 
@@ -352,7 +365,7 @@ describe('Documents (e2e)', () => {
       const first = await generate(ft.id, { slotKey: 'hr_letter_en', inputs: { letter_to: 'CIB', letter_purpose: 'a credit card' } }).expect(201);
       expect(first.body.inputs).toEqual({ letter_to: 'CIB', letter_purpose: 'a credit card' });
       const { nameEn } = await prisma.company.findUniqueOrThrow({ where: { id: 1 } });
-      expect(textOf((await fileOf(first.body.id).expect(200)).body as Buffer)).toBe(`To CIB, for a credit card: Omar Docs ${RUN} is our Account Manager (Full-time) since 15/01/2026. ${nameEn}`);
+      expect(textOf(await docxOf(first.body.id))).toBe(`To CIB, for a credit card: Omar Docs ${RUN} is our Account Manager (Full-time) since 15/01/2026. ${nameEn}`);
       const second = await generate(ft.id, { slotKey: 'hr_letter_en', inputs: { letter_to: 'The Embassy of Italy', letter_purpose: 'a visa' }, note: 'For his trip' }).expect(201);
       const letters = section(await tabOf(ft.id), 'letters').find((i) => i.slotKey === 'hr_letter_en')!;
       expect(letters.documents.map((d) => [d.id, d.note])).toEqual([
@@ -442,16 +455,27 @@ describe('Documents (e2e)', () => {
       );
     });
 
-    it('previews a document as a PDF in the browser, once the server has a PDF converter', async () => {
+    it('gives a document only as a protected PDF: shown, or saved with ?download=1; never the Word file', async () => {
       const doc = (await generate(pt.id, { slotKey: 'nda' }).expect(201)).body as Doc;
-      const preview = (session = hr) => api().get(`/api/documents/${doc.id}/file?format=pdf`).set('Cookie', session);
-      expect((await preview().expect(409)).body.message).toMatch(/^The PDF converter isn't set up/);
-      const convert = vi.spyOn(app.get(PdfService), 'fromDocx').mockResolvedValue(Buffer.from('%PDF-1.7 preview'));
-      const shown = await preview(ceo).buffer(true).parse(bytes).expect(200);
+      const get = (query: string, session = hr) => api().get(`/api/documents/${doc.id}/file${query}`).set('Cookie', session).buffer(true).parse(bytes);
+      const json = (res: request.Response) => JSON.parse((res.body as Buffer).toString('utf8')) as { message: string };
+
+      const shown = await get('?format=pdf', ceo).expect(200);
       expect(shown.headers['content-type']).toBe('application/pdf');
-      expect(shown.headers['content-disposition']).toMatch(/^inline; .*\.pdf/);
-      convert.mockRestore();
-      await api().get(`/api/documents/${doc.id}/file?format=odt`).set('Cookie', hr).expect(400);
+      expect(shown.headers['content-disposition']).toMatch(/^inline; filename="NDA[^"]*\.pdf"/);
+      const saved = await get('?download=1').expect(200);
+      expect(saved.headers['content-type']).toBe('application/pdf');
+      expect(saved.headers['content-disposition']).toMatch(/^attachment; filename="NDA[^"]*\.pdf"/);
+      // protected: encrypted (AES-256), opens without a password, and is the converter's page
+      const pdf = saved.body as Buffer;
+      expect(hasEncrypt(pdf)).toBe(true);
+      expect((await PDFDocument.load(pdf, { password: '' })).getPageCount()).toBe(1);
+      await expect(PDFDocument.load(pdf)).rejects.toThrow();
+
+      for (const format of ['docx', 'odt']) expect(json(await get(`?format=${format}`).expect(400)).message).toBe('Documents are given as protected PDFs only.');
+      // no converter on the server: no document at all, rather than the Word file
+      convert.mockResolvedValueOnce(null);
+      expect(json(await get('').expect(409)).message).toBe("The PDF converter isn't set up on the server, so documents can't be given out yet: they are given as protected PDFs only.");
       await api().delete(`/api/documents/${doc.id}`).set('Cookie', superAdmin).expect(204);
     });
 
@@ -508,13 +532,13 @@ describe('Documents (e2e)', () => {
 
       // a reason typed in English isn't printed on the Arabic request: the owner's default is
       const resignation = await generate(ft.id, { slotKey: 'resignation_request', documentDate: '2026-10-01' }).expect(201);
-      const text = textOf((await fileOf(resignation.body.id).expect(200)).body as Buffer);
+      const text = textOf(await docxOf(resignation.body.id));
       expect(text).toContain('أنا عمر خالد محمود');
       expect(text).toContain('من العمل داخل الشركة لأسباب شخصية وذلك اعتبارا من اليوم الموافق:  01/10/2026');
       expect(resignation.body.hasRestricted).toBe(false);
 
       const clearance = await generate(ft.id, { slotKey: 'clearance_dues', documentDate: '2026-10-15' }).expect(201);
-      const cleared = textOf((await fileOf(clearance.body.id).expect(200)).body as Buffer);
+      const cleared = textOf(await docxOf(clearance.body.id));
       expect(cleared).toContain('إنه في يوم الخميس الموافق 15/10/2026');
       expect(cleared).toContain('أحمد علي');
       expect(cleared).toContain(REP_NATIONAL_ID);
@@ -556,7 +580,7 @@ describe('Documents (e2e)', () => {
       expect((await check(ft.id, { slotKey: 'cert_experience' }).expect(200)).body).toEqual({ missing: [], usesRestricted: false });
 
       const res = await generate(ft.id, { slotKey: 'cert_experience' }).expect(201);
-      const filled = (await fileOf(res.body.id).expect(200)).body as Buffer;
+      const filled = await docxOf(res.body.id);
       expect(readDocx(filled)).toEqual({ tags: [], unknownTags: [], broken: [] });
       expect(textOf(filled)).toBe(['عمر خالد محمود', 'Manages the key accounts.', '•Plans visits', '◦weekly', '•متابعة العملاء'].join('\n'));
       // the template's paragraph (right to left) and run, with the bold and the points' indents added
@@ -613,7 +637,7 @@ describe('Documents (e2e)', () => {
         const res = await generate(hala.id, { slotKey: 'hr_letter_ar' }).expect(201);
         expect(res.body.hasRestricted).toBe(true);
         // shift A: 9 to 6, Sunday to Thursday; the employment's grade, G4
-        expect(textOf((await fileOf(res.body.id).expect(200)).body as Buffer)).toBe(
+        expect(textOf(await docxOf(res.body.id))).toBe(
           [
             `hala.${RUN}@mail.test | منى عادل | Mona Manager ${RUN}`,
             'من 9:00 ص إلى 6:00 م، من الأحد إلى الخميس | 9:00 AM – 6:00 PM, Sunday to Thursday',

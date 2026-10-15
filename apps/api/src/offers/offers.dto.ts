@@ -18,6 +18,7 @@ import { AllowanceRows, type AllowanceAmountDto } from '../allowances/allowances
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
 import { PROBATION_CAP_MESSAGE } from '../contracts/contracts.dto.js';
+import { PDF_ONLY } from '../pdf/pdf-file.js';
 
 // Job offers (owner's request, 15 October 2026): the candidate, the position and the terms HR drafts, sending the
 // offer, and the answer. Dates: YYYY-MM-DD. Money: a number, to the piastre. Text fields: an empty string clears them.
@@ -212,10 +213,15 @@ export class ListOffersDto {
   q?: string;
 }
 
+/** GET /offers/:id/document: a protected PDF only (owner's request, 15 October 2026); ?download=1 saves it. */
 export class OfferDocumentQueryDto {
-  /** The Word file unless sent. */
-  @EmptyIsUnset() @IsOptional() @IsIn(['pdf', 'docx'], { message: 'Choose the format: pdf or docx.' })
-  format?: 'pdf' | 'docx';
+  /** pdf, or none: the Word file is refused (pdfOnly). */
+  @EmptyIsUnset() @IsOptional() @IsString({ message: PDF_ONLY })
+  format?: string;
+
+  /** 1 (or true): saved rather than shown. */
+  @EmptyIsUnset() @IsOptional() @IsString({ message: 'Send download=1 to save the PDF, or leave it out to open it.' })
+  download?: string;
 }
 
 export class SendOfferDto {

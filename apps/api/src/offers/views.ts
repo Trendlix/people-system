@@ -48,9 +48,13 @@ export interface OfferContext {
   previewVersion: number | null;
   /** A draft's: what its template prints that the offer has no value for; [] otherwise. */
   missing: MissingTag[];
-  /** Whether the stored document has its PDF. */
+  /**
+   * Whether the stored document has its PDF: sending keeps one (it needs the converter now); a copy kept without one
+   * (sent before, or a draft accepted on paper) is converted when it is opened.
+   */
   hasPdf: boolean;
   emailConfigured: boolean;
+  /** Whether a PDF converter is set up: without one, no document is given out and no offer is sent. */
   pdfAvailable: boolean;
 }
 

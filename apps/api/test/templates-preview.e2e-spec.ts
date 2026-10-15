@@ -1,12 +1,15 @@
+import { PDFDocument } from '@cantoo/pdf-lib';
 import type { INestApplication } from '@nestjs/common';
 import { TEMPLATE_TAGS, type EmploymentType } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import type { MockInstance } from 'vitest';
 import { PdfService } from '../src/pdf/pdf.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { paragraphTexts, textParts } from '../src/templates/docx-tags.js';
 import { readZip } from '../src/templates/zip.js';
 import { docx, p, r, realTemplate } from './fixtures/docx.js';
+import { convertedPdf, hasEncrypt } from './fixtures/pdf.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
 // A template version previewed with a real employee's data (owner's request, 15 October 2026: "When previewing a
@@ -14,13 +17,14 @@ import { createApp, createUser, signIn } from './helpers.js';
 // too) filled in for one of them, nothing saved. A job offer template is previewed with job offers instead ("Job offer
 // preview should call data from the offer tab, even if not published yet"), or the people while there is no offer of
 // its employment type. Other test files' employees may be in the database as well, so the lists are read for this
-// file's people and offers (their names end in RUN).
+// file's people and offers (their names end in RUN). The preview is given only as a protected PDF (owner's request,
+// 15 October 2026: "No doc file export, just a protected PDF"): the converter is stubbed with a PDF made here, which is
+// protected for real, and what was filled in is read from the Word file handed to it.
 
 const RUN = Date.now().toString(36);
 const DIGITS = String((Date.now() + 7) % 10_000_000).padStart(7, '0');
 const NATIONAL_ID = `2950312${DIGITS}`; // born 12 March 1995
 const IBAN = 'EG380019000500000000263180002';
-const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const NO_ONE = 'There is no one to preview this template with yet: add an employee first.';
 const NO_OFFER = 'There is nothing to preview this template with yet: draft a job offer first.';
 const MASK = '••••';
@@ -83,6 +87,7 @@ describe('Template preview with data (e2e)', () => {
   let sparse: { id: string; number: string };
   let amira: { id: string; number: string };
   let celine: { id: string; number: string };
+  let convert: MockInstance<PdfService['fromDocx']>;
   const api = () => request(app.getHttpServer());
 
   const people = async (versionId: string, session = hr): Promise<Person[]> =>
@@ -90,6 +95,11 @@ describe('Template preview with data (e2e)', () => {
   const mine = (list: Person[]) => list.filter((x) => x.fullNameEn.endsWith(RUN));
   const preview = (versionId: string, query: Record<string, string> = {}, session = hr) =>
     api().get(`/api/templates/versions/${versionId}/preview`).query(query).set('Cookie', session).buffer(true).parse(bytes);
+  /** The text of the version previewed for `query`: given as a protected PDF, read from the Word file filled in for it. */
+  const previewText = async (versionId: string, query: Record<string, string> = {}, session = hr) => {
+    await preview(versionId, query, session).expect(200);
+    return textOf(Buffer.from(convert.mock.lastCall![0]));
+  };
   const viewsOf = (versionId: string) => prisma.auditLog.findMany({ where: { entityType: 'template_version', entityId: versionId, action: 'view_restricted' }, orderBy: { id: 'asc' } });
 
   async function draft(slot: string, file: Buffer, language?: 'ar' | 'en') {
@@ -133,6 +143,9 @@ describe('Template preview with data (e2e)', () => {
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
+    // the converter (Gotenberg) can't run here: its PDF is stood in for, and protected for real
+    const converted = await convertedPdf();
+    convert = vi.spyOn(app.get(PdfService), 'fromDocx').mockImplementation(async () => converted);
     hr = await signIn(app, await createUser(prisma, ['hr']));
     const adminEmail = await createUser(prisma, ['admin']);
     admin = await signIn(app, adminEmail);
@@ -184,6 +197,7 @@ describe('Template preview with data (e2e)', () => {
   afterAll(async () => {
     await prisma.jobOffer.deleteMany({ where: { id: { in: [sparse, amira, celine].filter(Boolean).map((o) => o.id) } } });
     if (housingId) await prisma.allowanceType.deleteMany({ where: { id: housingId } }).catch(() => undefined);
+    vi.restoreAllMocks();
     await app.close();
   });
 
@@ -200,8 +214,7 @@ describe('Template preview with data (e2e)', () => {
     expect(slot, 'every employment type has someone in the test database').toBeDefined();
     const v = await draft(slot!, docx({ body: p(r('{{full_name_en}}')) }), 'en');
     expect(await people(v.id)).toEqual([]);
-    expect((await preview(v.id, { format: 'docx' }).expect(409)).body.toString()).toContain(NO_ONE);
-    await preview(v.id).expect(409);
+    expect((await preview(v.id).expect(409)).body.toString()).toContain(NO_ONE);
   });
 
   it('lists those the template is for, the most of its tags filled in first, with how many have a value', async () => {
@@ -232,13 +245,16 @@ describe('Template preview with data (e2e)', () => {
   });
 
   it('fills the version in, a draft too: the values, an empty tag as its label, restricted data shown to HR (and logged)', async () => {
-    const res = await preview(letter.id, { employeeId: aaron.id, format: 'docx' }).expect(200);
-    expect(res.headers['content-type']).toBe(DOCX);
-    expect(res.headers['content-disposition']).toMatch(/^attachment;/);
-    expect(fileNameOf(res.headers['content-disposition'])).toBe(`HR letter · English v${letter.version} - preview - Aaron Complete ${RUN}.docx`);
+    const res = await preview(letter.id, { employeeId: aaron.id }).expect(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['content-disposition']).toMatch(/^inline;/);
+    expect(fileNameOf(res.headers['content-disposition'])).toBe(`HR letter · English v${letter.version} - preview - Aaron Complete ${RUN}.pdf`);
     expect(res.headers['x-preview-employee']).toBe(aaron.id);
     expect(res.headers['cache-control']).toBe('private, no-store');
-    expect(textOf(res.body as Buffer).split('\n')).toEqual([
+    expect(hasEncrypt(res.body as Buffer)).toBe(true);
+    const [filled, name] = convert.mock.lastCall!;
+    expect(name).toBe(`HR letter · English v${letter.version} - preview - Aaron Complete ${RUN}.docx`);
+    expect(textOf(Buffer.from(filled)).split('\n')).toEqual([
       `Aaron Complete ${RUN} is our Account Manager, holding بكالوريوس تجارة.`,
       `National ID ${NATIONAL_ID}; salary EGP 20,000; IBAN ${IBAN}.`,
       `To [${LABEL.get('letter_to')}]. Last working day: [${LABEL.get('last_working_day')}]. Again: Aaron Complete ${RUN}.`,
@@ -253,7 +269,7 @@ describe('Template preview with data (e2e)', () => {
     expect(await prisma.generatedDocument.count({ where: { employeeId: aaron.id } })).toBe(0);
 
     // someone with little: their gaps as labels
-    const little = textOf((await preview(letter.id, { employeeId: adam.id, format: 'docx' }).expect(200)).body as Buffer);
+    const little = await previewText(letter.id, { employeeId: adam.id });
     expect(little).toContain(`Adam Minimal ${RUN} is our Account Manager, holding [Qualification (Arabic)].`);
     expect(little).toContain('National ID [National ID number]; salary EGP [Gross salary]; IBAN [IBAN].');
     // nothing restricted was printed with a value
@@ -262,61 +278,59 @@ describe('Template preview with data (e2e)', () => {
 
   it('masks restricted data for a role that may not see it (an Admin), and shows it to the CEO', async () => {
     const before = (await viewsOf(letter.id)).length;
-    const masked = textOf((await preview(letter.id, { employeeId: aaron.id, format: 'docx' }, admin).expect(200)).body as Buffer);
+    const masked = await previewText(letter.id, { employeeId: aaron.id }, admin);
     expect(masked).toContain(`National ID ${MASK}; salary EGP ${MASK}; IBAN ${MASK}.`);
     expect(masked).toContain(`Aaron Complete ${RUN} is our Account Manager`);
     expect(masked).not.toContain(NATIONAL_ID);
     expect(masked).not.toContain(IBAN);
     // empty or not, it is masked all the same
-    expect(textOf((await preview(letter.id, { employeeId: adam.id, format: 'docx' }, admin).expect(200)).body as Buffer)).toContain(
+    expect(await previewText(letter.id, { employeeId: adam.id }, admin)).toContain(
       `National ID ${MASK}; salary EGP ${MASK}; IBAN ${MASK}.`,
     );
     expect((await viewsOf(letter.id)).filter((v) => v.userId === adminId)).toEqual([]);
 
-    const shown = textOf((await preview(letter.id, { employeeId: aaron.id, format: 'docx' }, ceo).expect(200)).body as Buffer);
+    const shown = await previewText(letter.id, { employeeId: aaron.id }, ceo);
     expect(shown).toContain(`National ID ${NATIONAL_ID}; salary EGP 20,000; IBAN ${IBAN}.`);
     expect(await viewsOf(letter.id)).toHaveLength(before + 1);
   });
 
   it('previews with the best person unless one is chosen', async () => {
     const [best] = await people(letter.id);
-    const res = await preview(letter.id, { format: 'docx' }).expect(200);
+    const res = await preview(letter.id).expect(200);
     expect(res.headers['x-preview-employee']).toBe(best.id);
   });
 
   it('a contract copy prints the signed contract; a document not offered yet prints its empty tags as labels', async () => {
-    const contractText = textOf((await preview(contractV.id, { employeeId: aaron.id, format: 'docx' }).expect(200)).body as Buffer);
+    const contractText = await previewText(contractV.id, { employeeId: aaron.id });
     expect(contractText).toContain(NATIONAL_ID);
     expect(contractText).toContain('20,000');
 
-    const resigned = textOf((await preview(resignation.id, { employeeId: adam.id, format: 'docx' }).expect(200)).body as Buffer);
+    const resigned = await previewText(resignation.id, { employeeId: adam.id });
     expect(resigned).toContain('عمر خالد محمود');
     for (const tag of ['reason_ar', 'resignation_date', 'request_date']) expect(resigned).toContain(`[${LABEL.get(tag)}]`);
   });
 
-  it('as a PDF: refused (409) without a converter, shown in the browser with one', async () => {
+  it('only as a protected PDF: shown, or saved with ?download=1; the Word file refused; none without a converter (409)', async () => {
     const before = (await viewsOf(letter.id)).length;
-    expect((await preview(letter.id, { employeeId: aaron.id }).expect(409)).body.toString()).toMatch(/The PDF converter isn't set up/);
+    convert.mockResolvedValueOnce(null);
+    expect((await preview(letter.id, { employeeId: aaron.id }).expect(409)).body.toString()).toContain(
+      "The PDF converter isn't set up on the server, so documents can't be given out yet: they are given as protected PDFs only.",
+    );
     // nothing was shown, so nothing was viewed
     expect(await viewsOf(letter.id)).toHaveLength(before);
+    expect((await preview(letter.id, { employeeId: aaron.id, format: 'docx' }).expect(400)).body.toString()).toContain('Documents are given as protected PDFs only.');
+    expect(await viewsOf(letter.id)).toHaveLength(before);
 
-    const convert = vi.spyOn(app.get(PdfService), 'fromDocx').mockResolvedValue(Buffer.from('%PDF-1.7 preview'));
-    try {
-      const res = await preview(letter.id, { employeeId: aaron.id }).expect(200);
-      expect(res.headers['content-type']).toBe('application/pdf');
-      expect(res.headers['content-disposition']).toMatch(/^inline;/);
-      expect(fileNameOf(res.headers['content-disposition'])).toBe(`HR letter · English v${letter.version} - preview - Aaron Complete ${RUN}.pdf`);
-      expect(res.headers['x-preview-employee']).toBe(aaron.id);
-      expect((res.body as Buffer).toString()).toBe('%PDF-1.7 preview');
-      // the filled file was converted
-      const [file, name] = convert.mock.calls[0];
-      expect(textOf(Buffer.from(file))).toContain(NATIONAL_ID);
-      expect(name).toMatch(/ - preview - Aaron Complete .*\.docx$/);
-      expect(await viewsOf(letter.id)).toHaveLength(before + 1);
-      await preview(letter.id, { employeeId: aaron.id, format: 'pdf' }, ceo).expect(200);
-    } finally {
-      convert.mockRestore();
-    }
+    const res = await preview(letter.id, { employeeId: aaron.id, download: '1' }).expect(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['content-disposition']).toMatch(/^attachment;/);
+    expect(fileNameOf(res.headers['content-disposition'])).toBe(`HR letter · English v${letter.version} - preview - Aaron Complete ${RUN}.pdf`);
+    // protected (AES-256): opens without a password, the converter's page in it
+    const pdf = res.body as Buffer;
+    expect(hasEncrypt(pdf)).toBe(true);
+    expect((await PDFDocument.load(pdf, { password: '' })).getPageCount()).toBe(1);
+    expect(await viewsOf(letter.id)).toHaveLength(before + 1);
+    await preview(letter.id, { employeeId: aaron.id, format: 'pdf' }, ceo).expect(200);
   });
 
   describe('a job offer template', () => {
@@ -355,12 +369,13 @@ describe('Template preview with data (e2e)', () => {
     });
 
     it("fills the draft in with the offer's data: the names, the job title, the salary and the allowances (and logs the view)", async () => {
-      const res = await preview(offerV.id, { offerId: amira.id, format: 'docx' }).expect(200);
-      expect(res.headers['content-type']).toBe(DOCX);
+      const res = await preview(offerV.id, { offerId: amira.id }).expect(200);
+      expect(res.headers['content-type']).toBe('application/pdf');
+      expect(hasEncrypt(res.body as Buffer)).toBe(true);
       expect(res.headers['x-preview-offer']).toBe(amira.id);
       expect(res.headers['x-preview-employee']).toBeUndefined();
-      expect(fileNameOf(res.headers['content-disposition'])).toBe(`Job offer · Full-time v${offerV.version} - preview - ${amira.number} - Amira Complete ${RUN}.docx`);
-      expect(textOf(res.body as Buffer).split('\n')).toEqual([
+      expect(fileNameOf(res.headers['content-disposition'])).toBe(`Job offer · Full-time v${offerV.version} - preview - ${amira.number} - Amira Complete ${RUN}.pdf`);
+      expect(textOf(Buffer.from(convert.mock.lastCall![0])).split('\n')).toEqual([
         `Amira Complete ${RUN} — عمر خالد محمود — Account Manager`,
         `Gross 20,000; allowances Housing ${RUN}: 1,500; total 21,500`,
         `Mobile 01012345678; IBAN [IBAN]; ${amira.number}`,
@@ -382,14 +397,14 @@ describe('Template preview with data (e2e)', () => {
       });
 
       // the one with less: its gaps as labels
-      const little = textOf((await preview(offerV.id, { offerId: sparse.id, format: 'docx' }).expect(200)).body as Buffer);
+      const little = await previewText(offerV.id, { offerId: sparse.id });
       expect(little).toContain(`Bilal Sparse ${RUN} — عمر خالد محمود — [Job title]`);
       expect(little).toContain(`Mobile [Mobile]; IBAN [IBAN]; ${sparse.number}`);
     });
 
     it('masks the salary for a role that may not see it (an Admin), and shows it to the CEO', async () => {
       const before = (await viewsOf(offerV.id)).length;
-      const masked = textOf((await preview(offerV.id, { offerId: amira.id, format: 'docx' }, admin).expect(200)).body as Buffer);
+      const masked = await previewText(offerV.id, { offerId: amira.id }, admin);
       expect(masked.split('\n')).toEqual([
         `Amira Complete ${RUN} — عمر خالد محمود — Account Manager`,
         `Gross ${MASK}; allowances ${MASK}; total ${MASK}`,
@@ -398,18 +413,18 @@ describe('Template preview with data (e2e)', () => {
       expect(masked).not.toContain('20,000');
       expect((await viewsOf(offerV.id)).filter((v) => v.userId === adminId)).toEqual([]);
 
-      const shown = textOf((await preview(offerV.id, { offerId: amira.id, format: 'docx' }, ceo).expect(200)).body as Buffer);
+      const shown = await previewText(offerV.id, { offerId: amira.id }, ceo);
       expect(shown).toContain('Gross 20,000; allowances');
       expect(await viewsOf(offerV.id)).toHaveLength(before + 1);
     });
 
     it('previews with the best offer unless one is chosen; an employee may still be chosen', async () => {
       const [best] = await people(offerV.id);
-      const res = await preview(offerV.id, { format: 'docx' }).expect(200);
+      const res = await preview(offerV.id).expect(200);
       expect(res.headers['x-preview-offer']).toBe(best.id);
-      const asEmployee = await preview(offerV.id, { employeeId: aaron.id, format: 'docx' }).expect(200);
+      const asEmployee = await preview(offerV.id, { employeeId: aaron.id }).expect(200);
       expect(asEmployee.headers['x-preview-employee']).toBe(aaron.id);
-      expect(textOf(asEmployee.body as Buffer)).toContain(`Aaron Complete ${RUN} — عمر خالد محمود — Account Manager`);
+      expect(textOf(Buffer.from(convert.mock.lastCall![0]))).toContain(`Aaron Complete ${RUN} — عمر خالد محمود — Account Manager`);
     });
 
     it('with no offer of its employment type: the people, as for any other template', async () => {
@@ -418,7 +433,7 @@ describe('Template preview with data (e2e)', () => {
       const list = await people(partTime.id);
       expect(list.every((x) => x.kind === 'employee' && x.employmentType === 'part_time')).toBe(true);
       expect(mine(list).map((x) => [x.kind, x.id, x.filled, x.total])).toEqual([['employee', abla.id, 2, 2]]);
-      const res = await preview(partTime.id, { format: 'docx' }).expect(200);
+      const res = await preview(partTime.id).expect(200);
       expect(res.headers['x-preview-employee']).toBe(list[0].id);
 
       // nobody of the type at all: nothing to preview with
@@ -434,33 +449,34 @@ describe('Template preview with data (e2e)', () => {
       expect(slot, 'every employment type has someone or an offer in the test database').toBeDefined();
       const empty = await draft(slot!, docx({ body: p(r('{{full_name_en}}')) }), 'en');
       expect(await people(empty.id)).toEqual([]);
-      expect((await preview(empty.id, { format: 'docx' }).expect(409)).body.toString()).toContain(NO_OFFER);
+      expect((await preview(empty.id).expect(409)).body.toString()).toContain(NO_OFFER);
     });
 
     it('the offer checked: for a job offer template only, not with an employee as well, and it must exist', async () => {
       const unknown = '00000000-0000-4000-8000-000000000000';
-      expect((await preview(letter.id, { offerId: amira.id, format: 'docx' }).expect(400)).body.toString()).toContain('only a job offer template takes a job offer');
-      expect((await preview(offerV.id, { offerId: amira.id, employeeId: aaron.id, format: 'docx' }).expect(400)).body.toString()).toContain('not both');
-      expect((await preview(offerV.id, { offerId: unknown, format: 'docx' }).expect(404)).body.toString()).toContain('Job offer not found.');
-      await preview(offerV.id, { offerId: 'nothing', format: 'docx' }).expect(400);
-      await preview(offerV.id, { offerId: amira.id, format: 'docx' }, staff).expect(403);
+      expect((await preview(letter.id, { offerId: amira.id }).expect(400)).body.toString()).toContain('only a job offer template takes a job offer');
+      expect((await preview(offerV.id, { offerId: amira.id, employeeId: aaron.id }).expect(400)).body.toString()).toContain('not both');
+      expect((await preview(offerV.id, { offerId: unknown }).expect(404)).body.toString()).toContain('Job offer not found.');
+      await preview(offerV.id, { offerId: 'nothing' }).expect(400);
+      await preview(offerV.id, { offerId: amira.id }, staff).expect(403);
     });
   });
 
   it('only HR, Admin and the CEO; the version, the employee and the format checked', async () => {
     await api().get(`/api/templates/versions/${letter.id}/preview-people`).set('Cookie', staff).expect(403);
-    await preview(letter.id, { employeeId: aaron.id, format: 'docx' }, staff).expect(403);
+    await preview(letter.id, { employeeId: aaron.id }, staff).expect(403);
     await api().get(`/api/templates/versions/${letter.id}/preview-people`).set('Cookie', ceo).expect(200);
     await api().get(`/api/templates/versions/${letter.id}/preview-people`).expect(401);
 
     const unknown = '00000000-0000-4000-8000-000000000000';
     await api().get(`/api/templates/versions/${unknown}/preview-people`).set('Cookie', hr).expect(404);
-    await preview(unknown, { format: 'docx' }).expect(404);
+    await preview(unknown).expect(404);
     await api().get('/api/templates/versions/not-a-uuid/preview-people').set('Cookie', hr).expect(400);
-    await preview(letter.id, { employeeId: 'nobody', format: 'docx' }).expect(400);
-    await preview(letter.id, { employeeId: unknown, format: 'docx' }).expect(404);
+    await preview(letter.id, { employeeId: 'nobody' }).expect(400);
+    await preview(letter.id, { employeeId: unknown }).expect(404);
     // someone never employed has nothing to preview with
-    await preview(letter.id, { employeeId: dina.id, format: 'docx' }).expect(400);
+    await preview(letter.id, { employeeId: dina.id }).expect(400);
     await preview(letter.id, { employeeId: aaron.id, format: 'odt' }).expect(400);
+    await preview(letter.id, { employeeId: aaron.id, format: 'docx' }).expect(400);
   });
 });

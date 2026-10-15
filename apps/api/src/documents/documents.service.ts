@@ -283,7 +283,7 @@ export class DocumentsService {
     return documentView(row);
   }
 
-  /** The filled .docx. A view of one that prints restricted data is written to the audit log. */
+  /** The filled .docx (given out only as a protected PDF: DocumentsController). A view of one that prints restricted data is written to the audit log. */
   async file(id: string, user: SessionUser): Promise<{ data: Buffer; type: string; fileName: string }> {
     const d = await this.prisma.generatedDocument.findUnique({
       where: { id },

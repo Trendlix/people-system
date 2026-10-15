@@ -3,7 +3,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { DOCX_MIME } from '../templates/docx-tags.js';
+import { OfferDocumentsService } from './offer-documents.service.js';
 import { OfferHiringService, type HireResult } from './offer-hiring.service.js';
 import type { AcceptOfferDto, DeclineOfferDto } from './offers.dto.js';
 import { cairoDate, nameMatches, shownStatus, tokenHash } from './rules.js';
@@ -60,6 +60,7 @@ export class PublicOffersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly hiring: OfferHiringService,
+    private readonly documents: OfferDocumentsService,
   ) {}
 
   /** The offer as the candidate sees it; the first time records that they opened the link. */
@@ -69,14 +70,18 @@ export class PublicOffersService {
     return this.publicView(o);
   }
 
-  /** The offer as sent: the PDF, shown in the browser, or the Word file when there is no PDF. */
-  async file(secret: string): Promise<{ data: Buffer; type: string; fileName: string; inline: boolean }> {
+  /**
+   * The offer as sent, as a protected PDF only (owner's request, 15 October 2026: "No doc file export, just a protected
+   * PDF"): the PDF kept when it was sent, or (kept without one) the copy as sent converted now; never the Word file.
+   */
+  async file(secret: string): Promise<{ data: Buffer; fileName: string }> {
     const o = await this.bySecret(secret);
     const files = await this.prisma.jobOffer.findUniqueOrThrow({ where: { id: o.id }, select: { data: true, pdf: true } });
     if (!files.data || !o.fileName) throw new NotFoundException("The offer's document isn't available. Please contact HR.");
+    const pdf = files.pdf ? await this.documents.storedPdf(files.pdf) : await this.documents.toPdf(files.data, o.fileName);
+    if (!pdf) throw new ConflictException("The offer's document can't be opened yet. Please try again later, or contact HR.");
     await this.opened(o);
-    if (files.pdf) return { data: Buffer.from(files.pdf), type: 'application/pdf', fileName: o.fileName.replace(/\.docx$/i, '.pdf'), inline: true };
-    return { data: Buffer.from(files.data), type: DOCX_MIME, fileName: o.fileName, inline: false };
+    return { data: pdf, fileName: this.documents.pdfName(o.fileName) };
   }
 
   /**

@@ -7,7 +7,7 @@ import { TYPED_TAGS } from '../documents/offer.js';
 import { previewValues } from '../documents/preview.js';
 import { missingTags, resolveValues, restrictedTags, type MissingTag, type RestrictedRight, type ValueSources } from '../documents/values.js';
 import { Prisma } from '../generated/prisma/client.js';
-import { PdfService } from '../pdf/pdf.service.js';
+import { pdfName, PdfService } from '../pdf/pdf.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { templateFileName } from '../templates/template-file.js';
 import { offerMissing, offerSlot, termDates } from './rules.js';
@@ -108,7 +108,8 @@ export function offerSources(
 
 // The job offer document (owner's request, 15 October 2026): the employment type's published job offer template,
 // filled in with the offer's values by the same engine as an employee's documents. A draft is filled in afresh each
-// time it is previewed; sending keeps the copy sent (and its PDF, when the converter answers).
+// time it is previewed; sending keeps the copy sent, the Word file and its protected PDF. It is given out only as
+// that protected PDF (owner's request, 15 October 2026: "No doc file export, just a protected PDF").
 @Injectable()
 export class OfferDocumentsService {
   constructor(
@@ -182,12 +183,17 @@ export class OfferDocumentsService {
 
   /** A Word file's PDF name. */
   pdfName(docxName: string): string {
-    return docxName.replace(/\.docx$/i, '.pdf');
+    return pdfName(docxName);
   }
 
-  /** The .docx as PDF; null without a converter. Refused (503) when the converter fails. */
+  /** The filled .docx as a protected PDF; null without a converter. Refused (503) when the converter fails. */
   toPdf(docx: Uint8Array, fileName: string): Promise<Buffer | null> {
-    return this.pdf.fromDocx(docx, fileName);
+    return this.pdf.protectedFromDocx(docx, fileName);
+  }
+
+  /** The PDF kept with a sent offer, protected (one kept before PDFs were protected is protected now). */
+  storedPdf(pdf: Uint8Array): Promise<Buffer> {
+    return this.pdf.protectedCopy(pdf);
   }
 
   get pdfAvailable(): boolean {

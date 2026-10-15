@@ -155,8 +155,11 @@ docker stats --no-stream              # memory of each container
 
 ## The PDF converter
 
-Job offers are sent as PDFs (owner's request, 15 October 2026): the API fills the Word template, then the `pdf`
-container (Gotenberg's LibreOffice image, `gotenberg/gotenberg:8.37.0-libreoffice`) turns it into a PDF.
+Filled documents leave the system only as protected PDFs (owner's request, 15 October 2026: "No doc file export, just
+a protected PDF"): the API fills the Word template, the `pdf` container (Gotenberg's LibreOffice image,
+`gotenberg/gotenberg:8.37.0-libreoffice`) turns it into a PDF, and the API encrypts that (AES-256, no password to open
+it, printing allowed, editing and copying not). Generated documents, job offers and templates previewed with data are
+never given as Word files.
 
 - **Internal only**, like the OCR service: no port, reached by the API at `http://pdf:3000` (`PDF_URL`); documents are
   converted in memory and never leave the server.
@@ -167,7 +170,8 @@ container (Gotenberg's LibreOffice image, `gotenberg/gotenberg:8.37.0-libreoffic
   in Arial or Times New Roman, Arabic included, keep their layout. It also has Noto and Amiri. A font it still lacks
   (e.g. Segoe UI) is printed in the nearest one it has. The fonts are downloaded when the image is first built; if that
   fails the image is built anyway, without them (the build log says which fonts came).
-- **If it is down,** offers are sent with the Word file instead.
+- **If it is down,** documents can't be opened and offers can't be sent (the API says so); nothing falls back to the
+  Word file. Don't turn on PDF/A in the converter: PDF/A forbids encryption.
 
 ```bash
 docker compose ps pdf                 # "healthy"
