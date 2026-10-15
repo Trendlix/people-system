@@ -8,8 +8,8 @@ import { latinDigits, normalizeArabic } from './arabic-text.js';
 //
 // Front: the header (جمهورية مصر العربية / بطاقة تحقيق الشخصية), the first name on one line and the rest of the
 // name on the next, two address lines, then the 14-digit national ID; a small printed code may also appear.
-// Back: the national ID again, profession, gender, religion, marital status, the issue date,
-// "البطاقة سارية حتى <date>" (the expiry) and the civil registry office that issued it.
+// Back: the national ID again with the issue date beside it, profession, gender, religion, marital status and
+// "البطاقة سارية حتى <date>" (the expiry). The card names no issuing office (owner, 15 October 2026).
 //
 // A scan cut a little short (up to ~3 mm, often at the top) loses or cuts through a line. A line the top or bottom
 // edge of the picture runs through reads as something else, as surely as a whole one (a cut number reads as another,
@@ -25,7 +25,6 @@ export interface IdCardSuggestions {
   issueDate?: string;
   expiryDate?: string;
   printedNo?: string;
-  issuingOffice?: string;
   maritalStatus?: 'single' | 'married' | 'divorced' | 'widowed';
   /** The governorate the address ends in, as the profile's list names it (packages/shared GOVERNORATES). */
   governorate?: string;
@@ -140,9 +139,6 @@ export function readIdCardWithNotes(front: CardSide, back: CardSide, today = tod
       notes.push('The issue date read on the card did not agree with the expiry date, so it is worked out from the expiry date (a card is valid for seven years). Check both against the card.');
     }
   }
-
-  const office = readIssuingOffice(backLines);
-  if (office) out.issuingOffice = office;
 
   const printedNo = only(unique([...frontLines, ...backLines].flatMap(printedCodesIn)));
   if (printedNo) out.printedNo = printedNo;
@@ -282,7 +278,7 @@ function letterCount(line: string): number {
   return line.match(LETTERS)?.length ?? 0;
 }
 
-// ---------- back: gender, dates, issuing office ----------
+// ---------- back: gender, marital status, dates (and the address's city and governorate) ----------
 
 /** ذكر → male, أنثى → female; only from the words on the card, never from the ID digits. */
 function readGender(lines: string[]): 'male' | 'female' | undefined {
@@ -411,16 +407,6 @@ function readIssueDate(
   const months = unique(dates.filter((d) => d.monthOnly).map((d) => d.ymd));
   if (months.length) return only(months);
   return only(unique(dates.map((d) => d.ymd)));
-}
-
-/** The line naming the civil registry office (سجل مدني …), from those words on, without dates or numbers. */
-function readIssuingOffice(lines: string[]): string | undefined {
-  const line = lines.find((l) => normalizeArabic(l).includes('سجل مدني'));
-  if (!line) return undefined;
-  const text = addressText(line.replace(DATE, ' ').replace(DIGIT, ' ').replace(/[A-Za-z]+/g, ' '));
-  const from = text.indexOf('سجل');
-  const office = from >= 0 ? addressText(text.slice(from)) : '';
-  return office.split(' ').length >= 3 ? office : undefined;
 }
 
 /** A printed card code: two capital Latin letters and seven digits (e.g. FA1234567). */

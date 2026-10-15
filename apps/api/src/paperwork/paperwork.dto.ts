@@ -35,7 +35,7 @@ export class SearchPaperworkDto {
 }
 
 class CorrectionItemDto {
-  @IsIn(LEARNED_FIELDS, { message: 'Only the Arabic name, the address and the issuing office are learned.' })
+  @IsIn(LEARNED_FIELDS, { message: 'Only the Arabic name and the address are learned.' })
   field: LearnedField;
 
   /** As the card reading said it. */

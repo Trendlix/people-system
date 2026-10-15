@@ -4,12 +4,15 @@ import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addMonths, fromDateOnly, toDateOnly } from '../common/date-only.js';
 import type { Employment } from '../generated/prisma/client.js';
+import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateEmploymentDto, EndEmploymentDto, UpdateEmploymentDto } from './employment.dto.js';
 import { EmployeesService } from './employees.service.js';
 
 const ENTITY = 'employment';
 const DATE_FIELDS = ['joinDate', 'probationEnd', 'jdAcknowledgedAt', 'endDate'] as const;
+/** An end of the range of grades a job title takes. */
+const RANGE_END = { select: { code: true, rank: true } } as const;
 
 /** An employment's own columns as the API sends them, for comparing and the audit log. */
 function fields(e: Employment) {
@@ -167,7 +170,8 @@ export class EmploymentsService {
 
   /**
    * Checks that span several fields or other records, and the values that follow from them: the team of the chosen
-   * job title, office days only for Hybrid, the default probation end. Returns the values to write as well.
+   * job title, a grade the job title takes, office days only for Hybrid, the default probation end. Returns the values
+   * to write as well.
    */
   private async checked(employeeId: string, before: Employment | null, dto: CreateEmploymentDto | UpdateEmploymentDto) {
     const derived: { departmentId?: string | null; officeDays?: number[]; probationEnd?: string | null } = {};
@@ -191,6 +195,8 @@ export class EmploymentsService {
         if (!exists) throw new BadRequestException('Team not found. Choose one from the list.');
       }
     }
+
+    await this.assertGradeFits(before, dto);
 
     if (dto.managerId) {
       if (dto.managerId === employeeId) throw new BadRequestException('An employee cannot be their own manager.');
@@ -223,6 +229,34 @@ export class EmploymentsService {
     if (probationEnd && probationEnd < joinDate) throw new BadRequestException('Probation must end on or after the join date.');
 
     return derived;
+  }
+
+  /**
+   * The grade must be one the job title takes, when it has a range (owner's decision, 15 October 2026). Checked when
+   * either is chosen or changed, against the other as saved; a range narrowed since leaves the history as it was.
+   */
+  private async assertGradeFits(before: Employment | null, dto: CreateEmploymentDto | UpdateEmploymentDto) {
+    const jobTitleChanged = dto.jobTitleId !== undefined && dto.jobTitleId !== (before?.jobTitleId ?? null);
+    const gradeChanged = dto.gradeId !== undefined && dto.gradeId !== (before?.gradeId ?? null);
+    if (!jobTitleChanged && !gradeChanged) return;
+    const jobTitleId = dto.jobTitleId !== undefined ? dto.jobTitleId : (before?.jobTitleId ?? null);
+    const gradeId = dto.gradeId !== undefined ? dto.gradeId : (before?.gradeId ?? null);
+    if (!gradeId) return;
+
+    const grade = await this.prisma.grade.findUnique({ where: { id: gradeId }, select: { rank: true } });
+    if (!grade) throw new BadRequestException('Grade not found. Choose one from the list.');
+    if (!jobTitleId) return;
+    const job = await this.prisma.jobTitle.findUnique({
+      where: { id: jobTitleId },
+      select: { titleEn: true, minGrade: RANGE_END, maxGrade: RANGE_END },
+    });
+    if (!job || inGradeRange(grade.rank, job.minGrade, job.maxGrade)) return; // an unknown job title is refused above
+    const only = job.minGrade && job.maxGrade && job.minGrade.rank === job.maxGrade.rank ? job.minGrade.code : null;
+    throw new BadRequestException(
+      only
+        ? `${job.titleEn} takes grade ${only} only. Choose that grade, or widen the job title's grades.`
+        : `${job.titleEn} takes grades ${gradeRange(job.minGrade, job.maxGrade)}. Choose a grade in that range.`,
+    );
   }
 
   /** The chosen manager must not report to this person, directly or through others (by current employments). */

@@ -14,7 +14,6 @@ const FRONT = `جمهورية مصر العربية
 FA1234567`;
 
 const BACK = `٢٩٥٠٣١٢٠١٢٣٤٥٦   ٢٠٢٠/٠٧
-سجل مدني مدينة نصر
 مهندس برمجيات
 ذكر     مسلم     أعزب
 البطاقة سارية حتى ٢٠٢٧/٠٧/١١`;
@@ -33,7 +32,6 @@ const NOISY_BACK = `٣٠١٠٢٢٨١٦٠٤٥٦٢
 طالبة
 أنثى  مسلمة  آنسة
 ٠٥ / ٢٠١٩
-سجل مدنى طنطا أول
 البطاقة ســارية حتى
 ١٤/٠٥/٢٠٢٦`;
 
@@ -47,7 +45,6 @@ describe('Egyptian ID card reader', () => {
       gender: 'male',
       issueDate: '2020-07-01',
       expiryDate: '2027-07-11',
-      issuingOffice: 'سجل مدني مدينة نصر',
       printedNo: 'FA1234567',
       maritalStatus: 'single',
       governorate: 'Cairo',
@@ -65,7 +62,6 @@ describe('Egyptian ID card reader', () => {
       gender: 'female',
       issueDate: '2019-05-01',
       expiryDate: '2026-05-14',
-      issuingOffice: 'سجل مدنى طنطا أول',
       maritalStatus: 'single',
       governorate: 'Gharbia',
       city: 'طنطا',
@@ -139,8 +135,11 @@ describe('Egyptian ID card reader', () => {
     expect(read.expiryDate).toBe('2027-07-11');
   });
 
-  it('suggests no issuing office without a name after "سجل مدني"', () => {
-    expect(readIdCard(null, BACK.replace('سجل مدني مدينة نصر', 'سجل مدني'), TODAY)).not.toHaveProperty('issuingOffice');
+  it('suggests no issuing office (the card has none), and still reads a date on a line of words', () => {
+    const back = BACK.replace('٢٩٥٠٣١٢٠١٢٣٤٥٦   ٢٠٢٠/٠٧', '٢٩٥٠٣١٢٠١٢٣٤٥٦\nسجل مدني مدينة نصر ٢٠٢٠/٠٧');
+    const read = readIdCard(FRONT, back, TODAY);
+    expect(read).toEqual(readIdCard(FRONT, BACK, TODAY));
+    expect(read).not.toHaveProperty('issuingOffice');
   });
 
   it('reads the printed code in Latin or Arabic-Indic digits', () => {

@@ -1,5 +1,10 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsEmail, IsFQDN, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, MaxLength } from 'class-validator';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
+
+// " @TrendLIX.com" → "trendlix.com": trimmed, lower case, without an @ in front; an empty string clears it
+const Domain = () =>
+  Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase().replace(/^@/, '') || null : value));
 
 // Every field is optional: send only what changes. An empty string clears a field.
 export class UpdateCompanyDto {
@@ -48,6 +53,13 @@ export class UpdateCompanyDto {
   @IsUrl({}, { message: 'Enter a valid website, e.g. trendlix.com.' })
   @MaxLength(200)
   website?: string | null;
+
+  /** The domain every work email must use, e.g. trendlix.com. Empty: work emails can use any domain. */
+  @Domain()
+  @IsOptional()
+  @IsFQDN({}, { message: 'Enter the email domain, e.g. trendlix.com.' })
+  @MaxLength(253)
+  emailDomain?: string | null;
 
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(150)
   repName?: string | null;

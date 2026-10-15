@@ -1,8 +1,8 @@
 // Learning from HR's corrections to ID card readings (owner's request, 14 October 2026). After a card is read, HR
 // fixes misread words before saving; the words changed are remembered as "wrong → right" and applied to the next
-// readings. Only the Arabic name, the address and the issuing office are learned: never national ID numbers or dates.
+// readings. Only the Arabic name and the address are learned: never national ID numbers or dates.
 
-export const LEARNED_FIELDS = ['fullNameAr', 'addressAr', 'issuingOffice'] as const;
+export const LEARNED_FIELDS = ['fullNameAr', 'addressAr'] as const;
 export type LearnedField = (typeof LEARNED_FIELDS)[number];
 
 /** A learned fix: whole words as read, and as HR corrected them. */

@@ -65,6 +65,7 @@ model Company {
   phone               String?
   email               String?
   website             String?
+  emailDomain         String?   @map("email_domain") // the domain every work email must use, e.g. trendlix.com
   repName             String?   @map("rep_name") // company representative who signs documents
   repTitle            String?   @map("rep_title")
   repNationalId       String?   @map("rep_national_id") @db.Char(14) // RESTRICTED: never returned in full
@@ -111,14 +112,19 @@ model Shift {
   @@map("shifts")
 }
 
+// A job title takes a range of grades, not one grade (owner's decision, 15 October 2026): a Junior and a Senior Account
+// Manager are both Account Managers, at different grades. The range is the lowest and the highest grade, either or
+// both optional (none: any grade); each employment has the person's own grade within it.
 model JobTitle {
   id             String         @id @default(uuid()) @db.Uuid
   departmentId   String         @map("department_id") @db.Uuid
   department     Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   titleEn        String         @map("title_en")
   titleAr        String?        @map("title_ar")
-  gradeId        String?        @map("grade_id") @db.Uuid
-  grade          Grade?         @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  minGradeId     String?        @map("min_grade_id") @db.Uuid // the lowest grade it takes; empty: no lower limit
+  minGrade       Grade?         @relation("JobTitleMinGrade", fields: [minGradeId], references: [id], onDelete: Restrict)
+  maxGradeId     String?        @map("max_grade_id") @db.Uuid // the highest grade it takes; empty: no upper limit
+  maxGrade       Grade?         @relation("JobTitleMaxGrade", fields: [maxGradeId], references: [id], onDelete: Restrict)
   jdPurpose      String?        @map("jd_purpose")
   jdRequirements String?        @map("jd_requirements")
   jdVersion      Int            @default(1) @map("jd_version")
@@ -132,17 +138,20 @@ model JobTitle {
 }
 
 // The grading system (owner's table, 14 October 2026): G1 Entry Level … G9 Executive. The rank orders the hierarchy
-// (1 = entry level). Every job title has a grade; an employee's grade is their job title's.
+// (1 = entry level). Job title and grade apart (owner's decision, 15 October 2026): a job title takes a range of grades,
+// and an employee's grade is their employment's own, within the range of their job title.
 model Grade {
-  id          String     @id @default(uuid()) @db.Uuid
-  code        String     @unique // G1 … G9
-  rank        Int        @unique // 1 = lowest level
-  levelEn     String     @map("level_en") // Entry Level, Junior, … Executive
-  levelAr     String?    @map("level_ar")
+  id          String       @id @default(uuid()) @db.Uuid
+  code        String       @unique // G1 … G9
+  rank        Int          @unique // 1 = lowest level
+  levelEn     String       @map("level_en") // Entry Level, Junior, … Executive
+  levelAr     String?      @map("level_ar")
   description String? // e.g. example job titles
-  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz
-  jobTitles   JobTitle[]
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  lowestOf    JobTitle[]   @relation("JobTitleMinGrade") // job titles whose range starts at this grade
+  highestOf   JobTitle[]   @relation("JobTitleMaxGrade") // job titles whose range ends at this grade
+  employments Employment[]
 
   @@map("grades")
 }
@@ -232,6 +241,8 @@ model Employee {
 // One period of employment, from hiring to its end (resignation, termination …). The profile (Employee) is kept for
 // good; a person hired again gets a new employment and the earlier ones stay as their history (owner's decision,
 // 14 October 2026). At most one employment per person is current: the one without an end date (checked by the API).
+// The person's grade is the employment's own, within the range of grades its job title takes (owner's decision,
+// 15 October 2026; checked by the API).
 model Employment {
   id               String          @id @default(uuid()) @db.Uuid
   employeeId       String          @map("employee_id") @db.Uuid
@@ -242,6 +253,8 @@ model Employment {
   department       Department?     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   jobTitleId       String?         @map("job_title_id") @db.Uuid
   jobTitle         JobTitle?       @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  gradeId          String?         @map("grade_id") @db.Uuid // the person's own grade, within the job title's range
+  grade            Grade?          @relation(fields: [gradeId], references: [id], onDelete: Restrict)
   managerId        String?         @map("manager_id") @db.Uuid
   manager          Employee?       @relation("Manager", fields: [managerId], references: [id], onDelete: Restrict)
   joinDate         DateTime        @map("join_date") @db.Date
@@ -260,6 +273,7 @@ model Employment {
   @@index([employeeId])
   @@index([departmentId])
   @@index([jobTitleId])
+  @@index([gradeId])
   @@index([managerId])
   @@map("employments")
 }
@@ -273,6 +287,7 @@ model EmployeeIdentity {
   printedNo     String?   @map("printed_no") // الرقم المطبوع
   issueDate     DateTime? @map("issue_date") @db.Date // printed as MM/YYYY
   expiryDate    DateTime? @map("expiry_date") @db.Date
+  // No longer used (owner, 15 October 2026: not on the card); kept so nothing already typed in is lost.
   issuingOffice String?   @map("issuing_office")
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -320,11 +335,11 @@ model PaperworkItem {
 }
 
 // Fixes learned from HR's corrections to ID card readings (src/paperwork/corrections.ts): whole words of the Arabic
-// name, the address or the issuing office as read, and as HR corrected them. Applied to the next readings. Never
-// national ID numbers or dates.
+// name or the address as read, and as HR corrected them. Applied to the next readings. Never national ID numbers or
+// dates.
 model OcrCorrection {
   id          String   @id @default(uuid()) @db.Uuid
-  field       String // fullNameAr, addressAr, issuingOffice
+  field       String // fullNameAr, addressAr
   wrong       String // the word(s) as read
   right       String // as HR corrected them
   timesSeen   Int      @default(1) @map("times_seen") // how often HR made this same correction

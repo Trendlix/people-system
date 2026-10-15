@@ -4,7 +4,7 @@ import type { App } from 'supertest/types.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
-// Unique per run, because the test database keeps data from earlier runs.
+// Unique names per run: the test files share one database (emptied at the start of each run).
 const NOT_A_TEAM = '00000000-0000-4000-8000-000000000000';
 const RUN = Date.now().toString(36).toUpperCase();
 const name = (base: string) => `${base} ${RUN}`;
@@ -20,7 +20,7 @@ describe('Organisation (e2e)', () => {
   const addHired = async (fullNameEn: string, employment: Record<string, unknown>) => {
     const e = await api().post('/api/employees').set('Cookie', session).send({ fullNameEn, fullNameAr: 'موظف' }).expect(201);
     const hired = await api().post(`/api/employees/${e.body.id}/employments`).set('Cookie', session).send(employment).expect(201);
-    return hired.body as { id: string; employment: { department: unknown; jobTitle: { grade: unknown } } };
+    return hired.body as { id: string; employment: { id: string; department: unknown; gradeId: string | null; grade: unknown } };
   };
   /** A new department with one team in it; job titles belong to teams. */
   const newTeam = async (department: string, team = 'Core Team') => {
@@ -165,13 +165,13 @@ describe('Organisation (e2e)', () => {
     });
 
     it('adds, changes and deletes a grade; codes and ranks stay unique; a grade in use stays', async () => {
-      // a rank and code no grade has, whatever earlier runs left in the test database
+      // a rank and code no grade has, whatever other tests added
       const taken = new Set(((await api().get('/api/grades').set('Cookie', session).expect(200)).body as { rank: number }[]).map((g) => g.rank));
       let rank = 50;
       while (taken.has(rank)) rank++;
       const code = `T${RUN}`;
       const created = await api().post('/api/grades').set('Cookie', session).send({ code: code.toLowerCase(), rank, levelEn: 'Trial' }).expect(201);
-      expect(created.body).toMatchObject({ code, rank, levelEn: 'Trial', _count: { jobTitles: 0 } });
+      expect(created.body).toMatchObject({ code, rank, levelEn: 'Trial', _count: { jobTitles: 0, employments: 0 } });
       await api().post('/api/grades').set('Cookie', session).send({ code, rank: rank + 1, levelEn: 'Copy' }).expect(409);
       await api().post('/api/grades').set('Cookie', session).send({ code: `${code}X`, rank, levelEn: 'Copy' }).expect(409);
       const changed = await api().patch(`/api/grades/${created.body.id}`).set('Cookie', session).send({ levelAr: 'تجريبي' }).expect(200);
@@ -181,27 +181,45 @@ describe('Organisation (e2e)', () => {
       const job = await api()
         .post('/api/job-titles')
         .set('Cookie', session)
-        .send({ departmentId: team.id, titleEn: 'Trial Role', gradeId: created.body.id })
+        .send({ departmentId: team.id, titleEn: 'Trial Role', minGradeId: created.body.id, maxGradeId: created.body.id })
         .expect(201);
       const refused = await api().delete(`/api/grades/${created.body.id}`).set('Cookie', session).expect(409);
-      expect(refused.body.message).toContain('1 job title');
+      expect(refused.body.message).toBe(`${code} is used by 1 job title range. Give them another grade before deleting it.`);
 
-      // an employee's grade is their job title's
-      const e = await addHired(name('Graded Person'), { employmentType: 'full_time', joinDate: '2026-03-01', jobTitleId: job.body.id });
-      expect(e.employment.jobTitle.grade).toMatchObject({ code, levelEn: 'Trial', levelAr: 'تجريبي' });
+      // an employee's grade is their employment's own (owner's decision, 15 October 2026)
+      const e = await addHired(name('Graded Person'), { employmentType: 'full_time', joinDate: '2026-03-01', jobTitleId: job.body.id, gradeId: created.body.id });
+      expect(e.employment.grade).toMatchObject({ code, levelEn: 'Trial', levelAr: 'تجريبي' });
+
+      // a job title counts once, whichever end of its range the grade is
+      const other = await api()
+        .post('/api/job-titles')
+        .set('Cookie', session)
+        .send({ departmentId: team.id, titleEn: 'Trial Lead', minGradeId: grade('G1'), maxGradeId: created.body.id })
+        .expect(201);
+      const listed = ((await api().get('/api/grades').set('Cookie', session).expect(200)).body as { id: string; _count: unknown }[]).find(
+        (g) => g.id === created.body.id,
+      );
+      expect(listed?._count).toEqual({ jobTitles: 2, employments: 1 });
+      const used = await api().delete(`/api/grades/${created.body.id}`).set('Cookie', session).expect(409);
+      expect(used.body.message).toBe(`${code} is used by 2 job title ranges and 1 employment. Give them another grade before deleting it.`);
+
       await api().delete(`/api/employees/${e.id}`).set('Cookie', session).expect(204);
-
-      await api().patch(`/api/job-titles/${job.body.id}`).set('Cookie', session).send({ gradeId: '' }).expect(200);
+      await api().delete(`/api/job-titles/${other.body.id}`).set('Cookie', session).expect(204);
+      await api().patch(`/api/job-titles/${job.body.id}`).set('Cookie', session).send({ minGradeId: '', maxGradeId: null }).expect(200);
+      expect((await api().get(`/api/grades/${created.body.id}`).set('Cookie', session).expect(200)).body._count).toEqual({ jobTitles: 0, employments: 0 });
       await api().delete(`/api/grades/${created.body.id}`).set('Cookie', session).expect(204);
     });
 
     it('refuses an unknown grade on a job title', async () => {
       const team = await newTeam('Ungraded');
-      await api()
-        .post('/api/job-titles')
-        .set('Cookie', session)
-        .send({ departmentId: team.id, titleEn: 'Nobody', gradeId: '00000000-0000-4000-8000-000000000000' })
-        .expect(404);
+      for (const end of ['minGradeId', 'maxGradeId']) {
+        const res = await api()
+          .post('/api/job-titles')
+          .set('Cookie', session)
+          .send({ departmentId: team.id, titleEn: 'Nobody', [end]: '00000000-0000-4000-8000-000000000000' })
+          .expect(404);
+        expect(res.body.message).toBe('Grade not found. Choose one from the list.');
+      }
     });
   });
 
@@ -268,13 +286,21 @@ describe('Organisation (e2e)', () => {
           departmentId,
           titleEn: 'HR Specialist',
           titleAr: 'أخصائي موارد بشرية',
-          gradeId: grade('G4'),
+          minGradeId: grade('G3'),
+          maxGradeId: grade('G6'),
           jdPurpose: 'Run day-to-day HR operations.',
           duties: ['Maintain employee files', '  ', 'Track attendance and leave'],
         })
         .expect(201);
       expect(res.body.jdVersion).toBe(1);
-      expect(res.body.grade).toMatchObject({ code: 'G4', rank: 4, levelEn: 'Senior' });
+      expect(res.body).toMatchObject({
+        minGradeId: grade('G3'),
+        minGrade: { id: grade('G3'), code: 'G3', rank: 3, levelEn: 'Intermediate', levelAr: null },
+        maxGradeId: grade('G6'),
+        maxGrade: { id: grade('G6'), code: 'G6', rank: 6, levelEn: 'Manager', levelAr: null },
+      });
+      expect(res.body).not.toHaveProperty('grade');
+      expect(res.body).not.toHaveProperty('gradeId');
       expect(res.body.department).toMatchObject({ nameEn: 'People Team', parent: { nameEn: name('Human Resources') } });
       expect(res.body.duties.map((d: { duty: string; position: number }) => [d.position, d.duty])).toEqual([
         [1, 'Maintain employee files'],
@@ -290,7 +316,7 @@ describe('Organisation (e2e)', () => {
         .expect(201);
       const id = created.body.id;
 
-      const renamed = await api().patch(`/api/job-titles/${id}`).set('Cookie', session).send({ gradeId: grade('G6') }).expect(200);
+      const renamed = await api().patch(`/api/job-titles/${id}`).set('Cookie', session).send({ maxGradeId: grade('G6') }).expect(200);
       expect(renamed.body.jdVersion).toBe(1);
 
       const sameDuties = await api()
@@ -319,6 +345,78 @@ describe('Organisation (e2e)', () => {
       const res = await api().get(`/api/job-titles?departmentId=${departmentId}`).set('Cookie', session).expect(200);
       expect(res.body.length).toBeGreaterThanOrEqual(2);
       expect(res.body.every((j: { departmentId: string }) => j.departmentId === departmentId)).toBe(true);
+      // with the range of grades each takes
+      const specialist = (res.body as { titleEn: string }[]).find((j) => j.titleEn === 'HR Specialist');
+      expect(specialist).toMatchObject({ minGrade: { code: 'G3', rank: 3 }, maxGrade: { code: 'G6', rank: 6 } });
+      expect(specialist).not.toHaveProperty('grade');
+    });
+
+    it('takes a range of grades: either end can be empty, a change keeps the other end as saved, never reversed', async () => {
+      const reversed = await api()
+        .post('/api/job-titles')
+        .set('Cookie', session)
+        .send({ departmentId, titleEn: 'Backwards', minGradeId: grade('G6'), maxGradeId: grade('G3') })
+        .expect(400);
+      expect(reversed.body.message).toBe('The lowest grade must be at or below the highest.');
+
+      const created = await api()
+        .post('/api/job-titles')
+        .set('Cookie', session)
+        .send({ departmentId, titleEn: 'Account Manager', minGradeId: grade('G3'), maxGradeId: grade('G6') })
+        .expect(201);
+      const id = created.body.id as string;
+      const change = (body: object) => api().patch(`/api/job-titles/${id}`).set('Cookie', session).send(body);
+
+      // one end at a time, against the other as saved
+      expect((await change({ minGradeId: grade('G7') }).expect(400)).body.message).toBe('The lowest grade must be at or below the highest.');
+      expect((await change({ maxGradeId: grade('G2') }).expect(400)).body.message).toBe('The lowest grade must be at or below the highest.');
+      const single = await change({ minGradeId: grade('G6') }).expect(200); // G6 to G6
+      expect(single.body).toMatchObject({ minGrade: { code: 'G6' }, maxGrade: { code: 'G6' } });
+
+      const fromNone = await change({ minGradeId: '' }).expect(200);
+      expect(fromNone.body).toMatchObject({ minGradeId: null, minGrade: null, maxGrade: { code: 'G6' } });
+      const any = await change({ maxGradeId: null }).expect(200);
+      expect(any.body).toMatchObject({ minGrade: null, maxGrade: null });
+
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'job_title', entityId: id }, orderBy: { id: 'asc' } });
+      expect(audit.map((a) => a.diff)).toEqual([
+        expect.objectContaining({ titleEn: 'Account Manager', minGradeId: grade('G3'), maxGradeId: grade('G6') }),
+        { minGradeId: { from: grade('G3'), to: grade('G6') } },
+        { minGradeId: { from: grade('G6'), to: null } },
+        { maxGradeId: { from: grade('G6'), to: null } },
+      ]);
+    });
+
+    it('is not narrowed past the grades of the people who hold it now; those who left do not count', async () => {
+      const job = await api()
+        .post('/api/job-titles')
+        .set('Cookie', session)
+        .send({ departmentId, titleEn: 'Account Executive', minGradeId: grade('G3'), maxGradeId: grade('G6') })
+        .expect(201);
+      const change = (body: object) => api().patch(`/api/job-titles/${job.body.id}`).set('Cookie', session).send(body);
+      const hire = (who: string, code: string) =>
+        addHired(name(who), { employmentType: 'full_time', joinDate: '2026-03-01', jobTitleId: job.body.id, gradeId: grade(code) });
+      const leaver = await hire('Executive G5', 'G5');
+      await hire('Executive G6', 'G6');
+
+      const narrowed = await change({ maxGradeId: grade('G4') }).expect(409);
+      expect(narrowed.body.message).toBe('2 current employees with this title have grades outside G3 to G4. Change their grades first, or widen the range.');
+      await change({ maxGradeId: '' }).expect(200); // widening is always fine: from G3
+      const below = await change({ minGradeId: grade('G6') }).expect(409);
+      expect(below.body.message).toBe('1 current employee with this title has a grade below G6. Change their grade first, or widen the range.');
+      const above = await change({ minGradeId: '', maxGradeId: grade('G5') }).expect(409);
+      expect(above.body.message).toBe('1 current employee with this title has a grade above G5. Change their grade first, or widen the range.');
+
+      // once the G5 employee has left, the range can start at G6; their history keeps the grade they had
+      await api()
+        .post(`/api/employees/${leaver.id}/employments/${leaver.employment.id}/end`)
+        .set('Cookie', session)
+        .send({ endDate: '2026-06-30', endReason: 'resigned' })
+        .expect(200);
+      const narrower = await change({ minGradeId: grade('G6') }).expect(200);
+      expect(narrower.body).toMatchObject({ minGrade: { code: 'G6' }, maxGrade: null });
+      const history = await api().get(`/api/employees/${leaver.id}`).set('Cookie', session).expect(200);
+      expect(history.body.employments[0]).toMatchObject({ gradeId: grade('G5'), grade: { code: 'G5' } });
     });
 
     it('rejects an unknown team and a duplicate title in the same team', async () => {

@@ -13,12 +13,17 @@ import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentit
 const ENTITY = 'employee';
 const DATE_FIELDS = ['dateOfBirth'] as const;
 
-/** Where an employment places someone: their team (or department) with its department, and their job title and grade. */
+/** A grade as employments name it. */
+const GRADE = { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } } as const;
+
+/**
+ * Where an employment places someone: their team (or department) with its department, their job title, and their own
+ * grade (owner's decision, 15 October 2026: no longer the job title's).
+ */
 const PLACE = {
   department: { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
-  jobTitle: {
-    select: { id: true, titleEn: true, titleAr: true, jdVersion: true, grade: { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } } },
-  },
+  jobTitle: { select: { id: true, titleEn: true, titleAr: true, jdVersion: true } },
+  grade: GRADE,
 } satisfies Prisma.EmploymentInclude;
 
 const EMPLOYMENT = {
@@ -69,7 +74,6 @@ function identityView(row: EmployeeIdentity | null) {
     printedNo: row?.printedNo ?? null,
     issueDate: fromDateOnly(row?.issueDate ?? null),
     expiryDate: fromDateOnly(row?.expiryDate ?? null),
-    issuingOffice: row?.issuingOffice ?? null,
   };
 }
 
@@ -120,7 +124,6 @@ function identityData(dto: UpdateIdentityDto) {
     printedNo: dto.printedNo,
     issueDate: date(dto.issueDate),
     expiryDate: date(dto.expiryDate),
-    issuingOffice: dto.issuingOffice,
   };
 }
 
@@ -198,7 +201,9 @@ export class EmployeesService {
             endDate: true,
             endReason: true,
             department: PLACE.department,
-            jobTitle: { select: { id: true, titleEn: true, grade: { select: { id: true, code: true, rank: true, levelEn: true } } } },
+            jobTitle: { select: { id: true, titleEn: true } },
+            gradeId: true,
+            grade: GRADE,
             manager: { select: { id: true, fullNameEn: true } },
           },
         },
@@ -218,6 +223,8 @@ export class EmployeesService {
           joinDate: fromDateOnly(current.joinDate),
           department: current.department,
           jobTitle: current.jobTitle,
+          gradeId: current.gradeId,
+          grade: current.grade,
           manager: current.manager,
         },
         lastEnded: ended && { endDate: fromDateOnly(ended.endDate), endReason: ended.endReason },
@@ -291,6 +298,7 @@ export class EmployeesService {
   async create(dto: CreateEmployeeDto, user: SessionUser) {
     const { employeeCode: code, identity: sentIdentity, ...given } = dto;
     const employeeCode = code ?? (await this.nextCode());
+    await this.assertCompanyDomain(dto.workEmail);
     await this.assertFree({ employeeCode, workEmail: dto.workEmail });
     const derived = await this.checked(null, dto);
     // national ID details with nothing filled in are not saved at all
@@ -312,13 +320,10 @@ export class EmployeesService {
   async update(id: string, dto: UpdateEmployeeDto, user: SessionUser) {
     const before = await this.row(id);
     const { employeeCode, ...rest } = dto;
-    await this.assertFree(
-      {
-        employeeCode: employeeCode !== before.employeeCode ? employeeCode : undefined,
-        workEmail: dto.workEmail !== before.workEmail ? dto.workEmail : undefined,
-      },
-      id,
-    );
+    // only a new work email is checked: one on file that is not changed never stops other fields being saved
+    const workEmail = dto.workEmail !== before.workEmail ? dto.workEmail : undefined;
+    await this.assertCompanyDomain(workEmail);
+    await this.assertFree({ employeeCode: employeeCode !== before.employeeCode ? employeeCode : undefined, workEmail }, id);
     const derived = await this.checked(before, dto);
     const values = { ...rest, ...(employeeCode ? { employeeCode } : {}), ...derived }; // the code cannot be emptied
 
@@ -412,6 +417,15 @@ export class EmployeesService {
       const taken = await this.prisma.employee.findFirst({ where: { workEmail: values.workEmail, ...not }, select: { employeeCode: true } });
       if (taken) throw new ConflictException(`The work email ${values.workEmail} already belongs to ${taken.employeeCode}.`);
     }
+  }
+
+  /** A work email must use the company's email domain (e.g. @trendlix.com), when the company profile sets one. */
+  private async assertCompanyDomain(workEmail: string | null | undefined) {
+    if (!workEmail) return;
+    // the company profile is the one row with id 1; no row or no domain: any domain is accepted
+    const company = await this.prisma.company.findUnique({ where: { id: 1 }, select: { emailDomain: true } });
+    const domain = company?.emailDomain;
+    if (domain && !workEmail.endsWith(`@${domain}`)) throw new BadRequestException(`The work email must end in @${domain}.`);
   }
 
   /** Checks of the profile that span several fields or records, and the values that follow from them. */

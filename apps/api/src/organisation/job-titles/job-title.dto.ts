@@ -26,10 +26,16 @@ export class CreateJobTitleDto {
   @MaxLength(150)
   titleAr?: string | null;
 
+  /** The range of grades the job title takes (owner's decision, 15 October 2026); either end may be empty. */
   @TrimOrNull()
   @IsOptional()
-  @IsUUID('all', { message: 'Choose a grade.' })
-  gradeId?: string | null;
+  @IsUUID('all', { message: 'Choose the lowest grade.' })
+  minGradeId?: string | null;
+
+  @TrimOrNull()
+  @IsOptional()
+  @IsUUID('all', { message: 'Choose the highest grade.' })
+  maxGradeId?: string | null;
 
   @TrimOrNull()
   @IsOptional()
@@ -70,10 +76,16 @@ export class UpdateJobTitleDto {
   @MaxLength(150)
   titleAr?: string | null;
 
+  /** The range of grades the job title takes (owner's decision, 15 October 2026); either end may be empty. */
   @TrimOrNull()
   @IsOptional()
-  @IsUUID('all', { message: 'Choose a grade.' })
-  gradeId?: string | null;
+  @IsUUID('all', { message: 'Choose the lowest grade.' })
+  minGradeId?: string | null;
+
+  @TrimOrNull()
+  @IsOptional()
+  @IsUUID('all', { message: 'Choose the highest grade.' })
+  maxGradeId?: string | null;
 
   @TrimOrNull()
   @IsOptional()

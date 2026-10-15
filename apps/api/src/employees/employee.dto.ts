@@ -22,6 +22,8 @@ import {
   GOVERNORATES,
   MARITAL_STATUSES,
   MILITARY_STATUSES,
+  phoneOk,
+  phoneTidy,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
@@ -31,14 +33,26 @@ import { isValidEgyptianIban, normalizeIban } from './checks.js';
 
 const LowerEmail = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() || null : value));
 const Code = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() || null : value));
-// spaces, dashes and brackets dropped: "010 1234-5678" → "01012345678"
+// kept as Prime ERP keeps them, the country code and the number in one run: "010 1234-5678", "+20 101 234 5678" and
+// "0020 101 234 5678" all become "+201012345678". Text with no number in it stays as typed, so it is refused.
 const Phone = () =>
-  Transform(({ value }) => (typeof value === 'string' ? value.replace(/[\s\-()]/g, '') || null : value));
+  Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const typed = value.trim();
+    return typed ? phoneTidy(typed) || typed : null;
+  });
 /** Present (even as null) means "change it"; for fields that cannot be empty, null is then refused. */
 const Sent = () => ValidateIf((_o, v) => v !== undefined);
 
-const PHONE = /^\+?\d{8,15}$/;
-const PHONE_MESSAGE = (what: string) => `Enter the ${what} as digits only, e.g. 01012345678.`;
+/** A number that can be dialled: a known country code and a plausible length (see phoneOk). */
+const IsPhone = (what: string) =>
+  ValidateBy({
+    name: 'isPhone',
+    validator: {
+      validate: (v) => typeof v === 'string' && phoneOk(v),
+      defaultMessage: () => `Enter the ${what} with its country code, e.g. +201012345678.`,
+    },
+  });
 const CODE = /^EMP-\d{4,6}$/;
 const CODE_MESSAGE = 'Employee code: EMP- and 4 digits, e.g. EMP-0142. Leave it empty to number automatically.';
 
@@ -70,10 +84,10 @@ class EmployeeDetailsDto {
   @LowerEmail() @IsOptional() @IsEmail({}, { message: 'Enter a valid personal email.' }) @MaxLength(254)
   personalEmail?: string | null;
 
-  @LatinDigits() @Phone() @IsOptional() @Matches(PHONE, { message: PHONE_MESSAGE('mobile number') })
+  @LatinDigits() @Phone() @IsOptional() @IsPhone('mobile number')
   mobile?: string | null;
 
-  @LatinDigits() @Phone() @IsOptional() @Matches(PHONE, { message: PHONE_MESSAGE('second mobile number') })
+  @LatinDigits() @Phone() @IsOptional() @IsPhone('second mobile number')
   mobile2?: string | null;
 
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(300)
@@ -92,7 +106,7 @@ class EmployeeDetailsDto {
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(50)
   emergencyRelation?: string | null;
 
-  @LatinDigits() @Phone() @IsOptional() @Matches(PHONE, { message: PHONE_MESSAGE('emergency contact’s mobile') })
+  @LatinDigits() @Phone() @IsOptional() @IsPhone('emergency contact’s mobile')
   emergencyMobile?: string | null;
 
   // ---------- education ----------
@@ -137,9 +151,6 @@ export class UpdateIdentityDto {
 
   @TrimOrNull() @IsOptional() @IsDateOnly('Enter the ID expiry date.')
   expiryDate?: string | null;
-
-  @TrimOrNull() @IsOptional() @IsString() @MaxLength(100)
-  issuingOffice?: string | null;
 }
 
 export class CreateEmployeeDto extends EmployeeDetailsDto {

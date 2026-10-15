@@ -1,11 +1,17 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { gradeRange } from '../grades/grade-range.js';
 import type { CreateJobTitleDto, UpdateJobTitleDto } from './job-title.dto.js';
 
 const ENTITY = 'job_title';
 const GRADE = { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } } as const;
+/** The range of grades the job title takes: its lowest and highest grade, either or both empty. */
+const RANGE = { minGrade: GRADE, maxGrade: GRADE } as const;
 const DEPARTMENT = { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } } as const;
+
+/** An end of a job title's range of grades; null when open. */
+type RangeEnd = { code: string; rank: number } | null;
 
 @Injectable()
 export class JobTitlesService {
@@ -18,14 +24,14 @@ export class JobTitlesService {
     return this.prisma.jobTitle.findMany({
       where: departmentId ? { departmentId } : undefined,
       orderBy: [{ department: { nameEn: 'asc' } }, { titleEn: 'asc' }],
-      include: { department: DEPARTMENT, grade: GRADE, _count: { select: { duties: true } } },
+      include: { department: DEPARTMENT, ...RANGE, _count: { select: { duties: true } } },
     });
   }
 
   async get(id: string) {
     const job = await this.prisma.jobTitle.findUnique({
       where: { id },
-      include: { department: DEPARTMENT, grade: GRADE, duties: { orderBy: { position: 'asc' } } },
+      include: { department: DEPARTMENT, ...RANGE, duties: { orderBy: { position: 'asc' } } },
     });
     if (!job) throw new NotFoundException('Job title not found.');
     return job;
@@ -33,26 +39,27 @@ export class JobTitlesService {
 
   async create(dto: CreateJobTitleDto, userId: string) {
     await this.ensureTeam(dto.departmentId);
-    if (dto.gradeId) await this.ensureGrade(dto.gradeId);
+    await this.checkedRange(dto.minGradeId ?? null, dto.maxGradeId ?? null);
     const duties = dto.duties ?? [];
     const job = await this.prisma.jobTitle.create({
       data: {
         departmentId: dto.departmentId,
         titleEn: dto.titleEn,
         titleAr: dto.titleAr ?? null,
-        gradeId: dto.gradeId ?? null,
+        minGradeId: dto.minGradeId ?? null,
+        maxGradeId: dto.maxGradeId ?? null,
         jdPurpose: dto.jdPurpose ?? null,
         jdRequirements: dto.jdRequirements ?? null,
         duties: { create: duties.map((duty, i) => ({ duty, position: i + 1 })) },
       },
     });
-    const { departmentId, titleEn, titleAr, gradeId, jdPurpose, jdRequirements } = dto;
+    const { departmentId, titleEn, titleAr, minGradeId, maxGradeId, jdPurpose, jdRequirements } = dto;
     await this.audit.record({
       userId,
       action: 'create',
       entityType: ENTITY,
       entityId: job.id,
-      diff: { departmentId, titleEn, titleAr, gradeId, jdPurpose, jdRequirements, duties },
+      diff: { departmentId, titleEn, titleAr, minGradeId, maxGradeId, jdPurpose, jdRequirements, duties },
     });
     return this.get(job.id);
   }
@@ -61,7 +68,13 @@ export class JobTitlesService {
     const before = await this.get(id);
     // also when it stays: a job title still held directly by a department (from before teams) must move into a team
     if (dto.departmentId) await this.ensureTeam(dto.departmentId);
-    if (dto.gradeId && dto.gradeId !== before.gradeId) await this.ensureGrade(dto.gradeId);
+    // the range as it will be: what was sent, the rest as saved
+    if (dto.minGradeId !== undefined || dto.maxGradeId !== undefined) {
+      const minGradeId = dto.minGradeId !== undefined ? dto.minGradeId : before.minGradeId;
+      const maxGradeId = dto.maxGradeId !== undefined ? dto.maxGradeId : before.maxGradeId;
+      const range = await this.checkedRange(minGradeId, maxGradeId);
+      if (minGradeId !== before.minGradeId || maxGradeId !== before.maxGradeId) await this.assertHoldersFit(id, range);
+    }
 
     const oldDuties = before.duties.map((d) => d.duty);
     const dutiesChanged = dto.duties !== undefined && JSON.stringify(dto.duties) !== JSON.stringify(oldDuties);
@@ -83,7 +96,8 @@ export class JobTitlesService {
           departmentId: dto.departmentId,
           titleEn: dto.titleEn,
           titleAr: dto.titleAr,
-          gradeId: dto.gradeId,
+          minGradeId: dto.minGradeId,
+          maxGradeId: dto.maxGradeId,
           jdPurpose: dto.jdPurpose,
           jdRequirements: dto.jdRequirements,
           jdVersion: jdChanged ? { increment: 1 } : undefined,
@@ -112,9 +126,35 @@ export class JobTitlesService {
     await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { titleEn: job.titleEn } });
   }
 
-  private async ensureGrade(id: string) {
-    const exists = await this.prisma.grade.count({ where: { id } });
-    if (!exists) throw new NotFoundException('Grade not found. Choose one from the list.');
+  /** Both ends of a range must be grades on the list, the lowest at or below the highest. Answers the two grades. */
+  private async checkedRange(minGradeId: string | null, maxGradeId: string | null): Promise<{ min: RangeEnd; max: RangeEnd }> {
+    const [min, max] = await Promise.all([this.grade(minGradeId), this.grade(maxGradeId)]);
+    if (min && max && min.rank > max.rank) throw new BadRequestException('The lowest grade must be at or below the highest.');
+    return { min, max };
+  }
+
+  private async grade(id: string | null): Promise<RangeEnd> {
+    if (!id) return null;
+    const grade = await this.prisma.grade.findUnique({ where: { id }, select: { code: true, rank: true } });
+    if (!grade) throw new NotFoundException('Grade not found. Choose one from the list.');
+    return grade;
+  }
+
+  /**
+   * A range is not narrowed past the people who hold the job title now: their grades are changed first (employments
+   * that ended keep the grade they had).
+   */
+  private async assertHoldersFit(id: string, { min, max }: { min: RangeEnd; max: RangeEnd }) {
+    const outside = [...(min ? [{ rank: { lt: min.rank } }] : []), ...(max ? [{ rank: { gt: max.rank } }] : [])];
+    if (!outside.length) return;
+    const count = await this.prisma.employment.count({ where: { jobTitleId: id, endDate: null, grade: { is: { OR: outside } } } });
+    if (count === 0) return;
+    const where = min && max ? `outside ${gradeRange(min, max)}` : min ? `below ${min.code}` : `above ${max!.code}`;
+    throw new ConflictException(
+      count === 1
+        ? `1 current employee with this title has a grade ${where}. Change their grade first, or widen the range.`
+        : `${count} current employees with this title have grades ${where}. Change their grades first, or widen the range.`,
+    );
   }
 
   /** Job titles belong to teams only (Department → Team → Job title; owner's rule, 14 October 2026). */

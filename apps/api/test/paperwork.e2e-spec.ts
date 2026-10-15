@@ -6,7 +6,7 @@ import type { App } from 'supertest/types.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
-// Unique per run, because the test database keeps data from earlier runs.
+// Unique names per run: the test files share one database (emptied at the start of each run).
 const RUN = String(Date.now()).slice(-8);
 const arabicDigits = (s: string) => s.replace(/\d/g, (d) => String.fromCharCode(0x0660 + Number(d)));
 // digits as Arabic letters (0 → ب …), for a word unique to this run
@@ -31,7 +31,6 @@ const FRONT = `جمهورية مصر العربية
 أول مدينة نصر - القاهرة
 ٢٩٥٠ ٣١٢٠ ١٢٣٤ ٥٦`;
 const BACK = `٢٩٥٠٣١٢٠١٢٣٤٥٦   ٢٠٢٠/٠٧
-سجل مدني مدينة نصر
 مهندس برمجيات
 ذكر     مسلم     أعزب
 البطاقة سارية حتى ٢٠٢٧/٠٧/١١`;
@@ -47,7 +46,6 @@ const SUGGESTIONS = {
   gender: 'male',
   issueDate: '2020-07-01',
   expiryDate: '2027-07-11',
-  issuingOffice: 'سجل مدني مدينة نصر',
   maritalStatus: 'single',
   governorate: 'Cairo',
   city: 'مدينة نصر',
@@ -252,6 +250,9 @@ describe('Paperwork (e2e)', () => {
     expect((await post().field('kind', 'other').expect(400)).body.message).toBe('Choose a file to upload.');
     await post().attach('file', png('NONE'), 'x.png').expect(400); // no kind
     await post().field('kind', 'passport').attach('file', png('NONE'), 'x.png').expect(400);
+    // the bank account letter is generated for the employee to open an account, not a scan HR collects
+    const letter = await post().field('kind', 'bank_letter').attach('file', png('NONE'), 'letter.png').expect(400);
+    expect(letter.body.message).toEqual(['Choose what kind of document this is.']);
     await api()
       .post('/api/employees/00000000-0000-4000-8000-000000000000/paperwork')
       .set('Cookie', hr)
@@ -263,7 +264,7 @@ describe('Paperwork (e2e)', () => {
   });
 
   it('is for HR and the CEO only, and only HR changes it', async () => {
-    const item = await upload(png('NONE'), 'letter.png', 'bank_letter');
+    const item = await upload(png('NONE'), 'letter.png', 'other');
     await api().get(`/api/employees/${employeeId}/paperwork`).set('Cookie', finance).expect(403);
     await api().get(`/api/employees/${employeeId}/paperwork`).set('Cookie', staff).expect(403);
     await api().get(`/api/paperwork/${item.id}/file`).set('Cookie', finance).expect(403);

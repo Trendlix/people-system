@@ -4,7 +4,7 @@ import type { App } from 'supertest/types.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
-// Unique per run, because the test database keeps data from earlier runs.
+// Unique names per run: the test files share one database (emptied at the start of each run).
 const RUN = Date.now().toString(36).toLowerCase();
 const NOWHERE = '00000000-0000-4000-8000-000000000000';
 const VALID_IBAN = 'EG380019000500000000263180002';
@@ -62,7 +62,12 @@ describe('Employees (e2e)', () => {
   let departmentId: string;
   let otherDepartmentId: string;
   let jobTitleId: string;
+  let emailDomainBefore: string | null;
+  let gradeIds: Map<string, string>;
   const api = () => request(app.getHttpServer());
+  const grade = (code: string) => gradeIds.get(code)!;
+  /** The company's email domain, which every work email must use; empty: any domain. */
+  const setEmailDomain = (emailDomain: string) => api().patch('/api/company').set('Cookie', hr).send({ emailDomain }).expect(200);
 
   /** A profile: names only, unless more is given. Employment is added afterwards (hire). */
   const person = (name: string, extra: Record<string, unknown> = {}) => ({
@@ -124,9 +129,15 @@ describe('Employees (e2e)', () => {
     otherDepartmentId = other.body.id;
     const title = await api().post('/api/job-titles').set('Cookie', hr).send({ departmentId, titleEn: 'Frontend Developer' }).expect(201);
     jobTitleId = title.body.id;
+    const grades = await api().get('/api/grades').set('Cookie', hr).expect(200);
+    gradeIds = new Map((grades.body as { id: string; code: string }[]).map((g) => [g.code, g.id]));
+    // sign-in accounts here are @test.local: no company email domain, except where a test sets one
+    emailDomainBefore = (await api().get('/api/company').set('Cookie', hr).expect(200)).body.emailDomain;
+    await setEmailDomain('');
   });
 
   afterAll(async () => {
+    await setEmailDomain(emailDomainBefore ?? '');
     await app.close();
   });
 
@@ -136,7 +147,7 @@ describe('Employees (e2e)', () => {
       expect(first.employeeCode).toMatch(/^EMP-\d{4,}$/);
       expect(first).toMatchObject({
         workEmail: `omar.${RUN}@trendlix.com`,
-        mobile: '01012345678',
+        mobile: '+201012345678',
         employment: null,
         employments: [],
         reports: [],
@@ -161,7 +172,7 @@ describe('Employees (e2e)', () => {
 
       const audit = await prisma.auditLog.findMany({ where: { entityType: 'employee', entityId: first.id } });
       expect(audit.map((a) => a.action)).toEqual(['create']);
-      expect(audit[0].diff).toMatchObject({ fullNameEn: `Omar Khaled ${RUN}`, mobile: '01012345678' });
+      expect(audit[0].diff).toMatchObject({ fullNameEn: `Omar Khaled ${RUN}`, mobile: '+201012345678' });
     });
 
     it('refuses employment fields on a profile: they belong to an employment', async () => {
@@ -171,6 +182,7 @@ describe('Employees (e2e)', () => {
         status: 'active',
         departmentId,
         jobTitleId,
+        gradeId: NOWHERE,
         managerId: NOWHERE,
         probationEnd: '2026-04-15',
         workArrangement: 'office',
@@ -219,7 +231,7 @@ describe('Employees (e2e)', () => {
     it('changes a profile, and records only what changed', async () => {
       const e = await addEmployee('Changed', { mobile: '01012345678' });
       const changed = await api().patch(`/api/employees/${e.id}`).set('Cookie', hr).send({ nationality: 'Egyptian', mobile: '0101 234 5678' }).expect(200);
-      expect(changed.body).toMatchObject({ nationality: 'Egyptian', mobile: '01012345678' });
+      expect(changed.body).toMatchObject({ nationality: 'Egyptian', mobile: '+201012345678' });
 
       const update = await prisma.auditLog.findFirst({ where: { entityType: 'employee', entityId: e.id, action: 'update' } });
       expect(update?.diff).toEqual({ nationality: { from: null, to: 'Egyptian' } });
@@ -261,10 +273,13 @@ describe('Employees (e2e)', () => {
         endReason: null,
         endNote: null,
         department: { id: departmentId, nameEn: 'Frontend', nameAr: null, parent: { id: webId, nameEn: `Web ${RUN}`, nameAr: null } },
-        jobTitle: { id: jobTitleId, titleEn: 'Frontend Developer', grade: null },
+        jobTitle: { id: jobTitleId, titleEn: 'Frontend Developer', titleAr: null, jdVersion: 1 },
+        gradeId: null,
+        grade: null,
         manager: null,
         shift: null,
       });
+      expect(hired.employment.jobTitle).not.toHaveProperty('grade'); // the grade is the employment's own
       expect(hired.employments).toEqual([hired.employment]);
 
       expect(await listed(e.id)).toEqual({
@@ -280,7 +295,9 @@ describe('Employees (e2e)', () => {
           employmentType: 'full_time',
           joinDate: '2026-01-15',
           department: { id: departmentId, nameEn: 'Frontend', nameAr: null, parent: { id: webId, nameEn: `Web ${RUN}`, nameAr: null } },
-          jobTitle: { id: jobTitleId, titleEn: 'Frontend Developer', grade: null },
+          jobTitle: { id: jobTitleId, titleEn: 'Frontend Developer' },
+          gradeId: null,
+          grade: null,
           manager: null,
         },
         lastEnded: null,
@@ -529,6 +546,87 @@ describe('Employees (e2e)', () => {
     });
   });
 
+  // Job title and grade apart (owner's decision, 15 October 2026): each employment has the person's own grade, within
+  // the range of grades its job title takes.
+  describe('grades', () => {
+    let ranged: string; // Account Manager: G3 to G6
+    let fromG3: string; // Account Lead: from G3
+    let upToG6: string; // Account Assistant: up to G6
+
+    beforeAll(async () => {
+      const add = async (titleEn: string, range: object) =>
+        (await api().post('/api/job-titles').set('Cookie', hr).send({ departmentId, titleEn, ...range }).expect(201)).body.id as string;
+      ranged = await add('Account Manager', { minGradeId: grade('G3'), maxGradeId: grade('G6') });
+      fromG3 = await add('Account Lead', { minGradeId: grade('G3') });
+      upToG6 = await add('Account Assistant', { maxGradeId: grade('G6') });
+    });
+
+    it('gives an employment its own grade within the range, shown on the profile, in the history and the directory', async () => {
+      const e = await addHired('Graded', { jobTitleId: ranged, gradeId: grade('G4') });
+      const G4 = { id: grade('G4'), code: 'G4', rank: 4, levelEn: 'Senior', levelAr: null };
+      expect(e.employment).toMatchObject({ jobTitleId: ranged, gradeId: grade('G4'), grade: G4 });
+      expect(e.employments[0]).toMatchObject({ gradeId: grade('G4'), grade: G4 });
+      expect((await listed(e.id))?.employment).toMatchObject({ jobTitle: { id: ranged, titleEn: 'Account Manager' }, gradeId: grade('G4'), grade: G4 });
+
+      // both ends are in the range
+      const top = await changeEmployment(e.id, e.employment.id, { gradeId: grade('G6') }).expect(200);
+      expect(top.body.employment).toMatchObject({ gradeId: grade('G6'), grade: { code: 'G6' } });
+      await changeEmployment(e.id, e.employment.id, { gradeId: grade('G3') }).expect(200);
+      const cleared = await changeEmployment(e.id, e.employment.id, { gradeId: '' }).expect(200);
+      expect(cleared.body.employment).toMatchObject({ gradeId: null, grade: null });
+
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'employment', entityId: e.employment.id }, orderBy: { id: 'asc' } });
+      expect(audit[0].diff).toMatchObject({ jobTitleId: ranged, gradeId: grade('G4') });
+      expect(audit.slice(1).map((a) => a.diff)).toEqual([
+        { employeeId: e.id, gradeId: { from: grade('G4'), to: grade('G6') } },
+        { employeeId: e.id, gradeId: { from: grade('G6'), to: grade('G3') } },
+        { employeeId: e.id, gradeId: { from: grade('G3'), to: null } },
+      ]);
+    });
+
+    it('refuses a grade outside the job title’s range, naming the range', async () => {
+      const e = await addEmployee('Outside');
+      const below = await startEmployment(e.id, job({ jobTitleId: ranged, gradeId: grade('G2') })).expect(400);
+      expect(below.body.message).toBe('Account Manager takes grades G3 to G6. Choose a grade in that range.');
+      const above = await startEmployment(e.id, job({ jobTitleId: ranged, gradeId: grade('G7') })).expect(400);
+      expect(above.body.message).toBe('Account Manager takes grades G3 to G6. Choose a grade in that range.');
+      const from = await startEmployment(e.id, job({ jobTitleId: fromG3, gradeId: grade('G2') })).expect(400);
+      expect(from.body.message).toBe('Account Lead takes grades from G3. Choose a grade in that range.');
+      const upTo = await startEmployment(e.id, job({ jobTitleId: upToG6, gradeId: grade('G7') })).expect(400);
+      expect(upTo.body.message).toBe('Account Assistant takes grades up to G6. Choose a grade in that range.');
+      const unknown = await startEmployment(e.id, job({ jobTitleId: ranged, gradeId: NOWHERE })).expect(400);
+      expect(unknown.body.message).toBe('Grade not found. Choose one from the list.');
+      const notAnId = await startEmployment(e.id, job({ gradeId: 'G4' })).expect(400);
+      expect(notAnId.body.message).toEqual(['Choose a grade.']);
+      expect(await prisma.employment.count({ where: { employeeId: e.id } })).toBe(0);
+
+      // the open ends take any grade on their side
+      expect((await hire(e.id, { jobTitleId: fromG3, gradeId: grade('G9') })).employment).toMatchObject({ grade: { code: 'G9' } });
+      const other = await addHired('Assistant', { jobTitleId: upToG6, gradeId: grade('G1') });
+      expect(other.employment).toMatchObject({ grade: { code: 'G1' } });
+    });
+
+    it('takes any grade under a job title with no range, or with no job title', async () => {
+      const any = await addHired('Any Grade', { jobTitleId, gradeId: grade('G9') }); // Frontend Developer: no range
+      expect(any.employment).toMatchObject({ jobTitleId, grade: { code: 'G9' } });
+      const none = await addHired('No Title', { gradeId: grade('G1') });
+      expect(none.employment).toMatchObject({ jobTitleId: null, gradeId: grade('G1'), grade: { code: 'G1' } });
+    });
+
+    it('refuses a change of job title, or of grade, that leaves the grade outside the range', async () => {
+      const e = await addHired('Promoted', { jobTitleId, gradeId: grade('G2') });
+      const moved = await changeEmployment(e.id, e.employment.id, { jobTitleId: ranged }).expect(400);
+      expect(moved.body.message).toBe('Account Manager takes grades G3 to G6. Choose a grade in that range.');
+      const promoted = await changeEmployment(e.id, e.employment.id, { jobTitleId: ranged, gradeId: grade('G3') }).expect(200);
+      expect(promoted.body.employment).toMatchObject({ jobTitleId: ranged, grade: { code: 'G3' } });
+      const tooHigh = await changeEmployment(e.id, e.employment.id, { gradeId: grade('G7') }).expect(400);
+      expect(tooHigh.body.message).toBe('Account Manager takes grades G3 to G6. Choose a grade in that range.');
+      // other changes, with the job title and grade sent as they are, go through
+      await changeEmployment(e.id, e.employment.id, { jobTitleId: ranged, gradeId: grade('G3'), status: 'active' }).expect(200);
+      expect((await profileOf(e.id)).employment).toMatchObject({ status: 'active', jobTitleId: ranged, grade: { code: 'G3' } });
+    });
+  });
+
   describe('what the history keeps', () => {
     it('will not delete a department, team, job title or shift that a current or past employment uses', async () => {
       const remove = (path: string) => api().delete(path).set('Cookie', hr);
@@ -612,7 +710,7 @@ describe('Employees (e2e)', () => {
     it('saves the national ID with the employee, fills in the date of birth, and audits without the numbers', async () => {
       const nationalId = newNationalId();
       const e = await addEmployee('Card Holder', {
-        identity: { nationalId: arabicDigits(nationalId), printedNo: 'AB123456', issueDate: '2024-05-01', expiryDate: '2031-05-01', issuingOffice: 'Nasr City' },
+        identity: { nationalId: arabicDigits(nationalId), printedNo: 'AB123456', issueDate: '2024-05-01', expiryDate: '2031-05-01' },
       });
       expect(e.dateOfBirth).toBe('1995-03-12'); // filled in from the ID
       expect(e.identity).toEqual({
@@ -620,7 +718,6 @@ describe('Employees (e2e)', () => {
         printedNoMasked: '•••• 3456',
         issueDate: '2024-05-01',
         expiryDate: '2031-05-01',
-        issuingOffice: 'Nasr City',
       });
       expect(JSON.stringify(e)).not.toContain(nationalId);
 
@@ -634,14 +731,13 @@ describe('Employees (e2e)', () => {
           printedNo: 'changed',
           issueDate: { from: null, to: '2024-05-01' },
           expiryDate: { from: null, to: '2031-05-01' },
-          issuingOffice: { from: null, to: 'Nasr City' },
         },
       });
       expect(JSON.stringify(audit[0].diff)).not.toContain(nationalId);
       expect(JSON.stringify(audit[0].diff)).not.toContain('AB123456');
 
       const full = await api().get(`/api/employees/${e.id}/identity`).set('Cookie', hr).expect(200);
-      expect(full.body.nationalId).toBe(nationalId);
+      expect(full.body).toEqual({ nationalId, printedNo: 'AB123456', issueDate: '2024-05-01', expiryDate: '2031-05-01' });
     });
 
     it('checks everything before adding anyone: the date of birth, a real date in the ID, a national ID already used', async () => {
@@ -682,7 +778,7 @@ describe('Employees (e2e)', () => {
     });
 
     it('adds no national ID when none is filled in', async () => {
-      for (const identity of [{}, { nationalId: null, printedNo: ' ', issuingOffice: '' }, null]) {
+      for (const identity of [{}, { nationalId: null, printedNo: ' ', expiryDate: '' }, null]) {
         const e = await addEmployee('No Card', { identity });
         expect(e).toMatchObject({ identity: null, dateOfBirth: null });
         expect(await prisma.employeeIdentity.count({ where: { employeeId: e.id } })).toBe(0);
@@ -694,10 +790,110 @@ describe('Employees (e2e)', () => {
 
   it('keeps a second mobile number and the city', async () => {
     const e = await addEmployee('Two Phones', { mobile: '010 1111 2222', mobile2: '+20 122 333 4444', city: ' مدينة نصر ' });
-    expect(e).toMatchObject({ mobile: '01011112222', mobile2: '+201223334444', city: 'مدينة نصر' });
+    expect(e).toMatchObject({ mobile: '+201011112222', mobile2: '+201223334444', city: 'مدينة نصر' });
     await api().patch(`/api/employees/${e.id}`).set('Cookie', hr).send({ mobile2: 'not a phone' }).expect(400);
     const cleared = await api().patch(`/api/employees/${e.id}`).set('Cookie', hr).send({ mobile2: '', city: '' }).expect(200);
     expect(cleared.body).toMatchObject({ mobile2: null, city: null });
+  });
+
+  describe('mobile numbers, kept as Prime ERP keeps them', () => {
+    const change = (id: string, body: object) => api().patch(`/api/employees/${id}`).set('Cookie', hr).send(body);
+
+    it('keeps the country code and the number in one run, however they were typed', async () => {
+      const e = await addEmployee('Phones', { mobile: '010 1234-5678', mobile2: '0020 122 333 4444', emergencyMobile: '(011) 5555-6666' });
+      expect(e).toMatchObject({ mobile: '+201012345678', mobile2: '+201223334444', emergencyMobile: '+201155556666' });
+
+      const changed = await change(e.id, { mobile: '+20 100 000 1111', mobile2: '+44 20 7946 0958', emergencyMobile: '٠١٢٣٤٥٦٧٨٩٠' }).expect(200);
+      expect(changed.body).toMatchObject({ mobile: '+201000001111', mobile2: '+442079460958', emergencyMobile: '+201234567890' });
+
+      // the same number written another way is no change
+      await change(e.id, { mobile: '0100 000 1111' }).expect(200);
+      expect(await prisma.auditLog.count({ where: { entityType: 'employee', entityId: e.id, action: 'update' } })).toBe(1);
+    });
+
+    it('refuses a number that cannot be dialled, saying which one', async () => {
+      const e = await addEmployee('Bad Phones', { mobile: '01012345678' });
+      const mobile = ['Enter the mobile number with its country code, e.g. +201012345678.'];
+      expect((await change(e.id, { mobile: '010 1234' }).expect(400)).body.message).toEqual(mobile); // too short for Egypt
+      expect((await change(e.id, { mobile: '010 1234 56789' }).expect(400)).body.message).toEqual(mobile); // too long for Egypt
+      const unknown = await change(e.id, { mobile2: '+999 1234 5678' }).expect(400); // no such country code
+      expect(unknown.body.message).toEqual(['Enter the second mobile number with its country code, e.g. +201012345678.']);
+      const words = await change(e.id, { emergencyMobile: 'not a phone' }).expect(400);
+      expect(words.body.message).toEqual(['Enter the emergency contact’s mobile with its country code, e.g. +201012345678.']);
+      expect((await profileOf(e.id)).mobile).toBe('+201012345678');
+    });
+  });
+
+  describe('the work email and the company’s email domain', () => {
+    const post = (name: string, workEmail: string) => api().post('/api/employees').set('Cookie', hr).send(person(name, { workEmail }));
+    const change = (id: string, body: object) => api().patch(`/api/employees/${id}`).set('Cookie', hr).send(body);
+
+    beforeEach(() => setEmailDomain('trendlix.com'));
+    afterAll(() => setEmailDomain(''));
+
+    it('refuses a new employee’s work email on another domain, and accepts one on the company’s', async () => {
+      for (const workEmail of [`off.${RUN}@gmail.com`, `off.${RUN}@nottrendlix.com`, `off.${RUN}@mail.trendlix.com`]) {
+        const res = await post('Off Domain', workEmail).expect(400);
+        expect(res.body.message).toBe('The work email must end in @trendlix.com.');
+      }
+      expect(await prisma.employee.count({ where: { fullNameEn: `Off Domain ${RUN}` } })).toBe(0);
+
+      const on = await addEmployee('On Domain', { workEmail: ` On.${RUN}@TrendLIX.com ` });
+      expect(on.workEmail).toBe(`on.${RUN}@trendlix.com`);
+      await addEmployee('No Work Email'); // none at all is fine
+    });
+
+    it('refuses changing a work email to another domain', async () => {
+      const e = await addEmployee('Moving Email', { workEmail: `moving.${RUN}@trendlix.com` });
+      const res = await change(e.id, { workEmail: `moving.${RUN}@gmail.com` }).expect(400);
+      expect(res.body.message).toBe('The work email must end in @trendlix.com.');
+      expect((await profileOf(e.id)).workEmail).toBe(`moving.${RUN}@trendlix.com`);
+
+      const moved = await change(e.id, { workEmail: `moved.${RUN}@trendlix.com` }).expect(200);
+      expect(moved.body.workEmail).toBe(`moved.${RUN}@trendlix.com`);
+    });
+
+    it('lets a work email on file from before the domain was set stay, without blocking other changes', async () => {
+      await setEmailDomain('');
+      const e = await addEmployee('Old Email', { workEmail: `old.${RUN}@gmail.com` });
+      await setEmailDomain('trendlix.com');
+
+      // sent again unchanged, as the profile form does, with another field
+      const saved = await change(e.id, { nationality: 'Egyptian', workEmail: ` OLD.${RUN}@gmail.com ` }).expect(200);
+      expect(saved.body).toMatchObject({ nationality: 'Egyptian', workEmail: `old.${RUN}@gmail.com` });
+      await change(e.id, { workEmail: `older.${RUN}@gmail.com` }).expect(400); // a new one must use the domain
+    });
+
+    it('checks nothing while the company has no email domain', async () => {
+      await setEmailDomain('');
+      const e = await addEmployee('Any Domain', { workEmail: `any.${RUN}@example.org` });
+      expect(e.workEmail).toBe(`any.${RUN}@example.org`);
+      await change(e.id, { workEmail: `any.${RUN}@example.net` }).expect(200);
+    });
+  });
+
+  describe('the issuing office (not on Egyptian ID cards)', () => {
+    it('is neither accepted nor shown, and one typed in before stays in the database', async () => {
+      const e = await addEmployee('Old Office', { identity: { expiryDate: '2031-05-01' } });
+      await prisma.employeeIdentity.update({ where: { employeeId: e.id }, data: { issuingOffice: 'Nasr City' } }); // typed in before
+
+      const sent = await api().post('/api/employees').set('Cookie', hr).send(person('New Office', { identity: { issuingOffice: 'Nasr City' } })).expect(400);
+      expect(sent.body.message).toEqual(['property issuingOffice should not exist']);
+      expect(await prisma.employee.count({ where: { fullNameEn: `New Office ${RUN}` } })).toBe(0);
+      const changed = await api().patch(`/api/employees/${e.id}/identity`).set('Cookie', hr).send({ issuingOffice: 'Heliopolis' }).expect(400);
+      expect(changed.body.message).toEqual(['property issuingOffice should not exist']);
+
+      const saved = await api().patch(`/api/employees/${e.id}/identity`).set('Cookie', hr).send({ printedNo: 'AB123456' }).expect(200);
+      expect(saved.body).toEqual({ nationalIdMasked: null, printedNoMasked: '•••• 3456', issueDate: null, expiryDate: '2031-05-01' });
+      expect((await profileOf(e.id)).identity).toEqual(saved.body);
+      const full = await api().get(`/api/employees/${e.id}/identity`).set('Cookie', hr).expect(200);
+      expect(full.body).toEqual({ nationalId: null, printedNo: 'AB123456', issueDate: null, expiryDate: '2031-05-01' });
+
+      const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'employee', entityId: e.id, action: 'update' } });
+      expect(audit.diff).toEqual({ identity: { printedNo: 'changed' } });
+      const row = await prisma.employeeIdentity.findUniqueOrThrow({ where: { employeeId: e.id } });
+      expect(row.issuingOffice).toBe('Nasr City');
+    });
   });
 
   describe('who sees whom', () => {
@@ -787,31 +983,32 @@ describe('Employees (e2e)', () => {
 
       // hired full time: the full list of papers, the military certificate too while the gender is not recorded
       const hired = await hire(e.id);
-      expect(hired.completeness.percent).toBe(7); // 2 of 27
-      expect(missing(hired)).toEqual(expect.arrayContaining(['military_certificate', 'criminal_record', 'insurance_form_1', 'personal_photo', 'bank_letter']));
+      expect(hired.completeness.percent).toBe(8); // 2 of 26
+      expect(missing(hired)).toEqual(expect.arrayContaining(['military_certificate', 'criminal_record', 'insurance_form_1', 'personal_photo']));
+      expect(missing(hired)).not.toContain('bank_letter'); // generated for the employee, not a scan HR collects
 
       const man = await change(e.id, { gender: 'male' });
-      expect(man.completeness.percent).toBe(11); // 3 of 27
+      expect(man.completeness.percent).toBe(12); // 3 of 26
       expect(missing(man)).toContain('military_certificate');
 
       // a woman's file needs no military certificate, and her military status is Not applicable
       const woman = await change(e.id, { gender: 'female' });
-      expect(woman.completeness.percent).toBe(15); // 4 of 26
+      expect(woman.completeness.percent).toBe(16); // 4 of 25
       expect(missing(woman)).not.toContain('military_certificate');
       expect(missing(woman)).not.toContain('militaryStatus');
 
       const filled = await change(e.id, { nationality: 'Egyptian', mobile: '01012345678', degree: 'bachelor', university: 'Cairo University', graduationYear: 2018 });
-      expect(filled.completeness.percent).toBe(35); // 9 of 26
+      expect(filled.completeness.percent).toBe(36); // 9 of 25
 
       await api().post(`/api/employees/${e.id}/paperwork`).set('Cookie', hr).field('kind', 'personal_photo').attach('file', PNG, 'photo.png').expect(201);
       const papered = await profileOf(e.id);
-      expect(papered.completeness.percent).toBe(38); // 10 of 26
+      expect(papered.completeness.percent).toBe(40); // 10 of 25
       expect(missing(papered)).not.toContain('personal_photo');
 
       // the national ID number (with the date of birth it holds) and its expiry
       await api().patch(`/api/employees/${e.id}/identity`).set('Cookie', hr).send({ nationalId: newNationalId(), expiryDate: '2031-05-01' }).expect(200);
       const identified = await profileOf(e.id);
-      expect(identified.completeness.percent).toBe(50); // 13 of 26
+      expect(identified.completeness.percent).toBe(52); // 13 of 25
       expect(identified.dateOfBirth).toBe('1995-03-12');
       expect(missing(identified)).not.toContain('dateOfBirth');
       expect(missing(identified)).not.toContain('nationalId');
@@ -827,7 +1024,7 @@ describe('Employees (e2e)', () => {
       const saved = await api()
         .patch(`/api/employees/${e.id}/identity`)
         .set('Cookie', hr)
-        .send({ nationalId, printedNo: 'AB123456', issueDate: '2024-05-01', expiryDate: '2031-05-01', issuingOffice: 'Nasr City' })
+        .send({ nationalId, printedNo: 'AB123456', issueDate: '2024-05-01', expiryDate: '2031-05-01' })
         .expect(200);
       expect(saved.body.nationalIdMasked).toBe(`•••• ${nationalId.slice(-4)}`);
 
@@ -838,7 +1035,6 @@ describe('Employees (e2e)', () => {
         printedNoMasked: '•••• 3456',
         issueDate: '2024-05-01',
         expiryDate: '2031-05-01',
-        issuingOffice: 'Nasr City',
       });
       expect(JSON.stringify(profile.body)).not.toContain(nationalId);
 

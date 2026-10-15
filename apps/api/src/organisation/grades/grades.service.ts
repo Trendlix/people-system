@@ -1,12 +1,16 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService, changes } from '../../audit/audit.service.js';
+import type { Grade } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateGradeDto, UpdateGradeDto } from './grade.dto.js';
 
 const ENTITY = 'grade';
-const COUNTS = { _count: { select: { jobTitles: true } } } as const;
 
-// The grading system: G1 Entry Level … G9 Executive, lowest rank first. Each job title has one.
+/** "1 employment", "5 employments". */
+const howMany = (n: number, thing: string) => `${n} ${thing}${n === 1 ? '' : 's'}`;
+
+// The grading system: G1 Entry Level … G9 Executive, lowest rank first. A job title takes a range of grades and each
+// employment has one (owner's decision, 15 October 2026).
 @Injectable()
 export class GradesService {
   constructor(
@@ -14,14 +18,15 @@ export class GradesService {
     private readonly audit: AuditService,
   ) {}
 
-  list() {
-    return this.prisma.grade.findMany({ orderBy: { rank: 'asc' }, include: COUNTS });
+  async list() {
+    const grades = await this.prisma.grade.findMany({ orderBy: { rank: 'asc' } });
+    return Promise.all(grades.map((g) => this.withCounts(g)));
   }
 
   async get(id: string) {
-    const grade = await this.prisma.grade.findUnique({ where: { id }, include: COUNTS });
+    const grade = await this.prisma.grade.findUnique({ where: { id } });
     if (!grade) throw new NotFoundException('Grade not found.');
-    return grade;
+    return this.withCounts(grade);
   }
 
   async create(dto: CreateGradeDto, userId: string) {
@@ -46,11 +51,25 @@ export class GradesService {
 
   async remove(id: string, userId: string) {
     const grade = await this.get(id);
-    if (grade._count.jobTitles > 0) {
-      throw new ConflictException(`${grade._count.jobTitles} job title(s) have grade ${grade.code}. Give them another grade before deleting it.`);
+    const { jobTitles, employments } = grade._count;
+    if (jobTitles > 0 || employments > 0) {
+      const uses = [jobTitles > 0 && howMany(jobTitles, 'job title range'), employments > 0 && howMany(employments, 'employment')];
+      throw new ConflictException(`${grade.code} is used by ${uses.filter(Boolean).join(' and ')}. Give them another grade before deleting it.`);
     }
     await this.prisma.grade.delete({ where: { id } });
     await this.audit.record({ userId, action: 'delete', entityType: ENTITY, entityId: id, diff: { code: grade.code, levelEn: grade.levelEn } });
+  }
+
+  /**
+   * Where the grade is used: job titles whose range starts or ends at it (each title once), and employments with it,
+   * ended ones included.
+   */
+  private async withCounts(grade: Grade) {
+    const [jobTitles, employments] = await Promise.all([
+      this.prisma.jobTitle.count({ where: { OR: [{ minGradeId: grade.id }, { maxGradeId: grade.id }] } }),
+      this.prisma.employment.count({ where: { gradeId: grade.id } }),
+    ]);
+    return { ...grade, _count: { jobTitles, employments } };
   }
 
   private async assertFree(code: string | undefined, rank: number | undefined) {

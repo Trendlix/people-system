@@ -4,7 +4,7 @@ import type { App } from 'supertest/types.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, PASSWORD, signIn } from './helpers.js';
 
-// Unique per run, because the test database keeps data from earlier runs.
+// Unique names per run: the test files share one database (emptied at the start of each run).
 const RUN = Date.now().toString(36);
 let counter = 0;
 const newEmail = () => `account-${RUN}-${++counter}@test.local`;

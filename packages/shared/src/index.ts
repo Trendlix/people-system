@@ -79,7 +79,6 @@ export const PAPERWORK_KINDS = [
   'criminal_record',
   'insurance_form_1',
   'personal_photo',
-  'bank_letter',
   'other',
 ] as const;
 export type PaperworkKind = (typeof PAPERWORK_KINDS)[number];
@@ -93,7 +92,6 @@ export const PAPERWORK_LABELS: Record<PaperworkKind, string> = {
   criminal_record: 'Criminal record certificate',
   insurance_form_1: 'Social insurance Form 1',
   personal_photo: 'Personal photo',
-  bank_letter: 'Bank account letter',
   other: 'Other document',
 };
 
@@ -104,6 +102,8 @@ export const RESTRICTED_PAPERWORK: readonly PaperworkKind[] = ['national_id_fron
  * The scans an employee's file needs (spec §8.5), by their current employment. Full-time: the full list; military papers for men only (a woman's
  * military status is always Not applicable). Other employment types: the national ID (their signed job offer and NDA
  * come from document generation). While the gender is not recorded, military papers are listed as needed.
+ * The bank account letter is not a scan: the system generates it for the employee to open a bank account, from a
+ * template HR adds (owner, 15 October 2026).
  */
 export function requiredPaperwork(employmentType: EmploymentType | null, gender: Gender | null): PaperworkKind[] {
   if (employmentType !== 'full_time') return ['national_id_front', 'national_id_back']; // also before anyone is hired
@@ -116,7 +116,6 @@ export function requiredPaperwork(employmentType: EmploymentType | null, gender:
     'criminal_record',
     'insurance_form_1',
     'personal_photo',
-    'bank_letter',
   ];
 }
 
@@ -145,3 +144,11 @@ export const STANDING_LABELS: Record<Standing, string> = {
   former: 'Former employee',
   not_employed: 'Not employed yet',
 };
+
+// ---------- phone numbers (as Prime ERP keeps them) ----------
+
+export * from './phone.js';
+
+// ---------- education: Egyptian universities and faculties ----------
+
+export * from './education.js';

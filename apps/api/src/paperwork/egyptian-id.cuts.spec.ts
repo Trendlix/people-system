@@ -17,7 +17,6 @@ const FRONT: Placed[] = [
 ];
 const BACK: Placed[] = [
   { text: '٢٩٥٠٣١٢٠١٢٣٤٥٦   ٢٠٢٠/٠٧', top: 2.5, bottom: 7 },
-  { text: 'سجل مدني مدينة نصر', top: 8, bottom: 12 },
   { text: 'مهندس برمجيات', top: 13, bottom: 17 },
   { text: 'ذكر     مسلم     أعزب', top: 18, bottom: 22 },
   { text: 'البطاقة سارية حتى ٢٠٢٧/٠٧/١١', top: 23, bottom: 27 },
@@ -45,7 +44,6 @@ describe('a scan cut short', () => {
       gender: 'male',
       issueDate: '2020-07-01',
       expiryDate: '2027-07-11',
-      issuingOffice: 'سجل مدني مدينة نصر',
       maritalStatus: 'single',
       governorate: 'Cairo',
       city: 'مدينة نصر',

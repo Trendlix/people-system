@@ -3,7 +3,7 @@ import { applyCorrections, changedPhrases } from './corrections.js';
 describe('ID card corrections', () => {
   it('finds the words HR changed', () => {
     expect(changedPhrases('محمد أحمد محمو عبد الله', 'محمد أحمد محمود عبد الله')).toEqual([['محمو', 'محمود']]);
-    expect(changedPhrases('سجل مدنى مدينه نصر', 'سجل مدني مدينة نصر')).toEqual([['مدنى مدينه', 'مدني مدينة']]);
+    expect(changedPhrases('شارع مكرم عبيد اول مدينه نصر', 'شارع مكرم عبيد أول مدينة نصر')).toEqual([['اول مدينه', 'أول مدينة']]);
     // a word split in two by the reader
     expect(changedPhrases('عبد الر حمن', 'عبد الرحمن')).toEqual([['الر حمن', 'الرحمن']]);
     // the address separators don't count as words

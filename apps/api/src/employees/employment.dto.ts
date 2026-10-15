@@ -31,6 +31,10 @@ class EmploymentFieldsDto {
   @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a job title.' })
   jobTitleId?: string | null;
 
+  /** The person's own grade, within the range of grades the job title takes (owner's decision, 15 October 2026). */
+  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a grade.' })
+  gradeId?: string | null;
+
   @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose a manager.' })
   managerId?: string | null;
 

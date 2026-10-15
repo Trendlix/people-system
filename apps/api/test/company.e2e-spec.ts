@@ -50,6 +50,27 @@ describe('Company profile (e2e)', () => {
     expect(res.body).toMatchObject({ phone: '0225555555', website: 'trendlix.com', email: 'hr@trendlix.com', addressEn: null });
   });
 
+  it('keeps the email domain every work email must use: tidied, refused when not a domain, cleared when empty', async () => {
+    // put back afterwards: the test database keeps it for the other test files
+    const before = (await api().get('/api/company').set('Cookie', hr).expect(200)).body.emailDomain as string | null;
+
+    const set = await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: ' @TrendLIX.com ' }).expect(200);
+    expect(set.body.emailDomain).toBe('trendlix.com');
+    expect((await api().get('/api/company').set('Cookie', employee).expect(200)).body.emailDomain).toBe('trendlix.com');
+
+    for (const emailDomain of ['trendlix', 'hr@trendlix.com', 'https://trendlix.com', 'trend lix.com']) {
+      const res = await api().patch('/api/company').set('Cookie', hr).send({ emailDomain }).expect(400);
+      expect(res.body.message).toEqual(['Enter the email domain, e.g. trendlix.com.']);
+    }
+
+    const cleared = await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: '' }).expect(200);
+    expect(cleared.body.emailDomain).toBeNull();
+    const entry = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'company' }, orderBy: { id: 'desc' } });
+    expect(entry.diff).toEqual({ emailDomain: { from: 'trendlix.com', to: null } });
+
+    await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: before ?? '' }).expect(200);
+  });
+
   it('rejects invalid values', async () => {
     await api().patch('/api/company').set('Cookie', hr).send({ nameEn: '  ' }).expect(400);
     await api().patch('/api/company').set('Cookie', hr).send({ email: 'not-an-email' }).expect(400);
@@ -58,7 +79,7 @@ describe('Company profile (e2e)', () => {
   });
 
   it('stores the representative national ID but only ever returns it masked, and keeps it out of the audit log', async () => {
-    // New number each run: the test database keeps the value from earlier runs, and an unchanged value is not logged.
+    // A number no other test sets: an unchanged value is not logged.
     const nationalId = '2' + String(Date.now()).padStart(13, '0').slice(-13);
     const arabicDigits = nationalId.replace(/\d/g, (d) => String.fromCharCode(0x0660 + Number(d)));
     const res = await api()

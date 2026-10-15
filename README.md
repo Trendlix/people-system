@@ -48,7 +48,7 @@ npm run db:deploy -w @trendlix/api       # create the tables
 npm run db:seed -w @trendlix/api         # roles, shifts A/B and the admin account from SEED_ADMIN_*
 ```
 
-Locally the database is `trendlix_hrms`, owned by the `trendlix` user; end-to-end tests use a separate `trendlix_hrms_test` database (`TEST_DATABASE_URL`).
+Locally the database is `trendlix_hrms`, owned by the `trendlix` user; end-to-end tests use a separate `trendlix_hrms_test` database (`TEST_DATABASE_URL`), emptied and seeded again at the start of every run (only a database whose name contains "test" is ever emptied).
 
 ## Every day
 

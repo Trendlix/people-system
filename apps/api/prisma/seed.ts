@@ -45,6 +45,7 @@ const COMPANY = {
   commercialRegNo: '142423',
   addressAr: '١٣ شارع محمد يوسف القاضي – كلية البنات – مدينة نصر – القاهرة',
   city: 'Cairo',
+  emailDomain: 'trendlix.com', // every work email must end in @trendlix.com
 };
 
 async function main() {
