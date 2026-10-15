@@ -17,6 +17,8 @@ import type {
   NoticeUnit,
   PaperworkKind,
   PayBasis,
+  PdfField,
+  PdfPageSize,
   Role,
   Standing,
   TemplateFolder,
@@ -838,6 +840,8 @@ export interface TemplateSlotView {
     id: string;
     version: number;
     fileName: string;
+    /** Left out by an API from before PDF templates: a Word file. */
+    format?: 'docx' | 'pdf';
     uploadedAt: string;
     publishedAt: string;
     publishedBy: { email: string } | null;
@@ -847,6 +851,9 @@ export interface TemplateSlotView {
     id: string;
     version: number;
     fileName: string;
+    format?: 'docx' | 'pdf';
+    /** A PDF draft's fields placed so far (it can't be published with none); null for a Word file. */
+    fieldCount?: number | null;
     uploadedAt: string;
     /** {{tags}} not in the tag list (TEMPLATE_TAGS): they block publishing. */
     unknownTags: string[];
@@ -856,12 +863,21 @@ export interface TemplateSlotView {
   versionCount: number;
 }
 
-/** One uploaded version of a template's Word file (GET /templates/:slot, newest first). The file itself is never included. */
+/**
+ * One uploaded version of a template's file (GET /templates/:slot, newest first): a Word file with {{tags}}, or an
+ * official form as a PDF with its fields placed on it (owner's decision, 15 October 2026). The file itself is never
+ * included.
+ */
 export interface TemplateVersion {
   id: string;
   version: number;
   fileName: string;
   sizeBytes: number;
+  /** Left out by an API from before PDF templates: a Word file. */
+  format?: 'docx' | 'pdf';
+  /** A PDF's pages and the fields placed on it; null for a Word file. */
+  pageCount?: number | null;
+  fieldCount?: number | null;
   language: TemplateLanguage;
   /** The tags found in the file. */
   tags: string[];
@@ -882,6 +898,17 @@ export interface TemplateVersion {
 /** GET /templates/:slot: the slot and every version of its file, newest first ([] for a copy slot). */
 export interface TemplateDetail extends TemplateSlotView {
   versions: TemplateVersion[];
+}
+
+/**
+ * GET (and PUT) /templates/versions/:id/fields: a PDF version, the size of each of its pages in points, and the fields
+ * placed on it; `editable`: false for a version that was replaced (the API then refuses a save).
+ */
+export interface TemplateFields {
+  version: TemplateVersion;
+  pages: PdfPageSize[];
+  fields: PdfField[];
+  editable: boolean;
 }
 
 // ---------- documents generated from the templates: the profile's Contracts tab ----------

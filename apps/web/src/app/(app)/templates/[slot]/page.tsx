@@ -19,7 +19,10 @@ import { UploadTemplateForm } from '../upload-form';
 import { DeleteDraftButton, PublishButton, RenameFileButton } from '../version-buttons';
 import {
   COPY_NOTE,
+  fieldsHref,
+  fieldsSummary,
   folderLabel,
+  isPdfVersion,
   LANGUAGE_LABELS,
   managesTemplates,
   NOT_AVAILABLE,
@@ -32,20 +35,46 @@ import {
   versionPreviewHref,
   WHO_SEES,
   OVERRIDES_NOTE,
+  pdfPublishBlock,
 } from '../wording';
 
-// One template (spec §8): what it is and where it stands; for HR and Admin, uploading a new version of its Word file as
-// a draft; the check of each draft's tags (unknown or broken ones block publishing), with Publish; and every version,
+// One template (spec §8): what it is and where it stands; for HR and Admin, uploading a new version of its file as a
+// draft; the check of each draft's tags (unknown or broken ones block publishing), with Publish; and every version,
 // to download (the CEO too). A version previewed with data is a protected PDF, never a Word file (owner's request, 15
-// October 2026: "No doc file export, just a protected PDF"); the uploaded Word file itself stays HR's to download. A
-// Super Admin can delete a draft. The API checks every request.
+// October 2026: "No doc file export, just a protected PDF"); the uploaded file itself stays HR's to download. A version
+// can also be an official form uploaded as a PDF (owner's decision, 15 October 2026), whose fields are placed on it
+// (Place fields) before it can be published. A Super Admin can delete a draft. The API checks every request.
 
 const none = <span className="text-muted">—</span>;
 
 // ---------- the check of a draft ----------
 
+/** The PDF form marker and how many pages and fields it has: "No fields placed yet" stands out, as it can't be published. */
+function PdfFormLine({ version: v }: { version: TemplateVersion }) {
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+      <span className="badge">PDF form</span>
+      <span className={`whitespace-nowrap ${v.fieldCount ? 'text-muted' : 'font-medium text-warn'}`}>{fieldsSummary(v)}</span>
+    </span>
+  );
+}
+
+/** Place fields (HR, Admin), or View fields (the CEO; anyone, for a replaced version, whose fields are kept as they were). */
+function FieldsLink({ version: v, slotKey, manages, className }: { version: TemplateVersion; slotKey: string; manages: boolean; className: string }) {
+  return (
+    <Link href={fieldsHref(slotKey, v.id)} className={className}>
+      {manages && v.status !== 'retired' ? 'Place fields' : 'View fields'}
+      <span className="sr-only">
+        {' '}
+        of v{v.version} ({v.fileName})
+      </span>
+    </Link>
+  );
+}
+
 function DraftCheck({ version: v, slotKey, inUse, manages }: { version: TemplateVersion; slotKey: string; inUse: number | null; manages: boolean }) {
   const check = checkTags(v);
+  const pdf = isPdfVersion(v);
   const label = `v${v.version}`;
   const nothing = !check.known.length && !check.unknown.length && !check.broken.length;
   return (
@@ -64,7 +93,19 @@ function DraftCheck({ version: v, slotKey, inUse, manages }: { version: Template
         <span className="badge bg-warn-soft text-warn">{TEMPLATE_VERSION_STATUS_LABELS.draft}</span>
       </div>
 
-      {nothing && <p className="text-sm text-muted">No merge tags were found in this file: documents made from it will be the file exactly as it is.</p>}
+      {pdf ? (
+        // a PDF form: printed exactly as uploaded, with the data where its fields are placed
+        <div className="space-y-3">
+          <PdfFormLine version={v} />
+          <p className="text-sm text-muted">
+            Documents are this form exactly as uploaded, with the data printed where its fields are placed.
+            {manages && !v.fieldCount && ' Place its fields, then publish it.'}
+          </p>
+          <FieldsLink version={v} slotKey={slotKey} manages={manages} className="btn btn-secondary" />
+        </div>
+      ) : (
+        nothing && <p className="text-sm text-muted">No merge tags were found in this file: documents made from it will be the file exactly as it is.</p>
+      )}
 
       {check.unknown.length > 0 && (
         <div className="rounded-lg border border-danger/30 bg-danger-soft/40 p-4">
@@ -143,7 +184,7 @@ function DraftCheck({ version: v, slotKey, inUse, manages }: { version: Template
         <PublishButton
           action={publishTemplateVersion.bind(null, slotKey, v.id, v.version)}
           confirmText={publishConfirm(v.version, inUse)}
-          blocked={check.blocked}
+          blocked={check.blocked ?? pdfPublishBlock(v)}
           label={label}
         />
       )}
@@ -172,6 +213,7 @@ function Who({ email, at }: { email: string | null | undefined; at: string | nul
 function VersionRow({ version: v, slotKey, deletes, manages }: { version: TemplateVersion; slotKey: string; deletes: boolean; manages: boolean }) {
   const check = v.status === 'draft' ? checkTags(v) : null;
   const problems = check ? check.unknown.length + check.broken.length : 0;
+  const pdf = isPdfVersion(v);
   // the actions go on a line of their own under the version, so the table fits without scrolling sideways and the
   // version number stays in sight (owner, 15 October 2026: v2 was deleted instead of v1, the number scrolled away)
   return (
@@ -181,6 +223,11 @@ function VersionRow({ version: v, slotKey, deletes, manages }: { version: Templa
       <td className="max-w-64 break-all">
         {v.fileName}
         <span className="block text-xs whitespace-nowrap text-muted tabular-nums">{formatSize(v.sizeBytes)}</span>
+        {pdf && (
+          <span className="mt-1 block">
+            <PdfFormLine version={v} />
+          </span>
+        )}
         {manages && <RenameFileButton action={renameTemplateVersion.bind(null, v.id)} fileName={v.fileName} />}
       </td>
       <td>{LANGUAGE_LABELS[v.language] ?? v.language}</td>
@@ -195,7 +242,7 @@ function VersionRow({ version: v, slotKey, deletes, manages }: { version: Templa
       </td>
       <td className="min-w-40 whitespace-pre-line">{v.note || none}</td>
       <td className="tabular-nums">
-        {tagCount(v)}
+        {pdf && !tagCount(v) ? none : tagCount(v)}
         {problems > 0 && (
           <a href={`#draft-${v.id}`} className="block text-xs whitespace-nowrap text-danger">
             {count(problems, 'problem')}
@@ -212,6 +259,7 @@ function VersionRow({ version: v, slotKey, deletes, manages }: { version: Templa
             Preview<span className="sr-only"> v{v.version} ({v.fileName}) as a PDF, in a new tab</span>
           </a>
           <PreviewWithData versionId={v.id} label={`v${v.version} (${v.fileName})`} offers={isOfferSlot(slotKey)} />
+          {pdf && <FieldsLink version={v} slotKey={slotKey} manages={manages} className="inline-flex min-h-9 items-center text-sm font-semibold" />}
           <a href={versionFileHref(v.id)} className="inline-flex min-h-9 items-center text-sm font-semibold">
             Download<span className="sr-only"> v{v.version} ({v.fileName})</span>
           </a>
@@ -315,7 +363,7 @@ function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
             </h2>
             <p className="mt-1 text-sm text-muted">
               {manages
-                ? 'Check the tags found in the file, then publish it. Unknown or broken tags must be fixed in Word first, and the file uploaded again.'
+                ? 'Check the tags found in the file, then publish it. Unknown or broken tags must be fixed in Word first, and the file uploaded again. A PDF form needs its fields placed first.'
                 : 'HR or an Admin checks the tags found in the file, then publishes it.'}
             </p>
           </div>

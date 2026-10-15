@@ -75,7 +75,7 @@ function Progress({ document: d }: { document: GeneratedDocument }) {
   );
 }
 
-/** One generated document: its status, file and progress; Preview (PDF), Download PDF and View signed copy; HR's next step; Delete. */
+/** One generated document: its status, file and progress; Preview (PDF), Download PDF and PDF for e-signature until the signed copy is uploaded, then View signed copy; HR's next step; Delete. */
 function DocumentLine({ document: d, item, employee, can }: { document: GeneratedDocument; item: DocumentItem; employee: Employee; can: DocumentAccess }) {
   const steps = nextSteps(d.status);
   const what = `${item.name}, generated ${formatDate(d.generatedAt)}`;
@@ -98,15 +98,21 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
       <Progress document={d} />
       {d.note && <p className="text-sm text-muted">{d.note}</p>}
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+        {/* once the signed copy is uploaded, it is the document: the generated file is no longer offered (owner, 15
+            October 2026) */}
         {/* plain links, never prefetched: the web server fetches the file from the API with the session */}
-        <a href={documentFileHref(employee.id, d.id)} target="_blank" rel="noopener" className={`${VIEW_BUTTON} text-accent`}>
-          Preview (PDF)<span className="sr-only"> ({what}), in a new tab</span>
-        </a>
-        <a href={documentDownloadHref(employee.id, d.id)} className={`${VIEW_BUTTON} text-accent`}>
-          Download PDF<span className="sr-only"> ({what})</span>
-        </a>
+        {!hasSigned && (
+          <a href={documentFileHref(employee.id, d.id)} target="_blank" rel="noopener" className={`${VIEW_BUTTON} text-accent`}>
+            Preview (PDF)<span className="sr-only"> ({what}), in a new tab</span>
+          </a>
+        )}
+        {!hasSigned && (
+          <a href={documentDownloadHref(employee.id, d.id)} className={`${VIEW_BUTTON} text-accent`}>
+            Download PDF<span className="sr-only"> ({what})</span>
+          </a>
+        )}
         {/* HR only: Adobe Sign and DocuSign refuse the protected PDF (owner, 15 October 2026); every download is recorded */}
-        {can.act && (
+        {can.act && !hasSigned && (
           <a
             href={documentESignHref(employee.id, d.id)}
             title="Unprotected, to upload to Adobe Sign or DocuSign. Every download is recorded."

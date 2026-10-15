@@ -5,12 +5,14 @@ import { TEMPLATE_LANGUAGES, type TemplateLanguage } from '@trendlix/shared';
 import { FileDrop } from '@/components/file-drop';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import type { UploadState } from './actions';
-import { BILINGUAL_HINT, DOCX_ACCEPT, fileProblem, LANGUAGE_LABELS } from './wording';
+import { BILINGUAL_HINT, fileProblem, LANGUAGE_LABELS, TEMPLATE_ACCEPT } from './wording';
 
 /**
- * Uploading a version of a template's Word file, as a draft (HR and Admin): the file, chosen, dropped or pasted; its
- * language when the slot's isn't fixed; and what changed. The API reads its tags; the page then shows their check, with
- * Publish. The fields keep what was entered when the upload is refused (the file too), and are emptied once it's in.
+ * Uploading a version of a template's file, as a draft (HR and Admin): a Word file, or an official form as a PDF (owner's
+ * decision, 15 October 2026), chosen, dropped or pasted; its language when the slot's isn't fixed; and what changed. The
+ * API reads a Word file's tags and the page then shows their check, with Publish; after a PDF, the browser goes on to
+ * Place Fields (actions.ts). The fields keep what was entered when the upload is refused (the file too), and are emptied
+ * once it's in.
  */
 export function UploadTemplateForm({
   action,
@@ -41,22 +43,23 @@ export function UploadTemplateForm({
   return (
     <form ref={form} action={formAction} onSubmit={onSubmit} className="space-y-4">
       <div>
-        <h2 className="font-semibold">{hasFile ? 'Upload a New Version' : 'Upload the Word File'}</h2>
+        <h2 className="font-semibold">{hasFile ? 'Upload a New Version' : 'Upload the File'}</h2>
         <p className="mt-1 text-sm text-muted">
-          The .docx file exactly as you use it today, with merge tags like <code className="font-mono text-xs">{'{{full_name_ar}}'}</code> where the data
-          goes, up to 4 MB. It is uploaded as a draft: check its tags, then publish it.
+          A Word file (.docx) exactly as you use it today, with merge tags like <code className="font-mono text-xs">{'{{full_name_ar}}'}</code> where the
+          data goes; or an official form as a PDF, printed exactly as issued, whose fields you place on it after uploading. Up to 4 MB. It is uploaded as a
+          draft: check it, then publish it.
         </p>
       </div>
       <FormErrors errors={state.errors} />
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label htmlFor={fid('file')} className="label">
-            Word file
+            Word file or PDF
           </label>
           <FileDrop
             id={fid('file')}
             name="file"
-            accept={DOCX_ACCEPT}
+            accept={TEMPLATE_ACCEPT}
             required
             onChange={(e) => {
               const file = e.currentTarget.files?.[0];

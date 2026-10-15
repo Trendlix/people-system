@@ -1,9 +1,10 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
-import type { TemplateDetail, TemplateSlotView } from '@/lib/types';
+import type { TemplateDetail, TemplateFields, TemplateSlotView } from '@/lib/types';
 
-// Reading the template library (GET /templates, GET /templates/:slot; October 2026). An API from before it answers 404,
+// Reading the template library (GET /templates, GET /templates/:slot; October 2026), and the fields placed on a PDF
+// version (GET /templates/versions/:id/fields). An API from before it answers 404,
 // which here means "not available yet" rather than the 404 page (the template pages check the slot's key against
 // TEMPLATE_SLOTS first); a refusal (403) and any other failure are shown quietly in the page's place.
 
@@ -40,4 +41,9 @@ export function loadLibrary(): Promise<Loaded<TemplateSlotView[]>> {
 /** One slot and all the versions of its file, newest first. */
 export function loadTemplate(key: string): Promise<Loaded<TemplateDetail>> {
   return load<TemplateDetail>(`/templates/${encodeURIComponent(key)}`);
+}
+
+/** A PDF version, its pages and the fields placed on it (Place Fields). */
+export function loadTemplateFields(versionId: string): Promise<Loaded<TemplateFields>> {
+  return load<TemplateFields>(`/templates/versions/${encodeURIComponent(versionId)}/fields`);
 }

@@ -13,7 +13,7 @@ import {
 } from '@trendlix/shared';
 import { formatDate } from '../../../lib/format';
 import { hasRole } from '../../../lib/roles';
-import type { SessionUser, TemplateSlotView } from '../../../lib/types';
+import type { SessionUser, TemplateSlotView, TemplateVersion } from '../../../lib/types';
 import { count } from './tag-check';
 
 // How the template library words a slot (its language, who it applies to, when it's offered, who signs it, where it
@@ -77,10 +77,10 @@ export function folderLabel(folder: TemplateFolder): string {
 /** Where the template page is. */
 export const templateHref = (key: string) => `/templates/${encodeURIComponent(key)}`;
 
-/** Where the browser downloads a version's Word file: the web server fetches it from the API with the session. */
+/** Where the browser downloads a version's file (Word or PDF): the web server fetches it from the API with the session. */
 export const versionFileHref = (id: string) => `/templates/versions/${encodeURIComponent(id)}/file`;
 
-/** The same file as a PDF, shown in a new tab (Preview). */
+/** The same file as a PDF, shown in a new tab (Preview); a PDF version's own file. */
 export const versionPreviewHref = (id: string) => `${versionFileHref(id)}?format=pdf`;
 
 /** The Fields Guide page: every tag a template can use, with search and Copy, and the guide to download. */
@@ -123,9 +123,12 @@ export function inUseText(published: Published): string {
   return `In use: v${published.version}, published ${formatDate(published.publishedAt)}${by ? ` by ${by}` : ''}`;
 }
 
-/** "Draft v4, not published", with what is wrong with its tags: "Draft v4, not published: has unknown tags" */
-export function draftText(draft: Pick<Draft, 'version' | 'unknownTags' | 'broken'>): string {
-  const issues = draftIssues(draft);
+/**
+ * "Draft v4, not published", with what is wrong with its tags: "Draft v4, not published: has unknown tags"; or, for a PDF
+ * draft with no field placed yet, "Draft v4, not published: no fields placed yet".
+ */
+export function draftText(draft: Pick<Draft, 'version' | 'unknownTags' | 'broken' | 'format' | 'fieldCount'>): string {
+  const issues = draftIssues(draft) ?? (draft.format === 'pdf' && draft.fieldCount === 0 ? 'no fields placed yet' : null);
   return `Draft v${draft.version}, not published${issues ? `: ${issues}` : ''}`;
 }
 
@@ -174,20 +177,52 @@ export function publishConfirm(version: number, inUse: number | null | undefined
 }
 
 /**
- * The Word file of a version: a .docx (a .doc must be saved as .docx in Word first). Uploads pass through the web app on
- * Vercel, which takes at most 4.5 MB per request, so a file must stay under 4 MB (the API has its own limit too).
+ * The file of a version: a Word file (.docx; a .doc must be saved as .docx in Word first), or an official form as a PDF
+ * whose fields are placed after it is uploaded (owner's decision, 15 October 2026). Uploads pass through the web app on
+ * Vercel, which takes at most 4.5 MB per request, so a file must stay under 4 MB (the API has its own limit too, and
+ * tells a PDF from a Word file by what is in it).
  */
-export const DOCX_ACCEPT = '.docx';
+export const TEMPLATE_ACCEPT = '.docx,.pdf';
 export const TEMPLATE_MAX_BYTES = 4 * 1024 * 1024;
 export const TEMPLATE_TOO_LARGE = 'The Word file must be 4 MB or smaller. Large pictures in it can be compressed in Word (Picture Format → Compress Pictures).';
-export const NOT_DOCX = 'Choose a Word file (.docx). A .doc file must be saved as .docx in Word first.';
+export const PDF_TEMPLATE_TOO_LARGE = 'The PDF must be 4 MB or smaller. Save a smaller copy of it and upload that.';
+export const NOT_TEMPLATE_FILE = 'Choose a Word file (.docx) or a PDF. A .doc file must be saved as .docx in Word first.';
 
 /** Whether a file name is a Word document's (.docx). */
 export const isDocx = (name: string) => name.trim().toLowerCase().endsWith('.docx');
 
-/** What the upload form says of the chosen file before sending it: too large, or not a .docx; '' when it can go. */
+/** Whether a file name is a PDF's. */
+export const isPdfName = (name: string) => name.trim().toLowerCase().endsWith('.pdf');
+
+/** What the upload form says of the chosen file before sending it: too large, or neither a .docx nor a PDF; '' when it can go. */
 export function fileProblem(file: Pick<File, 'name' | 'size'>): string {
-  if (!isDocx(file.name)) return NOT_DOCX;
-  if (file.size > TEMPLATE_MAX_BYTES) return TEMPLATE_TOO_LARGE;
+  const pdf = isPdfName(file.name);
+  if (!pdf && !isDocx(file.name)) return NOT_TEMPLATE_FILE;
+  if (file.size > TEMPLATE_MAX_BYTES) return pdf ? PDF_TEMPLATE_TOO_LARGE : TEMPLATE_TOO_LARGE;
   return '';
+}
+
+// ---------- PDF templates ----------
+
+/** Whether a version is an official form uploaded as a PDF, with its fields placed on it (else a Word file). */
+export const isPdfVersion = (version: Pick<TemplateVersion, 'format'>) => version.format === 'pdf';
+
+/** Where a PDF version's fields are placed (Place Fields). */
+export const fieldsHref = (slotKey: string, versionId: string) => `${templateHref(slotKey)}/versions/${encodeURIComponent(versionId)}/fields`;
+
+/** A version's fields as JSON (Copy fields from), read by the web server from the API with the session. */
+export const fieldsJsonHref = (versionId: string) => `/templates/versions/${encodeURIComponent(versionId)}/fields`;
+
+/** Where Test print posts the fields being placed: the form filled with sample values comes back as a PDF. */
+export const fieldsSampleHref = (versionId: string) => `${fieldsJsonHref(versionId)}/sample`;
+
+/** "2 pages · 14 fields placed", or "2 pages · No fields placed yet"; the pages left out when the API doesn't say. */
+export function fieldsSummary(version: Pick<TemplateVersion, 'pageCount' | 'fieldCount'>): string {
+  const pages = version.pageCount ? `${count(version.pageCount, 'page')} · ` : '';
+  return `${pages}${version.fieldCount ? `${count(version.fieldCount, 'field')} placed` : 'No fields placed yet'}`;
+}
+
+/** Why a PDF draft can't be published yet: no field is placed on it (the API refuses it too); null when it can. */
+export function pdfPublishBlock(version: Pick<TemplateVersion, 'format' | 'fieldCount'>): string | null {
+  return isPdfVersion(version) && version.fieldCount === 0 ? "Can't be published yet: no fields are placed on the form. Place them first." : null;
 }

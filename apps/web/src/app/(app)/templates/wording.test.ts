@@ -7,11 +7,16 @@ import {
   byFolder,
   draftIssues,
   draftText,
+  fieldsHref,
+  fieldsSampleHref,
+  fieldsSummary,
   fileProblem,
   inUseText,
   languageLabel,
   managesTemplates,
-  NOT_DOCX,
+  NOT_TEMPLATE_FILE,
+  PDF_TEMPLATE_TOO_LARGE,
+  pdfPublishBlock,
   progress,
   publishConfirm,
   seesTemplates,
@@ -178,14 +183,46 @@ describe('byFolder', () => {
 });
 
 describe('fileProblem', () => {
-  it('takes a .docx up to 4 MB', () => {
+  it('takes a .docx or a PDF up to 4 MB', () => {
     expect(fileProblem({ name: 'Contract.docx', size: 120_000 })).toBe('');
     expect(fileProblem({ name: 'CONTRACT.DOCX', size: 4 * 1024 * 1024 })).toBe('');
+    expect(fileProblem({ name: 'Form 1.pdf', size: 700_000 })).toBe('');
+    expect(fileProblem({ name: 'FORM 6.PDF', size: 4 * 1024 * 1024 })).toBe('');
   });
 
   it('refuses another kind of file, or a larger one', () => {
-    expect(fileProblem({ name: 'Contract.doc', size: 1000 })).toBe(NOT_DOCX);
-    expect(fileProblem({ name: 'Contract.pdf', size: 1000 })).toBe(NOT_DOCX);
+    expect(fileProblem({ name: 'Contract.doc', size: 1000 })).toBe(NOT_TEMPLATE_FILE);
+    expect(fileProblem({ name: 'Form.png', size: 1000 })).toBe(NOT_TEMPLATE_FILE);
     expect(fileProblem({ name: 'Contract.docx', size: 4 * 1024 * 1024 + 1 })).toBe(TEMPLATE_TOO_LARGE);
+    expect(fileProblem({ name: 'Form 1.pdf', size: 4 * 1024 * 1024 + 1 })).toBe(PDF_TEMPLATE_TOO_LARGE);
+  });
+});
+
+describe('PDF templates', () => {
+  it('says a PDF draft has no fields placed yet, as a step and not an error', () => {
+    const draft = { id: 'd', version: 2, fileName: 'Form 1.pdf', uploadedAt: '', unknownTags: [], broken: [], format: 'pdf' as const, fieldCount: 0 };
+    expect(draftText(draft)).toBe('Draft v2, not published: no fields placed yet');
+    expect(statusLines({ published: null, latestDraft: draft })).toEqual([{ text: 'Draft v2, not published: no fields placed yet', tone: 'warn' }]);
+    expect(draftText({ ...draft, fieldCount: 5 })).toBe('Draft v2, not published');
+  });
+
+  it('links to Place Fields and to Test print', () => {
+    expect(fieldsHref('insurance_form_1', 'v-1')).toBe('/templates/insurance_form_1/versions/v-1/fields');
+    expect(fieldsSampleHref('v-1')).toBe('/templates/versions/v-1/fields/sample');
+  });
+
+  it('says how many pages and fields a PDF version has', () => {
+    expect(fieldsSummary({ pageCount: 2, fieldCount: 14 })).toBe('2 pages · 14 fields placed');
+    expect(fieldsSummary({ pageCount: 1, fieldCount: 1 })).toBe('1 page · 1 field placed');
+    expect(fieldsSummary({ pageCount: 2, fieldCount: 0 })).toBe('2 pages · No fields placed yet');
+    expect(fieldsSummary({ pageCount: null, fieldCount: null })).toBe('No fields placed yet');
+  });
+
+  it('holds back publishing a PDF draft with no fields, never a Word one', () => {
+    expect(pdfPublishBlock({ format: 'pdf', fieldCount: 0 })).toMatch(/no fields are placed/);
+    expect(pdfPublishBlock({ format: 'pdf', fieldCount: 3 })).toBeNull();
+    expect(pdfPublishBlock({ format: 'pdf', fieldCount: null })).toBeNull();
+    expect(pdfPublishBlock({ format: 'docx', fieldCount: null })).toBeNull();
+    expect(pdfPublishBlock({})).toBeNull();
   });
 });

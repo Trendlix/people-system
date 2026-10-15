@@ -70,8 +70,8 @@ export function DeleteDraftButton({ action, label, confirmText }: { action: Acti
 }
 
 /**
- * Rename, under a version's file name (HR, Admin): a small form with the name without ".docx", which the API keeps.
- * Closes once saved; a refused name stays open with the reason.
+ * Rename, under a version's file name (HR, Admin): a small form with the name without ".docx" (".pdf" for a PDF
+ * template), which the API keeps. Closes once saved; a refused name stays open with the reason.
  */
 export function RenameFileButton({ action, fileName }: { action: Action; fileName: string }) {
   const [open, setOpen] = useState(false);
@@ -80,7 +80,8 @@ export function RenameFileButton({ action, fileName }: { action: Action; fileNam
     if (next.message) setOpen(false);
     return next;
   }, {});
-  const stem = fileName.replace(/\.docx$/i, '');
+  const extension = /\.pdf$/i.test(fileName) ? '.pdf' : '.docx';
+  const stem = fileName.replace(/\.(docx|pdf)$/i, '');
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="text-xs font-semibold text-accent hover:underline">
@@ -94,7 +95,7 @@ export function RenameFileButton({ action, fileName }: { action: Action; fileNam
         New file name
       </label>
       <input id={`rename-${stem}`} name="fileName" defaultValue={state.values?.fileName as string | undefined ?? stem} maxLength={150} required className="input min-h-9 w-56 py-1 text-sm" autoFocus />
-      <span className="text-xs text-muted">.docx</span>
+      <span className="text-xs text-muted">{extension}</span>
       <button type="submit" disabled={pending} className="btn btn-primary min-h-9 px-3 text-sm">
         {pending ? 'Saving…' : 'Save'}
       </button>

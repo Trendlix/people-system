@@ -2,10 +2,10 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { apiReason, passFileOn, textResponse as text } from '../../../file-response';
 
-// Serves one version of a template's Word file from the API under the web domain, with the caller's session: the
-// browser never talks to the API. The API checks the role (HR, Admin, CEO). The Word file is always downloaded;
-// ?format=pdf is the same file as a PDF, shown in the browser (Preview, owner's request, 15 October 2026). Links here
-// are plain links, never prefetched.
+// Serves one version of a template's file from the API under the web domain, with the caller's session: the browser
+// never talks to the API. The API checks the role (HR, Admin, CEO). The file is always downloaded; ?format=pdf is the
+// same file as a PDF, shown in the browser (Preview, owner's request, 15 October 2026), which for a PDF template is the
+// form as it was uploaded (Place Fields draws its pages from it). Links here are plain links, never prefetched.
 
 const ID = /^[0-9a-z-]{1,64}$/i;
 

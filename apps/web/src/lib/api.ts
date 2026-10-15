@@ -66,9 +66,12 @@ export async function apiUpload<T = unknown>(method: 'PUT' | 'POST', path: strin
   return res.headers.get('content-type')?.includes('json') ? ((await res.json()) as T) : undefined;
 }
 
-/** GET with the caller's session, as the raw response, for streaming a file on to the browser. Throws ApiError (503) when the API is unreachable. */
-export function apiFetch(path: string): Promise<Response> {
-  return call(path);
+/**
+ * A request with the caller's session (a GET unless `init` says otherwise, e.g. a POST with a JSON body), as the raw
+ * response, for streaming a file on to the browser. Throws ApiError (503) when the API is unreachable.
+ */
+export function apiFetch(path: string, init?: Pick<RequestInit, 'method' | 'body'>): Promise<Response> {
+  return call(path, init);
 }
 
 /** Public company name and logo and thumbnail versions, for the sidebar, the sign-in page and the browser tab icon. Never throws. */

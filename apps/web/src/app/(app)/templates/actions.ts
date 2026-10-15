@@ -1,16 +1,17 @@
 'use server';
 
-// Template library actions: uploading a version of a template's Word file (a draft), publishing a draft, and deleting
-// one (a Super Admin only). Each one forwards to the API, which checks the session and the role (HR or Admin; deleting:
-// a Super Admin), reads the file's tags and refuses to publish a draft with unknown or broken ones, so calling these
-// directly can't bypass anything. The file's kind and size are checked here first for a quick answer.
+// Template library actions: uploading a version of a template's file (a draft: a Word file, or an official form as a
+// PDF), saving the fields placed on a PDF version, publishing a draft, and deleting one (a Super Admin only). Each one
+// forwards to the API, which checks the session and the role (HR or Admin; deleting: a Super Admin), reads the file's
+// tags (or checks the fields placed) and refuses to publish a draft with unknown or broken ones (or a PDF with no field),
+// so calling these directly can't bypass anything. The file's kind and size are checked here first for a quick answer.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { TEMPLATE_LANGUAGES, TEMPLATE_SLOTS, type TemplateLanguage } from '@trendlix/shared';
+import { PDF_FIELDS_MAX, TEMPLATE_LANGUAGES, TEMPLATE_SLOTS, type PdfField, type TemplateLanguage } from '@trendlix/shared';
 import { ApiError, apiSend, apiUpload } from '@/lib/api';
 import { deleteRefusal } from '@/lib/session';
-import type { FormState, TemplateVersion } from '@/lib/types';
-import { fileProblem, NOT_AVAILABLE_ACTION, templateHref } from './wording';
+import type { FormState, TemplateFields, TemplateVersion } from '@/lib/types';
+import { fieldsHref, fileProblem, isPdfVersion, NOT_AVAILABLE_ACTION, templateHref } from './wording';
 
 /** What the upload form gets back: the API's messages, or the new draft (whose check the page then shows). */
 export type UploadState = FormState & { draft?: { id: string; version: number } };
@@ -25,7 +26,10 @@ function messages(err: ApiError): string[] {
 
 const isLanguage = (value: string): value is TemplateLanguage => (TEMPLATE_LANGUAGES as readonly string[]).includes(value);
 
-/** Uploads a version of a slot's Word file as a draft: the API reads its tags, and the page shows their check. */
+/**
+ * Uploads a version of a slot's file as a draft: a Word file, whose tags the API reads and the page then shows; or a PDF,
+ * after which the browser goes on to Place Fields, as its fields are placed before it can be published.
+ */
 export async function uploadTemplateVersion(slotKey: string, _prev: UploadState, fd: FormData): Promise<UploadState> {
   const slot = TEMPLATE_SLOTS.find((s) => s.key === slotKey);
   if (!slot) return { errors: ['This template is not in the library.'] };
@@ -33,7 +37,7 @@ export async function uploadTemplateVersion(slotKey: string, _prev: UploadState,
 
   const value = fd.get('file');
   const file = value instanceof File && value.size > 0 ? value : null;
-  if (!file) return { errors: ['Choose the Word file (.docx) to upload.'] };
+  if (!file) return { errors: ['Choose the Word file (.docx) or the PDF to upload.'] };
   const problem = fileProblem(file);
   if (problem) return { errors: [problem] };
 
@@ -54,6 +58,7 @@ export async function uploadTemplateVersion(slotKey: string, _prev: UploadState,
     throw err;
   }
   refresh();
+  if (draft && isPdfVersion(draft)) redirect(`${fieldsHref(slotKey, draft.id)}?uploaded=${draft.version}`);
   if (!draft) return { message: 'Draft uploaded: its check is below.' };
   return { message: `Draft v${draft.version} uploaded: its check is below.`, draft: { id: draft.id, version: draft.version } };
 }
@@ -71,6 +76,27 @@ export async function publishTemplateVersion(slotKey: string, versionId: string,
   }
   refresh();
   redirect(`${templateHref(slotKey)}?published=${version}`);
+}
+
+/** What Save on Place Fields gets back: the API's messages, or the fields as the API saved them. */
+export type FieldsSaveState = { errors?: string[]; fields?: PdfField[] };
+
+/**
+ * Saves the fields placed on a PDF version (HR, Admin), all of them at once: the API checks each one (its tag, its page,
+ * that it is on the page) and refuses the lot with the reason, naming the field; and it refuses a replaced version.
+ */
+export async function saveTemplateFields(versionId: string, fields: PdfField[]): Promise<FieldsSaveState> {
+  if (!Array.isArray(fields)) return { errors: ['The fields could not be read. Reload the page and try again.'] };
+  if (fields.length > PDF_FIELDS_MAX) return { errors: [`A form can have at most ${PDF_FIELDS_MAX} fields.`] };
+  let saved: TemplateFields | undefined;
+  try {
+    saved = await apiSend<TemplateFields>('PUT', `/templates/versions/${encodeURIComponent(versionId)}/fields`, { fields });
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: messages(err) };
+    throw err;
+  }
+  refresh();
+  return { fields: saved?.fields ?? fields };
 }
 
 /** Renames a version's file (HR, Admin; owner, 15 October 2026): only the name the library shows changes. */

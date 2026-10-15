@@ -31,6 +31,14 @@ describe('passing a file from the API on to the browser', () => {
     expect(res.headers.has('content-security-policy')).toBe(false);
   });
 
+  it('saves a PDF template’s own file as it was uploaded', () => {
+    const res = passFileOn(fromApi('%PDF', { 'content-type': 'application/pdf', 'content-disposition': 'inline; filename="Form 1.pdf"' }), false, 'x');
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+    expect(res.headers.get('content-disposition')).toBe('attachment; filename="Form 1.pdf"');
+    const unnamed = passFileOn(fromApi('%PDF', { 'content-type': 'application/pdf' }), false, 'template');
+    expect(unnamed.headers.get('content-disposition')).toBe('attachment; filename="template.pdf"');
+  });
+
   it('names the file when the API does not, and refuses (502) what is not the file asked for', async () => {
     const unnamed = passFileOn(fromApi('PK', { 'content-type': DOCX }), false, 'Template Fields Guide');
     expect(unnamed.headers.get('content-disposition')).toBe('attachment; filename="Template Fields Guide.docx"');
