@@ -106,6 +106,12 @@ export interface PayrollTerms {
   /** The insured wage, as the Social Insurance tab and Form 1 show it. */
   insuredWage: number;
   /**
+   * After a raise (owner's decision, 16 October 2026: "From the next January unless amended in Form 2"): the insured
+   * wage is the one before the raise until this date (YYYY-MM-DD: the next 1 January, or the Form 2 date), so it says
+   * why. Missing otherwise.
+   */
+  insuredWageAsBefore?: string | null;
+  /**
    * A working day's hours, from the employment's shift: its hours to work a day, else its window (its start to its
    * end; an end before the start runs past midnight), as shiftWorkHours gives them (owner, 16 October 2026: "my company
    * shift is to maintain 9 hours within the shift window"). The hours a no-show day takes out of the expected hours

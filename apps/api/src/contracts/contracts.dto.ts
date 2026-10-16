@@ -8,6 +8,7 @@ import {
   ENDING_STATUSES,
   NOTICE_UNITS,
   PAY_BASES,
+  RAISE_REASONS,
   type ContractForm,
   type ContractStatus,
   type EmploymentType,
@@ -15,6 +16,7 @@ import {
   type EndingStatus,
   type NoticeUnit,
   type PayBasis,
+  type RaiseReason,
 } from '@trendlix/shared';
 import { AllowanceRows, type AllowanceAmountDto } from '../allowances/allowances.dto.js';
 import { IsDateOnly } from '../common/date-only.js';
@@ -24,10 +26,10 @@ import { Trim, TrimOrNull } from '../common/transforms.js';
 // Law 14/2025). Dates: YYYY-MM-DD. Money: a number, to the piastre. Text fields: an empty string clears them.
 
 /** Present (even as null) means "change it"; for fields that cannot be empty, null is then refused. */
-const Sent = () => ValidateIf((_o, v) => v !== undefined);
+export const Sent = () => ValidateIf((_o, v) => v !== undefined);
 
 export const PROBATION_CAP_MESSAGE = "Probation can't be longer than 3 months (Labour Law Art. 90).";
-const DURATION_MESSAGE = 'A fixed term runs for 1 to 60 months.';
+export const DURATION_MESSAGE = 'A fixed term runs for 1 to 60 months.';
 const INSURANCE_BASIC_MESSAGE = 'Enter the default basic wage as an amount of more than 0 and up to 99,999.99, e.g. 410.';
 const BASIC_PERCENT_DEFAULT_MESSAGE = 'Enter the basic share of the gross as a whole percent from 1 to 100, e.g. 80.';
 /** The company has no open-ended contracts (owner, 15 October 2026). */
@@ -39,6 +41,7 @@ const MAX_HOURLY_RATE = 99_999_999.99;
 const HOURLY_RATE_MESSAGE = 'Enter the hourly rate as an amount of more than 0, e.g. 150 or 162.50.';
 const HOURS_MESSAGE = 'Enter the hours a week as a number of more than 0 and up to 48, e.g. 24 or 22.5.';
 const DAYS_MESSAGE = 'Enter the working days a week as a whole number, 1 to 6.';
+export const RAISE_REASON_MESSAGE = 'Choose why the pay changes: annual, promotion, adjustment or other.';
 
 // ---------- settings ----------
 
@@ -86,26 +89,10 @@ export class UpdateEndingRuleDto {
 // ---------- contracts ----------
 
 /**
- * A contract's terms: what HR types. The end date, probation end and insured salary follow from them, and by the hour
- * the gross too.
+ * A version's pay, as a contract and a raise take it: the basic share, the net, the gross or the hourly terms, the
+ * working days and the allowances; and its note.
  */
-class ContractTermsDto {
-  /** Always a fixed term: the company has no open-ended contracts (owner, 15 October 2026). */
-  @Sent() @IsIn(CONTRACT_FORMS, { message: FIXED_ONLY_MESSAGE })
-  form?: ContractForm;
-
-  /** Version 1: the join date unless sent; a renewal: the day after the version before ends. */
-  @Sent() @IsDateOnly('Enter the start date.')
-  startDate?: string;
-
-  /** The settings' duration (12 months) unless sent. */
-  @Sent() @IsInt({ message: DURATION_MESSAGE }) @Min(1, { message: DURATION_MESSAGE }) @Max(60, { message: DURATION_MESSAGE })
-  durationMonths?: number;
-
-  /** Version 1 only (a renewal has none); the settings' probation (3 months) unless sent, or 0 for someone who had one. */
-  @Sent() @IsInt({ message: 'Enter the months of probation as a whole number, 0 to 3.' }) @Min(0, { message: 'Enter 0 to 3 months of probation.' }) @Max(3, { message: PROBATION_CAP_MESSAGE })
-  probationMonths?: number;
-
+export class PayTermsDto {
   /** The share of the gross that is basic salary (80% unless sent); the rest is variable. */
   @Sent() @IsInt({ message: 'Enter the basic salary as a whole percentage, 1 to 100.' }) @Min(1, { message: 'Enter the basic salary as 1 to 100% of the gross.' }) @Max(100, { message: 'Enter the basic salary as 1 to 100% of the gross.' })
   basicPercent?: number;
@@ -149,6 +136,36 @@ class ContractTermsDto {
    */
   @AllowanceRows()
   allowances?: AllowanceAmountDto[];
+}
+
+/**
+ * A contract's terms: what HR types. The end date, probation end and insured salary follow from them, and by the hour
+ * the gross too.
+ */
+class ContractTermsDto extends PayTermsDto {
+  /** Always a fixed term: the company has no open-ended contracts (owner, 15 October 2026). */
+  @Sent() @IsIn(CONTRACT_FORMS, { message: FIXED_ONLY_MESSAGE })
+  form?: ContractForm;
+
+  /** Version 1: the join date unless sent; a renewal: the day after the version before ends. */
+  @Sent() @IsDateOnly('Enter the start date.')
+  startDate?: string;
+
+  /** The settings' duration (12 months) unless sent. */
+  @Sent() @IsInt({ message: DURATION_MESSAGE }) @Min(1, { message: DURATION_MESSAGE }) @Max(60, { message: DURATION_MESSAGE })
+  durationMonths?: number;
+
+  /** Version 1 only (a renewal has none); the settings' probation (3 months) unless sent, or 0 for someone who had one. */
+  @Sent() @IsInt({ message: 'Enter the months of probation as a whole number, 0 to 3.' }) @Min(0, { message: 'Enter 0 to 3 months of probation.' }) @Max(3, { message: PROBATION_CAP_MESSAGE })
+  probationMonths?: number;
+
+  /**
+   * Why the pay changes, on a version after the first whose pay isn't the one before's (a renewal with new pay counts
+   * as a raise: owner, 16 October 2026): required then, and the CEO approves it before it is signed; ignored when the pay
+   * stays the same.
+   */
+  @Sent() @IsIn(RAISE_REASONS, { message: RAISE_REASON_MESSAGE })
+  raiseReason?: RaiseReason;
 }
 
 export class CreateContractDto extends ContractTermsDto {}

@@ -150,7 +150,8 @@ describe('Contracts list (e2e)', () => {
     moved = await hire('Moved Team', { jobTitleId: deskOfficer, joinDate: addMonths(today, -9) });
     movedV1 = await sign(await draft(moved, { grossSalary: 15000 }));
     await api().patch(`/api/employees/${moved.id}/employments/${moved.employmentId}`).set('Cookie', hr).send({ jobTitleId: fieldLead }).expect(200);
-    movedV2 = await draft(moved, { grossSalary: 14000 });
+    // new pay: a reason, for the CEO to approve before it is signed (owner's decisions, 16 October 2026)
+    movedV2 = await draft(moved, { grossSalary: 14000, raiseReason: 'adjustment' });
 
     drafted = await hire('Draft Only', { employmentType: 'sales', jobTitleId: opsHead });
     draftedC = await draft(drafted); // the newest draft
@@ -307,6 +308,9 @@ describe('Contracts list (e2e)', () => {
       totalSalary: 15000,
       insuredSalary: 15000,
       salaryHidden: false,
+      // a whole contract, signed (owner's decisions, 16 October 2026: raises are amendments or contracts)
+      kind: 'contract',
+      stage: 'signed',
       employee: { id: moved.id, employeeCode: moved.employeeCode, fullNameEn: moved.fullNameEn, fullNameAr: moved.fullNameAr },
       employmentId: moved.employmentId,
       employmentType: 'full_time',
@@ -327,6 +331,8 @@ describe('Contracts list (e2e)', () => {
       nonRenewalNoticeBy: null,
       grossSalary: 14000,
       insuredSalary: 14000,
+      // new pay: a draft for HR to send to the CEO
+      stage: 'draft',
       jobTitleEn: 'Field Lead',
       departmentName: `${deptName} › Field`,
       employmentCurrent: true,

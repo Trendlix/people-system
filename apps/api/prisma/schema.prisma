@@ -53,6 +53,9 @@ model User {
   payrollsApproved  PayrollRun[]           @relation("PayrollApproval") // payroll runs this user approved as CEO
   payslipsDrawn     Payslip[]              @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
   lawRatesChanged   PayrollLawYear[]       @relation("LawRatesChange") // years of the rates set by law this user changed last
+  raisesApproved    Contract[]             @relation("RaiseApproval") // raises (and renewals with new pay) this user approved as CEO
+  raisesRequested   RaiseRequest[]         @relation("RaiseRequester") // raise requests this user made
+  raisesDeclined    RaiseRequest[]         @relation("RaiseRequestDecline") // raise requests this user declined (HR or the CEO)
 
   @@map("users")
 }
@@ -174,6 +177,7 @@ model JobTitle {
   duties         JobTitleDuty[]
   employments    Employment[]
   offers         JobOffer[]
+  promotions     Contract[]     @relation("RaiseJobTitle") // raises that promote to this job title
 
   @@unique([departmentId, titleEn])
   @@map("job_titles")
@@ -195,6 +199,7 @@ model Grade {
   highestOf   JobTitle[]   @relation("JobTitleMaxGrade") // job titles whose range ends at this grade
   employments Employment[]
   offers      JobOffer[]
+  promotions  Contract[]   @relation("RaiseGrade") // raises that promote to this grade
 
   @@map("grades")
 }
@@ -304,6 +309,7 @@ model Employee {
   offers                     JobOffer[]             @relation("OfferPerson") // offers made to this person: as a former employee, or the offer they were hired from
   offersManaging             JobOffer[]             @relation("OfferManager") // offers whose position reports to this person
   payrollLines               PayrollLine[] // the person's pay, month by month
+  raiseRequests              RaiseRequest[] // the raises asked for this person
 
   @@map("employees")
 }
@@ -343,6 +349,7 @@ model Employment {
   endings          EmploymentEnding[]
   documents        GeneratedDocument[]
   payrollLines     PayrollLine[]
+  raiseRequests    RaiseRequest[]
 
   @@index([employeeId])
   @@index([departmentId])
@@ -513,10 +520,65 @@ model Contract {
   updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz
   documents           GeneratedDocument[] // its printed copies (the contract slots), generated from templates
   payrollLines        PayrollLine[] // the months paid on its terms
+  // Pay raises during a contract (owner's decisions, 16 October 2026; packages/shared raises.ts). A raise is an
+  // amendment (kind amendment: the new pay on the same contract from its start date, the effective date, a 1st of a
+  // month; its end the contract's, no term of its own, no probation; numbered as the contract with -A1, -A2 …) or a new
+  // contract (kind contract, its own term from the effective date). A version that changes the pay (a raise, or a
+  // renewal with new pay) has its reason and the CEO's step (approval): HR sends it, the CEO approves it or returns it
+  // with a reason; only an approved one is signed. A promotion with it is applied to the employment when it is signed.
+  // The insured wage follows its pay from the next 1 January, or from the Form 2 date HR records.
+  kind                String              @default("contract") // CONTRACT_KINDS: contract, amendment
+  raiseReason         String?             @map("raise_reason") // RAISE_REASONS; set on a version that changes the pay
+  approval            String? // RAISE_APPROVALS: draft, pending_ceo, approved; null: no CEO step (the first, a renewal with the same pay)
+  sentAt              DateTime?           @map("sent_at") @db.Timestamptz // sent to the CEO, last
+  approvedById        String?             @map("approved_by") @db.Uuid
+  approvedBy          User?               @relation("RaiseApproval", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt          DateTime?           @map("approved_at") @db.Timestamptz
+  returnedReason      String?             @map("returned_reason") // why the CEO sent it back to HR, until it is sent again
+  newJobTitleId       String?             @map("new_job_title_id") @db.Uuid // a promotion: the job title from the raise
+  newJobTitle         JobTitle?           @relation("RaiseJobTitle", fields: [newJobTitleId], references: [id], onDelete: Restrict)
+  newGradeId          String?             @map("new_grade_id") @db.Uuid // a promotion: the grade, within the job title's range
+  newGrade            Grade?              @relation("RaiseGrade", fields: [newGradeId], references: [id], onDelete: Restrict)
+  form2From           DateTime?           @map("form2_from") @db.Date // Form 2 filed: the insured wage follows the new pay from this 1st of a month
+  raiseRequest        RaiseRequest? // the request it was prepared from, if any
 
   @@unique([employmentId, version])
   @@index([status, endDate])
   @@map("contracts")
+}
+
+// A request for a raise (owner, 16 October 2026: "a place to request raise by employee, or his manager or the HR, with
+// a reason and to be going through an approval cycle"): by the employee for themself, their direct manager, or HR, with
+// a reason and (the employee's or HR's) a suggested gross. HR declines it or prepares the raise from it (contractId);
+// the CEO's decision on that raise is the request's; it is done once the raise is signed. One open per person. The
+// amounts are RESTRICTED (HR, Finance, CEO): the manager never sees one, the employee only their own suggestion and,
+// once signed, their new salary.
+model RaiseRequest {
+  id             String     @id @default(uuid()) @db.Uuid
+  employeeId     String     @map("employee_id") @db.Uuid
+  employee       Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId   String     @map("employment_id") @db.Uuid // the employment it was asked under
+  employment     Employment @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  requestedById  String?    @map("requested_by") @db.Uuid
+  requestedBy    User?      @relation("RaiseRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  requester      String // RAISE_REQUESTERS: self, manager, hr
+  reason         String
+  suggestedGross Decimal?   @map("suggested_gross") @db.Decimal(12, 2) // RESTRICTED; the employee's or HR's, never a manager's
+  status         String     @default("with_hr") // RAISE_REQUEST_STATUSES: with_hr, with_ceo, approved, declined, done
+  contractId     String?    @unique @map("contract_id") @db.Uuid // the raise HR prepared from it
+  contract       Contract?  @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  declinedById   String?    @map("declined_by") @db.Uuid
+  declinedBy     User?      @relation("RaiseRequestDecline", fields: [declinedById], references: [id], onDelete: SetNull)
+  declinedAt     DateTime?  @map("declined_at") @db.Timestamptz
+  declinedStage  String?    @map("declined_stage") // hr or ceo
+  declineReason  String?    @map("decline_reason")
+  doneAt         DateTime?  @map("done_at") @db.Timestamptz
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("raise_requests")
 }
 
 // How an employment ends: resignation, non-renewal, an ending during probation … (one of the ending rules). HR

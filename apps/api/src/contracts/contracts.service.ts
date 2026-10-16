@@ -1,5 +1,14 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { insuredWageOf, monthlyFromHourly, type ContractForm, type ContractStatus, type PayBasis } from '@trendlix/shared';
+import {
+  insuredWageOf,
+  monthlyFromHourly,
+  samePay,
+  type ContractForm,
+  type ContractStatus,
+  type PayBasis,
+  type PayTerms,
+  type RaiseReason,
+} from '@trendlix/shared';
 import { AllowancesService } from '../allowances/allowances.service.js';
 import { allowanceData, allowancesTotal, allowanceView, type AllowanceSnapshot } from '../allowances/rows.js';
 import { AuditService, changes, type AuditEntry } from '../audit/audit.service.js';
@@ -12,6 +21,7 @@ import type { EmployeeStatus, Prisma } from '../generated/prisma/client.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ContractSettingsService } from './contract-settings.service.js';
+import { checkedPromotion } from './promotion.js';
 import {
   MAX_MONEY,
   PROBATION_CAP_MESSAGE,
@@ -37,9 +47,9 @@ const ENTITY = 'contract';
 type Db = PrismaService | Prisma.TransactionClient;
 /** Undoing a signing is for a Super Admin only, like deleting (owner's decision, 15 October 2026). */
 export const ONLY_SUPER_ADMIN_UNSIGNS = 'Only a Super Admin can undo a signing.';
-const DATE_FIELDS = ['startDate', 'endDate', 'probationEnd', 'signedOn', 'insuranceFiledOn', 'labourOfficeFiledOn'] as const;
+const DATE_FIELDS = ['startDate', 'endDate', 'probationEnd', 'signedOn', 'insuranceFiledOn', 'labourOfficeFiledOn', 'form2From'] as const;
 /** Restricted (HR, Finance, CEO): the audit log only says they changed, as for bank details. */
-const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary', 'hourlyRate', 'allowances'];
+export const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary', 'hourlyRate', 'allowances'];
 /** A contract's terms: a draft takes them, a signed contract never changes them. */
 const TERMS = [
   'form',
@@ -54,6 +64,7 @@ const TERMS = [
   'hoursPerWeek',
   'daysPerWeek',
   'allowances',
+  'raiseReason',
 ] as const;
 const GROSS_MESSAGE = 'Enter the gross salary as an amount, e.g. 12000 or 12000.50.';
 
@@ -68,6 +79,9 @@ const EMPLOYMENT = {
   endDate: true,
   status: true,
   probationEnd: true,
+  jobTitleId: true,
+  departmentId: true,
+  gradeId: true,
   employee: { select: { fullNameEn: true } },
   jobTitle: { select: { titleEn: true, titleAr: true } },
   grade: { select: { code: true } },
@@ -75,7 +89,7 @@ const EMPLOYMENT = {
   shift: { select: { code: true, workingDays: true } },
 } satisfies Prisma.EmploymentSelect;
 
-type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
+export type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
 
 /** At most this many contracts in the company-wide list. */
 const LIST_CAP = 500;
@@ -91,7 +105,7 @@ const LIST_GROUPS: { statuses: readonly ContractStatus[]; orderBy: Prisma.Contra
 ];
 
 /** The terms to work out a contract from: as sent, or as the draft has them. */
-interface TermsInput {
+export interface TermsInput {
   startDate?: string;
   durationMonths?: number | null;
   probationMonths?: number;
@@ -108,14 +122,14 @@ interface TermsInput {
 }
 
 /** A contract's allowances in one order (by kind), to compare them. */
-function comparable(rows: readonly AllowanceSnapshot[]) {
+export function comparable(rows: readonly AllowanceSnapshot[]) {
   return [...rows]
     .sort((a, b) => a.allowanceTypeId.localeCompare(b.allowanceTypeId))
     .map(({ allowanceTypeId, nameEn, nameAr, taxable, insured, amount }) => ({ allowanceTypeId, nameEn, nameAr, taxable, insured, amount }));
 }
 
 /** A contract's own columns as the API sends them (dates as YYYY-MM-DD, money as numbers), for comparing and the audit log. */
-function fields(c: ContractRow) {
+export function fields(c: ContractRow) {
   return {
     number: c.number,
     form: c.form as ContractForm,
@@ -138,11 +152,62 @@ function fields(c: ContractRow) {
     insuranceFiledOn: fromDateOnly(c.insuranceFiledOn),
     labourOfficeFiledOn: fromDateOnly(c.labourOfficeFiledOn),
     note: c.note,
+    kind: c.kind,
+    raiseReason: c.raiseReason,
+    approval: c.approval,
+    newJobTitleId: c.newJobTitleId,
+    newGradeId: c.newGradeId,
+    form2From: fromDateOnly(c.form2From),
+    sentAt: c.sentAt?.toISOString() ?? null,
+    approvedById: c.approvedById,
+    approvedAt: c.approvedAt?.toISOString() ?? null,
+    returnedReason: c.returnedReason,
   };
 }
 
+/**
+ * The CEO's step after HR changes a draft: none once its pay is the version before's again; an approved one stays
+ * approved while only its note changes, and goes back to a draft for HR to send again once its terms change.
+ */
+function approvalAfterChange(before: ContractRow, step: { raiseReason: RaiseReason | null; approval: 'draft' | null }, termsChanged: boolean): Record<string, unknown> {
+  if (step.approval === null) return { raiseReason: null, approval: null, sentAt: null, approvedById: null, approvedAt: null, returnedReason: null };
+  if (before.approval === 'approved' && !termsChanged) return {};
+  return { raiseReason: step.raiseReason, approval: 'draft', approvedById: null, approvedAt: null };
+}
+
+/** A version's pay, to compare with another's (samePay). */
+export function payTermsOf(c: { payBasis: string; grossSalary: number | Prisma.Decimal; hourlyRate: number | Prisma.Decimal | null; hoursPerWeek: number | Prisma.Decimal | null; basicPercent: number; allowances: readonly { allowanceTypeId: string; amount: number | Prisma.Decimal }[] }): PayTerms {
+  const n = (v: number | Prisma.Decimal) => (typeof v === 'number' ? v : v.toNumber());
+  return {
+    payBasis: c.payBasis,
+    grossSalary: n(c.grossSalary),
+    hourlyRate: c.hourlyRate === null ? null : n(c.hourlyRate),
+    hoursPerWeek: c.hoursPerWeek === null ? null : n(c.hoursPerWeek),
+    basicPercent: c.basicPercent,
+    allowances: c.allowances.map((a) => ({ allowanceTypeId: a.allowanceTypeId, amount: n(a.amount) })),
+  };
+}
+
+/** A version with no CEO step: its pay is the one before's, or it is the first. */
+export const NO_PAY_CHANGE = { raiseReason: null, approval: null } as const;
+
+/**
+ * The CEO's step a new version takes (owner's decisions, 16 October 2026: "HR, then the CEO"; a renewal with new pay
+ * counts as a raise): none when its pay is the version before's; else it needs a reason, and is a draft for HR to send
+ * to the CEO, who approves it before it is signed.
+ */
+export function payChangeStep(previous: { version: number } & Parameters<typeof payTermsOf>[0], pay: PayTerms, reason: RaiseReason | null | undefined) {
+  if (samePay(payTermsOf(previous), pay)) return NO_PAY_CHANGE;
+  if (!reason) {
+    throw new BadRequestException(
+      `The pay changes from version ${previous.version}: choose why (annual raise, promotion, adjustment or other). The CEO approves a change of pay before it is signed.`,
+    );
+  }
+  return { raiseReason: reason, approval: 'draft' as const };
+}
+
 /** What Prisma writes: YYYY-MM-DD strings become dates. */
-function toData<T extends Record<string, unknown>>(values: T): T {
+export function toData<T extends Record<string, unknown>>(values: T): T {
   const data: Record<string, unknown> = { ...values };
   for (const key of DATE_FIELDS) if (typeof data[key] === 'string') data[key] = toDateOnly(data[key]);
   return data as T;
@@ -152,7 +217,7 @@ function toData<T extends Record<string, unknown>>(values: T): T {
  * Salary values (the hourly rate and the allowances too) never go to the audit log: only the fact that they were set or
  * changed. One left empty says nothing, so it stays as it is.
  */
-function salaryMasked<T extends Record<string, unknown>>(diff: T): T {
+export function salaryMasked<T extends Record<string, unknown>>(diff: T): T {
   const out: Record<string, unknown> = { ...diff };
   for (const key of SALARY_FIELDS) {
     const value = out[key];
@@ -161,7 +226,7 @@ function salaryMasked<T extends Record<string, unknown>>(diff: T): T {
   return out as T;
 }
 
-function assertCurrent(e: EmploymentRow) {
+export function assertCurrent(e: Pick<EmploymentRow, 'endDate'>) {
   if (e.endDate) {
     throw new ConflictException(`This employment ended on ${shownDate(fromDateOnly(e.endDate))}: contracts are only added and signed for a current employment.`);
   }
@@ -196,7 +261,9 @@ export class ContractsService {
     const employment = await this.employment(employeeId, employmentId, user);
     const rows = await this.prisma.contract.findMany({ where: { employmentId }, orderBy: { version: 'desc' }, include: CONTRACT_INCLUDE });
     const ctx = await this.context(user, employment);
-    return rows.map((c) => contractView(c, ctx));
+    // a change of pay not signed yet stays with those who see salaries until it is (as an ending waiting for the CEO
+    // never reaches the employee first)
+    return rows.filter((c) => ctx.seesSalary || c.status !== 'draft' || c.approval === null).map((c) => contractView(c, ctx));
   }
 
   /**
@@ -277,7 +344,9 @@ export class ContractsService {
       daysPerWeek: dto.daysPerWeek,
       allowances,
     });
-    const values = { ...terms, number: await this.nextNumber(terms.startDate, db), version: (previous?.version ?? 0) + 1, note: dto.note ?? null };
+    // a version with new pay (a renewal with a raise) goes to the CEO first (owner's decisions, 16 October 2026)
+    const step = previous ? payChangeStep(previous, payTermsOf({ ...terms, allowances: rows }), dto.raiseReason) : NO_PAY_CHANGE;
+    const values = { ...terms, ...step, number: await this.nextNumber(terms.startDate, db), version: (previous?.version ?? 0) + 1, note: dto.note ?? null };
     const row = await db.contract.create({
       data: { ...toData({ ...values, employmentId }), allowances: { create: allowanceData(rows) } },
       include: CONTRACT_INCLUDE,
@@ -308,10 +377,13 @@ export class ContractsService {
       if (dto.signedOn !== undefined || dto.insuranceFiledOn !== undefined || dto.labourOfficeFiledOn !== undefined) {
         throw new BadRequestException('Sign the contract first: the signing and filing dates are recorded on a signed contract.');
       }
+      if (before.kind === 'amendment') throw new BadRequestException(`${before.number} is a salary amendment: change it as a raise (Edit raise).`);
+      if (before.approval === 'pending_ceo') throw new ConflictException(`${before.number} is with the CEO: it can't be changed unless the CEO returns it.`);
       assertCurrent(employment);
       const previous = await this.prisma.contract.findFirst({
         where: { employmentId: before.employmentId, version: { lt: before.version } },
         orderBy: { version: 'desc' },
+        include: CONTRACT_INCLUDE,
       });
       // sent: the whole set, with the kinds' names and treatment as they are now; a kind the draft already has may be
       // inactive since
@@ -336,7 +408,10 @@ export class ContractsService {
       });
       // numbered by the start year: a draft moved to another year takes that year's next number
       const number = terms.startDate.slice(0, 4) === was.startDate.slice(0, 4) ? before.number : await this.nextNumber(terms.startDate);
-      values = { ...terms, number, note: dto.note };
+      const pay = payTermsOf({ ...terms, allowances: allowances ?? before.allowances.map(allowanceView) });
+      const step = previous ? payChangeStep(previous, pay, dto.raiseReason ?? (before.raiseReason as RaiseReason | null)) : NO_PAY_CHANGE;
+      const termsChanged = Object.keys(changes(was, { ...terms, allowances: allowances && comparable(allowances), raiseReason: step.raiseReason })).length > 0;
+      values = { ...terms, number, note: dto.note, ...approvalAfterChange(before, step, termsChanged) };
     } else {
       if (TERMS.some((key) => dto[key] !== undefined)) {
         throw new BadRequestException('This contract is signed: only the signing and filing dates and the note can be changed. For other changes, add a new version.');
@@ -347,10 +422,17 @@ export class ContractsService {
       values = { signedOn: dto.signedOn, insuranceFiledOn: dto.insuranceFiledOn, labourOfficeFiledOn: dto.labourOfficeFiledOn, note: dto.note };
     }
 
-    const row = await this.prisma.contract.update({
-      where: { id },
-      data: { ...toData(values), ...(allowances && { allowances: { deleteMany: {}, create: allowanceData(allowances) } }) },
-      include: CONTRACT_INCLUDE,
+    const row = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.contract.update({
+        where: { id },
+        data: { ...toData(values), ...(allowances && { allowances: { deleteMany: {}, create: allowanceData(allowances) } }) },
+        include: CONTRACT_INCLUDE,
+      });
+      // an approved one changed goes back to HR to send again, and so does the request it was prepared from
+      if (before.raiseRequest && before.approval === 'approved' && values.approval === 'draft') {
+        await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'with_hr' } });
+      }
+      return saved;
     });
     const diff = salaryMasked(changes(was, { ...values, ...(allowances && { allowances: comparable(allowances) }) }));
     if (Object.keys(diff).length) {
@@ -364,7 +446,11 @@ export class ContractsService {
     assertDeletes(user);
     const c = await this.row(id);
     if (c.status !== 'draft') throw new ConflictException(`${c.number} is signed: only a draft can be deleted, and a signed contract stays on record.`);
-    await this.prisma.contract.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.contract.delete({ where: { id } });
+      // the request it was prepared from is HR's again, to prepare anew or decline
+      if (c.raiseRequest) await tx.raiseRequest.update({ where: { id: c.raiseRequest.id }, data: { status: 'with_hr' } });
+    });
     await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: id, diff: { employmentId: c.employmentId, number: c.number, version: c.version } });
   }
 
@@ -377,27 +463,43 @@ export class ContractsService {
   async sign(id: string, dto: SignContractDto, user: SessionUser) {
     const before = await this.row(id);
     if (before.status !== 'draft') throw new ConflictException(`${before.number} is already signed.`);
+    // a change of pay is signed once the CEO approved it (owner's decision, 16 October 2026: "HR, then the CEO")
+    if (before.approval && before.approval !== 'approved') {
+      throw new ConflictException(
+        before.approval === 'pending_ceo'
+          ? `${before.number} is with the CEO: it is signed once the CEO approves it.`
+          : `${before.number} changes the pay: send it to the CEO, and sign it once approved.`,
+      );
+    }
     const employment = await this.employmentOf(before);
     assertCurrent(employment);
     assertNotFuture(dto.signedOn, 'signing');
+    // a promotion with a raise is applied when it is signed, checked again (the job title's grades may have changed)
+    const promotion = await checkedPromotion(this.prisma, employment, { newJobTitleId: before.newJobTitleId, newGradeId: before.newGradeId });
 
     const snapshot = {
-      jobTitleEn: employment.jobTitle?.titleEn ?? null,
-      jobTitleAr: employment.jobTitle?.titleAr ?? null,
-      gradeCode: employment.grade?.code ?? null,
-      departmentName: departmentName(employment.department),
+      jobTitleEn: promotion.jobTitle?.titleEn ?? employment.jobTitle?.titleEn ?? null,
+      jobTitleAr: promotion.jobTitle ? promotion.jobTitle.titleAr : (employment.jobTitle?.titleAr ?? null),
+      gradeCode: promotion.grade?.code ?? employment.grade?.code ?? null,
+      departmentName: promotion.jobTitle?.departmentName ?? departmentName(employment.department),
       shiftCode: employment.shift?.code ?? null,
     };
     const probationEnd = fromDateOnly(before.probationEnd);
     // On leave or Notice period stay as they are; only Probation and Active follow the contract's probation.
     const followsProbation = employment.status === 'probation' || employment.status === 'active';
+    const promoted = {
+      ...(promotion.jobTitle && { jobTitleId: promotion.jobTitle.id, departmentId: promotion.jobTitle.departmentId }),
+      ...(promotion.grade && { gradeId: promotion.grade.id }),
+    };
     const employmentChange =
       before.version === 1
         ? {
             probationEnd,
             ...(followsProbation && { status: probationEnd && probationEnd >= todayInCairo() ? ('probation' as const) : ('active' as const) }),
           }
-        : null;
+        : Object.keys(promoted).length
+          ? promoted
+          : null;
     const superseded =
       before.version === 1
         ? []
@@ -406,12 +508,16 @@ export class ContractsService {
     const row = await this.prisma.$transaction(async (tx) => {
       const signed = await tx.contract.update({ where: { id }, data: { status: 'active', signedOn: toDateOnly(dto.signedOn), ...snapshot }, include: CONTRACT_INCLUDE });
       if (superseded.length) await tx.contract.updateMany({ where: { id: { in: superseded.map((s) => s.id) } }, data: { status: 'superseded' } });
-      if (employmentChange) {
+      if (before.version === 1 && employmentChange) {
         await tx.employment.update({
           where: { id: employment.id },
-          data: { probationEnd: probationEnd ? toDateOnly(probationEnd) : null, status: employmentChange.status },
+          data: { probationEnd: probationEnd ? toDateOnly(probationEnd) : null, status: (employmentChange as { status?: EmployeeStatus }).status },
         });
+      } else if (employmentChange) {
+        await tx.employment.update({ where: { id: employment.id }, data: promoted });
       }
+      // the raise request it was prepared from is done
+      if (before.raiseRequest) await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'done', doneAt: new Date() } });
       return signed;
     });
 
@@ -431,10 +537,14 @@ export class ContractsService {
       },
     });
     if (employmentChange) {
-      const diff = changes({ probationEnd: fromDateOnly(employment.probationEnd), status: employment.status }, employmentChange);
+      const was = { probationEnd: fromDateOnly(employment.probationEnd), status: employment.status, jobTitleId: employment.jobTitleId, departmentId: employment.departmentId, gradeId: employment.gradeId };
+      const diff = changes(was, employmentChange);
       if (Object.keys(diff).length) {
         await this.audit.record({ userId: user.id, action: 'update', entityType: 'employment', entityId: employment.id, diff: { employeeId: employment.employeeId, contract: before.number, ...diff } });
       }
+    }
+    if (before.raiseRequest) {
+      await this.audit.record({ userId: user.id, action: 'done', entityType: 'raise_request', entityId: before.raiseRequest.id, diff: { contract: before.number, status: { from: before.raiseRequest.status, to: 'done' } } });
     }
     return contractView(row, await this.context(user, employment));
   }
@@ -470,7 +580,8 @@ export class ContractsService {
       before.version > 1
         ? await this.prisma.contract.findFirst({ where: { employmentId: before.employmentId, version: before.version - 1, status: 'superseded' }, select: { id: true, number: true } })
         : null;
-    const employmentChange = before.version === 1 ? await this.beforeSigning(employment, before.number) : null;
+    // version 1's probation and status, a raise's promotion: as before the signing
+    const employmentChange = before.version === 1 || before.newJobTitleId || before.newGradeId ? await this.beforeSigning(employment, before.number) : null;
 
     const row = await this.prisma.$transaction(async (tx) => {
       const draft = await tx.contract.update({
@@ -489,6 +600,8 @@ export class ContractsService {
         include: CONTRACT_INCLUDE,
       });
       if (restored) await tx.contract.update({ where: { id: restored.id }, data: { status: 'active' } });
+      // the raise request it was prepared from is approved again, waiting for the signing
+      if (before.raiseRequest) await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'approved', doneAt: null } });
       if (employmentChange) {
         await tx.employment.update({
           where: { id: employment.id },
@@ -513,8 +626,12 @@ export class ContractsService {
       },
     });
     if (employmentChange) {
-      const diff = changes({ probationEnd: fromDateOnly(employment.probationEnd), status: employment.status }, employmentChange);
+      const was = { probationEnd: fromDateOnly(employment.probationEnd), status: employment.status, jobTitleId: employment.jobTitleId, departmentId: employment.departmentId, gradeId: employment.gradeId };
+      const diff = changes(was, employmentChange);
       await this.audit.record({ userId: user.id, action: 'update', entityType: 'employment', entityId: employment.id, diff: { employeeId: employment.employeeId, signingUndone: before.number, ...diff } });
+    }
+    if (before.raiseRequest) {
+      await this.audit.record({ userId: user.id, action: 'update', entityType: 'raise_request', entityId: before.raiseRequest.id, diff: { contract: before.number, signingUndone: true, status: { from: 'done', to: 'approved' } } });
     }
     return contractView(row, await this.context(user, employment));
   }
@@ -531,7 +648,8 @@ export class ContractsService {
       orderBy: [{ endDate: 'asc' }, { number: 'asc' }],
       include: {
         employment: {
-          select: { id: true, employee: EMPLOYEE_REF, shift: { select: { workingDays: true } }, contracts: { where: { status: 'draft' }, select: { id: true } } },
+          // a whole contract drafted after it (a renewal, or a raise's new contract), not a salary amendment, which keeps its end
+          select: { id: true, employee: EMPLOYEE_REF, shift: { select: { workingDays: true } }, contracts: { where: { status: 'draft', kind: 'contract' }, select: { id: true } } },
         },
       },
     });
@@ -568,7 +686,7 @@ export class ContractsService {
    * version before ends), the duration and end of the fixed term, the probation and its end, the pay (by the hour, the
    * gross), and the insured salary.
    */
-  private async terms(employment: EmploymentRow, previous: { version: number; startDate: Date; endDate: Date | null } | null, input: TermsInput) {
+  async terms(employment: EmploymentRow, previous: { version: number; startDate: Date; endDate: Date | null } | null, input: TermsInput) {
     const settings = await this.settings.get();
     const joinDate = fromDateOnly(employment.joinDate);
     let startDate: string;
@@ -633,7 +751,7 @@ export class ContractsService {
    * the hour: the rate and the hours a week, and the gross is the monthly estimate, rate × hours × 52 ÷ 12 (whatever
    * gross was sent). The working days a week go with either.
    */
-  private pay(input: TermsInput) {
+  pay(input: TermsInput) {
     const daysPerWeek = input.daysPerWeek ?? null;
     if (input.payBasis === 'hourly') {
       if (input.hourlyRate == null || input.hoursPerWeek == null) {
@@ -666,16 +784,16 @@ export class ContractsService {
    * the fields still as the signing left them: a probation confirmed since, or a date changed by hand, stays. Null when
    * there is nothing to put back.
    */
-  private async beforeSigning(e: EmploymentRow, number: string): Promise<{ probationEnd?: string | null; status?: EmployeeStatus } | null> {
+  private async beforeSigning(e: EmploymentRow, number: string): Promise<Record<string, unknown> | null> {
     const entry = await this.prisma.auditLog.findFirst({
       where: { entityType: 'employment', entityId: e.id, action: 'update', diff: { path: ['contract'], equals: number } },
       orderBy: { id: 'desc' },
       select: { diff: true },
     });
     const diff = (entry?.diff ?? {}) as Record<string, { from: unknown; to: unknown } | undefined>;
-    const now: Record<string, unknown> = { probationEnd: fromDateOnly(e.probationEnd), status: e.status };
-    const out: { probationEnd?: string | null; status?: EmployeeStatus } = {};
-    for (const key of ['probationEnd', 'status'] as const) {
+    const now: Record<string, unknown> = { probationEnd: fromDateOnly(e.probationEnd), status: e.status, jobTitleId: e.jobTitleId, departmentId: e.departmentId, gradeId: e.gradeId };
+    const out: Record<string, unknown> = {};
+    for (const key of ['probationEnd', 'status', 'jobTitleId', 'departmentId', 'gradeId'] as const) {
       const change = diff[key];
       if (change && now[key] === change.to) out[key] = change.from as never;
     }
@@ -683,7 +801,7 @@ export class ContractsService {
   }
 
   /** The next free number for a contract starting that year: CON-2026-0001, CON-2026-0002 … */
-  private async nextNumber(startDate: string, db: Db = this.prisma): Promise<string> {
+  async nextNumber(startDate: string, db: Db = this.prisma): Promise<string> {
     const year = startDate.slice(0, 4);
     const [{ max }] = await db.$queryRaw<{ max: number | null }[]>`
       SELECT max(substring(number from 10)::int) AS max FROM contracts WHERE number ~ ${`^CON-${year}-[0-9]+$`}`;
@@ -691,7 +809,7 @@ export class ContractsService {
   }
 
   /** How contracts are shown to this user: the salary or not, and the dates that follow from the employment's shift. */
-  private async context(user: SessionUser, employment: EmploymentRow): Promise<ContractContext> {
+  async context(user: SessionUser, employment: EmploymentRow): Promise<ContractContext> {
     return { seesSalary: seesSalary(user), workingDays: employment.shift?.workingDays ?? null, nonRenewal: await this.nonRenewal() };
   }
 
@@ -700,7 +818,7 @@ export class ContractsService {
   }
 
   /** An employment of this employee that the user may see (see EmployeesService.visibleTo). */
-  private async employment(employeeId: string, employmentId: string, user: SessionUser, db: Db = this.prisma): Promise<EmploymentRow> {
+  async employment(employeeId: string, employmentId: string, user: SessionUser, db: Db = this.prisma): Promise<EmploymentRow> {
     const e = await db.employment.findFirst({
       where: { id: employmentId, employeeId, employee: await this.employees.visibleTo(user) },
       select: EMPLOYMENT,
@@ -709,11 +827,11 @@ export class ContractsService {
     return e;
   }
 
-  private employmentOf(c: { employmentId: string }): Promise<EmploymentRow> {
+  employmentOf(c: { employmentId: string }): Promise<EmploymentRow> {
     return this.prisma.employment.findUniqueOrThrow({ where: { id: c.employmentId }, select: EMPLOYMENT });
   }
 
-  private async row(id: string): Promise<ContractRow> {
+  async row(id: string): Promise<ContractRow> {
     const c = await this.prisma.contract.findUnique({ where: { id }, include: CONTRACT_INCLUDE });
     if (!c) throw new NotFoundException('Contract not found.');
     return c;

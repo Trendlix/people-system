@@ -27,7 +27,7 @@ import {
 import { birthDateFromNationalId, maskTail } from './checks.js';
 import { completeness, papersOf, topGradeRank } from './completeness.js';
 import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
-import { insuredWageOfEmployee } from './insured-wage.js';
+import { INSURED_VERSION, insuredContractPay, insuredVersionOf, insuredWageOfEmployee } from './insured-wage.js';
 import { withOccupation } from './occupation-view.js';
 
 const ENTITY = 'employee';
@@ -338,14 +338,16 @@ export class EmployeesService {
     // (owner's decision, 16 October 2026): the comprehensive wage, the employee's own else the gross and allowances of
     // the contract the Social Insurance tab is about (the current employment's, else the latest's), within this year's
     // insurable limits in Cairo (the year's rates set by law); worked out here as documents/values.ts prints it, and as
-    // payroll deducts insurance on it for a run's year (insured-wage.ts)
-    const [papers, topRank, changeRequests, settings, photos, law] = await Promise.all([
+    // payroll deducts insurance on it for a run's year (insured-wage.ts); after a raise, the contract's pay before it
+    // until the raise's insured-wage date, as payroll (owner's decision, 16 October 2026)
+    const [papers, topRank, changeRequests, settings, photos, law, insuredPay] = await Promise.all([
       papersOf(this.prisma, [id]),
       current?.grade ? topGradeRank(this.prisma) : null,
       self || seesChangeRequests(user) ? this.changeRequestsOf(id) : [],
       salary ? this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }) : null,
       seesEmployeeFile(user) ? this.photos([id]) : null,
       this.lawRates.forYear(Number(todayInCairo().slice(0, 4))),
+      salary ? this.insuredPay(current ?? history[0] ?? null) : null,
     ]);
     const { insuranceBasicWage, insuranceComprehensiveWage, ...open } = withOccupation(fields(own));
     return {
@@ -356,7 +358,9 @@ export class EmployeesService {
         insuranceBasicWage,
         insuranceComprehensiveWage,
         insuranceBasicDefault: settings?.insuranceBasicDefault.toNumber() ?? INSURANCE_BASIC_DEFAULT,
-        insuredWage: insuredWageOfEmployee(insuranceComprehensiveWage, (current ?? history[0])?.contract?.totalSalary ?? null, law),
+        insuredWage: insuredWageOfEmployee(insuranceComprehensiveWage, insuredPay?.total ?? null, law),
+        // as before a raise, until when and whether Form 2 was filed; the employee's own comprehensive wage stands anyway
+        insuredWageAsBefore: insuranceComprehensiveWage === null ? (insuredPay?.asBefore ?? null) : null,
         insurableLimits: insurableWageLimits(law),
       }),
       photoId: photos?.get(id)?.id ?? null,
@@ -380,6 +384,18 @@ export class EmployeesService {
       access: { edit: editsEmployees(user), delete: deletesEmployees(user), identity, bank },
       isSelf: self,
     };
+  }
+
+  /**
+   * The contract pay the Social Insurance tab's insured wage stands on today, for the employment it is about: its signed
+   * contract's, or after a raise the one before it until the raise's insured-wage date (owner's decision, 16 October
+   * 2026: "From the next January unless amended in Form 2"), as payroll takes it.
+   */
+  private async insuredPay(e: { id: string; contract: { id: string } | null } | null) {
+    if (!e?.contract) return insuredContractPay(null, [], todayInCairo());
+    const rows = await this.prisma.contract.findMany({ where: { employmentId: e.id, status: { not: 'draft' } }, select: INSURED_VERSION });
+    const versions = rows.map(insuredVersionOf);
+    return insuredContractPay(versions.find((v) => v.id === e.contract!.id) ?? null, versions, todayInCairo());
   }
 
   /**

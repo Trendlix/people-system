@@ -256,3 +256,9 @@ export * from './attendance.js';
 
 // the square of the personal photo shown in the circle beside the name
 export * from './photo-crop.js';
+
+// pay raises during a contract, renewals with new pay and raise requests: the ways, the CEO's step, the insured wage
+export * from './raises.js';
+
+// an employment's salary history: its pay events and the summary
+export * from './salary-history.js';

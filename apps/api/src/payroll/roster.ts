@@ -1,4 +1,5 @@
 import {
+  insuredWageVersion,
   lawRatesFor,
   paidDaysIn,
   shiftDaysIn,
@@ -55,6 +56,9 @@ export interface RosterEmployment {
     basicPercent: number;
     hourlyRate: number | null;
     allowances: { nameEn: string; amount: number; taxable: boolean; insured: boolean }[];
+    /** Its number within the employment, and, for a raise, from when the insured wage follows its pay (raises.ts). */
+    version?: number;
+    insuredWageFrom?: string | null;
   }[];
 }
 
@@ -140,7 +144,10 @@ export function roster(
     paid.add(p.id);
 
     const allowances = contract.allowances.map((a) => ({ name: a.nameEn, amount: a.amount, taxable: a.taxable, insured: a.insured }));
-    const contractTotal = (cents(contract.grossSalary) + allowances.reduce((sum, a) => sum + cents(a.amount), 0)) / 100;
+    // after a raise the insured wage stands on the pay before it until its insured-wage date, the salary tax on the new
+    // pay at once (owner's decision, 16 October 2026: "From the next January unless amended in Form 2")
+    const insuredOn = insuredWageVersion(contract, e.contracts, from);
+    const contractTotal = (cents(insuredOn.grossSalary) + insuredOn.allowances.reduce((sum, a) => sum + cents(a.amount), 0)) / 100;
     // the shift's hours to work a day, else its window
     const hoursPerDay = e.shift ? shiftWorkHours(e.shift) : null;
     lines.push({
@@ -166,6 +173,7 @@ export function roster(
         insured: p.socialInsured,
         // as the Social Insurance tab shows it, for the run's year (its rates set by law)
         insuredWage: insuredWageOfEmployee(p.insuranceComprehensiveWage, contractTotal, law)!.amount,
+        ...(insuredOn !== contract && p.insuranceComprehensiveWage === null && { insuredWageAsBefore: contract.insuredWageFrom }),
         hoursPerDay,
         ...shiftExpected(month, e, contract.payBasis, hoursPerDay, holidays),
       },

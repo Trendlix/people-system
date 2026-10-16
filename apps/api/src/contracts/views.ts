@@ -1,4 +1,14 @@
-import { ENDING_RULE_DEFAULTS, type EndReason, type NoticeUnit, type PayBasis } from '@trendlix/shared';
+import {
+  ENDING_RULE_DEFAULTS,
+  insuredWageDate,
+  payStage,
+  type ContractKind,
+  type EndReason,
+  type NoticeUnit,
+  type PayBasis,
+  type RaiseApproval,
+  type RaiseReason,
+} from '@trendlix/shared';
 import { ALLOWANCE_ORDER, allowancesTotal, allowanceView } from '../allowances/rows.js';
 import { addDays, fromDateOnly } from '../common/date-only.js';
 import type { Contract, Prisma } from '../generated/prisma/client.js';
@@ -26,8 +36,17 @@ export interface ContractContext {
 /** An amount of money as a number, to the piastre. */
 const money = (value: Prisma.Decimal | null): number | null => (value === null ? null : value.toNumber());
 
-/** What a contract is always loaded with: its allowances, in the kinds' order. */
-export const CONTRACT_INCLUDE = { allowances: { orderBy: ALLOWANCE_ORDER } } satisfies Prisma.ContractInclude;
+/**
+ * What a contract is always loaded with: its allowances, in the kinds' order; for a version that changes the pay (a
+ * raise, or a renewal with new pay), who approved it, its promotion and the request it was prepared from.
+ */
+export const CONTRACT_INCLUDE = {
+  allowances: { orderBy: ALLOWANCE_ORDER },
+  approvedBy: { select: { email: true } },
+  newJobTitle: { select: { id: true, titleEn: true, titleAr: true } },
+  newGrade: { select: { id: true, code: true } },
+  raiseRequest: { select: { id: true, status: true } },
+} satisfies Prisma.ContractInclude;
 
 /** A contract with its allowances. */
 export type ContractRow = Prisma.ContractGetPayload<{ include: typeof CONTRACT_INCLUDE }>;
@@ -104,10 +123,37 @@ export function contractView(c: ContractRow, ctx: ContractContext) {
     note: c.note,
     nonRenewalNoticeBy: nonRenewalNoticeBy(c, ctx),
     salaryHidden: !ctx.seesSalary,
+    kind: c.kind as ContractKind,
+    stage: payStage(c),
+    raise: raiseView(c, ctx.seesSalary),
   };
 }
 
 export type ContractView = ReturnType<typeof contractView>;
+
+/**
+ * A version that changes the pay (a raise, or a renewal with new pay; owner's decisions, 16 October 2026): why, the
+ * CEO's step, the promotion with it, Form 2 and from when the insured wage follows it. Null for one that doesn't. The
+ * CEO's reason for returning it may name amounts: only for those who see salaries.
+ */
+export function raiseView(c: ContractRow, seesSalary: boolean) {
+  if (c.approval === null) return null;
+  const startDate = fromDateOnly(c.startDate)!;
+  const form2From = fromDateOnly(c.form2From);
+  return {
+    reason: c.raiseReason as RaiseReason,
+    approval: c.approval as RaiseApproval,
+    sentAt: c.sentAt,
+    approvedBy: c.approvedBy && { email: c.approvedBy.email },
+    approvedAt: c.approvedAt,
+    returnedReason: seesSalary ? c.returnedReason : null,
+    newJobTitle: c.newJobTitle && { id: c.newJobTitle.id, titleEn: c.newJobTitle.titleEn, titleAr: c.newJobTitle.titleAr },
+    newGrade: c.newGrade && { id: c.newGrade.id, code: c.newGrade.code },
+    form2From,
+    insuredWageFrom: insuredWageDate(startDate, form2From),
+    requestId: c.raiseRequest?.id ?? null,
+  };
+}
 
 /** The department as a contract names it: a team as "Department › Team", as the screens show it. */
 export function departmentName(d: { nameEn: string; parent: { nameEn: string } | null } | null): string | null {
@@ -169,6 +215,8 @@ export function contractListView(c: ContractListRow, ctx: ContractContext) {
     totalSalary: v.totalSalary,
     insuredSalary: v.insuredSalary,
     salaryHidden: v.salaryHidden,
+    kind: v.kind,
+    stage: v.stage,
     employee: { id: e.employee.id, employeeCode: e.employee.employeeCode, fullNameEn: e.employee.fullNameEn, fullNameAr: e.employee.fullNameAr },
     employmentId: e.id,
     employmentType: e.employmentType,

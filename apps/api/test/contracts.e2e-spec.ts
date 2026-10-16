@@ -303,6 +303,10 @@ describe('Contracts (e2e)', () => {
         note: null,
         nonRenewalNoticeBy: null, // a draft
         salaryHidden: false,
+        // a whole contract, not a raise (owner's decisions, 16 October 2026)
+        kind: 'contract',
+        stage: 'draft',
+        raise: null,
       });
       expect((await contractsOf(e).expect(200)).body).toEqual([c]);
 
@@ -480,8 +484,9 @@ describe('Contracts (e2e)', () => {
       const early = await postContract(e, { grossSalary: 14000, startDate: '2026-01-15' }).expect(400);
       expect(early.body.message).toBe('Version 2 must start after version 1 started, on 15/01/2026.');
 
-      const v2 = await addContract(e, { grossSalary: 14000 });
-      expect(v2).toMatchObject({ version: 2, number: expect.stringMatching(/^CON-2027-\d{4}$/), startDate: '2027-01-15', endDate: '2028-01-14', probationMonths: 0, probationEnd: null, status: 'draft' });
+      // the same pay: no CEO step (a renewal with new pay goes to the CEO: raises.e2e-spec.ts)
+      const v2 = await addContract(e, { grossSalary: 12000 });
+      expect(v2).toMatchObject({ version: 2, number: expect.stringMatching(/^CON-2027-\d{4}$/), startDate: '2027-01-15', endDate: '2028-01-14', probationMonths: 0, probationEnd: null, status: 'draft', raise: null });
       const signed = (await signContract(v2.id, today).expect(200)).body as Contract;
       expect(signed.status).toBe('active');
 
@@ -722,25 +727,28 @@ describe('Contracts (e2e)', () => {
 
       // the kind is renamed and made inactive since: the renewal still copies it as the first version has it
       await api().patch(`/api/allowance-types/${kind}`).set('Cookie', hr).send({ nameEn: `Renamed Bonus ${RUN}`, taxable: false, active: false }).expect(200);
-      const v2 = await addContract(e, { grossSalary: 11000 });
+      // the same pay as version 1, so no CEO step (owner's decisions, 16 October 2026)
+      const v2 = await addContract(e, { grossSalary: 10000 });
       expect(v2).toMatchObject({
         version: 2,
         allowances: [
           { allowanceTypeId: housing, nameEn: `Housing ${RUN}`, insured: true, amount: 2000 },
           { allowanceTypeId: kind, nameEn: `Renewal Bonus ${RUN}`, taxable: true, amount: 1000 },
         ],
-        insuredSalary: 13000,
-        totalSalary: 14000,
+        insuredSalary: 12000,
+        totalSalary: 13000,
+        raise: null,
       });
       // the first version is unchanged
       expect(((await contractsOf(e).expect(200)).body as Contract[]).find((c) => c.id === v1.id)).toMatchObject({ allowances: v1.allowances });
       await api().delete(`/api/contracts/${v2.id}`).set('Cookie', superAdmin).expect(204);
 
       // sent, they replace the copy; the inactive kind the version before has may stay, with its name as it is now
-      const v2b = await addContract(e, { grossSalary: 11000, allowances: [{ allowanceTypeId: kind, amount: 1200 }] });
+      // other allowances are new pay: a reason, for the CEO
+      const v2b = await addContract(e, { grossSalary: 11000, allowances: [{ allowanceTypeId: kind, amount: 1200 }], raiseReason: 'adjustment' });
       expect(v2b).toMatchObject({ allowances: [{ allowanceTypeId: kind, nameEn: `Renamed Bonus ${RUN}`, taxable: false, amount: 1200 }], insuredSalary: 11000 });
       await api().delete(`/api/contracts/${v2b.id}`).set('Cookie', superAdmin).expect(204);
-      const none = await addContract(e, { grossSalary: 11000, allowances: [] });
+      const none = await addContract(e, { grossSalary: 11000, allowances: [], raiseReason: 'adjustment' });
       expect(none).toMatchObject({ allowances: [], totalSalary: 11000 });
 
       // undoing the signing keeps the allowances
@@ -823,7 +831,7 @@ describe('Contracts (e2e)', () => {
     it('a renewal: the version before is the contract again; refused for a replaced version or with the next one drafted', async () => {
       const e = await newHire('Renewal Undone');
       const v1 = await signedContract(e);
-      const v2 = await addContract(e, { grossSalary: 14000 });
+      const v2 = await addContract(e, { grossSalary: 12000 });
       expect((await unsign(v1.id).expect(409)).body.message).toBe(`Version 2 (${v2.number}) follows it as a draft. Delete that draft first.`);
 
       await signContract(v2.id, today).expect(200);

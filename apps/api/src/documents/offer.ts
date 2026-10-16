@@ -10,9 +10,11 @@ export type SectionKey = (typeof SECTION_KEYS)[number];
 /** Each section's slots, in the order the tab lists them. Payslips are in none: there is no payroll yet. */
 export const SECTION_SLOTS: Record<SectionKey, readonly string[]> = {
   // one item per copy for each contract version
-  contract: ['contract_full_time', 'contract_full_time_insurance', 'contract_part_time', 'contract_internship', 'contract_sales', 'agreement_freelance'],
+  // a salary amendment's own letter instead (owner's decisions, 16 October 2026)
+  contract: ['contract_full_time', 'contract_full_time_insurance', 'contract_part_time', 'contract_internship', 'contract_sales', 'agreement_freelance', 'contract_amendment'],
   hiring: ['offer_full_time', 'offer_part_time', 'offer_internship', 'offer_freelance', 'offer_sales', 'nda'],
-  insurance: ['insurance_form_1', 'insurance_form_6'],
+  // Form 2 for each approved raise (owner's decision, 16 October 2026: "From the next January unless amended in Form 2")
+  insurance: ['insurance_form_1', 'insurance_form_2', 'insurance_form_6'],
   letters: ['bank_letter', 'hr_letter_ar', 'hr_letter_en', 'cert_experience', 'cert_internship'],
   leaving: ['resignation_request', 'clearance_dues'],
 };
@@ -26,6 +28,18 @@ export function sectionOf(slotKey: string): SectionKey | null {
 
 /** A contract slot: one document per contract version, generated for that version (contractId). */
 export const isContractSlot = (slotKey: string) => SECTION_SLOTS.contract.includes(slotKey);
+
+/** The salary amendment letter: an amendment's, in place of a whole contract's copies. */
+export const AMENDMENT_SLOT = 'contract_amendment';
+
+/** Social insurance Form 2 (wage change): one per approved raise, generated for it (contractId). */
+export const FORM_2_SLOT = 'insurance_form_2';
+
+/** A slot generated for one contract version (contractId): a contract's copies, an amendment's letter, a raise's Form 2. */
+export const isVersionSlot = (slotKey: string) => isContractSlot(slotKey) || slotKey === FORM_2_SLOT;
+
+/** The contract section's slots for one version: an amendment's letter, else the contract's own copies. */
+export const versionSlots = (kind: string, slots: readonly string[]) => slots.filter((key) => (kind === 'amendment') === (key === AMENDMENT_SLOT));
 
 /** The slots whose documents belong to the ending they were issued for. */
 export const ENDING_SLOTS: readonly string[] = ['resignation_request', 'clearance_dues', 'insurance_form_6'];
@@ -56,6 +70,8 @@ const TRIGGERED: Record<TemplateTrigger, (s: Situation) => boolean> = {
   renewal: () => true,
   on_request: () => true,
   end_of_internship: () => true,
+  // listed for each approved raise (documents.service.ts)
+  raise: () => true,
   monthly_payroll: () => false,
   resignation_recorded: (s) => s.ending?.initiator === 'employee',
   last_working_day: (s) => s.ending !== null,

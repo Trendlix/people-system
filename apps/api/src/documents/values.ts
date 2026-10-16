@@ -7,12 +7,16 @@ import {
   occupationName,
   PAY_BASIS_LABELS,
   PAY_BASIS_LABELS_AR,
+  payDifference,
+  RAISE_REASON_LABELS,
+  RAISE_REASON_LABELS_AR,
   TEMPLATE_TAGS,
   WEEKS_PER_MONTH,
   WORK_ARRANGEMENT_LABELS_AR,
   type EmploymentType,
   type LawRates,
   type PayBasis,
+  type RaiseReason,
   type TemplateLanguage,
   type WorkArrangement,
 } from '@trendlix/shared';
@@ -147,10 +151,28 @@ export interface ValueSources {
   /** The basic wage Form 1 prints for an employee who has none of their own: the contract settings' default. */
   insuranceBasicDefault: number;
   /**
+   * The contract pay (gross and allowances) the insured wage stands on today, for a signed contract: after a raise the
+   * pay before it until the raise's insured-wage date (owner's decision, 16 October 2026: "From the next January unless
+   * amended in Form 2"). Missing: the contract's own.
+   */
+  insuredContractTotal?: number | null;
+  /**
    * The rates set by law, every year kept (owner's request, 16 October 2026): the insured wage Form 1 prints is within
    * this year's insurable limits in Cairo.
    */
   lawYears: readonly LawRates[];
+  /**
+   * A raise's (owner's decisions, 16 October 2026): the version it replaces (the pay before), why, the promotion, the
+   * contract an amendment adds to, and the Form 2 date. Null or missing for a version that doesn't change the pay.
+   */
+  raise?: {
+    reason: string | null;
+    previous: { grossSalary: Decimal; basicPercent: number; allowances: readonly { nameEn: string; nameAr: string; amount: Decimal }[] } | null;
+    newJobTitle: { titleEn: string; titleAr: string | null } | null;
+    newGrade: { code: string } | null;
+    amended: { number: string; startDate: Date } | null;
+    form2From: Date | null;
+  } | null;
   /** YYYY-MM-DD: {{date}}, {{contract_date}} and {{day_name}}. */
   documentDate: string;
   /** What was typed when generating. */
@@ -205,8 +227,9 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
   const allowancesTotal = c ? Math.round(c.allowances.reduce((sum, a) => sum + a.amount.toNumber(), 0) * 100) / 100 : null;
   const totalSalary = c && allowancesTotal !== null ? Math.round((c.grossSalary.toNumber() + allowancesTotal) * 100) / 100 : null;
   const hours = amount(c?.hoursPerWeek);
-  // the comprehensive wage Form 1 prints: the employee's own, else the contract's gross and allowances
-  const comprehensive = amount(e.insuranceComprehensiveWage) ?? totalSalary;
+  // the comprehensive wage Form 1 prints: the employee's own, else the contract's gross and allowances (after a raise,
+  // those before it until its insured-wage date)
+  const comprehensive = amount(e.insuranceComprehensiveWage) ?? (src.insuredContractTotal !== undefined ? src.insuredContractTotal : totalSalary);
   // by the hour, the net of an hour: the approximate net ÷ the hours of a month (hours a week × 52 ÷ 12), to the piaster
   const netHourly = c?.payBasis === 'hourly' && net !== null && hours ? Math.round((net / (hours * WEEKS_PER_MONTH) + Number.EPSILON) * 100) / 100 : null;
 
@@ -245,14 +268,29 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     return isBlankValue({ html }) ? '' : { html };
   };
   // none is a value too: "لا يوجد" / "None"
-  const allowances = (lang: Lang) =>
-    !c
+  const allowancesOf = (rows: readonly { nameEn: string; nameAr: string; amount: Decimal }[] | undefined, lang: Lang) =>
+    !rows
       ? ''
-      : c.allowances.length === 0
+      : rows.length === 0
         ? lang === 'ar'
           ? 'لا يوجد'
           : 'None'
-        : c.allowances.map((a) => `${inLanguage(lang, a.nameEn, a.nameAr)}: ${printedMoney(a.amount.toNumber())}`).join(lang === 'ar' ? '، ' : ', ');
+        : rows.map((a) => `${inLanguage(lang, a.nameEn, a.nameAr)}: ${printedMoney(a.amount.toNumber())}`).join(lang === 'ar' ? '، ' : ', ');
+  const allowances = (lang: Lang) => allowancesOf(c?.allowances, lang);
+
+  // a raise (owner's decisions, 16 October 2026): the pay before it, why, the promotion and the wage change for Form 2
+  const raise = c ? (src.raise ?? null) : null;
+  const before = raise?.previous ?? null;
+  const beforeGross = amount(before?.grossSalary);
+  const beforeTotal = before ? Math.round((before.grossSalary.toNumber() + before.allowances.reduce((sum, a) => sum + a.amount.toNumber(), 0)) * 100) / 100 : null;
+  const difference = c && beforeGross !== null ? payDifference(beforeGross, c.grossSalary.toNumber()) : null;
+  const raiseReason = (lang: Lang) => (raise?.reason ? ((lang === 'ar' ? RAISE_REASON_LABELS_AR : RAISE_REASON_LABELS)[raise.reason as RaiseReason] ?? '') : '');
+  // the promotion's job title, else the job title as it is
+  const newJobTitle = (lang: Lang) => (raise ? (raise.newJobTitle ? inLanguage(lang, raise.newJobTitle.titleEn, raise.newJobTitle.titleAr) : jobTitle(lang)) : '');
+  // the insured wage changes from the Form 2 date recorded, else the raise's effective date; within that year's limits
+  const wageFrom = raise && c ? ymd(raise.form2From ?? c.startDate) : null;
+  const wageRates = wageFrom ? lawRatesFor(Number(wageFrom.slice(0, 4)), src.lawYears) : null;
+  const insuredOf = (comprehensiveWage: number | null) => (comprehensiveWage === null || !wageRates ? null : insuredWageFrom(comprehensiveWage, wageRates).amount);
 
   return {
     employee_code: () => e.employeeCode,
@@ -391,6 +429,33 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     company_rep_title_en: () => text(co?.repTitleEn),
     company_rep_national_id: () => text(co?.repNationalId),
     company_rep_national_id_ar: () => arabicDigits(text(co?.repNationalId)),
+
+    raise_effective_date: () => (raise && c ? printedDate(ymd(c.startDate)) : ''),
+    raise_reason: () => raiseReason(language),
+    raise_reason_ar: () => raiseReason('ar'),
+    raise_reason_en: () => raiseReason('en'),
+    previous_gross_salary: () => printedMoney(beforeGross),
+    previous_gross_salary_words: () => words(beforeGross),
+    previous_gross_salary_words_en: () => wordsEn(beforeGross),
+    previous_basic_salary: () => (before ? printedMoney(Math.round(before.grossSalary.toNumber() * before.basicPercent) / 100) : ''),
+    previous_allowances: () => allowancesOf(before?.allowances, language),
+    previous_allowances_ar: () => allowancesOf(before?.allowances, 'ar'),
+    previous_allowances_en: () => allowancesOf(before?.allowances, 'en'),
+    previous_total_salary: () => printedMoney(beforeTotal),
+    raise_amount: () => printedMoney(difference?.amount ?? null),
+    raise_amount_words: () => words(difference ? Math.abs(difference.amount) : null),
+    raise_percent: () => (difference?.percent === null || difference === null ? '' : `${difference.percent}%`),
+    new_job_title: () => newJobTitle(language),
+    new_job_title_ar: () => newJobTitle('ar'),
+    new_job_title_en: () => newJobTitle('en'),
+    new_grade: () => (raise ? text(raise.newGrade?.code ?? (signed && c.gradeCode ? c.gradeCode : job?.grade?.code)) : ''),
+    amended_contract_number: () => text(raise?.amended?.number),
+    amended_contract_date: () => printedDate(ymd(raise?.amended?.startDate)),
+    insured_wage_from: () => printedDate(wageFrom),
+    // the employee's own comprehensive wage is the one registered before the raise; else the version before's pay
+    previous_insured_wage: () => printedMoney(raise ? insuredOf(amount(e.insuranceComprehensiveWage) ?? beforeTotal) : null),
+    new_insured_wage: () => printedMoney(raise ? insuredOf(totalSalary) : null),
+    new_comprehensive_wage: () => printedMoney(raise ? totalSalary : null),
 
     day_name: () => arabicWeekday(src.documentDate),
     date: () => printedDate(src.documentDate),
@@ -545,6 +610,36 @@ const WHERE: Record<string, Where> = {
   company_rep_title_en: COMPANY('repTitleEn'),
   company_rep_national_id: COMPANY('repNationalId'),
   company_rep_national_id_ar: COMPANY('repNationalId'),
+  // a raise's, on the contract version (owner's decisions, 16 October 2026)
+  ...Object.fromEntries(
+    [
+      'raise_effective_date',
+      'raise_reason',
+      'raise_reason_ar',
+      'raise_reason_en',
+      'previous_gross_salary',
+      'previous_gross_salary_words',
+      'previous_gross_salary_words_en',
+      'previous_basic_salary',
+      'previous_allowances',
+      'previous_allowances_ar',
+      'previous_allowances_en',
+      'previous_total_salary',
+      'raise_amount',
+      'raise_amount_words',
+      'raise_percent',
+      'new_job_title',
+      'new_job_title_ar',
+      'new_job_title_en',
+      'new_grade',
+      'amended_contract_number',
+      'amended_contract_date',
+      'insured_wage_from',
+      'previous_insured_wage',
+      'new_insured_wage',
+      'new_comprehensive_wage',
+    ].map((tag) => [tag, CONTRACTS('raise')]),
+  ),
 };
 
 const TAGS = new Map(TEMPLATE_TAGS.map((t) => [t.tag, t]));
@@ -577,7 +672,7 @@ export function rightFor(tag: string): RestrictedRight | null {
   const t = TAGS.get(tag);
   if (!t?.restricted) return null;
   if (t.group === 'bank') return 'bank';
-  if (t.group === 'pay' || t.group === 'payslip') return 'salary';
+  if (t.group === 'pay' || t.group === 'payslip' || t.group === 'raise') return 'salary';
   return 'identity'; // the national ID, and the company representative's
 }
 

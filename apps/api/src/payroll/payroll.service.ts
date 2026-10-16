@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import {
   bankNamed,
   EMPTY_PAYROLL_INPUTS,
+  insuredWageDate,
   payrollLine,
   type LawRates,
   type PayBasis,
@@ -71,11 +72,20 @@ const rosterSelect = (from: Date, to: Date) =>
     jobTitle: { select: { titleEn: true } },
     shift: { select: { startTime: true, endTime: true, hoursPerDay: true, workingDays: true } },
     employee: { select: { id: true, employeeCode: true, fullNameEn: true, socialInsured: true, insuranceComprehensiveWage: true } },
-    // signed versions (active, superseded or ended) that may be in force in the month
+    // signed versions (active, superseded or ended) that may be in force in the month, and those a raise's insured wage
+    // may still stand on (owner's decision, 16 October 2026): ended within 13 months before it, as a raise's insured wage
+    // follows its pay at the latest from the next 1 January after it takes effect (raises.ts)
     contracts: {
-      where: { status: { not: 'draft' }, startDate: { lte: to }, OR: [{ endDate: null }, { endDate: { gte: from } }] },
+      where: {
+        status: { not: 'draft' },
+        startDate: { lte: to },
+        OR: [{ endDate: null }, { endDate: { gte: new Date(Date.UTC(from.getUTCFullYear() - 1, from.getUTCMonth() - 1, 1)) } }],
+      },
       select: {
         id: true,
+        version: true,
+        approval: true,
+        form2From: true,
         startDate: true,
         endDate: true,
         payBasis: true,
@@ -106,6 +116,9 @@ function rosterEmployment(e: EmploymentRow): RosterEmployment {
     employee: { ...e.employee, insuranceComprehensiveWage: e.employee.insuranceComprehensiveWage?.toNumber() ?? null },
     contracts: e.contracts.map((c) => ({
       id: c.id,
+      version: c.version,
+      // a change of pay the CEO approved: the insured wage follows it from the next 1 January, or the Form 2 date
+      insuredWageFrom: c.approval === null ? null : insuredWageDate(fromDateOnly(c.startDate), fromDateOnly(c.form2From)),
       startDate: fromDateOnly(c.startDate),
       endDate: fromDateOnly(c.endDate),
       payBasis: c.payBasis as PayBasis,

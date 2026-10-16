@@ -14,6 +14,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { toDateOnly, todayInCairo } from '../common/date-only.js';
 import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
 import { seesBank, seesIdentity, seesSalary } from '../employees/access.js';
+import { insuredContractPay, insuredVersionOf } from '../employees/insured-wage.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { detectPaperworkType, extensionOf, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from '../paperwork/paperwork-file.js';
@@ -24,7 +25,22 @@ import type { CheckDocumentDto, GenerateDocumentDto } from './documents.dto.js';
 import { isBlankValue, type TagValue } from './engine/index.js';
 import { filledFileName, FILLED_FROM, fillVersion, requiredTags } from './fill-version.js';
 import { documentStem } from './format.js';
-import { ENDING_SLOTS, isContractSlot, offered, offeredSlots, SECTION_KEYS, sectionOf, SLOTS, TYPED_TAGS, type SectionKey, type Situation } from './offer.js';
+import {
+  AMENDMENT_SLOT,
+  ENDING_SLOTS,
+  FORM_2_SLOT,
+  isContractSlot,
+  isVersionSlot,
+  offered,
+  offeredSlots,
+  SECTION_KEYS,
+  sectionOf,
+  SLOTS,
+  TYPED_TAGS,
+  versionSlots,
+  type SectionKey,
+  type Situation,
+} from './offer.js';
 import { previewValues } from './preview.js';
 import { missingTags, resolveValues, restrictedTags, rightFor, sourceTag, type MissingTag, type RestrictedRight, type ValueSources } from './values.js';
 import { DOCUMENT, documentView, type DocumentRow, type DocumentStatus } from './views.js';
@@ -51,7 +67,15 @@ const EMPLOYMENT = {
   manager: { select: { fullNameEn: true, fullNameAr: true } },
   shift: { select: { startTime: true, endTime: true, hoursPerDay: true, workingDays: true } },
   workArrangement: true,
-  contracts: { orderBy: { version: 'desc' }, include: { allowances: { select: { nameEn: true, nameAr: true, amount: true }, orderBy: ALLOWANCE_ORDER } } },
+  contracts: {
+    orderBy: { version: 'desc' },
+    include: {
+      allowances: { select: { nameEn: true, nameAr: true, amount: true }, orderBy: ALLOWANCE_ORDER },
+      // a raise's promotion, for its letter (owner's decisions, 16 October 2026)
+      newJobTitle: { select: { titleEn: true, titleAr: true } },
+      newGrade: { select: { code: true } },
+    },
+  },
   endings: {
     where: { status: { in: LIVE_ENDINGS } },
     orderBy: { createdAt: 'desc' },
@@ -92,6 +116,41 @@ interface Context {
   contract: ContractRow | null;
   ending: EmploymentRow['endings'][number] | null;
   sources: Omit<ValueSources, 'language' | 'documentDate' | 'inputs'>;
+}
+
+/**
+ * A version's documents wait for the CEO when it changes the pay (owner's decisions, 16 October 2026): those of a raise
+ * or a renewal with new pay are generated once approved.
+ */
+const awaitsCeo = (c: { approval: string | null }) => c.approval !== null && c.approval !== 'approved';
+
+/**
+ * What a raise's documents print beside its own terms (owner's decisions, 16 October 2026): the version it replaces,
+ * why, the promotion, the contract an amendment adds to (back past the amendments before it), and the Form 2 date.
+ * Null for a version that doesn't change the pay.
+ */
+function raiseSource(c: ContractRow, all: readonly ContractRow[]): ValueSources['raise'] {
+  if (c.approval === null) return null;
+  const before = (v: ContractRow) => all.find((x) => x.version === v.version - 1) ?? null;
+  let base: ContractRow = c;
+  while (base.kind === 'amendment' && before(base)) base = before(base)!;
+  return {
+    reason: c.raiseReason,
+    previous: before(c),
+    newJobTitle: c.newJobTitle,
+    newGrade: c.newGrade,
+    amended: c.kind === 'amendment' && base !== c ? { number: base.number, startDate: base.startDate } : null,
+    form2From: c.form2From,
+  };
+}
+
+/**
+ * The contract pay a signed contract's insured wage stands on today, as payroll and the Social Insurance tab take it:
+ * after a raise the pay before it until the raise's insured-wage date (owner's decision, 16 October 2026).
+ */
+function insuredTotalToday(c: ContractRow, all: readonly ContractRow[]): number | null {
+  const versions = all.filter((v) => v.status !== 'draft').map(insuredVersionOf);
+  return insuredContractPay(versions.find((v) => v.id === c.id) ?? null, versions, todayInCairo()).total;
 }
 
 /** The employment's contract whose terms a document other than a contract prints: the signed one, else the newest draft, else the newest. */
@@ -185,13 +244,18 @@ export class DocumentsService {
       documents: docs.filter((d) => d.slotKey === key).map(documentView),
     });
 
-    // each contract version not replaced, newest first; a replaced one only while it has documents, which stay on record
-    const contracts = employment.contracts.filter((c) => c.status !== 'superseded' || rows.some((d) => d.contractId === c.id));
+    // each contract version not replaced, newest first; a replaced one only while it has documents, which stay on record;
+    // one that changes the pay once the CEO approved it (owner's decisions, 16 October 2026)
+    const contracts = employment.contracts.filter((c) => (c.status !== 'superseded' || rows.some((d) => d.contractId === c.id)) && !awaitsCeo(c));
+    // Form 2 for each approved raise (and renewal with new pay)
+    const raises = contracts.filter((c) => c.approval === 'approved');
     const ending = employment.endings[0] ?? null;
+    const ofVersion = (c: ContractRow) => rows.filter((d) => d.contractId === c.id);
     const items: Record<SectionKey, ReturnType<typeof item>[]> = {
-      contract: contracts.flatMap((c) => slots.contract.map((key) => item(key, rows.filter((d) => d.contractId === c.id), c))),
+      // an amendment's own letter, a contract's copies
+      contract: contracts.flatMap((c) => versionSlots(c.kind, slots.contract).map((key) => item(key, ofVersion(c), c))),
       hiring: slots.hiring.map((key) => item(key, rows)),
-      insurance: slots.insurance.map((key) => item(key, rows)),
+      insurance: slots.insurance.flatMap((key) => (key === FORM_2_SLOT ? raises.map((c) => item(key, ofVersion(c), c)) : [item(key, rows)])),
       letters: slots.letters.map((key) => item(key, rows)),
       // the documents of the ending in hand: those of a withdrawn or rejected one no longer apply
       leaving: slots.leaving.map((key) => item(key, rows.filter((d) => d.endingId === ending?.id))),
@@ -252,7 +316,7 @@ export class DocumentsService {
       data: {
         employeeId,
         employmentId: ctx.employment.id,
-        contractId: isContractSlot(slot.key) ? ctx.contract!.id : null,
+        contractId: isVersionSlot(slot.key) ? ctx.contract!.id : null,
         endingId: ENDING_SLOTS.includes(slot.key) ? (ctx.ending?.id ?? null) : null,
         slotKey: slot.key,
         templateVersionId: template.id,
@@ -443,7 +507,7 @@ export class DocumentsService {
     // other documents print (the signed one, else the newest draft); so it is read through the document itself when the
     // tab offers it, else through one the tab does, and the document's own slot (its overrides) is put back.
     const employment = await this.employmentOf(employeeId);
-    const offers = employment ? SECTION_KEYS.flatMap((k) => offeredSlots(situation(employment))[k]).filter((k) => !isContractSlot(k)) : [];
+    const offers = employment ? SECTION_KEYS.flatMap((k) => offeredSlots(situation(employment))[k]).filter((k) => !isVersionSlot(k)) : [];
     const through = offers.includes(slot.key) ? slot.key : (offers[0] ?? slot.key);
     const ctx: Context = { ...(await this.context(employeeId, through, undefined)), slot };
     const { values } = this.fill(ctx, template, todayInCairo(), {});
@@ -492,7 +556,16 @@ export class DocumentsService {
         const newer = employment.contracts.find((c) => c.version > contract!.version && c.status !== 'superseded');
         throw new ConflictException(`${contract.number} was replaced${newer ? ` by ${newer.number}` : ''}. Generate the documents of the newer version.`);
       }
-    } else if (isContractSlot(slot.key)) {
+      // a change of pay's documents once the CEO approved it; an amendment's letter, a contract's copies, a raise's Form 2
+      if (awaitsCeo(contract)) throw new ConflictException(`${contract.number} changes the pay: its documents are generated once the CEO approves it.`);
+      if (slot.key === AMENDMENT_SLOT && contract.kind !== 'amendment') {
+        throw new BadRequestException(`${contract.number} is a whole contract: generate its contract copies. ${slot.name} is for a salary amendment.`);
+      }
+      if (isContractSlot(slot.key) && slot.key !== AMENDMENT_SLOT && contract.kind === 'amendment') {
+        throw new BadRequestException(`${contract.number} is a salary amendment: generate its ${SLOTS.get(AMENDMENT_SLOT)!.name} instead of a whole contract.`);
+      }
+      if (slot.key === FORM_2_SLOT && contract.approval === null) throw new BadRequestException(`${contract.number} doesn't change the pay: Form 2 is for a raise.`);
+    } else if (isVersionSlot(slot.key)) {
       throw new BadRequestException(`Choose the contract version to generate ${slot.name} for.`);
     } else {
       contract = termsContract(employment.contracts);
@@ -549,7 +622,20 @@ export class DocumentsService {
       employment,
       contract,
       ending,
-      sources: { employee: own, identity, bank, employment, contract, ending, offer, company, insuranceBasicDefault, lawYears },
+      sources: {
+        employee: own,
+        identity,
+        bank,
+        employment,
+        contract,
+        ending,
+        offer,
+        company,
+        insuranceBasicDefault,
+        lawYears,
+        raise: contract && raiseSource(contract, employment.contracts),
+        ...(contract && contract.status !== 'draft' && { insuredContractTotal: insuredTotalToday(contract, employment.contracts) }),
+      },
     };
   }
 

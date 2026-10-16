@@ -31,6 +31,7 @@ export const TEMPLATE_TRIGGERS = [
   'last_working_day',
   'end_of_service',
   'end_of_internship',
+  'raise',
 ] as const;
 export type TemplateTrigger = (typeof TEMPLATE_TRIGGERS)[number];
 export const TEMPLATE_TRIGGER_LABELS: Record<TemplateTrigger, string> = {
@@ -43,6 +44,7 @@ export const TEMPLATE_TRIGGER_LABELS: Record<TemplateTrigger, string> = {
   last_working_day: 'On the last working day',
   end_of_service: 'At the end of service',
   end_of_internship: 'At the end of an internship',
+  raise: 'On a raise',
 };
 
 /**
@@ -92,6 +94,9 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   { key: 'contract_internship', name: 'Contract · Internship', folder: 'contracts', language: null, appliesTo: ['internship'], triggers: ['on_hire'], signers: 'both' },
   { key: 'contract_sales', name: 'Contract · Sales', folder: 'contracts', language: null, appliesTo: ['sales'], triggers: ['on_hire', 'renewal'], signers: 'both' },
   { key: 'agreement_freelance', name: 'Freelance agreement', folder: 'contracts', language: null, appliesTo: ['freelance'], triggers: ['on_hire'], signers: 'both' },
+  // a raise by amendment (owner's decision, 16 October 2026): the new pay on the same contract, signed as a letter
+  // added to it instead of a whole contract, for an amendment the CEO approved; its language set when it is uploaded
+  { key: 'contract_amendment', name: 'Salary amendment (ملحق عقد)', folder: 'contracts', language: null, appliesTo: ALL, triggers: ['raise'], signers: 'both' },
   { key: 'offer_full_time', name: 'Job offer · Full-time', folder: 'job_offers', language: null, appliesTo: ['full_time'], triggers: ['offer_stage'], signers: 'both' },
   { key: 'offer_part_time', name: 'Job offer · Part-time', folder: 'job_offers', language: null, appliesTo: ['part_time'], triggers: ['offer_stage'], signers: 'both' },
   { key: 'offer_freelance', name: 'Job offer · Freelance', folder: 'job_offers', language: null, appliesTo: ['freelance'], triggers: ['offer_stage'], signers: 'both' },
@@ -104,6 +109,9 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   { key: 'hr_letter_ar', name: 'HR letter · Arabic', folder: 'letters', language: 'ar', appliesTo: ALL, triggers: ['on_request'], signers: 'company' },
   { key: 'bank_letter', name: 'Bank account letter', folder: 'letters', language: null, appliesTo: ALL, triggers: ['on_hire', 'on_request'], signers: 'company' },
   { key: 'insurance_form_1', name: 'Social insurance Form 1 (joining)', folder: 'social_insurance', language: 'ar', appliesTo: ['full_time'], triggers: ['on_hire'], signers: 'both' },
+  // the wage change after a raise (owner's decision, 16 October 2026: "From the next January unless amended in Form 2"):
+  // generated from an approved raise, and HR records on the raise the date it changes the insured wage from
+  { key: 'insurance_form_2', name: 'Social insurance Form 2 (wage change)', folder: 'social_insurance', language: 'ar', appliesTo: ['full_time'], triggers: ['raise'], signers: 'company' },
   { key: 'insurance_form_6', name: 'Social insurance Form 6 (leaving)', folder: 'social_insurance', language: 'ar', appliesTo: ['full_time'], triggers: ['end_of_service'], signers: 'both' },
   { key: 'payslip_en', name: 'Payslip · English', folder: 'payslips', language: 'en', appliesTo: ALL, triggers: ['monthly_payroll', 'on_request'], signers: 'none' },
   { key: 'payslip_ar', name: 'Payslip · Arabic', folder: 'payslips', language: 'ar', appliesTo: ALL, triggers: ['monthly_payroll', 'on_request'], signers: 'none' },
@@ -112,13 +120,14 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
 ];
 
 /** The groups the tags are listed in. */
-export const TAG_GROUPS = ['employee', 'national_id', 'job_contract', 'pay', 'offer', 'bank', 'ending', 'letters', 'payslip', 'company', 'auto'] as const;
+export const TAG_GROUPS = ['employee', 'national_id', 'job_contract', 'pay', 'raise', 'offer', 'bank', 'ending', 'letters', 'payslip', 'company', 'auto'] as const;
 export type TagGroup = (typeof TAG_GROUPS)[number];
 export const TAG_GROUP_LABELS: Record<TagGroup, string> = {
   employee: 'Employee',
   national_id: 'National ID',
   job_contract: 'Job and contract',
   pay: 'Pay',
+  raise: 'Raise',
   offer: 'Job offer',
   bank: 'Bank',
   ending: 'Resignation and ending',
@@ -284,6 +293,34 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'insurance_basic_salary', group: 'pay', labelEn: 'Basic wage (social insurance)', labelAr: 'أجر أساسي (التأمينات)', source: 'Social Insurance tab: the employee’s, else the default in contract settings', restricted: true },
   { tag: 'insurance_insured_salary', group: 'pay', labelEn: 'Insured wage (social insurance)', labelAr: 'أجر الاشتراك (التأمينات)', source: 'Social Insurance tab: the comprehensive wage, within the year’s insurable limits', restricted: true },
   { tag: 'insurance_total_salary', group: 'pay', labelEn: 'Comprehensive wage (social insurance)', labelAr: 'الأجر الشامل (التأمينات)', source: 'Social Insurance tab: the employee’s, else the contract’s gross and allowances', restricted: true },
+  // a raise (owner's decisions, 16 October 2026): the salary amendment letter and social insurance Form 2. The new pay is
+  // the version's own (the pay tags above); these say what it was before, when it changes, why, and the promotion
+  { tag: 'raise_effective_date', group: 'raise', labelEn: 'Effective date (raise)', labelAr: 'تاريخ سريان التعديل', source: 'Raise: the 1st of the month the new pay takes effect', note: 'DD/MM/YYYY' },
+  { tag: 'raise_reason', group: 'raise', labelEn: 'Reason for the raise', labelAr: 'سبب التعديل', source: 'Raise: in the template’s language', note: 'Annual raise / Promotion / Adjustment / Other' },
+  { tag: 'raise_reason_ar', group: 'raise', labelEn: 'Reason for the raise (Arabic)', labelAr: 'سبب التعديل بالعربي', source: 'Raise', note: 'زيادة سنوية / ترقية / تعديل الأجر / أخرى' },
+  { tag: 'raise_reason_en', group: 'raise', labelEn: 'Reason for the raise (English)', labelAr: 'سبب التعديل بالإنجليزية', source: 'Raise', note: 'Annual raise / Promotion / Adjustment / Other' },
+  { tag: 'previous_gross_salary', group: 'raise', labelEn: 'Gross salary before the raise', labelAr: 'الراتب الشامل قبل التعديل', source: 'Raise: the version it replaces', restricted: true },
+  { tag: 'previous_gross_salary_words', group: 'raise', labelEn: 'Gross salary before the raise in words (Arabic)', labelAr: 'تفقيط الراتب قبل التعديل', source: 'Raise: in Arabic words', restricted: true },
+  { tag: 'previous_gross_salary_words_en', group: 'raise', labelEn: 'Gross salary before the raise in words (English)', labelAr: 'تفقيط الراتب قبل التعديل بالإنجليزية', source: 'Raise: in English words', restricted: true },
+  { tag: 'previous_basic_salary', group: 'raise', labelEn: 'Basic salary before the raise', labelAr: 'الأساسي قبل التعديل', source: 'Raise: the version it replaces', restricted: true },
+  { tag: 'previous_allowances', group: 'raise', labelEn: 'Allowances before the raise', labelAr: 'البدلات قبل التعديل', source: 'Raise: each allowance and its amount a month, in the template’s language', restricted: true },
+  { tag: 'previous_allowances_ar', group: 'raise', labelEn: 'Allowances before the raise (Arabic)', labelAr: 'البدلات قبل التعديل بالعربي', source: 'Raise', restricted: true },
+  { tag: 'previous_allowances_en', group: 'raise', labelEn: 'Allowances before the raise (English)', labelAr: 'البدلات قبل التعديل بالإنجليزية', source: 'Raise', restricted: true },
+  { tag: 'previous_total_salary', group: 'raise', labelEn: 'Gross salary and allowances before the raise', labelAr: 'إجمالي الراتب والبدلات قبل التعديل', source: 'Raise: a month', restricted: true },
+  { tag: 'raise_amount', group: 'raise', labelEn: 'Raise amount (gross)', labelAr: 'قيمة الزيادة', source: 'Raise: the new gross less the gross before', restricted: true },
+  { tag: 'raise_amount_words', group: 'raise', labelEn: 'Raise amount in words (Arabic)', labelAr: 'تفقيط قيمة الزيادة', source: 'Raise: in Arabic words', restricted: true },
+  { tag: 'raise_percent', group: 'raise', labelEn: 'Raise percent (gross)', labelAr: 'نسبة الزيادة', source: 'Raise: of the gross before', restricted: true, note: 'e.g. 12.5%' },
+  { tag: 'new_job_title', group: 'raise', labelEn: 'Job title from the raise', labelAr: 'الوظيفة بعد التعديل', source: 'Raise: the promotion’s job title, else the job title as it is, in the template’s language' },
+  { tag: 'new_job_title_ar', group: 'raise', labelEn: 'Job title from the raise (Arabic)', labelAr: 'الوظيفة بعد التعديل بالعربي', source: 'Raise: the promotion’s, else as it is' },
+  { tag: 'new_job_title_en', group: 'raise', labelEn: 'Job title from the raise (English)', labelAr: 'الوظيفة بعد التعديل بالإنجليزية', source: 'Raise: the promotion’s, else as it is' },
+  { tag: 'new_grade', group: 'raise', labelEn: 'Grade from the raise', labelAr: 'الدرجة بعد التعديل', source: 'Raise: the promotion’s grade, else the grade as it is' },
+  { tag: 'amended_contract_number', group: 'raise', labelEn: 'Number of the contract amended', labelAr: 'رقم العقد الأصلي', source: 'Raise: the contract the amendment adds to', note: 'e.g. CON-2026-0007' },
+  { tag: 'amended_contract_date', group: 'raise', labelEn: 'Start of the contract amended', labelAr: 'تاريخ العقد الأصلي', source: 'Raise: the contract the amendment adds to', note: 'DD/MM/YYYY' },
+  // social insurance Form 2: the wage change
+  { tag: 'insured_wage_from', group: 'raise', labelEn: 'Insured wage changes from (Form 2)', labelAr: 'تاريخ تعديل أجر الاشتراك', source: 'Raise: the Form 2 date recorded, else its effective date', note: 'DD/MM/YYYY' },
+  { tag: 'previous_insured_wage', group: 'raise', labelEn: 'Insured wage before the raise (social insurance)', labelAr: 'أجر الاشتراك قبل التعديل', source: 'Raise: the comprehensive wage before it, within the year’s insurable limits', restricted: true },
+  { tag: 'new_insured_wage', group: 'raise', labelEn: 'New insured wage (social insurance)', labelAr: 'أجر الاشتراك بعد التعديل', source: 'Raise: its gross and allowances, within the insurable limits of the year it changes', restricted: true },
+  { tag: 'new_comprehensive_wage', group: 'raise', labelEn: 'New comprehensive wage (social insurance)', labelAr: 'الأجر الشامل بعد التعديل', source: 'Raise: its gross and allowances', restricted: true },
   { tag: 'offer_number', group: 'offer', labelEn: 'Offer number', labelAr: 'رقم العرض', source: 'Job offer' },
   { tag: 'offer_expiry', group: 'offer', labelEn: 'Offer valid until', labelAr: 'العرض سارٍ حتى', source: 'Job offer: its last day to accept', note: 'DD/MM/YYYY' },
   { tag: 'bank_name', group: 'bank', labelEn: 'Bank', labelAr: 'البنك', source: 'Bank details' },
