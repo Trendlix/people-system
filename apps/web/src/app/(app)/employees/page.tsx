@@ -1,13 +1,16 @@
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { Fragment, Suspense } from 'react';
 import { END_REASON_LABELS, STANDING_LABELS, STANDINGS, type Standing } from '@trendlix/shared';
 import { DepartmentOptions } from '@/components/department-options';
+import { GroupHeading } from '@/components/group-heading';
 import { Select } from '@/components/select';
 import { apiGet } from '@/lib/api';
-import { departmentName, withTeams } from '@/lib/departments';
+import { withTeams } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
+import { showsDepartment } from '@/lib/place-groups';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary, Grade } from '@/lib/types';
+import { directorySections } from './directory-groups';
 import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge } from './ui';
 
 // The directory filters on this server from the one GET /employees call (the API already limits it to the people
@@ -78,7 +81,7 @@ function Placement({ employee: e }: { employee: EmployeeSummary }) {
   const job = e.employment;
   if (!job && e.lastEnded) {
     return (
-      <td colSpan={4} className="text-muted">
+      <td colSpan={3} className="text-muted">
         Left <span className="tabular-nums">{formatDate(e.lastEnded.endDate)}</span>
         {e.lastEnded.endReason && ` · ${END_REASON_LABELS[e.lastEnded.endReason]}`}
       </td>
@@ -86,13 +89,15 @@ function Placement({ employee: e }: { employee: EmployeeSummary }) {
   }
   return (
     <>
-      <td>{job?.department ? departmentName(job.department) : dash}</td>
       <td>{job?.jobTitle?.titleEn ?? dash}</td>
       <td className="whitespace-nowrap">{job?.grade ? gradeLabel(job.grade) : dash}</td>
       <td>{job?.manager?.fullNameEn ?? dash}</td>
     </>
   );
 }
+
+/** Employee, Code, Job Title, Grade, Manager and Standing: what a group's heading spans. */
+const COLUMN_COUNT = 6;
 
 async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   const [user, departments, grades, everyone, query] = await Promise.all([
@@ -124,6 +129,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
       (!f.gradeId || e.employment?.grade?.id === f.gradeId),
   );
   const rows = f.standing ? base.filter((e) => e.standing === f.standing) : base;
+  const sections = directorySections(rows);
   const counts = new Map<Standing, number>();
   for (const e of base) counts.set(e.standing, (counts.get(e.standing) ?? 0) + 1);
   const standings = STANDINGS.filter((s) => counts.has(s) || s === f.standing);
@@ -203,35 +209,48 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
               <tr>
                 <th>Employee</th>
                 <th>Code</th>
-                <th>Team</th>
                 <th>Job Title</th>
                 <th>Grade</th>
                 <th>Manager</th>
                 <th>Standing</th>
               </tr>
             </thead>
-            <tbody>
-              {rows.map((e) => (
-                <tr key={e.id}>
-                  <td>
-                    <div className="flex items-center gap-3">
-                      <Avatar name={e.fullNameEn} photoId={e.photoId} crop={e.photoCrop} />
-                      <div className="min-w-0">
-                        <Link href={`/employees/${e.id}`} className="font-semibold">
-                          {e.fullNameEn}
-                        </Link>
-                        {e.workEmail && <div className="text-xs text-muted">{e.workEmail}</div>}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap text-muted tabular-nums">{e.employeeCode}</td>
-                  <Placement employee={e} />
-                  <td>
-                    <StandingBadge standing={e.standing} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+            {/* Active, then Inactive, each by department, then team (owner's request, 16 October 2026) */}
+            {sections.map((section) => (
+              <tbody key={section.key}>
+                <GroupHeading level="section" name={section.label} count={section.count} span={COLUMN_COUNT} note={section.note} />
+                {section.groups.map((g) => (
+                  <Fragment key={g.department ?? ''}>
+                    {showsDepartment(section.groups, g) && <GroupHeading level="department" name={g.department} count={g.count} span={COLUMN_COUNT} />}
+                    {g.teams.map((t) => (
+                      <Fragment key={t.team ?? ''}>
+                        {t.team !== null && <GroupHeading level="team" name={t.team} count={t.rows.length} span={COLUMN_COUNT} />}
+                        {t.rows.map((e) => (
+                          <tr key={e.id}>
+                            <td>
+                              <div className="flex items-center gap-3">
+                                <Avatar name={e.fullNameEn} photoId={e.photoId} crop={e.photoCrop} />
+                                <div className="min-w-0">
+                                  <Link href={`/employees/${e.id}`} className="font-semibold">
+                                    {e.fullNameEn}
+                                  </Link>
+                                  {e.workEmail && <div className="text-xs text-muted">{e.workEmail}</div>}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap text-muted tabular-nums">{e.employeeCode}</td>
+                            <Placement employee={e} />
+                            <td>
+                              <StandingBadge standing={e.standing} />
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            ))}
           </table>
         </div>
       )}
