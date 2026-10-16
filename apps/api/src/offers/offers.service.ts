@@ -18,6 +18,7 @@ import { seesSalary } from '../employees/access.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { MailService } from '../mail/mail.service.js';
+import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { FILLED_FROM, fillVersion } from '../documents/fill-version.js';
 import { restrictedTags } from '../documents/values.js';
@@ -115,6 +116,7 @@ export class OffersService {
     private readonly documents: OfferDocumentsService,
     private readonly hiring: OfferHiringService,
     private readonly mail: MailService,
+    private readonly lawRates: LawRatesService,
   ) {}
 
   /**
@@ -414,10 +416,11 @@ export class OffersService {
   }
 
   private async view(o: OfferRow, user: SessionUser): Promise<OfferView> {
-    const [template, draft, hasPdf] = await Promise.all([
+    const [template, draft, hasPdf, lawYears] = await Promise.all([
       this.documents.template(o.employmentType),
       this.previewTemplate(o.employmentType),
       o.fileName ? this.hasPdf(o.id) : Promise.resolve(false),
+      this.lawRates.years(),
     ]);
     // a draft's missing values: from the published template, else from the draft it is previewed with
     const missing =
@@ -428,6 +431,7 @@ export class OffersService {
           : await this.documents.missing(o);
     return offerView(o, {
       seesSalary: seesSalary(user),
+      lawYears,
       template,
       previewVersion: draft?.version ?? null,
       missing,
@@ -530,7 +534,7 @@ export class OffersService {
             hourlyRate: null,
             hoursPerWeek: null,
             daysPerWeek: null,
-            basicPercent: 80,
+            basicPercent: settings.basicPercentDefault, // the company's default share (Payroll Setup, 16 October 2026)
             netSalary: null,
             probationMonths: settings.probationMonths,
             durationMonths: settings.durationMonths,

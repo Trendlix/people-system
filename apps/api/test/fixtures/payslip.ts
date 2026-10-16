@@ -1,5 +1,5 @@
 import { crc32, deflateSync } from 'node:zlib';
-import { EMPTY_PAYROLL_INPUTS, PAYROLL_RULE_DEFAULTS, payrollLine, type PayrollInputs, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
+import { EMPTY_PAYROLL_INPUTS, lawRatesFor, PAYROLL_RULE_DEFAULTS, payrollLine, type PayrollInputs, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
 import type { PayslipSource } from '../../src/payroll/payslip-content.js';
 
 // Payslips for the tests (owner's decisions, 16 October 2026): the payslip proposal's two people, a monthly salary and
@@ -60,9 +60,10 @@ export function payslipSource(
   const rules = { ...PAYROLL_RULE_DEFAULTS, ...change.rules };
   const terms = { ...(monthly ? MONTHLY_TERMS : HOURLY_TERMS), ...change.terms };
   const inputs = { ...(monthly ? MONTHLY_INPUTS : HOURLY_INPUTS), ...change.inputs };
-  const result = payrollLine(terms, inputs, rules);
+  const lawRates = lawRatesFor(terms.year);
+  const result = payrollLine(terms, inputs, rules, lawRates);
   return {
-    run: { month: '2026-10', paidOn: '2026-10-29', approvedOn: '2026-10-27', rules },
+    run: { month: '2026-10', paidOn: '2026-10-29', approvedOn: '2026-10-27', rules, lawRates },
     line: monthly
       ? {
           employeeCode: 'EMP-0142',

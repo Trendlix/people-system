@@ -21,7 +21,9 @@ import { createApp, createUser, signIn } from './helpers.js';
 // 15 October 2026: "No doc file export, just a protected PDF"): the converter is stubbed with a PDF made here, which is
 // protected for real, and what was filled in is read from the Word file handed to it.
 
-const RUN = Date.now().toString(36);
+// always with a digit: a name ending in letters only would teach the ID card reading (english-name.ts) to spell محمود
+// as this run's code, and paperwork.e2e-spec.ts would then find it (16 October 2026)
+const RUN = `${Date.now().toString(36)}7`;
 const DIGITS = String((Date.now() + 7) % 10_000_000).padStart(7, '0');
 const NATIONAL_ID = `2950312${DIGITS}`; // born 12 March 1995
 const IBAN = 'EG380019000500000000263180002';
@@ -93,6 +95,22 @@ describe('Template preview with data (e2e)', () => {
   const people = async (versionId: string, session = hr): Promise<Person[]> =>
     (await api().get(`/api/templates/versions/${versionId}/preview-people`).set('Cookie', session).expect(200)).body as Person[];
   const mine = (list: Person[]) => list.filter((x) => x.fullNameEn.endsWith(RUN));
+  /**
+   * Ours in a list of at most 50, best first: the ones expected, in order; or, when people other test files left in the
+   * test database fill the list first, the first of them down to where it was cut off (16 October 2026: the full-time
+   * contract's list came back without Adam Minimal, the least filled in). Then the list is full and nobody listed has
+   * fewer tags filled than ours cut off.
+   */
+  const expectOurs = (list: Person[], expected: (Partial<Person> & Pick<Person, 'id'>)[]) => {
+    const ours = mine(list);
+    expect(ours.length).toBeGreaterThan(0);
+    expect(ours).toEqual(expected.slice(0, ours.length).map((x) => expect.objectContaining(x)));
+    if (ours.length < expected.length) {
+      expect(list).toHaveLength(50);
+      const cut = expected[ours.length].filled;
+      if (cut !== undefined) expect(list[list.length - 1].filled).toBeGreaterThanOrEqual(cut);
+    }
+  };
   const preview = (versionId: string, query: Record<string, string> = {}, session = hr) =>
     api().get(`/api/templates/versions/${versionId}/preview`).query(query).set('Cookie', session).buffer(true).parse(bytes);
   /** The text of the version previewed for `query`: given as a protected PDF, read from the Word file filled in for it. */
@@ -220,11 +238,12 @@ describe('Template preview with data (e2e)', () => {
   it('lists those the template is for, the most of its tags filled in first, with how many have a value', async () => {
     const list = await people(letter.id);
     // the letter prints 8 tags (one twice); the typed one and the ending's never have a value here
-    expect(mine(list)).toEqual([
+    const letterOurs: Person[] = [
       { kind: 'employee', id: aaron.id, employeeCode: aaron.code, fullNameEn: `Aaron Complete ${RUN}`, employmentType: 'full_time', filled: 6, total: 8 },
       { kind: 'employee', id: abla.id, employeeCode: abla.code, fullNameEn: `Abla Part ${RUN}`, employmentType: 'part_time', filled: 4, total: 8 },
       { kind: 'employee', id: adam.id, employeeCode: adam.code, fullNameEn: `Adam Minimal ${RUN}`, employmentType: 'full_time', filled: 2, total: 8 },
-    ]);
+    ];
+    expectOurs(list, letterOurs);
     expect(list.some((x) => x.id === dina.id)).toBe(false);
     expect(list.length).toBeLessThanOrEqual(50);
     for (let i = 1; i < list.length; i++) expect(list[i - 1].filled).toBeGreaterThanOrEqual(list[i].filled);
@@ -234,13 +253,13 @@ describe('Template preview with data (e2e)', () => {
     // the full-time contract: full-time people only
     const contractPeople = await people(contractV.id);
     expect(contractPeople.every((x) => x.employmentType === 'full_time')).toBe(true);
-    expect(mine(contractPeople).map((x) => x.id)).toEqual([aaron.id, adam.id]);
+    expectOurs(contractPeople, [{ id: aaron.id }, { id: adam.id }]);
 
     // a resignation request isn't offered before an ending is recorded, but anyone may be previewed with it
-    expect(mine(await people(resignation.id)).map((x) => [x.id, x.filled, x.total])).toEqual([
-      [aaron.id, 1, 4],
-      [abla.id, 1, 4],
-      [adam.id, 1, 4],
+    expectOurs(await people(resignation.id), [
+      { id: aaron.id, filled: 1, total: 4 },
+      { id: abla.id, filled: 1, total: 4 },
+      { id: adam.id, filled: 1, total: 4 },
     ]);
   });
 

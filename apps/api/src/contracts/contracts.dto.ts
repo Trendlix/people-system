@@ -29,6 +29,7 @@ const Sent = () => ValidateIf((_o, v) => v !== undefined);
 export const PROBATION_CAP_MESSAGE = "Probation can't be longer than 3 months (Labour Law Art. 90).";
 const DURATION_MESSAGE = 'A fixed term runs for 1 to 60 months.';
 const INSURANCE_BASIC_MESSAGE = 'Enter the default basic wage as an amount of more than 0 and up to 99,999.99, e.g. 410.';
+const BASIC_PERCENT_DEFAULT_MESSAGE = 'Enter the basic share of the gross as a whole percent from 1 to 100, e.g. 80.';
 /** The company has no open-ended contracts (owner, 15 October 2026). */
 export const FIXED_ONLY_MESSAGE = 'Every contract runs for a fixed term: leave the form out, or send fixed.';
 /** decimal(12, 2) holds up to 9,999,999,999.99 */
@@ -54,6 +55,13 @@ export class UpdateContractSettingsDto {
   @Min(0.01, { message: INSURANCE_BASIC_MESSAGE })
   @Max(99_999.99, { message: INSURANCE_BASIC_MESSAGE })
   insuranceBasicDefault?: number;
+
+  /** The basic salary's share of the gross a new contract or offer starts with (owner, 16 October 2026: Payroll Setup). */
+  @Sent()
+  @IsInt({ message: BASIC_PERCENT_DEFAULT_MESSAGE })
+  @Min(1, { message: BASIC_PERCENT_DEFAULT_MESSAGE })
+  @Max(100, { message: BASIC_PERCENT_DEFAULT_MESSAGE })
+  basicPercentDefault?: number;
 }
 
 // ---------- ending rules ----------

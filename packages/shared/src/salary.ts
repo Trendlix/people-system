@@ -3,71 +3,38 @@
 // on the annual net income in Law 7/2024's tiers, and the Martyrs' Fund. Comprehensive health insurance doesn't apply in
 // Cairo yet, and the salary stamp tax applies to public business-sector companies only. Allowances (owner's request,
 // 15 October 2026) are paid on top of the gross: the taxable ones are taxed with it and the insured ones insured with
-// it; every allowance is in the net.
+// it; every allowance is in the net. The rates, the exemption, the insurable limits and the tax tiers are the year's
+// rates set by law (law-rates.ts, owner's request, 16 October 2026): each function takes them, or a year for the
+// built-in ones.
 
 import { insuredSalary, insuredWageOf, monthlyFromHourly, WEEKS_PER_MONTH, type AllowanceTerms } from './contracts.js';
+import { LAW_7_2024_TAX_TIERS, limitOf, ratesOf, taxTierLimits, type LawRatesOrYear, type TaxTier } from './law-rates.js';
 
-export const SALARY_RULES = {
-  /** The employee's and the company's shares of social insurance, on the insured wage (Law 148/2019). */
-  employeeInsuranceRate: 0.11,
-  employerInsuranceRate: 0.1875,
-  /** The yearly personal exemption (Law 91/2005 Art. 13 as replaced by Law 7/2024). */
-  personalExemption: 20_000,
-  /** The Martyrs' and Victims' Families Fund, on the gross (Law 4/2021). */
-  martyrsRate: 0.0005,
-  /** Comprehensive health insurance, the employee's share: not applied in Cairo yet (Law 2/2018). */
-  healthInsuranceRate: 0,
-  /** The annual net income is rounded down to the nearest ten pounds before the tax (Law 91/2005 Art. 8). */
-  roundIncomeDownTo: 10,
-} as const;
+/** The annual net income is rounded down to the nearest ten pounds before the tax (Law 91/2005 Art. 8). */
+export const ROUND_INCOME_DOWN_TO = 10;
 
-/** A schedule: each band's upper limit (annual net income) and its rate. */
-type Schedule = readonly (readonly [upTo: number, rate: number])[];
-
-const NORMAL: Schedule = [
-  [40_000, 0],
-  [55_000, 0.1],
-  [70_000, 0.15],
-  [200_000, 0.2],
-  [400_000, 0.225],
-  [Infinity, 0.25],
-];
-
-/**
- * Law 7/2024 (Art. 8, in force for salaries from 1 March 2024): the tier is chosen by the whole annual net income, and
- * the whole income is taxed on that tier's schedule: above 600,000 the lowest bands are lost one by one, above
- * 1,200,000 everything up to it is at 25% and the rest at 27.5%. So the tax jumps at each tier's limit.
- */
-const TIERS: readonly (readonly [upTo: number, schedule: Schedule])[] = [
-  [600_000, NORMAL],
-  [700_000, NORMAL.slice(1).map(([upTo, rate], i) => [upTo, i === 0 ? 0.1 : rate] as const)],
-  [800_000, NORMAL.slice(2)],
-  [900_000, NORMAL.slice(3)],
-  [1_200_000, NORMAL.slice(4)],
-  [
-    Infinity,
-    [
-      [1_200_000, 0.25],
-      [Infinity, 0.275],
-    ],
-  ],
-];
-
-/** The tier limits: where the tax jumps (annual net income). */
-export const TAX_TIER_LIMITS: readonly number[] = TIERS.slice(0, -1).map(([upTo]) => upTo);
+/** Law 7/2024's tier limits: where the tax jumps (annual net income). */
+export const TAX_TIER_LIMITS: readonly number[] = taxTierLimits(LAW_7_2024_TAX_TIERS);
 
 /** Half-up to the piaster. */
 const piasters = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
-/** The yearly salary tax on an annual net income (already after insurance, the exemption and rounding). */
-export function annualSalaryTax(income: number): number {
+/**
+ * The yearly salary tax on an annual net income (already after insurance, the exemption and rounding), in `tiers`
+ * (Law 7/2024's unless given): the tier is the first whose limit the whole income is within, and the whole income is
+ * taxed on its bands, from 0.
+ */
+export function annualSalaryTax(income: number, tiers: readonly TaxTier[] = LAW_7_2024_TAX_TIERS): number {
   if (income <= 0) return 0;
-  const schedule = TIERS.find(([upTo]) => income <= upTo)![1];
+  // a table checked by taxTiersProblems ends with a tier without a limit; the last tier is used past any other's
+  const tier = tiers.find((t) => income <= limitOf(t.upTo)) ?? tiers.at(-1);
+  if (!tier) return 0;
   let tax = 0;
   let from = 0;
-  for (const [upTo, rate] of schedule) {
+  for (const band of tier.bands) {
     if (income <= from) break;
-    tax += (Math.min(income, upTo) - from) * rate;
+    const upTo = limitOf(band.upTo);
+    tax += (Math.min(income, upTo) - from) * band.rate;
     from = upTo;
   }
   return piasters(tax);
@@ -114,16 +81,20 @@ export interface MonthlySalaryTax {
 /**
  * The salary tax and the Martyrs' Fund on a month's taxed pay (the salary and the taxable allowances), after the
  * employee's social insurance: the month as if paid all year (× 12), less the personal exemption, rounded down to ten
- * pounds, taxed in Law 7/2024's tiers and ÷ 12. Used for a contract's salary (grossToNet) and for a month's actual pay
- * (payroll.ts). Nothing is paid to the Fund on pay below zero.
+ * pounds, taxed in the tiers and ÷ 12, with the year's rates (`rates`, or the built-in ones of a year: this year's
+ * unless given). Used for a contract's salary (grossToNet) and for a month's actual pay (payroll.ts). Nothing is paid
+ * to the Fund on pay below zero.
  */
-export function monthlySalaryTax({ taxedPay, employeeInsurance }: { taxedPay: number; employeeInsurance: number }): MonthlySalaryTax {
-  const r = SALARY_RULES;
+export function monthlySalaryTax(
+  { taxedPay, employeeInsurance }: { taxedPay: number; employeeInsurance: number },
+  rates: LawRatesOrYear = new Date().getFullYear(),
+): MonthlySalaryTax {
+  const r = ratesOf(rates);
   const healthInsurance = piasters(Math.max(0, taxedPay) * r.healthInsuranceRate);
   const monthlyTaxable = piasters(taxedPay - employeeInsurance - healthInsurance);
   const yearly = monthlyTaxable * 12 - r.personalExemption;
-  const annualNetIncome = yearly > 0 ? Math.floor(yearly / r.roundIncomeDownTo) * r.roundIncomeDownTo : 0;
-  const annualTax = annualSalaryTax(annualNetIncome);
+  const annualNetIncome = yearly > 0 ? Math.floor(yearly / ROUND_INCOME_DOWN_TO) * ROUND_INCOME_DOWN_TO : 0;
+  const annualTax = annualSalaryTax(annualNetIncome, r.taxTiers);
   return {
     healthInsurance,
     monthlyTaxable,
@@ -139,18 +110,19 @@ const total = (allowances: readonly AllowanceTerms[], which: (a: AllowanceTerms)
   piasters(allowances.reduce((sum, a) => sum + (which(a) ? Math.max(0, a.amount) : 0), 0));
 
 /**
- * A monthly gross salary's net, step by step, for `year` (its insurable wage limits), with its allowances. With the
- * same salary all year the monthly tax is the annual tax ÷ 12, which is what the Ministry's system gives each month.
+ * A monthly gross salary's net, step by step, with the year's rates set by law (`rates`, or the built-in ones of a
+ * year: this year's unless given) and its allowances. With the same salary all year the monthly tax is the annual tax
+ * ÷ 12, which is what the Ministry's system gives each month.
  */
-export function grossToNet(gross: number, year = new Date().getFullYear(), allowances: readonly AllowanceTerms[] = []): SalaryBreakdown {
-  const r = SALARY_RULES;
+export function grossToNet(gross: number, rates: LawRatesOrYear = new Date().getFullYear(), allowances: readonly AllowanceTerms[] = []): SalaryBreakdown {
+  const r = ratesOf(rates);
   const g = Math.max(0, piasters(gross));
   const all = total(allowances);
   const taxableAllowances = total(allowances, (a) => a.taxable);
-  const insuredWage = g > 0 ? insuredWageOf(g, allowances, year) : 0;
+  const insuredWage = g > 0 ? insuredWageOf(g, allowances, r) : 0;
   const employeeInsurance = piasters(insuredWage * r.employeeInsuranceRate);
   const taxedPay = piasters(g + taxableAllowances);
-  const { healthInsurance, monthlyTaxable, annualNetIncome, annualTax, monthlyTax, martyrsFund } = monthlySalaryTax({ taxedPay, employeeInsurance });
+  const { healthInsurance, monthlyTaxable, annualNetIncome, annualTax, monthlyTax, martyrsFund } = monthlySalaryTax({ taxedPay, employeeInsurance }, r);
   const deductions = piasters(employeeInsurance + healthInsurance + monthlyTax + martyrsFund);
   const employerInsurance = piasters(insuredWage * r.employerInsuranceRate);
   return {
@@ -179,23 +151,42 @@ export function grossToNet(gross: number, year = new Date().getFullYear(), allow
  * by default (`step` 0.01 for piasters): with the income rounded down to ten pounds, several grosses a few piasters
  * apart give one net.
  */
-export function netToGross(net: number, year = new Date().getFullYear(), step: 1 | 0.01 = 1, allowances: readonly AllowanceTerms[] = []): SalaryBreakdown {
+export function netToGross(
+  net: number,
+  rates: LawRatesOrYear = new Date().getFullYear(),
+  step: 1 | 0.01 = 1,
+  allowances: readonly AllowanceTerms[] = [],
+): SalaryBreakdown {
+  const r = ratesOf(rates);
   const target = piasters(net);
-  if (target <= 0) return grossToNet(0, year, allowances);
-  const r = SALARY_RULES;
-  const maxInsurance = insuredSalary(Number.MAX_SAFE_INTEGER, year) * r.employeeInsuranceRate;
-  // counted in units of `step`: the gross at which the annual net income reaches each tier's limit (all far above the
-  // insurable cap) ends a stretch
+  if (target <= 0) return grossToNet(0, r, allowances);
+  const maxInsurance = insuredSalary(Number.MAX_SAFE_INTEGER, r) * r.employeeInsuranceRate;
+  // counted in units of `step`: the last gross whose annual net income is within a tier's limit ends a stretch (past it
+  // the tax jumps). Found by halving, the income rising with the gross, from where it would be with the insurance at
+  // its cap: any tier's limit, also one below the insurable cap a changed table may have.
   const per = Math.round(1 / step);
   const taxableAllowances = total(allowances, (a) => a.taxable);
-  const limits = TAX_TIER_LIMITS.map((income) => Math.max(0, Math.floor(((income + r.personalExemption) / 12 + maxInsurance - taxableAllowances) * per)));
+  const incomeAt = (u: number) => grossToNet(u / per, r, allowances).annualNetIncome;
+  const lastWithin = (income: number, from: number) => {
+    let hi = Math.max(from + 1, Math.ceil(((income + r.personalExemption + ROUND_INCOME_DOWN_TO) / 12 + maxInsurance - taxableAllowances + 1) * per));
+    for (let i = 0; i < 64 && incomeAt(hi) <= income; i++) hi = hi * 2 + per;
+    let lo = from;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (incomeAt(mid) <= income) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  const limits: number[] = [];
+  for (const income of taxTierLimits(r.taxTiers)) limits.push(lastWithin(income, limits.at(-1) ?? 0));
   const stretches: [number, number][] = [];
   let from = 0;
   for (const limit of [...limits, Math.max(Math.ceil(target * 3 * per), (limits.at(-1) ?? 0) * 2)]) {
     stretches.push([from, limit]);
     from = limit + 1;
   }
-  const netAt = (u: number) => grossToNet(u / per, year, allowances).net;
+  const netAt = (u: number) => grossToNet(u / per, r, allowances).net;
   for (const [lo, hi] of stretches) {
     if (hi < lo || netAt(hi) < target) continue;
     let a = lo;
@@ -205,32 +196,34 @@ export function netToGross(net: number, year = new Date().getFullYear(), step: 1
       if (netAt(mid) >= target) b = mid;
       else a = mid + 1;
     }
-    return grossToNet(a / per, year, allowances);
+    return grossToNet(a / per, r, allowances);
   }
-  return grossToNet(stretches.at(-1)![1] / per, year, allowances);
+  return grossToNet(stretches.at(-1)![1] / per, r, allowances);
 }
 
 /**
  * By the hour, from an agreed net rate (owner's request, 15 October 2026): the lowest gross hourly rate, to the
  * piaster, whose monthly estimate (rate × hours a week × 52 ÷ 12) gives at least the net of the net rate's month, with
  * its breakdown. The contract keeps the gross rate: tax and insurance are worked out from the gross. Rates rounded to
- * the piaster can't always give the net exactly; the breakdown says what this rate gives.
+ * the piaster can't always give the net exactly; the breakdown says what this rate gives. With the year's rates set by
+ * law (`rates`, or the built-in ones of a year).
  */
 export function hourlyRateFromNet(
   netHourly: number,
   hoursPerWeek: number,
-  year = new Date().getFullYear(),
+  rates: LawRatesOrYear = new Date().getFullYear(),
   allowances: readonly AllowanceTerms[] = [],
 ): { hourlyRate: number; breakdown: SalaryBreakdown } {
-  if (!(netHourly > 0) || !(hoursPerWeek > 0)) return { hourlyRate: 0, breakdown: grossToNet(0, year, allowances) };
+  const r = ratesOf(rates);
+  if (!(netHourly > 0) || !(hoursPerWeek > 0)) return { hourlyRate: 0, breakdown: grossToNet(0, r, allowances) };
   const target = piasters(netHourly * hoursPerWeek * WEEKS_PER_MONTH);
-  const monthly = netToGross(target, year, 0.01, allowances);
+  const monthly = netToGross(target, r, 0.01, allowances);
   // the rate whose monthly estimate is that gross, rounded up to the piaster, then up again while its net falls short
   let rate = Math.ceil(piasters((monthly.gross / (hoursPerWeek * WEEKS_PER_MONTH)) * 100)) / 100;
-  let breakdown = grossToNet(monthlyFromHourly(rate, hoursPerWeek), year, allowances);
+  let breakdown = grossToNet(monthlyFromHourly(rate, hoursPerWeek), r, allowances);
   for (let i = 0; i < 100 && breakdown.net < target; i++) {
     rate = piasters(rate + 0.01);
-    breakdown = grossToNet(monthlyFromHourly(rate, hoursPerWeek), year, allowances);
+    breakdown = grossToNet(monthlyFromHourly(rate, hoursPerWeek), r, allowances);
   }
   return { hourlyRate: rate, breakdown };
 }

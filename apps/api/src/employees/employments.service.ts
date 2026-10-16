@@ -52,12 +52,23 @@ export class EmploymentsService {
    * Active (a rehire, no probation in the contract settings, a hire back-dated past its probation).
    */
   async create(employeeId: string, dto: CreateEmploymentDto, user: SessionUser) {
+    const { id, created } = await this.add(employeeId, dto);
+    await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, entityId: id, diff: created });
+    return this.employees.get(employeeId, user);
+  }
+
+  /**
+   * What hiring writes: the checks, then the new current employment, in `db`. A transaction when the first contract is
+   * drafted with it, all or nothing (HiringService: hiring in one form, owner's decision, 16 October 2026). Answers the
+   * new row's id and its fields as the audit log records them: the caller records the entry once the row is saved.
+   */
+  async add(employeeId: string, dto: CreateEmploymentDto, db: Db = this.prisma) {
     const person = await this.person(employeeId);
-    const current = await this.prisma.employment.findFirst({ where: { employeeId, endDate: null }, select: { joinDate: true } });
+    const current = await db.employment.findFirst({ where: { employeeId, endDate: null }, select: { joinDate: true } });
     if (current) {
       throw new ConflictException(`${person.fullNameEn} already has a current employment, since ${fromDateOnly(current.joinDate)}. End it before adding a new one.`);
     }
-    const last = await this.prisma.employment.findFirst({ where: { employeeId }, orderBy: { endDate: 'desc' }, select: { endDate: true } });
+    const last = await db.employment.findFirst({ where: { employeeId }, orderBy: { endDate: 'desc' }, select: { endDate: true } });
     const lastEnd = fromDateOnly(last?.endDate ?? null);
     if (lastEnd && dto.joinDate <= lastEnd) {
       throw new BadRequestException(`The last employment ended on ${lastEnd}: the new one must start after that.`);
@@ -67,10 +78,9 @@ export class EmploymentsService {
     const status = derived.probationEnd && derived.probationEnd >= todayInCairo() ? ('probation' as const) : ('active' as const);
     const values = { employmentType, joinDate, ...rest, ...derived, status };
 
-    const row = await this.prisma.employment.create({ data: toData({ ...values, employeeId }) });
+    const row = await db.employment.create({ data: toData({ ...values, employeeId }) });
     const { id: _id, createdAt: _c, updatedAt: _u, ...created } = fields(row);
-    await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, entityId: row.id, diff: created });
-    return this.employees.get(employeeId, user);
+    return { id: row.id, created };
   }
 
   /**

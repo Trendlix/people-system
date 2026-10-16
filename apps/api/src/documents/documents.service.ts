@@ -15,6 +15,7 @@ import { toDateOnly, todayInCairo } from '../common/date-only.js';
 import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
 import { seesBank, seesIdentity, seesSalary } from '../employees/access.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { detectPaperworkType, extensionOf, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from '../paperwork/paperwork-file.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { isPdf } from '../pdf/pdf-file.js';
@@ -106,7 +107,7 @@ function situation(e: EmploymentRow): Situation {
 /** Why a slot isn't offered for the employment, in words HR act on. */
 function notOffered(slot: TemplateSlot, s: Situation, name: string): string {
   if (!sectionOf(slot.key)) {
-    return slot.folder === 'payslips' ? 'Payslips come from payroll, which isn’t available yet.' : `${slot.name} isn’t generated from the Contracts tab.`;
+    return slot.folder === 'payslips' ? 'Payslips come from payroll, which isn’t available yet.' : `${slot.name} isn’t generated from the Employment tab.`;
   }
   if (!slot.appliesTo.includes(s.employmentType)) {
     const type = typeText(s.employmentType);
@@ -132,7 +133,7 @@ function checkedScan(file: Express.Multer.File | undefined): { data: Buffer; typ
   return { data: file.buffer, type };
 }
 
-// Documents generated from the published templates: the profile's Contracts tab (spec §8.3–8.4; owner's request, 15
+// Documents generated from the published templates: the profile's Employment tab (spec §8.3–8.4; owner's request, 15
 // October 2026). The tab offers the documents that apply to the employment type and its situation, each with its
 // generated copies; HR generates one once every tag its template prints has a value, then marks it printed, uploads
 // the signed scan and verifies it. HR and the CEO view the tab and download the files; only HR generates and moves a
@@ -143,9 +144,10 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly lawRates: LawRatesService,
   ) {}
 
-  /** The Contracts tab: the documents offered for the current employment (else the latest), in sections. */
+  /** The Employment tab: the documents offered for the current employment (else the latest), in sections. */
   async tab(employeeId: string) {
     await this.employee(employeeId);
     const employment = await this.employmentOf(employeeId);
@@ -423,7 +425,7 @@ export class DocumentsService {
 
   /**
    * A template version (a draft too) filled in with one employee's data, to preview it (owner's request, 15 October
-   * 2026): from what generation reads, whether or not the Contracts tab offers the document to them. Nothing is refused
+   * 2026): from what generation reads, whether or not the Employment tab offers the document to them. Nothing is refused
    * and nothing saved: a tag with no value prints as its label in square brackets (a PDF form's optional field, blank,
    * as on the document), a restricted value the caller may not see as •••• (preview.ts). Without the version's file (`data`), only how many of its tags have a value. The
    * restricted values printed (`shown`) are for the caller to write to the audit log once the file is handed over.
@@ -472,7 +474,7 @@ export class DocumentsService {
   private async context(employeeId: string, slotKey: string, contractId: string | undefined): Promise<Context> {
     const employee = await this.employee(employeeId);
     const slot = SLOTS.get(slotKey);
-    if (!slot) throw new BadRequestException('Choose a document the Contracts tab offers.');
+    if (!slot) throw new BadRequestException('Choose a document the Employment tab offers.');
     const employment = await this.employmentOf(employeeId);
     if (!employment) throw new BadRequestException(`${employee.fullNameEn} has no employment yet. Add it on the Employment tab before generating documents.`);
     const s = situation(employment);
@@ -496,7 +498,7 @@ export class DocumentsService {
       contract = termsContract(employment.contracts);
     }
 
-    const [person, company, offer, settings] = await Promise.all([
+    const [person, company, offer, settings, lawYears] = await Promise.all([
       this.prisma.employee.findUniqueOrThrow({
         where: { id: employeeId },
         select: {
@@ -535,6 +537,8 @@ export class DocumentsService {
       }),
       // the basic wage social insurance forms print for an employee who has none of their own (owner, 16 October 2026)
       this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }),
+      // the rates set by law: the insured wage Form 1 prints is within this year's insurable limits
+      this.lawRates.years(),
     ]);
     const { identity, bank, ...own } = person;
     const ending = employment.endings[0] ?? null;
@@ -545,7 +549,7 @@ export class DocumentsService {
       employment,
       contract,
       ending,
-      sources: { employee: own, identity, bank, employment, contract, ending, offer, company, insuranceBasicDefault },
+      sources: { employee: own, identity, bank, employment, contract, ending, offer, company, insuranceBasicDefault, lawYears },
     };
   }
 

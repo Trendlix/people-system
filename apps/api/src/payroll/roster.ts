@@ -1,4 +1,15 @@
-import { paidDaysIn, shiftHours, type EmploymentType, type PayBasis, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
+import {
+  lawRatesFor,
+  paidDaysIn,
+  shiftDaysIn,
+  shiftExpectedHours,
+  shiftHours,
+  type EmploymentType,
+  type LawRates,
+  type PayBasis,
+  type PayrollRules,
+  type PayrollTerms,
+} from '@trendlix/shared';
 import { departmentName } from '../contracts/views.js';
 import { insuredWageOfEmployee } from '../employees/insured-wage.js';
 import { firstDay, lastDay } from './months.js';
@@ -7,7 +18,10 @@ import { firstDay, lastDay } from './months.js';
 // its last day, not ended before its first) whose person has a signed contract in force in the month, taken as far as
 // the employment ran. With two (a renewal starting mid-month) the later one's terms are paid for the whole month. The
 // others are left out, with the reason, for HR to see. A working day's hours are the employment's shift's, what a
-// no-show day takes out of the expected hours (owner's decision, 16 October 2026).
+// no-show day takes out of the expected hours (owner's decision, 16 October 2026). The month's expected hours of
+// someone paid monthly are the shift's too (owner's request, 16 October 2026, Payroll Setup): its working days within
+// the days employed in the month, less the official holidays on them, × its hours a day; none without a shift, nor for
+// pay by the hour. The pay counts them unless HR types the expected hours.
 
 /** An employment as the roster reads it, with its signed contracts that may be in force in the month. */
 export interface RosterEmployment {
@@ -17,8 +31,8 @@ export interface RosterEmployment {
   endDate: string | null;
   department: { nameEn: string; parent: { nameEn: string } | null } | null;
   jobTitle: string | null;
-  /** The employment's shift, "HH:mm"; null without one. */
-  shift: { startTime: string; endTime: string } | null;
+  /** The employment's shift: its times, "HH:mm", and its working days, 0 = Sunday … 6 = Saturday; null without one. */
+  shift: { startTime: string; endTime: string; workingDays: readonly number[] } | null;
   employee: {
     id: string;
     employeeCode: string;
@@ -70,10 +84,28 @@ export const byDepartment = (a: string | null, b: string | null) => (a === null 
 const cents = (v: number) => Math.round(v * 100);
 
 /**
- * The run's people and those left out, from the employments that touch the month. A person with two employments in
- * the month (left and hired again) is paid on the later one; the earlier is listed as left out.
+ * The expected hours a monthly-paid employment's shift gives in the month, and the days they come from: null without a
+ * shift (or one whose hours can't be told), and for pay by the hour.
  */
-export function roster(month: string, employments: readonly RosterEmployment[], rules: Pick<PayrollRules, 'dayDivisor'>): { lines: RosterLine[]; exclusions: Exclusion[] } {
+function shiftExpected(month: string, e: RosterEmployment, payBasis: PayBasis, hoursPerDay: number | null, holidays: readonly string[]) {
+  if (payBasis !== 'monthly' || !e.shift || hoursPerDay === null) return { expectedHours: null, expectedDays: null };
+  const days = shiftDaysIn(month, e.joinDate, e.endDate, e.shift.workingDays, holidays);
+  return { expectedHours: shiftExpectedHours(days, hoursPerDay), expectedDays: days };
+}
+
+/**
+ * The run's people and those left out, from the employments that touch the month. A person with two employments in
+ * the month (left and hired again) is paid on the later one; the earlier is listed as left out. `holidays` are the
+ * official holidays' days (YYYY-MM-DD) in the month. `law`: the rates set by law the run is worked out with (its
+ * year's), whose insurable limits the insured wage is kept within; the built-in ones of the year unless given.
+ */
+export function roster(
+  month: string,
+  employments: readonly RosterEmployment[],
+  rules: Pick<PayrollRules, 'dayDivisor'>,
+  holidays: readonly string[] = [],
+  law: LawRates = lawRatesFor(Number(month.slice(0, 4))),
+): { lines: RosterLine[]; exclusions: Exclusion[] } {
   const from = firstDay(month);
   const to = lastDay(month);
   const year = Number(month.slice(0, 4));
@@ -104,6 +136,7 @@ export function roster(month: string, employments: readonly RosterEmployment[], 
 
     const allowances = contract.allowances.map((a) => ({ name: a.nameEn, amount: a.amount, taxable: a.taxable, insured: a.insured }));
     const contractTotal = (cents(contract.grossSalary) + allowances.reduce((sum, a) => sum + cents(a.amount), 0)) / 100;
+    const hoursPerDay = e.shift ? shiftHours(e.shift.startTime, e.shift.endTime) : null;
     lines.push({
       employeeId: p.id,
       employmentId: e.id,
@@ -125,9 +158,10 @@ export function roster(month: string, employments: readonly RosterEmployment[], 
         // freelancers: no social insurance, no tax, no Martyrs' Fund
         statutory: e.employmentType !== 'freelance',
         insured: p.socialInsured,
-        // as the Social Insurance tab shows it, for the run's year
-        insuredWage: insuredWageOfEmployee(p.insuranceComprehensiveWage, contractTotal, year)!.amount,
-        hoursPerDay: e.shift ? shiftHours(e.shift.startTime, e.shift.endTime) : null,
+        // as the Social Insurance tab shows it, for the run's year (its rates set by law)
+        insuredWage: insuredWageOfEmployee(p.insuranceComprehensiveWage, contractTotal, law)!.amount,
+        hoursPerDay,
+        ...shiftExpected(month, e, contract.payBasis, hoursPerDay, holidays),
       },
     });
   }

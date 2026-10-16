@@ -52,6 +52,7 @@ model User {
   payrollsCreated   PayrollRun[]           @relation("PayrollCreation") // payroll runs this user started
   payrollsApproved  PayrollRun[]           @relation("PayrollApproval") // payroll runs this user approved as CEO
   payslipsDrawn     Payslip[]              @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
+  lawRatesChanged   PayrollLawYear[]       @relation("LawRatesChange") // years of the rates set by law this user changed last
 
   @@map("users")
 }
@@ -436,6 +437,8 @@ model ContractSettings {
   durationMonths        Int      @default(12) @map("duration_months") // 1–60
   // the basic wage social insurance Form 1 prints for an employee who has none of their own (owner, 16 October 2026)
   insuranceBasicDefault Decimal  @default(410) @map("insurance_basic_default") @db.Decimal(12, 2)
+  // the basic salary's share of the gross a new contract or offer starts with, 1–100 (owner, 16 October 2026: Payroll Setup)
+  basicPercentDefault   Int      @default(80) @map("basic_percent_default")
   updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("contract_settings")
@@ -861,9 +864,24 @@ model PayrollSettings {
   cibDebitAccount        String?  @map("cib_debit_account") // the company's CIB account the salaries are paid from: 12 digits
   cibDebitAccountName    String?  @map("cib_debit_account_name") // its name, as CIB has it
   achPurpose             String   @default("CASH") @map("ach_purpose") // the ACH file's TransactionPurpose
+  payday                 Int? // the day of the month salaries are paid (1–31): the date a run is marked paid on, to start with
   updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("payroll_settings")
+}
+
+// The year's official holidays (owner's request, 16 October 2026, Payroll Setup): one day each, a holiday of several
+// days a row per day. A holiday on one of a shift's working days takes that day's hours out of the expected hours a
+// run works out; runs made or refreshed afterwards count it, an approved run keeps what it was worked out with.
+model Holiday {
+  id        String   @id @default(uuid()) @db.Uuid
+  date      DateTime @unique @db.Date
+  nameEn    String   @map("name_en")
+  nameAr    String?  @map("name_ar")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("holidays")
 }
 
 // One month's payroll: a run per month. Its lines are worked out again whenever their inputs change while it is a
@@ -873,6 +891,9 @@ model PayrollRun {
   month          DateTime      @unique @db.Date // the month's first day
   status         String        @default("draft") // PAYROLL_STATUSES: draft, pending_ceo, approved, paid
   rules          Json // the PayrollRules it is worked out with: the settings', copied when made and when refreshed
+  // the LawRates it is worked out with: the year's rates set by law, copied when made and when refreshed; null on runs made
+  // before 17 October 2026, which were worked out with the built-in rates (the same as the rows the law rates migration added)
+  lawRates       Json?         @map("law_rates")
   exclusions     Json          @default("[]") // the people left out when made or refreshed, and why: [{ employeeId, employeeCode, name, reason }]
   createdById    String?       @map("created_by") @db.Uuid
   createdBy      User?         @relation("PayrollCreation", fields: [createdById], references: [id], onDelete: SetNull)
@@ -962,4 +983,28 @@ model Payslip {
 
   @@unique([lineId, language])
   @@map("payslips")
+}
+
+// The rates set by law, by year (owner's request, 16 October 2026: "creating a setup page for payroll to enter the
+// variables that might affect the sheet"; the tax brackets "editable by superadmin, to modify it if the law changed"):
+// the social insurance shares, the insurable wage limits, the personal exemption, the Martyrs' Fund, comprehensive
+// health insurance and the salary tax's tiers. A year's row applies from that year; a year without its own uses the
+// latest earlier one (the earliest for a year before them all). The Super Admin changes them (Organization → Payroll);
+// a payroll run keeps a copy of the year's it was worked out with. The law rates migration and prisma/seed.ts add 2025
+// and 2026, as packages/shared law-rates.ts has them built in.
+model PayrollLawYear {
+  year                  Int      @id // the year these apply from
+  employeeInsuranceRate Decimal  @map("employee_insurance_rate") @db.Decimal(8, 6) // fractions: 0.11 for 11%
+  employerInsuranceRate Decimal  @map("employer_insurance_rate") @db.Decimal(8, 6)
+  insurableWageMin      Decimal  @map("insurable_wage_min") @db.Decimal(12, 2) // a month
+  insurableWageMax      Decimal  @map("insurable_wage_max") @db.Decimal(12, 2)
+  personalExemption     Decimal  @map("personal_exemption") @db.Decimal(12, 2) // a year
+  martyrsRate           Decimal  @map("martyrs_rate") @db.Decimal(8, 6)
+  healthInsuranceRate   Decimal  @map("health_insurance_rate") @db.Decimal(8, 6)
+  taxTiers              Json     @map("tax_tiers") // TaxTier[]: [{ upTo, bands: [{ upTo, rate }] }], upTo null for no limit
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById           String?  @map("updated_by") @db.Uuid // null for the rows the migration added
+  updatedBy             User?    @relation("LawRatesChange", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("payroll_law_years")
 }

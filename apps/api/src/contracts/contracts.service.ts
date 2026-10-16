@@ -2,13 +2,14 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { insuredWageOf, monthlyFromHourly, type ContractForm, type ContractStatus, type PayBasis } from '@trendlix/shared';
 import { AllowancesService } from '../allowances/allowances.service.js';
 import { allowanceData, allowancesTotal, allowanceView, type AllowanceSnapshot } from '../allowances/rows.js';
-import { AuditService, changes } from '../audit/audit.service.js';
+import { AuditService, changes, type AuditEntry } from '../audit/audit.service.js';
 import { assertDeletes, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { seesSalary } from '../employees/access.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import type { EmployeeStatus, Prisma } from '../generated/prisma/client.js';
+import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ContractSettingsService } from './contract-settings.service.js';
 import {
@@ -32,6 +33,8 @@ import {
 } from './views.js';
 
 const ENTITY = 'contract';
+/** The database, or a transaction in it. */
+type Db = PrismaService | Prisma.TransactionClient;
 /** Undoing a signing is for a Super Admin only, like deleting (owner's decision, 15 October 2026). */
 export const ONLY_SUPER_ADMIN_UNSIGNS = 'Only a Super Admin can undo a signing.';
 const DATE_FIELDS = ['startDate', 'endDate', 'probationEnd', 'signedOn', 'insuranceFiledOn', 'labourOfficeFiledOn'] as const;
@@ -185,6 +188,7 @@ export class ContractsService {
     private readonly employees: EmployeesService,
     private readonly settings: ContractSettingsService,
     private readonly allowances: AllowancesService,
+    private readonly lawRates: LawRatesService,
   ) {}
 
   /** An employment's contract versions, newest first. */
@@ -235,9 +239,20 @@ export class ContractsService {
    * version before's allowances as they are unless others are sent; its pay is sent afresh.
    */
   async create(employeeId: string, employmentId: string, dto: CreateContractDto, user: SessionUser) {
-    const employment = await this.employment(employeeId, employmentId, user);
+    const { row, employment, audit } = await this.draft(employeeId, employmentId, dto, user);
+    await this.audit.record(audit);
+    return contractView(row, await this.context(user, employment));
+  }
+
+  /**
+   * What adding a version writes, in `db`: a transaction when hiring drafts the first contract with the employment, all
+   * or nothing (HiringService: hiring in one form, owner's decision, 16 October 2026). Answers the new row, its
+   * employment and the audit entry, which the caller records once the row is saved.
+   */
+  async draft(employeeId: string, employmentId: string, dto: CreateContractDto, user: SessionUser, db: Db = this.prisma) {
+    const employment = await this.employment(employeeId, employmentId, user, db);
     assertCurrent(employment);
-    const versions = await this.prisma.contract.findMany({ where: { employmentId }, orderBy: { version: 'desc' }, include: CONTRACT_INCLUDE });
+    const versions = await db.contract.findMany({ where: { employmentId }, orderBy: { version: 'desc' }, include: CONTRACT_INCLUDE });
     const draft = versions.find((v) => v.status === 'draft');
     if (draft) throw new ConflictException(`Version ${draft.version} (${draft.number}) is still a draft. Sign or delete it before adding another.`);
     const previous = versions[0] ?? null;
@@ -262,19 +277,19 @@ export class ContractsService {
       daysPerWeek: dto.daysPerWeek,
       allowances,
     });
-    const values = { ...terms, number: await this.nextNumber(terms.startDate), version: (previous?.version ?? 0) + 1, note: dto.note ?? null };
-    const row = await this.prisma.contract.create({
+    const values = { ...terms, number: await this.nextNumber(terms.startDate, db), version: (previous?.version ?? 0) + 1, note: dto.note ?? null };
+    const row = await db.contract.create({
       data: { ...toData({ ...values, employmentId }), allowances: { create: allowanceData(rows) } },
       include: CONTRACT_INCLUDE,
     });
-    await this.audit.record({
+    const audit: AuditEntry = {
       userId: user.id,
       action: 'create',
       entityType: ENTITY,
       entityId: row.id,
       diff: salaryMasked({ employeeId, employmentId, ...values, allowances: comparable(rows) }),
-    });
-    return contractView(row, await this.context(user, employment));
+    };
+    return { row, employment, audit };
   }
 
   /**
@@ -604,9 +619,11 @@ export class ContractsService {
       probationMonths,
       probationEnd,
       ...pay,
-      basicPercent: input.basicPercent ?? 80,
+      // the company's default share unless HR sets another (Payroll Setup, 16 October 2026)
+      basicPercent: input.basicPercent ?? settings.basicPercentDefault,
       netSalary,
-      insuredSalary: insuredWageOf(pay.grossSalary, allowances, Number(startDate.slice(0, 4))),
+      // within the insurable limits of the year the contract starts (its rates set by law)
+      insuredSalary: insuredWageOf(pay.grossSalary, allowances, await this.lawRates.forYear(Number(startDate.slice(0, 4)))),
       allowances,
     };
   }
@@ -666,9 +683,9 @@ export class ContractsService {
   }
 
   /** The next free number for a contract starting that year: CON-2026-0001, CON-2026-0002 … */
-  private async nextNumber(startDate: string): Promise<string> {
+  private async nextNumber(startDate: string, db: Db = this.prisma): Promise<string> {
     const year = startDate.slice(0, 4);
-    const [{ max }] = await this.prisma.$queryRaw<{ max: number | null }[]>`
+    const [{ max }] = await db.$queryRaw<{ max: number | null }[]>`
       SELECT max(substring(number from 10)::int) AS max FROM contracts WHERE number ~ ${`^CON-${year}-[0-9]+$`}`;
     return `CON-${year}-${String((max ?? 0) + 1).padStart(4, '0')}`;
   }
@@ -683,8 +700,8 @@ export class ContractsService {
   }
 
   /** An employment of this employee that the user may see (see EmployeesService.visibleTo). */
-  private async employment(employeeId: string, employmentId: string, user: SessionUser): Promise<EmploymentRow> {
-    const e = await this.prisma.employment.findFirst({
+  private async employment(employeeId: string, employmentId: string, user: SessionUser, db: Db = this.prisma): Promise<EmploymentRow> {
+    const e = await db.employment.findFirst({
       where: { id: employmentId, employeeId, employee: await this.employees.visibleTo(user) },
       select: EMPLOYMENT,
     });

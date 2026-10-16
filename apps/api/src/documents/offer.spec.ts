@@ -1,7 +1,7 @@
 import { TEMPLATE_SLOTS } from '@trendlix/shared';
 import { offered, offeredSlots, sectionOf, SECTION_SLOTS } from './offer.js';
 
-describe('which documents the Contracts tab offers', () => {
+describe('which documents the Employment tab offers', () => {
   it('lists every slot in one section, except the payslips', () => {
     const listed = Object.values(SECTION_SLOTS).flat();
     expect(new Set(listed).size).toBe(listed.length);

@@ -1,4 +1,15 @@
-import type { EmploymentType, PayBasis, PayrollInputs, PayrollResult, PayrollRules, PayrollStatus, PayrollTerms } from '@trendlix/shared';
+import {
+  lawRatesFor,
+  normalLawRates,
+  type EmploymentType,
+  type LawRates,
+  type PayBasis,
+  type PayrollInputs,
+  type PayrollResult,
+  type PayrollRules,
+  type PayrollStatus,
+  type PayrollTerms,
+} from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { bankCheck, lineBank, type BankDetails, type LineBank } from './bank.js';
@@ -62,6 +73,8 @@ export interface PayrollRunView {
   month: string;
   status: PayrollStatus;
   rules: PayrollRules;
+  /** The rates set by law it is worked out with: its year's, copied when it was made or last refreshed. */
+  lawRates: LawRates;
   createdAt: Date;
   submittedAt: Date | null;
   approvedAt: Date | null;
@@ -97,6 +110,15 @@ export type LineRow = RunRow['lines'][number];
 
 /** The month a run is for, YYYY-MM. */
 export const monthOf = (run: { month: Date }) => fromDateOnly(run.month).slice(0, 7);
+
+/**
+ * The rates set by law a run is worked out with (owner's request, 16 October 2026): its copy, taken when it was made or
+ * last refreshed, so an approved or paid run never changes. A run made before 17 October 2026 has none: it was worked
+ * out with the built-in rates of its year, the same as the rows the law rates migration added.
+ */
+export function runLawRates(run: { month: Date; lawRates: Prisma.JsonValue | null }): LawRates {
+  return run.lawRates ? normalLawRates(run.lawRates as unknown as LawRates) : lawRatesFor(Number(monthOf(run).slice(0, 4)));
+}
 
 /** Sums to the piaster. */
 export function totalsOf(results: readonly Pick<PayrollResult, (typeof TOTAL_KEYS)[number]>[]): PayrollTotals {
@@ -142,6 +164,7 @@ export function runView(run: RunRow, ctx: { banks: ReadonlyMap<string, BankDetai
     month: monthOf(run),
     status: run.status as PayrollStatus,
     rules: run.rules as unknown as PayrollRules,
+    lawRates: runLawRates(run),
     createdAt: run.createdAt,
     submittedAt: run.submittedAt,
     approvedAt: run.approvedAt,

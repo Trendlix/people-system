@@ -10,6 +10,7 @@ import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.
 import { CONTRACT_INCLUDE, contractView, ENDING_INCLUDE, endingView, type ContractContext } from '../contracts/views.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
 import { storedCrop } from '../paperwork/photo-crop.js';
+import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   deletesEmployees,
@@ -226,6 +227,7 @@ export class EmployeesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly lawRates: LawRatesService,
   ) {}
 
   /** The people this user may see, each with their current employment, or how their last one ended. */
@@ -325,20 +327,20 @@ export class EmployeesService {
     const history = employments.map((x) => employmentView(x, { seesSalary: seesSalary(user), seesEndings: seesEndings(user), nonRenewal }));
     const current = history.find((x) => x.endDate === null) ?? null;
     const salary = seesSalary(user);
-    // the top rank is only needed to know whether a graded employment needs a manager
-    const [papers, topRank, changeRequests, settings, photos] = await Promise.all([
+    // the top rank is only needed to know whether a graded employment needs a manager. The insured wage Form 1 prints
+    // (owner's decision, 16 October 2026): the comprehensive wage, the employee's own else the gross and allowances of
+    // the contract the Social Insurance tab is about (the current employment's, else the latest's), within this year's
+    // insurable limits in Cairo (the year's rates set by law); worked out here as documents/values.ts prints it, and as
+    // payroll deducts insurance on it for a run's year (insured-wage.ts)
+    const [papers, topRank, changeRequests, settings, photos, law] = await Promise.all([
       papersOf(this.prisma, [id]),
       current?.grade ? topGradeRank(this.prisma) : null,
       self || seesChangeRequests(user) ? this.changeRequestsOf(id) : [],
       salary ? this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }) : null,
       seesEmployeeFile(user) ? this.photos([id]) : null,
+      this.lawRates.forYear(Number(todayInCairo().slice(0, 4))),
     ]);
     const { insuranceBasicWage, insuranceComprehensiveWage, ...open } = withOccupation(fields(own));
-    // the insured wage Form 1 prints (owner's decision, 16 October 2026): the comprehensive wage, the employee's own
-    // else the gross and allowances of the contract the Social Insurance tab is about (the current employment's, else
-    // the latest's), within this year's insurable limits in Cairo; worked out here as documents/values.ts prints it,
-    // and as payroll deducts insurance on it for a run's year (insured-wage.ts)
-    const year = Number(todayInCairo().slice(0, 4));
     return {
       ...open,
       // the social insurance wages, with the default basic wage printed for an employee who has none: salary data, for
@@ -347,8 +349,8 @@ export class EmployeesService {
         insuranceBasicWage,
         insuranceComprehensiveWage,
         insuranceBasicDefault: settings?.insuranceBasicDefault.toNumber() ?? INSURANCE_BASIC_DEFAULT,
-        insuredWage: insuredWageOfEmployee(insuranceComprehensiveWage, (current ?? history[0])?.contract?.totalSalary ?? null, year),
-        insurableLimits: insurableWageLimits(year),
+        insuredWage: insuredWageOfEmployee(insuranceComprehensiveWage, (current ?? history[0])?.contract?.totalSalary ?? null, law),
+        insurableLimits: insurableWageLimits(law),
       }),
       photoId: photos?.get(id)?.id ?? null,
       photoCrop: photos?.get(id)?.crop ?? null,

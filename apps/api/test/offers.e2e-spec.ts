@@ -23,7 +23,9 @@ import { createApp, createUser, signIn } from './helpers.js';
 // it, or kept with the offer.
 process.env.MAIL_TRANSPORT = 'memory';
 
-const RUN = Date.now().toString(36);
+// always with a digit: a name ending in letters only would teach the ID card reading (english-name.ts) to spell محمود
+// as this run's code, and paperwork.e2e-spec.ts would then find it (16 October 2026)
+const RUN = `${Date.now().toString(36)}7`;
 const TODAY = todayInCairo();
 const YEAR = TODAY.slice(0, 4);
 /** The expected first day: in three weeks. */
@@ -826,7 +828,7 @@ describe('Job offers (e2e)', () => {
       expect(contract.insuredSalary.toNumber()).toBe(insuredWageOf(20000, [{ amount: 2500, taxable: true, insured: true }], Number(JOIN.slice(0, 4))));
       expect(contract.allowances.map((a) => [a.allowanceTypeId, a.nameEn, a.amount.toNumber()])).toEqual([[housingId, `Housing ${RUN}`, 2500]]);
 
-      // the offer as sent, on the Contracts tab
+      // the offer as sent, on the Employment tab
       const tab = (await api().get(`/api/employees/${o.employeeId}/documents`).set('Cookie', hr).expect(200)).body as { sections: { key: string; items: { slotKey: string; documents: any[] }[] }[] };
       const hiring = tab.sections.find((s) => s.key === 'hiring')!.items.find((i) => i.slotKey === 'offer_full_time')!;
       expect(hiring.documents).toHaveLength(1);

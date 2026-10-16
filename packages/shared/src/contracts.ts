@@ -88,29 +88,23 @@ export const ENDING_STATUS_LABELS: Record<EndingStatus, string> = {
   completed: 'Completed',
 };
 
-/** The insurable wage limits by year (Social Insurance Law 148/2019; NOSI, 30 November 2025). */
-export const INSURABLE_WAGE: Readonly<Record<number, { min: number; max: number }>> = {
-  2025: { min: 2300, max: 14500 },
-  2026: { min: 2700, max: 16700 },
-};
-
 /**
- * The insurable wage's limits in a year, and the year of the table they are from: a year not in the table uses the
- * latest one known before it (the earliest known for a year before the table).
+ * The insurable wage's limits in a year, and the year of the table they are from: the year's rates set by law
+ * (law-rates.ts: the Super Admin keeps them by year in Organization → Payroll), or the built-in ones of a year. A year
+ * without its own uses the latest one known before it (the earliest known for a year before them all).
  */
-export function insurableWageLimits(year: number): { year: number; min: number; max: number } {
-  const known = Object.keys(INSURABLE_WAGE).map(Number).sort((a, b) => a - b);
-  const from = INSURABLE_WAGE[year] ? year : (known.filter((y) => y <= year).at(-1) ?? known[0]);
-  return { year: from, ...INSURABLE_WAGE[from] };
+export function insurableWageLimits(rates: LawRatesOrYear): { year: number; min: number; max: number } {
+  const r = ratesOf(rates);
+  return { year: r.year, min: r.insurableWageMin, max: r.insurableWageMax };
 }
 
 /**
  * The salary on the social insurance copy: the actual gross, capped at the year's maximum insurable wage (owner's
- * decision) and never below its minimum. A year not in the table uses the latest one known. With allowances, pass the
- * gross and the insured allowances together (see insuredWageOf).
+ * decision) and never below its minimum, with the year's rates (or the built-in ones of a year). With allowances, pass
+ * the gross and the insured allowances together (see insuredWageOf).
  */
-export function insuredSalary(gross: number, year: number): number {
-  const limits = insurableWageLimits(year);
+export function insuredSalary(gross: number, rates: LawRatesOrYear): number {
+  const limits = insurableWageLimits(rates);
   return Math.min(Math.max(gross, limits.min), limits.max);
 }
 
@@ -131,13 +125,14 @@ export interface InsuredWage {
   limits: { year: number; min: number; max: number };
 }
 
-/** The insured wage Form 1 prints for a comprehensive wage in `year` (in Cairo): see InsuredWage. */
-export function insuredWageFrom(comprehensive: number, year: number): InsuredWage {
-  const amount = insuredSalary(comprehensive, year);
-  return { amount, comprehensive, adjusted: amount < comprehensive ? 'max' : amount > comprehensive ? 'min' : null, limits: insurableWageLimits(year) };
+/** The insured wage Form 1 prints for a comprehensive wage, with the year's rates (in Cairo): see InsuredWage. */
+export function insuredWageFrom(comprehensive: number, rates: LawRatesOrYear): InsuredWage {
+  const amount = insuredSalary(comprehensive, rates);
+  return { amount, comprehensive, adjusted: amount < comprehensive ? 'max' : amount > comprehensive ? 'min' : null, limits: insurableWageLimits(rates) };
 }
 
 import type { EndReason } from './index.js';
+import { ratesOf, type LawRatesOrYear } from './law-rates.js';
 
 /** An allowance as the salary is worked out from it: its amount a month, and how it is treated. */
 export interface AllowanceTerms {
@@ -147,7 +142,7 @@ export interface AllowanceTerms {
 }
 
 /** The insured wage of a gross and its allowances: the gross and the insured allowances, within the year's limits. */
-export function insuredWageOf(gross: number, allowances: readonly AllowanceTerms[], year: number): number {
+export function insuredWageOf(gross: number, allowances: readonly AllowanceTerms[], rates: LawRatesOrYear): number {
   const insured = allowances.reduce((sum, a) => sum + (a.insured ? a.amount : 0), 0);
-  return insuredSalary(Math.round((gross + insured) * 100) / 100, year);
+  return insuredSalary(Math.round((gross + insured) * 100) / 100, rates);
 }

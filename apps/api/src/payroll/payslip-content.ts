@@ -1,9 +1,10 @@
 import {
+  expectedHoursOf,
   formatHours,
   LABELS,
-  SALARY_RULES,
   toArabicDigits,
   type EmploymentType,
+  type LawRates,
   type PayBasis,
   type PayrollInputs,
   type PayrollResult,
@@ -52,6 +53,8 @@ export interface PayslipSource {
     paidOn: string | null;
     approvedOn: string | null;
     rules: PayrollRules;
+    /** The rates set by law it was worked out with (views.ts runLawRates): the insurance shares and the Fund's rate. */
+    lawRates: LawRates;
   };
   line: {
     employeeCode: string;
@@ -384,6 +387,8 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
 
   // ---------- this month: what explains the cuts ----------
   const cells: PayslipCell[] = [];
+  // the expected hours as HR typed them, else the shift's less the holidays (owner's request, 16 October 2026)
+  const expected = expectedHoursOf(terms, inputs);
   if (hourly) {
     if (inputs.workedHours !== null) {
       const rate = terms.hourlyRate ?? 0;
@@ -393,7 +398,7 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
         note: rate > 0 ? (ar ? `بسعر ${money(rate)} للساعة` : `At ${money(rate)} an hour`) : null,
       });
     }
-  } else if (result.attendanceRatio !== null && inputs.workedHours !== null && inputs.expectedHours !== null) {
+  } else if (result.attendanceRatio !== null && inputs.workedHours !== null && expected !== null) {
     const ratio = result.attendanceRatio;
     const grace = percentOf(rules.attendanceGracePercent);
     let note: string;
@@ -407,7 +412,7 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     }
     cells.push({
       label: t(L.hoursWorked),
-      value: num(`${formatHours(inputs.workedHours)} ${ar ? 'من' : 'of'} ${formatHours(inputs.expectedHours - absentHours)}`),
+      value: num(`${formatHours(inputs.workedHours)} ${ar ? 'من' : 'of'} ${formatHours(expected - absentHours)}`),
       note: num(note),
     });
   } else if (inputs.workedHours !== null) {
@@ -507,10 +512,11 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   const deduct = (label: Words, value: number, note: string | null = null) => {
     if (value !== 0) deductions.push(row(t(label), value, note));
   };
-  const employeeRate = percentOf(SALARY_RULES.employeeInsuranceRate * 100);
+  const law = run.lawRates;
+  const employeeRate = percentOf(law.employeeInsuranceRate * 100);
   deduct(L.insurance, result.employeeInsurance, num(ar ? `${employeeRate} من أجر الاشتراك ${formatAmount(result.insuredWage)}` : `${employeeRate} of the insured wage, ${formatAmount(result.insuredWage)}`));
   deduct(L.tax, result.monthlyTax);
-  deduct(L.martyrs, result.martyrsFund, num(ar ? `${percentOf(SALARY_RULES.martyrsRate * 100)} من الأجر` : `${percentOf(SALARY_RULES.martyrsRate * 100)} of the pay`));
+  deduct(L.martyrs, result.martyrsFund, num(ar ? `${percentOf(law.martyrsRate * 100)} من الأجر` : `${percentOf(law.martyrsRate * 100)} of the pay`));
   // a line approved before the medical subscription was taken off the payroll (owner's decision, 16 October 2026)
   // keeps it in its result and its deductions: still its own row, so the rows add up and it isn't health insurance
   const medical = (result as PayrollResult & { medical?: number }).medical;
@@ -531,7 +537,7 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   }
 
   const share = result.employerInsurance > 0 ? money(result.employerInsurance) : null;
-  const shareRate = percentOf(SALARY_RULES.employerInsuranceRate * 100);
+  const shareRate = percentOf(law.employerInsuranceRate * 100);
   const companyShare = share
     ? ar
       ? `إلى جانب راتبك، تدفع الشركة ${share} حصتها في التأمينات الاجتماعية عنك: ${num(shareRate)} من أجر الاشتراك.`

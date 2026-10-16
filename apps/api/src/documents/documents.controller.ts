@@ -24,7 +24,7 @@ import { PdfService } from '../pdf/pdf.service.js';
 import { CheckDocumentDto, GenerateDocumentDto } from './documents.dto.js';
 import { DocumentsService } from './documents.service.js';
 
-// The profile's Contracts tab: documents generated from the published templates (owner's request, 15 October 2026).
+// The profile's Employment tab: documents generated from the published templates (owner's request, 15 October 2026).
 // HR and the CEO view the tab and download the files, like the employee file; only HR generates a document and moves
 // it on (printed, signed copy uploaded, verified); only a Super Admin deletes one. A generated document is given out
 // only as a protected PDF (owner's request, 15 October 2026), never as the Word file it is kept as.
@@ -36,7 +36,7 @@ const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 
 export class EmployeeDocumentsController {
   constructor(private readonly documents: DocumentsService) {}
 
-  /** The Contracts tab: the documents offered, in sections, each with its generated copies (newest first). */
+  /** The Employment tab: the documents offered, in sections, each with its generated copies (newest first). */
   @Roles('hr', 'ceo')
   @Get(':id/documents')
   tab(@Param('id', ParseUUIDPipe) id: string) {

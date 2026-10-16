@@ -11,7 +11,8 @@ import { PayrollService } from './payroll.service.js';
 /** A spreadsheet to download. */
 const xlsx = (file: { fileName: string; data: Buffer }) => new StreamableFile(file.data, { type: XLSX_TYPE, length: file.data.length, disposition: attachment(file.fileName) });
 
-// The payroll settings: HR, Finance, the CEO and Admin read them; HR and Admin change them (Organization → Payroll).
+// The payroll settings: HR, Finance, the CEO and Admin read them; HR and Admin change them (Organization → Payroll
+// Setup: the rules, the bank files' details and the payday).
 @Controller('payroll/settings')
 export class PayrollSettingsController {
   constructor(private readonly settings: PayrollSettingsService) {}

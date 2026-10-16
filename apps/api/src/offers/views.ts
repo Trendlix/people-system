@@ -1,4 +1,4 @@
-import { insuredWageOf, type OfferShownStatus } from '@trendlix/shared';
+import { insuredWageOf, lawRatesFor, type LawRates, type OfferShownStatus } from '@trendlix/shared';
 import { ALLOWANCE_ORDER, allowancesTotal, allowanceView } from '../allowances/rows.js';
 import { fromDateOnly } from '../common/date-only.js';
 import { departmentName } from '../contracts/views.js';
@@ -39,6 +39,8 @@ export type OfferRow = Prisma.JobOfferGetPayload<{ include: typeof OFFER_INCLUDE
 export interface OfferContext {
   /** HR, Finance and the CEO see the terms' amounts (see seesSalary). */
   seesSalary: boolean;
+  /** The rates set by law, every year kept: the insured wage is within the join date's year's insurable limits. */
+  lawYears: readonly LawRates[];
   /** The employment type's job offer template, as the template library has it now. */
   template: { slotKey: string; name: string; status: 'published' | 'draft' | 'missing'; version: number | null };
   /**
@@ -58,8 +60,11 @@ export interface OfferContext {
   pdfAvailable: boolean;
 }
 
-/** The money an offer's terms come to: its allowances, their total, the total a month, and the insured wage. */
-export function offerPay(o: Pick<OfferRow, 'grossSalary' | 'joinDate' | 'allowances'>) {
+/**
+ * The money an offer's terms come to: its allowances, their total, the total a month, and the insured wage, within the
+ * insurable limits of the join date's year (`lawYears`: the rates set by law, every year kept).
+ */
+export function offerPay(o: Pick<OfferRow, 'grossSalary' | 'joinDate' | 'allowances'>, lawYears: readonly LawRates[]) {
   const allowances = o.allowances.map(allowanceView);
   const gross = o.grossSalary.toNumber();
   const total = allowancesTotal(allowances);
@@ -67,14 +72,14 @@ export function offerPay(o: Pick<OfferRow, 'grossSalary' | 'joinDate' | 'allowan
     allowances,
     allowancesTotal: total,
     totalSalary: Math.round((gross + total) * 100) / 100,
-    insuredSalary: insuredWageOf(gross, allowances, Number(fromDateOnly(o.joinDate).slice(0, 4))),
+    insuredSalary: insuredWageOf(gross, allowances, lawRatesFor(Number(fromDateOnly(o.joinDate).slice(0, 4)), lawYears)),
   };
 }
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
 export function offerView(o: OfferRow, ctx: OfferContext) {
-  const pay = offerPay(o);
+  const pay = offerPay(o, ctx.lawYears);
   const sees = ctx.seesSalary;
   return {
     id: o.id,

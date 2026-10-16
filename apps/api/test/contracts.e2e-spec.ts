@@ -176,20 +176,20 @@ describe('Contracts (e2e)', () => {
       // the settings' audit from here on (other test files change the default basic wage before this one runs)
       const since = (await prisma.auditLog.aggregate({ _max: { id: true } }))._max.id ?? BigInt(0);
       const staff = await signIn(app, await createUser(prisma, ['employee']));
-      expect((await api().get('/api/contract-settings').set('Cookie', staff).expect(200)).body).toEqual({ probationMonths: 3, durationMonths: 12, insuranceBasicDefault: 410 });
+      expect((await api().get('/api/contract-settings').set('Cookie', staff).expect(200)).body).toEqual({ probationMonths: 3, durationMonths: 12, insuranceBasicDefault: 410, basicPercentDefault: 80 });
 
       await api().patch('/api/contract-settings').set('Cookie', finance).send({ durationMonths: 24 }).expect(403);
       const changed = await api().patch('/api/contract-settings').set('Cookie', admin).send({ durationMonths: 24 }).expect(200);
-      expect(changed.body).toEqual({ probationMonths: 3, durationMonths: 24, insuranceBasicDefault: 410 });
+      expect(changed.body).toEqual({ probationMonths: 3, durationMonths: 24, insuranceBasicDefault: 410, basicPercentDefault: 80 });
       const less = await api().patch('/api/contract-settings').set('Cookie', hr).send({ probationMonths: 2, durationMonths: 12 }).expect(200);
-      expect(less.body).toEqual({ probationMonths: 2, durationMonths: 12, insuranceBasicDefault: 410 });
+      expect(less.body).toEqual({ probationMonths: 2, durationMonths: 12, insuranceBasicDefault: 410, basicPercentDefault: 80 });
 
       const over = await api().patch('/api/contract-settings').set('Cookie', hr).send({ probationMonths: 4 }).expect(400);
       expect(over.body.message).toEqual([PROBATION_CAP]);
       await api().patch('/api/contract-settings').set('Cookie', hr).send({ durationMonths: 0 }).expect(400);
       await api().patch('/api/contract-settings').set('Cookie', hr).send({ durationMonths: 61 }).expect(400);
       await api().patch('/api/contract-settings').set('Cookie', hr).send({ probationMonths: 3 }).expect(200);
-      expect((await api().get('/api/contract-settings').set('Cookie', hr).expect(200)).body).toEqual({ probationMonths: 3, durationMonths: 12, insuranceBasicDefault: 410 });
+      expect((await api().get('/api/contract-settings').set('Cookie', hr).expect(200)).body).toEqual({ probationMonths: 3, durationMonths: 12, insuranceBasicDefault: 410, basicPercentDefault: 80 });
 
       const audit = await prisma.auditLog.findMany({ where: { entityType: 'contract_settings', id: { gt: since } }, orderBy: { id: 'asc' } });
       expect(audit.map((a) => a.diff)).toEqual([

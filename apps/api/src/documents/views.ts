@@ -1,7 +1,7 @@
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 
-// What the Contracts tab and the lifecycle endpoints send for a generated document: never the files themselves, which
+// What the Employment tab and the lifecycle endpoints send for a generated document: never the files themselves, which
 // have their own endpoints.
 
 /** A document's lifecycle: generated (the filled .docx), printed, signed copy uploaded, verified by HR. */

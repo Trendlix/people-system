@@ -6,6 +6,7 @@ import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/dat
 import { restrictedTags } from '../documents/values.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
+import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { answerEmail } from './offer-mail.js';
 import { cairoDate, offerSlot, termDates } from './rules.js';
@@ -37,7 +38,7 @@ export interface AnsweredOffer {
 // What follows an offer's acceptance (owner's request, 15 October 2026): the person gets a profile only now, so
 // candidates never appear in the employee lists and counts. In one transaction: the profile (or the former employee's
 // own), the employment from the position, the draft contract version 1 from the terms (with the allowances as the offer
-// has them), and the offer's document as sent, copied to the profile's Contracts tab. If that fails (a former employee
+// has them), and the offer's document as sent, copied to the profile's Employment tab. If that fails (a former employee
 // hired again in the meantime …), the acceptance stays recorded, nothing else is made, and HR makes the profile again
 // once it is fixed (POST /offers/:id/hire). The rows are written directly, with the same rules as EmployeesService,
 // EmploymentsService and ContractsService, since those answer for a signed-in user and the candidate isn't one.
@@ -50,6 +51,7 @@ export class OfferHiringService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly mail: MailService,
+    private readonly lawRates: LawRatesService,
   ) {}
 
   /**
@@ -57,6 +59,8 @@ export class OfferHiringService {
    * made yet. `userId`: the HR user who recorded the acceptance or asked again; null when the candidate accepted online.
    */
   async hire(offerId: string, userId: string | null): Promise<{ employeeId: string; employeeCode: string }> {
+    // the rates set by law: the draft contract's insured salary is within the join date's year's insurable limits
+    const lawYears = await this.lawRates.years();
     const made = await this.prisma.$transaction(
       async (tx) => {
         // claimed first, so two attempts at once can't both make a profile: the second waits, then finds it made
@@ -121,7 +125,7 @@ export class OfferHiringService {
         });
 
         // the draft contract version 1, from the terms
-        const pay = offerPay(o);
+        const pay = offerPay(o, lawYears);
         const contractValues = {
           number: await nextContractNumber(tx, joinDate),
           version: 1,
@@ -156,7 +160,7 @@ export class OfferHiringService {
           await tx.contractAllowance.createMany({ data: allowanceData(pay.allowances).map((a) => ({ ...a, contractId: contract.id })) });
         }
 
-        // the offer as sent, on the profile's Contracts tab
+        // the offer as sent, on the profile's Employment tab
         let document: { id: string; fileName: string; sizeBytes: number; documentDate: string } | null = null;
         if (o.data && o.templateVersionId && o.templateVersion && o.fileName) {
           const slot = offerSlot(o.employmentType);

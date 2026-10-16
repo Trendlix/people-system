@@ -12,13 +12,16 @@ import { docx, p, r, realTemplate } from './fixtures/docx.js';
 import { convertedPdf, hasEncrypt } from './fixtures/pdf.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
-// Documents generated from the published templates: the profile's Contracts tab (owner's request, 15 October 2026).
+// Documents generated from the published templates: the profile's Employment tab, where the Contracts tab was merged
+// (owner's requests, 15 and 16 October 2026).
 // The templates are published through the templates API in setup: the owner's real contract, resignation and
 // clearance templates, and small ones built here for the other slots. A document is given out only as a protected PDF
 // (owner's request, 15 October 2026: "No doc file export, just a protected PDF"): the converter is stubbed with a PDF
 // made here, which is protected for real; what was filled in is read from the Word file kept in the database.
 
-const RUN = Date.now().toString(36);
+// always with a digit: a name ending in letters only would teach the ID card reading (english-name.ts) to spell محمود
+// as this run's code, and paperwork.e2e-spec.ts would then find it (16 October 2026)
+const RUN = `${Date.now().toString(36)}7`;
 const DIGITS = String(Date.now() % 10_000_000).padStart(7, '0');
 const NATIONAL_ID = `2950312${DIGITS}`; // born 12 March 1995
 const REP_NATIONAL_ID = '28001011234567';
@@ -200,7 +203,7 @@ describe('Documents (e2e)', () => {
     await app.close();
   });
 
-  describe('the Contracts tab', () => {
+  describe('the Employment tab’s documents', () => {
     it('full time: both copies of each contract version, the offer and NDA, Form 1 and the letters; nothing to leave yet', async () => {
       const tab = await tabOf(ft.id);
       expect(tab.sections.map((s) => s.key)).toEqual(['contract', 'hiring', 'insurance', 'letters', 'leaving']);
@@ -379,7 +382,7 @@ describe('Documents (e2e)', () => {
         `Job offer · Part-time is for part-time employments; Omar Docs ${RUN}’s is full-time. Choose the document for a full-time employment.`,
       );
       expect((await generate(ft.id, { slotKey: 'payslip_en' }).expect(400)).body.message).toBe('Payslips come from payroll, which isn’t available yet.');
-      expect((await generate(ft.id, { slotKey: 'no_such_document' }).expect(400)).body.message).toBe('Choose a document the Contracts tab offers.');
+      expect((await generate(ft.id, { slotKey: 'no_such_document' }).expect(400)).body.message).toBe('Choose a document the Employment tab offers.');
       expect((await generate(ft.id, { slotKey: 'clearance_dues' }).expect(400)).body.message).toBe(
         'Clearance and dues (إقرار إخلاء طرف واستلام مستحقات) is generated once an ending of the employment is recorded. Record it on the Employment tab first.',
       );

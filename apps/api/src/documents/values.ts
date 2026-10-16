@@ -2,6 +2,7 @@ import {
   bankNamed,
   insuredWageFrom,
   LABELS,
+  lawRatesFor,
   nationalityAr,
   occupationName,
   PAY_BASIS_LABELS,
@@ -10,6 +11,7 @@ import {
   WEEKS_PER_MONTH,
   WORK_ARRANGEMENT_LABELS_AR,
   type EmploymentType,
+  type LawRates,
   type PayBasis,
   type TemplateLanguage,
   type WorkArrangement,
@@ -141,6 +143,11 @@ export interface ValueSources {
   } | null;
   /** The basic wage Form 1 prints for an employee who has none of their own: the contract settings' default. */
   insuranceBasicDefault: number;
+  /**
+   * The rates set by law, every year kept (owner's request, 16 October 2026): the insured wage Form 1 prints is within
+   * this year's insurable limits in Cairo.
+   */
+  lawYears: readonly LawRates[];
   /** YYYY-MM-DD: {{date}}, {{contract_date}} and {{day_name}}. */
   documentDate: string;
   /** What was typed when generating. */
@@ -331,7 +338,8 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     // decision, 16 October 2026: "Apply the insurance wage cap rule from the comprehensive wage"), so none without
     // one; the contract's own insured salary ({{insured_salary}}, the social insurance copy's) is unchanged
     insurance_basic_salary: () => printedMoney(amount(e.insuranceBasicWage) ?? src.insuranceBasicDefault),
-    insurance_insured_salary: () => printedMoney(comprehensive === null ? null : insuredWageFrom(comprehensive, Number(todayInCairo().slice(0, 4))).amount),
+    insurance_insured_salary: () =>
+      printedMoney(comprehensive === null ? null : insuredWageFrom(comprehensive, lawRatesFor(Number(todayInCairo().slice(0, 4)), src.lawYears)).amount),
     insurance_total_salary: () => printedMoney(comprehensive),
     offer_number: () => text(src.offer?.number),
     offer_expiry: () => printedDate(ymd(src.offer?.expiresOn)),
@@ -401,9 +409,9 @@ const COMPANY = (key: string): Where => ({ tab: 'company', key });
 
 /**
  * Where each tag's value is filled in: the profile's tab and field, with the keys the profile's completeness uses
- * (nationalId, idIssueDate, team …); a contract's terms on the Contracts tab (`contract` when there is no contract
- * version at all); the ending on the Employment tab; the social insurance occupation, subscription start and wages on
- * the Social Insurance tab; the company's details in Company.
+ * (nationalId, idIssueDate, team …); a contract's terms with the contract, on the Employment tab (`contract` when
+ * there is no contract version at all); the ending on the Employment tab; the social insurance occupation,
+ * subscription start and wages on the Social Insurance tab; the company's details in Company.
  */
 const WHERE: Record<string, Where> = {
   employee_code: BASIC('employeeCode'),

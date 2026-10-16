@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common';
-import type { TemplateLanguage, TemplateSlot } from '@trendlix/shared';
+import type { LawRates, TemplateLanguage, TemplateSlot } from '@trendlix/shared';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
 import { isBlankValue } from '../documents/engine/index.js';
@@ -9,6 +9,7 @@ import { TYPED_TAGS } from '../documents/offer.js';
 import { previewValues } from '../documents/preview.js';
 import { missingTags, resolveValues, restrictedTags, type MissingTag, type RestrictedRight, type ValueSources } from '../documents/values.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { pdfName, PdfService } from '../pdf/pdf.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { offerMissing, offerSlot, termDates } from './rules.js';
@@ -44,12 +45,13 @@ export function offerSources(
   company: ValueSources['company'],
   language: TemplateLanguage,
   documentDate: string,
+  lawYears: readonly LawRates[],
   jdDuties: string | null = null,
   insuranceBasicDefault = INSURANCE_BASIC_DEFAULT,
 ): ValueSources {
   const joinDate = fromDateOnly(o.joinDate);
   const { endDate, probationEnd } = termDates(joinDate, o.durationMonths, o.probationMonths);
-  const pay = offerPay(o);
+  const pay = offerPay(o, lawYears);
   return {
     language,
     employee: {
@@ -112,6 +114,7 @@ export function offerSources(
     offer: { number: o.number, expiresOn: o.expiresOn },
     company,
     insuranceBasicDefault,
+    lawYears,
     documentDate,
     inputs: {},
   };
@@ -126,6 +129,7 @@ export class OfferDocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pdf: PdfService,
+    private readonly lawRates: LawRatesService,
   ) {}
 
   /** The employment type's job offer template as the library has it now: published (with its version), a draft only, or missing. */
@@ -220,15 +224,17 @@ export class OfferDocumentsService {
    * previews a draft offer with a draft of its template while none is published.
    */
   async check(o: OfferRow, slot: TemplateSlot, template: { language: string; tags: string[]; pdfFields?: Prisma.JsonValue | null }, documentDate: string) {
-    const [company, role, settings] = await Promise.all([
+    const [company, role, settings, lawYears] = await Promise.all([
       this.prisma.company.findUnique({ where: { id: 1 } }),
       // the selected role's duties, read here rather than with every offer (the offer's view doesn't show them)
       o.jobTitleId ? this.prisma.jobTitle.findUnique({ where: { id: o.jobTitleId }, select: { jdDuties: true } }) : null,
       // the basic wage social insurance forms print by default (owner, 16 October 2026)
       this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }),
+      // the rates set by law: the insured salary is within the join date's year's insurable limits
+      this.lawRates.years(),
     ]);
     const basic = settings?.insuranceBasicDefault.toNumber();
-    const sources = offerSources(o, company, template.language as TemplateLanguage, documentDate, role?.jdDuties ?? null, basic);
+    const sources = offerSources(o, company, template.language as TemplateLanguage, documentDate, lawYears, role?.jdDuties ?? null, basic);
     const values = resolveValues(sources, template.tags, slot.overrides);
     return { values, missing: offerMissing(missingTags(values, requiredTags(template), slot.overrides, true), slot.overrides) };
   }

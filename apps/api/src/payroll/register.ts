@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { PAY_BASIS_LABELS, PAYROLL_STATUS_LABELS, type PayBasis, type PayrollInputs, type PayrollResult, type PayrollStatus, type PayrollTerms } from '@trendlix/shared';
+import { expectedHoursOf, PAY_BASIS_LABELS, PAYROLL_STATUS_LABELS, type PayBasis, type PayrollInputs, type PayrollResult, type PayrollStatus, type PayrollTerms } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import type { BankFileKind } from './bank.js';
 import { monthName } from './months.js';
@@ -61,7 +61,8 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'Variable', kind: 'money', width: 13, value: (l) => l.result.variable },
   { header: 'Paid days', kind: 'days', width: 9, value: (l) => l.terms.paidDays },
   { header: 'Worked hours', kind: 'hours', width: 11, value: (l) => l.inputs.workedHours },
-  { header: 'Expected hours', kind: 'hours', width: 11, value: (l) => l.inputs.expectedHours },
+  // as HR typed them, else the shift's working days less the holidays (owner's request, 16 October 2026)
+  { header: 'Expected hours', kind: 'hours', width: 11, value: (l) => expectedHoursOf(l.terms, l.inputs) },
   // missing on lines worked out before 16 October 2026, when none were taken out
   { header: 'No-show hours', kind: 'hours', width: 11, value: (l) => l.result.absentHours || null },
   { header: 'Attendance %', kind: 'percent', width: 11, value: (l) => l.result.attendanceRatio },

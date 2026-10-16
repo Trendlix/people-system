@@ -2,8 +2,8 @@
 // account (Admin, HR and Super Admin). Safe to run more than once; existing rows are left as they are.
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { ENDING_RULE_DEFAULTS, ENDING_RULES, ROLE_LABELS, ROLES } from '@trendlix/shared';
-import { PrismaClient } from '../src/generated/prisma/client.js';
+import { BUILT_IN_LAW_RATES, ENDING_RULE_DEFAULTS, ENDING_RULES, normalTaxTiers, ROLE_LABELS, ROLES } from '@trendlix/shared';
+import { PrismaClient, type Prisma } from '../src/generated/prisma/client.js';
 import { hashPassword } from '../src/auth/password.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
 
@@ -61,6 +61,12 @@ async function main() {
   // the payroll rules, the sheet's to start with (owner's decisions, 16 October 2026); the payroll migration adds the
   // same row to existing databases
   await prisma.payrollSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  // the rates set by law of 2025 and 2026 as packages/shared has them built in (owner's request, 16 October 2026); the
+  // law rates migration adds the same rows to existing databases
+  for (const { year, taxTiers, ...rates } of BUILT_IN_LAW_RATES) {
+    const row = { ...rates, taxTiers: normalTaxTiers(taxTiers) as unknown as Prisma.InputJsonValue };
+    await prisma.payrollLawYear.upsert({ where: { year }, update: {}, create: { year, ...row } });
+  }
 
   for (const s of SHIFTS) {
     await prisma.shift.upsert({

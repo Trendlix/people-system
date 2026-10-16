@@ -29,6 +29,10 @@ const JOINED = firstDay(monthsLater(CURRENT, -3));
 /** Joined on the 12th of the run's month: paid for the days from then. */
 const JOINER = `${MONTH}-12`;
 const JOINER_DAYS = Math.min(30, Number(lastDay(MONTH).slice(8)) - 11);
+/** The seeded shift A's working days in the run's month, Sunday to Thursday: its expected hours' days (16 October 2026). */
+const SHIFT_A_DAYS = Array.from({ length: Number(lastDay(MONTH).slice(8)) }, (_, i) => new Date(`${MONTH}-${String(i + 1).padStart(2, '0')}T00:00:00Z`).getUTCDay()).filter(
+  (day) => day <= 4,
+).length;
 
 const CIB_ACCOUNT = '100012345678';
 const QNB_ACCOUNT = '12345678901';
@@ -222,6 +226,7 @@ describe('Payroll (e2e)', () => {
           cibDebitAccount: null,
           cibDebitAccountName: null,
           achPurpose: 'CASH',
+          payday: null,
         });
       }
       await api().get('/api/payroll/settings').set('Cookie', staff).expect(403);
@@ -313,6 +318,9 @@ describe('Payroll (e2e)', () => {
         insured: true,
         insuredWage: 13000, // the gross and the allowances, as the Social Insurance tab shows it
         hoursPerDay: 9, // the shift's 09:00 to 18:00: what a no-show day takes out of the expected hours
+        // the shift's working days in the month, no holidays: the expected hours when HR types none (Payroll Setup)
+        expectedHours: SHIFT_A_DAYS * 9,
+        expectedDays: { workingDays: SHIFT_A_DAYS, holidays: 0 },
       });
       expect(r.inputs).toEqual({
         workedHours: null,

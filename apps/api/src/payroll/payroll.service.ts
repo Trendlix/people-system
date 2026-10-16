@@ -3,6 +3,7 @@ import {
   bankNamed,
   EMPTY_PAYROLL_INPUTS,
   payrollLine,
+  type LawRates,
   type PayBasis,
   type PayrollInputs,
   type PayrollRules,
@@ -19,6 +20,8 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
 import { achWorkbook, cibWorkbook } from './bank-files.js';
+import { HolidaysService } from './holidays.service.js';
+import { LawRatesService } from './law-rates/law-rates.service.js';
 import { firstDay, lastDay, monthName, monthShort, monthsLater } from './months.js';
 import type { CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
 import { PayrollSettingsService, rulesOf } from './payroll-settings.service.js';
@@ -31,6 +34,7 @@ import {
   isApproved,
   monthOf,
   RUN_INCLUDE,
+  runLawRates,
   runView,
   TOTAL_KEYS,
   totalsOf,
@@ -65,7 +69,7 @@ const rosterSelect = (from: Date, to: Date) =>
     endDate: true,
     department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
     jobTitle: { select: { titleEn: true } },
-    shift: { select: { startTime: true, endTime: true } },
+    shift: { select: { startTime: true, endTime: true, workingDays: true } },
     employee: { select: { id: true, employeeCode: true, fullNameEn: true, socialInsured: true, insuranceComprehensiveWage: true } },
     // signed versions (active, superseded or ended) that may be in force in the month
     contracts: {
@@ -93,7 +97,7 @@ function rosterEmployment(e: EmploymentRow): RosterEmployment {
     endDate: fromDateOnly(e.endDate),
     department: e.department,
     jobTitle: e.jobTitle?.titleEn ?? null,
-    shift: e.shift && { startTime: fromTimeOfDay(e.shift.startTime), endTime: fromTimeOfDay(e.shift.endTime) },
+    shift: e.shift && { startTime: fromTimeOfDay(e.shift.startTime), endTime: fromTimeOfDay(e.shift.endTime), workingDays: e.shift.workingDays },
     employee: { ...e.employee, insuranceComprehensiveWage: e.employee.insuranceComprehensiveWage?.toNumber() ?? null },
     contracts: e.contracts.map((c) => ({
       id: c.id,
@@ -110,9 +114,9 @@ function rosterEmployment(e: EmploymentRow): RosterEmployment {
 
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 
-/** A line worked out: its result, and the result's totals for their columns. */
-function worked(terms: PayrollTerms, inputs: PayrollInputs, rules: PayrollRules) {
-  const result = payrollLine(terms, inputs, rules);
+/** A line worked out with the run's rules and rates set by law: its result, and the result's totals for their columns. */
+function worked(terms: PayrollTerms, inputs: PayrollInputs, rules: PayrollRules, law: LawRates) {
+  const result = payrollLine(terms, inputs, rules, law);
   const totals = Object.fromEntries(TOTAL_KEYS.map((k) => [k, result[k]])) as Record<(typeof TOTAL_KEYS)[number], number>;
   return { result: json(result), ...totals };
 }
@@ -135,8 +139,9 @@ const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto
 
 // Monthly payroll runs (owner's decisions, 16 October 2026). HR makes a month's run: everyone with a signed contract in
 // force in the month, with the contract's terms and the profile's social insurance, worked out with the settings' rules
-// (packages/shared payroll.ts); HR types the month's inputs, refreshes it as contracts change (the inputs stay), and
-// sends it to the CEO. The CEO approves it or returns it with a reason; approving locks it and copies each line's bank
+// and its year's rates set by law, both copied onto it (packages/shared payroll.ts, law-rates.ts); HR types the month's
+// inputs, refreshes it as contracts change (the inputs stay, the rules and rates are taken again), and sends it to the
+// CEO. The CEO approves it or returns it with a reason; approving locks it and copies each line's bank
 // details, from which the bank files are made (CIB's payroll system for CIB accounts, ACH for every other bank). HR
 // marks it paid. HR, Finance and the CEO see runs; every change of status, every input changed and every bank file
 // downloaded is in the audit log. A Super Admin deletes a draft made by mistake.
@@ -147,6 +152,8 @@ export class PayrollService {
     private readonly audit: AuditService,
     private readonly settings: PayrollSettingsService,
     private readonly payslips: PayslipsService,
+    private readonly holidays: HolidaysService,
+    private readonly lawRates: LawRatesService,
   ) {}
 
   /** Every run, newest month first, with its totals. */
@@ -173,7 +180,10 @@ export class PayrollService {
     return this.view(await this.row(id));
   }
 
-  /** A month's run, from 12 months back to next month: one per month. Its rules are the settings' as they are now. */
+  /**
+   * A month's run, from 12 months back to next month: one per month. Its rules are the settings' as they are now, and
+   * its rates set by law its year's (owner's request, 16 October 2026), both copied onto it.
+   */
   async create(dto: CreatePayrollRunDto, user: SessionUser): Promise<PayrollRunView> {
     const month = dto.month;
     const current = todayInCairo().slice(0, 7);
@@ -184,11 +194,14 @@ export class PayrollService {
     }
 
     const rules = rulesOf(await this.settings.row());
-    const { lines, exclusions } = await this.roster(month, rules);
+    const law = await this.lawRates.forYear(Number(month.slice(0, 4)));
+    const { lines, exclusions } = await this.roster(month, rules, law);
     const run = await this.prisma.$transaction(async (tx) => {
-      const made = await tx.payrollRun.create({ data: { month: toDateOnly(firstDay(month)), rules: json(rules), exclusions: json(exclusions), createdById: user.id } });
+      const made = await tx.payrollRun.create({
+        data: { month: toDateOnly(firstDay(month)), rules: json(rules), lawRates: json(law), exclusions: json(exclusions), createdById: user.id },
+      });
       await tx.payrollLine.createMany({
-        data: lines.map((l) => ({ runId: made.id, employeeId: l.employeeId, ...fromRoster(l), inputs: json(EMPTY_PAYROLL_INPUTS), ...worked(l.terms, EMPTY_PAYROLL_INPUTS, rules) })),
+        data: lines.map((l) => ({ runId: made.id, employeeId: l.employeeId, ...fromRoster(l), inputs: json(EMPTY_PAYROLL_INPUTS), ...worked(l.terms, EMPTY_PAYROLL_INPUTS, rules, law) })),
       });
       return made;
     });
@@ -197,22 +210,24 @@ export class PayrollService {
       action: 'create',
       entityType: RUN,
       entityId: run.id,
-      diff: { month, status: 'draft', rules, employees: lines.length, excluded: exclusions.map((x) => x.employeeCode) },
+      diff: { month, status: 'draft', rules, lawRates: law.year, employees: lines.length, excluded: exclusions.map((x) => x.employeeCode) },
     });
     return this.get(run.id);
   }
 
   /**
-   * Takes a draft's people, contracts, insured wages, shifts and rules again as they are now: someone newly under
-   * contract is added, someone no longer is taken off, everyone's terms are taken afresh; the inputs typed, the holds
-   * and the comments stay.
+   * Takes a draft's people, contracts, insured wages, shifts, holidays and rules again as they are now: someone newly
+   * under contract is added, someone no longer is taken off, everyone's terms are taken afresh (the expected hours from
+   * the shifts and the holidays too), and its year's rates set by law; the inputs typed, the holds and the comments
+   * stay.
    */
   async refresh(id: string, user: SessionUser): Promise<PayrollRunView> {
     const run = await this.row(id);
     const month = monthOf(run);
     this.assertStatus(run, 'draft', 'refreshed');
     const rules = rulesOf(await this.settings.row());
-    const { lines, exclusions } = await this.roster(month, rules);
+    const law = await this.lawRates.forYear(Number(month.slice(0, 4)));
+    const { lines, exclusions } = await this.roster(month, rules, law);
     const kept = new Map(run.lines.map((l) => [l.employeeId, l]));
     const staying = new Set(lines.map((l) => l.employeeId));
     const removed = run.lines.filter((l) => !staying.has(l.employeeId));
@@ -223,15 +238,17 @@ export class PayrollService {
       ...lines.map((l) => {
         const before = kept.get(l.employeeId);
         const inputs = before ? savedInputs(before.inputs) : EMPTY_PAYROLL_INPUTS;
-        const data = { ...fromRoster(l), inputs: json(inputs), ...worked(l.terms, inputs, rules) };
+        const data = { ...fromRoster(l), inputs: json(inputs), ...worked(l.terms, inputs, rules, law) };
         return before
           ? this.prisma.payrollLine.update({ where: { id: before.id }, data })
           : this.prisma.payrollLine.create({ data: { runId: id, employeeId: l.employeeId, ...data } });
       }),
-      this.prisma.payrollRun.update({ where: { id }, data: { rules: json(rules), exclusions: json(exclusions) } }),
+      this.prisma.payrollRun.update({ where: { id }, data: { rules: json(rules), lawRates: json(law), exclusions: json(exclusions) } }),
     ]);
     // compared rule by rule: the database keeps them in an order of its own
     const ruleChanges = changes(run.rules as unknown as Record<string, unknown>, rules as unknown as Record<string, unknown>);
+    // and the rates set by law the same way, in their fixed shape
+    const lawChanges = changes(runLawRates(run) as unknown as Record<string, unknown>, law as unknown as Record<string, unknown>);
     await this.audit.record({
       userId: user.id,
       action: 'refresh',
@@ -242,6 +259,7 @@ export class PayrollService {
         added: added.map((l) => l.employeeCode),
         removed: removed.map((l) => l.employeeCode),
         ...(Object.keys(ruleChanges).length && { rules: ruleChanges }),
+        ...(Object.keys(lawChanges).length && { lawRates: lawChanges }),
       },
     });
     return this.get(id);
@@ -249,7 +267,7 @@ export class PayrollService {
 
   /**
    * Changes a draft's lines: their inputs (null clears one), holds and comments. Each changed line is worked out again
-   * with the run's rules; the audit log has what changed, the money inputs only as changed.
+   * with the run's rules and rates set by law; the audit log has what changed, the money inputs only as changed.
    */
   async updateLines(id: string, dto: UpdatePayrollLinesDto, user: SessionUser): Promise<PayrollRunView> {
     const run = await this.row(id);
@@ -260,6 +278,7 @@ export class PayrollService {
     const lines = new Map(run.lines.map((l) => [l.id, l]));
     if (ids.some((x) => !lines.has(x))) throw new BadRequestException('Some of these lines are not on this payroll. Reload it and try again.');
     const rules = run.rules as unknown as PayrollRules;
+    const law = runLawRates(run);
 
     const updates: { line: LineRow; data: Prisma.PayrollLineUpdateInput; diff: Record<string, unknown> }[] = [];
     for (const change of dto.lines) {
@@ -272,7 +291,7 @@ export class PayrollService {
       if (!Object.keys(diff).length) continue;
       updates.push({
         line,
-        data: { inputs: json(inputs), onHold: change.onHold, comments: change.comments, ...worked(line.terms as unknown as PayrollTerms, inputs, rules) },
+        data: { inputs: json(inputs), onHold: change.onHold, comments: change.comments, ...worked(line.terms as unknown as PayrollTerms, inputs, rules, law) },
         diff,
       });
     }
@@ -443,15 +462,21 @@ export class PayrollService {
     return run;
   }
 
-  /** Who is on the month's run, and who is left out, as the employments and contracts are now. */
-  private async roster(month: string, rules: PayrollRules) {
+  /**
+   * Who is on the month's run, and who is left out, as the employments and contracts are now; the expected hours with
+   * the month's holidays as they are now (a holiday added since the run was made counts once it is refreshed).
+   */
+  private async roster(month: string, rules: PayrollRules, law: LawRates) {
     const from = toDateOnly(firstDay(month));
     const to = toDateOnly(lastDay(month));
-    const rows = await this.prisma.employment.findMany({
-      where: { joinDate: { lte: to }, OR: [{ endDate: null }, { endDate: { gte: from } }] },
-      select: rosterSelect(from, to),
-    });
-    return roster(month, rows.map(rosterEmployment), rules);
+    const [rows, holidays] = await Promise.all([
+      this.prisma.employment.findMany({
+        where: { joinDate: { lte: to }, OR: [{ endDate: null }, { endDate: { gte: from } }] },
+        select: rosterSelect(from, to),
+      }),
+      this.holidays.datesBetween(firstDay(month), lastDay(month)),
+    ]);
+    return roster(month, rows.map(rosterEmployment), rules, holidays, law);
   }
 
   /** The employees' bank details as they are now, by employee. Read in full here, never sent. */

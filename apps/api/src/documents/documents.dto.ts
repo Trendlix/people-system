@@ -3,7 +3,7 @@ import { IsObject, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } fro
 import { IsDateOnly } from '../common/date-only.js';
 import { TrimOrNull } from '../common/transforms.js';
 
-// Generating a document from a template (the profile's Contracts tab). Dates: YYYY-MM-DD.
+// Generating a document from a template (the profile's Employment tab). Dates: YYYY-MM-DD.
 
 /** A query value sent empty counts as not sent. */
 const EmptyIsUnset = () => Transform(({ value }) => (typeof value === 'string' && value.trim() === '' ? undefined : typeof value === 'string' ? value.trim() : value));

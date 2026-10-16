@@ -16,6 +16,11 @@ export interface PayrollSettingsView extends PayrollRules {
   cibDebitAccountName: string | null;
   /** The ACH file's TransactionPurpose. */
   achPurpose: string;
+  /**
+   * The day of the month salaries are paid, 1 to 31; null when not set. The date HR marks a run paid on, to start with:
+   * that day of the month after the run's, or that month's last day when it is shorter.
+   */
+  payday: number | null;
 }
 
 /** The rules a run is worked out with, as the settings have them now. */
@@ -33,13 +38,15 @@ const view = (s: PayrollSettings): PayrollSettingsView => ({
   cibDebitAccount: s.cibDebitAccount,
   cibDebitAccountName: s.cibDebitAccountName,
   achPurpose: s.achPurpose,
+  payday: s.payday,
 });
 
 // The payroll settings (owner's decisions, 16 October 2026): the sheet's rules to start with (a month of 30 days,
 // attendance from 90% and a KPI average from 80% count as full, overtime above 110% at 1.5, a no-show day costs 2 days'
 // pay), which each run copies when it is made or refreshed, and the company's CIB account the salaries are paid from.
 // One row, id 1, added by the payroll migration and prisma/seed.ts. HR, Finance, the CEO and Admin read them; HR and
-// Admin change them (Organization → Payroll).
+// Admin change them (Organization → Payroll Setup: the rules under Your Rules, the bank files and the payday, the day
+// of the month salaries are paid, under Paying Salaries; owner's request, 16 October 2026).
 @Injectable()
 export class PayrollSettingsService {
   constructor(
@@ -68,6 +75,7 @@ export class PayrollSettingsService {
       cibDebitAccount: dto.cibDebitAccount,
       cibDebitAccountName: dto.cibDebitAccountName,
       achPurpose: dto.achPurpose,
+      payday: dto.payday,
     };
     const after = await this.prisma.payrollSettings.update({ where: { id: ID }, data });
     const diff = changes(view(before) as unknown as Record<string, unknown>, data);

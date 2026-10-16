@@ -232,6 +232,10 @@ export * from './templates.js';
 
 export * from './salary.js';
 
+// ---------- the rates set by law, by year (Organization → Payroll) ----------
+
+export * from './law-rates.js';
+
 // job offers: statuses, how long an offer stays open, the template slot of each employment type
 export * from './offers.js';
 

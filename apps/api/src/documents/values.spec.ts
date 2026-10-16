@@ -1,5 +1,5 @@
 import { Prisma } from '../generated/prisma/client.js';
-import { nationalityAr } from '@trendlix/shared';
+import { BUILT_IN_LAW_RATES, nationalityAr } from '@trendlix/shared';
 import { missingTags, resolveValues, rightFor, type ValueSources } from './values.js';
 
 // The values a document prints, from its sources: here the role's duties (owner's request, 15 October 2026), which keep
@@ -50,6 +50,7 @@ function sources(jobTitle: JobTitle, language: ValueSources['language'] = 'ar'):
     ending: null,
     company: null,
     insuranceBasicDefault: 410,
+    lawYears: BUILT_IN_LAW_RATES,
     documentDate: '2026-10-15',
     inputs: {},
   };

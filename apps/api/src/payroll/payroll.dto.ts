@@ -38,6 +38,7 @@ const OVERTIME_RATE_MESSAGE = 'Enter the overtime rate from 1 to 5, e.g. 1.5.';
 const NO_SHOW_MESSAGE = "Enter how many days' pay a no-show day costs, from 0 to 10, e.g. 2.";
 const CIB_ACCOUNT_MESSAGE = "Enter the company's CIB account number: 12 digits.";
 const PURPOSE_MESSAGE = 'Enter the ACH transaction purpose in capital letters and digits, up to 20, e.g. CASH.';
+const PAYDAY_MESSAGE = 'Enter the day of the month salaries are paid, a whole number from 1 to 31, or leave it empty.';
 
 export class UpdatePayrollSettingsDto {
   @Sent() @IsInt({ message: DIVISOR_MESSAGE }) @Min(20, { message: DIVISOR_MESSAGE }) @Max(31, { message: DIVISOR_MESSAGE })
@@ -76,6 +77,13 @@ export class UpdatePayrollSettingsDto {
   @Sent()
   @Matches(/^[A-Z0-9]{1,20}$/, { message: PURPOSE_MESSAGE })
   achPurpose?: string;
+
+  /**
+   * The day of the month salaries are paid (owner's request, 16 October 2026: Payroll Setup): the date a run is marked
+   * paid on, to start with; null clears it.
+   */
+  @IsOptional() @IsInt({ message: PAYDAY_MESSAGE }) @Min(1, { message: PAYDAY_MESSAGE }) @Max(31, { message: PAYDAY_MESSAGE })
+  payday?: number | null;
 }
 
 // ---------- runs ----------

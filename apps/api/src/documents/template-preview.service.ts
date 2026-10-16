@@ -18,7 +18,7 @@ import { isOfferSlot } from './preview.js';
 // template, fetch any demo data already uploaded"): any version, a draft too, filled in for someone already in the
 // system, as a protected PDF to look at (owner's request, 15 October 2026: "No doc file export, just a protected
 // PDF"), nothing saved. The people to choose from are those whose employment
-// type the template is for, those with the most of its tags filled in first; a document the Contracts tab wouldn't
+// type the template is for, those with the most of its tags filled in first; a document the Employment tab wouldn't
 // offer them yet (a resignation request before any ending) is previewed all the same, its empty tags showing as
 // "[Label]". The filling is DocumentsService.previewFill, from what generation reads.
 //

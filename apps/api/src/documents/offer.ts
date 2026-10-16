@@ -1,6 +1,6 @@
 import { TEMPLATE_SLOTS, type EmploymentType, type TemplateSlot, type TemplateTrigger } from '@trendlix/shared';
 
-// Which documents the Contracts tab offers an employee (spec §8.3; owner's request, 15 October 2026): those whose
+// Which documents the Employment tab offers an employee (spec §8.3; owner's request, 15 October 2026): those whose
 // template applies to the employment type (`appliesTo`) and whose moment has come (`triggers`), grouped in sections.
 // Pure: worked out from the employment's type and whether it has an ending.
 

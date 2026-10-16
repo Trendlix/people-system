@@ -14,7 +14,7 @@ import { firstDay, monthName } from './months.js';
 import { payslipContent, yearToDate, type PayslipLanguage, type PayslipSource, type YearToDateLine } from './payslip-content.js';
 import { payslipPdf, type PayslipLogo } from './payslip-pdf.js';
 import { STATUS_TEXT } from './status.js';
-import { monthOf } from './views.js';
+import { monthOf, runLawRates } from './views.js';
 
 // Payslips (owner's decisions, 16 October 2026): drawn by the system from the approved run (payslip-content.ts,
 // payslip-pdf.ts), protected like every filled document, and kept. HR marking a run paid issues the English payslip of
@@ -65,7 +65,7 @@ const SOURCE_SELECT = {
   bankShort: true,
   accountNo: true,
   iban: true,
-  run: { select: { month: true, status: true, paidOn: true, approvedAt: true, rules: true } },
+  run: { select: { month: true, status: true, paidOn: true, approvedAt: true, rules: true, lawRates: true } },
   employee: { select: { fullNameAr: true, insuranceNo: true } },
   employment: {
     select: {
@@ -300,6 +300,7 @@ export class PayslipsService {
             paidOn: fromDateOnly(l.run.paidOn),
             approvedOn: l.run.approvedAt ? cairoDate(l.run.approvedAt) : null,
             rules: l.run.rules as unknown as PayrollRules,
+            lawRates: runLawRates(l.run),
           },
           line: {
             employeeCode: l.employeeCode,
