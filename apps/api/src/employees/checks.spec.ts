@@ -1,4 +1,4 @@
-import { birthDateFromNationalId, hasRealGovernorateCode, isValidEgyptianIban, maskTail, normalizeIban } from './checks.js';
+import { birthDateFromNationalId, hasRealGovernorateCode, isValidEgyptianIban, maskTail, normalizeAccountNo, normalizeIban, normalizeName } from './checks.js';
 
 describe('employee checks', () => {
   it('reads the birth date from a national ID', () => {
@@ -23,6 +23,15 @@ describe('employee checks', () => {
     expect(isValidEgyptianIban('EG380019000500000000263180003')).toBe(false); // one digit off
     expect(isValidEgyptianIban('EG38001900050000000026318000')).toBe(false); // too short
     expect(isValidEgyptianIban('GB82WEST12345698765432')).toBe(false); // valid, but not Egyptian
+  });
+
+  it('keeps bank details without spaces around them or invisible characters copied with them (owner, 17 October 2026)', () => {
+    // a non-breaking space, a right-to-left mark and a pop-directional mark, as pasted from a message in Arabic
+    expect(normalizeAccountNo(' 100-123\u00A04567\u200F ')).toBe('1001234567');
+    expect(normalizeAccountNo('\u200B\uFEFF')).toBe('');
+    expect(normalizeIban('\u200Eeg38 0019 0005 0000 0000 2631 8000 2\u202C ')).toBe('EG380019000500000000263180002');
+    expect(normalizeName('\u200F  Habiba   Mostafa\u00A0 ')).toBe('Habiba Mostafa');
+    expect(normalizeName('   ')).toBe('');
   });
 
   it('masks all but the last four characters', () => {

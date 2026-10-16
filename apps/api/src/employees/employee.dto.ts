@@ -31,7 +31,7 @@ import {
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
-import { isValidEgyptianIban, normalizeIban } from './checks.js';
+import { isValidEgyptianIban, normalizeAccountNo, normalizeIban, normalizeName } from './checks.js';
 
 // Every text field: an empty string clears it (stored as null). Dates are YYYY-MM-DD.
 
@@ -288,9 +288,10 @@ export class UpdateBankDto {
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(100)
   branch?: string | null;
 
-  // spaces and dashes dropped, as the number is written on the bank's letter: "100-123 4567" → "1001234567"
+  // spaces, dashes and invisible characters dropped, as the number is written on the bank's letter: "100-123 4567" →
+  // "1001234567" (normalizeAccountNo)
   @LatinDigits()
-  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/[\s-]+/g, '') || null : value))
+  @Transform(({ value }) => (typeof value === 'string' ? normalizeAccountNo(value) || null : value))
   @IsOptional()
   @Matches(/^[A-Za-z0-9]{4,34}$/, { message: 'Enter the account number as letters and digits only.' })
   accountNo?: string | null;
@@ -307,6 +308,8 @@ export class UpdateBankDto {
   })
   iban?: string | null;
 
-  @TrimOrNull() @IsOptional() @IsString() @MaxLength(150)
+  // no spaces before or after, nor invisible characters copied with it (normalizeName)
+  @Transform(({ value }) => (typeof value === 'string' ? normalizeName(value) || null : value))
+  @IsOptional() @IsString() @MaxLength(150)
   holderName?: string | null;
 }

@@ -1422,6 +1422,19 @@ describe('Employees (e2e)', () => {
       expect(audit[1].diff).toMatchObject({ identity: { nationalId: 'changed', printedNo: 'changed', dateOfBirth: { from: null, to: '1995-03-12' } } });
     });
 
+    it('bank: saved without spaces around the details or invisible characters pasted with them (owner, 17 October 2026)', async () => {
+      const e = await addEmployee('Pasted Bank');
+      await api()
+        .patch(`/api/employees/${e.id}/bank`)
+        .set('Cookie', hr)
+        .send({ bankName: ' CIB ', accountNo: ' 1001-2345\u00A06789\u200F ', iban: `\u200E ${VALID_IBAN.toLowerCase()} \u202C`, holderName: '\u200F  Pasted   Bank ' })
+        .expect(200);
+      const full = (await api().get(`/api/employees/${e.id}/bank`).set('Cookie', hr).expect(200)).body as Record<string, unknown>;
+      expect(full).toMatchObject({ accountNo: '100123456789', iban: VALID_IBAN, holderName: 'Pasted Bank' });
+      const row = await prisma.employeeBank.findUniqueOrThrow({ where: { employeeId: e.id } });
+      expect([row.bankName, row.accountNo, row.iban, row.holderName]).toEqual(['Commercial International Bank', '100123456789', VALID_IBAN, 'Pasted Bank']);
+    });
+
     it('bank: IBAN checked, masked on the profile, shown in full to Finance with an audit entry', async () => {
       const e = await addEmployee('Banked');
       await api().patch(`/api/employees/${e.id}/bank`).set('Cookie', hr).send({ iban: 'EG380019000500000000263180003' }).expect(400);

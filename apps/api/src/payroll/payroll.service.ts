@@ -19,7 +19,7 @@ import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/dat
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
+import { cleanBankDetails, inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
 import { achWorkbook, cibWorkbook } from './bank-files.js';
 import { HolidaysService } from './holidays.service.js';
 import { LawRatesService } from './law-rates/law-rates.service.js';
@@ -500,7 +500,7 @@ export class PayrollService {
   /** The employees' bank details as they are now, by employee. Read in full here, never sent. */
   private async banks(employeeIds: string[]): Promise<Map<string, BankDetails>> {
     const rows = await this.prisma.employeeBank.findMany({ where: { employeeId: { in: employeeIds } } });
-    return new Map(rows.map((b) => [b.employeeId, { bank: b.bankName, accountNo: b.accountNo, iban: b.iban, holderName: b.holderName }]));
+    return new Map(rows.map((b) => [b.employeeId, cleanBankDetails({ bank: b.bankName, accountNo: b.accountNo, iban: b.iban, holderName: b.holderName })]));
   }
 
   private async view(run: RunRow): Promise<PayrollRunView> {

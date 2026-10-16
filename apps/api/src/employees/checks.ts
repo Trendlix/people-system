@@ -30,9 +30,26 @@ export function hasRealGovernorateCode(nationalId: string): boolean {
   return /^\d{14}$/.test(nationalId) && GOVERNORATE_CODES.has(nationalId.slice(7, 9));
 }
 
-/** Spaces removed, letters in capitals: "eg38 0019 …" → "EG380019…". */
+/**
+ * Characters a number copied from a message or an Arabic text carries without showing them: zero-width spaces and
+ * joiners, direction marks and isolates, the word joiner and the byte order mark. Removed from bank details as they
+ * are saved (owner's request, 17 October 2026: "make sure there is no spaces before or after the field data").
+ */
+const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
+
+/** An account number as kept: spaces of any kind, dashes and invisible characters removed: "100-123 4567" → "1001234567". */
+export function normalizeAccountNo(value: string): string {
+  return value.replace(INVISIBLE, '').replace(/[\s-]+/g, '');
+}
+
+/** Spaces of any kind and invisible characters removed, letters in capitals: "eg38 0019 …" → "EG380019…". */
 export function normalizeIban(value: string): string {
-  return value.replace(/\s+/g, '').toUpperCase();
+  return value.replace(INVISIBLE, '').replace(/\s+/g, '').toUpperCase();
+}
+
+/** A name as kept, e.g. the account holder's: invisible characters removed, no spaces before or after, runs of spaces as one. */
+export function normalizeName(value: string): string {
+  return value.replace(INVISIBLE, '').replace(/\s+/g, ' ').trim();
 }
 
 /** An Egyptian IBAN (EG + 27 digits) whose check digits are right (ISO 13616, mod 97). */

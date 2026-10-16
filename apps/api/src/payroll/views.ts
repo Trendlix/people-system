@@ -12,7 +12,7 @@ import {
 } from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
-import { bankCheck, lineBank, type BankDetails, type LineBank } from './bank.js';
+import { bankCheck, cleanBankDetails, lineBank, type BankDetails, type LineBank } from './bank.js';
 import type { Exclusion } from './roster.js';
 
 // A payroll run as the API sends it (owner's decisions, 16 October 2026): dates as YYYY-MM-DD, the month as YYYY-MM,
@@ -129,8 +129,8 @@ export function totalsOf(results: readonly Pick<PayrollResult, (typeof TOTAL_KEY
 
 /** The bank details a line is paid to: the copy taken at the approval once approved, else the employee's as they are. */
 export function bankDetailsOf(line: LineRow, live: BankDetails | undefined, approved: boolean): BankDetails {
-  if (approved) return { bank: line.bankShort, accountNo: line.accountNo, iban: line.iban, holderName: line.holderName };
-  return live ?? { bank: null, accountNo: null, iban: null, holderName: null };
+  if (approved) return cleanBankDetails({ bank: line.bankShort, accountNo: line.accountNo, iban: line.iban, holderName: line.holderName });
+  return live ? cleanBankDetails(live) : { bank: null, accountNo: null, iban: null, holderName: null };
 }
 
 export function lineView(line: LineRow, bank: LineBank): PayrollLineView {

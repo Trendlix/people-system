@@ -1,4 +1,5 @@
 import { accountLengthOk, accountLengthText, bankNamed } from '@trendlix/shared';
+import { normalizeAccountNo, normalizeIban, normalizeName } from '../employees/checks.js';
 
 // Which bank file pays each line (owner's decisions, 16 October 2026): an employee whose bank is CIB is paid through
 // CIB's payroll system file, everyone else through the ACH file; the bank accepts only details it can pay. Before the
@@ -13,6 +14,22 @@ export interface BankDetails {
   accountNo: string | null;
   iban: string | null;
   holderName: string | null;
+}
+
+/**
+ * Bank details as the bank files need them: the account number and IBAN without spaces, dashes or invisible
+ * characters, the holder's name without spaces around it (owner's request, 17 October 2026: "make sure there is no
+ * spaces before or after the field data, and check the previous entered data"). Saving cleans them already; this also
+ * covers anything saved or copied onto a run before then. An empty value is none.
+ */
+export function cleanBankDetails(d: BankDetails): BankDetails {
+  const clean = (value: string | null, how: (v: string) => string) => (value === null ? null : how(value) || null);
+  return {
+    bank: clean(d.bank, normalizeName),
+    accountNo: clean(d.accountNo, normalizeAccountNo),
+    iban: clean(d.iban, normalizeIban),
+    holderName: clean(d.holderName, normalizeName),
+  };
 }
 
 /** Which file pays the line, its bank's short code, and what stops it being paid; the details themselves are never sent. */
