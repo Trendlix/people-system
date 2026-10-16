@@ -79,6 +79,9 @@ export function initials(name: string): string {
   return (first + last).toUpperCase();
 }
 
+/** Where a personal photo is loaded from (app/employee-photo), under the web domain with the session. */
+export const photoHref = (photoId: string) => `/employee-photo/${photoId}`;
+
 /**
  * The person's personal photo from the employee file, for those who see it (HR, CEO), else their initials. The initials
  * stay underneath, so a photo that can't be loaded leaves them showing.
@@ -89,7 +92,7 @@ export function Avatar({ name, photoId, size = 'sm' }: { name: string; photoId?:
     <span aria-hidden="true" className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-soft font-bold text-accent ${box}`}>
       {initials(name)}
       {/* eslint-disable-next-line @next/next/no-img-element -- a file of the employee file, behind the session: not for the image optimizer */}
-      {photoId && <img src={`/employee-photo/${photoId}`} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover" />}
+      {photoId && <img src={photoHref(photoId)} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover" />}
     </span>
   );
 }

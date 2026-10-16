@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { Fragment } from 'react';
 import { END_REASON_LABELS, LABELS } from '@trendlix/shared';
+import { DocumentViewer } from '@/components/document-viewer';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, ProfileGap } from '@/lib/types';
 import { confirmationStatus, pendingRequest } from '../confirmation';
-import { Avatar, gradeLabel, PROFILE_TABS, profileHref, standingOf, StandingBadge, type ProfileTabKey } from '../ui';
+import { Avatar, gradeLabel, photoHref, PROFILE_TABS, profileHref, standingOf, StandingBadge, type ProfileTabKey } from '../ui';
 import { ConfirmedNotice } from './confirm/confirm-notices';
 
 // Above the profile's tabs: who it is, where they stand, their current job, whether the employee confirmed their
@@ -148,7 +149,19 @@ export function ProfileHeader({
   return (
     <section className="card space-y-5 p-6">
       <div className="flex flex-wrap items-center gap-6">
-        <Avatar name={p.fullNameEn} photoId={p.photoId} size="lg" />
+        {p.photoId ? (
+          // the photo opens larger in a pop-up window (owner's request, 16 October 2026)
+          <DocumentViewer
+            title={`Personal Photo · ${p.fullNameEn}`}
+            files={[{ alt: `Personal photo of ${p.fullNameEn}`, src: photoHref(p.photoId) }]}
+            className="shrink-0 cursor-zoom-in rounded-full outline-none hover:ring-4 hover:ring-accent/20 focus-visible:ring-4 focus-visible:ring-accent/40"
+          >
+            <Avatar name={p.fullNameEn} photoId={p.photoId} size="lg" />
+            <span className="sr-only">View the personal photo</span>
+          </DocumentViewer>
+        ) : (
+          <Avatar name={p.fullNameEn} size="lg" />
+        )}
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h1 className="text-2xl font-semibold">{p.fullNameEn}</h1>
