@@ -323,7 +323,6 @@ describe('Payroll (e2e)', () => {
         bonusDays: null,
         commission: null,
         settlements: null,
-        medical: null,
         released: null,
       });
       expect(r.result).toEqual(payrollLine(r.terms, r.inputs, run.rules));
@@ -441,6 +440,8 @@ describe('Payroll (e2e)', () => {
       expect(await refused({ commission: 10.555 })).toEqual(['Enter the amount, to the piaster, within 10,000,000 either way.']);
       expect(await refused({ released: -1 })).toEqual(['Enter what was already paid out this month: 0 or more, up to 10,000,000.']);
       await patchLines(run.id, [{ id, inputs: { overtime: 5 } }]).expect(400);
+      // no medical subscription any more (owner's decision, 16 October 2026): refused as any unknown field is
+      expect(await refused({ medical: 100 })).toEqual(['property medical should not exist']);
       await patchLines(run.id, [{ id, onHold: 'yes' }]).expect(400);
       await patchLines(run.id, []).expect(400);
       expect((await patchLines(run.id, [{ id, inputs: { settlements: -250.5, noShowDays: 0.5 } }, { id }]).expect(400)).body.message).toBe('Send each line once.');
@@ -450,7 +451,7 @@ describe('Payroll (e2e)', () => {
       // negative settlements are corrections
       run = (await patchLines(run.id, [{ id, inputs: { settlements: -250.5, noShowDays: 0.5 } }]).expect(200)).body as Run;
       expect(lineOf(run, regular)!.result.settlements).toBe(-250.5);
-      for (const session of [finance, ceo, admin]) await patchLines(run.id, [{ id, inputs: { medical: 100 } }], session).expect(403);
+      for (const session of [finance, ceo, admin]) await patchLines(run.id, [{ id, inputs: { commission: 100 } }], session).expect(403);
     });
 
     it('refresh takes the people, contracts and insured wages again; the inputs stay', async () => {
@@ -492,6 +493,22 @@ describe('Payroll (e2e)', () => {
       expect((await auditOf('payroll_run', run.id)).at(-1)!.diff).toEqual({ month: MONTH, added: [], removed: [] });
     });
 
+    it('drops a medical subscription saved before it was taken off (16 October 2026) when a line is refreshed or changed', async () => {
+      const before = lineOf(run, regular)!;
+      const saveMedical = () => prisma.payrollLine.update({ where: { id: before.id }, data: { inputs: { ...before.inputs, medical: 350 } } });
+      await saveMedical();
+      expect(lineOf((await getRun(run.id).expect(200)).body as Run, regular)!.inputs).toMatchObject({ medical: 350 });
+      run = (await act(run.id, 'refresh', hr).expect(200)).body as Run;
+      expect(lineOf(run, regular)!.inputs).toEqual(before.inputs);
+      expect(lineOf(run, regular)!.result).toEqual(before.result);
+
+      await saveMedical();
+      run = (await patchLines(run.id, [{ id: before.id, onHold: true }]).expect(200)).body as Run;
+      expect(lineOf(run, regular)!.inputs).toEqual(before.inputs);
+      expect(lineOf(run, regular)!.result).toEqual(before.result);
+      run = (await patchLines(run.id, [{ id: before.id, onHold: false }]).expect(200)).body as Run;
+    });
+
     it('the register downloads whatever the status; the bank files only once approved', async () => {
       const register = await file(run.id, 'register', finance).expect(200);
       expect(register.headers['content-type']).toBe(XLSX);
@@ -516,7 +533,7 @@ describe('Payroll (e2e)', () => {
       expect(run.status).toBe('pending_ceo');
       expect(run.submittedAt).not.toBeNull();
       // locked while with the CEO
-      expect((await patchLines(run.id, [{ id: lineOf(run, regular)!.id, inputs: { medical: 50 } }]).expect(409)).body.message).toBe(
+      expect((await patchLines(run.id, [{ id: lineOf(run, regular)!.id, inputs: { commission: 50 } }]).expect(409)).body.message).toBe(
         `The ${monthName(MONTH)} payroll is with the CEO, so it can't be changed.`,
       );
       await act(run.id, 'refresh', hr).expect(409);
@@ -540,7 +557,7 @@ describe('Payroll (e2e)', () => {
       await bank(joiner, { bankName: 'QNB', accountNo: QNB_ACCOUNT });
       expect(lineOf((await getRun(run.id).expect(200)).body as Run, joiner)!.bank).toEqual({ file: 'ach', bankShort: 'NBE', problem: null });
 
-      expect((await patchLines(run.id, [{ id: lineOf(run, regular)!.id, inputs: { medical: 50 } }]).expect(409)).body.message).toBe(
+      expect((await patchLines(run.id, [{ id: lineOf(run, regular)!.id, inputs: { commission: 50 } }]).expect(409)).body.message).toBe(
         `The ${monthName(MONTH)} payroll is approved, so it can't be changed.`,
       );
       await act(run.id, 'return', ceo, { reason: 'Too late' }).expect(409);

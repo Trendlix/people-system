@@ -210,10 +210,12 @@ describe('payroll: days, bonus, commission and settlements', () => {
     expect(payrollLine(salaried, inputs({ bonusDays: 0.5, settlements: 300.25 }))).toMatchObject({ bonus: 160, settlements: 300.25, earned: 12_460.25 });
   });
 
-  it('deducts the medical subscription after the tax', () => {
-    const plain = payrollLine(salaried, inputs());
-    const line = payrollLine(salaried, inputs({ medical: 350 }));
-    expect(line).toMatchObject({ medical: 350, monthlyTax: plain.monthlyTax, deductions: 2_624.5, net: 9_375.5, companyCost: plain.companyCost });
+  it('ignores a medical subscription in inputs saved before it was taken off the payroll (16 October 2026)', () => {
+    const saved = { ...inputs(), medical: 350 };
+    const line = payrollLine(salaried, saved);
+    expect(line).toEqual(payrollLine(salaried, inputs()));
+    expect(line).not.toHaveProperty('medical');
+    expect(line).toMatchObject({ deductions: 2_274.5, net: 9_725.5 });
   });
 });
 
@@ -285,9 +287,8 @@ describe('payroll: insurance and tax', () => {
   });
 
   it('deducts nothing statutory for a freelancer: no insurance, no tax, no Martyrs\' Fund', () => {
-    // a freelancer's penalty day is a day of the gross, which is their net (12,000 ÷ 30), and the medical subscription
-    // is deducted
-    const line = payrollLine({ ...salaried, statutory: false }, inputs({ penaltyDays: 1, medical: 250 }));
+    // a freelancer's penalty day is a day of the gross, which is their net (12,000 ÷ 30)
+    const line = payrollLine({ ...salaried, statutory: false }, inputs({ penaltyDays: 1 }));
     expect(line).toMatchObject({
       earned: 12_000,
       insuredWage: 0,
@@ -298,8 +299,8 @@ describe('payroll: insurance and tax', () => {
       monthlyTax: 0,
       martyrsFund: 0,
       penaltyCut: 400,
-      deductions: 650,
-      net: 11_350,
+      deductions: 400,
+      net: 11_600,
       companyCost: 12_000,
       warnings: [],
     });

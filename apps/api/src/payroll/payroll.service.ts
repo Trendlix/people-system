@@ -21,8 +21,10 @@ import { achWorkbook, cibWorkbook } from './bank-files.js';
 import { firstDay, lastDay, monthName, monthShort, monthsLater } from './months.js';
 import type { CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
 import { PayrollSettingsService, rulesOf } from './payroll-settings.service.js';
+import { PayslipsService } from './payslips.service.js';
 import { registerWorkbook } from './register.js';
 import { roster, type RosterEmployment, type RosterLine } from './roster.js';
+import { STATUS_TEXT } from './status.js';
 import {
   bankDetailsOf,
   isApproved,
@@ -41,10 +43,17 @@ const RUN = 'payroll_run';
 const LINE = 'payroll_line';
 
 /** Inputs that are money: the audit log only says they changed, as for a contract's salary. */
-const MONEY_INPUTS: readonly (keyof PayrollInputs)[] = ['commission', 'settlements', 'medical', 'released'];
+const MONEY_INPUTS: readonly (keyof PayrollInputs)[] = ['commission', 'settlements', 'released'];
 
-/** How a run's status reads in a message. */
-const STATUS_TEXT: Record<PayrollStatus, string> = { draft: 'is a draft', pending_ceo: 'is with the CEO', approved: 'is approved', paid: 'is marked paid' };
+/**
+ * A line's saved inputs, only those there are today: one saved before it was taken off (the medical subscription,
+ * owner's decision, 16 October 2026) is dropped when the line is refreshed or changed.
+ */
+const savedInputs = (saved: Prisma.JsonValue): PayrollInputs => {
+  const values = (saved ?? {}) as Partial<PayrollInputs>;
+  const fields = Object.keys(EMPTY_PAYROLL_INPUTS) as (keyof PayrollInputs)[];
+  return Object.fromEntries(fields.map((k) => [k, values[k] ?? null])) as unknown as PayrollInputs;
+};
 
 /** The employments that may be on a month's run, with what the roster needs of them. */
 const rosterSelect = (from: Date, to: Date) =>
@@ -134,6 +143,7 @@ export class PayrollService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly settings: PayrollSettingsService,
+    private readonly payslips: PayslipsService,
   ) {}
 
   /** Every run, newest month first, with its totals. */
@@ -209,11 +219,11 @@ export class PayrollService {
       this.prisma.payrollLine.deleteMany({ where: { id: { in: removed.map((l) => l.id) } } }),
       ...lines.map((l) => {
         const before = kept.get(l.employeeId);
-        const inputs = before ? (before.inputs as unknown as PayrollInputs) : EMPTY_PAYROLL_INPUTS;
-        const data = { ...fromRoster(l), ...worked(l.terms, inputs, rules) };
+        const inputs = before ? savedInputs(before.inputs) : EMPTY_PAYROLL_INPUTS;
+        const data = { ...fromRoster(l), inputs: json(inputs), ...worked(l.terms, inputs, rules) };
         return before
           ? this.prisma.payrollLine.update({ where: { id: before.id }, data })
-          : this.prisma.payrollLine.create({ data: { runId: id, employeeId: l.employeeId, inputs: json(inputs), ...data } });
+          : this.prisma.payrollLine.create({ data: { runId: id, employeeId: l.employeeId, ...data } });
       }),
       this.prisma.payrollRun.update({ where: { id }, data: { rules: json(rules), exclusions: json(exclusions) } }),
     ]);
@@ -251,7 +261,7 @@ export class PayrollService {
     const updates: { line: LineRow; data: Prisma.PayrollLineUpdateInput; diff: Record<string, unknown> }[] = [];
     for (const change of dto.lines) {
       const line = lines.get(change.id)!;
-      const was = { ...EMPTY_PAYROLL_INPUTS, ...(line.inputs as unknown as PayrollInputs) };
+      const was = savedInputs(line.inputs);
       const inputs: PayrollInputs = { ...was, ...(change.inputs ? sent(change.inputs) : {}) };
       const diff: Record<string, unknown> = changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>);
       for (const key of MONEY_INPUTS) if (key in diff) diff[key] = 'changed';
@@ -313,7 +323,11 @@ export class PayrollService {
     return this.get(id);
   }
 
-  /** HR records the day the salaries were paid: not in the future, nor before the month began. */
+  /**
+   * HR records the day the salaries were paid: not in the future, nor before the month began. Then everyone paid (not
+   * on hold) gets their English payslip (owner's decisions, 16 October 2026); one that can't be drawn doesn't stop the
+   * run being marked paid, and is drawn when first downloaded.
+   */
   async markPaid(id: string, dto: PaidPayrollDto, user: SessionUser): Promise<PayrollRunView> {
     const run = await this.row(id);
     const month = monthOf(run);
@@ -322,6 +336,7 @@ export class PayrollService {
     if (dto.paidOn < firstDay(month)) throw new BadRequestException(`The ${monthName(month)} salaries can't have been paid before ${shownDate(firstDay(month))}.`);
     await this.prisma.payrollRun.update({ where: { id }, data: { status: 'paid', paidOn: toDateOnly(dto.paidOn) } });
     await this.statusChanged(run, 'paid', 'paid', user, { paidOn: dto.paidOn });
+    await this.payslips.issueRun(id, user);
     return this.get(id);
   }
 

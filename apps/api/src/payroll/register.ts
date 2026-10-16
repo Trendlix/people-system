@@ -7,6 +7,8 @@ import { byDepartment } from './roster.js';
 
 // The payroll register (owner's decisions, 16 October 2026): the run as a spreadsheet, like the owner's payroll sheet,
 // one row per employee grouped by department, every step of the pay, and a totals row. A draft says so in its title.
+// No Medical column: there is no medical subscription any more (owner's decision, 16 October 2026). A run approved
+// before then keeps its results as they were, so its net and transfer may still have one taken off.
 
 export interface RegisterLine {
   department: string | null;
@@ -79,7 +81,6 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'Income tax', kind: 'money', width: 12, value: (l) => l.result.monthlyTax },
   { header: "Martyrs' fund", kind: 'money', width: 11, value: (l) => l.result.martyrsFund },
   { header: 'Penalties', kind: 'money', width: 12, value: (l) => l.result.penaltyCut },
-  { header: 'Medical', kind: 'money', width: 11, value: (l) => l.result.medical },
   { header: 'Net', kind: 'money', width: 14, value: (l) => l.result.net },
   { header: 'Released', kind: 'money', width: 12, value: (l) => l.result.released },
   { header: 'Transfer', kind: 'money', width: 14, value: (l) => l.result.transfer },
@@ -92,7 +93,7 @@ export const REGISTER_COLUMNS: readonly Column[] = [
 
 const FORMATS: Record<Kind, string> = { text: '@', money: MONEY, percent: PERCENT, hours: HOURS, days: DAYS, count: '0' };
 
-/** The column's letter, A … AP. */
+/** The column's letter, A … AO. */
 function letter(n: number): string {
   let s = '';
   for (let i = n; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s;

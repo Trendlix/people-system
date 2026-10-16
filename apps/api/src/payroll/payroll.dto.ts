@@ -125,7 +125,8 @@ const Amount = (min = -MAX_AMOUNT, message = AMOUNT_MESSAGE) => (target: object,
 
 /**
  * The month's inputs of a line, any of them (null clears one: not given). The hours are numbers (the screen reads
- * 270:30 as 270.5); attendance will fill the same inputs later.
+ * 270:30 as 270.5); attendance will fill the same inputs later. There is no medical subscription any more (owner's
+ * decision, 16 October 2026): `medical` is refused as any field not here is.
  */
 export class PayrollInputsDto {
   @Hours() workedHours?: number | null;
@@ -139,7 +140,6 @@ export class PayrollInputsDto {
   @Amount() commission?: number | null;
   /** One-off amounts in the gross, such as last month's corrections: may be negative. */
   @Amount() settlements?: number | null;
-  @Amount() medical?: number | null;
   @Amount(0, RELEASED_MESSAGE) released?: number | null;
 }
 

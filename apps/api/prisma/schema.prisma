@@ -51,6 +51,7 @@ model User {
   offersAnswered    JobOffer[]             @relation("OfferAnswer") // job offers whose answer this user recorded
   payrollsCreated   PayrollRun[]           @relation("PayrollCreation") // payroll runs this user started
   payrollsApproved  PayrollRun[]           @relation("PayrollApproval") // payroll runs this user approved as CEO
+  payslipsDrawn     Payslip[]              @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
 
   @@map("users")
 }
@@ -931,10 +932,31 @@ model PayrollLine {
   holderName        String?        @map("holder_name")
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  payslips          Payslip[] // the line's payslip, in English and, when asked for, in Arabic
 
   @@unique([runId, employeeId])
   @@index([employeeId])
   @@index([employmentId])
   @@index([contractId])
   @@map("payroll_lines")
+}
+
+// A payslip (owner's decisions, 16 October 2026): drawn by the system from an approved line, straight to a protected
+// PDF, and kept. The English one is issued for every line not on hold when HR marks the run paid; the Arabic one is
+// drawn the first time it is asked for. A payslip is never edited or drawn again once kept: the run is locked from the
+// CEO's approval on. RESTRICTED (HR, Finance, CEO), like the line.
+model Payslip {
+  id            String      @id @default(uuid()) @db.Uuid
+  lineId        String      @map("line_id") @db.Uuid
+  line          PayrollLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  language      String // PAYSLIP_LANGUAGES: en, ar
+  fileName      String      @map("file_name")
+  data          Bytes // the protected PDF
+  sizeBytes     Int         @map("size_bytes")
+  generatedById String?     @map("generated_by") @db.Uuid
+  generatedBy   User?       @relation("PayslipGeneration", fields: [generatedById], references: [id], onDelete: SetNull)
+  generatedAt   DateTime    @default(now()) @map("generated_at") @db.Timestamptz
+
+  @@unique([lineId, language])
+  @@map("payslips")
 }

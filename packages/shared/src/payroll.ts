@@ -71,7 +71,11 @@ export interface PayrollTerms {
   insuredWage: number;
 }
 
-/** The month's figures HR types on the run (null: not given). Percents as 95 for 95%. */
+/**
+ * The month's figures HR types on the run (null: not given). Percents as 95 for 95%. There is no medical subscription
+ * on the payroll any more (owner's decision, 16 October 2026): inputs saved before then may still have one, and it is
+ * ignored.
+ */
 export interface PayrollInputs {
   workedHours: number | null;
   expectedHours: number | null;
@@ -84,8 +88,6 @@ export interface PayrollInputs {
   commission: number | null;
   /** One-off amounts in the gross, such as last month's corrections; may be negative. */
   settlements: number | null;
-  /** The medical subscription, deducted after tax. */
-  medical: number | null;
   /** Already paid out this month: not in the bank transfer. */
   released: number | null;
 }
@@ -101,7 +103,6 @@ export const EMPTY_PAYROLL_INPUTS: PayrollInputs = {
   bonusDays: null,
   commission: null,
   settlements: null,
-  medical: null,
   released: null,
 };
 
@@ -136,8 +137,7 @@ export interface PayrollResult {
   monthlyTax: number;
   martyrsFund: number;
   penaltyCut: number;
-  medical: number;
-  /** All the employee's deductions: insurance, tax, Martyrs' Fund, penalties, medical. */
+  /** All the employee's deductions: insurance, tax, Martyrs' Fund, penalties. */
   deductions: number;
   net: number;
   released: number;
@@ -168,7 +168,7 @@ type SalaryPart = Pick<PayrollResult, 'fixed' | 'variable' | 'attendanceRatio' |
  * grace percent, and a no-show day costs days of the gross (two by default). By the hour: the hours worked at the
  * contract's rate. Then for both: the bonus days, the commission and the settlements; the allowances for the days paid;
  * social insurance on the insured wage, whole for a part month; the salary tax and the Martyrs' Fund on the actual pay;
- * penalty days at the contract's net and the medical subscription after the tax.
+ * penalty days at the contract's net after the tax.
  */
 export function payrollLine(terms: PayrollTerms, inputs: PayrollInputs, rules: PayrollRules = PAYROLL_RULE_DEFAULTS): PayrollResult {
   const days = rules.dayDivisor;
@@ -214,14 +214,13 @@ export function payrollLine(terms: PayrollTerms, inputs: PayrollInputs, rules: P
     : { healthInsurance: 0, monthlyTaxable: 0, annualNetIncome: 0, annualTax: 0, monthlyTax: 0, martyrsFund: 0 };
 
   // after the tax: a penalty day costs a day of the contract's net (the sheet's "Original Net"), a freelancer's a day of
-  // the gross, which is their net; and the medical subscription
+  // the gross, which is their net
   const penaltyDays = given(i.penaltyDays);
   const contractNet = terms.statutory ? grossToNet(gross, terms.year).net : gross;
   const penaltyCut = penaltyDays ? piasters((penaltyDays * contractNet) / days) : 0;
-  const medical = piasters(given(i.medical));
 
   // comprehensive health insurance is 0 while it doesn't apply in Cairo; it is in the deductions so the net stays right
-  const deductions = piasters(employeeInsurance + tax.healthInsurance + tax.monthlyTax + tax.martyrsFund + penaltyCut + medical);
+  const deductions = piasters(employeeInsurance + tax.healthInsurance + tax.monthlyTax + tax.martyrsFund + penaltyCut);
   const net = piasters(earned + allowancesTotal - deductions);
   const released = piasters(given(i.released));
   const transfer = piasters(net - released);
@@ -244,7 +243,6 @@ export function payrollLine(terms: PayrollTerms, inputs: PayrollInputs, rules: P
     monthlyTax: tax.monthlyTax,
     martyrsFund: tax.martyrsFund,
     penaltyCut,
-    medical,
     deductions,
     net,
     released,

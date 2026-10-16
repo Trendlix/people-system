@@ -221,7 +221,6 @@ describe('payroll register', () => {
     monthlyTax: 958.17,
     martyrsFund: 5.25,
     penaltyCut: 0,
-    medical: 0,
     deductions: 2118.42,
     net,
     released: 0,
@@ -247,7 +246,6 @@ describe('payroll register', () => {
       bonusDays: null,
       commission: null,
       settlements: null,
-      medical: null,
       released: null,
     },
     result: result(net),
@@ -272,6 +270,7 @@ describe('payroll register', () => {
     const headers = REGISTER_COLUMNS.map((_, i) => ws.getRow(4).getCell(i + 1).value);
     expect(headers.slice(0, 7)).toEqual(['#', 'Department', 'ID', 'Name', 'Title', 'Pay basis', 'Gross salary']);
     expect(headers).toContain('Social insurance (employee)');
+    expect(headers).not.toContain('Medical'); // no medical subscription any more (owner's decision, 16 October 2026)
     expect(headers.at(-1)).toBe('Comments');
     expect(ws.views[0]).toMatchObject({ state: 'frozen', xSplit: 4, ySplit: 4 });
 

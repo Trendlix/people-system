@@ -53,6 +53,8 @@ export interface PayrollLineView {
   inputs: PayrollInputs;
   result: PayrollResult;
   bank: LineBank;
+  /** Which of the line's payslips are drawn and kept (owner's decisions, 16 October 2026). */
+  payslips: { en: boolean; ar: boolean };
 }
 
 export interface PayrollRunView {
@@ -70,6 +72,8 @@ export interface PayrollRunView {
   lines: PayrollLineView[];
   exclusions: Exclusion[];
   bankCheck: { cib: number; ach: number; problems: number };
+  /** How many English payslips are kept: one for each line paid, once the run is marked paid. */
+  payslips: number;
 }
 
 export interface PayrollRunSummary {
@@ -85,7 +89,7 @@ export interface PayrollRunSummary {
 /** What a run is shown with: its lines in order (by department, none last, then by name) and who approved it. */
 export const RUN_INCLUDE = {
   approvedBy: { select: { id: true, email: true } },
-  lines: { orderBy: [{ department: { sort: 'asc', nulls: 'last' } }, { nameEn: 'asc' }] },
+  lines: { orderBy: [{ department: { sort: 'asc', nulls: 'last' } }, { nameEn: 'asc' }], include: { payslips: { select: { language: true } } } },
 } satisfies Prisma.PayrollRunInclude;
 
 export type RunRow = Prisma.PayrollRunGetPayload<{ include: typeof RUN_INCLUDE }>;
@@ -123,6 +127,7 @@ export function lineView(line: LineRow, bank: LineBank): PayrollLineView {
     inputs: line.inputs as unknown as PayrollInputs,
     result: line.result as unknown as PayrollResult,
     bank,
+    payslips: { en: line.payslips.some((p) => p.language === 'en'), ar: line.payslips.some((p) => p.language === 'ar') },
   };
 }
 
@@ -147,5 +152,6 @@ export function runView(run: RunRow, ctx: { banks: ReadonlyMap<string, BankDetai
     lines,
     exclusions: run.exclusions as unknown as Exclusion[],
     bankCheck: bankCheck(lines.map((l) => ({ onHold: l.onHold, transfer: l.result.transfer, bank: l.bank }))),
+    payslips: lines.filter((l) => l.payslips.en).length,
   };
 }
