@@ -1,5 +1,6 @@
 import {
   bankNamed,
+  insuredWageFrom,
   LABELS,
   nationalityAr,
   occupationName,
@@ -13,7 +14,7 @@ import {
   type TemplateLanguage,
   type WorkArrangement,
 } from '@trendlix/shared';
-import { fromDateOnly } from '../common/date-only.js';
+import { fromDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { arabicAmountInWords, arabicDuration, arabicWeekday, englishAmountInWords, isBlankValue, type TagValue } from './engine/index.js';
@@ -72,11 +73,11 @@ export interface ValueSources {
     occupationCode: string | null;
     /**
      * What social insurance Form 1 prints that is the employee's own (owner, 16 October 2026), null for none of their
-     * own (always on a job offer): the subscription start, and the basic, insured and comprehensive wages.
+     * own (always on a job offer): the subscription start, and the basic and comprehensive wages. The insured wage is
+     * worked out from the comprehensive wage (owner's decision, 16 October 2026).
      */
     insuranceStartDate: Date | null;
     insuranceBasicWage: Decimal | null;
-    insuranceInsuredWage: Decimal | null;
     insuranceComprehensiveWage: Decimal | null;
   };
   identity: { nationalId: string | null; printedNo: string | null; issueDate: Date | null } | null;
@@ -194,6 +195,8 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
   const allowancesTotal = c ? Math.round(c.allowances.reduce((sum, a) => sum + a.amount.toNumber(), 0) * 100) / 100 : null;
   const totalSalary = c && allowancesTotal !== null ? Math.round((c.grossSalary.toNumber() + allowancesTotal) * 100) / 100 : null;
   const hours = amount(c?.hoursPerWeek);
+  // the comprehensive wage Form 1 prints: the employee's own, else the contract's gross and allowances
+  const comprehensive = amount(e.insuranceComprehensiveWage) ?? totalSalary;
   // by the hour, the net of an hour: the approximate net ÷ the hours of a month (hours a week × 52 ÷ 12), to the piaster
   const netHourly = c?.payBasis === 'hourly' && net !== null && hours ? Math.round((net / (hours * WEEKS_PER_MONTH) + Number.EPSILON) * 100) / 100 : null;
 
@@ -322,12 +325,14 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     total_salary: () => printedMoney(totalSalary),
     total_salary_words: () => words(totalSalary),
     total_salary_words_en: () => wordsEn(totalSalary),
-    // the wages Form 1 prints (owner, 16 October 2026), each the employee's own, else: the basic wage, the contract
-    // settings' default (not the contract's basic salary); the insured wage, the contract's insured salary; the
-    // comprehensive wage, the gross and allowances
+    // the wages Form 1 prints (owner, 16 October 2026): the basic wage, the employee's own, else the contract settings'
+    // default (not the contract's basic salary); the comprehensive wage, the employee's own, else the gross and
+    // allowances. The insured wage is the comprehensive wage kept within this year's insurable limits in Cairo (owner's
+    // decision, 16 October 2026: "Apply the insurance wage cap rule from the comprehensive wage"), so none without
+    // one; the contract's own insured salary ({{insured_salary}}, the social insurance copy's) is unchanged
     insurance_basic_salary: () => printedMoney(amount(e.insuranceBasicWage) ?? src.insuranceBasicDefault),
-    insurance_insured_salary: () => printedMoney(amount(e.insuranceInsuredWage) ?? amount(c?.insuredSalary)),
-    insurance_total_salary: () => printedMoney(amount(e.insuranceComprehensiveWage) ?? totalSalary),
+    insurance_insured_salary: () => printedMoney(comprehensive === null ? null : insuredWageFrom(comprehensive, Number(todayInCairo().slice(0, 4))).amount),
+    insurance_total_salary: () => printedMoney(comprehensive),
     offer_number: () => text(src.offer?.number),
     offer_expiry: () => printedDate(ymd(src.offer?.expiresOn)),
 
@@ -474,9 +479,10 @@ const WHERE: Record<string, Where> = {
   total_salary: CONTRACTS('grossSalary'),
   total_salary_words: CONTRACTS('grossSalary'),
   total_salary_words_en: CONTRACTS('grossSalary'),
-  // set on the Social Insurance tab; the basic wage is never missing (the contract settings' default)
+  // set on the Social Insurance tab; the basic wage is never missing (the contract settings' default), and the insured
+  // wage is missing only without a comprehensive wage, which is where it is filled in (owner's decision, 16 October 2026)
   insurance_basic_salary: { tab: 'insurance', key: 'insuranceBasicWage' },
-  insurance_insured_salary: { tab: 'insurance', key: 'insuranceInsuredWage' },
+  insurance_insured_salary: { tab: 'insurance', key: 'insuranceComprehensiveWage' },
   insurance_total_salary: { tab: 'insurance', key: 'insuranceComprehensiveWage' },
   offer_number: { tab: 'offer', key: 'number' },
   offer_expiry: { tab: 'offer', key: 'expiresOn' },

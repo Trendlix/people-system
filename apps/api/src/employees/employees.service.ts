@@ -3,6 +3,8 @@ import {
   accountLengthOk,
   accountLengthText,
   bankNamed,
+  insurableWageLimits,
+  insuredWageFrom,
   PAPERWORK_LABELS,
   paperworkType,
   requiredPaperwork,
@@ -38,10 +40,12 @@ import { withOccupation } from './occupation-view.js';
 const ENTITY = 'employee';
 const DATE_FIELDS = ['dateOfBirth', 'insuranceStartDate'] as const;
 /**
- * The social insurance wages Form 1 prints (owner, 16 October 2026): salary data, so seen and set only by those who see
- * salaries, and never written to the audit log, only the fact that they changed (as a contract's salary).
+ * The social insurance wages Form 1 prints that are the employee's own (owner, 16 October 2026): salary data, so seen
+ * and set only by those who see salaries, and never written to the audit log, only the fact that they changed (as a
+ * contract's salary). The insured wage is not one of them: it is worked out from the comprehensive wage (owner's
+ * decision, 16 October 2026).
  */
-const WAGE_FIELDS = ['insuranceBasicWage', 'insuranceInsuredWage', 'insuranceComprehensiveWage'] as const;
+const WAGE_FIELDS = ['insuranceBasicWage', 'insuranceComprehensiveWage'] as const;
 
 /** A grade as employments name it. */
 const GRADE = { select: { id: true, code: true, rank: true, levelEn: true, levelAr: true } } as const;
@@ -109,7 +113,6 @@ function fields(e: Employee): EmployeeFields {
     dateOfBirth: fromDateOnly(e.dateOfBirth),
     insuranceStartDate: fromDateOnly(e.insuranceStartDate),
     insuranceBasicWage: e.insuranceBasicWage?.toNumber() ?? null,
-    insuranceInsuredWage: e.insuranceInsuredWage?.toNumber() ?? null,
     insuranceComprehensiveWage: e.insuranceComprehensiveWage?.toNumber() ?? null,
   };
 }
@@ -407,7 +410,8 @@ export class EmployeesService {
    * Also the employee's own confirmation of their details and their change requests (owner's decision, 15 October
    * 2026), and whether the signed-in user is this employee (`isSelf`: only they confirm or ask for a change). The social
    * insurance occupation comes with its name (owner's decision, 16 October 2026: the employee's, on the Social Insurance
-   * tab); the social insurance wages and the default basic wage only for those who see salaries.
+   * tab); the social insurance wages and the default basic wage only for those who see salaries, with the insured wage
+   * Form 1 prints as it is worked out from the comprehensive wage, and this year's insurable limits.
    */
   async get(id: string, user: SessionUser) {
     const identity = seesIdentity(user);
@@ -448,16 +452,22 @@ export class EmployeesService {
       self || seesChangeRequests(user) ? this.changeRequestsOf(id) : [],
       salary ? this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }) : null,
     ]);
-    const { insuranceBasicWage, insuranceInsuredWage, insuranceComprehensiveWage, ...open } = withOccupation(fields(own));
+    const { insuranceBasicWage, insuranceComprehensiveWage, ...open } = withOccupation(fields(own));
+    // the insured wage Form 1 prints (owner's decision, 16 October 2026): the comprehensive wage, the employee's own
+    // else the gross and allowances of the contract the Social Insurance tab is about (the current employment's, else
+    // the latest's), within this year's insurable limits in Cairo; worked out here as documents/values.ts prints it
+    const year = Number(todayInCairo().slice(0, 4));
+    const comprehensive = salary ? (insuranceComprehensiveWage ?? (current ?? history[0])?.contract?.totalSalary ?? null) : null;
     return {
       ...open,
       // the social insurance wages, with the default basic wage printed for an employee who has none: salary data, for
       // those who see salaries only (owner, 16 October 2026)
       ...(salary && {
         insuranceBasicWage,
-        insuranceInsuredWage,
         insuranceComprehensiveWage,
         insuranceBasicDefault: settings?.insuranceBasicDefault.toNumber() ?? INSURANCE_BASIC_DEFAULT,
+        insuredWage: comprehensive === null ? null : insuredWageFrom(comprehensive, year),
+        insurableLimits: insurableWageLimits(year),
       }),
       employment: current,
       employments: history,

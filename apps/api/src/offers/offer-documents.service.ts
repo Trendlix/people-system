@@ -72,7 +72,6 @@ export function offerSources(
       occupationCode: null,
       insuranceStartDate: null,
       insuranceBasicWage: null,
-      insuranceInsuredWage: null,
       insuranceComprehensiveWage: null,
     },
     identity: null,

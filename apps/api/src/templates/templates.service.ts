@@ -27,10 +27,16 @@ const fileSlot = (slot: TemplateSlot) => slot.copyOf ?? slot.key;
 
 const PDF_MIME = 'application/pdf';
 export const PLACE_FIELDS_FIRST = 'Place the fields on the form before publishing it.';
+/** The 409 for Use the standard layout on a version whose form the system has no layout for. */
+export const NO_STANDARD_LAYOUT = 'There is no standard layout for this form.';
 
 /** The 409 for placing fields on a Word version: its fields are the tags typed in it. */
 const wordVersion = (version: number) =>
   new ConflictException(`Version ${version} is a Word file: its fields are the {{tags}} typed in it. Fields are placed only on a PDF form.`);
+
+/** The 409 for changing the fields of a version that was replaced. */
+const replacedVersion = (version: number) =>
+  new ConflictException(`Version ${version} was replaced, so its fields can't be changed. Upload the form again to make it a new version.`);
 
 /** One upload or publish per slot at a time, so version numbers and the version in use can't be taken twice. */
 async function lockSlot(tx: Prisma.TransactionClient, key: string): Promise<void> {
@@ -150,7 +156,8 @@ export class TemplatesService {
   /**
    * The fields placed on a PDF version, with its pages as shown, for the editor (Templates → a version → Place fields).
    * Editable while it is a draft or in use (a box printed a little off is put right without uploading again; documents
-   * made before keep their own file), not once replaced. Refused (409) for a Word version.
+   * made before keep their own file), not once replaced; `standardLayout`: whether the system has a standard layout for
+   * its form (see standardLayout). Refused (409) for a Word version.
    */
   async fields(id: string) {
     return this.fieldsView(await this.row(id));
@@ -162,14 +169,33 @@ export class TemplatesService {
    * keeps at least one field.
    */
   async saveFields(id: string, sent: readonly PdfField[], user: SessionUser) {
+    return this.writeFields(id, sent, user);
+  }
+
+  /**
+   * Use the standard layout (owner, 16 October 2026): the version's fields replaced with the starter layout the system
+   * places when its form is uploaded (starter-layouts.ts: the same file, or one with the same pages), so a layout
+   * improved since reaches a version already uploaded without uploading it again. Checked and saved as saveFields, and
+   * logged with the layout's name. Refused (409) for a Word version or a replaced one, as a save is, and when the system
+   * has no standard layout for this form.
+   */
+  async standardLayout(id: string, user: SessionUser) {
+    const v = await this.row(id);
+    if (formatOf(v.format) !== 'pdf') throw wordVersion(v.version);
+    if (v.status === 'retired') throw replacedVersion(v.version);
+    const starter = await this.standardFor(v, true);
+    if (!starter) throw new ConflictException(NO_STANDARD_LAYOUT);
+    return this.writeFields(id, starter.fields, user, starter.note);
+  }
+
+  /** Saves the fields of a PDF version (saveFields), and logs the standard layout they are, when they are one. */
+  private async writeFields(id: string, sent: readonly PdfField[], user: SessionUser, standardLayout?: string) {
     const { slotKey } = await this.row(id);
     const { before, row, fields } = await this.prisma.$transaction(async (tx) => {
       await lockSlot(tx, slotKey); // not while it is being published
       const v = await tx.templateVersion.findUniqueOrThrow({ where: { id }, select: VERSION });
       if (formatOf(v.format) !== 'pdf') throw wordVersion(v.version);
-      if (v.status === 'retired') {
-        throw new ConflictException(`Version ${v.version} was replaced, so its fields can't be changed. Upload the form again to make it a new version.`);
-      }
+      if (v.status === 'retired') throw replacedVersion(v.version);
       const problem = pdfFieldsProblem(sent, pagesOf(v));
       if (problem) throw new BadRequestException(problem);
       if (v.status === 'published' && !sent.length) throw new BadRequestException(`Version ${v.version} is in use, so it keeps its fields: place at least one.`);
@@ -192,6 +218,7 @@ export class TemplatesService {
         status: row.status,
         fields: { from: fieldsOf(before).length, to: fields.length },
         tags: { from: before.tags.length, to: row.tags.length },
+        ...(standardLayout && { standardLayout }),
       },
     });
     return this.fieldsView(row);
@@ -324,18 +351,29 @@ export class TemplatesService {
   // ---------- helpers ----------
 
   /** A PDF version's fields as the editor gets them. */
-  private fieldsView(v: VersionRow) {
+  private async fieldsView(v: VersionRow) {
     if (formatOf(v.format) !== 'pdf') throw wordVersion(v.version);
-    return { version: versionView(v), pages: pagesOf(v), fields: fieldsOf(v), editable: v.status !== 'retired' };
+    const standardLayout = (await this.standardFor(v)) !== null;
+    return { version: versionView(v), pages: pagesOf(v), fields: fieldsOf(v), editable: v.status !== 'retired', standardLayout };
+  }
+
+  /**
+   * The standard layout of a PDF version's form: the starter layout its file gets on uploading (starterFor). The file
+   * is read only for a slot the system has a layout for. `log`: say why a layout that doesn't fit was left out.
+   */
+  private async standardFor(v: Pick<VersionRow, 'id' | 'slotKey' | 'pdfPages'>, log = false): Promise<StarterLayout | null> {
+    if (!this.starterLayouts.some((l) => l.slotKey === v.slotKey)) return null;
+    const file = await this.prisma.templateVersion.findUnique({ where: { id: v.id }, select: { data: true } });
+    return file ? this.starterFor(v.slotKey, file.data, pagesOf(v), log) : null;
   }
 
   /** The starter layout for this file in this slot, when there is one that fits its pages (one that doesn't is left out, and logged). */
-  private starterFor(slotKey: string, data: Uint8Array, pages: readonly PdfPageSize[]): StarterLayout | null {
+  private starterFor(slotKey: string, data: Uint8Array, pages: readonly PdfPageSize[], log = true): StarterLayout | null {
     const starter = starterLayoutFor(slotKey, data, pages, this.starterLayouts);
     if (!starter) return null;
     const problem = pdfFieldsProblem(starter.fields, pages);
     if (problem) {
-      this.logger.warn(`The starter layout "${starter.note}" for ${slotKey} was not applied: ${problem}`);
+      if (log) this.logger.warn(`The starter layout "${starter.note}" for ${slotKey} was not applied: ${problem}`);
       return null;
     }
     return starter;

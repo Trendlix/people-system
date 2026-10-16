@@ -22,14 +22,13 @@ import {
   EDUCATION_GRADES,
   GENDERS,
   GOVERNORATES,
-  insurableWageLimits,
   MARITAL_STATUSES,
   MILITARY_STATUSES,
   occupationName,
   phoneOk,
   phoneTidy,
 } from '@trendlix/shared';
-import { IsDateOnly, todayInCairo } from '../common/date-only.js';
+import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
 import { isValidEgyptianIban, normalizeIban } from './checks.js';
 
@@ -75,31 +74,11 @@ const IsOccupation = () =>
     validator: { validate: (v) => typeof v === 'string' && /^\d{6}$/.test(v) && occupationName(v) !== null, defaultMessage: () => OCCUPATION_MESSAGE },
   });
 // the social insurance wages Form 1 prints (owner, 16 October 2026), to the piastre: the basic wage fits Form 1's five
-// boxes of pounds; the comprehensive wage goes up to 999,999.99
+// boxes of pounds; the comprehensive wage goes up to 999,999.99. The insured wage is no longer set: it is the
+// comprehensive wage within the year's insurable limits (owner's decision, 16 October 2026), so `insuranceInsuredWage`
+// is refused as any unknown field is
 const BASIC_WAGE_MESSAGE = 'Enter the basic wage as an amount of more than 0 and up to 99,999.99, e.g. 410 or 2500.50.';
 const COMPREHENSIVE_WAGE_MESSAGE = 'Enter the comprehensive wage as an amount of more than 0 and up to 999,999.99, e.g. 15000 or 16700.50.';
-const INSURED_WAGE_MESSAGE = 'Enter the insured wage as an amount, e.g. 14500 or 14500.50.';
-const egp = (n: number) => `EGP ${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-
-/**
- * Within the insurable wage's limits of this year in Cairo, or of the latest year known (packages/shared contracts.ts):
- * "The insured wage for 2026 is between EGP 2,700 and EGP 16,700."
- */
-const IsInsurable = () =>
-  ValidateBy({
-    name: 'isInsurable',
-    validator: {
-      // anything but a number is IsNumber's to refuse
-      validate: (v) => {
-        const { min, max } = insurableWageLimits(Number(todayInCairo().slice(0, 4)));
-        return typeof v !== 'number' || (v >= min && v <= max);
-      },
-      defaultMessage: () => {
-        const { year, min, max } = insurableWageLimits(Number(todayInCairo().slice(0, 4)));
-        return `The insured wage for ${year} is between ${egp(min)} and ${egp(max)}.`;
-      },
-    },
-  });
 const CODE = /^EMP-\d{4,6}$/;
 const CODE_MESSAGE = 'Employee code: EMP- and 4 digits, e.g. EMP-0142. Leave it empty to number automatically.';
 
@@ -142,19 +121,10 @@ class EmployeeDetailsDto {
   insuranceBasicWage?: number | null;
 
   /**
-   * The insured wage on social insurance Form 1 (أجر / دخل الاشتراك), the employee's own (owner, 16 October 2026),
-   * within this year's insurable limits; null clears it, and the contract's insured salary is printed. Salary data, as
-   * the basic wage.
-   */
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: INSURED_WAGE_MESSAGE })
-  @IsInsurable()
-  insuranceInsuredWage?: number | null;
-
-  /**
    * The comprehensive wage on social insurance Form 1 (الأجر الشامل، لحساب اشتراك التأمين الصحي الشامل), the employee's
-   * own (owner, 16 October 2026); null clears it, and the contract's gross and allowances are printed. Salary data, as
-   * the basic wage.
+   * own (owner, 16 October 2026); null clears it, and the contract's gross and allowances are printed. Form 1's insured
+   * wage (أجر الاشتراك) is worked out from it, within the year's insurable limits (owner's decision, 16 October 2026).
+   * Salary data, as the basic wage.
    */
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 }, { message: COMPREHENSIVE_WAGE_MESSAGE })

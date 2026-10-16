@@ -17,7 +17,8 @@ import { createUser, signIn } from './helpers.js';
 
 // PDF templates (owner's decision, 15 October 2026): the social insurance forms uploaded as the PDFs they are issued
 // as, HR placing each field on them once, and every document the original PDF with the values printed where the fields
-// were placed, given out as a protected PDF like any other. No PDF converter is set up here, and none is needed.
+// were placed, given out as a protected PDF like any other. No PDF converter is set up here, and none is needed. A
+// version already uploaded takes the standard layout of its form on request (owner, 16 October 2026).
 
 const RUN = Date.now().toString(36);
 const DIGITS = String(Date.now() % 10_000_000).padStart(7, '0');
@@ -64,6 +65,7 @@ describe('PDF templates (e2e)', () => {
   const sample = (id: string, fields: unknown, cookie = hr) =>
     api().post(`/api/templates/versions/${id}/fields/sample`).set('Cookie', cookie).send({ fields }).buffer(true).parse(bytes);
   const publish = (id: string) => api().post(`/api/templates/versions/${id}/publish`).set('Cookie', hr);
+  const standard = (id: string, cookie = hr) => api().post(`/api/templates/versions/${id}/fields/standard`).set('Cookie', cookie);
   /** The message of a refusal read as bytes. */
   const messageOf = (res: request.Response) => (JSON.parse((res.body as Buffer).toString('utf8')) as { message: string }).message;
   const auditOf = (id: string) => prisma.auditLog.findMany({ where: { entityType: 'template_version', entityId: id }, orderBy: { id: 'asc' } });
@@ -175,7 +177,13 @@ describe('PDF templates (e2e)', () => {
 
   it('gives the fields with the pages, to HR, Admin and the CEO only', async () => {
     const res = await fieldsOf(form1.id).expect(200);
-    expect(res.body).toEqual({ version: expect.objectContaining({ id: form1.id, format: 'pdf', pageCount: 2, fieldCount: 0 }), pages: [PAGE, PAGE], fields: [], editable: true });
+    expect(res.body).toEqual({
+      version: expect.objectContaining({ id: form1.id, format: 'pdf', pageCount: 2, fieldCount: 0 }),
+      pages: [PAGE, PAGE],
+      fields: [],
+      editable: true,
+      standardLayout: false,
+    });
     await fieldsOf(form1.id, admin).expect(200);
     await fieldsOf(form1.id, ceo).expect(200);
     await fieldsOf(form1.id, staff).expect(403);
@@ -256,6 +264,7 @@ describe('PDF templates (e2e)', () => {
     expect((await fieldsOf(word.body.id).expect(409)).body.message).toBe(message);
     expect((await save(word.body.id, FORM_1).expect(409)).body.message).toBe(message);
     expect(messageOf(await sample(word.body.id, []).expect(409))).toBe(message);
+    expect((await standard(word.body.id).expect(409)).body.message).toBe(message);
   });
 
   it('downloads the PDF as uploaded, or shows it in the browser, with no converter', async () => {
@@ -348,5 +357,72 @@ describe('PDF templates (e2e)', () => {
     const misfit = await upload('insurance_form_1', badStarterForm, 'x.pdf').expect(201);
     expect(misfit.body).toMatchObject({ pageCount: 1, fieldCount: 0 });
     expect((await auditOf(misfit.body.id))[0].diff).not.toHaveProperty('starterLayout');
+  });
+  // Use the standard layout (owner, 16 October 2026): a layout improved after a form was uploaded reaches that version
+  // without uploading it again
+  describe('the standard layout', () => {
+    const NONE = 'There is no standard layout for this form.';
+    const STARTER = ['end', 'name'];
+
+    it('says whether the system has one for the version’s form: the same file or the same pages in its slot', async () => {
+      const known = await upload('insurance_form_6', starterForm, 'Form 6.pdf').expect(201);
+      expect((await fieldsOf(known.body.id).expect(200)).body.standardLayout).toBe(true);
+      expect((await fieldsOf(known.body.id, ceo).expect(200)).body.standardLayout).toBe(true);
+      const resaved = await upload('insurance_form_6', await formPdf([{ ...PAGE, cropBox: [0, 0, PAGE.width, PAGE.height] }]), 'Form 6 again.pdf').expect(201);
+      expect((await fieldsOf(resaved.body.id).expect(200)).body.standardLayout).toBe(true);
+      // another slot, other pages, or a layout that doesn't fit the file
+      const elsewhere = await upload('nda', starterForm, 'x.pdf').field('language', 'ar').expect(201);
+      expect((await fieldsOf(elsewhere.body.id).expect(200)).body.standardLayout).toBe(false);
+      const twoPages = await upload('insurance_form_6', form, 'x.pdf').expect(201);
+      expect((await fieldsOf(twoPages.body.id).expect(200)).body.standardLayout).toBe(false);
+      const misfit = await upload('insurance_form_1', badStarterForm, 'x.pdf').expect(201);
+      expect((await fieldsOf(misfit.body.id).expect(200)).body.standardLayout).toBe(false);
+    });
+
+    it('replaces the fields placed with it, the tags worked out again, answered as the fields are; logged with its name', async () => {
+      const v = await upload('insurance_form_6', starterForm, 'Form 6.pdf').expect(201);
+      // HR moved one field and removed the other
+      await save(v.body.id, [{ ...FORM_1[1], id: 'moved', x: 100 }]).expect(200);
+      const res = await standard(v.body.id).expect(200);
+      expect(res.body).toEqual({
+        version: expect.objectContaining({ id: v.body.id, fieldCount: 2, tags: ['full_name_ar', 'last_working_day'] }),
+        pages: [PAGE],
+        fields: expect.any(Array),
+        editable: true,
+        standardLayout: true,
+      });
+      expect(res.body.fields.map((f: PdfField) => f.id)).toEqual(STARTER);
+      expect((await fieldsOf(v.body.id).expect(200)).body.fields).toEqual(res.body.fields);
+      expect((await auditOf(v.body.id)).at(-1)).toMatchObject({
+        action: 'update',
+        diff: { slot: 'insurance_form_6', status: 'draft', fields: { from: 1, to: 2 }, tags: { from: 1, to: 2 }, standardLayout: 'Form 6 (test)' },
+      });
+      // HR and Admin only
+      await standard(v.body.id, admin).expect(200);
+      await standard(v.body.id, ceo).expect(403);
+      await standard(v.body.id, staff).expect(403);
+      await standard('00000000-0000-4000-8000-000000000000').expect(404);
+    });
+
+    it('the version in use takes it too; refused for a replaced one, or a form it has none for', async () => {
+      const inUse = await upload('insurance_form_6', starterForm, 'Form 6.pdf').expect(201);
+      await publish(inUse.body.id).expect(200);
+      await save(inUse.body.id, [{ ...FORM_1[1], id: 'moved', x: 100 }]).expect(200);
+      expect((await standard(inUse.body.id).expect(200)).body.fields.map((f: PdfField) => f.id)).toEqual(STARTER);
+
+      const next = await upload('insurance_form_6', starterForm, 'Form 6.pdf').expect(201);
+      await publish(next.body.id).expect(200);
+      const replaced = await standard(inUse.body.id).expect(409);
+      expect(replaced.body.message).toMatch(/^Version \d+ was replaced, so its fields can't be changed\. Upload the form again to make it a new version\.$/);
+
+      const elsewhere = await upload('nda', starterForm, 'x.pdf').field('language', 'ar').expect(201);
+      expect((await standard(elsewhere.body.id).expect(409)).body.message).toBe(NONE);
+      const twoPages = await upload('insurance_form_6', form, 'x.pdf').expect(201);
+      expect((await standard(twoPages.body.id).expect(409)).body.message).toBe(NONE);
+      const misfit = await upload('insurance_form_1', badStarterForm, 'x.pdf').expect(201);
+      expect((await standard(misfit.body.id).expect(409)).body.message).toBe(NONE);
+      // nothing changed on them
+      expect((await fieldsOf(twoPages.body.id).expect(200)).body.fields).toEqual([]);
+    });
   });
 });

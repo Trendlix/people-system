@@ -242,12 +242,11 @@ model Employee {
   occupationCode             String?                @map("occupation_code") @db.Char(6)
   // what Form 1 prints that is the employee's own, set by HR on the Social Insurance tab (owner, 16 October 2026): the
   // subscription start (تاريخ بدء الاشتراك; none: the current employment's join date), and the wages, salary data, each
-  // more than 0: the basic wage (أجر أساسي; none: the default in the contract settings), the insured wage (أجر
-  // الاشتراك, within the year's insurable limits; none: the contract's insured salary) and the comprehensive wage
-  // (الأجر الشامل; none: the contract's gross and allowances)
+  // more than 0: the basic wage (أجر أساسي; none: the default in the contract settings) and the comprehensive wage
+  // (الأجر الشامل; none: the contract's gross and allowances). The insured wage (أجر الاشتراك) is not kept: it is the
+  // comprehensive wage within the year's insurable limits (owner's decision, 16 October 2026)
   insuranceStartDate         DateTime?              @map("insurance_start_date") @db.Date
   insuranceBasicWage         Decimal?               @map("insurance_basic_wage") @db.Decimal(12, 2)
-  insuranceInsuredWage       Decimal?               @map("insurance_insured_wage") @db.Decimal(12, 2)
   insuranceComprehensiveWage Decimal?               @map("insurance_comprehensive_wage") @db.Decimal(12, 2)
   fullNameEn                 String                 @map("full_name_en")
   fullNameAr                 String                 @map("full_name_ar") // as printed on contracts

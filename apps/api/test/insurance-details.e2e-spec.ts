@@ -17,8 +17,10 @@ import { createApp, createUser, signIn } from './helpers.js';
 // employee's address; printed by their tags on employee documents and job offers. And a PDF form's optional fields:
 // left blank when their value is missing, rather than stopping the document.
 // The occupation is the employee's own, set by HR on the Social Insurance tab, no longer the job title's (owner's
-// decision, 16 October 2026); so are Form 1's subscription start and its three wages, with the contract settings'
-// default basic wage. Every number on the social insurance forms prints in ٠-٩ (owner, 16 October 2026).
+// decision, 16 October 2026); so are Form 1's subscription start and its basic and comprehensive wages, with the
+// contract settings' default basic wage. Its insured wage is the comprehensive wage within this year's insurable limits,
+// no longer set (owner's decision, 16 October 2026). Every number on the social insurance forms prints in ٠-٩ (owner,
+// 16 October 2026).
 
 const RUN = Date.now().toString(36);
 const PAGE = { width: 612, height: 1008 };
@@ -26,12 +28,10 @@ const OCCUPATION = 'Choose the occupation from the social insurance list.';
 const BASIC_WAGE = 'Enter the basic wage as an amount of more than 0 and up to 99,999.99, e.g. 410 or 2500.50.';
 const COMPREHENSIVE_WAGE = 'Enter the comprehensive wage as an amount of more than 0 and up to 999,999.99, e.g. 15000 or 16700.50.';
 const DEFAULT_BASIC = 'Enter the default basic wage as an amount of more than 0 and up to 99,999.99, e.g. 410.';
-/** This year's insurable limits, as the API checks the insured wage against them. */
+/** This year's insurable limits, as the API keeps the insured wage within them. */
 const LIMITS = insurableWageLimits(Number(todayInCairo().slice(0, 4)));
-const egp = (n: number) => `EGP ${n.toLocaleString('en-US')}`;
 /** Digits as a social insurance form prints them, ٠-٩ (owner, 16 October 2026). */
 const ar = (text: string) => text.replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]);
-const INSURED_WAGE = `The insured wage for ${LIMITS.year} is between ${egp(LIMITS.min)} and ${egp(LIMITS.max)}.`;
 
 /** Form 1's fields for these tests: a name, the occupation's boxes and the insurance office (needed), the building number and the sector code's boxes (optional). */
 const FORM: PdfField[] = [
@@ -240,25 +240,68 @@ describe('Social insurance details (e2e)', () => {
       ]);
     });
 
-    it('HR sets the three wages; those who see salaries see them with the default basic wage, nobody else', async () => {
+    it('HR sets the basic and comprehensive wages; those who see salaries see them with the default basic wage, the insured wage and this year’s limits, nobody else', async () => {
       const email = await createUser(prisma, ['employee']);
       const e = await newEmployee('Waged Person', { workEmail: email });
       const self = await signIn(app, email);
-      const set = await employee(e.id, { insuranceBasicWage: 2500.5, insuranceInsuredWage: LIMITS.min + 300, insuranceComprehensiveWage: 17250.75 }).expect(200);
-      expect(set.body).toMatchObject({ insuranceBasicWage: 2500.5, insuranceInsuredWage: LIMITS.min + 300, insuranceComprehensiveWage: 17250.75, insuranceBasicDefault: 410 });
-      for (const session of [finance, ceo]) {
-        expect(await profileOf(e.id, session)).toMatchObject({ insuranceBasicWage: 2500.5, insuranceInsuredWage: LIMITS.min + 300, insuranceComprehensiveWage: 17250.75, insuranceBasicDefault: 410 });
-      }
+      const set = await employee(e.id, { insuranceBasicWage: 2500.5, insuranceComprehensiveWage: 17250.75 }).expect(200);
+      // the insured wage Form 1 prints: the comprehensive wage capped at this year's maximum
+      const wages = {
+        insuranceBasicWage: 2500.5,
+        insuranceComprehensiveWage: 17250.75,
+        insuranceBasicDefault: 410,
+        insuredWage: { amount: LIMITS.max, comprehensive: 17250.75, adjusted: 'max', limits: LIMITS },
+        insurableLimits: LIMITS,
+      };
+      expect(set.body).toMatchObject(wages);
+      expect(set.body).not.toHaveProperty('insuranceInsuredWage');
+      for (const session of [finance, ceo]) expect(await profileOf(e.id, session)).toMatchObject(wages);
       // the employee sees their profile, not these (as their contract's salary)
       const own = await profileOf(e.id, self);
-      for (const key of ['insuranceBasicWage', 'insuranceInsuredWage', 'insuranceComprehensiveWage', 'insuranceBasicDefault']) expect(own).not.toHaveProperty(key);
+      for (const key of ['insuranceBasicWage', 'insuranceComprehensiveWage', 'insuranceBasicDefault', 'insuredWage', 'insurableLimits']) expect(own).not.toHaveProperty(key);
       expect(own).toHaveProperty('insuranceStartDate', null);
 
-      // none of their own: null, and the default stands in for the basic wage
-      const cleared = await employee(e.id, { insuranceBasicWage: null, insuranceInsuredWage: null, insuranceComprehensiveWage: null }).expect(200);
-      expect(cleared.body).toMatchObject({ insuranceBasicWage: null, insuranceInsuredWage: null, insuranceComprehensiveWage: null, insuranceBasicDefault: 410 });
+      // none of their own: null, the default stands in for the basic wage, and with no contract there is no insured wage
+      const cleared = await employee(e.id, { insuranceBasicWage: null, insuranceComprehensiveWage: null }).expect(200);
+      expect(cleared.body).toMatchObject({ insuranceBasicWage: null, insuranceComprehensiveWage: null, insuranceBasicDefault: 410, insuredWage: null, insurableLimits: LIMITS });
       // only HR sets them
       for (const session of [finance, ceo, self]) await api().patch(`/api/employees/${e.id}`).set('Cookie', session).send({ insuranceBasicWage: 500 }).expect(403);
+    });
+
+    it('the insured wage is no longer set: refused as an unknown field, it is the comprehensive wage within this year’s limits', async () => {
+      const e = await newEmployee('Insured From Comprehensive');
+      for (const value of [LIMITS.min + 300, null]) {
+        expect((await employee(e.id, { insuranceInsuredWage: value }).expect(400)).body.message).toEqual(['property insuranceInsuredWage should not exist']);
+      }
+      const added = await api().post('/api/employees').set('Cookie', hr).send({ fullNameEn: `Insured Added ${RUN}`, fullNameAr: 'موظف تجريبي', insuranceInsuredWage: 15000 }).expect(400);
+      expect(added.body.message).toEqual(['property insuranceInsuredWage should not exist']);
+
+      // within the limits, as it is; below the minimum, raised to it; above the maximum, capped at it
+      const insuredOf = async (comprehensive: number) => (await employee(e.id, { insuranceComprehensiveWage: comprehensive }).expect(200)).body.insuredWage;
+      expect(await insuredOf(LIMITS.min + 300.5)).toEqual({ amount: LIMITS.min + 300.5, comprehensive: LIMITS.min + 300.5, adjusted: null, limits: LIMITS });
+      expect(await insuredOf(LIMITS.min - 700)).toEqual({ amount: LIMITS.min, comprehensive: LIMITS.min - 700, adjusted: 'min', limits: LIMITS });
+      expect(await insuredOf(LIMITS.max)).toEqual({ amount: LIMITS.max, comprehensive: LIMITS.max, adjusted: null, limits: LIMITS });
+      expect(await insuredOf(LIMITS.max + 0.01)).toEqual({ amount: LIMITS.max, comprehensive: LIMITS.max + 0.01, adjusted: 'max', limits: LIMITS });
+    });
+
+    it('without a comprehensive wage of their own, the insured wage is worked out from the signed contract’s gross and allowances', async () => {
+      const job = await newJobTitle(`Contracted clerk ${RUN}`);
+      const e = await newEmployee('Contracted Insured');
+      const hired = await api()
+        .post(`/api/employees/${e.id}/employments`)
+        .set('Cookie', hr)
+        .send({ employmentType: 'full_time', joinDate: '2026-01-15', departmentId, jobTitleId: job.id, gradeId, shiftId })
+        .expect(201);
+      const contract = await api().post(`/api/employees/${e.id}/employments/${hired.body.employment.id}/contracts`).set('Cookie', hr).send({ grossSalary: 20000 }).expect(201);
+      // a draft isn't the signed contract the tab is about
+      expect((await profileOf(e.id)).insuredWage).toBeNull();
+      await api().post(`/api/contracts/${contract.body.id}/sign`).set('Cookie', hr).send({ signedOn: contract.body.startDate }).expect(200);
+      expect((await profileOf(e.id)).insuredWage).toEqual({ amount: LIMITS.max, comprehensive: 20000, adjusted: 'max', limits: LIMITS });
+      // their own comprehensive wage stands in for the contract's
+      await employee(e.id, { insuranceComprehensiveWage: 15200 }).expect(200);
+      expect((await profileOf(e.id)).insuredWage).toEqual({ amount: 15200, comprehensive: 15200, adjusted: null, limits: LIMITS });
+      // the contract's own insured salary, on its social insurance copy, is unchanged
+      expect((await profileOf(e.id)).employment.contract.insuredSalary).toBe(LIMITS.max);
     });
 
     it('logs only that a wage was set or changed, never the amount', async () => {
@@ -266,34 +309,30 @@ describe('Social insurance details (e2e)', () => {
       await employee(e.id, { insuranceBasicWage: 700, insuranceComprehensiveWage: 15000 }).expect(200);
       await employee(e.id, { insuranceBasicWage: null }).expect(200);
       const audit = await auditOf('employee', e.id);
-      expect(audit[0].diff).toMatchObject({ insuranceBasicWage: 'changed', insuranceInsuredWage: null, insuranceComprehensiveWage: null });
+      expect(audit[0].diff).toMatchObject({ insuranceBasicWage: 'changed', insuranceComprehensiveWage: null });
+      expect(audit[0].diff).not.toHaveProperty('insuranceInsuredWage');
       expect(audit.slice(1).map((a) => a.diff)).toEqual([{ insuranceBasicWage: 'changed', insuranceComprehensiveWage: 'changed' }, { insuranceBasicWage: 'changed' }]);
       expect(JSON.stringify(audit.map((a) => a.diff))).not.toMatch(/600|700|15000/);
     });
 
-    it('refuses amounts out of range, the insured wage outside this year’s insurable limits', async () => {
+    it('refuses amounts out of range', async () => {
       const e = await newEmployee('Checked Wages');
       const say = async (body: object) => (await employee(e.id, body).expect(400)).body.message as string[];
       for (const bad of [0, -5, 100000, 1.234]) expect(await say({ insuranceBasicWage: bad })).toContain(BASIC_WAGE);
       expect(await say({ insuranceBasicWage: '410' })).toContain(BASIC_WAGE);
       for (const bad of [0, 1000000, 1.005]) expect(await say({ insuranceComprehensiveWage: bad })).toContain(COMPREHENSIVE_WAGE);
-      expect(await say({ insuranceInsuredWage: LIMITS.min - 0.01 })).toEqual([INSURED_WAGE]);
-      expect(await say({ insuranceInsuredWage: LIMITS.max + 1 })).toEqual([INSURED_WAGE]);
-      expect(INSURED_WAGE).toMatch(/^The insured wage for \d{4} is between EGP [\d,]+ and EGP [\d,]+\.$/);
       // the limits themselves are within them
-      expect((await employee(e.id, { insuranceInsuredWage: LIMITS.min, insuranceBasicWage: 99999.99, insuranceComprehensiveWage: 999999.99 }).expect(200)).body).toMatchObject({
-        insuranceInsuredWage: LIMITS.min,
+      expect((await employee(e.id, { insuranceBasicWage: 99999.99, insuranceComprehensiveWage: 999999.99 }).expect(200)).body).toMatchObject({
         insuranceBasicWage: 99999.99,
         insuranceComprehensiveWage: 999999.99,
       });
-      expect((await employee(e.id, { insuranceInsuredWage: LIMITS.max }).expect(200)).body.insuranceInsuredWage).toBe(LIMITS.max);
     });
 
     it('aren’t the employee’s to ask to change', async () => {
       const email = await createUser(prisma, ['employee']);
       const e = await newEmployee('Asking Wages', { workEmail: email });
       const self = await signIn(app, email);
-      for (const field of ['insuranceStartDate', 'insuranceBasicWage', 'insuranceInsuredWage', 'insuranceComprehensiveWage']) {
+      for (const field of ['insuranceStartDate', 'insuranceBasicWage', 'insuranceComprehensiveWage']) {
         const asked = await api().post(`/api/employees/${e.id}/change-requests`).set('Cookie', self).send({ changes: { [field]: field === 'insuranceStartDate' ? '2026-01-01' : 5000 } }).expect(400);
         expect(asked.body.message).toBe(`${field} can't be changed by request.`);
       }
@@ -315,10 +354,10 @@ describe('Social insurance details (e2e)', () => {
       ]);
     });
 
-    it('the database refuses a wage of 0 or less', async () => {
+    it('the database refuses a wage of 0 or less, and keeps no insured wage', async () => {
       const e = await newEmployee('Database Wages');
       await refused(prisma.$executeRaw`UPDATE employees SET insurance_basic_wage = 0 WHERE id = ${e.id}::uuid`);
-      await refused(prisma.$executeRaw`UPDATE employees SET insurance_insured_wage = -1 WHERE id = ${e.id}::uuid`);
+      await expect(prisma.$executeRaw`UPDATE employees SET insurance_insured_wage = 1 WHERE id = ${e.id}::uuid`).rejects.toThrow(/insurance_insured_wage.*does not exist|42703/);
       await refused(prisma.$executeRaw`UPDATE employees SET insurance_comprehensive_wage = 0 WHERE id = ${e.id}::uuid`);
       await refused(prisma.$executeRaw`UPDATE contract_settings SET insurance_basic_default = 0 WHERE id = 1`);
     });
@@ -462,8 +501,8 @@ describe('Social insurance details (e2e)', () => {
   });
 
   // Form 1's subscription start and wages: each the employee's own from the Social Insurance tab, else the join date,
-  // the contract settings' default basic wage, the contract's insured salary, its gross and allowances (owner, 16
-  // October 2026)
+  // the contract settings' default basic wage, the contract's gross and allowances (owner, 16 October 2026); the
+  // insured wage, the comprehensive wage within this year's insurable limits (owner's decision, 16 October 2026)
   describe('Form 1’s subscription start and wages', () => {
     let employeeId: string;
     const pounds = (id: string, tag: string, y: number): PdfField => ({ id, kind: 'boxes', tag, page: 1, x: 100, y, width: 100, height: 18, fontSize: 12, boxes: 5, boxAlign: 'right', amountPart: 'pounds' });
@@ -493,7 +532,8 @@ describe('Social insurance details (e2e)', () => {
     it('without a contract or the employee’s own, the insured and comprehensive wages are missing, set on the Social Insurance tab', async () => {
       expect((await check().expect(200)).body).toEqual({
         missing: [
-          { tag: 'insurance_insured_salary', label: 'Insured wage (social insurance)', where: { tab: 'insurance', key: 'insuranceInsuredWage' } },
+          // worked out from the comprehensive wage, so set there
+          { tag: 'insurance_insured_salary', label: 'Insured wage (social insurance)', where: { tab: 'insurance', key: 'insuranceComprehensiveWage' } },
           { tag: 'insurance_total_salary', label: 'Comprehensive wage (social insurance)', where: { tab: 'insurance', key: 'insuranceComprehensiveWage' } },
         ],
         // the wages are salary data
@@ -501,15 +541,24 @@ describe('Social insurance details (e2e)', () => {
       });
     });
 
-    it('prints the employee’s own, else the join date and the default basic wage, in ٠-٩', async () => {
-      await employee(employeeId, { insuranceInsuredWage: LIMITS.min + 300, insuranceComprehensiveWage: 17250.75 }).expect(200);
+    it('prints the employee’s own, else the join date and the default basic wage; the insured wage capped, in ٠-٩', async () => {
+      await employee(employeeId, { insuranceComprehensiveWage: 17250.75 }).expect(200);
       let doc = await generate().expect(201);
-      expect(await printed(doc.body.id)).toEqual([ar('20260115'), ar('410'), ar(String(LIMITS.min + 300)), ar('17250')]);
+      // the comprehensive wage of 17,250.75 capped at this year's maximum insurable wage
+      expect(await printed(doc.body.id)).toEqual([ar('20260115'), ar('410'), ar(String(LIMITS.max)), ar('17250')]);
 
       await employee(employeeId, { insuranceStartDate: '2026-02-01', insuranceBasicWage: 2500.5 }).expect(200);
       await api().patch('/api/contract-settings').set('Cookie', hr).send({ insuranceBasicDefault: 600 }).expect(200);
       doc = await generate().expect(201);
-      expect(await printed(doc.body.id)).toEqual([ar('20260201'), ar('2500'), ar(String(LIMITS.min + 300)), ar('17250')]);
+      expect(await printed(doc.body.id)).toEqual([ar('20260201'), ar('2500'), ar(String(LIMITS.max)), ar('17250')]);
+
+      // within the limits, as it is; below the minimum, raised to it
+      await employee(employeeId, { insuranceComprehensiveWage: LIMITS.min + 300 }).expect(200);
+      doc = await generate().expect(201);
+      expect((await printed(doc.body.id)).slice(2)).toEqual([ar(String(LIMITS.min + 300)), ar(String(LIMITS.min + 300))]);
+      await employee(employeeId, { insuranceComprehensiveWage: LIMITS.min - 700 }).expect(200);
+      doc = await generate().expect(201);
+      expect((await printed(doc.body.id)).slice(2)).toEqual([ar(String(LIMITS.min)), ar(String(LIMITS.min - 700))]);
 
       // the employee's own basic wage cleared: the default as the contract settings say now
       await employee(employeeId, { insuranceBasicWage: null }).expect(200);
@@ -562,15 +611,16 @@ describe('Social insurance details (e2e)', () => {
       await company({ insuranceSectorCode: null }).expect(200);
     });
 
-    it('prints the Social Insurance tab’s start and wages from the offer: its join date, the default basic wage, its insured salary, its gross', async () => {
+    it('prints the Social Insurance tab’s start and wages from the offer: its join date, the default basic wage, its gross within the limits, its gross', async () => {
       const o = await draft('Offered Wages', without);
       const row = await offerRow(o.id);
       const tags = ['insurance_start_date', 'insurance_basic_salary', 'insurance_insured_salary', 'insurance_total_salary', 'insured_salary'];
       const { values, missing } = await app.get(OfferDocumentsService).check(row, offerSlot('full_time'), { language: 'ar', tags, pdfFields: null }, todayInCairo());
       expect(values).toMatchObject({ insurance_start_date: '01/12/2026', insurance_basic_salary: '410', insurance_total_salary: '20,000' });
-      // the gross of 20,000, capped at the year's maximum insurable wage, as {{insured_salary}} prints it
+      // the comprehensive wage (the gross of 20,000, no allowances) capped at this year's maximum insurable wage, as
+      // {{insured_salary}} prints the offer's
+      expect(values.insurance_insured_salary).toBe(LIMITS.max.toLocaleString('en-US'));
       expect(values.insurance_insured_salary).toBe(values.insured_salary);
-      expect(values.insurance_insured_salary).toMatch(/^\d{1,2},\d{3}$/);
       expect(missing).toEqual([]);
     });
 

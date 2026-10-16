@@ -101,7 +101,7 @@ export class TemplatesController {
     return this.templates.rename(id, dto.fileName, user);
   }
 
-  /** A PDF version's fields with its pages as shown: { version, pages, fields, editable }. 409 for a Word version. */
+  /** A PDF version's fields with its pages as shown: { version, pages, fields, editable, standardLayout }. 409 for a Word version. */
   @Roles('hr', 'admin', 'ceo')
   @Get('versions/:id/fields')
   fields(@Param('id', ParseUUIDPipe) id: string) {
@@ -113,6 +113,17 @@ export class TemplatesController {
   @Put('versions/:id/fields')
   saveFields(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PdfFieldsDto, @CurrentUser() user: SessionUser) {
     return this.templates.saveFields(id, dto.fields, user);
+  }
+
+  /**
+   * Use the standard layout (owner, 16 October 2026): the version's fields replaced with the layout the system places
+   * when its form is uploaded, answered as fields() is. 409 when there is none for this form, or the version was replaced.
+   */
+  @Roles('hr', 'admin')
+  @Post('versions/:id/fields/standard')
+  @HttpCode(200)
+  standardLayout(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.templates.standardLayout(id, user);
   }
 
   /**

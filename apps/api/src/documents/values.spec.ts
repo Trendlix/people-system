@@ -32,7 +32,6 @@ function sources(jobTitle: JobTitle, language: ValueSources['language'] = 'ar'):
       occupationCode: null,
       insuranceStartDate: null,
       insuranceBasicWage: null,
-      insuranceInsuredWage: null,
       insuranceComprehensiveWage: null,
     },
     identity: null,
@@ -413,7 +412,9 @@ describe('the social insurance details', () => {
 });
 
 // What Form 1 prints that is each employee's own on the Social Insurance tab (owner, 16 October 2026): the
-// subscription start and the three wages, each with what is printed while the employee has none of their own.
+// subscription start and the basic and comprehensive wages, each with what is printed while the employee has none of
+// their own; and the insured wage, the comprehensive wage within this year's insurable limits in Cairo (owner's
+// decision, 16 October 2026: "Apply the insurance wage cap rule from the comprehensive wage").
 describe('the Social Insurance tab’s dates and wages', () => {
   const d = (n: number) => new Prisma.Decimal(n);
   const TAGS = ['insurance_start_date', 'insurance_basic_salary', 'insurance_insured_salary', 'insurance_total_salary'];
@@ -440,13 +441,28 @@ describe('the Social Insurance tab’s dates and wages', () => {
     daysPerWeek: null,
     allowances: [{ nameEn: 'Transport', nameAr: 'انتقال', amount: d(1000) }],
   };
-  const withContract = (): ValueSources => ({ ...sources(null), contract: CONTRACT });
+  const withContract = (over: Partial<NonNullable<ValueSources['contract']>> = {}): ValueSources => ({ ...sources(null), contract: { ...CONTRACT, ...over } });
+  /** The employee's own comprehensive wage (and subscription start and basic wage, when given), whatever the contract says. */
+  const withOwn = (comprehensive: number, more: Partial<ValueSources['employee']> = {}): ValueSources => {
+    const src = withContract();
+    return { ...src, employee: { ...src.employee, insuranceComprehensiveWage: d(comprehensive), ...more } };
+  };
+  const insured = (src: ValueSources) => resolveValues(src, ['insurance_insured_salary']).insurance_insured_salary;
 
-  it('without the employee’s own: the join date, the contract settings’ default, the contract’s insured salary, its gross and allowances', () => {
+  // the insured wage is kept within the limits of the year it is now in Cairo (2026: 2,700 to 16,700)
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-16T09:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('without the employee’s own: the join date, the contract settings’ default, the gross and allowances, within the limits', () => {
     expect(resolveValues(withContract(), TAGS)).toEqual({
       insurance_start_date: '15/01/2026',
       insurance_basic_salary: '410',
-      insurance_insured_salary: '14,500',
+      insurance_insured_salary: '16,000',
       insurance_total_salary: '16,000',
     });
     // the default as the contract settings say; the contract's basic salary (the gross × its share) is not it
@@ -456,26 +472,40 @@ describe('the Social Insurance tab’s dates and wages', () => {
     });
   });
 
-  it('the employee’s own, whatever the contract says', () => {
-    const src = withContract();
-    const own: ValueSources = {
-      ...src,
-      employee: {
-        ...src.employee,
-        insuranceStartDate: new Date('2026-02-01T00:00:00Z'),
-        insuranceBasicWage: d(2500.5),
-        insuranceInsuredWage: d(9000),
-        insuranceComprehensiveWage: d(17250.75),
-      },
-    };
+  it('the contract’s gross and allowances above the year’s maximum: capped at it', () => {
+    const src = withContract({ grossSalary: d(20000), insuredSalary: d(16700) });
+    expect(resolveValues(src, ['insurance_insured_salary', 'insurance_total_salary'])).toEqual({ insurance_insured_salary: '16,700', insurance_total_salary: '21,000' });
+  });
+
+  it('the employee’s own, whatever the contract says; the insured wage their comprehensive wage capped at the maximum', () => {
+    const own = withOwn(17250.75, { insuranceStartDate: new Date('2026-02-01T00:00:00Z'), insuranceBasicWage: d(2500.5) });
     expect(resolveValues(own, TAGS)).toEqual({
       insurance_start_date: '01/02/2026',
       insurance_basic_salary: '2,500.50',
-      insurance_insured_salary: '9,000',
+      insurance_insured_salary: '16,700',
       insurance_total_salary: '17,250.75',
     });
-    // the contract's own tags are unchanged
+    // within the limits, as it is, to the piastre
+    expect(insured(withOwn(15200.5))).toBe('15,200.50');
+    // the contract's own tags are unchanged: its insured salary is the social insurance copy's
     expect(resolveValues(own, ['join_date', 'insured_salary', 'total_salary'])).toEqual({ join_date: '15/01/2026', insured_salary: '14,500', total_salary: '16,000' });
+  });
+
+  it('a comprehensive wage below the year’s minimum: raised to it', () => {
+    expect(insured(withOwn(2000))).toBe('2,700');
+    expect(insured(withContract({ grossSalary: d(1500), allowances: [] }))).toBe('2,700');
+  });
+
+  it('the limits of the year it is in Cairo, or of the latest year known', () => {
+    const own = withOwn(17250.75);
+    // already 1 January in Cairo
+    vi.setSystemTime(new Date('2025-12-31T22:30:00Z'));
+    expect(insured(own)).toBe('16,700');
+    vi.setSystemTime(new Date('2025-12-31T20:30:00Z'));
+    expect(insured(own)).toBe('14,500');
+    // a year not in the table: the latest known
+    vi.setSystemTime(new Date('2031-06-01T09:00:00Z'));
+    expect(insured(own)).toBe('16,700');
   });
 
   it('missing only with neither the employee’s own nor what stands in for it, filled in on the Social Insurance tab', () => {
@@ -485,11 +515,15 @@ describe('the Social Insurance tab’s dates and wages', () => {
     expect(values.insurance_basic_salary).toBe('410');
     expect(missingTags(values, TAGS)).toEqual([
       { tag: 'insurance_start_date', label: 'Subscription start (social insurance)', where: { tab: 'insurance', key: 'insuranceStartDate' } },
-      { tag: 'insurance_insured_salary', label: 'Insured wage (social insurance)', where: { tab: 'insurance', key: 'insuranceInsuredWage' } },
+      // the insured wage is worked out from the comprehensive wage, which is where it is filled in
+      { tag: 'insurance_insured_salary', label: 'Insured wage (social insurance)', where: { tab: 'insurance', key: 'insuranceComprehensiveWage' } },
       { tag: 'insurance_total_salary', label: 'Comprehensive wage (social insurance)', where: { tab: 'insurance', key: 'insuranceComprehensiveWage' } },
     ]);
     // without a contract, still the Social Insurance tab (not the contract)
     expect(missingTags(values, TAGS, {}, false).map((m) => m.where.tab)).toEqual(['insurance', 'insurance', 'insurance']);
+    // the employee's own comprehensive wage alone is enough
+    const own: ValueSources = { ...none, employee: { ...none.employee, insuranceComprehensiveWage: d(9000) } };
+    expect(resolveValues(own, ['insurance_insured_salary', 'insurance_total_salary'])).toEqual({ insurance_insured_salary: '9,000', insurance_total_salary: '9,000' });
   });
 
   it('the wages are restricted like the salary; the start date is not', () => {
@@ -550,7 +584,7 @@ describe('amounts in English words', () => {
     const d = (n: number) => new Prisma.Decimal(n);
     const sources = {
       language: 'en',
-      employee: { employeeCode: 'EMP-1', fullNameEn: 'A', fullNameAr: 'أ', displayName: null, nationality: null, gender: null, dateOfBirth: null, addressAr: null, city: null, governorate: null, mobile: null, workEmail: null, personalEmail: null, qualificationAr: null, insuranceNo: null, occupationCode: null, insuranceStartDate: null, insuranceBasicWage: null, insuranceInsuredWage: null, insuranceComprehensiveWage: null },
+      employee: { employeeCode: 'EMP-1', fullNameEn: 'A', fullNameAr: 'أ', displayName: null, nationality: null, gender: null, dateOfBirth: null, addressAr: null, city: null, governorate: null, mobile: null, workEmail: null, personalEmail: null, qualificationAr: null, insuranceNo: null, occupationCode: null, insuranceStartDate: null, insuranceBasicWage: null, insuranceComprehensiveWage: null },
       identity: null,
       bank: null,
       employment: null,

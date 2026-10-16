@@ -69,7 +69,7 @@ describe('job offer rules', () => {
   it('the Social Insurance tab’s start date and wages stand in for the offer’s join date and gross', () => {
     const missing = offerMissing([
       { tag: 'insurance_start_date', label: 'Subscription start (social insurance)', where: { tab: 'insurance', key: 'insuranceStartDate' } },
-      { tag: 'insurance_insured_salary', label: 'Insured wage (social insurance)', where: { tab: 'insurance', key: 'insuranceInsuredWage' } },
+      { tag: 'insurance_insured_salary', label: 'Insured wage (social insurance)', where: { tab: 'insurance', key: 'insuranceComprehensiveWage' } },
       { tag: 'insurance_total_salary', label: 'Comprehensive wage (social insurance)', where: { tab: 'insurance', key: 'insuranceComprehensiveWage' } },
     ]);
     expect(missing.map((m) => m.where)).toEqual([

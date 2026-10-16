@@ -516,11 +516,11 @@ export class DocumentsService {
           personalEmail: true,
           qualificationAr: true,
           insuranceNo: true,
-          // what the Social Insurance tab holds (owner, 16 October 2026): the occupation, the subscription start, the wages
+          // what the Social Insurance tab holds (owner, 16 October 2026): the occupation, the subscription start, the
+          // basic and comprehensive wages (the insured wage is worked out from the comprehensive one)
           occupationCode: true,
           insuranceStartDate: true,
           insuranceBasicWage: true,
-          insuranceInsuredWage: true,
           insuranceComprehensiveWage: true,
           identity: { select: { nationalId: true, printedNo: true, issueDate: true } },
           bank: { select: { bankName: true, accountNo: true, iban: true, holderName: true } },
