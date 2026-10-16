@@ -49,7 +49,10 @@ export interface GridRow extends GridLine {
   payBasis: PayBasis;
   gross: number;
   hourlyRate: number | null;
-  /** A day of the employee's shift, in hours: what a no-show day takes out of the expected hours; null without a shift. */
+  /**
+   * A day of the employee's shift, in hours: its hours to work a day, else its window (owner, 16 October 2026: flexible
+   * shifts). What a no-show day takes out of the expected hours; null without a shift.
+   */
   hoursPerDay: number | null;
   /**
    * The month's expected hours the run worked out from the shift less the holidays (owner's request, 16 October 2026):
@@ -471,8 +474,8 @@ export function InputsGrid({
         <p className="hint">
           Hours as 270:00 or 270.5; days in whole or half days. Leave a cell empty when it doesn&apos;t apply: empty
           worked hours count in full. The expected hours in grey are the shift&apos;s working days in the month less the
-          holidays (Organization → Payroll Setup): they count unless you type others, and clearing a cell brings them
-          back. No-show days: {noShowPay(noShowDayMultiplier)}; their hours (a day of the shift each) come out of the
+          holidays (<Link href="/organization/holidays">Organization → Holidays</Link>), at its hours to work a day: they count unless you type others, and clearing a cell brings them
+          back. No-show days: {noShowPay(noShowDayMultiplier)}; their hours (the shift&apos;s hours to work a day each) come out of the
           expected hours, so attendance doesn&apos;t count them again. Type the expected hours with them, or without them
           for someone with no shift. On hold: left out of the bank files this month.
         </p>

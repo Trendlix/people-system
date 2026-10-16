@@ -10,7 +10,7 @@ const ENTITY = 'payroll_settings';
 const ID = 1;
 
 /** The settings as the API sends them: the rules a run copies, and the company's side of the bank files. */
-export interface PayrollSettingsView extends PayrollRules {
+export interface PayrollSettingsView extends Required<PayrollRules> {
   /** The company's CIB account the salaries are paid from (12 digits), and its name as CIB has it. */
   cibDebitAccount: string | null;
   cibDebitAccountName: string | null;
@@ -23,11 +23,12 @@ export interface PayrollSettingsView extends PayrollRules {
   payday: number | null;
 }
 
-/** The rules a run is worked out with, as the settings have them now. */
-export const rulesOf = (s: PayrollSettings): PayrollRules => ({
+/** The rules a run is worked out with, as the settings have them now: Pay overtime always says on or off. */
+export const rulesOf = (s: PayrollSettings): Required<PayrollRules> => ({
   dayDivisor: s.dayDivisor,
   attendanceGracePercent: s.attendanceGracePercent.toNumber(),
   kpiGracePercent: s.kpiGracePercent.toNumber(),
+  payOvertime: s.payOvertime,
   overtimeAbovePercent: s.overtimeAbovePercent.toNumber(),
   overtimeRate: s.overtimeRate.toNumber(),
   noShowDayMultiplier: s.noShowDayMultiplier.toNumber(),
@@ -44,6 +45,8 @@ const view = (s: PayrollSettings): PayrollSettingsView => ({
 // The payroll settings (owner's decisions, 16 October 2026): the sheet's rules to start with (a month of 30 days,
 // attendance from 90% and a KPI average from 80% count as full, overtime above 110% at 1.5, a no-show day costs 2 days'
 // pay), which each run copies when it is made or refreshed, and the company's CIB account the salaries are paid from.
+// Overtime isn't paid from 16 October 2026 (owner: "No overtime for now", as attendance counts at most the shift's
+// hours to work a day): Pay overtime is off, its percent and rate kept for when it is turned on.
 // One row, id 1, added by the payroll migration and prisma/seed.ts. HR, Finance, the CEO and Admin read them; HR and
 // Admin change them (Organization → Payroll Setup: the rules under Your Rules, the bank files and the payday, the day
 // of the month salaries are paid, under Paying Salaries; owner's request, 16 October 2026).
@@ -69,6 +72,7 @@ export class PayrollSettingsService {
       dayDivisor: dto.dayDivisor,
       attendanceGracePercent: dto.attendanceGracePercent,
       kpiGracePercent: dto.kpiGracePercent,
+      payOvertime: dto.payOvertime,
       overtimeAbovePercent: dto.overtimeAbovePercent,
       overtimeRate: dto.overtimeRate,
       noShowDayMultiplier: dto.noShowDayMultiplier,

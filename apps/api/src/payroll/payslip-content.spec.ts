@@ -190,12 +190,19 @@ describe('payslipContent: the month’s cuts and extras, with the run’s own ru
     expect(labels(c.earnings!.rows)).not.toContain('Attendance adjustment');
   });
 
-  it('overtime above the overtime percent: the cell says so, and the overtime is a row', () => {
-    const c = payslipContent(payslipSource('monthly', { inputs: { workedHours: 202.4, softSkills: null, performance: null, clientSatisfaction: null } }), 'en');
+  it('overtime above the overtime percent, when the run pays it: the cell says so, and the overtime is a row', () => {
+    const paying = { payOvertime: true };
+    const c = payslipContent(payslipSource('monthly', { inputs: { workedHours: 202.4, softSkills: null, performance: null, clientSatisfaction: null }, rules: paying }), 'en');
     expect(c.thisMonth!.cells[0].note).toBe('115.00%: overtime paid above 110%');
     const overtime = c.earnings!.rows.find((r) => r.label === 'Overtime')!;
-    expect(overtime).toMatchObject({ note: 'Attendance above 110%, at 1.5', value: payslipSource('monthly', { inputs: { workedHours: 202.4 } }).line.result.overtime });
+    expect(overtime).toMatchObject({ note: 'Attendance above 110%, at 1.5', value: payslipSource('monthly', { inputs: { workedHours: 202.4 }, rules: paying }).line.result.overtime });
     expect(overtime.value).toBeGreaterThan(0);
+  });
+
+  it('no overtime while the run doesn’t pay it (owner, 16 October 2026: "No overtime for now"): counts as full, no row', () => {
+    const c = payslipContent(payslipSource('monthly', { inputs: { workedHours: 202.4, softSkills: null, performance: null, clientSatisfaction: null } }), 'en');
+    expect(c.thisMonth!.cells[0].note).toBe('115.00%: counts as full (90% or more)');
+    expect(labels(c.earnings!.rows)).not.toContain('Overtime');
   });
 
   it('no-show and penalty days: a cell each, the no-show cut in the earnings, the penalty in the deductions', () => {

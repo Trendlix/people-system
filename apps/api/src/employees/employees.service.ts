@@ -56,7 +56,7 @@ export const PLACE = {
 const EMPLOYMENT = {
   ...PLACE,
   manager: { select: { id: true, employeeCode: true, fullNameEn: true } },
-  shift: { select: { id: true, code: true, startTime: true, endTime: true, workingDays: true } },
+  shift: { select: { id: true, code: true, startTime: true, endTime: true, hoursPerDay: true, workingDays: true } },
   // the newest signed contract (contracts module, 15 October 2026), and the newest ending whatever its status
   // (contracts review, 15 October 2026): a rejected one stays, with the CEO's note, until a new ending is started
   contracts: { where: { status: 'active' }, orderBy: { version: 'desc' }, take: 1, include: CONTRACT_INCLUDE },
@@ -92,7 +92,14 @@ export function employmentView(e: EmploymentRow, { seesEndings, ...ctx }: Employ
     jdAcknowledgedAt: fromDateOnly(jdAcknowledgedAt),
     endDate: fromDateOnly(endDate),
     officeDays: [...officeDays].sort((a, b) => a - b),
-    shift: shift && { id: shift.id, code: shift.code, startTime: fromTimeOfDay(shift.startTime), endTime: fromTimeOfDay(shift.endTime) },
+    // its hours to work a day: null for the whole window (owner, 16 October 2026: flexible shifts)
+    shift: shift && {
+      id: shift.id,
+      code: shift.code,
+      startTime: fromTimeOfDay(shift.startTime),
+      endTime: fromTimeOfDay(shift.endTime),
+      hoursPerDay: shift.hoursPerDay?.toNumber() ?? null,
+    },
     contract: contract ? contractView(contract, { ...ctx, workingDays: shift?.workingDays ?? null }) : null,
     ending: ending && seesEndings ? endingView(ending) : null,
   };

@@ -1,4 +1,4 @@
-import { phoneSplit, type EmploymentType, type Governorate, type TemplateLanguage } from '@trendlix/shared';
+import { isFlexibleShift, phoneSplit, shiftWorkHours, type EmploymentType, type Governorate, type TemplateLanguage } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import { arabicDayName, arabicMonths } from './engine/index.js';
 
@@ -149,14 +149,34 @@ export function printedDays(workingDays: readonly number[], language: PrintedLan
   return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
+/** Hours to work a day as printed: "9 working hours a day", "8.5 working hours a day"; in Arabic "9 ساعات عمل يوميًا". */
+function printedWorkHours(hours: number, language: PrintedLanguage): string {
+  const n = String(hours);
+  if (language === 'en') return `${n} working ${hours === 1 ? 'hour' : 'hours'} a day`;
+  // Arabic counts: one and two have their own words, three to ten a plural, more (and a half hour) the singular
+  const counted = hours === 1 ? 'ساعة عمل واحدة' : hours === 2 ? 'ساعتا عمل' : Number.isInteger(hours) && hours <= 10 ? `${n} ساعات عمل` : `${n} ساعة عمل`;
+  return `${counted} يوميًا`;
+}
+
 /**
  * A shift as printed: its times, then its working days (owner's request, 15 October 2026): "9:00 AM – 5:00 PM, Sunday
- * to Thursday"; in Arabic "من 9:00 ص إلى 5:00 م، من الأحد إلى الخميس". The times alone when it has no working days.
+ * to Thursday"; in Arabic "من 9:00 ص إلى 5:00 م، من الأحد إلى الخميس". The times alone when it has no working days. A
+ * flexible shift, fewer hours to work a day than its window (owner, 16 October 2026: "my company shift is to maintain 9
+ * hours within the shift window, its like flexible shift"), says its hours within the times: "9 working hours a day
+ * between 9:00 AM and 7:00 PM, Sunday to Thursday"; "9 ساعات عمل يوميًا بين 9:00 ص و7:00 م، من الأحد إلى الخميس".
  */
-export function printedShift(shift: { startTime: string; endTime: string; workingDays: readonly number[] }, language: PrintedLanguage): string {
+export function printedShift(shift: { startTime: string; endTime: string; hoursPerDay?: number | null; workingDays: readonly number[] }, language: PrintedLanguage): string {
   const [start, end] = [printedTime(shift.startTime, language), printedTime(shift.endTime, language)];
   const days = printedDays(shift.workingDays, language);
-  const times = language === 'ar' ? `من ${start} إلى ${end}` : `${start} – ${end}`;
+  const hours = isFlexibleShift(shift) ? shiftWorkHours(shift) : null;
+  const times =
+    hours !== null
+      ? language === 'ar'
+        ? `${printedWorkHours(hours, language)} بين ${start} و${end}`
+        : `${printedWorkHours(hours, language)} between ${start} and ${end}`
+      : language === 'ar'
+        ? `من ${start} إلى ${end}`
+        : `${start} – ${end}`;
   return days ? `${times}${language === 'ar' ? '،' : ','} ${days}` : times;
 }
 

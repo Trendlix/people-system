@@ -6,9 +6,12 @@ import {
   insuredWageOf,
   noShowHours,
   paidDaysIn,
+  isFlexibleShift,
   parseHours,
   payrollLine,
+  paysOvertime,
   shiftHours,
+  shiftWorkHours,
   type PayrollAllowance,
   type PayrollInputs,
   type PayrollTerms,
@@ -160,14 +163,30 @@ describe('payroll: attendance', () => {
     });
   });
 
-  it('pays overtime above 110% on the fixed part for the days paid at 1.5', () => {
+  it('pays overtime above 110% on the fixed part for the days paid at 1.5, when the rules pay it', () => {
+    const paying = { ...PAYROLL_RULE_DEFAULTS, payOvertime: true };
     // 324 of 270 is 120%: 9,600 × (1.20 − 1.10) × 1.5 = 1,440
-    expect(payrollLine(salaried, inputs({ workedHours: 324, expectedHours: 270 }))).toMatchObject({ attendanceRatio: 1.2, attendanceScore: 1, overtime: 1_440, earned: 13_440, monthlyTaxable: 12_120 });
+    expect(payrollLine(salaried, inputs({ workedHours: 324, expectedHours: 270 }), paying)).toMatchObject({ attendanceRatio: 1.2, attendanceScore: 1, overtime: 1_440, earned: 13_440, monthlyTaxable: 12_120 });
     // exactly 110%: none
-    expect(payrollLine(salaried, inputs({ workedHours: 297, expectedHours: 270 }))).toMatchObject({ attendanceRatio: 1.1, overtime: 0, earned: 12_000 });
+    expect(payrollLine(salaried, inputs({ workedHours: 297, expectedHours: 270 }), paying)).toMatchObject({ attendanceRatio: 1.1, overtime: 0, earned: 12_000 });
     // a joiner paid for 15 of 30 days, whose expected hours are the half month's: 162 of 135 is 120%, on the fixed part
     // for those days: 4,800 × 0.10 × 1.5 = 720
-    expect(payrollLine({ ...salaried, paidDays: 15 }, inputs({ workedHours: 162, expectedHours: 135 }))).toMatchObject({ fixed: 4_800, overtime: 720 });
+    expect(payrollLine({ ...salaried, paidDays: 15 }, inputs({ workedHours: 162, expectedHours: 135 }), paying)).toMatchObject({ fixed: 4_800, overtime: 720 });
+  });
+
+  it('pays no overtime while the rules don\'t, whatever the attendance (owner, 16 October 2026: "No overtime for now")', () => {
+    expect(PAYROLL_RULE_DEFAULTS.payOvertime).toBe(false);
+    // 120% attendance: still counts in full, with no overtime, by default and with the switch off
+    for (const rules of [undefined, { ...PAYROLL_RULE_DEFAULTS, payOvertime: false, overtimeAbovePercent: 100, overtimeRate: 2 }]) {
+      expect(payrollLine(salaried, inputs({ workedHours: 324, expectedHours: 270 }), rules)).toMatchObject({ attendanceRatio: 1.2, attendanceScore: 1, overtime: 0, earned: 12_000 });
+    }
+  });
+
+  it('pays overtime as before on rules copied before the switch existed: a missing switch reads as on', () => {
+    const { payOvertime: _, ...older } = PAYROLL_RULE_DEFAULTS;
+    expect(paysOvertime(older)).toBe(true);
+    expect(paysOvertime({ ...older, payOvertime: false })).toBe(false);
+    expect(payrollLine(salaried, inputs({ workedHours: 324, expectedHours: 270 }), older)).toMatchObject({ overtime: 1_440, earned: 13_440 });
   });
 
   it("doesn't count attendance without both hours, and says why", () => {
@@ -181,7 +200,7 @@ describe('payroll: attendance', () => {
   });
 
   it('follows the run\'s rules', () => {
-    const rules = { ...PAYROLL_RULE_DEFAULTS, attendanceGracePercent: 95, overtimeAbovePercent: 100, overtimeRate: 2 };
+    const rules = { ...PAYROLL_RULE_DEFAULTS, attendanceGracePercent: 95, payOvertime: true, overtimeAbovePercent: 100, overtimeRate: 2 };
     // 92% is now below the grace: 9,600 × 8% = 768
     expect(payrollLine(salaried, inputs({ workedHours: 248.4, expectedHours: 270 }), rules)).toMatchObject({ attendanceScore: 0.92, attendanceCut: 768 });
     // overtime from 100% at double: 9,600 × 0.05 × 2 = 960
@@ -321,6 +340,24 @@ describe('payroll: a working day\'s hours', () => {
     expect(shiftHours('22:00', '06:00')).toBe(8);
     expect(shiftHours('00:00', '23:59')).toBe(23 + 59 / 60);
     for (const [start, end] of [['09:00', '09:00'], ['9:00', '18:00'], ['09:00', '24:00'], ['', '18:00']]) expect(shiftHours(start, end)).toBeNull();
+  });
+
+  it('a shift\'s hours to work a day: as set when fewer than its window (flexible), else the whole window (owner, 16 October 2026)', () => {
+    // the MORNING shift: 9:00 AM to 7:00 PM, 9 hours to work within it
+    const morning = { startTime: '09:00', endTime: '19:00', hoursPerDay: 9 };
+    expect([shiftWorkHours(morning), isFlexibleShift(morning)]).toEqual([9, true]);
+    // a fixed shift: hours to work that fill the window, or none set, are the window
+    for (const hoursPerDay of [10, null, undefined]) {
+      expect([shiftWorkHours({ ...morning, hoursPerDay }), isFlexibleShift({ ...morning, hoursPerDay })]).toEqual([10, false]);
+    }
+    // past midnight: 10:00 PM to 6:00 AM is 8 hours; 7:30 to work within them
+    expect([shiftWorkHours({ startTime: '22:00', endTime: '06:00', hoursPerDay: 7.5 }), shiftWorkHours({ startTime: '22:00', endTime: '06:00' })]).toEqual([7.5, 8]);
+    // never more than the window; 0 or less isn't set
+    expect(shiftWorkHours({ ...morning, hoursPerDay: 11 })).toBe(10);
+    expect(shiftWorkHours({ ...morning, hoursPerDay: 0 })).toBe(10);
+    // times that can't be read: the hours set, else none
+    expect([shiftWorkHours({ startTime: '09:00', endTime: '09:00', hoursPerDay: 8 }), shiftWorkHours({ startTime: '09:00', endTime: '09:00' })]).toEqual([8, null]);
+    expect(isFlexibleShift({ startTime: '09:00', endTime: '09:00', hoursPerDay: 8 })).toBe(false);
   });
 
   it('a shift\'s day for each no-show day, half days too; none without either', () => {

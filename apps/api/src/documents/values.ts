@@ -93,8 +93,11 @@ export interface ValueSources {
     grade: { code: string; levelEn: string; levelAr: string | null } | null;
     /** The direct manager (an employee). */
     manager: { fullNameEn: string; fullNameAr: string } | null;
-    /** Its times as the database gives a TIME column (1970-01-01 at that time, UTC); its days 0 = Sunday … 6 = Saturday. */
-    shift: { startTime: Date; endTime: Date; workingDays: readonly number[] } | null;
+    /**
+     * Its times as the database gives a TIME column (1970-01-01 at that time, UTC); its hours to work a day (null or
+     * missing: the whole window); its days 0 = Sunday … 6 = Saturday.
+     */
+    shift: { startTime: Date; endTime: Date; hoursPerDay?: Decimal | null; workingDays: readonly number[] } | null;
     workArrangement: WorkArrangement;
   } | null;
   contract: {
@@ -222,7 +225,17 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
   const workArrangement = (lang: Lang) => (job ? ((lang === 'ar' ? WORK_ARRANGEMENT_LABELS_AR : LABELS.workArrangement)[job.workArrangement] ?? '') : '');
   // the employment's shift (a signed contract keeps only its code), with its times and working days
   const shift = (lang: Lang) =>
-    job?.shift ? printedShift({ startTime: fromTimeOfDay(job.shift.startTime), endTime: fromTimeOfDay(job.shift.endTime), workingDays: job.shift.workingDays }, lang) : '';
+    job?.shift
+      ? printedShift(
+          {
+            startTime: fromTimeOfDay(job.shift.startTime),
+            endTime: fromTimeOfDay(job.shift.endTime),
+            hoursPerDay: amount(job.shift.hoursPerDay),
+            workingDays: job.shift.workingDays,
+          },
+          lang,
+        )
+      : '';
   // none is a value too: "No probation" / "لا توجد فترة اختبار"
   const probation = (lang: Lang) => (c ? printedProbation(c.probationMonths, lang) : '');
   // the role's duties as written, with their formatting (owner's request, 15 October 2026), in whatever language HR

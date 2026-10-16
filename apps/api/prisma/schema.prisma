@@ -128,11 +128,18 @@ model Department {
   @@map("departments")
 }
 
+// A shift is a window (its start to its end) and the hours to work a day within it (owner, 16 October 2026, on the
+// MORNING shift of 9:00 AM to 7:00 PM: "my company shift is to maintain 9 hours within the shift window, its like
+// flexible shift"): fewer than the window, it is flexible, worked anywhere within it; empty, the whole window. In half
+// hours from 0.5, never more than the window (checked by the API and the database). Payroll counts a day of the shift
+// as these hours (the expected hours, a no-show day's hours); they are also the most attendance counts a day (owner, 16
+// October 2026: "maximum working hours to be recorded per day is 9 hours between checkin and check out").
 model Shift {
   id           String       @id @default(uuid()) @db.Uuid
   code         String       @unique // A, B
   startTime    DateTime     @map("start_time") @db.Time(0)
   endTime      DateTime     @map("end_time") @db.Time(0)
+  hoursPerDay  Decimal?     @map("hours_per_day") @db.Decimal(4, 2) // the hours to work a day; null: the whole window
   graceMinutes Int          @default(15) @map("grace_minutes")
   workingDays  Int[]        @default([0, 1, 2, 3, 4]) @map("working_days") @db.SmallInt // 0 = Sun … 6 = Sat
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
@@ -858,6 +865,7 @@ model PayrollSettings {
   dayDivisor             Int      @default(30) @map("day_divisor") // a month counts as this many days (day rates, part months)
   attendanceGracePercent Decimal  @default(90) @map("attendance_grace_percent") @db.Decimal(5, 2) // attendance from here on counts as full
   kpiGracePercent        Decimal  @default(80) @map("kpi_grace_percent") @db.Decimal(5, 2) // a KPI average from here on counts as full
+  payOvertime            Boolean  @default(false) @map("pay_overtime") // off from 16 October 2026 (owner: "No overtime for now")
   overtimeAbovePercent   Decimal  @default(110) @map("overtime_above_percent") @db.Decimal(5, 2) // overtime is paid for attendance above this
   overtimeRate           Decimal  @default(1.5) @map("overtime_rate") @db.Decimal(4, 2)
   noShowDayMultiplier    Decimal  @default(2) @map("no_show_day_multiplier") @db.Decimal(4, 2) // a no-show day costs this many days' pay

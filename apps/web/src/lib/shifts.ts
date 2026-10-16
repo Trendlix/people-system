@@ -1,0 +1,100 @@
+import { formatHours, isFlexibleShift, parseHours, shiftHours, shiftWorkHours, type ShiftTimes } from '@trendlix/shared';
+import { formatTime, parseTime } from './format';
+
+// A shift as the screens say it (owner, 16 October 2026, on the MORNING shift of 9:00 AM to 7:00 PM: "my company shift
+// is to maintain 9 hours within the shift window, its like flexible shift"): its window (start to end) and its hours to
+// work a day, which may be fewer than the window: then it is flexible, worked anywhere within it. The hours to work are
+// also the most attendance counts a day (owner, 16 October 2026: "maximum working hours to be recorded per day is 9
+// hours between checkin and check out"). Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+
+/** A time of day ("HH:mm") so many minutes after another, past midnight round the clock. */
+function minutesAfter(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = (((h * 60 + m + Math.round(minutes)) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** "9:00 AM – 7:00 PM · 9:00 hours, flexible"; a fixed shift "9:00 AM – 6:00 PM · 9:00 hours"; the times alone when its hours can't be told. */
+export function shiftTimesText(shift: ShiftTimes): string {
+  const times = `${formatTime(shift.startTime)} – ${formatTime(shift.endTime)}`;
+  const hours = shiftWorkHours(shift);
+  if (hours === null) return times;
+  return `${times} · ${formatHours(hours)} hours${isFlexibleShift(shift) ? ', flexible' : ''}`;
+}
+
+/** A shift's hours to work a day as the shifts list shows them: "9:00 a day"; "—" when they can't be told. */
+export function hoursADayText(shift: ShiftTimes): string {
+  const hours = shiftWorkHours(shift);
+  return hours === null ? '—' : `${formatHours(hours)} a day`;
+}
+
+/** What "Hours to work a day" says to start with: as set (9 → "9:00"), else empty (the whole window). */
+export const hoursToWorkShown = (hoursPerDay: number | null | undefined) => (typeof hoursPerDay === 'number' ? formatHours(hoursPerDay) : '');
+
+export const HOURS_TO_WORK_ERROR = 'Enter the hours to work a day as hours, e.g. 9 or 9:00, in half hours (8:30), or leave it empty for the whole shift.';
+
+/**
+ * "Hours to work a day" as typed, for the API: hours as 9, 9:00, 8:30 or 8.5 (Arabic-Indic digits too), in half hours
+ * from 0:30; "" → null (the whole window). NaN when it isn't that.
+ */
+export function hoursToWorkFrom(typed: string): number | null {
+  const latin = typed.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/٫/g, '.').trim();
+  if (latin === '') return null;
+  const hours = parseHours(latin);
+  return hours !== null && hours >= 0.5 && hours <= 24 && Number.isInteger(hours * 2) ? hours : NaN;
+}
+
+/** What the shift form's hint says about a shift as typed. */
+export interface ShiftHint {
+  /** True when the hours to work are more than the window: what the API will refuse. */
+  problem: boolean;
+  text: string;
+}
+
+/**
+ * The shift form's live hint: a fixed shift (hours to work the whole window, or not set) "Check-in after 9:15 AM counts
+ * as late."; a flexible one (fewer hours than the window) "Flexible: 9:00 hours anywhere between 9:00 AM and 7:00 PM.
+ * Check-in after 10:15 AM leaves too little of the window to work them." (the latest start is the end less the hours,
+ * plus the grace minutes). Times "HH:mm"; the hours to work null for the whole window. The general rule while the times
+ * can't be read.
+ */
+export function shiftHint(shift: { startTime: string | null; endTime: string | null; graceMinutes: number | null; hoursPerDay: number | null }): ShiftHint {
+  const grace = shift.graceMinutes !== null && shift.graceMinutes >= 0 ? shift.graceMinutes : 0;
+  const window = shift.startTime && shift.endTime ? shiftHours(shift.startTime, shift.endTime) : null;
+  if (!shift.startTime || !shift.endTime || window === null) {
+    return { problem: false, text: 'Check-in after the start time plus the grace minutes counts as late.' };
+  }
+  const hours = shift.hoursPerDay ?? window;
+  if (hours > window) return { problem: true, text: `The hours to work can't be more than the shift's window, ${formatHours(window)}.` };
+  if (hours === window) return { problem: false, text: `Check-in after ${formatTime(minutesAfter(shift.startTime, grace))} counts as late.` };
+  const latest = minutesAfter(shift.endTime, -hours * 60 + grace);
+  return {
+    problem: false,
+    text: `Flexible: ${formatHours(hours)} hours anywhere between ${formatTime(shift.startTime)} and ${formatTime(shift.endTime)}. Check-in after ${formatTime(latest)} leaves too little of the window to work them.`,
+  };
+}
+
+/** The shift form's fields as typed: the times on the 12-hour clock ("9:00 AM"), the grace minutes, the hours to work. */
+export interface TypedShift {
+  startTime: string;
+  endTime: string;
+  graceMinutes: string;
+  hoursPerDay: string;
+}
+
+/**
+ * The live hint for the shift form as typed: shiftHint once the times can be read, or what is wrong with the hours to
+ * work a day.
+ */
+export function typedShiftHint(typed: TypedShift): ShiftHint {
+  const hours = hoursToWorkFrom(typed.hoursPerDay);
+  if (Number.isNaN(hours)) return { problem: true, text: HOURS_TO_WORK_ERROR };
+  const grace = typed.graceMinutes.trim() === '' ? 0 : Number(typed.graceMinutes);
+  return shiftHint({
+    startTime: parseTime(typed.startTime) || null,
+    endTime: parseTime(typed.endTime) || null,
+    graceMinutes: Number.isFinite(grace) ? grace : 0,
+    hoursPerDay: hours,
+  });
+}
+

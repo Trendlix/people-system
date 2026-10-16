@@ -1,4 +1,4 @@
-import { expectedHoursOf, formatHours, lawRatesFor, type LawRates, type PayrollInputs, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
+import { expectedHoursOf, formatHours, lawRatesFor, paysOvertime, type LawRates, type PayrollInputs, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
 import type { PayrollLineView } from '../../../../lib/types';
 import { formatEgp, formatPercent } from '../../employees/[id]/contracts/salary';
 
@@ -10,7 +10,9 @@ import { formatEgp, formatPercent } from '../../employees/[id]/contracts/salary'
 // with no KPI given the variable part isn't cut (owner's decisions, 16 October 2026). The KPIs a line has are listed
 // with its KPI score, as the inputs grid doesn't show them (the KPIs module will fill them). The expected hours say
 // where they came from: as HR typed them, or the shift's working days less the holidays (owner's request, 16 October
-// 2026, Payroll Setup). Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// 2026, Payroll Setup), at the shift's hours to work a day (owner, 16 October 2026: "my company shift is to maintain 9
+// hours within the shift window"). Overtime says "not paid" while the run's rules don't pay it (owner, 16 October 2026:
+// "No overtime for now"). Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 export interface BreakdownRow {
   key: string;
@@ -40,8 +42,8 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
 /**
  * Where a line's expected hours came from, and what came out of them: as HR typed them, or the shift's working days in
- * the days employed less the holidays, at its hours a day (owner's request, 16 October 2026); less the no-show days'
- * hours. Nothing to say without either.
+ * the days employed less the holidays, at its hours to work a day (owner's request, 16 October 2026); less the no-show
+ * days' hours. Nothing to say without either.
  */
 export function expectedHoursNote(t: PayrollTerms, i: PayrollInputs, absent: number): string | undefined {
   const less = absent > 0 ? `less ${formatHours(absent)} for the no-show ${i.noShowDays === 1 ? 'day' : 'days'}` : null;
@@ -49,7 +51,9 @@ export function expectedHoursNote(t: PayrollTerms, i: PayrollInputs, absent: num
   if (t.expectedHours === null || t.expectedHours === undefined) return undefined;
   const d = t.expectedDays;
   const from =
-    d && t.hoursPerDay ? `${plural(d.workingDays, 'working day')} of the shift${d.holidays ? ` less ${plural(d.holidays, 'holiday')}` : ''}, at ${formatHours(t.hoursPerDay)} a day` : 'the shift';
+    d && t.hoursPerDay
+      ? `${plural(d.workingDays, 'working day')} of the shift${d.holidays ? ` less ${plural(d.holidays, 'holiday')}` : ''}, at its ${formatHours(t.hoursPerDay)} hours to work a day`
+      : 'the shift';
   return `${formatHours(t.expectedHours)} expected from ${from}${less ? `; ${less}` : ''}`;
 }
 
@@ -125,7 +129,7 @@ function monthlySteps({ terms: t, inputs: i, result: r }: Line, rules: PayrollRu
       label: 'Overtime',
       value: formatEgp(r.overtime),
       kind: 'add',
-      note: `For attendance above ${rules.overtimeAbovePercent}%, at ${rules.overtimeRate}×`,
+      note: paysOvertime(rules) ? `For attendance above ${rules.overtimeAbovePercent}%, at ${rules.overtimeRate}×` : 'Overtime: not paid',
     },
   ];
 }

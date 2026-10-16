@@ -213,6 +213,22 @@ describe('the added fields', () => {
     expect(value(full('ar', days([0, 1, 2], time('12:00'), time('00:30'))), 'shift')).toBe('من 12:00 م إلى 12:30 ص، من الأحد إلى الثلاثاء');
   });
 
+  it('{{shift}}: a flexible shift says its hours to work a day within its times; hours that fill the window print as before (owner, 16 October 2026)', () => {
+    const shift = (hoursPerDay: number | null, workingDays = [0, 1, 2, 3, 4]) => ({
+      shift: { startTime: time('09:00'), endTime: time('19:00'), hoursPerDay: hoursPerDay === null ? null : new Prisma.Decimal(hoursPerDay), workingDays },
+    });
+    // the MORNING shift: 9 hours anywhere between 9:00 AM and 7:00 PM
+    const ar = '9 ساعات عمل يوميًا بين 9:00 ص و7:00 م، من الأحد إلى الخميس';
+    const en = '9 working hours a day between 9:00 AM and 7:00 PM, Sunday to Thursday';
+    expect(forms('shift', shift(9))).toEqual([ar, en, ar, ar, en]);
+    expect(value(full('en', shift(8.5)), 'shift')).toBe('8.5 working hours a day between 9:00 AM and 7:00 PM, Sunday to Thursday');
+    expect(value(full('ar', shift(8.5)), 'shift')).toBe('8.5 ساعة عمل يوميًا بين 9:00 ص و7:00 م، من الأحد إلى الخميس');
+    expect(value(full('ar', shift(2, [])), 'shift')).toBe('ساعتا عمل يوميًا بين 9:00 ص و7:00 م');
+    expect(value(full('en', shift(1, [])), 'shift')).toBe('1 working hour a day between 9:00 AM and 7:00 PM');
+    // the whole window, set or not: the times, as before
+    for (const hours of [10, null]) expect(value(full('en', shift(hours)), 'shift')).toBe('9:00 AM – 7:00 PM, Sunday to Thursday');
+  });
+
   it('{{shift}}: working days that don’t follow each other are listed; two or one are named; none leaves the times', () => {
     const days = (workingDays: number[]) => ({ shift: { startTime: time('10:00'), endTime: time('19:00'), workingDays } });
     expect(forms('shift', days([4, 0, 2]))).toEqual([

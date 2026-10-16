@@ -148,10 +148,10 @@ describe('a line’s breakdown', () => {
       breakdown({ ...line, terms: t, inputs: { ...inputs, ...i }, result: { ...result, ...r } }, PAYROLL_RULE_DEFAULTS).find((s) => s.key === 'hours');
     expect(hoursOf(fromShift, { expectedHours: null })).toMatchObject({
       value: '238:00 of 160:00',
-      note: '168:00 expected from 22 working days of the shift less 1 holiday, at 8:00 a day; less 8:00 for the no-show day',
+      note: '168:00 expected from 22 working days of the shift less 1 holiday, at its 8:00 hours to work a day; less 8:00 for the no-show day',
     });
     expect(hoursOf({ ...fromShift, expectedDays: { workingDays: 21, holidays: 0 } }, { expectedHours: null, noShowDays: null }, { absentHours: 0 })?.note).toBe(
-      '168:00 expected from 21 working days of the shift, at 8:00 a day',
+      '168:00 expected from 21 working days of the shift, at its 8:00 hours to work a day',
     );
     // typed over: HR's figure, as typed
     expect(hoursOf(fromShift, {})).toMatchObject({ value: '238:00 of 272:00', note: '280:00 expected as typed, less 8:00 for the no-show day' });
@@ -199,5 +199,20 @@ describe('the figures', () => {
     expect(percentText(1)).toBe('100%');
     expect(cutText(0)).toBe('EGP 0.00');
     expect(cutText(1100)).toBe('−EGP 1,100.00');
+  });
+});
+
+describe('breakdown: overtime (owner, 16 October 2026: "No overtime for now")', () => {
+  const overtimeOf = (rules: Parameters<typeof breakdown>[1]) => breakdown(line, rules).find((r) => r.key === 'overtime');
+
+  it('says it isn’t paid while the run’s rules don’t pay it', () => {
+    expect(overtimeOf(PAYROLL_RULE_DEFAULTS)).toMatchObject({ value: 'EGP 0.00', note: 'Overtime: not paid' });
+  });
+
+  it('says when it is paid, as on a run whose rules were copied before the switch', () => {
+    expect(overtimeOf({ ...PAYROLL_RULE_DEFAULTS, payOvertime: true })?.note).toBe('For attendance above 110%, at 1.5×');
+    // as copied before the switch existed: none
+    const older = { ...PAYROLL_RULE_DEFAULTS, payOvertime: undefined };
+    expect(overtimeOf(older)?.note).toBe('For attendance above 110%, at 1.5×');
   });
 });

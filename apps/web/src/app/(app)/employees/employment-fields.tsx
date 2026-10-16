@@ -8,7 +8,8 @@ import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
 import { Select } from '@/components/select';
-import { formatDate, formatTime } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { shiftTimesText } from '@/lib/shifts';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
 import { statusField } from './employment-status';
@@ -339,7 +340,7 @@ export function EmploymentFields({
             <option value="">No shift</option>
             {pickers.shifts.map((s) => (
               <option key={s.id} value={s.id}>
-                Shift {s.code} · {formatTime(s.startTime)} – {formatTime(s.endTime)}
+                Shift {s.code} · {shiftTimesText(s)}
               </option>
             ))}
           </Select>

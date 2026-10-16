@@ -6,6 +6,7 @@
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import { timeFrom } from '@/lib/form-data';
+import { HOURS_TO_WORK_ERROR, hoursToWorkFrom } from '@/lib/shifts';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 
@@ -138,7 +139,10 @@ export async function deleteGrade(id: string, _prev: FormState, fd: FormData): P
 
 // ---------- shifts ----------
 
-/** The shift for the API. Times are typed as 12-hour ("9:00 AM") and sent as HH:mm; problems go in `errors`. */
+/**
+ * The shift for the API. Times are typed as 12-hour ("9:00 AM") and sent as HH:mm; the hours to work a day as hours (9,
+ * 9:00, 8:30), empty for the whole window (null; owner, 16 October 2026: flexible shifts); problems go in `errors`.
+ */
 const shiftBody = (fd: FormData, errors: string[]) => {
   const time = (key: string, label: string) => {
     const value = timeFrom(fd, key, label, errors);
@@ -146,10 +150,13 @@ const shiftBody = (fd: FormData, errors: string[]) => {
     return value;
   };
   const grace = text(fd, 'graceMinutes').trim();
+  const hoursPerDay = hoursToWorkFrom(text(fd, 'hoursPerDay'));
+  if (Number.isNaN(hoursPerDay)) errors.push(HOURS_TO_WORK_ERROR);
   return {
     code: text(fd, 'code'),
     startTime: time('startTime', 'start time'),
     endTime: time('endTime', 'end time'),
+    hoursPerDay,
     graceMinutes: grace === '' ? undefined : Number(grace),
     workingDays: fd.getAll('workingDays').map(Number),
   };

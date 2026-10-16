@@ -69,7 +69,7 @@ const rosterSelect = (from: Date, to: Date) =>
     endDate: true,
     department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
     jobTitle: { select: { titleEn: true } },
-    shift: { select: { startTime: true, endTime: true, workingDays: true } },
+    shift: { select: { startTime: true, endTime: true, hoursPerDay: true, workingDays: true } },
     employee: { select: { id: true, employeeCode: true, fullNameEn: true, socialInsured: true, insuranceComprehensiveWage: true } },
     // signed versions (active, superseded or ended) that may be in force in the month
     contracts: {
@@ -97,7 +97,12 @@ function rosterEmployment(e: EmploymentRow): RosterEmployment {
     endDate: fromDateOnly(e.endDate),
     department: e.department,
     jobTitle: e.jobTitle?.titleEn ?? null,
-    shift: e.shift && { startTime: fromTimeOfDay(e.shift.startTime), endTime: fromTimeOfDay(e.shift.endTime), workingDays: e.shift.workingDays },
+    shift: e.shift && {
+      startTime: fromTimeOfDay(e.shift.startTime),
+      endTime: fromTimeOfDay(e.shift.endTime),
+      hoursPerDay: e.shift.hoursPerDay?.toNumber() ?? null,
+      workingDays: e.shift.workingDays,
+    },
     employee: { ...e.employee, insuranceComprehensiveWage: e.employee.insuranceComprehensiveWage?.toNumber() ?? null },
     contracts: e.contracts.map((c) => ({
       id: c.id,

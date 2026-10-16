@@ -49,7 +49,7 @@ const EMPLOYMENT = {
   // the grade's level, the manager, the shift and the work arrangement for their tags (owner's request, 15 October 2026)
   grade: { select: { code: true, levelEn: true, levelAr: true } },
   manager: { select: { fullNameEn: true, fullNameAr: true } },
-  shift: { select: { startTime: true, endTime: true, workingDays: true } },
+  shift: { select: { startTime: true, endTime: true, hoursPerDay: true, workingDays: true } },
   workArrangement: true,
   contracts: { orderBy: { version: 'desc' }, include: { allowances: { select: { nameEn: true, nameAr: true, amount: true }, orderBy: ALLOWANCE_ORDER } } },
   endings: {

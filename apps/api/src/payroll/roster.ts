@@ -3,7 +3,7 @@ import {
   paidDaysIn,
   shiftDaysIn,
   shiftExpectedHours,
-  shiftHours,
+  shiftWorkHours,
   type EmploymentType,
   type LawRates,
   type PayBasis,
@@ -18,10 +18,12 @@ import { firstDay, lastDay } from './months.js';
 // its last day, not ended before its first) whose person has a signed contract in force in the month, taken as far as
 // the employment ran. With two (a renewal starting mid-month) the later one's terms are paid for the whole month. The
 // others are left out, with the reason, for HR to see. A working day's hours are the employment's shift's, what a
-// no-show day takes out of the expected hours (owner's decision, 16 October 2026). The month's expected hours of
-// someone paid monthly are the shift's too (owner's request, 16 October 2026, Payroll Setup): its working days within
-// the days employed in the month, less the official holidays on them, × its hours a day; none without a shift, nor for
-// pay by the hour. The pay counts them unless HR types the expected hours.
+// no-show day takes out of the expected hours (owner's decision, 16 October 2026): its hours to work a day, else its
+// whole window (owner, 16 October 2026: "my company shift is to maintain 9 hours within the shift window, its like
+// flexible shift"). The month's expected hours of someone paid monthly are the shift's too (owner's request, 16 October
+// 2026, Payroll Setup): its working days within the days employed in the month, less the official holidays on them, ×
+// those hours a day; none without a shift, nor for pay by the hour. The pay counts them unless HR types the expected
+// hours.
 
 /** An employment as the roster reads it, with its signed contracts that may be in force in the month. */
 export interface RosterEmployment {
@@ -31,8 +33,11 @@ export interface RosterEmployment {
   endDate: string | null;
   department: { nameEn: string; parent: { nameEn: string } | null } | null;
   jobTitle: string | null;
-  /** The employment's shift: its times, "HH:mm", and its working days, 0 = Sunday … 6 = Saturday; null without one. */
-  shift: { startTime: string; endTime: string; workingDays: readonly number[] } | null;
+  /**
+   * The employment's shift: its times, "HH:mm", its hours to work a day (null: the whole window) and its working days,
+   * 0 = Sunday … 6 = Saturday; null without one.
+   */
+  shift: { startTime: string; endTime: string; hoursPerDay?: number | null; workingDays: readonly number[] } | null;
   employee: {
     id: string;
     employeeCode: string;
@@ -136,7 +141,8 @@ export function roster(
 
     const allowances = contract.allowances.map((a) => ({ name: a.nameEn, amount: a.amount, taxable: a.taxable, insured: a.insured }));
     const contractTotal = (cents(contract.grossSalary) + allowances.reduce((sum, a) => sum + cents(a.amount), 0)) / 100;
-    const hoursPerDay = e.shift ? shiftHours(e.shift.startTime, e.shift.endTime) : null;
+    // the shift's hours to work a day, else its window
+    const hoursPerDay = e.shift ? shiftWorkHours(e.shift) : null;
     lines.push({
       employeeId: p.id,
       employmentId: e.id,

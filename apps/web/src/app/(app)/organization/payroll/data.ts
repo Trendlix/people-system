@@ -4,8 +4,9 @@ import { cache } from 'react';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
 import type { ContractSettings, Holiday, PayrollSettingsView, Shift } from '@/lib/types';
 
-// What Payroll Setup reads (owner's request, 16 October 2026), each once a request however many sections use it. An
-// API from before a part answers 404 ("not available yet"): that section says so and the others still show.
+// What Payroll Setup and the Holidays tab read (owner's requests, 16 October 2026), each once a request however many
+// sections use it. An API from before a part answers 404 ("not available yet"): that section says so and the others
+// still show.
 
 export type Loaded<T> = { kind: 'ok'; value: T } | { kind: 'unavailable' } | { kind: 'failed'; message: string };
 
@@ -36,5 +37,5 @@ export const loadContractDefaults = cache(() => load<ContractSettings>('/contrac
 /** GET /payroll/holidays?year=: the year's official holidays, in date order. */
 export const loadHolidays = cache((year: number) => load<Holiday[]>(`/payroll/holidays?year=${year}`));
 
-/** GET /shifts: their working days and hours, for the Working Days table. */
+/** GET /shifts: their working days, times and hours to work a day, for the Holidays tab's Working Days table. */
 export const loadShifts = cache(() => load<Shift[]>('/shifts'));

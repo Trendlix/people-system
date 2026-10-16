@@ -1,10 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
 
-// The year's official holidays (owner's request, 16 October 2026, Payroll Setup): a day and its name in English, its
-// name in Arabic if HR gives one. Dates YYYY-MM-DD; an empty Arabic name clears it.
+// The year's official holidays (owner's request, 16 October 2026; Organization → Holidays since the owner's "make
+// holiday a separate tab" the same day): a day and its name in English, its name in Arabic if HR gives one. Dates
+// YYYY-MM-DD; an empty Arabic name clears it. A year's list can be imported from a file too (owner's request, 16 October
+// 2026: "allow me to import yearly holiday list"): previewed, then confirmed with the file's fingerprint.
 
 /** Present (even as null) means "change it"; for fields that cannot be empty, null is then refused. */
 const Sent = () => ValidateIf((_o, v) => v !== undefined);
@@ -54,4 +56,15 @@ export class HolidaysQueryDto {
   @Min(HOLIDAY_YEARS.from, { message: YEAR_MESSAGE })
   @Max(HOLIDAY_YEARS.to, { message: YEAR_MESSAGE })
   year?: number;
+}
+
+const PREVIEW_FIRST = 'Preview the file before importing it.';
+
+/**
+ * Confirming an import (POST /payroll/holidays/import, with the file again): the fingerprint the preview answered, so
+ * what is imported is the file that was previewed.
+ */
+export class ConfirmHolidayImportDto {
+  @Matches(/^[0-9a-f]{64}$/, { message: PREVIEW_FIRST })
+  fingerprint: string;
 }

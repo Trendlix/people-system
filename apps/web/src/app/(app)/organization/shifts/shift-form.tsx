@@ -1,13 +1,23 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
 import { formatTime } from '@/lib/format';
+import { hoursToWorkShown, typedShiftHint, type TypedShift } from '@/lib/shifts';
 import type { FormState, Shift } from '@/lib/types';
 
+// A shift: its window (starts, ends), the hours to work a day within it, the grace minutes and the working days. The
+// hours to work (owner, 16 October 2026, on the MORNING shift of 9:00 AM to 7:00 PM: "my company shift is to maintain 9
+// hours within the shift window, its like flexible shift"): fewer than the window, the shift is flexible, worked anywhere
+// within it; empty, the whole window. They are also the most attendance counts a day (owner, 16 October 2026: "maximum
+// working hours to be recorded per day is 9 hours between checkin and check out"). The hint under the times follows what
+// is typed: when check-in counts as late, or for a flexible shift the latest check-in that leaves its hours.
+
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const FIELDS = ['startTime', 'endTime', 'graceMinutes', 'hoursPerDay'] as const;
 
 export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: FormData) => Promise<FormState>; shift?: Shift }) {
   const [state, formAction] = useActionState(action, {});
@@ -16,9 +26,23 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
   const days = state.values
     ? new Set((Array.isArray(typedDays) ? typedDays : typedDays ? [typedDays] : []).map(Number))
     : new Set(shift?.workingDays ?? [0, 1, 2, 3, 4]);
+  const shown: TypedShift = {
+    startTime: valueOf(state, 'startTime', formatTime(shift?.startTime ?? '09:00')),
+    endTime: valueOf(state, 'endTime', formatTime(shift?.endTime ?? '18:00')),
+    graceMinutes: valueOf(state, 'graceMinutes', String(shift?.graceMinutes ?? 15)),
+    hoursPerDay: valueOf(state, 'hoursPerDay', hoursToWorkShown(shift?.hoursPerDay)),
+  };
+  // what is typed now, for the hint; the fields themselves keep their own text
+  const [typed, setTyped] = useState<TypedShift>(shown);
+  const hint = typedShiftHint(typed);
+
+  function onInput(e: React.FormEvent<HTMLFormElement>) {
+    const fd = new FormData(e.currentTarget);
+    setTyped(Object.fromEntries(FIELDS.map((k) => [k, String(fd.get(k) ?? '')])) as unknown as TypedShift);
+  }
 
   return (
-    <form action={formAction} className="card max-w-xl space-y-5 p-6">
+    <form action={formAction} onInput={onInput} className="card max-w-xl space-y-5 p-6">
       <FormErrors errors={state.errors} />
       <div className="max-w-40">
         <label htmlFor={fid('code')} className="label">
@@ -26,18 +50,37 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
         </label>
         <input id={fid('code')} name="code" required maxLength={10} placeholder="e.g. A" defaultValue={valueOf(state, 'code', shift?.code)} className="input uppercase" />
       </div>
-      <div className="grid gap-5 sm:grid-cols-3">
+      <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <label htmlFor={fid('startTime')} className="label">
             Starts
           </label>
-          <TimeInput id={fid('startTime')} name="startTime" required defaultValue={valueOf(state, 'startTime', formatTime(shift?.startTime ?? '09:00'))} />
+          <TimeInput id={fid('startTime')} name="startTime" required defaultValue={shown.startTime} aria-describedby={fid('hint')} />
         </div>
         <div>
           <label htmlFor={fid('endTime')} className="label">
             Ends
           </label>
-          <TimeInput id={fid('endTime')} name="endTime" required defaultValue={valueOf(state, 'endTime', formatTime(shift?.endTime ?? '18:00'))} />
+          <TimeInput id={fid('endTime')} name="endTime" required defaultValue={shown.endTime} aria-describedby={fid('hint')} />
+        </div>
+        <div>
+          <label htmlFor={fid('hoursPerDay')} className="label">
+            Hours to work a day
+          </label>
+          <input
+            id={fid('hoursPerDay')}
+            name="hoursPerDay"
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="Whole shift"
+            maxLength={5}
+            defaultValue={shown.hoursPerDay}
+            aria-describedby={`${fid('hoursPerDay-hint')} ${fid('hint')}`}
+            className="input tabular-nums"
+          />
+          <p id={fid('hoursPerDay-hint')} className="hint">
+            As 9 or 9:00, in half hours. Empty: the whole shift. Fewer: flexible. Also the most hours attendance counts a day.
+          </p>
         </div>
         <div>
           <label htmlFor={fid('graceMinutes')} className="label">
@@ -49,12 +92,15 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
             type="number"
             min={0}
             max={120}
-            defaultValue={valueOf(state, 'graceMinutes', String(shift?.graceMinutes ?? 15))}
+            defaultValue={shown.graceMinutes}
+            aria-describedby={fid('hint')}
             className="input"
           />
         </div>
       </div>
-      <p className="hint -mt-3">Check-in after the start time plus the grace minutes counts as late.</p>
+      <p id={fid('hint')} aria-live="polite" className={`hint -mt-2 ${hint.problem ? 'text-danger' : ''}`}>
+        {hint.text}
+      </p>
       <fieldset>
         <legend className="label">Working days</legend>
         <div className="flex flex-wrap gap-2">

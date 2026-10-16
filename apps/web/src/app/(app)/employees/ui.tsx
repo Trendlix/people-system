@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { LABELS, STANDING_LABELS, type EmployeeStatus, type Standing } from '@trendlix/shared';
-import { formatDate, formatTime } from '@/lib/format';
+import { LABELS, STANDING_LABELS, type EmployeeStatus, type ShiftTimes, type Standing } from '@trendlix/shared';
+import { formatDate } from '@/lib/format';
+import { shiftTimesText } from '@/lib/shifts';
 import { hasRole } from '@/lib/roles';
 import type { EmployeeProfile, SessionUser } from '@/lib/types';
 import { BackLink, DAY_NAMES, Empty, Loading } from '../organization/ui';
@@ -78,9 +79,9 @@ export function gradeLabel(grade: { code: string; levelEn: string }): string {
   return `${grade.code} · ${grade.levelEn}`;
 }
 
-/** "A · 9:00 AM – 6:00 PM" */
-export function shiftLabel(shift: { code: string; startTime: string; endTime: string }): string {
-  return `${shift.code} · ${formatTime(shift.startTime)} – ${formatTime(shift.endTime)}`;
+/** "A · 9:00 AM – 6:00 PM · 9:00 hours"; a flexible shift "MORNING · 9:00 AM – 7:00 PM · 9:00 hours, flexible". */
+export function shiftLabel(shift: { code: string } & ShiftTimes): string {
+  return `${shift.code} · ${shiftTimesText(shift)}`;
 }
 
 /** "Hybrid · in the office on Sun, Tue" */

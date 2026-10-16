@@ -19,6 +19,8 @@ import { assertTestDatabase } from './test-env.js';
 // holiday is invented.
 
 const RUN = Date.now().toString(36).toLowerCase();
+/** A flexible shift of this run's: 9 hours to work within 9:00 AM to 7:00 PM. */
+const FLEXIBLE = `FX${RUN.slice(-6).toUpperCase()}`;
 const ONLY_SUPER_ADMIN_DELETES = 'Only a Super Admin can delete records.';
 const CURRENT = todayInCairo().slice(0, 7);
 /** The run's month: last month. */
@@ -45,6 +47,7 @@ interface Line {
 
 interface Run {
   id: string;
+  rules: Record<string, unknown>;
   lines: Line[];
 }
 
@@ -130,7 +133,8 @@ describe('Payroll Setup (e2e)', () => {
     await prisma.payrollRun.deleteMany();
     await prisma.employee.deleteMany({ where: { id: { in: hired } } });
     await prisma.holiday.deleteMany();
-    await prisma.payrollSettings.update({ where: { id: 1 }, data: { payday: null } });
+    await prisma.shift.deleteMany({ where: { code: FLEXIBLE } });
+    await prisma.payrollSettings.update({ where: { id: 1 }, data: { payday: null, payOvertime: false } });
     await prisma.contractSettings.update({ where: { id: 1 }, data: { basicPercentDefault: 80 } });
     await app.close();
   });
@@ -347,6 +351,117 @@ describe('Payroll Setup (e2e)', () => {
     });
   });
 
+  // a shift's hours to work a day (owner, 16 October 2026: "my company shift is to maintain 9 hours within the shift
+  // window, its like flexible shift"), the most attendance counts a day ("maximum working hours to be recorded per day
+  // is 9 hours between checkin and check out") and no overtime for now ("No overtime for now")
+  describe('a flexible shift, the most hours counted a day, and overtime', () => {
+    let run: Run;
+    let flexible: Person;
+    /** The flexible shift's working days in the run's month, and the holidays on them. */
+    let workingDays: number;
+    let holidaysOn: number;
+
+    const lineOf = (r: Run, p: Person) => r.lines.find((l) => l.employeeId === p.id)!;
+    const refresh = async () => (run = (await api().post(`/api/payroll/runs/${run.id}/refresh`).set('Cookie', hr).expect(200)).body as Run);
+    const patchLine = async (p: Person, inputs: object) =>
+      (run = (await api().patch(`/api/payroll/runs/${run.id}/lines`).set('Cookie', hr).send({ lines: [{ id: lineOf(run, p).id, inputs }] }).expect(200)).body as Run);
+
+    beforeAll(async () => {
+      const shift = (
+        await api()
+          .post('/api/shifts')
+          .set('Cookie', hr)
+          .send({ code: FLEXIBLE, startTime: '09:00', endTime: '19:00', hoursPerDay: 9, workingDays: [0, 1, 2, 3, 4] })
+          .expect(201)
+      ).body as { id: string };
+      flexible = await hire('Flexible', { shiftId: shift.id });
+      await signed(flexible);
+      const days = daysOn([0, 1, 2, 3, 4], firstDay(MONTH), lastDay(MONTH));
+      const onFile = ((await holidays(`?year=${MONTH.slice(0, 4)}`).expect(200)).body as Holiday[]).map((h) => h.date);
+      workingDays = days.length;
+      holidaysOn = days.filter((d) => onFile.includes(d)).length;
+      // the month's draft: made here unless the tests before made it
+      const runs = (await api().get('/api/payroll/runs').set('Cookie', hr).expect(200)).body as { id: string; month: string }[];
+      const made = runs.find((r) => r.month === MONTH);
+      run = made
+        ? ((await api().get(`/api/payroll/runs/${made.id}`).set('Cookie', hr).expect(200)).body as Run)
+        : ((await api().post('/api/payroll/runs').set('Cookie', hr).send({ month: MONTH }).expect(201)).body as Run);
+      await refresh();
+    });
+
+    it('a run counts a day of the shift as its hours to work, not its window: the expected hours and a no-show day’s hours', async () => {
+      const expected = (workingDays - holidaysOn) * 9;
+      expect(lineOf(run, flexible).terms).toMatchObject({ hoursPerDay: 9, expectedHours: expected, expectedDays: { workingDays, holidays: holidaysOn } });
+      // a no-show day takes 9 hours out of the expected hours, not the window's 10
+      await patchLine(flexible, { workedHours: expected - 9 - 9, noShowDays: 1 });
+      expect(lineOf(run, flexible).result).toMatchObject({ absentHours: 9, attendanceRatio: fraction((expected - 18) / (expected - 9)), warnings: [] });
+    });
+
+    it('warns when the worked hours are more than 9 a day on the shift’s days, without cutting them', async () => {
+      const most = (workingDays - holidaysOn - 1) * 9;
+      await patchLine(flexible, { workedHours: most + 1 });
+      const line = lineOf(run, flexible);
+      expect(line.inputs.workedHours).toBe(most + 1);
+      expect(line.result.warnings).toEqual([
+        `Worked hours are more than 9:00 a day on the shift's working days (${most}:00 this month): attendance will count at most 9:00 a day`,
+      ]);
+      await patchLine(flexible, { workedHours: most });
+      expect(lineOf(run, flexible).result.warnings).toEqual([]);
+    });
+
+    it('the shift’s hours changed count once the draft is refreshed', async () => {
+      const shift = (await api().get('/api/shifts').set('Cookie', hr).expect(200)).body.find((x: { code: string }) => x.code === FLEXIBLE) as { id: string };
+      await api().patch(`/api/shifts/${shift.id}`).set('Cookie', hr).send({ hoursPerDay: 8 }).expect(200);
+      expect(lineOf(run, flexible).terms.hoursPerDay).toBe(9);
+      await refresh();
+      expect(lineOf(run, flexible).terms).toMatchObject({ hoursPerDay: 8, expectedHours: (workingDays - holidaysOn) * 8 });
+      expect(lineOf(run, flexible).result.absentHours).toBe(8);
+      // none set: the whole window
+      await api().patch(`/api/shifts/${shift.id}`).set('Cookie', hr).send({ hoursPerDay: null }).expect(200);
+      await refresh();
+      expect(lineOf(run, flexible).terms).toMatchObject({ hoursPerDay: 10, expectedHours: (workingDays - holidaysOn) * 10 });
+      await api().patch(`/api/shifts/${shift.id}`).set('Cookie', hr).send({ hoursPerDay: 9 }).expect(200);
+      await refresh();
+    });
+
+    it('Pay overtime is off to start with; HR and Admin turn it on and off, each change in the audit log', async () => {
+      const since = (await prisma.auditLog.aggregate({ _max: { id: true } }))._max.id ?? BigInt(0);
+      expect((await api().get('/api/payroll/settings').set('Cookie', finance).expect(200)).body).toMatchObject({ payOvertime: false, overtimeAbovePercent: 110, overtimeRate: 1.5 });
+      expect(run.rules).toMatchObject({ payOvertime: false });
+      for (const session of [finance, ceo, staff]) await settings({ payOvertime: true }, session).expect(403);
+      for (const bad of ['yes', 1, null]) expect(messagesOf(await settings({ payOvertime: bad }).expect(400))).toEqual(['Say whether overtime is paid: true or false.']);
+      expect((await settings({ payOvertime: true }, admin).expect(200)).body.payOvertime).toBe(true);
+      // leaving it out leaves it as it is
+      expect((await settings({ dayDivisor: 30 }).expect(200)).body.payOvertime).toBe(true);
+      expect((await settings({ payOvertime: false }).expect(200)).body.payOvertime).toBe(false);
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'payroll_settings', id: { gt: since } }, orderBy: { id: 'asc' } });
+      expect(audit.map((a) => a.diff)).toEqual([{ payOvertime: { from: false, to: true } }, { payOvertime: { from: true, to: false } }]);
+    });
+
+    it('a refreshed draft takes the switch: no overtime while it is off, whatever the attendance; paid when it is on', async () => {
+      // 120% of the expected hours, typed: above the 110% overtime starts at
+      const expected = (workingDays - holidaysOn) * 9;
+      await patchLine(flexible, { workedHours: expected * 1.2, noShowDays: null });
+      const off = lineOf(run, flexible).result;
+      expect(off).toMatchObject({ attendanceRatio: 1.2, overtime: 0 });
+
+      await settings({ payOvertime: true }).expect(200);
+      // not until the draft is refreshed: it keeps the rules it was worked out with
+      const kept = (await api().get(`/api/payroll/runs/${run.id}`).set('Cookie', hr).expect(200)).body as Run;
+      expect(kept.rules).toMatchObject({ payOvertime: false });
+      expect(lineOf(kept, flexible).result.overtime).toBe(0);
+      await refresh();
+      expect(run.rules).toMatchObject({ payOvertime: true });
+      // fixed 9,600 × (1.20 − 1.10) × 1.5
+      expect(lineOf(run, flexible).result.overtime).toBe(1440);
+
+      await settings({ payOvertime: false }).expect(200);
+      await refresh();
+      expect(run.rules).toMatchObject({ payOvertime: false });
+      expect(lineOf(run, flexible).result).toMatchObject({ attendanceRatio: 1.2, overtime: 0 });
+    });
+  });
+
   describe('the payroll setup migration', () => {
     const MIGRATIONS = fileURLToPath(new URL('../prisma/migrations/', import.meta.url));
     const SCHEMA = 'payroll_setup_migration_check';
@@ -379,6 +494,27 @@ describe('Payroll Setup (e2e)', () => {
       await db.query("INSERT INTO holidays (id, date, name_en, updated_at) VALUES (gen_random_uuid(), '2031-04-25', 'Sinai Liberation Day', now())");
       await expect(db.query("INSERT INTO holidays (id, date, name_en, updated_at) VALUES (gen_random_uuid(), '2031-04-25', 'Again', now())")).rejects.toThrow(/holidays_date_key/);
       await expect(db.query("INSERT INTO holidays (id, date, name_en, updated_at) VALUES (gen_random_uuid(), '2031-04-26', ' ', now())")).rejects.toThrow(/holidays_name_en_check/);
+    });
+
+    it('flexible shifts: a shift kept from before has no hours to work set (the whole window), and overtime is off', async () => {
+      const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_flexible_shifts'))!;
+      await db.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE; CREATE SCHEMA ${SCHEMA}; SET search_path TO ${SCHEMA}`);
+      for (const m of readdirSync(MIGRATIONS).filter((x) => /^\d{14}_/.test(x) && x < migration).sort()) {
+        await db.query(readFileSync(`${MIGRATIONS}${m}/migration.sql`, 'utf8'));
+      }
+      await db.query("INSERT INTO shifts (id, code, start_time, end_time, updated_at) VALUES (gen_random_uuid(), 'MORNING', '09:00', '19:00', now())");
+      await db.query(readFileSync(`${MIGRATIONS}${migration}/migration.sql`, 'utf8'));
+
+      expect((await db.query("SELECT hours_per_day FROM shifts WHERE code = 'MORNING'")).rows).toEqual([{ hours_per_day: null }]);
+      expect((await db.query('SELECT pay_overtime FROM payroll_settings')).rows).toEqual([{ pay_overtime: false }]);
+      // in half hours, from 0.5 to the window: 10 hours from 9:00 to 19:00; past midnight too
+      await db.query("UPDATE shifts SET hours_per_day = 9 WHERE code = 'MORNING'");
+      await db.query("UPDATE shifts SET hours_per_day = 10 WHERE code = 'MORNING'");
+      for (const hours of ['10.5', '8.25', '0.25', '0']) {
+        await expect(db.query(`UPDATE shifts SET hours_per_day = ${hours} WHERE code = 'MORNING'`)).rejects.toThrow(/shifts_hours_per_day_check/);
+      }
+      await db.query("UPDATE shifts SET start_time = '22:00', end_time = '06:00', hours_per_day = 8 WHERE code = 'MORNING'");
+      await expect(db.query("UPDATE shifts SET hours_per_day = 8.5 WHERE code = 'MORNING'")).rejects.toThrow(/shifts_hours_per_day_check/);
     });
   });
 });

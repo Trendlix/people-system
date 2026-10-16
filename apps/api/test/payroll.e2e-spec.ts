@@ -220,6 +220,8 @@ describe('Payroll (e2e)', () => {
           dayDivisor: 30,
           attendanceGracePercent: 90,
           kpiGracePercent: 80,
+          // off from 16 October 2026 (owner: "No overtime for now")
+          payOvertime: false,
           overtimeAbovePercent: 110,
           overtimeRate: 1.5,
           noShowDayMultiplier: 2,

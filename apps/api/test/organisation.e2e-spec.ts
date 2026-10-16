@@ -671,7 +671,8 @@ describe('Organisation (e2e)', () => {
       const res = await api().get('/api/shifts').set('Cookie', session).expect(200);
       expect(res.body).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ code: 'A', startTime: '09:00', endTime: '18:00', graceMinutes: 15, workingDays: [0, 1, 2, 3, 4] }),
+          // no hours to work set: the whole window (owner, 16 October 2026: flexible shifts)
+          expect.objectContaining({ code: 'A', startTime: '09:00', endTime: '18:00', hoursPerDay: null, graceMinutes: 15, workingDays: [0, 1, 2, 3, 4] }),
           expect.objectContaining({ code: 'B', startTime: '10:00', endTime: '19:00' }),
         ]),
       );
@@ -692,6 +693,47 @@ describe('Organisation (e2e)', () => {
         .send({ endTime: '16:30', graceMinutes: 10 })
         .expect(200);
       expect(updated.body).toMatchObject({ startTime: '08:00', endTime: '16:30', graceMinutes: 10 });
+    });
+
+    it('keeps a shift’s hours to work a day within its window, in half hours; none is the whole window (owner, 16 October 2026)', async () => {
+      // "my company shift is to maintain 9 hours within the shift window, its like flexible shift"
+      const HOURS = 'Enter the hours to work a day in half hours from 0.5, e.g. 9 or 8.5, or leave them empty for the whole shift.';
+      const code = `F${RUN.slice(-6)}`;
+      const post = (body: object) => api().post('/api/shifts').set('Cookie', session).send({ code, startTime: '09:00', endTime: '19:00', ...body });
+      const messages = (res: request.Response) => [...new Set([res.body.message].flat())];
+      expect((await post({ hoursPerDay: 10.5 }).expect(400)).body.message).toBe("The hours to work can't be more than the shift's window, 10:00.");
+      for (const bad of [8.25, 0, 0.25, 25, '9', true]) expect(messages(await post({ hoursPerDay: bad }).expect(400))).toEqual([HOURS]);
+
+      const created = (await post({ hoursPerDay: 9 }).expect(201)).body as { id: string };
+      expect(created).toMatchObject({ code, startTime: '09:00', endTime: '19:00', hoursPerDay: 9 });
+      const patch = (body: object) => api().patch(`/api/shifts/${created.id}`).set('Cookie', session).send(body);
+      expect((await api().get(`/api/shifts/${created.id}`).set('Cookie', session).expect(200)).body.hoursPerDay).toBe(9);
+      // the window can't shrink below them, unless they change with it
+      expect((await patch({ endTime: '17:30' }).expect(400)).body.message).toBe("The hours to work can't be more than the shift's window, 8:30.");
+      expect((await patch({ startTime: '10:30' }).expect(400)).body.message).toBe("The hours to work can't be more than the shift's window, 8:30.");
+      expect((await patch({ endTime: '17:30', hoursPerDay: 8.5 }).expect(200)).body).toMatchObject({ endTime: '17:30', hoursPerDay: 8.5 });
+      // the whole window, set or cleared
+      expect((await patch({ hoursPerDay: 8.5 }).expect(200)).body.hoursPerDay).toBe(8.5);
+      expect((await patch({ hoursPerDay: null }).expect(200)).body.hoursPerDay).toBeNull();
+      // a shift without them takes any window
+      expect((await patch({ endTime: '12:00' }).expect(200)).body).toMatchObject({ endTime: '12:00', hoursPerDay: null });
+
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'shift', entityId: created.id }, orderBy: { id: 'asc' } });
+      // the refused changes, and the one that changed nothing, aren't in it
+      expect(audit.map((a) => a.action)).toEqual(['create', 'update', 'update', 'update']);
+      expect(audit[0].diff).toMatchObject({ code, hoursPerDay: 9 });
+      expect(audit.slice(1).map((a) => a.diff)).toEqual([
+        { endTime: { from: '19:00', to: '17:30' }, hoursPerDay: { from: 9, to: 8.5 } },
+        { hoursPerDay: { from: 8.5, to: null } },
+        { endTime: { from: '17:30', to: '12:00' } },
+      ]);
+
+      // the database keeps them within the window and in half hours too
+      await patch({ endTime: '19:00', hoursPerDay: 9 }).expect(200);
+      for (const hours of [10.5, 8.25, 0.25]) {
+        await expect(prisma.$executeRaw`UPDATE shifts SET hours_per_day = ${hours} WHERE id = ${created.id}::uuid`).rejects.toThrow(/shifts_hours_per_day_check/);
+      }
+      await prisma.shift.delete({ where: { id: created.id } });
     });
 
     it('rejects bad times, an end before the start and bad working days', async () => {

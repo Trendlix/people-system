@@ -50,6 +50,10 @@ export class UpdatePayrollSettingsDto {
   @Sent() @IsNumber({ maxDecimalPlaces: 2 }, { message: GRACE_MESSAGE }) @Min(0, { message: GRACE_MESSAGE }) @Max(100, { message: GRACE_MESSAGE })
   kpiGracePercent?: number;
 
+  /** Whether overtime is paid at all (owner, 16 October 2026: "No overtime for now"): off from then on. */
+  @Sent() @IsBoolean({ message: 'Say whether overtime is paid: true or false.' })
+  payOvertime?: boolean;
+
   @Sent()
   @IsNumber({ maxDecimalPlaces: 2 }, { message: OVERTIME_ABOVE_MESSAGE })
   @Min(100, { message: OVERTIME_ABOVE_MESSAGE })

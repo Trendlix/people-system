@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { isFlexibleShift } from '@trendlix/shared';
 import { apiGet } from '@/lib/api';
 import { formatTime } from '@/lib/format';
+import { hoursADayText } from '@/lib/shifts';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Shift } from '@/lib/types';
 import { DAY_NAMES, Empty, Loading } from '../ui';
@@ -31,6 +33,7 @@ async function ShiftsList() {
               <tr>
                 <th>Shift</th>
                 <th>Hours</th>
+                <th>Hours to Work</th>
                 <th>Grace</th>
                 <th>Working Days</th>
                 {canEdit && <th><span className="sr-only">Actions</span></th>}
@@ -42,6 +45,11 @@ async function ShiftsList() {
                   <td className="font-medium">Shift {s.code}</td>
                   <td className="whitespace-nowrap tabular-nums">
                     {formatTime(s.startTime)} – {formatTime(s.endTime)}
+                  </td>
+                  <td className="whitespace-nowrap tabular-nums">
+                    {hoursADayText(s)}
+                    {/* fewer hours than the window: worked anywhere within it (owner, 16 October 2026) */}
+                    {isFlexibleShift(s) && <span className="badge ml-2">Flexible</span>}
                   </td>
                   <td className="whitespace-nowrap">{s.graceMinutes} min</td>
                   <td>{s.workingDays.map((d) => DAY_NAMES[d]).join(', ')}</td>

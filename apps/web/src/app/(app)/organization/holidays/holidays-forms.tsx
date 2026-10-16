@@ -6,11 +6,12 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import { formatDate } from '@/lib/format';
 import type { FormState, Holiday } from '@/lib/types';
 import { ActionButton, focusFirstField, useClosesOnSave } from '../../employees/[id]/contracts/contract-buttons';
-import { weekdayOf } from './settings';
+import { weekdayOf } from './holidays';
 
-// Payroll Setup → Holidays and Working Days (owner's request, 16 October 2026): the year's official holidays, one day
-// each. HR and Admin add one and change its day or names; a Super Admin removes one (every deletion is theirs: owner's
-// decision, 15 October 2026). Runs made or refreshed afterwards count a change.
+// Organization → Holidays (owner's request, 16 October 2026; its own tab since the owner's "make holiday a separate
+// tab" the same day): the year's official holidays, one day each. HR and Admin add one and change its day or names; a
+// Super Admin removes one (every deletion is theirs: owner's decision, 15 October 2026). Runs made or refreshed
+// afterwards count a change.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 

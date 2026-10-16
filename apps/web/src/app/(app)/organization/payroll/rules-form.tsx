@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { ContractSettings, FormState, PayrollSettingsView } from '@/lib/types';
 import { plainAmount } from '../../employees/[id]/contracts/salary';
@@ -7,7 +8,10 @@ import { plainAmount } from '../../employees/[id]/contracts/salary';
 // Payroll Setup → Your Rules (HR and Admin; owner's request, 16 October 2026): the rules runs are worked out with,
 // after the owner's payroll sheet, and the company defaults that change the sheet, kept with the contract settings: the
 // basic share of the gross new contracts start with and the basic wage Form 1 prints. A run keeps the rules it was made
-// or last refreshed with; a signed contract keeps its own basic share.
+// or last refreshed with; a signed contract keeps its own basic share. Pay overtime is a switch, off from 16 October
+// 2026 (owner: "No overtime for now", as attendance counts at most the shift's hours to work a day): while it is off the
+// overtime's percent and rate are greyed and not sent, and the API keeps them for when it is turned on. An API from
+// before the switch has none: the overtime fields then show as they did.
 
 type RuleKey = 'dayDivisor' | 'attendanceGracePercent' | 'kpiGracePercent' | 'overtimeAbovePercent' | 'overtimeRate' | 'noShowDayMultiplier';
 
@@ -15,10 +19,18 @@ const RULE_FIELDS: { key: RuleKey; label: string; hint: string; whole?: boolean 
   { key: 'dayDivisor', label: 'Days in a month', hint: 'For day rates and part months: someone who joined or left in the month is paid for their days of these.', whole: true },
   { key: 'attendanceGracePercent', label: 'Attendance grace (%)', hint: 'Attendance at or above this counts in full; below it, the fixed part of the gross follows it.' },
   { key: 'kpiGracePercent', label: 'KPI grace (%)', hint: "A KPI average at or above this counts in full; below it, the variable part of the gross follows it. With no KPI given, it isn't cut." },
-  { key: 'overtimeAbovePercent', label: 'Overtime above (%)', hint: 'Overtime is paid for attendance above this.' },
-  { key: 'overtimeRate', label: 'Overtime rate', hint: 'Overtime is paid at this rate, e.g. 1.5 for time and a half.' },
   { key: 'noShowDayMultiplier', label: 'No-show day costs (days)', hint: "A day absent without notice costs this many days' pay; its hours aren't counted again in attendance." },
 ];
+
+type RuleField = { key: RuleKey; label: string; hint: string; whole?: boolean };
+
+const OVERTIME_FIELDS: RuleField[] = [
+  { key: 'overtimeAbovePercent', label: 'Overtime above (%)', hint: 'Overtime is paid for attendance above this.' },
+  { key: 'overtimeRate', label: 'Overtime rate', hint: 'Overtime is paid at this rate, e.g. 1.5 for time and a half.' },
+];
+
+/** Whether the switch was on in what was typed (after a failed save: the hidden "false", then "true" when checked). */
+const typedOn = (typed: string | string[]) => (Array.isArray(typed) ? typed.includes('true') : typed === 'true');
 
 export function YourRulesForm({
   action,
@@ -34,35 +46,71 @@ export function YourRulesForm({
   const fid = useFieldIds();
   const basicShare = defaults?.basicPercentDefault;
   const insuranceBasic = defaults?.insuranceBasicDefault;
+  // the switch as typed after a failed save, else as saved; none from an API from before it
+  const hasSwitch = rules.payOvertime !== undefined;
+  const typedSwitch = state.values?.payOvertime;
+  const [paysOvertime, setPaysOvertime] = useState(typedSwitch !== undefined ? typedOn(typedSwitch) : rules.payOvertime !== false);
+  const off = hasSwitch && !paysOvertime;
+
+  const numberField = (f: RuleField, disabled = false) => (
+    <div key={f.key} className={disabled ? 'opacity-60' : undefined}>
+      <label htmlFor={fid(f.key)} className="label">
+        {f.label}
+      </label>
+      <input
+        id={fid(f.key)}
+        name={f.key}
+        required
+        disabled={disabled}
+        inputMode={f.whole ? 'numeric' : 'decimal'}
+        autoComplete="off"
+        defaultValue={valueOf(state, f.key, String(rules[f.key]))}
+        aria-describedby={fid(`${f.key}-hint`)}
+        className="input tabular-nums"
+      />
+      <p id={fid(`${f.key}-hint`)} className="hint">
+        {f.hint}
+      </p>
+    </div>
+  );
 
   return (
     <form {...form} className="space-y-6">
       <FormErrors errors={state.errors} />
       <fieldset className="space-y-4">
         <legend className="font-semibold">Pay Rules</legend>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {RULE_FIELDS.map((f) => (
-            <div key={f.key}>
-              <label htmlFor={fid(f.key)} className="label">
-                {f.label}
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{RULE_FIELDS.map((f) => numberField(f))}</div>
+      </fieldset>
+
+      <div className="border-t border-line-soft pt-5">
+        <fieldset className="space-y-4">
+          <legend className="font-semibold">Overtime</legend>
+          {hasSwitch && (
+            <div>
+              {/* a hidden "false" so turning it off is sent too */}
+              <input type="hidden" name="payOvertime" value="false" />
+              <label className="flex min-h-11 w-fit cursor-pointer items-center gap-3 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  name="payOvertime"
+                  value="true"
+                  checked={paysOvertime}
+                  onChange={(e) => setPaysOvertime(e.target.checked)}
+                  aria-describedby={fid('payOvertime-hint')}
+                  className="size-5 accent-accent"
+                />
+                Pay overtime
               </label>
-              <input
-                id={fid(f.key)}
-                name={f.key}
-                required
-                inputMode={f.whole ? 'numeric' : 'decimal'}
-                autoComplete="off"
-                defaultValue={valueOf(state, f.key, String(rules[f.key]))}
-                aria-describedby={fid(`${f.key}-hint`)}
-                className="input tabular-nums"
-              />
-              <p id={fid(`${f.key}-hint`)} className="hint">
-                {f.hint}
+              <p id={fid('payOvertime-hint')} className="hint">
+                Off until attendance and an approval step exist (owner, 16 October 2026). While it is off, no run pays overtime, whatever the
+                attendance; the percent and rate below are kept for when it is turned on.
               </p>
             </div>
-          ))}
-        </div>
-      </fieldset>
+          )}
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{OVERTIME_FIELDS.map((f) => numberField(f, off))}</div>
+        </fieldset>
+      </div>
 
       {(basicShare !== undefined || insuranceBasic !== undefined) && (
         <div className="border-t border-line-soft pt-5">

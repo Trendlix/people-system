@@ -22,7 +22,7 @@ export const OFFER_INCLUDE = {
   // request, 15 October 2026)
   grade: { select: { id: true, code: true, levelEn: true, levelAr: true } },
   manager: { select: { id: true, employeeCode: true, fullNameEn: true, fullNameAr: true } },
-  shift: { select: { id: true, code: true, workingDays: true, startTime: true, endTime: true } },
+  shift: { select: { id: true, code: true, workingDays: true, startTime: true, endTime: true, hoursPerDay: true } },
   allowances: { orderBy: ALLOWANCE_ORDER },
   templateVersion: { select: { version: true, tags: true } },
   sentBy: { select: { email: true } },

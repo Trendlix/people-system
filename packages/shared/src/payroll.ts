@@ -12,6 +12,14 @@
 // monthly-paid person from their shift (its working days in the days they are employed, less the official holidays on
 // them, × its hours a day) and keeps them with the line's terms; what HR types on the run is used instead, never
 // overwritten.
+// A shift's hours a day are its hours to work (owner, 16 October 2026, on the MORNING shift of 9:00 AM to 7:00 PM: "my
+// company shift is to maintain 9 hours within the shift window, its like flexible shift"): set on the shift, they can
+// be fewer than its window (start to end), worked anywhere within it; not set, the whole window (shiftWorkHours). They
+// are also the most hours attendance counts a day (owner, 16 October 2026: "maximum working hours to be recorded per
+// day is 9 hours between checkin and check out"; attendance.ts): worked hours typed above that on the shift's days get
+// a warning, as attendance will never count them.
+// Overtime (owner, 16 October 2026: "No overtime for now"): not paid while the rules' Pay overtime is off, as it is from
+// then on; a run's rules copied before the switch existed read as on, so their figures never change.
 
 import type { AllowanceTerms } from './contracts.js';
 import type { PayBasis } from './contracts.js';
@@ -40,7 +48,14 @@ export interface PayrollRules {
    * given, it isn't cut at all.
    */
   kpiGracePercent: number;
-  /** Overtime is paid for attendance above this percent (the sheet: 110). */
+  /**
+   * Whether overtime is paid at all (owner, 16 October 2026: "No overtime for now", as attendance counts at most the
+   * shift's hours to work a day): off, a line's overtime is 0 whatever the attendance; on, it is paid above the overtime
+   * percent at the overtime rate. Missing on the rules runs copied before then, which paid it: read as on, so their
+   * figures never change (paysOvertime).
+   */
+  payOvertime?: boolean;
+  /** Overtime is paid for attendance above this percent (the sheet: 110), when it is paid. */
   overtimeAbovePercent: number;
   /** Overtime is paid at this rate (the sheet: 1.5). */
   overtimeRate: number;
@@ -48,14 +63,22 @@ export interface PayrollRules {
   noShowDayMultiplier: number;
 }
 
-export const PAYROLL_RULE_DEFAULTS: PayrollRules = {
+export const PAYROLL_RULE_DEFAULTS: Required<PayrollRules> = {
   dayDivisor: 30,
   attendanceGracePercent: 90,
   kpiGracePercent: 80,
+  // off from 16 October 2026 ("No overtime for now")
+  payOvertime: false,
   overtimeAbovePercent: 110,
   overtimeRate: 1.5,
   noShowDayMultiplier: 2,
 };
+
+/**
+ * Whether rules pay overtime: as their switch says; rules copied onto a run before the switch existed (16 October 2026)
+ * paid it, so a missing switch reads as on and those runs' figures never change.
+ */
+export const paysOvertime = (rules: PayrollRules): boolean => rules.payOvertime !== false;
 
 /** An allowance on a payroll line: the contract's, by name. */
 export interface PayrollAllowance extends AllowanceTerms {
@@ -83,16 +106,18 @@ export interface PayrollTerms {
   /** The insured wage, as the Social Insurance tab and Form 1 show it. */
   insuredWage: number;
   /**
-   * A working day's hours, from the employment's shift (its start to its end; an end before the start runs past
-   * midnight): the hours a no-show day takes out of the expected hours (owner's decision, 16 October 2026). Null
-   * without a shift, and missing on lines worked out before then: the expected hours are then taken as typed.
+   * A working day's hours, from the employment's shift: its hours to work a day, else its window (its start to its
+   * end; an end before the start runs past midnight), as shiftWorkHours gives them (owner, 16 October 2026: "my company
+   * shift is to maintain 9 hours within the shift window"). The hours a no-show day takes out of the expected hours
+   * (owner's decision, 16 October 2026), and the most attendance counts a day. Null without a shift, and missing on
+   * lines worked out before then: the expected hours are then taken as typed.
    */
   hoursPerDay: number | null;
   /**
    * The month's working hours from the employment's shift (owner's request, 16 October 2026): the shift's working days
-   * within the days employed in the month, less the official holidays on them, × its hours a day. The pay counts them
-   * when HR hasn't typed the expected hours (expectedHoursOf). Null without a shift, and for pay by the hour; missing on
-   * lines worked out before then.
+   * within the days employed in the month, less the official holidays on them, × its hours a day (its hours to work,
+   * else its window: hoursPerDay). The pay counts them when HR hasn't typed the expected hours (expectedHoursOf). Null
+   * without a shift, and for pay by the hour; missing on lines worked out before then.
    */
   expectedHours?: number | null;
   /** What the expected hours were worked out from: the shift's working days in the days employed, and the holidays. */
@@ -220,8 +245,8 @@ type SalaryPart = Pick<
 >;
 
 /**
- * A working day's hours from a shift's start and end ("HH:mm"): an end before the start runs past midnight. Null when
- * they are the same, or not times.
+ * A shift's window in hours, from its start and end ("HH:mm"): an end before the start runs past midnight. Null when
+ * they are the same, or not times. The hours to work a day may be fewer (shiftWorkHours).
  */
 export function shiftHours(start: string, end: string): number | null {
   const minutes = (t: string) => {
@@ -231,6 +256,34 @@ export function shiftHours(start: string, end: string): number | null {
   const [from, to] = [minutes(start), minutes(end)];
   if (from === null || to === null || from === to) return null;
   return ((to - from + 1440) % 1440) / 60;
+}
+
+/** A shift's times ("HH:mm") and its hours to work a day (null or missing: the whole window). */
+export interface ShiftTimes {
+  startTime: string;
+  endTime: string;
+  hoursPerDay?: number | null;
+}
+
+/**
+ * A shift's hours to work a day (owner, 16 October 2026, on the MORNING shift of 9:00 AM to 7:00 PM: "my company shift
+ * is to maintain 9 hours within the shift window, its like flexible shift"): the hours set on the shift, worked anywhere
+ * within its window, never more than the window; not set, the whole window (start to end). What payroll counts a day
+ * of the shift as (the expected hours, a no-show day's hours), and the most attendance counts a day (attendance.ts).
+ * Null when neither can be told.
+ */
+export function shiftWorkHours(shift: ShiftTimes): number | null {
+  const window = shiftHours(shift.startTime, shift.endTime);
+  const set = shift.hoursPerDay;
+  if (typeof set !== 'number' || !(set > 0)) return window;
+  return window === null ? set : Math.min(set, window);
+}
+
+/** A flexible shift: fewer hours to work a day than its window, worked anywhere within it. */
+export function isFlexibleShift(shift: ShiftTimes): boolean {
+  const window = shiftHours(shift.startTime, shift.endTime);
+  const work = shiftWorkHours(shift);
+  return window !== null && work !== null && work < window;
 }
 
 /**
@@ -254,13 +307,13 @@ export function expectedHoursOf(terms: Pick<PayrollTerms, 'expectedHours'>, inpu
  * A payroll line worked out from its terms and the month's inputs, with the run's rules, every amount rounded to the
  * piaster as it is worked out. Monthly pay: a no-show day costs days of the gross (two by default), never more than
  * the salary left for the days paid, and its hours (the shift's) come out of the expected hours; the fixed part of the
- * gross (its basic percent) is cut for attendance on those hours below the grace percent and paid overtime above the
- * overtime percent; the variable part is cut for a KPI average below its grace percent, and not at all with no KPI
- * given. By the hour: the hours worked at the contract's rate. Then for both: the bonus days, the commission and the
- * settlements; the allowances for the days paid; social insurance on the insured wage, whole for a part month; the
- * salary tax and the Martyrs' Fund on the actual pay; penalty days at the contract's net after the tax. The insurance
- * shares, the tax and the Fund follow `law`, the rates set by law the run keeps (owner's request, 16 October 2026);
- * without them, the built-in ones of the run's year.
+ * gross (its basic percent) is cut for attendance on those hours below the grace percent and, while the rules pay it,
+ * paid overtime above the overtime percent; the variable part is cut for a KPI average below its grace percent, and
+ * not at all with no KPI given. By the hour: the hours worked at the contract's rate. Then for both: the bonus days,
+ * the commission and the settlements; the allowances for the days paid; social insurance on the insured wage, whole
+ * for a part month; the salary tax and the Martyrs' Fund on the actual pay; penalty days at the contract's net after
+ * the tax. The insurance shares, the tax and the Fund follow `law`, the rates set by law the run keeps (owner's
+ * request, 16 October 2026); without them, the built-in ones of the run's year.
  */
 export function payrollLine(
   terms: PayrollTerms,
@@ -288,7 +341,15 @@ export function payrollLine(
         monthlyPart(
           i,
           rules,
-          { gross, fixedFull, variableFull, forDaysPaid, hoursPerDay: terms.hoursPerDay ?? null, shiftExpectedHours: terms.expectedHours ?? null },
+          {
+            gross,
+            fixedFull,
+            variableFull,
+            forDaysPaid,
+            hoursPerDay: terms.hoursPerDay ?? null,
+            shiftExpectedHours: terms.expectedHours ?? null,
+            expectedDays: terms.expectedDays ?? null,
+          },
           warnings,
         );
   // a bonus day is a day of the fixed part, also for pay by the hour (its monthly estimate's)
@@ -365,8 +426,10 @@ export function payrollLine(
  * (90); without the shift's hours, the expected hours as typed, with a warning. The expected hours are HR's when typed,
  * else the shift's working days less the holidays (owner's request, 16 October 2026). With a KPI given, the KPI average is
  * that attendance score and the KPIs given, counted as full at or above its grace percent (80); with none, the variable
- * part isn't cut ("fixed only"). Overtime is paid on the fixed part for the days paid (the expected hours are the part
- * month's) for attendance above the overtime percent (110), at the overtime rate (1.5). A no-show day costs the no-show
+ * part isn't cut ("fixed only"). Overtime, while the rules pay it (off from 16 October 2026: "No overtime for now"), is
+ * paid on the fixed part for the days paid (the expected hours are the part month's) for attendance above the overtime
+ * percent (110), at the overtime rate (1.5). Worked hours above the most attendance counts (the shift's hours to work a
+ * day on its days: mostCountedHours) are warned about, not cut. A no-show day costs the no-show
  * multiplier (2) days of the gross (the sheet used the declared insurance salary, empty for most), never more than the
  * salary left for the days paid after the other cuts.
  */
@@ -381,6 +444,8 @@ function monthlyPart(
     hoursPerDay: number | null;
     /** The month's hours from the shift and the holidays: the expected hours when HR typed none. */
     shiftExpectedHours: number | null;
+    /** The shift's working days in the days employed, and the holidays on them: null without a shift, or by the hour. */
+    expectedDays: ShiftDays | null;
   },
   warnings: string[],
 ): SalaryPart {
@@ -420,6 +485,15 @@ function monthlyPart(
   const noShowCut = Math.min(noShowFull, salaryLeft);
   if (noShowFull > noShowCut) warnings.push('The no-show days cost more than the salary left for the days paid: the cut is capped there');
 
+  // the most attendance will count (owner, 16 October 2026: "maximum working hours to be recorded per day is 9 hours
+  // between checkin and check out"): the shift's hours to work a day on its working days in the days paid, less the
+  // holidays and the no-show days; the total typed isn't cut, only warned about
+  const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays);
+  if (worked !== null && most !== null && pay.hoursPerDay !== null && worked > most) {
+    const perDay = formatHours(pay.hoursPerDay);
+    warnings.push(`Worked hours are more than ${perDay} a day on the shift's working days (${formatHours(most)} this month): attendance will count at most ${perDay} a day`);
+  }
+
   const above = rules.overtimeAbovePercent / 100;
   return {
     fixed,
@@ -431,8 +505,10 @@ function monthlyPart(
     attendanceCut,
     kpiCut,
     noShowCut,
-    // the sheet's intent: its overtime column multiplied the money amount by the attendance again, not copied
-    overtime: attendanceRatio !== null && attendanceRatio > above ? piasters(fixed * (attendanceRatio - above) * rules.overtimeRate) : 0,
+    // none while the rules don't pay it (owner, 16 October 2026: "No overtime for now"); the sheet's intent: its overtime
+    // column multiplied the money amount by the attendance again, not copied
+    overtime:
+      paysOvertime(rules) && attendanceRatio !== null && attendanceRatio > above ? piasters(fixed * (attendanceRatio - above) * rules.overtimeRate) : 0,
   };
 }
 
@@ -458,6 +534,17 @@ function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): 
     noShowCut: 0,
     overtime: 0,
   };
+}
+
+/**
+ * The most worked hours attendance can count in a month (owner, 16 October 2026: "maximum working hours to be recorded
+ * per day is 9 hours between checkin and check out"): the shift's working days in the days employed, less the holidays
+ * and the no-show days, × its hours to work a day. Null without the shift's days or hours (no shift, pay by the hour,
+ * or a line worked out before 16 October 2026).
+ */
+export function mostCountedHours(days: ShiftDays | null | undefined, hoursPerDay: number | null | undefined, noShowDays: number | null): number | null {
+  if (!days || typeof hoursPerDay !== 'number' || !(hoursPerDay > 0)) return null;
+  return fraction(Math.max(0, days.workingDays - days.holidays - given(noShowDays)) * hoursPerDay);
 }
 
 /**
@@ -534,7 +621,10 @@ export function shiftDaysIn(month: string, joinDate: string, endDate: string | n
   return days;
 }
 
-/** The expected hours of a shift's days in a month: its working days less the holidays on them, × its hours a day. */
+/**
+ * The expected hours of a shift's days in a month: its working days less the holidays on them, × its hours a day (its
+ * hours to work, else its window: shiftWorkHours).
+ */
 export function shiftExpectedHours(days: ShiftDays, hoursPerDay: number): number {
   return fraction(Math.max(0, days.workingDays - days.holidays) * hoursPerDay);
 }

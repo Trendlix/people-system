@@ -130,11 +130,17 @@ export interface JobTitle extends Omit<JobTitleSummary, '_count'> {
   duties: { id: string; position: number; duty: string }[];
 }
 
+/**
+ * A shift: its window (start to end, "HH:mm") and its hours to work a day within it (owner, 16 October 2026: "my
+ * company shift is to maintain 9 hours within the shift window, its like flexible shift"); null: the whole window.
+ * Fewer than the window: flexible. Missing from an API from before then.
+ */
 export interface Shift {
   id: string;
   code: string;
   startTime: string;
   endTime: string;
+  hoursPerDay?: number | null;
   graceMinutes: number;
   workingDays: number[];
 }
@@ -266,7 +272,8 @@ export interface Employment {
   gradeId: string | null;
   grade: GradeRef | null;
   manager: { id: string; employeeCode: string; fullNameEn: string } | null;
-  shift: { id: string; code: string; startTime: string; endTime: string } | null;
+  /** Its hours to work a day: null for the whole window (owner, 16 October 2026: flexible shifts); missing from an older API. */
+  shift: { id: string; code: string; startTime: string; endTime: string; hoursPerDay?: number | null } | null;
   /**
    * The newest signed contract (salary restricted), or null. Left out by an API from before contracts (October 2026),
    * hence optional: the screens then say contracts are not available yet.
@@ -1418,4 +1425,41 @@ export interface Holiday {
 export interface LawRatesView extends LawRates {
   updatedAt: string;
   updatedBy: { id: string; name: string } | null;
+}
+
+/**
+ * What happens to a day of an imported holiday list (owner's request, 16 October 2026: "allow me to import yearly
+ * holiday list"): added (new); skipped as already on file (a holiday that day with the same English name); not imported
+ * as a clash (a holiday that day with another name); or skipped as given again further down the file (duplicate).
+ */
+export type HolidayImportStatus = 'new' | 'on_file' | 'clash' | 'duplicate';
+
+/** A day of an imported list: its row in the file, the day (YYYY-MM-DD), the names and what happens to it. */
+export interface HolidayImportDay {
+  row: number;
+  date: string;
+  nameEn: string;
+  nameAr: string | null;
+  status: HolidayImportStatus;
+  /** The holiday on file that day (on_file and clash). */
+  onFile?: { nameEn: string; nameAr: string | null };
+  /** The row that gives the day first (duplicate). */
+  firstRow?: number;
+}
+
+/**
+ * POST /payroll/holidays/import/preview (HR and Admin): the file read and set against the holidays on file, nothing
+ * saved. `fingerprint` confirms the import of this very file; `rows`: its rows of holidays, blank ones left out;
+ * `problems`: the rows that can't be imported, each message starting "Row N:".
+ */
+export interface HolidayImportPreview {
+  fingerprint: string;
+  rows: number;
+  days: HolidayImportDay[];
+  problems: { row: number; message: string }[];
+}
+
+/** POST /payroll/holidays/import: the file as checked when imported, and the holidays added, in date order. */
+export interface HolidayImportResult extends HolidayImportPreview {
+  imported: Holiday[];
 }

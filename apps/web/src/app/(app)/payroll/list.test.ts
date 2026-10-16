@@ -115,13 +115,18 @@ describe('what each role may do on a run', () => {
 
 describe('the rules in words', () => {
   it('says each rule the run was worked out with', () => {
-    expect(rulesSummary(PAYROLL_RULE_DEFAULTS)).toEqual([
+    expect(rulesSummary({ ...PAYROLL_RULE_DEFAULTS, payOvertime: true })).toEqual([
       'A month counts as 30 days, for day rates and part months.',
       'Attendance counts in full from 90%; below it, the fixed part follows it.',
       "The KPI average counts in full from 80%; below it, the variable part follows it. With no KPI given, it isn't cut.",
       'Overtime is paid for attendance above 110%, at 1.5×.',
       "A no-show day costs 2 days' pay; its hours come out of the expected hours, so attendance doesn't count it again.",
     ]);
+    // off from 16 October 2026 ("No overtime for now"); a run's rules from before the switch paid it
+    expect(rulesSummary(PAYROLL_RULE_DEFAULTS)[3]).toBe('Overtime: not paid.');
+    // as copied before the switch existed: none
+    const older = { ...PAYROLL_RULE_DEFAULTS, payOvertime: undefined };
+    expect(rulesSummary(older)[3]).toBe('Overtime is paid for attendance above 110%, at 1.5×.');
     expect(rulesSummary({ ...PAYROLL_RULE_DEFAULTS, noShowDayMultiplier: 1 }).at(-1)).toBe(
       "A no-show day costs 1 day's pay; its hours come out of the expected hours, so attendance doesn't count it again.",
     );

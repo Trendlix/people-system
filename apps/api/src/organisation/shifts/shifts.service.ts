@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { formatHours, shiftHours } from '@trendlix/shared';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import { assertDeletes } from '../../auth/roles.js';
 import type { SessionUser } from '../../auth/session-user.js';
@@ -9,11 +10,20 @@ import type { CreateShiftDto, UpdateShiftDto } from './shift.dto.js';
 
 const ENTITY = 'shift';
 
+// A shift is a window, its start to its end, and the hours to work a day within it (owner, 16 October 2026, on the
+// MORNING shift of 9:00 AM to 7:00 PM: "my company shift is to maintain 9 hours within the shift window, its like
+// flexible shift"): fewer than the window, it is flexible, worked anywhere within it; not set, the whole window, as
+// before. They are what payroll counts a day of the shift as, and the most attendance counts a day (owner, 16 October
+// 2026: "maximum working hours to be recorded per day is 9 hours between checkin and check out"). In half hours, never
+// more than the window: checked here with the times as they will be, and by the database.
+
 export interface ShiftView {
   id: string;
   code: string;
   startTime: string;
   endTime: string;
+  /** The hours to work a day within the window; null: the whole window (shiftWorkHours in @trendlix/shared). */
+  hoursPerDay: number | null;
   graceMinutes: number;
   workingDays: number[];
 }
@@ -24,6 +34,7 @@ function view(s: Shift): ShiftView {
     code: s.code,
     startTime: fromTimeOfDay(s.startTime),
     endTime: fromTimeOfDay(s.endTime),
+    hoursPerDay: s.hoursPerDay?.toNumber() ?? null,
     graceMinutes: s.graceMinutes,
     workingDays: [...s.workingDays].sort((a, b) => a - b),
   };
@@ -31,6 +42,14 @@ function view(s: Shift): ShiftView {
 
 function assertOrder(start: string, end: string) {
   if (end <= start) throw new BadRequestException('The shift must end after it starts.');
+}
+
+/** The hours to work a day fit in the window from `start` to `end`. */
+function assertHoursFit(start: string, end: string, hoursPerDay: number | null | undefined) {
+  const window = shiftHours(start, end);
+  if (typeof hoursPerDay === 'number' && window !== null && hoursPerDay > window) {
+    throw new BadRequestException(`The hours to work can't be more than the shift's window, ${formatHours(window)}.`);
+  }
 }
 
 @Injectable()
@@ -52,11 +71,13 @@ export class ShiftsService {
 
   async create(dto: CreateShiftDto, userId: string): Promise<ShiftView> {
     assertOrder(dto.startTime, dto.endTime);
+    assertHoursFit(dto.startTime, dto.endTime, dto.hoursPerDay);
     const shift = await this.prisma.shift.create({
       data: {
         code: dto.code,
         startTime: toTimeOfDay(dto.startTime),
         endTime: toTimeOfDay(dto.endTime),
+        hoursPerDay: dto.hoursPerDay ?? null,
         graceMinutes: dto.graceMinutes,
         workingDays: dto.workingDays,
       },
@@ -68,20 +89,24 @@ export class ShiftsService {
 
   async update(id: string, dto: UpdateShiftDto, userId: string): Promise<ShiftView> {
     const before = await this.get(id);
-    assertOrder(dto.startTime ?? before.startTime, dto.endTime ?? before.endTime);
+    const [start, end] = [dto.startTime ?? before.startTime, dto.endTime ?? before.endTime];
+    assertOrder(start, end);
+    // the hours as they will be (sent, or kept) within the window as it will be
+    assertHoursFit(start, end, dto.hoursPerDay === undefined ? before.hoursPerDay : dto.hoursPerDay);
     const shift = await this.prisma.shift.update({
       where: { id },
       data: {
         code: dto.code,
         startTime: dto.startTime ? toTimeOfDay(dto.startTime) : undefined,
         endTime: dto.endTime ? toTimeOfDay(dto.endTime) : undefined,
+        hoursPerDay: dto.hoursPerDay,
         graceMinutes: dto.graceMinutes,
         workingDays: dto.workingDays,
       },
     });
     const result = view(shift);
-    const { code, startTime, endTime, graceMinutes } = dto;
-    const diff = changes({ ...before }, { code, startTime, endTime, graceMinutes, workingDays: dto.workingDays && result.workingDays });
+    const { code, startTime, endTime, hoursPerDay, graceMinutes } = dto;
+    const diff = changes({ ...before }, { code, startTime, endTime, hoursPerDay, graceMinutes, workingDays: dto.workingDays && result.workingDays });
     if (Object.keys(diff).length) await this.audit.record({ userId, action: 'update', entityType: ENTITY, entityId: id, diff });
     return result;
   }

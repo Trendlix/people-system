@@ -1,4 +1,4 @@
-import { PAYROLL_STATUS_LABELS, PAYROLL_STATUSES, type PayrollRules, type PayrollStatus, type Role } from '@trendlix/shared';
+import { PAYROLL_STATUS_LABELS, PAYROLL_STATUSES, paysOvertime, type PayrollRules, type PayrollStatus, type Role } from '@trendlix/shared';
 import { hasRole, isSuperAdmin } from '../../../lib/roles';
 
 // Plain helpers for the Payroll pages (no server-only, so they are unit tested): who sees payroll and who does what on a
@@ -141,13 +141,16 @@ export function runActions(user: WithRoles, status: PayrollStatus): RunActions {
   };
 }
 
-/** The rules a run was worked out with, in words, one per rule. */
+/**
+ * The rules a run was worked out with, in words, one per rule. Overtime "not paid" while the rules don't pay it (owner,
+ * 16 October 2026: "No overtime for now"); rules copied before the switch existed paid it.
+ */
 export function rulesSummary(r: PayrollRules): string[] {
   return [
     `A month counts as ${r.dayDivisor} days, for day rates and part months.`,
     `Attendance counts in full from ${r.attendanceGracePercent}%; below it, the fixed part follows it.`,
     `The KPI average counts in full from ${r.kpiGracePercent}%; below it, the variable part follows it. With no KPI given, it isn't cut.`,
-    `Overtime is paid for attendance above ${r.overtimeAbovePercent}%, at ${r.overtimeRate}×.`,
+    paysOvertime(r) ? `Overtime is paid for attendance above ${r.overtimeAbovePercent}%, at ${r.overtimeRate}×.` : 'Overtime: not paid.',
     `A no-show day costs ${r.noShowDayMultiplier} ${r.noShowDayMultiplier === 1 ? "day's" : "days'"} pay; its hours come out of the expected hours, so attendance doesn't count it again.`,
   ];
 }

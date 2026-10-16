@@ -162,6 +162,15 @@ describe('roster', () => {
       expect(terms(lines, weekend)).toMatchObject({ hoursPerDay: 8, expectedHours: 56, expectedDays: { workingDays: 8, holidays: 1 } });
     });
 
+    it('are at a flexible shift’s hours to work a day, not its window (owner, 16 October 2026)', () => {
+      // the MORNING shift: 9:00 AM to 7:00 PM, 9 hours to work within it; and the same window with none set
+      const flexible = employment({ shift: { startTime: '09:00', endTime: '19:00', hoursPerDay: 9, workingDays: SUN_TO_THU } });
+      const window = employment({ shift: { startTime: '09:00', endTime: '19:00', hoursPerDay: null, workingDays: SUN_TO_THU } });
+      const { lines } = roster('2026-09', [flexible, window], rules, ['2026-09-03']);
+      expect(terms(lines, flexible)).toMatchObject({ hoursPerDay: 9, expectedHours: 189, expectedDays: { workingDays: 22, holidays: 1 } });
+      expect(terms(lines, window)).toMatchObject({ hoursPerDay: 10, expectedHours: 210 });
+    });
+
     it('are not worked out without a shift, nor for pay by the hour', () => {
       const none = employment({ shift: null });
       const hourly = employment({ contracts: [contract({ payBasis: 'hourly', hourlyRate: 150, grossSalary: 15600 })] });

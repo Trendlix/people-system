@@ -1,4 +1,4 @@
-import { EMPTY_PAYROLL_INPUTS, expectedHoursOf, payrollLine, shiftDaysIn, shiftExpectedHours, type PayrollInputs, type PayrollTerms } from '@trendlix/shared';
+import { EMPTY_PAYROLL_INPUTS, expectedHoursOf, mostCountedHours, payrollLine, shiftDaysIn, shiftExpectedHours, type PayrollInputs, type PayrollTerms } from '@trendlix/shared';
 
 // The expected hours a run works out from each monthly-paid person's shift (owner's request, 16 October 2026, Payroll
 // Setup): the shift's working days within the days employed in the month, less the official holidays on them, × its
@@ -107,5 +107,58 @@ describe('working days: the pay with the shift’s expected hours', () => {
   it('is as before for a line worked out without the shift’s hours', () => {
     const { expectedHours: _hours, expectedDays: _days, ...before } = terms;
     expect(payrollLine(before, inputs({ workedHours: 180 })).warnings).toEqual(["Worked hours are given without the expected hours: attendance isn't counted"]);
+  });
+});
+
+describe('working days: at most the shift’s hours to work a day counted (owner, 16 October 2026)', () => {
+  // "maximum working hours to be recorded per day is 9 hours between checkin and check out": the flexible MORNING shift
+  // (9:00 AM to 7:00 PM, 9 hours to work), 22 working days less a holiday
+  const terms: PayrollTerms = {
+    year: 2026,
+    payBasis: 'monthly',
+    gross: 12_000,
+    basicPercent: 80,
+    hourlyRate: null,
+    allowances: [],
+    paidDays: 30,
+    statutory: true,
+    insured: true,
+    insuredWage: 12_000,
+    hoursPerDay: 9,
+    expectedHours: 189,
+    expectedDays: { workingDays: 22, holidays: 1 },
+  };
+  const inputs = (given: Partial<PayrollInputs> = {}): PayrollInputs => ({ ...EMPTY_PAYROLL_INPUTS, ...given });
+  const WARNING = "Worked hours are more than 9:00 a day on the shift's working days (189:00 this month): attendance will count at most 9:00 a day";
+
+  it('are the working days less the holidays and the no-show days, × the hours a day; none without the shift’s', () => {
+    expect(mostCountedHours({ workingDays: 22, holidays: 1 }, 9, null)).toBe(189);
+    expect(mostCountedHours({ workingDays: 22, holidays: 1 }, 9, 2)).toBe(171);
+    expect(mostCountedHours({ workingDays: 22, holidays: 1 }, 9, 0.5)).toBe(184.5);
+    expect(mostCountedHours({ workingDays: 2, holidays: 0 }, 9, 5)).toBe(0);
+    expect([mostCountedHours(null, 9, null), mostCountedHours(undefined, 9, null), mostCountedHours({ workingDays: 22, holidays: 0 }, null, null)]).toEqual([null, null, null]);
+  });
+
+  it('warn when the worked hours typed are more, without cutting them', () => {
+    const line = payrollLine(terms, inputs({ workedHours: 200 }));
+    expect(line.warnings).toEqual([WARNING]);
+    // the total typed still counts as typed
+    expect(line.attendanceRatio).toBe(Math.round((200 / 189) * 1e10) / 1e10);
+    // up to the most: no warning
+    expect(payrollLine(terms, inputs({ workedHours: 189 })).warnings).toEqual([]);
+    // the no-show days' hours aren't countable: 2 days off leave 171 hours
+    expect(payrollLine(terms, inputs({ workedHours: 172, noShowDays: 2 })).warnings).toEqual([
+      "Worked hours are more than 9:00 a day on the shift's working days (171:00 this month): attendance will count at most 9:00 a day",
+    ]);
+    // the expected hours HR typed don't change what attendance can count
+    expect(payrollLine(terms, inputs({ workedHours: 200, expectedHours: 220 })).warnings).toEqual([WARNING]);
+  });
+
+  it('don’t warn without a shift, by the hour, or on a line worked out before then', () => {
+    expect(payrollLine({ ...terms, hoursPerDay: null, expectedHours: null, expectedDays: null }, inputs({ workedHours: 400, expectedHours: 189 })).warnings).toEqual([]);
+    const hourly = payrollLine({ ...terms, payBasis: 'hourly', hourlyRate: 100, expectedHours: null, expectedDays: null }, inputs({ workedHours: 400 }));
+    expect(hourly.warnings).toEqual([]);
+    const { expectedHours: _hours, expectedDays: _days, ...before } = terms;
+    expect(payrollLine(before, inputs({ workedHours: 400, expectedHours: 189 })).warnings).toEqual([]);
   });
 });

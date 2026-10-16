@@ -2,6 +2,7 @@ import {
   expectedHoursOf,
   formatHours,
   LABELS,
+  paysOvertime,
   toArabicDigits,
   type EmploymentType,
   type LawRates,
@@ -402,7 +403,8 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     const ratio = result.attendanceRatio;
     const grace = percentOf(rules.attendanceGracePercent);
     let note: string;
-    if (ratio > rules.overtimeAbovePercent / 100) {
+    // overtime only while the run's rules pay it (owner, 16 October 2026: "No overtime for now")
+    if (paysOvertime(rules) && ratio > rules.overtimeAbovePercent / 100) {
       note = ar ? `${percent2(ratio)}: يُصرف إضافي عمّا فوق ${percentOf(rules.overtimeAbovePercent)}` : `${percent2(ratio)}: overtime paid above ${percentOf(rules.overtimeAbovePercent)}`;
     } else if (ratio >= rules.attendanceGracePercent / 100) {
       note = ar ? `${percent2(ratio)}: تُحتسب كاملة (${grace} فأكثر)` : `${percent2(ratio)}: counts as full (${grace} or more)`;

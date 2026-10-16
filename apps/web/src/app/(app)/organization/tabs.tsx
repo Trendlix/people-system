@@ -7,10 +7,13 @@ const TABS = [
   { key: 'departments', href: '/organization/departments', label: 'Departments & Job Titles' },
   { key: 'grades', href: '/organization/grades', label: 'Grades' },
   { key: 'shifts', href: '/organization/shifts', label: 'Shifts' },
+  // the official holidays and the shifts' working days they come out of (owner, 16 October 2026: "make holiday a
+  // separate tab"; they were a section of Payroll Setup)
+  { key: 'holidays', href: '/organization/holidays', label: 'Holidays' },
   { key: 'allowances', href: '/organization/allowances', label: 'Allowances' },
   { key: 'contracts', href: '/organization/contracts', label: 'Contracts & Endings' },
-  // everything that changes the payroll sheet: the rules, the rates set by law, the holidays and how salaries are paid
-  // (Payroll Setup, owner's request of 16 October 2026)
+  // what changes the payroll sheet: the rules, the rates set by law and how salaries are paid (Payroll Setup, owner's
+  // request of 16 October 2026)
   { key: 'payroll', href: '/organization/payroll', label: 'Payroll Setup' },
 ] as const;
 

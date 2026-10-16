@@ -1,18 +1,16 @@
-import { shiftDaysIn, shiftExpectedHours, shiftHours, type PayrollRules, type Role } from '@trendlix/shared';
-import { parseDate } from '../../../../lib/format';
+import type { PayrollRules, Role } from '@trendlix/shared';
 import { hasRole } from '../../../../lib/roles';
-import type { Holiday } from '../../../../lib/types';
 import { parseAmount } from '../../employees/[id]/contracts/salary';
 
 // Organization → Payroll Setup (owner's request, 16 October 2026: "creating a setup page for payroll to enter the
-// variables that might affect the sheet"): one page, four sections, each saved on its own. 1 Your Rules: the rules runs
-// are worked out with, after the owner's payroll sheet (PATCH /payroll/settings), and the company defaults that change
-// the sheet, kept with the contract settings (PATCH /contract-settings): the basic share of the gross new contracts
-// start with and the basic wage social insurance Form 1 prints by default. 2 Rates Set by Law (law-rates-section.tsx).
-// 3 Holidays and Working Days: the year's official holidays, which come out of each shift's working days for the
-// expected hours. 4 Paying Salaries: the company's CIB account, the ACH purpose and the payday. Pure code, tested: who
-// sees it, each form read into what the API takes, the payday's date and the working days. Relative imports: the tests
-// run without the "@/" alias.
+// variables that might affect the sheet"): one page, each section saved on its own. 1 Your Rules: the rules runs are
+// worked out with, after the owner's payroll sheet (PATCH /payroll/settings), and the company defaults that change the
+// sheet, kept with the contract settings (PATCH /contract-settings): the basic share of the gross new contracts start
+// with and the basic wage social insurance Form 1 prints by default. 2 Rates Set by Law (law-rates-section.tsx). The
+// holidays and working days were the third section until they got a tab of their own (owner, 16 October 2026: "make
+// holiday a separate tab"; organization/holidays). 4 Paying Salaries: the company's CIB account, the ACH purpose and
+// the payday. Pure code, tested: who sees it, each form read into what the API takes and the payday's date. Relative
+// imports: the tests run without the "@/" alias.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -34,7 +32,11 @@ function numberFrom(raw: string, limits: { min: number; max: number; whole?: boo
 
 // ---------- 1 Your Rules ----------
 
-type RuleField = keyof PayrollRules;
+/** The rules typed as numbers; Pay overtime is a switch. */
+type RuleField = Exclude<keyof PayrollRules, 'payOvertime'>;
+
+/** The overtime's percent and rate: left off the form (disabled, so not sent) while overtime isn't paid. */
+const OVERTIME_FIELDS: readonly RuleField[] = ['overtimeAbovePercent', 'overtimeRate'];
 
 /** Each rule's limits (the API's), and how to say it is out of them. */
 const RULES: Record<RuleField, { min: number; max: number; whole?: boolean; error: string }> = {
@@ -57,15 +59,23 @@ export interface ContractDefaultsBody {
   insuranceBasicDefault?: number;
 }
 
+/** The rules Your Rules sends: the overtime's percent and rate only while overtime is paid (else the API keeps them). */
+export type RulesBody = Omit<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'> & Partial<Pick<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'>>;
+
 /**
  * The Your Rules form: the rules as PATCH /payroll/settings takes them, the company defaults as PATCH
  * /contract-settings takes them (each only when the form has it: an API from before one leaves it off the form), and
- * what is wrong, within the limits the API checks.
+ * what is wrong, within the limits the API checks. Pay overtime (owner, 16 October 2026: "No overtime for now") is a
+ * switch: a hidden "false" and the checkbox's "true", sent only when the form has it; while it is off, the overtime's
+ * percent and rate are disabled, so not sent, and the API keeps them for when it is turned on.
  */
-export function rulesBody(fd: FormData): { rules: PayrollRules; defaults: ContractDefaultsBody; errors: string[] } {
+export function rulesBody(fd: FormData): { rules: RulesBody; defaults: ContractDefaultsBody; errors: string[] } {
   const errors: string[] = [];
-  const rules = {} as PayrollRules;
+  const rules = {} as RulesBody;
+  const switchSent = fd.has('payOvertime');
+  if (switchSent) rules.payOvertime = fd.getAll('payOvertime').includes('true');
   for (const field of RULE_FIELDS) {
+    if (switchSent && !rules.payOvertime && OVERTIME_FIELDS.includes(field) && !fd.has(field)) continue;
     const value = numberFrom(text(fd, field), RULES[field]);
     if (Number.isNaN(value)) errors.push(RULES[field].error);
     rules[field] = value;
@@ -151,87 +161,4 @@ export function dayOfMonth(day: number): string {
   const teen = day % 100 >= 11 && day % 100 <= 13;
   const suffix = teen ? 'th' : (['th', 'st', 'nd', 'rd'][day % 10] ?? 'th');
   return `the ${day}${suffix}`;
-}
-
-// ---------- 3 Holidays and Working Days ----------
-
-/** The years a holiday can be in (the API's). */
-export const HOLIDAY_YEARS = { from: 2000, to: 2100 } as const;
-
-/** The year the holidays are shown for: the address's (?year=2027) when it is one, else this year. */
-export function holidaysYear(asked: string | string[] | undefined, today: string): number {
-  const typed = Array.isArray(asked) ? asked[0] : asked;
-  const year = /^\d{4}$/.test(typed ?? '') ? Number(typed) : NaN;
-  return year >= HOLIDAY_YEARS.from && year <= HOLIDAY_YEARS.to ? year : Number(today.slice(0, 4));
-}
-
-/** What POST and PATCH /payroll/holidays take. */
-export interface HolidayBody {
-  date: string;
-  nameEn: string;
-  nameAr: string | null;
-}
-
-/**
- * A holiday's form as the API takes it, and what is wrong with it: the day typed DD/MM/YYYY, its name in English, its
- * name in Arabic if any (empty: none).
- */
-export function holidayBody(fd: FormData): { body: HolidayBody; errors: string[] } {
-  const errors: string[] = [];
-  const typedDate = text(fd, 'date');
-  const date = parseDate(typedDate);
-  if (!date) errors.push('Enter the date as DD/MM/YYYY, e.g. 25/04/2027.');
-  else if (Number(date.slice(0, 4)) < HOLIDAY_YEARS.from || Number(date.slice(0, 4)) > HOLIDAY_YEARS.to) {
-    errors.push(`Enter a date from ${HOLIDAY_YEARS.from} to ${HOLIDAY_YEARS.to}.`);
-  }
-  const nameEn = text(fd, 'nameEn').trim();
-  if (!nameEn) errors.push("Enter the holiday's name in English.");
-  const nameAr = text(fd, 'nameAr').trim();
-  if (nameEn.length > 100 || nameAr.length > 100) errors.push('Keep each name to 100 characters or fewer.');
-  return { body: { date: date || typedDate, nameEn, nameAr: nameAr || null }, errors };
-}
-
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-/** A day's weekday: "2027-04-25" → "Sunday". */
-export const weekdayOf = (date: string) => WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()] ?? '';
-
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-/** A shift as the Working Days table reads it. */
-export interface WorkingShift {
-  code: string;
-  startTime: string;
-  endTime: string;
-  workingDays: readonly number[];
-}
-
-/** One month of the Working Days table: each shift's working days, the holidays on them, and the hours they come to. */
-export interface WorkingMonth {
-  month: string;
-  name: string;
-  /** In the shifts' order; `hours` null when the shift's hours can't be told. */
-  shifts: { code: string; workingDays: number; holidays: number; hours: number | null }[];
-}
-
-/**
- * Each month of a year with each shift's working days in it, the holidays on them and the expected hours they come to:
- * what a run expects of someone on that shift employed all month (owner's request, 16 October 2026), worked out as the
- * API works it out (packages/shared payroll.ts).
- */
-export function workingMonths(year: number, shifts: readonly WorkingShift[], holidays: readonly Pick<Holiday, 'date'>[]): WorkingMonth[] {
-  const days = holidays.map((h) => h.date);
-  return MONTHS.map((name, i) => {
-    const month = `${year}-${pad(i + 1)}`;
-    return {
-      month,
-      name,
-      shifts: shifts.map((s) => {
-        // as if employed the whole month
-        const counted = shiftDaysIn(month, `${month}-01`, null, s.workingDays, days);
-        const perDay = shiftHours(s.startTime, s.endTime);
-        return { code: s.code, ...counted, hours: perDay === null ? null : shiftExpectedHours(counted, perDay) };
-      }),
-    };
-  });
 }

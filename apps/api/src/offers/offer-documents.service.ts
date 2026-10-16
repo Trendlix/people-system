@@ -85,7 +85,7 @@ export function offerSources(
       department: o.department && { nameEn: o.department.nameEn, nameAr: o.department.nameAr },
       grade: o.grade && { code: o.grade.code, levelEn: o.grade.levelEn, levelAr: o.grade.levelAr },
       manager: o.manager && { fullNameEn: o.manager.fullNameEn, fullNameAr: o.manager.fullNameAr },
-      shift: o.shift && { startTime: o.shift.startTime, endTime: o.shift.endTime, workingDays: o.shift.workingDays },
+      shift: o.shift && { startTime: o.shift.startTime, endTime: o.shift.endTime, hoursPerDay: o.shift.hoursPerDay, workingDays: o.shift.workingDays },
       workArrangement: o.workArrangement,
     },
     contract: {
