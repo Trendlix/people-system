@@ -6,6 +6,7 @@ import { ApiError, apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import type { PaperworkSearchHit } from '@/lib/types';
+import { StaffOnly } from '../../staff-only';
 import { paperworkHref } from '../paperwork';
 import { BackLink, canSeeEmployeeFiles, Empty, Loading } from '../ui';
 
@@ -141,15 +142,17 @@ async function Search({ searchParams }: { searchParams: Promise<Query> }) {
 
 export default function DocumentSearchPage({ searchParams }: PageProps<'/employees/documents'>) {
   return (
-    <div className="space-y-4">
-      <BackLink href="/employees">Employees</BackLink>
-      <div>
-        <h1 className="text-2xl font-semibold">Search Documents</h1>
-        <p className="mt-1 text-muted">Find scanned paperwork in the employee files by the text read from it.</p>
+    <StaffOnly>
+      <div className="space-y-4">
+        <BackLink href="/employees">Employees</BackLink>
+        <div>
+          <h1 className="text-2xl font-semibold">Search Documents</h1>
+          <p className="mt-1 text-muted">Find scanned paperwork in the employee files by the text read from it.</p>
+        </div>
+        <Suspense fallback={<Loading />}>
+          <Search searchParams={searchParams} />
+        </Suspense>
       </div>
-      <Suspense fallback={<Loading />}>
-        <Search searchParams={searchParams} />
-      </Suspense>
-    </div>
+    </StaffOnly>
   );
 }

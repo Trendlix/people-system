@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { profileBack } from '@/components/nav';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
@@ -38,41 +39,44 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
   const tab: ProfileTabKey = asked && visible.has(asked) ? asked : 'basic';
   // Only people who can open every profile get links to others (e.g. the manager); others may not be allowed to see them.
   const linkPeople = seesEveryone(user);
+  // back to the Employees list; an employee's own profile is in their sidebar (My Profile), and a manager's direct
+  // report's goes back to My Team (owner's decisions, 17 October 2026)
+  const back = profileBack(user, p);
 
   return (
-    <div className="space-y-6">
-      <ProfileHeader profile={p} tabs={visible} linkPeople={linkPeople} decidesRequests={decidesChangeRequests(user)} />
+    <div className="space-y-4">
+      {back && <BackLink href={back.href}>{back.label}</BackLink>}
+      <div className="space-y-6">
+        <ProfileHeader profile={p} tabs={visible} linkPeople={linkPeople} decidesRequests={decidesChangeRequests(user)} />
 
-      <ProfileTabs tabs={tabs.map((t) => ({ key: t.key, label: t.label, href: profileHref(p.id, t.key) }))} active={tab} label={`Profile of ${p.fullNameEn}`}>
-        {tab === 'employment' ? (
-          <EmploymentTab profile={p} linkPeople={linkPeople} sub={one(query.sub)} justAdded={one(query.added) === '1'} />
-        ) : tab === 'insurance' ? (
-          <InsuranceTab profile={p} />
-        ) : tab === 'documents' ? (
-          // loads on its own, so a slow file list doesn't hold up the profile
-          <Suspense fallback={<EmployeeFileLoading />}>
-            <EmployeeFile employee={p} today={today} />
-          </Suspense>
-        ) : (
-          // Education under Basic Data's other sections (owner, 17 October 2026)
-          <BasicTab profile={p} show={one(query.show)} today={today} education={<EducationTab profile={p} />} />
-        )}
-      </ProfileTabs>
+        <ProfileTabs tabs={tabs.map((t) => ({ key: t.key, label: t.label, href: profileHref(p.id, t.key) }))} active={tab} label={`Profile of ${p.fullNameEn}`}>
+          {tab === 'employment' ? (
+            <EmploymentTab profile={p} linkPeople={linkPeople} sub={one(query.sub)} justAdded={one(query.added) === '1'} />
+          ) : tab === 'insurance' ? (
+            <InsuranceTab profile={p} />
+          ) : tab === 'documents' ? (
+            // loads on its own, so a slow file list doesn't hold up the profile
+            <Suspense fallback={<EmployeeFileLoading />}>
+              <EmployeeFile employee={p} today={today} />
+            </Suspense>
+          ) : (
+            // Education under Basic Data's other sections (owner, 17 October 2026)
+            <BasicTab profile={p} show={one(query.show)} today={today} education={<EducationTab profile={p} />} />
+          )}
+        </ProfileTabs>
 
-      <p className="text-xs text-muted">
-        Added {formatDate(p.createdAt)} · last updated {formatDateTime(p.updatedAt)}.
-      </p>
+        <p className="text-xs text-muted">
+          Added {formatDate(p.createdAt)} · last updated {formatDateTime(p.updatedAt)}.
+        </p>
+      </div>
     </div>
   );
 }
 
 export default function EmployeePage({ params, searchParams }: PageProps<'/employees/[id]'>) {
   return (
-    <div className="space-y-4">
-      <BackLink href="/employees">Employees</BackLink>
-      <Suspense fallback={<Loading />}>
-        <Profile params={params} searchParams={searchParams} />
-      </Suspense>
-    </div>
+    <Suspense fallback={<Loading />}>
+      <Profile params={params} searchParams={searchParams} />
+    </Suspense>
   );
 }

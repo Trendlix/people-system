@@ -68,6 +68,7 @@ describe('Holidays import (e2e)', () => {
   let finance: string;
   let ceo: string;
   let staff: string;
+  let manager: string;
   const api = () => request(app.getHttpServer());
 
   const template = (query = '', session = hr) => api().get(`/api/payroll/holidays/template.xlsx${query}`).set('Cookie', session);
@@ -90,6 +91,7 @@ describe('Holidays import (e2e)', () => {
     finance = await signIn(app, await createUser(prisma, ['finance']));
     ceo = await signIn(app, await createUser(prisma, ['ceo']));
     staff = await signIn(app, await createUser(prisma, ['employee']));
+    manager = await signIn(app, await createUser(prisma, ['employee', 'manager']));
     await ours();
   });
 
@@ -100,7 +102,7 @@ describe('Holidays import (e2e)', () => {
 
   describe('the template', () => {
     it('HR and Admin download it as a workbook, its example row in the year asked; nobody else does', async () => {
-      for (const session of [finance, ceo, staff]) await template('?year=2091', session).expect(403);
+      for (const session of [finance, ceo, manager, staff]) await template('?year=2091', session).expect(403);
       const res = await template('?year=2091').buffer(true).parse(bytes).expect(200);
       expect(res.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       expect(res.headers['content-disposition']).toMatch(/^attachment; filename="Holidays template 2091\.xlsx"/);
@@ -250,8 +252,9 @@ describe('Holidays import (e2e)', () => {
     // Admin's list, saved from Excel as CSV UTF-8 with semicolons
     const csv = Buffer.from('\ufeffDate;Until;Name (English);Name (Arabic)\r\n07/01/2092;;Coptic Christmas;عيد الميلاد المجيد\r\n٢٣/٠٧/٢٠٩٢;;Revolution Day;عيد الثورة\r\n', 'utf8');
 
-    it('Finance, the CEO and staff can’t preview or import', async () => {
-      for (const session of [finance, ceo, staff]) {
+    it('Finance, the CEO, a manager and staff can’t preview or import', async () => {
+      // the employee and the manager read the holidays (their dashboard), and no more
+      for (const session of [finance, ceo, manager, staff]) {
         await preview(csv, 'holidays.csv', session).expect(403);
         await confirm(csv, '0'.repeat(64), 'holidays.csv', session).expect(403);
       }

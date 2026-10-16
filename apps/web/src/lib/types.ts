@@ -275,8 +275,11 @@ export interface Employment {
   gradeId: string | null;
   grade: GradeRef | null;
   manager: { id: string; employeeCode: string; fullNameEn: string } | null;
-  /** Its hours to work a day: null for the whole window (owner, 16 October 2026: flexible shifts); missing from an older API. */
-  shift: { id: string; code: string; startTime: string; endTime: string; hoursPerDay?: number | null } | null;
+  /**
+   * Its hours to work a day: null for the whole window (owner, 16 October 2026: flexible shifts); its working days, 0 =
+   * Sunday … 6 = Saturday (the employee's dashboard shows them). Each missing from an older API.
+   */
+  shift: { id: string; code: string; startTime: string; endTime: string; hoursPerDay?: number | null; workingDays?: number[] } | null;
   /**
    * The newest signed contract (salary restricted), or null. Left out by an API from before contracts (October 2026),
    * hence optional: the screens then say contracts are not available yet.
@@ -1425,9 +1428,9 @@ export interface PayrollSettingsView extends PayrollRules {
 }
 
 /**
- * An official holiday, from GET /payroll/holidays?year= (HR, Finance, the CEO and Admin), in date order (owner's request,
- * 16 October 2026: Payroll Setup). One day each; on a shift's working day, it takes that day's hours out of the expected
- * hours a run works out.
+ * An official holiday, from GET /payroll/holidays?year= (every signed-in user since 17 October 2026, for the employee's
+ * dashboard; HR and Admin change them), in date order (owner's request, 16 October 2026: Payroll Setup). One day each;
+ * on a shift's working day, it takes that day's hours out of the expected hours a run works out.
  */
 export interface Holiday {
   id: string;

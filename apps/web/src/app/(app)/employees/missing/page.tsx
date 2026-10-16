@@ -7,6 +7,7 @@ import { departmentName, withTeams } from '@/lib/departments';
 import { formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, ProfileGap } from '@/lib/types';
+import { StaffOnly } from '../../staff-only';
 import { BackLink, canSeeEmployeeFiles, Empty, Loading, profileHref, StandingBadge } from '../ui';
 import {
   bySection,
@@ -240,15 +241,17 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
 
 export default function MissingDetailsPage({ searchParams }: PageProps<'/employees/missing'>) {
   return (
-    <div className="space-y-4">
-      <BackLink href="/employees">Employees</BackLink>
-      <div>
-        <h1 className="text-2xl font-semibold">Missing Details</h1>
-        <p className="mt-1 text-muted">The personal details and documents each profile still lacks, by the same checklist as the profile.</p>
+    <StaffOnly>
+      <div className="space-y-4">
+        <BackLink href="/employees">Employees</BackLink>
+        <div>
+          <h1 className="text-2xl font-semibold">Missing Details</h1>
+          <p className="mt-1 text-muted">The personal details and documents each profile still lacks, by the same checklist as the profile.</p>
+        </div>
+        <Suspense fallback={<Loading />}>
+          <Report searchParams={searchParams} />
+        </Suspense>
       </div>
-      <Suspense fallback={<Loading />}>
-        <Report searchParams={searchParams} />
-      </Suspense>
-    </div>
+    </StaffOnly>
   );
 }

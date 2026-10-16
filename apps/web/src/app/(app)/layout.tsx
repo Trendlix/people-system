@@ -2,29 +2,34 @@ import type { Role } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
-import { COMING_SOON } from '@/components/nav';
+import { COMING_SOON, navFor } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { UserMenu } from '@/components/user-menu';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
-import type { ChangeRequest, EmployeeProfile, EmployeeSummary, EndingSummary, SessionUser } from '@/lib/types';
+import type { ChangeRequest, EndingSummary, SessionUser } from '@/lib/types';
 import { decidesChangeRequests, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './approvals/data';
 import { followsRaises, PENDING_RAISES } from './approvals/raises';
 import { ReviewNowLink } from './employees/[id]/confirm/confirm-notices';
 import { bannerMessage } from './employees/confirmation';
+import { loadOwnProfile } from './own-profile';
 import { handlesRaiseRequests, WITH_HR_REQUESTS } from './raise-requests/list';
 
-/** The sidebar links for the signed-in user's roles. */
+/**
+ * The sidebar links for the signed-in user: an employee's or a manager's own (Dashboard, My Profile, My Requests, and
+ * My Team for a manager: owner's decisions, 17 October 2026), else the links for their roles (navFor).
+ */
 async function MainNav() {
-  // Like the user menu: an API outage must not take the page down, so it falls back to the links everyone sees.
-  let roles: Role[] = [];
+  // Like the user menu: an API outage must not take the page down, so it falls back to the link everyone has (Home).
+  let user: SessionUser | null = null;
   try {
-    roles = (await getCurrentUser()).roles;
+    user = await getCurrentUser();
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
   }
+  const roles: Role[] = user?.roles ?? [];
   // Beside Approvals: for HR and the CEO, the endings and the pay raises waiting for the CEO; for HR and Admin (a Super
   // Admin too), the employees' change requests waiting for them. Beside Raise Requests, for HR, the requests waiting for
   // HR (owner's decisions, 16 October 2026). Each is left out when it can't be read.
@@ -38,20 +43,7 @@ async function MainNav() {
   const counts: Record<string, number> = {};
   if (waiting) counts['/approvals'] = waiting;
   if (requests?.length) counts['/raise-requests'] = requests.length;
-  return <NavLinks roles={roles} counts={Object.keys(counts).length ? counts : undefined} />;
-}
-
-/**
- * The signed-in user's own profile: the employee whose work email is their sign-in email, as the API links them; null
- * when they have none, or when it can't be read. GET /auth/me names it (`employeeId`), so it is one read, or none.
- */
-async function ownProfile(user: SessionUser): Promise<EmployeeProfile | null> {
-  if (user.employeeId !== undefined) return user.employeeId ? getOrNull<EmployeeProfile>(`/employees/${user.employeeId}`) : null;
-  // An API from before 15 October 2026 doesn't name it: found among the people they may see (GET /employees: just
-  // themself for an employee, their team too for a manager, everyone for HR and the CEO), then read.
-  const email = user.email.toLowerCase();
-  const own = (await getOrNull<EmployeeSummary[]>('/employees'))?.find((e) => e.workEmail?.toLowerCase() === email);
-  return own ? getOrNull<EmployeeProfile>(`/employees/${own.id}`) : null;
+  return <NavLinks items={navFor(user)} counts={Object.keys(counts).length ? counts : undefined} />;
 }
 
 /**
@@ -66,7 +58,7 @@ async function ConfirmBanner() {
     if (err instanceof ApiError) return null;
     throw err;
   }
-  const own = await ownProfile(user);
+  const own = await loadOwnProfile(user);
   const message = own && bannerMessage(own.confirmation);
   if (!own || !message) return null;
   return (

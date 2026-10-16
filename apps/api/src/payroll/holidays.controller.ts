@@ -27,10 +27,11 @@ import { ConfirmHolidayImportDto, CreateHolidayDto, HolidaysQueryDto, UpdateHoli
 import { HolidaysService } from './holidays.service.js';
 
 // The official holidays (Organization → Holidays, owner's request of 16 October 2026; its own tab since the owner's
-// "make holiday a separate tab" the same day): HR, Finance, the CEO and Admin read them, as the payroll settings; HR and
-// Admin add and change them, and import a year's list from a file (owner's request, 16 October 2026: "allow me to
-// import yearly holiday list"); a Super Admin removes one (every deletion is a Super Admin's: owner's decision, 15
-// October 2026).
+// "make holiday a separate tab" the same day): every signed-in user reads them, as they aren't sensitive, for the
+// employee's dashboard (owner, 17 October 2026: "the dashboard may contain the data he might need such as Holidays";
+// before, HR, Finance, the CEO and Admin, as the payroll settings); HR and Admin add and change them, and import a
+// year's list from a file (owner's request, 16 October 2026: "allow me to import yearly holiday list"); a Super Admin
+// removes one (every deletion is a Super Admin's: owner's decision, 15 October 2026).
 
 // One holiday list (.xlsx or .csv, told apart by its content) of up to 1 MB, and the fingerprint to confirm it with.
 const ONE_LIST = { limits: { fileSize: IMPORT_MAX_BYTES, files: 1, fields: 2 } };
@@ -39,8 +40,7 @@ const ONE_LIST = { limits: { fileSize: IMPORT_MAX_BYTES, files: 1, fields: 2 } }
 export class HolidaysController {
   constructor(private readonly holidays: HolidaysService) {}
 
-  /** ?year=YYYY: that year's, in date order; every holiday without it. */
-  @Roles('hr', 'finance', 'ceo', 'admin')
+  /** ?year=YYYY: that year's, in date order; every holiday without it. Any signed-in user. */
   @Get()
   list(@Query() query: HolidaysQueryDto) {
     return this.holidays.list(query.year);

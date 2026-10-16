@@ -3,13 +3,20 @@ import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { API_URL, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { PendingRaise } from '@/lib/raise-types';
 import type { EndingSummary, ExpiringContract, ProbationEnding, SessionUser } from '@/lib/types';
+import type { Session } from '@/lib/view-as';
 import { decidesEndings, followsEndings, getOrNull, PENDING_ENDINGS } from './approvals/data';
 import { PENDING_RAISES } from './approvals/raises';
-import { profileHref, todayInCairo } from './employees/ui';
+import { Dashboard } from './dashboard/cards';
+import { Loading, profileHref, todayInCairo } from './employees/ui';
 import { dueNote } from './organization/contracts/labels';
+
+// The home page. Someone who is only an employee and/or a direct manager gets their dashboard (owner, 17 October
+// 2026: "create a dashboard for the employee relevant to his role", dashboard/cards.tsx); HR, Finance, the CEO and
+// Admins (a Super Admin too) keep the home page as it was: what waits for them, and the modules.
 
 const MODULES = [
   { title: 'Organization', text: 'Company profile, departments and their teams, job titles with their grade ranges and job descriptions, grades, shifts.', href: '/organization/company' },
@@ -179,7 +186,7 @@ async function ContractAlerts() {
   );
 }
 
-export default function HomePage() {
+function StaffHome() {
   return (
     <div className="max-w-4xl">
       <h1 className="text-2xl font-semibold">Welcome</h1>
@@ -213,5 +220,24 @@ export default function HomePage() {
         </Suspense>
       </p>
     </div>
+  );
+}
+
+async function Home() {
+  // Like the sidebar: an API outage must not take the home page down; it shows the home page, whose server status says so.
+  let user: Session | null = null;
+  try {
+    user = await getCurrentUser();
+  } catch (err) {
+    if (!(err instanceof ApiError)) throw err;
+  }
+  return user && isSelfService(user) ? <Dashboard user={user} /> : <StaffHome />;
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <Home />
+    </Suspense>
   );
 }

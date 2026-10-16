@@ -4,6 +4,7 @@ import { formatDate } from '@/lib/format';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { CardCorrection, LearnedField } from '@/lib/types';
+import { StaffOnly } from '../../staff-only';
 import { deleteCardCorrection } from '../paperwork-actions';
 import { BackLink, canSeeCardFixes, Empty, Loading } from '../ui';
 import { DeleteFixButton } from './delete-fix-button';
@@ -87,19 +88,21 @@ async function Fixes() {
 
 export default function CardCorrectionsPage() {
   return (
-    <div className="space-y-4">
-      <BackLink href="/employees">Employees</BackLink>
-      <div>
-        <h1 className="text-2xl font-semibold">Card Reading Fixes</h1>
-        <p className="mt-1 max-w-3xl text-muted">
-          Words the ID card reader got wrong and HR corrected before saving: in the Arabic name and the address, never in numbers or dates. Each
-          fix is applied to the next card readings, and the fields it changes are marked for checking. Only a Super Admin can delete a fix, e.g. one
-          learned by mistake.
-        </p>
+    <StaffOnly>
+      <div className="space-y-4">
+        <BackLink href="/employees">Employees</BackLink>
+        <div>
+          <h1 className="text-2xl font-semibold">Card Reading Fixes</h1>
+          <p className="mt-1 max-w-3xl text-muted">
+            Words the ID card reader got wrong and HR corrected before saving: in the Arabic name and the address, never in numbers or dates. Each
+            fix is applied to the next card readings, and the fields it changes are marked for checking. Only a Super Admin can delete a fix, e.g. one
+            learned by mistake.
+          </p>
+        </div>
+        <Suspense fallback={<Loading />}>
+          <Fixes />
+        </Suspense>
       </div>
-      <Suspense fallback={<Loading />}>
-        <Fixes />
-      </Suspense>
-    </div>
+    </StaffOnly>
   );
 }

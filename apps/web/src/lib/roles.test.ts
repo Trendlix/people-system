@@ -7,6 +7,7 @@ import {
   effectiveRoles,
   hasRole,
   isAdmin,
+  isSelfService,
   isSuperAdmin,
   ONLY_SUPER_ADMIN_DELETES,
   ROLE_LABELS,
@@ -62,6 +63,22 @@ describe('hasRole', () => {
 
   it('does not make an Admin a Super Admin', () => {
     expect(hasRole(admin, 'super_admin')).toBe(false);
+  });
+});
+
+describe('isSelfService', () => {
+  it('is an employee, a direct manager or both, and nobody else', () => {
+    expect(isSelfService(employee)).toBe(true);
+    expect(isSelfService(as('manager'))).toBe(true);
+    expect(isSelfService(as('employee', 'manager'))).toBe(true);
+    // no roles at all: nothing more than an employee
+    expect(isSelfService(as())).toBe(true);
+  });
+
+  it('is not HR, Finance, the CEO, an Admin or a Super Admin, whatever else they hold', () => {
+    for (const user of [hr, ceo, admin, superAdmin, as('finance'), as('employee', 'manager', 'finance'), as('manager', 'super_admin')]) {
+      expect(isSelfService(user)).toBe(false);
+    }
   });
 });
 

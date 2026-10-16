@@ -10,10 +10,14 @@ import { formatDate } from '@/lib/format';
 import { showsDepartment } from '@/lib/place-groups';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary, Grade } from '@/lib/types';
+import { StaffOnly } from '../staff-only';
 import { directorySections } from './directory-groups';
 import { canSeeSalaryRaises, RAISES_PATH } from './raises/salary-raises';
 import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge } from './ui';
 
+// Not an employee's: someone who is only an employee and/or a direct manager is sent to their dashboard, which links
+// their own profile, and a manager's My Team their direct reports' (owner's decisions, 17 October 2026).
+//
 // The directory filters on this server from the one GET /employees call (the API already limits it to the people
 // the caller may see), so the counts always match the list. Everyone keeps a profile: someone whose employment ended is
 // a former employee, and someone added before being hired is not employed yet (their standing). The team, job title,
@@ -303,7 +307,7 @@ async function HeaderActions() {
 
 export default function EmployeesPage({ searchParams }: PageProps<'/employees'>) {
   return (
-    <>
+    <StaffOnly>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Employees</h1>
@@ -316,6 +320,6 @@ export default function EmployeesPage({ searchParams }: PageProps<'/employees'>)
       <Suspense fallback={<Loading />}>
         <Directory searchParams={searchParams} />
       </Suspense>
-    </>
+    </StaffOnly>
   );
 }

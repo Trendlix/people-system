@@ -7,6 +7,7 @@ import { departmentName } from '@/lib/departments';
 import { formatDateTime, titleCase } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
+import { StaffOnly } from '../../staff-only';
 import { formatEgp } from '../[id]/contracts/salary';
 import { BackLink, Empty, Loading, todayInCairo } from '../ui';
 import { loadSalaryRaises } from './data';
@@ -396,15 +397,17 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
 
 export default function SalaryRaisesPage({ searchParams }: PageProps<'/employees/raises'>) {
   return (
-    <div className="space-y-4">
-      <BackLink href="/employees">Employees</BackLink>
-      <div>
-        <h1 className="text-2xl font-semibold">Salary Raises</h1>
-        <p className="mt-1 text-muted">Every signed raise of a period and what it costs, by department, and who is due for a salary review.</p>
+    <StaffOnly>
+      <div className="space-y-4">
+        <BackLink href="/employees">Employees</BackLink>
+        <div>
+          <h1 className="text-2xl font-semibold">Salary Raises</h1>
+          <p className="mt-1 text-muted">Every signed raise of a period and what it costs, by department, and who is due for a salary review.</p>
+        </div>
+        <Suspense fallback={<Loading />}>
+          <Report searchParams={searchParams} />
+        </Suspense>
       </div>
-      <Suspense fallback={<Loading />}>
-        <Report searchParams={searchParams} />
-      </Suspense>
-    </div>
+    </StaffOnly>
   );
 }

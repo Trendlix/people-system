@@ -80,6 +80,7 @@ describe('Payroll Setup (e2e)', () => {
   let ceo: string;
   let superAdmin: string;
   let staff: string;
+  let manager: string;
   let departmentId: string;
   let shiftA: { id: string; startTime: string; endTime: string; workingDays: number[] };
   /** Everyone hired here: removed at the end, so the files after this one don't find them (template previews list 50). */
@@ -121,6 +122,7 @@ describe('Payroll Setup (e2e)', () => {
     ceo = await signIn(app, await createUser(prisma, ['ceo']));
     superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     staff = await signIn(app, await createUser(prisma, ['employee']));
+    manager = await signIn(app, await createUser(prisma, ['employee', 'manager']));
     await prisma.payrollRun.deleteMany();
     await prisma.holiday.deleteMany();
     departmentId = (await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Setup ${RUN}` }).expect(201)).body.id;
@@ -142,8 +144,8 @@ describe('Payroll Setup (e2e)', () => {
   describe('holidays', () => {
     let eid: Holiday;
 
-    it('HR and Admin add them; Finance, the CEO and staff don’t', async () => {
-      for (const session of [finance, ceo, staff]) await addHoliday({ date: '2031-04-25', nameEn: 'Sinai Liberation Day' }, session).expect(403);
+    it('HR and Admin add them; Finance, the CEO, a manager and staff don’t', async () => {
+      for (const session of [finance, ceo, manager, staff]) await addHoliday({ date: '2031-04-25', nameEn: 'Sinai Liberation Day' }, session).expect(403);
       eid = (await addHoliday({ date: '2031-03-21', nameEn: '  Eid al-Fitr  ', nameAr: ' عيد الفطر ' }).expect(201)).body as Holiday;
       expect(eid).toEqual({ id: expect.any(String), date: '2031-03-21', nameEn: 'Eid al-Fitr', nameAr: 'عيد الفطر' });
       const sinai = (await addHoliday({ date: '2031-04-25', nameEn: 'Sinai Liberation Day', nameAr: '' }, admin).expect(201)).body as Holiday;
@@ -152,13 +154,21 @@ describe('Payroll Setup (e2e)', () => {
       expect((await auditOf('holiday', eid.id)).map((a) => [a.action, a.diff])).toEqual([['create', { date: '2031-03-21', nameEn: 'Eid al-Fitr', nameAr: 'عيد الفطر' }]]);
     });
 
-    it('everyone who sees the payroll settings reads them, a year’s or all, in date order', async () => {
-      for (const session of [hr, finance, ceo, admin, superAdmin]) {
+    it('every signed-in user reads them, a year’s or all, in date order: the employee and the manager too, for their dashboard', async () => {
+      // owner, 17 October 2026: "the dashboard may contain the data he might need such as Holidays"; not sensitive
+      for (const session of [hr, finance, ceo, admin, superAdmin, manager, staff]) {
         expect(((await holidays('?year=2031', session).expect(200)).body as Holiday[]).map((h) => h.date)).toEqual(['2031-03-21', '2031-04-25']);
       }
       expect(((await holidays().expect(200)).body as Holiday[]).map((h) => h.date)).toEqual(['2030-12-31', '2031-03-21', '2031-04-25']);
       expect((await holidays('?year=2032').expect(200)).body).toEqual([]);
-      await holidays('', staff).expect(403);
+      // the same day, its names, nothing else
+      expect((await holidays('?year=2031', staff).expect(200)).body).toEqual([
+        { id: eid.id, date: '2031-03-21', nameEn: 'Eid al-Fitr', nameAr: 'عيد الفطر' },
+        { id: expect.any(String), date: '2031-04-25', nameEn: 'Sinai Liberation Day', nameAr: null },
+      ]);
+      for (const session of [manager, staff]) expect(messagesOf(await holidays('?year=abc', session).expect(400))).toEqual(['Choose a year from 2000 to 2100.']);
+      // still a signed-in user's: nobody else
+      await api().get('/api/payroll/holidays?year=2031').expect(401);
       for (const year of ['abc', '1999', '2101', '2031.5']) {
         expect(messagesOf(await holidays(`?year=${year}`).expect(400))).toEqual(['Choose a year from 2000 to 2100.']);
       }
@@ -177,7 +187,7 @@ describe('Payroll Setup (e2e)', () => {
     });
 
     it('HR and Admin change them, each change in the audit log; not onto a day that has one', async () => {
-      for (const session of [finance, ceo, staff]) await changeHoliday(eid.id, { nameEn: 'Eid' }, session).expect(403);
+      for (const session of [finance, ceo, manager, staff]) await changeHoliday(eid.id, { nameEn: 'Eid' }, session).expect(403);
       const moved = (await changeHoliday(eid.id, { date: '2031-03-22', nameAr: '' }).expect(200)).body as Holiday;
       expect(moved).toEqual({ id: eid.id, date: '2031-03-22', nameEn: 'Eid al-Fitr', nameAr: null });
       expect((await changeHoliday(eid.id, { nameEn: 'Eid al-Fitr (first day)' }, admin).expect(200)).body.nameEn).toBe('Eid al-Fitr (first day)');
@@ -194,7 +204,7 @@ describe('Payroll Setup (e2e)', () => {
     });
 
     it('a Super Admin removes one; nobody else does', async () => {
-      for (const session of [hr, admin, finance]) expect((await removeHoliday(eid.id, session).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN_DELETES);
+      for (const session of [hr, admin, finance, manager, staff]) expect((await removeHoliday(eid.id, session).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN_DELETES);
       await removeHoliday(eid.id).expect(204);
       await removeHoliday(eid.id).expect(404);
       expect(((await holidays('?year=2031').expect(200)).body as Holiday[]).map((h) => h.date)).toEqual(['2031-04-25']);

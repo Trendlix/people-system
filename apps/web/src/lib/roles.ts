@@ -32,6 +32,17 @@ export function hasRole(user: WithRoles, ...wanted: Role[]): boolean {
   return wanted.some((r) => roles.includes(r));
 }
 
+/**
+ * Someone who is only an employee, a direct manager, or both: no HR, Finance, CEO or Admin role (a Super Admin counts as
+ * an Admin). They get their own side of the system (owner, 17 October 2026: "create a dashboard for the employee
+ * relevant to his role, and dont show him the organization tab", then "my suggestion for the employee side bar is 1-
+ * Dashboard 2- My Profile 3- My Requests"): their dashboard as the home page and a sidebar of their own, and the
+ * Organization and Employees pages send them to the dashboard. Everyone else keeps the sidebar and home page as before.
+ */
+export function isSelfService(user: WithRoles): boolean {
+  return !hasRole(user, 'hr', 'finance', 'ceo', 'admin');
+}
+
 /** Admins, and Super Admins, manage sign-in accounts (Users) and, with HR, the organisation. */
 export function isAdmin(user: WithRoles): boolean {
   return hasRole(user, 'admin');
