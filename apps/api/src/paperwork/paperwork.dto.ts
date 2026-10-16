@@ -1,6 +1,6 @@
-import { PAPERWORK_KINDS, type PaperworkKind } from '@trendlix/shared';
+import { PAPERWORK_KINDS, PHOTO_CROP_MIN, type PaperworkKind, type PhotoCrop } from '@trendlix/shared';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsDefined, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateBy, ValidateIf, ValidateNested } from 'class-validator';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
 import { LEARNED_FIELDS, type LearnedField } from './corrections.js';
@@ -32,6 +32,51 @@ export class UpdatePaperworkDto extends PaperDetailsDto {
   @IsOptional()
   @IsIn(PAPERWORK_KINDS, { message: 'Choose what kind of document this is.' })
   kind?: PaperworkKind;
+}
+
+const isFraction = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+
+/**
+ * A fraction of the photo, from 0 to 1, and at least `min`: one message for a value, whatever is wrong with it (the
+ * same words as photoCropProblem in packages/shared, which checks the crop as a whole).
+ */
+const IsFraction = (min = 0) =>
+  ValidateBy({
+    name: 'isFraction',
+    validator: {
+      validate: (v: unknown) => isFraction(v) && v >= min,
+      defaultMessage: (args) =>
+        isFraction(args?.value) ? 'The crop is too small: zoom out a little.' : 'The crop must be given as fractions of the photo, from 0 to 1.',
+    },
+  });
+
+/** The square of a personal photo shown in the circle beside the name, as fractions of the photo as shown (PhotoCrop). */
+class PhotoCropDto implements PhotoCrop {
+  @IsFraction()
+  x: number;
+
+  @IsFraction()
+  y: number;
+
+  @IsFraction(PHOTO_CROP_MIN)
+  w: number;
+
+  @IsFraction(PHOTO_CROP_MIN)
+  h: number;
+}
+
+const SEND_CROP = 'Send the square of the photo to show, or null for the whole photo.';
+
+/**
+ * The crop of the picture beside the name: the square to show, or null for the whole photo, centred. Sent as `{ crop }`
+ * since a request body is an object: a bare null is not taken.
+ */
+export class SetPhotoCropDto {
+  @ValidateIf((o: SetPhotoCropDto) => o.crop !== null)
+  @IsDefined({ message: SEND_CROP })
+  @ValidateNested({ message: SEND_CROP })
+  @Type(() => PhotoCropDto)
+  crop: PhotoCropDto | null;
 }
 
 export class SearchPaperworkDto {

@@ -246,3 +246,6 @@ export * from './nationalities.js';
 
 // monthly payroll: a line worked out from the contract, the profile and the month's inputs
 export * from './payroll.js';
+
+// the square of the personal photo shown in the circle beside the name
+export * from './photo-crop.js';

@@ -1,10 +1,10 @@
 import { BadGatewayException, BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { RESTRICTED_PAPERWORK, type PaperworkKind } from '@trendlix/shared';
+import { photoCropProblem, RESTRICTED_PAPERWORK, type PaperworkKind, type PhotoCrop } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
-import type { Prisma } from '../generated/prisma/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { NORMALIZE_FROM, NORMALIZE_TO, normalizeArabic, snippet } from './arabic-text.js';
 import { readIdCardWithNotes, withoutReligion, type CardLine, type IdCardSuggestions } from './egyptian-id.js';
@@ -15,6 +15,7 @@ import { OCR_CARDS_PDF_PAGES, OcrClient, type OcrPage, type OcrPageRead, type Oc
 import { detectPaperworkType, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, replacementName, safeFileName, type PaperworkType } from './paperwork-file.js';
 import type { UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
 import { countPdfPages } from './pdf-pages.js';
+import { PHOTO_PAPER, storedCrop } from './photo-crop.js';
 import { photoSize } from './photo-size.js';
 
 const ENTITY = 'paperwork';
@@ -219,6 +220,8 @@ export class PaperworkService {
       documentNo: dto.documentNo,
       expiresOn: dto.expiresOn === undefined ? undefined : dto.expiresOn === null ? null : toDateOnly(dto.expiresOn),
       kind: dto.kind,
+      // only a personal photo is cropped for the picture beside the name: a paper moved to another kind loses its crop
+      photoCrop: dto.kind && dto.kind !== 'personal_photo' ? Prisma.DbNull : undefined,
     };
     const updated = await this.prisma.paperworkItem.update({ where: { id: itemId }, data, select: ITEM });
     // the number of a national ID scan (before or after) is restricted like the national ID: only that it changed is logged
@@ -238,12 +241,35 @@ export class PaperworkService {
    * kept as an image answers, so this never serves any other paper (nor a national ID scan, whose views are audited).
    */
   async photo(itemId: string) {
-    const item = await this.prisma.paperworkItem.findFirst({
-      where: { id: itemId, kind: 'personal_photo', mimeType: { in: ['image/jpeg', 'image/png', 'image/webp'] } },
-      select: { mimeType: true, data: true },
-    });
+    const item = await this.prisma.paperworkItem.findFirst({ where: { id: itemId, ...PHOTO_PAPER }, select: { mimeType: true, data: true } });
     if (!item) throw new NotFoundException('Photo not found.');
     return { data: Buffer.from(item.data.buffer, item.data.byteOffset, item.data.byteLength), type: item.mimeType };
+  }
+
+  /**
+   * The square of a personal photo shown in the circle beside the name, to make the face bigger (owner's request, 16
+   * October 2026), or null for the whole photo, centred. Only a personal photo kept as an image has one, and the file
+   * itself never changes. The square is checked against the photo's size as shown, read from its header; a photo whose
+   * size can't be read takes any shape. Logged like the paper's other changes, from and to. Answers the crop as kept.
+   */
+  async cropPhoto(itemId: string, crop: PhotoCrop | null, user: SessionUser) {
+    const item = await this.prisma.paperworkItem.findFirst({
+      where: { id: itemId, ...PHOTO_PAPER },
+      select: { employeeId: true, mimeType: true, data: true, photoCrop: true },
+    });
+    if (!item) throw new NotFoundException('Photo not found.');
+    // its four values only, as plain numbers
+    const after = crop && { x: crop.x, y: crop.y, w: crop.w, h: crop.h };
+    if (after) {
+      const problem = photoCropProblem(after, photoSize(Buffer.from(item.data.buffer, item.data.byteOffset, item.data.byteLength), item.mimeType as PaperworkType));
+      if (problem) throw new BadRequestException(problem);
+    }
+    await this.prisma.paperworkItem.update({ where: { id: itemId }, data: { photoCrop: after ?? Prisma.DbNull } });
+    const diff = changes({ photoCrop: storedCrop(item.photoCrop) }, { photoCrop: after });
+    if (Object.keys(diff).length) {
+      await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: itemId, diff: { employeeId: item.employeeId, ...diff } });
+    }
+    return { photoCrop: after };
   }
 
   /** The file itself. Every view of a national ID scan is written to the audit log. */
@@ -433,24 +459,26 @@ export class PaperworkService {
    * Replaces the file of a stored paper with an adjusted one (cropped, straightened … in the browser). Its kind,
    * employee, number and expiry stay; its name, type and size follow the new file, and its text is read again as for
    * a new upload. Logged with the new name and size, never the contents. National ID scans are replaced by HR, who
-   * upload them; replacing one is not a view of it.
+   * upload them; replacing one is not a view of it. A personal photo's crop for the picture beside the name is cleared:
+   * it was chosen on the old picture.
    */
   async replaceFile(itemId: string, file: Express.Multer.File | undefined, user: SessionUser) {
-    const item = await this.prisma.paperworkItem.findUnique({ where: { id: itemId }, select: { employeeId: true, kind: true, fileName: true } });
+    const item = await this.prisma.paperworkItem.findUnique({ where: { id: itemId }, select: { employeeId: true, kind: true, fileName: true, photoCrop: true } });
     if (!item) throw new NotFoundException('Document not found.');
     const upload = checked(file, 'Choose the adjusted file to upload.');
     const fileName = replacementName(file?.originalname, item.fileName, upload.type);
     const sizeBytes = upload.data.length;
     await this.prisma.paperworkItem.update({
       where: { id: itemId },
-      data: { fileName, mimeType: upload.type, sizeBytes, data: new Uint8Array(upload.data), ocrStatus: 'pending', ocrText: null, ocrAt: null },
+      data: { fileName, mimeType: upload.type, sizeBytes, data: new Uint8Array(upload.data), ocrStatus: 'pending', ocrText: null, ocrAt: null, photoCrop: Prisma.DbNull },
     });
+    const crop = storedCrop(item.photoCrop);
     await this.audit.record({
       userId: user.id,
       action: 'update',
       entityType: ENTITY,
       entityId: itemId,
-      diff: { employeeId: item.employeeId, file: 'replaced', fileName, sizeBytes },
+      diff: { employeeId: item.employeeId, file: 'replaced', fileName, sizeBytes, ...(crop && { photoCrop: { from: crop, to: null } }) },
     });
     await this.read(itemId, { ...upload, fileName }, item.kind);
     return itemView(await this.prisma.paperworkItem.findUniqueOrThrow({ where: { id: itemId }, select: ITEM }));

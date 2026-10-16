@@ -19,6 +19,13 @@ const PNG = Buffer.from(
   'base64',
 );
 const png = (mark: string) => Buffer.concat([PNG, Buffer.from(`MARK:${mark}`)]);
+/** The PNG made to say it is `width` × `height` (its header is all that is read for its size; nothing decodes it). */
+function pngSized(width: number, height: number, mark = 'NONE') {
+  const sized = Buffer.from(PNG);
+  sized.writeUInt32BE(width, 16);
+  sized.writeUInt32BE(height, 20);
+  return Buffer.concat([sized, Buffer.from(`MARK:${mark}`)]);
+}
 const jpeg = (mark: string) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]), Buffer.from(`MARK:${mark}`)]);
 const pdf = (mark: string) => Buffer.from(`%PDF-1.4\n% MARK:${mark}\n%%EOF\n`);
 
@@ -251,6 +258,102 @@ describe('Paperwork (e2e)', () => {
     expect((await auditOf(card.id)).map((a) => a.action)).toEqual(['create']);
     await api().get(`/api/paperwork/${photo.id}/photo`).set('Cookie', finance).expect(403);
     await api().get(`/api/paperwork/${photo.id}/photo`).set('Cookie', staff).expect(403);
+  });
+
+  // The picture beside the name, cropped to make the face bigger, the uploaded photo unchanged (owner's request, 16
+  // October 2026): the square of the photo shown in the circle, as fractions of the photo as shown.
+  describe('the crop of the picture beside the name', () => {
+    // 450 × 450 pixels of a 600 × 800 photo, at its bottom right
+    const CROP = { x: 0.25, y: 0.4375, w: 0.75, h: 0.5625 };
+    const crop = (itemId: string, body: unknown, session = hr) => api().put(`/api/paperwork/${itemId}/photo-crop`).set('Cookie', session).send(body as object);
+    const profileOf = async (session: string) => (await api().get(`/api/employees/${employeeId}`).set('Cookie', session).expect(200)).body;
+    const listedTo = async (session: string) =>
+      (await api().get('/api/employees').set('Cookie', session).expect(200)).body.find((e: { id: string }) => e.id === employeeId);
+
+    it('keeps the square HR chose, given with the picture on the profile and the list, and never changes the photo', async () => {
+      const file = pngSized(600, 800);
+      const photo = await upload(file, 'portrait.png', 'personal_photo');
+      expect((await profileOf(hr)).photoCrop).toBeNull(); // the whole photo, centred, until HR crops it
+
+      expect((await crop(photo.id, { crop: CROP }).expect(200)).body).toEqual({ photoCrop: CROP });
+      expect((await profileOf(hr)).photoCrop).toEqual(CROP);
+      expect(await listedTo(ceo)).toMatchObject({ photoId: photo.id, photoCrop: CROP });
+      // finance sees everyone, but not the employee file the photo is kept in
+      expect(await profileOf(finance)).toMatchObject({ photoId: null, photoCrop: null });
+      expect(await listedTo(finance)).toMatchObject({ photoId: null, photoCrop: null });
+      // the photo is served as it was uploaded
+      const served = await api().get(`/api/paperwork/${photo.id}/photo`).set('Cookie', ceo).expect(200);
+      expect(Buffer.compare(served.body as Buffer, file)).toBe(0);
+
+      // back to the whole photo
+      expect((await crop(photo.id, { crop: null }).expect(200)).body).toEqual({ photoCrop: null });
+      expect((await profileOf(hr)).photoCrop).toBeNull();
+      expect((await prisma.paperworkItem.findUniqueOrThrow({ where: { id: photo.id } })).photoCrop).toBeNull();
+      // the same again changes nothing, and logs nothing
+      await crop(photo.id, { crop: null }).expect(200);
+
+      const audit = await auditOf(photo.id);
+      expect(audit.map((a) => a.action)).toEqual(['create', 'update', 'update']);
+      expect(audit[1].diff).toEqual({ employeeId, photoCrop: { from: null, to: CROP } });
+      expect(audit[2].diff).toEqual({ employeeId, photoCrop: { from: CROP, to: null } });
+    });
+
+    it('refuses a crop that is not a square within the photo', async () => {
+      const photo = await upload(pngSized(600, 800), 'portrait.png', 'personal_photo');
+      const refused = async (body: unknown) => (await crop(photo.id, body).expect(400)).body.message;
+      const fractions = ['The crop must be given as fractions of the photo, from 0 to 1.'];
+      expect(await refused({ crop: { ...CROP, x: -0.1 } })).toEqual(fractions);
+      expect(await refused({ crop: { ...CROP, h: 1.5 } })).toEqual(fractions);
+      expect(await refused({ crop: { ...CROP, w: '0.75' } })).toEqual(fractions);
+      expect(await refused({ crop: { x: 0, y: 0, w: 0.75 } })).toEqual(fractions); // no height
+      expect(await refused({ crop: { x: 0, y: 0, w: 0.04, h: 0.05 } })).toEqual(['The crop is too small: zoom out a little.']);
+      expect(await refused({ crop: { ...CROP, x: 0.5 } })).toBe('The crop goes past the edge of the photo.');
+      expect(await refused({ crop: { ...CROP, y: 0.5 } })).toBe('The crop goes past the edge of the photo.');
+      // 450 × 600 pixels: not a square
+      expect(await refused({ crop: { x: 0, y: 0, w: 0.75, h: 0.75 } })).toBe('The crop must be a square.');
+      expect(await refused({})).toEqual(['Send the square of the photo to show, or null for the whole photo.']);
+      expect(await refused({ crop: 'whole' })).toEqual(['Send the square of the photo to show, or null for the whole photo.']);
+      expect(await refused({ crop: { ...CROP, zoom: 2 } })).toEqual(['property zoom should not exist']);
+      expect(await refused({ crop: CROP, scale: 2 })).toEqual(['property scale should not exist']);
+      expect((await prisma.paperworkItem.findUniqueOrThrow({ where: { id: photo.id } })).photoCrop).toBeNull();
+
+      // a photo whose size can't be read from its header takes any shape
+      const unread = await upload(jpeg('NONE'), 'photo.jpg', 'personal_photo');
+      await crop(unread.id, { crop: { x: 0, y: 0, w: 0.5, h: 0.9 } }).expect(200);
+    });
+
+    it('is only for a personal photo kept as an image', async () => {
+      const card = await upload(png('NONE'), 'card.png', 'national_id_front');
+      const scanned = await upload(pdf('NONE'), 'photo.pdf', 'personal_photo');
+      const other = await upload(png('NONE'), 'letter.png', 'other');
+      for (const item of [card, scanned, other]) {
+        expect((await crop(item.id, { crop: { x: 0, y: 0, w: 1, h: 1 } }).expect(404)).body.message).toBe('Photo not found.');
+        expect((await auditOf(item.id)).map((a) => a.action)).toEqual(['create']); // and the national ID scan isn't viewed
+      }
+      await crop('00000000-0000-4000-8000-000000000000', { crop: null }).expect(404);
+    });
+
+    it('is changed by HR only: the CEO sees it but does not change it', async () => {
+      const photo = await upload(png('NONE'), 'square.png', 'personal_photo');
+      for (const session of [ceo, finance, staff, admin]) await crop(photo.id, { crop: { x: 0, y: 0, w: 1, h: 1 } }, session).expect(403);
+      await api().put(`/api/paperwork/${photo.id}/photo-crop`).send({ crop: null }).expect(401);
+      expect((await prisma.paperworkItem.findUniqueOrThrow({ where: { id: photo.id } })).photoCrop).toBeNull();
+      await crop(photo.id, { crop: { x: 0.25, y: 0.25, w: 0.5, h: 0.5 } }).expect(200);
+    });
+
+    it('is cleared when the photo is replaced by an adjusted one, or moved to another kind of paper', async () => {
+      const photo = await upload(pngSized(600, 800), 'portrait.png', 'personal_photo');
+      await crop(photo.id, { crop: CROP }).expect(200);
+      await api().put(`/api/paperwork/${photo.id}/file`).set('Cookie', hr).attach('file', jpeg('NONE'), 'portrait.jpg').expect(200);
+      expect(await profileOf(hr)).toMatchObject({ photoId: photo.id, photoCrop: null });
+      expect((await auditOf(photo.id)).at(-1)?.diff).toMatchObject({ file: 'replaced', photoCrop: { from: CROP, to: null } });
+
+      const moved = await upload(pngSized(600, 800), 'portrait.png', 'personal_photo');
+      await crop(moved.id, { crop: CROP }).expect(200);
+      await api().patch(`/api/paperwork/${moved.id}`).set('Cookie', hr).send({ kind: 'other' }).expect(200);
+      expect((await prisma.paperworkItem.findUniqueOrThrow({ where: { id: moved.id } })).photoCrop).toBeNull();
+      expect((await profileOf(hr)).photoId).toBe(photo.id); // the photo before it is the picture again
+    });
   });
 
   it('serves the file with safe headers, and logs every view of a national ID scan', async () => {

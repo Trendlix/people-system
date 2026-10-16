@@ -166,6 +166,7 @@ describe('Employees (e2e)', () => {
         fullNameAr: 'موظف تجريبي',
         workEmail: `omar.${RUN}@trendlix.com`,
         photoId: null, // no personal photo in the employee file
+        photoCrop: null,
         standing: 'not_employed',
         employment: null,
         lastEnded: null,
@@ -304,6 +305,7 @@ describe('Employees (e2e)', () => {
         fullNameAr: 'موظف تجريبي',
         workEmail: null,
         photoId: null,
+        photoCrop: null,
         standing: 'active',
         employment: {
           id: hired.employment.id,

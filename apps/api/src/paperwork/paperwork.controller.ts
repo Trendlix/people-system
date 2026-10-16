@@ -22,7 +22,7 @@ import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { FileTooLargeFilter } from './file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from './paperwork-file.js';
-import { SearchPaperworkDto, UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
+import { SearchPaperworkDto, SetPhotoCropDto, UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
 import { PaperworkService, type IdCardFiles } from './paperwork.service.js';
 
 // The employee file is HR and CEO only: both read it, only HR adds, adjusts and re-reads. Only a Super Admin deletes a
@@ -133,6 +133,17 @@ export class PaperworkController {
   async photo(@Param('itemId', ParseUUIDPipe) itemId: string): Promise<StreamableFile> {
     const { data, type } = await this.paperwork.photo(itemId);
     return new StreamableFile(data, { type, length: data.length });
+  }
+
+  /**
+   * The square of a personal photo shown in the circle beside the name, { crop: { x, y, w, h } } as fractions of the
+   * photo as shown, or { crop: null } for the whole photo (owner's request, 16 October 2026). The file is never changed.
+   * Only HR, who change the employee file.
+   */
+  @Roles('hr')
+  @Put(':itemId/photo-crop')
+  cropPhoto(@Param('itemId', ParseUUIDPipe) itemId: string, @Body() dto: SetPhotoCropDto, @CurrentUser() user: SessionUser) {
+    return this.paperwork.cropPhoto(itemId, dto.crop, user);
   }
 
   @Roles('hr', 'ceo')

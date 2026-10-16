@@ -1,16 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import {
-  accountLengthOk,
-  accountLengthText,
-  bankNamed,
-  insurableWageLimits,
-  PAPERWORK_LABELS,
-  paperworkType,
-  requiredPaperwork,
-  type EmploymentType,
-  type Gender,
-  type Standing,
-} from '@trendlix/shared';
+import { accountLengthOk, accountLengthText, bankNamed, insurableWageLimits, type PhotoCrop, type Standing } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -20,6 +9,7 @@ import { changeRequestView, CONFIRMATION_INCLUDE, confirmationView, REQUEST_INCL
 import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
 import { CONTRACT_INCLUDE, contractView, ENDING_INCLUDE, endingView, type ContractContext } from '../contracts/views.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
+import { storedCrop } from '../paperwork/photo-crop.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   deletesEmployees,
@@ -34,6 +24,7 @@ import {
   seesSalary,
 } from './access.js';
 import { birthDateFromNationalId, maskTail } from './checks.js';
+import { completeness, papersOf, topGradeRank } from './completeness.js';
 import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
 import { insuredWageOfEmployee } from './insured-wage.js';
 import { withOccupation } from './occupation-view.js';
@@ -55,7 +46,7 @@ const GRADE = { select: { id: true, code: true, rank: true, levelEn: true, level
  * Where an employment places someone: their department, or their team with its department; their job title, and their
  * own grade (owner's decision, 15 October 2026: no longer the job title's).
  */
-const PLACE = {
+export const PLACE = {
   department: { select: { id: true, nameEn: true, nameAr: true, parent: { select: { id: true, nameEn: true, nameAr: true } } } },
   jobTitle: { select: { id: true, titleEn: true, titleAr: true, jdVersion: true } },
   grade: GRADE,
@@ -72,7 +63,7 @@ const EMPLOYMENT = {
 } satisfies Prisma.EmploymentInclude;
 
 /** Newest first, the current employment (no end date) before all ended ones. */
-const NEWEST_FIRST = [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate: 'desc' }] satisfies Prisma.EmploymentOrderByWithRelationInput[];
+export const NEWEST_FIRST = [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate: 'desc' }] satisfies Prisma.EmploymentOrderByWithRelationInput[];
 
 /** The papers a profile's picture can be: a personal photo in the employee file, uploaded as an image (not a PDF). */
 const PHOTO = { kind: 'personal_photo', mimeType: { in: ['image/jpeg', 'image/png', 'image/webp'] } } satisfies Prisma.PaperworkItemWhereInput;
@@ -230,125 +221,6 @@ function identityData(dto: UpdateIdentityDto) {
   };
 }
 
-/** One thing the profile still lacks, and the tab of the profile where it is filled in. */
-export interface Missing {
-  key: string;
-  label: string;
-  tab: 'basic' | 'education' | 'employment' | 'documents';
-}
-
-/** The current employment as completeness checks it: which of its links are set, and its grade's rank. */
-interface CurrentEmployment {
-  employmentType: EmploymentType;
-  departmentId: string | null;
-  jobTitleId: string | null;
-  gradeId: string | null;
-  managerId: string | null;
-  shiftId: string | null;
-  grade: { rank: number } | null;
-}
-
-/** What a profile's completeness is worked out from. */
-interface ProfileOnFile {
-  employee: Employee;
-  identity: EmployeeIdentity | null;
-  bank: EmployeeBank | null;
-  /** The current employment; null when not employed. */
-  employment: CurrentEmployment | null;
-  /** The latest employment's type, current or past (null when never employed): which papers the file needs. */
-  latestType: EmploymentType | null;
-  /** The highest rank in the grades table (the CEO's grade); null when it was not needed. */
-  topRank: number | null;
-  /** The kinds of paper in the employee file. */
-  papers: string[];
-}
-
-type Check = [boolean, Missing];
-
-/** One item of the checklist: there when the value is (only whether it is there is read, never the value itself). */
-const check = (value: unknown, key: string, label: string, tab: Missing['tab']): Check => [!!value, { key, label, tab }];
-
-/**
- * How complete a profile is: the fields HR fills in and the papers the employee file needs (by the current
- * employment; see requiredPaperwork). Only whether each is there counts, so restricted values are never read here
- * for the result.
- *
- * Owner's decision, 15 October 2026: everything counts (employment, bank, city, faculty, the work email …) except
- * the emergency contact and the second mobile. Also never counted: the employee code (always set), the work
- * arrangement (always has a value), the probation end date, the job description acknowledgement, and the social
- * insurance occupation, subscription start and wages (HR's, on the Social Insurance tab: owner, 16 October 2026). Some
- * items count only where they apply: the work email and the employment items while employed, the university, faculty and
- * major unless the degree is high school, and the direct manager unless the grade is the top rank (the CEO has no
- * manager). The social insurance number counts for everyone (owner, 15 October 2026).
- */
-function completeness({ employee: e, identity, bank, employment, latestType, topRank, papers }: ProfileOnFile): { percent: number; missing: Missing[] } {
-  const highSchool = e.degree === 'high_school';
-  const topGrade = !!employment?.grade && topRank !== null && employment.grade.rank >= topRank;
-  const checks: Check[] = [
-    check(e.fullNameEn, 'fullNameEn', 'Full name (English)', 'basic'),
-    check(e.fullNameAr, 'fullNameAr', 'Full name (Arabic)', 'basic'),
-    check(e.displayName, 'displayName', 'Display name', 'basic'),
-    check(e.dateOfBirth, 'dateOfBirth', 'Date of birth', 'basic'),
-    check(e.gender, 'gender', 'Gender', 'basic'),
-    check(e.nationality, 'nationality', 'Nationality', 'basic'),
-    check(e.maritalStatus, 'maritalStatus', 'Marital status', 'basic'),
-    // a woman's military status is always Not applicable (owner's rule), which counts as filled in
-    check(e.gender === 'female' ? 'not_applicable' : e.militaryStatus, 'militaryStatus', 'Military status', 'basic'),
-    // every file needs it (owner, 15 October 2026): it is on the social insurance print
-    check(e.insuranceNo, 'insuranceNo', 'Social insurance number', 'basic'),
-    // the work email only while employed
-    ...(employment ? [check(e.workEmail, 'workEmail', 'Work email', 'basic')] : []),
-    check(e.personalEmail, 'personalEmail', 'Personal email', 'basic'),
-    check(e.mobile, 'mobile', 'Mobile', 'basic'),
-    check(e.city, 'city', 'City', 'basic'),
-    check(e.governorate, 'governorate', 'Governorate', 'basic'),
-    check(e.addressAr, 'addressAr', 'Address (Arabic)', 'basic'),
-    check(identity?.nationalId, 'nationalId', 'National ID number', 'basic'),
-    check(identity?.printedNo, 'printedNo', 'National ID printed number', 'basic'),
-    check(identity?.issueDate, 'idIssueDate', 'National ID issue date', 'basic'),
-    check(identity?.expiryDate, 'idExpiry', 'National ID expiry date', 'basic'),
-    check(bank?.bankName, 'bankName', 'Bank', 'basic'),
-    check(bank?.accountNo, 'accountNo', 'Account number', 'basic'),
-    check(bank?.iban, 'iban', 'IBAN', 'basic'),
-    check(bank?.holderName, 'holderName', 'Account holder', 'basic'),
-
-    check(e.degree, 'degree', 'Degree', 'education'),
-    // a high school diploma has no university, faculty or major
-    ...(highSchool
-      ? []
-      : [
-          check(e.university, 'university', 'University', 'education'),
-          check(e.faculty, 'faculty', 'Faculty', 'education'),
-          check(e.major, 'major', 'Major', 'education'),
-        ]),
-    check(e.graduationYear, 'graduationYear', 'Graduation year', 'education'),
-    check(e.educationGrade, 'educationGrade', 'Education grade', 'education'),
-    check(e.qualificationAr, 'qualificationAr', 'Qualification (Arabic)', 'education'),
-
-    ...(employment
-      ? [
-          check(employment.departmentId, 'team', 'Department or team', 'employment'),
-          check(employment.jobTitleId, 'jobTitle', 'Job title', 'employment'),
-          check(employment.gradeId, 'grade', 'Grade', 'employment'),
-          check(employment.shiftId, 'shift', 'Shift', 'employment'),
-          // the CEO has no manager: none is needed at the top rank (the highest in the grades table)
-          ...(topGrade ? [] : [check(employment.managerId, 'manager', 'Direct manager', 'employment')]),
-        ]
-      : []),
-
-    // the national ID's front and back are one paper: its scan counts once, when both sides are there
-    ...requiredPaperwork(paperworkType(employment?.employmentType, latestType), (e.gender as Gender | null) ?? null)
-      .filter((kind) => kind !== 'national_id_back')
-      .map((kind): Check =>
-        kind === 'national_id_front'
-          ? [papers.includes('national_id_front') && papers.includes('national_id_back'), { key: 'national_id', label: 'National ID scan (front and back)', tab: 'documents' }]
-          : [papers.includes(kind), { key: kind, label: PAPERWORK_LABELS[kind], tab: 'documents' }],
-      ),
-  ];
-  const done = checks.filter(([ok]) => ok).length;
-  return { percent: Math.round((done / checks.length) * 100), missing: checks.filter(([ok]) => !ok).map(([, m]) => m) };
-}
-
 @Injectable()
 export class EmployeesService {
   constructor(
@@ -386,13 +258,14 @@ export class EmployeesService {
       },
       orderBy: { employeeCode: 'asc' },
     });
-    const photos = seesEmployeeFile(user) ? await this.photos(rows.map((e) => e.id)) : new Map<string, string>();
+    const photos = seesEmployeeFile(user) ? await this.photos(rows.map((e) => e.id)) : null;
     return rows.map(({ employments: [latest], ...e }) => {
       const current = latest && !latest.endDate ? latest : null;
       const ended = latest?.endDate ? latest : null;
       return {
         ...e,
-        photoId: photos.get(e.id) ?? null,
+        photoId: photos?.get(e.id)?.id ?? null,
+        photoCrop: photos?.get(e.id)?.crop ?? null,
         standing: (current?.status ?? (ended ? 'former' : 'not_employed')) as Standing,
         employment: current && {
           id: current.id,
@@ -453,9 +326,9 @@ export class EmployeesService {
     const current = history.find((x) => x.endDate === null) ?? null;
     const salary = seesSalary(user);
     // the top rank is only needed to know whether a graded employment needs a manager
-    const [papers, top, changeRequests, settings, photos] = await Promise.all([
-      this.prisma.paperworkItem.findMany({ where: { employeeId: id }, select: { kind: true }, distinct: ['kind'] }),
-      current?.grade ? this.prisma.grade.aggregate({ _max: { rank: true } }) : null,
+    const [papers, topRank, changeRequests, settings, photos] = await Promise.all([
+      papersOf(this.prisma, [id]),
+      current?.grade ? topGradeRank(this.prisma) : null,
       self || seesChangeRequests(user) ? this.changeRequestsOf(id) : [],
       salary ? this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }) : null,
       seesEmployeeFile(user) ? this.photos([id]) : null,
@@ -477,7 +350,8 @@ export class EmployeesService {
         insuredWage: insuredWageOfEmployee(insuranceComprehensiveWage, (current ?? history[0])?.contract?.totalSalary ?? null, year),
         insurableLimits: insurableWageLimits(year),
       }),
-      photoId: photos?.get(id) ?? null,
+      photoId: photos?.get(id)?.id ?? null,
+      photoCrop: photos?.get(id)?.crop ?? null,
       employment: current,
       employments: history,
       reports: managing.map((m) => ({ ...m.employee, status: m.status, jobTitle: m.jobTitle })),
@@ -489,8 +363,8 @@ export class EmployeesService {
         bank: bankRow,
         employment: current,
         latestType: history[0]?.employmentType ?? null,
-        topRank: top?._max.rank ?? null,
-        papers: papers.map((x) => x.kind),
+        topRank,
+        papers: papers.get(id) ?? [],
       }),
       confirmation: confirmationView(confirmed ?? null, own),
       changeRequests,
@@ -501,16 +375,17 @@ export class EmployeesService {
 
   /**
    * Each employee's picture, for those who see the employee file it is kept in (HR, CEO): the personal photo uploaded
-   * last as an image, as its paper's id by employee. The others see initials.
+   * last as an image, as its paper's id by employee, with the square of it HR chose to show in the circle (owner's
+   * request, 16 October 2026), or null for the whole photo. The others see initials.
    */
-  private async photos(employeeIds: string[]): Promise<Map<string, string>> {
+  private async photos(employeeIds: string[]): Promise<Map<string, { id: string; crop: PhotoCrop | null }>> {
     const items = await this.prisma.paperworkItem.findMany({
       where: { ...PHOTO, employeeId: { in: employeeIds } },
-      select: { id: true, employeeId: true },
+      select: { id: true, employeeId: true, photoCrop: true },
       orderBy: [{ uploadedAt: 'desc' }, { id: 'desc' }],
     });
-    const latest = new Map<string, string>();
-    for (const item of items) if (!latest.has(item.employeeId)) latest.set(item.employeeId, item.id);
+    const latest = new Map<string, { id: string; crop: PhotoCrop | null }>();
+    for (const item of items) if (!latest.has(item.employeeId)) latest.set(item.employeeId, { id: item.id, crop: storedCrop(item.photoCrop) });
     return latest;
   }
 

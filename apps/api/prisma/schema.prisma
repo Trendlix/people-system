@@ -392,6 +392,9 @@ model PaperworkItem {
   ocrAt        DateTime? @map("ocr_at") @db.Timestamptz
   documentNo   String?   @map("document_no") // the number printed on the paper, if any
   expiresOn    DateTime? @map("expires_on") @db.Date // when the paper stops being valid, if it does
+  // a personal photo's square shown in the circle beside the name (PhotoCrop, packages/shared), as fractions of the
+  // photo as shown; null: the whole photo, centred. The file itself is never changed by it.
+  photoCrop    Json?     @map("photo_crop")
   uploadedById String?   @map("uploaded_by_id") @db.Uuid
   uploadedBy   User?     @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   uploadedAt   DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz
