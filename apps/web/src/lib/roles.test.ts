@@ -83,6 +83,14 @@ describe('isAdmin, isSuperAdmin and canDelete', () => {
     for (const user of [admin, hr, ceo, employee, as('hr', 'admin', 'ceo', 'finance', 'manager')]) expect(canDelete(user)).toBe(false);
   });
 
+  it('offers no delete while viewing as a Super Admin view only, and offers it with Act as them on', () => {
+    const by = { id: 'u1', email: 'owner@trendlix.com' };
+    expect(canDelete({ ...superAdmin, viewAs: null })).toBe(true);
+    expect(canDelete({ ...superAdmin, viewAs: { by, act: false } })).toBe(false);
+    expect(canDelete({ ...superAdmin, viewAs: { by, act: true } })).toBe(true);
+    expect(canDelete({ ...hr, viewAs: { by, act: true } })).toBe(false);
+  });
+
   it('refuses with the words the API uses', () => {
     expect(ONLY_SUPER_ADMIN_DELETES).toBe('Only a Super Admin can delete records.');
   });

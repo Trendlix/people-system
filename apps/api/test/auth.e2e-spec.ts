@@ -76,17 +76,18 @@ describe('Sign-in and access (e2e)', () => {
     expect(me.body.email).toBe(email);
   });
 
-  it('/auth/me gives the id of one’s own employee profile (by work email), or null', async () => {
+  it('/auth/me gives the id and name of one’s own employee profile (by work email), or null', async () => {
     const email = await createUser(prisma, ['employee']);
     const session = await signIn(app, email);
     const before = await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', session).expect(200);
-    expect(before.body).toEqual({ id: expect.any(String), email, roles: ['employee'], employeeId: null });
+    // nobody viewing as them: their own session (see view-as.e2e-spec.ts)
+    expect(before.body).toEqual({ id: expect.any(String), email, roles: ['employee'], employeeId: null, name: null, viewAs: null });
 
     const employee = await prisma.employee.create({
       data: { employeeCode: `ME-${Date.now().toString(36)}`, fullNameEn: 'Signed In', fullNameAr: 'مستخدم', workEmail: email },
     });
     const after = await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', session).expect(200);
-    expect(after.body.employeeId).toBe(employee.id);
+    expect(after.body).toMatchObject({ employeeId: employee.id, name: 'Signed In' });
   });
 
   it('rejects a tampered session', () => {

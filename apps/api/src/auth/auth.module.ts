@@ -5,6 +5,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthController } from './auth.controller.js';
 import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
+import { ViewAsController } from './view-as.controller.js';
+import { ViewAsService } from './view-as.service.js';
 
 @Module({
   imports: [
@@ -13,7 +15,7 @@ import { AuthService } from './auth.service.js';
       useFactory: (config: ConfigService) => ({ secret: config.getOrThrow<string>('JWT_SECRET') }),
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, { provide: APP_GUARD, useClass: AuthGuard }],
+  controllers: [AuthController, ViewAsController],
+  providers: [AuthService, ViewAsService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AuthModule {}

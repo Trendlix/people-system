@@ -1,10 +1,9 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import type { Role } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { hashPassword, verifyPassword } from './password.js';
-import { SESSION_HOURS, type Me, type SessionUser } from './session-user.js';
+import { SESSION_HOURS, sessionUserOf, WITH_ROLES, type Me, type SessionUser } from './session-user.js';
 
 const INVALID = 'Invalid email or password.';
 
@@ -26,10 +25,7 @@ export class AuthService {
   async login(email: string, password: string): Promise<{ token: string; user: SessionUser }> {
     const normalized = email.trim().toLowerCase();
     await this.ensureNotLockedOut(normalized);
-    const user = await this.prisma.user.findUnique({
-      where: { email: normalized },
-      include: { roles: { include: { role: true } } },
-    });
+    const user = await this.prisma.user.findUnique({ where: { email: normalized }, include: WITH_ROLES });
 
     let ok = false;
     if (user?.passwordHash) ok = await verifyPassword(password, user.passwordHash);
@@ -48,16 +44,16 @@ export class AuthService {
 
     await this.audit.record({ userId: user.id, action: 'login', entityType: 'user', entityId: user.id });
     const token = await this.jwt.signAsync({ sub: user.id }, { expiresIn: `${SESSION_HOURS}h` });
-    return {
-      token,
-      user: { id: user.id, email: user.email, roles: user.roles.map((r) => r.role.key as Role) },
-    };
+    return { token, user: sessionUserOf(user) };
   }
 
-  /** The signed-in user and the id of their own employee profile, if they have one. */
+  /**
+   * The signed-in user and the id and name of their own employee profile, if they have one; while a Super Admin views as
+   * someone, that user, with who is viewing (see view-as.ts).
+   */
   async me(user: SessionUser): Promise<Me> {
-    const own = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } });
-    return { ...user, employeeId: own?.id ?? null };
+    const own = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true, fullNameEn: true } });
+    return { ...user, viewAs: user.viewAs ?? null, employeeId: own?.id ?? null, name: own?.fullNameEn ?? null };
   }
 
   /** A signed-in person changes their own password; the current one is asked for again. */

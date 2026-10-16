@@ -32,7 +32,8 @@ model User {
   createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime               @updatedAt @map("updated_at") @db.Timestamptz
   roles             UserRole[]
-  auditEntries      AuditLog[]
+  auditEntries      AuditLog[]             @relation("AuditUser") // what was done as this user
+  auditOnBehalf     AuditLog[]             @relation("AuditOnBehalf") // what this Super Admin did while viewing as someone, in their name
   uploads           PaperworkItem[]
   corrections       OcrCorrection[]
   endingsHrApproved EmploymentEnding[]     @relation("EndingHrApproval") // endings this user recorded (and so approved) for HR
@@ -761,14 +762,19 @@ model GeneratedDocument {
 // ---------- audit ----------
 
 model AuditLog {
-  id         BigInt   @id @default(autoincrement())
-  userId     String?  @map("user_id") @db.Uuid
-  user       User?    @relation(fields: [userId], references: [id])
-  action     String // create, update, delete, login, view_restricted …
-  entityType String   @map("entity_type")
-  entityId   String?  @map("entity_id") @db.Uuid
-  diff       Json?
-  at         DateTime @default(now()) @db.Timestamptz
+  id           BigInt   @id @default(autoincrement())
+  userId       String?  @map("user_id") @db.Uuid
+  user         User?    @relation("AuditUser", fields: [userId], references: [id])
+  // The Super Admin who did it while viewing as the user (owner's decision, 17 October 2026: "a super admin can view any
+  // other user profile from a switcher"): set on what they did in the user's name with Act as them on, and on the
+  // restricted data they viewed; null otherwise.
+  onBehalfById String?  @map("on_behalf_by") @db.Uuid
+  onBehalfBy   User?    @relation("AuditOnBehalf", fields: [onBehalfById], references: [id], onDelete: SetNull)
+  action       String // create, update, delete, login, view_restricted, view_as_start …
+  entityType   String   @map("entity_type")
+  entityId     String?  @map("entity_id") @db.Uuid
+  diff         Json?
+  at           DateTime @default(now()) @db.Timestamptz
 
   @@index([entityType, entityId])
   @@map("audit_log")

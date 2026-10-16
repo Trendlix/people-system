@@ -1,4 +1,5 @@
 import type { Role } from '@trendlix/shared';
+import type { ViewAs } from './view-as';
 
 // Who holds which powers, for showing and hiding things on screen. Hiding is a convenience: the API checks every
 // request. Pure code (no server-only), so client components and tests can use it too.
@@ -43,10 +44,11 @@ export function isSuperAdmin(user: WithRoles): boolean {
 
 /**
  * Only a Super Admin deletes records, any record; nobody else gets a delete option at all, nor a way to ask for one
- * (owner's decision, 15 October 2026). Cancel, withdraw, reject and deactivate stay with whoever has them.
+ * (owner's decision, 15 October 2026). Cancel, withdraw, reject and deactivate stay with whoever has them. Viewing as a
+ * Super Admin view only, there is none either (owner's decision, 17 October 2026): the API refuses every change then.
  */
-export function canDelete(user: WithRoles): boolean {
-  return isSuperAdmin(user);
+export function canDelete(user: WithRoles & { viewAs?: ViewAs | null }): boolean {
+  return isSuperAdmin(user) && (!user.viewAs || user.viewAs.act);
 }
 
 /** What the API answers a delete from anyone else; server actions refuse with it before asking. */
