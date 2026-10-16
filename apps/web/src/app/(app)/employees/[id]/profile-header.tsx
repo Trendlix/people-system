@@ -6,14 +6,14 @@ import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, ProfileGap } from '@/lib/types';
 import { confirmationStatus, pendingRequest } from '../confirmation';
-import { Avatar, gradeLabel, photoHref, PROFILE_TABS, profileHref, standingOf, StandingBadge, type ProfileTabKey } from '../ui';
+import { Avatar, gradeLabel, photoHref, PROFILE_TABS, profileHref, standingOf, StandingBadge, tabShowing, type ProfileTabKey } from '../ui';
 import { ConfirmedNotice } from './confirm/confirm-notices';
 import { PhotoCropButton } from './photo-crop';
 
 // Above the profile's tabs: who it is, where they stand, their current job, whether the employee confirmed their
 // details, and how complete the profile is.
 
-/** Where a missing item is filled in: the field's cell on Basic Data, Education or Employment, or the paper's row on Documents. */
+/** Where a missing item is filled in: the field's cell on Basic Data (Education is there too) or Employment, or the paper's row on Documents. */
 function gapHref(id: string, gap: ProfileGap): string {
   return `${profileHref(id, gap.tab)}#${gap.tab === 'documents' ? 'paper' : 'field'}-${gap.key}`;
 }
@@ -24,7 +24,7 @@ const BANK_KEYS: ReadonlySet<string> = new Set(['bankName', 'accountNo', 'iban',
 
 /** Whether the caller can open where a missing item is filled in: its tab and, for the national ID and bank, that section. */
 function reachable(gap: ProfileGap, access: EmployeeProfile['access'], tabs: ReadonlySet<ProfileTabKey>): boolean {
-  if (!tabs.has(gap.tab)) return false;
+  if (!tabs.has(tabShowing(gap.tab))) return false;
   if (gap.tab === 'basic' && IDENTITY_KEYS.has(gap.key)) return access.identity;
   if (gap.tab === 'basic' && BANK_KEYS.has(gap.key)) return access.bank;
   return true;

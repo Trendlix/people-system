@@ -32,7 +32,7 @@ function Reveal({ href, shown, what }: { href: string; shown: boolean; what: str
 const number = (value: string | null | undefined) => value && <span className="tabular-nums">{value}</span>;
 
 /** Basic Data: personal, contact and address, emergency contact, then (for those allowed) the national ID and bank details. */
-export async function BasicTab({ profile: p, show, today }: { profile: EmployeeProfile; show: string; today: string }) {
+export async function BasicTab({ profile: p, show, today, education }: { profile: EmployeeProfile; show: string; today: string; education?: React.ReactNode }) {
   // The full national ID and bank numbers are only fetched (and audited) when asked for with ?show=.
   const [identity, bank] = await Promise.all([
     show === 'national-id' && p.access.identity && p.identity ? apiGet<EmployeeIdentity>(`/employees/${p.id}/identity`) : null,
@@ -204,6 +204,8 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
         </ProfileSection>
       )}
 
+      {education}
+
       {/* A Super Admin only (owner's decision, 15 October 2026). The API refuses (409) while this person is anyone's manager
           on record; the form shows its reason. */}
       {p.access.delete && (
@@ -224,7 +226,7 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
   );
 }
 
-/** Education: what the profile records of the employee's studies. Changed on the Personal Details page. */
+/** Education: what the profile records of the employee's studies, under Basic Data. Changed on the Personal Details page. */
 export function EducationTab({ profile: p }: { profile: EmployeeProfile }) {
   // university, faculty and major are not asked of a high-school degree
   const studied = p.degree !== 'high_school';

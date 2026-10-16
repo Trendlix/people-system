@@ -8,7 +8,7 @@ import type {
   MissingDocumentDetail,
 } from '../../../../../lib/types';
 import { SIGNER_LABELS, templateHref } from '../../../templates/wording';
-import { contractHref, isProfileTab, profileHref } from '../../tab-list';
+import { askedTab, contractHref, profileHref } from '../../tab-list';
 
 // How the profile's Employment tab words the documents generated from templates (its sections, a document's progress,
 // where a template stands) and where each missing detail is filled in; the Social Insurance tab words its forms the
@@ -174,9 +174,11 @@ export function missingHref(employeeId: string, where: Pick<DocumentDetailPlace,
   if (where.tab === 'company') return '/organization/company';
   // `contracts`: the contract, with the job on the Employment tab since the Contracts tab was merged into it (16 October 2026)
   if (where.tab === 'contracts') return contractHref(employeeId);
-  if (!isProfileTab(where.tab)) return null;
-  const anchor = where.tab === 'documents' ? 'paper' : 'field';
-  return key ? `${profileHref(employeeId, where.tab)}#${anchor}-${key}` : profileHref(employeeId, where.tab);
+  // `education`: on Basic Data since 17 October 2026 (askedTab maps a tab that is gone to the tab showing it)
+  const tab = askedTab(where.tab);
+  if (!tab) return null;
+  const anchor = tab === 'documents' ? 'paper' : 'field';
+  return key ? `${profileHref(employeeId, tab)}#${anchor}-${key}` : profileHref(employeeId, tab);
 }
 
 /** Where it is filled in, in words: "Basic Data", "Social Insurance tab", "Company profile", "Contract". */

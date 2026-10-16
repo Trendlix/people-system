@@ -20,15 +20,18 @@ import {
 } from './tab-list';
 
 describe('the profile’s tabs', () => {
-  it('have Employment hold the contract: no Contracts tab, Social Insurance between Employment and Documents', () => {
-    expect(PROFILE_TABS.map((t) => t.key)).toEqual(['basic', 'education', 'employment', 'insurance', 'documents']);
-    expect(PROFILE_TABS.map((t) => t.label)).toEqual(['Basic Data', 'Education', 'Employment', 'Social Insurance', 'Documents']);
+  it('have Employment hold the contract and Basic Data hold Education: no Contracts or Education tab', () => {
+    expect(PROFILE_TABS.map((t) => t.key)).toEqual(['basic', 'employment', 'insurance', 'documents']);
+    expect(PROFILE_TABS.map((t) => t.label)).toEqual(['Basic Data', 'Employment', 'Social Insurance', 'Documents']);
   });
 
   it('are addressed with ?tab=, Basic Data without', () => {
     expect(profileHref('emp-1')).toBe('/employees/emp-1');
     expect(profileHref('emp-1', 'insurance')).toBe('/employees/emp-1?tab=insurance');
     expect(profileHref('emp-1', 'employment')).toBe('/employees/emp-1?tab=employment');
+    // a tab that is gone links to the tab showing it now
+    expect(profileHref('emp-1', 'education')).toBe('/employees/emp-1');
+    expect(profileHref('emp-1', 'contracts')).toBe('/employees/emp-1?tab=employment');
   });
 
   it('know their own keys only', () => {
@@ -40,6 +43,7 @@ describe('the profile’s tabs', () => {
 
   it('open the Employment tab for an old address of the Contracts tab, and nothing for an unknown one', () => {
     expect(askedTab('contracts')).toBe('employment');
+    expect(askedTab('education')).toBe('basic'); // Education is on Basic Data (owner, 17 October 2026)
     expect(askedTab('employment')).toBe('employment');
     expect(askedTab('insurance')).toBe('insurance');
     expect(askedTab('payroll')).toBeNull();

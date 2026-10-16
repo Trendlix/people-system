@@ -247,7 +247,7 @@ export function EditHeading({
   );
 }
 
-// The profile's tabs (Basic Data | Education | Employment | Social Insurance | Documents), the Employment tab's sub-tabs
+// The profile's tabs (Basic Data | Employment | Social Insurance | Documents), the Employment tab's sub-tabs
 // (Details | Salary | Issued Documents) and their addresses live in pure code, for tested helpers that link to a tab.
 export {
   askedTab,
@@ -260,6 +260,7 @@ export {
   payslipsHref,
   profileHref,
   salaryHistoryHref,
+  tabShowing,
   type EmploymentSubTabKey,
   type ProfileTabKey,
 } from './tab-list';

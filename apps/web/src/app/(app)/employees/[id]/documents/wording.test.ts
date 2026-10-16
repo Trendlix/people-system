@@ -57,7 +57,7 @@ describe('where a missing detail is filled in', () => {
   it('links a profile field to its cell on its tab', () => {
     expect(missingHref(ID, { tab: 'basic', key: 'insuranceNo' })).toBe('/employees/emp-1#field-insuranceNo');
     expect(missingHref(ID, { tab: 'employment', key: 'team' })).toBe('/employees/emp-1?tab=employment#field-team');
-    expect(missingHref(ID, { tab: 'education', key: 'qualificationAr' })).toBe('/employees/emp-1?tab=education#field-qualificationAr');
+    expect(missingHref(ID, { tab: 'education', key: 'qualificationAr' })).toBe('/employees/emp-1#field-qualificationAr');
   });
 
   it('links a paper of the employee file to its row', () => {

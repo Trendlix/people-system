@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { decidesChangeRequests } from '../../approvals/data';
 import { loadEmployee } from '../data';
@@ -28,9 +29,10 @@ const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '
 async function Profile({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Query> }) {
   const [user, p, query] = await Promise.all([getCurrentUser(), loadEmployee(params), searchParams]);
   const today = todayInCairo();
-  // The employee file is HR's and the CEO's, exactly those who may see the national ID. Social Insurance is everyone's
-  // who sees Employment (everyone who sees the profile); what is restricted on it is left out or masked there.
-  const tabs = PROFILE_TABS.filter((t) => t.key !== 'documents' || p.access.identity);
+  // The employee file is HR's and the CEO's, exactly those who may see the national ID. Social Insurance is HR's and
+  // Admin's (owner, 17 October 2026: "Social Insurance tab to be by HR - Admin users"; a Super Admin counts as an Admin);
+  // what is restricted on it (the wages) is still left out for those who don't see salaries.
+  const tabs = PROFILE_TABS.filter((t) => (t.key !== 'documents' || p.access.identity) && (t.key !== 'insurance' || hasRole(user, 'hr', 'admin')));
   const visible = new Set<ProfileTabKey>(tabs.map((t) => t.key));
   const asked = askedTab(one(query.tab));
   const tab: ProfileTabKey = asked && visible.has(asked) ? asked : 'basic';
@@ -42,9 +44,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
       <ProfileHeader profile={p} tabs={visible} linkPeople={linkPeople} decidesRequests={decidesChangeRequests(user)} />
 
       <ProfileTabs tabs={tabs.map((t) => ({ key: t.key, label: t.label, href: profileHref(p.id, t.key) }))} active={tab} label={`Profile of ${p.fullNameEn}`}>
-        {tab === 'education' ? (
-          <EducationTab profile={p} />
-        ) : tab === 'employment' ? (
+        {tab === 'employment' ? (
           <EmploymentTab profile={p} linkPeople={linkPeople} sub={one(query.sub)} justAdded={one(query.added) === '1'} />
         ) : tab === 'insurance' ? (
           <InsuranceTab profile={p} />
@@ -54,7 +54,8 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
             <EmployeeFile employee={p} today={today} />
           </Suspense>
         ) : (
-          <BasicTab profile={p} show={one(query.show)} today={today} />
+          // Education under Basic Data's other sections (owner, 17 October 2026)
+          <BasicTab profile={p} show={one(query.show)} today={today} education={<EducationTab profile={p} />} />
         )}
       </ProfileTabs>
 

@@ -3,14 +3,15 @@
 
 /**
  * The profile's tabs, as `?tab=` in its address (Basic Data has none). Social Insurance gathers the social insurance
- * work, moved out of the Contracts tab (owner's request, 16 October 2026). The Contracts tab itself was merged into
- * Employment the same day (owner: "there is no point of adding employment then adding contract and no active employment
- * without a contract, its like a loop for me"): the job, its contract, the documents generated from the templates and
- * the payslips are all on Employment, in its sub-tabs (below).
+ * work, moved out of the Contracts tab (owner's request, 16 October 2026), and is HR's and Admin's (owner, 17 October
+ * 2026: "Social Insurance tab to be by HR - Admin users"). The Contracts tab itself was merged into Employment the same
+ * day (owner: "there is no point of adding employment then adding contract and no active employment without a contract,
+ * its like a loop for me"): the job, its contract, the documents generated from the templates and the payslips are all
+ * on Employment, in its sub-tabs (below). Education is on Basic Data, under its other sections (owner, 17 October 2026:
+ * "add the education table under the basic data instead of a separate tab").
  */
 export const PROFILE_TABS = [
   { key: 'basic', label: 'Basic Data' },
-  { key: 'education', label: 'Education' },
   { key: 'employment', label: 'Employment' },
   { key: 'insurance', label: 'Social Insurance' },
   { key: 'documents', label: 'Documents' },
@@ -20,13 +21,26 @@ export type ProfileTabKey = (typeof PROFILE_TABS)[number]['key'];
 
 /**
  * Tabs that are gone, by their old `?tab=` key, and the tab now showing what they did: bookmarks and links to
- * ?tab=contracts (with #contract or #payslips) open Employment, where both anchors are (on its sub-tabs).
+ * ?tab=contracts (with #contract or #payslips) open Employment, where both anchors are (on its sub-tabs); ?tab=education
+ * opens Basic Data, where Education now is.
  */
-const MOVED_TABS: ReadonlyMap<string, ProfileTabKey> = new Map([['contracts', 'employment']]);
+const MOVED_TABS = new Map([
+  ['contracts', 'employment'],
+  ['education', 'basic'],
+] as const);
 
-/** The address of a profile tab, e.g. /employees/<id>?tab=employment. */
-export function profileHref(id: string, tab: ProfileTabKey = 'basic'): string {
-  return tab === 'basic' ? `/employees/${id}` : `/employees/${id}?tab=${tab}`;
+/** A tab that is gone, by its old key: still named by the profile's missing items (their `tab`), e.g. education. */
+export type MovedTabKey = typeof MOVED_TABS extends Map<infer K, unknown> ? K : never;
+
+/** The tab showing a tab's content: itself, or for a tab that is gone, the tab it moved to (education → basic). */
+export function tabShowing(tab: ProfileTabKey | MovedTabKey): ProfileTabKey {
+  return isProfileTab(tab) ? tab : MOVED_TABS.get(tab)!;
+}
+
+/** The address of a profile tab, e.g. /employees/<id>?tab=employment; a tab that is gone, the tab now showing it. */
+export function profileHref(id: string, tab: ProfileTabKey | MovedTabKey = 'basic'): string {
+  const shown = tabShowing(tab);
+  return shown === 'basic' ? `/employees/${id}` : `/employees/${id}?tab=${shown}`;
 }
 
 export function isProfileTab(value: string): value is ProfileTabKey {
@@ -35,7 +49,7 @@ export function isProfileTab(value: string): value is ProfileTabKey {
 
 /** The tab an address asks for: a tab's own key, the tab a moved one is now on, else null (Basic Data is shown then). */
 export function askedTab(value: string): ProfileTabKey | null {
-  return isProfileTab(value) ? value : (MOVED_TABS.get(value) ?? null);
+  return isProfileTab(value) ? value : (MOVED_TABS.get(value as MovedTabKey) ?? null);
 }
 
 // ---------- the Employment tab's sub-tabs ----------

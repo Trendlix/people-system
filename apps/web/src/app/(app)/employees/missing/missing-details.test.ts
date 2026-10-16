@@ -116,7 +116,7 @@ describe('what the page says', () => {
 
   it('links each missing item to where it is filled in on the profile', () => {
     expect(gapHref('emp-1', MOBILE)).toBe('/employees/emp-1#field-mobile');
-    expect(gapHref('emp-1', FACULTY)).toBe('/employees/emp-1?tab=education#field-faculty');
+    expect(gapHref('emp-1', FACULTY)).toBe('/employees/emp-1#field-faculty');
     expect(gapHref('emp-1', SHIFT)).toBe('/employees/emp-1?tab=employment#field-shift');
     expect(gapHref('emp-1', PHOTO)).toBe('/employees/emp-1?tab=documents#paper-personal_photo');
   });
