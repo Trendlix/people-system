@@ -59,8 +59,8 @@ function CropWindow({ photoId, crop, name, onSaved, onClosed }: { photoId: strin
   /** The photo is open: the window starts on the saved crop, else on the whole photo. */
   const opened = useCallback(
     (img: HTMLImageElement) => {
-      if (!img.naturalWidth || !img.naturalHeight) return;
-      const shown = { width: img.naturalWidth, height: img.naturalHeight };
+      const shown = shownSize(img);
+      if (!shown) return;
       setPhoto((p) => (p.tone === 'shown' ? p : { tone: 'shown', size: shown }));
       setView((v) => v ?? viewOf(crop, shown));
     },
@@ -149,7 +149,7 @@ function CropWindow({ photoId, crop, name, onSaved, onClosed }: { photoId: strin
     setSaving(whole ? 'whole' : 'crop');
     let result: Awaited<ReturnType<typeof cropPhoto>>;
     try {
-      result = await cropPhoto(photoId, whole || !view || !size ? null : cropOf(view, size));
+      result = await cropPhoto(photoId, whole || !view || !size ? null : cropOf(view, size), size);
     } catch {
       result = { errors: ['The crop could not be saved. Please try again.'] };
     }
@@ -330,6 +330,25 @@ function CropWindow({ photoId, crop, name, onSaved, onClosed }: { photoId: strin
  * window. Shown when the picture is hovered or anything in it has the focus, and always on touch screens. Closing the
  * window puts the focus back on it.
  */
+/**
+ * The photo's size as the browser shows it: read from how it lays out at its own size, so turned upright by its
+ * orientation data whatever the file type. A browser's naturalWidth and naturalHeight can be the file's own, before it
+ * is turned (16 October 2026: a crop came out not square), so they are only used when it can't be laid out.
+ */
+function shownSize(img: HTMLImageElement): PhotoSize | null {
+  const probe = img.cloneNode() as HTMLImageElement;
+  probe.removeAttribute('class');
+  probe.removeAttribute('style');
+  probe.removeAttribute('id');
+  probe.setAttribute('aria-hidden', 'true');
+  Object.assign(probe.style, { position: 'absolute', top: '0', left: '-100000px', width: 'auto', height: 'auto', maxWidth: 'none', maxHeight: 'none', visibility: 'hidden' });
+  (img.ownerDocument.body ?? img.parentElement)?.append(probe);
+  const laid = { width: probe.offsetWidth, height: probe.offsetHeight };
+  probe.remove();
+  if (laid.width > 0 && laid.height > 0) return laid;
+  return img.naturalWidth && img.naturalHeight ? { width: img.naturalWidth, height: img.naturalHeight } : null;
+}
+
 export function PhotoCropButton({ photoId, crop, name }: { photoId: string; crop: PhotoCrop | null; name: string }) {
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState('');

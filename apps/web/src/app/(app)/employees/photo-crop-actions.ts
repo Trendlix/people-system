@@ -12,11 +12,14 @@ import type { FormState } from '@/lib/types';
 const UUID = /^[0-9a-f-]{36}$/i;
 const NOT_FOUND = 'This photo is no longer in the employee file. Reload the page.';
 
-/** Saves the square of the personal photo shown in the circle, or null for the whole photo. */
-export async function cropPhoto(itemId: string, crop: PhotoCrop | null): Promise<FormState> {
+/**
+ * Saves the square of the personal photo shown in the circle, or null for the whole photo, with the photo's size as the
+ * crop window showed it, which the API checks the square against.
+ */
+export async function cropPhoto(itemId: string, crop: PhotoCrop | null, size?: { width: number; height: number } | null): Promise<FormState> {
   if (!UUID.test(itemId)) return { errors: [NOT_FOUND] };
   // its four values only, whatever else came with it
-  const body = { crop: crop && { x: crop.x, y: crop.y, w: crop.w, h: crop.h } };
+  const body = { crop: crop && { x: crop.x, y: crop.y, w: crop.w, h: crop.h }, ...(crop && size && { size: { width: size.width, height: size.height } }) };
   try {
     await apiSend('PUT', `/paperwork/${itemId}/photo-crop`, body);
   } catch (err) {
