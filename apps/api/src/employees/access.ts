@@ -14,6 +14,9 @@ export const seesEveryone = (user: SessionUser) => has(user, ['hr', 'ceo', 'fina
 /** National ID: HR and CEO. */
 export const seesIdentity = (user: SessionUser) => has(user, ['hr', 'ceo']);
 
+/** The employee file (the scanned paperwork, the personal photo among it): HR and CEO (owner's decision, 15 October 2026). */
+export const seesEmployeeFile = (user: SessionUser) => has(user, ['hr', 'ceo']);
+
 /** Bank and payment: HR, Finance and CEO. */
 export const seesBank = (user: SessionUser) => has(user, ['hr', 'finance', 'ceo']);
 

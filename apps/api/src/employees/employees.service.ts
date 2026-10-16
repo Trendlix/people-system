@@ -27,6 +27,7 @@ import {
   isSelf,
   seesBank,
   seesChangeRequests,
+  seesEmployeeFile,
   seesEndings,
   seesEveryone,
   seesIdentity,
@@ -72,6 +73,9 @@ const EMPLOYMENT = {
 
 /** Newest first, the current employment (no end date) before all ended ones. */
 const NEWEST_FIRST = [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate: 'desc' }] satisfies Prisma.EmploymentOrderByWithRelationInput[];
+
+/** The papers a profile's picture can be: a personal photo in the employee file, uploaded as an image (not a PDF). */
+const PHOTO = { kind: 'personal_photo', mimeType: { in: ['image/jpeg', 'image/png', 'image/webp'] } } satisfies Prisma.PaperworkItemWhereInput;
 
 type EmploymentRow = Prisma.EmploymentGetPayload<{ include: typeof EMPLOYMENT }>;
 
@@ -382,11 +386,13 @@ export class EmployeesService {
       },
       orderBy: { employeeCode: 'asc' },
     });
+    const photos = seesEmployeeFile(user) ? await this.photos(rows.map((e) => e.id)) : new Map<string, string>();
     return rows.map(({ employments: [latest], ...e }) => {
       const current = latest && !latest.endDate ? latest : null;
       const ended = latest?.endDate ? latest : null;
       return {
         ...e,
+        photoId: photos.get(e.id) ?? null,
         standing: (current?.status ?? (ended ? 'former' : 'not_employed')) as Standing,
         employment: current && {
           id: current.id,
@@ -447,11 +453,12 @@ export class EmployeesService {
     const current = history.find((x) => x.endDate === null) ?? null;
     const salary = seesSalary(user);
     // the top rank is only needed to know whether a graded employment needs a manager
-    const [papers, top, changeRequests, settings] = await Promise.all([
+    const [papers, top, changeRequests, settings, photos] = await Promise.all([
       this.prisma.paperworkItem.findMany({ where: { employeeId: id }, select: { kind: true }, distinct: ['kind'] }),
       current?.grade ? this.prisma.grade.aggregate({ _max: { rank: true } }) : null,
       self || seesChangeRequests(user) ? this.changeRequestsOf(id) : [],
       salary ? this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }) : null,
+      seesEmployeeFile(user) ? this.photos([id]) : null,
     ]);
     const { insuranceBasicWage, insuranceComprehensiveWage, ...open } = withOccupation(fields(own));
     // the insured wage Form 1 prints (owner's decision, 16 October 2026): the comprehensive wage, the employee's own
@@ -470,6 +477,7 @@ export class EmployeesService {
         insuredWage: insuredWageOfEmployee(insuranceComprehensiveWage, (current ?? history[0])?.contract?.totalSalary ?? null, year),
         insurableLimits: insurableWageLimits(year),
       }),
+      photoId: photos?.get(id) ?? null,
       employment: current,
       employments: history,
       reports: managing.map((m) => ({ ...m.employee, status: m.status, jobTitle: m.jobTitle })),
@@ -489,6 +497,21 @@ export class EmployeesService {
       access: { edit: editsEmployees(user), delete: deletesEmployees(user), identity, bank },
       isSelf: self,
     };
+  }
+
+  /**
+   * Each employee's picture, for those who see the employee file it is kept in (HR, CEO): the personal photo uploaded
+   * last as an image, as its paper's id by employee. The others see initials.
+   */
+  private async photos(employeeIds: string[]): Promise<Map<string, string>> {
+    const items = await this.prisma.paperworkItem.findMany({
+      where: { ...PHOTO, employeeId: { in: employeeIds } },
+      select: { id: true, employeeId: true },
+      orderBy: [{ uploadedAt: 'desc' }, { id: 'desc' }],
+    });
+    const latest = new Map<string, string>();
+    for (const item of items) if (!latest.has(item.employeeId)) latest.set(item.employeeId, item.id);
+    return latest;
   }
 
   /** The full national ID (restricted): every call is written to the audit log. */

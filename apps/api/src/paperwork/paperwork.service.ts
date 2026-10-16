@@ -233,6 +233,19 @@ export class PaperworkService {
     return itemView(updated);
   }
 
+  /**
+   * A personal photo, as the employee's picture beside their name on the profile and the list: only a personal photo
+   * kept as an image answers, so this never serves any other paper (nor a national ID scan, whose views are audited).
+   */
+  async photo(itemId: string) {
+    const item = await this.prisma.paperworkItem.findFirst({
+      where: { id: itemId, kind: 'personal_photo', mimeType: { in: ['image/jpeg', 'image/png', 'image/webp'] } },
+      select: { mimeType: true, data: true },
+    });
+    if (!item) throw new NotFoundException('Photo not found.');
+    return { data: Buffer.from(item.data.buffer, item.data.byteOffset, item.data.byteLength), type: item.mimeType };
+  }
+
   /** The file itself. Every view of a national ID scan is written to the audit log. */
   async file(itemId: string, user: SessionUser) {
     const item = await this.prisma.paperworkItem.findUnique({

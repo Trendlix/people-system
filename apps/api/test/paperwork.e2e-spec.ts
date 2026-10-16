@@ -225,6 +225,34 @@ describe('Paperwork (e2e)', () => {
     expect(profile.body.completeness.missing.map((m: { key: string }) => m.key)).not.toContain('syndicate_card');
   });
 
+  it('shows the personal photo uploaded last as an image beside the name, to HR and the CEO only', async () => {
+    const photo = await upload(jpeg('NONE'), 'صورة.jpg', 'personal_photo');
+    // a photo scanned to a PDF is kept, but isn't a picture to show
+    await upload(pdf('NONE'), 'photo.pdf', 'personal_photo');
+    const card = await upload(png('NONE'), 'card.png', 'national_id_front');
+
+    const profile = await api().get(`/api/employees/${employeeId}`).set('Cookie', hr).expect(200);
+    expect(profile.body.photoId).toBe(photo.id);
+    const list = await api().get('/api/employees').set('Cookie', ceo).expect(200);
+    expect(list.body.find((e: { id: string }) => e.id === employeeId).photoId).toBe(photo.id);
+    // finance sees everyone, but not the employee file the photo is kept in
+    expect((await api().get(`/api/employees/${employeeId}`).set('Cookie', finance).expect(200)).body.photoId).toBeNull();
+    expect((await api().get('/api/employees').set('Cookie', finance).expect(200)).body.find((e: { id: string }) => e.id === employeeId).photoId).toBeNull();
+
+    const file = await api().get(`/api/paperwork/${photo.id}/photo`).set('Cookie', ceo).expect(200);
+    expect(file.headers['content-type']).toBe('image/jpeg');
+    expect(file.headers['cache-control']).toBe('private, max-age=600');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.headers['content-security-policy']).toBe("default-src 'none'");
+    expect(Buffer.compare(file.body as Buffer, jpeg('NONE'))).toBe(0);
+
+    // nothing but a personal photo kept as an image, so never a national ID scan without its view logged
+    await api().get(`/api/paperwork/${card.id}/photo`).set('Cookie', hr).expect(404);
+    expect((await auditOf(card.id)).map((a) => a.action)).toEqual(['create']);
+    await api().get(`/api/paperwork/${photo.id}/photo`).set('Cookie', finance).expect(403);
+    await api().get(`/api/paperwork/${photo.id}/photo`).set('Cookie', staff).expect(403);
+  });
+
   it('serves the file with safe headers, and logs every view of a national ID scan', async () => {
     const card = await upload(png('NONE'), 'بطاقة<1>.png', 'national_id_front');
     expect(card.fileName).toBe('بطاقة_1_.png');

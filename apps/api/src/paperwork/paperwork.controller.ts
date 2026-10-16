@@ -121,6 +121,20 @@ export class PaperworkController {
     return new StreamableFile(data, { type, length: data.length, disposition: contentDisposition(fileName) });
   }
 
+  /**
+   * The picture beside the employee's name (HR and the CEO, who see the employee file). Kept by the browser for ten
+   * minutes, so a list of people doesn't load every photo on every visit; a photo adjusted since shows within that.
+   */
+  @Roles('hr', 'ceo')
+  @Get(':itemId/photo')
+  @Header('Cache-Control', 'private, max-age=600')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Content-Security-Policy', "default-src 'none'")
+  async photo(@Param('itemId', ParseUUIDPipe) itemId: string): Promise<StreamableFile> {
+    const { data, type } = await this.paperwork.photo(itemId);
+    return new StreamableFile(data, { type, length: data.length });
+  }
+
   @Roles('hr', 'ceo')
   @Get(':itemId/text')
   @Header('Cache-Control', 'private, no-store')
