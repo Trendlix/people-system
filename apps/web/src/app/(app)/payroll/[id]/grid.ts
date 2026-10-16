@@ -2,18 +2,23 @@ import { formatHours, parseHours, type PayrollInputs } from '@trendlix/shared';
 
 // The run's inputs grid (owner's decisions, 16 October 2026): the month's figures HR types for each employee, laid out
 // like the owner's payroll sheet, until attendance fills the hours and days itself; without the sheet's Medical column,
-// as there is no medical subscription on the payroll any more (owner's decision, 16 October 2026). Pure code, tested:
-// the columns, how each cell is read and shown, which rows changed (only those are sent, in one PATCH
-// /payroll/runs/:id/lines), and the API's refusals put by the cell they are about.
+// as there is no medical subscription on the payroll any more (owner's decision, 16 October 2026). Without the sheet's
+// Soft skills %, Performance % and Client satisfaction % columns either (owner, 16 October 2026: "this is going to be
+// from the KPI's module, lets remove it till we work on it"): the KPIs module will fill those inputs, which the pay
+// still counts; a line's step-by-step pay shows any it has, and the grid never sends them, so none saved is lost. The
+// Attendance % is worked out as the pay counts it: the worked hours over the expected hours less the no-show days'
+// hours, a day of the shift each (owner's decisions, 16 October 2026). Pure code, tested: the columns, how each cell
+// is read and shown, which rows changed (only those are sent, in one PATCH /payroll/runs/:id/lines), and the API's
+// refusals put by the cell they are about.
 
 export type InputField = keyof PayrollInputs;
 
 /**
  * How a cell is typed, and the limits the API checks: hours as attendance shows them ("270:00") or as a number
- * ("270.5"), up to 744 (31 days); percents 0 to 200; days 0 to 31, whole or half; amounts in EGP within ±10,000,000
- * (settlements may be negative: corrections); what was already released this month, 0 or more.
+ * ("270.5"), up to 744 (31 days); days 0 to 31, whole or half; amounts in EGP within ±10,000,000 (settlements may be
+ * negative: corrections); what was already released this month, 0 or more.
  */
-export type FieldKind = 'hours' | 'percent' | 'days' | 'amount' | 'released';
+export type FieldKind = 'hours' | 'days' | 'amount' | 'released';
 
 export interface GridColumn {
   field: InputField;
@@ -21,13 +26,10 @@ export interface GridColumn {
   kind: FieldKind;
 }
 
-/** The typed columns, in the sheet's order. The attendance % between the hours and the KPIs is worked out from the hours. */
+/** The typed columns, in the sheet's order. The attendance % after the hours is worked out from them. */
 export const GRID_COLUMNS: readonly GridColumn[] = [
   { field: 'workedHours', label: 'Worked hours', kind: 'hours' },
   { field: 'expectedHours', label: 'Expected hours', kind: 'hours' },
-  { field: 'softSkills', label: 'Soft skills %', kind: 'percent' },
-  { field: 'performance', label: 'Performance %', kind: 'percent' },
-  { field: 'clientSatisfaction', label: 'Client satisfaction %', kind: 'percent' },
   { field: 'noShowDays', label: 'No-show days', kind: 'days' },
   { field: 'penaltyDays', label: 'Penalty days', kind: 'days' },
   { field: 'bonusDays', label: 'Bonus days', kind: 'days' },
@@ -39,13 +41,11 @@ export const GRID_COLUMNS: readonly GridColumn[] = [
 const COLUMN = new Map(GRID_COLUMNS.map((c) => [c.field as string, c]));
 
 export const HOURS_MAX = 744;
-export const PERCENT_MAX = 200;
 export const DAYS_MAX = 31;
 export const AMOUNT_MAX = 10_000_000;
 
 const HINTS: Record<FieldKind, string> = {
   hours: `Type the hours as 270:00 or 270.5, up to ${HOURS_MAX}.`,
-  percent: `Type a percent from 0 to ${PERCENT_MAX}, e.g. 95.`,
   days: `Type the days from 0 to ${DAYS_MAX}, whole or half, e.g. 1.5.`,
   amount: 'Type an amount in EGP, e.g. 1,500 or -250.50.',
   released: 'Type an amount in EGP of 0 or more, e.g. 1,500.',
@@ -65,11 +65,6 @@ export function parseCell(kind: FieldKind, text: string): Parsed {
   if (kind === 'hours') {
     const hours = parseHours(s);
     return hours !== null && hours >= 0 && hours <= HOURS_MAX ? { ok: true, value: hours } : bad(kind);
-  }
-  if (kind === 'percent') {
-    if (!/^\d+(\.\d{1,2})?$/.test(s)) return bad(kind);
-    const n = Number(s);
-    return n <= PERCENT_MAX ? { ok: true, value: n } : bad(kind);
   }
   if (kind === 'days') {
     if (!/^\d+(\.(0|5|50))?$/.test(s)) return bad(kind);
@@ -98,11 +93,18 @@ export function tidyCell(kind: FieldKind, text: string): string {
   return parsed.ok ? cellText(kind, parsed.value) : text;
 }
 
-/** The attendance a row's hours give, in percent (worked ÷ expected); null when either is missing or nothing is expected. */
-export function attendancePercent(worked: number | null, expected: number | null): number | null {
+/**
+ * The attendance a row's hours give, in percent: worked ÷ (expected less the no-show days' hours); null when either is
+ * missing, or nothing is expected once the no-show days' hours are out.
+ */
+export function attendancePercent(worked: number | null, expected: number | null, absentHours = 0): number | null {
   if (worked === null || expected === null || expected <= 0) return null;
-  return Math.round((worked / expected) * 10_000) / 100;
+  const counted = expected - absentHours;
+  return counted > 0 ? Math.round((worked / counted) * 10_000) / 100 : null;
 }
+
+/** What a no-show day costs, under the column: "2 days' pay each". */
+export const noShowPay = (multiplier: number) => `${multiplier} ${multiplier === 1 ? "day's" : "days'"} pay each`;
 
 // ---------- what changed ----------
 

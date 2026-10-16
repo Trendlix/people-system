@@ -6,6 +6,7 @@ import {
   errorLine,
   GRID_COLUMNS,
   linePatches,
+  noShowPay,
   parseCell,
   placeApiErrors,
   tidyCell,
@@ -19,26 +20,20 @@ const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 
 const lines: GridLine[] = [
-  { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 270.5, expectedHours: 280, performance: 90 }, onHold: false, comments: null },
+  // a performance saved before the KPI columns came off the grid
+  { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 270.5, expectedHours: 280, performance: 90, bonusDays: 1 }, onHold: false, comments: null },
   { id: B, name: 'Karim Nabil', inputs: { ...EMPTY_PAYROLL_INPUTS, commission: 1500 }, onHold: true, comments: 'Bank details pending' },
 ];
 
 describe('the grid’s columns', () => {
-  it('follow the owner’s sheet, every input once', () => {
-    expect(GRID_COLUMNS.map((c) => c.label)).toEqual([
-      'Worked hours',
-      'Expected hours',
-      'Soft skills %',
-      'Performance %',
-      'Client satisfaction %',
-      'No-show days',
-      'Penalty days',
-      'Bonus days',
-      'Commission',
-      'Settlements',
-      'Released',
-    ]);
-    expect(new Set(GRID_COLUMNS.map((c) => c.field))).toEqual(new Set(Object.keys(EMPTY_PAYROLL_INPUTS)));
+  it('follow the owner’s sheet, every input once but the KPIs, which the KPIs module will fill (owner, 16 October 2026)', () => {
+    expect(GRID_COLUMNS.map((c) => c.label)).toEqual(['Worked hours', 'Expected hours', 'No-show days', 'Penalty days', 'Bonus days', 'Commission', 'Settlements', 'Released']);
+    const kpis = ['softSkills', 'performance', 'clientSatisfaction'];
+    expect(new Set(GRID_COLUMNS.map((c) => c.field))).toEqual(new Set(Object.keys(EMPTY_PAYROLL_INPUTS).filter((k) => !kpis.includes(k))));
+  });
+
+  it('say what a no-show day costs under its column', () => {
+    expect([noShowPay(2), noShowPay(1), noShowPay(1.5)]).toEqual(["2 days' pay each", "1 day's pay each", "1.5 days' pay each"]);
   });
 });
 
@@ -62,15 +57,6 @@ describe('reading a cell', () => {
 
   it('leaves an empty cell empty', () => {
     for (const c of GRID_COLUMNS) expect(value(c.kind, '  ')).toBeNull();
-  });
-
-  it('reads percents from 0 to 200', () => {
-    expect(value('percent', '95')).toBe(95);
-    expect(value('percent', '87.5')).toBe(87.5);
-    expect(value('percent', '200')).toBe(200);
-    expect(value('percent', '201')).toBe('error');
-    expect(value('percent', '-5')).toBe('error');
-    expect(value('percent', '95%')).toBe('error');
   });
 
   it('reads days from 0 to 31, whole or half', () => {
@@ -109,7 +95,6 @@ describe('showing a cell', () => {
     expect(cellText('hours', 270)).toBe('270:00');
     expect(cellText('amount', 1500)).toBe('1500.00');
     expect(cellText('released', 99.5)).toBe('99.50');
-    expect(cellText('percent', 87.5)).toBe('87.5');
     expect(cellText('days', 1.5)).toBe('1.5');
     expect(cellText('hours', null)).toBe('');
   });
@@ -118,25 +103,35 @@ describe('showing a cell', () => {
     expect(tidyCell('hours', '270.5')).toBe('270:30');
     expect(tidyCell('amount', '1,500')).toBe('1500.00');
     expect(tidyCell('hours', '27o')).toBe('27o');
-    expect(tidyCell('percent', '')).toBe('');
+    expect(tidyCell('days', '')).toBe('');
   });
 
-  it('works out the attendance from the hours', () => {
+  it('works out the attendance from the hours, as the pay counts it: without the no-show days’ hours', () => {
     expect(attendancePercent(270.5, 280)).toBe(96.61);
     expect(attendancePercent(280, 280)).toBe(100);
     expect(attendancePercent(null, 280)).toBeNull();
     expect(attendancePercent(270, 0)).toBeNull();
+    // one 8-hour day off: 238 of 272 is 87.5%, not 85%
+    expect(attendancePercent(238, 280, 8)).toBe(87.5);
+    // nothing left once the days off are out
+    expect(attendancePercent(0, 16, 16)).toBeNull();
   });
 });
 
 describe('what changed', () => {
   it('sends only the rows and the cells that changed', () => {
     const { patches, errors } = linePatches(lines, {
-      [A]: { inputs: { workedHours: '271:00', expectedHours: '280', performance: '' } },
+      [A]: { inputs: { workedHours: '271:00', expectedHours: '280', bonusDays: '' } },
     });
     expect(errors).toEqual([]);
-    // the expected hours were typed as they are saved: not a change
-    expect(patches).toEqual([{ id: A, inputs: { workedHours: 271, performance: null } }]);
+    // the expected hours were typed as they are saved: not a change; the performance saved isn't sent
+    expect(patches).toEqual([{ id: A, inputs: { workedHours: 271, bonusDays: null } }]);
+  });
+
+  it('never sends a KPI: a saved one stays as it is for the KPIs module', () => {
+    const edits = { [A]: { inputs: { performance: '50' } } };
+    expect(linePatches(lines, edits)).toEqual({ patches: [], errors: [] });
+    expect(unsavedCount(lines, edits)).toEqual({ cells: 0, rows: 0 });
   });
 
   it('sends the hold and the comments when they changed, comments trimmed and none for empty', () => {
@@ -157,7 +152,7 @@ describe('what changed', () => {
   });
 
   it('lists the cells typed wrongly, which count as unsaved', () => {
-    const edits = { [A]: { inputs: { workedHours: 'abc', softSkills: '95' } }, [B]: { inputs: { released: '-1' } } };
+    const edits = { [A]: { inputs: { workedHours: 'abc', penaltyDays: '1' } }, [B]: { inputs: { released: '-1' } } };
     const { errors } = linePatches(lines, edits);
     expect(errors.map((e) => [e.lineId, e.field])).toEqual([
       [A, 'workedHours'],

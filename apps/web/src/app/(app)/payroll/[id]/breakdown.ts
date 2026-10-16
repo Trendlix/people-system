@@ -5,8 +5,11 @@ import { formatEgp } from '../../employees/[id]/contracts/salary';
 // One employee's pay, step by step, as the run's results table opens it (owner's decisions, 16 October 2026): from the
 // gross split into its fixed and variable parts, through the attendance and KPI cuts and what is added, to the pay
 // earned, then the insurance, tax and other deductions, the net, what the bank transfers, and what the employee costs
-// the company. Each step as payrollLine (@trendlix/shared) worked it out; nothing is worked out again here. Pure code,
-// tested; relative imports, as vitest doesn't know the @/ paths.
+// the company. Each step as payrollLine (@trendlix/shared) worked it out; nothing is worked out again here. The hours
+// attendance is measured on are the expected hours less the no-show days' hours, so a day off is charged once, and
+// with no KPI given the variable part isn't cut (owner's decisions, 16 October 2026). The KPIs a line has are listed
+// with its KPI score, as the inputs grid doesn't show them (the KPIs module will fill them). Pure code, tested;
+// relative imports, as vitest doesn't know the @/ paths.
 
 export interface BreakdownRow {
   key: string;
@@ -27,23 +30,51 @@ export const cutText = (amount: number) => (amount === 0 ? formatEgp(0) : `−${
 
 const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 
+/** "a", "a and b", "a, b and c". */
+const listed = (items: readonly string[]) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items.at(-1)}` : (items[0] ?? ''));
+
 type Line = Pick<PayrollLineView, 'payBasis' | 'terms' | 'inputs' | 'result'>;
 
 /** The steps of a line on monthly pay: the gross's parts, the cuts and what is added. */
 function monthlySteps({ terms: t, inputs: i, result: r }: Line, rules: PayrollRules): BreakdownRow[] {
   const variablePercent = Math.round((100 - t.basicPercent) * 100) / 100;
   const part = t.paidDays < rules.dayDivisor ? `, for ${t.paidDays} of ${rules.dayDivisor} days` : '';
+  // the no-show days' hours out of the expected hours: none on a line worked out before 16 October 2026
+  const absent = r.absentHours > 0 ? r.absentHours : 0;
+  const typed = i.workedHours !== null || i.expectedHours !== null;
+  const hours: BreakdownRow[] =
+    i.workedHours !== null && i.expectedHours !== null
+      ? [
+          {
+            key: 'hours',
+            label: 'Hours worked',
+            value: `${formatHours(i.workedHours)} of ${formatHours(Math.max(0, i.expectedHours - absent))}`,
+            kind: 'info',
+            note: absent > 0 ? `${formatHours(i.expectedHours)} expected, less ${formatHours(absent)} for the no-show ${i.noShowDays === 1 ? 'day' : 'days'}` : undefined,
+          },
+        ]
+      : [];
+  const typedKpis: [string, number | null][] = [
+    ['soft skills', i.softSkills],
+    ['performance', i.performance],
+    ['client satisfaction', i.clientSatisfaction],
+  ];
+  const kpis = typedKpis.filter((k): k is [string, number] => k[1] !== null).map(([name, v]) => `${name} ${percent.format(v)}%`);
   return [
     { key: 'fixed', label: 'Fixed', value: formatEgp(r.fixed), kind: 'add', note: `${t.basicPercent}% of the gross${part}` },
     { key: 'variable', label: 'Variable', value: formatEgp(r.variable), kind: 'add', note: `${variablePercent}% of the gross${part}` },
+    ...hours,
     {
       key: 'attendance',
       label: 'Attendance',
-      value: r.attendanceRatio === null ? 'Not tracked' : percentText(r.attendanceRatio),
+      // hours typed but not counted: the line's warnings say why
+      value: r.attendanceRatio !== null ? percentText(r.attendanceRatio) : typed ? 'Not counted' : 'Not tracked',
       kind: 'info',
       note:
         r.attendanceRatio === null
-          ? 'No hours typed: counts in full'
+          ? typed
+            ? 'See the warnings: counts in full'
+            : 'No hours typed: counts in full'
           : r.attendanceScore >= 1
             ? `At or above ${rules.attendanceGracePercent}%: counts in full`
             : `Below ${rules.attendanceGracePercent}%: the fixed part follows it`,
@@ -54,7 +85,12 @@ function monthlySteps({ terms: t, inputs: i, result: r }: Line, rules: PayrollRu
       label: 'KPI score',
       value: percentText(r.kpiScore),
       kind: 'info',
-      note: `The average of attendance and the KPIs given; at or above ${rules.kpiGracePercent}% counts in full`,
+      note: kpis.length
+        ? `The average of ${listed([...kpis, `attendance ${percentText(r.attendanceScore)}`])}; at or above ${rules.kpiGracePercent}% counts in full`
+        : // a line worked out before 16 October 2026 took the attendance alone
+          r.kpiScore < 1
+          ? 'No KPIs given: the attendance alone'
+          : "No KPIs given: the variable part isn't cut",
     },
     { key: 'kpiCut', label: 'KPI cut', value: cutText(r.kpiCut), kind: 'cut' },
     {

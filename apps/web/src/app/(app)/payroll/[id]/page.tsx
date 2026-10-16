@@ -142,6 +142,8 @@ function gridRows(lines: PayrollLineView[]): GridRow[] {
     payBasis: l.payBasis,
     gross: l.terms.gross,
     hourlyRate: l.terms.hourlyRate,
+    // missing on lines worked out before 16 October 2026
+    hoursPerDay: l.terms.hoursPerDay ?? null,
   }));
 }
 
@@ -179,8 +181,8 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
         </dl>
         <p className="text-sm text-muted">
           {run.status === 'approved' || run.status === 'paid'
-            ? 'From the bank details as they were when the CEO approved the run.'
-            : 'From the bank details as they are now; they are taken as they stand when the CEO approves the run.'}
+            ? 'From each employee’s bank details on their profile, copied onto the run when the CEO approved it: later changes to a profile don’t change these files.'
+            : 'From each employee’s bank details on their profile: there is nothing to enter here. They are copied onto the run when the CEO approves it, so later changes to a profile don’t change its files.'}
         </p>
 
         {problems.length > 0 && (
@@ -289,7 +291,13 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
         {run.lines.length === 0 ? (
           <Empty>No one is on this run.{can.refresh ? ' Refresh it once the contracts are signed.' : ''}</Empty>
         ) : (
-          <InputsGrid key={run.status} rows={gridRows(run.lines)} editable={can.editInputs} save={can.editInputs ? saveRunLines.bind(null, run.id) : null} />
+          <InputsGrid
+            key={run.status}
+            rows={gridRows(run.lines)}
+            noShowDayMultiplier={run.rules.noShowDayMultiplier}
+            editable={can.editInputs}
+            save={can.editInputs ? saveRunLines.bind(null, run.id) : null}
+          />
         )}
       </section>
 

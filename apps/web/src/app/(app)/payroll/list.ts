@@ -146,9 +146,9 @@ export function rulesSummary(r: PayrollRules): string[] {
   return [
     `A month counts as ${r.dayDivisor} days, for day rates and part months.`,
     `Attendance counts in full from ${r.attendanceGracePercent}%; below it, the fixed part follows it.`,
-    `The KPI average counts in full from ${r.kpiGracePercent}%; below it, the variable part follows it.`,
+    `The KPI average counts in full from ${r.kpiGracePercent}%; below it, the variable part follows it. With no KPI given, it isn't cut.`,
     `Overtime is paid for attendance above ${r.overtimeAbovePercent}%, at ${r.overtimeRate}×.`,
-    `A no-show day costs ${r.noShowDayMultiplier} ${r.noShowDayMultiplier === 1 ? "day's" : "days'"} pay.`,
+    `A no-show day costs ${r.noShowDayMultiplier} ${r.noShowDayMultiplier === 1 ? "day's" : "days'"} pay; its hours come out of the expected hours, so attendance doesn't count it again.`,
   ];
 }
 

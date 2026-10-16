@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Fragment, memo, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
-import type { PayBasis } from '@trendlix/shared';
+import { noShowHours, type PayBasis } from '@trendlix/shared';
 import { GroupHeading } from '@/components/group-heading';
 import { titleCase } from '@/lib/format';
 import { groupByPlace, showsDepartment } from '@/lib/place-groups';
@@ -15,6 +15,7 @@ import {
   errorLine,
   GRID_COLUMNS,
   linePatches,
+  noShowPay,
   parseCell,
   placeApiErrors,
   tidyCell,
@@ -34,7 +35,9 @@ import {
 // view while it scrolls sideways. Hours are typed as attendance shows them (270:00) or as a number (270.5); a cell is
 // tidied as it is left (270.5 → 270:30). Nothing is saved until Save changes, which sends only the rows that changed in
 // one request; a cell that can't be read, or that the API refuses, is marked with the reason. Read only once the run is
-// with the CEO, or for anyone but HR.
+// with the CEO, or for anyone but HR. The Attendance % is as the pay counts it, with the no-show days' hours (a day of
+// the employee's shift each) out of the expected hours, so a day off is charged once (owner's decisions, 16 October
+// 2026).
 
 export interface GridRow extends GridLine {
   employeeId: string;
@@ -44,9 +47,11 @@ export interface GridRow extends GridLine {
   payBasis: PayBasis;
   gross: number;
   hourlyRate: number | null;
+  /** A day of the employee's shift, in hours: what a no-show day takes out of the expected hours; null without a shift. */
+  hoursPerDay: number | null;
 }
 
-const WIDTH: Record<FieldKind, string> = { hours: 'w-24', percent: 'w-20', days: 'w-20', amount: 'w-28', released: 'w-28' };
+const WIDTH: Record<FieldKind, string> = { hours: 'w-24', days: 'w-20', amount: 'w-28', released: 'w-28' };
 const cellInput = 'input min-h-9 px-2 py-1 text-right tabular-nums';
 const invalid = 'border-danger bg-danger-soft/40';
 const stickyCell = 'sticky left-0 z-10 bg-card';
@@ -57,6 +62,9 @@ const COLUMN_COUNT = GRID_COLUMNS.length + 5;
 const cellId = (lineId: string, field: string) => `payroll-cell-${lineId}-${field}`;
 const cellKey = (e: Pick<CellError, 'lineId' | 'field'>) => `${e.lineId}:${e.field}`;
 
+/** The Attendance % column comes after this one: the hours it is worked out from. */
+const ATTENDANCE_AFTER: InputField = 'expectedHours';
+
 const percentFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
 /** The text a cell shows: as typed, else the saved value. */
@@ -64,13 +72,17 @@ function shownText(row: GridLine, edits: RowEdits | undefined, field: InputField
   return edits?.inputs?.[field] ?? cellText(kind, row.inputs[field]);
 }
 
-/** The attendance a row's hours give as typed, for the column between the hours and the KPIs. */
-function attendanceOf(row: GridLine, edits: RowEdits | undefined): string {
-  const value = (field: InputField) => {
-    const parsed = parseCell('hours', shownText(row, edits, field, 'hours'));
+/**
+ * The attendance a row's hours give as typed, for the column after the hours: on the expected hours less the no-show
+ * days' hours, as the pay counts it (not by the hour, where no-show days don't apply).
+ */
+function attendanceOf(row: GridRow, edits: RowEdits | undefined): string {
+  const value = (field: InputField, kind: 'hours' | 'days') => {
+    const parsed = parseCell(kind, shownText(row, edits, field, kind));
     return parsed.ok ? parsed.value : null;
   };
-  const p = attendancePercent(value('workedHours'), value('expectedHours'));
+  const absent = row.payBasis === 'hourly' ? 0 : noShowHours(value('noShowDays', 'days'), row.hoursPerDay);
+  const p = attendancePercent(value('workedHours', 'hours'), value('expectedHours', 'hours'), absent);
   return p === null ? '—' : `${percentFormat.format(p)}%`;
 }
 
@@ -123,7 +135,7 @@ const Row = memo(function Row({
           formatEgp(row.gross)
         )}
       </td>
-      {GRID_COLUMNS.map((c, i) => {
+      {GRID_COLUMNS.map((c) => {
         const text = shownText(row, edits, c.field, c.kind);
         const error = errorOf(c.field);
         return (
@@ -148,7 +160,7 @@ const Row = memo(function Row({
               )}
             </td>
             {/* the attendance the hours give, after the expected hours */}
-            {i === 1 && <td className="text-right whitespace-nowrap tabular-nums">{attendanceOf(row, edits)}</td>}
+            {c.field === ATTENDANCE_AFTER && <td className="text-right whitespace-nowrap tabular-nums">{attendanceOf(row, edits)}</td>}
           </Fragment>
         );
       })}
@@ -197,10 +209,13 @@ function withoutEmpty(edits: GridEdits, lineId: string, row: RowEdits): GridEdit
 
 export function InputsGrid({
   rows,
+  noShowDayMultiplier,
   editable,
   save,
 }: {
   rows: GridRow[];
+  /** The run's rule: what a no-show day costs, in days' pay. */
+  noShowDayMultiplier: number;
   editable: boolean;
   /** Saves the changed rows (PATCH /payroll/runs/:id/lines); null when the grid is read only. */
   save: ((lines: LinePatch[]) => Promise<FormState>) | null;
@@ -360,12 +375,13 @@ export function InputsGrid({
               <th scope="col" className="text-right">
                 Gross
               </th>
-              {GRID_COLUMNS.map((c, i) => (
+              {GRID_COLUMNS.map((c) => (
                 <Fragment key={c.field}>
                   <th scope="col" className="px-2 text-right">
                     {titleCase(c.label)}
+                    {c.field === 'noShowDays' && <span className="block text-xs font-normal text-muted">{noShowPay(noShowDayMultiplier)}</span>}
                   </th>
-                  {i === 1 && (
+                  {c.field === ATTENDANCE_AFTER && (
                     <th scope="col" className="text-right">
                       Attendance %
                     </th>
@@ -431,8 +447,10 @@ export function InputsGrid({
       )}
       {canEdit && (
         <p className="hint">
-          Hours as 270:00 or 270.5; percents as 95 for 95%; days in whole or half days. Leave a cell empty when it doesn&apos;t apply: empty
-          attendance hours count in full. On hold: left out of the bank files this month.
+          Hours as 270:00 or 270.5; days in whole or half days. Leave a cell empty when it doesn&apos;t apply: empty
+          attendance hours count in full. No-show days: {noShowPay(noShowDayMultiplier)}; their hours (a day of the
+          shift each) come out of the expected hours, so attendance doesn&apos;t count them again. Type the expected
+          hours with them, or without them for someone with no shift. On hold: left out of the bank files this month.
         </p>
       )}
     </div>
