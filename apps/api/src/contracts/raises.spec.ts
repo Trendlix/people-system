@@ -33,7 +33,7 @@ describe('the CEO’s step a new version takes', () => {
     expect(payChangeStep(previous, { ...same, grossSalary: 13000 }, 'annual')).toEqual({ raiseReason: 'annual', approval: 'draft' });
     expect(payChangeStep(previous, { ...same, allowances: [] }, 'adjustment')).toEqual({ raiseReason: 'adjustment', approval: 'draft' });
     expect(() => payChangeStep(previous, { ...same, grossSalary: 13000 }, undefined)).toThrow(
-      'The pay changes from version 2: choose why (annual raise, promotion, adjustment or other). The CEO approves a change of pay before it is signed.',
+      'The pay changes from version 2: choose why (annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other). The CEO approves a change of pay before it is signed.',
     );
   });
 });

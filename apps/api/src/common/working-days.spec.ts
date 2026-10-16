@@ -1,8 +1,21 @@
-import { EMPTY_PAYROLL_INPUTS, expectedHoursOf, mostCountedHours, payrollLine, shiftDaysIn, shiftExpectedHours, type PayrollInputs, type PayrollTerms } from '@trendlix/shared';
+import {
+  EMPTY_PAYROLL_INPUTS,
+  expectedHoursOf,
+  measuredExpectedHours,
+  mostCountedHours,
+  payrollLine,
+  shiftDaysIn,
+  shiftExpectedHours,
+  type PayrollInputs,
+  type PayrollResult,
+  type PayrollTerms,
+} from '@trendlix/shared';
 
 // The expected hours a run works out from each monthly-paid person's shift (owner's request, 16 October 2026, Payroll
-// Setup): the shift's working days within the days employed in the month, less the official holidays on them, × its
-// hours a day; what HR types on the run is used instead. packages/shared payroll.ts. Invented figures and holidays.
+// Setup): the shift's working days within the days paid in the month, less the official holidays on them, × its hours
+// a day; less the no-show and leave days since 17 October 2026 (owner: "prefill the expected hours, and dont count
+// abcent days or leave days, as they already have their own deduction and fields"); what HR types on the run is used
+// instead, as it is. packages/shared payroll.ts. Invented figures and holidays.
 
 const SUN_TO_THU = [0, 1, 2, 3, 4];
 
@@ -47,14 +60,42 @@ describe('working days: the expected hours', () => {
     expect(shiftExpectedHours({ workingDays: 3, holidays: 3 }, 9)).toBe(0);
   });
 
-  it('are HR’s when typed, else the shift’s, else none', () => {
-    expect(expectedHoursOf({ expectedHours: 189 }, { expectedHours: 200 })).toBe(200);
-    expect(expectedHoursOf({ expectedHours: 189 }, { expectedHours: null })).toBe(189);
+  it('are HR’s when typed, as typed; else the shift’s less the no-show and leave days; else none (17 October 2026)', () => {
+    const shift = { expectedHours: 189, hoursPerDay: 9 };
+    const days = (expectedHours: number | null, noShowDays: number | null = null, leaveDays: number | null = null) => ({ expectedHours, noShowDays, leaveDays });
+    // HR's figure is already without the days off: nothing comes out of it
+    expect(expectedHoursOf(shift, days(200, 2, 1))).toBe(200);
+    expect(expectedHoursOf(shift, days(null))).toBe(189);
+    // 189 − (2 + 1) × 9 = 162; half days too: 189 − 1.5 × 9 = 175.5
+    expect(expectedHoursOf(shift, days(null, 2, 1))).toBe(162);
+    expect(expectedHoursOf(shift, days(null, 0.5, 1))).toBe(175.5);
+    // never below 0
+    expect(expectedHoursOf({ expectedHours: 18, hoursPerDay: 9 }, days(null, 3))).toBe(0);
     // HR typing 0 is a figure too
-    expect(expectedHoursOf({ expectedHours: 189 }, { expectedHours: 0 })).toBe(0);
-    expect(expectedHoursOf({ expectedHours: null }, { expectedHours: null })).toBeNull();
-    // terms worked out before 16 October 2026 have none
-    expect(expectedHoursOf({}, { expectedHours: null })).toBeNull();
+    expect(expectedHoursOf(shift, days(0))).toBe(0);
+    expect(expectedHoursOf({ expectedHours: null, hoursPerDay: 9 }, days(null, 2))).toBeNull();
+    // terms worked out before 16 October 2026 have none; inputs saved before 17 October 2026 have no leave days
+    expect(expectedHoursOf({ hoursPerDay: null }, days(null))).toBeNull();
+    expect(expectedHoursOf(shift, { expectedHours: null, noShowDays: 1 } as PayrollInputs)).toBe(180);
+  });
+
+  it('are shown as a line was measured on them: its own record since 17 October 2026, else as worked out then', () => {
+    const line = (inputs: Partial<PayrollInputs>, result: Partial<PayrollResult>) => ({
+      payBasis: 'monthly' as const,
+      terms: { expectedHours: 189 },
+      inputs: { ...EMPTY_PAYROLL_INPUTS, ...inputs },
+      result: result as PayrollResult,
+    });
+    expect(measuredExpectedHours(line({ expectedHours: 200, noShowDays: 2 }, { expectedHours: 200, absentHours: 0 }))).toBe(200);
+    expect(measuredExpectedHours(line({ noShowDays: 2 }, { expectedHours: 171, absentHours: 18 }))).toBe(171);
+    // before 17 October 2026: the no-show days' hours came out of a typed figure too
+    expect(measuredExpectedHours(line({ expectedHours: 200, noShowDays: 2 }, { absentHours: 18 }))).toBe(182);
+    expect(measuredExpectedHours(line({ noShowDays: 2 }, { absentHours: 18 }))).toBe(171);
+    // before 16 October 2026: no absent hours either
+    expect(measuredExpectedHours({ ...line({ expectedHours: 200 }, {}), terms: {} })).toBe(200);
+    expect(measuredExpectedHours({ ...line({}, {}), terms: {} })).toBeNull();
+    // by the hour: none
+    expect(measuredExpectedHours({ ...line({ expectedHours: 100 }, { expectedHours: null, absentHours: 0 }), payBasis: 'hourly' })).toBeNull();
   });
 });
 
@@ -90,10 +131,14 @@ describe('working days: the pay with the shift’s expected hours', () => {
     expect(payrollLine(terms, inputs({ workedHours: 180, expectedHours: 200 })).attendanceRatio).toBe(0.9);
   });
 
-  it('takes the no-show days’ hours out of the shift’s hours, as out of typed ones', () => {
-    // 2 days of 9 hours out of 189: 171 hours expected
+  it('takes the no-show and leave days’ hours out of the shift’s hours, not out of typed ones (17 October 2026)', () => {
+    // 2 no-show days of 9 hours out of 189: 171 hours expected
     const line = payrollLine(terms, inputs({ workedHours: 153.9, noShowDays: 2 }));
-    expect(line).toMatchObject({ absentHours: 18, attendanceRatio: 0.9, noShowCut: 1_600 });
+    expect(line).toMatchObject({ absentHours: 18, expectedHours: 171, attendanceRatio: 0.9, noShowCut: 1_600 });
+    // and a day of leave: 162 expected; 145:48 worked is 90%
+    expect(payrollLine(terms, inputs({ workedHours: 145.8, noShowDays: 2, leaveDays: 1 }))).toMatchObject({ absentHours: 18, leaveHours: 9, expectedHours: 162, attendanceRatio: 0.9 });
+    // HR's 171 already without them: 153:54 is 90% of it
+    expect(payrollLine(terms, inputs({ workedHours: 153.9, expectedHours: 171, noShowDays: 2 }))).toMatchObject({ absentHours: 0, expectedHours: 171, attendanceRatio: 0.9 });
   });
 
   it('doesn’t warn about the shift’s hours without worked hours: attendance just isn’t tracked yet', () => {
@@ -131,9 +176,11 @@ describe('working days: at most the shift’s hours to work a day counted (owner
   const inputs = (given: Partial<PayrollInputs> = {}): PayrollInputs => ({ ...EMPTY_PAYROLL_INPUTS, ...given });
   const WARNING = "Worked hours are more than 9:00 a day on the shift's working days (189:00 this month): attendance will count at most 9:00 a day";
 
-  it('are the working days less the holidays and the no-show days, × the hours a day; none without the shift’s', () => {
+  it('are the working days less the holidays and the no-show and leave days, × the hours a day; none without the shift’s', () => {
     expect(mostCountedHours({ workingDays: 22, holidays: 1 }, 9, null)).toBe(189);
     expect(mostCountedHours({ workingDays: 22, holidays: 1 }, 9, 2)).toBe(171);
+    // 22 − 1 − 1 − 2 = 18 days of 9 hours
+    expect(mostCountedHours({ workingDays: 22, holidays: 1 }, 9, 1, 2)).toBe(162);
     expect(mostCountedHours({ workingDays: 22, holidays: 1 }, 9, 0.5)).toBe(184.5);
     expect(mostCountedHours({ workingDays: 2, holidays: 0 }, 9, 5)).toBe(0);
     expect([mostCountedHours(null, 9, null), mostCountedHours(undefined, 9, null), mostCountedHours({ workingDays: 22, holidays: 0 }, null, null)]).toEqual([null, null, null]);
@@ -149,6 +196,10 @@ describe('working days: at most the shift’s hours to work a day counted (owner
     // the no-show days' hours aren't countable: 2 days off leave 171 hours
     expect(payrollLine(terms, inputs({ workedHours: 172, noShowDays: 2 })).warnings).toEqual([
       "Worked hours are more than 9:00 a day on the shift's working days (171:00 this month): attendance will count at most 9:00 a day",
+    ]);
+    // nor the leave days': 1 more leaves 162
+    expect(payrollLine(terms, inputs({ workedHours: 163, noShowDays: 2, leaveDays: 1 })).warnings).toEqual([
+      "Worked hours are more than 9:00 a day on the shift's working days (162:00 this month): attendance will count at most 9:00 a day",
     ]);
     // the expected hours HR typed don't change what attendance can count
     expect(payrollLine(terms, inputs({ workedHours: 200, expectedHours: 220 })).warnings).toEqual([WARNING]);

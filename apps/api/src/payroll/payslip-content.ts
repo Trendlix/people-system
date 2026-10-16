@@ -1,8 +1,9 @@
 import {
-  expectedHoursOf,
   formatHours,
   LABELS,
+  measuredExpectedHours,
   paysOvertime,
+  splitSegments,
   toArabicDigits,
   type EmploymentType,
   type LawRates,
@@ -22,10 +23,13 @@ import { monthArabic, monthName } from './months.js';
 // KPI scores (they explain the cuts), the earnings and the deductions row by row, the net with the amount in words,
 // what was already paid and what the bank transfers, the company's insurance share, and the year to date. Every figure
 // is the approved line's (packages/shared payrollLine): nothing is worked out again but the allowances for the days
-// paid, as payrollLine prorates them, and the KPI average, as it averages them. The hours are those attendance counted:
-// the expected hours less the no-show days' hours, so a no-show day reads as charged once (owner's decisions,
-// 16 October 2026); a line worked out before then has none taken out. A row that is 0 is left out, and so is
-// a section with nothing in it. Left off on purpose: the company cost, the tax working, HR's comments, the warnings,
+// paid, as payrollLine prorates them, and the KPI average, as it averages them. The hours are those attendance was
+// measured on (measuredExpectedHours): HR's, else the shift's less the no-show and leave days, so a no-show day reads as
+// charged once and a leave day as paid (owner, 16 and 17 October 2026: "dont count abcent days or leave days, as they
+// already have their own deduction and fields"); a line worked out before then as it was. A month split between two
+// contracts (owner, 17 October 2026: "take into consideration the start and end date of the contract if it is in the
+// middle of the billing period") has each part's fixed and variable salary and allowances, with its days ("Fixed salary
+// · 1–14 Oct"). A row that is 0 is left out, and so is a section with nothing in it. Left off on purpose: the company cost, the tax working, HR's comments, the warnings,
 // the full account number, the IBAN and the national ID. In English for everyone; in Arabic on request, right to left,
 // every number in ٠-٩ but the codes with Latin letters (EMP-0007, PAY-2026-10) and the banks' short names (CIB, QNB).
 // Pure: the drawing is payslip-pdf.ts.
@@ -149,6 +153,7 @@ const L = {
   kpiAverage: { en: 'KPI average', ar: 'متوسط مؤشرات الأداء' },
   bonusDays: { en: 'Bonus days', ar: 'أيام المكافأة' },
   noShowDays: { en: 'No-show days', ar: 'أيام الغياب دون إذن' },
+  leaveDays: { en: 'Leave days', ar: 'أيام الإجازة' },
   penaltyDays: { en: 'Penalty days', ar: 'أيام الجزاء' },
   softSkills: { en: 'Soft skills', ar: 'المهارات الشخصية' },
   performance: { en: 'Performance', ar: 'الأداء' },
@@ -247,6 +252,16 @@ function lastFour(...numbers: (string | null)[]): string | null {
 
 /** Text starting with a capital letter (Arabic as it is). */
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/**
+ * A part of the month as the payslip names it: "1–14 Oct" (one day: "31 Oct"); in Arabic the month's whole name, as
+ * Arabic doesn't shorten it: "١–١٤ أكتوبر".
+ */
+function dayRange(from: string, to: string, ar: boolean): string {
+  const month = ar ? monthArabic(from.slice(0, 7)).replace(/ \d{4}$/, '') : monthName(from.slice(0, 7)).slice(0, 3);
+  const days = from === to ? String(Number(from.slice(8))) : `${Number(from.slice(8))}–${Number(to.slice(8))}`;
+  return `${ar ? arabicNumerals(days) : days} ${month}`;
+}
 
 /** "1 day", "2.5 days". */
 const englishDays = (n: number) => (n === 1 ? '1 day' : `${plainNumber(n)} days`);
@@ -357,8 +372,10 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   const hourly = line.payBasis === 'hourly';
   const partMonth = terms.paidDays < days;
   const row = (label: string, value: number, note: string | null = null): PayslipRow => ({ label, note, amount: money(value), value });
-  // the no-show days' hours taken out of the expected hours: none on a line worked out before 16 October 2026
+  // the no-show and leave days' hours taken out of the shift's hours: none on a line worked out before 16 (no-show) and
+  // 17 October 2026 (leave), nor when HR typed the expected hours
   const absentHours = Number.isFinite(result.absentHours) && result.absentHours > 0 ? result.absentHours : 0;
+  const leaveHours = Number.isFinite(result.leaveHours) && result.leaveHours > 0 ? result.leaveHours : 0;
 
   // the company, under its logo or name
   const city = company.city?.trim() ? (ar ? (GOVERNORATES_AR[company.city.trim() as keyof typeof GOVERNORATES_AR] ?? company.city.trim()) : company.city.trim()) : null;
@@ -388,8 +405,8 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
 
   // ---------- this month: what explains the cuts ----------
   const cells: PayslipCell[] = [];
-  // the expected hours as HR typed them, else the shift's less the holidays (owner's request, 16 October 2026)
-  const expected = expectedHoursOf(terms, inputs);
+  // the expected hours attendance was measured on: HR's, else the shift's less the no-show and leave days
+  const expected = measuredExpectedHours({ payBasis: line.payBasis, terms, inputs, result });
   if (hourly) {
     if (inputs.workedHours !== null) {
       const rate = terms.hourlyRate ?? 0;
@@ -414,7 +431,7 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     }
     cells.push({
       label: t(L.hoursWorked),
-      value: num(`${formatHours(inputs.workedHours)} ${ar ? 'من' : 'of'} ${formatHours(expected - absentHours)}`),
+      value: num(`${formatHours(inputs.workedHours)} ${ar ? 'من' : 'of'} ${formatHours(expected)}`),
       note: num(note),
     });
   } else if (inputs.workedHours !== null) {
@@ -457,6 +474,13 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     const hours = absentHours > 0 ? num(ar ? `، ولا تُحتسب ساعاتها (${formatHours(absentHours)}) مرة أخرى في الحضور` : `; their ${formatHours(absentHours)} hours aren’t counted again in attendance`) : '';
     cells.push({ label: t(L.noShowDays), value: num(plainNumber(noShowDays)), note: `${pay}${hours}` });
   }
+  // paid leave (owner, 17 October 2026): nothing deducted, its hours out of the expected hours; not by the hour
+  const leaveDays = hourly ? null : given(inputs.leaveDays ?? null);
+  if (leaveDays !== null) {
+    const paid = ar ? 'إجازة مدفوعة الأجر: لا يُخصم عنها' : 'Paid leave: nothing deducted';
+    const hours = leaveHours > 0 ? num(ar ? `، ولا تُحتسب ساعاتها (${formatHours(leaveHours)}) في الحضور` : `; their ${formatHours(leaveHours)} hours aren’t counted in attendance`) : '';
+    cells.push({ label: t(L.leaveDays), value: num(plainNumber(leaveDays)), note: `${paid}${hours}` });
+  }
   const penaltyDays = given(inputs.penaltyDays);
   if (penaltyDays !== null) {
     const of = terms.statutory ? (ar ? 'أجر يوم صافٍ عن كل يوم' : 'A day’s net salary each') : ar ? 'أجر يوم عن كل يوم' : 'A day’s pay each';
@@ -464,22 +488,30 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   }
 
   // ---------- earnings ----------
-  const forDays = ar ? `عن ${num(plainNumber(terms.paidDays))} من ${num(String(days))} يومًا` : `for ${plainNumber(terms.paidDays)} of ${days} days`;
+  const forDaysOf = (n: number) => (ar ? `عن ${num(plainNumber(n))} من ${num(String(days))} يومًا` : `for ${plainNumber(n)} of ${days} days`);
   const earnings: PayslipRow[] = [];
-  const earn = (label: Words, value: number, note: string | null = null) => {
-    if (value !== 0) earnings.push(row(t(label), value, note));
+  const earn = (label: Words, value: number, note: string | null = null, part: string | null = null) => {
+    if (value !== 0) earnings.push(row(part ? `${t(label)} · ${part}` : t(label), value, note));
   };
+  // a month split between two contracts (17 October 2026): each part's own, as payrollLine paid it
+  const segments = splitSegments(terms);
+  const split = segments && Array.isArray(result.parts) && result.parts.length === segments.length ? segments.map((s, i) => ({ segment: s, paid: result.parts[i] })) : null;
   if (hourly) {
     const rate = terms.hourlyRate ?? 0;
     const worked = inputs.workedHours ?? 0;
     earn(L.hours, result.fixed, num(ar ? `${formatHours(worked)} × ${formatAmount(rate)} للساعة` : `${formatHours(worked)} × ${formatAmount(rate)} an hour`));
   } else {
-    const basic = terms.basicPercent;
-    const fixedNote = ar ? `${basic}% من الراتب الشامل ${formatAmount(terms.gross)}` : `${basic}% of the ${formatAmount(terms.gross)} gross`;
-    const variableNote = ar ? `${plainNumber(100 - basic)}% من الراتب الشامل` : `${plainNumber(100 - basic)}% of the gross`;
-    const part = (note: string) => (partMonth ? `${num(note)}${ar ? '، ' : ', '}${forDays}` : num(note));
-    earn(L.fixed, result.fixed, part(fixedNote));
-    earn(L.variable, result.variable, part(variableNote));
+    const fixedNote = (basic: number, gross: number) => (ar ? `${basic}% من الراتب الشامل ${formatAmount(gross)}` : `${basic}% of the ${formatAmount(gross)} gross`);
+    const variableNote = (basic: number) => (ar ? `${plainNumber(100 - basic)}% من الراتب الشامل` : `${plainNumber(100 - basic)}% of the gross`);
+    const forPart = (note: string, n: number) => `${num(note)}${ar ? '، ' : ', '}${forDaysOf(n)}`;
+    if (split) {
+      for (const { segment: s, paid } of split) earn(L.fixed, paid.fixed, forPart(fixedNote(s.basicPercent, s.gross), s.days), dayRange(s.from, s.to, ar));
+      for (const { segment: s, paid } of split) earn(L.variable, paid.variable, forPart(variableNote(s.basicPercent), s.days), dayRange(s.from, s.to, ar));
+    } else {
+      const part = (note: string) => (partMonth ? forPart(note, terms.paidDays) : num(note));
+      earn(L.fixed, result.fixed, part(fixedNote(terms.basicPercent, terms.gross)));
+      earn(L.variable, result.variable, part(variableNote(terms.basicPercent)));
+    }
     earn(L.attendanceCut, -result.attendanceCut, num(ar ? `صُرف الثابت بنسبة ${percent2(result.attendanceScore)}` : `Fixed salary paid at ${percent2(result.attendanceScore)}`));
     earn(L.kpiCut, -result.kpiCut, num(ar ? `صُرف المتغير بنسبة ${percent2(result.kpiScore)}` : `Variable paid at ${percent2(result.kpiScore)}`));
     const noShows = inputs.noShowDays ?? 0;
@@ -498,14 +530,21 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   earn(L.bonus, result.bonus, ar ? `${arabicDays(bonusOf)} من الراتب الثابت` : `${englishDays(bonusOf)} of the fixed salary`);
   earn(L.commission, result.commission);
   earn(L.settlement, result.settlements, t(L.oneOff));
-  // each allowance for the days paid, as payrollLine prorates it (so they add up to its allowances)
-  for (const a of terms.allowances) {
-    const amount = piasters((Math.max(0, a.amount) * terms.paidDays) / days);
-    if (amount === 0) continue;
-    // "For 19 of 30 days, not taxed"
-    const notes = [partMonth ? forDays : null, a.taxable ? null : t(L.notTaxed)].filter((n): n is string => n !== null);
-    const note = notes.length ? sentence(notes.map((n, i) => (i && !ar ? n[0].toLowerCase() + n.slice(1) : n)).join(ar ? '، ' : ', ')) : null;
-    earnings.push(row((ar ? source.allowancesAr[a.name]?.trim() : null) || a.name, amount, note));
+  // each allowance for the days paid, as payrollLine prorates it (so they add up to its allowances); a split month's each
+  // part's own, for its days
+  const allowanceParts = split
+    ? split.map(({ segment: s }) => ({ allowances: s.allowances, days: s.days, part: dayRange(s.from, s.to, ar) as string | null }))
+    : [{ allowances: terms.allowances, days: terms.paidDays, part: null }];
+  for (const { allowances, days: paidFor, part } of allowanceParts) {
+    for (const a of allowances) {
+      const amount = piasters((Math.max(0, a.amount) * paidFor) / days);
+      if (amount === 0) continue;
+      // "For 19 of 30 days, not taxed"
+      const notes = [partMonth || part ? forDaysOf(paidFor) : null, a.taxable ? null : t(L.notTaxed)].filter((n): n is string => n !== null);
+      const note = notes.length ? sentence(notes.map((n, i) => (i && !ar ? n[0].toLowerCase() + n.slice(1) : n)).join(ar ? '، ' : ', ')) : null;
+      const name = (ar ? source.allowancesAr[a.name]?.trim() : null) || a.name;
+      earnings.push(row(part ? `${name} · ${part}` : name, amount, note));
+    }
   }
   const earningsTotal = piasters(result.earned + result.allowances);
 

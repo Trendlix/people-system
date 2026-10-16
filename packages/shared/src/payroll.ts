@@ -4,14 +4,24 @@
 // actual pay (Law 7/2024, salary.ts) and social insurance on the insured wage the Social Insurance tab shows. Built
 // before attendance: HR types the month's hours and days on the run, and attendance will fill the same inputs later.
 // Absent days (owner's decisions, 16 October 2026): a no-show day costs 2 days' pay ("as the sheet"), and is never
-// charged twice ("make sure it is not duplicated in the noshow deduction and the attendance percentage"): its hours, a
-// day of the employee's shift, come out of the expected hours before attendance is worked out, so attendance measures
-// only short hours on the days the employee came in; the cut is never more than the salary left for the days paid.
-// The variable part follows the KPIs only ("No, fixed only" until the KPIs module): with no KPI given it isn't cut.
-// The expected hours (owner's request, 16 October 2026, the Payroll Setup page): a run works them out for each
-// monthly-paid person from their shift (its working days in the days they are employed, less the official holidays on
-// them, × its hours a day) and keeps them with the line's terms; what HR types on the run is used instead, never
-// overwritten.
+// charged twice ("make sure it is not duplicated in the noshow deduction and the attendance percentage"), so attendance
+// measures only short hours on the days the employee came in; the cut is never more than the salary left for the days
+// paid. The variable part follows the KPIs only ("No, fixed only" until the KPIs module): with no KPI given it isn't cut.
+// The expected hours (owner's request, 16 October 2026, the Payroll Setup page): a run works out each monthly-paid
+// person's shift hours (its working days in the days they are paid, less the official holidays on them, × its hours a
+// day) and keeps them with the line's terms. Since 17 October 2026 (owner, on the inputs grid: "prefill the expected
+// hours, and dont count abcent days or leave days, as they already have their own deduction and fields") the expected
+// hours are those shift hours less a day of the shift for each no-show day and each leave day (paid leave: no cut, and
+// not short hours either), filled in on the grid as it shows them (expectedHoursOf); what HR types instead is taken as
+// the expected hours already without the no-show and leave days, so nothing more comes out of it (until then a no-show
+// day's hours came out of a figure HR typed too), and is never overwritten. Without a shift HR types them, as before.
+// The contracts' dates (owner, 17 October 2026: "take into consideration the start and end date of the contract if it
+// is in the middle of the billing period"): a month is paid for the days both employed and under a signed contract,
+// days between two contracts or after one ends not paid, and a month under two contracts (a renewal mid-month) is split
+// by days, each part's fixed and variable pay and allowances its own contract's (PayrollTerms.segments); the cuts work on
+// their sums. The bonus and penalty days and the insured wage (a whole month's) go by the contract at the month's end.
+// With one of the month's contracts paid by the hour, the latest alone is paid, for all the days: hours can't be split
+// between contracts without attendance. A raise takes effect on the 1st (raises.ts), so it never splits a month.
 // A shift's hours a day are its hours to work (owner, 16 October 2026, on the MORNING shift of 9:00 AM to 7:00 PM: "my
 // company shift is to maintain 9 hours within the shift window, its like flexible shift"): set on the shift, they can
 // be fewer than its window (start to end), worked anywhere within it; not set, the whole window (shiftWorkHours). They
@@ -85,7 +95,33 @@ export interface PayrollAllowance extends AllowanceTerms {
   name: string;
 }
 
-/** What a line is worked out from, taken from the contract in force and the profile when the run is made or refreshed. */
+/**
+ * A part of the month under one signed contract (owner, 17 October 2026: "take into consideration the start and end
+ * date of the contract if it is in the middle of the billing period"): its days, paid on its own pay.
+ */
+export interface PayrollSegment {
+  contractId: string;
+  /** As the contract is shown: its number (CON-2026-0007; an amendment's CON-2026-0007-A1) and its version. */
+  number: string;
+  version: number;
+  /** Its first and last day in the month, YYYY-MM-DD. */
+  from: string;
+  to: string;
+  /** The days paid for it (paidDaysOf): its calendar days, the last part what is left of the days paid. */
+  days: number;
+  payBasis: PayBasis;
+  gross: number;
+  basicPercent: number;
+  /** Pay by the hour only. */
+  hourlyRate: number | null;
+  allowances: PayrollAllowance[];
+}
+
+/**
+ * What a line is worked out from, taken from the contracts in force and the profile when the run is made or refreshed.
+ * The pay (basis, gross, basic percent, rate, allowances) is the contract's at the month's end; with two contracts in
+ * the month, `segments` has each one's for its days.
+ */
 export interface PayrollTerms {
   /** The run's year: the year whose rates set by law apply (law-rates.ts). */
   year: number;
@@ -97,8 +133,18 @@ export interface PayrollTerms {
   /** Pay by the hour only. */
   hourlyRate: number | null;
   allowances: PayrollAllowance[];
-  /** The days paid in the month: the divisor for a whole month, fewer for someone who joined or left in it. */
+  /**
+   * The days paid in the month: the divisor for a whole month, fewer for someone who joined or left in it or was under
+   * a signed contract for only part of it (owner, 17 October 2026); the segments' days added up.
+   */
   paidDays: number;
+  /**
+   * The month's parts under each signed contract, in date order (owner, 17 October 2026: "take into consideration the
+   * start and end date of the contract if it is in the middle of the billing period"): one for a month under one
+   * contract, two for a renewal mid-month, whose pay is then split by days; days under none aren't in any. Missing on
+   * lines made before then: one part, of the terms above, for the days paid (paidSegments).
+   */
+  segments?: PayrollSegment[];
   /** False for freelancers: no social insurance, no tax, no Martyrs' Fund. */
   statutory: boolean;
   /** Registered with social insurance (Employee.socialInsured). */
@@ -114,19 +160,19 @@ export interface PayrollTerms {
   /**
    * A working day's hours, from the employment's shift: its hours to work a day, else its window (its start to its
    * end; an end before the start runs past midnight), as shiftWorkHours gives them (owner, 16 October 2026: "my company
-   * shift is to maintain 9 hours within the shift window"). The hours a no-show day takes out of the expected hours
-   * (owner's decision, 16 October 2026), and the most attendance counts a day. Null without a shift, and missing on
-   * lines worked out before then: the expected hours are then taken as typed.
+   * shift is to maintain 9 hours within the shift window"). The hours a no-show or leave day takes out of the shift's
+   * hours for the month (owner, 17 October 2026), and the most attendance counts a day. Null without a shift, and
+   * missing on lines worked out before 16 October 2026: the expected hours are then taken as typed.
    */
   hoursPerDay: number | null;
   /**
-   * The month's working hours from the employment's shift (owner's request, 16 October 2026): the shift's working days
-   * within the days employed in the month, less the official holidays on them, × its hours a day (its hours to work,
-   * else its window: hoursPerDay). The pay counts them when HR hasn't typed the expected hours (expectedHoursOf). Null
-   * without a shift, and for pay by the hour; missing on lines worked out before then.
+   * The shift's hours for the month (owner's request, 16 October 2026): its working days within the days paid (employed
+   * and under contract, 17 October 2026), less the official holidays on them, × its hours a day (its hours to work,
+   * else its window: hoursPerDay). Less the no-show and leave days, they are the expected hours when HR hasn't typed
+   * others (expectedHoursOf). Null without a shift, and for pay by the hour; missing on lines worked out before then.
    */
   expectedHours?: number | null;
-  /** What the expected hours were worked out from: the shift's working days in the days employed, and the holidays. */
+  /** What the shift's hours were worked out from: its working days in the days paid, and the holidays on them. */
   expectedDays?: ShiftDays | null;
 }
 
@@ -146,8 +192,10 @@ export interface ShiftDays {
 export interface PayrollInputs {
   workedHours: number | null;
   /**
-   * The month's working hours, the no-show days' too: their hours are taken out before attendance is worked out. Not
-   * typed: the hours worked out from the shift and the holidays (PayrollTerms.expectedHours), if any.
+   * The month's expected hours as HR typed them, taken as they are: already without the no-show and leave days, which
+   * have their own fields (owner, 17 October 2026: "dont count abcent days or leave days, as they already have their own
+   * deduction and fields"); until then a no-show day's hours came out of them. Not typed: the shift's hours less those
+   * days (expectedHoursOf), as the grid fills them in.
    */
   expectedHours: number | null;
   /**
@@ -159,10 +207,18 @@ export interface PayrollInputs {
   clientSatisfaction: number | null;
   /**
    * Days absent without notice (owner's decisions, 16 October 2026): each costs the no-show multiplier's days of the
-   * gross, and its hours (a day of the shift) are taken out of the expected hours, so attendance doesn't charge it
-   * again. Not for pay by the hour.
+   * gross, and its hours (a day of the shift) are taken out of the shift's expected hours, so attendance doesn't charge
+   * it again. Not for pay by the hour.
    */
   noShowDays: number | null;
+  /**
+   * Approved paid leave taken this month, in whole or half days (owner, 17 October 2026: "dont count abcent days or
+   * leave days, as they already have their own deduction and fields"): nothing is cut for them, and their hours (a day
+   * of the shift each) are taken out of the shift's expected hours, so attendance doesn't count them as short. Typed by
+   * HR until the Leave module, which will fill the same input. Not for pay by the hour. Missing on inputs saved before
+   * then: none.
+   */
+  leaveDays: number | null;
   penaltyDays: number | null;
   bonusDays: number | null;
   commission: number | null;
@@ -179,6 +235,7 @@ export const EMPTY_PAYROLL_INPUTS: PayrollInputs = {
   performance: null,
   clientSatisfaction: null,
   noShowDays: null,
+  leaveDays: null,
   penaltyDays: null,
   bonusDays: null,
   commission: null,
@@ -186,18 +243,48 @@ export const EMPTY_PAYROLL_INPUTS: PayrollInputs = {
   released: null,
 };
 
+/** A part of the month as paid: its contract's fixed and variable pay and allowances for its days. */
+export interface PayrollPart {
+  /** The segment's contract; null on a line whose terms have no segments (made before 17 October 2026). */
+  contractId: string | null;
+  fixed: number;
+  variable: number;
+  allowances: number;
+}
+
 /** A line worked out, step by step. Amounts in EGP to the piaster; ratios and scores as fractions (0.95). */
 export interface PayrollResult {
-  /** The fixed and variable parts of the gross for the days paid. By the hour: the hours' pay, and no variable part. */
+  /**
+   * The fixed and variable parts of the gross for the days paid, each contract's for its days added up. By the hour:
+   * the hours' pay, and no variable part.
+   */
   fixed: number;
   variable: number;
   /**
-   * The no-show days' hours (a day of the shift each), taken out of the expected hours: 0 without no-show days, the
-   * shift's hours or expected hours, and for pay by the hour. Missing on lines worked out before 16 October 2026, when
-   * none were.
+   * The month's parts as paid, in the order of paidSegments (owner, 17 October 2026): one for a month on one contract,
+   * two for a renewal mid-month; their fixed, variable and allowances add up to the line's. Missing on lines worked out
+   * before then.
+   */
+  parts: PayrollPart[];
+  /**
+   * The no-show days' hours (a day of the shift each), taken out of the shift's expected hours: 0 without no-show days
+   * or the shift's hours, when HR typed the expected hours (already without them, 17 October 2026), and for pay by the
+   * hour. Missing on lines worked out before 16 October 2026, when none were; until 17 October 2026 they came out of a
+   * figure HR typed too.
    */
   absentHours: number;
-  /** Worked ÷ (expected less absent) hours; null when attendance isn't tracked or can't be counted. */
+  /**
+   * The leave days' hours (a day of the shift each), taken out of the shift's expected hours as the no-show days' are
+   * (owner, 17 October 2026). Missing on lines worked out before then, which had no leave days.
+   */
+  leaveHours: number;
+  /**
+   * The expected hours attendance is measured on, as the grid shows them (expectedHoursOf, 17 October 2026): HR's, else
+   * the shift's less the no-show and leave days; null without either, and for pay by the hour. Missing on lines worked
+   * out before then (measuredExpectedHours).
+   */
+  expectedHours: number | null;
+  /** Worked ÷ expected hours; null when attendance isn't tracked or can't be counted. */
   attendanceRatio: number | null;
   /** The attendance that counts (1 at or above the grace percent). */
   attendanceScore: number;
@@ -231,7 +318,7 @@ export interface PayrollResult {
   transfer: number;
   /** What the employee costs the company this month: earned, allowances and the company's insurance share. */
   companyCost: number;
-  /** Plain-English notes for HR, e.g. "Paid for 19 of 30 days: joined or left in the month". */
+  /** Plain-English notes for HR, e.g. "Paid for 19 of 30 days: employed or under contract for part of the month". */
   warnings: string[];
 }
 
@@ -247,7 +334,18 @@ const given = (v: number | null) => v ?? 0;
 /** The salary part of a line before the bonus, the commission and the settlements. */
 type SalaryPart = Pick<
   PayrollResult,
-  'fixed' | 'variable' | 'absentHours' | 'attendanceRatio' | 'attendanceScore' | 'kpiScore' | 'attendanceCut' | 'kpiCut' | 'noShowCut' | 'overtime'
+  | 'fixed'
+  | 'variable'
+  | 'absentHours'
+  | 'leaveHours'
+  | 'expectedHours'
+  | 'attendanceRatio'
+  | 'attendanceScore'
+  | 'kpiScore'
+  | 'attendanceCut'
+  | 'kpiCut'
+  | 'noShowCut'
+  | 'overtime'
 >;
 
 /**
@@ -293,27 +391,92 @@ export function isFlexibleShift(shift: ShiftTimes): boolean {
 }
 
 /**
- * The hours of the no-show days, a day of the shift each, that come out of the expected hours (owner's decision,
- * 16 October 2026): 0 without no-show days or the shift's hours.
+ * The hours of so many days of the shift, a day of its hours each, whole or half days: what no-show and leave days take
+ * out of the shift's hours for the month (owner, 16 and 17 October 2026). 0 without days or the shift's hours.
  */
-export function noShowHours(noShowDays: number | null, hoursPerDay: number | null | undefined): number {
-  const n = given(noShowDays);
+export function shiftDaysHours(days: number | null | undefined, hoursPerDay: number | null | undefined): number {
+  const n = days ?? 0;
   return n > 0 && typeof hoursPerDay === 'number' && hoursPerDay > 0 ? fraction(n * hoursPerDay) : 0;
 }
 
+/** The hours of the no-show days, a day of the shift each (owner's decision, 16 October 2026): shiftDaysHours. */
+export const noShowHours = (noShowDays: number | null, hoursPerDay: number | null | undefined): number => shiftDaysHours(noShowDays, hoursPerDay);
+
 /**
- * The expected hours a line is worked out with (owner's request, 16 October 2026): as HR typed them, else as worked
- * out from the shift and the holidays; null when neither. What HR types is never overwritten.
+ * The expected hours a line is worked out with, as the inputs grid fills them in (owner, 17 October 2026: "prefill the
+ * expected hours, and dont count abcent days or leave days, as they already have their own deduction and fields"): as
+ * HR typed them, taken as already without the no-show and leave days; else the shift's hours for the month less a day
+ * of the shift for each no-show and leave day, never below 0; null when neither. What HR types is never overwritten.
  */
-export function expectedHoursOf(terms: Pick<PayrollTerms, 'expectedHours'>, inputs: Pick<PayrollInputs, 'expectedHours'>): number | null {
-  return inputs.expectedHours ?? terms.expectedHours ?? null;
+export function expectedHoursOf(
+  terms: Pick<PayrollTerms, 'expectedHours' | 'hoursPerDay'>,
+  inputs: Pick<PayrollInputs, 'expectedHours' | 'noShowDays' | 'leaveDays'>,
+): number | null {
+  if (inputs.expectedHours !== null && inputs.expectedHours !== undefined) return inputs.expectedHours;
+  const shift = terms.expectedHours;
+  if (shift === null || shift === undefined) return null;
+  const off = shiftDaysHours(inputs.noShowDays, terms.hoursPerDay) + shiftDaysHours(inputs.leaveDays, terms.hoursPerDay);
+  return Math.max(0, fraction(shift - off));
+}
+
+/**
+ * The expected hours a line's attendance was measured on, as it was worked out, for showing it: its own record of them
+ * since 17 October 2026 (PayrollResult.expectedHours); on a line worked out before then, the hours HR typed or the
+ * shift's, less the no-show days' hours it took out of them. Null when there were none, and for pay by the hour.
+ */
+export function measuredExpectedHours(
+  line: { payBasis: PayBasis; terms: Pick<PayrollTerms, 'expectedHours'>; inputs: Pick<PayrollInputs, 'expectedHours'>; result: Pick<PayrollResult, 'expectedHours' | 'absentHours'> },
+): number | null {
+  if (line.payBasis === 'hourly') return null;
+  if (line.result.expectedHours !== undefined) return line.result.expectedHours;
+  const before = line.inputs.expectedHours ?? line.terms.expectedHours ?? null;
+  const absent = Number.isFinite(line.result.absentHours) && line.result.absentHours > 0 ? line.result.absentHours : 0;
+  return before === null ? null : Math.max(0, fraction(before - absent));
+}
+
+/** A part of the month as payrollLine pays it: a contract's pay, for its days. */
+type PaidSegment = Pick<PayrollSegment, 'days' | 'gross' | 'basicPercent' | 'allowances'> & { contractId: string | null };
+
+/**
+ * The parts of the month a line is paid on (owner, 17 October 2026): its terms' segments, each for its days; on a line
+ * made before then, one of its terms for the days paid. With two or more and one of them by the hour, the latest alone
+ * (`latestOnly`) for all the days paid: hours can't be split between contracts without attendance.
+ */
+export function paidSegments(terms: PayrollTerms): { segments: PaidSegment[]; latestOnly: PayrollSegment | null } {
+  const all = terms.segments ?? [];
+  if (all.length === 0) {
+    return { segments: [{ contractId: null, days: terms.paidDays, gross: terms.gross, basicPercent: terms.basicPercent, allowances: terms.allowances }], latestOnly: null };
+  }
+  if (all.length > 1 && all.some((s) => s.payBasis === 'hourly')) {
+    const latest = all[all.length - 1];
+    return { segments: [{ ...latest, days: terms.paidDays }], latestOnly: latest };
+  }
+  return { segments: all, latestOnly: null };
+}
+
+/**
+ * The contracts a month's pay is split between, in date order (owner, 17 October 2026): two or more, none of them by
+ * the hour; null for a month paid on one (or, with one by the hour, on the latest alone), and for lines made before.
+ */
+export function splitSegments(terms: Pick<PayrollTerms, 'segments'>): PayrollSegment[] | null {
+  const all = terms.segments ?? [];
+  return all.length > 1 && !all.some((s) => s.payBasis === 'hourly') ? all : null;
+}
+
+/** "no-show days", "leave days" or "no-show and leave days": the days off a line has; null without any. */
+function daysOffName(noShowDays: number, leaveDays: number): string | null {
+  if (noShowDays > 0 && leaveDays > 0) return 'no-show and leave days';
+  if (noShowDays > 0) return 'no-show days';
+  return leaveDays > 0 ? 'leave days' : null;
 }
 
 /**
  * A payroll line worked out from its terms and the month's inputs, with the run's rules, every amount rounded to the
- * piaster as it is worked out. Monthly pay: a no-show day costs days of the gross (two by default), never more than
- * the salary left for the days paid, and its hours (the shift's) come out of the expected hours; the fixed part of the
- * gross (its basic percent) is cut for attendance on those hours below the grace percent and, while the rules pay it,
+ * piaster as it is worked out. The month's parts under each contract (owner, 17 October 2026) are each paid their own
+ * contract's fixed and variable pay and allowances for their days, added up; the rest goes by the contract at the
+ * month's end. Monthly pay: a no-show day costs days of the gross (two by default), never more than the salary left for
+ * the days paid; the fixed part of the gross (its basic percent) is cut for attendance on the expected hours (HR's, else
+ * the shift's less the no-show and leave days: expectedHoursOf) below the grace percent and, while the rules pay it,
  * paid overtime above the overtime percent; the variable part is cut for a KPI average below its grace percent, and
  * not at all with no KPI given. By the hour: the hours worked at the contract's rate. Then for both: the bonus days,
  * the commission and the settlements; the allowances for the days paid; social insurance on the insured wage, whole
@@ -332,13 +495,38 @@ export function payrollLine(
   // inputs saved before a field existed read as not given
   const i: PayrollInputs = { ...EMPTY_PAYROLL_INPUTS, ...inputs };
   const warnings: string[] = [];
-  if (terms.paidDays < days) warnings.push(`Paid for ${terms.paidDays} of ${days} days: joined or left in the month`);
+  if (terms.paidDays < days) warnings.push(`Paid for ${terms.paidDays} of ${days} days: employed or under contract for part of the month`);
 
+  // the contract at the month's end: its gross for the no-show and bonus days and the penalty days' net
   const gross = piasters(terms.gross);
   const fixedFull = piasters((gross * terms.basicPercent) / 100);
-  const variableFull = piasters(gross - fixedFull);
-  /** An amount for the days paid. */
-  const forDaysPaid = (amount: number) => piasters((amount * terms.paidDays) / days);
+  /** An amount for so many days. */
+  const forDays = (amount: number, n: number) => piasters((amount * n) / days);
+
+  // each part of the month on its own contract's pay, for its days (owner, 17 October 2026)
+  const { segments, latestOnly } = paidSegments(terms);
+  if (latestOnly) {
+    const all = terms.segments!;
+    const hourly = all.filter((s) => s.payBasis === 'hourly').length;
+    const which = hourly === all.length ? (hourly === 2 ? 'both' : 'all') : hourly === 1 ? 'one' : String(hourly);
+    warnings.push(
+      `${all.length} contracts this month, ${which} paid by the hour: the whole month is paid on the latest, ${latestOnly.number} v${latestOnly.version}, as hours can't be split between contracts without attendance`,
+    );
+  }
+  const parts = segments.map((s) => {
+    const g = piasters(s.gross);
+    const f = piasters((g * s.basicPercent) / 100);
+    // the contract's allowances for its days, never below 0 (as salary.ts counts them)
+    const allowances = s.allowances.map((a) => ({ taxable: a.taxable, amount: forDays(Math.max(0, a.amount), s.days) }));
+    return {
+      contractId: s.contractId,
+      fixed: forDays(f, s.days),
+      variable: forDays(piasters(g - f), s.days),
+      allowances: piasters(allowances.reduce((sum, a) => sum + a.amount, 0)),
+      taxable: piasters(allowances.reduce((sum, a) => sum + (a.taxable ? a.amount : 0), 0)),
+    };
+  });
+  const sum = (pick: (p: (typeof parts)[number]) => number) => piasters(parts.reduce((total, p) => total + pick(p), 0));
 
   const salary =
     terms.payBasis === 'hourly'
@@ -349,9 +537,8 @@ export function payrollLine(
           rules,
           {
             gross,
-            fixedFull,
-            variableFull,
-            forDaysPaid,
+            fixed: sum((p) => p.fixed),
+            variable: sum((p) => p.variable),
             hoursPerDay: terms.hoursPerDay ?? null,
             shiftExpectedHours: terms.expectedHours ?? null,
             expectedDays: terms.expectedDays ?? null,
@@ -366,10 +553,8 @@ export function payrollLine(
     salary.fixed - salary.attendanceCut + salary.variable - salary.kpiCut - salary.noShowCut + salary.overtime + bonus + commission + settlements,
   );
 
-  // the contract's allowances for the days paid, never below 0 (as salary.ts counts them)
-  const allowances = terms.allowances.map((a) => ({ ...a, amount: forDaysPaid(Math.max(0, a.amount)) }));
-  const allowancesTotal = piasters(allowances.reduce((sum, a) => sum + a.amount, 0));
-  const taxableAllowances = piasters(allowances.reduce((sum, a) => sum + (a.taxable ? a.amount : 0), 0));
+  const allowancesTotal = sum((p) => p.allowances);
+  const taxableAllowances = sum((p) => p.taxable);
 
   // social insurance (owner's decision, 16 October 2026): for those registered with it, on the insured wage the Social
   // Insurance tab shows, not prorated for a part month; none for a freelancer
@@ -402,6 +587,12 @@ export function payrollLine(
 
   return {
     ...salary,
+    // by the hour, the one part is the hours' pay
+    parts: parts.map((p) =>
+      terms.payBasis === 'hourly'
+        ? { contractId: p.contractId, fixed: salary.fixed, variable: 0, allowances: p.allowances }
+        : { contractId: p.contractId, fixed: p.fixed, variable: p.variable, allowances: p.allowances },
+    ),
     bonus,
     commission,
     settlements,
@@ -428,54 +619,63 @@ export function payrollLine(
 /**
  * A monthly salary for the days paid, with the cuts and the overtime the owner's sheet works out (its formula errors
  * fixed), and its no-show days charged once (owner's decisions, 16 October 2026). Attendance is the worked hours ÷ the
- * expected hours less the no-show days' hours (a day of the shift each), counted as full at or above the grace percent
- * (90); without the shift's hours, the expected hours as typed, with a warning. The expected hours are HR's when typed,
- * else the shift's working days less the holidays (owner's request, 16 October 2026). With a KPI given, the KPI average is
- * that attendance score and the KPIs given, counted as full at or above its grace percent (80); with none, the variable
- * part isn't cut ("fixed only"). Overtime, while the rules pay it (off from 16 October 2026: "No overtime for now"), is
- * paid on the fixed part for the days paid (the expected hours are the part month's) for attendance above the overtime
- * percent (110), at the overtime rate (1.5). Worked hours above the most attendance counts (the shift's hours to work a
- * day on its days: mostCountedHours) are warned about, not cut. A no-show day costs the no-show
- * multiplier (2) days of the gross (the sheet used the declared insurance salary, empty for most), never more than the
- * salary left for the days paid after the other cuts.
+ * expected hours, counted as full at or above the grace percent (90). The expected hours (expectedHoursOf, owner,
+ * 17 October 2026: "dont count abcent days or leave days, as they already have their own deduction and fields") are
+ * HR's when typed, taken as they are, else the shift's working days less the holidays (owner's request, 16 October
+ * 2026) less the no-show and leave days, a day of the shift each; without a shift, HR's figure, with a warning when
+ * there are days off to leave out of it. With a KPI given, the KPI average is that attendance score and the KPIs given,
+ * counted as full at or above its grace percent (80); with none, the variable part isn't cut ("fixed only"). Overtime,
+ * while the rules pay it (off from 16 October 2026: "No overtime for now"), is paid on the fixed part for the days paid
+ * (the expected hours are the part month's) for attendance above the overtime percent (110), at the overtime rate
+ * (1.5). Worked hours above the most attendance counts (the shift's hours to work a day on its days: mostCountedHours)
+ * are warned about, not cut. A no-show day costs the no-show multiplier (2) days of the gross (the sheet used the
+ * declared insurance salary, empty for most), never more than the salary left for the days paid after the other cuts.
+ * A leave day costs nothing.
  */
 function monthlyPart(
   i: PayrollInputs,
   rules: PayrollRules,
   pay: {
+    /** The gross at the month's end: what a no-show day costs days of. */
     gross: number;
-    fixedFull: number;
-    variableFull: number;
-    forDaysPaid: (amount: number) => number;
+    /** The fixed and variable parts for the days paid, each contract's for its days, added up. */
+    fixed: number;
+    variable: number;
     hoursPerDay: number | null;
-    /** The month's hours from the shift and the holidays: the expected hours when HR typed none. */
+    /** The shift's hours for the month, less the holidays: less the days off, the expected hours when HR typed none. */
     shiftExpectedHours: number | null;
-    /** The shift's working days in the days employed, and the holidays on them: null without a shift, or by the hour. */
+    /** The shift's working days in the days paid, and the holidays on them: null without a shift, or by the hour. */
     expectedDays: ShiftDays | null;
   },
   warnings: string[],
 ): SalaryPart {
-  const fixed = pay.forDaysPaid(pay.fixedFull);
-  const variable = pay.forDaysPaid(pay.variableFull);
+  const { fixed, variable } = pay;
 
-  // a no-show day's hours come out of the expected hours: the no-show cut alone charges the day
+  // the no-show and leave days' hours come out of the shift's hours: the no-show cut alone charges a no-show day, and
+  // a leave day is paid; HR's own figure is taken as already without them
   const noShowDays = given(i.noShowDays);
+  const leaveDays = given(i.leaveDays);
+  const daysOff = daysOffName(noShowDays, leaveDays);
   const worked = i.workedHours;
-  const expected = expectedHoursOf({ expectedHours: pay.shiftExpectedHours }, i);
-  const shiftDays = noShowHours(i.noShowDays, pay.hoursPerDay);
-  const absentHours = expected !== null && expected > 0 ? shiftDays : 0;
-  /** The expected hours attendance is measured on. */
-  const counted = expected === null ? 0 : fraction(expected - absentHours);
-  const attendanceRatio = worked !== null && expected !== null && expected > 0 && counted > 0 ? fraction(worked / counted) : null;
+  const shift = pay.shiftExpectedHours;
+  const fromShift = i.expectedHours === null && shift !== null && shift > 0;
+  const absentHours = fromShift ? shiftDaysHours(i.noShowDays, pay.hoursPerDay) : 0;
+  const leaveHours = fromShift ? shiftDaysHours(i.leaveDays, pay.hoursPerDay) : 0;
+  /** The expected hours attendance is measured on, as the grid shows them. */
+  const expected = expectedHoursOf({ expectedHours: shift, hoursPerDay: pay.hoursPerDay }, i);
+  const attendanceRatio = worked !== null && expected !== null && expected > 0 ? fraction(worked / expected) : null;
   if (worked !== null && expected === null) warnings.push("Worked hours are given without the expected hours: attendance isn't counted");
   // the shift's hours alone, without worked hours, are no reason to warn: attendance just isn't tracked yet
   if (worked === null && i.expectedHours !== null) warnings.push("Expected hours are given without the worked hours: attendance isn't counted");
-  if (worked !== null && expected !== null && !(expected > 0)) warnings.push("The expected hours are 0: attendance isn't counted");
-  if (worked !== null && expected !== null && expected > 0 && !(counted > 0)) {
-    warnings.push("The no-show days' hours are all the expected hours or more: attendance isn't counted, only the no-show cut");
+  if (worked !== null && expected !== null && !(expected > 0)) {
+    warnings.push(
+      fromShift && daysOff
+        ? `The ${daysOff}' hours are all the shift's hours this month or more: attendance isn't counted${noShowDays > 0 ? ', only the no-show cut' : ''}`
+        : "The expected hours are 0: attendance isn't counted",
+    );
   }
-  if (noShowDays > 0 && expected !== null && shiftDays === 0) {
-    warnings.push("No shift on the employment, so the no-show days' hours couldn't be taken out of the expected hours: type the expected hours without them");
+  if (daysOff && i.expectedHours !== null && shift === null) {
+    warnings.push(`No shift on the employment, so the ${daysOff}' hours couldn't be taken out of the expected hours: type the expected hours without them`);
   }
   const attendanceScore = attendanceRatio === null || attendanceRatio >= rules.attendanceGracePercent / 100 ? 1 : attendanceRatio;
 
@@ -493,8 +693,8 @@ function monthlyPart(
 
   // the most attendance will count (owner, 16 October 2026: "maximum working hours to be recorded per day is 9 hours
   // between checkin and check out"): the shift's hours to work a day on its working days in the days paid, less the
-  // holidays and the no-show days; the total typed isn't cut, only warned about
-  const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays);
+  // holidays and the no-show and leave days; the total typed isn't cut, only warned about
+  const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays, leaveDays);
   if (worked !== null && most !== null && pay.hoursPerDay !== null && worked > most) {
     const perDay = formatHours(pay.hoursPerDay);
     warnings.push(`Worked hours are more than ${perDay} a day on the shift's working days (${formatHours(most)} this month): attendance will count at most ${perDay} a day`);
@@ -505,6 +705,8 @@ function monthlyPart(
     fixed,
     variable,
     absentHours,
+    leaveHours,
+    expectedHours: expected,
     attendanceRatio,
     attendanceScore,
     kpiScore,
@@ -520,18 +722,21 @@ function monthlyPart(
 
 /**
  * Pay by the hour: the hours worked at the contract's rate, as one amount (in `fixed`). There is no split of the gross,
- * so no attendance or KPI cuts, no overtime on the attendance ratio and no no-show cut (nor absent hours).
+ * so no attendance or KPI cuts, no overtime on the attendance ratio and no no-show cut (nor absent hours); leave days
+ * don't apply either (owner, 17 October 2026): only the hours worked are paid.
  */
 function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): SalaryPart {
   if (i.workedHours === null) warnings.push('Paid by the hour, but no worked hours are given: nothing is paid for hours');
   if (!(given(terms.hourlyRate) > 0)) warnings.push('Paid by the hour, but the contract has no hourly rate');
-  if ([i.expectedHours, i.softSkills, i.performance, i.clientSatisfaction, i.noShowDays].some((v) => v !== null)) {
-    warnings.push("Paid by the hour: the expected hours, KPIs and no-show days don't change the pay");
+  if ([i.expectedHours, i.softSkills, i.performance, i.clientSatisfaction, i.noShowDays, i.leaveDays].some((v) => v !== null)) {
+    warnings.push("Paid by the hour: the expected hours, KPIs, no-show days and leave days don't change the pay");
   }
   return {
     fixed: piasters(given(i.workedHours) * given(terms.hourlyRate)),
     variable: 0,
     absentHours: 0,
+    leaveHours: 0,
+    expectedHours: null,
     attendanceRatio: null,
     attendanceScore: 1,
     kpiScore: 1,
@@ -544,13 +749,18 @@ function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): 
 
 /**
  * The most worked hours attendance can count in a month (owner, 16 October 2026: "maximum working hours to be recorded
- * per day is 9 hours between checkin and check out"): the shift's working days in the days employed, less the holidays
- * and the no-show days, × its hours to work a day. Null without the shift's days or hours (no shift, pay by the hour,
- * or a line worked out before 16 October 2026).
+ * per day is 9 hours between checkin and check out"): the shift's working days in the days paid, less the holidays and
+ * the no-show and leave days (none worked), × its hours to work a day. Null without the shift's days or hours (no
+ * shift, pay by the hour, or a line worked out before 16 October 2026).
  */
-export function mostCountedHours(days: ShiftDays | null | undefined, hoursPerDay: number | null | undefined, noShowDays: number | null): number | null {
+export function mostCountedHours(
+  days: ShiftDays | null | undefined,
+  hoursPerDay: number | null | undefined,
+  noShowDays: number | null,
+  leaveDays: number | null = null,
+): number | null {
   if (!days || typeof hoursPerDay !== 'number' || !(hoursPerDay > 0)) return null;
-  return fraction(Math.max(0, days.workingDays - days.holidays - given(noShowDays)) * hoursPerDay);
+  return fraction(Math.max(0, days.workingDays - days.holidays - given(noShowDays) - given(leaveDays)) * hoursPerDay);
 }
 
 /**
@@ -582,9 +792,34 @@ const dayNumber = (date: string) => Date.UTC(Number(date.slice(0, 4)), Number(da
  */
 export function paidDaysIn(month: string, joinDate: string, endDate: string | null, divisor: number): number {
   const span = employedSpan('paidDaysIn', month, joinDate, endDate);
-  if (!span) return 0;
-  if (span.from === span.first && span.to === span.last) return divisor;
-  return Math.min(dayNumber(span.to) - dayNumber(span.from) + 1, divisor);
+  return span ? paidDaysOf(month, [span], divisor)[0] : 0;
+}
+
+/**
+ * The days paid for each part of a month ('YYYY-MM') under a signed contract (owner, 17 October 2026: "take into
+ * consideration the start and end date of the contract if it is in the middle of the billing period"): the parts' first
+ * and last days (YYYY-MM-DD) in the month, in date order and not overlapping; a day in none (between two contracts,
+ * after one ends) isn't paid. The month wholly covered counts as the divisor, else its calendar days covered, at most
+ * the divisor (as paidDaysIn); each part has its calendar days, in order, the last what is left: a renewal on 15
+ * October is paid 14 days on the contract before it and 16 on the new one, 30 in all.
+ */
+export function paidDaysOf(month: string, parts: readonly { from: string; to: string }[], divisor: number): number[] {
+  const span = employedSpan('paidDaysOf', month, `${month}-01`, null)!;
+  let before = '';
+  for (const p of parts) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(p.from) || !/^\d{4}-\d{2}-\d{2}$/.test(p.to) || p.from > p.to || p.from < span.first || p.to > span.last || p.from <= before) {
+      throw new RangeError(`paidDaysOf: ${p.from} to ${p.to} is not a part of ${month} after the one before`);
+    }
+    before = p.to;
+  }
+  const calendar = parts.map((p) => dayNumber(p.to) - dayNumber(p.from) + 1);
+  const covered = calendar.reduce((sum, n) => sum + n, 0);
+  let left = covered === dayNumber(span.last) - dayNumber(span.first) + 1 ? divisor : Math.min(covered, divisor);
+  return calendar.map((n, i) => {
+    const paid = i === calendar.length - 1 ? left : Math.min(n, left);
+    left -= paid;
+    return paid;
+  });
 }
 
 /**

@@ -1,4 +1,5 @@
 import {
+  EMPTY_PAYROLL_INPUTS,
   lawRatesFor,
   normalLawRates,
   type EmploymentType,
@@ -146,7 +147,8 @@ export function lineView(line: LineRow, bank: LineBank): PayrollLineView {
     onHold: line.onHold,
     comments: line.comments,
     terms: line.terms as unknown as PayrollTerms,
-    inputs: line.inputs as unknown as PayrollInputs,
+    // inputs saved before one existed (the leave days, 17 October 2026) read as not given
+    inputs: { ...EMPTY_PAYROLL_INPUTS, ...(line.inputs as object) } as PayrollInputs,
     result: line.result as unknown as PayrollResult,
     bank,
     payslips: { en: line.payslips.some((p) => p.language === 'en'), ar: line.payslips.some((p) => p.language === 'ar') },

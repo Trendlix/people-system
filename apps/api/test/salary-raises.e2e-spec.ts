@@ -94,7 +94,13 @@ describe('Salary raises (e2e)', () => {
   }
 
   const sign = (id: string) => api().post(`/api/contracts/${id}/sign`).set('Cookie', hr).send({ signedOn: today }).expect(200);
-  const step = (id: string, action: 'send' | 'approve', session: string) => api().post(`/api/raises/${id}/${action}`).set('Cookie', session).send({}).expect(200);
+  // the CEO approves with a comment (owner, 17 October 2026)
+  const step = (id: string, action: 'send' | 'approve', session: string) =>
+    api()
+      .post(`/api/raises/${id}/${action}`)
+      .set('Cookie', session)
+      .send(action === 'approve' ? { comment: 'Approved' } : {})
+      .expect(200);
 
   /** A contract version as HR enters it (the first, or a renewal), signed; one with new pay sent and approved first. */
   async function contract(p: Person, body: Record<string, unknown>): Promise<string> {
@@ -160,7 +166,7 @@ describe('Salary raises (e2e)', () => {
     await raise(dina, { way: 'amendment', effectiveDate: '2021-07-01', reason: 'annual', grossSalary: 12000, allowances: allowance(700), newJobTitleId: senior });
     await raise(dina, { way: 'amendment', effectiveDate: '2021-11-01', reason: 'adjustment', grossSalary: 12600 });
     await contract(dina, { grossSalary: 12600 }); // renewed from 2022 with the same pay: no raise
-    await api().post(`/api/employees/${dina.id}/raise-requests`).set('Cookie', hr).send({ reason: 'Due for review' }).expect(201);
+    await api().post(`/api/employees/${dina.id}/raise-requests`).set('Cookie', hr).send({ raiseReason: 'annual', comment: 'Due for review' }).expect(201);
 
     eli = await hire('Eli Renewed', { joinDate: '2021-01-01', departmentId: sales, jobTitleId: coordinator });
     await contract(eli, { grossSalary: 8000 });

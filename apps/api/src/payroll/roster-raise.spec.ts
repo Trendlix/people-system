@@ -9,6 +9,7 @@ type Version = RosterEmployment['contracts'][number];
 
 const before: Version = {
   id: 'v1',
+  number: 'CON-2026-0003',
   version: 1,
   insuredWageFrom: null,
   startDate: '2026-03-01',
@@ -21,7 +22,7 @@ const before: Version = {
 };
 
 /** An amendment from 1 November 2026: the new pay to the contract's end. */
-const amendment: Version = { ...before, id: 'v2', version: 2, startDate: '2026-11-01', grossSalary: 13000, insuredWageFrom: '2027-01-01' };
+const amendment: Version = { ...before, id: 'v2', number: 'CON-2026-0003-A1', version: 2, startDate: '2026-11-01', grossSalary: 13000, insuredWageFrom: '2027-01-01' };
 
 function employment(contracts: Version[], comprehensive: number | null = null): RosterEmployment {
   return {
@@ -48,6 +49,11 @@ describe('a month after a raise', () => {
     expect(lineOf('2026-10', e)).toMatchObject({ contractId: 'v1', terms: { gross: 10000 } });
     expect(lineOf('2026-11', e)).toMatchObject({ contractId: 'v2', terms: { gross: 13000 } });
     expect(lineOf('2027-02', e)).toMatchObject({ contractId: 'v2', terms: { gross: 13000 } });
+    // from its 1st, so it never splits a month (17 October 2026): the amendment alone all November, though the version
+    // before runs on to the contract's end beside it
+    expect(lineOf('2026-11', e).terms.segments).toEqual([
+      { contractId: 'v2', number: 'CON-2026-0003-A1', version: 2, from: '2026-11-01', to: '2026-11-30', days: 30, payBasis: 'monthly', gross: 13000, basicPercent: 80, hourlyRate: null, allowances: [{ name: 'Transport', amount: 500, taxable: true, insured: false }] },
+    ]);
   });
 
   it('insures the pay before the raise until the next January, and says so; the new pay from January', () => {

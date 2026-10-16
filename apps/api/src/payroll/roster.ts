@@ -1,7 +1,7 @@
 import {
   insuredWageVersion,
   lawRatesFor,
-  paidDaysIn,
+  paidDaysOf,
   shiftDaysIn,
   shiftExpectedHours,
   shiftWorkHours,
@@ -9,22 +9,28 @@ import {
   type LawRates,
   type PayBasis,
   type PayrollRules,
+  type PayrollSegment,
   type PayrollTerms,
 } from '@trendlix/shared';
+import { addDays } from '../common/date-only.js';
 import { departmentName } from '../contracts/views.js';
 import { insuredWageOfEmployee } from '../employees/insured-wage.js';
 import { firstDay, lastDay } from './months.js';
 
 // Who is on a month's payroll (owner's decisions, 16 October 2026): every employment that touches the month (joined by
 // its last day, not ended before its first) whose person has a signed contract in force in the month, taken as far as
-// the employment ran. With two (a renewal starting mid-month) the later one's terms are paid for the whole month. The
-// others are left out, with the reason, for HR to see. A working day's hours are the employment's shift's, what a
-// no-show day takes out of the expected hours (owner's decision, 16 October 2026): its hours to work a day, else its
-// whole window (owner, 16 October 2026: "my company shift is to maintain 9 hours within the shift window, its like
-// flexible shift"). The month's expected hours of someone paid monthly are the shift's too (owner's request, 16 October
-// 2026, Payroll Setup): its working days within the days employed in the month, less the official holidays on them, ×
-// those hours a day; none without a shift, nor for pay by the hour. The pay counts them unless HR types the expected
-// hours.
+// the employment ran. The others are left out, with the reason, for HR to see. The month is paid for the days both
+// employed and under a signed contract, each day under the one in force on it (owner, 17 October 2026: "take into
+// consideration the start and end date of the contract if it is in the middle of the billing period"): a renewal
+// mid-month splits it into two parts, each paid on its own contract's pay (the terms' segments), and days between two
+// contracts or after one ends aren't paid. The line is the contract's at the month's end: its pay is the terms', and
+// the insured wage (a whole month's) stands on it. A working day's hours are the employment's shift's, what a no-show
+// or leave day takes out of the expected hours (owner's decisions, 16 and 17 October 2026): its hours to work a day,
+// else its whole window (owner, 16 October 2026: "my company shift is to maintain 9 hours within the shift window, its
+// like flexible shift"). The month's shift hours of someone paid monthly (owner's request, 16 October 2026, Payroll
+// Setup): its working days within the days paid, less the official holidays on them, × those hours a day; none without
+// a shift, nor for pay by the hour. Less the no-show and leave days, the pay counts them unless HR types the expected
+// hours (payroll.ts expectedHoursOf).
 
 /** An employment as the roster reads it, with its signed contracts that may be in force in the month. */
 export interface RosterEmployment {
@@ -47,19 +53,24 @@ export interface RosterEmployment {
     /** The employee's own comprehensive wage for social insurance, if any. */
     insuranceComprehensiveWage: number | null;
   };
-  contracts: {
-    id: string;
-    startDate: string;
-    endDate: string | null;
-    payBasis: PayBasis;
-    grossSalary: number;
-    basicPercent: number;
-    hourlyRate: number | null;
-    allowances: { nameEn: string; amount: number; taxable: boolean; insured: boolean }[];
-    /** Its number within the employment, and, for a raise, from when the insured wage follows its pay (raises.ts). */
-    version?: number;
-    insuredWageFrom?: string | null;
-  }[];
+  contracts: RosterContract[];
+}
+
+/** A signed contract (a version of the employment's) that may be in force in the month. */
+export interface RosterContract {
+  id: string;
+  /** As it is shown: CON-2026-0007 (an amendment CON-2026-0007-A1). */
+  number: string;
+  startDate: string;
+  endDate: string | null;
+  payBasis: PayBasis;
+  grossSalary: number;
+  basicPercent: number;
+  hourlyRate: number | null;
+  allowances: { nameEn: string; amount: number; taxable: boolean; insured: boolean }[];
+  /** Its number within the employment, and, for a raise, from when the insured wage follows its pay (raises.ts). */
+  version: number;
+  insuredWageFrom?: string | null;
 }
 
 /** Someone on the run: whose pay it is, what is shown with it, and what it is worked out from. */
@@ -93,13 +104,46 @@ export const byDepartment = (a: string | null, b: string | null) => (a === null 
 const cents = (v: number) => Math.round(v * 100);
 
 /**
- * The expected hours a monthly-paid employment's shift gives in the month, and the days they come from: null without a
- * shift (or one whose hours can't be told), and for pay by the hour.
+ * The shift's hours a monthly-paid employment has in the month, and the days they come from: its working days in the
+ * parts of the month paid (under a contract, 17 October 2026), less the holidays on them; null without a shift (or one
+ * whose hours can't be told), and for pay by the hour.
  */
-function shiftExpected(month: string, e: RosterEmployment, payBasis: PayBasis, hoursPerDay: number | null, holidays: readonly string[]) {
+function shiftExpected(
+  month: string,
+  e: RosterEmployment,
+  parts: readonly { from: string; to: string }[],
+  payBasis: PayBasis,
+  hoursPerDay: number | null,
+  holidays: readonly string[],
+) {
   if (payBasis !== 'monthly' || !e.shift || hoursPerDay === null) return { expectedHours: null, expectedDays: null };
-  const days = shiftDaysIn(month, e.joinDate, e.endDate, e.shift.workingDays, holidays);
+  const days = { workingDays: 0, holidays: 0 };
+  for (const p of parts) {
+    const part = shiftDaysIn(month, p.from, p.to, e.shift.workingDays, holidays);
+    days.workingDays += part.workingDays;
+    days.holidays += part.holidays;
+  }
   return { expectedHours: shiftExpectedHours(days, hoursPerDay), expectedDays: days };
+}
+
+/**
+ * The parts of the days from `from` to `to` (YYYY-MM-DD) under each signed contract, in date order (owner, 17 October
+ * 2026): each day under the contract in force on it, the latest start winning (a raise's amendment runs beside the
+ * version it changes, from its 1st), consecutive days under the same one together. A day under none (between two
+ * contracts, after one ends, before one starts) is in no part.
+ */
+export function contractParts(from: string, to: string, contracts: readonly RosterContract[]): { contract: RosterContract; from: string; to: string }[] {
+  const parts: { contract: RosterContract; from: string; to: string }[] = [];
+  for (let day = from; day <= to; day = addDays(day, 1)) {
+    const inForce = contracts
+      .filter((c) => c.startDate <= day && (c.endDate === null || c.endDate >= day))
+      .sort((a, b) => b.startDate.localeCompare(a.startDate) || b.version - a.version)[0];
+    const last = parts.at(-1);
+    if (!inForce) continue;
+    if (last && last.contract === inForce && addDays(last.to, 1) === day) last.to = day;
+    else parts.push({ contract: inForce, from: day, to: day });
+  }
+  return parts;
 }
 
 /**
@@ -132,18 +176,32 @@ export function roster(
       out(EARLIER_EMPLOYMENT);
       continue;
     }
-    // in force in the month, as far as the employment ran in it; the latest start wins
-    const until = e.endDate !== null && e.endDate < to ? e.endDate : to;
-    const contract = e.contracts
-      .filter((c) => c.startDate <= until && (c.endDate === null || c.endDate >= from))
-      .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
-    if (!contract) {
+    // the days employed in the month under each signed contract (owner, 17 October 2026); the line is the contract's at
+    // the month's end
+    const parts = contractParts(e.joinDate > from ? e.joinDate : from, e.endDate !== null && e.endDate < to ? e.endDate : to, e.contracts);
+    if (!parts.length) {
       out(NO_CONTRACT);
       continue;
     }
     paid.add(p.id);
+    const contract = parts[parts.length - 1].contract;
+    const paidDays = paidDaysOf(month, parts, rules.dayDivisor);
+    const allowancesOf = (c: RosterContract) => c.allowances.map((a) => ({ name: a.nameEn, amount: a.amount, taxable: a.taxable, insured: a.insured }));
+    const segments: PayrollSegment[] = parts.map((part, i) => ({
+      contractId: part.contract.id,
+      number: part.contract.number,
+      version: part.contract.version,
+      from: part.from,
+      to: part.to,
+      days: paidDays[i],
+      payBasis: part.contract.payBasis,
+      gross: part.contract.grossSalary,
+      basicPercent: part.contract.basicPercent,
+      hourlyRate: part.contract.payBasis === 'hourly' ? part.contract.hourlyRate : null,
+      allowances: allowancesOf(part.contract),
+    }));
 
-    const allowances = contract.allowances.map((a) => ({ name: a.nameEn, amount: a.amount, taxable: a.taxable, insured: a.insured }));
+    const allowances = allowancesOf(contract);
     // after a raise the insured wage stands on the pay before it until its insured-wage date, the salary tax on the new
     // pay at once (owner's decision, 16 October 2026: "From the next January unless amended in Form 2")
     const insuredOn = insuredWageVersion(contract, e.contracts, from);
@@ -167,7 +225,9 @@ export function roster(
         basicPercent: contract.basicPercent,
         hourlyRate: contract.payBasis === 'hourly' ? contract.hourlyRate : null,
         allowances,
-        paidDays: paidDaysIn(month, e.joinDate, e.endDate, rules.dayDivisor),
+        // the days employed under a contract: the divisor for a whole month (paidDaysOf)
+        paidDays: paidDays.reduce((sum, n) => sum + n, 0),
+        segments,
         // freelancers: no social insurance, no tax, no Martyrs' Fund
         statutory: e.employmentType !== 'freelance',
         insured: p.socialInsured,
@@ -175,7 +235,7 @@ export function roster(
         insuredWage: insuredWageOfEmployee(p.insuranceComprehensiveWage, contractTotal, law)!.amount,
         ...(insuredOn !== contract && p.insuranceComprehensiveWage === null && { insuredWageAsBefore: contract.insuredWageFrom }),
         hoursPerDay,
-        ...shiftExpected(month, e, contract.payBasis, hoursPerDay, holidays),
+        ...shiftExpected(month, e, parts, contract.payBasis, hoursPerDay, holidays),
       },
     });
   }

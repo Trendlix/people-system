@@ -2,15 +2,28 @@ import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Que
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { RaiseRequestsService } from './raise-requests.service.js';
-import { CreateRaiseDto, CreateRaiseRequestDto, ListRaiseRequestsDto, RaiseForm2Dto, RaiseReasonDto, UpdateRaiseDto } from './raises.dto.js';
+import {
+  ApproveRaiseDto,
+  ApproveRaiseRequestDto,
+  CreateRaiseDto,
+  CreateRaiseRequestDto,
+  ListRaiseRequestsDto,
+  RaiseCommentDto,
+  RaiseForm2Dto,
+  SendRaiseDto,
+  UpdateRaiseDto,
+} from './raises.dto.js';
 import { RaisesService } from './raises.service.js';
 import { SalaryHistoryService } from './salary-history.service.js';
 
 // Pay raises during a contract, the salary history and raise requests (owner's decisions, 16 October 2026). HR enters
-// a raise (also from a request) and sends it; the CEO alone approves, returns or declines it, and a renewal with new pay
-// the same way (a raise's id is its contract version's: it is signed and deleted as a contract); HR records Form 2.
-// Anyone may ask for a raise who is the employee, their direct manager or HR (checked by the service); HR declines a
-// request. Each answer is the raise (its contract version) or the request, as the caller may see it.
+// a raise and sends it; the CEO alone decides it, and a renewal with new pay the same way (a raise's id is its contract
+// version's: it is signed and deleted as a contract); HR records Form 2. Anyone may ask for a raise who is the employee,
+// their direct manager or HR (checked by the service). Since 17 October 2026 ("Approve - Approve with another raise
+// amount or percentge - Reject, and add a comment"): HR approves a request (as suggested or with another raise, which
+// prepares the raise and sends it to the CEO) or rejects it, and the CEO approves a raise (as it reached them or with
+// another raise), rejects it or returns it to HR, each with a comment. Each answer is the raise (its contract version)
+// or the request, as the caller may see it.
 @Controller()
 export class RaisesController {
   constructor(
@@ -43,33 +56,38 @@ export class RaisesController {
     return this.raises.update(id, dto, user);
   }
 
+  /** { comment? }: a note to the CEO, e.g. on a raise the CEO returned. */
   @Roles('hr')
   @Post('raises/:id/send')
   @HttpCode(200)
-  send(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
-    return this.raises.send(id, user);
+  send(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SendRaiseDto, @CurrentUser() user: SessionUser) {
+    return this.raises.send(id, dto, user);
   }
 
-  /** The CEO only (owner's decision, 16 October 2026: "HR, then the CEO"). */
+  /**
+   * The CEO only (owner's decision, 16 October 2026: "HR, then the CEO"): { comment } approves it as it reached them;
+   * with { increaseAmount } or { increasePercent } too, with another raise over the pay before it.
+   */
   @Roles('ceo')
   @Post('raises/:id/approve')
   @HttpCode(200)
-  approve(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
-    return this.raises.approve(id, user);
+  approve(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveRaiseDto, @CurrentUser() user: SessionUser) {
+    return this.raises.approve(id, dto, user);
   }
 
+  /** { comment } (or { reason }): HR alone sees it. */
   @Roles('ceo')
   @Post('raises/:id/return')
   @HttpCode(200)
-  returnToHr(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RaiseReasonDto, @CurrentUser() user: SessionUser) {
+  returnToHr(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RaiseCommentDto, @CurrentUser() user: SessionUser) {
     return this.raises.returnToHr(id, dto, user);
   }
 
-  /** The draft goes; the request it came from is declined. Answers 204. */
+  /** The CEO rejects it, { comment } (or { reason }): the draft goes; the request it came from is declined. Answers 204. */
   @Roles('ceo')
   @Post('raises/:id/decline')
   @HttpCode(204)
-  decline(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RaiseReasonDto, @CurrentUser() user: SessionUser) {
+  decline(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RaiseCommentDto, @CurrentUser() user: SessionUser) {
     return this.raises.decline(id, dto, user);
   }
 
@@ -104,14 +122,27 @@ export class RaisesController {
   /** The Raise Requests page: every request, of a status unless all. */
   @Roles('hr', 'ceo', 'finance')
   @Get('raise-requests')
-  list(@Query() query: ListRaiseRequestsDto) {
-    return this.requests.list(query.status);
+  list(@Query() query: ListRaiseRequestsDto, @CurrentUser() user: SessionUser) {
+    return this.requests.list(query.status, user);
   }
 
+  /**
+   * HR approves a request as suggested or with another raise, with a comment, the way and the effective date: the raise
+   * is prepared from it and sent to the CEO. Answers the request, with its log.
+   */
+  @Roles('hr')
+  @Post('raise-requests/:id/approve')
+  @HttpCode(200)
+  async approveRequest(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveRaiseRequestDto, @CurrentUser() user: SessionUser) {
+    await this.raises.approveRequest(id, dto, user);
+    return this.requests.one(id, user);
+  }
+
+  /** HR rejects a request, { comment } (or { reason }). */
   @Roles('hr')
   @Post('raise-requests/:id/decline')
   @HttpCode(200)
-  declineRequest(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RaiseReasonDto, @CurrentUser() user: SessionUser) {
+  declineRequest(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RaiseCommentDto, @CurrentUser() user: SessionUser) {
     return this.requests.decline(id, dto, user);
   }
 }

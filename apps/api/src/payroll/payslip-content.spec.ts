@@ -1,4 +1,4 @@
-import { payrollLine, PAYROLL_RULE_DEFAULTS } from '@trendlix/shared';
+import { payrollLine, PAYROLL_RULE_DEFAULTS, type PayrollSegment } from '@trendlix/shared';
 import { MONTHLY_TERMS, payslipSource } from '../../test/fixtures/payslip.js';
 import {
   arabicNumerals,
@@ -13,6 +13,9 @@ import {
 
 // What a payslip says (owner's decisions, 16 October 2026, on the payslip proposal): the proposal's two people, their
 // figures payrollLine's own, so the payslip shows exactly the approved line, row by row.
+
+/** Mariam's shift hours for October: 22 working days of 8 hours, no holidays (her expected hours when HR types none). */
+const SHIFT = { expectedHours: 176, expectedDays: { workingDays: 22, holidays: 0 } };
 
 const labels = (rows: readonly PayslipRow[] | undefined) => (rows ?? []).map((r) => r.label);
 const sum = (rows: readonly PayslipRow[]) => rows.reduce((cents, r) => cents + Math.round(r.value * 100), 0) / 100;
@@ -206,9 +209,9 @@ describe('payslipContent: the month’s cuts and extras, with the run’s own ru
   });
 
   it('no-show and penalty days: a cell each, the no-show cut in the earnings, the penalty in the deductions', () => {
-    const source = payslipSource('monthly', { inputs: { noShowDays: 1, penaltyDays: 2 } });
+    const source = payslipSource('monthly', { terms: SHIFT, inputs: { expectedHours: null, noShowDays: 1, penaltyDays: 2 } });
     const c = payslipContent(source, 'en');
-    // the day's 8 hours out of the 176 expected (owner's decisions, 16 October 2026): 165:30 of 168:00 is 98.51%
+    // the day's 8 hours out of the shift's 176 (owner's decisions, 16 and 17 October 2026): 165:30 of 168:00 is 98.51%
     expect(c.thisMonth!.cells[0]).toEqual({ label: 'Hours worked', value: '165:30 of 168:00', note: '98.51%: counts as full (90% or more)' });
     expect(c.thisMonth!.cells.slice(3)).toEqual([
       { label: 'No-show days', value: '1', note: 'Each costs 2 days’ pay; their 8:00 hours aren’t counted again in attendance' },
@@ -221,15 +224,41 @@ describe('payslipContent: the month’s cuts and extras, with the run’s own ru
     expect(sum(c.deductions!.rows)).toBe(c.deductions!.total.value);
   });
 
-  it('a line worked out before the no-show days’ hours came out of the expected hours (16 October 2026): the hours as typed', () => {
-    const source = payslipSource('monthly', { inputs: { noShowDays: 1 } });
-    // its stored result as payrollLine worked it out then: no absent hours, attendance on the 176 typed
-    const { absentHours, ...was } = source.line.result;
-    expect(absentHours).toBe(8);
-    const old = { ...source, line: { ...source.line, result: { ...was, attendanceRatio: 0.9403409091 } as typeof source.line.result } };
-    const c = payslipContent(old, 'en');
+  it('the expected hours HR typed are taken as they are, the no-show day already out of them (17 October 2026)', () => {
+    const c = payslipContent(payslipSource('monthly', { inputs: { noShowDays: 1 } }), 'en');
     expect(c.thisMonth!.cells[0]).toEqual({ label: 'Hours worked', value: '165:30 of 176:00', note: '94.03%: counts as full (90% or more)' });
     expect(c.thisMonth!.cells.find((x) => x.label === 'No-show days')!.note).toBe('Each costs 2 days’ pay');
+  });
+
+  it('a line worked out before 17 October 2026 reads as it was: before 16 October with the hours as typed, then less the no-show day’s', () => {
+    const source = payslipSource('monthly', { inputs: { noShowDays: 1 } });
+    const { absentHours: _a, leaveHours: _l, expectedHours: _e, parts: _p, ...was } = source.line.result;
+    // before 16 October 2026: no absent hours, attendance on the 176 typed
+    const older = { ...source, line: { ...source.line, result: { ...was, attendanceRatio: 0.9403409091 } as typeof source.line.result } };
+    const c = payslipContent(older, 'en');
+    expect(c.thisMonth!.cells[0]).toEqual({ label: 'Hours worked', value: '165:30 of 176:00', note: '94.03%: counts as full (90% or more)' });
+    expect(c.thisMonth!.cells.find((x) => x.label === 'No-show days')!.note).toBe('Each costs 2 days’ pay');
+    // on 16 October 2026: the day's 8 hours came out of the 176 typed, 168
+    const then = { ...source, line: { ...source.line, result: { ...was, absentHours: 8, attendanceRatio: 0.9851190476 } as typeof source.line.result } };
+    const d = payslipContent(then, 'en');
+    expect(d.thisMonth!.cells[0]).toEqual({ label: 'Hours worked', value: '165:30 of 168:00', note: '98.51%: counts as full (90% or more)' });
+    expect(d.thisMonth!.cells.find((x) => x.label === 'No-show days')!.note).toBe('Each costs 2 days’ pay; their 8:00 hours aren’t counted again in attendance');
+  });
+
+  it('leave days (17 October 2026): a cell saying they are paid, their hours out of the shift’s; nothing deducted', () => {
+    // 2 days of 8 hours out of the shift's 176: 150 of 160 is 93.75%
+    const source = payslipSource('monthly', { terms: SHIFT, inputs: { workedHours: 150, expectedHours: null, leaveDays: 2 } });
+    const c = payslipContent(source, 'en');
+    expect(c.thisMonth!.cells[0]).toEqual({ label: 'Hours worked', value: '150:00 of 160:00', note: '93.75%: counts as full (90% or more)' });
+    expect(c.thisMonth!.cells.map((x) => x.label)).toEqual(['Hours worked', 'KPI average', 'Bonus days', 'Leave days']);
+    expect(c.thisMonth!.cells[3]).toEqual({ label: 'Leave days', value: '2', note: 'Paid leave: nothing deducted; their 16:00 hours aren’t counted in attendance' });
+    // the same pay as without them: nothing in the earnings or deductions for them
+    expect(c.earnings).toEqual(payslipContent(payslipSource('monthly', { terms: SHIFT, inputs: { workedHours: 160, expectedHours: null } }), 'en').earnings);
+    expect(payslipContent(source, 'ar').thisMonth!.cells[3]).toEqual({ label: 'أيام الإجازة', value: '٢', note: 'إجازة مدفوعة الأجر: لا يُخصم عنها، ولا تُحتسب ساعاتها (١٦:٠٠) في الحضور' });
+    // HR's expected hours, already without them: no hours to speak of
+    expect(payslipContent(payslipSource('monthly', { inputs: { leaveDays: 1.5 } }), 'en').thisMonth!.cells.at(-1)).toEqual({ label: 'Leave days', value: '1.5', note: 'Paid leave: nothing deducted' });
+    // by the hour: none
+    expect(payslipContent(payslipSource('hourly', { inputs: { leaveDays: 2 } }), 'en').thisMonth!.cells.map((x) => x.label)).toEqual(['Hours worked']);
   });
 
   it('a commission and a negative settlement: rows of their own, the settlement minus, still adding up', () => {
@@ -302,6 +331,84 @@ describe('payslipContent: a part month', () => {
     const content = payslipContent(odd, 'en');
     expect(sum(content.earnings!.rows)).toBe(content.earnings!.total.value);
     expect(content.earnings!.total.value).toBe(Math.round((odd.line.result.earned + odd.line.result.allowances) * 100) / 100);
+  });
+});
+
+describe('payslipContent: a month under two contracts (owner, 17 October 2026)', () => {
+  // "take into consideration the start and end date of the contract if it is in the middle of the billing period":
+  // Mariam renewed on 15 October at 27,000, her mobile allowance 600
+  const segment = (over: Partial<PayrollSegment>): PayrollSegment => ({
+    contractId: 'v1',
+    number: 'CON-2025-0031',
+    version: 1,
+    from: '2026-10-01',
+    to: '2026-10-14',
+    days: 14,
+    payBasis: 'monthly',
+    gross: 24000,
+    basicPercent: 80,
+    hourlyRate: null,
+    allowances: MONTHLY_TERMS.allowances,
+    ...over,
+  });
+  const renewal = segment({
+    contractId: 'v2',
+    number: 'CON-2026-0044',
+    version: 2,
+    from: '2026-10-15',
+    to: '2026-10-31',
+    days: 16,
+    gross: 27000,
+    allowances: [MONTHLY_TERMS.allowances[0], { ...MONTHLY_TERMS.allowances[1], amount: 600 }],
+  });
+  const source = payslipSource('monthly', { terms: { gross: 27000, allowances: renewal.allowances, segments: [segment({}), renewal] } });
+  const c = payslipContent(source, 'en');
+
+  it('gives each part’s fixed and variable salary and allowances, with its days; they add up to the total', () => {
+    // Worked by hand. 1–14 October: fixed 19,200 × 14 ÷ 30 = 8,960, variable 4,800 × 14 ÷ 30 = 2,240, transportation
+    // 1,500 × 14 ÷ 30 = 700, mobile 500 × 14 ÷ 30 = 233.33. 15–31 October: fixed 21,600 × 16 ÷ 30 = 11,520, variable
+    // 5,400 × 16 ÷ 30 = 2,880, transportation 800, mobile 600 × 16 ÷ 30 = 320. The KPI average 76.75% cuts the
+    // variable 5,120 by 23.25%: 1,190.40. A bonus day is the new fixed salary's: 21,600 ÷ 30 = 720. Earnings 8,960 +
+    // 11,520 + 2,240 + 2,880 − 1,190.40 + 720 + 700 + 233.33 + 800 + 320 = 27,182.93
+    expect(c.earnings!.rows).toEqual([
+      { label: 'Fixed salary · 1–14 Oct', note: '80% of the 24,000.00 gross, for 14 of 30 days', amount: '8,960.00', value: 8960 },
+      { label: 'Fixed salary · 15–31 Oct', note: '80% of the 27,000.00 gross, for 16 of 30 days', amount: '11,520.00', value: 11520 },
+      { label: 'Variable salary · 1–14 Oct', note: '20% of the gross, for 14 of 30 days', amount: '2,240.00', value: 2240 },
+      { label: 'Variable salary · 15–31 Oct', note: '20% of the gross, for 16 of 30 days', amount: '2,880.00', value: 2880 },
+      { label: 'Performance adjustment', note: 'Variable paid at 76.75%', amount: '−1,190.40', value: -1190.4 },
+      { label: 'Bonus', note: '1 day of the fixed salary', amount: '720.00', value: 720 },
+      { label: 'Transportation allowance · 1–14 Oct', note: 'For 14 of 30 days, not taxed', amount: '700.00', value: 700 },
+      { label: 'Mobile allowance · 1–14 Oct', note: 'For 14 of 30 days', amount: '233.33', value: 233.33 },
+      { label: 'Transportation allowance · 15–31 Oct', note: 'For 16 of 30 days, not taxed', amount: '800.00', value: 800 },
+      { label: 'Mobile allowance · 15–31 Oct', note: 'For 16 of 30 days', amount: '320.00', value: 320 },
+    ]);
+    expect(c.earnings!.total).toMatchObject({ amount: '27,182.93', value: 27182.93 });
+    expect(sum(c.earnings!.rows)).toBe(c.earnings!.total.value);
+    expect(c.facts.find((f) => f.label === 'Days paid')!.value).toBe('30 of 30');
+  });
+
+  it('in Arabic, with the month’s whole name', () => {
+    const ar = payslipContent(source, 'ar');
+    expect(ar.earnings!.rows.map((r) => r.label)).toEqual([
+      'الراتب الثابت · ١–١٤ أكتوبر',
+      'الراتب الثابت · ١٥–٣١ أكتوبر',
+      'الراتب المتغير · ١–١٤ أكتوبر',
+      'الراتب المتغير · ١٥–٣١ أكتوبر',
+      'تسوية المتغير',
+      'مكافأة',
+      'بدل انتقال · ١–١٤ أكتوبر',
+      'بدل هاتف محمول · ١–١٤ أكتوبر',
+      'بدل انتقال · ١٥–٣١ أكتوبر',
+      'بدل هاتف محمول · ١٥–٣١ أكتوبر',
+    ]);
+    expect(ar.earnings!.rows[0].note).toBe('٨٠٪ من الراتب الشامل ٢٤٬٠٠٠٫٠٠، عن ١٤ من ٣٠ يومًا');
+  });
+
+  it('one part, or by the hour with the latest alone paid: as a month on one contract', () => {
+    const one = payslipContent(payslipSource('monthly', { terms: { segments: [segment({ to: '2026-10-31', days: 30 })] } }), 'en');
+    expect(one.earnings).toEqual(payslipContent(payslipSource('monthly'), 'en').earnings);
+    const mixed = payslipSource('monthly', { terms: { gross: 27000, segments: [segment({ payBasis: 'hourly', hourlyRate: 150 }), renewal] } });
+    expect(labels(payslipContent(mixed, 'en').earnings?.rows).slice(0, 2)).toEqual(['Fixed salary', 'Variable salary']);
   });
 });
 
@@ -403,7 +510,10 @@ describe('payslipContent: in Arabic', () => {
   });
 
   it('a part month, hours and days in Arabic', () => {
-    const part = payslipContent(payslipSource('monthly', { terms: { paidDays: 19 }, inputs: { noShowDays: 2, penaltyDays: 1 } }), 'ar');
+    const part = payslipContent(
+      payslipSource('monthly', { terms: { paidDays: 19, expectedHours: 104, expectedDays: { workingDays: 13, holidays: 0 } }, inputs: { expectedHours: null, noShowDays: 2, penaltyDays: 1 } }),
+      'ar',
+    );
     expect(part.earnings!.rows[0].note).toBe('٨٠٪ من الراتب الشامل ٢٤٬٠٠٠٫٠٠، عن ١٩ من ٣٠ يومًا');
     expect(part.earnings!.rows.find((r) => r.label === 'الغياب دون إذن')!.note).toBe('يومان، بأجر يومين عن كل يوم');
     // two 8-hour days out of the expected hours

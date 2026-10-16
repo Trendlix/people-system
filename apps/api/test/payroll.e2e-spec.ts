@@ -127,6 +127,7 @@ describe('Payroll (e2e)', () => {
   let hourly: Person; // by the hour, CIB, put on hold
   let noContract: Person;
   let draftOnly: Person; // a contract not signed yet
+  let regularContract: { id: string; number: string };
 
   async function hire(name: string, employment: Record<string, unknown> = {}): Promise<Person> {
     const person = await api().post('/api/employees').set('Cookie', hr).send({ fullNameEn: `${name} ${RUN}`, fullNameAr: 'موظف تجريبي' }).expect(201);
@@ -141,7 +142,7 @@ describe('Payroll (e2e)', () => {
   const postContract = (p: Person, body: object) => api().post(`/api/employees/${p.id}/employments/${p.employmentId}/contracts`).set('Cookie', hr).send(body);
 
   async function signed(p: Person, body: object = {}) {
-    const draft = (await postContract(p, { grossSalary: 12000, ...body }).expect(201)).body as { id: string; startDate: string };
+    const draft = (await postContract(p, { grossSalary: 12000, ...body }).expect(201)).body as { id: string; number: string; startDate: string };
     await api().post(`/api/contracts/${draft.id}/sign`).set('Cookie', hr).send({ signedOn: draft.startDate }).expect(200);
     return draft;
   }
@@ -185,7 +186,7 @@ describe('Payroll (e2e)', () => {
 
     const shifts = (await api().get('/api/shifts').set('Cookie', hr).expect(200)).body as { id: string; code: string }[];
     regular = await hire('Regular', { shiftId: shifts.find((s) => s.code === 'A')!.id });
-    await signed(regular, { allowances: [{ allowanceTypeId: transportId, amount: 1000 }] });
+    regularContract = await signed(regular, { allowances: [{ allowanceTypeId: transportId, amount: 1000 }] });
     await bank(regular, { bankName: 'CIB', accountNo: CIB_ACCOUNT, holderName: `REGULAR HOLDER ${RUN}` });
     await employee(regular, { socialInsured: true }).expect(200);
 
@@ -325,6 +326,22 @@ describe('Payroll (e2e)', () => {
         // the shift's working days in the month, no holidays: the expected hours when HR types none (Payroll Setup)
         expectedHours: SHIFT_A_DAYS * 9,
         expectedDays: { workingDays: SHIFT_A_DAYS, holidays: 0 },
+        // the whole month under its one contract (owner, 17 October 2026: the contracts' dates)
+        segments: [
+          {
+            contractId: regularContract.id,
+            number: regularContract.number,
+            version: 1,
+            from: firstDay(MONTH),
+            to: lastDay(MONTH),
+            days: 30,
+            payBasis: 'monthly',
+            gross: 12000,
+            basicPercent: 80,
+            hourlyRate: null,
+            allowances: [{ name: `Transport ${RUN}`, amount: 1000, taxable: true, insured: false }],
+          },
+        ],
       });
       expect(r.inputs).toEqual({
         workedHours: null,
@@ -333,6 +350,7 @@ describe('Payroll (e2e)', () => {
         performance: null,
         clientSatisfaction: null,
         noShowDays: null,
+        leaveDays: null,
         penaltyDays: null,
         bonusDays: null,
         commission: null,
@@ -449,6 +467,7 @@ describe('Payroll (e2e)', () => {
       expect(await refused({ workedHours: 745 })).toEqual(['Enter the hours from 0 to 744, e.g. 270 or 270:30.']);
       expect(await refused({ softSkills: 201 })).toEqual(['Enter the percent from 0 to 200, e.g. 95.']);
       expect(await refused({ noShowDays: 1.25 })).toEqual(['Enter the days from 0 to 31, in whole or half days, e.g. 2 or 1.5.']);
+      expect(await refused({ leaveDays: 0.3 })).toEqual(['Enter the days from 0 to 31, in whole or half days, e.g. 2 or 1.5.']);
       expect(await refused({ bonusDays: 32 })).toEqual(['Enter the days from 0 to 31, in whole or half days, e.g. 2 or 1.5.']);
       expect(await refused({ settlements: -10_000_001 })).toEqual(['Enter the amount, to the piaster, within 10,000,000 either way.']);
       expect(await refused({ commission: 10.555 })).toEqual(['Enter the amount, to the piaster, within 10,000,000 either way.']);
@@ -466,9 +485,19 @@ describe('Payroll (e2e)', () => {
       run = (await patchLines(run.id, [{ id, inputs: { settlements: -250.5, noShowDays: 0.5 } }]).expect(200)).body as Run;
       const corrected = lineOf(run, regular)!;
       expect(corrected.result.settlements).toBe(-250.5);
-      // half a day off: half the shift's 9 hours out of the 200 expected (owner's decisions, 16 October 2026)
-      expect(corrected.result).toMatchObject({ absentHours: 4.5, attendanceRatio: Math.round((180 / 195.5) * 1e10) / 1e10, noShowCut: 400 });
+      // half a day off: the 200 HR typed are taken as already without it (owner, 17 October 2026: "dont count abcent
+      // days or leave days, as they already have their own deduction and fields"), so 180 of 200 is 90%
+      expect(corrected.result).toMatchObject({ absentHours: 0, expectedHours: 200, attendanceRatio: 0.9, noShowCut: 400 });
       expect(corrected.result).toEqual(payrollLine(corrected.terms, corrected.inputs, run.rules));
+      // paid leave: no cut, in the audit log as the other inputs
+      run = (await patchLines(run.id, [{ id, inputs: { leaveDays: 1.5 } }]).expect(200)).body as Run;
+      expect(lineOf(run, regular)!.result).toMatchObject({ leaveHours: 0, expectedHours: 200, attendanceRatio: 0.9, noShowCut: 400, settlements: -250.5 });
+      expect((await auditOf('payroll_line', id)).at(-1)!.diff).toMatchObject({ leaveDays: { from: null, to: 1.5 } });
+      // no more than the days paid: the joiner's
+      const j = lineOf(run, joiner)!;
+      expect((await patchLines(run.id, [{ id: j.id, inputs: { leaveDays: JOINER_DAYS + 1 } }]).expect(400)).body.message).toBe(
+        `Joiner ${RUN}: the leave days (${JOINER_DAYS + 1}) can't be more than the ${JOINER_DAYS} days paid this month.`,
+      );
       for (const session of [finance, ceo, admin]) await patchLines(run.id, [{ id, inputs: { commission: 100 } }], session).expect(403);
     });
 
@@ -534,6 +563,10 @@ describe('Payroll (e2e)', () => {
       const ws = (await workbook(register.body as Buffer)).worksheets[0];
       expect(ws.getCell('A1').value).toBe(`Payroll — ${monthName(MONTH)} — DRAFT`);
       expect(rowsOf(ws).some((row) => row.includes(`Regular ${RUN}`))).toBe(true);
+      // the leave days typed, in their column (17 October 2026)
+      const headers = rowsOf(ws)[2];
+      const mine = rowsOf(ws).find((row) => row.includes(`Regular ${RUN}`))!;
+      expect(mine[headers.indexOf('Leave days')]).toBe(1.5);
 
       for (const kind of ['cib', 'ach']) {
         expect(message(await file(run.id, kind).expect(409))).toBe(`The ${monthName(MONTH)} payroll is a draft: the bank files are made once the CEO approves it.`);

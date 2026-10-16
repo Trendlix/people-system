@@ -197,10 +197,14 @@ describe('ACH file', () => {
 });
 
 describe('payroll register', () => {
-  const result = (net: number) => ({
+  const result = (net: number): RegisterLine['result'] => ({
     fixed: 8000,
     variable: 2000,
+    parts: [{ contractId: 'contract', fixed: 8000, variable: 2000, allowances: 500 }],
     absentHours: 0,
+    leaveHours: 0,
+    // as HR typed them: 190 worked of 200
+    expectedHours: 200,
     attendanceRatio: 0.95,
     attendanceScore: 1,
     kpiScore: 1,
@@ -243,6 +247,7 @@ describe('payroll register', () => {
       performance: null,
       clientSatisfaction: null,
       noShowDays: null,
+      leaveDays: null,
       penaltyDays: null,
       bonusDays: null,
       commission: null,
@@ -288,22 +293,29 @@ describe('payroll register', () => {
     expect(ws.getRow(8).getCell(REGISTER_COLUMNS.length).address).toBe('AP8');
   });
 
-  it('the no-show days’ hours after the expected hours (owner’s decision, 16 October 2026); empty when none were taken out', async () => {
-    // one no-show day of an 8-hour shift: 190 worked of the 200 expected less 8
-    const absent = line('Amy Invented', 'Sales', 8000);
-    absent.inputs = { ...absent.inputs, noShowDays: 1 };
-    absent.result = { ...absent.result, absentHours: 8, attendanceRatio: 0.9895833333 };
-    // a line worked out before then has no absent hours at all
+  it('the expected hours attendance was measured on, and the leave days after the no-show days (17 October 2026)', async () => {
+    // from the shift: 176 (22 days of 8 hours) less 1 no-show day and 2 of leave, 152; 150:24 worked is 98.95%
+    const shift = line('Amy Invented', 'Sales', 8000);
+    shift.terms = { ...shift.terms, expectedHours: 176, expectedDays: { workingDays: 22, holidays: 0 } };
+    shift.inputs = { ...shift.inputs, workedHours: 150.4, expectedHours: null, noShowDays: 1, leaveDays: 2 };
+    shift.result = { ...shift.result, absentHours: 8, leaveHours: 16, expectedHours: 152, attendanceRatio: 0.9894736842 };
+    // worked out before 17 October 2026, its no-show day's 8 hours taken out of the 200 typed, and no leave days
     const older = line('Zed Invented', 'Sales', 8381.58);
-    delete (older.result as Partial<RegisterLine['result']>).absentHours;
-    const ws = (await read(await registerWorkbook({ month: '2026-09', status: 'approved', paidOn: null, lines: [absent, older, line('Bob Invented', 'Sales', 8381.58)] })))
+    older.inputs = { ...older.inputs, noShowDays: 1 };
+    delete (older.inputs as Partial<RegisterLine['inputs']>).leaveDays;
+    older.result = { ...older.result, absentHours: 8, attendanceRatio: 0.9895833333 };
+    delete (older.result as Partial<RegisterLine['result']>).expectedHours;
+    const ws = (await read(await registerWorkbook({ month: '2026-09', status: 'approved', paidOn: null, lines: [shift, older, line('Bob Invented', 'Sales', 8381.58)] })))
       .worksheets[0];
     const headers = REGISTER_COLUMNS.map((c) => c.header);
     const expected = headers.indexOf('Expected hours');
-    expect(headers.slice(expected, expected + 3)).toEqual(['Expected hours', 'No-show hours', 'Attendance %']);
-    const column = expected + 2;
-    // Amy, Bob, Zed
-    expect([5, 6, 7].map((r) => ws.getRow(r).getCell(column).value)).toEqual([8, null, null]);
-    expect(ws.getRow(5).getCell(column).numFmt).toBe('#,##0.00');
+    expect(headers.slice(expected, expected + 2)).toEqual(['Expected hours', 'Attendance %']);
+    expect(headers).not.toContain('No-show hours');
+    const noShow = headers.indexOf('No-show days');
+    expect(headers.slice(noShow, noShow + 3)).toEqual(['No-show days', 'Leave days', 'Penalty days']);
+    // Amy, Bob, Zed: 152, the 200 typed, 200 − 8
+    expect([5, 6, 7].map((r) => ws.getRow(r).getCell(expected + 1).value)).toEqual([152, 200, 192]);
+    expect(ws.getRow(5).getCell(expected + 1).numFmt).toBe('#,##0.00');
+    expect([5, 6, 7].map((r) => ws.getRow(r).getCell(noShow + 2).value)).toEqual([2, null, null]);
   });
 });

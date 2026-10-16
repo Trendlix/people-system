@@ -13,7 +13,7 @@ import { createApp, createUser, signIn } from './helpers.js';
 // Pay raises during a contract (owner's decisions, 16 October 2026): both ways (an amendment, a new contract), HR then
 // the CEO (send, return, send again, approve, sign; decline), a renewal with new pay going the same way, the promotion,
 // payroll before and after with the insured wage until January or the Form 2 date, the documents, the salary history,
-// and raise requests by the employee, their manager and HR with what each may see. Dates are counted from today in
+// and the CEO's decisions with a comment (17 October 2026; raise requests are in raise-requests.e2e-spec.ts). Dates are counted from today in
 // Cairo: the amendment takes effect on this month's 1st. Everything made here is deleted at the end. Every name and
 // amount is invented.
 
@@ -65,17 +65,6 @@ interface Person {
   employeeCode: string;
 }
 
-interface RaiseRequest {
-  id: string;
-  status: string;
-  requester: string;
-  reason: string;
-  suggestedGross: number | null;
-  raise: { contractId: string; stage: string; effectiveDate: string | null; previousGross: number | null; newGross: number | null; returnedReason: string | null } | null;
-  decision: { stage: string; reason: string | null } | null;
-  amountsHidden: boolean;
-}
-
 /** The printed text of a .docx: its paragraphs, in order, one per line. */
 function textOf(file: Buffer): string {
   const zip = readZip(file);
@@ -94,7 +83,6 @@ describe('Pay raises (e2e)', () => {
   let superAdmin: string;
   let manager: string; // Mona, Ben's direct manager
   let ben: string; // Ben's own sign-in
-  let stranger: string; // an employee who is neither
   let emailDomainBefore: string | null;
   let departmentId: string;
   let accountant: string; // job title, grades G3 to G5
@@ -107,7 +95,7 @@ describe('Pay raises (e2e)', () => {
 
   // the people
   let amy: Person; // an amendment raise with a promotion
-  let benP: Person; // raise requests, a new contract
+  let benP: Person; // a new contract, the CEO's decisions
   let cara: Person; // a renewal with new pay
   let monaId: string;
   let amyV1: Contract;
@@ -135,8 +123,6 @@ describe('Pay raises (e2e)', () => {
   const patchRaise = (id: string, body: object, session = hr) => api().patch(`/api/raises/${id}`).set('Cookie', session).send(body);
   const step = (id: string, action: 'send' | 'approve' | 'return' | 'decline', session: string, body: object = {}) => api().post(`/api/raises/${id}/${action}`).set('Cookie', session).send(body);
   const form2 = (id: string, form2From: string | null, session = hr) => api().patch(`/api/raises/${id}/form2`).set('Cookie', session).send({ form2From });
-  const requestsOf = (e: Person, session = hr) => api().get(`/api/employees/${e.id}/raise-requests`).set('Cookie', session);
-  const ask = (e: Person, body: object, session = hr) => api().post(`/api/employees/${e.id}/raise-requests`).set('Cookie', session).send(body);
   const auditOf = (entityType: string, entityId: string) => prisma.auditLog.findMany({ where: { entityType, entityId }, orderBy: { id: 'asc' } });
 
   async function signedContract(e: Person, body: object): Promise<Contract> {
@@ -164,8 +150,6 @@ describe('Pay raises (e2e)', () => {
     manager = await signIn(app, managerEmail);
     const benEmail = await createUser(prisma, ['employee']);
     ben = await signIn(app, benEmail);
-    const strangerEmail = await createUser(prisma, ['employee']);
-    stranger = await signIn(app, strangerEmail);
     await prisma.payrollRun.deleteMany({ where: { month: { in: [PREVIOUS, CURRENT, NEXT].map((m) => new Date(`${m}-01T00:00:00Z`)) } } });
 
     // sign-in accounts here are @test.local: no company email domain while these tests run
@@ -179,14 +163,13 @@ describe('Pay raises (e2e)', () => {
     titles.push(accountant, senior);
     transport = (await api().post('/api/allowance-types').set('Cookie', hr).send({ nameEn: `Transport ${RUN}`, nameAr: 'بدل انتقال', taxable: true }).expect(201)).body.id;
 
-    // the CEO's own profile, so the approval names them; Ben's manager Mona; a stranger
+    // the CEO's own profile, so the approval names them; Ben's manager Mona
     await employee('Chief Officer', { workEmail: ceoEmail });
     monaId = (await employee('Mona Manager', { workEmail: managerEmail })).id;
-    await employee('Sam Stranger', { workEmail: strangerEmail });
 
     amy = await hire('Amy Amended');
     amyV1 = await signedContract(amy, { grossSalary: 10000, allowances: [{ allowanceTypeId: transport, amount: 500 }] });
-    benP = await hire('Ben Requested', { managerId: monaId }, { workEmail: benEmail });
+    benP = await hire('Ben Raised', { managerId: monaId }, { workEmail: benEmail });
     await signedContract(benP, { grossSalary: 9000 });
     cara = await hire('Cara Renewed');
     await signedContract(cara, { grossSalary: 8000 });
@@ -294,7 +277,9 @@ describe('Pay raises (e2e)', () => {
       const changed = (await patchRaise(raise.id, { grossSalary: 12000 }).expect(200)).body as Contract;
       expect(changed).toMatchObject({ grossSalary: 12000, stage: 'returned', number: raise.number });
       await step(raise.id, 'send', hr).expect(200);
-      const approved = (await step(raise.id, 'approve', ceo).expect(200)).body as Contract;
+      // always with a comment (owner, 17 October 2026)
+      await step(raise.id, 'approve', ceo).expect(400);
+      const approved = (await step(raise.id, 'approve', ceo, { comment: 'Agreed' }).expect(200)).body as Contract;
       expect(approved).toMatchObject({ stage: 'approved', raise: { approval: 'approved', returnedReason: null, approvedBy: { email: ceoEmail } } });
       expect((await auditOf('contract', raise.id)).map((a) => a.action)).toEqual(['create', 'submit', 'return', 'update', 'submit', 'approve']);
     });
@@ -433,41 +418,10 @@ describe('Pay raises (e2e)', () => {
     });
   });
 
-  describe('raise requests, and a new contract', () => {
-    let first: RaiseRequest;
-
-    it('the employee asks for themself with a reason and a suggested gross; one open at a time', async () => {
-      await ask(benP, { suggestedGross: 11000 }, ben).expect(400);
-      first = (await ask(benP, { reason: 'A year of good reviews', suggestedGross: 11000 }, ben).expect(201)).body as RaiseRequest;
-      expect(first).toMatchObject({ status: 'with_hr', requester: 'self', suggestedGross: 11000, raise: null, decision: null, amountsHidden: true });
-      expect((await ask(benP, { reason: 'Again' }, ben).expect(409)).body.message).toBe('A raise request for you is already open. It is decided first.');
-      expect((await ask(benP, { reason: 'For him' }, hr).expect(409)).body.message).toMatch(/already open \(with hr\)/);
-      // the amount only as set in the audit log
-      expect((await auditOf('raise_request', first.id))[0].diff).toEqual({ employeeId: benP.id, requester: 'self', reason: 'A year of good reviews', status: 'with_hr', suggestedGross: 'set' });
-    });
-
-    it('who sees what: HR everything, the manager no figure, the employee their own; nobody else', async () => {
-      const forHr = (await requestsOf(benP).expect(200)).body as { requests: RaiseRequest[]; canRequest: boolean };
-      expect(forHr.requests[0]).toMatchObject({ id: first.id, suggestedGross: 11000, amountsHidden: false });
-      expect(forHr.canRequest).toBe(false);
-      const forManager = (await requestsOf(benP, manager).expect(200)).body as { requests: RaiseRequest[]; suggestsAmount: boolean };
-      expect(forManager.requests[0]).toMatchObject({ id: first.id, reason: 'A year of good reviews', suggestedGross: null, amountsHidden: true });
-      expect(forManager.suggestsAmount).toBe(false);
-      const forBen = (await requestsOf(benP, ben).expect(200)).body as { requests: RaiseRequest[]; cannotRequestBecause: string };
-      expect(forBen.requests[0]).toMatchObject({ suggestedGross: 11000 });
-      expect(forBen.cannotRequestBecause).toBe('A raise request for you is open: it is decided first.');
-      // someone who is neither the employee, their manager nor HR doesn't even see the person
-      await requestsOf(benP, stranger).expect(404);
-      await ask(benP, { reason: 'Me too' }, stranger).expect(404);
-      await ask(amy, { reason: 'For Amy' }, ben).expect(404);
-      // HR's page
-      const all = (await api().get('/api/raise-requests?status=with_hr').set('Cookie', ceo).expect(200)).body as RaiseRequest[];
-      expect(all.find((x) => x.id === first.id)).toMatchObject({ suggestedGross: 11000 });
-      await api().get('/api/raise-requests').set('Cookie', manager).expect(403);
-    });
-
-    it('HR prepares a new contract from it and sends it; the CEO declines it: the draft goes, the request is declined', async () => {
-      const raise = (await postRaise(benP, { way: 'contract', effectiveDate: NEXT_EFFECTIVE, reason: 'annual', grossSalary: 10500, requestId: first.id }).expect(201)).body as Contract;
+  describe('a new contract, and the CEO’s decisions with a comment', () => {
+    // raise requests, with their log and what each viewer sees, are in raise-requests.e2e-spec.ts
+    it('HR enters a new contract; the CEO rejects it with a comment: the draft goes', async () => {
+      const raise = (await postRaise(benP, { way: 'contract', effectiveDate: NEXT_EFFECTIVE, reason: 'market_adjustment', grossSalary: 10500 }).expect(201)).body as Contract;
       expect(raise).toMatchObject({
         kind: 'contract',
         number: expect.stringMatching(new RegExp(`^CON-${NEXT_EFFECTIVE.slice(0, 4)}-\\d{4}$`)),
@@ -475,84 +429,36 @@ describe('Pay raises (e2e)', () => {
         endDate: addDays(addMonths(NEXT_EFFECTIVE, 12), -1),
         durationMonths: 12,
         probationMonths: 0,
-        raise: { requestId: first.id, approval: 'draft' },
+        raise: { requestId: null, approval: 'draft', reason: 'market_adjustment' },
       });
       // a raise not yet signed stays with those who see salaries
       expect(((await contractsOf(benP, ben).expect(200)).body as Contract[]).map((c) => c.id)).not.toContain(raise.id);
-      expect(((await requestsOf(benP, ben).expect(200)).body as { requests: RaiseRequest[] }).requests[0]).toMatchObject({ status: 'with_hr', raise: { effectiveDate: null, newGross: null } });
-      await postRaise(benP, { way: 'contract', effectiveDate: NEXT_EFFECTIVE, reason: 'annual', grossSalary: 10500, requestId: first.id }).expect(409);
-
-      await step(raise.id, 'send', hr).expect(200);
-      expect(((await requestsOf(benP).expect(200)).body as { requests: RaiseRequest[] }).requests[0]).toMatchObject({ status: 'with_ceo', raise: { previousGross: 9000, newGross: 10500 } });
+      await step(raise.id, 'send', hr, { comment: 'For the new year' }).expect(200);
       await step(raise.id, 'decline', ceo, {}).expect(400);
-      await step(raise.id, 'decline', ceo, { reason: 'Not this quarter' }).expect(204);
+      await step(raise.id, 'decline', ceo, { comment: 'Not this quarter' }).expect(204);
       expect(await prisma.contract.findUnique({ where: { id: raise.id } })).toBeNull();
-      const forBen = ((await requestsOf(benP, ben).expect(200)).body as { requests: RaiseRequest[] }).requests[0];
-      expect(forBen).toMatchObject({ status: 'declined', decision: { stage: 'ceo', reason: 'Not this quarter' }, raise: null });
-      const forManager = ((await requestsOf(benP, manager).expect(200)).body as { requests: RaiseRequest[] }).requests[0];
-      expect(forManager).toMatchObject({ status: 'declined', decision: { stage: 'ceo', reason: 'Not this quarter' }, suggestedGross: null });
       expect((await auditOf('contract', raise.id)).at(-1)).toMatchObject({ action: 'decline', diff: { reason: 'Not this quarter', grossSalary: 'changed' } });
     });
 
-    it('the manager asks for a report, with no amount; HR declines it with a reason', async () => {
-      expect((await ask(benP, { reason: 'Took over the payables', suggestedGross: 12000 }, manager).expect(400)).body.message).toBe(
-        "A manager's request has no amount: say why in the reason. HR and the CEO set the amount.",
-      );
-      const byManager = (await ask(benP, { reason: 'Took over the payables' }, manager).expect(201)).body as RaiseRequest;
-      expect(byManager).toMatchObject({ requester: 'manager', suggestedGross: null, amountsHidden: true });
-      // the employee sees the requests they made, not the manager's
-      expect(((await requestsOf(benP, ben).expect(200)).body as { requests: RaiseRequest[] }).requests.map((x) => x.id)).not.toContain(byManager.id);
-      await api().post(`/api/raise-requests/${byManager.id}/decline`).set('Cookie', ceo).send({ reason: 'x' }).expect(403);
-      await api().post(`/api/raise-requests/${byManager.id}/decline`).set('Cookie', hr).send({}).expect(400);
-      const declined = (await api().post(`/api/raise-requests/${byManager.id}/decline`).set('Cookie', hr).send({ reason: 'After the yearly review' }).expect(200)).body as RaiseRequest;
-      expect(declined).toMatchObject({ status: 'declined', decision: { stage: 'hr', reason: 'After the yearly review' } });
-      await api().post(`/api/raise-requests/${byManager.id}/decline`).set('Cookie', hr).send({ reason: 'Again' }).expect(409);
-    });
-
-    it('HR asks for anyone, and may suggest a gross; HR declines it', async () => {
-      const byHr = (await ask(benP, { reason: 'Market adjustment', suggestedGross: 10000 }, hr).expect(201)).body as RaiseRequest;
-      expect(byHr).toMatchObject({ requester: 'hr', suggestedGross: 10000, amountsHidden: false });
-      // the employee doesn't see HR's request, the manager sees it without the amount
-      expect(((await requestsOf(benP, ben).expect(200)).body as { requests: RaiseRequest[] }).requests.map((x) => x.id)).not.toContain(byHr.id);
-      expect(((await requestsOf(benP, manager).expect(200)).body as { requests: RaiseRequest[] }).requests[0]).toMatchObject({ id: byHr.id, suggestedGross: null });
-      await api().post(`/api/raise-requests/${byHr.id}/decline`).set('Cookie', hr).send({ reason: 'Covered by the yearly review' }).expect(200);
-    });
-
-    it('the employee asks again; HR prepares it; the CEO approves; signed, it is done and the employee sees their new salary', async () => {
-      const mine = (await ask(benP, { reason: 'New responsibilities', suggestedGross: 10200 }, ben).expect(201)).body as RaiseRequest;
-      const raise = (await postRaise(benP, { way: 'contract', effectiveDate: NEXT_EFFECTIVE, reason: 'adjustment', grossSalary: 10000, requestId: mine.id }).expect(201)).body as Contract;
+    it('the CEO approves another with another raise: its gross is the figure over the pay before it, the allowances as they are', async () => {
+      const raise = (await postRaise(benP, { way: 'contract', effectiveDate: NEXT_EFFECTIVE, reason: 'performance', grossSalary: 9500, netSalary: 7000 }).expect(201)).body as Contract;
       await step(raise.id, 'send', hr).expect(200);
-      await step(raise.id, 'approve', ceo).expect(200);
-      expect(((await requestsOf(benP, manager).expect(200)).body as { requests: RaiseRequest[] }).requests[0]).toMatchObject({ status: 'approved', raise: { newGross: null } });
-      expect(((await requestsOf(benP, ben).expect(200)).body as { requests: RaiseRequest[] }).requests[0]).toMatchObject({ status: 'approved', raise: { effectiveDate: null, newGross: null } });
+      await step(raise.id, 'approve', ceo, { comment: 'More', increaseAmount: 100, increasePercent: 10 }).expect(400);
+      // the pay before it is 9,000: +10% is 9,900
+      const approved = (await step(raise.id, 'approve', ceo, { comment: 'Make it 10%', increasePercent: 10 }).expect(200)).body as Contract & { netSalary: number; insuredSalary: number };
+      expect(approved).toMatchObject({ stage: 'approved', grossSalary: 9900, raise: { approval: 'approved', approvedBy: { email: ceoEmail } } });
+      // the net and the insured salary worked out again for the new gross
+      expect(approved.netSalary).not.toBe(7000);
+      expect(approved.insuredSalary).toBe(insured(9900, NEXT_EFFECTIVE.slice(0, 7)));
+      const audit = (await auditOf('contract', raise.id)).at(-1)!;
+      expect(audit).toMatchObject({ action: 'approve', diff: { decision: 'approve_other', comment: 'Make it 10%', grossSalary: 'changed' } });
+      expect(JSON.stringify(audit.diff)).not.toContain('9900');
       await sign(raise.id).expect(200);
-
-      expect(((await requestsOf(benP).expect(200)).body as { requests: RaiseRequest[] }).requests[0]).toMatchObject({
-        id: mine.id,
-        status: 'done',
-        raise: { stage: 'signed', previousGross: 9000, newGross: 10000, effectiveDate: NEXT_EFFECTIVE },
-      });
-      // once signed the employee sees their own new salary, never the manager
-      expect(((await requestsOf(benP, ben).expect(200)).body as { requests: RaiseRequest[] }).requests[0]).toMatchObject({
-        id: mine.id,
-        status: 'done',
-        suggestedGross: 10200,
-        raise: { effectiveDate: NEXT_EFFECTIVE, newGross: 10000, previousGross: null },
-      });
-      expect(((await requestsOf(benP, manager).expect(200)).body as { requests: RaiseRequest[] }).requests[0]).toMatchObject({
-        id: mine.id,
-        status: 'done',
-        suggestedGross: null,
-        raise: { newGross: null, previousGross: null },
-      });
       const versions = (await contractsOf(benP).expect(200)).body as Contract[];
-      expect(versions.map((v) => [v.version, v.status, v.kind])).toEqual([
-        [2, 'active', 'contract'],
-        [1, 'superseded', 'contract'],
+      expect(versions.map((v) => [v.version, v.status, v.kind, v.grossSalary])).toEqual([
+        [2, 'active', 'contract', 9900],
+        [1, 'superseded', 'contract', 9000],
       ]);
-      expect((await auditOf('raise_request', mine.id)).map((a) => a.action)).toEqual(['create', 'prepare', 'submit', 'approve', 'done']);
-      // open again for a new request
-      expect(((await requestsOf(benP, ben).expect(200)).body as { canRequest: boolean }).canRequest).toBe(true);
     });
   });
 
@@ -560,7 +466,7 @@ describe('Pay raises (e2e)', () => {
     it('needs a reason; signed once approved; the same pay needs no approval', async () => {
       const [v1] = (await contractsOf(cara).expect(200)).body as Contract[];
       expect((await postContract(cara, { grossSalary: 9000 }).expect(400)).body.message).toBe(
-        'The pay changes from version 1: choose why (annual raise, promotion, adjustment or other). The CEO approves a change of pay before it is signed.',
+        'The pay changes from version 1: choose why (annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other). The CEO approves a change of pay before it is signed.',
       );
       const renewal = (await postContract(cara, { grossSalary: 9000, raiseReason: 'annual' }).expect(201)).body as Contract;
       expect(renewal).toMatchObject({ kind: 'contract', startDate: addDays(v1.endDate!, 1), stage: 'draft', raise: { reason: 'annual', approval: 'draft' } });
@@ -573,7 +479,7 @@ describe('Pay raises (e2e)', () => {
       await api().patch(`/api/contracts/${renewal.id}`).set('Cookie', hr).send({ grossSalary: 9500, raiseReason: 'adjustment' }).expect(200);
       await step(renewal.id, 'send', hr).expect(200);
       await api().patch(`/api/contracts/${renewal.id}`).set('Cookie', hr).send({ grossSalary: 9600 }).expect(409);
-      await step(renewal.id, 'approve', ceo).expect(200);
+      await step(renewal.id, 'approve', ceo, { comment: 'Fine' }).expect(200);
       expect((await sign(renewal.id).expect(200)).body).toMatchObject({ status: 'active', stage: 'signed', raise: { approval: 'approved', reason: 'adjustment' } });
       const history = (await api().get(`/api/employees/${cara.id}/salary-history`).set('Cookie', ceo).expect(200)).body as { employments: { events: { change: string; raise: boolean; samePay: boolean }[] }[] };
       expect(history.employments[0].events.map((e) => [e.change, e.raise, e.samePay])).toEqual([

@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { expectedHoursOf, PAY_BASIS_LABELS, PAYROLL_STATUS_LABELS, type PayBasis, type PayrollInputs, type PayrollResult, type PayrollStatus, type PayrollTerms } from '@trendlix/shared';
+import { measuredExpectedHours, PAY_BASIS_LABELS, PAYROLL_STATUS_LABELS, type PayBasis, type PayrollInputs, type PayrollResult, type PayrollStatus, type PayrollTerms } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import type { BankFileKind } from './bank.js';
 import { monthName } from './months.js';
@@ -8,9 +8,12 @@ import { byDepartment } from './roster.js';
 // The payroll register (owner's decisions, 16 October 2026): the run as a spreadsheet, like the owner's payroll sheet,
 // one row per employee grouped by department, every step of the pay, and a totals row. A draft says so in its title.
 // No Medical column: there is no medical subscription any more (owner's decision, 16 October 2026). A run approved
-// before then keeps its results as they were, so its net and transfer may still have one taken off. The no-show days'
-// hours, taken out of the expected hours, have a column after them (owner's decision, 16 October 2026), so the
-// Attendance % reads as the worked hours over what is left: empty when none were taken out.
+// before then keeps its results as they were, so its net and transfer may still have one taken off. The Expected hours
+// are those attendance was measured on, as the inputs grid shows them (owner, 17 October 2026: "dont count abcent days
+// or leave days, as they already have their own deduction and fields"): HR's, else the shift's less the no-show and
+// leave days, which have their own columns; on a line worked out before then, the hours typed or the shift's less the
+// no-show days' hours it took out (they had a column of their own until then). So the Attendance % reads as the worked
+// hours over the Expected hours on every line. A month split between two contracts (17 October 2026) shows its sums.
 
 export interface RegisterLine {
   department: string | null;
@@ -61,16 +64,16 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'Variable', kind: 'money', width: 13, value: (l) => l.result.variable },
   { header: 'Paid days', kind: 'days', width: 9, value: (l) => l.terms.paidDays },
   { header: 'Worked hours', kind: 'hours', width: 11, value: (l) => l.inputs.workedHours },
-  // as HR typed them, else the shift's working days less the holidays (owner's request, 16 October 2026)
-  { header: 'Expected hours', kind: 'hours', width: 11, value: (l) => expectedHoursOf(l.terms, l.inputs) },
-  // missing on lines worked out before 16 October 2026, when none were taken out
-  { header: 'No-show hours', kind: 'hours', width: 11, value: (l) => l.result.absentHours || null },
+  // those attendance was measured on: HR's, else the shift's less the no-show and leave days (17 October 2026)
+  { header: 'Expected hours', kind: 'hours', width: 11, value: (l) => measuredExpectedHours(l) },
   { header: 'Attendance %', kind: 'percent', width: 11, value: (l) => l.result.attendanceRatio },
   { header: 'Soft skills %', kind: 'percent', width: 11, value: (l) => pct(l.inputs.softSkills) },
   { header: 'Performance %', kind: 'percent', width: 12, value: (l) => pct(l.inputs.performance) },
   { header: 'Client satisfaction %', kind: 'percent', width: 12, value: (l) => pct(l.inputs.clientSatisfaction) },
   { header: 'KPI %', kind: 'percent', width: 9, value: (l) => l.result.kpiScore },
   { header: 'No-show days', kind: 'days', width: 9, value: (l) => l.inputs.noShowDays },
+  // paid leave (17 October 2026): none on inputs saved before then
+  { header: 'Leave days', kind: 'days', width: 9, value: (l) => l.inputs.leaveDays ?? null },
   { header: 'Penalty days', kind: 'days', width: 9, value: (l) => l.inputs.penaltyDays },
   { header: 'Attendance cut', kind: 'money', width: 12, value: (l) => l.result.attendanceCut },
   { header: 'KPI cut', kind: 'money', width: 12, value: (l) => l.result.kpiCut },

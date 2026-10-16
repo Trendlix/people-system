@@ -53,7 +53,8 @@ const MONEY_INPUTS: readonly (keyof PayrollInputs)[] = ['commission', 'settlemen
 
 /**
  * A line's saved inputs, only those there are today: one saved before it was taken off (the medical subscription,
- * owner's decision, 16 October 2026) is dropped when the line is refreshed or changed.
+ * owner's decision, 16 October 2026) is dropped when the line is refreshed or changed, and one saved before it existed
+ * (the leave days, 17 October 2026) reads as not given.
  */
 const savedInputs = (saved: Prisma.JsonValue): PayrollInputs => {
   const values = (saved ?? {}) as Partial<PayrollInputs>;
@@ -83,6 +84,7 @@ const rosterSelect = (from: Date, to: Date) =>
       },
       select: {
         id: true,
+        number: true,
         version: true,
         approval: true,
         form2From: true,
@@ -116,6 +118,7 @@ function rosterEmployment(e: EmploymentRow): RosterEmployment {
     employee: { ...e.employee, insuranceComprehensiveWage: e.employee.insuranceComprehensiveWage?.toNumber() ?? null },
     contracts: e.contracts.map((c) => ({
       id: c.id,
+      number: c.number,
       version: c.version,
       // a change of pay the CEO approved: the insured wage follows it from the next 1 January, or the Form 2 date
       insuredWageFrom: c.approval === null ? null : insuredWageDate(fromDateOnly(c.startDate), fromDateOnly(c.form2From)),
@@ -284,8 +287,9 @@ export class PayrollService {
   }
 
   /**
-   * Changes a draft's lines: their inputs (null clears one), holds and comments. Each changed line is worked out again
-   * with the run's rules and rates set by law; the audit log has what changed, the money inputs only as changed.
+   * Changes a draft's lines: their inputs (null clears one), holds and comments; a line's leave days no more than its
+   * days paid. Each changed line is worked out again with the run's rules and rates set by law; the audit log has what
+   * changed (the leave days too), the money inputs only as changed.
    */
   async updateLines(id: string, dto: UpdatePayrollLinesDto, user: SessionUser): Promise<PayrollRunView> {
     const run = await this.row(id);
@@ -303,6 +307,11 @@ export class PayrollService {
       const line = lines.get(change.id)!;
       const was = savedInputs(line.inputs);
       const inputs: PayrollInputs = { ...was, ...(change.inputs ? sent(change.inputs) : {}) };
+      // paid leave is taken on days the month pays (owner, 17 October 2026)
+      const paidDays = (line.terms as unknown as PayrollTerms).paidDays;
+      if (inputs.leaveDays !== null && inputs.leaveDays > paidDays) {
+        throw new BadRequestException(`${line.nameEn}: the leave days (${inputs.leaveDays}) can't be more than the ${paidDays} days paid this month.`);
+      }
       const diff: Record<string, unknown> = changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>);
       for (const key of MONEY_INPUTS) if (key in diff) diff[key] = 'changed';
       Object.assign(diff, changes({ onHold: line.onHold, comments: line.comments }, { onHold: change.onHold, comments: change.comments }));

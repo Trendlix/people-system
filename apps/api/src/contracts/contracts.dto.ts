@@ -41,7 +41,8 @@ const MAX_HOURLY_RATE = 99_999_999.99;
 const HOURLY_RATE_MESSAGE = 'Enter the hourly rate as an amount of more than 0, e.g. 150 or 162.50.';
 const HOURS_MESSAGE = 'Enter the hours a week as a number of more than 0 and up to 48, e.g. 24 or 22.5.';
 const DAYS_MESSAGE = 'Enter the working days a week as a whole number, 1 to 6.';
-export const RAISE_REASON_MESSAGE = 'Choose why the pay changes: annual, promotion, adjustment or other.';
+export const RAISE_REASON_MESSAGE =
+  'Choose why the pay changes: annual, performance, counter_offer, promotion, market_adjustment, cost_of_living or other.';
 
 // ---------- settings ----------
 

@@ -6,14 +6,18 @@ import {
   insuredWageOf,
   noShowHours,
   paidDaysIn,
+  paidDaysOf,
   isFlexibleShift,
   parseHours,
   payrollLine,
   paysOvertime,
+  shiftDaysHours,
   shiftHours,
   shiftWorkHours,
+  splitSegments,
   type PayrollAllowance,
   type PayrollInputs,
+  type PayrollSegment,
   type PayrollTerms,
 } from '@trendlix/shared';
 
@@ -32,9 +36,17 @@ const salaried: PayrollTerms = {
   statutory: true,
   insured: true,
   insuredWage: 12_000,
-  // a 9-hour shift: what a no-show day takes out of the expected hours
+  // a 9-hour shift: what a no-show or leave day takes out of the shift's hours (none given here: see onShift)
   hoursPerDay: 9,
 };
+
+/**
+ * The same employee with the shift's hours for the month worked out (owner's request, 16 October 2026): 22 working
+ * days, no holidays, of 9 hours: 198.
+ */
+const onShift: PayrollTerms = { ...salaried, expectedHours: 198, expectedDays: { workingDays: 22, holidays: 0 } };
+
+const PART_MONTH = (n: number) => `Paid for ${n} of 30 days: employed or under contract for part of the month`;
 
 const inputs = (given: Partial<PayrollInputs> = {}): PayrollInputs => ({ ...EMPTY_PAYROLL_INPUTS, ...given });
 
@@ -45,7 +57,11 @@ describe('payroll: a whole month with nothing typed', () => {
     expect(line).toMatchObject({
       fixed: 9_600,
       variable: 2_400,
+      // terms with no segments (a line made before 17 October 2026, or these): one part, of the terms
+      parts: [{ contractId: null, fixed: 9_600, variable: 2_400, allowances: 0 }],
       absentHours: 0,
+      leaveHours: 0,
+      expectedHours: null,
       attendanceRatio: null,
       attendanceScore: 1,
       kpiScore: 1,
@@ -254,19 +270,21 @@ describe('payroll: days, bonus, commission and settlements', () => {
   });
 });
 
-describe('payroll: no-show days, charged once (owner\'s decisions, 16 October 2026)', () => {
-  // a no-show day costs 2 days of the gross, 2 × 12,000 ÷ 30 = 800; its 9 hours come out of the expected hours
+describe('payroll: no-show days, charged once (owner\'s decisions, 16 and 17 October 2026)', () => {
+  // a no-show day costs 2 days of the gross, 2 × 12,000 ÷ 30 = 800; its 9 hours come out of the shift's 198
   const NO_SHIFT = "No shift on the employment, so the no-show days' hours couldn't be taken out of the expected hours: type the expected hours without them";
   const CAPPED = 'The no-show days cost more than the salary left for the days paid: the cut is capped there';
 
-  it('takes their hours out of the expected hours, so attendance doesn\'t charge them again', () => {
-    // 6 days off of 30: 270 − 6 × 9 = 216 expected, all 216 worked: 100%, no attendance cut (on 270 it would be 80%,
-    // 1,920 more). Cut 6 × 800 = 4,800; earned 12,000 − 4,800 = 7,200. Insurance 1,320; taxable 5,880; × 12 = 70,560,
-    // less 20,000 = 50,560; tax 10% of 10,560 = 1,056 a year, 88 a month; Martyrs' Fund 3.60. Deductions 1,411.60, net
+  it('takes their hours out of the shift\'s hours, so attendance doesn\'t charge them again', () => {
+    // 6 days off: 198 − 6 × 9 = 144 expected, all 144 worked: 100%, no attendance cut (on 198 it would be 72.73%).
+    // Cut 6 × 800 = 4,800; earned 12,000 − 4,800 = 7,200. Insurance 1,320; taxable 5,880; × 12 = 70,560, less
+    // 20,000 = 50,560; tax 10% of 10,560 = 1,056 a year, 88 a month; Martyrs' Fund 3.60. Deductions 1,411.60, net
     // 7,200 − 1,411.60 = 5,788.40.
-    const line = payrollLine(salaried, inputs({ workedHours: 216, expectedHours: 270, noShowDays: 6 }));
+    const line = payrollLine(onShift, inputs({ workedHours: 144, noShowDays: 6 }));
     expect(line).toMatchObject({
       absentHours: 54,
+      leaveHours: 0,
+      expectedHours: 144,
       attendanceRatio: 1,
       attendanceScore: 1,
       attendanceCut: 0,
@@ -286,18 +304,41 @@ describe('payroll: no-show days, charged once (owner\'s decisions, 16 October 20
   });
 
   it('still cuts short hours on the days the employee came in', () => {
-    // 183:36 of the 216 left is 85%: 9,600 × 15% = 1,440 off the fixed part, and the 4,800: earned 5,760
-    const line = payrollLine(salaried, inputs({ workedHours: 183.6, expectedHours: 270, noShowDays: 6 }));
-    expect(line).toMatchObject({ absentHours: 54, attendanceRatio: 0.85, attendanceCut: 1_440, noShowCut: 4_800, earned: 5_760 });
-    // half a day off is half a shift: 265:30 left, all worked; 400 off
-    expect(payrollLine(salaried, inputs({ workedHours: 265.5, expectedHours: 270, noShowDays: 0.5 }))).toMatchObject({ absentHours: 4.5, attendanceRatio: 1, noShowCut: 400 });
+    // 122:24 of the 144 left is 85%: 9,600 × 15% = 1,440 off the fixed part, and the 4,800: earned 5,760
+    const line = payrollLine(onShift, inputs({ workedHours: 122.4, noShowDays: 6 }));
+    expect(line).toMatchObject({ absentHours: 54, expectedHours: 144, attendanceRatio: 0.85, attendanceCut: 1_440, noShowCut: 4_800, earned: 5_760 });
+    // half a day off is half a shift: 193:30 left, all worked; 400 off
+    expect(payrollLine(onShift, inputs({ workedHours: 193.5, noShowDays: 0.5 }))).toMatchObject({ absentHours: 4.5, expectedHours: 193.5, attendanceRatio: 1, noShowCut: 400 });
+  });
+
+  it('takes the expected hours HR typed as they are: already without the no-show days (17 October 2026)', () => {
+    // "dont count abcent days or leave days, as they already have their own deduction and fields": 144 typed, all
+    // worked, is 100%; nothing more comes out of them
+    expect(payrollLine(onShift, inputs({ workedHours: 144, expectedHours: 144, noShowDays: 6 }))).toMatchObject({
+      absentHours: 0,
+      expectedHours: 144,
+      attendanceRatio: 1,
+      attendanceCut: 0,
+      noShowCut: 4_800,
+      earned: 7_200,
+      warnings: [],
+    });
+    // 198 typed with the days off in them: 144 of 198 is 72.73% (until 17 October 2026 the 54 came out of them), so
+    // 9,600 × (1 − 0.7272727273) = 2,618.18 more is cut: 12,000 − 2,618.18 − 4,800 = 4,581.82
+    expect(payrollLine(onShift, inputs({ workedHours: 144, expectedHours: 198, noShowDays: 6 }))).toMatchObject({
+      absentHours: 0,
+      expectedHours: 198,
+      attendanceRatio: 0.7272727273,
+      attendanceCut: 2_618.18,
+      earned: 4_581.82,
+    });
   });
 
   it('without a shift, takes the expected hours as typed and says so', () => {
     // 216 of 270 is 80%: the 1,920 is charged on top of the 4,800, unless HR types the expected hours without the days off
     const noShift = { ...salaried, hoursPerDay: null };
     const typed = payrollLine(noShift, inputs({ workedHours: 216, expectedHours: 270, noShowDays: 6 }));
-    expect(typed).toMatchObject({ absentHours: 0, attendanceRatio: 0.8, attendanceCut: 1_920, noShowCut: 4_800, earned: 5_280 });
+    expect(typed).toMatchObject({ absentHours: 0, expectedHours: 270, attendanceRatio: 0.8, attendanceCut: 1_920, noShowCut: 4_800, earned: 5_280 });
     expect(typed.warnings).toEqual([NO_SHIFT]);
     expect(payrollLine(noShift, inputs({ workedHours: 216, expectedHours: 216, noShowDays: 6 }))).toMatchObject({ attendanceRatio: 1, attendanceCut: 0, earned: 7_200 });
     // terms worked out before the hours a day existed read as without a shift
@@ -307,11 +348,15 @@ describe('payroll: no-show days, charged once (owner\'s decisions, 16 October 20
     expect(payrollLine(noShift, inputs({ noShowDays: 6 })).warnings).toEqual([]);
   });
 
-  it('doesn\'t count attendance when the days off are all the expected hours, and the no-show cut alone applies', () => {
-    // 10 days off of a 90-hour month: nothing left to measure; 10 × 800 = 8,000 off, earned 4,000
-    const line = payrollLine(salaried, inputs({ workedHours: 0, expectedHours: 90, noShowDays: 10 }));
-    expect(line).toMatchObject({ absentHours: 90, attendanceRatio: null, attendanceScore: 1, attendanceCut: 0, kpiScore: 1, noShowCut: 8_000, earned: 4_000 });
-    expect(line.warnings).toEqual(["The no-show days' hours are all the expected hours or more: attendance isn't counted, only the no-show cut"]);
+  it('doesn\'t count attendance when the days off are all the shift\'s hours, and the no-show cut alone applies', () => {
+    // 10 days off of a 90-hour month (10 working days of 9 hours): nothing left to measure; 10 × 800 = 8,000 off,
+    // earned 4,000
+    const short = { ...salaried, expectedHours: 90, expectedDays: { workingDays: 10, holidays: 0 } };
+    const line = payrollLine(short, inputs({ workedHours: 0, noShowDays: 10 }));
+    expect(line).toMatchObject({ absentHours: 90, expectedHours: 0, attendanceRatio: null, attendanceScore: 1, attendanceCut: 0, kpiScore: 1, noShowCut: 8_000, earned: 4_000 });
+    expect(line.warnings).toEqual(["The no-show days' hours are all the shift's hours this month or more: attendance isn't counted, only the no-show cut"]);
+    // more days off than the shift has: still 0, never below
+    expect(payrollLine(short, inputs({ workedHours: 0, noShowDays: 12 })).expectedHours).toBe(0);
   });
 
   it('never cuts more than the salary left for the days paid, and says so', () => {
@@ -319,17 +364,75 @@ describe('payroll: no-show days, charged once (owner\'s decisions, 16 October 20
     const month = payrollLine({ ...salaried, insured: false }, inputs({ noShowDays: 20 }));
     expect(month).toMatchObject({ noShowCut: 12_000, earned: 0, deductions: 0, net: 0 });
     expect(month.warnings).toEqual([CAPPED]);
-    // 90 worked of the 180 left after 10 days off is 50%: 4,800 off the fixed part leaves 7,200 of the salary, less than
-    // the 8,000 the days cost
-    const short = payrollLine(salaried, inputs({ workedHours: 90, expectedHours: 270, noShowDays: 10 }));
-    expect(short).toMatchObject({ attendanceRatio: 0.5, attendanceCut: 4_800, noShowCut: 7_200, earned: 0 });
+    // 54 worked of the 108 left after 10 days off (198 − 90) is 50%: 4,800 off the fixed part leaves 7,200 of the
+    // salary, less than the 8,000 the days cost
+    const short = payrollLine(onShift, inputs({ workedHours: 54, noShowDays: 10 }));
+    expect(short).toMatchObject({ expectedHours: 108, attendanceRatio: 0.5, attendanceCut: 4_800, noShowCut: 7_200, earned: 0 });
     expect(short.warnings).toContain(CAPPED);
     // a part month: 15 days paid are 6,000 (4,800 fixed, 1,200 variable), less than the 8,000 of 10 days off
     const part = payrollLine({ ...salaried, paidDays: 15 }, inputs({ noShowDays: 10 }));
     expect(part).toMatchObject({ fixed: 4_800, variable: 1_200, noShowCut: 6_000, earned: 0 });
-    expect(part.warnings).toEqual(['Paid for 15 of 30 days: joined or left in the month', CAPPED, 'The net is below 0: the cuts and deductions are more than the pay']);
+    expect(part.warnings).toEqual([PART_MONTH(15), CAPPED, 'The net is below 0: the cuts and deductions are more than the pay']);
     // up to the salary exactly: no warning
     expect(payrollLine(salaried, inputs({ noShowDays: 15 }))).toMatchObject({ noShowCut: 12_000, earned: 0, warnings: ['The net is below 0: the cuts and deductions are more than the pay'] });
+  });
+});
+
+describe('payroll: leave days (owner, 17 October 2026: "dont count abcent days or leave days, as they already have their own deduction and fields")', () => {
+  it('cut nothing, and their hours come out of the shift\'s hours, so attendance doesn\'t count them as short', () => {
+    // 2 days of leave: 198 − 2 × 9 = 180 expected; 162 worked is 90%, at the grace: the whole salary
+    expect(payrollLine(onShift, inputs({ workedHours: 162, leaveDays: 2 }))).toMatchObject({
+      absentHours: 0,
+      leaveHours: 18,
+      expectedHours: 180,
+      attendanceRatio: 0.9,
+      attendanceCut: 0,
+      noShowCut: 0,
+      earned: 12_000,
+      net: 9_725.5,
+      warnings: [],
+    });
+    // 153 of 180 is 85%: 1,440 off the fixed part, as in the attendance test above: earned 10,560, net 8,574.22
+    expect(payrollLine(onShift, inputs({ workedHours: 153, leaveDays: 2 }))).toMatchObject({ attendanceRatio: 0.85, attendanceCut: 1_440, earned: 10_560, net: 8_574.22 });
+    // half a day: 4:30 out, 193:30 left
+    expect(payrollLine(onShift, inputs({ workedHours: 193.5, leaveDays: 0.5 }))).toMatchObject({ leaveHours: 4.5, expectedHours: 193.5, attendanceRatio: 1 });
+  });
+
+  it('come out with the no-show days, which alone are cut', () => {
+    // 1 no-show day and 2 of leave: 198 − 27 = 171; 153:54 worked is 90%; the no-show day 800: earned 11,200
+    expect(payrollLine(onShift, inputs({ workedHours: 153.9, noShowDays: 1, leaveDays: 2 }))).toMatchObject({
+      absentHours: 9,
+      leaveHours: 18,
+      expectedHours: 171,
+      attendanceRatio: 0.9,
+      attendanceCut: 0,
+      noShowCut: 800,
+      earned: 11_200,
+      warnings: [],
+    });
+  });
+
+  it('don\'t come out of the expected hours HR typed, already without them', () => {
+    expect(payrollLine(onShift, inputs({ workedHours: 162, expectedHours: 180, leaveDays: 2 }))).toMatchObject({ leaveHours: 0, expectedHours: 180, attendanceRatio: 0.9, warnings: [] });
+    // without a shift, HR types them, and is reminded to leave the days out
+    const typed = payrollLine({ ...salaried, hoursPerDay: null }, inputs({ workedHours: 162, expectedHours: 180, leaveDays: 2 }));
+    expect(typed).toMatchObject({ leaveHours: 0, expectedHours: 180, attendanceRatio: 0.9 });
+    expect(typed.warnings).toEqual(["No shift on the employment, so the leave days' hours couldn't be taken out of the expected hours: type the expected hours without them"]);
+    expect(payrollLine({ ...salaried, hoursPerDay: null }, inputs({ workedHours: 162, expectedHours: 180, noShowDays: 1, leaveDays: 2 })).warnings).toEqual([
+      "No shift on the employment, so the no-show and leave days' hours couldn't be taken out of the expected hours: type the expected hours without them",
+    ]);
+  });
+
+  it('may be all the shift\'s hours: attendance isn\'t counted', () => {
+    // 2 working days of 9 hours, both on leave
+    const line = payrollLine({ ...salaried, expectedHours: 18, expectedDays: { workingDays: 2, holidays: 0 } }, inputs({ workedHours: 0, leaveDays: 2 }));
+    expect(line).toMatchObject({ leaveHours: 18, expectedHours: 0, attendanceRatio: null, attendanceCut: 0, earned: 12_000 });
+    expect(line.warnings).toEqual(["The leave days' hours are all the shift's hours this month or more: attendance isn't counted"]);
+  });
+
+  it('are read as none on inputs saved before they existed', () => {
+    const { leaveDays: _, ...saved } = inputs({ workedHours: 180 });
+    expect(payrollLine(onShift, saved as PayrollInputs)).toEqual(payrollLine(onShift, inputs({ workedHours: 180 })));
   });
 });
 
@@ -360,10 +463,11 @@ describe('payroll: a working day\'s hours', () => {
     expect(isFlexibleShift({ startTime: '09:00', endTime: '09:00', hoursPerDay: 8 })).toBe(false);
   });
 
-  it('a shift\'s day for each no-show day, half days too; none without either', () => {
+  it('a shift\'s day for each no-show or leave day, half days too; none without either', () => {
     expect(noShowHours(2, 9)).toBe(18);
     expect(noShowHours(1.5, 8.5)).toBe(12.75);
-    expect([noShowHours(null, 9), noShowHours(0, 9), noShowHours(2, null), noShowHours(2, undefined), noShowHours(2, 0)]).toEqual([0, 0, 0, 0, 0]);
+    expect(shiftDaysHours(0.5, 9)).toBe(4.5);
+    expect([noShowHours(null, 9), noShowHours(0, 9), noShowHours(2, null), noShowHours(2, undefined), noShowHours(2, 0), shiftDaysHours(undefined, 9)]).toEqual([0, 0, 0, 0, 0, 0]);
   });
 });
 
@@ -402,13 +506,13 @@ describe('payroll: someone who joined in the month', () => {
       net: 7_408.36,
       companyCost: 11_482.5,
     });
-    expect(line.warnings).toEqual(['Paid for 19 of 30 days: joined or left in the month']);
+    expect(line.warnings).toEqual([PART_MONTH(19)]);
   });
 
   it('pays nothing for no days, but the insurance is still due', () => {
     const line = payrollLine({ ...salaried, allowances, paidDays: 0 }, inputs());
     expect(line).toMatchObject({ fixed: 0, variable: 0, earned: 0, allowances: 0, employeeInsurance: 1_320, monthlyTax: 0, martyrsFund: 0, net: -1_320 });
-    expect(line.warnings).toEqual(['Paid for 0 of 30 days: joined or left in the month', 'The net is below 0: the cuts and deductions are more than the pay']);
+    expect(line.warnings).toEqual([PART_MONTH(0), 'The net is below 0: the cuts and deductions are more than the pay']);
   });
 });
 
@@ -466,11 +570,15 @@ describe('payroll: by the hour', () => {
     expect(line.warnings).toEqual([]);
   });
 
-  it('ignores attendance, KPIs and no-show days, and says so', () => {
+  it('ignores attendance, KPIs, no-show and leave days, and says so', () => {
     // the 9-hour shift doesn't matter either: no hours come out of anything
     const line = payrollLine(hourly, inputs({ workedHours: 80, expectedHours: 104, performance: 40, noShowDays: 2 }));
-    expect(line).toMatchObject({ fixed: 12_000, absentHours: 0, attendanceRatio: null, attendanceCut: 0, kpiScore: 1, kpiCut: 0, noShowCut: 0, earned: 12_000 });
-    expect(line.warnings).toEqual(["Paid by the hour: the expected hours, KPIs and no-show days don't change the pay"]);
+    expect(line).toMatchObject({ fixed: 12_000, absentHours: 0, leaveHours: 0, expectedHours: null, attendanceRatio: null, attendanceCut: 0, kpiScore: 1, kpiCut: 0, noShowCut: 0, earned: 12_000 });
+    expect(line.warnings).toEqual(["Paid by the hour: the expected hours, KPIs, no-show days and leave days don't change the pay"]);
+    // leave days (17 October 2026): only the hours worked are paid
+    const leave = payrollLine(hourly, inputs({ workedHours: 80, leaveDays: 3 }));
+    expect(leave).toMatchObject({ fixed: 12_000, leaveHours: 0, earned: 12_000, parts: [{ contractId: null, fixed: 12_000, variable: 0, allowances: 0 }] });
+    expect(leave.warnings).toEqual(["Paid by the hour: the expected hours, KPIs, no-show days and leave days don't change the pay"]);
   });
 
   it('pays nothing for hours without them or without a rate, and says so', () => {
@@ -541,6 +649,173 @@ describe('payroll: days paid in a month', () => {
     expect(() => paidDaysIn('2026-9', '2026-01-01', null, 30)).toThrow(RangeError);
     expect(() => paidDaysIn('2026-09', '2026/09/01', null, 30)).toThrow(RangeError);
     expect(() => paidDaysIn('2026-09', '2026-09-01', '2026-09-01T00:00:00.000Z', 30)).toThrow(RangeError);
+  });
+});
+
+describe('payroll: the days paid under each contract (owner, 17 October 2026)', () => {
+  // "take into consideration the start and end date of the contract if it is in the middle of the billing period"
+  it('splits a whole month by its contracts\' days, the last what is left of the divisor', () => {
+    // a renewal on 15 October (31 days): 14 days on the contract before, 30 − 14 = 16 on the new one
+    expect(paidDaysOf('2026-10', [{ from: '2026-10-01', to: '2026-10-14' }, { from: '2026-10-15', to: '2026-10-31' }], 30)).toEqual([14, 16]);
+    // on 15 February (28 days): 14 and 16 too
+    expect(paidDaysOf('2026-02', [{ from: '2026-02-01', to: '2026-02-14' }, { from: '2026-02-15', to: '2026-02-28' }], 30)).toEqual([14, 16]);
+    // one contract all month: the divisor, whatever the month's length
+    expect(paidDaysOf('2026-10', [{ from: '2026-10-01', to: '2026-10-31' }], 30)).toEqual([30]);
+    // a renewal on the 31st: all 30 days on the contract before
+    expect(paidDaysOf('2026-10', [{ from: '2026-10-01', to: '2026-10-30' }, { from: '2026-10-31', to: '2026-10-31' }], 30)).toEqual([30, 0]);
+  });
+
+  it('pays only the calendar days under a contract when the month isn\'t wholly covered, at most the divisor', () => {
+    // one contract ended on 10 September, the next began on the 20th: 10 + 11 = 21 days, the 9 between not paid
+    expect(paidDaysOf('2026-09', [{ from: '2026-09-01', to: '2026-09-10' }, { from: '2026-09-20', to: '2026-09-30' }], 30)).toEqual([10, 11]);
+    // ended on the 10th with no renewal: 10
+    expect(paidDaysOf('2026-09', [{ from: '2026-09-01', to: '2026-09-10' }], 30)).toEqual([10]);
+    // joined on 12 September, under contract from the 15th: 16
+    expect(paidDaysOf('2026-09', [{ from: '2026-09-15', to: '2026-09-30' }], 30)).toEqual([16]);
+    // 10 + 17 = 27 days of a 31-day month with a divisor of 26: 26, the last part 16
+    expect(paidDaysOf('2026-10', [{ from: '2026-10-01', to: '2026-10-10' }, { from: '2026-10-15', to: '2026-10-31' }], 26)).toEqual([10, 16]);
+    // none
+    expect(paidDaysOf('2026-09', [], 30)).toEqual([]);
+  });
+
+  it('refuses parts outside the month, the wrong way round, overlapping or out of order', () => {
+    for (const parts of [
+      [{ from: '2026-08-31', to: '2026-09-10' }],
+      [{ from: '2026-09-10', to: '2026-09-01' }],
+      [{ from: '2026-09-01', to: '2026-09-10' }, { from: '2026-09-10', to: '2026-09-30' }],
+      [{ from: '2026-09-20', to: '2026-09-30' }, { from: '2026-09-01', to: '2026-09-10' }],
+      [{ from: '1/9/2026', to: '2026-09-10' }],
+    ]) {
+      expect(() => paidDaysOf('2026-09', parts, 30)).toThrow(RangeError);
+    }
+    expect(() => paidDaysOf('2026-9', [], 30)).toThrow(RangeError);
+  });
+});
+
+describe('payroll: a month under two contracts (owner, 17 October 2026)', () => {
+  const segment = (over: Partial<PayrollSegment>): PayrollSegment => ({
+    contractId: 'v1',
+    number: 'CON-2025-0004',
+    version: 1,
+    from: '2026-10-01',
+    to: '2026-10-31',
+    days: 30,
+    payBasis: 'monthly',
+    gross: 12_000,
+    basicPercent: 80,
+    hourlyRate: null,
+    allowances: [{ name: 'Transport', amount: 1_500, taxable: true, insured: false }],
+    ...over,
+  });
+  // renewed on 15 October with new pay: 1–14 October on the contract before (gross 12,000, transport 1,500), 15–31 on
+  // the new one (gross 15,000, transport 1,800); the insured wage as before the renewal until January (12,000)
+  const before = segment({ to: '2026-10-14', days: 14 });
+  const renewal = segment({ contractId: 'v2', number: 'CON-2026-0019', version: 2, from: '2026-10-15', days: 16, gross: 15_000, allowances: [{ name: 'Transport', amount: 1_800, taxable: true, insured: false }] });
+  const renewed: PayrollTerms = { ...salaried, gross: 15_000, allowances: renewal.allowances, segments: [before, renewal] };
+
+  it('pays each part its own contract\'s fixed and variable pay and allowances for its days, added up', () => {
+    // Worked by hand. Before: fixed 9,600 × 14 ÷ 30 = 4,480, variable 2,400 × 14 ÷ 30 = 1,120, transport 1,500 × 14 ÷
+    // 30 = 700. The renewal: fixed 12,000 × 16 ÷ 30 = 6,400, variable 3,000 × 16 ÷ 30 = 1,600, transport 1,800 × 16 ÷
+    // 30 = 960. Fixed 10,880, variable 2,720: earned 13,600; allowances 1,660, all taxed. Insurance on the whole 12,000:
+    // 1,320 (the company 2,250). Taxed pay 15,260; taxable 15,260 − 1,320 = 13,940 a month; × 12 = 167,280, less 20,000
+    // = 147,280 a year; tax 1,500 + 2,250 + 20% of 77,280 (15,456) = 19,206, ÷ 12 = 1,600.50. Martyrs' Fund 15,260 ×
+    // 0.05% = 7.63. Deductions 1,320 + 1,600.50 + 7.63 = 2,928.13; net 13,600 + 1,660 − 2,928.13 = 12,331.87.
+    const line = payrollLine(renewed, inputs());
+    expect(line).toMatchObject({
+      fixed: 10_880,
+      variable: 2_720,
+      parts: [
+        { contractId: 'v1', fixed: 4_480, variable: 1_120, allowances: 700 },
+        { contractId: 'v2', fixed: 6_400, variable: 1_600, allowances: 960 },
+      ],
+      earned: 13_600,
+      allowances: 1_660,
+      taxableAllowances: 1_660,
+      employeeInsurance: 1_320,
+      employerInsurance: 2_250,
+      monthlyTaxable: 13_940,
+      annualNetIncome: 147_280,
+      monthlyTax: 1_600.5,
+      martyrsFund: 7.63,
+      deductions: 2_928.13,
+      net: 12_331.87,
+      companyCost: 17_510,
+      warnings: [],
+    });
+    expect(splitSegments(renewed)).toEqual([before, renewal]);
+  });
+
+  it('cuts the sums for attendance, and prices the bonus, no-show and penalty days on the contract at the month\'s end', () => {
+    // 80% attendance: 20% of the fixed 10,880 = 2,176. A bonus day: the new fixed 12,000 ÷ 30 = 400. A no-show day: 2 ×
+    // 15,000 ÷ 30 = 1,000. A penalty day: the new contract's net ÷ 30. Its net: insurance 1,650, taxable 13,350, × 12
+    // − 20,000 = 140,200, tax 3,750 + 20% of 70,200 = 17,790 a year, 1,482.50 a month, Martyrs' Fund 7.50: 15,000 −
+    // 1,650 − 1,482.50 − 7.50 = 11,860; ÷ 30 = 395.33
+    const line = payrollLine(renewed, inputs({ workedHours: 160, expectedHours: 200, bonusDays: 1, noShowDays: 1, penaltyDays: 1 }));
+    expect(line).toMatchObject({ attendanceRatio: 0.8, attendanceCut: 2_176, bonus: 400, noShowCut: 1_000, penaltyCut: 395.33 });
+    // 10,880 − 2,176 + 2,720 − 1,000 + 400
+    expect(line.earned).toBe(10_824);
+  });
+
+  it('a part month between contracts pays only the days under one, each on its own', () => {
+    // ended on 10 September, renewed from the 20th at the same pay: 10 + 11 = 21 days, as one contract for 21 days
+    const gap: PayrollTerms = {
+      ...salaried,
+      paidDays: 21,
+      allowances: [],
+      segments: [
+        segment({ from: '2026-09-01', to: '2026-09-10', days: 10, allowances: [] }),
+        segment({ contractId: 'v2', version: 2, from: '2026-09-20', to: '2026-09-30', days: 11, allowances: [] }),
+      ],
+    };
+    const line = payrollLine(gap, inputs());
+    // fixed 3,200 + 3,520, variable 800 + 880
+    expect(line).toMatchObject({ fixed: 6_720, variable: 1_680, earned: 8_400 });
+    expect(line.parts.map((p) => [p.fixed, p.variable])).toEqual([
+      [3_200, 800],
+      [3_520, 880],
+    ]);
+    expect(line.warnings).toEqual([PART_MONTH(21)]);
+    const { parts: _, ...rest } = line;
+    const { parts: __, ...one } = payrollLine({ ...gap, segments: undefined }, inputs());
+    expect(rest).toEqual(one);
+  });
+
+  it('with one of them by the hour, pays the latest alone for the whole month, and says so', () => {
+    // by the hour to 14 October at 100 an hour, then a monthly salary of 12,000: the month on the salary, all 30 days
+    const hourlyFirst = segment({ payBasis: 'hourly', hourlyRate: 100, gross: 8_666.67, to: '2026-10-14', days: 14, allowances: [] });
+    const monthlyAfter = segment({ contractId: 'v2', number: 'CON-2026-0019', version: 2, from: '2026-10-15', days: 16 });
+    const toMonthly = payrollLine({ ...salaried, allowances: monthlyAfter.allowances, segments: [hourlyFirst, monthlyAfter] }, inputs({ workedHours: 40 }));
+    // 9,600 and 2,400 for 30 days, the transport 1,500 whole
+    expect(toMonthly).toMatchObject({ fixed: 9_600, variable: 2_400, allowances: 1_500, parts: [{ contractId: 'v2', fixed: 9_600, variable: 2_400, allowances: 1_500 }] });
+    expect(toMonthly.warnings).toContain(
+      "2 contracts this month, one paid by the hour: the whole month is paid on the latest, CON-2026-0019 v2, as hours can't be split between contracts without attendance",
+    );
+    // the other way round: the hours at the new rate, 80 × 150 = 12,000
+    const monthlyFirst = segment({ to: '2026-10-14', days: 14 });
+    const hourlyAfter = segment({ contractId: 'v2', number: 'CON-2026-0019', version: 2, from: '2026-10-15', days: 16, payBasis: 'hourly', hourlyRate: 150, gross: 13_000, allowances: [] });
+    const toHourly = payrollLine(
+      { ...salaried, payBasis: 'hourly', hourlyRate: 150, gross: 13_000, allowances: [], segments: [monthlyFirst, hourlyAfter] },
+      inputs({ workedHours: 80 }),
+    );
+    expect(toHourly).toMatchObject({ fixed: 12_000, variable: 0, earned: 12_000, parts: [{ contractId: 'v2', fixed: 12_000, variable: 0, allowances: 0 }] });
+    expect(toHourly.warnings[0]).toMatch(/^2 contracts this month, one paid by the hour: the whole month is paid on the latest, CON-2026-0019 v2/);
+    expect(splitSegments({ segments: [monthlyFirst, hourlyAfter] })).toBeNull();
+    // both by the hour (a new rate mid-month): the latest rate for all the hours, 80 × 150
+    const both = payrollLine(
+      { ...salaried, payBasis: 'hourly', hourlyRate: 150, gross: 13_000, allowances: [], segments: [{ ...hourlyFirst, allowances: [] }, hourlyAfter] },
+      inputs({ workedHours: 80 }),
+    );
+    expect(both).toMatchObject({ fixed: 12_000, earned: 12_000 });
+    expect(both.warnings[0]).toMatch(/^2 contracts this month, both paid by the hour: the whole month is paid on the latest, CON-2026-0019 v2/);
+  });
+
+  it('a month on one contract, and a line made before 17 October 2026 (no segments), pay as before', () => {
+    const one = payrollLine({ ...salaried, segments: [segment({ allowances: [] })] }, inputs({ workedHours: 229.5, expectedHours: 270 }));
+    const before = payrollLine(salaried, inputs({ workedHours: 229.5, expectedHours: 270 }));
+    expect(one.parts).toEqual([{ contractId: 'v1', fixed: 9_600, variable: 2_400, allowances: 0 }]);
+    expect({ ...one, parts: before.parts }).toEqual(before);
+    expect(before).toMatchObject({ attendanceCut: 1_440, earned: 10_560, net: 8_574.22 });
+    expect([splitSegments(salaried), splitSegments({ segments: [segment({})] })]).toEqual([null, null]);
   });
 });
 

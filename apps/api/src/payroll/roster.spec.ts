@@ -1,4 +1,5 @@
-import { EARLIER_EMPLOYMENT, NO_CONTRACT, roster, type RosterEmployment } from './roster.js';
+import { payrollLine, EMPTY_PAYROLL_INPUTS } from '@trendlix/shared';
+import { contractParts, EARLIER_EMPLOYMENT, NO_CONTRACT, roster, type RosterEmployment } from './roster.js';
 
 // Who is on a month's payroll and on what terms (owner's decisions, 16 October 2026). Everyone here is invented.
 
@@ -23,8 +24,11 @@ function employment(over: Partial<RosterEmployment> = {}, employee: Partial<Rost
 }
 
 function contract(over: Partial<RosterEmployment['contracts'][number]> = {}): RosterEmployment['contracts'][number] {
+  n += 1;
   return {
-    id: `contract-${++n}`,
+    id: `contract-${n}`,
+    number: `CON-2025-${String(n).padStart(4, '0')}`,
+    version: 1,
     startDate: '2025-01-01',
     endDate: '2026-12-31',
     payBasis: 'monthly',
@@ -71,6 +75,22 @@ describe('roster', () => {
           // September 2026 has 22 Sundays to Thursdays, no holidays given: 22 days of 9 hours
           expectedHours: 198,
           expectedDays: { workingDays: 22, holidays: 0 },
+          // the whole month under the one contract (17 October 2026)
+          segments: [
+            {
+              contractId: e.contracts[0].id,
+              number: e.contracts[0].number,
+              version: 1,
+              from: '2026-09-01',
+              to: '2026-09-30',
+              days: 30,
+              payBasis: 'monthly',
+              gross: 12000,
+              basicPercent: 80,
+              hourlyRate: null,
+              allowances: [{ name: 'Transport', amount: 1000, taxable: true, insured: false }],
+            },
+          ],
         },
       },
     ]);
@@ -102,13 +122,13 @@ describe('roster', () => {
     expect(lines.find((l) => l.employeeId === leaver.employee.id)!.terms.paidDays).toBe(10);
   });
 
-  it('leaves out someone with no signed contract in force; with two (a renewal mid-month), the later one', () => {
+  it('leaves out someone with no signed contract in force; with two (a renewal mid-month), the line is the later one’s', () => {
     const none = employment({ contracts: [] });
     const expired = employment({ contracts: [contract({ endDate: '2026-08-31' })] });
     const notYet = employment({ contracts: [contract({ startDate: '2026-10-01' })] });
     // the leaver's contract started after their last day
     const leftFirst = employment({ endDate: '2026-09-05', contracts: [contract({ startDate: '2026-09-06' })] });
-    const renewed = employment({ contracts: [contract({ endDate: '2026-09-14' }), contract({ id: 'renewal', startDate: '2026-09-15', endDate: '2027-09-14', grossSalary: 15000 })] });
+    const renewed = employment({ contracts: [contract({ endDate: '2026-09-14' }), contract({ id: 'renewal', version: 2, startDate: '2026-09-15', endDate: '2027-09-14', grossSalary: 15000 })] });
     const { lines, exclusions } = roster('2026-09', [none, expired, notYet, leftFirst, renewed], rules);
     expect(exclusions.map((x) => [x.employeeId, x.reason])).toEqual(
       [none, expired, notYet, leftFirst].map((e) => [e.employee.id, NO_CONTRACT]).sort((a, b) => a[0].localeCompare(b[0])),
@@ -133,6 +153,107 @@ describe('roster', () => {
     const { lines } = roster('2026-09', [noDepartment, hourly, marketing], rules);
     expect(lines.map((l) => l.nameEn)).toEqual(['C Person', 'B Person', 'A Person']);
     expect(lines[1].terms).toMatchObject({ payBasis: 'hourly', hourlyRate: 150, gross: 15600 });
+  });
+
+  // owner, 17 October 2026: "take into consideration the start and end date of the contract if it is in the middle of
+  // the billing period"; September 2026 starts on a Tuesday, its Sundays to Thursdays 22
+  describe('the contracts’ dates', () => {
+    const lineOf = (lines: ReturnType<typeof roster>['lines'], e: RosterEmployment) => lines.find((l) => l.employeeId === e.employee.id)!;
+    const parts = (lines: ReturnType<typeof roster>['lines'], e: RosterEmployment) => lineOf(lines, e).terms.segments!.map((s) => [s.contractId, s.from, s.to, s.days]);
+
+    it('a renewal mid-month with new pay splits the month by days; the line, its pay and its insured wage are the month-end contract’s', () => {
+      const v1 = contract({ endDate: '2026-09-14' });
+      const v2 = contract({ version: 2, startDate: '2026-09-15', endDate: '2027-09-14', grossSalary: 15000, insuredWageFrom: '2027-01-01' });
+      const e = employment({ contracts: [v1, v2] });
+      const { lines } = roster('2026-09', [e], rules);
+      // 14 days on the contract before, 30 − 14 = 16 on the renewal
+      expect(parts(lines, e)).toEqual([
+        [v1.id, '2026-09-01', '2026-09-14', 14],
+        [v2.id, '2026-09-15', '2026-09-30', 16],
+      ]);
+      expect(lineOf(lines, e).contractId).toBe(v2.id);
+      expect(lineOf(lines, e).terms).toMatchObject({
+        gross: 15000,
+        paidDays: 30,
+        // the whole month's, on the pay before the renewal until January (12,000 and the 1,000 transport)
+        insuredWage: 13000,
+        insuredWageAsBefore: '2027-01-01',
+        // all the shift's 22 days: 10 to the 14th, 12 from the 15th
+        expectedHours: 198,
+        expectedDays: { workingDays: 22, holidays: 0 },
+      });
+      expect(lineOf(lines, e).terms.segments!.map((s) => [s.number, s.version, s.gross])).toEqual([
+        [v1.number, 1, 12000],
+        [v2.number, 2, 15000],
+      ]);
+      // worked out: fixed 9,600 × 14 ÷ 30 = 4,480 and 12,000 × 16 ÷ 30 = 6,400; transport 1,000 × 14 ÷ 30 = 466.67
+      // and 1,000 × 16 ÷ 30 = 533.33
+      const line = payrollLine(lineOf(lines, e).terms, EMPTY_PAYROLL_INPUTS);
+      expect(line).toMatchObject({ fixed: 10880, variable: 2720, allowances: 1000, earned: 13600 });
+      expect(line.parts.map((p) => p.allowances)).toEqual([466.67, 533.33]);
+    });
+
+    it('days between two contracts are not paid, and their working days are not expected', () => {
+      // ended on Thursday the 10th, renewed from Sunday the 20th: 10 + 11 days; the shift's days 8 + 9, and the holiday
+      // on Tuesday the 15th falls between them, the one on the 3rd doesn't
+      const e = employment({ contracts: [contract({ endDate: '2026-09-10' }), contract({ version: 2, startDate: '2026-09-20', endDate: '2027-09-19' })] });
+      const { lines } = roster('2026-09', [e], rules, ['2026-09-03', '2026-09-15']);
+      expect(parts(lines, e).map(([, from, to, days]) => [from, to, days])).toEqual([
+        ['2026-09-01', '2026-09-10', 10],
+        ['2026-09-20', '2026-09-30', 11],
+      ]);
+      expect(lineOf(lines, e).terms).toMatchObject({ paidDays: 21, expectedHours: 16 * 9, expectedDays: { workingDays: 17, holidays: 1 } });
+    });
+
+    it('a contract ending mid-month with no renewal: paid to its end, the employment on the run still', () => {
+      const ending = contract({ endDate: '2026-09-10' });
+      const e = employment({ contracts: [ending] });
+      const { lines, exclusions } = roster('2026-09', [e], rules);
+      expect(exclusions).toEqual([]);
+      expect(parts(lines, e)).toEqual([[ending.id, '2026-09-01', '2026-09-10', 10]]);
+      // the shift's 8 days to the 10th
+      expect(lineOf(lines, e).terms).toMatchObject({ paidDays: 10, expectedHours: 72, expectedDays: { workingDays: 8, holidays: 0 } });
+      expect(payrollLine(lineOf(lines, e).terms, EMPTY_PAYROLL_INPUTS).warnings).toEqual(['Paid for 10 of 30 days: employed or under contract for part of the month']);
+    });
+
+    it('a joiner whose contract starts after their join date is paid from the contract’s start', () => {
+      // joined on Saturday the 12th, under contract from Tuesday the 15th: 16 days, the shift's 12 from the 15th
+      const e = employment({ joinDate: '2026-09-12', contracts: [contract({ startDate: '2026-09-15', endDate: '2027-09-14' })] });
+      const { lines } = roster('2026-09', [e], rules);
+      expect(parts(lines, e).map(([, from, to, days]) => [from, to, days])).toEqual([['2026-09-15', '2026-09-30', 16]]);
+      expect(lineOf(lines, e).terms).toMatchObject({ paidDays: 16, expectedHours: 108, expectedDays: { workingDays: 12, holidays: 0 } });
+    });
+
+    it('by the hour, then a monthly salary: both parts kept, the month paid on the latest alone', () => {
+      const hourly = contract({ endDate: '2026-09-14', payBasis: 'hourly', hourlyRate: 100, grossSalary: 8666.67, allowances: [] });
+      const monthly = contract({ version: 2, startDate: '2026-09-15', endDate: '2027-09-14' });
+      const e = employment({ contracts: [hourly, monthly] });
+      const { lines } = roster('2026-09', [e], rules);
+      const terms = lineOf(lines, e).terms;
+      expect(terms.segments!.map((s) => [s.payBasis, s.hourlyRate, s.days])).toEqual([
+        ['hourly', 100, 14],
+        ['monthly', null, 16],
+      ]);
+      // the month-end contract's: monthly, so the shift's hours for all 22 days
+      expect(terms).toMatchObject({ payBasis: 'monthly', hourlyRate: null, gross: 12000, expectedHours: 198 });
+      const line = payrollLine(terms, EMPTY_PAYROLL_INPUTS);
+      expect(line).toMatchObject({ fixed: 9600, variable: 2400, allowances: 1000 });
+      expect(line.warnings).toEqual([
+        `2 contracts this month, one paid by the hour: the whole month is paid on the latest, ${monthly.number} v2, as hours can't be split between contracts without attendance`,
+      ]);
+    });
+
+    it('takes the contract in force each day, the latest start winning, the days under none in no part', () => {
+      const a = contract({ startDate: '2026-01-01', endDate: '2026-12-31' });
+      // an amendment from the 1st runs beside the version it changes
+      const b = contract({ version: 2, startDate: '2026-09-01', endDate: '2026-12-31' });
+      expect(contractParts('2026-08-30', '2026-09-02', [a, b]).map((p) => [p.contract.id, p.from, p.to])).toEqual([
+        [a.id, '2026-08-30', '2026-08-31'],
+        [b.id, '2026-09-01', '2026-09-02'],
+      ]);
+      expect(contractParts('2026-09-01', '2026-09-30', [contract({ startDate: '2026-09-05', endDate: '2026-09-06' })]).map((p) => [p.from, p.to])).toEqual([['2026-09-05', '2026-09-06']]);
+      expect(contractParts('2026-09-01', '2026-09-30', [])).toEqual([]);
+    });
   });
 
   // the expected hours from the shift (owner's request, 16 October 2026, Payroll Setup)

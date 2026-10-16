@@ -22,6 +22,7 @@ import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ContractSettingsService } from './contract-settings.service.js';
 import { checkedPromotion } from './promotion.js';
+import { recordStep } from './raise-request-steps.js';
 import {
   MAX_MONEY,
   PROBATION_CAP_MESSAGE,
@@ -200,7 +201,7 @@ export function payChangeStep(previous: { version: number } & Parameters<typeof 
   if (samePay(payTermsOf(previous), pay)) return NO_PAY_CHANGE;
   if (!reason) {
     throw new BadRequestException(
-      `The pay changes from version ${previous.version}: choose why (annual raise, promotion, adjustment or other). The CEO approves a change of pay before it is signed.`,
+      `The pay changes from version ${previous.version}: choose why (annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other). The CEO approves a change of pay before it is signed.`,
     );
   }
   return { raiseReason: reason, approval: 'draft' as const };
@@ -431,6 +432,7 @@ export class ContractsService {
       // an approved one changed goes back to HR to send again, and so does the request it was prepared from
       if (before.raiseRequest && before.approval === 'approved' && values.approval === 'draft') {
         await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'with_hr' } });
+        await recordStep(tx, before.raiseRequest.id, user.id, { kind: 'changed', gross: saved.grossSalary.toNumber(), contractNumber: saved.number });
       }
       return saved;
     });
@@ -449,7 +451,10 @@ export class ContractsService {
     await this.prisma.$transaction(async (tx) => {
       await tx.contract.delete({ where: { id } });
       // the request it was prepared from is HR's again, to prepare anew or decline
-      if (c.raiseRequest) await tx.raiseRequest.update({ where: { id: c.raiseRequest.id }, data: { status: 'with_hr' } });
+      if (c.raiseRequest) {
+        await tx.raiseRequest.update({ where: { id: c.raiseRequest.id }, data: { status: 'with_hr' } });
+        await recordStep(tx, c.raiseRequest.id, user.id, { kind: 'raise_deleted', contractNumber: c.number });
+      }
     });
     await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: id, diff: { employmentId: c.employmentId, number: c.number, version: c.version } });
   }
@@ -517,7 +522,15 @@ export class ContractsService {
         await tx.employment.update({ where: { id: employment.id }, data: promoted });
       }
       // the raise request it was prepared from is done
-      if (before.raiseRequest) await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'done', doneAt: new Date() } });
+      if (before.raiseRequest) {
+        await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'done', doneAt: new Date() } });
+        await recordStep(tx, before.raiseRequest.id, user.id, {
+          kind: 'signed',
+          gross: signed.grossSalary.toNumber(),
+          effectiveDate: fromDateOnly(signed.startDate),
+          contractNumber: signed.number,
+        });
+      }
       return signed;
     });
 
@@ -601,7 +614,10 @@ export class ContractsService {
       });
       if (restored) await tx.contract.update({ where: { id: restored.id }, data: { status: 'active' } });
       // the raise request it was prepared from is approved again, waiting for the signing
-      if (before.raiseRequest) await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'approved', doneAt: null } });
+      if (before.raiseRequest) {
+        await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'approved', doneAt: null } });
+        await recordStep(tx, before.raiseRequest.id, user.id, { kind: 'unsigned', contractNumber: before.number });
+      }
       if (employmentChange) {
         await tx.employment.update({
           where: { id: employment.id },

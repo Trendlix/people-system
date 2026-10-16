@@ -265,3 +265,9 @@ export * from './salary-history.js';
 
 // the company-wide Salary Raises report: the raises in a period, their totals, by department, and who is due for review
 export * from './salary-raises.js';
+
+// one-off additions and deductions on a month's pay, advances and loans, final settlements and held pay: Unsettled
+export * from './payroll-adjustments.js';
+
+// payroll statistics: what the approved runs paid and cost, by month, department and team, and this year to date
+export * from './payroll-statistics.js';

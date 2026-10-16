@@ -17,8 +17,15 @@
 // A raise may come with a promotion: a new job title and grade, applied to the employment when the raise is signed.
 // Raise requests (owner, 16 October 2026: "a place to request raise by employee, or his manager or the HR, with a reason
 // and to be going through an approval cycle"): the employee for themself, their direct manager or HR asks, HR declines
-// or prepares the raise from it, and the CEO's decision on that raise is the request's. Pure code, for the API and the
-// screens.
+// or prepares the raise from it, and the CEO's decision on that raise is the request's. Reworked on 17 October 2026
+// ("requesting a raise should have a drop list reason first ( Annual Raise - Performance Raise - Counter Offer Raise -
+// etc..) then add requester comment, suggest raise amount or percentage, then the approver to Approve - Approve with
+// another raise amount or percentge - Reject, and add a comment, all the request steps to be logged in the request"): a
+// reason from the list, the requester's comment, a suggested raise as an amount or a percent of the gross; HR, then the
+// CEO, approve it as it reached them, approve it with another raise, or reject it, always with a comment; and every step
+// logged on the request. Pure code, for the API and the screens.
+
+import { monthlyFromHourly } from './contracts.js';
 
 /** What a contract version is: a whole contract (the first, a renewal, a raise's new contract), or a salary amendment. */
 export const CONTRACT_KINDS = ['contract', 'amendment'] as const;
@@ -34,11 +41,46 @@ export const RAISE_WAY_HINTS: Record<RaiseWay, string> = {
   contract: 'A new contract with its own term from the effective date, signed in full; it replaces the contract in force.',
 };
 
-/** Why the pay changes. */
-export const RAISE_REASONS = ['annual', 'promotion', 'adjustment', 'other'] as const;
+/**
+ * Why the pay changes, on a raise and on a raise request alike (owner, 17 October 2026: "requesting a raise should have
+ * a drop list reason first ( Annual Raise - Performance Raise - Counter Offer Raise - etc..)"). Adjustment, from before
+ * then, stays readable on the versions that have it; the forms offer the others (RAISE_REASON_CHOICES).
+ */
+export const RAISE_REASONS = ['annual', 'performance', 'counter_offer', 'promotion', 'market_adjustment', 'cost_of_living', 'adjustment', 'other'] as const;
 export type RaiseReason = (typeof RAISE_REASONS)[number];
-export const RAISE_REASON_LABELS: Record<RaiseReason, string> = { annual: 'Annual raise', promotion: 'Promotion', adjustment: 'Adjustment', other: 'Other' };
-export const RAISE_REASON_LABELS_AR: Record<RaiseReason, string> = { annual: 'زيادة سنوية', promotion: 'ترقية', adjustment: 'تعديل الأجر', other: 'أخرى' };
+/** The reasons a form offers, in this order: a raise request is asked for with one of them, and its raise takes it. */
+export const RAISE_REASON_CHOICES = ['annual', 'performance', 'counter_offer', 'promotion', 'market_adjustment', 'cost_of_living', 'other'] as const satisfies readonly RaiseReason[];
+export type RaiseReasonChoice = (typeof RAISE_REASON_CHOICES)[number];
+export const RAISE_REASON_LABELS: Record<RaiseReason, string> = {
+  annual: 'Annual raise',
+  performance: 'Performance raise',
+  counter_offer: 'Counter-offer raise',
+  promotion: 'Promotion',
+  market_adjustment: 'Market adjustment',
+  cost_of_living: 'Cost of living',
+  adjustment: 'Adjustment',
+  other: 'Other',
+};
+/** As the salary amendment letter and the contract print them ({{raise_reason}} in an Arabic template). */
+export const RAISE_REASON_LABELS_AR: Record<RaiseReason, string> = {
+  annual: 'زيادة سنوية',
+  performance: 'زيادة أداء',
+  counter_offer: 'زيادة مقابل عرض عمل آخر',
+  promotion: 'ترقية',
+  market_adjustment: 'تعديل وفق أجور السوق',
+  cost_of_living: 'زيادة غلاء المعيشة',
+  adjustment: 'تعديل الأجر',
+  other: 'أخرى',
+};
+
+/** The reasons a form offers for a version: the choices, and the one it has already if no longer offered (adjustment). */
+export function raiseReasonOptions(current?: string | null): RaiseReason[] {
+  const options: RaiseReason[] = [...RAISE_REASON_CHOICES];
+  if (current && (RAISE_REASONS as readonly string[]).includes(current) && !options.includes(current as RaiseReason)) {
+    options.splice(options.indexOf('other'), 0, current as RaiseReason);
+  }
+  return options;
+}
 
 /**
  * The CEO's step on a version that changes the pay: a draft HR prepares (also once returned, with the CEO's reason),
@@ -189,8 +231,9 @@ export type RaiseRequester = (typeof RAISE_REQUESTERS)[number];
 export const RAISE_REQUESTER_LABELS: Record<RaiseRequester, string> = { self: 'The employee', manager: 'The direct manager', hr: 'HR' };
 
 /**
- * A request's progress, HR then the CEO: with HR (new, or returned by the CEO), with the CEO (HR prepared the raise and
- * sent it), approved (by the CEO, to sign), declined (by HR or the CEO), done (the raise is signed).
+ * A request's progress, HR then the CEO: with HR (new, or returned by the CEO), with the CEO (HR approved it, which
+ * prepared the raise and sent it), approved (by the CEO, to sign), declined (rejected by HR or the CEO; "Rejected" on
+ * screen since 17 October 2026, as the owner calls it), done (the raise is signed).
  */
 export const RAISE_REQUEST_STATUSES = ['with_hr', 'with_ceo', 'approved', 'declined', 'done'] as const;
 export type RaiseRequestStatus = (typeof RAISE_REQUEST_STATUSES)[number];
@@ -198,9 +241,138 @@ export const RAISE_REQUEST_STATUS_LABELS: Record<RaiseRequestStatus, string> = {
   with_hr: 'With HR',
   with_ceo: 'With the CEO',
   approved: 'Approved',
-  declined: 'Declined',
+  declined: 'Rejected',
   done: 'Done',
 };
 
 /** Open: one per person at a time. */
 export const OPEN_RAISE_REQUEST_STATUSES: readonly RaiseRequestStatus[] = ['with_hr', 'with_ceo', 'approved'];
+
+// ---------- the suggested and decided raise ----------
+
+/**
+ * How a raise is suggested on a request, or decided by HR or the CEO (owner, 17 October 2026: "suggest raise amount or
+ * percentage"; "Approve with another raise amount or percentge"): an amount in EGP added to the monthly gross, or a
+ * percent of the gross. Allowances stay as they are.
+ */
+export const RAISE_FIGURE_KINDS = ['amount', 'percent'] as const;
+export type RaiseFigureKind = (typeof RAISE_FIGURE_KINDS)[number];
+export const RAISE_FIGURE_KIND_LABELS: Record<RaiseFigureKind, string> = { amount: 'Amount', percent: 'Percent' };
+
+/** A raise as an amount (EGP a month, added to the gross) or a percent of the gross. */
+export interface RaiseFigure {
+  kind: RaiseFigureKind;
+  value: number;
+}
+
+/** A raise of more than this percent is refused: double the gross at most. */
+export const MAX_RAISE_PERCENT = 100;
+
+/**
+ * What each requester may suggest: the employee for themself and HR an amount or a percent; a direct manager doesn't see
+ * salaries, so a percent only (owner's decision, 16 October 2026: "Keep salaries private").
+ */
+export function suggestionKindsFor(requester: RaiseRequester): readonly RaiseFigureKind[] {
+  return requester === 'manager' ? ['percent'] : RAISE_FIGURE_KINDS;
+}
+
+/** Why a raise figure can't be used, or null: more than 0, to the piaster (two decimals), a percent up to 100. */
+export function raiseFigureProblem(figure: RaiseFigure): string | null {
+  const { kind, value } = figure;
+  if (!Number.isFinite(value) || value <= 0) {
+    return kind === 'amount' ? 'Enter the raise as an amount in EGP of more than 0, e.g. 1,500.' : 'Enter the raise as a percent of more than 0, e.g. 10.';
+  }
+  if (Math.round(value * 100) !== Math.round(value * 1e6) / 1e4) {
+    return kind === 'amount' ? 'Enter the amount to the piaster at most, e.g. 1,500.50.' : 'Enter the percent with two decimals at most, e.g. 7.5.';
+  }
+  if (kind === 'percent' && value > MAX_RAISE_PERCENT) return `A raise is ${MAX_RAISE_PERCENT}% of the gross at most.`;
+  return null;
+}
+
+/**
+ * The gross after a raise, to the piaster (half up): the amount added to it, or the percent of it added, e.g. 12,345.67
+ * + 7.5% = 13,271.60 (12,345.67 × 1.075 = 13,271.595…).
+ */
+export function raisedGross(gross: number, figure: RaiseFigure): number {
+  const cents = Math.round(gross * 100);
+  if (figure.kind === 'amount') return (cents + Math.round(figure.value * 100)) / 100;
+  const pct = Math.round(figure.value * 100); // hundredths of a percent, exact
+  return Math.round((cents * (10_000 + pct)) / 10_000 + 1e-9) / 100;
+}
+
+/**
+ * By the hour (the gross is the monthly estimate, rate × hours a week × 52 ÷ 12): the hourly rate after a raise, to the
+ * piaster: a percent of the rate, or an amount a month spread over the month's hours.
+ */
+export function raisedHourlyRate(rate: number, hoursPerWeek: number, figure: RaiseFigure): number {
+  if (figure.kind === 'percent') return raisedGross(rate, figure);
+  const perHour = figure.value / (hoursPerWeek * (52 / 12));
+  return Math.round((rate + perHour) * 100 + 1e-9) / 100;
+}
+
+/**
+ * The pay a raise comes to from the pay before it, allowances as they are: a monthly gross raised by the figure; by the
+ * hour, the rate raised (for `hoursPerWeek`, the raise's own hours), the gross being the monthly estimate.
+ */
+export function raisedPay(
+  before: { payBasis: string; grossSalary: number; hourlyRate: number | null; hoursPerWeek: number | null },
+  figure: RaiseFigure,
+  hoursPerWeek: number | null = before.hoursPerWeek,
+): { grossSalary: number; hourlyRate: number | null; hoursPerWeek: number | null } {
+  if (before.payBasis === 'hourly' && before.hourlyRate !== null && hoursPerWeek) {
+    const hourlyRate = raisedHourlyRate(before.hourlyRate, hoursPerWeek, figure);
+    return { grossSalary: monthlyFromHourly(hourlyRate, hoursPerWeek), hourlyRate, hoursPerWeek };
+  }
+  return { grossSalary: raisedGross(before.grossSalary, figure), hourlyRate: null, hoursPerWeek: null };
+}
+
+/** A raise from one gross to another in both figures: the amount, and the percent of what it was (two decimals; null from 0). */
+export function raiseFiguresOf(from: number, to: number): { amount: number; percent: number | null } {
+  const amount = (Math.round(to * 100) - Math.round(from * 100)) / 100;
+  return { amount, percent: from > 0 ? Math.round((amount / from) * 10_000) / 100 : null };
+}
+
+// ---------- the decisions ----------
+
+/**
+ * HR's decision on a request, then the CEO's on its raise (owner, 17 October 2026: "Approve - Approve with another raise
+ * amount or percentge - Reject, and add a comment"): approve it as suggested (HR) or as it reached them (the CEO), approve
+ * it with another raise, or reject it, always with a comment. HR's approval prepares the raise and sends it to the CEO;
+ * the CEO's approval with another raise changes the raise's pay to it and approves it in the same step.
+ */
+export const RAISE_DECISIONS = ['approve', 'approve_other', 'reject'] as const;
+export type RaiseDecision = (typeof RAISE_DECISIONS)[number];
+export const RAISE_DECISION_LABELS: Record<RaiseDecision, string> = { approve: 'Approve', approve_other: 'Approve with another raise', reject: 'Reject' };
+/** As the log says it. */
+export const RAISE_DECISION_DONE_LABELS: Record<RaiseDecision, string> = { approve: 'Approved', approve_other: 'Approved with another raise', reject: 'Rejected' };
+
+/**
+ * HR's decision when it prepares the raise in the whole raise form, by the pay it sets: as suggested when the gross is
+ * the one the suggestion came to, else with another raise.
+ */
+export function hrDecisionOf(suggestedGross: number | null, newGross: number): 'approve' | 'approve_other' {
+  return suggestedGross !== null && Math.round(suggestedGross * 100) === Math.round(newGross * 100) ? 'approve' : 'approve_other';
+}
+
+// ---------- the log ----------
+
+/**
+ * Each step of a request, in order, as it is logged on it (owner, 17 October 2026: "all the request steps to be logged in
+ * the request"): submitted; HR's decision; the raise prepared from it (the way, the effective date); sent to the CEO;
+ * the CEO's decision; returned to HR; the raise changed after its approval (back to HR to send again); signed (the
+ * request is done); a signing undone; the raise draft deleted (the request back with HR).
+ */
+export const RAISE_REQUEST_STEP_KINDS = ['submitted', 'hr_decision', 'prepared', 'sent', 'ceo_decision', 'returned', 'changed', 'signed', 'unsigned', 'raise_deleted'] as const;
+export type RaiseRequestStepKind = (typeof RAISE_REQUEST_STEP_KINDS)[number];
+export const RAISE_REQUEST_STEP_LABELS: Record<RaiseRequestStepKind, string> = {
+  submitted: 'Submitted',
+  hr_decision: "HR's decision",
+  prepared: 'Raise prepared',
+  sent: 'Sent to the CEO',
+  ceo_decision: "The CEO's decision",
+  returned: 'Returned to HR',
+  changed: 'Raise changed',
+  signed: 'Signed',
+  unsigned: 'Signing undone',
+  raise_deleted: 'Raise deleted',
+};

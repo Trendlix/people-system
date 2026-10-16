@@ -149,7 +149,8 @@ const Amount = (min = -MAX_AMOUNT, message = AMOUNT_MESSAGE) => (target: object,
 
 /**
  * The month's inputs of a line, any of them (null clears one: not given). The hours are numbers (the screen reads
- * 270:30 as 270.5); attendance will fill the same inputs later. There is no medical subscription any more (owner's
+ * 270:30 as 270.5); attendance will fill the same inputs later. The expected hours HR types are taken as already
+ * without the no-show and leave days (owner, 17 October 2026). There is no medical subscription any more (owner's
  * decision, 16 October 2026): `medical` is refused as any field not here is.
  */
 export class PayrollInputsDto {
@@ -159,6 +160,11 @@ export class PayrollInputsDto {
   @Percent() performance?: number | null;
   @Percent() clientSatisfaction?: number | null;
   @Days() noShowDays?: number | null;
+  /**
+   * Approved paid leave this month, whole or half days (owner, 17 October 2026): no cut, its hours out of the expected
+   * hours; typed until the Leave module fills it. No more than the line's days paid (PayrollService.updateLines).
+   */
+  @Days() leaveDays?: number | null;
   @Days() penaltyDays?: number | null;
   @Days() bonusDays?: number | null;
   @Amount() commission?: number | null;

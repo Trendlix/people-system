@@ -177,7 +177,7 @@ describe("a payroll run's rates set by law", () => {
       jobTitle: null,
       shift: null,
       employee: { id: 'employee-1', employeeCode: 'EMP-0001', fullNameEn: 'Nour Invented', socialInsured: true, insuranceComprehensiveWage: null },
-      contracts: [{ id: 'contract-1', startDate: '2025-01-01', endDate: null, payBasis: 'monthly', grossSalary: 20_000, basicPercent: 80, hourlyRate: null, allowances: [] }],
+      contracts: [{ id: 'contract-1', number: 'CON-2025-0001', version: 1, startDate: '2025-01-01', endDate: null, payBasis: 'monthly', grossSalary: 20_000, basicPercent: 80, hourlyRate: null, allowances: [] }],
     };
     expect(roster('2026-09', [e], { dayDivisor: 30 }).lines[0].terms.insuredWage).toBe(16_700);
     expect(roster('2026-09', [e], { dayDivisor: 30 }, [], { ...Y2026, insurableWageMax: 18_000 }).lines[0].terms.insuredWage).toBe(18_000);

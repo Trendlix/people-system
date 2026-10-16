@@ -296,9 +296,9 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   // a raise (owner's decisions, 16 October 2026): the salary amendment letter and social insurance Form 2. The new pay is
   // the version's own (the pay tags above); these say what it was before, when it changes, why, and the promotion
   { tag: 'raise_effective_date', group: 'raise', labelEn: 'Effective date (raise)', labelAr: 'تاريخ سريان التعديل', source: 'Raise: the 1st of the month the new pay takes effect', note: 'DD/MM/YYYY' },
-  { tag: 'raise_reason', group: 'raise', labelEn: 'Reason for the raise', labelAr: 'سبب التعديل', source: 'Raise: in the template’s language', note: 'Annual raise / Promotion / Adjustment / Other' },
-  { tag: 'raise_reason_ar', group: 'raise', labelEn: 'Reason for the raise (Arabic)', labelAr: 'سبب التعديل بالعربي', source: 'Raise', note: 'زيادة سنوية / ترقية / تعديل الأجر / أخرى' },
-  { tag: 'raise_reason_en', group: 'raise', labelEn: 'Reason for the raise (English)', labelAr: 'سبب التعديل بالإنجليزية', source: 'Raise', note: 'Annual raise / Promotion / Adjustment / Other' },
+  { tag: 'raise_reason', group: 'raise', labelEn: 'Reason for the raise', labelAr: 'سبب التعديل', source: 'Raise: in the template’s language', note: 'Annual raise / Performance raise / Counter-offer raise / Promotion / Market adjustment / Cost of living / Other' },
+  { tag: 'raise_reason_ar', group: 'raise', labelEn: 'Reason for the raise (Arabic)', labelAr: 'سبب التعديل بالعربي', source: 'Raise', note: 'زيادة سنوية / زيادة أداء / زيادة مقابل عرض عمل آخر / ترقية / تعديل وفق أجور السوق / زيادة غلاء المعيشة / أخرى' },
+  { tag: 'raise_reason_en', group: 'raise', labelEn: 'Reason for the raise (English)', labelAr: 'سبب التعديل بالإنجليزية', source: 'Raise', note: 'Annual raise / Performance raise / Counter-offer raise / Promotion / Market adjustment / Cost of living / Other' },
   { tag: 'previous_gross_salary', group: 'raise', labelEn: 'Gross salary before the raise', labelAr: 'الراتب الشامل قبل التعديل', source: 'Raise: the version it replaces', restricted: true },
   { tag: 'previous_gross_salary_words', group: 'raise', labelEn: 'Gross salary before the raise in words (Arabic)', labelAr: 'تفقيط الراتب قبل التعديل', source: 'Raise: in Arabic words', restricted: true },
   { tag: 'previous_gross_salary_words_en', group: 'raise', labelEn: 'Gross salary before the raise in words (English)', labelAr: 'تفقيط الراتب قبل التعديل بالإنجليزية', source: 'Raise: in English words', restricted: true },

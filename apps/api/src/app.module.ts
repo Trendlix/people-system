@@ -15,7 +15,10 @@ import { VersionController } from './health/version.controller.js';
 import { OrganisationModule } from './organisation/organisation.module.js';
 import { PaperworkModule } from './paperwork/paperwork.module.js';
 import { PayrollModule } from './payroll/payroll.module.js';
+import { PayrollAdjustmentsModule } from './payroll/adjustments/adjustments.module.js';
 import { LawRatesModule } from './payroll/law-rates/law-rates.module.js';
+import { PayrollStatisticsModule } from './payroll/statistics/statistics.module.js';
+import { UnsettledModule } from './payroll/unsettled/unsettled.module.js';
 import { PdfModule } from './pdf/pdf.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { TemplatesModule } from './templates/templates.module.js';
@@ -41,6 +44,9 @@ import { UsersModule } from './users/users.module.js';
     OffersModule,
     LawRatesModule,
     PayrollModule,
+    PayrollAdjustmentsModule,
+    UnsettledModule,
+    PayrollStatisticsModule,
     UsersModule,
   ],
   controllers: [HealthController, VersionController],
