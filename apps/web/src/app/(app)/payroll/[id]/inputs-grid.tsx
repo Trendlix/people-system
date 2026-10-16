@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { Fragment, memo, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import type { PayBasis } from '@trendlix/shared';
+import { GroupHeading } from '@/components/group-heading';
 import { titleCase } from '@/lib/format';
+import { groupByPlace, showsDepartment } from '@/lib/place-groups';
 import type { FormState } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { profileHref } from '../../employees/tab-list';
@@ -48,6 +50,9 @@ const WIDTH: Record<FieldKind, string> = { hours: 'w-24', percent: 'w-20', days:
 const cellInput = 'input min-h-9 px-2 py-1 text-right tabular-nums';
 const invalid = 'border-danger bg-danger-soft/40';
 const stickyCell = 'sticky left-0 z-10 bg-card';
+
+/** Employee, Gross, the inputs, Attendance %, Hold and Comments: what a group's heading spans. */
+const COLUMN_COUNT = GRID_COLUMNS.length + 5;
 
 const cellId = (lineId: string, field: string) => `payroll-cell-${lineId}-${field}`;
 const cellKey = (e: Pick<CellError, 'lineId' | 'field'>) => `${e.lineId}:${e.field}`;
@@ -108,7 +113,6 @@ const Row = memo(function Row({
           </p>
         )}
       </td>
-      <td className="text-sm">{row.department ?? <span className="text-muted">—</span>}</td>
       <td className="text-right whitespace-nowrap tabular-nums">
         {row.payBasis === 'hourly' && row.hourlyRate !== null ? (
           <>
@@ -212,6 +216,7 @@ export function InputsGrid({
   const canEdit = editable && save !== null;
 
   const byLine = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
+  const groups = useMemo(() => groupByPlace(rows, (l) => l.department), [rows]);
   const changes = useMemo(() => linePatches(rows, edits), [rows, edits]);
   const unsaved = useMemo(() => (canEdit ? unsavedCount(rows, edits) : { cells: 0, rows: 0 }), [canEdit, rows, edits]);
   const errors = useMemo(() => {
@@ -352,7 +357,6 @@ export function InputsGrid({
               <th scope="col" className="left-0 z-30! min-w-52">
                 Employee
               </th>
-              <th scope="col">Department</th>
               <th scope="col" className="text-right">
                 Gross
               </th>
@@ -376,21 +380,30 @@ export function InputsGrid({
               </th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((row) => (
-              <Row
-                key={row.id}
-                row={row}
-                edits={canEdit ? edits[row.id] : undefined}
-                errors={errorsByLine.get(row.id)}
-                editable={canEdit}
-                onCell={onCell}
-                onLeave={onLeave}
-                onHold={onHold}
-                onComments={onComments}
-              />
-            ))}
-          </tbody>
+          {/* by department, then by team (owner's request, 16 October 2026) */}
+          {groups.map((g) => (
+            <tbody key={g.department ?? ''}>
+              {showsDepartment(groups, g) && <GroupHeading level="department" name={g.department} count={g.count} span={COLUMN_COUNT} />}
+              {g.teams.map((t) => (
+                <Fragment key={t.team ?? ''}>
+                  {t.team !== null && <GroupHeading level="team" name={t.team} count={t.rows.length} span={COLUMN_COUNT} />}
+                  {t.rows.map((row) => (
+                    <Row
+                      key={row.id}
+                      row={row}
+                      edits={canEdit ? edits[row.id] : undefined}
+                      errors={errorsByLine.get(row.id)}
+                      editable={canEdit}
+                      onCell={onCell}
+                      onLeave={onLeave}
+                      onHold={onHold}
+                      onComments={onComments}
+                    />
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          ))}
         </table>
       </div>
 

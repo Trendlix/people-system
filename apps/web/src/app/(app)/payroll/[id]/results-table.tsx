@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { Fragment, useState } from 'react';
 import type { PayrollRules } from '@trendlix/shared';
+import { GroupHeading } from '@/components/group-heading';
+import { groupByPlace, showsDepartment } from '@/lib/place-groups';
 import type { PayrollLineView, PayrollTotals } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { profileHref } from '../../employees/tab-list';
@@ -92,6 +94,9 @@ export function ResultsTable({
       return next;
     });
   const allOpen = lines.length > 0 && lines.every((l) => open.has(l.id));
+  // by department, then by team (owner's request, 16 October 2026)
+  const groups = groupByPlace(lines, (l) => l.department);
+  const span = COLUMNS.length + (payslips ? 2 : 1);
 
   return (
     <div className="space-y-2">
@@ -113,67 +118,74 @@ export function ResultsTable({
               {payslips && <th scope="col">Payslip</th>}
             </tr>
           </thead>
-          <tbody>
-            {lines.map((l) => {
-              const expanded = open.has(l.id);
-              const panel = `payroll-breakdown-${l.id}`;
-              return (
-                <Fragment key={l.id}>
-                  <tr>
-                    <td className="min-w-56">
-                      <button
-                        type="button"
-                        onClick={() => toggle(l.id)}
-                        aria-expanded={expanded}
-                        aria-controls={panel}
-                        className="flex items-start gap-2 text-left"
-                      >
-                        <span aria-hidden="true" className={`mt-0.5 inline-block text-xs text-muted transition-transform ${expanded ? 'rotate-90' : ''}`}>
-                          ▶
-                        </span>
-                        <span>
-                          <span className="font-semibold text-ink">{l.name}</span>
-                          <span className="sr-only">: {expanded ? 'close' : 'open'} the breakdown</span>
-                          <span className="block text-xs text-muted">
-                            <span className="tabular-nums">{l.employeeCode}</span>
-                            {l.department && ` · ${l.department}`}
-                          </span>
-                        </span>
-                      </button>
-                      <div className="mt-1 flex flex-wrap gap-1 pl-5">
-                        {l.onHold && <span className="badge bg-warn-soft text-warn">On hold</span>}
-                        {l.result.warnings.length > 0 && (
-                          <span className="badge bg-warn-soft text-warn">
-                            {l.result.warnings.length} {l.result.warnings.length === 1 ? 'warning' : 'warnings'}
-                          </span>
+          {groups.map((g) => (
+            <tbody key={g.department ?? ''}>
+              {showsDepartment(groups, g) && <GroupHeading level="department" name={g.department} count={g.count} span={span} />}
+              {g.teams.map((t) => (
+                <Fragment key={t.team ?? ''}>
+                  {t.team !== null && <GroupHeading level="team" name={t.team} count={t.rows.length} span={span} />}
+                  {t.rows.map((l) => {
+                    const expanded = open.has(l.id);
+                    const panel = `payroll-breakdown-${l.id}`;
+                    return (
+                      <Fragment key={l.id}>
+                        <tr>
+                          <td className="min-w-56">
+                            <button
+                              type="button"
+                              onClick={() => toggle(l.id)}
+                              aria-expanded={expanded}
+                              aria-controls={panel}
+                              className="flex items-start gap-2 text-left"
+                            >
+                              <span aria-hidden="true" className={`mt-0.5 inline-block text-xs text-muted transition-transform ${expanded ? 'rotate-90' : ''}`}>
+                                ▶
+                              </span>
+                              <span>
+                                <span className="font-semibold text-ink">{l.name}</span>
+                                <span className="sr-only">: {expanded ? 'close' : 'open'} the breakdown</span>
+                                <span className="block text-xs text-muted">
+                                  <span className="tabular-nums">{l.employeeCode}</span>
+                                </span>
+                              </span>
+                            </button>
+                            <div className="mt-1 flex flex-wrap gap-1 pl-5">
+                              {l.onHold && <span className="badge bg-warn-soft text-warn">On hold</span>}
+                              {l.result.warnings.length > 0 && (
+                                <span className="badge bg-warn-soft text-warn">
+                                  {l.result.warnings.length} {l.result.warnings.length === 1 ? 'warning' : 'warnings'}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <Amounts values={l.result} />
+                          {payslips && (
+                            <td className="whitespace-nowrap">
+                              {!l.onHold && (
+                                <a href={payslipHref(l.id, 'en')} target="_blank" rel="noopener" className="text-sm font-semibold text-accent hover:underline">
+                                  Payslip<span className="sr-only"> of {l.name} (English PDF), in a new tab</span>
+                                </a>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                        {expanded && (
+                          <tr id={panel}>
+                            <td colSpan={span} className="p-0">
+                              <Breakdown line={l} rules={rules} />
+                              <p className="px-4 pb-3 text-xs text-muted">
+                                <Link href={profileHref(l.employeeId, 'contracts')}>Open {l.name}&apos;s contract</Link>
+                              </p>
+                            </td>
+                          </tr>
                         )}
-                      </div>
-                    </td>
-                    <Amounts values={l.result} />
-                    {payslips && (
-                      <td className="whitespace-nowrap">
-                        {!l.onHold && (
-                          <a href={payslipHref(l.id, 'en')} target="_blank" rel="noopener" className="text-sm font-semibold text-accent hover:underline">
-                            Payslip<span className="sr-only"> of {l.name} (English PDF), in a new tab</span>
-                          </a>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                  {expanded && (
-                    <tr id={panel}>
-                      <td colSpan={COLUMNS.length + (payslips ? 2 : 1)} className="p-0">
-                        <Breakdown line={l} rules={rules} />
-                        <p className="px-4 pb-3 text-xs text-muted">
-                          <Link href={profileHref(l.employeeId, 'contracts')}>Open {l.name}&apos;s contract</Link>
-                        </p>
-                      </td>
-                    </tr>
-                  )}
+                      </Fragment>
+                    );
+                  })}
                 </Fragment>
-              );
-            })}
-          </tbody>
+              ))}
+            </tbody>
+          ))}
           <tfoot>
             <tr className="font-semibold">
               <td className="border-t border-line">
