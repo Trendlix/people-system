@@ -7,7 +7,8 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import type { FormState } from '@/lib/types';
 
 // The Social Insurance tab's items HR changes in place (owner, 16 October 2026): the occupation, the subscription start
-// and the three wages Form 1 prints. Each shows how it reads now, with Edit for those who may change it, which opens a
+// and the basic and comprehensive wages Form 1 prints (its insured wage is worked out from the comprehensive wage, not
+// edited: owner's decision, 16 October 2026). Each shows how it reads now, with Edit for those who may change it, which opens a
 // small form in its place; saving shows the saved value and closes it, a refused save keeps it open with the reason.
 
 // The occupation picker brings the social insurance occupation table (3,052 rows) with it: loaded only once the form is
@@ -171,12 +172,12 @@ export function WageDetail({
   children,
 }: {
   action: Action | null;
-  field: 'insuranceBasicWage' | 'insuranceInsuredWage' | 'insuranceComprehensiveWage';
+  field: 'insuranceBasicWage' | 'insuranceComprehensiveWage';
   /** "basic wage", for the form's name. */
   name: string;
   /** The field's label: "Basic wage (EGP)". */
   label: string;
-  /** The employee's own, as typed ("2500.5"), or "". */
+  /** The employee's own, with two decimals ("2500.50"), or "". */
   value: string;
   hint: React.ReactNode;
   children: React.ReactNode;

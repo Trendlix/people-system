@@ -9,7 +9,7 @@ import { getCurrentUser } from '@/lib/session';
 import type { DocumentItem, EmployeeProfile, PaperworkItem } from '@/lib/types';
 import { saveInsuranceDetail } from '../../insurance-actions';
 import { canSeeEmployeeFiles, FieldGrid, Loading, ProfileSection, profileHref, todayInCairo, type GridField } from '../../ui';
-import { formatEgp, plainAmount } from '../contracts/salary';
+import { formatEgp } from '../contracts/salary';
 import { loadDocuments } from '../documents/data';
 import { checkDocument } from '../documents/document-actions';
 import { MissingList } from '../documents/document-forms';
@@ -21,10 +21,10 @@ import {
   formsGap,
   formsToCheck,
   hasInsuranceCopy,
-  insurableLimitsText,
   insuranceCopyHref,
   insuranceForms,
   insuredEmployment,
+  insuredNote,
   insuredPrinted,
   printHref,
   printRequired,
@@ -46,9 +46,12 @@ import { OccupationDetail, StartDateDetail, WageDetail } from './insurance-field
 // company profile) are not repeated here (owner, 16 October 2026): a form missing one lists it under Readiness, with
 // where to fill it in.
 //
-// The occupation, the subscription start and the wages are the employee's own, changed here in place by HR (owner's
-// decisions, 16 October 2026: the occupation no longer the job title's); while one isn't set, Form 1 prints what stands
-// in for it, which the item says (the join date, the default, the contract's).
+// The occupation, the subscription start and the basic and comprehensive wages are the employee's own, changed here in
+// place by HR (owner's decisions, 16 October 2026: the occupation no longer the job title's); while one isn't set, Form
+// 1 prints what stands in for it, which the item says (the join date, the default, the contract's). The insured wage
+// isn't edited: it is the comprehensive wage within this year's insurable limits, as the API works it out (owner's
+// decision, 16 October 2026: "Apply the insurance wage cap rule from the comprehensive wage, and the insured wage field
+// to be uneditable in the Social Insurance tab"), and the item says how.
 //
 // Whoever sees the Contracts tab sees this one, and the wages only with the right to see salaries, as before.
 // The forms are HR's and the CEO's (HR generates and moves them along, the CEO views and downloads); the print is the
@@ -87,7 +90,7 @@ function OccupationText({ code, name }: { code: string; name?: string | null }) 
   );
 }
 
-/** What Form 1 prints for an item: the employee's own, or what stands in for it ("EGP 410 · default"), or Not set. */
+/** What Form 1 prints for an item: the employee's own, or what stands in for it ("EGP 410.00 · default"), or Not set. */
 function PrintedText({ printed, none = 'Not set' }: { printed: Printed; none?: string }) {
   if (!printed) return <span className="text-muted">{none}</span>;
   return (
@@ -98,13 +101,14 @@ function PrintedText({ printed, none = 'Not set' }: { printed: Printed; none?: s
   );
 }
 
-/** An amount as the wage forms take it: "2500.5", or "" for none. */
-const typedAmount = (n: number | null | undefined) => (typeof n === 'number' ? plainAmount(n) : '');
+/** An amount as the wage forms take it, with two decimals (owner, 16 October 2026): "2500.50", "410.00", or "" for none. */
+const typedAmount = (n: number | null | undefined) => (typeof n === 'number' ? n.toFixed(2) : '');
 
 /**
- * What Form 1 prints that is the employee's own: the occupation, the subscription start and the three wages (set here,
- * else what stands in for them; the wages for those who may see salaries), and the contract's filing dates. HR changes
- * the employee's own in place.
+ * What Form 1 prints that is the employee's own: the occupation, the subscription start and the basic and
+ * comprehensive wages (set here, else what stands in for them), the insured wage worked out from the comprehensive
+ * wage (the wages for those who may see salaries), and the contract's filing dates. HR changes the employee's own in
+ * place.
  */
 function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
   const e = insuredEmployment(p);
@@ -136,7 +140,6 @@ function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
   ];
   // salary data: for those who see salaries only, as the contract's salary (the API leaves them out for anyone else)
   if (showsWages(p)) {
-    const insured = insuredPrinted(p, c);
     fields.push(
       {
         key: 'insuranceBasicWage',
@@ -160,30 +163,12 @@ function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
         ),
       },
       {
+        // read only: the comprehensive wage within this year's limits, as the API works it out
         key: 'insuranceInsuredWage',
         label: 'Insured wage (social insurance)',
         protected: true,
-        value: (
-          <WageDetail
-            action={edit('insuranceInsuredWage')}
-            field="insuranceInsuredWage"
-            name="insured wage"
-            label="Insured wage (EGP)"
-            value={typedAmount(p.insuranceInsuredWage)}
-            hint={
-              <>
-                Printed in Form 1&apos;s <bdi lang="ar">أجر الاشتراك</bdi> boxes, within the year&apos;s limits ({insurableLimitsText(Number(todayInCairo().slice(0, 4)))}). Leave
-                empty to use the contract&apos;s insured salary.
-              </>
-            }
-          >
-            <PrintedText printed={insured} />
-          </WageDetail>
-        ),
-        note:
-          insured?.from && c
-            ? `Contract ${c.number}, version ${c.version}: the gross and the insured allowances, capped at the maximum insurable wage`
-            : undefined,
+        value: <PrintedText printed={insuredPrinted(p)} />,
+        note: p.insurableLimits ? insuredNote(p.insurableLimits) : undefined,
       },
       {
         key: 'insuranceComprehensiveWage',
@@ -198,7 +183,8 @@ function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
             value={typedAmount(p.insuranceComprehensiveWage)}
             hint={
               <>
-                Printed in Form 1&apos;s <bdi lang="ar">الأجر الشامل</bdi> boxes. Leave empty to use the contract&apos;s gross and allowances.
+                Printed in Form 1&apos;s <bdi lang="ar">الأجر الشامل</bdi> boxes, and sets the insured wage. Leave empty to use the contract&apos;s gross and
+                allowances.
               </>
             }
           >

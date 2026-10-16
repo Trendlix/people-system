@@ -109,7 +109,7 @@ export function switchRate(to: SalaryStart, typed: TermsTyped, year: number, all
   return { ...typed, rateBasis: to, hourlyRate: s.rate, netRate: s.netRate };
 }
 
-/** "EGP 150 × 20 hours a week × 52 ÷ 12 = EGP 13,000 a month", for the hourly fields' hint. */
+/** "EGP 150.00 × 20 hours a week × 52 ÷ 12 = EGP 13,000.00 a month", for the hourly fields' hint. */
 export function estimateText(rate: number, hours: number, estimate: number): string {
   return `${formatEgp(rate)} × ${formatAmount(hours)} hours a week × 52 ÷ 12 = ${formatEgp(estimate)} a month, the monthly estimate.`;
 }

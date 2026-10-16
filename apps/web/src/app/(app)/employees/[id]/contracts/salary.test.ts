@@ -51,11 +51,13 @@ describe('a contract’s money', () => {
     expect(parseAmount('10.555')).toBeNaN();
   });
 
-  it('shows amounts in EGP', () => {
-    expect(formatEgp(16700)).toBe('EGP 16,700');
+  // always two decimals (owner, 16 October 2026: "make all the wages with 2 decimal places")
+  it('shows amounts in EGP, with two decimals', () => {
+    expect(formatEgp(16700)).toBe('EGP 16,700.00');
+    expect(formatEgp(0)).toBe('EGP 0.00');
     expect(formatEgp(1234.5)).toBe('EGP 1,234.50');
     expect(formatEgp(1234.567)).toBe('EGP 1,234.57');
-    expect(formatEgp(1234.999)).toBe('EGP 1,235');
+    expect(formatEgp(1234.999)).toBe('EGP 1,235.00');
   });
 
   it('splits the gross into basic and variable', () => {
@@ -138,7 +140,7 @@ describe('gross and net', () => {
   });
 
   it('explains the gross worked out for a net', () => {
-    expect(workedOutGross(13000, grossToNet(16603, 2026))).toBe('EGP 16,603 gross: the lowest whole-pound gross whose net reaches EGP 13,000.');
+    expect(workedOutGross(13000, grossToNet(16603, 2026))).toBe('EGP 16,603.00 gross: the lowest whole-pound gross whose net reaches EGP 13,000.00.');
   });
 
   it('lists the contract form breakdown, monthly', () => {
@@ -193,7 +195,7 @@ describe('allowances on top of the gross', () => {
 
   it('says when the allowances alone give the net asked for', () => {
     expect(salaryFor('net', '400', 2026, [UNTAXED])).toEqual({ kind: 'belowAllowances', net: 500 });
-    expect(belowAllowancesText(500)).toBe('The allowances alone give a net of EGP 500: enter a higher net, or fewer allowances.');
+    expect(belowAllowancesText(500)).toBe('The allowances alone give a net of EGP 500.00: enter a higher net, or fewer allowances.');
   });
 
   it('carries the salary over with them when switching what HR starts from', () => {
@@ -228,7 +230,7 @@ describe('allowances on top of the gross', () => {
   });
 
   it('lists a contract’s allowances with their amounts', () => {
-    expect(allowancesLabel([{ nameEn: 'Transport', amount: 1000 }, { nameEn: 'Mobile', amount: 500.5 }])).toBe('Transport EGP 1,000 · Mobile EGP 500.50');
+    expect(allowancesLabel([{ nameEn: 'Transport', amount: 1000 }, { nameEn: 'Mobile', amount: 500.5 }])).toBe('Transport EGP 1,000.00 · Mobile EGP 500.50');
     expect(allowancesLabel([])).toBe('');
   });
 });
@@ -258,8 +260,8 @@ describe('pay by the hour and working days', () => {
   it('words the hourly terms and the estimate', () => {
     expect(hoursLabel(20)).toBe('20 hours a week');
     expect(hoursLabel(1)).toBe('1 hour a week');
-    expect(hourlyLabel(150, 22.5)).toBe('EGP 150 an hour × 22.5 hours a week');
-    expect(monthlyEstimateText({ rate: 150, hours: 20, gross: 13000 })).toBe('EGP 150 an hour × 20 hours a week × 52 ÷ 12 = EGP 13,000 a month');
+    expect(hourlyLabel(150, 22.5)).toBe('EGP 150.00 an hour × 22.5 hours a week');
+    expect(monthlyEstimateText({ rate: 150, hours: 20, gross: 13000 })).toBe('EGP 150.00 an hour × 20 hours a week × 52 ÷ 12 = EGP 13,000.00 a month');
   });
 
   it('words the working days, or none for the shift’s week', () => {
@@ -270,13 +272,13 @@ describe('pay by the hour and working days', () => {
 
   it('words how a contract’s pay is set, the rate only when the salary is shown', () => {
     const hourly = { payBasis: 'hourly' as const, hourlyRate: 150, hoursPerWeek: 20, daysPerWeek: 3 };
-    expect(payLabel(hourly)).toBe('By the hour: EGP 150 an hour × 20 hours a week · 3 days a week');
+    expect(payLabel(hourly)).toBe('By the hour: EGP 150.00 an hour × 20 hours a week · 3 days a week');
     expect(payLabel({ ...hourly, salaryHidden: true })).toBe('By the hour: 20 hours a week · 3 days a week');
     expect(payLabel({ ...hourly, hourlyRate: null, daysPerWeek: null })).toBe('By the hour: 20 hours a week');
     expect(payLabel({ payBasis: 'monthly', hourlyRate: null, hoursPerWeek: null, daysPerWeek: null })).toBe('Monthly salary');
     expect(payLabel({ payBasis: 'monthly', hourlyRate: null, hoursPerWeek: null, daysPerWeek: 5 })).toBe('Monthly salary · 5 days a week');
     expect(hourlyTerms({ payBasis: 'monthly', hourlyRate: 150, hoursPerWeek: 20, daysPerWeek: null })).toBeNull();
-    expect(hourlyTerms(hourly)).toBe('EGP 150 an hour × 20 hours a week');
+    expect(hourlyTerms(hourly)).toBe('EGP 150.00 an hour × 20 hours a week');
   });
 });
 
@@ -293,7 +295,7 @@ describe('by the hour, from the net rate', () => {
     expect(r).toEqual({ kind: 'ok', rate: 144.59, hours: 16, gross: 10024.91, breakdown: hourlyRateFromNet(120, 16, 2026).breakdown });
     expect(r.kind === 'ok' && r.breakdown.net).toBe(8320.33);
     expect(r.kind === 'ok' && r.gross).toBe(monthlyFromHourly(144.59, 16));
-    if (r.kind === 'ok') expect(workedOutRate(r)).toBe('EGP 144.59 gross per hour, which gives ≈ EGP 120 net per hour.');
+    if (r.kind === 'ok') expect(workedOutRate(r)).toBe('EGP 144.59 gross per hour, which gives ≈ EGP 120.00 net per hour.');
   });
 
   it('counts the allowances in the net per hour', () => {
@@ -318,7 +320,7 @@ describe('by the hour, from the net rate', () => {
 
   it('says when the allowances alone give the net rate’s month, or what is missing or wrong', () => {
     expect(hourlyPayFor('net', '10', '4', 2026, [{ amount: 3000, taxable: false, insured: false }])).toEqual({ kind: 'belowAllowances', net: 3000 });
-    expect(belowAllowancesText(3000, true)).toBe('The allowances alone give a net of EGP 3,000 a month: enter a higher net rate, or fewer allowances.');
+    expect(belowAllowancesText(3000, true)).toBe('The allowances alone give a net of EGP 3,000.00 a month: enter a higher net rate, or fewer allowances.');
     expect(hourlyPayFor('net', '', '16', 2026)).toEqual({ kind: 'empty' });
     expect(hourlyPayFor('net', 'abc', '16', 2026)).toEqual({ kind: 'invalid', field: 'rate' });
     expect(hourlyPayFor('net', '120', '50', 2026)).toEqual({ kind: 'invalid', field: 'hours' });

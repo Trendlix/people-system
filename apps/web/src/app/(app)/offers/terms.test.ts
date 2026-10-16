@@ -95,7 +95,7 @@ describe('pay by the hour', () => {
     expect(offerSalary(typed({ ...net, netRate: '10', hoursPerWeek: '4' }), 2026, [{ amount: 3000, taxable: false, insured: false }])).toMatchObject({
       kind: 'invalid',
       field: 'netRate',
-      reason: 'The allowances alone give a net of EGP 3,000 a month: enter a higher net rate, or fewer allowances.',
+      reason: 'The allowances alone give a net of EGP 3,000.00 a month: enter a higher net rate, or fewer allowances.',
     });
     expect(offerSalary(typed({ ...net, netRate: '120', hoursPerWeek: '60' }), 2026)).toMatchObject({ kind: 'invalid', field: 'hoursPerWeek' });
   });
@@ -115,7 +115,7 @@ describe('pay by the hour', () => {
   });
 
   it('explains the estimate', () => {
-    expect(estimateText(150, 20, 13000)).toBe('EGP 150 × 20 hours a week × 52 ÷ 12 = EGP 13,000 a month, the monthly estimate.');
+    expect(estimateText(150, 20, 13000)).toBe('EGP 150.00 × 20 hours a week × 52 ÷ 12 = EGP 13,000.00 a month, the monthly estimate.');
   });
 });
 

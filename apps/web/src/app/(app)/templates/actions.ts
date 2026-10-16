@@ -1,7 +1,8 @@
 'use server';
 
 // Template library actions: uploading a version of a template's file (a draft: a Word file, or an official form as a
-// PDF), saving the fields placed on a PDF version, publishing a draft, and deleting one (a Super Admin only). Each one
+// PDF), saving the fields placed on a PDF version or putting its form's standard layout on it, publishing a draft, and
+// deleting one (a Super Admin only). Each one
 // forwards to the API, which checks the session and the role (HR or Admin; deleting: a Super Admin), reads the file's
 // tags (or checks the fields placed) and refuses to publish a draft with unknown or broken ones (or a PDF with no field),
 // so calling these directly can't bypass anything. The file's kind and size are checked here first for a quick answer.
@@ -97,6 +98,23 @@ export async function saveTemplateFields(versionId: string, fields: PdfField[]):
   }
   refresh();
   return { fields: saved?.fields ?? fields };
+}
+
+/**
+ * Use the standard layout (HR, Admin; owner, 16 October 2026): the API replaces the fields of a PDF version with the
+ * layout the system places when its form is uploaded, and answers with them; it refuses a replaced version, and a form
+ * it has no standard layout for.
+ */
+export async function applyStandardLayout(versionId: string): Promise<FieldsSaveState> {
+  let applied: TemplateFields | undefined;
+  try {
+    applied = await apiSend<TemplateFields>('POST', `/templates/versions/${encodeURIComponent(versionId)}/fields/standard`);
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: messages(err) };
+    throw err;
+  }
+  refresh();
+  return Array.isArray(applied?.fields) ? { fields: applied.fields } : { errors: ['The standard layout was applied. Reload the page to see it.'] };
 }
 
 /** Renames a version's file (HR, Admin; owner, 15 October 2026): only the name the library shows changes. */

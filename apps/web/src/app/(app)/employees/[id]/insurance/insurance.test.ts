@@ -11,6 +11,7 @@ import {
   insuranceCopyHref,
   insuranceForms,
   insuredEmployment,
+  insuredNote,
   insuredPrinted,
   occupationText,
   printHref,
@@ -124,28 +125,57 @@ describe('the occupation, subscription start and wages', () => {
 
   it('the basic wage: the employee’s own, else the contract settings’ default', () => {
     expect(basicPrinted({ insuranceBasicWage: 2500.5, insuranceBasicDefault: 410 })).toEqual({ text: 'EGP 2,500.50', from: null });
-    expect(basicPrinted({ insuranceBasicWage: null, insuranceBasicDefault: 410 })).toEqual({ text: 'EGP 410', from: 'default' });
+    expect(basicPrinted({ insuranceBasicWage: null, insuranceBasicDefault: 410 })).toEqual({ text: 'EGP 410.00', from: 'default' });
     expect(basicPrinted({})).toBeNull();
   });
 
-  it('the insured and comprehensive wages: the employee’s own, else the contract’s, else none', () => {
-    const contract = { insuredSalary: 14500, totalSalary: 15000, salaryHidden: false };
-    expect(insuredPrinted({ insuranceInsuredWage: 9000 }, contract)).toEqual({ text: 'EGP 9,000', from: null });
-    expect(insuredPrinted({ insuranceInsuredWage: null }, contract)).toEqual({ text: 'EGP 14,500', from: 'from the contract' });
-    expect(insuredPrinted({ insuranceInsuredWage: null }, null)).toBeNull();
+  it('the comprehensive wage: the employee’s own, else the contract’s gross and allowances, else none', () => {
+    const contract = { totalSalary: 15000, salaryHidden: false };
     expect(comprehensivePrinted({ insuranceComprehensiveWage: 17250.75 }, contract)).toEqual({ text: 'EGP 17,250.75', from: null });
-    expect(comprehensivePrinted({ insuranceComprehensiveWage: null }, contract)).toEqual({ text: 'EGP 15,000', from: 'from the contract' });
+    expect(comprehensivePrinted({ insuranceComprehensiveWage: null }, contract)).toEqual({ text: 'EGP 15,000.00', from: 'from the contract' });
     expect(comprehensivePrinted({ insuranceComprehensiveWage: null }, undefined)).toBeNull();
-    // a contract whose salary the caller may not see stands in for nothing
-    const hidden = { insuredSalary: null, totalSalary: null, salaryHidden: true };
-    expect(insuredPrinted({}, hidden)).toBeNull();
-    expect(comprehensivePrinted({}, hidden)).toBeNull();
+    // a contract whose salary is hidden from this viewer stands in for nothing
+    expect(comprehensivePrinted({}, { totalSalary: null, salaryHidden: true })).toBeNull();
   });
 
-  it('the insured wage’s limits, of the year or the latest known', () => {
-    expect(insurableLimitsText(2026)).toBe('EGP 2,700 to 16,700 in 2026');
-    expect(insurableLimitsText(2025)).toBe('EGP 2,300 to 14,500 in 2025');
-    expect(insurableLimitsText(2031)).toBe('EGP 2,700 to 16,700 in 2026');
+  // the insured wage isn't edited: the comprehensive wage within the year's limits, as the API worked it out (owner's
+  // decision, 16 October 2026), shown with how
+  describe('the insured wage', () => {
+    const LIMITS = { year: 2026, min: 2700, max: 16700 };
+
+    it('the comprehensive wage as it is, within the limits', () => {
+      expect(insuredPrinted({ insuredWage: { amount: 15200, comprehensive: 15200, adjusted: null, limits: LIMITS } })).toEqual({
+        text: 'EGP 15,200.00',
+        from: 'the comprehensive wage',
+      });
+      expect(insuredPrinted({ insuredWage: { amount: 16700, comprehensive: 16700, adjusted: null, limits: LIMITS } })?.text).toBe('EGP 16,700.00');
+    });
+
+    it('capped at the year’s maximum, or raised to its minimum, saying from what', () => {
+      expect(insuredPrinted({ insuredWage: { amount: 16700, comprehensive: 20000, adjusted: 'max', limits: LIMITS } })).toEqual({
+        text: 'EGP 16,700.00',
+        from: "the comprehensive wage (EGP 20,000.00) capped at 2026's maximum",
+      });
+      expect(insuredPrinted({ insuredWage: { amount: 2700, comprehensive: 2000.5, adjusted: 'min', limits: LIMITS } })).toEqual({
+        text: 'EGP 2,700.00',
+        from: "the comprehensive wage (EGP 2,000.50) raised to 2026's minimum",
+      });
+      // the year of the limits the API used
+      expect(insuredPrinted({ insuredWage: { amount: 14500, comprehensive: 17250.75, adjusted: 'max', limits: { year: 2025, min: 2300, max: 14500 } } })?.from).toBe(
+        "the comprehensive wage (EGP 17,250.75) capped at 2025's maximum",
+      );
+    });
+
+    it('not set without a comprehensive wage, or for an API that sends none', () => {
+      expect(insuredPrinted({ insuredWage: null })).toBeNull();
+      expect(insuredPrinted({})).toBeNull();
+    });
+
+    it('the note says what sets it, and the year’s limits', () => {
+      expect(insurableLimitsText(LIMITS)).toBe('EGP 2,700.00 to 16,700.00 in 2026');
+      expect(insurableLimitsText({ year: 2025, min: 2300, max: 14500 })).toBe('EGP 2,300.00 to 14,500.00 in 2025');
+      expect(insuredNote(LIMITS)).toBe('Set by the comprehensive wage, within EGP 2,700.00 to 16,700.00 in 2026.');
+    });
   });
 });
 

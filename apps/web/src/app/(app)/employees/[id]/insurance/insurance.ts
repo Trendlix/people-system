@@ -1,4 +1,4 @@
-import { insurableWageLimits, LABELS, paperworkType, requiredPaperwork } from '@trendlix/shared';
+import { LABELS, paperworkType, requiredPaperwork } from '@trendlix/shared';
 import { formatDate } from '../../../../../lib/format';
 import type { Contract, DocumentItem, DocumentsTab, EmployeeProfile, Employment, PaperworkItem } from '../../../../../lib/types';
 import { profileHref } from '../../tab-list';
@@ -51,8 +51,10 @@ export function formsGap(employment: Pick<Employment, 'employmentType'> | null, 
 }
 
 // ---------- what Form 1 prints from this tab ----------
-// The occupation, the subscription start and the three wages are the employee's own, set by HR here (owner's decisions,
-// 16 October 2026: the occupation no longer the job title's); while one isn't set, Form 1 prints what stands in for it.
+// The occupation, the subscription start and the basic and comprehensive wages are the employee's own, set by HR here
+// (owner's decisions, 16 October 2026: the occupation no longer the job title's); while one isn't set, Form 1 prints
+// what stands in for it. The insured wage is the comprehensive wage within this year's insurable limits, worked out by
+// the API (owner's decision, 16 October 2026: no longer edited).
 
 /** The occupation as written: "194200 · اخصائي موارد بشريه"; null when none is set. */
 export function occupationText(p: Pick<EmployeeProfile, 'occupationCode' | 'occupationName'>): string | null {
@@ -74,19 +76,28 @@ export function startPrinted(p: Pick<EmployeeProfile, 'insuranceStartDate'>, e: 
   return e ? { text: formatDate(e.joinDate), from: 'the join date' } : null;
 }
 
-/** The basic wage: the employee's own, else the contract settings' default ("EGP 410 · default"). */
+/** The basic wage: the employee's own, else the contract settings' default ("EGP 410.00 · default"). */
 export function basicPrinted(p: Pick<EmployeeProfile, 'insuranceBasicWage' | 'insuranceBasicDefault'>): Printed {
   if (typeof p.insuranceBasicWage === 'number') return { text: formatEgp(p.insuranceBasicWage), from: null };
   return typeof p.insuranceBasicDefault === 'number' ? { text: formatEgp(p.insuranceBasicDefault), from: 'default' } : null;
 }
 
-type ContractWages = Pick<Contract, 'insuredSalary' | 'totalSalary' | 'salaryHidden'> | null | undefined;
+type ContractWages = Pick<Contract, 'totalSalary' | 'salaryHidden'> | null | undefined;
 
-/** The insured wage: the employee's own, else the contract's insured salary; null with neither. */
-export function insuredPrinted(p: Pick<EmployeeProfile, 'insuranceInsuredWage'>, c: ContractWages): Printed {
-  if (typeof p.insuranceInsuredWage === 'number') return { text: formatEgp(p.insuranceInsuredWage), from: null };
-  return c && !c.salaryHidden && typeof c.insuredSalary === 'number' ? { text: formatEgp(c.insuredSalary), from: 'from the contract' } : null;
+/**
+ * The insured wage as the API worked it out, and how: "EGP 15,200.00 · the comprehensive wage", or "EGP 16,700.00 · the
+ * comprehensive wage (EGP 20,000.00) capped at 2026's maximum" (raised to its minimum when below it); null without a
+ * comprehensive wage.
+ */
+export function insuredPrinted(p: Pick<EmployeeProfile, 'insuredWage'>): Printed {
+  const w = p.insuredWage;
+  if (!w) return null;
+  const how = w.adjusted === 'max' ? `capped at ${w.limits.year}'s maximum` : w.adjusted === 'min' ? `raised to ${w.limits.year}'s minimum` : null;
+  return { text: formatEgp(w.amount), from: how ? `the comprehensive wage (${formatEgp(w.comprehensive)}) ${how}` : 'the comprehensive wage' };
 }
+
+/** Under the insured wage, which isn't edited: "Set by the comprehensive wage, within EGP 2,700.00 to 16,700.00 in 2026." */
+export const insuredNote = (limits: InsurableLimits): string => `Set by the comprehensive wage, within ${insurableLimitsText(limits)}.`;
 
 /** The comprehensive wage: the employee's own, else the contract's gross and allowances; null with neither. */
 export function comprehensivePrinted(p: Pick<EmployeeProfile, 'insuranceComprehensiveWage'>, c: ContractWages): Printed {
@@ -94,9 +105,10 @@ export function comprehensivePrinted(p: Pick<EmployeeProfile, 'insuranceComprehe
   return c && !c.salaryHidden && typeof c.totalSalary === 'number' ? { text: formatEgp(c.totalSalary), from: 'from the contract' } : null;
 }
 
-/** This year's insurable wage limits, in words: "EGP 2,700 to 16,700 in 2026" (the latest year known when this one isn't). */
-export function insurableLimitsText(year: number): string {
-  const limits = insurableWageLimits(year);
+type InsurableLimits = NonNullable<EmployeeProfile['insurableLimits']>;
+
+/** A year's insurable wage limits as the API sends them, in words: "EGP 2,700.00 to 16,700.00 in 2026". */
+export function insurableLimitsText(limits: InsurableLimits): string {
   return `${formatEgp(limits.min)} to ${formatEgp(limits.max).replace('EGP ', '')} in ${limits.year}`;
 }
 

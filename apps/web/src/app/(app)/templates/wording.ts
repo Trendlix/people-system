@@ -222,6 +222,18 @@ export function fieldsSummary(version: Pick<TemplateVersion, 'pageCount' | 'fiel
   return `${pages}${version.fieldCount ? `${count(version.fieldCount, 'field')} placed` : 'No fields placed yet'}`;
 }
 
+/**
+ * What Use the standard layout asks first on Place Fields (owner, 16 October 2026); with changes not saved, that they
+ * are lost too.
+ */
+export function standardLayoutConfirm(dirty: boolean): string {
+  const ask = 'Replace the fields on this form with the standard layout? Fields you placed or moved are replaced.';
+  return dirty ? `${ask} Your unsaved changes will be lost.` : ask;
+}
+
+/** Said once the standard layout is on the form. */
+export const STANDARD_LAYOUT_APPLIED = 'Standard layout applied.';
+
 /** Why a PDF draft can't be published yet: no field is placed on it (the API refuses it too); null when it can. */
 export function pdfPublishBlock(version: Pick<TemplateVersion, 'format' | 'fieldCount'>): string | null {
   return isPdfVersion(version) && version.fieldCount === 0 ? "Can't be published yet: no fields are placed on the form. Place them first." : null;

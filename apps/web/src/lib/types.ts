@@ -12,6 +12,7 @@ import type {
   Gender,
   Governorate,
   Initiator,
+  InsuredWage,
   MaritalStatus,
   MilitaryStatus,
   NoticeUnit,
@@ -329,13 +330,19 @@ export interface EmployeeProfile {
   insuranceStartDate?: string | null;
   /**
    * … and the wages, salary data: only for those who see salaries (HR, Finance, the CEO), left out for anyone else.
-   * The basic wage (none: `insuranceBasicDefault`, the contract settings' default), the insured wage (none: the
-   * contract's insured salary) and the comprehensive wage (none: the contract's gross and allowances).
+   * The basic wage (none: `insuranceBasicDefault`, the contract settings' default) and the comprehensive wage (none:
+   * the contract's gross and allowances).
    */
   insuranceBasicWage?: number | null;
-  insuranceInsuredWage?: number | null;
   insuranceComprehensiveWage?: number | null;
   insuranceBasicDefault?: number;
+  /**
+   * The insured wage Form 1 prints, as the API works it out (owner's decision, 16 October 2026): the comprehensive wage
+   * within this year's insurable limits, and how; null without a comprehensive wage. Salary data, as the wages.
+   */
+  insuredWage?: InsuredWage | null;
+  /** This year's insurable wage limits (the latest year known when this one isn't in the table). Salary data, as the wages. */
+  insurableLimits?: InsuredWage['limits'];
   fullNameEn: string;
   fullNameAr: string;
   /** The short name the person goes by (e.g. Hazem Magdy), for the email signature. */
@@ -940,13 +947,16 @@ export interface TemplateDetail extends TemplateSlotView {
 
 /**
  * GET (and PUT) /templates/versions/:id/fields: a PDF version, the size of each of its pages in points, and the fields
- * placed on it; `editable`: false for a version that was replaced (the API then refuses a save).
+ * placed on it; `editable`: false for a version that was replaced (the API then refuses a save); `standardLayout`:
+ * whether the system has a standard layout for its form, which Use the standard layout puts on it (owner, 16 October
+ * 2026). Optional: left out by an API from before it.
  */
 export interface TemplateFields {
   version: TemplateVersion;
   pages: PdfPageSize[];
   fields: PdfField[];
   editable: boolean;
+  standardLayout?: boolean;
 }
 
 // ---------- documents generated from the templates: the profile's Contracts and Social Insurance tabs ----------

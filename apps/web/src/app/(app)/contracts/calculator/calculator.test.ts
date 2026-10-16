@@ -186,7 +186,7 @@ describe('the salary calculator', () => {
 
   it('explains a gross estimated from an hourly rate, and the net per hour it gives', () => {
     const { employee } = calculatorRows(grossToNet(13000, 2026), 2026, [], { rate: 150, hours: 20 });
-    expect(employee[0].how).toBe('The monthly estimate: EGP 150 an hour × 20 hours a week × 52 ÷ 12 = EGP 13,000 a month');
+    expect(employee[0].how).toBe('The monthly estimate: EGP 150.00 an hour × 20 hours a week × 52 ÷ 12 = EGP 13,000.00 a month');
     expect(employee.at(-1)?.how).toBe('The gross less the deductions, ≈ EGP 120.43 net per hour');
     // a monthly salary has no rate
     expect(calculatorRows(grossToNet(13000, 2026), 2026).employee.at(-1)?.how).toBe('The gross less the deductions');
@@ -196,9 +196,9 @@ describe('the salary calculator', () => {
     const { hourlyRate, breakdown } = hourlyRateFromNet(120, 16, 2026);
     const { employee } = calculatorRows(breakdown, 2026, [], { rate: hourlyRate, hours: 16, netRate: 120 });
     expect(employee[0].how).toBe(
-      'The monthly estimate: EGP 144.59 an hour × 16 hours a week × 52 ÷ 12 = EGP 10,024.91 a month, the gross rate worked out from EGP 120 net per hour',
+      'The monthly estimate: EGP 144.59 an hour × 16 hours a week × 52 ÷ 12 = EGP 10,024.91 a month, the gross rate worked out from EGP 120.00 net per hour',
     );
-    expect(employee.at(-1)).toMatchObject({ amount: 8320.33, how: 'The gross less the deductions, ≈ EGP 120 net per hour' });
+    expect(employee.at(-1)).toMatchObject({ amount: 8320.33, how: 'The gross less the deductions, ≈ EGP 120.00 net per hour' });
   });
 
   it('says what the allowances add to the net', () => {

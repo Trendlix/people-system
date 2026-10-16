@@ -21,6 +21,8 @@ import {
   publishConfirm,
   seesTemplates,
   sourceName,
+  STANDARD_LAYOUT_APPLIED,
+  standardLayoutConfirm,
   statusLines,
   TEMPLATE_TOO_LARGE,
   triggersLabel,
@@ -148,6 +150,17 @@ describe('where a slot stands', () => {
   it('asks before publishing, saying what it replaces', () => {
     expect(publishConfirm(4, 3)).toBe('Publish v4? It replaces v3 for new documents.');
     expect(publishConfirm(1, null)).toBe('Publish v1? New documents will be made from it.');
+  });
+});
+
+// Use the standard layout on Place Fields (owner, 16 October 2026)
+describe('the standard layout', () => {
+  it('asks first, saying the fields placed or moved are replaced, and unsaved changes lost when there are some', () => {
+    expect(standardLayoutConfirm(false)).toBe('Replace the fields on this form with the standard layout? Fields you placed or moved are replaced.');
+    expect(standardLayoutConfirm(true)).toBe(
+      'Replace the fields on this form with the standard layout? Fields you placed or moved are replaced. Your unsaved changes will be lost.',
+    );
+    expect(STANDARD_LAYOUT_APPLIED).toBe('Standard layout applied.');
   });
 });
 

@@ -73,7 +73,8 @@ describe('where a missing detail is filled in', () => {
   it('sends the occupation, subscription start and wages to their item on the Social Insurance tab', () => {
     // the employee's own, no longer the job title's (owner's decision, 16 October 2026)
     expect(missingHref(ID, { tab: 'insurance', key: 'occupationCode' })).toBe('/employees/emp-1?tab=insurance#field-occupationCode');
-    expect(missingHref(ID, { tab: 'insurance', key: 'insuranceInsuredWage' })).toBe('/employees/emp-1?tab=insurance#field-insuranceInsuredWage');
+    // the insured wage is worked out from the comprehensive wage, so a missing one is filled in there (owner's decision, 16 October 2026)
+    expect(missingHref(ID, { tab: 'insurance', key: 'insuranceComprehensiveWage' })).toBe('/employees/emp-1?tab=insurance#field-insuranceComprehensiveWage');
     expect(placeLabel('insurance')).toBe('Social Insurance tab');
     expect(
       missingLinks(ID, [

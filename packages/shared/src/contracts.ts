@@ -114,6 +114,29 @@ export function insuredSalary(gross: number, year: number): number {
   return Math.min(Math.max(gross, limits.min), limits.max);
 }
 
+/**
+ * The insured wage social insurance Form 1 prints (أجر الاشتراك) and how it was worked out. Owner's decision, 16 October
+ * 2026: "Apply the insurance wage cap rule from the comprehensive wage, and the insured wage field to be uneditable in
+ * the Social Insurance tab": no longer the employee's own, but the comprehensive wage Form 1 prints kept within the
+ * year's insurable limits.
+ */
+export interface InsuredWage {
+  /** The comprehensive wage within the limits. */
+  amount: number;
+  /** The comprehensive wage it is worked out from. */
+  comprehensive: number;
+  /** `max`: capped at the year's maximum; `min`: raised to its minimum; null: the comprehensive wage as it is. */
+  adjusted: 'max' | 'min' | null;
+  /** The limits kept to, and the year of the table they are from (the latest known for a year not in it). */
+  limits: { year: number; min: number; max: number };
+}
+
+/** The insured wage Form 1 prints for a comprehensive wage in `year` (in Cairo): see InsuredWage. */
+export function insuredWageFrom(comprehensive: number, year: number): InsuredWage {
+  const amount = insuredSalary(comprehensive, year);
+  return { amount, comprehensive, adjusted: amount < comprehensive ? 'max' : amount > comprehensive ? 'min' : null, limits: insurableWageLimits(year) };
+}
+
 import type { EndReason } from './index.js';
 
 /** An allowance as the salary is worked out from it: its amount a month, and how it is treated. */

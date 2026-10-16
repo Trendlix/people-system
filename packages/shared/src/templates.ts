@@ -278,10 +278,11 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'total_salary', group: 'pay', labelEn: 'Gross salary and allowances', labelAr: 'إجمالي الراتب والبدلات', source: 'Contract or offer: a month', restricted: true },
   { tag: 'total_salary_words', group: 'pay', labelEn: 'Gross salary and allowances in words (Arabic)', labelAr: 'تفقيط إجمالي الراتب والبدلات', source: 'Contract or offer: in Arabic words', restricted: true },
   { tag: 'total_salary_words_en', group: 'pay', labelEn: 'Gross salary and allowances in words (English)', labelAr: 'تفقيط إجمالي الراتب والبدلات بالإنجليزية', source: 'Contract or offer: in English words', restricted: true },
-  // the wages social insurance Form 1 prints, each the employee's own on the Social Insurance tab (owner, 16 October
-  // 2026): the basic wage (أجر أساسي), the insured wage (أجر الاشتراك) and the comprehensive wage (الأجر الشامل)
+  // the wages social insurance Form 1 prints (owner, 16 October 2026): the basic wage (أجر أساسي) and the comprehensive
+  // wage (الأجر الشامل), each the employee's own on the Social Insurance tab; the insured wage (أجر الاشتراك), the
+  // comprehensive wage within the year's insurable limits (owner's decision, 16 October 2026: no longer edited)
   { tag: 'insurance_basic_salary', group: 'pay', labelEn: 'Basic wage (social insurance)', labelAr: 'أجر أساسي (التأمينات)', source: 'Social Insurance tab: the employee’s, else the default in contract settings', restricted: true },
-  { tag: 'insurance_insured_salary', group: 'pay', labelEn: 'Insured wage (social insurance)', labelAr: 'أجر الاشتراك (التأمينات)', source: 'Social Insurance tab: the employee’s, else the contract’s insured salary', restricted: true },
+  { tag: 'insurance_insured_salary', group: 'pay', labelEn: 'Insured wage (social insurance)', labelAr: 'أجر الاشتراك (التأمينات)', source: 'Social Insurance tab: the comprehensive wage, within the year’s insurable limits', restricted: true },
   { tag: 'insurance_total_salary', group: 'pay', labelEn: 'Comprehensive wage (social insurance)', labelAr: 'الأجر الشامل (التأمينات)', source: 'Social Insurance tab: the employee’s, else the contract’s gross and allowances', restricted: true },
   { tag: 'offer_number', group: 'offer', labelEn: 'Offer number', labelAr: 'رقم العرض', source: 'Job offer' },
   { tag: 'offer_expiry', group: 'offer', labelEn: 'Offer valid until', labelAr: 'العرض سارٍ حتى', source: 'Job offer: its last day to accept', note: 'DD/MM/YYYY' },

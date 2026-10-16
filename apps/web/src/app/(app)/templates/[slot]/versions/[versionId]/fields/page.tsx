@@ -10,7 +10,7 @@ import { isPdfVersion, managesTemplates, NOT_AVAILABLE, seesTemplates, templateH
 import { FieldEditor, type CopySource } from './field-editor';
 
 // Place Fields (owner's decision, 15 October 2026): a PDF version of a template, with the fields placed on its pages.
-// HR and Admin place and save them (field-editor.tsx); the CEO, and anyone on a replaced version, sees them, and can
+// HR and Admin place and save them (field-editor.tsx), or put the standard layout of a form the system knows on it; the CEO, and anyone on a replaced version, sees them, and can
 // test print the form and preview it with data. The version must be one of this template's; the API checks every
 // request, and the role again.
 
@@ -51,7 +51,7 @@ async function Fields({ params, searchParams }: PageProps<'/templates/[slot]/ver
   if (loaded.kind === 'forbidden') return quiet(WHO_SEES);
   if (loaded.kind === 'failed') return quiet(`The fields couldn't load: ${loaded.message}`);
 
-  const { version, pages, fields, editable } = loaded.data;
+  const { version, pages, fields, editable, standardLayout } = loaded.data;
   const manages = managesTemplates(user);
   const readOnly = !manages
     ? 'Only HR and Admin can place fields. You can see them, test print the form and preview it with data.'
@@ -76,6 +76,7 @@ async function Fields({ params, searchParams }: PageProps<'/templates/[slot]/ver
         readOnly={readOnly}
         notice={uploadedNotice(query)}
         copyFrom={copyFrom}
+        standardLayout={standardLayout === true}
         offers={isOfferSlot(key)}
       />
     </div>

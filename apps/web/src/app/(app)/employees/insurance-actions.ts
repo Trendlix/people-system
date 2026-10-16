@@ -1,8 +1,9 @@
 'use server';
 
 // What social insurance Form 1 prints that is the employee's own, changed one item at a time on the Social Insurance
-// tab (owner, 16 October 2026): the occupation, the subscription start and the three wages (PATCH /employees/:id, HR
-// only, the wages also with the right to see salaries; the API checks all of it again). An empty field clears it, and
+// tab (owner, 16 October 2026): the occupation, the subscription start and the basic and comprehensive wages (PATCH
+// /employees/:id, HR only, the wages also with the right to see salaries; the API checks all of it again). The insured
+// wage isn't one of them: the API works it out from the comprehensive wage (owner's decision, 16 October 2026). An empty field clears it, and
 // Form 1 then prints what stands in for it. The date is typed as DD/MM/YYYY and sent as YYYY-MM-DD; an amount is typed
 // as "15,000" and sent as a number.
 import { refresh } from 'next/cache';
@@ -11,15 +12,14 @@ import { dateFrom } from '@/lib/form-data';
 import type { FormState } from '@/lib/types';
 import { parseAmount } from './[id]/contracts/salary';
 
-export type InsuranceField = 'occupationCode' | 'insuranceStartDate' | 'insuranceBasicWage' | 'insuranceInsuredWage' | 'insuranceComprehensiveWage';
+export type InsuranceField = 'occupationCode' | 'insuranceStartDate' | 'insuranceBasicWage' | 'insuranceComprehensiveWage';
 
 const WAGES: Partial<Record<InsuranceField, { label: string; example: string }>> = {
   insuranceBasicWage: { label: 'basic wage', example: '410' },
-  insuranceInsuredWage: { label: 'insured wage', example: '14,500' },
   insuranceComprehensiveWage: { label: 'comprehensive wage', example: '15,000' },
 };
 
-const FIELDS: readonly InsuranceField[] = ['occupationCode', 'insuranceStartDate', 'insuranceBasicWage', 'insuranceInsuredWage', 'insuranceComprehensiveWage'];
+const FIELDS: readonly InsuranceField[] = ['occupationCode', 'insuranceStartDate', 'insuranceBasicWage', 'insuranceComprehensiveWage'];
 
 export async function saveInsuranceDetail(employeeId: string, field: InsuranceField, _prev: FormState, fd: FormData): Promise<FormState> {
   const raw = String(fd.get(field) ?? '');

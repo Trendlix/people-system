@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { PDF_FIELDS_MAX, TEMPLATE_VERSION_STATUS_LABELS, type PdfField, type PdfPageSize, type PdfRect, type TemplateLanguage, type TemplateVersionStatus } from '@trendlix/shared';
 import { FormErrors } from '@/components/form';
-import { saveTemplateFields } from '../../../../actions';
+import { applyStandardLayout, saveTemplateFields } from '../../../../actions';
 import { PreviewWithData } from '../../../../preview-with-data';
 import { count } from '../../../../tag-check';
-import { fieldsJsonHref, fieldsSampleHref, versionPreviewHref } from '../../../../wording';
+import { fieldsJsonHref, fieldsSampleHref, STANDARD_LAYOUT_APPLIED, standardLayoutConfirm, versionPreviewHref } from '../../../../wording';
 import { FieldBox } from './field-box';
 import { FieldProperties } from './field-properties';
 import { PdfPages } from './pdf-pages';
@@ -39,7 +39,10 @@ import { FieldList, TagPalette } from './tag-palette';
 // dragged, resized by its handles, moved with the arrow keys (half a point; Shift: five), duplicated (Ctrl/⌘+D) or
 // removed (Delete), and set on the right. Save sends them all (the API checks them and names a field it refuses); Test
 // print opens the form filled with sample values from the fields as they are, saved or not; Preview with data uses the
-// saved ones. Read-only for the CEO and for a replaced version: the fields are shown, Test print and Preview stay.
+// saved ones. Use the standard layout (owner, 16 October 2026), for a form the system has a layout for, replaces the
+// fields with it and saves them at once, once confirmed: a layout improved after the form was uploaded reaches it
+// without uploading it again. Read-only for the CEO and for a replaced version: the fields are shown, Test print and
+// Preview stay.
 
 type Zoom = 'fit' | 1 | 1.5;
 
@@ -195,6 +198,7 @@ export function FieldEditor({
   readOnly,
   notice,
   copyFrom,
+  standardLayout,
   offers,
 }: {
   /** The template's slot, e.g. insurance_form_1: a social insurance form prints its numbers in ٠-٩ (samples.ts). */
@@ -210,6 +214,8 @@ export function FieldEditor({
   /** Said once at the top, e.g. that the draft was just uploaded. */
   notice: string | null;
   copyFrom: CopySource[];
+  /** The system has a standard layout for this form: Use the standard layout is offered to those who can edit. */
+  standardLayout: boolean;
   /** A job offer template: Preview with data takes an offer's data. */
   offers: boolean;
 }) {
@@ -226,8 +232,10 @@ export function FieldEditor({
   const [areaWidth, setAreaWidth] = useState(0);
   const [errors, setErrors] = useState<string[]>();
   const [said, setSaid] = useState<string | null>(null);
-  const [savedNote, setSavedNote] = useState(false);
+  /** Said once the fields are saved ("Saved.", or that the standard layout was applied), until they change again. */
+  const [savedNote, setSavedNote] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
+  const [applying, startApplying] = useTransition();
   const drag = useRef<Drag | null>(null);
   const focusNext = useRef<{ id: string; reveal: boolean } | null>(null);
   const anchor = useRef<number | null>(null);
@@ -418,7 +426,7 @@ export function FieldEditor({
       else if (selected) select(null);
     } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && canEdit) {
       e.preventDefault();
-      if (dirty && !saving) save();
+      if (dirty && !saving && !applying) save();
     }
   }
 
@@ -428,7 +436,7 @@ export function FieldEditor({
     const from = fields;
     const sent = fields.map(cleanField);
     setErrors(undefined);
-    setSavedNote(false);
+    setSavedNote(null);
     startSaving(async () => {
       const result = await saveTemplateFields(version.id, sent);
       if (result.errors?.length) {
@@ -441,7 +449,23 @@ export function FieldEditor({
       setSaved(next);
       // what the API saved, unless the fields were changed again meanwhile
       setFields((fs) => (fs === from ? next : fs));
-      setSavedNote(true);
+      setSavedNote('Saved.');
+    });
+  }
+
+  /** The standard layout in place of the fields, saved by the API; changes not saved are dropped, once confirmed. */
+  function applyStandard() {
+    if (!window.confirm(standardLayoutConfirm(dirty))) return;
+    setErrors(undefined);
+    setSavedNote(null);
+    startApplying(async () => {
+      const result = await applyStandardLayout(version.id);
+      if (result.errors?.length || !result.fields) return setErrors(result.errors);
+      setSaved(result.fields);
+      setFields(result.fields);
+      setTool(null);
+      select(null);
+      setSavedNote(STANDARD_LAYOUT_APPLIED);
     });
   }
 
@@ -473,7 +497,7 @@ export function FieldEditor({
             {canEdit && dirty && <span className="text-sm font-medium text-warn">Unsaved changes</span>}
             {canEdit && savedNote && !dirty && (
               <span role="status" className="text-sm text-ok">
-                Saved.
+                {savedNote}
               </span>
             )}
             {/* the fields as they are, saved or not, posted to the route that answers the test print: opened in a new tab */}
@@ -491,8 +515,13 @@ export function FieldEditor({
                 Test print<span className="sr-only"> (opens a PDF in a new tab)</span>
               </button>
             </form>
+            {canEdit && standardLayout && (
+              <button type="button" onClick={applyStandard} disabled={saving || applying} className="btn btn-secondary">
+                {applying ? 'Applying…' : 'Use the standard layout'}
+              </button>
+            )}
             {canEdit && (
-              <button type="button" onClick={save} disabled={!dirty || saving} className="btn btn-primary">
+              <button type="button" onClick={save} disabled={!dirty || saving || applying} className="btn btn-primary">
                 {saving ? 'Saving…' : 'Save'}
               </button>
             )}

@@ -25,12 +25,14 @@ import {
 // the gross rate.
 
 const money = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
-const pounds = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 const piastres = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** 16700 → "EGP 16,700"; with piastres always two digits of them, 2500.5 → "EGP 2,500.50". */
+/**
+ * An amount in EGP, always with two decimals (owner, 16 October 2026: "make all the wages with 2 decimal places"):
+ * 16700 → "EGP 16,700.00", 2500.5 → "EGP 2,500.50".
+ */
 export function formatEgp(amount: number): string {
-  return `EGP ${(Math.round(amount * 100) % 100 === 0 ? pounds : piastres).format(amount)}`;
+  return `EGP ${piastres.format(amount)}`;
 }
 
 /** 16700 → "16,700"; 22.5 → "22.5" (hours as well as amounts). */
@@ -270,12 +272,12 @@ export function hoursLabel(hours: number): string {
   return `${money.format(hours)} ${hours === 1 ? 'hour' : 'hours'} a week`;
 }
 
-/** "EGP 150 an hour × 20 hours a week". */
+/** "EGP 150.00 an hour × 20 hours a week". */
 export function hourlyLabel(rate: number, hours: number): string {
   return `${formatEgp(rate)} an hour × ${hoursLabel(hours)}`;
 }
 
-/** How the monthly estimate is worked out: "EGP 150 an hour × 20 hours a week × 52 ÷ 12 = EGP 13,000 a month". */
+/** How the monthly estimate is worked out: "EGP 150.00 an hour × 20 hours a week × 52 ÷ 12 = EGP 13,000.00 a month". */
 export function monthlyEstimateText(h: { rate: number; hours: number; gross: number }): string {
   return `${hourlyLabel(h.rate, h.hours)} × 52 ÷ 12 = ${formatEgp(h.gross)} a month`;
 }
@@ -290,7 +292,7 @@ export function netPerHour(net: number, hours: number): number {
   return cents(net / (hours * WEEKS_PER_MONTH));
 }
 
-/** "≈ EGP 120 net per hour", for a month's net and the hours a week. */
+/** "≈ EGP 120.00 net per hour", for a month's net and the hours a week. */
 export function netPerHourText(net: number, hours: number): string {
   return `≈ ${formatEgp(netPerHour(net, hours))} net per hour`;
 }
@@ -360,7 +362,7 @@ export function switchRateBasis(
   return from.kind === 'ok' ? { ...unchanged, rate: plainAmount(from.rate) } : unchanged;
 }
 
-/** By the hour, a saved contract's or offer's net as a rate: "≈ EGP 120 net per hour". Null when hidden or not known. */
+/** By the hour, a saved contract's or offer's net as a rate: "≈ EGP 120.00 net per hour". Null when hidden or not known. */
 export function hourlyNetTerms(c: PayTerms & { netSalary: number | null }): string | null {
   if (c.payBasis !== 'hourly' || c.salaryHidden || c.netSalary === null || c.netSalary === undefined || !c.hoursPerWeek) return null;
   return netPerHourText(c.netSalary, c.hoursPerWeek);
@@ -371,7 +373,7 @@ export function daysLabel(days: number | null): string | null {
   return days ? `${days} ${days === 1 ? 'day' : 'days'} a week` : null;
 }
 
-/** A contract's allowances, each with its amount a month: "Transport EGP 1,000 · Mobile EGP 500". */
+/** A contract's allowances, each with its amount a month: "Transport EGP 1,000.00 · Mobile EGP 500.00". */
 export function allowancesLabel(lines: readonly { nameEn: string; amount: number }[]): string {
   return lines.map((a) => `${a.nameEn} ${formatEgp(a.amount)}`).join(' · ');
 }
@@ -385,13 +387,13 @@ export interface PayTerms {
   salaryHidden?: boolean;
 }
 
-/** By the hour: "EGP 150 an hour × 20 hours a week", or "20 hours a week" when the salary is hidden. Null for a monthly salary. */
+/** By the hour: "EGP 150.00 an hour × 20 hours a week", or "20 hours a week" when the salary is hidden. Null for a monthly salary. */
 export function hourlyTerms(c: PayTerms): string | null {
   if (c.payBasis !== 'hourly' || c.hoursPerWeek === null || c.hoursPerWeek === undefined) return null;
   return !c.salaryHidden && c.hourlyRate !== null && c.hourlyRate !== undefined ? hourlyLabel(c.hourlyRate, c.hoursPerWeek) : hoursLabel(c.hoursPerWeek);
 }
 
-/** How the pay is set, in a few words: "Monthly salary", "By the hour: EGP 150 an hour × 20 hours a week · 3 days a week". */
+/** How the pay is set, in a few words: "Monthly salary", "By the hour: EGP 150.00 an hour × 20 hours a week · 3 days a week". */
 export function payLabel(c: PayTerms): string {
   const basis = PAY_BASIS_LABELS[c.payBasis] ?? PAY_BASIS_LABELS.monthly;
   const hourly = hourlyTerms(c);
