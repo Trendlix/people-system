@@ -14,6 +14,22 @@ export function birthDateFromNationalId(nationalId: string): string | null {
   return isDateOnly(ymd) ? ymd : null;
 }
 
+// The governorate of birth written inside an Egyptian national ID (digits 8-9): Cairo 01, Alexandria 02, Port Said 03,
+// Suez 04, the Delta and Canal 11-19, Upper Egypt 21-29, the frontier governorates 31-35, and 88 for those born abroad.
+const GOVERNORATE_CODES = new Set(['01', '02', '03', '04', ...range(11, 19), ...range(21, 29), ...range(31, 35), '88']);
+
+function range(from: number, to: number): string[] {
+  return Array.from({ length: to - from + 1 }, (_, i) => String(from + i));
+}
+
+/**
+ * Whether the governorate code in a national ID (its 8th and 9th digits) is one a governorate has. A number with any
+ * other code was misread or mistyped. Only the card reader uses this: what saving accepts is checked elsewhere.
+ */
+export function hasRealGovernorateCode(nationalId: string): boolean {
+  return /^\d{14}$/.test(nationalId) && GOVERNORATE_CODES.has(nationalId.slice(7, 9));
+}
+
 /** Spaces removed, letters in capitals: "eg38 0019 …" → "EG380019…". */
 export function normalizeIban(value: string): string {
   return value.replace(/\s+/g, '').toUpperCase();

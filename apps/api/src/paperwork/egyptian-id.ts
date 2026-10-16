@@ -1,5 +1,5 @@
 import { isDateOnly, todayInCairo } from '../common/date-only.js';
-import { birthDateFromNationalId } from '../employees/checks.js';
+import { birthDateFromNationalId, hasRealGovernorateCode } from '../employees/checks.js';
 import { latinDigits, normalizeArabic } from './arabic-text.js';
 
 // Reads the text of an Egyptian national ID card (بطاقة تحقيق الشخصية), as the OCR service returns it, into
@@ -9,7 +9,8 @@ import { latinDigits, normalizeArabic } from './arabic-text.js';
 // Front: the header (جمهورية مصر العربية / بطاقة تحقيق الشخصية), the first name on one line and the rest of the
 // name on the next, two address lines, then the 14-digit national ID; a small printed code may also appear.
 // Back: the national ID again with the issue date beside it, profession, gender, religion, marital status and
-// "البطاقة سارية حتى <date>" (the expiry). The card names no issuing office (owner, 15 October 2026).
+// "البطاقة سارية حتى <date>" (the expiry). The card names no issuing office (owner, 15 October 2026). The religion is
+// never read into anything, and is taken out of the card's text before it is shown or kept (withoutReligion).
 //
 // A scan cut a little short (up to ~3 mm, often at the top) loses or cuts through a line. A line the top or bottom
 // edge of the picture runs through reads as something else, as surely as a whole one (a cut number reads as another,
@@ -19,6 +20,11 @@ import { latinDigits, normalizeArabic } from './arabic-text.js';
 export interface IdCardSuggestions {
   nationalId?: string;
   fullNameAr?: string;
+  /**
+   * The card is in Arabic only: the English name is spelled from the Arabic one, never read (see english-name.ts). Added
+   * by the paperwork service, which knows how the employees on file spell their names.
+   */
+  fullNameEn?: string;
   addressAr?: string;
   dateOfBirth?: string;
   gender?: 'male' | 'female';
@@ -92,7 +98,8 @@ export function readIdCardWithNotes(front: CardSide, back: CardSide, today = tod
   const out: IdCardSuggestions = {};
   const notes: string[] = [];
 
-  const nationalId = pickNationalId(frontLines, backLines, today);
+  const { id: nationalId, notes: idNotes } = pickNationalId(frontLines, backLines, today);
+  notes.push(...idNotes);
   if (nationalId) {
     out.nationalId = nationalId;
     out.dateOfBirth = birthDateFromNationalId(nationalId)!;
@@ -122,7 +129,7 @@ export function readIdCardWithNotes(front: CardSide, back: CardSide, today = tod
   if (marital) out.maritalStatus = marital;
   if (out.nationalId || frontKept.some((l) => isHeader(l.text))) out.nationality = 'Egyptian';
 
-  const expiry = readExpiry(backLines);
+  const expiry = readExpiry(backLines, today);
   if (expiry.date) out.expiryDate = expiry.date;
   const issueDate = readIssueDate(backLines, expiry.lines, out.expiryDate, out.dateOfBirth, today);
   if (issueDate) out.issueDate = issueDate;
@@ -171,14 +178,40 @@ function isNationalId(digits: string, today: string): boolean {
   return born !== null && born <= today;
 }
 
-/** The ID both sides agree on, or the one side's only ID. Nothing when they disagree. */
-function pickNationalId(front: string[], back: string[], today: string): string | undefined {
-  const f = unique(front.flatMap((l) => nationalIdsIn(l, today)));
-  const b = unique(back.flatMap((l) => nationalIdsIn(l, today)));
-  const both = f.filter((id) => b.includes(id));
-  if (both.length) return only(both);
-  if (f.length && b.length) return undefined;
-  return only(f.length ? f : b);
+/**
+ * The ID both sides agree on, or the one side's only ID; nothing when they disagree. A number whose governorate code
+ * (its 8th and 9th digits) no governorate has was misread: on a side that also gave a number with a real code, it is
+ * set aside; when the two sides disagree and only one of them gave a real code, that side's number is taken. Notes say
+ * when that happened, and when the number taken has a code that does not exist (it is still suggested, for HR to check
+ * against the card: what saving accepts is not the reader's to decide).
+ */
+function pickNationalId(front: string[], back: string[], today: string): { id?: string; notes: string[] } {
+  const real = (ids: string[]) => ids.filter(hasRealGovernorateCode);
+  const preferred = (ids: string[]) => (real(ids).length ? real(ids) : ids);
+  const f = preferred(unique(front.flatMap((l) => nationalIdsIn(l, today))));
+  const b = preferred(unique(back.flatMap((l) => nationalIdsIn(l, today))));
+  const notes: string[] = [];
+
+  let id: string | undefined;
+  const both = f.filter((n) => b.includes(n));
+  if (both.length) id = only(both);
+  else if (!f.length || !b.length) id = only(f.length ? f : b);
+  else if ((real(f).length > 0) !== (real(b).length > 0)) {
+    // the sides disagree, and one side's numbers all have a code no governorate has
+    const [taken, setAside] = real(f).length > 0 ? ['front', 'back'] : ['back', 'front'];
+    id = only(taken === 'front' ? f : b);
+    if (id) {
+      notes.push(
+        `The number read on the ${setAside} of the card has a governorate code (its 8th and 9th digits) that does not exist, so the number read on the ${taken} is used. Check it against the card.`,
+      );
+    }
+  }
+  if (id && !hasRealGovernorateCode(id)) {
+    notes.push(
+      'The national ID number read has a governorate code (its 8th and 9th digits) that does not exist, so a digit was probably misread. Check the number against the card before saving.',
+    );
+  }
+  return { id, notes };
 }
 
 // ---------- front: name and address ----------
@@ -298,6 +331,48 @@ function readMaritalStatus(lines: string[]): IdCardSuggestions['maritalStatus'] 
   return found.length === 1 ? found[0] : undefined;
 }
 
+// The religion printed on the back (for a man and for a woman, and a letter more or less as the reader may give it),
+// normalised. Matched only to be taken out: it is never read into anything, shown or kept.
+const RELIGION = /^(مسلم|مسيحي|يهودي)[ء-ي]?$/;
+
+/** A word of the card that is its religion, whatever marks the reader left around it. */
+function isReligion(word: string): boolean {
+  return RELIGION.test(normalizeArabic(word.replace(/[^\p{L}]/gu, '')));
+}
+
+/**
+ * The text read from a side of the ID card without the religion printed on the back, which is never shown or kept (as
+ * Prime ERP's reader does, at the owner's request of 16 October 2026), each line otherwise as read; a line that held
+ * nothing else is dropped. `side` is what the file holds: the back, or the front (whose PDF may hold the back on its
+ * later pages, and whose photo may show the back too). A page of the front file is taken for the back only when it is
+ * not the first, or shows the back's gender, marital status or expiry; a front alone is left as read, so that a name
+ * such as مسلم on it stays. Pages are separated by \f, as the OCR service separates them.
+ */
+export function withoutReligion(text: string, side: 'front' | 'back'): string {
+  return text
+    .split('\f')
+    .map((page, i) => (side === 'back' || i > 0 || showsBack(page) ? religionLeftOut(page) : page))
+    .join('\f');
+}
+
+function religionLeftOut(page: string): string {
+  return page
+    .split('\n')
+    .flatMap((line) => {
+      const words = line.split(/\s+/).filter(Boolean);
+      if (!words.some(isReligion)) return [line];
+      const kept = words.filter((w) => !isReligion(w));
+      return kept.length ? [kept.join(' ')] : [];
+    })
+    .join('\n');
+}
+
+/** Whether a page of text shows the back of the card: its gender, marital status or "سارية حتى". */
+function showsBack(page: string): boolean {
+  const text = normalizeArabic(page);
+  return text.includes('ساريه') || hasWord(text, 'ذكر') || hasWord(text, 'انثي') || Object.values(MARITAL_WORDS).flat().some((w) => hasWord(text, w));
+}
+
 // As printed on the card (for a man and for a woman), normalised (see arabic-text.ts).
 const MARITAL_WORDS = {
   single: ['اعزب', 'عزباء', 'انسه'],
@@ -374,8 +449,12 @@ function hasWord(text: string, word: string): boolean {
   return new RegExp(`(^|[^\\u0621-\\u064a])${word}($|[^\\u0621-\\u064a])`).test(text);
 }
 
-/** The date after "البطاقة سارية حتى", on the same line or (a full date only) on the next. */
-function readExpiry(lines: string[]): { date?: string; lines: number[] } {
+/**
+ * The date after "البطاقة سارية حتى", on the same line or (a full date only) on the next. Failing a date read as such,
+ * one whose slashes were read as the digit 1 (see looseDateIn), checked against the month the issue month printed on
+ * the back says the card expires in.
+ */
+function readExpiry(lines: string[], today: string): { date?: string; lines: number[] } {
   const at = lines.findIndex((l) => normalizeArabic(l).includes('ساريه'));
   if (at < 0) return { lines: [] };
   const valid = (d: CardDate) => d.ymd >= '2000-01-01';
@@ -384,7 +463,26 @@ function readExpiry(lines: string[]): { date?: string; lines: number[] } {
   if (same.length) return { date: (same.find((d) => !d.monthOnly) ?? same[0]).ymd, lines: [at] };
   const next = datesIn(lines[at + 1] ?? '').filter((d) => valid(d) && !d.monthOnly);
   if (next.length) return { date: next[0].ymd, lines: [at, at + 1] };
+
+  const like = expiryMonthFor(lines, [at, at + 1], today);
+  const sameLoose = looseDateIn(lines[at], (ymd) => ymd >= '2000-01-01', like);
+  if (sameLoose) return { date: sameLoose, lines: [at] };
+  const nextLoose = looseDateIn(lines[at + 1] ?? '', (ymd) => ymd >= '2000-01-01', like);
+  if (nextLoose) return { date: nextLoose, lines: [at, at + 1] };
   return { lines: [at] };
+}
+
+/**
+ * The month the card expires in (YYYY-MM), from the one issue month printed on the back (other than on the expiry's
+ * lines): seven years after it. Nothing when there is no such month, or more than one.
+ */
+function expiryMonthFor(lines: string[], skip: number[], today: string): string | undefined {
+  const months = lines
+    .flatMap((l, i) => (skip.includes(i) ? [] : [...datesIn(l), ...compactDatesIn(l, 6)]))
+    .filter((d) => d.monthOnly && d.ymd >= '1990-01-01' && d.ymd <= today)
+    .map((d) => d.ymd.slice(0, 7));
+  const issued = only(unique(months));
+  return issued && `${Number(issued.slice(0, 4)) + CARD_YEARS}${issued.slice(4)}`;
 }
 
 /**
@@ -455,6 +553,31 @@ function compactDatesIn(line: string, length: 6 | 8): CardDate[] {
     }
   }
   return out;
+}
+
+/**
+ * A full date printed year first (YYYY/MM/DD, as on the card) whose slashes the reader took for the digit 1: a run of
+ * 9 digits with one slash read as 1 (after the year, or after the month; the other slash may still be there), or of 10
+ * with both. Every way the run can be such a date is tried, and the date is kept only when exactly one of them is a real
+ * date that `valid` allows, or exactly one falls in the month it is expected in (`like`, YYYY-MM). Anything else is left
+ * out: a date is never guessed.
+ */
+export function looseDateIn(line: string, valid: (ymd: string) => boolean, like?: string): string | undefined {
+  const found = new Set<string>();
+  // a 1 at position `at` taken out, or nothing when the digit there is not a 1
+  const cut = (digits: string, at: number) => (digits[at] === '1' ? digits.slice(0, at) + digits.slice(at + 1) : '');
+  for (const run of latinDigits(line).match(/\d+(?:\s*[/\-.]\s*\d+)*/g) ?? []) {
+    if (run.split(/[/\-.]/).length >= 3) continue; // both slashes were read: an ordinary date (datesIn)
+    const digits = run.replace(/\D/g, '');
+    const tries = digits.length === 9 ? [cut(digits, 4), cut(digits, 6)] : digits.length === 10 ? [cut(cut(digits, 4), 6)] : [];
+    for (const t of tries) {
+      const date = t.length === 8 ? cardDate([t.slice(0, 4), t.slice(4, 6), t.slice(6)]) : null;
+      if (date && valid(date.ymd)) found.add(date.ymd);
+    }
+  }
+  const all = [...found];
+  const fits = like ? all.filter((ymd) => ymd.slice(0, 7) === like) : [];
+  return only(all) ?? only(fits);
 }
 
 /** The month a card that expires on `expiry` was issued: seven years earlier (as a month-only date, on the 1st). */

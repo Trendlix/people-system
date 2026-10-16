@@ -1,4 +1,4 @@
-import { birthDateFromNationalId, isValidEgyptianIban, maskTail, normalizeIban } from './checks.js';
+import { birthDateFromNationalId, hasRealGovernorateCode, isValidEgyptianIban, maskTail, normalizeIban } from './checks.js';
 
 describe('employee checks', () => {
   it('reads the birth date from a national ID', () => {
@@ -7,6 +7,14 @@ describe('employee checks', () => {
     expect(birthDateFromNationalId('29502301234567')).toBeNull(); // 30 February
     expect(birthDateFromNationalId('19503121234567')).toBeNull(); // no such century digit
     expect(birthDateFromNationalId('2950312123456')).toBeNull(); // 13 digits
+  });
+
+  it('tells a governorate code that exists from one that does not', () => {
+    // made-up numbers: born 15/07/1988, then the governorate code
+    const born = (code: string) => `2880715${code}12345`;
+    for (const code of ['01', '04', '11', '19', '21', '29', '31', '35', '88']) expect(hasRealGovernorateCode(born(code))).toBe(true);
+    for (const code of ['00', '05', '10', '20', '30', '36', '87', '99']) expect(hasRealGovernorateCode(born(code))).toBe(false);
+    expect(hasRealGovernorateCode('2880715021234')).toBe(false); // 13 digits
   });
 
   it('checks an Egyptian IBAN, including its check digits', () => {

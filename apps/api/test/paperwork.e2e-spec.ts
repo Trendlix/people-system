@@ -34,6 +34,11 @@ const BACK = `٢٩٥٠٣١٢٠١٢٣٤٥٦   ٢٠٢٠/٠٧
 مهندس برمجيات
 ذكر     مسلم     أعزب
 البطاقة سارية حتى ٢٠٢٧/٠٧/١١`;
+// The back as it is shown and kept: without the religion printed on it (owner's rule).
+const BACK_SHOWN = `٢٩٥٠٣١٢٠١٢٣٤٥٦   ٢٠٢٠/٠٧
+مهندس برمجيات
+ذكر أعزب
+البطاقة سارية حتى ٢٠٢٧/٠٧/١١`;
 const RECEIPT = `إقـرار اسْتلام العُهدة رقم ${arabicDigits(RUN)}
 يقر الموظف باستلام جهاز حاسب محمول`;
 const ID_BACK = `بطاقة مسجلة برقم ملف ${arabicDigits(RUN)}٧`;
@@ -42,6 +47,8 @@ const SUGGESTIONS = {
   nationalId: '29503120123456',
   dateOfBirth: '1995-03-12',
   fullNameAr: 'محمد أحمد محمود عبد الله',
+  // spelled from the Arabic name: the card has no English
+  fullNameEn: 'Mohamed Ahmed Mahmoud Abdallah',
   addressAr: '١٥ شارع مكرم عبيد',
   gender: 'male',
   issueDate: '2020-07-01',
@@ -434,7 +441,7 @@ describe('Paperwork (e2e)', () => {
         corrected: [],
         notes: [],
         front: { itemId: expect.any(String), text: FRONT },
-        back: { itemId: expect.any(String), text: BACK },
+        back: { itemId: expect.any(String), text: BACK_SHOWN },
       });
 
       const list = await api().get(`/api/employees/${employeeId}/paperwork`).set('Cookie', hr).expect(200);
@@ -454,6 +461,60 @@ describe('Paperwork (e2e)', () => {
       const audit = await prisma.auditLog.findMany({ where: { entityType: 'paperwork', entityId: { in: [res.body.front.itemId, res.body.back.itemId] } } });
       expect(audit.map((a) => a.action)).toEqual(['create', 'create']);
       expect(JSON.stringify(audit.map((a) => a.diff))).not.toMatch(/29503120123456|مكرم/);
+    });
+
+    it('keeps and shows the text of the card without the religion printed on its back, and any other paper as read', async () => {
+      const textOf = async (id: string) => (await api().get(`/api/paperwork/${id}/text`).set('Cookie', hr).expect(200)).body.ocrText as string;
+      const scan = await api()
+        .post(`/api/employees/${employeeId}/identity/scan`)
+        .set('Cookie', hr)
+        .attach('front', jpeg('FRONT'), 'front.jpg')
+        .attach('back', png('BACK'), 'back.png')
+        .expect(200);
+      expect(await textOf(scan.body.front.itemId)).toBe(FRONT);
+      expect(await textOf(scan.body.back.itemId)).toBe(BACK_SHOWN);
+      const stored = await prisma.paperworkItem.findUniqueOrThrow({ where: { id: scan.body.back.itemId }, select: { ocrText: true } });
+      expect(stored.ocrText).toBe(BACK_SHOWN);
+
+      // read again, or uploaded as a paper of the file: a PDF of the front whose page 2 is the back
+      await api().post(`/api/paperwork/${scan.body.back.itemId}/ocr`).set('Cookie', hr).expect(200);
+      expect(await textOf(scan.body.back.itemId)).toBe(BACK_SHOWN);
+      const both = await upload(pdf('BOTHSIDES'), 'card.pdf', 'national_id_front');
+      expect(await textOf(both.id)).toBe(`${FRONT}\f${BACK_SHOWN}`);
+
+      // text read before the religion was left out is not shown either (what is stored is not rewritten)
+      await prisma.paperworkItem.update({ where: { id: scan.body.back.itemId }, data: { ocrText: BACK } });
+      expect(await textOf(scan.body.back.itemId)).toBe(BACK_SHOWN);
+
+      // any other paper keeps its text as read
+      ocr.texts.RELIGION_FORM = `استمارة بيانات ${arabicDigits(RUN)}\nالديانة: مسلم`;
+      const form = await upload(png('RELIGION_FORM'), 'form.png', 'other');
+      expect(await textOf(form.id)).toBe(ocr.texts.RELIGION_FORM);
+    });
+
+    it('spells the English name from the Arabic one, as the employees on file spell it, storing nothing for it', async () => {
+      // a name part unique to this run, in Arabic and in English (letters only)
+      const partAr = arabicLetters(RUN);
+      const partEn = RUN.replace(/\d/g, (d) => 'abcdefghij'[Number(d)]).replace(/^./, (c) => c.toUpperCase());
+      ocr.texts.SPELL = FRONT.replace('أحمد محمود عبد الله', `أحمد محمود ${partAr}`);
+      const read = () => api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('SPELL'), 'f.jpg').expect(200);
+
+      const first = await read();
+      expect(first.body.suggestions.fullNameEn).toMatch(/^Mohamed Ahmed Mahmoud [A-Z][a-z]+$/);
+      expect(first.body.suggestions.fullNameEn).not.toContain(partEn);
+      expect(first.body.notes).toEqual([
+        'The English name is spelled from the Arabic name, one part of it only roughly, letter by letter. Check its spelling before saving.',
+      ]);
+
+      await api()
+        .post('/api/employees')
+        .set('Cookie', hr)
+        .send({ fullNameEn: `Karim ${partEn}`, fullNameAr: `كريم ${partAr}` })
+        .expect(201);
+      const next = await read();
+      expect(next.body.suggestions.fullNameEn).toBe(`Mohamed Ahmed Mahmoud ${partEn}`);
+      expect(next.body.notes).toEqual([]);
+      expect(await prisma.ocrCorrection.count({ where: { field: 'fullNameEn' } })).toBe(0);
     });
 
     it('needs the front; the back is optional', async () => {
@@ -483,7 +544,7 @@ describe('Paperwork (e2e)', () => {
       const calls = ocr.calls.length;
 
       const res = await readCard().attach('front', jpeg('FRONT'), 'front.jpg').attach('back', png('BACK'), 'back.png').expect(200);
-      expect(res.body).toEqual({ suggestions: SUGGESTIONS, corrected: [], notes: [], front: { text: FRONT }, back: { text: BACK } });
+      expect(res.body).toEqual({ suggestions: SUGGESTIONS, corrected: [], notes: [], front: { text: FRONT }, back: { text: BACK_SHOWN } });
       expect(ocr.calls.slice(calls)).toEqual([{ lang: 'ar' }, { lang: 'ar' }]);
 
       expect(await stored()).toBe(storedBefore);
@@ -496,7 +557,7 @@ describe('Paperwork (e2e)', () => {
       const res = await readCard().attach('front', pdf('BOTHSIDES'), 'card.pdf').expect(200);
       expect(res.body.suggestions).toEqual(SUGGESTIONS);
       expect(res.body.front.text).toBe(FRONT);
-      expect(res.body.back.text).toBe(BACK);
+      expect(res.body.back.text).toBe(BACK_SHOWN);
     });
 
     it('needs the front (a photo or a PDF scan); the back is optional', async () => {
@@ -685,7 +746,7 @@ describe('Paperwork (e2e)', () => {
 
       // one side read is enough
       const half = await api().post('/api/employees/read-id-card').set('Cookie', hr).attach('front', jpeg('FAIL'), 'f.jpg').attach('back', png('BACK'), 'b.png').expect(200);
-      expect(half.body).toMatchObject({ front: { text: null }, back: { text: BACK }, suggestions: { gender: 'male', expiryDate: '2027-07-11' } });
+      expect(half.body).toMatchObject({ front: { text: null }, back: { text: BACK_SHOWN }, suggestions: { gender: 'male', expiryDate: '2027-07-11' } });
     });
   });
 });

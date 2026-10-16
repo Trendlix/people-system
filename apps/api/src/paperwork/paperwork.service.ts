@@ -7,8 +7,9 @@ import type { SessionUser } from '../auth/session-user.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { NORMALIZE_FROM, NORMALIZE_TO, normalizeArabic, snippet } from './arabic-text.js';
-import { readIdCardWithNotes, type CardLine } from './egyptian-id.js';
+import { readIdCardWithNotes, withoutReligion, type CardLine, type IdCardSuggestions } from './egyptian-id.js';
 import { CorrectionsService } from './corrections.service.js';
+import { roughNote, spellingsOnFile, spellName } from './english-name.js';
 import { assignSides } from './id-card-sides.js';
 import { OCR_CARDS_PDF_PAGES, OcrClient, type OcrPage, type OcrPageRead, type OcrRead, type OcrShownPages } from './ocr.client.js';
 import { detectPaperworkType, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, replacementName, safeFileName, type PaperworkType } from './paperwork-file.js';
@@ -99,6 +100,17 @@ export type IdCardFiles = { front?: Express.Multer.File[]; back?: Express.Multer
 /** National ID scans are restricted like the national ID itself. */
 const isRestricted = (kind: string) => (RESTRICTED_PAPERWORK as readonly string[]).includes(kind);
 
+/**
+ * The text of a paper as it is shown and kept: for a side of the national ID card, without the religion printed on its
+ * back (as Prime ERP's reader does, at the owner's request of 16 October 2026: it is never shown or kept); any other paper
+ * as read.
+ */
+function keptText(text: string, kind: string): string {
+  if (kind === 'national_id_back') return withoutReligion(text, 'back');
+  if (kind === 'national_id_front') return withoutReligion(text, 'front');
+  return text;
+}
+
 /** The uploaded file, checked by its content. */
 function checked(file: Express.Multer.File | undefined, missing: string, what = 'The file'): Upload {
   if (!file?.buffer?.length) throw new BadRequestException(missing);
@@ -145,8 +157,9 @@ function cardLines(read: OcrRead | null): CardLine[] | null {
 }
 
 /**
- * What the card says (see egyptian-id.ts) and the text read from each side (null when that side could not be read).
- * When neither side could be read, says why: 503 when the OCR service is not running, 502 when it failed.
+ * What the card says (see egyptian-id.ts) and the text read from each side (null when that side could not be read),
+ * without the religion printed on the back. When neither side could be read, says why: 503 when the OCR service is not
+ * running, 502 when it failed.
  */
 function readCard(read: OcrRead, readBack: OcrRead | null, say: Unread) {
   const [front, back] = splitSides(read, readBack);
@@ -154,15 +167,18 @@ function readCard(read: OcrRead, readBack: OcrRead | null, say: Unread) {
   if (!reads.some((r) => r.status === 'done')) {
     throw unread(reads.some((r) => r.status === 'unavailable') ? 'unavailable' : 'failed', say);
   }
-  const textOf = (r: OcrRead | null) => (r?.status === 'done' ? r.text : null);
+  const textOf = (r: OcrRead | null, kind: PaperworkKind) => (r?.status === 'done' ? keptText(r.text, kind) : null);
   const { suggestions, notes } = readIdCardWithNotes(cardLines(front), cardLines(back));
-  return { suggestions, notes, frontText: textOf(front), backText: textOf(back) };
+  return { suggestions, notes, frontText: textOf(front, 'national_id_front'), backText: textOf(back, 'national_id_back') };
 }
 
-/** What is stored after reading: the text, or why there is none. PostgreSQL text cannot hold NUL characters. */
-function ocrColumns(read: OcrRead) {
+/**
+ * What is stored after reading a paper of this kind: the text (see keptText), or why there is none. PostgreSQL text
+ * cannot hold NUL characters.
+ */
+function ocrColumns(read: OcrRead, kind: string) {
   return read.status === 'done'
-    ? { ocrStatus: 'done', ocrText: read.text.replaceAll('\u0000', ''), ocrAt: new Date() }
+    ? { ocrStatus: 'done', ocrText: keptText(read.text, kind).replaceAll('\u0000', ''), ocrAt: new Date() }
     : { ocrStatus: read.status, ocrText: null, ocrAt: null };
 }
 
@@ -191,7 +207,7 @@ export class PaperworkService {
     await this.assertEmployee(employeeId);
     const upload = checked(file, 'Choose a file to upload.');
     const id = await this.store(employeeId, dto.kind, upload, user, { documentNo: dto.documentNo ?? null, expiresOn: dto.expiresOn ?? null });
-    await this.read(id, upload);
+    await this.read(id, upload, dto.kind);
     return itemView(await this.prisma.paperworkItem.findUniqueOrThrow({ where: { id }, select: ITEM }));
   }
 
@@ -228,7 +244,10 @@ export class PaperworkService {
     return { data: Buffer.from(item.data.buffer, item.data.byteOffset, item.data.byteLength), type: item.mimeType, fileName: item.fileName };
   }
 
-  /** The text read from the file. Audited like the file for national ID scans. */
+  /**
+   * The text read from the file. Audited like the file for national ID scans, whose text never shows the religion, even
+   * when it was read before the religion was left out of what is kept.
+   */
   async text(itemId: string, user: SessionUser) {
     const item = await this.prisma.paperworkItem.findUnique({
       where: { id: itemId },
@@ -236,14 +255,14 @@ export class PaperworkService {
     });
     if (!item) throw new NotFoundException('Document not found.');
     await this.viewed(item, user, ['ocrText']);
-    return { ocrStatus: item.ocrStatus, ocrText: item.ocrText };
+    return { ocrStatus: item.ocrStatus, ocrText: item.ocrText === null ? null : keptText(item.ocrText, item.kind) };
   }
 
   /** Reads the text again, e.g. after the OCR service was down. Text read earlier is never lost to a failed read. */
   async reread(itemId: string, user: SessionUser) {
     const item = await this.prisma.paperworkItem.findUnique({
       where: { id: itemId },
-      select: { id: true, employeeId: true, mimeType: true, data: true, ocrStatus: true, ocrText: true },
+      select: { id: true, employeeId: true, kind: true, mimeType: true, data: true, ocrStatus: true, ocrText: true },
     });
     if (!item) throw new NotFoundException('Document not found.');
     const read = await this.ocr.read(Buffer.from(item.data), item.mimeType as PaperworkType, 'ar');
@@ -252,7 +271,7 @@ export class PaperworkService {
         ? new ServiceUnavailableException('The OCR service is not running. The text read earlier is kept.')
         : new BadGatewayException('The OCR service could not read the document. The text read earlier is kept.');
     }
-    const updated = itemView(await this.prisma.paperworkItem.update({ where: { id: itemId }, data: ocrColumns(read), select: ITEM }));
+    const updated = itemView(await this.prisma.paperworkItem.update({ where: { id: itemId }, data: ocrColumns(read, item.kind), select: ITEM }));
     await this.audit.record({
       userId: user.id,
       action: 'update',
@@ -321,16 +340,16 @@ export class PaperworkService {
     const frontId = await this.store(employeeId, 'national_id_front', front, user);
     const backId = back ? await this.store(employeeId, 'national_id_back', back, user) : null;
     const [frontRead, backRead] = await Promise.all([
-      this.read(frontId, front),
-      back && backId ? this.read(backId, back) : Promise.resolve(null),
+      this.read(frontId, front, 'national_id_front'),
+      back && backId ? this.read(backId, back, 'national_id_back') : Promise.resolve(null),
     ]);
 
     const card = readCard(frontRead, backRead, SCAN_UNREAD);
-    const { suggestions, corrected } = await this.corrections.apply(card.suggestions);
+    const { suggestions, corrected, notes } = await this.suggest(card);
     return {
       suggestions,
       corrected,
-      notes: card.notes,
+      notes,
       front: { itemId: frontId, text: card.frontText },
       // the back: its own file, or page 2 on of a PDF that holds both sides
       ...((backId || card.backText !== null) && { back: { itemId: backId ?? frontId, text: card.backText } }),
@@ -350,11 +369,11 @@ export class PaperworkService {
     ]);
 
     const card = readCard(frontRead, backRead, NEW_EMPLOYEE_UNREAD);
-    const { suggestions, corrected } = await this.corrections.apply(card.suggestions);
+    const { suggestions, corrected, notes } = await this.suggest(card);
     return {
       suggestions,
       corrected,
-      notes: card.notes,
+      notes,
       front: { text: card.frontText },
       ...((back || card.backText !== null) && { back: { text: card.backText } }),
     };
@@ -404,7 +423,7 @@ export class PaperworkService {
    * upload them; replacing one is not a view of it.
    */
   async replaceFile(itemId: string, file: Express.Multer.File | undefined, user: SessionUser) {
-    const item = await this.prisma.paperworkItem.findUnique({ where: { id: itemId }, select: { employeeId: true, fileName: true } });
+    const item = await this.prisma.paperworkItem.findUnique({ where: { id: itemId }, select: { employeeId: true, kind: true, fileName: true } });
     if (!item) throw new NotFoundException('Document not found.');
     const upload = checked(file, 'Choose the adjusted file to upload.');
     const fileName = replacementName(file?.originalname, item.fileName, upload.type);
@@ -420,11 +439,30 @@ export class PaperworkService {
       entityId: itemId,
       diff: { employeeId: item.employeeId, file: 'replaced', fileName, sizeBytes },
     });
-    await this.read(itemId, { ...upload, fileName });
+    await this.read(itemId, { ...upload, fileName }, item.kind);
     return itemView(await this.prisma.paperworkItem.findUniqueOrThrow({ where: { id: itemId }, select: ITEM }));
   }
 
   // ---------- helpers ----------
+
+  /**
+   * The suggestions the card's text gives, with the fixes learned from HR's corrections applied, and the English name
+   * spelled from the Arabic one (the card has none; see english-name.ts), with a note when parts of it are only rough.
+   */
+  private async suggest(card: { suggestions: IdCardSuggestions; notes: string[] }) {
+    const { suggestions, corrected } = await this.corrections.apply(card.suggestions);
+    const notes = [...card.notes];
+    if (suggestions.fullNameAr) {
+      // how the employees on file spell their names: one query, nothing stored
+      const employees = await this.prisma.employee.findMany({ select: { fullNameAr: true, fullNameEn: true } });
+      const spelled = spellName(suggestions.fullNameAr, spellingsOnFile(employees));
+      if (spelled) {
+        suggestions.fullNameEn = spelled.name;
+        if (spelled.rough) notes.push(roughNote(spelled.rough));
+      }
+    }
+    return { suggestions, corrected, notes };
+  }
 
   /**
    * A photo as one page. A JPEG goes back as it is, at its full size: browsers turn it upright by its EXIF
@@ -505,10 +543,13 @@ export class PaperworkService {
     return id;
   }
 
-  /** Reads the text of a stored file (in Arabic: every kind of paperwork here is Arabic) and keeps it. */
-  private async read(id: string, upload: Upload): Promise<OcrRead> {
+  /**
+   * Reads the text of a stored file (in Arabic: every kind of paperwork here is Arabic) and keeps it as its kind keeps it
+   * (see keptText). Returns the text as read, for the card reader.
+   */
+  private async read(id: string, upload: Upload, kind: string): Promise<OcrRead> {
     const read = await this.ocr.read(upload.data, upload.type, 'ar');
-    await this.prisma.paperworkItem.update({ where: { id }, data: ocrColumns(read) });
+    await this.prisma.paperworkItem.update({ where: { id }, data: ocrColumns(read, kind) });
     return read;
   }
 
