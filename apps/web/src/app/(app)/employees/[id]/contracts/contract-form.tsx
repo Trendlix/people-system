@@ -14,7 +14,7 @@ import {
   basisFrom,
   belowAllowancesText,
   breakdownRows,
-  formatAmount,
+  formatMoney,
   formatEgp,
   hourlyPayFor,
   insuredFor,
@@ -155,7 +155,7 @@ export function ContractForm({
   const basicPercent = Number(typed.basicPercent);
   const split = gross !== null && Number.isInteger(basicPercent) && basicPercent >= 1 && basicPercent <= 100 ? splitSalary(gross, basicPercent) : null;
   const insured = gross !== null ? insuredFor(gross, year, terms) : null;
-  const insuredText = fullTime && insured ? `Insured salary on the social insurance copy: ${formatAmount(insured.amount)}, ${insured.why}.` : null;
+  const insuredText = fullTime && insured ? `Insured salary on the social insurance copy: ${formatMoney(insured.amount)}, ${insured.why}.` : null;
   // only for the same gross and allowances: a change of either changes the net anyway
   const savedNet = sameAllowances(rows, defaults.allowances) ? savedNetChange({ gross: defaults.grossSalary, net: defaults.netSalary }, calc) : null;
   const what = hourly ? `${fromNetRate ? 'net per hour' : 'hourly rate'} and the hours a week` : `${basis === 'net' ? 'net' : 'gross'} salary`;

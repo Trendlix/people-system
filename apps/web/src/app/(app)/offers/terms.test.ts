@@ -162,8 +162,8 @@ describe('the breakdown rows', () => {
       'Net salary',
       'Company cost',
     ]);
-    expect(rows.find((r) => r.label === 'Allowances')?.note).toBe('2,000 of it taxed');
-    expect(rows.find((r) => r.label === 'Insured wage')?.note).toBe('capped at 16,700');
+    expect(rows.find((r) => r.label === 'Allowances')?.note).toBe('2,000.00 of it taxed');
+    expect(rows.find((r) => r.label === 'Insured wage')?.note).toBe('capped at 16,700.00');
     expect(rows.find((r) => r.kind === 'total')?.amount).toBe(b.net);
   });
 
@@ -177,7 +177,7 @@ describe('the breakdown rows', () => {
   it('does not take insured allowances for a raised minimum', () => {
     const b = grossToNet(2000, 2026, [{ amount: 500, taxable: false, insured: true }]);
     const rows = offerBreakdownRows(b, { insuredAllowances: 500 });
-    expect(rows.find((r) => r.label === 'Insured wage')?.note).toBe('raised to the minimum, 2,700');
+    expect(rows.find((r) => r.label === 'Insured wage')?.note).toBe('raised to the minimum, 2,700.00');
   });
 });
 

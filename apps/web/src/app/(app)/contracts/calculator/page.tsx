@@ -2,7 +2,7 @@ import { INSURABLE_WAGE, SALARY_RULES } from '@trendlix/shared';
 import { Suspense } from 'react';
 import { getCurrentUser } from '@/lib/session';
 import { loadAllowanceTypes } from '../../employees/[id]/contracts/data';
-import { formatAmount, formatPercent } from '../../employees/[id]/contracts/salary';
+import { formatMoney, formatPercent } from '../../employees/[id]/contracts/salary';
 import { todayInCairo } from '../../employees/ui';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { canSeeContracts } from '../list';
@@ -34,7 +34,7 @@ async function Calculator({ searchParams }: { searchParams: PageProps<'/contract
 function HowItsCalculated() {
   const r = SALARY_RULES;
   const limits = Object.entries(INSURABLE_WAGE)
-    .map(([year, { min, max }]) => `${year}: ${formatAmount(min)} to ${formatAmount(max)}`)
+    .map(([year, { min, max }]) => `${year}: ${formatMoney(min)} to ${formatMoney(max)}`)
     .join('; ');
   return (
     <section aria-labelledby="calculator-how" className="card max-w-3xl p-5">
@@ -57,7 +57,7 @@ function HowItsCalculated() {
           Cairo yet.
         </li>
         <li>
-          Annual net income: the monthly taxable × 12, less the {formatAmount(r.personalExemption)} personal exemption, rounded down to{' '}
+          Annual net income: the monthly taxable × 12, less the {formatMoney(r.personalExemption)} personal exemption, rounded down to{' '}
           {r.roundIncomeDownTo} pounds.
         </li>
         <li>
@@ -68,9 +68,9 @@ function HowItsCalculated() {
             ))}
           </ul>
           <p className="mt-1">
-            Above {formatAmount(TAX_TIERS[0].over)} a year the whole income moves to a higher tier, and its first part is taxed at a higher rate:{' '}
-            {TAX_TIERS.map((t) => `above ${formatAmount(t.over)}, the first ${formatAmount(t.firstUpTo)} at ${formatPercent(t.rate)}`).join('; ')}. Above{' '}
-            {formatAmount(TOP_TIER.over)}, {formatPercent(TOP_TIER.below)} up to it and {formatPercent(TOP_TIER.rate)} on the rest. So the tax jumps at each
+            Above {formatMoney(TAX_TIERS[0].over)} a year the whole income moves to a higher tier, and its first part is taxed at a higher rate:{' '}
+            {TAX_TIERS.map((t) => `above ${formatMoney(t.over)}, the first ${formatMoney(t.firstUpTo)} at ${formatPercent(t.rate)}`).join('; ')}. Above{' '}
+            {formatMoney(TOP_TIER.over)}, {formatPercent(TOP_TIER.below)} up to it and {formatPercent(TOP_TIER.rate)} on the rest. So the tax jumps at each
             tier&apos;s limit. The monthly tax is the annual tax ÷ 12.
           </p>
         </li>

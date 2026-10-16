@@ -3,6 +3,7 @@ import {
   belowAllowancesText,
   formatAmount,
   formatEgp,
+  formatMoney,
   formatPercent,
   hourlyPayFor,
   insuredWageNote,
@@ -128,7 +129,7 @@ export function offerBreakdownRows(b: SalaryBreakdown, { hourly = false, insured
           {
             label: 'Allowances',
             amount: b.allowances,
-            note: b.taxableAllowances > 0 ? `${formatAmount(b.taxableAllowances)} of it taxed` : 'not taxed',
+            note: b.taxableAllowances > 0 ? `${formatMoney(b.taxableAllowances)} of it taxed` : 'not taxed',
             kind: 'addition' as const,
           },
         ]
@@ -144,7 +145,7 @@ export function offerBreakdownRows(b: SalaryBreakdown, { hourly = false, insured
     {
       label: 'Company cost',
       amount: b.companyCost,
-      note: `gross and allowances, plus the company's ${formatPercent(r.employerInsuranceRate)} insurance, ${formatAmount(b.employerInsurance)}`,
+      note: `gross and allowances, plus the company's ${formatPercent(r.employerInsuranceRate)} insurance, ${formatMoney(b.employerInsurance)}`,
       kind: 'company',
     },
   ];

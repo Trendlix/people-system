@@ -35,7 +35,12 @@ export function formatEgp(amount: number): string {
   return `EGP ${piastres.format(amount)}`;
 }
 
-/** 16700 → "16,700"; 22.5 → "22.5" (hours as well as amounts). */
+/** An amount without "EGP", always with two decimals (as formatEgp): 16700 → "16,700.00", for limits, tiers and notes. */
+export function formatMoney(amount: number): string {
+  return piastres.format(amount);
+}
+
+/** A number that isn't money, e.g. hours: 22.5 → "22.5", 40 → "40". */
 export function formatAmount(amount: number): string {
   return money.format(amount);
 }
@@ -170,15 +175,15 @@ export function formatPercent(rate: number): string {
  */
 export function insuredWageNote(b: Pick<SalaryBreakdown, 'gross' | 'insuredWage'>, insuredAllowances = 0): string | undefined {
   const base = cents(b.gross + insuredAllowances);
-  if (b.insuredWage < base) return `capped at ${formatAmount(b.insuredWage)}`;
-  if (b.insuredWage > base) return `raised to the minimum, ${formatAmount(b.insuredWage)}`;
+  if (b.insuredWage < base) return `capped at ${formatMoney(b.insuredWage)}`;
+  if (b.insuredWage > base) return `raised to the minimum, ${formatMoney(b.insuredWage)}`;
   return insuredAllowances > 0 ? 'the gross and the insured allowances' : undefined;
 }
 
 /** How the allowances are treated, in a few words: "taxed, not insured", or "1,000 taxed, 500 insured" when they differ. */
 export function allowancesNote(allowances: readonly AllowanceTerms[]): string {
   const t = allowanceTotals(allowances);
-  const part = (amount: number, word: string) => (amount >= t.total ? word : amount <= 0 ? `not ${word}` : `${formatAmount(amount)} ${word}`);
+  const part = (amount: number, word: string) => (amount >= t.total ? word : amount <= 0 ? `not ${word}` : `${formatMoney(amount)} ${word}`);
   return `${part(t.taxable, 'taxed')}, ${part(t.insured, 'insured')}`;
 }
 
@@ -224,7 +229,7 @@ export function breakdownRows(b: SalaryBreakdown, allowances: readonly Allowance
     {
       label: 'Company cost',
       amount: b.companyCost,
-      note: `${withAllowances ? 'gross and allowances' : 'gross'} plus the company's ${formatPercent(r.employerInsuranceRate)} insurance, ${formatAmount(b.employerInsurance)}`,
+      note: `${withAllowances ? 'gross and allowances' : 'gross'} plus the company's ${formatPercent(r.employerInsuranceRate)} insurance, ${formatMoney(b.employerInsurance)}`,
       kind: 'company',
     },
   ];

@@ -129,8 +129,8 @@ describe('gross and net', () => {
   });
 
   it('says when the insured wage is capped or raised', () => {
-    expect(insuredWageNote({ gross: 25000, insuredWage: 16700 })).toBe('capped at 16,700');
-    expect(insuredWageNote({ gross: 2000, insuredWage: 2700 })).toBe('raised to the minimum, 2,700');
+    expect(insuredWageNote({ gross: 25000, insuredWage: 16700 })).toBe('capped at 16,700.00');
+    expect(insuredWageNote({ gross: 2000, insuredWage: 2700 })).toBe('raised to the minimum, 2,700.00');
     expect(insuredWageNote({ gross: 12000, insuredWage: 12000 })).toBeUndefined();
   });
 
@@ -154,7 +154,7 @@ describe('gross and net', () => {
       ['Net salary', expect.any(Number), 'total'],
       ['Company cost', 28131.25, 'company'],
     ]);
-    expect(rows[1].note).toBe('capped at 16,700');
+    expect(rows[1].note).toBe('capped at 16,700.00');
     expect(rows[6].note).toBe("gross plus the company's 18.75% insurance, 3,131.25");
     // what is deducted adds up to the net
     const b = grossToNet(25000, 2026);
@@ -207,13 +207,13 @@ describe('allowances on top of the gross', () => {
     expect(allowancesNote([TAXED])).toBe('taxed, not insured');
     expect(allowancesNote([UNTAXED])).toBe('not taxed, not insured');
     expect(allowancesNote([INSURED])).toBe('taxed, insured');
-    expect(allowancesNote([TAXED, UNTAXED, INSURED])).toBe('3,000 taxed, 2,000 insured');
+    expect(allowancesNote([TAXED, UNTAXED, INSURED])).toBe('3,000.00 taxed, 2,000.00 insured');
   });
 
   it('says when the insured wage is the gross with the insured allowances', () => {
     expect(insuredWageNote({ gross: 12000, insuredWage: 14000 }, 2000)).toBe('the gross and the insured allowances');
-    expect(insuredWageNote({ gross: 16000, insuredWage: 16700 }, 2000)).toBe('capped at 16,700');
-    expect(insuredWageNote({ gross: 500, insuredWage: 2700 }, 1000)).toBe('raised to the minimum, 2,700');
+    expect(insuredWageNote({ gross: 16000, insuredWage: 16700 }, 2000)).toBe('capped at 16,700.00');
+    expect(insuredWageNote({ gross: 500, insuredWage: 2700 }, 1000)).toBe('raised to the minimum, 2,700.00');
   });
 
   it('lists them in the contract form breakdown', () => {
@@ -221,10 +221,10 @@ describe('allowances on top of the gross', () => {
     const rows = breakdownRows(grossToNet(12000, 2026, allowances), allowances);
     expect(rows.slice(0, 3).map((r) => [r.label, r.amount, r.note])).toEqual([
       ['Gross salary', 12000, undefined],
-      ['Allowances', 3000, 'taxed, 2,000 insured'],
+      ['Allowances', 3000, 'taxed, 2,000.00 insured'],
       ['Insured wage', 14000, 'the gross and the insured allowances'],
     ]);
-    expect(rows.at(-1)?.note).toBe("gross and allowances plus the company's 18.75% insurance, 2,625");
+    expect(rows.at(-1)?.note).toBe("gross and allowances plus the company's 18.75% insurance, 2,625.00");
     // none: no row
     expect(breakdownRows(grossToNet(12000, 2026)).map((r) => r.label)).not.toContain('Allowances');
   });

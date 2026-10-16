@@ -146,9 +146,9 @@ describe('the salary calculator', () => {
       ['Company social insurance', 3131.25, 'amount'],
       ['Company cost', 19831.25, 'total'],
     ]);
-    expect(employee[1].how).toBe('The gross, at most the 2026 maximum insurable wage (16,700) and at least its minimum (2,700)');
+    expect(employee[1].how).toBe('The gross, at most the 2026 maximum insurable wage (16,700.00) and at least its minimum (2,700.00)');
     expect(employee[2].how).toBe('11% of the insured wage');
-    expect(employee[4].how).toBe('Monthly taxable × 12, less the 20,000 personal exemption, rounded down to 10 pounds');
+    expect(employee[4].how).toBe('Monthly taxable × 12, less the 20,000.00 personal exemption, rounded down to 10 pounds');
   });
 
   it('lists the allowances under the gross, and says how they change the rest', () => {
@@ -170,7 +170,7 @@ describe('the salary calculator', () => {
       ['Allowances in total', 3500, 'subtotal'],
     ]);
     expect(employee[1].how).toBe('Allowance, a month on top of the gross: taxed, not insured');
-    expect(employee[4].how).toBe('On top of the gross: 3,000 taxed, 2,000 insured');
+    expect(employee[4].how).toBe('On top of the gross: 3,000.00 taxed, 2,000.00 insured');
     // the housing allowance is insured with the gross
     expect(employee[5]).toMatchObject({ label: 'Insured wage', amount: 14000, note: 'the gross and the insured allowances' });
     expect(employee[5].how).toMatch(/^The gross and the insured allowances, at most/);
@@ -211,19 +211,19 @@ describe('the salary calculator', () => {
 
   it('notes a capped insured wage, with the year’s limits', () => {
     const { employee } = calculatorRows(netToGross(20000, 2025), 2025);
-    expect(employee[1].note).toBe('capped at 14,500');
-    expect(employee[1].how).toContain('2025 maximum insurable wage (14,500)');
+    expect(employee[1].note).toBe('capped at 14,500.00');
+    expect(employee[1].how).toContain('2025 maximum insurable wage (14,500.00)');
     expect(calculatorRows(grossToNet(25000, 2027), 2027).employee[1].how).toContain('2026 maximum');
   });
 
   it('lists the brackets', () => {
     expect(bracketLabels()).toEqual([
-      'Up to 40,000: 0%',
-      '40,000 to 55,000: 10%',
-      '55,000 to 70,000: 15%',
-      '70,000 to 200,000: 20%',
-      '200,000 to 400,000: 22.5%',
-      'Above 400,000: 25%',
+      'Up to 40,000.00: 0%',
+      '40,000.00 to 55,000.00: 10%',
+      '55,000.00 to 70,000.00: 15%',
+      '70,000.00 to 200,000.00: 20%',
+      '200,000.00 to 400,000.00: 22.5%',
+      'Above 400,000.00: 25%',
     ]);
   });
 

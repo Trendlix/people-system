@@ -3,7 +3,7 @@ import {
   allowancesNote,
   allowanceTotals,
   basisFrom,
-  formatAmount,
+  formatMoney,
   formatEgp,
   formatPercent,
   insurableLimits,
@@ -179,7 +179,7 @@ export function calculatorRows(
         : []),
       {
         label: 'Insured wage',
-        how: `${totals.insured > 0 ? 'The gross and the insured allowances' : 'The gross'}, at most the ${limits.year} maximum insurable wage (${formatAmount(limits.max)}) and at least its minimum (${formatAmount(limits.min)})`,
+        how: `${totals.insured > 0 ? 'The gross and the insured allowances' : 'The gross'}, at most the ${limits.year} maximum insurable wage (${formatMoney(limits.max)}) and at least its minimum (${formatMoney(limits.min)})`,
         amount: b.insuredWage,
         note: insuredWageNote(b, totals.insured),
         kind: 'amount',
@@ -196,7 +196,7 @@ export function calculatorRows(
       { label: 'Monthly taxable', how: `${totals.taxable > 0 ? 'The gross and the taxed allowances' : 'The gross'} less social insurance`, amount: b.monthlyTaxable, kind: 'subtotal' },
       {
         label: 'Annual net income (a year)',
-        how: `Monthly taxable × 12, less the ${formatAmount(r.personalExemption)} personal exemption, rounded down to ${r.roundIncomeDownTo} pounds`,
+        how: `Monthly taxable × 12, less the ${formatMoney(r.personalExemption)} personal exemption, rounded down to ${r.roundIncomeDownTo} pounds`,
         amount: b.annualNetIncome,
         kind: 'amount',
       },
@@ -259,7 +259,7 @@ export const TOP_TIER = { over: 1_200_000, rate: 0.275, below: 0.25 } as const;
 export function bracketLabels(): string[] {
   return TAX_BRACKETS.map(({ upTo, rate }, i) => {
     const from = i === 0 ? 0 : TAX_BRACKETS[i - 1].upTo;
-    const range = i === 0 ? `Up to ${formatAmount(upTo)}` : upTo === Infinity ? `Above ${formatAmount(from)}` : `${formatAmount(from)} to ${formatAmount(upTo)}`;
+    const range = i === 0 ? `Up to ${formatMoney(upTo)}` : upTo === Infinity ? `Above ${formatMoney(from)}` : `${formatMoney(from)} to ${formatMoney(upTo)}`;
     return `${range}: ${formatPercent(rate)}`;
   });
 }
