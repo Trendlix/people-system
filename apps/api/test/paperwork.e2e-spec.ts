@@ -322,6 +322,24 @@ describe('Paperwork (e2e)', () => {
       await crop(unread.id, { crop: { x: 0, y: 0, w: 0.5, h: 0.9 } }).expect(200);
     });
 
+    it('checks the square against the photo as the crop window showed it, which may be turned the other way round', async () => {
+      // a 600 × 800 photo a browser shows as 800 × 600, turned by orientation data its header reading doesn't see (16
+      // October 2026: a crop was refused as not square)
+      const photo = await upload(pngSized(600, 800), 'turned.png', 'personal_photo');
+      // 450 × 450 pixels of the photo shown as 800 × 600
+      const TURNED = { x: 0, y: 0, w: 0.5625, h: 0.75 };
+      expect((await crop(photo.id, { crop: TURNED, size: { width: 800, height: 600 } }).expect(200)).body).toEqual({ photoCrop: TURNED });
+      // without the size, the header's is taken either way round
+      await crop(photo.id, { crop: null }).expect(200);
+      expect((await crop(photo.id, { crop: TURNED }).expect(200)).body).toEqual({ photoCrop: TURNED });
+      // with it, the square is the size sent's
+      expect((await crop(photo.id, { crop: CROP, size: { width: 800, height: 600 } }).expect(400)).body.message).toBe('The crop must be a square.');
+      expect((await crop(photo.id, { crop: CROP, size: { width: 600, height: 800 } }).expect(200)).body).toEqual({ photoCrop: CROP });
+      for (const size of [{ width: 0, height: 800 }, { width: 600.5, height: 800 }, { width: 600 }]) {
+        expect((await crop(photo.id, { crop: CROP, size }).expect(400)).body.message).toEqual(['Send the photo’s size in whole pixels.']);
+      }
+    });
+
     it('is only for a personal photo kept as an image', async () => {
       const card = await upload(png('NONE'), 'card.png', 'national_id_front');
       const scanned = await upload(pdf('NONE'), 'photo.pdf', 'personal_photo');

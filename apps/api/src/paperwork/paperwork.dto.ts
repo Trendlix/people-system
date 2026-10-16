@@ -66,6 +66,23 @@ class PhotoCropDto implements PhotoCrop {
 }
 
 const SEND_CROP = 'Send the square of the photo to show, or null for the whole photo.';
+const SEND_SIZE = 'Send the photo’s size in whole pixels.';
+
+/** A side of a photo in whole pixels, from 1 to 100,000: one message, whatever is wrong with it. */
+const IsPixels = () =>
+  ValidateBy({
+    name: 'isPixels',
+    validator: { validate: (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 100_000, defaultMessage: () => SEND_SIZE },
+  });
+
+/** A photo's size in pixels, as the crop window measured it. */
+class PhotoSizeDto {
+  @IsPixels()
+  width: number;
+
+  @IsPixels()
+  height: number;
+}
 
 /**
  * The crop of the picture beside the name: the square to show, or null for the whole photo, centred. Sent as `{ crop }`
@@ -77,6 +94,15 @@ export class SetPhotoCropDto {
   @ValidateNested({ message: SEND_CROP })
   @Type(() => PhotoCropDto)
   crop: PhotoCropDto | null;
+
+  /**
+   * The photo's size as the crop window showed it, turned upright, which the square is checked against. Optional: without
+   * it, the size read from the photo's header is taken either way round (see PaperworkService.cropPhoto).
+   */
+  @IsOptional()
+  @ValidateNested({ message: SEND_SIZE })
+  @Type(() => PhotoSizeDto)
+  size?: PhotoSizeDto;
 }
 
 export class SearchPaperworkDto {

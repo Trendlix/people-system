@@ -143,7 +143,7 @@ export class PaperworkController {
   @Roles('hr')
   @Put(':itemId/photo-crop')
   cropPhoto(@Param('itemId', ParseUUIDPipe) itemId: string, @Body() dto: SetPhotoCropDto, @CurrentUser() user: SessionUser) {
-    return this.paperwork.cropPhoto(itemId, dto.crop, user);
+    return this.paperwork.cropPhoto(itemId, dto.crop, user, dto.size);
   }
 
   @Roles('hr', 'ceo')

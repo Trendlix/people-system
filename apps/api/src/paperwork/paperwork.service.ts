@@ -249,10 +249,13 @@ export class PaperworkService {
   /**
    * The square of a personal photo shown in the circle beside the name, to make the face bigger (owner's request, 16
    * October 2026), or null for the whole photo, centred. Only a personal photo kept as an image has one, and the file
-   * itself never changes. The square is checked against the photo's size as shown, read from its header; a photo whose
-   * size can't be read takes any shape. Logged like the paper's other changes, from and to. Answers the crop as kept.
+   * itself never changes. The square is checked against the photo's size as the crop window showed it (`shown`), else
+   * as read from its header, either way round: a browser turns a photo upright by orientation data the header reading
+   * doesn't see (in a PNG or a WebP), so the two can have width and height swapped (16 October 2026: a crop of a photo
+   * was refused as not square). A photo whose size can't be read takes any shape. Logged like the paper's other
+   * changes, from and to. Answers the crop as kept.
    */
-  async cropPhoto(itemId: string, crop: PhotoCrop | null, user: SessionUser) {
+  async cropPhoto(itemId: string, crop: PhotoCrop | null, user: SessionUser, shown?: { width: number; height: number }) {
     const item = await this.prisma.paperworkItem.findFirst({
       where: { id: itemId, ...PHOTO_PAPER },
       select: { employeeId: true, mimeType: true, data: true, photoCrop: true },
@@ -261,8 +264,10 @@ export class PaperworkService {
     // its four values only, as plain numbers
     const after = crop && { x: crop.x, y: crop.y, w: crop.w, h: crop.h };
     if (after) {
-      const problem = photoCropProblem(after, photoSize(Buffer.from(item.data.buffer, item.data.byteOffset, item.data.byteLength), item.mimeType as PaperworkType));
-      if (problem) throw new BadRequestException(problem);
+      const header = photoSize(Buffer.from(item.data.buffer, item.data.byteOffset, item.data.byteLength), item.mimeType as PaperworkType);
+      const sizes = shown ? [{ width: shown.width, height: shown.height }] : header ? [header, { width: header.height, height: header.width }] : [null];
+      const problems = sizes.map((size) => photoCropProblem(after, size));
+      if (problems.every(Boolean)) throw new BadRequestException(problems[0]);
     }
     await this.prisma.paperworkItem.update({ where: { id: itemId }, data: { photoCrop: after ?? Prisma.DbNull } });
     const diff = changes({ photoCrop: storedCrop(item.photoCrop) }, { photoCrop: after });
