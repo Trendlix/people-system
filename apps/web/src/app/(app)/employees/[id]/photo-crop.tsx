@@ -192,7 +192,7 @@ function CropWindow({ photoId, crop, name, onSaved, onClosed }: { photoId: strin
         </button>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-5 overflow-auto p-4 sm:grid-cols-[minmax(0,20rem)_1fr] sm:p-5">
+      <div className="grid min-h-0 flex-auto gap-5 overflow-auto p-4 sm:grid-cols-[minmax(0,20rem)_1fr] sm:p-5">
         <div className="mx-auto w-full max-w-80 space-y-3">
           <div
             ref={stage}

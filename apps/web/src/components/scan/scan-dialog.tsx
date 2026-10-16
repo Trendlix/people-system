@@ -749,7 +749,7 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">{body}</div>
+      <div className="min-h-0 flex-auto overflow-y-auto p-5">{body}</div>
 
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line px-5 py-3">
         {version && <p className="w-full text-xs text-muted sm:mr-auto sm:w-auto">TrendLIX Scan Helper {version}</p>}
