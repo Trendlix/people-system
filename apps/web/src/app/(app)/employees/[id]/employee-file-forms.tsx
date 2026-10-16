@@ -8,6 +8,7 @@ import { FileDrop } from '@/components/file-drop';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import { FileCheck } from '@/components/scan/file-check';
 import { ScanButton } from '@/components/scan/scan-dialog';
+import { Select } from '@/components/select';
 import type { ScanResult } from '@/lib/scan-helper';
 import type { FormState } from '@/lib/types';
 import { limitFileSize, PAPERWORK_ACCEPT, PDF_MAX_BYTES } from '../paperwork';
@@ -108,13 +109,13 @@ export function UploadPaperworkForm({ action, defaultKind }: { action: Action; d
           <label htmlFor={fid('kind')} className="label">
             Document
           </label>
-          <select id={fid('kind')} name="kind" defaultValue={defaultKind} onChange={(e) => setKind(e.currentTarget.value)} className="input">
+          <Select id={fid('kind')} name="kind" defaultValue={defaultKind} onChange={(e) => setKind(e.currentTarget.value)} className="input">
             {UPLOAD_KINDS.map((k) => (
               <option key={k} value={k}>
                 {PAPERWORK_LABELS[k]}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label htmlFor={fid('file')} className="label">

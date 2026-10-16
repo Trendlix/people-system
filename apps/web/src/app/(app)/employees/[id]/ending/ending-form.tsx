@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import { formatDate, parseDate } from '@/lib/format';
 import type { EndingRule, FormState } from '@/lib/types';
 import { addDays, noticeLabel, noticeLastDay } from '../contracts/dates';
@@ -156,7 +157,7 @@ export function EndingForm({
         <label htmlFor={fid('ruleKey')} className="label">
           How the employment ends
         </label>
-        <select
+        <Select
           id={fid('ruleKey')}
           name="ruleKey"
           required
@@ -171,7 +172,7 @@ export function EndingForm({
               {r.label}
             </option>
           ))}
-        </select>
+        </Select>
         <p id={fid('ruleKey-hint')} className="hint">
           {rule
             ? `${noticeLabel(rule.noticeAmount, rule.noticeUnit)}${rule.payInLieu ? ', which can be paid instead of worked' : ''}. ${rule.source}.`

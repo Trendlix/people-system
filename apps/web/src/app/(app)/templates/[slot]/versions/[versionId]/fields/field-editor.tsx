@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { PDF_FIELDS_MAX, TEMPLATE_VERSION_STATUS_LABELS, type PdfField, type PdfPageSize, type PdfRect, type TemplateLanguage, type TemplateVersionStatus } from '@trendlix/shared';
 import { FormErrors } from '@/components/form';
+import { Select } from '@/components/select';
 import { applyStandardLayout, saveTemplateFields } from '../../../../actions';
 import { PreviewWithData } from '../../../../preview-with-data';
 import { count } from '../../../../tag-check';
@@ -140,13 +141,13 @@ function CopyFields({ sources, current, onCopy }: { sources: readonly CopySource
           <label htmlFor={selectId} className="text-muted">
             Copy fields from
           </label>
-          <select id={selectId} value={source?.id} onChange={(e) => setFrom(e.target.value)} className="input min-h-9 w-auto py-1">
+          <Select id={selectId} value={source?.id} onChange={(e) => setFrom(e.target.value)} className="input min-h-9 w-auto py-1">
             {sources.map((s) => (
               <option key={s.id} value={s.id}>
                 v{s.version} ({count(s.fieldCount, 'field')})
               </option>
             ))}
-          </select>
+          </Select>
           <button type="button" onClick={copy} disabled={busy} className="font-semibold text-accent hover:underline disabled:opacity-60">
             {busy ? 'Copying…' : 'Copy'}
           </button>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useFieldIds } from '@/components/form';
+import { Select } from '@/components/select';
 import { treatmentText, type AllowanceRow } from '@/lib/allowances';
 import type { AllowanceType } from '@/lib/types';
 
@@ -55,7 +56,7 @@ export function AllowanceRows({
                   <label htmlFor={fid(`kind-${i}`)} className="sr-only">
                     Allowance {i + 1}: kind
                   </label>
-                  <select
+                  <Select
                     id={fid(`kind-${i}`)}
                     name="allowanceTypeId"
                     value={row.allowanceTypeId}
@@ -69,7 +70,7 @@ export function AllowanceRows({
                         {!t.active ? ' (inactive)' : ''}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   {kind && <p className="hint">{treatmentText(kind)}</p>}
                 </div>
                 <div className="w-40">

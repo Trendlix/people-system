@@ -3,6 +3,7 @@
 import { NOTICE_UNIT_LABELS, NOTICE_UNITS } from '@trendlix/shared';
 import Link from 'next/link';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import type { EndingRule, FormState } from '@/lib/types';
 
 const choice =
@@ -58,13 +59,13 @@ export function EndingRuleForm({ action, rule }: { action: (prev: FormState, fd:
             <label htmlFor={fid('noticeUnit')} className="mb-1 block text-sm text-muted">
               Counted in
             </label>
-            <select id={fid('noticeUnit')} name="noticeUnit" defaultValue={valueOf(state, 'noticeUnit', rule.noticeUnit)} className="input">
+            <Select id={fid('noticeUnit')} name="noticeUnit" defaultValue={valueOf(state, 'noticeUnit', rule.noticeUnit)} className="input">
               {NOTICE_UNITS.map((u) => (
                 <option key={u} value={u}>
                   {NOTICE_UNIT_LABELS[u]}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
         <p id={fid('notice-hint')} className="hint">

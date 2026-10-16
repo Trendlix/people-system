@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { RichTextEditor } from '@/components/rich-text-editor';
+import { Select } from '@/components/select';
 import type { Department, FormState, Grade, JobTitle } from '@/lib/types';
 import { gradeLabel } from '../grades/label';
 
@@ -55,7 +56,7 @@ export function JobTitleForm({
         <label htmlFor={fid('departmentId')} className="label">
           Department or team
         </label>
-        <select
+        <Select
           id={fid('departmentId')}
           name="departmentId"
           required
@@ -65,7 +66,7 @@ export function JobTitleForm({
         >
           <option value="">Choose a department or team</option>
           <DepartmentOrTeamOptions departments={departments} />
-        </select>
+        </Select>
         <p id={fid('departmentId-hint')} className="hint">
           The department itself for a job title over the whole department, e.g. Head of Marketing; otherwise one of its teams,
           e.g. Content Team for Senior Content Creator.
@@ -102,7 +103,7 @@ export function JobTitleForm({
             <label htmlFor={fid('minGradeId')} className="mb-1 block text-sm text-muted">
               From
             </label>
-            <select
+            <Select
               id={fid('minGradeId')}
               name="minGradeId"
               value={minId}
@@ -126,13 +127,13 @@ export function JobTitleForm({
                   {gradeLabel(g)}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
             <label htmlFor={fid('maxGradeId')} className="mb-1 block text-sm text-muted">
               To
             </label>
-            <select
+            <Select
               id={fid('maxGradeId')}
               name="maxGradeId"
               value={maxId}
@@ -148,7 +149,7 @@ export function JobTitleForm({
                   {gradeLabel(g)}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
         <p id={fid('grades-hint')} className="hint">

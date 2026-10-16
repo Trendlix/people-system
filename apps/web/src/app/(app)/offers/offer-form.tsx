@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { PhoneInput } from '@/components/phone-input';
+import { Select } from '@/components/select';
 import { allowanceRows, allowanceTerms, type AllowanceRow } from '@/lib/allowances';
 import { formatDate, parseDate } from '@/lib/format';
 import type { AllowanceType, FormState } from '@/lib/types';
@@ -176,7 +177,7 @@ export function OfferForm({
               <label htmlFor={fid('employeeId')} className="label">
                 Already has a profile {optional}
               </label>
-              <select
+              <Select
                 id={fid('employeeId')}
                 name="employeeId"
                 aria-describedby={fid('employeeId-hint')}
@@ -199,7 +200,7 @@ export function OfferForm({
                       {p.standing === 'former' ? ' (former employee)' : ''}
                     </option>
                   ))}
-              </select>
+              </Select>
               <p id={fid('employeeId-hint')} className="hint">
                 For a former employee offered a job again, or someone added before being hired: accepting adds the new employment to their profile
                 instead of making another one.

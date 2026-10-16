@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import type { Department, FormState } from '@/lib/types';
 
 /**
@@ -43,7 +44,7 @@ export function DepartmentForm({
           Department this team belongs to
         </label>
         {/* Disabled (and so not sent) for a department that has teams: it stays a department. */}
-        <select
+        <Select
           id={fid('parentId')}
           name="parentId"
           value={parentId}
@@ -58,7 +59,7 @@ export function DepartmentForm({
               {d.nameEn}
             </option>
           ))}
-        </select>
+        </Select>
         <p id={fid('parentId-hint')} className="hint">
           {teams > 0
             ? `${department?.nameEn} has ${teams} ${teams === 1 ? 'team' : 'teams'}, so it stays a department. Move its teams to another department first to make it a team.`

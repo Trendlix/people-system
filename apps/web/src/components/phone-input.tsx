@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { DIAL } from '@trendlix/shared';
+import { Select } from '@/components/select';
 import { countryChosen, keptNumber, numberLeft, numberTyped, startParts } from '@/lib/phone-typing';
 
 // A phone number as Prime ERP's forms take one: the country code, chosen from the list (Egypt first), beside the number
@@ -37,13 +38,13 @@ export function PhoneInput({
 
   return (
     <div className="grid grid-cols-[minmax(7.5rem,42%)_minmax(0,1fr)] gap-2">
-      <select aria-label={`${label}: country code`} value={parts.country} onChange={(e) => setParts(countryChosen(parts, e.target.value))} className="input">
+      <Select aria-label={`${label}: country code`} value={parts.country} onChange={(e) => setParts(countryChosen(parts, e.target.value))} className="input">
         {DIAL.map(([country, code]) => (
           <option key={country} value={country}>
             {`${country} (+${code})`}
           </option>
         ))}
-      </select>
+      </Select>
       <input
         id={id}
         type="tel"

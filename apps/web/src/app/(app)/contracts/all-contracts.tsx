@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { EMPLOYMENT_TYPES, LABELS } from '@trendlix/shared';
+import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import type { ContractListItem } from '@/lib/types';
 import { ContractStatusBadge, termLabel } from '../employees/[id]/contracts/contract-section';
@@ -18,7 +19,7 @@ type Query = Record<string, string | string[] | undefined>;
 
 const dash = <span className="text-muted">—</span>;
 
-function Select({
+function FilterSelect({
   id,
   name,
   label,
@@ -36,13 +37,13 @@ function Select({
       <label htmlFor={id} className="label">
         {label}
       </label>
-      <select id={id} name={name} defaultValue={value} className="input min-w-44">
+      <Select id={id} name={name} defaultValue={value} className="input min-w-44">
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }
@@ -68,9 +69,9 @@ function Filters({ filters: f }: { filters: ContractFilters }) {
           className="input"
         />
       </div>
-      <Select id="contract-status" name="status" label="Status" value={f.status} options={STATUS_FILTERS} />
-      <Select id="contract-type" name="type" label="Employment type" value={f.type} options={TYPE_OPTIONS} />
-      <Select id="contract-ending" name="endingWithin" label="Ending within" value={f.endingWithin === null ? '' : String(f.endingWithin)} options={ENDING_OPTIONS} />
+      <FilterSelect id="contract-status" name="status" label="Status" value={f.status} options={STATUS_FILTERS} />
+      <FilterSelect id="contract-type" name="type" label="Employment type" value={f.type} options={TYPE_OPTIONS} />
+      <FilterSelect id="contract-ending" name="endingWithin" label="Ending within" value={f.endingWithin === null ? '' : String(f.endingWithin)} options={ENDING_OPTIONS} />
       <button type="submit" className="btn btn-secondary">
         Search
       </button>

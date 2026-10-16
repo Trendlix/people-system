@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
+import { Select } from '@/components/select';
 import { choiceOption, choiceParam, dataPreviewHref, previewPeopleHref, readPeople, type PreviewChoice } from './preview-people';
 
 // "Preview with data" beside a version's Preview (owner's request, 15 October 2026: "When previewing a template, fetch
@@ -73,13 +74,13 @@ export function PreviewWithData({
           <label htmlFor={selectId} className="text-sm whitespace-nowrap text-muted">
             Preview as<span className="sr-only"> ({label})</span>
           </label>
-          <select ref={focusOnLoad} id={selectId} name={choiceParam(kind)} defaultValue={choices[0].id} className="input min-h-9 w-auto max-w-72 py-1">
+          <Select ref={focusOnLoad} id={selectId} name={choiceParam(kind)} defaultValue={choices[0].id} className="input min-h-9 w-auto max-w-72 py-1">
             {choices.map((p) => (
               <option key={p.id} value={p.id}>
                 {choiceOption(p)}
               </option>
             ))}
-          </select>
+          </Select>
           <button type="submit" className={`${textButton} text-accent`}>
             Open<span className="sr-only"> the preview as a PDF, in a new tab</span>
           </button>

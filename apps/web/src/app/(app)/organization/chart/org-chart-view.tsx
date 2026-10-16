@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import { useEffect, useId, useMemo, useState, useSyncExternalStore } from 'react';
+import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import type { OrgChart } from '@/lib/types';
 import { dataAddress, pdfFile, pngFile, saveFile, svgFile } from './export';
@@ -174,7 +175,7 @@ export function OrgChartView({ chart }: { chart: OrgChart }) {
             <label htmlFor={`${id}-arrangement`} className="label">
               Arrangement
             </label>
-            <select
+            <Select
               id={`${id}-arrangement`}
               value={arrangement}
               onChange={(e) => setArrangement(e.target.value as Arrangement)}
@@ -186,19 +187,19 @@ export function OrgChartView({ chart }: { chart: OrgChart }) {
                   {a.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
             <label htmlFor={`${id}-zoom`} className="label">
               Zoom
             </label>
-            <select id={`${id}-zoom`} value={zoom} onChange={(e) => setZoom(e.target.value)} className="input w-auto">
+            <Select id={`${id}-zoom`} value={zoom} onChange={(e) => setZoom(e.target.value)} className="input w-auto">
               {ZOOMS.map((z) => (
                 <option key={z.value} value={z.value}>
                   {z.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
         <p id={`${id}-arrangement-hint`} className="hint">
@@ -214,13 +215,13 @@ export function OrgChartView({ chart }: { chart: OrgChart }) {
             <label htmlFor={`${id}-paper`} className="label">
               PDF page
             </label>
-            <select id={`${id}-paper`} value={paper} onChange={(e) => setPaper(e.target.value as ChartPaper)} className="input w-auto">
+            <Select id={`${id}-paper`} value={paper} onChange={(e) => setPaper(e.target.value as ChartPaper)} className="input w-auto">
               {PAPERS.map((p) => (
                 <option key={p.value} value={p.value}>
                   {p.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <button type="button" disabled={!layout || busy !== null} onClick={() => download('pdf')} className="btn btn-primary">
             {busy === 'pdf' ? 'Making PDF…' : 'Download PDF'}

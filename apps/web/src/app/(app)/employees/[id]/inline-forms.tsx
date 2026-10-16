@@ -4,6 +4,7 @@ import { PAPERWORK_KINDS, PAPERWORK_LABELS, RESTRICTED_PAPERWORK, type Paperwork
 import { useActionState, useState } from 'react';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import type { FormState } from '@/lib/types';
 
 // Small forms inside the profile's tabs: deleting an employment from the history, and a paper's number, expiry and kind.
@@ -119,7 +120,7 @@ function EditablePaperDetails({
             <label htmlFor={fid('kind')} className="label">
               Document type
             </label>
-            <select
+            <Select
               id={fid('kind')}
               name="kind"
               aria-describedby={fid('kind-hint')}
@@ -131,7 +132,7 @@ function EditablePaperDetails({
                   {PAPERWORK_LABELS[k]}
                 </option>
               ))}
-            </select>
+            </Select>
             <p id={fid('kind-hint')} className="hint">
               Uploaded as the wrong document? Choose the right one and the file moves there.
             </p>

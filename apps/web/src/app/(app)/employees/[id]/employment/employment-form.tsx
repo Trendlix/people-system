@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { END_REASON_LABELS, END_REASONS } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import type { Employment, FormState } from '@/lib/types';
 import { EmploymentFields, type EmploymentPickers } from '../../employment-fields';
@@ -26,7 +27,7 @@ function EndFields({ state, fid, employment }: { state: FormState; fid: (name: s
         <label htmlFor={fid('endReason')} className="label">
           Reason
         </label>
-        <select
+        <Select
           id={fid('endReason')}
           name="endReason"
           required
@@ -40,7 +41,7 @@ function EndFields({ state, fid, employment }: { state: FormState; fid: (name: s
               {END_REASON_LABELS[r]}
             </option>
           ))}
-        </select>
+        </Select>
         <p id={fid('endReason-hint')} className="hint">
           Resigned gives the status Resigned; the others give Terminated.
         </p>

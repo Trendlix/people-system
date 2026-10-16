@@ -18,6 +18,7 @@ import { DateInput } from '@/components/date-time-inputs';
 import { ListOrOther, type ListGroup } from '@/components/list-or-other';
 import { valueOf } from '@/components/form';
 import { PhoneInput } from '@/components/phone-input';
+import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, FormState } from '@/lib/types';
 import { cardMarks, type CardSuggestions } from './id-card';
@@ -286,7 +287,7 @@ export function PersonalFields({
       // A stored value that is no longer in the list (e.g. imported) stays selectable, so saving doesn't clear it.
       const list = saved && !f.options?.some((o) => o.value === saved) ? [...(f.options ?? []), { value: saved, label: saved }] : (f.options ?? []);
       return (
-        <select
+        <Select
           id={id}
           name={f.name}
           aria-describedby={describedBy}
@@ -303,7 +304,7 @@ export function PersonalFields({
               {o.label}
             </option>
           ))}
-        </select>
+        </Select>
       );
     }
     const common = {

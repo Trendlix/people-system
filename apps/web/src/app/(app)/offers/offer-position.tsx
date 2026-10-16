@@ -7,6 +7,7 @@ import { EMPLOYMENT_TYPES, LABELS, WORK_ARRANGEMENTS } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import { formatDate, formatTime } from '@/lib/format';
 import type { FormState, Grade } from '@/lib/types';
 import type { EmploymentPickers } from '../employees/employment-fields';
@@ -109,7 +110,7 @@ export function OfferPositionFields({
           <label htmlFor={fid('employmentType')} className="label">
             Employment type
           </label>
-          <select
+          <Select
             id={fid('employmentType')}
             name="employmentType"
             required
@@ -123,7 +124,7 @@ export function OfferPositionFields({
                 {LABELS.employmentType[t]}
               </option>
             ))}
-          </select>
+          </Select>
           <p id={fid('employmentType-hint')} className="hint">
             Picks the job offer template: each type has its own in Templates.
           </p>
@@ -148,17 +149,17 @@ export function OfferPositionFields({
           <label htmlFor={fid('departmentId')} className="label">
             Department or team
           </label>
-          <select id={fid('departmentId')} name="departmentId" value={departmentId} onChange={(e) => pickDepartment(e.target.value)} className="input">
+          <Select id={fid('departmentId')} name="departmentId" value={departmentId} onChange={(e) => pickDepartment(e.target.value)} className="input">
             <option value="">No department or team</option>
             <DepartmentOrTeamOptions departments={pickers.departments} />
-          </select>
+          </Select>
         </div>
         <div id="field-jobTitleId" className="scroll-mt-6">
           <label htmlFor={fid('jobTitleId')} className="label">
             Job title
           </label>
           {/* disabled (and so not sent) until a department or team with job titles is chosen */}
-          <select
+          <Select
             id={fid('jobTitleId')}
             name="jobTitleId"
             value={jobTitleId}
@@ -173,7 +174,7 @@ export function OfferPositionFields({
                 {j.titleEn}
               </option>
             ))}
-          </select>
+          </Select>
           {noTitles && (
             <p id={fid('jobTitleId-hint')} className="hint">
               {chosen.parentId ? 'No job titles in this team yet.' : 'No job titles of the department itself yet.'}{' '}
@@ -189,7 +190,7 @@ export function OfferPositionFields({
           <label htmlFor={fid('gradeId')} className="label">
             Grade
           </label>
-          <select
+          <Select
             id={fid('gradeId')}
             name="gradeId"
             value={gradeId}
@@ -207,7 +208,7 @@ export function OfferPositionFields({
                 {gradeLabel(g)}
               </option>
             ))}
-          </select>
+          </Select>
           {(range || outOfRange) && (
             <p id={fid('gradeId-hint')} className={`hint ${outOfRange ? 'text-warn' : ''}`}>
               {outOfRange ? `${range} ${gradeLabel(grade)} was set before that.` : range}
@@ -225,21 +226,21 @@ export function OfferPositionFields({
           <label htmlFor={fid('managerId')} className="label">
             Direct manager
           </label>
-          <select id={fid('managerId')} name="managerId" defaultValue={managerId} className="input">
+          <Select id={fid('managerId')} name="managerId" defaultValue={managerId} className="input">
             <option value="">No direct manager</option>
             {managers.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.fullNameEn} · {m.employeeCode}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div id="field-workArrangement" className="scroll-mt-6">
           <label htmlFor={fid('workArrangement')} className="label">
             Work arrangement
           </label>
-          <select
+          <Select
             id={fid('workArrangement')}
             name="workArrangement"
             value={arrangement}
@@ -251,20 +252,20 @@ export function OfferPositionFields({
                 {LABELS.workArrangement[w]}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div id="field-shiftId" className="scroll-mt-6">
           <label htmlFor={fid('shiftId')} className="label">
             Shift
           </label>
-          <select id={fid('shiftId')} name="shiftId" defaultValue={valueOf(state, 'shiftId', defaults.shiftId)} className="input">
+          <Select id={fid('shiftId')} name="shiftId" defaultValue={valueOf(state, 'shiftId', defaults.shiftId)} className="input">
             <option value="">No shift</option>
             {pickers.shifts.map((s) => (
               <option key={s.id} value={s.id}>
                 Shift {s.code} · {formatTime(s.startTime)} – {formatTime(s.endTime)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 

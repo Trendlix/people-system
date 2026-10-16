@@ -7,6 +7,7 @@ import { EMPLOYMENT_TYPES, LABELS, PROBATION_MONTHS, WORK_ARRANGEMENTS } from '@
 import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import { formatDate, formatTime } from '@/lib/format';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
@@ -129,7 +130,7 @@ export function EmploymentFields({
           <label htmlFor={fid('employmentType')} className="label">
             Employment type
           </label>
-          <select
+          <Select
             id={fid('employmentType')}
             name="employmentType"
             required
@@ -144,7 +145,7 @@ export function EmploymentFields({
                 {LABELS.employmentType[t]}
               </option>
             ))}
-          </select>
+          </Select>
           {/* the pay terms belong to the contract, not the employment (owner, 15 October 2026) */}
           {type === 'part_time' && (
             <p id={fid('employmentType-hint')} className="hint">
@@ -157,13 +158,13 @@ export function EmploymentFields({
             Status
           </label>
           {status.kind === 'choose' ? (
-            <select id={fid('status')} name="status" defaultValue={valueOf(state, 'status', employment?.status)} className="input">
+            <Select id={fid('status')} name="status" defaultValue={valueOf(state, 'status', employment?.status)} className="input">
               {status.options.map((s) => (
                 <option key={s} value={s}>
                   {LABELS.status[s]}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : (
             // not sent (no name): the system sets it, or for an ended employment why it ended
             <>
@@ -186,7 +187,7 @@ export function EmploymentFields({
             Department or team
           </label>
           {/* Each department as a group: the department itself first, then its teams; typing a team's first letters still picks it. */}
-          <select
+          <Select
             id={fid('departmentId')}
             name="departmentId"
             value={departmentId}
@@ -195,14 +196,14 @@ export function EmploymentFields({
           >
             <option value="">No department or team</option>
             <DepartmentOrTeamOptions departments={pickers.departments} />
-          </select>
+          </Select>
         </div>
         <div>
           <label htmlFor={fid('jobTitleId')} className="label">
             Job title
           </label>
           {/* Disabled (and so not sent) until a department or team with job titles is chosen: no job title is saved then. */}
-          <select
+          <Select
             id={fid('jobTitleId')}
             name="jobTitleId"
             value={jobTitleId}
@@ -217,7 +218,7 @@ export function EmploymentFields({
                 {j.titleEn}
               </option>
             ))}
-          </select>
+          </Select>
           {noTitles && (
             <p id={fid('jobTitleId-hint')} className="hint">
               {chosen.parentId ? 'No job titles in this team yet.' : 'No job titles of the department itself yet.'}{' '}
@@ -233,7 +234,7 @@ export function EmploymentFields({
           <label htmlFor={fid('gradeId')} className="label">
             Grade
           </label>
-          <select
+          <Select
             id={fid('gradeId')}
             name="gradeId"
             value={gradeId}
@@ -251,7 +252,7 @@ export function EmploymentFields({
                 {gradeLabel(g)}
               </option>
             ))}
-          </select>
+          </Select>
           {(range || outOfRange) && (
             <p id={fid('gradeId-hint')} className={`hint ${outOfRange ? 'text-warn' : ''}`}>
               {outOfRange ? `${range} ${gradeLabel(grade)} was set before that, and can stay as it is.` : range}
@@ -270,14 +271,14 @@ export function EmploymentFields({
           <label htmlFor={fid('managerId')} className="label">
             Direct manager
           </label>
-          <select id={fid('managerId')} name="managerId" defaultValue={managerId} className="input">
+          <Select id={fid('managerId')} name="managerId" defaultValue={managerId} className="input">
             <option value="">No direct manager</option>
             {managers.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.fullNameEn} · {m.employeeCode}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div>
@@ -303,7 +304,7 @@ export function EmploymentFields({
           <label htmlFor={fid('workArrangement')} className="label">
             Work arrangement
           </label>
-          <select
+          <Select
             id={fid('workArrangement')}
             name="workArrangement"
             value={arrangement}
@@ -315,13 +316,13 @@ export function EmploymentFields({
                 {LABELS.workArrangement[w]}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label htmlFor={fid('shiftId')} className="label">
             Shift
           </label>
-          <select
+          <Select
             id={fid('shiftId')}
             name="shiftId"
             aria-describedby={fid('shiftId-hint')}
@@ -334,7 +335,7 @@ export function EmploymentFields({
                 Shift {s.code} · {formatTime(s.startTime)} – {formatTime(s.endTime)}
               </option>
             ))}
-          </select>
+          </Select>
           <p id={fid('shiftId-hint')} className="hint">
             No shift: no fixed days, e.g. a part-timer who comes in any 2 days a week.
           </p>

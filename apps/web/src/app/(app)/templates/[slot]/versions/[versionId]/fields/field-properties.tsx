@@ -11,6 +11,7 @@ import {
   type TemplateLanguage,
 } from '@trendlix/shared';
 import { useFieldIds } from '@/components/form';
+import { Select } from '@/components/select';
 import { BOXES_MAX, boxCount, clampRect, groupsText, LINES_MAX, parseGroups, round2, rowCount, setBoxCount, withRect } from './place';
 import { canBeOptional, changeKind, changeTag, dateKind, digitsSetting, fieldLabel, isAmountTag, KIND_LABELS, TAGS_BY_GROUP, withLines, withOptional } from './samples';
 
@@ -193,7 +194,7 @@ function TagSelect({ field, language, onChange }: { field: PdfField; language: T
       <label htmlFor={fid('tag')} className="label">
         {check ? 'Ticked when' : 'Tag'}
       </label>
-      <select id={fid('tag')} value={field.tag ?? ''} onChange={(e) => onChange((f) => changeTag(f, e.target.value || null, language))} className={SMALL_INPUT}>
+      <Select id={fid('tag')} value={field.tag ?? ''} onChange={(e) => onChange((f) => changeTag(f, e.target.value || null, language))} className={SMALL_INPUT}>
         {(check || !field.tag) && <option value="">{check ? 'Always ticked' : 'Choose a tag'}</option>}
         {TAGS_BY_GROUP.map((g) => (
           <optgroup key={g.group} label={g.label}>
@@ -204,7 +205,7 @@ function TagSelect({ field, language, onChange }: { field: PdfField; language: T
             ))}
           </optgroup>
         ))}
-      </select>
+      </Select>
       {!check && !field.tag && <p className="hint text-danger">Choose the tag this field prints.</p>}
     </div>
   );
@@ -253,13 +254,13 @@ export function FieldProperties({
         <label htmlFor={fid('kind')} className="label">
           Kind
         </label>
-        <select id={fid('kind')} value={field.kind} onChange={(e) => onChange((f) => changeKind(f, e.target.value as PdfField['kind'], language))} className={SMALL_INPUT}>
+        <Select id={fid('kind')} value={field.kind} onChange={(e) => onChange((f) => changeKind(f, e.target.value as PdfField['kind'], language))} className={SMALL_INPUT}>
           {PDF_FIELD_KINDS.map((k) => (
             <option key={k} value={k}>
               {KIND_LABELS[k]}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {field.kind !== 'fixed' && <TagSelect field={field} language={language} onChange={onChange} />}
@@ -394,7 +395,7 @@ export function FieldProperties({
               <label htmlFor={fid('part')} className="label">
                 Amount part
               </label>
-              <select
+              <Select
                 id={fid('part')}
                 value={field.amountPart ?? ''}
                 onChange={(e) => set({ amountPart: (e.target.value || undefined) as PdfField['amountPart'] })}
@@ -403,7 +404,7 @@ export function FieldProperties({
                 <option value="">The whole amount</option>
                 <option value="pounds">Pounds only</option>
                 <option value="piasters">Piastres only (2 digits)</option>
-              </select>
+              </Select>
             </div>
           )}
           <DigitsCheck field={field} slotKey={slotKey} onChange={onChange} />
@@ -429,7 +430,7 @@ export function FieldProperties({
             <label htmlFor={fid('page')} className="label">
               Page
             </label>
-            <select
+            <Select
               id={fid('page')}
               value={field.page}
               onChange={(e) => {
@@ -443,7 +444,7 @@ export function FieldProperties({
                   Page {i + 1}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
         <div className="grid grid-cols-2 gap-2">

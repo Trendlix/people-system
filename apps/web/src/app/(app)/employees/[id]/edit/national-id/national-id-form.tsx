@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { GENDERS, GOVERNORATES, LABELS, MARITAL_STATUSES, type Gender, type MaritalStatus } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import type { EmployeeIdentity, EmployeeProfile, FormState } from '@/lib/types';
 import { cardMarks, NationalIdFields, ReadValues, type CardSuggestions as Suggestions } from '../../../id-card';
@@ -99,13 +100,13 @@ export function NationalIdForm({
       return <DateInput id={id} name={name} aria-describedby={describedById} defaultValue={valueOf(state, name, formatDate(s.dateOfBirth))} />;
     if (key === 'gender' || key === 'maritalStatus' || key === 'governorate')
       return (
-        <select id={id} name={name} aria-describedby={describedById} defaultValue={valueOf(state, name, s[key])} className="input">
+        <Select id={id} name={name} aria-describedby={describedById} defaultValue={valueOf(state, name, s[key])} className="input">
           {choices(key).map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
-        </select>
+        </Select>
       );
     const common = { id, name, 'aria-describedby': describedById, defaultValue: valueOf(state, name, s[key]), className: 'input' };
     if (key === 'nationality') return <input maxLength={60} {...common} />;

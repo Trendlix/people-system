@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { PAY_BASES, PAY_BASIS_LABELS } from '@trendlix/shared';
 import { AllowanceRows } from '@/components/allowance-rows';
 import { useFieldIds } from '@/components/form';
+import { Select } from '@/components/select';
 import type { AllowanceType } from '@/lib/types';
 import {
   belowAllowancesText,
@@ -256,13 +257,13 @@ export function SalaryCalculator({ initial, years, allowanceTypes }: { initial: 
           <label htmlFor={fid('year')} className="label">
             Year
           </label>
-          <select id={fid('year')} value={year} onChange={(e) => change({ year: Number(e.target.value) })} aria-describedby={fid('year-hint')} className="input">
+          <Select id={fid('year')} value={year} onChange={(e) => change({ year: Number(e.target.value) })} aria-describedby={fid('year-hint')} className="input">
             {years.map((y) => (
               <option key={y} value={y}>
                 {y}
               </option>
             ))}
-          </select>
+          </Select>
           <p id={fid('year-hint')} className="hint">
             The insurable wage limits differ by year.
           </p>

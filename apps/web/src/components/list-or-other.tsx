@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useRef, useState } from 'react';
+import { Select } from '@/components/select';
 
 // A choice from a standard list, with Other for what the list lacks: used where the same thing must always be written
 // the same way, e.g. the university and the faculty. The form sends the value chosen, or the text typed under Other, in
@@ -66,7 +67,7 @@ export function ListOrOther({
 
   return (
     <div className="space-y-2">
-      <select
+      <Select
         id={id}
         value={pick}
         aria-describedby={describedBy}
@@ -88,7 +89,7 @@ export function ListOrOther({
           ),
         )}
         <option value={OTHER}>Other (type it)</option>
-      </select>
+      </Select>
       {pick === OTHER && (
         <input
           ref={otherBox}

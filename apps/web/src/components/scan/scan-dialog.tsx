@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useEffectEvent, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Select } from '@/components/select';
 import {
   addScanner,
   canDuplex,
@@ -508,13 +509,13 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
             <label htmlFor={`${fid}resolution`} className="mb-1.5 block text-sm text-muted">
               Resolution
             </label>
-            <select id={`${fid}resolution`} value={st.resolution} onChange={(e) => set({ resolution: Number(e.currentTarget.value) })} className="input w-auto">
+            <Select id={`${fid}resolution`} value={st.resolution} onChange={(e) => set({ resolution: Number(e.currentTarget.value) })} className="input w-auto">
               {s.resolutions.map((r) => (
                 <option key={r} value={r}>
                   {r} dpi{r === DEFAULT_RESOLUTION ? ' (recommended)' : ''}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
       </fieldset>

@@ -1,6 +1,7 @@
 'use client';
 
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import type { FormState } from '@/lib/types';
 import { monthName } from './list';
 
@@ -33,14 +34,14 @@ export function NewRunForm({
           <label htmlFor={fid('month')} className="label">
             Month
           </label>
-          <select id={fid('month')} name="month" required defaultValue={valueOf(state, 'month', suggested)} aria-describedby={fid('month-hint')} className="input">
+          <Select id={fid('month')} name="month" required defaultValue={valueOf(state, 'month', suggested)} aria-describedby={fid('month-hint')} className="input">
             {months.map((m) => (
               <option key={m} value={m} disabled={taken.includes(m)}>
                 {monthName(m)}
                 {taken.includes(m) ? ' (has a run)' : ''}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <SubmitButton busy={pending} pendingText="Making the run…">
           New payroll run
