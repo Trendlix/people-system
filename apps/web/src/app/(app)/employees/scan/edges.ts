@@ -7,6 +7,9 @@ import { canvasOf, ctxOf } from './image';
 // along its length, so a strip of the picture summed along it shows the edge, while print and noise cancel out; the strip
 // is taken in parts, so that a shadow or an emblem beside a stretch of the edge does not decide; and how far the card still
 // leans is read from where its edges lie from one end of their length to the other. The search around a frame is new.
+// Prime ERP then took this search back (commit 93432cc, 16 October 2026) and found one flaw, put right here too: on a flatbed
+// scan with the lid up, a pale card whose lower part lies over the shadow of the lid is darker than the lid along its top
+// and lighter than the shadow along its bottom, so each side's edge may be of either kind (cardEdges).
 
 // Fitting the frame to the card under it. The person frames the card roughly; then each side of the frame has the card's
 // own edge looked for in a band around it, on the picture turned by the angle tried. The angle at which four edges show
@@ -92,17 +95,20 @@ interface Strip {
   ends: number[];
 }
 
-/** An edge found across a band: at step `at`, at `pos` in the frame's points, this strong. */
+/**
+ * An edge found across a band: at step `at`, at `pos` in the frame's points, this strong; `sign`: 1 when the picture gets
+ * lighter into the frame there (the card lighter than what is around it), −1 when darker.
+ */
 interface Hit {
   at: number;
   pos: number;
   s: number;
+  sign: 1 | -1;
 }
 
 /**
- * The card's four edges as they show at one angle, in the frame's points; `s`: how clearly; `sign`: 1 when the card is
- * lighter than what is around it, −1 when darker; `by`: the edges that showed, four or three (the shape of a card gives
- * the fourth).
+ * The card's four edges as they show at one angle, in the frame's points; `s`: how clearly; `by`: the edges that showed,
+ * four or three (the shape of a card gives the fourth), each of either kind.
  */
 interface Edges {
   L: number;
@@ -110,7 +116,6 @@ interface Edges {
   T: number;
   B: number;
   s: number;
-  sign: 1 | -1;
   by: Partial<Record<Name, Hit>>;
   sides: number;
 }
@@ -250,7 +255,7 @@ function centreOf(v: ArrayLike<number>, o: number, at: number, lo: number, hi: n
  * The edges across a strip: where it shows clearly above what is usual there, the strongest first, at most eight. A faint
  * edge beside a strong one still counts: a light card on white shows its own edge far less than the photo printed on it.
  */
-function hitsOf(st: Strip, score: Float32Array): Hit[] {
+function hitsOf(st: Strip, score: Float32Array, sign: 1 | -1): Hit[] {
   const { a0, na, step } = st.band;
   const inner = Array.from(score.subarray(SPAN, na - SPAN)).sort((x, y) => x - y);
   if (!inner.length) return [];
@@ -259,58 +264,66 @@ function hitsOf(st: Strip, score: Float32Array): Hit[] {
   for (let a = SPAN + 2; a < na - SPAN - 2; a++) {
     const s = score[a];
     if (s >= need && s >= score[a - 1] && s > score[a + 1] && s >= score[a - 2] && s > score[a + 2]) {
-      out.push({ at: a, pos: a0 + centreOf(score, 0, a, SPAN, na - SPAN - 1) * step, s });
+      out.push({ at: a, pos: a0 + centreOf(score, 0, a, SPAN, na - SPAN - 1) * step, s, sign });
     }
   }
   return out.sort((x, y) => y.s - x.s).slice(0, 8);
 }
 
 /**
- * The edges that make the shape of a card among those found on each side, for a card lighter than what is around it and
- * for one darker: four of the same kind (the nearer the shape of a card, the better), or, only when no four do, three,
- * with the shape of a card giving the fourth (a card cut short by the scan, or an edge that does not show).
+ * The edges that make the shape of a card among those found on each side: four (the nearer the shape of a card, the
+ * better), or, only when no four do, three, with the shape of a card giving the fourth (a card cut short by the scan, or
+ * an edge that does not show).
+ *
+ * Each side's edge may be one where the card is lighter than what is around it or one where it is darker: a pale card on
+ * a pale lid is darker than the lid along its top and lighter than the shadow of the lid under its lower part. Edges of
+ * both kinds also make the shape of a card out of print: a card cut short by the scan shows three edges of its own, and
+ * the top of the photo and the end of a line of words make four with two of them. Four edges that three clearer ones hold
+ * well inside them are therefore print on the card, and not taken.
  *
  * Of them, `clearest` may be print, a photo or a darker border: on a light card on white they show far more than the
  * card's own edge. `card` is the card's own edges: the outermost that lie around the clearest and still show clearly
  * enough (OUTER_MIN), since print, a photo and a border all lie inside the card's edge. `tol`: how far an edge may lie
- * inside the clearest and still count as around it, in points.
+ * inside another and still count as around it, in points.
  */
-function cardEdges(hits: Record<1 | -1, Record<Name, Hit[]>>, tol: number): Found | null {
+function cardEdges(hits: Record<Name, Hit[]>, tol: number): Found | null {
   const four: Edges[] = [];
   const three: Edges[] = [];
-  for (const sign of [1, -1] as const) {
-    const options = (k: Name): (Hit | null)[] => [...hits[sign][k], null];
-    for (const l of options('L'))
-      for (const r of options('R'))
-        for (const t of options('T'))
-          for (const b of options('B')) {
-            const got = (l ? 1 : 0) + (r ? 1 : 0) + (t ? 1 : 0) + (b ? 1 : 0);
-            if (got < 3 || (got === 3 && four.length)) continue;
-            let s = (l?.s ?? 0) + (r?.s ?? 0) + (t?.s ?? 0) + (b?.s ?? 0);
-            let [L, R, T, B] = [l?.pos ?? 0, r?.pos ?? 0, t?.pos ?? 0, b?.pos ?? 0];
-            if (got === 4) {
-              const off = (R - L) / (B - T) / CARD_RATIO - 1;
-              if (!(Math.abs(off) <= SHAPE_TOL)) continue;
-              s *= 1 - 0.5 * (off / SHAPE_TOL) ** 2;
-            } else if (!l) L = R - (B - T) * CARD_RATIO;
-            else if (!r) R = L + (B - T) * CARD_RATIO;
-            else if (!t) T = B - (R - L) / CARD_RATIO;
-            else B = T + (R - L) / CARD_RATIO;
-            if (!(R > L && B > T)) continue;
-            const by: Partial<Record<Name, Hit>> = {};
-            if (l) by.L = l;
-            if (r) by.R = r;
-            if (t) by.T = t;
-            if (b) by.B = b;
-            (got === 4 ? four : three).push({ L, R, T, B, s, sign, by, sides: got });
-          }
-  }
-  const fit = four.length ? four : three;
+  const options = (k: Name): (Hit | null)[] => [...hits[k], null];
+  for (const l of options('L'))
+    for (const r of options('R'))
+      for (const t of options('T'))
+        for (const b of options('B')) {
+          const got = (l ? 1 : 0) + (r ? 1 : 0) + (t ? 1 : 0) + (b ? 1 : 0);
+          if (got < 3) continue;
+          let s = (l?.s ?? 0) + (r?.s ?? 0) + (t?.s ?? 0) + (b?.s ?? 0);
+          let [L, R, T, B] = [l?.pos ?? 0, r?.pos ?? 0, t?.pos ?? 0, b?.pos ?? 0];
+          if (got === 4) {
+            const off = (R - L) / (B - T) / CARD_RATIO - 1;
+            if (!(Math.abs(off) <= SHAPE_TOL)) continue;
+            s *= 1 - 0.5 * (off / SHAPE_TOL) ** 2;
+          } else if (!l) L = R - (B - T) * CARD_RATIO;
+          else if (!r) R = L + (B - T) * CARD_RATIO;
+          else if (!t) T = B - (R - L) / CARD_RATIO;
+          else B = T + (R - L) / CARD_RATIO;
+          if (!(R > L && B > T)) continue;
+          const by: Partial<Record<Name, Hit>> = {};
+          if (l) by.L = l;
+          if (r) by.R = r;
+          if (t) by.T = t;
+          if (b) by.B = b;
+          (got === 4 ? four : three).push({ L, R, T, B, s, by, sides: got });
+        }
+  /** `e` lies around `o`, but for `tol` */
+  const around = (e: Edges, o: Edges) => e.L <= o.L + tol && e.R >= o.R - tol && e.T <= o.T + tol && e.B >= o.B - tol;
+  const area = (e: Edges) => (e.R - e.L) * (e.B - e.T);
+  // four edges well inside the clearest three, and showing less than they do, are print on the card
+  const top3 = three.length ? three.reduce((a, e) => (e.s > a.s ? e : a)) : null;
+  const kept = top3 ? four.filter((e) => !(top3.s > e.s && around(top3, e) && area(e) < (1 - 2 * SHAPE_TOL) * area(top3))) : four;
+  const fit = kept.length ? kept : three;
   if (!fit.length) return null;
   const clearest = fit.reduce((a, e) => (e.s > a.s ? e : a));
-  const around = (e: Edges) => e.L <= clearest.L + tol && e.R >= clearest.R - tol && e.T <= clearest.T + tol && e.B >= clearest.B - tol;
-  const area = (e: Edges) => (e.R - e.L) * (e.B - e.T);
-  const card = fit.filter((e) => e.s >= OUTER_MIN * clearest.s && around(e)).reduce((a, e) => (area(e) > area(a) ? e : a), clearest);
+  const card = fit.filter((e) => e.s >= OUTER_MIN * clearest.s && around(e, clearest)).reduce((a, e) => (area(e) > area(a) ? e : a), clearest);
   return { clearest, card };
 }
 
@@ -363,12 +376,12 @@ function leanOf(v: Look): number | null {
       let at = -1;
       let top = 0;
       for (let a = Math.max(SPAN + 1, hit.at - 2); a <= Math.min(na - SPAN - 2, hit.at + 2); a++) {
-        const s = e.sign * parts[o + a];
+        const s = hit.sign * parts[o + a];
         if (s > top) [at, top] = [a, s];
       }
       if (at < 0) continue;
       xs.push(b0 + ((ends[p] + ends[p + 1] - 1) / 2) * step);
-      ys.push(a0 + centreOf(parts, o, at, SPAN, na - SPAN - 1, e.sign) * step);
+      ys.push(a0 + centreOf(parts, o, at, SPAN, na - SPAN - 1, hit.sign) * step);
       ws.push(top);
     }
     // the parts where the edge hardly shows are left out
@@ -442,8 +455,9 @@ export function fitEdges(px: Pixels, at: Framing): Fitted | null {
     const turn = rad(base + f);
     const strips = {} as Record<Name, Strip>;
     for (const k of NAMES) strips[k] = stripOf(pic, sx, sy, turn, bands[k]);
-    const hits = { 1: {}, [-1]: {} } as Record<1 | -1, Record<Name, Hit[]>>;
-    for (const sign of [1, -1] as const) for (const k of NAMES) hits[sign][k] = hitsOf(strips[k], scoreOf(strips[k], sign));
+    // each side's edges of both kinds: the card lighter than what is around it there, and darker
+    const hits = {} as Record<Name, Hit[]>;
+    for (const k of NAMES) hits[k] = [...hitsOf(strips[k], scoreOf(strips[k], 1), 1), ...hitsOf(strips[k], scoreOf(strips[k], -1), -1)];
     return { fine: f, strips, found: cardEdges(hits, 2 * n) };
   };
 

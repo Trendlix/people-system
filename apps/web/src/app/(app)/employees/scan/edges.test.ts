@@ -131,6 +131,20 @@ describe('the frame laid on the card\'s own edges', () => {
     onCard(fitEdges(px, { rect: rough(c, W, H, 0, 18, -12, 1.06), base: 0, fine: 0 }), c, W, H, 0);
   });
 
+  it('a dark card on a white lid: the card darker than what is around it', () => {
+    const W = 1000, H = 700, c = card(495, 355, 560, -1.4);
+    const px = scan({ W, H, bg: 244, face: 72, cards: [c], noise: 5 });
+    onCard(fitEdges(px, { rect: rough(c, W, H, 0, -12, 10, 1.05), base: 0, fine: 0 }), c, W, H, 0);
+  });
+
+  it('a pale card on a pale lid, its lower part over the shadow of the lid: darker than the lid along its top, lighter than the shadow along its bottom', () => {
+    // a flatbed scan with the lid up (after Prime ERP, 16 October 2026): the one card's edges are of both kinds
+    const W = 1000, H = 760, c = card(495, 365, 600, 1.1);
+    const px = scan({ W, H, bg: (_, y) => (y > 480 && y < 700 ? 118 : 236), face: 220, cards: [c], noise: 4 });
+    const starts = [[0, 0, 1.02], [0, 18, 1.06], [-14, 8, 0.97], [12, 36, 1.05], [0, -14, 1.04], [16, -6, 1.0]];
+    for (const [dx, dy, k] of starts) onCard(fitEdges(px, { rect: rough(c, W, H, 0, dx, dy, k), base: 0, fine: 0 }), c, W, H, 0);
+  });
+
   it('a light card with a darker border on white, leaning the other way by 1.3°: the outer edge of the border is the card\'s', () => {
     const W = 1000, H = 700, c = card(480, 360, 560, -1.3);
     const px = scan({ W, H, bg: 248, face: 228, border: [9, 150], cards: [c], noise: 4 });
