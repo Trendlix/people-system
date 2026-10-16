@@ -82,3 +82,24 @@ export const SCANS_TOO_LARGE =
  */
 export const LEARNED_FIELDS: readonly LearnedField[] = ['fullNameAr', 'addressAr'];
 export const readKey = (field: LearnedField) => `read_${field}`;
+
+/** On a field filled in from the ID card. */
+export const FROM_CARD = 'Read from the card — check before saving.';
+/** On a field the reading filled in and a fix learned from HR's earlier corrections changed. */
+export const FIXED = 'Fixed from an earlier correction — check before saving.';
+/** On the English name: the card is in Arabic only, so it is spelled from the Arabic name, never read. */
+export const SPELLED = 'Spelled from the Arabic name on the card — check before saving.';
+
+/** The suggestions the card does not print, worked out from what it does: the English name. */
+const SPELLED_FIELDS: readonly string[] = ['fullNameEn'];
+
+/** What the note under a field filled in from the card says (`corrected`: the fields a learned fix changed). */
+export function cardNote(key: string, corrected: readonly string[] = []): string {
+  if (SPELLED_FIELDS.includes(key)) return SPELLED;
+  return corrected.includes(key) ? FIXED : FROM_CARD;
+}
+
+/** How many details were read from the card: the English name, spelled from the Arabic one, is not one of them. */
+export function detailsRead(suggestions: object): number {
+  return Object.keys(suggestions).filter((key) => !SPELLED_FIELDS.includes(key)).length;
+}

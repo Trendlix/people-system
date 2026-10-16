@@ -8,14 +8,15 @@ import { formatDate } from '@/lib/format';
 import type { EmployeeIdentity, EmployeeProfile, FormState } from '@/lib/types';
 import { cardMarks, NationalIdFields, ReadValues, type CardSuggestions as Suggestions } from '../../../id-card';
 
-/** The profile's current values for the personal details printed on an ID card. */
+/** The profile's current values for the personal details printed on an ID card, and the English name spelled from it. */
 export type CardProfile = Pick<
   EmployeeProfile,
-  'fullNameAr' | 'addressAr' | 'city' | 'governorate' | 'dateOfBirth' | 'gender' | 'maritalStatus' | 'nationality'
+  'fullNameAr' | 'fullNameEn' | 'addressAr' | 'city' | 'governorate' | 'dateOfBirth' | 'gender' | 'maritalStatus' | 'nationality'
 >;
 
 const PERSONAL = [
   { key: 'fullNameAr', label: 'Full name (Arabic)' },
+  { key: 'fullNameEn', label: 'Full name (English)' },
   { key: 'addressAr', label: 'Address (Arabic)' },
   { key: 'city', label: 'City' },
   { key: 'governorate', label: 'Governorate' },
@@ -108,6 +109,7 @@ export function NationalIdForm({
       );
     const common = { id, name, 'aria-describedby': describedById, defaultValue: valueOf(state, name, s[key]), className: 'input' };
     if (key === 'nationality') return <input maxLength={60} {...common} />;
+    if (key === 'fullNameEn') return <input maxLength={150} {...common} />;
     const ar = { ...common, lang: 'ar', dir: 'rtl' as const };
     if (key === 'addressAr') return <textarea rows={2} maxLength={300} {...ar} />;
     return <input maxLength={key === 'city' ? 100 : 150} {...ar} />;

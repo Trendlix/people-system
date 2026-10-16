@@ -4,26 +4,22 @@ import { DateInput } from '@/components/date-time-inputs';
 import { valueOf } from '@/components/form';
 import { formatDate } from '@/lib/format';
 import type { EmployeeIdentity, FormState, IdCardScan, LearnedField } from '@/lib/types';
-import { LEARNED_FIELDS, readKey } from './paperwork';
+import { cardNote, detailsRead, LEARNED_FIELDS, readKey } from './paperwork';
 
 // The national ID card pieces shared by the Add employee page and the National ID edit page: the national ID fields,
 // the note on each field filled in from the card, what reading the card found, and the text read from it.
 
-/** What was read from an ID card. Dates are YYYY-MM-DD. */
+/** What was read from an ID card (and the English name, spelled from the Arabic one). Dates are YYYY-MM-DD. */
 export type CardSuggestions = IdCardScan['suggestions'];
-
-export const FROM_CARD = 'Read from the card — check before saving.';
-/** On a field the reading filled in and a fix learned from HR's earlier corrections changed. */
-export const FIXED = 'Fixed from an earlier correction — check before saving.';
 
 /**
  * Marks the fields filled in from the ID card: `read` says whether the card gave a field, `describedBy` gives the ids
  * describing it (its own hint, if any, and the note), `noteText` is what the note says (`corrected`: the fields a learned
- * fix changed), and `note` is the note to show under it.
+ * fix changed; the English name says it was spelled from the Arabic one), and `note` is the note to show under it.
  */
 export function cardMarks(fid: (name: string) => string, suggestions: CardSuggestions = {}, corrected: readonly string[] = []) {
   const read = (key: string) => (suggestions as Record<string, string | undefined>)[key] !== undefined;
-  const noteText = (key: string) => (corrected.includes(key) ? FIXED : FROM_CARD);
+  const noteText = (key: string) => cardNote(key, corrected);
   return {
     read,
     noteText,
@@ -38,11 +34,11 @@ export function cardMarks(fid: (name: string) => string, suggestions: CardSugges
 }
 
 /**
- * How many details reading the card found, and what to do next; then `notes`: what was left out and why (e.g. a number
- * the edge of the picture cuts through), for HR to type in from the card.
+ * How many details reading the card found (the English name is spelled, not read), and what to do next; then `notes`:
+ * what was left out and why (e.g. a number the edge of the picture cuts through), for HR to type in from the card.
  */
 export function CardReadStatus({ suggestions, notes = [] }: { suggestions: CardSuggestions; notes?: string[] }) {
-  const found = Object.keys(suggestions).length;
+  const found = detailsRead(suggestions);
   return (
     <div role="status" className="space-y-2">
       <p className={`rounded-lg px-4 py-3 text-sm ${found ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'}`}>
@@ -83,7 +79,7 @@ function CardText({ title, text }: { title: string; text: string | null }) {
   );
 }
 
-/** The text read from each side of the card, folded away, to check the details against. */
+/** The text read from each side of the card (the API leaves out the religion), folded away, to check the details against. */
 export function CardTextDetails({ front, back }: { front: string | null; back: string | null }) {
   if (!front && !back) return null;
   return (

@@ -26,6 +26,7 @@ async function EditNationalId({ params }: { params: Promise<{ id: string }> }) {
               identity={identity}
               profile={{
                 fullNameAr: employee.fullNameAr,
+                fullNameEn: employee.fullNameEn,
                 addressAr: employee.addressAr,
                 city: employee.city,
                 governorate: employee.governorate,

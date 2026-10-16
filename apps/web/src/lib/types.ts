@@ -536,6 +536,11 @@ export interface IdCardScan {
   suggestions: {
     nationalId?: string;
     fullNameAr?: string;
+    /**
+     * Spelled from the Arabic name, never read (the card is in Arabic only): as the employees on file spell each part,
+     * else as a list of common names does, else letter by letter (then a note says so).
+     */
+    fullNameEn?: string;
     addressAr?: string;
     dateOfBirth?: string;
     gender?: Gender;
@@ -555,7 +560,7 @@ export interface IdCardScan {
   corrected: LearnedField[];
   /** What was left out and why, in plain English, for HR (e.g. a number the edge of the picture cuts through). */
   notes: string[];
-  /** The stored photos and their text (null when that side could not be read). */
+  /** The stored photos and their text (null when that side could not be read), never with the religion on the back. */
   front: { itemId: string; text: string | null };
   back?: { itemId: string; text: string | null };
 }
