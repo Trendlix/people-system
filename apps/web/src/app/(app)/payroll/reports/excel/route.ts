@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { readPeriod } from '../../../employees/raises/salary-raises';
+import { readPeriod } from '../salary-raises/salary-raises';
 import { todayInCairo } from '../../../employees/ui';
 import { ApiError, apiFetch } from '@/lib/api';
 import { passSheetOn } from '../../files';

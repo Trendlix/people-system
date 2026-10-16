@@ -129,7 +129,7 @@ export class AdvancesService {
 
   /**
    * Settles automatically each open one of these with nothing outstanding (no user, no note): called when recoveries are
-   * applied to a run (phase 2) or an amount is lowered to what was recovered. Answers the ids settled.
+   * applied to a run (the CEO approves it) or an amount is lowered to what was recovered. Answers the ids settled.
    */
   async settleRecovered(ids: readonly string[], tx: Prisma.TransactionClient = this.prisma): Promise<string[]> {
     if (!ids.length) return [];

@@ -1,6 +1,6 @@
 import type { DueForReviewRow, Role, SalaryRaiseRow } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { contractHref, employeeRaiseRequestsHref, salaryHistoryHref as historyOnProfile } from '../tab-list';
+import { contractHref, employeeRaiseRequestsHref, salaryHistoryHref as historyOnProfile } from '../../../employees/tab-list';
 import {
   apiExcelPath,
   apiReportPath,
@@ -84,9 +84,9 @@ describe('the period', () => {
   });
 
   it('keeps the period in the page’s, the workbook’s and the API’s addresses', () => {
-    expect(raisesHref(YEAR, TODAY)).toBe('/employees/raises');
-    expect(raisesHref({ from: '2025-01', to: '2025-12' }, TODAY)).toBe('/employees/raises?from=2025-01&to=2025-12');
-    expect(excelHref(YEAR)).toBe('/employees/raises/excel?from=2026-01&to=2026-12');
+    expect(raisesHref(YEAR, TODAY)).toBe('/payroll/reports/salary-raises');
+    expect(raisesHref({ from: '2025-01', to: '2025-12' }, TODAY)).toBe('/payroll/reports/salary-raises?from=2025-01&to=2025-12');
+    expect(excelHref(YEAR)).toBe('/payroll/reports/salary-raises/excel?from=2026-01&to=2026-12');
     expect(apiReportPath({ from: '2025-11', to: '2026-10' })).toBe('/reports/salary-raises?from=2025-11&to=2026-10');
     expect(apiExcelPath(new URLSearchParams('from=2025-11&to=2026-10'), TODAY)).toBe('/reports/salary-raises.xlsx?from=2025-11&to=2026-10');
     expect(apiExcelPath(new URLSearchParams('from=bad'), TODAY)).toBe('/reports/salary-raises.xlsx?from=2026-01&to=2026-12');

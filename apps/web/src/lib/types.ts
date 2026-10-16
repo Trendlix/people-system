@@ -1376,6 +1376,11 @@ export interface PayrollRunView {
    * when it was made or last refreshed. Left out by an API from before them.
    */
   lawRates?: LawRates;
+  /**
+   * The month's pending additions and deductions for people not on the run (owner, 17 October 2026: Additions /
+   * Deductions), by person: no line takes them. Left out by an API from before them.
+   */
+  adjustmentsNotOnRun?: { employeeId: string; employeeCode: string; name: string; count: number }[];
 }
 
 /**

@@ -113,6 +113,7 @@ describe('a link that names only an anchor', () => {
   it('finds the sub-tab holding the anchor, with or without its #', () => {
     expect(subTabOfAnchor('#salary-history')).toBe('salary');
     expect(subTabOfAnchor('#raise-requests')).toBe('salary');
+    expect(subTabOfAnchor('#advances')).toBe('salary');
     expect(subTabOfAnchor('#payslips')).toBe('salary');
     expect(subTabOfAnchor('payslips')).toBe('salary');
     expect(subTabOfAnchor('#contract-documents')).toBe('documents');

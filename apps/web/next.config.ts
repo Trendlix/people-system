@@ -25,6 +25,10 @@ const nextConfig: NextConfig = {
       { source: `${old}/job-titles/new`, destination: '/organization/departments', permanent: true },
       // The pages were at /organisation (British spelling) until October 2026.
       { source: '/organisation/:path*', destination: '/organization/:path*', permanent: true },
+      // The Salary Raises report moved under Payroll → Reports (owner, 17 October 2026: "Reports (Statistics)" under
+      // Payroll); its workbook with it. The period asked for (?from=&to=) is passed through.
+      { source: '/employees/raises', destination: '/payroll/reports/salary-raises', permanent: true },
+      { source: '/employees/raises/excel', destination: '/payroll/reports/salary-raises/excel', permanent: true },
     ];
   },
   turbopack: {

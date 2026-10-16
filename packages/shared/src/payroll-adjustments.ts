@@ -6,8 +6,8 @@
 //   (linked to the loan), or other. Each is pending until the month's run is approved with it (applied), or cancelled.
 // - Unsettled: the runs not yet paid, the lines on hold not paid out since, the final settlements of people who left,
 //   and the advances and loans still being recovered.
-// The amounts are EGP to the piaster. A run takes a line's additions and deductions from lineAdjustments: the taxed
-// additions into the gross, the untaxed ones after tax, the deductions after tax.
+// The amounts are EGP to the piaster. A run takes a line's additions and deductions with adjustmentSums (payroll.ts):
+// the taxed additions into the gross, the untaxed ones after tax, the deductions after tax.
 
 export const ADJUSTMENT_KINDS = ['addition', 'deduction'] as const;
 export type AdjustmentKind = (typeof ADJUSTMENT_KINDS)[number];
@@ -44,6 +44,30 @@ export const DEDUCTION_TYPE_LABELS: Record<DeductionType, string> = {
   loan_installment: 'Loan installment',
   other: 'Other deduction',
 };
+
+/** The types as the Arabic payslip names them. */
+export const ADDITION_TYPE_LABELS_AR: Record<AdditionType, string> = {
+  bonus: 'مكافأة',
+  commission: 'عمولة',
+  incentive: 'حافز',
+  correction: 'تصحيح',
+  reimbursement: 'استرداد مصروفات',
+  other: 'إضافة أخرى',
+};
+
+export const DEDUCTION_TYPE_LABELS_AR: Record<DeductionType, string> = {
+  penalty: 'جزاء',
+  damage_loss: 'تلفيات أو فقد',
+  advance_recovery: 'استرداد سلفة',
+  loan_installment: 'قسط قرض',
+  other: 'استقطاع آخر',
+};
+
+/** A type's Arabic name, by its kind: "مكافأة", "استقطاع آخر"; anything else as it is. */
+export function adjustmentTypeLabelAr(kind: string, type: string): string {
+  const labels: Record<string, string> = kind === 'deduction' ? DEDUCTION_TYPE_LABELS_AR : ADDITION_TYPE_LABELS_AR;
+  return labels[type] ?? type;
+}
 
 /** A type's name, by its kind: "Bonus", "Other deduction"; anything else as it is. */
 export function adjustmentTypeLabel(kind: string, type: string): string {
@@ -141,7 +165,7 @@ export interface AdjustmentSums {
 }
 
 /**
- * The additions and deductions summed, leaving out those cancelled: what a run adds to a line's pay (phase 2: the taxed
+ * The additions and deductions summed, leaving out those cancelled: what a run adds to a line's pay (payrollLine: the taxed
  * additions into the gross, the untaxed after tax, the deductions after tax), and the totals the page shows.
  */
 export function adjustmentSums(list: readonly AdjustmentAmount[]): AdjustmentSums {

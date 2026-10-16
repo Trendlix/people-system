@@ -16,6 +16,7 @@ import { bankFilesReady, bankLeftOut, fileHref } from '../files';
 import { canSeePayroll, employeesLabel, preparesPayroll, rulesSummary, runActions, runTitle } from '../list';
 import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslips';
 import { PayrollStatusBadge, PayrollStepper } from '../ui';
+import { RunAdjustments } from './adjustments-section';
 import { CibFileForm } from './downloads';
 import { contractsNote } from './grid';
 import { InputsGrid, type GridRow } from './inputs-grid';
@@ -27,8 +28,9 @@ import { MarkPaid, ReturnRun } from './run-actions';
 // with a reason; a Super Admin: delete a draft), the month's figures HR types (the inputs grid), the pay each employee
 // gets with every step of it, who is left out and why, and the files: the payroll register any time, the CIB and ACH
 // bank files once approved, and once it is paid the payslips: each employee's English one, and all of them as a ZIP
-// (the Arabic one is made from the employee file). Salary data: HR, Finance and the CEO only; the API checks every
-// request again.
+// (the Arabic one is made from the employee file). The month's additions and deductions on its lines, and any for
+// people not on it (owner, 17 October 2026: Additions / Deductions). Salary data: HR, Finance and the CEO only; the API
+// checks every request again.
 
 const LINK = 'font-medium text-accent hover:underline';
 
@@ -314,6 +316,8 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
           />
         )}
       </section>
+
+      <RunAdjustments run={run} today={todayInCairo()} />
 
       {run.lines.length > 0 && (
         <section className="space-y-3">

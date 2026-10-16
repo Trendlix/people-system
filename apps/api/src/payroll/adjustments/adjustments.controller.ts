@@ -7,6 +7,7 @@ import {
   AdvancesQueryDto,
   CreateAdjustmentDto,
   CreateAdvanceDto,
+  MoveAdjustmentsDto,
   SettleAdvanceDto,
   UpdateAdjustmentDto,
   UpdateAdvanceDto,
@@ -51,6 +52,14 @@ export class AdjustmentsController {
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAdjustmentDto, @CurrentUser() user: SessionUser) {
     return this.adjustments.update(id, dto, user);
+  }
+
+  /** { ids, month }: pending ones moved to another month, those left on a month approved without them to a later one. */
+  @Roles('hr')
+  @Post('move')
+  @HttpCode(200)
+  move(@Body() dto: MoveAdjustmentsDto, @CurrentUser() user: SessionUser) {
+    return this.adjustments.move(dto, user);
   }
 
   @Roles('hr')

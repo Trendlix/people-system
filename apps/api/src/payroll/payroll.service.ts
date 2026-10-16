@@ -3,7 +3,6 @@ import {
   bankNamed,
   EMPTY_PAYROLL_INPUTS,
   insuredWageDate,
-  payrollLine,
   type LawRates,
   type PayBasis,
   type PayrollInputs,
@@ -19,10 +18,12 @@ import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/dat
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RunAdjustmentsService } from './adjustments/run-adjustments.service.js';
 import { cleanBankDetails, inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
 import { achWorkbook, cibWorkbook } from './bank-files.js';
 import { HolidaysService } from './holidays.service.js';
 import { LawRatesService } from './law-rates/law-rates.service.js';
+import { json, savedInputs, withAdjustments, worked } from './line-work.js';
 import { firstDay, lastDay, monthName, monthShort, monthsLater } from './months.js';
 import type { CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
 import { PayrollSettingsService, rulesOf } from './payroll-settings.service.js';
@@ -50,17 +51,6 @@ const LINE = 'payroll_line';
 
 /** Inputs that are money: the audit log only says they changed, as for a contract's salary. */
 const MONEY_INPUTS: readonly (keyof PayrollInputs)[] = ['commission', 'settlements', 'released'];
-
-/**
- * A line's saved inputs, only those there are today: one saved before it was taken off (the medical subscription,
- * owner's decision, 16 October 2026) is dropped when the line is refreshed or changed, and one saved before it existed
- * (the leave days, 17 October 2026) reads as not given.
- */
-const savedInputs = (saved: Prisma.JsonValue): PayrollInputs => {
-  const values = (saved ?? {}) as Partial<PayrollInputs>;
-  const fields = Object.keys(EMPTY_PAYROLL_INPUTS) as (keyof PayrollInputs)[];
-  return Object.fromEntries(fields.map((k) => [k, values[k] ?? null])) as unknown as PayrollInputs;
-};
 
 /** The employments that may be on a month's run, with what the roster needs of them. */
 const rosterSelect = (from: Date, to: Date) =>
@@ -133,15 +123,6 @@ function rosterEmployment(e: EmploymentRow): RosterEmployment {
   };
 }
 
-const json = (value: unknown) => value as Prisma.InputJsonValue;
-
-/** A line worked out with the run's rules and rates set by law: its result, and the result's totals for their columns. */
-function worked(terms: PayrollTerms, inputs: PayrollInputs, rules: PayrollRules, law: LawRates) {
-  const result = payrollLine(terms, inputs, rules, law);
-  const totals = Object.fromEntries(TOTAL_KEYS.map((k) => [k, result[k]])) as Record<(typeof TOTAL_KEYS)[number], number>;
-  return { result: json(result), ...totals };
-}
-
 /** What a line keeps of the roster: who, what is shown with it, and its terms. */
 const fromRoster = (l: RosterLine) => ({
   employmentId: l.employmentId,
@@ -155,6 +136,9 @@ const fromRoster = (l: RosterLine) => ({
   terms: json(l.terms),
 });
 
+/** How many additions and deductions the run's lines take (owner, 17 October 2026). */
+const countOn = (lines: readonly RosterLine[], pending: ReadonlyMap<string, readonly unknown[]>) => lines.reduce((n, l) => n + (pending.get(l.employeeId)?.length ?? 0), 0);
+
 /** The fields that were sent (undefined means "leave as it is"). */
 const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined)) as Partial<T>;
 
@@ -166,6 +150,9 @@ const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto
 // details, from which the bank files are made (CIB's payroll system for CIB accounts, ACH for every other bank). HR
 // marks it paid. HR, Finance and the CEO see runs; every change of status, every input changed and every bank file
 // downloaded is in the audit log. A Super Admin deletes a draft made by mistake.
+// The month's additions and deductions (owner, 17 October 2026: Additions / Deductions under Payroll) are taken with
+// each person's terms when the run is made or refreshed, and as they change while it is a draft
+// (adjustments/run-adjustments.service.ts); the CEO's approval applies them to their lines.
 @Injectable()
 export class PayrollService {
   constructor(
@@ -175,6 +162,7 @@ export class PayrollService {
     private readonly payslips: PayslipsService,
     private readonly holidays: HolidaysService,
     private readonly lawRates: LawRatesService,
+    private readonly adjustments: RunAdjustmentsService,
   ) {}
 
   /** Every run, newest month first, with its totals. */
@@ -217,12 +205,17 @@ export class PayrollService {
     const rules = rulesOf(await this.settings.row());
     const law = await this.lawRates.forYear(Number(month.slice(0, 4)));
     const { lines, exclusions } = await this.roster(month, rules, law);
+    // the month's additions and deductions (owner, 17 October 2026), with each person's terms
+    const pending = await this.adjustments.pendingByEmployee(month);
     const run = await this.prisma.$transaction(async (tx) => {
       const made = await tx.payrollRun.create({
         data: { month: toDateOnly(firstDay(month)), rules: json(rules), lawRates: json(law), exclusions: json(exclusions), createdById: user.id },
       });
       await tx.payrollLine.createMany({
-        data: lines.map((l) => ({ runId: made.id, employeeId: l.employeeId, ...fromRoster(l), inputs: json(EMPTY_PAYROLL_INPUTS), ...worked(l.terms, EMPTY_PAYROLL_INPUTS, rules, law) })),
+        data: lines.map((l) => {
+          const terms = withAdjustments(l.terms, pending.get(l.employeeId));
+          return { runId: made.id, employeeId: l.employeeId, ...fromRoster(l), terms: json(terms), inputs: json(EMPTY_PAYROLL_INPUTS), ...worked(terms, EMPTY_PAYROLL_INPUTS, rules, law) };
+        }),
       });
       return made;
     });
@@ -231,7 +224,16 @@ export class PayrollService {
       action: 'create',
       entityType: RUN,
       entityId: run.id,
-      diff: { month, status: 'draft', rules, lawRates: law.year, employees: lines.length, excluded: exclusions.map((x) => x.employeeCode) },
+      diff: {
+        month,
+        status: 'draft',
+        rules,
+        lawRates: law.year,
+        employees: lines.length,
+        excluded: exclusions.map((x) => x.employeeCode),
+        // how many additions and deductions its lines take, when any
+        ...(countOn(lines, pending) && { adjustments: countOn(lines, pending) }),
+      },
     });
     return this.get(run.id);
   }
@@ -249,6 +251,7 @@ export class PayrollService {
     const rules = rulesOf(await this.settings.row());
     const law = await this.lawRates.forYear(Number(month.slice(0, 4)));
     const { lines, exclusions } = await this.roster(month, rules, law);
+    const pending = await this.adjustments.pendingByEmployee(month);
     const kept = new Map(run.lines.map((l) => [l.employeeId, l]));
     const staying = new Set(lines.map((l) => l.employeeId));
     const removed = run.lines.filter((l) => !staying.has(l.employeeId));
@@ -259,7 +262,8 @@ export class PayrollService {
       ...lines.map((l) => {
         const before = kept.get(l.employeeId);
         const inputs = before ? savedInputs(before.inputs) : EMPTY_PAYROLL_INPUTS;
-        const data = { ...fromRoster(l), inputs: json(inputs), ...worked(l.terms, inputs, rules, law) };
+        const terms = withAdjustments(l.terms, pending.get(l.employeeId));
+        const data = { ...fromRoster(l), terms: json(terms), inputs: json(inputs), ...worked(terms, inputs, rules, law) };
         return before
           ? this.prisma.payrollLine.update({ where: { id: before.id }, data })
           : this.prisma.payrollLine.create({ data: { runId: id, employeeId: l.employeeId, ...data } });
@@ -279,6 +283,7 @@ export class PayrollService {
         month,
         added: added.map((l) => l.employeeCode),
         removed: removed.map((l) => l.employeeCode),
+        ...(countOn(lines, pending) && { adjustments: countOn(lines, pending) }),
         ...(Object.keys(ruleChanges).length && { rules: ruleChanges }),
         ...(Object.keys(lawChanges).length && { lawRates: lawChanges }),
       },
@@ -357,18 +362,21 @@ export class PayrollService {
     const run = await this.row(id);
     this.assertStatus(run, 'pending_ceo', 'approved');
     const banks = await this.banks(run.lines.map((l) => l.employeeId));
-    await this.prisma.$transaction([
-      ...run.lines.map((l) => {
+    const { applied, settled } = await this.prisma.$transaction(async (tx) => {
+      for (const l of run.lines) {
         const b = banks.get(l.employeeId);
-        return this.prisma.payrollLine.update({
+        await tx.payrollLine.update({
           where: { id: l.id },
           // a bank not on the EG-ACH list is kept as typed, so the problem still reads as such
           data: { bankShort: b?.bank ? (bankNamed(b.bank)?.short ?? b.bank) : null, accountNo: b?.accountNo ?? null, iban: b?.iban ?? null, holderName: b?.holderName ?? null },
         });
-      }),
-      this.prisma.payrollRun.update({ where: { id }, data: { status: 'approved', approvedById: user.id, approvedAt: new Date() } }),
-    ]);
-    await this.statusChanged(run, 'approved', 'approve', user);
+      }
+      await tx.payrollRun.update({ where: { id }, data: { status: 'approved', approvedById: user.id, approvedAt: new Date() } });
+      // the month's additions and deductions applied to their lines (owner, 17 October 2026)
+      return this.adjustments.applyRun(id, tx);
+    });
+    await this.statusChanged(run, 'approved', 'approve', user, applied.length ? { adjustmentsApplied: applied.length, ...(settled.length && { advancesSettled: settled }) } : {});
+    await this.adjustments.recordApplied(id, monthOf(run), applied, user);
     return this.get(id);
   }
 
@@ -513,11 +521,24 @@ export class PayrollService {
   }
 
   private async view(run: RunRow): Promise<PayrollRunView> {
-    const [banks, approver] = await Promise.all([
+    const [banks, approver, notOnRun] = await Promise.all([
       isApproved(run.status) ? new Map<string, BankDetails>() : this.banks(run.lines.map((l) => l.employeeId)),
       run.approvedBy ? this.prisma.employee.findUnique({ where: { workEmail: run.approvedBy.email.toLowerCase() }, select: { fullNameEn: true } }) : null,
+      // the month's pending additions and deductions no line takes (owner, 17 October 2026)
+      this.prisma.payrollAdjustment.groupBy({
+        by: ['employeeId'],
+        where: { month: run.month, status: 'pending', employeeId: { notIn: run.lines.map((l) => l.employeeId) } },
+        _count: { _all: true },
+      }),
     ]);
-    return runView(run, { banks, approvedByName: approver?.fullNameEn ?? null });
+    const people = notOnRun.length
+      ? await this.prisma.employee.findMany({ where: { id: { in: notOnRun.map((g) => g.employeeId) } }, select: { id: true, employeeCode: true, fullNameEn: true } })
+      : [];
+    const counts = new Map(notOnRun.map((g) => [g.employeeId, g._count._all]));
+    const adjustmentsNotOnRun = people
+      .map((p) => ({ employeeId: p.id, employeeCode: p.employeeCode, name: p.fullNameEn, count: counts.get(p.id) ?? 0 }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return runView(run, { banks, approvedByName: approver?.fullNameEn ?? null, adjustmentsNotOnRun });
   }
 
   private assertStatus(run: RunRow, wanted: PayrollStatus, doing: string) {

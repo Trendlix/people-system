@@ -12,7 +12,7 @@ import { loadTeam } from '../my-team/data';
 import { loadOwnProfile } from '../own-profile';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
 import { askedAt } from '../raise-requests/list';
-import { PreparedRaise, Progress, RaiseRequestStatusBadge, Requester, SuggestedGross } from '../raise-requests/ui';
+import { FoldedRequestLog, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, Requester, Suggestion } from '../raise-requests/ui';
 import {
   askedByManager,
   filterRequests,
@@ -104,7 +104,11 @@ function DetailsCard({ item, employeeId }: { item: Extract<MyRequest, { kind: 'd
   );
 }
 
-/** A raise they asked for (or, for a manager, asked for for a direct report): why, the raise prepared, where it stands. */
+/**
+ * A raise they asked for (or, for a manager, asked for for a direct report): the reason from the list and the comment,
+ * the raise suggested, the raise prepared, where it stands, and its log of every step (owner, 17 October 2026), each as
+ * the API shapes it for the viewer.
+ */
 function RaiseCard({ item }: { item: Extract<MyRequest, { kind: 'raise' | 'team' }> }) {
   const r = item.request;
   return (
@@ -120,13 +124,14 @@ function RaiseCard({ item }: { item: Extract<MyRequest, { kind: 'raise' | 'team'
         <Item label="Asked by">
           <Requester request={r} />
         </Item>
-        {r.suggestedGross !== null && (
-          <Item label="Suggested gross a month">
-            <SuggestedGross request={r} />
+        {/* the raise suggested, as far as the API lets the viewer see it (a manager: a percent only) */}
+        {(r.suggestion || r.suggestedGross !== null) && (
+          <Item label="Suggested raise">
+            <Suggestion request={r} />
           </Item>
         )}
         <Item label="Why" wide>
-          <span className="whitespace-pre-line">{r.reason}</span>
+          <RequestReason request={r} />
         </Item>
         {r.raise && (
           <Item label="The raise">
@@ -137,6 +142,8 @@ function RaiseCard({ item }: { item: Extract<MyRequest, { kind: 'raise' | 'team'
           <Progress request={r} />
         </Item>
       </dl>
+      {/* every step, as the request logs it (owner, 17 October 2026: "all the request steps to be logged in the request") */}
+      <FoldedRequestLog request={r} />
       <Link href={employeeRaiseRequestsHref(r.employee.id)} className="inline-block text-sm font-semibold">
         {item.kind === 'team' ? `Open ${r.employee.fullNameEn}'s raise requests` : 'Open on my profile'}
       </Link>

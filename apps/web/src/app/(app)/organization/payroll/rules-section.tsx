@@ -3,7 +3,7 @@ import { canEditOrganisation } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { monthsLabel } from '../../employees/[id]/salary-history/salary-history';
-import { RAISES_PATH } from '../../employees/raises/salary-raises';
+import { RAISES_PATH } from '../../payroll/reports/salary-raises/salary-raises';
 import { rulesSummary } from '../../payroll/list';
 import { updateYourRules } from './actions';
 import { loadContractDefaults, loadPayrollSettings } from './data';

@@ -20,8 +20,9 @@ import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../../common/
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { firstDay, monthName, monthsLater } from '../months.js';
 import { STATUS_TEXT } from '../status.js';
-import type { AdjustmentChoicesQueryDto, AdjustmentsQueryDto, CreateAdjustmentDto, UpdateAdjustmentDto } from './adjustments.dto.js';
+import type { AdjustmentChoicesQueryDto, AdjustmentsQueryDto, CreateAdjustmentDto, MoveAdjustmentsDto, UpdateAdjustmentDto } from './adjustments.dto.js';
 import { AdvancesService } from './advances.service.js';
+import { RunAdjustmentsService } from './run-adjustments.service.js';
 import { egp, employedIn, placeName, userNames } from './people.js';
 import { ADJUSTMENT, ADJUSTMENT_INCLUDE, adjustmentView, balanceOf, personOf, type AdjustmentRow, type AdjustmentView, type AdvanceView, type PersonRef } from './views.js';
 
@@ -44,6 +45,13 @@ export interface AdjustmentChoices {
   locked: string | null;
   people: (PersonRef & { department: string | null })[];
   advances: AdvanceView[];
+  /** The month's pending ones for people the month's run doesn't have (none without a run): no line takes them. */
+  notOnRun: number;
+  /**
+   * Pending ones left on months whose run the CEO approved without them, oldest first: made before runs took them, or
+   * for someone not on the run. HR moves them to a later month.
+   */
+  leftBehind: { month: string; count: number }[];
 }
 
 // Additions / Deductions (owner, 17 October 2026: "make the Payroll in the side tab a main title below it - Unsettled -
@@ -52,14 +60,18 @@ export interface AdjustmentChoices {
 // payroll-adjustments.ts), with the amount and the reason; an advance's recovery or a loan's installment is linked to
 // the advance or loan, and never more than is left to recover of it. HR changes and cancels one while it is pending and
 // the month's run is still a draft (or not made): from the CEO's step on, the run is what the CEO approves, as with the
-// run's own figures. The month's run adds them (phase 2: made or refreshed, applied on approval). HR, Finance and the
-// CEO see them, like the payroll lines; every change is in the audit log, the amounts only as set or changed.
+// run's own figures. The month's run takes them when it is made or refreshed, and works a draft's line out again when
+// one of its person's changes (run-adjustments.service.ts); the CEO's approval applies them. One left pending on a
+// month approved without it (entered before runs took them, or for someone not on the run) is moved to a later month.
+// HR, Finance and the CEO see them, like the payroll lines; every change is in the audit log, the amounts only as set
+// or changed.
 @Injectable()
 export class AdjustmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly advances: AdvancesService,
+    private readonly runs: RunAdjustmentsService,
   ) {}
 
   /** The additions and deductions asked for, by month (newest first), then by employee code, then as entered. */
@@ -97,14 +109,34 @@ export class AdjustmentsService {
     // someone employed twice in the month is listed once, with their latest employment's place
     const people = new Map<string, PersonRef & { department: string | null }>();
     for (const e of employments) if (!people.has(e.employee.id)) people.set(e.employee.id, { ...personOf(e.employee), department: placeName(e.department) });
-    const advances = await this.advances.list({ status: 'open' });
+    const [advances, notOnRun, leftBehind] = await Promise.all([
+      this.advances.list({ status: 'open' }),
+      run
+        ? this.prisma.payrollAdjustment.count({ where: { month: toDateOnly(firstDay(month)), status: 'pending', employee: { payrollLines: { none: { runId: run.id } } } } })
+        : 0,
+      this.leftBehind(),
+    ]);
     return {
       month,
       run: run && { id: run.id, status: run.status as PayrollStatus },
       locked: this.lockText(month, run?.status ?? null),
       people: [...people.values()],
       advances: advances.filter((a) => people.has(a.employee.id)),
+      notOnRun,
+      leftBehind,
     };
+  }
+
+  /** The months approved (or paid) with pending additions or deductions left on them, oldest first, with how many. */
+  async leftBehind(): Promise<{ month: string; count: number }[]> {
+    const groups = await this.prisma.payrollAdjustment.groupBy({ by: ['month'], where: { status: 'pending' }, _count: { _all: true } });
+    if (!groups.length) return [];
+    const runs = await this.prisma.payrollRun.findMany({ where: { month: { in: groups.map((g) => g.month) }, status: { in: ['approved', 'paid'] } }, select: { month: true } });
+    const approved = new Set(runs.map((r) => fromDateOnly(r.month)));
+    return groups
+      .filter((g) => approved.has(fromDateOnly(g.month)))
+      .map((g) => ({ month: fromDateOnly(g.month).slice(0, 7), count: g._count._all }))
+      .sort((a, b) => a.month.localeCompare(b.month));
   }
 
   async create(dto: CreateAdjustmentDto, user: SessionUser): Promise<AdjustmentView> {
@@ -138,6 +170,7 @@ export class AdjustmentsService {
       // the amount only as set (restricted, as a salary)
       diff: { employeeCode: employee.employeeCode, month: dto.month, kind: dto.kind, type: dto.type, taxed, amount: 'set', reason: dto.reason, ...(advanceId && { advanceId }) },
     });
+    await this.runs.syncDrafts([dto.month], [employee.id], user);
     return this.get(row.id);
   }
 
@@ -175,6 +208,7 @@ export class AdjustmentsService {
       data: { month: toDateOnly(firstDay(month)), type, taxed, amount, reason: after.reason, advanceId },
     });
     await this.audit.record({ userId: user.id, action: 'update', entityType: ADJUSTMENT, entityId: id, diff: { employeeCode: row.employee.employeeCode, kind, ...diff } });
+    await this.runs.syncDrafts([was, month], [row.employeeId], user);
     return this.get(id);
   }
 
@@ -192,7 +226,51 @@ export class AdjustmentsService {
       entityId: id,
       diff: { employeeCode: row.employee.employeeCode, month, kind: row.kind, type: row.type, status: { from: 'pending', to: 'cancelled' } },
     });
+    await this.runs.syncDrafts([month], [row.employeeId], user);
     return this.get(id);
+  }
+
+  /**
+   * Moves pending ones to another month: from a month still open (as a change would), or, left on a month approved
+   * without them, to a later month; never from a month whose run is with the CEO. The month moved to must take them
+   * (in range, the person employed in it, its run not with the CEO, approved or paid). All or none; each move is in the
+   * audit log.
+   */
+  async move(dto: MoveAdjustmentsDto, user: SessionUser): Promise<AdjustmentView[]> {
+    const ids = [...new Set(dto.ids)];
+    const rows = await this.prisma.payrollAdjustment.findMany({ where: { id: { in: ids } }, include: ADJUSTMENT_INCLUDE });
+    if (rows.length !== ids.length) throw new NotFoundException('Some of these additions or deductions were not found. Reload the page and try again.');
+    const to = dto.month;
+    this.assertMonthInRange(to);
+    await this.assertUnlocked(to);
+    const statuses = new Map(
+      (await this.prisma.payrollRun.findMany({ where: { month: { in: rows.map((r) => r.month) } }, select: { month: true, status: true } })).map((r) => [fromDateOnly(r.month), r.status]),
+    );
+    for (const row of rows) {
+      this.assertPending(row, 'moved');
+      const from = this.monthOf(row);
+      const status = statuses.get(firstDay(from)) ?? null;
+      if (status === 'pending_ceo') throw new ConflictException(this.lockText(from, status)!);
+      if ((status === 'approved' || status === 'paid') && to <= from) {
+        throw new BadRequestException(`The ${monthName(from)} payroll ${STATUS_TEXT[status as PayrollStatus]} without it: move it to a month after ${monthName(from)}.`);
+      }
+      if (to === from) throw new BadRequestException(`It is for ${monthName(from)} already: choose another month.`);
+      await this.assertEmployed(row.employee, to);
+      await this.checkedAdvance({ employee: row.employee, month: to, kind: row.kind as AdjustmentKind, type: row.type, amount: row.amount.toNumber(), advanceId: row.advanceId, excluding: row.id });
+    }
+    await this.prisma.payrollAdjustment.updateMany({ where: { id: { in: ids } }, data: { month: toDateOnly(firstDay(to)) } });
+    for (const row of rows) {
+      await this.audit.record({
+        userId: user.id,
+        action: 'move',
+        entityType: ADJUSTMENT,
+        entityId: row.id,
+        diff: { employeeCode: row.employee.employeeCode, kind: row.kind, type: row.type, month: { from: this.monthOf(row), to } },
+      });
+    }
+    await this.runs.syncDrafts([...rows.map((r) => this.monthOf(r)), to], [...new Set(rows.map((r) => r.employeeId))], user);
+    const moved = await this.prisma.payrollAdjustment.findMany({ where: { id: { in: ids } }, orderBy: [{ employee: { employeeCode: 'asc' } }, { createdAt: 'asc' }], include: ADJUSTMENT_INCLUDE });
+    return this.views(moved);
   }
 
   // ---------- helpers ----------

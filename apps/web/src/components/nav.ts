@@ -1,6 +1,7 @@
 // Sidebar items. Kept out of the 'use client' file so server components can read them. Relative imports: the tests run
 // without the "@/" alias.
 import type { Role } from '@trendlix/shared';
+import { PAYROLL_SECTIONS } from '../app/(app)/payroll/sections';
 import { hasRole, isSelfService } from '../lib/roles';
 
 export interface NavItem {
@@ -29,8 +30,16 @@ export const NAV: NavItem[] = [
   { href: '/organization/company', label: 'Organization', section: '/organization' },
   { href: '/employees', label: 'Employees', section: '/employees' },
   { href: '/contracts', label: 'Contracts', section: '/contracts', roles: ['hr', 'ceo', 'finance'] },
-  // the month's pay: HR prepares a run, the CEO approves it, HR marks it paid (owner's decisions, 16 October 2026)
-  { href: '/payroll', label: 'Payroll', section: '/payroll', roles: ['hr', 'finance', 'ceo'] },
+  // the month's pay: HR prepares a run, the CEO approves it, HR marks it paid (owner's decisions, 16 October 2026); a
+  // heading with its pages under it (owner, 17 October 2026: "make the Payroll in the side tab a main title below it -
+  // Overview - Unsettled - Additions / Deductions - Reports (Statistics)"), the runs under Overview
+  {
+    href: '/payroll',
+    label: 'Payroll',
+    section: '/payroll',
+    roles: ['hr', 'finance', 'ceo'],
+    items: PAYROLL_SECTIONS.map((s) => ({ href: s.href, label: s.label, section: s.href })),
+  },
   // raises asked for by the employee, their manager or HR, through HR and the CEO (owner's decisions, 16 October 2026);
   // Finance may view them
   { href: '/raise-requests', label: 'Raise Requests', section: '/raise-requests', roles: ['hr', 'ceo', 'finance'] },

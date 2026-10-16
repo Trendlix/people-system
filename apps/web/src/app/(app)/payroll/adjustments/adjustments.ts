@@ -93,6 +93,10 @@ export interface AdjustmentChoices {
   locked: string | null;
   people: (PersonRef & { department: string | null })[];
   advances: AdvanceRow[];
+  /** The month's pending ones for people not on its run. Left out by an API from before runs took them. */
+  notOnRun?: number;
+  /** Pending ones left on months approved without them, oldest first. Left out by an API from before runs took them. */
+  leftBehind?: { month: string; count: number }[];
 }
 
 /** Who sees the page: HR, Finance and the CEO, as the payroll lines. */
@@ -163,6 +167,18 @@ export function monthTotals(rows: readonly AdjustmentRow[]): AdjustmentSums & { 
 
 /** A pending one HR may still change: while the month isn't locked. */
 export const changeable = (row: Pick<AdjustmentRow, 'status'>, locked: string | null) => row.status === 'pending' && locked === null;
+
+/** Whether the month's run was approved (or paid): its pending ones were left behind, and are moved to a later month. */
+export const approvedMonth = (run: AdjustmentChoices['run']) => run?.status === 'approved' || run?.status === 'paid';
+
+/** A pending one left on a month approved without it: HR moves it to a later month. */
+export const movable = (row: Pick<AdjustmentRow, 'status'>, run: AdjustmentChoices['run']) => row.status === 'pending' && approvedMonth(run);
+
+/** The months after `month` one can be moved to, newest first, from the picker's. */
+export const laterMonths = (today: string, month: string) => monthChoices(today, month).filter((m) => m.value > month);
+
+/** What Move all sends: the month's pending ones. */
+export const pendingIds = (rows: readonly Pick<AdjustmentRow, 'id' | 'status'>[]) => rows.filter((r) => r.status === 'pending').map((r) => r.id);
 
 /** "Bonus", "Loan installment". */
 export const typeText = (row: Pick<AdjustmentRow, 'kind' | 'type'>) => adjustmentTypeLabel(row.kind, row.type);
@@ -263,6 +279,27 @@ export function adjustmentBody(fd: FormData, entering: boolean): { body: Record<
   return { body, errors };
 }
 
-/** The note on how they reach the pay (owner, 17 October 2026): the month's run adds them. */
+/** The note on how they reach the pay (owner, 17 October 2026): the month's run takes them. */
 export const RUN_NOTE =
-  "Each is added to its month's payroll run when the run is made or refreshed: taxed additions into the gross, untaxed ones after tax, deductions after tax. Until runs take them (coming next), type them on the run as before.";
+  "Each is added to its month's payroll run: taxed additions into the gross, untaxed ones after tax, deductions after tax. A draft run takes a change at once; from the CEO's step on they can't change, and the CEO's approval applies them.";
+
+// ---------- on a run ----------
+
+/** A run's additions and deductions (owner, 17 October 2026): on how many lines, how many, and their sums. */
+export function runAdjustments(lines: readonly { terms: { adjustments?: readonly { kind: string; taxed: boolean; amount: number }[] } }[]): {
+  lines: number;
+  count: number;
+  taxed: number;
+  untaxed: number;
+  deductions: number;
+} {
+  const items = lines.flatMap((l) => l.terms.adjustments ?? []);
+  const sum = (pick: (a: (typeof items)[number]) => boolean) => Math.round(items.filter(pick).reduce((c, a) => c + Math.round(a.amount * 100), 0)) / 100;
+  return {
+    lines: lines.filter((l) => (l.terms.adjustments ?? []).length > 0).length,
+    count: items.length,
+    taxed: sum((a) => a.kind === 'addition' && a.taxed),
+    untaxed: sum((a) => a.kind === 'addition' && !a.taxed),
+    deductions: sum((a) => a.kind === 'deduction'),
+  };
+}

@@ -257,3 +257,42 @@ export function AdjustmentActions({
 function withOwn(advances: readonly AdvanceRow[], row: AdjustmentRow): AdvanceRow[] {
   return advances.map((a) => (a.id === row.advance?.id ? { ...a, unplanned: Math.round((a.unplanned + row.amount) * 100) / 100 } : a));
 }
+
+/**
+ * Moves one, or all the month's pending ones, left on a month approved without them to a later month (owner, 17
+ * October 2026): the month to start with the first one offered, the next.
+ */
+export function MoveForm({ action, months, label, what }: { action: Action; months: { value: string; label: string }[]; label: string; what: string }) {
+  const { state, pending, form } = useKeptForm(action);
+  const fid = useFieldIds();
+  // the next month first: the list is newest first
+  const next = months.at(-1)?.value ?? '';
+  if (!months.length) return null;
+  return (
+    <form {...form} aria-label={`${label} ${what}`} className="space-y-2">
+      <FormErrors errors={state.errors} />
+      <div className="flex flex-wrap items-end justify-end gap-2">
+        <div>
+          <label htmlFor={fid('month')} className="sr-only">
+            Month to move {what} to
+          </label>
+          <Select id={fid('month')} name="month" defaultValue={valueOf(state, 'month', next)} className="input min-h-9 py-1">
+            {months.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <SubmitButton busy={pending} pendingText="Moving…">
+          {label}
+        </SubmitButton>
+      </div>
+      {state.message && !pending && (
+        <p role="status" className="text-right text-sm text-ok">
+          {state.message}
+        </p>
+      )}
+    </form>
+  );
+}

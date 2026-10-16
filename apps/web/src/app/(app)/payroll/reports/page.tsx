@@ -6,13 +6,12 @@ import { Select } from '@/components/select';
 import { formatDateTime, titleCase } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
-import { monthChoices, periodTitle, quickPeriods, readPeriod, samePeriod } from '../../employees/raises/salary-raises';
+import { monthChoices, periodTitle, quickPeriods, readPeriod, samePeriod } from './salary-raises/salary-raises';
 import { todayInCairo } from '../../employees/ui';
 import { Empty, Loading } from '../../organization/ui';
 import { StaffOnly } from '../../staff-only';
 import { monthName, runHref } from '../list';
 import { loadJson, notLoadedText } from '../load';
-import { PayrollTabs } from '../payroll-tabs';
 import { PayrollStatusBadge } from '../ui';
 import { CostTrendChart } from './cost-chart';
 import {
@@ -319,7 +318,6 @@ export default function PayrollReportsPage({ searchParams }: PageProps<'/payroll
           What the approved payroll paid and cost, by month, department and team, and this year to date. The salary raises have a report of their own:{' '}
           <Link href={SALARY_RAISES_HREF}>Salary Raises</Link>.
         </p>
-        <PayrollTabs active="reports" />
         <div className="mt-6">
           <Suspense fallback={<Loading />}>
             <Report searchParams={searchParams} />

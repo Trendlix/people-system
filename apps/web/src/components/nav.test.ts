@@ -41,6 +41,25 @@ describe('the sidebar', () => {
     expect(COMING_SOON).not.toContain('Payroll');
   });
 
+  it('has Payroll as a heading with Overview, Unsettled, Additions / Deductions and Reports under it (owner, 17 October 2026)', () => {
+    const payroll = NAV.find((n) => n.href === '/payroll')!;
+    expect(payroll.items?.map((i) => [i.label, i.href])).toEqual([
+      ['Overview', '/payroll'],
+      ['Unsettled', '/payroll/unsettled'],
+      ['Additions / Deductions', '/payroll/adjustments'],
+      ['Reports', '/payroll/reports'],
+    ]);
+    const current = (pathname: string) => activeSubItem(payroll, pathname)?.label ?? null;
+    // a run is under Overview; the Salary Raises report under Reports
+    expect(current('/payroll')).toBe('Overview');
+    expect(current('/payroll/0b8f2c1e-1111-4222-8333-444455556666')).toBe('Overview');
+    expect(current('/payroll/unsettled')).toBe('Unsettled');
+    expect(current('/payroll/adjustments')).toBe('Additions / Deductions');
+    expect(current('/payroll/reports/salary-raises')).toBe('Reports');
+    // Raise Requests stays an item of its own
+    expect(payroll.items?.map((i) => i.label)).not.toContain('Raise Requests');
+  });
+
   it('shows Raise Requests after Payroll to HR, the CEO and Finance only', () => {
     const labels = NAV.map((n) => n.label);
     expect(labels.indexOf('Raise Requests')).toBe(labels.indexOf('Payroll') + 1);

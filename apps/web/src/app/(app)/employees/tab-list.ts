@@ -87,6 +87,9 @@ export const employeeRaiseRequestsHref = (id: string) => `${employmentHref(id, '
 /** The employee's payslips, with the pay received on Salary (#payslips). */
 export const payslipsHref = (id: string) => `${employmentHref(id, 'salary')}#payslips`;
 
+/** The employee's advances and loans, on Salary (#advances: owner, 17 October 2026). */
+export const advancesHref = (id: string) => `${employmentHref(id, 'salary')}#advances`;
+
 /** The documents generated for each contract version, on Issued Documents (#contract-documents). */
 export const contractDocumentsHref = (id: string) => `${employmentHref(id, 'documents')}#contract-documents`;
 
@@ -123,6 +126,7 @@ const ANCHOR_SUB_TABS: ReadonlyMap<string, EmploymentSubTabKey> = new Map([
   ['salary-history', 'salary'],
   ['raise-requests', 'salary'],
   ['payslips', 'salary'],
+  ['advances', 'salary'],
   ['contract-documents', 'documents'],
 ]);
 

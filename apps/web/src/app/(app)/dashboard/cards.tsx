@@ -18,7 +18,7 @@ import { askedByText, probationOf, raiseNews } from '../my-team/team';
 import { loadOwnProfile } from '../own-profile';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
 import { progressText } from '../raise-requests/list';
-import { RaiseRequestStatusBadge } from '../raise-requests/ui';
+import { FoldedRequestLog, RaiseRequestStatusBadge, RequestReason, Suggestion } from '../raise-requests/ui';
 import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toDoItems, upcomingHolidays, workingDaysText } from './dashboard';
 
 // The employee's dashboard: the home page (/) of someone who is only an employee and/or a direct manager (owner, 17
@@ -206,7 +206,8 @@ async function UpcomingHolidays({ today }: { today: string }) {
 
 /**
  * Their open requests, each with where it stands (the changes to their details they asked HR for, and the raises they
- * asked for, as the API shows them to the employee), and ways to ask: Request a raise (the form on their profile's
+ * asked for, as the API shows them to the employee: the reason from the list, the raise suggested and the log, 17
+ * October 2026), and ways to ask: Request a raise (the form on their profile's
  * Salary sub-tab, when they may ask now) and Ask to change my details (the change request page).
  */
 async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
@@ -227,12 +228,28 @@ async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
       ) : (
         <ul className="divide-y divide-line-soft">
           {open.map((r) => (
-            <li key={`${r.kind}:${r.id}`} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2.5 text-sm">
-              <div className="min-w-0">
-                <p className="font-medium">{requestLabel(r)}</p>
-                <p className="text-xs text-muted">Sent {formatDateTime(r.at)}</p>
+            <li key={`${r.kind}:${r.id}`} className="space-y-1.5 py-2.5 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="min-w-0">
+                  <p className="font-medium">{requestLabel(r)}</p>
+                  <p className="text-xs text-muted">Sent {formatDateTime(r.at)}</p>
+                </div>
+                {r.kind === 'details' ? <ChangeRequestStatusBadge status={r.request.status} /> : <RaiseRequestStatusBadge status={r.request.status} />}
               </div>
-              {r.kind === 'details' ? <ChangeRequestStatusBadge status={r.request.status} /> : <RaiseRequestStatusBadge status={r.request.status} />}
+              {/* a raise: the reason from the list and the comment, the raise suggested, and its log (17 October 2026) */}
+              {r.kind !== 'details' && (
+                <>
+                  <div className="text-xs">
+                    <RequestReason request={r.request} />
+                  </div>
+                  {(r.request.suggestion || r.request.suggestedGross !== null) && (
+                    <p className="text-xs text-muted">
+                      Suggested: <Suggestion request={r.request} />
+                    </p>
+                  )}
+                  <FoldedRequestLog request={r.request} />
+                </>
+              )}
             </li>
           ))}
         </ul>

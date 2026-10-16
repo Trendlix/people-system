@@ -1,7 +1,6 @@
 // The pages under Payroll (owner, 17 October 2026: "make the Payroll in the side tab a main title below it - Overview -
-// Unsettled - Additions / Deductions - Reports (Statistics)"): until the sidebar has them under Payroll, each of these
-// pages shows them as tabs. Plain data, so the sidebar can take them as they are. Relative imports only: the tests run
-// without the "@/" alias.
+// Unsettled - Additions / Deductions - Reports (Statistics)"), as the sidebar lists them under Payroll (components/nav.ts).
+// Plain data, with no imports, so the sidebar and its tests take them as they are.
 
 export const PAYROLL_SECTIONS = [
   { key: 'overview', href: '/payroll', label: 'Overview' },

@@ -1,5 +1,5 @@
 import { applyDecorators } from '@nestjs/common';
-import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 import {
   ADJUSTMENT_KINDS,
   ADJUSTMENT_STATUSES,
@@ -82,6 +82,18 @@ export class UpdateAdjustmentDto {
 
   @TrimOrNull() @IsOptional() @IsUUID('all', { message: ADVANCE_MESSAGE })
   advanceId?: string | null;
+}
+
+/** Pending ones moved to another month: { ids, month }, at most 200 at a time. */
+export class MoveAdjustmentsDto {
+  @IsArray({ message: 'Choose the additions or deductions to move.' })
+  @ArrayMinSize(1, { message: 'Choose the additions or deductions to move.' })
+  @ArrayMaxSize(200, { message: 'Move at most 200 at a time.' })
+  @IsUUID('all', { each: true, message: 'Choose the additions or deductions to move.' })
+  ids: string[];
+
+  @Trim() @Matches(MONTH, { message: MONTH_MESSAGE })
+  month: string;
 }
 
 /** ?month=YYYY-MM&employeeId=&kind=&type=&status=: every filter optional. */

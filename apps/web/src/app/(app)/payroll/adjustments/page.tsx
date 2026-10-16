@@ -11,20 +11,23 @@ import { Empty, Loading } from '../../organization/ui';
 import { StaffOnly } from '../../staff-only';
 import { addMonths, monthName, runHref } from '../list';
 import { loadJson, notLoadedText } from '../load';
-import { PayrollTabs } from '../payroll-tabs';
 import { PayrollStatusBadge } from '../ui';
-import { cancelAdjustment, createAdjustment, updateAdjustment } from './actions';
-import { AddAdjustmentForm, AdjustmentActions } from './adjustment-forms';
+import { cancelAdjustment, createAdjustment, moveAdjustments, updateAdjustment } from './actions';
+import { AddAdjustmentForm, AdjustmentActions, MoveForm } from './adjustment-forms';
 import {
   adjustmentsHref,
+  approvedMonth,
   byEmployee,
   canSeeAdjustments,
   changeable,
   enteredText,
   entersAdjustments,
+  laterMonths,
   monthChoices,
+  movable,
   monthTotals,
   netText,
+  pendingIds,
   readMonth,
   RUN_NOTE,
   signedAmount,
@@ -40,7 +43,8 @@ import {
 // Additions / Deductions"; asked, the owner chose one-off amounts per employee and month, not recurring). For a month,
 // in the address so a view can be shared (this month unless asked): its totals, HR's form to add one, and every
 // addition and deduction by employee with each person's totals; HR changes or cancels a pending one while the month's
-// run is still a draft. HR, Finance and the CEO, as salaries; the API checks it again.
+// run is still a draft, and moves one left on a month approved without it to a later month; what no run pays is said at
+// the top. HR, Finance and the CEO, as salaries; the API checks it again.
 
 export const metadata: Metadata = { title: 'Additions / Deductions · People System' };
 
@@ -100,6 +104,7 @@ function Totals({ rows }: { rows: AdjustmentRow[] }) {
 
 function AdjustmentsTable({ rows, choices, hr, today }: { rows: AdjustmentRow[]; choices: AdjustmentChoices; hr: boolean; today: string }) {
   const months = monthChoices(today, choices.month);
+  const later = laterMonths(today, choices.month);
   return (
     <div className="overflow-x-auto">
       <table className="table">
@@ -166,6 +171,8 @@ function AdjustmentsTable({ rows, choices, hr, today }: { rows: AdjustmentRow[];
                           months={months}
                           advances={choices.advances}
                         />
+                      ) : movable(r, choices.run) ? (
+                        <MoveForm action={moveAdjustments.bind(null, [r.id])} months={later} label="Move" what={`the ${r.kind} for ${r.employee.name}`} />
                       ) : null}
                     </td>
                   )}
@@ -176,6 +183,51 @@ function AdjustmentsTable({ rows, choices, hr, today }: { rows: AdjustmentRow[];
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * What no run pays (owner, 17 October 2026): on this month, the pending ones its approved run was made without, all
+ * movable at once; on any month, the other months left with some; and this month's for people not on its run.
+ */
+function LeftBehind({ choices, rows, hr, today }: { choices: AdjustmentChoices; rows: AdjustmentRow[]; hr: boolean; today: string }) {
+  const here = approvedMonth(choices.run) ? pendingIds(rows) : [];
+  const elsewhere = (choices.leftBehind ?? []).filter((l) => l.month !== choices.month);
+  const notOnRun = !approvedMonth(choices.run) ? (choices.notOnRun ?? 0) : 0;
+  if (!here.length && !elsewhere.length && !notOnRun) return null;
+  return (
+    <section aria-labelledby="left-behind" className="space-y-2 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+      <h2 id="left-behind" className="font-semibold">
+        Not Paid by a Run
+      </h2>
+      {here.length > 0 && (
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <p>
+            {here.length === 1 ? 'One pending addition or deduction is' : `${here.length} pending additions or deductions are`} left on {monthName(choices.month)}: its
+            run was approved without {here.length === 1 ? 'it' : 'them'}. Move {here.length === 1 ? 'it' : 'them'} to a later month to be paid.
+          </p>
+          {hr && <MoveForm action={moveAdjustments.bind(null, here)} months={laterMonths(today, choices.month)} label={here.length === 1 ? 'Move' : 'Move all'} what="the pending ones" />}
+        </div>
+      )}
+      {notOnRun > 0 && (
+        <p>
+          {notOnRun === 1 ? 'One is' : `${notOnRun} are`} for people not on the {monthName(choices.month)} run: no line takes {notOnRun === 1 ? 'it' : 'them'}.
+          Put the person on the run (a signed contract, then Refresh), or move {notOnRun === 1 ? 'it' : 'them'} to a later month.
+        </p>
+      )}
+      {elsewhere.length > 0 && (
+        <p>
+          Left on months approved without them:{' '}
+          {elsewhere.map((l, i) => (
+            <span key={l.month}>
+              {i > 0 && ', '}
+              <Link href={adjustmentsHref(l.month, today)}>{monthName(l.month)}</Link> ({l.count})
+            </span>
+          ))}
+          .
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -226,6 +278,7 @@ async function MonthView({ searchParams }: { searchParams: Promise<Query> }) {
           {choices.locked}
         </p>
       )}
+      <LeftBehind choices={choices} rows={rows} hr={hr} today={today} />
       <Totals rows={rows} />
       {hr && !choices.locked && (
         <section aria-labelledby="new-adjustment" className="card space-y-3 p-6">
@@ -267,7 +320,6 @@ export default function AdjustmentsPage({ searchParams }: PageProps<'/payroll/ad
           One-off amounts on an employee&apos;s pay for a month: a bonus, commission, incentive, correction or reimbursement added; a penalty, damage or
           loss, an advance&apos;s recovery or a loan&apos;s installment taken. {RUN_NOTE}
         </p>
-        <PayrollTabs active="adjustments" />
         <div className="mt-6">
           <Suspense fallback={<Loading />}>
             <MonthView searchParams={searchParams} />

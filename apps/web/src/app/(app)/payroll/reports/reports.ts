@@ -2,7 +2,7 @@ import { monthRange, PAYROLL_FIGURE_KEYS, PAYROLL_FIGURE_LABELS, type MonthStati
 import { hasRole } from '../../../../lib/roles';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { compactAmount, niceTicks } from '../../employees/[id]/salary-history/salary-history';
-import { RAISES_PATH } from '../../employees/raises/salary-raises';
+import { RAISES_PATH } from './salary-raises/salary-raises';
 import { monthName } from '../list';
 import { REPORTS_PATH } from '../sections';
 

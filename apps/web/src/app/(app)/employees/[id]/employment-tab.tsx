@@ -36,6 +36,7 @@ import { DeleteRowButton } from './inline-forms';
 import { PayReceived, PayReceivedLoading } from './payslips/pay-received';
 import { ProfileTabs } from './profile-tabs';
 import { RaiseRequestsSection } from './raise-requests/raise-requests-section';
+import { AdvancesLoading, AdvancesSection } from './advances/advances-section';
 import { SalaryHistoryLoading, SalaryHistorySection } from './salary-history/salary-history-section';
 
 // The Employment tab: everything about the job, in one place (owner, 16 October 2026: "there is no point of adding
@@ -50,7 +51,8 @@ import { SalaryHistoryLoading, SalaryHistorySection } from './salary-history/sal
 // - Salary: the Salary History (#salary-history: each employment's pay events, with what the Pay History table had)
 //   and the pay received with the payslips (#payslips), HR's, Finance's and the CEO's, as the salary; between them the
 //   Raise Requests (#raise-requests), where the employee asks for themself, their direct manager for them, or HR, and
-//   each decision shows. The API sends each viewer only what they may see: the employee and their manager get only the
+//   each decision shows; then the advances and loans with what is outstanding (#advances: owner, 17 October 2026),
+//   as the salary. The API sends each viewer only what they may see: the employee and their manager get only the
 //   requests, so they are offered Salary only when there is something there for them.
 // - Issued Documents, HR's and the CEO's: the documents generated from the templates (#contract-documents), which HR
 //   generates and moves along and the CEO views and downloads; not the Documents tab, the papers the employee brings.
@@ -373,7 +375,8 @@ async function DetailsSubTab({
 }
 
 /**
- * Salary: the Salary History and the pay received for those who see salaries, and the Raise Requests between them
+ * Salary: the Salary History, the pay received and the advances and loans for those who see salaries, and the Raise
+ * Requests after the Salary History
  * (`raiseRequests`: already read for an employee or a manager, to offer them the sub-tab). Each loads on its own.
  */
 function SalarySubTab({
@@ -407,6 +410,14 @@ function SalarySubTab({
         <div id="payslips" className="scroll-mt-6">
           <Suspense fallback={<PayReceivedLoading />}>
             <PayReceived employee={p} />
+          </Suspense>
+        </div>
+      )}
+      {seesPay && (
+        // their advances and loans, with what is outstanding (owner, 17 October 2026)
+        <div id="advances" className="scroll-mt-6">
+          <Suspense fallback={<AdvancesLoading />}>
+            <AdvancesSection employee={p} />
           </Suspense>
         </div>
       )}

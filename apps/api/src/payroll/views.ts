@@ -88,6 +88,11 @@ export interface PayrollRunView {
   bankCheck: { cib: number; ach: number; problems: number };
   /** How many English payslips are kept: one for each line paid, once the run is marked paid. */
   payslips: number;
+  /**
+   * The month's pending additions and deductions for people not on the run (owner, 17 October 2026): no line takes
+   * them, so HR puts the person on the run or moves them to a later month. By person.
+   */
+  adjustmentsNotOnRun: { employeeId: string; employeeCode: string; name: string; count: number }[];
 }
 
 export interface PayrollRunSummary {
@@ -158,7 +163,10 @@ export function lineView(line: LineRow, bank: LineBank): PayrollLineView {
 /** Whether the bank details were copied: from the CEO's approval on. */
 export const isApproved = (status: string) => status === 'approved' || status === 'paid';
 
-export function runView(run: RunRow, ctx: { banks: ReadonlyMap<string, BankDetails>; approvedByName: string | null }): PayrollRunView {
+export function runView(
+  run: RunRow,
+  ctx: { banks: ReadonlyMap<string, BankDetails>; approvedByName: string | null; adjustmentsNotOnRun: PayrollRunView['adjustmentsNotOnRun'] },
+): PayrollRunView {
   const approved = isApproved(run.status);
   const lines = run.lines.map((l) => lineView(l, lineBank(bankDetailsOf(l, ctx.banks.get(l.employeeId), approved))));
   return {
@@ -178,5 +186,6 @@ export function runView(run: RunRow, ctx: { banks: ReadonlyMap<string, BankDetai
     exclusions: run.exclusions as unknown as Exclusion[],
     bankCheck: bankCheck(lines.map((l) => ({ onHold: l.onHold, transfer: l.result.transfer, bank: l.bank }))),
     payslips: lines.filter((l) => l.payslips.en).length,
+    adjustmentsNotOnRun: ctx.adjustmentsNotOnRun,
   };
 }

@@ -1,9 +1,11 @@
 import {
+  adjustmentTypeLabel,
   EMPTY_PAYROLL_INPUTS,
   formatHours,
   lawRatesFor,
   measuredExpectedHours,
   paysOvertime,
+  resultAdjustments,
   splitSegments,
   type LawRates,
   type PayrollAllowance,
@@ -33,8 +35,10 @@ import { contractLabel, dayRange } from './grid';
 // the figure. Leave days are listed, nothing cut for them. A month split between two contracts (owner, 17 October 2026:
 // "take into consideration the start and end date of the contract if it is in the middle of the billing period") lists
 // them, and each part's fixed and variable pay and allowances for its days. Overtime says "not paid" while the run's
-// rules don't pay it (owner, 16 October 2026: "No overtime for now"). Pure code, tested; relative imports, as vitest
-// doesn't know the @/ paths.
+// rules don't pay it (owner, 16 October 2026: "No overtime for now"). The month's additions and deductions (owner, 17
+// October 2026: Additions / Deductions) are rows of their own, each by its type with its reason: the taxed additions in
+// the pay earned, the deductions after tax with the others, the untaxed additions after them, before the net. Pure
+// code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 export interface BreakdownRow {
   key: string;
@@ -250,7 +254,7 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
 
 /** The steps of a line paid by the hour: the hours at the rate (no split, no attendance or KPI cuts). */
 function hourlySteps({ terms: t, inputs: i, result: r }: Line): BreakdownRow[] {
-  const forHours = Math.round((r.earned - r.bonus - r.commission - r.settlements) * 100) / 100;
+  const forHours = Math.round((r.earned - r.bonus - r.commission - r.settlements - resultAdjustments(r).taxed) * 100) / 100;
   const rate = t.hourlyRate === null ? null : formatEgp(t.hourlyRate);
   return [
     {
@@ -261,6 +265,19 @@ function hourlySteps({ terms: t, inputs: i, result: r }: Line): BreakdownRow[] {
       note: i.workedHours === null ? 'No hours typed' : `${formatHours(i.workedHours)} hours${rate ? ` at ${rate} an hour` : ''}`,
     },
   ];
+}
+
+/** The line's additions or deductions of a kind (owner, 17 October 2026), each a row by its type with its reason. */
+function adjustmentRows(t: PayrollTerms, kind: 'addition' | 'deduction', taxed: boolean | null): BreakdownRow[] {
+  return (t.adjustments ?? [])
+    .filter((a) => a.kind === kind && (taxed === null || a.taxed === taxed))
+    .map((a) => ({
+      key: `adjustment-${a.id}`,
+      label: adjustmentTypeLabel(a.kind, a.type),
+      value: kind === 'deduction' ? cutText(a.amount) : formatEgp(a.amount),
+      kind: kind === 'deduction' ? ('cut' as const) : ('add' as const),
+      note: kind === 'deduction' ? `${a.reason} · after tax` : a.taxed ? `${a.reason} · taxed` : `${a.reason} · not taxed, added after tax`,
+    }));
 }
 
 /** Every step of a line, in order, as its row in the results table opens it. */
@@ -292,6 +309,7 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates): Bre
     { key: 'bonus', label: 'Bonus', value: formatEgp(r.bonus), kind: 'add', note: i.bonusDays ? days(i.bonusDays) : undefined },
     { key: 'commission', label: 'Commission', value: formatEgp(r.commission), kind: 'add' },
     { key: 'settlements', label: 'Settlements', value: r.settlements < 0 ? cutText(r.settlements) : formatEgp(r.settlements), kind: r.settlements < 0 ? 'cut' : 'add' },
+    ...adjustmentRows(t, 'addition', true),
     { key: 'earned', label: 'Earned', value: formatEgp(r.earned), kind: 'total' },
     ...allowances,
     {
@@ -313,7 +331,9 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates): Bre
     { key: 'tax', label: 'Income tax', value: cutText(r.monthlyTax), kind: 'cut' },
     { key: 'martyrsFund', label: 'Martyrs’ fund', value: cutText(r.martyrsFund), kind: 'cut' },
     { key: 'penalties', label: 'Penalties', value: cutText(r.penaltyCut), kind: 'cut', note: i.penaltyDays ? `${days(i.penaltyDays)} of the contract's net` : undefined },
+    ...adjustmentRows(t, 'deduction', null),
     { key: 'deductions', label: 'Deductions', value: cutText(r.deductions), kind: 'total' },
+    ...adjustmentRows(t, 'addition', false),
     { key: 'net', label: 'Net', value: formatEgp(r.net), kind: 'total' },
     { key: 'released', label: 'Released', value: cutText(r.released), kind: 'cut', note: r.released ? 'Already paid out this month' : undefined },
     { key: 'transfer', label: 'Transfer', value: formatEgp(r.transfer), kind: 'total', note: 'What the bank pays' },
@@ -322,7 +342,10 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates): Bre
       label: 'Company cost',
       value: formatEgp(r.companyCost),
       kind: 'total',
-      note: `Earned, allowances and the company's social insurance (${formatEgp(r.employerInsurance)})`,
+      note:
+        resultAdjustments(r).untaxed > 0
+          ? `Earned, allowances, the untaxed additions and the company's social insurance (${formatEgp(r.employerInsurance)})`
+          : `Earned, allowances and the company's social insurance (${formatEgp(r.employerInsurance)})`,
     },
   ];
 }

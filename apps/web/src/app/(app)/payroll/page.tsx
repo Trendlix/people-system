@@ -11,7 +11,6 @@ import { loadRuns } from './data';
 import { canSeePayroll, monthName, preparesPayroll, runHref, runMonths, suggestedMonth } from './list';
 import { NewRunForm } from './new-run-form';
 import { KeyFigures } from './key-figures';
-import { PayrollTabs } from './payroll-tabs';
 import { PayrollStatusBadge } from './ui';
 
 // Payroll (owner's decisions, 16 October 2026): each month's run, newest first, and for HR a new one. HR prepares a run
@@ -108,13 +107,12 @@ async function Runs() {
 export default function PayrollPage() {
   return (
     <div className="max-w-6xl">
-      <h1 className="text-2xl font-semibold">Payroll</h1>
+      <h1 className="text-2xl font-semibold">Payroll Overview</h1>
       <p className="mt-1 text-muted">
         Each month&apos;s pay: HR prepares the run, the CEO approves it, then the bank files are made and HR marks it paid. The rules, rates
         and payday it is worked out with are under <Link href="/organization/payroll">Organization → Payroll Setup</Link>, the holidays under{' '}
         <Link href="/organization/holidays">Organization → Holidays</Link>.
       </p>
-      <PayrollTabs active="overview" />
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Runs />

@@ -30,8 +30,14 @@
 // a warning, as attendance will never count them.
 // Overtime (owner, 16 October 2026: "No overtime for now"): not paid while the rules' Pay overtime is off, as it is from
 // then on; a run's rules copied before the switch existed read as on, so their figures never change.
+// Additions and deductions (owner, 17 October 2026: Additions / Deductions under Payroll, one-off amounts per employee
+// and month): the month's pending ones are taken with the line's terms when the run is made or refreshed (and whenever
+// one changes while the run is a draft); the taxed additions are in the pay earned, so in the gross and the taxed pay,
+// the untaxed ones are added after tax, and the deductions are taken after tax with the others. Lines worked out before
+// then have none, and never change.
 
 import type { AllowanceTerms } from './contracts.js';
+import { adjustmentSums, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
 import type { PayBasis } from './contracts.js';
 import { lawRatesFor, type LawRates } from './law-rates.js';
 import { grossToNet, monthlySalaryTax } from './salary.js';
@@ -174,6 +180,22 @@ export interface PayrollTerms {
   expectedHours?: number | null;
   /** What the shift's hours were worked out from: its working days in the days paid, and the holidays on them. */
   expectedDays?: ShiftDays | null;
+  /**
+   * The month's additions and deductions on the line (owner, 17 October 2026: Additions / Deductions), as they were
+   * when the run took them, in the order entered. Missing on lines without any, and on lines worked out before then.
+   */
+  adjustments?: PayrollAdjustmentItem[];
+}
+
+/** An addition or deduction as a line keeps it: what it is, whether it is taxed, the amount and why. */
+export interface PayrollAdjustmentItem {
+  /** The PayrollAdjustment's id: applied to the line when the CEO approves the run. */
+  id: string;
+  kind: AdjustmentKind;
+  type: AdjustmentType;
+  taxed: boolean;
+  amount: number;
+  reason: string;
 }
 
 /** A shift's working days within the days someone is employed in a month, and the official holidays on them. */
@@ -310,16 +332,33 @@ export interface PayrollResult {
   monthlyTax: number;
   martyrsFund: number;
   penaltyCut: number;
-  /** All the employee's deductions: insurance, tax, Martyrs' Fund, penalties. */
+  /** All the employee's deductions: insurance, tax, Martyrs' Fund, penalties, the month's deductions (after tax). */
   deductions: number;
   net: number;
   released: number;
   /** What the bank pays: the net less what was already paid out. */
   transfer: number;
-  /** What the employee costs the company this month: earned, allowances and the company's insurance share. */
+  /** What the employee costs the company this month: earned, allowances, untaxed additions and the company's insurance share. */
   companyCost: number;
+  /**
+   * The month's additions and deductions (owner, 17 October 2026): the taxed additions, in the pay earned; the untaxed
+   * ones, added after tax; the deductions, in the deductions after tax. Missing on lines worked out before then: none.
+   */
+  additionsTaxed?: number;
+  additionsUntaxed?: number;
+  adjustmentDeductions?: number;
   /** Plain-English notes for HR, e.g. "Paid for 19 of 30 days: employed or under contract for part of the month". */
   warnings: string[];
+}
+
+/** A result's additions and deductions, 0 on a line worked out before they existed (17 October 2026). */
+export function resultAdjustments(r: Pick<PayrollResult, 'additionsTaxed' | 'additionsUntaxed' | 'adjustmentDeductions'>): {
+  taxed: number;
+  untaxed: number;
+  deductions: number;
+} {
+  const n = (v: number | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return { taxed: n(r.additionsTaxed), untaxed: n(r.additionsUntaxed), deductions: n(r.adjustmentDeductions) };
 }
 
 /** Half-up to the piaster, as salary.ts rounds (+ 0 turns a −0 into 0). */
@@ -549,8 +588,11 @@ export function payrollLine(
   const bonus = piasters((given(i.bonusDays) * fixedFull) / days);
   const commission = piasters(given(i.commission));
   const settlements = piasters(given(i.settlements));
+  // the month's additions and deductions (owner, 17 October 2026): the taxed additions are pay earned
+  const adjustments = adjustmentSums((terms.adjustments ?? []).map((a) => ({ ...a, status: 'pending' as const })));
+  const additionsTaxed = adjustments.taxedAdditions;
   const earned = piasters(
-    salary.fixed - salary.attendanceCut + salary.variable - salary.kpiCut - salary.noShowCut + salary.overtime + bonus + commission + settlements,
+    salary.fixed - salary.attendanceCut + salary.variable - salary.kpiCut - salary.noShowCut + salary.overtime + bonus + commission + settlements + additionsTaxed,
   );
 
   const allowancesTotal = sum((p) => p.allowances);
@@ -577,9 +619,12 @@ export function payrollLine(
   const contractNet = terms.statutory ? grossToNet(gross, law).net : gross;
   const penaltyCut = penaltyDays ? piasters((penaltyDays * contractNet) / days) : 0;
 
-  // comprehensive health insurance is 0 while it doesn't apply in Cairo; it is in the deductions so the net stays right
-  const deductions = piasters(employeeInsurance + tax.healthInsurance + tax.monthlyTax + tax.martyrsFund + penaltyCut);
-  const net = piasters(earned + allowancesTotal - deductions);
+  // comprehensive health insurance is 0 while it doesn't apply in Cairo; it is in the deductions so the net stays right;
+  // the month's deductions (17 October 2026) are taken after tax with the others, its untaxed additions added after it
+  const adjustmentDeductions = adjustments.deductions;
+  const additionsUntaxed = adjustments.untaxedAdditions;
+  const deductions = piasters(employeeInsurance + tax.healthInsurance + tax.monthlyTax + tax.martyrsFund + penaltyCut + adjustmentDeductions);
+  const net = piasters(earned + allowancesTotal + additionsUntaxed - deductions);
   const released = piasters(given(i.released));
   const transfer = piasters(net - released);
   if (net < 0) warnings.push('The net is below 0: the cuts and deductions are more than the pay');
@@ -611,7 +656,11 @@ export function payrollLine(
     net,
     released,
     transfer,
-    companyCost: piasters(earned + allowancesTotal + employerInsurance),
+    // what the employee costs the company: their untaxed additions too
+    companyCost: piasters(earned + allowancesTotal + additionsUntaxed + employerInsurance),
+    additionsTaxed,
+    additionsUntaxed,
+    adjustmentDeductions,
     warnings,
   };
 }

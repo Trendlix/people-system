@@ -4,13 +4,13 @@ import { Suspense } from 'react';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
+import { advancesHref } from '../../employees/tab-list';
 import { todayInCairo } from '../../employees/ui';
 import { Empty, Loading } from '../../organization/ui';
 import { StaffOnly } from '../../staff-only';
 import type { AdjustmentChoices } from '../adjustments/adjustments';
 import { monthName, runHref } from '../list';
 import { loadJson, notLoadedText } from '../load';
-import { PayrollTabs } from '../payroll-tabs';
 import { ADJUSTMENTS_PATH } from '../sections';
 import { PayrollStatusBadge } from '../ui';
 import { createAdvance, recordPaidOut, reopenFinal, settleAdvance, settleFinal, updateAdvance } from './actions';
@@ -57,10 +57,10 @@ function Section({ id, title, count, total, note, children }: { id: string; titl
   );
 }
 
-function Person({ person }: { person: { id: string; employeeCode: string; name: string } }) {
+function Person({ person, href }: { person: { id: string; employeeCode: string; name: string }; href?: string }) {
   return (
     <>
-      <Link href={`/employees/${person.id}`} className="font-semibold">
+      <Link href={href ?? `/employees/${person.id}`} className="font-semibold">
         {person.name}
       </Link>
       <div className="text-xs text-muted">{person.employeeCode}</div>
@@ -337,7 +337,7 @@ function AdvancesAndLoans({ u, hr, today, people }: { u: UnsettledView; hr: bool
               {u.advances.rows.map((a) => (
                 <tr key={a.id}>
                   <td>
-                    <Person person={a.employee} />
+                    <Person person={a.employee} href={advancesHref(a.employee.id)} />
                   </td>
                   <td>
                     {advanceKindText(a.kind)}
@@ -416,7 +416,6 @@ export default function UnsettledPage() {
           What the payroll still owes or is owed: runs not yet paid, pay held on a run and not paid out since, the final dues of people who left, and advances
           and loans still being recovered.
         </p>
-        <PayrollTabs active="unsettled" />
         <div className="mt-6">
           <Suspense fallback={<Loading />}>
             <Unsettled />

@@ -7,9 +7,9 @@ import { departmentName } from '@/lib/departments';
 import { formatDateTime, titleCase } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
-import { StaffOnly } from '../../staff-only';
-import { formatEgp } from '../[id]/contracts/salary';
-import { BackLink, Empty, Loading, todayInCairo } from '../ui';
+import { StaffOnly } from '../../../staff-only';
+import { formatEgp } from '../../../employees/[id]/contracts/salary';
+import { BackLink, Empty, Loading, todayInCairo } from '../../../employees/ui';
 import { loadSalaryRaises } from './data';
 import {
   canSeeSalaryRaises,
@@ -37,13 +37,15 @@ import {
 } from './salary-raises';
 
 // The Salary Raises report (owner's decision, 16 October 2026: the salary raises tracked on each profile's Salary
-// History and in a company-wide report), reached from the Employees page. For a period of months, in the address so a
-// view can be shared (this calendar year unless asked): the totals (the raises, the people, the average raise, what they
-// cost a month and a year more), the raises by department, every signed raise that took effect in it with its person
-// linked to their Salary History, and who is due for a salary review now, after the months set in Payroll Setup → Your
-// Rules, with a way for HR to prepare or ask for their raise. One GET /reports/salary-raises call, from the same pay
-// events as each Salary History, so the figures agree. HR, Finance and the CEO, as salaries; the API checks it again. The
-// Excel workbook is the API's, passed on under the web domain (excel/route.ts).
+// History and in a company-wide report), under Payroll → Reports since 17 October 2026 (owner: "Reports (Statistics)"
+// under Payroll), also reached from the Employees page; its old address, /employees/raises, is redirected here
+// (next.config.ts). For a period of months, in the address so a view can be shared (this calendar year unless asked):
+// the totals (the raises, the people, the average raise, what they cost a month and a year more), the raises by
+// department, every signed raise that took effect in it with its person linked to their Salary History, and who is due
+// for a salary review now, after the months set in Payroll Setup → Your Rules, with a way for HR to prepare or ask for
+// their raise. One GET /reports/salary-raises call, from the same pay events as each Salary History, so the figures
+// agree. HR, Finance and the CEO, as salaries; the API checks it again. The Excel workbook is the API's, passed on
+// under the web domain (excel/route.ts).
 
 export const metadata: Metadata = { title: 'Salary Raises · People System' };
 
@@ -395,11 +397,11 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
   );
 }
 
-export default function SalaryRaisesPage({ searchParams }: PageProps<'/employees/raises'>) {
+export default function SalaryRaisesPage({ searchParams }: PageProps<'/payroll/reports/salary-raises'>) {
   return (
     <StaffOnly>
       <div className="space-y-4">
-        <BackLink href="/employees">Employees</BackLink>
+        <BackLink href="/payroll/reports">Payroll Reports</BackLink>
         <div>
           <h1 className="text-2xl font-semibold">Salary Raises</h1>
           <p className="mt-1 text-muted">Every signed raise of a period and what it costs, by department, and who is due for a salary review.</p>

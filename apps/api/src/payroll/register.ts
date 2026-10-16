@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { measuredExpectedHours, PAY_BASIS_LABELS, PAYROLL_STATUS_LABELS, type PayBasis, type PayrollInputs, type PayrollResult, type PayrollStatus, type PayrollTerms } from '@trendlix/shared';
+import { measuredExpectedHours, PAY_BASIS_LABELS, PAYROLL_STATUS_LABELS, resultAdjustments, type PayBasis, type PayrollInputs, type PayrollResult, type PayrollStatus, type PayrollTerms } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import type { BankFileKind } from './bank.js';
 import { monthName } from './months.js';
@@ -14,6 +14,8 @@ import { byDepartment } from './roster.js';
 // leave days, which have their own columns; on a line worked out before then, the hours typed or the shift's less the
 // no-show days' hours it took out (they had a column of their own until then). So the Attendance % reads as the worked
 // hours over the Expected hours on every line. A month split between two contracts (17 October 2026) shows its sums.
+// The month's additions and deductions (owner, 17 October 2026: Additions / Deductions): the taxed additions in the
+// pay earned, the deductions after tax, the untaxed additions after them, each a column of its own.
 
 export interface RegisterLine {
   department: string | null;
@@ -83,12 +85,16 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'Bonus', kind: 'money', width: 12, value: (l) => l.result.bonus },
   { header: 'Commission', kind: 'money', width: 12, value: (l) => l.result.commission },
   { header: 'Settlements', kind: 'money', width: 12, value: (l) => l.result.settlements },
+  // the month's additions and deductions (owner, 17 October 2026): none on lines worked out before then
+  { header: 'Additions (taxed)', kind: 'money', width: 12, value: (l) => resultAdjustments(l.result).taxed },
   { header: 'Allowances', kind: 'money', width: 12, value: (l) => l.result.allowances },
   { header: 'Earned', kind: 'money', width: 14, value: (l) => l.result.earned },
   { header: 'Social insurance (employee)', kind: 'money', width: 14, value: (l) => l.result.employeeInsurance },
   { header: 'Income tax', kind: 'money', width: 12, value: (l) => l.result.monthlyTax },
   { header: "Martyrs' fund", kind: 'money', width: 11, value: (l) => l.result.martyrsFund },
   { header: 'Penalties', kind: 'money', width: 12, value: (l) => l.result.penaltyCut },
+  { header: 'Deductions (after tax)', kind: 'money', width: 12, value: (l) => resultAdjustments(l.result).deductions },
+  { header: 'Additions (not taxed)', kind: 'money', width: 12, value: (l) => resultAdjustments(l.result).untaxed },
   { header: 'Net', kind: 'money', width: 14, value: (l) => l.result.net },
   { header: 'Released', kind: 'money', width: 12, value: (l) => l.result.released },
   { header: 'Transfer', kind: 'money', width: 14, value: (l) => l.result.transfer },
@@ -101,7 +107,7 @@ export const REGISTER_COLUMNS: readonly Column[] = [
 
 const FORMATS: Record<Kind, string> = { text: '@', money: MONEY, percent: PERCENT, hours: HOURS, days: DAYS, count: '0' };
 
-/** The column's letter, A … AP. */
+/** The column's letter, A … AS. */
 function letter(n: number): string {
   let s = '';
   for (let i = n; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s;

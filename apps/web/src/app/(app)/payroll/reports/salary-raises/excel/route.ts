@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
-import { passSheetOn } from '../../../payroll/files';
-import { apiReason, textResponse as text } from '../../../templates/file-response';
-import { todayInCairo } from '../../ui';
+import { passSheetOn } from '../../../files';
+import { apiReason, textResponse as text } from '../../../../templates/file-response';
+import { todayInCairo } from '../../../../employees/ui';
 import { apiExcelPath } from '../salary-raises';
 
 // Serves the Salary Raises report as an Excel workbook (owner's decision, 16 October 2026) from the API under the web

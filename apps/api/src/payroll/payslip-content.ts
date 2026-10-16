@@ -1,8 +1,11 @@
 import {
+  adjustmentTypeLabel,
+  adjustmentTypeLabelAr,
   formatHours,
   LABELS,
   measuredExpectedHours,
   paysOvertime,
+  resultAdjustments,
   splitSegments,
   toArabicDigits,
   type EmploymentType,
@@ -29,7 +32,9 @@ import { monthArabic, monthName } from './months.js';
 // already have their own deduction and fields"); a line worked out before then as it was. A month split between two
 // contracts (owner, 17 October 2026: "take into consideration the start and end date of the contract if it is in the
 // middle of the billing period") has each part's fixed and variable salary and allowances, with its days ("Fixed salary
-// · 1–14 Oct"). A row that is 0 is left out, and so is a section with nothing in it. Left off on purpose: the company cost, the tax working, HR's comments, the warnings,
+// · 1–14 Oct"). The month's additions and deductions (owner, 17 October 2026: Additions / Deductions) are rows of their
+// own, each by its type with its reason: the additions with the earnings (an untaxed one says so), the deductions with
+// the deductions. A row that is 0 is left out, and so is a section with nothing in it. Left off on purpose: the company cost, the tax working, HR's comments, the warnings,
 // the full account number, the IBAN and the national ID. In English for everyone; in Arabic on request, right to left,
 // every number in ٠-٩ but the codes with Latin letters (EMP-0007, PAY-2026-10) and the banks' short names (CIB, QNB).
 // Pure: the drawing is payslip-pdf.ts.
@@ -546,7 +551,16 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
       earnings.push(row(part ? `${name} · ${part}` : name, amount, note));
     }
   }
-  const earningsTotal = piasters(result.earned + result.allowances);
+  // the month's additions (owner, 17 October 2026), each by its type, with its reason; an untaxed one says so
+  const items = terms.adjustments ?? [];
+  const typeLabel = (kind: string, type: string) => (ar ? adjustmentTypeLabelAr(kind, type) : adjustmentTypeLabel(kind, type));
+  // the reason as HR typed it; Latin text kept left to right inside the Arabic
+  const reasonText = (reason: string) => (ar && !/[\u0600-\u06FF]/.test(reason) ? `${LEFT_TO_RIGHT_ISOLATE}${reason}${POP_ISOLATE}` : reason);
+  for (const a of items.filter((x) => x.kind === 'addition' && x.amount !== 0)) {
+    earnings.push(row(typeLabel(a.kind, a.type), a.amount, a.taxed ? reasonText(a.reason) : `${reasonText(a.reason)}${ar ? '، ' : ' · '}${t(L.notTaxed)}`));
+  }
+  const adjusted = resultAdjustments(result);
+  const earningsTotal = piasters(result.earned + result.allowances + adjusted.untaxed);
 
   // ---------- deductions ----------
   const deductions: PayslipRow[] = [];
@@ -563,10 +577,12 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   const medical = (result as PayrollResult & { medical?: number }).medical;
   const oldMedical = typeof medical === 'number' && Number.isFinite(medical) ? medical : 0;
   // what else is in the deductions: comprehensive health insurance, 0 while it doesn't apply in Cairo
-  const named = result.employeeInsurance + result.monthlyTax + result.martyrsFund + result.penaltyCut + oldMedical;
+  const named = result.employeeInsurance + result.monthlyTax + result.martyrsFund + result.penaltyCut + oldMedical + adjusted.deductions;
   deduct(L.healthInsurance, piasters(result.deductions - named));
   deduct(L.penalty, result.penaltyCut, ar ? arabicDays(inputs.penaltyDays ?? 0) : englishDays(inputs.penaltyDays ?? 0));
   deduct(L.medical, oldMedical, t(L.monthlySubscription));
+  // the month's deductions (owner, 17 October 2026), each by its type, with its reason
+  for (const a of items.filter((x) => x.kind === 'deduction' && x.amount !== 0)) deductions.push(row(typeLabel(a.kind, a.type), a.amount, reasonText(a.reason)));
 
   // ---------- the net, and what the bank pays ----------
   const afterNet: PayslipRow[] = [];

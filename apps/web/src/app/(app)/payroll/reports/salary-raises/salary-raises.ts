@@ -14,13 +14,13 @@ import {
   type SalaryRaiseRow,
   type SalaryRaisesReport,
 } from '@trendlix/shared';
-import { departmentName } from '../../../../lib/departments';
-import { formatDate, formatDateTime } from '../../../../lib/format';
-import { hasRole } from '../../../../lib/roles';
-import { addMonths, monthName, monthOf } from '../../payroll/list';
-import { formatEgp } from '../[id]/contracts/salary';
-import { changeText, fromToText, monthsAgoText, signedEgp, signedPercent } from '../[id]/salary-history/salary-history';
-import { contractHref, employeeRaiseRequestsHref, salaryHistoryHref } from '../tab-list';
+import { departmentName } from '../../../../../lib/departments';
+import { formatDate, formatDateTime } from '../../../../../lib/format';
+import { hasRole } from '../../../../../lib/roles';
+import { addMonths, monthName, monthOf } from '../../list';
+import { formatEgp } from '../../../employees/[id]/contracts/salary';
+import { changeText, fromToText, monthsAgoText, signedEgp, signedPercent } from '../../../employees/[id]/salary-history/salary-history';
+import { contractHref, employeeRaiseRequestsHref, salaryHistoryHref } from '../../../employees/tab-list';
 
 // The Salary Raises report (owner's decision, 16 October 2026: the salary raises tracked on each profile's Salary
 // History and in a company-wide report), for HR, Finance and the CEO, as salaries. For a period of months (this calendar
@@ -35,7 +35,7 @@ type Query = Record<string, string | string[] | undefined>;
 /** GET /reports/salary-raises: the report, as of when it was made. */
 export type SalaryRaisesView = SalaryRaisesReport & { generatedAt: string };
 
-/** Who sees the report (the Employees page shows them the button): HR, Finance and the CEO, who see salaries. */
+/** Who sees the report (Payroll → Reports and the Employees page show them the link): HR, Finance and the CEO, who see salaries. */
 export const SALARY_RAISES_ROLES: readonly Role[] = ['hr', 'finance', 'ceo'];
 
 export function canSeeSalaryRaises(user: WithRoles): boolean {
@@ -45,7 +45,8 @@ export function canSeeSalaryRaises(user: WithRoles): boolean {
 /** HR prepares raises and asks for them; Finance and the CEO only read the report. */
 export const preparesRaises = (user: WithRoles) => hasRole(user, 'hr');
 
-export const RAISES_PATH = '/employees/raises';
+/** Under Payroll → Reports (owner, 17 October 2026); its address before, /employees/raises, is redirected here (next.config.ts). */
+export const RAISES_PATH = '/payroll/reports/salary-raises';
 
 // ---------- the period ----------
 
@@ -65,7 +66,7 @@ export function readPeriod(query: Query, today: string): ReportPeriod {
 
 const query = (p: ReportPeriod) => `from=${p.from}&to=${p.to}`;
 
-/** The page's address for a period: plain for this calendar year, so it is what the Employees page links to. */
+/** The page's address for a period: plain for this calendar year, so it is what Reports and the Employees page link to. */
 export function raisesHref(p: ReportPeriod, today: string): string {
   const year = today.slice(0, 4);
   return p.from === `${year}-01` && p.to === `${year}-12` ? RAISES_PATH : `${RAISES_PATH}?${query(p)}`;

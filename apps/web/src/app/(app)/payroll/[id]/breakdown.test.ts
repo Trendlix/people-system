@@ -70,6 +70,10 @@ const result: PayrollResult = {
   released: 1000,
   transfer: 6709.7,
   companyCost: 11_133.33,
+  // no additions or deductions this month (17 October 2026)
+  additionsTaxed: 0,
+  additionsUntaxed: 0,
+  adjustmentDeductions: 0,
   warnings: [],
 };
 
@@ -425,5 +429,39 @@ describe('breakdown: the insured wage after a raise (owner, 16 October 2026: "Fr
     expect(insuredOf(terms)?.note).toBeUndefined();
     expect(insuredOf({ ...terms, insuredWageAsBefore: '2027-01-01' })?.note).toBe('As before the raise until January 2027');
     expect(insuredOf({ ...terms, insuredWageAsBefore: '2026-12-01' })?.note).toBe('As before the raise until December 2026');
+  });
+});
+
+describe('breakdown: the month’s additions and deductions (owner, 17 October 2026: Additions / Deductions)', () => {
+  const withAdjustments: PayrollTerms = {
+    ...terms,
+    adjustments: [
+      { id: 'a1', kind: 'addition', type: 'incentive', taxed: true, amount: 1500, reason: 'Campaign launch' },
+      { id: 'a2', kind: 'addition', type: 'reimbursement', taxed: false, amount: 320.75, reason: 'Taxi' },
+      { id: 'a3', kind: 'deduction', type: 'damage_loss', taxed: false, amount: 250, reason: 'Broken charger' },
+    ],
+  };
+  const worked = payrollLine(withAdjustments, EMPTY_PAYROLL_INPUTS, PAYROLL_RULE_DEFAULTS);
+  const rows = breakdown({ payBasis: 'monthly', terms: withAdjustments, inputs: EMPTY_PAYROLL_INPUTS, result: worked }, PAYROLL_RULE_DEFAULTS);
+  const keys = rows.map((r) => r.key);
+
+  it('puts the taxed additions before the pay earned, the deductions with the others, the untaxed additions before the net', () => {
+    expect(keys.slice(keys.indexOf('settlements'), keys.indexOf('earned') + 1)).toEqual(['settlements', 'adjustment-a1', 'earned']);
+    expect(keys.slice(keys.indexOf('penalties'), keys.indexOf('net') + 1)).toEqual(['penalties', 'adjustment-a3', 'deductions', 'adjustment-a2', 'net']);
+    expect(rows.find((r) => r.key === 'adjustment-a1')).toEqual({ key: 'adjustment-a1', label: 'Incentive', value: 'EGP 1,500.00', kind: 'add', note: 'Campaign launch · taxed' });
+    expect(rows.find((r) => r.key === 'adjustment-a2')).toMatchObject({ label: 'Reimbursement', kind: 'add', note: 'Taxi · not taxed, added after tax' });
+    expect(rows.find((r) => r.key === 'adjustment-a3')).toEqual({ key: 'adjustment-a3', label: 'Damage or loss', value: '−EGP 250.00', kind: 'cut', note: 'Broken charger · after tax' });
+    expect(rows.find((r) => r.key === 'companyCost')?.note).toMatch(/^Earned, allowances, the untaxed additions and the company's social insurance/);
+  });
+
+  it('pays by the hour for the hours alone, the taxed additions apart', () => {
+    const hourly: PayrollTerms = { ...withAdjustments, payBasis: 'hourly', hourlyRate: 100, expectedHours: null, expectedDays: null };
+    const inputs: PayrollInputs = { ...EMPTY_PAYROLL_INPUTS, workedHours: 80 };
+    const r = payrollLine(hourly, inputs, PAYROLL_RULE_DEFAULTS);
+    expect(breakdown({ payBasis: 'hourly', terms: hourly, inputs, result: r }, PAYROLL_RULE_DEFAULTS).find((x) => x.key === 'hours')?.value).toBe('EGP 8,000.00');
+  });
+
+  it('a line without any has no such rows', () => {
+    expect(breakdown({ payBasis: 'monthly', terms, inputs: EMPTY_PAYROLL_INPUTS, result: payrollLine(terms, EMPTY_PAYROLL_INPUTS) }, PAYROLL_RULE_DEFAULTS).some((r) => r.key.startsWith('adjustment-'))).toBe(false);
   });
 });

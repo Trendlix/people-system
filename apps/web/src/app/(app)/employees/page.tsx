@@ -12,7 +12,7 @@ import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary, Grade } from '@/lib/types';
 import { StaffOnly } from '../staff-only';
 import { directorySections } from './directory-groups';
-import { canSeeSalaryRaises, RAISES_PATH } from './raises/salary-raises';
+import { canSeeSalaryRaises, RAISES_PATH } from '../payroll/reports/salary-raises/salary-raises';
 import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge } from './ui';
 
 // Not an employee's: someone who is only an employee and/or a direct manager is sent to their dashboard, which links

@@ -1145,7 +1145,7 @@ model PayrollLawYear {
 // A one-off addition or deduction on an employee's pay for a month. Additions: a bonus, commission, incentive or
 // correction (taxed), a reimbursement (not taxed), or other (taxed or not, as HR chooses). Deductions, all taken after
 // tax: a penalty, damage or loss, an advance's recovery or a loan's installment (linked to it), or other. Pending until
-// the month's run is approved with it on the line (applied; phase 2), or cancelled. HR changes and cancels one while it
+// the month's run is approved with it on the line (applied), or cancelled. HR changes and cancels one while it
 // is pending and the month's run isn't with the CEO, approved or paid.
 model PayrollAdjustment {
   id            String          @id @default(uuid()) @db.Uuid
