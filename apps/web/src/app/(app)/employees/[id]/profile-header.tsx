@@ -148,7 +148,7 @@ export function ProfileHeader({
   return (
     <section className="card space-y-5 p-6">
       <div className="flex flex-wrap items-center gap-6">
-        <Avatar name={p.fullNameEn} size="lg" />
+        <Avatar name={p.fullNameEn} photoId={p.photoId} size="lg" />
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h1 className="text-2xl font-semibold">{p.fullNameEn}</h1>

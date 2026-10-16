@@ -214,7 +214,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                 <tr key={e.id}>
                   <td>
                     <div className="flex items-center gap-3">
-                      <Avatar name={e.fullNameEn} />
+                      <Avatar name={e.fullNameEn} photoId={e.photoId} />
                       <div className="min-w-0">
                         <Link href={`/employees/${e.id}`} className="font-semibold">
                           {e.fullNameEn}

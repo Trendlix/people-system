@@ -281,6 +281,8 @@ export interface EmployeeSummary {
   fullNameEn: string;
   fullNameAr: string;
   workEmail: string | null;
+  /** The picture beside the name: the personal photo's paper (/employee-photo/<id>); null for those who don't see the employee file, or without one. */
+  photoId?: string | null;
   /** The current employment's status, else Former employee (an employment ended) or Not employed yet. */
   standing: Standing;
   /** The current employment; null for a former employee or someone not employed yet. */
@@ -319,6 +321,8 @@ export interface ProfileGap {
 export interface EmployeeProfile {
   id: string;
   employeeCode: string;
+  /** The picture beside the name: the personal photo's paper (/employee-photo/<id>); null for those who don't see the employee file, or without one. */
+  photoId?: string | null;
   /** الرقم التأميني: the social insurance number, digits only. */
   insuranceNo: string | null;
   /**
@@ -1294,6 +1298,12 @@ export interface PayrollLineView {
    * after; `problem` says why it can't be paid by either file (no bank details, an account of the wrong length …).
    */
   bank: { file: PayrollBankFile | null; bankShort: string | null; problem: string | null };
+  /**
+   * Whether the line's payslip is drawn and stored, in English and in Arabic (owner's decisions, 16 October 2026: the
+   * English one is issued when HR marks the run paid, the Arabic one on request). Left out by an API from before payslips
+   * (October 2026), hence optional.
+   */
+  payslips?: { en: boolean; ar: boolean };
 }
 
 /** Someone employed in the month but not on the run, and why ("No signed contract for this month"). */
@@ -1323,6 +1333,26 @@ export interface PayrollRunView {
   exclusions: PayrollExclusion[];
   /** How many lines each bank file pays, and how many can't be paid by either. */
   bankCheck: { cib: number; ach: number; problems: number };
+  /** How many English payslips are stored for the run (issued when it is marked paid). Optional like a line's `payslips`. */
+  payslips?: number;
+}
+
+/**
+ * GET /employees/:id/payslips (HR, Finance and the CEO): one per run the employee was on, newest month first. The
+ * payslips are drawn from the run once it is paid; `issued` is when each was drawn (ISO), null while it isn't yet (the
+ * Arabic one is drawn the first time it is opened). A line on hold that month has none.
+ */
+export interface EmployeePayslip {
+  lineId: string;
+  runId: string;
+  /** "YYYY-MM". */
+  month: string;
+  /** The day the run was paid (YYYY-MM-DD). */
+  paidOn: string | null;
+  net: number;
+  transfer: number;
+  onHold: boolean;
+  issued: { en: string | null; ar: string | null };
 }
 
 /** GET /payroll/runs: every run, newest month first. */
