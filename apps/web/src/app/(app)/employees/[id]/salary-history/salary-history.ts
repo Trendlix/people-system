@@ -9,17 +9,19 @@ import {
   type SalarySummary,
 } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '../../../../../lib/format';
-import type { PaidMonth } from '../../../../../lib/raise-types';
-import { monthName } from '../../../payroll/list';
-import { LANGUAGE_LABELS, NOT_DRAWN_YET, PAYSLIP_LANGUAGES, type PayslipLanguage } from '../../../payroll/payslips';
+import type { ContractRaise } from '../../../../../lib/raise-types';
+import { decisionText, insuredFromText } from '../contracts/raise';
 import { formatEgp } from '../contracts/salary';
 
-// The Salary History on the Employment tab, in words and as a chart (owner, 16 October 2026: "think about tracking the
-// salary raises through the employment period too"). For each employment: the summary it opens with (the gross it
-// started with, the gross now, the change since joining, the raises and the last one, and a signed raise still to come),
-// a step chart of the gross over the employment, every pay event in order (the hire, each amendment, each new contract,
-// each renewal, with the same pay or the change), and the pay actually received, month by month, with the payslips.
-// HR, Finance and the CEO only, as salaries. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// The Salary History on the Employment tab's Salary sub-tab, in words and as a chart (owner, 16 October 2026: "think
+// about tracking the salary raises through the employment period too"). For each employment: the summary it opens with
+// (the gross it started with, the gross now, the change since joining, the raises and the last one, and a signed raise
+// still to come), a step chart of the gross over the employment, and every pay event in order (the hire, each
+// amendment, each new contract, each renewal, with the same pay or the change). The timeline took in the Contract
+// section's Pay History table (owner's choice, 17 October 2026: nothing shows twice): each version's number and stage,
+// the CEO's decision, from when the insured wage follows it ("(Form 2)" when filed), Record Form 2 for HR and its
+// documents. The pay received is a section of its own (payslips/pay-received.tsx). HR, Finance and the CEO only, as
+// salaries. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 // ---------- words ----------
 
@@ -107,16 +109,11 @@ export function summaryFigures(s: SalarySummary, startedOn: string | null): Figu
 
 // ---------- the timeline ----------
 
-/** The stage pill's colours, as the payroll and the change requests word theirs: waiting (warn), approved, signed (ok), past. */
-export const STAGE_BADGE: Record<PayStage, string> = {
-  draft: 'bg-line-soft text-muted',
-  returned: 'bg-danger-soft text-danger',
-  pending_ceo: 'bg-warn-soft text-warn',
-  approved: '', // the badge's own accent colours
-  signed: 'bg-ok-soft text-ok',
-  replaced: 'bg-line-soft text-muted',
-  ended: 'bg-line-soft text-muted',
-};
+/**
+ * What a contract version adds to its event (its `raise`, from the employment's contracts): the CEO's step in full and
+ * the Form 2. Without it (the contracts not loaded) the event says what it sends.
+ */
+export type VersionRaise = Pick<ContractRaise, 'approval' | 'sentAt' | 'approvedBy' | 'approvedAt' | 'returnedReason' | 'form2From' | 'insuredWageFrom'>;
 
 export interface EventView {
   key: string;
@@ -138,13 +135,36 @@ export interface EventView {
   hourly: string | null;
   reason: string | null;
   promotion: string | null;
-  approved: string | null;
+  /** The CEO's step on a change of pay ("Approved by Hazem Magdy on …", "With the CEO since …"); null when it needs none. */
+  decision: string | null;
+  /** Why the CEO returned it, while it is returned. */
+  returnedReason: string | null;
   signedOn: string | null;
+  /** "Follows the new pay from 01/01/2027", or "… from 01/12/2026 (Form 2)"; null when it isn't a change of pay. */
   insuredWage: string | null;
+  /** An approved raise (signed or not), on which HR records the Form 2 filed: its effective date and the Form 2 date. */
+  form2: { effective: string; form2From: string | null } | null;
+  /** Its documents are generated: it needs no approval, or the CEO approved it. */
+  documentsReady: boolean;
 }
 
-/** An event as the timeline shows it. */
-export function eventView(e: PayEvent): EventView {
+/** Approved by the CEO: signed, or approved and not signed yet (a version that needs no approval has `raise` false). */
+const approvedStage = (stage: PayStage) => stage === 'approved' || isSignedStage(stage);
+
+/** The CEO's step on a change of pay, as far as the event and its version say. */
+function decisionOf(e: PayEvent, raise: VersionRaise | null): string | null {
+  if (!e.raise) return null;
+  if (e.approvedAt) return `Approved${e.approvedBy ? ` by ${e.approvedBy}` : ''} on ${formatDateTime(e.approvedAt)}`;
+  if (raise) return decisionText(raise);
+  if (approvedStage(e.stage)) return 'Approved';
+  return e.stage === 'pending_ceo' ? 'With the CEO' : e.stage === 'returned' ? 'Returned to HR' : 'Not sent to the CEO yet';
+}
+
+/**
+ * An event as the timeline shows it; `raise`: its version's, for the CEO's step in full and the Form 2 (HR, Finance and
+ * the CEO are sent them with the contracts).
+ */
+export function eventView(e: PayEvent, raise: VersionRaise | null = null): EventView {
   const promotion = e.promotion && [e.promotion.jobTitle, e.promotion.grade && `grade ${e.promotion.grade}`].filter(Boolean).join(', ');
   return {
     key: e.contractId,
@@ -162,9 +182,14 @@ export function eventView(e: PayEvent): EventView {
     hourly: e.payBasis === 'hourly' && e.hourlyRate !== null ? `${formatEgp(e.hourlyRate)} an hour; the gross is the monthly estimate` : null,
     reason: e.reason ? (RAISE_REASON_LABELS[e.reason] ?? e.reason) : null,
     promotion: promotion || null,
-    approved: e.approvedAt ? `${e.approvedBy ? `${e.approvedBy}, ` : ''}${formatDateTime(e.approvedAt)}` : null,
+    decision: decisionOf(e, raise),
+    returnedReason: e.stage === 'returned' ? (raise?.returnedReason ?? null) : null,
     signedOn: e.signedOn ? formatDate(e.signedOn) : null,
-    insuredWage: e.insuredWageFrom ? `Follows the new pay from ${formatDate(e.insuredWageFrom)}` : null,
+    insuredWage: e.insuredWageFrom
+      ? `Follows the new pay from ${insuredFromText({ insuredWageFrom: e.insuredWageFrom, form2From: raise?.form2From ?? null })}`
+      : null,
+    form2: e.raise && raise?.approval === 'approved' ? { effective: e.effectiveDate, form2From: raise.form2From } : null,
+    documentsReady: !e.raise || approvedStage(e.stage),
   };
 }
 
@@ -177,47 +202,9 @@ export function firstSignedDate(events: readonly PayEvent[]): string | null {
 /** "3 pay events", "1 pay event". */
 export const eventsLabel = (n: number) => `${n} ${n === 1 ? 'pay event' : 'pay events'}`;
 
-// ---------- the pay received ----------
+// ---------- counting ----------
 
-export interface PaidRow {
-  lineId: string;
-  runId: string;
-  /** "October 2026". */
-  title: string;
-  paidOn: string | null;
-  net: number;
-  transfer: number;
-  onHold: boolean;
-  /** The payslips to open, with a note on each not drawn yet; none for a month on hold. */
-  links: { language: PayslipLanguage; label: string; note: string | null }[];
-}
-
-/** The paid payroll months, oldest first, as the timeline runs; each with its payslips (none for a month on hold). */
-export function paidRows(paid: readonly PaidMonth[]): PaidRow[] {
-  return [...paid]
-    .sort((a, b) => a.month.localeCompare(b.month))
-    .map((p) => ({
-      lineId: p.lineId,
-      runId: p.runId,
-      title: monthName(p.month),
-      paidOn: p.paidOn,
-      net: p.net,
-      transfer: p.transfer,
-      onHold: p.onHold,
-      links: p.onHold
-        ? []
-        : PAYSLIP_LANGUAGES.map((language) => ({ language, label: LANGUAGE_LABELS[language], note: p.payslips?.[language] ? null : NOT_DRAWN_YET })),
-    }));
-}
-
-/** What was received in all: the months paid (those on hold left out, as nothing was paid) and their net and transfer. */
-export function paidTotals(paid: readonly PaidMonth[]): { months: number; net: number; transfer: number } {
-  const received = paid.filter((p) => !p.onHold);
-  const sum = (pick: (p: PaidMonth) => number) => Math.round(received.reduce((s, p) => s + pick(p) * 100, 0)) / 100;
-  return { months: received.length, net: sum((p) => p.net), transfer: sum((p) => p.transfer) };
-}
-
-/** "1 month", "14 months". */
+/** "1 month", "14 months" (the pay received's months, the salary review's). */
 export const monthsLabel = (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`;
 
 // ---------- the chart ----------

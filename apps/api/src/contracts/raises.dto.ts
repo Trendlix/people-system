@@ -1,7 +1,8 @@
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { RAISE_REASONS, RAISE_REQUEST_STATUSES, RAISE_WAYS, type RaiseReason, type RaiseRequestStatus, type RaiseWay } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
+import { MONTH } from '../payroll/months.js';
 import { DURATION_MESSAGE, MAX_MONEY, PayTermsDto, RAISE_REASON_MESSAGE, Sent } from './contracts.dto.js';
 
 // Pay raises during a contract and raise requests (owner's decisions, 16 October 2026; packages/shared raises.ts).
@@ -81,4 +82,16 @@ export class CreateRaiseRequestDto {
 export class ListRaiseRequestsDto {
   @IsOptional() @IsIn(RAISE_REQUEST_STATUSES, { message: 'Choose a status: with_hr, with_ceo, approved, declined or done.' })
   status?: RaiseRequestStatus;
+}
+
+/**
+ * The Salary Raises report's period, ?from=YYYY-MM&to=YYYY-MM, both months included: this calendar year (in Cairo)
+ * unless sent; with one of them only, that month's year from January or to December.
+ */
+export class SalaryRaisesQueryDto {
+  @Trim() @IsOptional() @Matches(MONTH, { message: 'Choose the month the period starts in, as YYYY-MM, e.g. 2026-01.' })
+  from?: string;
+
+  @Trim() @IsOptional() @Matches(MONTH, { message: 'Choose the month the period ends in, as YYYY-MM, e.g. 2026-12.' })
+  to?: string;
 }

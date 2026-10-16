@@ -262,3 +262,6 @@ export * from './raises.js';
 
 // an employment's salary history: its pay events and the summary
 export * from './salary-history.js';
+
+// the company-wide Salary Raises report: the raises in a period, their totals, by department, and who is due for review
+export * from './salary-raises.js';

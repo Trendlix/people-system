@@ -13,11 +13,13 @@ import { ProfileTabs } from './profile-tabs';
 
 // An employee's profile (after Prime ERP's owner profile): who they are and how complete the profile is above the tabs
 // Basic Data, Education, Employment, Social Insurance and Documents. Employment holds the job and everything the company
-// issues for it: the contract, the documents generated from templates and the payslips (the Contracts tab was merged
-// into it, owner's request, 16 October 2026); Social Insurance, all the social insurance work (the same day);
-// Documents, the papers the employee brings. The open tab is in the address (?tab=), so it survives a reload, and only
-// it is rendered; an old ?tab=contracts address opens Employment, its #contract and #payslips anchors included. The
-// profile and the employment are separate records: someone who leaves keeps their profile.
+// issues for it (the Contracts tab was merged into it, owner's request, 16 October 2026), in sub-tabs (17 October
+// 2026): Details (the job and its contract), Salary (the salary history, the raise requests, the pay received and the
+// payslips) and Issued Documents (the documents generated from templates); Social Insurance, all the social insurance
+// work (16 October 2026); Documents, the papers the employee brings. The open tab is in the address (?tab=, and &sub=
+// for a sub-tab), so it survives a reload, and only it is rendered; an old ?tab=contracts address opens Employment,
+// and a link naming only an anchor (#payslips) is moved to the sub-tab holding it. The profile and the employment are
+// separate records: someone who leaves keeps their profile.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -43,7 +45,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
         {tab === 'education' ? (
           <EducationTab profile={p} />
         ) : tab === 'employment' ? (
-          <EmploymentTab profile={p} linkPeople={linkPeople} justAdded={one(query.added) === '1'} />
+          <EmploymentTab profile={p} linkPeople={linkPeople} sub={one(query.sub)} justAdded={one(query.added) === '1'} />
         ) : tab === 'insurance' ? (
           <InsuranceTab profile={p} />
         ) : tab === 'documents' ? (

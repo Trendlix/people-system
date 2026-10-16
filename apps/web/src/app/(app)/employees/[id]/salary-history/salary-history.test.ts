@@ -1,6 +1,5 @@
 import type { PayEvent, SalarySummary } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import type { PaidMonth } from '../../../../../lib/raise-types';
 import {
   changeText,
   compactAmount,
@@ -9,12 +8,12 @@ import {
   firstSignedDate,
   fromToText,
   monthsAgoText,
+  monthsLabel,
   niceTicks,
-  paidRows,
-  paidTotals,
   signedPercent,
   stepChart,
   summaryFigures,
+  type VersionRaise,
 } from './salary-history';
 
 /** A pay event as the API sends it, signed, with what a test changes. */
@@ -153,7 +152,7 @@ describe('an event on the timeline', () => {
     expect(v.reason).toBeNull();
   });
 
-  it('shows a raise from → to, with its change, reason, approval and insured-wage date', () => {
+  it('shows a raise from → to, with its change, reason, the CEO’s approval and insured-wage date', () => {
     const v = eventView(raise);
     expect(v.title).toBe('Amendment');
     // an amendment keeps the contract's end: only from when
@@ -163,9 +162,19 @@ describe('an event on the timeline', () => {
     expect(v.allowances).toBe('EGP 0.00 → EGP 500.00');
     expect(v.total).toBe('EGP 10,000.00 → EGP 13,000.00');
     expect(v.reason).toBe('Annual raise');
-    expect(v.approved).toBe('Hazem Magdy, 20/08/2025, 12:30 PM');
+    expect(v.decision).toBe('Approved by Hazem Magdy on 20/08/2025, 12:30 PM');
+    expect(v.returnedReason).toBeNull();
     expect(v.insuredWage).toBe('Follows the new pay from 01/01/2026');
     expect(v.signedOn).toBe('20/12/2025');
+    expect(v.documentsReady).toBe(true);
+  });
+
+  it('has no CEO’s decision, Form 2 or wait for documents on a version that needs no approval', () => {
+    const v = eventView(hired);
+    expect(v.decision).toBeNull();
+    expect(v.insuredWage).toBeNull();
+    expect(v.form2).toBeNull();
+    expect(v.documentsReady).toBe(true);
   });
 
   it('says "Same pay" for a renewal as it was, and shows a promotion and pay by the hour', () => {
@@ -200,44 +209,72 @@ describe('an event on the timeline', () => {
   });
 });
 
-describe('the pay received', () => {
-  const months: PaidMonth[] = [
-    {
-      month: '2026-09',
-      lineId: 'l2',
-      runId: 'r2',
-      paidOn: '2026-10-05',
-      net: 9_000.5,
-      transfer: 9_000.5,
-      onHold: false,
-      payslips: { en: true, ar: false },
-    },
-    {
-      month: '2026-08',
-      lineId: 'l1',
-      runId: 'r1',
-      paidOn: '2026-09-05',
-      net: 9_000.25,
-      transfer: 8_500,
-      onHold: false,
-      payslips: { en: true, ar: true },
-    },
-    { month: '2026-10', lineId: 'l3', runId: 'r3', paidOn: null, net: 9_100, transfer: 0, onHold: true, payslips: { en: false, ar: false } },
-  ];
-
-  it('lists each paid month oldest first, with its payslips (none on hold)', () => {
-    const rows = paidRows(months);
-    expect(rows.map((r) => r.title)).toEqual(['August 2026', 'September 2026', 'October 2026']);
-    expect(rows[1].links).toEqual([
-      { language: 'en', label: 'English', note: null },
-      { language: 'ar', label: 'Arabic', note: 'made when first opened' },
-    ]);
-    expect(rows[2].links).toEqual([]);
+describe('the Pay History, in the timeline', () => {
+  /** A version's raise as the contracts send it. */
+  const versionRaise = (over: Partial<VersionRaise> = {}): VersionRaise => ({
+    approval: 'approved',
+    sentAt: '2025-08-18T08:00:00.000Z',
+    approvedBy: { email: 'ceo@trendlix.com' },
+    approvedAt: '2025-08-20T09:30:00.000Z',
+    returnedReason: null,
+    form2From: null,
+    insuredWageFrom: '2026-01-01',
+    ...over,
   });
 
-  it('adds up what was received, leaving out a month on hold', () => {
-    expect(paidTotals(months)).toEqual({ months: 2, net: 18_000.75, transfer: 17_500.5 });
-    expect(paidTotals([])).toEqual({ months: 0, net: 0, transfer: 0 });
+  it('says "(Form 2)" after the insured-wage date once it is filed, and offers HR to record or change it', () => {
+    const filed = eventView({ ...raise, insuredWageFrom: '2025-10-01' }, versionRaise({ form2From: '2025-10-01', insuredWageFrom: '2025-10-01' }));
+    expect(filed.insuredWage).toBe('Follows the new pay from 01/10/2025 (Form 2)');
+    expect(filed.form2).toEqual({ effective: '2025-09-01', form2From: '2025-10-01' });
+    const none = eventView(raise, versionRaise());
+    expect(none.insuredWage).toBe('Follows the new pay from 01/01/2026');
+    expect(none.form2).toEqual({ effective: '2025-09-01', form2From: null });
+  });
+
+  it('records Form 2 only on a raise the CEO approved, signed or not', () => {
+    const approved = event({ ...raise, stage: 'approved', signedOn: null });
+    expect(eventView(approved, versionRaise()).form2).not.toBeNull();
+    const waiting = event({ ...raise, stage: 'pending_ceo', approvedAt: null, approvedBy: null, signedOn: null });
+    expect(eventView(waiting, versionRaise({ approval: 'pending_ceo', approvedAt: null, approvedBy: null })).form2).toBeNull();
+    // without its version (the contracts not loaded), nothing to record it on
+    expect(eventView(raise).form2).toBeNull();
+  });
+
+  it('says where the CEO’s step stands before the approval, with the reason of a return', () => {
+    const waiting = event({ ...raise, stage: 'pending_ceo', approvedAt: null, approvedBy: null, signedOn: null });
+    expect(eventView(waiting, versionRaise({ approval: 'pending_ceo', approvedAt: null, approvedBy: null })).decision).toBe(
+      'With the CEO since 18/08/2025',
+    );
+    const returned = event({ ...raise, stage: 'returned', approvedAt: null, approvedBy: null, signedOn: null });
+    const back = eventView(returned, versionRaise({ approval: 'draft', approvedAt: null, approvedBy: null, returnedReason: 'Make it from January.' }));
+    expect(back.decision).toBe('Returned to HR');
+    expect(back.returnedReason).toBe('Make it from January.');
+    const draft = event({ ...raise, stage: 'draft', approvedAt: null, approvedBy: null, signedOn: null });
+    expect(eventView(draft, versionRaise({ approval: 'draft', sentAt: null, approvedAt: null, approvedBy: null })).decision).toBe('Not sent to the CEO yet');
+  });
+
+  it('words the CEO’s step from the event alone when its version isn’t loaded', () => {
+    const at = (stage: PayEvent['stage']) => eventView(event({ ...raise, stage, approvedAt: null, approvedBy: null })).decision;
+    expect(at('pending_ceo')).toBe('With the CEO');
+    expect(at('returned')).toBe('Returned to HR');
+    expect(at('draft')).toBe('Not sent to the CEO yet');
+    expect(at('approved')).toBe('Approved');
+    // the API's approver, by name, is preferred to the version's sign-in email
+    expect(eventView(raise, versionRaise()).decision).toBe('Approved by Hazem Magdy on 20/08/2025, 12:30 PM');
+  });
+
+  it('has the documents generated once the CEO approved a change of pay', () => {
+    expect(eventView(event({ ...raise, stage: 'pending_ceo' })).documentsReady).toBe(false);
+    expect(eventView(event({ ...raise, stage: 'returned' })).documentsReady).toBe(false);
+    expect(eventView(event({ ...raise, stage: 'approved' })).documentsReady).toBe(true);
+    expect(eventView(event({ ...raise, stage: 'replaced' })).documentsReady).toBe(true);
+    // a renewal with the same pay needs no approval
+    expect(eventView(event({ version: 3, change: 'renewal', samePay: true, stage: 'draft' })).documentsReady).toBe(true);
+  });
+
+  it('counts months for the pay received and the salary review', () => {
+    expect(monthsLabel(1)).toBe('1 month');
+    expect(monthsLabel(14)).toBe('14 months');
   });
 });
 

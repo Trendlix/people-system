@@ -11,6 +11,20 @@ import { PrismaService } from '../prisma/prisma.service.js';
 /** Newest first, the current employment (no end date) before all ended ones. */
 const NEWEST_FIRST = [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate: 'desc' }] satisfies Prisma.EmploymentOrderByWithRelationInput[];
 
+/**
+ * What the history reads of an employment's contract versions: each with its pay, who approved it and its promotion. The
+ * Salary Raises report reads the same (salary-raises.service.ts), so its figures are the history's.
+ */
+export const PAY_VERSIONS = {
+  orderBy: { version: 'asc' },
+  include: {
+    allowances: { orderBy: ALLOWANCE_ORDER, select: { nameEn: true, amount: true } },
+    approvedBy: { select: { email: true } },
+    newJobTitle: { select: { titleEn: true } },
+    newGrade: { select: { code: true } },
+  },
+} satisfies Prisma.Employment$contractsArgs;
+
 /** What the history reads of each employment: its versions with their pay, and the months it was paid. */
 const EMPLOYMENT = {
   id: true,
@@ -18,15 +32,7 @@ const EMPLOYMENT = {
   joinDate: true,
   endDate: true,
   jobTitle: { select: { titleEn: true } },
-  contracts: {
-    orderBy: { version: 'asc' },
-    include: {
-      allowances: { orderBy: ALLOWANCE_ORDER, select: { nameEn: true, amount: true } },
-      approvedBy: { select: { email: true } },
-      newJobTitle: { select: { titleEn: true } },
-      newGrade: { select: { code: true } },
-    },
-  },
+  contracts: PAY_VERSIONS,
   payrollLines: {
     where: { run: { status: 'paid' } },
     orderBy: { run: { month: 'asc' } },
@@ -36,10 +42,24 @@ const EMPLOYMENT = {
 
 type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
 
+/** A contract version as PAY_VERSIONS loads it. */
+export type PayVersionRow = EmploymentRow['contracts'][number];
+
 const SLOT_NAMES = new Map(TEMPLATE_SLOTS.map((s) => [s.key, s.name]));
 
+/**
+ * The approvers of these versions by name, where their sign-in email is an employee's work email: { email → name },
+ * the email lower-cased.
+ */
+export async function approverNames(prisma: PrismaService, versions: readonly Pick<PayVersionRow, 'approvedBy'>[]): Promise<Map<string, string>> {
+  const emails = [...new Set(versions.map((c) => c.approvedBy?.email.toLowerCase()).filter((x): x is string => !!x))];
+  if (!emails.length) return new Map();
+  const people = await prisma.employee.findMany({ where: { workEmail: { in: emails } }, select: { workEmail: true, fullNameEn: true } });
+  return new Map(people.map((p) => [p.workEmail!.toLowerCase(), p.fullNameEn]));
+}
+
 /** A version as the shared history reads it; the approver by name where their sign-in is an employee's work email. */
-function payVersion(c: EmploymentRow['contracts'][number], names: ReadonlyMap<string, string>): PayVersion {
+export function payVersion(c: PayVersionRow, names: ReadonlyMap<string, string>): PayVersion {
   const startDate = fromDateOnly(c.startDate);
   const email = c.approvedBy?.email ?? null;
   return {
@@ -71,7 +91,7 @@ function payVersion(c: EmploymentRow['contracts'][number], names: ReadonlyMap<st
 // salary-history.ts), the summary as of today, each event's generated documents (for HR and the CEO, who see the
 // employee file's documents), and the pay actually received: each paid payroll month's net and transfer, with which
 // payslips are drawn. HR, Finance and the CEO, as salaries. A company-wide report reads the same: payEvents and
-// salarySummary over the versions, or this endpoint per employee.
+// salarySummary over the versions (salary-raises.service.ts reads them with PAY_VERSIONS and payVersion).
 @Injectable()
 export class SalaryHistoryService {
   constructor(private readonly prisma: PrismaService) {}
@@ -80,9 +100,8 @@ export class SalaryHistoryService {
     const employee = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true } });
     if (!employee) throw new NotFoundException('Employee not found.');
     const employments = await this.prisma.employment.findMany({ where: { employeeId }, orderBy: NEWEST_FIRST, select: EMPLOYMENT });
-    const emails = [...new Set(employments.flatMap((e) => e.contracts.map((c) => c.approvedBy?.email.toLowerCase()).filter((x): x is string => !!x)))];
-    const [people, documents] = await Promise.all([
-      emails.length ? this.prisma.employee.findMany({ where: { workEmail: { in: emails } }, select: { workEmail: true, fullNameEn: true } }) : [],
+    const [names, documents] = await Promise.all([
+      approverNames(this.prisma, employments.flatMap((e) => e.contracts)),
       seesEmployeeFile(user)
         ? this.prisma.generatedDocument.findMany({
             where: { employeeId, contractId: { not: null } },
@@ -91,7 +110,6 @@ export class SalaryHistoryService {
           })
         : null,
     ]);
-    const names = new Map(people.map((p) => [p.workEmail!, p.fullNameEn]));
     const today = todayInCairo();
 
     return {

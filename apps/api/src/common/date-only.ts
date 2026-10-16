@@ -47,9 +47,14 @@ export function shownDate(ymd: string): string {
   return `${d}/${m}/${y}`;
 }
 
+/** The day a moment falls on in Cairo, as YYYY-MM-DD. */
+export function dayInCairo(moment: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(moment);
+}
+
 /** Today in Cairo, as YYYY-MM-DD. */
 export function todayInCairo(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date());
+  return dayInCairo(new Date());
 }
 
 /** Validator for a YYYY-MM-DD date field. */

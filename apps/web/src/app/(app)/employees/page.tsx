@@ -11,6 +11,7 @@ import { showsDepartment } from '@/lib/place-groups';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary, Grade } from '@/lib/types';
 import { directorySections } from './directory-groups';
+import { canSeeSalaryRaises, RAISES_PATH } from './raises/salary-raises';
 import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge } from './ui';
 
 // The directory filters on this server from the one GET /employees call (the API already limits it to the people
@@ -263,8 +264,9 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
 }
 
 /**
- * HR and the CEO search the scanned paperwork and see what the profiles still lack (the Missing Details report); HR and
- * Admin see what the card reader learned; only HR adds employees.
+ * HR and the CEO search the scanned paperwork and see what the profiles still lack (the Missing Details report); HR,
+ * Finance and the CEO see the Salary Raises report, as salaries (owner's decision, 16 October 2026); HR and Admin see
+ * what the card reader learned; only HR adds employees.
  */
 async function HeaderActions() {
   const user = await getCurrentUser();
@@ -279,6 +281,11 @@ async function HeaderActions() {
             Missing details
           </Link>
         </>
+      )}
+      {canSeeSalaryRaises(user) && (
+        <Link href={RAISES_PATH} className="btn btn-secondary">
+          Salary raises
+        </Link>
       )}
       {canSeeCardFixes(user) && (
         <Link href="/employees/card-corrections" className="btn btn-secondary">

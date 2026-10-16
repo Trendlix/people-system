@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 import { Select } from '@/components/select';
 import type { RaiseRequest } from '@/lib/raise-types';
 import { getCurrentUser } from '@/lib/session';
-import { profileHref } from '../employees/ui';
+import { employeeRaiseRequestsHref } from '../employees/ui';
 import { Empty, Loading } from '../organization/ui';
 import { loadRaiseRequests } from './data';
 import { askedAt, canSeeRaiseRequests, raiseRequestsHref, readStatus, requestsLabel, STATUS_FILTERS, type StatusFilter } from './list';
@@ -17,8 +17,8 @@ import { HrRequestActions, PreparedRaise, Progress, RaiseRequestStatusBadge, Req
 
 const quiet = 'border-t border-line px-4 py-10 text-center text-sm text-muted';
 
-/** The person, linked to their Employment tab where the request and its raise are. */
-const requestHref = (r: RaiseRequest) => `${profileHref(r.employee.id, 'employment')}#raise-requests`;
+/** The person, linked to their Employment tab's Salary sub-tab, where the request and its raise are. */
+const requestHref = (r: RaiseRequest) => employeeRaiseRequestsHref(r.employee.id);
 
 function Filters({ status }: { status: StatusFilter }) {
   return (

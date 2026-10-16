@@ -229,6 +229,8 @@ describe('Payroll (e2e)', () => {
           cibDebitAccountName: null,
           achPurpose: 'CASH',
           payday: null,
+          // the Salary Raises report: a review is due after a year without a raise (owner's decision, 16 October 2026)
+          salaryReviewMonths: 12,
         });
       }
       await api().get('/api/payroll/settings').set('Cookie', staff).expect(403);

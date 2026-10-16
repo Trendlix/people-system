@@ -79,7 +79,7 @@ describe('the insured wage after a raise', () => {
   });
 });
 
-describe('a version in the pay history', () => {
+describe('a version against the one before it', () => {
   const v1 = { version: 1, kind: 'contract' as const, startDate: '2026-01-01', endDate: '2026-12-31' };
   const v2 = { version: 2, kind: 'amendment' as const, startDate: '2026-06-01', endDate: '2026-12-31' };
   const v3 = { version: 3, kind: 'contract' as const, startDate: '2027-01-01', endDate: '2027-12-31' };

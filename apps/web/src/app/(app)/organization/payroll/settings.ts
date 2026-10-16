@@ -1,4 +1,4 @@
-import type { PayrollRules, Role } from '@trendlix/shared';
+import { SALARY_REVIEW_MONTHS_MAX, SALARY_REVIEW_MONTHS_MIN, type PayrollRules, type Role } from '@trendlix/shared';
 import { hasRole } from '../../../../lib/roles';
 import { parseAmount } from '../../employees/[id]/contracts/salary';
 
@@ -6,7 +6,8 @@ import { parseAmount } from '../../employees/[id]/contracts/salary';
 // variables that might affect the sheet"): one page, each section saved on its own. 1 Your Rules: the rules runs are
 // worked out with, after the owner's payroll sheet (PATCH /payroll/settings), and the company defaults that change the
 // sheet, kept with the contract settings (PATCH /contract-settings): the basic share of the gross new contracts start
-// with and the basic wage social insurance Form 1 prints by default. 2 Rates Set by Law (law-rates-section.tsx). The
+// with and the basic wage social insurance Form 1 prints by default; and when a salary review is due, after how many
+// months without a raise (owner's decision, 16 October 2026: the Salary Raises report). 2 Rates Set by Law (law-rates-section.tsx). The
 // holidays and working days were the third section until they got a tab of their own (owner, 16 October 2026: "make
 // holiday a separate tab"; organization/holidays). 4 Paying Salaries: the company's CIB account, the ACH purpose and
 // the payday. Pure code, tested: who sees it, each form read into what the API takes and the payday's date. Relative
@@ -52,6 +53,7 @@ export const RULE_FIELDS = Object.keys(RULES) as RuleField[];
 
 export const BASIC_PERCENT_ERROR = 'Enter the basic share of the gross as a whole percent from 1 to 100, e.g. 80.';
 export const INSURANCE_BASIC_ERROR = 'Enter the default basic wage as an amount in EGP of more than 0 and up to 99,999.99, e.g. 410.';
+export const SALARY_REVIEW_ERROR = `Enter after how many months without a raise a salary review is due: a whole number from ${SALARY_REVIEW_MONTHS_MIN} to ${SALARY_REVIEW_MONTHS_MAX}, e.g. 12.`;
 
 /** The company defaults Your Rules edits, which PATCH /contract-settings takes: only those the form had. */
 export interface ContractDefaultsBody {
@@ -59,8 +61,12 @@ export interface ContractDefaultsBody {
   insuranceBasicDefault?: number;
 }
 
-/** The rules Your Rules sends: the overtime's percent and rate only while overtime is paid (else the API keeps them). */
-export type RulesBody = Omit<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'> & Partial<Pick<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'>>;
+/**
+ * The rules Your Rules sends: the overtime's percent and rate only while overtime is paid (else the API keeps them), and
+ * the months after which a salary review is due when the form has them (an API from before it leaves it off the form).
+ */
+export type RulesBody = Omit<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'> &
+  Partial<Pick<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'>> & { salaryReviewMonths?: number };
 
 /**
  * The Your Rules form: the rules as PATCH /payroll/settings takes them, the company defaults as PATCH
@@ -79,6 +85,12 @@ export function rulesBody(fd: FormData): { rules: RulesBody; defaults: ContractD
     const value = numberFrom(text(fd, field), RULES[field]);
     if (Number.isNaN(value)) errors.push(RULES[field].error);
     rules[field] = value;
+  }
+  // when a salary review is due (owner's decision, 16 October 2026: the Salary Raises report), not a rule a run copies
+  if (fd.has('salaryReviewMonths')) {
+    const months = numberFrom(text(fd, 'salaryReviewMonths'), { min: SALARY_REVIEW_MONTHS_MIN, max: SALARY_REVIEW_MONTHS_MAX, whole: true });
+    if (Number.isNaN(months)) errors.push(SALARY_REVIEW_ERROR);
+    rules.salaryReviewMonths = months;
   }
   const defaults: ContractDefaultsBody = {};
   if (fd.has('basicPercentDefault')) {

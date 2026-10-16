@@ -19,6 +19,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { SALARY_REVIEW_MONTHS_MAX, SALARY_REVIEW_MONTHS_MIN } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
 import { MONTH } from './months.js';
@@ -39,6 +40,7 @@ const NO_SHOW_MESSAGE = "Enter how many days' pay a no-show day costs, from 0 to
 const CIB_ACCOUNT_MESSAGE = "Enter the company's CIB account number: 12 digits.";
 const PURPOSE_MESSAGE = 'Enter the ACH transaction purpose in capital letters and digits, up to 20, e.g. CASH.';
 const PAYDAY_MESSAGE = 'Enter the day of the month salaries are paid, a whole number from 1 to 31, or leave it empty.';
+const REVIEW_MESSAGE = `Enter after how many months without a raise a salary review is due, a whole number from ${SALARY_REVIEW_MONTHS_MIN} to ${SALARY_REVIEW_MONTHS_MAX}, e.g. 12.`;
 
 export class UpdatePayrollSettingsDto {
   @Sent() @IsInt({ message: DIVISOR_MESSAGE }) @Min(20, { message: DIVISOR_MESSAGE }) @Max(31, { message: DIVISOR_MESSAGE })
@@ -88,6 +90,16 @@ export class UpdatePayrollSettingsDto {
    */
   @IsOptional() @IsInt({ message: PAYDAY_MESSAGE }) @Min(1, { message: PAYDAY_MESSAGE }) @Max(31, { message: PAYDAY_MESSAGE })
   payday?: number | null;
+
+  /**
+   * Salary review due after this many months (owner's decision, 16 October 2026: the Salary Raises report): who has had
+   * no raise for this long, or since joining, is listed as due for review.
+   */
+  @Sent()
+  @IsInt({ message: REVIEW_MESSAGE })
+  @Min(SALARY_REVIEW_MONTHS_MIN, { message: REVIEW_MESSAGE })
+  @Max(SALARY_REVIEW_MONTHS_MAX, { message: REVIEW_MESSAGE })
+  salaryReviewMonths?: number;
 }
 
 // ---------- runs ----------

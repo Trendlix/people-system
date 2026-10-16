@@ -3,24 +3,37 @@
 import Link from 'next/link';
 import { useId, useRef } from 'react';
 
-// The profile's tabs. Each tab is a link to the profile with ?tab=, so the tab survives a reload and the server renders
-// only the open one. Keyboard as a tab list: the arrow keys, Home and End move between the tabs, Enter or Space opens one.
+// The profile's tabs, and the same smaller for the Employment tab's sub-tabs (Details | Salary | Issued Documents, owner's
+// choice, 17 October 2026). Each tab is a link to the profile with ?tab= (a sub-tab with &sub=), so the tab survives a
+// reload and the server renders only the open one. Keyboard as a tab list: the arrow keys, Home and End move between
+// the tabs, Enter or Space opens one.
 
-const base = 'inline-flex min-h-11 items-center border-b-2 px-1 text-sm font-semibold whitespace-nowrap no-underline outline-offset-2';
+const base = 'inline-flex items-center border-b-2 px-1 font-semibold whitespace-nowrap no-underline outline-offset-2';
+
+const SIZES = {
+  // the profile's own tabs
+  large: { list: 'gap-6', tab: 'min-h-11 text-sm', panel: 'pt-6' },
+  // a tab's sub-tabs, a step down
+  small: { list: 'gap-5', tab: 'min-h-9 text-[13px]', panel: 'pt-5' },
+} as const;
 
 export function ProfileTabs({
   tabs,
   active,
   label,
+  size = 'large',
   children,
 }: {
   tabs: { key: string; label: string; href: string }[];
   active: string;
   /** What the tabs are of, for screen readers, e.g. "Profile of Omar Khaled". */
   label: string;
+  /** Small: sub-tabs inside a tab. */
+  size?: keyof typeof SIZES;
   /** The open tab's content. */
   children: React.ReactNode;
 }) {
+  const sized = SIZES[size];
   // ids from useId: Next.js keeps recently visited pages mounted (hidden), so fixed ids could appear twice
   const id = useId();
   const list = useRef<HTMLDivElement>(null);
@@ -44,7 +57,7 @@ export function ProfileTabs({
 
   return (
     <div>
-      <div ref={list} role="tablist" aria-label={label} onKeyDown={onKeyDown} className="flex gap-6 overflow-x-auto border-b border-line">
+      <div ref={list} role="tablist" aria-label={label} onKeyDown={onKeyDown} className={`flex ${sized.list} overflow-x-auto border-b border-line`}>
         {tabs.map((t) => {
           const selected = t.key === active;
           return (
@@ -57,14 +70,14 @@ export function ProfileTabs({
               aria-selected={selected}
               aria-controls={selected ? panelId : undefined}
               tabIndex={selected ? 0 : -1}
-              className={`${base} ${selected ? 'border-accent text-ink' : 'border-transparent text-muted hover:text-ink'}`}
+              className={`${base} ${sized.tab} ${selected ? 'border-accent text-ink' : 'border-transparent text-muted hover:text-ink'}`}
             >
               {t.label}
             </Link>
           );
         })}
       </div>
-      <div id={panelId} role="tabpanel" aria-labelledby={tabId(active)} className="pt-6">
+      <div id={panelId} role="tabpanel" aria-labelledby={tabId(active)} className={sized.panel}>
         {children}
       </div>
     </div>

@@ -316,7 +316,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
             {paid && (
               <span className="text-sm text-muted">
                 {run.payslips !== undefined && `${payslipsIssuedLabel(run.payslips)}, in English. `}
-                Each opens as a protected PDF; the Arabic one is made from the employee’s Employment tab.
+                Each opens as a protected PDF; the Arabic one is made from the employee’s Employment tab, on Salary.
               </span>
             )}
           </div>

@@ -99,7 +99,7 @@ export interface EmploymentSalaryHistory {
   summary: SalarySummary | null;
   /** Oldest first, every version, signed or not (its `stage` says). */
   events: SalaryEvent[];
-  /** Oldest first. */
+  /** Oldest first. Not shown from here: the profile's Pay Received reads every employment's months with the payslips. */
   paid: PaidMonth[];
 }
 

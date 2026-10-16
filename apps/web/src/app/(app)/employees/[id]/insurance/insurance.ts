@@ -2,7 +2,7 @@ import { LABELS, paperworkType, requiredPaperwork } from '@trendlix/shared';
 import { formatDate } from '../../../../../lib/format';
 import type { Contract, DocumentItem, DocumentsTab, EmployeeProfile, Employment, PaperworkItem } from '../../../../../lib/types';
 import { monthName } from '../../../payroll/list';
-import { profileHref } from '../../tab-list';
+import { contractDocumentsHref, profileHref } from '../../tab-list';
 import { formatEgp } from '../contracts/salary';
 import { templateStateText, type CheckResult, type MissingLink } from '../documents/wording';
 import { occupationLabel } from './occupation';
@@ -36,8 +36,8 @@ export function hasInsuranceCopy(tab: Pick<DocumentsTab, 'sections'>): boolean {
   return tab.sections.some((s) => s.key === 'contract' && s.items.some((i) => i.slotKey === CONTRACT_INSURANCE_COPY));
 }
 
-/** Where the contract's social insurance copy is: with the contract's documents on the Employment tab. */
-export const insuranceCopyHref = (employeeId: string) => `${profileHref(employeeId, 'employment')}#contract-documents`;
+/** Where the contract's social insurance copy is: with the contract's documents, on the Employment tab's Issued Documents. */
+export const insuranceCopyHref = (employeeId: string) => contractDocumentsHref(employeeId);
 
 /** Why a form isn't listed: none without an employment or for one that isn't full time, Form 6 only once there is an ending. */
 export type FormsGap = { kind: 'not_employed' | 'not_full_time' | 'no_ending'; text: string };

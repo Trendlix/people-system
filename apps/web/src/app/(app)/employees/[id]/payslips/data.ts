@@ -3,9 +3,9 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
 import type { EmployeePayslip } from '@/lib/types';
 
-// Loading an employee's payslips for the profile's Employment tab. They came with payslips (October 2026): an API from
-// before them answers 404, which here means "not available yet" rather than the 404 page, so the rest of the profile
-// keeps working.
+// Loading an employee's paid payroll months and their payslips, for the Pay Received on the profile's Employment tab
+// (Salary). They came with payslips (October 2026): an API from before them answers 404, which here means "not
+// available yet" rather than the 404 page, so the rest of the profile keeps working.
 
 export type PayslipsLoad =
   | { kind: 'ok'; payslips: EmployeePayslip[] }

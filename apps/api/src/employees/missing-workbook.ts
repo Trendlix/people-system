@@ -50,7 +50,8 @@ export function documentsText(missing: readonly Missing[]): string {
 /** The name the workbook is saved under: "Missing details 2026-10-16.xlsx", with the day (Cairo) it was made. */
 export const missingDetailsFileName = (today: string) => `Missing details ${today}.xlsx`;
 
-interface Column<T> {
+/** A column of a sheet: its header, width and each row's value. The Salary Raises workbook is written with these too. */
+export interface Column<T> {
   header: string;
   width: number;
   value: (row: T) => string | number | null;
@@ -88,7 +89,7 @@ const ITEM_COLUMNS: readonly Column<ItemRow>[] = [
 const THIN = { style: 'thin' } as const;
 
 /** A sheet of `rows` under `columns`: the header bold and frozen, an autofilter over the header and the rows. */
-function addSheet<T>(wb: ExcelJS.Workbook, name: string, columns: readonly Column<T>[], rows: readonly T[]) {
+export function addSheet<T>(wb: ExcelJS.Workbook, name: string, columns: readonly Column<T>[], rows: readonly T[]): ExcelJS.Worksheet {
   const ws = wb.addWorksheet(name, { views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }] });
   columns.forEach((c, i) => (ws.getColumn(i + 1).width = c.width));
 
@@ -114,6 +115,7 @@ function addSheet<T>(wb: ExcelJS.Workbook, name: string, columns: readonly Colum
   });
 
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: rows.length + 1, column: columns.length } };
+  return ws;
 }
 
 /**

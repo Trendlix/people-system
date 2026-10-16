@@ -35,6 +35,19 @@ export function handlesRaiseRequests(user: WithRoles): boolean {
   return hasRole(user, 'hr');
 }
 
+/**
+ * Whether a profile shows its Raise Requests (and so, to the employee or their manager, the Salary sub-tab): when there
+ * are requests the caller may see, or they may ask for one now; also when they could not be loaded, to say so. Nothing
+ * when the caller may not see them, or the server doesn't have them yet. `load`: GET /employees/:id/raise-requests as
+ * read (data.ts).
+ */
+export function showsRaiseRequests(
+  load: { kind: 'ok'; value: { requests: readonly unknown[]; canRequest: boolean } } | { kind: 'unavailable' | 'forbidden' | 'failed' },
+): boolean {
+  if (load.kind === 'ok') return load.value.requests.length > 0 || load.value.canRequest;
+  return load.kind === 'failed';
+}
+
 /** The requests waiting for HR, for the count beside Raise Requests in the sidebar. */
 export const WITH_HR_REQUESTS = '/raise-requests?status=with_hr';
 

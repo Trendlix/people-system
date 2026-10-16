@@ -21,6 +21,11 @@ export interface PayrollSettingsView extends Required<PayrollRules> {
    * that day of the month after the run's, or that month's last day when it is shorter.
    */
   payday: number | null;
+  /**
+   * Salary review due after this many months (owner's decision, 16 October 2026: the company-wide Salary Raises report):
+   * the report lists current employees whose last raise, or their join date, is at least this long ago. 1 to 60.
+   */
+  salaryReviewMonths: number;
 }
 
 /** The rules a run is worked out with, as the settings have them now: Pay overtime always says on or off. */
@@ -40,6 +45,7 @@ const view = (s: PayrollSettings): PayrollSettingsView => ({
   cibDebitAccountName: s.cibDebitAccountName,
   achPurpose: s.achPurpose,
   payday: s.payday,
+  salaryReviewMonths: s.salaryReviewMonths,
 });
 
 // The payroll settings (owner's decisions, 16 October 2026): the sheet's rules to start with (a month of 30 days,
@@ -49,7 +55,9 @@ const view = (s: PayrollSettings): PayrollSettingsView => ({
 // hours to work a day): Pay overtime is off, its percent and rate kept for when it is turned on.
 // One row, id 1, added by the payroll migration and prisma/seed.ts. HR, Finance, the CEO and Admin read them; HR and
 // Admin change them (Organization → Payroll Setup: the rules under Your Rules, the bank files and the payday, the day
-// of the month salaries are paid, under Paying Salaries; owner's request, 16 October 2026).
+// of the month salaries are paid, under Paying Salaries; owner's request, 16 October 2026). Your Rules also has when a
+// salary review is due, after 12 months without a raise to start with (the Salary Raises report; owner's decision, 16
+// October 2026), which no run copies.
 @Injectable()
 export class PayrollSettingsService {
   constructor(
@@ -80,6 +88,7 @@ export class PayrollSettingsService {
       cibDebitAccountName: dto.cibDebitAccountName,
       achPurpose: dto.achPurpose,
       payday: dto.payday,
+      salaryReviewMonths: dto.salaryReviewMonths,
     };
     const after = await this.prisma.payrollSettings.update({ where: { id: ID }, data });
     const diff = changes(view(before) as unknown as Record<string, unknown>, data);

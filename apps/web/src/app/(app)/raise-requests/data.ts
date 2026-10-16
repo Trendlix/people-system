@@ -40,10 +40,13 @@ export function loadRaiseRequests(status: StatusFilter): Promise<Load<RaiseReque
   return load<RaiseRequest[]>(raiseRequestsHref(status));
 }
 
+/** One employee's raise requests, as read for their profile. */
+export type EmployeeRaiseRequestsLoad = Load<EmployeeRaiseRequests>;
+
 /**
  * GET /employees/:id/raise-requests: the employee's requests as the caller may see them (the employee themself, their
  * direct manager, HR, Finance and the CEO; anyone else is refused), and whether the caller may ask for one now.
  */
-export function loadEmployeeRaiseRequests(employeeId: string): Promise<Load<EmployeeRaiseRequests>> {
+export function loadEmployeeRaiseRequests(employeeId: string): Promise<EmployeeRaiseRequestsLoad> {
   return load<EmployeeRaiseRequests>(`/employees/${encodeURIComponent(employeeId)}/raise-requests`);
 }

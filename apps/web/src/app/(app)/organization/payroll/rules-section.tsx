@@ -1,6 +1,9 @@
+import Link from 'next/link';
 import { canEditOrganisation } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
+import { monthsLabel } from '../../employees/[id]/salary-history/salary-history';
+import { RAISES_PATH } from '../../employees/raises/salary-raises';
 import { rulesSummary } from '../../payroll/list';
 import { updateYourRules } from './actions';
 import { loadContractDefaults, loadPayrollSettings } from './data';
@@ -11,8 +14,9 @@ import { NotLoaded, SettingRow, SetupSection } from './section';
 // after its payroll sheet with the sheet's formula errors fixed, and the company defaults that change the sheet. The
 // rules are the payroll settings (GET/PATCH /payroll/settings); the basic share of the gross new contracts start with
 // and the Form 1 basic wage stay with the contract settings (GET/PATCH /contract-settings), where the contracts and
-// the forms read them, and are edited only here: Organization → Contracts & Endings shows them with a link here. HR
-// and Admin change them; Finance and the CEO read them.
+// the forms read them, and are edited only here: Organization → Contracts & Endings shows them with a link here. When a
+// salary review is due, after how many months without a raise, is a payroll setting the Salary Raises report reads
+// (owner's decision, 16 October 2026). HR and Admin change them; Finance and the CEO read them.
 
 const INTRO =
   'The company’s own rules for working out each month’s pay, following its payroll sheet, and the defaults new contracts start with. A run keeps the rules it was made or last refreshed with, so a change here applies to runs made or refreshed afterwards; approved runs keep theirs.';
@@ -34,6 +38,17 @@ export async function YourRulesSection({ user }: { user: SessionUser }) {
               <li key={r}>{r}</li>
             ))}
           </ul>
+          {settings.value.salaryReviewMonths !== undefined && (
+            <dl className="mt-4">
+              <SettingRow label="Salary review due after">
+                <span className="tabular-nums">{monthsLabel(settings.value.salaryReviewMonths)}</span>
+                <span className="text-muted">
+                  {' '}
+                  · without a raise, or since joining, on the <Link href={RAISES_PATH}>Salary Raises</Link> report
+                </span>
+              </SettingRow>
+            </dl>
+          )}
           {d && (d.basicPercentDefault !== undefined || d.insuranceBasicDefault !== undefined) && (
             <dl className="mt-4">
               {d.basicPercentDefault !== undefined && (

@@ -3,39 +3,30 @@ import { LABELS, type EmploymentType } from '@trendlix/shared';
 import { formatDate, titleCase } from '@/lib/format';
 import type { EmploymentSalaryHistory, PayEventDocument, SalaryEvent } from '@/lib/raise-types';
 import type { EmployeeProfile, GeneratedDocumentStatus } from '@/lib/types';
-import { runHref } from '../../../payroll/list';
-import { payslipHref } from '../../../payroll/payslips';
-import { Loading, periodLabel, ProfileSection, todayInCairo } from '../../ui';
+import { recordForm2 } from '../../raise-actions';
+import { contractDocumentsHref, Loading, periodLabel, ProfileSection, todayInCairo } from '../../ui';
+import { RecordForm2 } from '../contracts/raise-buttons';
+import { StageBadge } from '../contracts/raise-card';
 import { allowancesLabel, formatEgp } from '../contracts/salary';
 import { DOCUMENT_STATUS_LABELS, documentFileHref } from '../documents/wording';
-import { loadSalaryHistory } from './data';
-import {
-  eventsLabel,
-  eventView,
-  firstSignedDate,
-  monthsLabel,
-  paidRows,
-  paidTotals,
-  STAGE_BADGE,
-  stepChart,
-  summaryFigures,
-  type EventView,
-} from './salary-history';
+import { loadSalaryHistory, loadVersionRaises } from './data';
+import { eventsLabel, eventView, firstSignedDate, stepChart, summaryFigures, type EventView, type VersionRaise } from './salary-history';
 import { GrossStepChart } from './step-chart';
 
-// The Salary History, on the Employment tab after the Contract section (owner, 16 October 2026: "think about tracking
-// the salary raises through the employment period too"). For the current employment: the summary (starting and current
-// gross, the change since joining, the raises and the last one, a signed raise still to come), a step chart of the
-// gross, every pay event in order (the hire, each amendment, each new contract, each renewal, with the same pay or the
-// change), each with its dates, pay from → to, reason, promotion, the CEO's approval, status, insured-wage date and
-// documents; then the pay actually received, month by month, with its payslips. Each past employment below it, the same
-// way, folded away. HR, Finance and the CEO only, as salaries; the documents for HR and the CEO, who see the employee
-// file's (the API leaves them out for Finance). The API checks all of it again.
+// The Salary History, first on the Employment tab's Salary sub-tab (owner, 16 October 2026: "think about tracking the
+// salary raises through the employment period too"; the sub-tabs, 17 October 2026). For the current employment: the
+// summary (starting and current gross, the change since joining, the raises and the last one, a signed raise still to
+// come), a step chart of the gross, and every pay event in order (the hire, each amendment, each new contract, each
+// renewal, with the same pay or the change), each with its number and version, stage, dates, pay from → to, reason,
+// promotion, the CEO's decision, from when the insured wage follows it (Record Form 2 for HR) and its documents: the
+// Contract section's Pay History table is merged into this timeline, so nothing shows twice. Each past employment below
+// it, the same way, folded away. The pay received is a section of its own below the Raise Requests. HR, Finance and the
+// CEO only, as salaries; the documents for HR and the CEO, who see the employee file's (the API leaves them out for
+// Finance). The API checks all of it again.
 
 const LINK = 'inline-flex min-h-9 items-center text-sm font-semibold text-accent hover:underline';
-const dash = <span className="text-muted">—</span>;
 
-type Employee = Pick<EmployeeProfile, 'id' | 'fullNameEn'>;
+type Employee = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'employments' | 'access'>;
 
 const Title = ({ note, children }: { note?: string; children: React.ReactNode }) => (
   <ProfileSection title="Salary History" note={note} restricted>
@@ -89,8 +80,8 @@ function Summary({ history: h }: { history: EmploymentSalaryHistory }) {
 
 // ---------- the timeline ----------
 
-function Documents({ employee, documents, what }: { employee: Employee; documents: PayEventDocument[]; what: string }) {
-  if (documents.length === 0) return <span className="text-muted">None generated yet</span>;
+function DocumentList({ employee, documents, what }: { employee: Employee; documents: PayEventDocument[]; what: string }) {
+  if (documents.length === 0) return <span className="block text-muted">None generated yet</span>;
   return (
     <ul className="flex flex-wrap gap-x-5 gap-y-1">
       {documents.map((d) => (
@@ -107,20 +98,43 @@ function Documents({ employee, documents, what }: { employee: Employee; document
   );
 }
 
+/** A version's documents, and where they are generated and moved along (Issued Documents); none until it is approved. */
+function Documents({ employee, event, view: v, what }: { employee: Employee; event: SalaryEvent; view: EventView; what: string }) {
+  if (!event.documents) return null;
+  return (
+    <Item label="Documents" wide>
+      {v.documentsReady ? (
+        <>
+          <DocumentList employee={employee} documents={event.documents} what={what} />
+          <Link href={contractDocumentsHref(employee.id)} className={LINK}>
+            Open in Issued Documents<span className="sr-only">: the documents of {what}</span>
+          </Link>
+        </>
+      ) : (
+        <span className="text-muted">Generated once the CEO approves it</span>
+      )}
+    </Item>
+  );
+}
+
 function EventItem({
   employee,
   event,
   view: v,
   level,
   last,
+  canRecordForm2,
 }: {
   employee: Employee;
   event: SalaryEvent;
   view: EventView;
   level: 3 | 4 | 5;
   last: boolean;
+  /** HR: Record Form 2 on an approved raise. */
+  canRecordForm2: boolean;
 }) {
   const what = `${v.title}, ${v.reference}`;
+  const name = `version ${event.version} (${event.number})`;
   return (
     <li className="relative pb-6 pl-7 last:pb-0">
       {/* the line down the timeline to the next event, and this event's dot on it: filled once signed (paid) */}
@@ -134,7 +148,7 @@ function EventItem({
           {v.title}
           <span className="font-normal text-muted tabular-nums"> · {v.reference}</span>
         </Heading>
-        <span className={`badge ${STAGE_BADGE[v.stage] ?? ''}`}>{v.stageLabel}</span>
+        <StageBadge stage={v.stage} />
       </div>
       <dl className="mt-2 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
         <Item label="Effective">
@@ -154,20 +168,43 @@ function EventItem({
         </Item>
         {v.reason && <Item label="Reason">{v.reason}</Item>}
         {v.promotion && <Item label="Promotion">{v.promotion}</Item>}
-        {v.approved && <Item label="Approved by the CEO">{v.approved}</Item>}
-        {v.signedOn && <Item label="Signed on">{v.signedOn}</Item>}
-        {v.insuredWage && <Item label="Insured wage">{v.insuredWage}</Item>}
-        {event.documents && (
-          <Item label="Documents" wide>
-            <Documents employee={employee} documents={event.documents} what={what} />
+        {v.decision && (
+          <Item label="CEO's decision">
+            {v.decision}
+            {v.returnedReason && <span className="block text-xs text-muted">{v.returnedReason}</span>}
           </Item>
         )}
+        {v.signedOn && <Item label="Signed on">{v.signedOn}</Item>}
+        {v.insuredWage && (
+          <Item label="Insured wage">
+            {v.insuredWage}
+            {canRecordForm2 && v.form2 && (
+              <RecordForm2
+                action={recordForm2.bind(null, event.contractId, v.form2.effective)}
+                effective={v.form2.effective}
+                form2From={v.form2.form2From}
+                name={name}
+              />
+            )}
+          </Item>
+        )}
+        <Documents employee={employee} event={event} view={v} what={what} />
       </dl>
     </li>
   );
 }
 
-function Timeline({ employee, history: h, level }: { employee: Employee; history: EmploymentSalaryHistory; level: 3 | 4 }) {
+function Timeline({
+  employee,
+  history: h,
+  raises,
+  level,
+}: {
+  employee: Employee;
+  history: EmploymentSalaryHistory;
+  raises: ReadonlyMap<string, VersionRaise>;
+  level: 3 | 4;
+}) {
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-3">
@@ -185,97 +222,13 @@ function Timeline({ employee, history: h, level }: { employee: Employee; history
               key={e.contractId}
               employee={employee}
               event={e}
-              view={eventView(e)}
+              view={eventView(e, raises.get(e.contractId) ?? null)}
               level={(level + 1) as 4 | 5}
               last={i === h.events.length - 1}
+              canRecordForm2={employee.access.edit}
             />
           ))}
         </ol>
-      )}
-    </section>
-  );
-}
-
-// ---------- the pay received ----------
-
-function PayReceived({ employee, history: h, level }: { employee: Employee; history: EmploymentSalaryHistory; level: 3 | 4 }) {
-  const rows = paidRows(h.paid);
-  const totals = paidTotals(h.paid);
-  return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-baseline gap-x-3">
-        <Heading level={level} className="font-semibold">
-          Pay Received
-        </Heading>
-        <span className="text-xs text-muted">Each paid payroll month, oldest first</span>
-      </div>
-      {rows.length === 0 ? (
-        <Quiet>No paid payroll month yet in this employment.</Quiet>
-      ) : (
-        <div className="card overflow-x-auto">
-          <table className="table">
-            <caption className="sr-only">Pay {employee.fullNameEn} received in each paid payroll month</caption>
-            <thead>
-              <tr>
-                <th scope="col">Month</th>
-                <th scope="col">Paid On</th>
-                <th scope="col" className="text-right">
-                  Net
-                </th>
-                <th scope="col" className="text-right">
-                  Transfer
-                </th>
-                <th scope="col">Payslips</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.lineId}>
-                  <th scope="row" className="text-left font-semibold whitespace-nowrap">
-                    <Link href={runHref(r.runId)} prefetch={false}>
-                      {r.title}
-                    </Link>
-                  </th>
-                  <td className="whitespace-nowrap tabular-nums">{r.paidOn ? formatDate(r.paidOn) : dash}</td>
-                  <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(r.net)}</td>
-                  <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(r.transfer)}</td>
-                  <td>
-                    {r.onHold ? (
-                      <span className="text-sm text-muted">On hold: not paid, no payslip</span>
-                    ) : (
-                      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
-                        {r.links.map((l) => (
-                          // plain links, never prefetched: the API draws the payslip the first time it is asked for
-                          <span key={l.language} className="inline-flex items-baseline gap-1.5">
-                            <a href={payslipHref(r.lineId, l.language)} target="_blank" rel="noopener" className={LINK}>
-                              {l.label}
-                              <span className="sr-only">
-                                {' '}
-                                payslip of {employee.fullNameEn} for {r.title} (PDF), in a new tab
-                              </span>
-                            </a>
-                            {l.note && <span className="text-xs text-muted">{l.note}</span>}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row" className="px-4 py-3 text-left font-semibold">
-                  Received in all
-                </th>
-                <td className="px-4 py-3 text-muted">{monthsLabel(totals.months)}</td>
-                <td className="px-4 py-3 text-right font-semibold whitespace-nowrap tabular-nums">{formatEgp(totals.net)}</td>
-                <td className="px-4 py-3 text-right font-semibold whitespace-nowrap tabular-nums">{formatEgp(totals.transfer)}</td>
-                <td className="px-4 py-3" />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
       )}
     </section>
   );
@@ -286,11 +239,13 @@ function PayReceived({ employee, history: h, level }: { employee: Employee; hist
 function EmploymentPay({
   employee,
   history: h,
+  raises,
   today,
   level,
 }: {
   employee: Employee;
   history: EmploymentSalaryHistory;
+  raises: ReadonlyMap<string, VersionRaise>;
   today: string;
   level: 3 | 4;
 }) {
@@ -299,8 +254,7 @@ function EmploymentPay({
     <div className="space-y-6">
       <Summary history={h} />
       {chart && <GrossStepChart chart={chart} />}
-      <Timeline employee={employee} history={h} level={level} />
-      <PayReceived employee={employee} history={h} level={level} />
+      <Timeline employee={employee} history={h} raises={raises} level={level} />
     </div>
   );
 }
@@ -312,7 +266,8 @@ function employmentName(h: EmploymentSalaryHistory): string {
 }
 
 export async function SalaryHistorySection({ employee }: { employee: Employee }) {
-  const load = await loadSalaryHistory(employee.id);
+  // each version's CEO step and Form 2 come with the contracts, read alongside
+  const [load, raises] = await Promise.all([loadSalaryHistory(employee.id), loadVersionRaises(employee.id, employee.employments.map((e) => e.id))]);
   if (load.kind === 'forbidden') return null; // not the caller's to see
   if (load.kind === 'unavailable') {
     return (
@@ -343,7 +298,7 @@ export async function SalaryHistorySection({ employee }: { employee: Employee })
   return (
     <Title note={current ? `Since ${formatDate(current.joinDate)}` : undefined}>
       {current ? (
-        <EmploymentPay employee={employee} history={current} today={today} level={3} />
+        <EmploymentPay employee={employee} history={current} raises={raises} today={today} level={3} />
       ) : (
         <Quiet>No current employment. The past employments&apos; pay is below.</Quiet>
       )}
@@ -362,7 +317,7 @@ export async function SalaryHistorySection({ employee }: { employee: Employee })
                 )}
               </summary>
               <div className="border-t border-line px-5 py-5">
-                <EmploymentPay employee={employee} history={h} today={today} level={4} />
+                <EmploymentPay employee={employee} history={h} raises={raises} today={today} level={4} />
               </div>
             </details>
           ))}

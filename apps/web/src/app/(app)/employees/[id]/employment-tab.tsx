@@ -6,12 +6,16 @@ import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
-import type { Contract, EmployeeProfile, Employment, Grade } from '@/lib/types';
+import type { Contract, EmployeeProfile, Employment, Grade, SessionUser } from '@/lib/types';
 import { canSeePayroll } from '../../payroll/list';
+import { loadEmployeeRaiseRequests, type EmployeeRaiseRequestsLoad } from '../../raise-requests/data';
+import { showsRaiseRequests } from '../../raise-requests/list';
 import { deleteEmployment } from '../employment-actions';
+import { openSubTab, visibleSubTabs } from '../tab-list';
 import {
   arrangementLabel,
   canSeeEmployeeFiles,
+  employmentHref,
   FieldGrid,
   gradeLabel,
   periodLabel,
@@ -22,32 +26,38 @@ import {
   todayInCairo,
   type GridField,
 } from '../ui';
+import { AnchorSubTab } from './anchor-sub-tab';
 import { ContractSection, ContractSectionLoading, termLabel } from './contracts/contract-section';
 import { loadContracts } from './contracts/data';
 import { ProbationBanner } from './contracts/probation-banner';
 import { GeneratedDocuments, GeneratedDocumentsLoading } from './documents/document-rows';
 import { EndingPanel } from './ending/ending-panel';
 import { DeleteRowButton } from './inline-forms';
-import { Payslips, PayslipsLoading } from './payslips/payslips-section';
+import { PayReceived, PayReceivedLoading } from './payslips/pay-received';
+import { ProfileTabs } from './profile-tabs';
 import { RaiseRequestsSection } from './raise-requests/raise-requests-section';
 import { SalaryHistoryLoading, SalaryHistorySection } from './salary-history/salary-history-section';
 
 // The Employment tab: everything about the job, in one place (owner, 16 October 2026: "there is no point of adding
 // employment then adding contract and no active employment without a contract, its like a loop for me"; the Contracts
-// tab was merged into it). In order: the probation banner and an ending in progress; the current employment (Edit, End
-// employment) with its contract (the signed version, a draft to sign, New contract or Renew, the filing dates, every
-// version), or a way to hire, which takes the job and the contract's terms in one form; every employment in the
-// history, newest first, with its contracts; the people who report to this person now; then the documents generated
-// from the templates and the payslips, as the Contracts tab had them, with its anchors (#contract, #payslips) so old
-// links land right. HR changes employments and contracts, confirms probation and records endings; the CEO approves or
-// rejects endings here; only a Super Admin may delete an employment added by mistake (the API checks all of it again).
-// Whoever sees the employment sees its contract; the generated documents are HR's and the CEO's (HR generates and moves
-// them along, the CEO views and downloads); the payslips are HR's, Finance's and the CEO's, as the salary. The social
-// insurance work is on its own tab.
-// After the contract (owner's decisions, 16 October 2026): the Salary History, every pay event of each employment and
-// the pay received (HR, Finance and the CEO, as the salary; #salary-history), then the Raise Requests, where the
-// employee asks for themself, their direct manager for them, or HR, and each decision shows (#raise-requests; the API
-// sends each viewer only what they may see, and nothing to anyone else).
+// tab was merged into it), in sub-tabs (owner, 17 October 2026: "move the salary history from the employment tab, it
+// looks very busy now, or make subtabs"; the owner chose sub-tabs). The open one is in the address (&sub=, none for
+// Details), so it survives a reload, and only it is rendered, each section loading on its own as before:
+// - Details, for everyone who sees the profile: the probation banner and an ending in progress; the current employment
+//   (Edit, End employment) with its contract (#contract: the signed version, a draft or a raise to sign, Renew, Raise,
+//   the filing dates), or a way to hire, which takes the job and the contract's terms in one form; every employment in
+//   the history, newest first, with its contracts; the people who report to this person now.
+// - Salary: the Salary History (#salary-history: each employment's pay events, with what the Pay History table had)
+//   and the pay received with the payslips (#payslips), HR's, Finance's and the CEO's, as the salary; between them the
+//   Raise Requests (#raise-requests), where the employee asks for themself, their direct manager for them, or HR, and
+//   each decision shows. The API sends each viewer only what they may see: the employee and their manager get only the
+//   requests, so they are offered Salary only when there is something there for them.
+// - Issued Documents, HR's and the CEO's: the documents generated from the templates (#contract-documents), which HR
+//   generates and moves along and the CEO views and downloads; not the Documents tab, the papers the employee brings.
+// Links from before the sub-tabs name only an anchor (?tab=employment#payslips): AnchorSubTab moves them to the sub-tab
+// holding it. HR changes employments and contracts, confirms probation and records endings; the CEO approves or rejects
+// endings here; only a Super Admin may delete an employment added by mistake (the API checks all of it again). The
+// social insurance work is on its own tab.
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -197,7 +207,7 @@ function History({ profile: p }: { profile: EmployeeProfile }) {
                       <PastContracts employeeId={p.id} employment={e} />
                     </Suspense>
                   ) : e.contract ? (
-                    // the signed one; every version is in the Contract section above
+                    // the signed one; every version, with its pay, is in the Salary History
                     <ContractLine contract={e.contract} status={false} />
                   ) : (
                     <span className="text-muted">Not signed yet</span>
@@ -262,25 +272,24 @@ function DirectReports({ profile: p }: { profile: EmployeeProfile }) {
   );
 }
 
-export async function EmploymentTab({
+/** Details: the job, its contract, the history and the direct reports. */
+async function DetailsSubTab({
   profile: p,
+  user,
   linkPeople,
-  justAdded = false,
+  justAdded,
 }: {
   profile: EmployeeProfile;
+  user: SessionUser;
   linkPeople: boolean;
-  /** Just after Add employee saved the profile: say so, and what comes next. */
-  justAdded?: boolean;
+  justAdded: boolean;
 }) {
   const e = p.employment;
   const base = `/employees/${p.id}`;
   const lastEnded = e ? null : p.employments.find((x) => x.endDate);
   // the top grade (the highest rank in the grades table, as the API counts it) has no manager to fill in
   const rank = e?.grade?.rank;
-  const [user, topGrade] = await Promise.all([
-    getCurrentUser(),
-    rank !== undefined && apiGet<Grade[]>('/grades').then((all) => all.every((g) => g.rank <= rank)),
-  ]);
+  const topGrade = rank !== undefined && (await apiGet<Grade[]>('/grades')).every((g) => g.rank <= rank);
   const isCeo = user.roles.includes('ceo');
   const today = todayInCairo();
   const ending = e && endingInProgress(e) ? e.ending : null;
@@ -351,8 +360,36 @@ export async function EmploymentTab({
       )}
       {lastEnding && <EndingPanel ending={lastEnding} employeeName={p.fullNameEn} canEdit={p.access.edit} isCeo={isCeo} today={today} />}
 
-      {canSeePayroll(user) && (
-        // each loads on its own, like the contract
+      <ProfileSection
+        title="Employment History"
+        note={p.employments.length > 0 && `${p.employments.length} ${p.employments.length === 1 ? 'employment' : 'employments'}, newest first`}
+      >
+        <History profile={p} />
+      </ProfileSection>
+
+      {p.reports.length > 0 && <DirectReports profile={p} />}
+    </div>
+  );
+}
+
+/**
+ * Salary: the Salary History and the pay received for those who see salaries, and the Raise Requests between them
+ * (`raiseRequests`: already read for an employee or a manager, to offer them the sub-tab). Each loads on its own.
+ */
+function SalarySubTab({
+  profile: p,
+  user,
+  seesPay,
+  raiseRequests,
+}: {
+  profile: EmployeeProfile;
+  user: SessionUser;
+  seesPay: boolean;
+  raiseRequests: EmployeeRaiseRequestsLoad | undefined;
+}) {
+  return (
+    <div className="space-y-8">
+      {seesPay && (
         <div id="salary-history" className="scroll-mt-6">
           <Suspense fallback={<SalaryHistoryLoading />}>
             <SalaryHistorySection employee={p} />
@@ -362,34 +399,84 @@ export async function EmploymentTab({
       <div id="raise-requests" className="scroll-mt-6">
         {/* no placeholder: for many who open the tab there is nothing here (the API decides) */}
         <Suspense fallback={null}>
-          <RaiseRequestsSection employee={p} user={user} />
+          <RaiseRequestsSection employee={p} user={user} loaded={raiseRequests} />
         </Suspense>
       </div>
-
-      <ProfileSection
-        title="Employment History"
-        note={p.employments.length > 0 && `${p.employments.length} ${p.employments.length === 1 ? 'employment' : 'employments'}, newest first`}
-      >
-        <History profile={p} />
-      </ProfileSection>
-
-      {p.reports.length > 0 && <DirectReports profile={p} />}
-
-      {canSeeEmployeeFiles(user) && (
-        // loads on its own too
-        <Suspense fallback={<GeneratedDocumentsLoading />}>
-          <GeneratedDocuments employee={p} can={{ act: p.access.edit, delete: canDelete(user) }} />
-        </Suspense>
-      )}
-
-      {canSeePayroll(user) && (
-        // where a link to the employee's payslips points (#payslips); loads on its own too
+      {seesPay && (
+        // where a link to the employee's payslips points (#payslips)
         <div id="payslips" className="scroll-mt-6">
-          <Suspense fallback={<PayslipsLoading />}>
-            <Payslips employee={p} />
+          <Suspense fallback={<PayReceivedLoading />}>
+            <PayReceived employee={p} />
           </Suspense>
         </div>
       )}
     </div>
+  );
+}
+
+/** Issued Documents: the documents generated from the templates (HR and the CEO). */
+function IssuedDocumentsSubTab({ profile: p, user }: { profile: EmployeeProfile; user: SessionUser }) {
+  return (
+    // where the Social Insurance tab and the Salary History point for a contract version's documents, which come first
+    // (#contract-documents); here, not inside the part that loads, so the page finds it to scroll to at once
+    <div id="contract-documents" className="scroll-mt-6 space-y-8">
+      <Suspense fallback={<GeneratedDocumentsLoading />}>
+        <GeneratedDocuments employee={p} can={{ act: p.access.edit, delete: canDelete(user) }} />
+      </Suspense>
+    </div>
+  );
+}
+
+export async function EmploymentTab({
+  profile: p,
+  linkPeople,
+  sub = '',
+  justAdded = false,
+}: {
+  profile: EmployeeProfile;
+  linkPeople: boolean;
+  /** The sub-tab the address asks for (&sub=); Details for none, or one the viewer doesn't see. */
+  sub?: string;
+  /** Just after Add employee saved the profile: say so, and what comes next. */
+  justAdded?: boolean;
+}) {
+  const user = await getCurrentUser();
+  const seesPay = canSeePayroll(user);
+  // to the employee and their manager, Salary is only the raise requests: offered when there is something there for them
+  const raiseRequests = seesPay ? undefined : await loadEmployeeRaiseRequests(p.id);
+  const tabs = visibleSubTabs({
+    pay: seesPay,
+    raiseRequests: raiseRequests !== undefined && showsRaiseRequests(raiseRequests),
+    issuedDocuments: canSeeEmployeeFiles(user),
+  });
+  const visible = tabs.map((t) => t.key);
+  const open = openSubTab(sub, visible);
+
+  const content =
+    open === 'salary' ? (
+      <SalarySubTab profile={p} user={user} seesPay={seesPay} raiseRequests={raiseRequests} />
+    ) : open === 'documents' ? (
+      <IssuedDocumentsSubTab profile={p} user={user} />
+    ) : (
+      <DetailsSubTab profile={p} user={user} linkPeople={linkPeople} justAdded={justAdded} />
+    );
+
+  return (
+    <>
+      <AnchorSubTab visible={visible} />
+      {/* Details alone needs no row of sub-tabs */}
+      {tabs.length > 1 ? (
+        <ProfileTabs
+          tabs={tabs.map((t) => ({ key: t.key, label: t.label, href: employmentHref(p.id, t.key) }))}
+          active={open}
+          label={`Employment of ${p.fullNameEn}`}
+          size="small"
+        >
+          {content}
+        </ProfileTabs>
+      ) : (
+        content
+      )}
+    </>
   );
 }

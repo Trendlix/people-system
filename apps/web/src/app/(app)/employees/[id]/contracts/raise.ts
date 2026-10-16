@@ -29,8 +29,8 @@ import { formatEgp } from './salary';
 // the effective date, signed in full), on the 1st of a month; HR sends it to the CEO, who approves it, returns it with a
 // reason or declines it; only an approved one is signed. A renewal whose pay changes counts as a raise and goes the same
 // way. After a raise the insured wage stays as it was until the next 1 January, unless HR records the Form 2 filed. Pure
-// code for the raise form, the raise card and the Pay History table, tested; relative imports, as vitest doesn't know
-// the @/ paths.
+// code for the raise form, the raise card and the Salary History's timeline, tested; relative imports, as vitest
+// doesn't know the @/ paths.
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
 
@@ -62,7 +62,7 @@ export function insuredWageText(effective: string, form2From: string | null): st
   return `Insured wage stays as before until ${monthOf(january)} unless Form 2 is filed.`;
 }
 
-/** From when a version's insured wage follows its pay, for the Pay History: "01/01/2027", or "01/12/2026 (Form 2)". */
+/** From when a version's insured wage follows its pay, for the Salary History: "01/01/2027", or "01/12/2026 (Form 2)". */
 export function insuredFromText(raise: Pick<ContractRaise, 'insuredWageFrom' | 'form2From'>): string {
   return `${formatDate(raise.insuredWageFrom)}${raise.form2From ? ' (Form 2)' : ''}`;
 }
@@ -123,7 +123,7 @@ const STAGE_TONES: Record<PayStage, string> = {
 export const stageTone = (stage: PayStage) => STAGE_TONES[stage];
 
 /** The CEO's step on a change of pay, in a few words; null for a version that needs none. */
-export function decisionText(raise: ContractRaise | null | undefined): string | null {
+export function decisionText(raise: Pick<ContractRaise, 'approval' | 'approvedBy' | 'approvedAt' | 'sentAt' | 'returnedReason'> | null | undefined): string | null {
   if (!raise) return null;
   if (raise.approval === 'approved') {
     return `Approved${raise.approvedBy ? ` by ${raise.approvedBy.email}` : ''}${raise.approvedAt ? ` on ${formatDate(raise.approvedAt)}` : ''}`;

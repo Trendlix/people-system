@@ -9,6 +9,7 @@ import {
   paydayDate,
   payingBody,
   rulesBody,
+  SALARY_REVIEW_ERROR,
   seesPayrollSettings,
 } from './settings';
 
@@ -76,6 +77,14 @@ describe('Your Rules', () => {
 
   it('leaves out a default the form doesn’t have (an API from before it)', () => {
     expect(rulesBody(form(rules))).toMatchObject({ defaults: {}, errors: [] });
+  });
+
+  it('sends when a salary review is due, a whole number of months from 1 to 60, when the form has it (owner, 16 October 2026)', () => {
+    expect(rulesBody(form({ ...rules, salaryReviewMonths: '18' }))).toMatchObject({ rules: { salaryReviewMonths: 18 }, errors: [] });
+    expect(rulesBody(form({ ...rules, salaryReviewMonths: '١٢' })).rules.salaryReviewMonths).toBe(12);
+    for (const bad of ['0', '61', '6.5', '', 'twelve']) expect(rulesBody(form({ ...rules, salaryReviewMonths: bad })).errors).toEqual([SALARY_REVIEW_ERROR]);
+    // an API from before it: not on the form, not sent
+    expect(rulesBody(form(rules)).rules).not.toHaveProperty('salaryReviewMonths');
   });
 
   it('reads Arabic digits', () => {

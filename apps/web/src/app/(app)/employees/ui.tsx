@@ -247,6 +247,19 @@ export function EditHeading({
   );
 }
 
-// The profile's tabs (Basic Data | Education | Employment | Social Insurance | Documents) and their addresses live in
-// pure code, for tested helpers that link to a tab.
-export { askedTab, contractHref, PROFILE_TABS, payslipsHref, profileHref, type ProfileTabKey } from './tab-list';
+// The profile's tabs (Basic Data | Education | Employment | Social Insurance | Documents), the Employment tab's sub-tabs
+// (Details | Salary | Issued Documents) and their addresses live in pure code, for tested helpers that link to a tab.
+export {
+  askedTab,
+  contractDocumentsHref,
+  contractHref,
+  EMPLOYMENT_SUB_TABS,
+  employeeRaiseRequestsHref,
+  employmentHref,
+  PROFILE_TABS,
+  payslipsHref,
+  profileHref,
+  salaryHistoryHref,
+  type EmploymentSubTabKey,
+  type ProfileTabKey,
+} from './tab-list';

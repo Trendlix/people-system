@@ -1,19 +1,20 @@
 import type { EmployeeProfile, SessionUser } from '@/lib/types';
 import { requestRaise } from '../../../raise-requests/actions';
-import { loadEmployeeRaiseRequests } from '../../../raise-requests/data';
-import { askedAt, handlesRaiseRequests } from '../../../raise-requests/list';
+import { loadEmployeeRaiseRequests, type EmployeeRaiseRequestsLoad } from '../../../raise-requests/data';
+import { askedAt, handlesRaiseRequests, showsRaiseRequests } from '../../../raise-requests/list';
 import { RequestRaiseForm } from '../../../raise-requests/request-forms';
 import { HrRequestActions, PreparedRaise, Progress, RaiseRequestStatusBadge, Requester, SuggestedGross } from '../../../raise-requests/ui';
 import { ProfileSection } from '../../ui';
 
-// Raise Requests, on the Employment tab after the Salary History (owner, 16 October 2026: "a place to request raise by
-// employee, or his manager or the HR, with a reason and to be going through an approval cycle"). The employee asks for
-// themself on their own profile, their direct manager on a direct report's, and HR on anyone's: a reason, and from the
-// employee or HR a suggested gross; one open per person. HR declines a request with a reason, or prepares the raise from
+// Raise Requests, on the Employment tab's Salary sub-tab after the Salary History (owner, 16 October 2026: "a place to
+// request raise by employee, or his manager or the HR, with a reason and to be going through an approval cycle"). The
+// employee asks for themself on their own profile, their direct manager on a direct report's, and HR on anyone's: a
+// reason, and from the employee or HR a suggested gross; one open per person. HR declines a request with a reason, or prepares the raise from
 // it, which goes to the CEO; the CEO's decision on that raise is the request's. The manager is told, not asked: they see
 // their reports' requests and every decision, never a figure. The employee sees their own requests' status and
 // decisions and, once done, their new salary; HR, Finance and the CEO see everything. The API sends each only what they
-// may see, and refuses anyone else (then this shows nothing).
+// may see, and refuses anyone else (then this shows nothing). To the employee and their manager it is all the Salary
+// sub-tab shows, so the tab reads the requests first, to know whether to offer the sub-tab, and passes them on.
 
 type Profile = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'isSelf' | 'employment'>;
 
@@ -39,11 +40,20 @@ function Item({ label, wide = false, children }: { label: string; wide?: boolean
 /** Whether the signed-in user is this person's direct manager now (their own profile is the manager on the employment). */
 const isManagerOf = (user: SessionUser, p: Profile) => !!user.employeeId && p.employment?.manager?.id === user.employeeId;
 
-export async function RaiseRequestsSection({ employee: p, user }: { employee: Profile; user: SessionUser }) {
-  const load = await loadEmployeeRaiseRequests(p.id);
-  // not the caller's to see, or a server from before raise requests: nothing here
-  if (load.kind === 'forbidden' || load.kind === 'unavailable') return null;
-  if (load.kind === 'failed') {
+export async function RaiseRequestsSection({
+  employee: p,
+  user,
+  loaded,
+}: {
+  employee: Profile;
+  user: SessionUser;
+  /** The requests, when the tab read them already. */
+  loaded?: EmployeeRaiseRequestsLoad;
+}) {
+  const load = loaded ?? (await loadEmployeeRaiseRequests(p.id));
+  // not the caller's to see, a server from before raise requests, or nothing to see or ask: nothing here
+  if (!showsRaiseRequests(load)) return null;
+  if (load.kind !== 'ok') {
     return (
       <Title>
         <Quiet>The raise requests could not be loaded. Please try again in a moment.</Quiet>
@@ -52,7 +62,6 @@ export async function RaiseRequestsSection({ employee: p, user }: { employee: Pr
   }
 
   const { requests, canRequest, cannotRequestBecause, suggestsAmount } = load.value;
-  if (requests.length === 0 && !canRequest) return null;
   const forSelf = Boolean(p.isSelf);
   // those who may ask are told why they can't now (e.g. one is open); the CEO and Finance only follow them
   const asks = forSelf || handlesRaiseRequests(user) || isManagerOf(user, p);

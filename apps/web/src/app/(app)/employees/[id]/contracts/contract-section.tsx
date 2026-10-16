@@ -6,26 +6,27 @@ import { formatDate } from '@/lib/format';
 import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { AllowanceLine, Contract, EmployeeProfile, Employment } from '@/lib/types';
+import { canSeePayroll } from '../../../payroll/list';
 import { deleteContract, signContract, unsignContract, updateSignedContract } from '../../contract-actions';
-import { canSeeEmployeeFiles, FieldGrid, Loading, ProfileSection, todayInCairo, type GridField } from '../../ui';
+import { FieldGrid, Loading, ProfileSection, salaryHistoryHref, todayInCairo, type GridField } from '../../ui';
 import { ActionButton, SignContract, SignedContractDetails } from './contract-buttons';
 import { loadContracts } from './data';
 import { daysBetween, termLabel } from './dates';
-import { PayHistory } from './pay-history';
 import { RaiseCard } from './raise-card';
 import { allowancesLabel, daysLabel, formatEgp, hourlyNetTerms, hourlyTerms, payLabel } from './salary';
 
-// The Contract section of the Employment tab, right below the current employment (the Contracts tab was merged into
-// Employment, owner's request, 16 October 2026): the signed contract (its number, term, probation, signing and filing
-// dates, its pay basis and working days, and the salary and allowances for HR, Finance and the CEO), a draft waiting to
-// be signed, and every version. HR drafts the first contract or a renewal, signs a draft or changes it, and sets a
+// The Contract section of the Employment tab's Details, right below the current employment (the Contracts tab was
+// merged into Employment, owner's request, 16 October 2026): the signed contract (its number, term, probation, signing
+// and filing dates, its pay basis and working days, and the salary and allowances for HR, Finance and the CEO) and a
+// draft waiting to be signed. HR drafts the first contract or a renewal, signs a draft or changes it, and sets a
 // signed one's filing dates and note; only a Super Admin deletes a draft, or undoes a signing recorded by mistake
 // (owner's decision, 15 October 2026). Every contract is for a fixed term (owner, the same day).
 //
 // Pay raises during a contract (owner's decisions, 16 October 2026): HR raises the pay of the signed contract in force
 // (Raise, beside Renew), as an amendment or a new contract; a raise, or a renewal with new pay, waits in its own card for
-// the CEO's approval before it is signed ("HR, then the CEO"). The Pay History lists every version with the change of
-// pay, its stage and the CEO's decision, and from when the insured wage follows it.
+// the CEO's approval before it is signed ("HR, then the CEO"). Every version, with the change of pay, its stage, the CEO's
+// decision and from when the insured wage follows it, is on the Salary sub-tab's Salary History (its Pay History table
+// was merged into that timeline, owner's choice, 17 October 2026), for HR, Finance and the CEO.
 
 /** A fixed-term contract gets a warning this many days before it ends, if no renewal is drafted. */
 const RENEWAL_WARNING_DAYS = 60;
@@ -409,11 +410,11 @@ export async function ContractSection({
         ) : (
           <DraftCard draft={draft} employeeId={employee.id} canEdit={canEdit} canDelete={employee.access.delete} today={today} />
         ))}
-      {contracts.length > 0 && (
-        <div className="space-y-2 pt-2">
-          <h3 className="text-sm font-semibold">Pay History</h3>
-          <PayHistory contracts={contracts} canRecordForm2={canEdit} seesDocuments={canSeeEmployeeFiles(user)} />
-        </div>
+      {contracts.length > 0 && canSeePayroll(user) && (
+        // every version and its pay are in the Salary History (the Pay History table was merged into it)
+        <p className="text-sm text-muted">
+          Every version, with its pay, the CEO&apos;s decision and Form 2: <Link href={salaryHistoryHref(employee.id)}>Salary History</Link>.
+        </p>
       )}
     </ProfileSection>
   );

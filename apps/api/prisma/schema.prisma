@@ -935,6 +935,7 @@ model PayrollSettings {
   cibDebitAccountName    String?  @map("cib_debit_account_name") // its name, as CIB has it
   achPurpose             String   @default("CASH") @map("ach_purpose") // the ACH file's TransactionPurpose
   payday                 Int? // the day of the month salaries are paid (1–31): the date a run is marked paid on, to start with
+  salaryReviewMonths     Int      @default(12) @map("salary_review_months") // 1–60: the Salary Raises report's review is due this many months after the last raise or the join date
   updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("payroll_settings")

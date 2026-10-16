@@ -1417,6 +1417,11 @@ export interface PayrollSettingsView extends PayrollRules {
    * Setup). The date a run is marked paid on, to start with. Optional: left out by an API from before it.
    */
   payday?: number | null;
+  /**
+   * Salary review due after this many months without a raise, 1 to 60 (owner's decision, 16 October 2026: the Salary
+   * Raises report lists who is due). Optional: left out by an API from before it.
+   */
+  salaryReviewMonths?: number;
 }
 
 /**

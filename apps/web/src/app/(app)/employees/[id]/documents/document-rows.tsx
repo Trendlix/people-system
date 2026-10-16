@@ -3,7 +3,7 @@ import { DocumentViewer, VIEW_BUTTON } from '@/components/document-viewer';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
 import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import type { DocumentItem, EmployeeProfile, GeneratedDocument, GeneratedDocumentStatus } from '@/lib/types';
-import { Loading, ProfileSection, todayInCairo } from '../../ui';
+import { contractHref, Loading, ProfileSection, todayInCairo } from '../../ui';
 import { ActionButton } from '../contracts/contract-buttons';
 import { loadDocuments } from './data';
 import { checkDocument, deleteDocument, generateDocument, markPrinted, uploadSignedCopy, verifyDocument } from './document-actions';
@@ -32,9 +32,10 @@ import {
   type Tone,
 } from './wording';
 
-// The documents generated from templates, on the profile's Employment tab: per contract version its documents (the
-// official and social insurance copies), then Hiring, Letters & Certificates and Leaving. Social insurance Forms 1 and 6
-// are listed the same way on the Social Insurance tab (owner's request, 16 October 2026). Each item says where its
+// The documents generated from templates, on the profile's Employment tab, Issued Documents (its own sub-tab, owner's
+// choice, 17 October 2026): per contract version its documents (the official and social insurance copies), then
+// Hiring, Letters & Certificates and Leaving. Social insurance Forms 1 and 6 are listed the same way on the Social
+// Insurance tab (owner's request, 16 October 2026). Each item says where its
 // template stands; HR generates it (after a check of what it needs) and takes each document through Generated → Printed
 // → Signed copy uploaded → Verified; the CEO views and downloads; a Super Admin deletes. A document is opened and saved
 // only as a protected PDF, never as a Word file (owner's request, 15 October 2026: "No doc file export, just a protected
@@ -237,7 +238,7 @@ export function GeneratedDocumentsLoading() {
   );
 }
 
-/** The Employment tab's documents, part by part (HR and the CEO). */
+/** The Employment tab's Issued Documents, part by part (HR and the CEO). */
 export async function GeneratedDocuments({ employee, can }: { employee: Employee; can: DocumentAccess }) {
   const load = await loadDocuments(employee.id);
   if (load.kind === 'forbidden') return null;
@@ -267,24 +268,28 @@ export async function GeneratedDocuments({ employee, can }: { employee: Employee
         if (section.key === 'contract') {
           const groups = contractGroups(section.items);
           return (
-            // where the Social Insurance tab points for the contract's social insurance copy (#contract-documents)
-            <div key={section.key} id="contract-documents" className="scroll-mt-6">
-              <ProfileSection title={sectionTitle(section.key)} note="Generated from the templates for each contract version, to print and sign">
-                {groups.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">
-                    No contract version to generate documents for yet.{can.act && employee.employment && ' Draft the contract first, with New contract above.'}
-                  </p>
-                ) : (
-                  groups.map((group) => (
-                    <div key={group.contractId} className="space-y-2">
-                      <h3 className="text-sm font-semibold">{contractGroupTitle(group)}</h3>
-                      <DocumentItems items={group.items} employee={employee} can={can} today={today} />
-                    </div>
-                  ))
-                )}
-                {anyDocument && <p className="text-xs text-muted">{PROTECTED_PDF_HINT}</p>}
-              </ProfileSection>
-            </div>
+            // first, where #contract-documents (the Issued Documents sub-tab around it) lands
+            <ProfileSection key={section.key} title={sectionTitle(section.key)} note="Generated from the templates for each contract version, to print and sign">
+              {groups.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">
+                  No contract version to generate documents for yet.
+                  {can.act && employee.employment && (
+                    <>
+                      {' '}
+                      Add the contract first, on <Link href={contractHref(employee.id)}>Details</Link>.
+                    </>
+                  )}
+                </p>
+              ) : (
+                groups.map((group) => (
+                  <div key={group.contractId} className="space-y-2">
+                    <h3 className="text-sm font-semibold">{contractGroupTitle(group)}</h3>
+                    <DocumentItems items={group.items} employee={employee} can={can} today={today} />
+                  </div>
+                ))
+              )}
+              {anyDocument && <p className="text-xs text-muted">{PROTECTED_PDF_HINT}</p>}
+            </ProfileSection>
           );
         }
         return (

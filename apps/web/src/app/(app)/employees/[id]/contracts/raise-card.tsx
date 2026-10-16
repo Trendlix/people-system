@@ -19,7 +19,7 @@ import { hourlyNetTerms, payLabel } from './salary';
 
 const small = 'btn min-h-9 px-3';
 
-/** Where a version stands, as the pay history and the raise card show it. */
+/** Where a version stands, as the Salary History and the raise card show it. */
 export function StageBadge({ stage }: { stage: PayStage }) {
   return <span className={`badge ${stageTone(stage)}`}>{PAY_STAGE_LABELS[stage]}</span>;
 }

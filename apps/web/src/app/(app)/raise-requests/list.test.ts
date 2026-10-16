@@ -13,6 +13,7 @@ import {
   requestActions,
   requesterText,
   requestsLabel,
+  showsRaiseRequests,
   STATUS_BADGE,
   STATUS_FILTERS,
   withHrCount,
@@ -52,6 +53,22 @@ const prepared: NonNullable<RaiseRequest['raise']> = {
   returnedReason: null,
   approvedAt: null,
 };
+
+describe('a profile’s Raise Requests', () => {
+  const ok = (requests: RaiseRequest[], canRequest: boolean) => ({ kind: 'ok' as const, value: { requests, canRequest } });
+
+  it('show with requests to see or one to ask for, and say so when they could not be loaded', () => {
+    expect(showsRaiseRequests(ok([request()], false))).toBe(true);
+    expect(showsRaiseRequests(ok([], true))).toBe(true);
+    expect(showsRaiseRequests({ kind: 'failed' })).toBe(true);
+  });
+
+  it('show nothing with neither, to someone the API refuses, or from a server without them', () => {
+    expect(showsRaiseRequests(ok([], false))).toBe(false);
+    expect(showsRaiseRequests({ kind: 'forbidden' })).toBe(false);
+    expect(showsRaiseRequests({ kind: 'unavailable' })).toBe(false);
+  });
+});
 
 describe('who sees raise requests', () => {
   it('is HR, the CEO and Finance for the page; HR alone handles them', () => {

@@ -4,8 +4,8 @@ import { monthName } from './list';
 
 // Payslips (owner's decisions, 16 October 2026): the system draws each employee's payslip from the approved run, as a
 // protected PDF. The English one for everyone each month, issued when HR marks the run paid; the Arabic one made on
-// request from the employee file, the first time it is opened. HR, Finance and the CEO open one, or download all of a
-// run's as a ZIP, and they are kept on the employee file (the profile's Employment tab). The browser gets them under the
+// request from the profile, the first time it is opened. HR, Finance and the CEO open one, or download all of a run's
+// as a ZIP, and they are kept with the pay received on the profile (Employment, Salary). The browser gets them under the
 // web domain with the caller's session ([id]/payslips/route.ts, lines/[lineId]/payslip/[language]/route.ts). Pure code,
 // tested; relative imports, as vitest doesn't know the @/ paths.
 
@@ -61,9 +61,12 @@ export function passZipOn(res: Response, fallbackName: string): Response | null 
 /** "12 payslips issued", "1 payslip issued" (the English ones stored for a run). */
 export const payslipsIssuedLabel = (n: number) => `${n} ${n === 1 ? 'payslip' : 'payslips'} issued`;
 
-// ---------- on the employee file ----------
+// ---------- the pay received, on the profile ----------
 
-/** One month on the employee file's list: its name ("October 2026") and what can be opened. */
+/**
+ * One paid payroll month in the profile's Pay Received (the Payslips list merged into it, owner's choice, 17 October
+ * 2026): its name ("October 2026"), the net and the transfer, and the payslips to open.
+ */
 export interface PayslipRow {
   lineId: string;
   runId: string;
@@ -71,6 +74,7 @@ export interface PayslipRow {
   title: string;
   paidOn: string | null;
   net: number;
+  transfer: number;
   onHold: boolean;
   /** The languages to open, with a note on each not drawn yet; none for a month on hold. */
   links: { language: PayslipLanguage; label: string; note: string | null }[];
@@ -79,7 +83,7 @@ export interface PayslipRow {
 /** Said of a payslip not drawn yet: it is drawn the first time it is opened. */
 export const NOT_DRAWN_YET = 'made when first opened';
 
-/** The employee's payslips, newest month first, each with its links (none for a month on hold). */
+/** The employee's paid payroll months, newest first, each with its payslips (none for a month on hold). */
 export function payslipRows(list: readonly EmployeePayslip[]): PayslipRow[] {
   return [...list]
     .sort((a, b) => (a.month < b.month ? 1 : a.month > b.month ? -1 : 0))
@@ -89,6 +93,7 @@ export function payslipRows(list: readonly EmployeePayslip[]): PayslipRow[] {
       title: monthName(p.month),
       paidOn: p.paidOn,
       net: p.net,
+      transfer: p.transfer,
       onHold: p.onHold,
       links: p.onHold
         ? []
@@ -98,4 +103,11 @@ export function payslipRows(list: readonly EmployeePayslip[]): PayslipRow[] {
             note: p.issued?.[language] ? null : NOT_DRAWN_YET,
           })),
     }));
+}
+
+/** What was received in all: the months paid (those on hold left out, as nothing was paid) and their net and transfer. */
+export function payslipTotals(list: readonly Pick<EmployeePayslip, 'net' | 'transfer' | 'onHold'>[]): { months: number; net: number; transfer: number } {
+  const received = list.filter((p) => !p.onHold);
+  const sum = (pick: (p: Pick<EmployeePayslip, 'net' | 'transfer'>) => number) => Math.round(received.reduce((s, p) => s + pick(p) * 100, 0)) / 100;
+  return { months: received.length, net: sum((p) => p.net), transfer: sum((p) => p.transfer) };
 }

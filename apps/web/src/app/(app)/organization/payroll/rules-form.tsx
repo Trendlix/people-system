@@ -11,7 +11,9 @@ import { plainAmount } from '../../employees/[id]/contracts/salary';
 // or last refreshed with; a signed contract keeps its own basic share. Pay overtime is a switch, off from 16 October
 // 2026 (owner: "No overtime for now", as attendance counts at most the shift's hours to work a day): while it is off the
 // overtime's percent and rate are greyed and not sent, and the API keeps them for when it is turned on. An API from
-// before the switch has none: the overtime fields then show as they did.
+// before the switch has none: the overtime fields then show as they did. Salary Reviews (owner's decision, 16 October
+// 2026: the Salary Raises report): after how many months without a raise, or since joining, someone is due for a
+// salary review; an API from before it has none, and the field isn't shown.
 
 type RuleKey = 'dayDivisor' | 'attendanceGracePercent' | 'kpiGracePercent' | 'overtimeAbovePercent' | 'overtimeRate' | 'noShowDayMultiplier';
 
@@ -51,6 +53,7 @@ export function YourRulesForm({
   const typedSwitch = state.values?.payOvertime;
   const [paysOvertime, setPaysOvertime] = useState(typedSwitch !== undefined ? typedOn(typedSwitch) : rules.payOvertime !== false);
   const off = hasSwitch && !paysOvertime;
+  const reviewMonths = rules.salaryReviewMonths;
 
   const numberField = (f: RuleField, disabled = false) => (
     <div key={f.key} className={disabled ? 'opacity-60' : undefined}>
@@ -111,6 +114,35 @@ export function YourRulesForm({
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{OVERTIME_FIELDS.map((f) => numberField(f, off))}</div>
         </fieldset>
       </div>
+
+      {reviewMonths !== undefined && (
+        <div className="border-t border-line-soft pt-5">
+          <fieldset className="space-y-4">
+            <legend className="font-semibold">Salary Reviews</legend>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label htmlFor={fid('salaryReviewMonths')} className="label">
+                  Salary review due after (months)
+                </label>
+                <input
+                  id={fid('salaryReviewMonths')}
+                  name="salaryReviewMonths"
+                  required
+                  inputMode="numeric"
+                  autoComplete="off"
+                  defaultValue={valueOf(state, 'salaryReviewMonths', String(reviewMonths))}
+                  aria-describedby={fid('salaryReviewMonths-hint')}
+                  className="input tabular-nums"
+                />
+                <p id={fid('salaryReviewMonths-hint')} className="hint">
+                  The Salary Raises report lists everyone who has had no raise for this many months, or none since joining, as due for a review. 1 to
+                  60; 12 is a year.
+                </p>
+              </div>
+            </div>
+          </fieldset>
+        </div>
+      )}
 
       {(basicShare !== undefined || insuranceBasic !== undefined) && (
         <div className="border-t border-line-soft pt-5">

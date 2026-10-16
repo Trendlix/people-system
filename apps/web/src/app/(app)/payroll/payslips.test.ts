@@ -8,6 +8,7 @@ import {
   passZipOn,
   payslipHref,
   payslipRows,
+  payslipTotals,
   payslipsIssued,
   payslipsIssuedLabel,
   payslipsZipHref,
@@ -76,7 +77,7 @@ describe('passing the ZIP on', () => {
   });
 });
 
-describe('the employee file’s payslips', () => {
+describe('the pay received, with the payslips, on the profile', () => {
   const slip = (month: string, over: Partial<EmployeePayslip> = {}): EmployeePayslip => ({
     lineId: `line-${month}`,
     runId: `run-${month}`,
@@ -89,10 +90,10 @@ describe('the employee file’s payslips', () => {
     ...over,
   });
 
-  it('lists the months newest first, by name', () => {
-    const rows = payslipRows([slip('2026-08'), slip('2026-10'), slip('2025-12'), slip('2026-09')]);
+  it('lists the months newest first, by name, with the net and the transfer', () => {
+    const rows = payslipRows([slip('2026-08'), slip('2026-10', { transfer: 12000 }), slip('2025-12'), slip('2026-09')]);
     expect(rows.map((r) => r.title)).toEqual(['October 2026', 'September 2026', 'August 2026', 'December 2025']);
-    expect(rows[0]).toMatchObject({ lineId: 'line-2026-10', runId: 'run-2026-10', paidOn: '2026-10-28', net: 12345.6, onHold: false });
+    expect(rows[0]).toMatchObject({ lineId: 'line-2026-10', runId: 'run-2026-10', paidOn: '2026-10-28', net: 12345.6, transfer: 12000, onHold: false });
   });
 
   it('opens each in English and Arabic, the Arabic one made the first time it is opened', () => {
@@ -115,5 +116,15 @@ describe('the employee file’s payslips', () => {
     const list = [slip('2026-08'), slip('2026-10')];
     payslipRows(list);
     expect(list.map((p) => p.month)).toEqual(['2026-08', '2026-10']);
+  });
+
+  it('adds up what was received, leaving out a month on hold', () => {
+    const months = [
+      slip('2026-08', { net: 9_000.25, transfer: 8_500 }),
+      slip('2026-09', { net: 9_000.5, transfer: 9_000.5 }),
+      slip('2026-10', { net: 9_100, transfer: 0, onHold: true, issued: { en: null, ar: null } }),
+    ];
+    expect(payslipTotals(months)).toEqual({ months: 2, net: 18_000.75, transfer: 17_500.5 });
+    expect(payslipTotals([])).toEqual({ months: 0, net: 0, transfer: 0 });
   });
 });

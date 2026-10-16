@@ -67,7 +67,7 @@ describe('the forms', () => {
   it('point to the contract’s social insurance copy with the contract on the Employment tab, when there is one', () => {
     expect(hasInsuranceCopy(tab)).toBe(true);
     expect(hasInsuranceCopy({ sections: [{ key: 'contract', items: [item('contract_part_time')] }] })).toBe(false);
-    expect(insuranceCopyHref(ID)).toBe('/employees/emp-1?tab=employment#contract-documents');
+    expect(insuranceCopyHref(ID)).toBe('/employees/emp-1?tab=employment&sub=documents#contract-documents');
   });
 
   it('say why one isn’t listed: no employment, not full time, or Form 6 before an ending', () => {

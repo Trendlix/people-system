@@ -328,9 +328,9 @@ async function InsuranceForms({ profile: p, can }: { profile: EmployeeProfile; c
         {anyDocument && <p className="text-xs text-muted">{PROTECTED_PDF_HINT}</p>}
         {hasInsuranceCopy(load.tab) && (
           <p className="text-sm text-muted">
-            The contract&apos;s social insurance copy is with the contract, on the{' '}
+            The contract&apos;s social insurance copy is with the contract&apos;s documents, on the Employment tab&apos;s{' '}
             <Link href={insuranceCopyHref(p.id)} className={LINK}>
-              Employment tab
+              Issued Documents
             </Link>
             .
           </p>
