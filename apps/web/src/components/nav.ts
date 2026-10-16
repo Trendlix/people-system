@@ -27,6 +27,8 @@ export const NAV: NavItem[] = [
   { href: '/organization/company', label: 'Organization', section: '/organization' },
   { href: '/employees', label: 'Employees', section: '/employees' },
   { href: '/contracts', label: 'Contracts', section: '/contracts', roles: ['hr', 'ceo', 'finance'] },
+  // the month's pay: HR prepares a run, the CEO approves it, HR marks it paid (owner's decisions, 16 October 2026)
+  { href: '/payroll', label: 'Payroll', section: '/payroll', roles: ['hr', 'finance', 'ceo'] },
   // job offers: the offer stage, before someone is an employee (owner's request, 15 October 2026)
   { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
@@ -58,4 +60,4 @@ export function activeSubItem(item: Pick<NavItem, 'items'>, pathname: string): N
   return best;
 }
 
-export const COMING_SOON = ['Attendance', 'Leave', 'Payroll'];
+export const COMING_SOON = ['Attendance', 'Leave'];

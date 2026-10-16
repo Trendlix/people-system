@@ -99,6 +99,9 @@ export function insuredPrinted(p: Pick<EmployeeProfile, 'insuredWage'>): Printed
 /** Under the insured wage, which isn't edited: "Set by the comprehensive wage, within EGP 2,700.00 to 16,700.00 in 2026." */
 export const insuredNote = (limits: InsurableLimits): string => `Set by the comprehensive wage, within ${insurableLimitsText(limits)}.`;
 
+/** Under "Registered with social insurance", in one plain sentence. */
+export const REGISTERED_NOTE = 'Payroll deducts social insurance only for registered employees.';
+
 /** The comprehensive wage: the employee's own, else the contract's gross and allowances; null with neither. */
 export function comprehensivePrinted(p: Pick<EmployeeProfile, 'insuranceComprehensiveWage'>, c: ContractWages): Printed {
   if (typeof p.insuranceComprehensiveWage === 'number') return { text: formatEgp(p.insuranceComprehensiveWage), from: null };

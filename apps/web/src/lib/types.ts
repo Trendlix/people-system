@@ -18,6 +18,11 @@ import type {
   NoticeUnit,
   PaperworkKind,
   PayBasis,
+  PayrollInputs,
+  PayrollResult,
+  PayrollRules,
+  PayrollStatus,
+  PayrollTerms,
   PdfField,
   PdfPageSize,
   Role,
@@ -343,6 +348,11 @@ export interface EmployeeProfile {
   insuredWage?: InsuredWage | null;
   /** This year's insurable wage limits (the latest year known when this one isn't in the table). Salary data, as the wages. */
   insurableLimits?: InsuredWage['limits'];
+  /**
+   * Registered with social insurance: payroll deducts social insurance only for those who are (owner's decision, 16
+   * October 2026). HR sets it on the Social Insurance tab. Optional: left out by an API from before payroll.
+   */
+  socialInsured?: boolean;
   fullNameEn: string;
   fullNameAr: string;
   /** The short name the person goes by (e.g. Hazem Magdy), for the email signature. */
@@ -1237,4 +1247,101 @@ export interface PublicOffer {
   document: { hasPdf: boolean } | null;
   respondedAt: string | null;
   acceptedName: string | null;
+}
+
+// ---------- payroll (owner's decisions, 16 October 2026) ----------
+// HR prepares a month's run, the CEO approves it, HR marks it paid. Amounts in EGP to the piaster; a month is "YYYY-MM",
+// dates "YYYY-MM-DD", moments ISO. Salary data: HR, Finance and the CEO only. The terms, inputs and results of a line
+// are @trendlix/shared's (payroll.ts), as the API works them out.
+
+/** A run's totals: its lines added up. */
+export interface PayrollTotals {
+  employees: number;
+  earned: number;
+  allowances: number;
+  employeeInsurance: number;
+  employerInsurance: number;
+  monthlyTax: number;
+  martyrsFund: number;
+  deductions: number;
+  net: number;
+  released: number;
+  transfer: number;
+  companyCost: number;
+}
+
+/** Which bank file pays a line: CIB's own Payroll System file for CIB accounts, the ACH file for every other bank. */
+export type PayrollBankFile = 'cib' | 'ach';
+
+/** One employee on a run: who (as when the run was made or refreshed), the month's inputs and what they work out to. */
+export interface PayrollLineView {
+  id: string;
+  employeeId: string;
+  employeeCode: string;
+  name: string;
+  department: string | null;
+  jobTitle: string | null;
+  employmentType: EmploymentType;
+  payBasis: PayBasis;
+  /** Left out of the bank files this month. */
+  onHold: boolean;
+  comments: string | null;
+  terms: PayrollTerms;
+  inputs: PayrollInputs;
+  result: PayrollResult;
+  /**
+   * The bank file the line goes in, from the live bank details before the CEO approves and the snapshot taken then
+   * after; `problem` says why it can't be paid by either file (no bank details, an account of the wrong length …).
+   */
+  bank: { file: PayrollBankFile | null; bankShort: string | null; problem: string | null };
+}
+
+/** Someone employed in the month but not on the run, and why ("No signed contract for this month"). */
+export interface PayrollExclusion {
+  employeeId: string;
+  employeeCode: string;
+  name: string;
+  reason: string;
+}
+
+/** GET /payroll/runs/:id (and what every change to a run answers). */
+export interface PayrollRunView {
+  id: string;
+  month: string;
+  status: PayrollStatus;
+  /** The rules the run was worked out with: copied from the payroll settings when it was made or last refreshed. */
+  rules: PayrollRules;
+  createdAt: string;
+  submittedAt: string | null;
+  approvedAt: string | null;
+  approvedBy: { id: string; name: string } | null;
+  /** Why the CEO returned it to HR, while it is a draft again. */
+  returnedReason: string | null;
+  paidOn: string | null;
+  totals: PayrollTotals;
+  lines: PayrollLineView[];
+  exclusions: PayrollExclusion[];
+  /** How many lines each bank file pays, and how many can't be paid by either. */
+  bankCheck: { cib: number; ach: number; problems: number };
+}
+
+/** GET /payroll/runs: every run, newest month first. */
+export interface PayrollRunSummary {
+  id: string;
+  month: string;
+  status: PayrollStatus;
+  totals: PayrollTotals;
+  createdAt: string;
+  approvedAt: string | null;
+  paidOn: string | null;
+}
+
+/** GET /payroll/settings: the rules new runs are worked out with, and what the bank files need. */
+export interface PayrollSettingsView extends PayrollRules {
+  /** The company's CIB account the salaries are paid from: 12 digits. */
+  cibDebitAccount: string | null;
+  /** The account's name, as CIB has it. */
+  cibDebitAccountName: string | null;
+  /** The ACH file's transaction purpose ("CASH"). */
+  achPurpose: string;
 }

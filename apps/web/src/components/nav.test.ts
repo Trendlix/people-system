@@ -1,7 +1,7 @@
 import type { Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import { hasRole } from '../lib/roles';
-import { activeSubItem, isUnder, NAV } from './nav';
+import { activeSubItem, COMING_SOON, isUnder, NAV } from './nav';
 
 const as = (...roles: Role[]) => ({ roles });
 const templates = NAV.find((n) => n.href === '/templates')!;
@@ -28,6 +28,17 @@ describe('the sidebar', () => {
     expect(current('/templates/tags')).toBe('Fields Guide');
     expect(current('/employees')).toBeNull();
     expect(current('/templatesx')).toBeNull();
+  });
+
+  it('shows Payroll after Contracts to HR, Finance and the CEO only, and no longer as coming next', () => {
+    const labels = NAV.map((n) => n.label);
+    expect(labels.indexOf('Payroll')).toBe(labels.indexOf('Contracts') + 1);
+    const payroll = NAV.find((n) => n.href === '/payroll')!;
+    expect(payroll.section).toBe('/payroll');
+    for (const role of ['hr', 'finance', 'ceo'] as const) expect(hasRole(as(role), ...(payroll.roles ?? []))).toBe(true);
+    // salary data: not for an Admin or a Super Admin as such, nor a manager or an employee
+    expect(hasRole(as('employee', 'manager', 'admin', 'super_admin'), ...(payroll.roles ?? []))).toBe(false);
+    expect(COMING_SOON).not.toContain('Payroll');
   });
 
   it('has no sub-item to highlight for an item without any', () => {

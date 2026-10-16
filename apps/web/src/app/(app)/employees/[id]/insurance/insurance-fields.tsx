@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useState } from 'react';
+import { useEffect, useOptimistic, useState, useTransition } from 'react';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { FormState } from '@/lib/types';
@@ -10,6 +10,7 @@ import type { FormState } from '@/lib/types';
 // and the basic and comprehensive wages Form 1 prints (its insured wage is worked out from the comprehensive wage, not
 // edited: owner's decision, 16 October 2026). Each shows how it reads now, with Edit for those who may change it, which opens a
 // small form in its place; saving shows the saved value and closes it, a refused save keeps it open with the reason.
+// Whether the employee is registered with social insurance is a switch, saved as soon as it is turned.
 
 // The occupation picker brings the social insurance occupation table (3,052 rows) with it: loaded only once the form is
 // opened, so the table ships only when someone changes an occupation.
@@ -213,5 +214,59 @@ export function WageDetail({
     >
       {children}
     </Editable>
+  );
+}
+
+/**
+ * Registered with social insurance (owner's decision, 16 October 2026: payroll deducts social insurance only for
+ * those who are): for HR a switch, saved as soon as it is turned (it shows the new state at once, and goes back with
+ * the reason when the save is refused); for anyone else, Yes or No.
+ */
+export function RegisteredSwitch({ action, registered }: { action: Action | null; registered: boolean }) {
+  if (!action) return <>{registered ? 'Yes' : 'No'}</>;
+  return <Switch action={action} registered={registered} />;
+}
+
+function Switch({ action, registered }: { action: Action; registered: boolean }) {
+  const [shown, setShown] = useOptimistic(registered);
+  const [pending, startTransition] = useTransition();
+  const [errors, setErrors] = useState<string[] | null>(null);
+  const fid = useFieldIds();
+
+  function turn() {
+    const next = !shown;
+    startTransition(async () => {
+      setShown(next);
+      const fd = new FormData();
+      fd.set('socialInsured', String(next));
+      const answer = await action({}, fd);
+      setErrors(answer.errors ?? null);
+    });
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={shown}
+          aria-label="Registered with social insurance"
+          aria-describedby={errors ? fid('error') : undefined}
+          disabled={pending}
+          onClick={turn}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${shown ? 'bg-accent' : 'bg-line'}`}
+        >
+          <span aria-hidden="true" className={`inline-block size-5 rounded-full bg-white shadow transition-transform ${shown ? 'translate-x-5.5' : 'translate-x-0.5'}`} />
+        </button>
+        <span aria-hidden="true">{shown ? 'Yes' : 'No'}</span>
+        {pending && <span className="text-xs text-muted">Saving…</span>}
+      </div>
+      {errors && (
+        <p id={fid('error')} role="alert" className="text-xs text-danger">
+          {errors.join(' ')}
+        </p>
+      )}
+    </div>
   );
 }

@@ -30,12 +30,13 @@ import {
   printRequired,
   printStatus,
   readiness,
+  REGISTERED_NOTE,
   showsWages,
   startPrinted,
   type Printed,
   type Readiness,
 } from './insurance';
-import { OccupationDetail, StartDateDetail, WageDetail } from './insurance-fields';
+import { OccupationDetail, RegisteredSwitch, StartDateDetail, WageDetail } from './insurance-fields';
 
 // The profile's Social Insurance tab: all the social insurance work in one place (owner's request, 16 October 2026:
 // "creating a tab here for all social insurance work"), moved out of the Contracts tab. The insurance details (the
@@ -52,6 +53,9 @@ import { OccupationDetail, StartDateDetail, WageDetail } from './insurance-field
 // isn't edited: it is the comprehensive wage within this year's insurable limits, as the API works it out (owner's
 // decision, 16 October 2026: "Apply the insurance wage cap rule from the comprehensive wage, and the insured wage field
 // to be uneditable in the Social Insurance tab"), and the item says how.
+//
+// Whether the employee is registered with social insurance is a switch HR turns here (owner's decision, 16 October 2026):
+// payroll deducts social insurance only for those who are.
 //
 // Whoever sees the Contracts tab sees this one, and the wages only with the right to see salaries, as before.
 // The forms are HR's and the CEO's (HR generates and moves them along, the CEO views and downloads); the print is the
@@ -138,6 +142,15 @@ function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
       ),
     },
   ];
+  // whether payroll deducts social insurance (owner's decision, 16 October 2026): HR turns it, everyone else sees it
+  if (typeof p.socialInsured === 'boolean') {
+    fields.push({
+      key: 'socialInsured',
+      label: 'Registered with social insurance',
+      value: <RegisteredSwitch action={edit('socialInsured')} registered={p.socialInsured} />,
+      note: REGISTERED_NOTE,
+    });
+  }
   // salary data: for those who see salaries only, as the contract's salary (the API leaves them out for anyone else)
   if (showsWages(p)) {
     fields.push(
