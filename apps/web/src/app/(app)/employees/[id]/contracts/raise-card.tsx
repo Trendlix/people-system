@@ -3,19 +3,19 @@ import { PAY_STAGE_LABELS, RAISE_REASON_LABELS, type PayStage } from '@trendlix/
 import { formatDate, titleCase } from '@/lib/format';
 import type { Contract } from '@/lib/types';
 import { deleteContract, signContract } from '../../contract-actions';
-import { approveRaise, declineRaise, returnRaise, sendRaise } from '../../raise-actions';
+import { ceoDecidesRaise, sendRaise } from '../../raise-actions';
+import { RaiseDecisionForm } from '../../../approvals/raise-decision-form';
 import { ActionButton, SignContract } from './contract-buttons';
 import { termLabel } from './dates';
 import { changeOf, decisionText, editHref, fromToText, insuredWageText, pendingKindLabel, promotionText, stageOf, stageTone, versionBefore } from './raise';
-import { RaiseDecision } from './raise-buttons';
 import { hourlyNetTerms, payLabel } from './salary';
 
 // A change of pay waiting to be signed, in the Contract section (owner's decisions, 16 October 2026: "HR, then the
 // CEO"): a raise (a salary amendment, or a new contract within the term) or a renewal with new pay. It says what it is,
 // from when, the pay before and after (to those who see salaries), why, the promotion with it, where it stands (Draft,
-// Returned, With the CEO, Approved) and the CEO's reason when returned. HR changes it and sends it to the CEO, and signs
-// it once approved; the CEO approves, returns or declines it; a Super Admin may delete it. Its documents are generated
-// once the CEO approves it.
+// Returned, With the CEO, Approved) and the CEO's comment when returned. HR changes it and sends it to the CEO, and signs
+// it once approved; the CEO approves it as it is or with another raise, or rejects it, with a comment, or returns it
+// (17 October 2026); a Super Admin may delete it. Its documents are generated once the CEO approves it.
 
 const small = 'btn min-h-9 px-3';
 
@@ -142,13 +142,14 @@ export function RaiseCard({
             </Link>
           )}
           {decide && (
-            <RaiseDecision
-              approve={approveRaise.bind(null, d.id)}
-              returnToHr={returnRaise.bind(null, d.id)}
-              decline={declineRaise.bind(null, d.id)}
-              name={name}
-              approveText={`Approve ${name}? HR can then sign it, and its documents are generated.`}
-            />
+            <div className="w-full">
+              <RaiseDecisionForm
+                action={ceoDecidesRaise.bind(null, d.id)}
+                confirmApprove={`Approve ${name}? HR can then sign it, and its documents are generated.`}
+                name={name}
+                previousGross={before?.grossSalary ?? null}
+              />
+            </div>
           )}
           {canDelete && (
             <ActionButton

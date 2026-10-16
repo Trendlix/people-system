@@ -96,7 +96,7 @@ export function payBody(fd: FormData, errors: string[], draft: boolean) {
 export function raiseReasonFrom(fd: FormData, key: string, errors: string[]): RaiseReason | undefined {
   const reason = text(fd, key);
   if ((RAISE_REASONS as readonly string[]).includes(reason)) return reason as RaiseReason;
-  errors.push('Choose why the pay changes: annual raise, promotion, adjustment or other.');
+  errors.push('Choose why the pay changes: annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other.');
   return undefined;
 }
 

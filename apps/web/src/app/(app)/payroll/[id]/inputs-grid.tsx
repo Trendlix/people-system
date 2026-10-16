@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Fragment, memo, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
-import { noShowHours, type PayBasis } from '@trendlix/shared';
+import { formatHours, type PayBasis } from '@trendlix/shared';
 import { GroupHeading } from '@/components/group-heading';
 import { titleCase } from '@/lib/format';
 import { groupByPlace, showsDepartment } from '@/lib/place-groups';
@@ -12,9 +12,9 @@ import { profileHref } from '../../employees/tab-list';
 import {
   attendancePercent,
   cellText,
-  countedExpected,
+  columnNote,
   errorLine,
-  expectedPlaceholder,
+  expectedCell,
   GRID_COLUMNS,
   linePatches,
   noShowPay,
@@ -37,9 +37,15 @@ import {
 // view while it scrolls sideways. Hours are typed as attendance shows them (270:00) or as a number (270.5); a cell is
 // tidied as it is left (270.5 → 270:30). Nothing is saved until Save changes, which sends only the rows that changed in
 // one request; a cell that can't be read, or that the API refuses, is marked with the reason. Read only once the run is
-// with the CEO, or for anyone but HR. The Attendance % is as the pay counts it, with the no-show days' hours (a day of
-// the employee's shift each) out of the expected hours, so a day off is charged once (owner's decisions, 16 October
-// 2026).
+// with the CEO, or for anyone but HR. The expected hours are filled in from the shift (owner, 17 October 2026: "prefill
+// the expected hours, and dont count abcent days or leave days, as they already have their own deduction and fields"):
+// the shift's hours for the month less a day of it for each no-show and leave day typed in the row, shown as the cell's
+// figure (marked "from the shift") and changing as those days are typed; only shown, never sent. What HR types over
+// them is marked "typed by HR" and taken as already without those days; clearing it brings the shift's back. The
+// Attendance % is the worked hours over those expected hours, as the pay counts it, so a day off is charged once
+// (owner's decisions, 16 October 2026). A month under two contracts says so under the employee's name (owner,
+// 17 October 2026: "take into consideration the start and end date of the contract if it is in the middle of the
+// billing period").
 
 export interface GridRow extends GridLine {
   employeeId: string;
@@ -51,14 +57,17 @@ export interface GridRow extends GridLine {
   hourlyRate: number | null;
   /**
    * A day of the employee's shift, in hours: its hours to work a day, else its window (owner, 16 October 2026: flexible
-   * shifts). What a no-show day takes out of the expected hours; null without a shift.
+   * shifts). What a no-show or leave day takes out of the shift's hours (17 October 2026); null without a shift.
    */
   hoursPerDay: number | null;
   /**
-   * The month's expected hours the run worked out from the shift less the holidays (owner's request, 16 October 2026):
-   * counted while the Expected hours cell is empty, and shown greyed in it. Null without a shift, and by the hour.
+   * The shift's hours for the month the run worked out: its working days in the days paid less the holidays, at its
+   * hours to work a day (owner's request, 16 October 2026). Less the no-show and leave days typed in the row, the
+   * Expected hours cell's figure until HR types another (owner, 17 October 2026). Null without a shift, and by the hour.
    */
   shiftExpectedHours: number | null;
+  /** A month under two contracts or more: each one's days (contractsNote); null on one. */
+  contractsNote: string | null;
 }
 
 const WIDTH: Record<FieldKind, string> = { hours: 'w-24', days: 'w-20', amount: 'w-28', released: 'w-28' };
@@ -77,27 +86,30 @@ const ATTENDANCE_AFTER: InputField = 'expectedHours';
 
 const percentFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
-/** What a greyed Expected hours figure is. */
-const SHIFT_TITLE = 'From the shift, less the holidays: type other hours to replace them';
+/** What an Expected hours figure is: filled in from the shift, or typed by HR over it (owner, 17 October 2026). */
+function expectedTitle(own: boolean, editable: boolean): string {
+  return own
+    ? `Typed by HR: taken as the expected hours already without the no-show and leave days.${editable ? " Clear it to use the shift's hours." : ''}`
+    : `From the shift: its working days this month less the holidays, the no-show and leave days, at its hours to work a day.${editable ? ' Type other hours to replace them.' : ''}`;
+}
 
 /** The text a cell shows: as typed, else the saved value. */
 function shownText(row: GridLine, edits: RowEdits | undefined, field: InputField, kind: FieldKind): string {
   return edits?.inputs?.[field] ?? cellText(kind, row.inputs[field]);
 }
 
-/**
- * The attendance a row's hours give as typed, for the column after the hours: on the expected hours less the no-show
- * days' hours, as the pay counts it (not by the hour, where no-show days don't apply).
- */
-function attendanceOf(row: GridRow, edits: RowEdits | undefined): string {
+/** The figures a row's expected hours and attendance are worked out from, as typed: a cell that can't be read counts as empty. */
+function typedCells(row: GridRow, edits: RowEdits | undefined) {
   const value = (field: InputField, kind: 'hours' | 'days') => {
     const parsed = parseCell(kind, shownText(row, edits, field, kind));
     return parsed.ok ? parsed.value : null;
   };
-  const absent = row.payBasis === 'hourly' ? 0 : noShowHours(value('noShowDays', 'days'), row.hoursPerDay);
-  const expected = row.payBasis === 'hourly' ? value('expectedHours', 'hours') : countedExpected(value('expectedHours', 'hours'), row.shiftExpectedHours);
-  const p = attendancePercent(value('workedHours', 'hours'), expected, absent);
-  return p === null ? '—' : `${percentFormat.format(p)}%`;
+  return {
+    workedHours: value('workedHours', 'hours'),
+    expectedHours: value('expectedHours', 'hours'),
+    noShowDays: value('noShowDays', 'days'),
+    leaveDays: value('leaveDays', 'days'),
+  };
 }
 
 const Row = memo(function Row({
@@ -123,6 +135,12 @@ const Row = memo(function Row({
   const rowError = errorOf(null);
   const held = edits?.onHold ?? row.onHold;
   const comments = edits?.comments ?? row.comments ?? '';
+  // while HR is in the Expected hours cell, the shift's figure is its placeholder, so typing starts afresh
+  const [inExpected, setInExpected] = useState(false);
+  const cells = typedCells(row, edits);
+  // HR's expected hours, else the shift's less the no-show and leave days as typed now (owner, 17 October 2026)
+  const expected = expectedCell(row, cells);
+  const attendance = attendancePercent(cells.workedHours, expected.hours);
   return (
     <tr className={rowError ? 'bg-danger-soft/40' : undefined}>
       <td className={`${stickyCell} min-w-52`}>
@@ -133,6 +151,8 @@ const Row = memo(function Row({
           <span className="tabular-nums">{row.employeeCode}</span>
           {row.jobTitle && ` · ${row.jobTitle}`}
         </div>
+        {/* a month under two contracts (owner, 17 October 2026) */}
+        {row.contractsNote && <p className="mt-0.5 max-w-52 text-xs text-muted">{row.contractsNote}</p>}
         {rowError && (
           <p role="alert" className="mt-1 max-w-52 text-xs text-danger">
             {rowError}
@@ -152,40 +172,49 @@ const Row = memo(function Row({
       {GRID_COLUMNS.map((c) => {
         const text = shownText(row, edits, c.field, c.kind);
         const error = errorOf(c.field);
-        // the hours from the shift less the holidays, greyed while nothing is typed over them
-        const fromShift = c.field === 'expectedHours' && row.shiftExpectedHours !== null;
+        // the Expected hours of a row with a shift: filled in from the shift's unless HR typed others (owner, 17 October
+        // 2026); `filled` is only shown, never an edit, so it is never sent nor counts as unsaved
+        const shift = c.field === 'expectedHours' && row.shiftExpectedHours !== null;
+        const own = text.trim() !== '';
+        const filled = shift && !own && expected.hours !== null ? formatHours(expected.hours) : '';
+        const markId = `${cellId(row.id, c.field)}-from`;
         return (
           <Fragment key={c.field}>
             <td className="px-2 py-2">
               {editable ? (
                 <input
                   id={cellId(row.id, c.field)}
-                  value={text}
+                  value={filled && !inExpected ? filled : text}
                   onChange={(e) => onCell(row.id, c.field, e.target.value)}
-                  onBlur={() => onLeave(row.id, c.field, c.kind)}
+                  onFocus={shift ? () => setInExpected(true) : undefined}
+                  onBlur={() => {
+                    if (shift) setInExpected(false);
+                    onLeave(row.id, c.field, c.kind);
+                  }}
                   inputMode={c.kind === 'hours' ? 'text' : 'decimal'}
                   autoComplete="off"
                   aria-label={`${c.label} for ${row.name}`}
+                  aria-describedby={shift ? markId : undefined}
                   aria-invalid={error ? true : undefined}
-                  title={error ?? (fromShift ? SHIFT_TITLE : undefined)}
-                  placeholder={fromShift ? expectedPlaceholder(row.shiftExpectedHours) : c.kind === 'hours' ? '0:00' : undefined}
-                  className={`${cellInput} ${WIDTH[c.kind]} ${error ? invalid : ''}`}
+                  title={error ?? (shift ? expectedTitle(own, true) : undefined)}
+                  placeholder={shift ? filled : c.kind === 'hours' ? '0:00' : undefined}
+                  className={`${cellInput} ${WIDTH[c.kind]} ${filled ? 'text-muted italic' : ''} ${error ? invalid : ''}`}
                 />
               ) : (
-                <span className="block text-right whitespace-nowrap tabular-nums">
-                  {text ||
-                    (fromShift ? (
-                      <span className="text-muted" title={SHIFT_TITLE}>
-                        {expectedPlaceholder(row.shiftExpectedHours)}
-                      </span>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    ))}
+                <span className="block text-right whitespace-nowrap tabular-nums" title={shift ? expectedTitle(own, false) : undefined}>
+                  {own ? text : filled ? <span className="text-muted italic">{filled}</span> : <span className="text-muted">—</span>}
+                </span>
+              )}
+              {shift && (
+                <span id={markId} className={`mt-0.5 block text-right text-[11px] whitespace-nowrap ${own ? 'text-accent' : 'text-muted'}`}>
+                  {own ? 'typed by HR' : 'from the shift'}
                 </span>
               )}
             </td>
             {/* the attendance the hours give, after the expected hours */}
-            {c.field === ATTENDANCE_AFTER && <td className="text-right whitespace-nowrap tabular-nums">{attendanceOf(row, edits)}</td>}
+            {c.field === ATTENDANCE_AFTER && (
+              <td className="text-right whitespace-nowrap tabular-nums">{attendance === null ? '—' : `${percentFormat.format(attendance)}%`}</td>
+            )}
           </Fragment>
         );
       })}
@@ -404,7 +433,9 @@ export function InputsGrid({
                 <Fragment key={c.field}>
                   <th scope="col" className="px-2 text-right">
                     {titleCase(c.label)}
-                    {c.field === 'noShowDays' && <span className="block text-xs font-normal text-muted">{noShowPay(noShowDayMultiplier)}</span>}
+                    {columnNote(c.field, noShowDayMultiplier) && (
+                      <span className="ml-auto block max-w-32 text-xs font-normal whitespace-normal text-muted">{columnNote(c.field, noShowDayMultiplier)}</span>
+                    )}
                   </th>
                   {c.field === ATTENDANCE_AFTER && (
                     <th scope="col" className="text-right">
@@ -473,11 +504,14 @@ export function InputsGrid({
       {canEdit && (
         <p className="hint">
           Hours as 270:00 or 270.5; days in whole or half days. Leave a cell empty when it doesn&apos;t apply: empty
-          worked hours count in full. The expected hours in grey are the shift&apos;s working days in the month less the
-          holidays (<Link href="/organization/holidays">Organization → Holidays</Link>), at its hours to work a day: they count unless you type others, and clearing a cell brings them
-          back. No-show days: {noShowPay(noShowDayMultiplier)}; their hours (the shift&apos;s hours to work a day each) come out of the
-          expected hours, so attendance doesn&apos;t count them again. Type the expected hours with them, or without them
-          for someone with no shift. On hold: left out of the bank files this month.
+          worked hours count in full. The expected hours are filled in from the shift: its working days in the days paid
+          less the holidays (<Link href="/organization/holidays">Organization → Holidays</Link>) and less the no-show and
+          leave days, at its hours to work a day, and they change as you type those days. Type other hours to replace
+          them, already without the no-show and leave days; clearing them brings the shift&apos;s back. Without a shift,
+          type them yourself, without those days. No-show days: {noShowPay(noShowDayMultiplier)}, and their hours
+          aren&apos;t counted in attendance. Leave days: approved paid leave this month, typed until the Leave module
+          fills them: nothing is cut, and their hours aren&apos;t counted in attendance. On hold: left out of the bank
+          files this month.
         </p>
       )}
     </div>

@@ -11,6 +11,7 @@ import { contractHref, profileHref } from '../employees/ui';
 import { INITIATOR_LABELS } from '../organization/contracts/labels';
 import { Empty, Loading } from '../organization/ui';
 import { raiseRequestsHref, REQUESTER_PHRASES } from '../raise-requests/list';
+import { FoldedRequestLog, RequestReason, Suggestion } from '../raise-requests/ui';
 import { decideChangeRequest, decideEnding, decideRaise } from './actions';
 import { decidesChangeRequests, decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
 import { DecisionForm } from './decision-form';
@@ -21,8 +22,10 @@ import { decidesRaises, followsRaises, PENDING_RAISES, pendingRaiseView, raisesL
 // - Endings HR has recorded and approved, waiting for the CEO (owner's decision of 15 October 2026: HR approves, then
 //   the CEO). The CEO approves or rejects each one; HR sees them here until then.
 // - Pay raises HR has sent, and renewals with new pay, which count as raises (owner's decisions of 16 October 2026: HR,
-//   then the CEO). The CEO approves each, returns it to HR or declines it, with a reason; HR follows them here. A raise
-//   prepared from a raise request says so: the CEO's decision is the request's too.
+//   then the CEO; 17 October 2026: "Approve - Approve with another raise amount or percentge - Reject, and add a
+//   comment"). The CEO approves each as it reached them or with another raise, or rejects it, always with a comment, or
+//   returns it to HR; HR follows them here. A raise prepared from a raise request says so, with the request's reason,
+//   comment, suggestion and log: the CEO's decision is the request's too.
 // - Employees' requests to change their details (owner's decision of 15 October 2026), for HR and Admin to approve,
 //   which makes the change, or reject with a note. The CEO doesn't decide these.
 // The API checks every decision again.
@@ -33,8 +36,9 @@ const DONE: Record<string, string> = {
   'change-approved': 'Change request approved: the profile is updated.',
   'change-rejected': 'Change request rejected. The employee sees your note.',
   'raise-approved': 'Pay raise approved. HR now has it signed; it is paid from its effective date.',
-  'raise-returned': 'Pay raise returned to HR with your reason.',
-  'raise-declined': 'Pay raise declined. The raise request it came from, if any, is declined too.',
+  'raise-approved-other': 'Pay raise approved with your raise: its pay is changed to it. HR now has it signed; it is paid from its effective date.',
+  'raise-returned': 'Pay raise returned to HR with your comment.',
+  'raise-declined': 'Pay raise rejected. The raise request it came from, if any, is rejected too.',
 };
 
 function Item({ label, children }: { label: string; children: React.ReactNode }) {
@@ -121,13 +125,21 @@ async function PendingEndings({ decides }: { decides: boolean }) {
 
 // ---------- pay raises ----------
 
-/** The raise request a raise was prepared from: who asked, and why. */
+/** The raise request a raise was prepared from: who asked, why (the reason and the comment), the raise suggested, and its log. */
 function FromRequest({ request: q }: { request: RaiseRequest }) {
   return (
     <>
       Asked for by {REQUESTER_PHRASES[q.requester] ?? q.requester}
       {q.requestedBy?.email && <span className="text-muted"> ({q.requestedBy.email})</span>} on {formatDate(q.createdAt)}
-      <span className="mt-0.5 block whitespace-pre-line text-muted">“{q.reason}”</span>
+      <span className="mt-1 block">
+        <RequestReason request={q} />
+      </span>
+      {(q.suggestion || q.suggestedGross !== null) && (
+        <span className="mt-1 block text-muted">
+          Suggested: <Suggestion request={q} />
+        </span>
+      )}
+      <FoldedRequestLog request={q} />
     </>
   );
 }
@@ -177,7 +189,15 @@ function RaiseCard({ raise: r, request, decides }: { raise: PendingRaise; reques
           </div>
         )}
       </dl>
-      {decides && <RaiseDecisionForm action={decideRaise.bind(null, r.id)} confirmApprove={v.confirmApprove} name={r.employee.fullNameEn} />}
+      {decides && (
+        <RaiseDecisionForm
+          action={decideRaise.bind(null, r.id)}
+          confirmApprove={v.confirmApprove}
+          name={r.employee.fullNameEn}
+          previousGross={r.previous?.grossSalary ?? null}
+          requester={request?.requester ?? null}
+        />
+      )}
     </li>
   );
 }
@@ -194,8 +214,8 @@ async function PendingRaises({ decides }: { decides: boolean }) {
       <p className="text-sm text-muted">
         {raisesLabel(raises.length)} waiting, oldest sent first.{' '}
         {decides
-          ? 'Approve, return to HR or decline each one; returning or declining needs a reason.'
-          : 'The CEO approves, returns or declines each one; you can follow them here until then.'}
+          ? 'Approve each one as it is or with another raise, or reject it, with a comment; or return it to HR.'
+          : 'The CEO approves, rejects or returns each one; you can follow them here until then.'}
       </p>
       <ul className="space-y-4">
         {raises.map((r) => (

@@ -202,9 +202,9 @@ describe('a raise as the API takes it', () => {
     note: ' Yearly review ',
   };
 
-  it('sends an amendment, without a length', () => {
+  it('sends an amendment, without a length; from a request, with HR’s comment approving it', () => {
     const errors: string[] = [];
-    expect(raiseBody(form({ ...amendment, durationMonths: '12', requestId: 'r-1' }), errors, false)).toEqual({
+    expect(raiseBody(form({ ...amendment, durationMonths: '12', requestId: 'r-1', comment: ' As asked ' }), errors, false)).toEqual({
       way: 'amendment',
       effectiveDate: '2026-12-01',
       reason: 'annual',
@@ -215,6 +215,7 @@ describe('a raise as the API takes it', () => {
       allowances: [],
       note: 'Yearly review',
       requestId: 'r-1',
+      comment: 'As asked',
     });
     expect(errors).toEqual([]);
   });
@@ -232,6 +233,7 @@ describe('a raise as the API takes it', () => {
     expect(errors).toEqual([]);
     expect(body).toMatchObject({ newJobTitleId: null, newGradeId: null, daysPerWeek: null });
     expect(body).not.toHaveProperty('requestId');
+    expect(body).not.toHaveProperty('comment');
     const fresh = raiseBody(form(amendment), errors, false);
     expect(fresh).not.toHaveProperty('newJobTitleId');
     expect(fresh).not.toHaveProperty('newGradeId');
@@ -243,7 +245,7 @@ describe('a raise as the API takes it', () => {
     expect(errors).toEqual([
       'Choose how the raise is made: an amendment to the contract in force, or a new contract.',
       'Enter the date the raise takes effect, e.g. 01/12/2026.',
-      'Choose why the pay changes: annual raise, promotion, adjustment or other.',
+      'Choose why the pay changes: annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other.',
     ]);
     const badDate: string[] = [];
     raiseBody(form({ ...amendment, effectiveDate: '31/02/2026' }), badDate, false);

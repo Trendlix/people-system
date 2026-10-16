@@ -1,20 +1,37 @@
 import Link from 'next/link';
-import type { RaiseRequestStatus, Role } from '@trendlix/shared';
+import { nextFirstOfMonth, type RaiseRequestStatus, type Role } from '@trendlix/shared';
+import { formatDateTime } from '@/lib/format';
 import type { RaiseRequest } from '@/lib/raise-types';
-import { contractHref } from '../employees/ui';
+import { contractHref, todayInCairo } from '../employees/ui';
+import { defaultEffectiveDate } from '../employees/[id]/contracts/raise';
 import { formatEgp } from '../employees/[id]/contracts/salary';
-import { declineRaiseRequest } from './actions';
-import { preparedRaiseText, prepareRaiseHref, progressText, requestActions, requesterText, STATUS_BADGE, statusLabel } from './list';
-import { DeclineRequestForm } from './request-forms';
+import { declineRaiseRequest, decideRaiseRequest } from './actions';
+import {
+  commentText,
+  preparedRaiseText,
+  prepareRaiseHref,
+  progressText,
+  reasonText,
+  requestActions,
+  requesterText,
+  STATUS_BADGE,
+  statusLabel,
+  stepsLabel,
+  stepText,
+  stepTone,
+  suggestionText,
+} from './list';
+import { DeclineRequestForm, HrDecisionForm } from './request-forms';
 
-// Parts of a raise request shown on the profile's Employment tab and on the Raise Requests page (owner's decisions, 16
-// October 2026), worded as the profile change requests and the payroll approvals are: who asked and why, the suggested
-// gross and the raise prepared from it (only what the API sends the caller), where it stands with the reasons given,
-// and HR's actions while it is with HR.
+// Parts of a raise request shown on the profile's Employment tab, the Raise Requests page and Approvals (owner's
+// decisions, 16 October 2026; reworked 17 October 2026), worded as the profile change requests and the payroll
+// approvals are: who asked, the reason from the list and the comment, the raise suggested and the raise prepared from
+// it (only what the API sends the caller), where it stands with the comment given, its log of every step as a
+// timeline, and HR's decision while it is with HR.
 
 const dash = <span className="text-muted">—</span>;
 
-/** With HR, With the CEO, Approved, Declined or Done. */
+/** With HR, With the CEO, Approved, Rejected or Done. */
 export function RaiseRequestStatusBadge({ status }: { status: RaiseRequestStatus }) {
   return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{statusLabel(status)}</span>;
 }
@@ -26,6 +43,17 @@ export function Requester({ request }: { request: RaiseRequest }) {
     <>
       {r.who}
       {r.email && <span className="block text-xs break-all text-muted">{r.email}</span>}
+    </>
+  );
+}
+
+/** The reason from the list, and the requester's comment under it (a request from before 17 October 2026: the comment only). */
+export function RequestReason({ request }: { request: RaiseRequest }) {
+  const reason = reasonText(request);
+  return (
+    <>
+      {reason && <span className="block font-medium">{reason}</span>}
+      <span className={`block whitespace-pre-line ${reason ? 'text-muted' : ''}`}>{commentText(request)}</span>
     </>
   );
 }
@@ -47,7 +75,13 @@ export function SuggestedGross({ request }: { request: RaiseRequest }) {
   return request.suggestedGross === null ? dash : <span className="tabular-nums">{formatEgp(request.suggestedGross)}</span>;
 }
 
-/** Where it stands, with the reason given (a decline's, or the CEO's return). */
+/** The raise suggested, as far as the caller may see it (an amount, a percent, the gross it comes to); a dash without. */
+export function Suggestion({ request }: { request: RaiseRequest }) {
+  const text = request.suggestion !== undefined ? suggestionText(request.suggestion) : request.suggestedGross !== null ? `Gross ${formatEgp(request.suggestedGross)}` : null;
+  return text ? <span className="tabular-nums">{text}</span> : dash;
+}
+
+/** Where it stands, with the comment given (a rejection's, or the CEO's return). */
 export function Progress({ request }: { request: RaiseRequest }) {
   const p = progressText(request);
   return (
@@ -58,28 +92,85 @@ export function Progress({ request }: { request: RaiseRequest }) {
   );
 }
 
+const DOT: Record<'ok' | 'danger' | 'warn' | 'none', string> = { ok: 'bg-ok', danger: 'bg-danger', warn: 'bg-warn', none: 'bg-line' };
+
 /**
- * HR's actions on a request with HR: Prepare the raise (the raise form, from the request) or, once prepared, where to
- * carry on with it (the Contract section, where HR changes it and sends it to the CEO); and Decline, with a reason.
- * Nothing for anyone else, or once it has left HR.
+ * The request's log (owner, 17 October 2026: "all the request steps to be logged in the request"): every step in order,
+ * what happened and what goes with it, the comment, who and when. Nothing from an API from before the log.
+ */
+export function RequestLog({ request: r }: { request: RaiseRequest }) {
+  const steps = r.steps ?? [];
+  if (!steps.length) return null;
+  return (
+    <ol className="space-y-3 border-l-2 border-line-soft pl-4" aria-label={`Every step of the raise request, ${stepsLabel(steps.length)}`}>
+      {steps.map((s) => {
+        const t = stepText(s, r.requester);
+        return (
+          <li key={s.id} className="relative">
+            <span aria-hidden="true" className={`absolute top-1.5 -left-[23px] size-3 rounded-full border-2 border-card ${DOT[stepTone(s) ?? 'none']}`} />
+            <p className="text-sm font-medium">{t.title}</p>
+            {t.detail && <p className="text-xs text-muted tabular-nums">{t.detail}</p>}
+            {s.comment && <p className="mt-0.5 text-sm whitespace-pre-line">“{s.comment}”</p>}
+            <p className="text-xs text-muted">
+              {s.by?.email && <span className="break-all">{s.by.email} · </span>}
+              {formatDateTime(s.at)}
+            </p>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** The log folded away, for a table row: "Log · 4 steps". */
+export function FoldedRequestLog({ request }: { request: RaiseRequest }) {
+  const n = request.steps?.length ?? 0;
+  if (!n) return null;
+  return (
+    <details className="mt-2">
+      <summary className="cursor-pointer text-sm font-semibold text-accent">
+        Log · {stepsLabel(n)}
+        <span className="sr-only"> of the raise request for {request.employee.fullNameEn}</span>
+      </summary>
+      <div className="mt-3 min-w-64">
+        <RequestLog request={request} />
+      </div>
+    </details>
+  );
+}
+
+/**
+ * HR's actions on a request with HR: Decide (approve it as suggested or with another raise, which prepares the raise and
+ * sends it to the CEO, or reject it), with the whole raise form a link away; or, once a raise is prepared from it, where
+ * to carry on with it (the Contract section, where HR changes it and sends it to the CEO) and Reject. Nothing for anyone
+ * else, or once it has left HR.
  */
 export function HrRequestActions({ request: r, user }: { request: RaiseRequest; user: { roles: readonly Role[] } }) {
   const can = requestActions(user, r);
-  if (!can.prepare && !can.continueRaise && !can.decline) return null;
+  if (!can.decide && !can.continueRaise && !can.decline) return null;
   const name = r.employee.fullNameEn;
+  const today = todayInCairo();
+  const inForce = r.inForce ?? null;
   return (
     <div className="flex flex-wrap items-start gap-3">
-      {can.prepare && (
-        <Link href={prepareRaiseHref(r.employee.id, r.id)} prefetch={false} className="btn btn-primary min-h-9 px-3">
-          Prepare the raise<span className="sr-only"> for {name}</span>
-        </Link>
+      {can.decide && (
+        <HrDecisionForm
+          action={decideRaiseRequest.bind(null, r.id, !!r.suggestion)}
+          name={name}
+          requester={r.requester}
+          suggestion={suggestionText(r.suggestion ?? null) ?? (r.suggestedGross !== null ? `Gross ${formatEgp(r.suggestedGross)}` : null)}
+          gross={inForce?.grossSalary ?? null}
+          inForce={inForce}
+          defaultEffective={inForce ? defaultEffectiveDate(today, inForce) : nextFirstOfMonth(today)}
+          fullFormHref={prepareRaiseHref(r.employee.id, r.id)}
+        />
       )}
       {can.continueRaise && (
         <Link href={contractHref(r.employee.id)} className="btn btn-secondary min-h-9 px-3">
           Open the raise<span className="sr-only"> prepared for {name}</span>
         </Link>
       )}
-      {can.decline && <DeclineRequestForm action={declineRaiseRequest.bind(null, r.id)} name={name} />}
+      {can.decline && <DeclineRequestForm action={declineRaiseRequest.bind(null, r.id)} name={name} requester={r.requester} />}
     </div>
   );
 }

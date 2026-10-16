@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { lawRatesFor, RAISE_REASON_LABELS, RAISE_REASONS, type LawRates, type PayTerms as VersionPay, type RaiseReason } from '@trendlix/shared';
+import { lawRatesFor, RAISE_REASON_LABELS, raiseReasonOptions, type LawRates, type PayTerms as VersionPay, type RaiseReason } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
@@ -266,7 +266,7 @@ export function ContractForm({
                     className="input"
                   >
                     <option value="">Choose a reason</option>
-                    {RAISE_REASONS.map((r) => (
+                    {raiseReasonOptions(payChange.reason).map((r) => (
                       <option key={r} value={r}>
                         {RAISE_REASON_LABELS[r]}
                       </option>

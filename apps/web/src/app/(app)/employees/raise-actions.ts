@@ -1,20 +1,19 @@
 'use server';
 
 // Pay raises on the profile's Employment tab (owner's decisions, 16 October 2026: "HR, then the CEO"): HR enters a
-// raise on the signed contract in force (an amendment or a new contract, from a raise request or not), changes it,
-// sends it to the CEO, and records the Form 2 filed once it is approved; the CEO approves it, returns it to HR with a
-// reason, or declines it with a reason (the draft is deleted). A renewal with new pay is sent, approved, returned and
-// declined the same way. Each one forwards to the API, which checks the session and the role (HR; the CEO for the
+// raise on the signed contract in force (an amendment or a new contract; from a raise request it is HR's approval of
+// it, with HR's comment, sent to the CEO at once), changes it, sends it to the CEO, and records the Form 2 filed once
+// it is approved; the CEO approves it as it is or with another raise, or rejects it (the draft is deleted), always with
+// a comment, or returns it to HR (17 October 2026). A renewal with new pay is sent, decided and returned the same way. Each one forwards to the API, which checks the session and the role (HR; the CEO for the
 // decisions), so calling these directly can't bypass permissions. Dates are typed as DD/MM/YYYY and sent as
 // YYYY-MM-DD, and the API's dates are shown as DD/MM/YYYY.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import type { FormState } from '@/lib/types';
+import { ceoDecisionBody } from '../raise-requests/decisions';
 import { form2Body, raiseBody } from './[id]/contracts/raise';
 import { contractHref } from './ui';
-
-const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
 
 /** The submitted values, so the form can be refilled after an error. */
 function submitted(fd: FormData): Record<string, string | string[]> {
@@ -81,23 +80,17 @@ export async function sendRaise(raiseId: string): Promise<FormState> {
   return act(() => apiSend('POST', `/raises/${raiseId}/send`), 'Sent to the CEO.');
 }
 
-/** The CEO approves it: HR signs it then. */
-export async function approveRaise(raiseId: string): Promise<FormState> {
-  return act(() => apiSend('POST', `/raises/${raiseId}/approve`), 'Approved.');
-}
-
-/** The CEO returns it to HR, saying why: HR changes it and sends it again. */
-export async function returnRaise(raiseId: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  const reason = text(fd, 'reason');
-  if (!reason) return { errors: ['Write why it goes back to HR.'], values: submitted(fd) };
-  return act(() => apiSend('POST', `/raises/${raiseId}/return`, { reason }), 'Returned to HR.', fd);
-}
-
-/** The CEO declines it, saying why: the draft is deleted, and a raise request it was prepared from is declined. */
-export async function declineRaise(raiseId: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  const reason = text(fd, 'reason');
-  if (!reason) return { errors: ['Write why the raise is declined.'], values: submitted(fd) };
-  return act(() => apiSend('POST', `/raises/${raiseId}/decline`, { reason }), 'Declined.', fd);
+/**
+ * The CEO's decision on it, with a comment (owner, 17 October 2026: "Approve - Approve with another raise amount or
+ * percentge - Reject, and add a comment"): approve it as it is, or with another raise (its pay changed to it), which HR
+ * then signs; reject it, which deletes the draft and rejects a raise request it was prepared from; or return it to HR.
+ */
+export async function ceoDecidesRaise(raiseId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const errors: string[] = [];
+  const { choice, path, body } = ceoDecisionBody(fd, errors);
+  if (errors.length || !path) return { errors, values: submitted(fd) };
+  const done = choice === 'approve' ? 'Approved.' : choice === 'approve_other' ? 'Approved with your raise.' : choice === 'return' ? 'Returned to HR.' : 'Rejected.';
+  return act(() => apiSend('POST', `/raises/${raiseId}/${path}`, body), done, fd);
 }
 
 /**

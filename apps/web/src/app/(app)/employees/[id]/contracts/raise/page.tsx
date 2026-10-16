@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { RAISE_REQUESTER_LABELS } from '@trendlix/shared';
+import { commentText, suggestionText } from '../../../../raise-requests/list';
 import { formatDate } from '@/lib/format';
 import { loadLawRates } from '@/lib/law-rates';
 import { loadEmployee } from '../../../data';
@@ -16,8 +17,10 @@ import { formatEgp } from '../salary';
 // amendment or a new contract, from the 1st of a month, starting from the pay in force. It is saved as a draft, one at a
 // time, which HR sends to the CEO with the contract on the Employment tab, and signs there once the CEO approves it. Not
 // while a draft is waiting to be signed, or an ending of the employment is in progress. Prepared from a raise request
-// (?request=<id>, from the request's own page), it starts with the request's reason as its note and is linked to it, so
-// the CEO's decision on the raise is the request's.
+// (?request=<id>, from the request's own page), it is HR's approval of the request in the whole form (owner, 17 October
+// 2026), for a promotion or other allowances with it: it starts with the request's reason, the gross its suggestion
+// comes to, and its comment as the note; HR's own comment is required, and saving sends it to the CEO at once. It is
+// linked to the request, so the CEO's decision on the raise is the request's.
 
 const UUID = /^[0-9a-f-]{36}$/i;
 /** The note a raise takes from its request: up to the note's 500 characters. */
@@ -74,15 +77,16 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
       way: 'amendment',
       effectiveDate: defaultEffectiveDate(today, active),
       durationMonths: settings.durationMonths,
-      reason: '',
-      note: preparable ? preparable.reason.slice(0, NOTE_MAX) : '',
+      reason: preparable?.raiseReason ?? '',
+      note: preparable ? commentText(preparable).slice(0, NOTE_MAX) : '',
       newJobTitleId: '',
       newGradeId: '',
       form2From: null,
       // the pay in force, to start from
       pay: {
         payBasis: active.payBasis ?? 'monthly',
-        grossSalary: active.grossSalary,
+        // the decided figure to start from: the gross the request's suggestion comes to, on a monthly salary
+        grossSalary: (active.payBasis !== 'hourly' && (preparable?.suggestion?.gross ?? preparable?.suggestedGross)) || active.grossSalary,
         hourlyRate: active.hourlyRate ?? null,
         hoursPerWeek: active.hoursPerWeek ?? null,
         daysPerWeek: active.daysPerWeek ?? null,
@@ -96,16 +100,19 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
         <p className="text-sm text-muted">
           A raise on version {active.version} ({active.number}), the contract in force
           {active.endDate ? ` from ${formatDate(active.startDate)} to ${formatDate(active.endDate)}` : ` since ${formatDate(active.startDate)}`}
-          {active.grossSalary !== null && `, paying a gross of ${formatEgp(active.grossSalary)} a month`}. It is saved as a draft: send it to the CEO with
-          the contract on the Employment tab, and sign it there once the CEO approves it.
+          {active.grossSalary !== null && `, paying a gross of ${formatEgp(active.grossSalary)} a month`}.{' '}
+          {preparable
+            ? 'Sign it with the contract on the Employment tab once the CEO approves it.'
+            : 'It is saved as a draft: send it to the CEO with the contract on the Employment tab, and sign it there once the CEO approves it.'}
         </p>
         {requestId &&
           (preparable ? (
             <p className="rounded-lg bg-accent-soft px-4 py-3 text-sm">
-              Prepared from the raise request by {RAISE_REQUESTER_LABELS[preparable.requester].toLowerCase()}
+              Approving the raise request by {RAISE_REQUESTER_LABELS[preparable.requester].toLowerCase()}
               {preparable.requestedBy && ` (${preparable.requestedBy.email})`} on {formatDate(preparable.createdAt)}
-              {preparable.suggestedGross !== null && `, suggesting a gross of ${formatEgp(preparable.suggestedGross)}`}. Its reason is the note to start
-              with; the CEO&apos;s decision on the raise is the request&apos;s.
+              {suggestionText(preparable.suggestion ?? null) && `, suggesting ${suggestionText(preparable.suggestion ?? null)}`}. The gross starts from what it
+              suggests and the note from its comment. Saving approves it with your comment and sends the raise to the CEO at once; the CEO&apos;s
+              decision on the raise is the request&apos;s.
             </p>
           ) : (
             <p role="alert" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
@@ -122,9 +129,9 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
           today={today}
           lawYears={lawYears}
           promotion={{ ...pickers, jobTitle: e.jobTitle, grade: e.grade }}
-          request={preparable ? { id: preparable.id } : undefined}
+          request={preparable ? { id: preparable.id, requester: preparable.requester } : undefined}
           cancelHref={back}
-          submitLabel="Save the raise draft"
+          submitLabel={preparable ? 'Approve and send to the CEO' : 'Save the raise draft'}
         />
       </div>
     );

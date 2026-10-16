@@ -217,7 +217,8 @@ function requiredDate(fd: FormData, key: string, label: string, example: string,
 
 /**
  * The raise form's fields (contracts/raise-form.tsx) as the API takes them: the way, the effective date, a new
- * contract's length, why, the pay (payBody), the note, the promotion, and the raise request it is prepared from. The API
+ * contract's length, why, the pay (payBody), the note, the promotion, and the raise request it is prepared from with HR's
+ * comment on approving it (17 October 2026). The API
  * checks the date against the contract in force. `draft`: changing a raise, where a promotion emptied ("No change") and
  * an emptied net or number of working days are cleared (null); a new raise leaves them out.
  */
@@ -242,6 +243,7 @@ export function raiseBody(fd: FormData, errors: string[], draft: boolean) {
     ...(newJobTitleId ? { newJobTitleId } : draft ? { newJobTitleId: null } : {}),
     ...(newGradeId ? { newGradeId } : draft ? { newGradeId: null } : {}),
     note: text(fd, 'note'),
-    ...(!draft && requestId && { requestId }),
+    // from a raise request: HR's approval of it, with HR's comment (owner, 17 October 2026)
+    ...(!draft && requestId && { requestId, comment: text(fd, 'comment') }),
   };
 }

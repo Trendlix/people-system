@@ -5,13 +5,14 @@ import { useState } from 'react';
 import {
   lawRatesFor,
   RAISE_REASON_LABELS,
-  RAISE_REASONS,
   RAISE_WAY_HINTS,
   RAISE_WAY_LABELS,
   RAISE_WAYS,
   raiseEffectiveProblem,
+  raiseReasonOptions,
   type LawRates,
   type RaiseReason,
+  type RaiseRequester,
   type RaiseWay,
 } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
@@ -22,6 +23,7 @@ import type { AllowanceType, FormState, Grade, GradeRef, JobTitleSummary } from 
 import { gradeLabel, gradeRangeSentence, inGradeRange } from '../../../organization/grades/label';
 import { contractEnd } from './dates';
 import { choice, PayFields, typedPayOf, usePay, type PayDefaults } from './pay-fields';
+import { commentReaders } from '../../../raise-requests/list';
 import { fromToText, insuredWageText, jobTitleGroups } from './raise';
 
 // The form of the Raise and Edit raise pages (owner's decisions, 16 October 2026): a raise on the signed contract in
@@ -80,8 +82,11 @@ export function RaiseForm({
   lawYears: readonly LawRates[];
   /** The job titles (each with its grades) and grades to choose from, and the employment's own as they are. */
   promotion: { jobTitles: readonly JobTitleSummary[]; grades: readonly Grade[]; jobTitle: { id: string; titleEn: string } | null; grade: GradeRef | null };
-  /** The raise request it is prepared from, sent along with a new raise. */
-  request?: { id: string };
+  /**
+   * The raise request it is prepared from, sent along with a new raise: saving it is HR's approval of the request, with
+   * HR's comment, and sends it to the CEO (owner, 17 October 2026). `requester`: who asked, to say who reads the comment.
+   */
+  request?: { id: string; requester?: RaiseRequester };
   /** Changing a raise the CEO approved: a change of its terms sends it back to HR, to send again. */
   approved?: boolean;
   cancelHref: string;
@@ -286,7 +291,7 @@ export function RaiseForm({
             className="input"
           >
             <option value="">Choose a reason</option>
-            {RAISE_REASONS.map((r) => (
+            {raiseReasonOptions(defaults.reason).map((r) => (
               <option key={r} value={r}>
                 {RAISE_REASON_LABELS[r]}
               </option>
@@ -378,6 +383,28 @@ export function RaiseForm({
           E.g. the review it follows. The CEO sees it with the raise. Up to 500 characters.
         </p>
       </div>
+
+      {request && (
+        <div>
+          <label htmlFor={fid('comment')} className="label">
+            Your comment on the request
+          </label>
+          <textarea
+            id={fid('comment')}
+            name="comment"
+            rows={3}
+            required
+            maxLength={1000}
+            aria-describedby={fid('comment-hint')}
+            defaultValue={valueOf(state, 'comment')}
+            className="input"
+          />
+          <p id={fid('comment-hint')} className="hint">
+            Saving approves the request, as suggested when the gross is the one suggested, else with another raise, and sends the raise to the CEO.{' '}
+            {commentReaders('decision', request.requester ?? 'self')}
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-3 border-t border-line pt-6">
         <SubmitButton busy={pending}>{submitLabel}</SubmitButton>

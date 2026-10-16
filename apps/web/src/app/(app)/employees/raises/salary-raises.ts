@@ -18,7 +18,6 @@ import { departmentName } from '../../../../lib/departments';
 import { formatDate, formatDateTime } from '../../../../lib/format';
 import { hasRole } from '../../../../lib/roles';
 import { addMonths, monthName, monthOf } from '../../payroll/list';
-import { prepareRaiseHref } from '../../raise-requests/list';
 import { formatEgp } from '../[id]/contracts/salary';
 import { changeText, fromToText, monthsAgoText, signedEgp, signedPercent } from '../[id]/salary-history/salary-history';
 import { contractHref, employeeRaiseRequestsHref, salaryHistoryHref } from '../tab-list';
@@ -234,7 +233,7 @@ export interface ReviewAction {
 
 /**
  * What HR may do for someone due for review: carry on with their open raise (the contract on the Employment tab's
- * Details), prepare the raise from their request with HR, see a request further along; with nothing open, prepare a
+ * Details), decide their request with HR (on its card), see a request further along; with nothing open, prepare a
  * raise (the raise form) or ask for one (their Raise Requests, on the Salary sub-tab). Nothing for Finance and the CEO,
  * who read the report. The API checks it all again.
  */
@@ -243,7 +242,8 @@ export function reviewActions(user: WithRoles, r: Pick<DueForReviewRow, 'employe
   const id = r.employee.id;
   const requests = employeeRaiseRequestsHref(id);
   if (r.openRaise) return [{ key: 'open', label: 'Open the raise', href: contractHref(id) }];
-  if (r.openRequest?.status === 'with_hr') return [{ key: 'prepare', label: 'Prepare the raise', href: prepareRaiseHref(id, r.openRequest.id) }];
+  // HR decides the request on its card (17 October 2026: approve it as suggested or with another raise, or reject it)
+  if (r.openRequest?.status === 'with_hr') return [{ key: 'decide', label: 'Decide on the request', href: requests }];
   if (r.openRequest) return [{ key: 'request', label: 'See the request', href: requests }];
   return [
     { key: 'prepare', label: 'Prepare a raise', href: `/employees/${encodeURIComponent(id)}/contracts/raise` },

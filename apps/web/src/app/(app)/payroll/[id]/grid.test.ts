@@ -1,11 +1,13 @@
-import { EMPTY_PAYROLL_INPUTS } from '@trendlix/shared';
+import { EMPTY_PAYROLL_INPUTS, type PayrollInputs, type PayrollSegment } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
   attendancePercent,
   cellText,
-  countedExpected,
+  columnNote,
+  contractsNote,
+  dayRange,
   errorLine,
-  expectedPlaceholder,
+  expectedCell,
   GRID_COLUMNS,
   linePatches,
   noShowPay,
@@ -29,13 +31,32 @@ const lines: GridLine[] = [
 
 describe('the grid’s columns', () => {
   it('follow the owner’s sheet, every input once but the KPIs, which the KPIs module will fill (owner, 16 October 2026)', () => {
-    expect(GRID_COLUMNS.map((c) => c.label)).toEqual(['Worked hours', 'Expected hours', 'No-show days', 'Penalty days', 'Bonus days', 'Commission', 'Settlements', 'Released']);
+    // the leave days after the no-show days (owner, 17 October 2026)
+    expect(GRID_COLUMNS.map((c) => c.label)).toEqual([
+      'Worked hours',
+      'Expected hours',
+      'No-show days',
+      'Leave days',
+      'Penalty days',
+      'Bonus days',
+      'Commission',
+      'Settlements',
+      'Released',
+    ]);
     const kpis = ['softSkills', 'performance', 'clientSatisfaction'];
     expect(new Set(GRID_COLUMNS.map((c) => c.field))).toEqual(new Set(Object.keys(EMPTY_PAYROLL_INPUTS).filter((k) => !kpis.includes(k))));
   });
 
   it('say what a no-show day costs under its column', () => {
     expect([noShowPay(2), noShowPay(1), noShowPay(1.5)]).toEqual(["2 days' pay each", "1 day's pay each", "1.5 days' pay each"]);
+  });
+
+  it('say under the no-show and leave days that their hours come out of the expected hours (17 October 2026)', () => {
+    expect(columnNote('noShowDays', 2)).toBe("2 days' pay each, out of the expected hours");
+    expect(columnNote('noShowDays', 1)).toBe("1 day's pay each, out of the expected hours");
+    expect(columnNote('leaveDays', 2)).toBe('Paid, out of the expected hours');
+    expect(columnNote('penaltyDays', 2)).toBeNull();
+    expect(columnNote('expectedHours', 2)).toBeNull();
   });
 });
 
@@ -108,28 +129,94 @@ describe('showing a cell', () => {
     expect(tidyCell('days', '')).toBe('');
   });
 
-  it('works out the attendance from the hours, as the pay counts it: without the no-show days’ hours', () => {
+  it('works out the attendance from the hours: worked ÷ expected, the expected hours already without the days off', () => {
+    // 270:30 of 280:00: 270.5 ÷ 280 = 0.96607…, 96.61%
     expect(attendancePercent(270.5, 280)).toBe(96.61);
     expect(attendancePercent(280, 280)).toBe(100);
     expect(attendancePercent(null, 280)).toBeNull();
+    expect(attendancePercent(280, null)).toBeNull();
+    // nothing expected: not counted
     expect(attendancePercent(270, 0)).toBeNull();
-    // one 8-hour day off: 238 of 272 is 87.5%, not 85%
-    expect(attendancePercent(238, 280, 8)).toBe(87.5);
-    // nothing left once the days off are out
-    expect(attendancePercent(0, 16, 16)).toBeNull();
+    // 133 of the 152 left once a no-show and a leave day of 8 hours are out of 168: 133 ÷ 152 = 87.5%
+    expect(attendancePercent(133, 152)).toBe(87.5);
+  });
+});
+
+describe('the expected hours filled in from the shift (owner, 17 October 2026: "prefill the expected hours, and dont count abcent days or leave days")', () => {
+  // the shift's hours for the month: 22 working days less 1 holiday, × 8:00 to work a day = 168:00
+  const shift = { shiftExpectedHours: 168, hoursPerDay: 8 };
+  const cells = (c: Partial<PayrollInputs> = {}) => ({ expectedHours: null, noShowDays: null, leaveDays: null, ...c });
+
+  it('are the shift’s hours less a day of the shift for each no-show and leave day typed', () => {
+    expect(expectedCell(shift, cells())).toEqual({ hours: 168, fromShift: true });
+    // 2 no-show days and 1 leave day: 168 − 3 × 8 = 144
+    expect(expectedCell(shift, cells({ noShowDays: 2, leaveDays: 1 }))).toEqual({ hours: 144, fromShift: true });
+    // half a no-show day: 168 − 0.5 × 8 = 164
+    expect(expectedCell(shift, cells({ noShowDays: 0.5 }))).toEqual({ hours: 164, fromShift: true });
+    // a flexible shift of 9:00 to work a day, 21 days: 189; 1.5 leave days take 13.5 out, 175:30 left
+    expect(expectedCell({ shiftExpectedHours: 189, hoursPerDay: 9 }, cells({ leaveDays: 1.5 }))).toEqual({ hours: 175.5, fromShift: true });
+    // more days off than the shift has: never below 0 (16 − 3 × 8)
+    expect(expectedCell({ shiftExpectedHours: 16, hoursPerDay: 8 }, cells({ noShowDays: 3 }))).toEqual({ hours: 0, fromShift: true });
+    // the attendance beside them follows: 133 of 144 is 92.36%
+    expect(attendancePercent(133, expectedCell(shift, cells({ noShowDays: 2, leaveDays: 1 })).hours)).toBe(92.36);
   });
 
-  it('counts the hours from the shift less the holidays while the expected hours cell is empty, shown greyed in it (16 October 2026)', () => {
-    expect(expectedPlaceholder(189)).toBe('189:00');
-    expect(expectedPlaceholder(187.5)).toBe('187:30');
-    // without a shift: the hours' usual hint
-    expect(expectedPlaceholder(null)).toBe('0:00');
-    // what HR typed, 0 too, replaces them
-    expect(countedExpected(200, 189)).toBe(200);
-    expect(countedExpected(0, 189)).toBe(0);
-    expect(countedExpected(null, 189)).toBe(189);
-    expect(countedExpected(null, null)).toBeNull();
-    expect(attendancePercent(170.1, countedExpected(null, 189))).toBe(90);
+  it('are HR’s when typed, taken as already without the no-show and leave days: nothing more comes out', () => {
+    expect(expectedCell(shift, cells({ expectedHours: 150, noShowDays: 2, leaveDays: 1 }))).toEqual({ hours: 150, fromShift: false });
+    // 0 typed is HR's too
+    expect(expectedCell(shift, cells({ expectedHours: 0 }))).toEqual({ hours: 0, fromShift: false });
+    // 133 of HR's 150: 88.67%
+    expect(attendancePercent(133, expectedCell(shift, cells({ expectedHours: 150, noShowDays: 2 })).hours)).toBe(88.67);
+  });
+
+  it('are HR’s alone without a shift (or by the hour): none filled in', () => {
+    const none = { shiftExpectedHours: null, hoursPerDay: null };
+    expect(expectedCell(none, cells({ noShowDays: 2 }))).toEqual({ hours: null, fromShift: false });
+    expect(expectedCell(none, cells({ expectedHours: 160, leaveDays: 1 }))).toEqual({ hours: 160, fromShift: false });
+  });
+});
+
+describe('a month under two contracts (owner, 17 October 2026: "take into consideration the start and end date of the contract")', () => {
+  const segment = (s: Partial<PayrollSegment>): PayrollSegment => ({
+    contractId: 'c1',
+    number: 'CON-2025-0003',
+    version: 1,
+    from: '2026-10-01',
+    to: '2026-10-14',
+    days: 14,
+    payBasis: 'monthly',
+    gross: 10_000,
+    basicPercent: 80,
+    hourlyRate: null,
+    allowances: [],
+    ...s,
+  });
+  const renewal = segment({ contractId: 'c2', number: 'CON-2026-0012', version: 2, from: '2026-10-15', to: '2026-10-31', days: 16, gross: 12_000 });
+
+  it('names each contract and its days by the employee', () => {
+    expect(contractsNote({ segments: [segment({}), renewal] })).toBe('2 contracts this month: CON-2025-0003 v1, 1–14 October · CON-2026-0012 v2, 15–31 October');
+  });
+
+  it('says the latest alone is paid when one of them is by the hour', () => {
+    expect(contractsNote({ segments: [segment({ payBasis: 'hourly', hourlyRate: 60 }), renewal] })).toBe(
+      '2 contracts this month, one by the hour: paid on the latest, CON-2026-0012 v2',
+    );
+    expect(contractsNote({ segments: [segment({ payBasis: 'hourly', hourlyRate: 60 }), { ...renewal, payBasis: 'hourly', hourlyRate: 70 }] })).toBe(
+      '2 contracts this month, both by the hour: paid on the latest, CON-2026-0012 v2',
+    );
+  });
+
+  it('says nothing of a month on one contract, or a line made before then', () => {
+    expect(contractsNote({ segments: [segment({ to: '2026-10-31', days: 30 })] })).toBeNull();
+    expect(contractsNote({})).toBeNull();
+  });
+
+  it('names a part’s days by the month', () => {
+    expect(dayRange('2026-10-01', '2026-10-14')).toBe('1–14 October');
+    expect(dayRange('2026-10-15', '2026-10-31')).toBe('15–31 October');
+    expect(dayRange('2026-10-31', '2026-10-31')).toBe('31 October');
+    expect(dayRange('2026-02-01', '2026-02-28')).toBe('1–28 February');
+    expect(dayRange('2026-09-28', '2026-10-03')).toBe('28 September–3 October');
   });
 });
 
@@ -141,6 +228,22 @@ describe('what changed', () => {
     expect(errors).toEqual([]);
     // the expected hours were typed as they are saved: not a change; the performance saved isn't sent
     expect(patches).toEqual([{ id: A, inputs: { workedHours: 271, bonusDays: null } }]);
+  });
+
+  it('sends the leave days typed, and reads a line saved before them as without any (17 October 2026)', () => {
+    const before: Partial<PayrollInputs> = { ...EMPTY_PAYROLL_INPUTS, workedHours: 160 };
+    delete before.leaveDays;
+    const older: GridLine[] = [{ id: B, name: 'Karim Nabil', inputs: before as PayrollInputs, onHold: false, comments: null }];
+    // an empty leave cell is what is saved: no change
+    expect(unsavedCount(older, { [B]: { inputs: { leaveDays: '' } } })).toEqual({ cells: 0, rows: 0 });
+    expect(linePatches(older, { [B]: { inputs: { leaveDays: '1.5' } } }).patches).toEqual([{ id: B, inputs: { leaveDays: 1.5 } }]);
+  });
+
+  it('sends HR’s expected hours cleared as none, so the shift’s come back; a cell left empty sends nothing', () => {
+    // Mona's 280 typed over the shift's, cleared
+    expect(linePatches(lines, { [A]: { inputs: { expectedHours: '' } } }).patches).toEqual([{ id: A, inputs: { expectedHours: null } }]);
+    // Karim's, never typed: the figure filled in from the shift is only shown, never an edit
+    expect(unsavedCount(lines, { [B]: { inputs: { expectedHours: '' } } })).toEqual({ cells: 0, rows: 0 });
   });
 
   it('never sends a KPI: a saved one stays as it is for the KPIs module', () => {

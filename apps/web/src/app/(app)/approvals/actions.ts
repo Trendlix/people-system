@@ -7,6 +7,7 @@ import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import type { FormState } from '@/lib/types';
+import { ceoDecisionBody } from '../raise-requests/decisions';
 
 /** The API's messages, with its dates (YYYY-MM-DD) as the screens show them (DD/MM/YYYY). */
 const asShown = (messages: string[]) => messages.map((m) => m.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$3/$2/$1'));
@@ -55,25 +56,24 @@ export async function decideChangeRequest(id: string, _prev: FormState, fd: Form
 
 /**
  * The CEO's decision on a pay raise HR sent, or a renewal with new pay (owner's decisions, 16 October 2026: "HR, then
- * the CEO"), by the button pressed (`decision`): approve, which lets HR have it signed; return it to HR, or decline it,
- * each with a reason. Declining deletes the draft and declines the raise request it came from, if any; the raise
- * request follows each decision.
+ * the CEO"; 17 October 2026: "Approve - Approve with another raise amount or percentge - Reject, and add a comment"), by
+ * the choice made: approve it as it reached them, or with another raise (its pay changed to it), which lets HR have it
+ * signed; reject it, which deletes the draft and rejects the raise request it came from, if any; or return it to HR.
+ * Always with a comment. The raise request follows each decision.
  */
 export async function decideRaise(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  const decision = String(fd.get('decision') ?? '');
-  const reason = String(fd.get('reason') ?? '').trim();
-  const values = { reason };
-  if (decision !== 'approve' && decision !== 'return' && decision !== 'decline') return { errors: ['Choose Approve, Return to HR or Decline.'], values };
-  if (decision === 'return' && !reason) return { errors: ['Write the reason the raise goes back to HR: HR sees it and changes the raise.'], values };
-  if (decision === 'decline' && !reason) return { errors: ['Write the reason the raise is declined.'], values };
+  const values = Object.fromEntries(['decision', 'comment', 'figureKind', 'figureValue'].map((k) => [k, String(fd.get(k) ?? '').trim()]));
+  const errors: string[] = [];
+  const { choice, path, body } = ceoDecisionBody(fd, errors);
+  if (errors.length || !path) return { errors, values };
 
   try {
-    await apiSend('POST', `/raises/${encodeURIComponent(id)}/${decision}`, decision === 'approve' ? {} : { reason });
+    await apiSend('POST', `/raises/${encodeURIComponent(id)}/${path}`, body);
   } catch (err) {
     if (err instanceof ApiError) return { errors: asShown(err.messages), values };
     throw err;
   }
   // The list (and the counts beside Approvals and Raise Requests in the sidebar) no longer has it.
   refresh();
-  redirect(`/approvals?done=raise-${decision === 'approve' ? 'approved' : decision === 'return' ? 'returned' : 'declined'}`);
+  redirect(`/approvals?done=raise-${choice === 'approve' ? 'approved' : choice === 'approve_other' ? 'approved-other' : choice === 'return' ? 'returned' : 'declined'}`);
 }

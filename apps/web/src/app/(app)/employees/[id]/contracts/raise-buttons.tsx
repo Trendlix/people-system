@@ -6,135 +6,14 @@ import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { formatDate, parseDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
-import { ActionButton, focusFirstField, useClosesOnSave } from './contract-buttons';
+import { focusFirstField, useClosesOnSave } from './contract-buttons';
 import { monthOf } from './raise';
 
-// The steps on a change of pay in the Contract section (owner's decisions, 16 October 2026: "HR, then the CEO"): the
-// CEO approves it, returns it to HR with a reason, or declines it with a reason (the draft is deleted), worded as a
-// payroll run's and an ending's; HR records the Form 2 filed once it is approved. Each small form opens in place and
-// closes once its action went through; a refused one stays open with the reason.
+// A step on a change of pay in the Contract section (owner's decisions, 16 October 2026): HR records the Form 2 filed
+// once the CEO approves it. The CEO's decision is approvals/raise-decision-form.tsx, as on Approvals. The small form
+// opens in place and closes once it went through; a refused one stays open with the reason.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
-
-const small = 'btn min-h-9 px-3';
-const panel = 'w-full max-w-xl space-y-3 rounded-lg border border-line bg-canvas p-4';
-
-/** A reason and the button that sends it, with Cancel. */
-function ReasonForm({
-  action,
-  label,
-  hint,
-  submitLabel,
-  pendingText,
-  danger = false,
-  onCancel,
-}: {
-  action: Action;
-  /** What the form is, for screen readers. */
-  label: string;
-  hint: string;
-  submitLabel: string;
-  pendingText: string;
-  danger?: boolean;
-  onCancel: () => void;
-}) {
-  const { state, pending, form } = useKeptForm(action);
-  const fid = useFieldIds();
-  return (
-    <form {...form} ref={focusFirstField} aria-label={label} className={panel}>
-      <FormErrors errors={state.errors} />
-      <div>
-        <label htmlFor={fid('reason')} className="label">
-          Reason
-        </label>
-        <textarea
-          id={fid('reason')}
-          name="reason"
-          rows={3}
-          required
-          maxLength={1000}
-          aria-describedby={fid('reason-hint')}
-          defaultValue={valueOf(state, 'reason', '')}
-          className="input"
-        />
-        <p id={fid('reason-hint')} className="hint">
-          {hint}
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-3">
-        {danger ? (
-          <button type="submit" disabled={pending} className="btn btn-danger">
-            {pending ? pendingText : submitLabel}
-          </button>
-        ) : (
-          <SubmitButton busy={pending} pendingText={pendingText}>
-            {submitLabel}
-          </SubmitButton>
-        )}
-        <button type="button" onClick={onCancel} disabled={pending} className="btn btn-secondary">
-          Cancel
-        </button>
-      </div>
-    </form>
-  );
-}
-
-/** The CEO's Approve (after a confirmation), Return with a reason and Decline with a reason, on a change of pay with the CEO. */
-export function RaiseDecision({
-  approve,
-  returnToHr,
-  decline,
-  name,
-  approveText,
-}: {
-  approve: (prev: FormState) => Promise<FormState>;
-  returnToHr: Action;
-  decline: Action;
-  /** What it is, e.g. "the salary amendment of version 3 (CON-2026-0007-A1)". */
-  name: string;
-  /** The confirmation before approving. */
-  approveText: string;
-}) {
-  const [open, setOpen] = useState<'return' | 'decline' | null>(null);
-  if (open === 'return') {
-    return (
-      <ReasonForm
-        action={returnToHr}
-        label={`Return ${name} to HR`}
-        hint="What HR should look at or change. It goes back to HR, with this reason on it, to change and send again."
-        submitLabel="Return to HR"
-        pendingText="Returning…"
-        onCancel={() => setOpen(null)}
-      />
-    );
-  }
-  if (open === 'decline') {
-    return (
-      <ReasonForm
-        action={decline}
-        label={`Decline ${name}`}
-        hint="HR sees this reason. The draft is deleted and the pay stays as it is; a raise request it was prepared from is declined with it."
-        submitLabel="Decline the raise"
-        pendingText="Declining…"
-        danger
-        onCancel={() => setOpen(null)}
-      />
-    );
-  }
-  return (
-    <div className="flex flex-wrap items-start gap-3">
-      <ActionButton action={approve} pendingText="Approving…" variant="primary" confirmText={approveText}>
-        Approve<span className="sr-only"> {name}</span>
-      </ActionButton>
-      <button type="button" aria-expanded={false} onClick={() => setOpen('return')} className={`${small} btn-secondary`}>
-        Return with a reason<span className="sr-only">: {name}</span>
-      </button>
-      <button type="button" aria-expanded={false} onClick={() => setOpen('decline')} className={`${small} btn-danger`}>
-        Decline<span className="sr-only"> {name}</span>
-      </button>
-    </div>
-  );
-}
 
 /**
  * Record Form 2, on an approved raise (signed or not): the 1st of the month the insured wage follows the new pay from,

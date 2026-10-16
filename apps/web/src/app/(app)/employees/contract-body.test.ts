@@ -102,7 +102,7 @@ describe('a contract as the API takes it', () => {
   it('asks why the pay changes when none is chosen', () => {
     const errors: string[] = [];
     const body = contractBody(form({ ...monthly, payChange: 'changes', raiseReason: '' }), errors, true, true);
-    expect(errors).toEqual(['Choose why the pay changes: annual raise, promotion, adjustment or other.']);
+    expect(errors).toEqual(['Choose why the pay changes: annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other.']);
     expect(body).not.toHaveProperty('raiseReason');
     const unknown: string[] = [];
     contractBody(form({ ...monthly, payChange: 'changes', raiseReason: 'bonus' }), unknown, true, true);

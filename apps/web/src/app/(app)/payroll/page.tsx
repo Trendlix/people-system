@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { formatDate } from '@/lib/format';
-import { canEditOrganisation, getCurrentUser } from '@/lib/session';
+import { getCurrentUser } from '@/lib/session';
 import type { PayrollRunSummary } from '@/lib/types';
 import { formatEgp } from '../employees/[id]/contracts/salary';
 import { todayInCairo } from '../employees/ui';
@@ -10,11 +10,16 @@ import { createRun } from './actions';
 import { loadRuns } from './data';
 import { canSeePayroll, monthName, preparesPayroll, runHref, runMonths, suggestedMonth } from './list';
 import { NewRunForm } from './new-run-form';
+import { KeyFigures } from './key-figures';
+import { PayrollTabs } from './payroll-tabs';
 import { PayrollStatusBadge } from './ui';
 
 // Payroll (owner's decisions, 16 October 2026): each month's run, newest first, and for HR a new one. HR prepares a run
 // (the month's figures typed until attendance fills them), the CEO approves it, and HR marks it paid once the bank has
 // paid it. Salary data: HR, Finance and the CEO see it; the API checks every request again.
+// The Overview (owner, 17 October 2026: "make the Payroll in the side tab a main title below it - Overview - Unsettled -
+// Additions / Deductions - Reports (Statistics)"): the runs as before, with key figures at the top (overview.tsx) and the
+// Payroll pages as tabs.
 
 const quiet = 'px-4 py-10 text-center text-sm text-muted';
 
@@ -75,14 +80,9 @@ async function Runs() {
 
   return (
     <div className="space-y-8">
-      {/* what changes the sheet, for those who change it (Payroll Setup, owner's request of 16 October 2026) */}
-      {canEditOrganisation(user) && (
-        <Link href="/organization/payroll" className="btn btn-secondary no-underline">
-          Payroll setup
-        </Link>
-      )}
+      <KeyFigures user={user} runs={listing.kind === 'ok' ? listing.rows : []} today={today} />
       {preparesPayroll(user) && listing.kind === 'ok' && (
-        <section className="card space-y-3 p-6">
+        <section id="new-run" className="card space-y-3 p-6">
           <h2 className="font-semibold">New Payroll Run</h2>
           <NewRunForm action={createRun} months={months} taken={taken} suggested={suggestedMonth(months, taken, today)} />
         </section>
@@ -114,6 +114,7 @@ export default function PayrollPage() {
         and payday it is worked out with are under <Link href="/organization/payroll">Organization → Payroll Setup</Link>, the holidays under{' '}
         <Link href="/organization/holidays">Organization → Holidays</Link>.
       </p>
+      <PayrollTabs active="overview" />
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Runs />

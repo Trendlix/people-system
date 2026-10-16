@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { EMPTY_PAYROLL_INPUTS } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import type { PayrollLineView, PayrollRunView, SessionUser } from '@/lib/types';
@@ -16,6 +17,7 @@ import { canSeePayroll, employeesLabel, preparesPayroll, rulesSummary, runAction
 import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslips';
 import { PayrollStatusBadge, PayrollStepper } from '../ui';
 import { CibFileForm } from './downloads';
+import { contractsNote } from './grid';
 import { InputsGrid, type GridRow } from './inputs-grid';
 import { ResultsTable } from './results-table';
 import { MarkPaid, ReturnRun } from './run-actions';
@@ -135,7 +137,8 @@ function gridRows(lines: PayrollLineView[]): GridRow[] {
   return lines.map((l) => ({
     id: l.id,
     name: l.name,
-    inputs: l.inputs,
+    // lines saved before an input existed (the leave days, 17 October 2026) have none: not given
+    inputs: { ...EMPTY_PAYROLL_INPUTS, ...l.inputs },
     onHold: l.onHold,
     comments: l.comments,
     employeeId: l.employeeId,
@@ -147,8 +150,11 @@ function gridRows(lines: PayrollLineView[]): GridRow[] {
     hourlyRate: l.terms.hourlyRate,
     // missing on lines worked out before 16 October 2026
     hoursPerDay: l.terms.hoursPerDay ?? null,
-    // the expected hours from the shift less the holidays, shown in the cell until HR types others (16 October 2026)
-    shiftExpectedHours: l.terms.expectedHours ?? null,
+    // the shift's hours less the holidays (16 October 2026): less the no-show and leave days, the expected hours the
+    // cell is filled in with until HR types others (17 October 2026); none by the hour
+    shiftExpectedHours: l.payBasis === 'hourly' ? null : (l.terms.expectedHours ?? null),
+    // a month under two contracts (owner, 17 October 2026)
+    contractsNote: contractsNote(l.terms),
   }));
 }
 

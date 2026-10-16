@@ -1,17 +1,23 @@
-import { formatHours, parseHours, type PayrollInputs } from '@trendlix/shared';
+import { expectedHoursOf, formatHours, parseHours, type PayrollInputs, type PayrollSegment, type PayrollTerms } from '@trendlix/shared';
 
 // The run's inputs grid (owner's decisions, 16 October 2026): the month's figures HR types for each employee, laid out
 // like the owner's payroll sheet, until attendance fills the hours and days itself; without the sheet's Medical column,
 // as there is no medical subscription on the payroll any more (owner's decision, 16 October 2026). Without the sheet's
 // Soft skills %, Performance % and Client satisfaction % columns either (owner, 16 October 2026: "this is going to be
 // from the KPI's module, lets remove it till we work on it"): the KPIs module will fill those inputs, which the pay
-// still counts; a line's step-by-step pay shows any it has, and the grid never sends them, so none saved is lost. The
-// Attendance % is worked out as the pay counts it: the worked hours over the expected hours less the no-show days'
-// hours, a day of the shift each (owner's decisions, 16 October 2026). An Expected hours cell left empty counts the
-// hours the run worked out from the shift less the holidays, shown greyed in it (owner's request, 16 October 2026,
-// Payroll Setup): what HR types replaces them, and clearing it brings them back. Pure code, tested: the columns, how
-// each cell is read and shown, which rows changed (only those are sent, in one PATCH /payroll/runs/:id/lines), and the
-// API's refusals put by the cell they are about.
+// still counts; a line's step-by-step pay shows any it has, and the grid never sends them, so none saved is lost.
+// The expected hours are filled in (owner, 17 October 2026: "prefill the expected hours, and dont count abcent days or
+// leave days, as they already have their own deduction and fields"): the hours the run worked out from the shift less
+// the holidays (owner's request, 16 October 2026, Payroll Setup), less a day of the shift for each no-show and leave
+// day typed in the row, as the pay counts them (expectedHoursOf); they follow those days as they are typed. What HR
+// types instead is taken as the expected hours already without the no-show and leave days, nothing more taken out, and
+// clearing it brings the shift's back; the figure filled in is only shown, never sent. The Attendance % is the worked
+// hours over those expected hours, as the pay counts it. Leave days (approved paid leave) are typed by HR until the
+// Leave module fills the same input: nothing is cut for them. A month under two contracts (owner, 17 October 2026: "take
+// into consideration the start and end date of the contract if it is in the middle of the billing period") says so by
+// the employee's name (contractsNote). Pure code, tested: the columns, how each cell is read and shown, which rows
+// changed (only those are sent, in one PATCH /payroll/runs/:id/lines), and the API's refusals put by the cell they are
+// about.
 
 export type InputField = keyof PayrollInputs;
 
@@ -33,6 +39,7 @@ export const GRID_COLUMNS: readonly GridColumn[] = [
   { field: 'workedHours', label: 'Worked hours', kind: 'hours' },
   { field: 'expectedHours', label: 'Expected hours', kind: 'hours' },
   { field: 'noShowDays', label: 'No-show days', kind: 'days' },
+  { field: 'leaveDays', label: 'Leave days', kind: 'days' },
   { field: 'penaltyDays', label: 'Penalty days', kind: 'days' },
   { field: 'bonusDays', label: 'Bonus days', kind: 'days' },
   { field: 'commission', label: 'Commission', kind: 'amount' },
@@ -96,28 +103,78 @@ export function tidyCell(kind: FieldKind, text: string): string {
 }
 
 /**
- * The attendance a row's hours give, in percent: worked ÷ (expected less the no-show days' hours); null when either is
- * missing, or nothing is expected once the no-show days' hours are out.
+ * The attendance a row's hours give, in percent: worked ÷ expected, the expected hours already without the no-show and
+ * leave days (expectedCell); null when either is missing, or nothing is expected.
  */
-export function attendancePercent(worked: number | null, expected: number | null, absentHours = 0): number | null {
+export function attendancePercent(worked: number | null, expected: number | null): number | null {
   if (worked === null || expected === null || expected <= 0) return null;
-  const counted = expected - absentHours;
-  return counted > 0 ? Math.round((worked / counted) * 10_000) / 100 : null;
+  return Math.round((worked / expected) * 10_000) / 100;
 }
 
 /**
- * What an empty Expected hours cell shows: the hours a run worked out from the employee's shift less the holidays,
- * which count until HR types others (owner's request, 16 October 2026), else the hours' usual hint.
+ * The expected hours a row counts, as its Expected hours cell shows them (owner, 17 October 2026: "prefill the expected
+ * hours, and dont count abcent days or leave days, as they already have their own deduction and fields"): HR's figure
+ * when typed (or saved), taken as it is; else the shift's hours for the month less a day of the shift for each no-show
+ * and leave day in the row (`fromShift`), as payrollLine counts them (expectedHoursOf); null when neither (no shift, or
+ * by the hour, with nothing typed).
  */
-export function expectedPlaceholder(shiftExpected: number | null): string {
-  return shiftExpected === null ? '0:00' : formatHours(shiftExpected);
+export function expectedCell(
+  row: { shiftExpectedHours: number | null; hoursPerDay: number | null },
+  cells: Pick<PayrollInputs, 'expectedHours' | 'noShowDays' | 'leaveDays'>,
+): { hours: number | null; fromShift: boolean } {
+  if (cells.expectedHours !== null) return { hours: cells.expectedHours, fromShift: false };
+  const hours = expectedHoursOf({ expectedHours: row.shiftExpectedHours, hoursPerDay: row.hoursPerDay }, cells);
+  return { hours, fromShift: hours !== null };
 }
-
-/** The expected hours a row counts: as typed (or saved) in its cell, else the shift's; null when neither. */
-export const countedExpected = (cell: number | null, shiftExpected: number | null) => cell ?? shiftExpected;
 
 /** What a no-show day costs, under the column: "2 days' pay each". */
 export const noShowPay = (multiplier: number) => `${multiplier} ${multiplier === 1 ? "day's" : "days'"} pay each`;
+
+/**
+ * What a column's heading says under it: what a no-show day costs and that a leave day is paid, each with its hours out
+ * of the expected hours (owner, 16 and 17 October 2026); null for the others.
+ */
+export function columnNote(field: InputField, noShowDayMultiplier: number): string | null {
+  if (field === 'noShowDays') return `${noShowPay(noShowDayMultiplier)}, out of the expected hours`;
+  if (field === 'leaveDays') return 'Paid, out of the expected hours';
+  return null;
+}
+
+// ---------- the month's contracts ----------
+
+const MONTH_ONLY = new Intl.DateTimeFormat('en-GB', { month: 'long', timeZone: 'UTC' });
+
+/** A date's day and month name: "2026-10-14" → "14 October". */
+const dayOf = (date: string) =>
+  `${Number(date.slice(8, 10))} ${MONTH_ONLY.format(new Date(Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, 1)))}`;
+
+/**
+ * The days of a part of the month (YYYY-MM-DD), as the grid and a line's breakdown name them: "1–14 October", a single
+ * day "31 October" (two months, which a payroll month never has: "28 September–3 October").
+ */
+export function dayRange(from: string, to: string): string {
+  if (from === to) return dayOf(from);
+  return from.slice(0, 7) === to.slice(0, 7) ? `${Number(from.slice(8, 10))}–${dayOf(to)}` : `${dayOf(from)}–${dayOf(to)}`;
+}
+
+/** A contract as a line names it: its number and version, "CON-2026-0012 v2". */
+export const contractLabel = (s: Pick<PayrollSegment, 'number' | 'version'>) => `${s.number} v${s.version}`;
+
+/**
+ * What the employee's cell says of a month under two contracts or more (owner, 17 October 2026: "take into consideration
+ * the start and end date of the contract if it is in the middle of the billing period"): each one's days, "2 contracts
+ * this month: CON-2025-0003 v1, 1–14 October · CON-2026-0012 v2, 15–31 October"; with one paid by the hour, that the
+ * latest alone is paid, as payrollLine pays it. Null for a month on one contract, and for lines made before.
+ */
+export function contractsNote(terms: Pick<PayrollTerms, 'segments'>): string | null {
+  const all = terms.segments ?? [];
+  if (all.length < 2) return null;
+  const count = `${all.length} contracts this month`;
+  const hourly = all.filter((s) => s.payBasis === 'hourly').length;
+  if (hourly === 0) return `${count}: ${all.map((s) => `${contractLabel(s)}, ${dayRange(s.from, s.to)}`).join(' · ')}`;
+  const which = hourly === 1 ? 'one' : hourly < all.length ? String(hourly) : all.length === 2 ? 'both' : 'all';
+  return `${count}, ${which} by the hour: paid on the latest, ${contractLabel(all[all.length - 1])}`;
+}
 
 // ---------- what changed ----------
 
@@ -171,7 +228,8 @@ function rowChanges(line: GridLine, edits: RowEdits | undefined): { patch: LineP
     if (!parsed.ok) {
       errors.push({ lineId: line.id, field, message: parsed.error });
       count++;
-    } else if (parsed.value !== line.inputs[field]) {
+      // a line saved before a field existed (the leave days, 17 October 2026) has it as not given
+    } else if (parsed.value !== (line.inputs[field] ?? null)) {
       inputs[field] = parsed.value;
       count++;
     }

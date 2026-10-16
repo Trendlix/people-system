@@ -3,18 +3,23 @@ import { requestRaise } from '../../../raise-requests/actions';
 import { loadEmployeeRaiseRequests, type EmployeeRaiseRequestsLoad } from '../../../raise-requests/data';
 import { askedAt, handlesRaiseRequests, showsRaiseRequests } from '../../../raise-requests/list';
 import { RequestRaiseForm } from '../../../raise-requests/request-forms';
-import { HrRequestActions, PreparedRaise, Progress, RaiseRequestStatusBadge, Requester, SuggestedGross } from '../../../raise-requests/ui';
+import { HrRequestActions, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestLog, RequestReason, Requester, Suggestion } from '../../../raise-requests/ui';
 import { ProfileSection } from '../../ui';
 
 // Raise Requests, on the Employment tab's Salary sub-tab after the Salary History (owner, 16 October 2026: "a place to
-// request raise by employee, or his manager or the HR, with a reason and to be going through an approval cycle"). The
-// employee asks for themself on their own profile, their direct manager on a direct report's, and HR on anyone's: a
-// reason, and from the employee or HR a suggested gross; one open per person. HR declines a request with a reason, or prepares the raise from
-// it, which goes to the CEO; the CEO's decision on that raise is the request's. The manager is told, not asked: they see
-// their reports' requests and every decision, never a figure. The employee sees their own requests' status and
-// decisions and, once done, their new salary; HR, Finance and the CEO see everything. The API sends each only what they
-// may see, and refuses anyone else (then this shows nothing). To the employee and their manager it is all the Salary
-// sub-tab shows, so the tab reads the requests first, to know whether to offer the sub-tab, and passes them on.
+// request raise by employee, or his manager or the HR, with a reason and to be going through an approval cycle";
+// reworked 17 October 2026: "a drop list reason first ... then add requester comment, suggest raise amount or
+// percentage, then the approver to Approve - Approve with another raise amount or percentge - Reject, and add a comment,
+// all the request steps to be logged in the request"). The employee asks for themself on their own profile, their
+// direct manager on a direct report's, and HR on anyone's: a reason from the list, a comment, and a raise suggested as
+// an amount or a percent (a manager a percent only); one open per person. HR approves it as suggested or with another
+// raise, which prepares the raise and sends it to the CEO, or rejects it, with a comment; the CEO's decision on that
+// raise is the request's. Each request shows its log, every step with who and when. The manager is told, not asked:
+// they see their reports' requests and every decision, never a figure. The employee sees their own requests' steps,
+// decisions and comments and, once done, their new salary; HR, Finance and the CEO see everything. The API sends each
+// only what they may see, and refuses anyone else (then this shows nothing). To the employee and their manager it is
+// all the Salary sub-tab shows, so the tab reads the requests first, to know whether to offer the sub-tab, and passes
+// them on.
 
 type Profile = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'isSelf' | 'employment'>;
 
@@ -61,7 +66,7 @@ export async function RaiseRequestsSection({
     );
   }
 
-  const { requests, canRequest, cannotRequestBecause, suggestsAmount } = load.value;
+  const { requests, canRequest, cannotRequestBecause, suggestsAmount, suggestionKinds, currentGross } = load.value;
   const forSelf = Boolean(p.isSelf);
   // those who may ask are told why they can't now (e.g. one is open); the CEO and Finance only follow them
   const asks = forSelf || handlesRaiseRequests(user) || isManagerOf(user, p);
@@ -70,7 +75,7 @@ export async function RaiseRequestsSection({
   return (
     <Title
       note={
-        requests.length > 0 ? `Newest first${hidden ? ' · amounts are private: you see the reasons, the status and each decision' : ''}` : undefined
+        requests.length > 0 ? `Newest first${hidden ? ' · amounts are private: you see the reasons, the comments and each decision' : ''}` : undefined
       }
     >
       {canRequest ? (
@@ -79,6 +84,8 @@ export async function RaiseRequestsSection({
           suggestsAmount={suggestsAmount}
           forSelf={forSelf}
           name={p.fullNameEn}
+          suggestionKinds={suggestionKinds}
+          currentGross={currentGross ?? null}
         />
       ) : (
         asks && cannotRequestBecause && <p className="text-sm text-muted">{cannotRequestBecause}</p>
@@ -99,13 +106,13 @@ export async function RaiseRequestsSection({
                 <Item label="Asked by">
                   <Requester request={r} />
                 </Item>
-                {r.suggestedGross !== null && (
-                  <Item label="Suggested gross a month">
-                    <SuggestedGross request={r} />
+                {(r.suggestion || r.suggestedGross !== null) && (
+                  <Item label="Suggested raise a month">
+                    <Suggestion request={r} />
                   </Item>
                 )}
-                <Item label="Why" wide>
-                  <span className="whitespace-pre-line">{r.reason}</span>
+                <Item label={r.raiseReason ? 'Reason and comment' : 'Comment'} wide>
+                  <RequestReason request={r} />
                 </Item>
                 {r.raise && (
                   <Item label="The raise">
@@ -115,6 +122,13 @@ export async function RaiseRequestsSection({
                 <Item label="Where it stands">
                   <Progress request={r} />
                 </Item>
+                {(r.steps?.length ?? 0) > 0 && (
+                  <Item label="Every step" wide>
+                    <div className="mt-2">
+                      <RequestLog request={r} />
+                    </div>
+                  </Item>
+                )}
               </dl>
               <HrRequestActions request={r} user={user} />
             </li>

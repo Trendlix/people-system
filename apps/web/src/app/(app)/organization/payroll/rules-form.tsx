@@ -18,7 +18,7 @@ import { plainAmount } from '../../employees/[id]/contracts/salary';
 type RuleKey = 'dayDivisor' | 'attendanceGracePercent' | 'kpiGracePercent' | 'overtimeAbovePercent' | 'overtimeRate' | 'noShowDayMultiplier';
 
 const RULE_FIELDS: { key: RuleKey; label: string; hint: string; whole?: boolean }[] = [
-  { key: 'dayDivisor', label: 'Days in a month', hint: 'For day rates and part months: someone who joined or left in the month is paid for their days of these.', whole: true },
+  { key: 'dayDivisor', label: 'Days in a month', hint: 'For day rates and part months: someone who joined or left in the month, or was under contract for part of it, is paid for their days of these.', whole: true },
   { key: 'attendanceGracePercent', label: 'Attendance grace (%)', hint: 'Attendance at or above this counts in full; below it, the fixed part of the gross follows it.' },
   { key: 'kpiGracePercent', label: 'KPI grace (%)', hint: "A KPI average at or above this counts in full; below it, the variable part of the gross follows it. With no KPI given, it isn't cut." },
   { key: 'noShowDayMultiplier', label: 'No-show day costs (days)', hint: "A day absent without notice costs this many days' pay; its hours aren't counted again in attendance." },

@@ -181,13 +181,13 @@ describe('due for review', () => {
     expect(reviewRuleText(1)).toBe('Due after 1 month without a raise');
   });
 
-  it('HR prepares or asks for the raise, or carries on with what is open; Finance and the CEO only read', () => {
+  it('HR prepares or asks for the raise, decides a request with HR, or carries on with what is open; Finance and the CEO only read', () => {
     expect(reviewActions(as('hr'), DUE)).toEqual([
       { key: 'prepare', label: 'Prepare a raise', href: '/employees/e-4/contracts/raise' },
       { key: 'request', label: 'Request a raise', href: employeeRaiseRequestsHref('e-4') },
     ]);
     expect(reviewActions(as('hr'), { ...DUE, openRequest: { id: 'r-1', status: 'with_hr' } })).toEqual([
-      { key: 'prepare', label: 'Prepare the raise', href: '/employees/e-4/contracts/raise?request=r-1' },
+      { key: 'decide', label: 'Decide on the request', href: employeeRaiseRequestsHref('e-4') },
     ]);
     expect(reviewActions(as('hr'), { ...DUE, openRequest: { id: 'r-1', status: 'with_ceo' } })).toEqual([
       { key: 'request', label: 'See the request', href: employeeRaiseRequestsHref('e-4') },

@@ -7,13 +7,15 @@ import { employeeRaiseRequestsHref } from '../employees/ui';
 import { Empty, Loading } from '../organization/ui';
 import { loadRaiseRequests } from './data';
 import { askedAt, canSeeRaiseRequests, raiseRequestsHref, readStatus, requestsLabel, STATUS_FILTERS, type StatusFilter } from './list';
-import { HrRequestActions, PreparedRaise, Progress, RaiseRequestStatusBadge, Requester, SuggestedGross } from './ui';
+import { FoldedRequestLog, HrRequestActions, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, Requester, Suggestion } from './ui';
 
 // Raise Requests (owner's decisions, 16 October 2026: "a place to request raise by employee, or his manager or the HR,
-// with a reason and to be going through an approval cycle"): every request, newest first, filtered by status by a GET
-// form so the address can be shared. HR declines a request with HR (with a reason) or prepares the raise from it, which
-// goes to the CEO on Approvals; the CEO's decision on that raise is the request's. HR and the CEO see the page, and
-// Finance may view it; the API checks every request again and sends the amounts only to them.
+// with a reason and to be going through an approval cycle"; reworked 17 October 2026): every request, newest first,
+// filtered by status by a GET form so the address can be shared, each with the reason from the list, the comment, the
+// raise suggested and its log of every step. HR decides a request with HR, with a comment: approves it as suggested or
+// with another raise (the raise is prepared and goes to the CEO on Approvals) or rejects it; the CEO's decision on that
+// raise is the request's. HR and the CEO see the page, and Finance may view it; the API checks every request again and
+// sends the amounts only to them.
 
 const quiet = 'border-t border-line px-4 py-10 text-center text-sm text-muted';
 
@@ -82,7 +84,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                   <th scope="col">Asked By</th>
                   <th scope="col">Reason</th>
                   <th scope="col" className="text-right">
-                    Suggested Gross
+                    Suggested Raise
                   </th>
                   <th scope="col">Prepared Raise</th>
                   <th scope="col">Status</th>
@@ -108,9 +110,11 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                     <td className="min-w-40 align-top">
                       <Requester request={r} />
                     </td>
-                    <td className="max-w-80 min-w-56 align-top whitespace-pre-line">{r.reason}</td>
+                    <td className="max-w-80 min-w-56 align-top">
+                      <RequestReason request={r} />
+                    </td>
                     <td className="text-right align-top whitespace-nowrap">
-                      <SuggestedGross request={r} />
+                      <Suggestion request={r} />
                     </td>
                     <td className="min-w-56 align-top">
                       <PreparedRaise request={r} />
@@ -118,8 +122,9 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                     <td className="align-top">
                       <RaiseRequestStatusBadge status={r.status} />
                     </td>
-                    <td className="min-w-56 align-top">
+                    <td className="min-w-64 align-top">
                       <Progress request={r} />
+                      <FoldedRequestLog request={r} />
                       {ceo && r.status === 'with_ceo' && (
                         <Link href="/approvals" className="mt-1 block text-sm font-semibold">
                           Decide in Approvals<span className="sr-only"> on the raise for {r.employee.fullNameEn}</span>
@@ -148,8 +153,9 @@ export default function RaiseRequestsPage({ searchParams }: PageProps<'/raise-re
     <div className="max-w-7xl">
       <h1 className="text-2xl font-semibold">Raise Requests</h1>
       <p className="mt-1 text-muted">
-        Raises asked for by employees for themselves, by their direct managers or by HR, each with a reason. HR declines a request or prepares the
-        raise from it; the CEO then approves, returns or declines that raise on <Link href="/approvals">Approvals</Link>.
+        Raises asked for by employees for themselves, by their direct managers or by HR, each with a reason, a comment and the raise suggested.
+        HR approves a request, as suggested or with another raise, or rejects it; the CEO then decides the raise on{' '}
+        <Link href="/approvals">Approvals</Link>. Every step is logged on the request.
       </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
