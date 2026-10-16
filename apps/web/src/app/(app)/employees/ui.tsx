@@ -9,6 +9,9 @@ import { BackLink, DAY_NAMES, Empty, Loading } from '../organization/ui';
 
 export { BackLink, DAY_NAMES, Empty, Loading };
 
+// The picture beside the name lives in a file of its own, without server code, for the crop window's preview too.
+export { Avatar, initials, photoHref } from './avatar';
+
 /** Only HR adds employees; the API checks this again on every change. */
 export function canAddEmployees(user: SessionUser): boolean {
   return user.roles.includes('hr');
@@ -68,33 +71,6 @@ export function StandingBadge({ standing }: { standing: Standing }) {
 export function standingOf(profile: Pick<EmployeeProfile, 'employment' | 'employments'>): Standing {
   if (profile.employment) return profile.employment.status as Standing;
   return profile.employments.length > 0 ? 'former' : 'not_employed';
-}
-
-/** "Omar Khaled Mahmoud" → "OM": first letters of the first and last names. */
-export function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '?';
-  const first = words[0].charAt(0);
-  const last = words.length > 1 ? words[words.length - 1].charAt(0) : '';
-  return (first + last).toUpperCase();
-}
-
-/** Where a personal photo is loaded from (app/employee-photo), under the web domain with the session. */
-export const photoHref = (photoId: string) => `/employee-photo/${photoId}`;
-
-/**
- * The person's personal photo from the employee file, for those who see it (HR, CEO), else their initials. The initials
- * stay underneath, so a photo that can't be loaded leaves them showing.
- */
-export function Avatar({ name, photoId, size = 'sm' }: { name: string; photoId?: string | null; size?: 'sm' | 'lg' }) {
-  const box = size === 'lg' ? 'size-20 text-2xl' : 'size-9 text-xs';
-  return (
-    <span aria-hidden="true" className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-soft font-bold text-accent ${box}`}>
-      {initials(name)}
-      {/* eslint-disable-next-line @next/next/no-img-element -- a file of the employee file, behind the session: not for the image optimizer */}
-      {photoId && <img src={photoHref(photoId)} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover" />}
-    </span>
-  );
 }
 
 /** "G4 · Senior": an employee's grade (each employment has its own, within the job title's range if it has one). */

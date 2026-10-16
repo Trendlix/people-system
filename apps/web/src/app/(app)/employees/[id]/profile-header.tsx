@@ -8,6 +8,7 @@ import type { EmployeeProfile, ProfileGap } from '@/lib/types';
 import { confirmationStatus, pendingRequest } from '../confirmation';
 import { Avatar, gradeLabel, photoHref, PROFILE_TABS, profileHref, standingOf, StandingBadge, type ProfileTabKey } from '../ui';
 import { ConfirmedNotice } from './confirm/confirm-notices';
+import { PhotoCropButton } from './photo-crop';
 
 // Above the profile's tabs: who it is, where they stand, their current job, whether the employee confirmed their
 // details, and how complete the profile is.
@@ -150,15 +151,20 @@ export function ProfileHeader({
     <section className="card space-y-5 p-6">
       <div className="flex flex-wrap items-center gap-6">
         {p.photoId ? (
-          // the photo opens larger in a pop-up window (owner's request, 16 October 2026)
-          <DocumentViewer
-            title={`Personal Photo · ${p.fullNameEn}`}
-            files={[{ alt: `Personal photo of ${p.fullNameEn}`, src: photoHref(p.photoId) }]}
-            className="shrink-0 cursor-zoom-in rounded-full outline-none hover:ring-4 hover:ring-accent/20 focus-visible:ring-4 focus-visible:ring-accent/40"
-          >
-            <Avatar name={p.fullNameEn} photoId={p.photoId} size="lg" />
-            <span className="sr-only">View the personal photo</span>
-          </DocumentViewer>
+          <div className="group relative flex shrink-0">
+            {/* the whole photo opens larger in a pop-up window (owner's request, 16 October 2026) */}
+            <DocumentViewer
+              title={`Personal Photo · ${p.fullNameEn}`}
+              files={[{ alt: `Personal photo of ${p.fullNameEn}`, src: photoHref(p.photoId) }]}
+              className="shrink-0 cursor-zoom-in rounded-full outline-none hover:ring-4 hover:ring-accent/20 focus-visible:ring-4 focus-visible:ring-accent/40"
+            >
+              <Avatar name={p.fullNameEn} photoId={p.photoId} crop={p.photoCrop} size="lg" />
+              <span className="sr-only">View the personal photo</span>
+            </DocumentViewer>
+            {/* HR crops the picture beside the name to make the face bigger, the photo itself unchanged (owner's request,
+                16 October 2026); the API checks the role again */}
+            {p.access.edit && <PhotoCropButton photoId={p.photoId} crop={p.photoCrop ?? null} name={p.fullNameEn} />}
+          </div>
         ) : (
           <Avatar name={p.fullNameEn} size="lg" />
         )}

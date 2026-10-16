@@ -25,6 +25,7 @@ import type {
   PayrollTerms,
   PdfField,
   PdfPageSize,
+  PhotoCrop,
   Role,
   Standing,
   TemplateFolder,
@@ -283,6 +284,8 @@ export interface EmployeeSummary {
   workEmail: string | null;
   /** The picture beside the name: the personal photo's paper (/employee-photo/<id>); null for those who don't see the employee file, or without one. */
   photoId?: string | null;
+  /** The square of that photo shown in the circle, as HR cropped it (fractions of the photo); null: the whole photo, centred. */
+  photoCrop?: PhotoCrop | null;
   /** The current employment's status, else Former employee (an employment ended) or Not employed yet. */
   standing: Standing;
   /** The current employment; null for a former employee or someone not employed yet. */
@@ -323,6 +326,8 @@ export interface EmployeeProfile {
   employeeCode: string;
   /** The picture beside the name: the personal photo's paper (/employee-photo/<id>); null for those who don't see the employee file, or without one. */
   photoId?: string | null;
+  /** The square of that photo shown in the circle, as HR cropped it (fractions of the photo); null: the whole photo, centred. */
+  photoCrop?: PhotoCrop | null;
   /** الرقم التأميني: the social insurance number, digits only. */
   insuranceNo: string | null;
   /**

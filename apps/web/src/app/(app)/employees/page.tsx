@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { END_REASON_LABELS, STANDING_LABELS, STANDINGS, type Standing } from '@trendlix/shared';
 import { DepartmentOptions } from '@/components/department-options';
+import { Select } from '@/components/select';
 import { apiGet } from '@/lib/api';
 import { departmentName, withTeams } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
@@ -149,23 +150,23 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
           <label htmlFor="employee-department" className="label">
             Department
           </label>
-          <select id="employee-department" name="departmentId" defaultValue={f.departmentId} className="input min-w-56">
+          <Select id="employee-department" name="departmentId" defaultValue={f.departmentId} className="input min-w-56">
             <option value="">All departments</option>
             <DepartmentOptions departments={departments} />
-          </select>
+          </Select>
         </div>
         <div>
           <label htmlFor="employee-grade" className="label">
             Grade
           </label>
-          <select id="employee-grade" name="gradeId" defaultValue={f.gradeId} className="input min-w-44">
+          <Select id="employee-grade" name="gradeId" defaultValue={f.gradeId} className="input min-w-44">
             <option value="">All grades</option>
             {grades.map((g) => (
               <option key={g.id} value={g.id}>
                 {gradeLabel(g)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         {f.standing && <input type="hidden" name="standing" value={f.standing} />}
         <button type="submit" className="btn btn-secondary">
@@ -214,7 +215,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                 <tr key={e.id}>
                   <td>
                     <div className="flex items-center gap-3">
-                      <Avatar name={e.fullNameEn} photoId={e.photoId} />
+                      <Avatar name={e.fullNameEn} photoId={e.photoId} crop={e.photoCrop} />
                       <div className="min-w-0">
                         <Link href={`/employees/${e.id}`} className="font-semibold">
                           {e.fullNameEn}
@@ -242,15 +243,23 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   );
 }
 
-/** HR and the CEO search the scanned paperwork; HR and Admin see what the card reader learned; only HR adds employees. */
+/**
+ * HR and the CEO search the scanned paperwork and see what the profiles still lack (the Missing Details report); HR and
+ * Admin see what the card reader learned; only HR adds employees.
+ */
 async function HeaderActions() {
   const user = await getCurrentUser();
   return (
     <div className="flex flex-wrap gap-3">
       {canSeeEmployeeFiles(user) && (
-        <Link href="/employees/documents" className="btn btn-secondary">
-          Search documents
-        </Link>
+        <>
+          <Link href="/employees/documents" className="btn btn-secondary">
+            Search documents
+          </Link>
+          <Link href="/employees/missing" className="btn btn-secondary">
+            Missing details
+          </Link>
+        </>
       )}
       {canSeeCardFixes(user) && (
         <Link href="/employees/card-corrections" className="btn btn-secondary">
