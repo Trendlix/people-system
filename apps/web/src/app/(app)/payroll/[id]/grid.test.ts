@@ -36,7 +36,6 @@ describe('the grid’s columns', () => {
       'Bonus days',
       'Commission',
       'Settlements',
-      'Medical',
       'Released',
     ]);
     expect(new Set(GRID_COLUMNS.map((c) => c.field))).toEqual(new Set(Object.keys(EMPTY_PAYROLL_INPUTS)));

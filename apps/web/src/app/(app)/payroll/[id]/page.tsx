@@ -11,6 +11,7 @@ import { approveRun, deleteRun, markRunPaid, refreshRun, returnRun, saveRunLines
 import { loadRun } from '../data';
 import { bankFilesReady, bankLeftOut, fileHref } from '../files';
 import { canSeePayroll, employeesLabel, preparesPayroll, rulesSummary, runActions, runTitle } from '../list';
+import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslips';
 import { PayrollStatusBadge, PayrollStepper } from '../ui';
 import { CibFileForm } from './downloads';
 import { InputsGrid, type GridRow } from './inputs-grid';
@@ -21,7 +22,9 @@ import { MarkPaid, ReturnRun } from './run-actions';
 // Paid), its totals, what each role can do next (HR: refresh, send to the CEO, mark as paid; the CEO: approve, or return
 // with a reason; a Super Admin: delete a draft), the month's figures HR types (the inputs grid), the pay each employee
 // gets with every step of it, who is left out and why, and the files: the payroll register any time, the CIB and ACH
-// bank files once approved. Salary data: HR, Finance and the CEO only; the API checks every request again.
+// bank files once approved, and once it is paid the payslips: each employee's English one, and all of them as a ZIP
+// (the Arabic one is made from the employee file). Salary data: HR, Finance and the CEO only; the API checks every
+// request again.
 
 const LINK = 'font-medium text-accent hover:underline';
 
@@ -98,6 +101,12 @@ function Actions({ run, user, title }: { run: PayrollRunView; user: SessionUser;
       <a href={fileHref(run.id, 'register')} className="btn btn-secondary min-h-9 px-3">
         Download register
       </a>
+      {/* issued when HR marks the run paid (owner's decision, 16 October 2026) */}
+      {payslipsIssued(run.status) && (
+        <a href={payslipsZipHref(run.id)} className="btn btn-secondary min-h-9 px-3">
+          Download payslips (ZIP)
+        </a>
+      )}
       {can.delete && (
         <ActionButton
           action={deleteRun.bind(null, run.id)}
@@ -247,6 +256,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
   const title = runTitle(run.month);
   const can = runActions(user, run.status);
   const locked = lockedNote(run, user);
+  const paid = payslipsIssued(run.status);
 
   return (
     <div className="space-y-8">
@@ -285,8 +295,16 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
 
       {run.lines.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Pay</h2>
-          <ResultsTable lines={run.lines} totals={run.totals} rules={run.rules} />
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <h2 className="text-lg font-semibold">Pay</h2>
+            {paid && (
+              <span className="text-sm text-muted">
+                {run.payslips !== undefined && `${payslipsIssuedLabel(run.payslips)}, in English. `}
+                Each opens as a protected PDF; the Arabic one is made from the employee’s Contracts tab.
+              </span>
+            )}
+          </div>
+          <ResultsTable lines={run.lines} totals={run.totals} rules={run.rules} payslips={paid} />
         </section>
       )}
 

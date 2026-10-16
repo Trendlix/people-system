@@ -82,7 +82,8 @@ export function MarkPaid({ action, today, title }: { action: Action; today: stri
         <DateInput id={fid('paidOn')} name="paidOn" required aria-describedby={fid('paidOn-hint')} defaultValue={valueOf(state, 'paidOn', formatDate(today))} />
       </div>
       <p id={fid('paidOn-hint')} className="hint">
-        The day the bank paid the salaries. The run stays as it is; this records that it was paid.
+        The day the bank paid the salaries. The run stays as it is; this records that it was paid, and issues each employee’s
+        payslip in English.
       </p>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending} pendingText="Saving…">

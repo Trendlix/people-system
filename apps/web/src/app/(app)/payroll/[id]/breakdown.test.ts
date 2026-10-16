@@ -40,11 +40,10 @@ const result: PayrollResult = {
   monthlyTax: 500,
   martyrsFund: 4.62,
   penaltyCut: 0,
-  medical: 250,
-  deductions: 1854.62,
-  net: 7378.71,
+  deductions: 1604.62,
+  net: 7628.71,
   released: 1000,
-  transfer: 6378.71,
+  transfer: 6628.71,
   companyCost: 11_108.33,
   warnings: [],
 };
@@ -75,7 +74,6 @@ describe('a line’s breakdown', () => {
       'Income tax',
       'Martyrs’ fund',
       'Penalties',
-      'Medical',
       'Deductions',
       'Net',
       'Released',
@@ -89,7 +87,7 @@ describe('a line’s breakdown', () => {
     expect(row('attendanceCut')?.value).toBe('−EGP 1,200.00');
     expect(row('settlements')).toMatchObject({ value: '−EGP 100.00', kind: 'cut' });
     expect(row('overtime')?.value).toBe('EGP 0.00');
-    expect(row('net')).toMatchObject({ value: 'EGP 7,378.71', kind: 'total' });
+    expect(row('net')).toMatchObject({ value: 'EGP 7,628.71', kind: 'total' });
     expect(row('companyCost')?.note).toBe("Earned, allowances and the company's social insurance (EGP 1,875.00)");
   });
 

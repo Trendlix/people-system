@@ -3,19 +3,23 @@ import { Suspense } from 'react';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { EmployeeProfile } from '@/lib/types';
+import { canSeePayroll } from '../../../payroll/list';
 import { canSeeEmployeeFiles, ProfileSection, profileHref } from '../../ui';
 import { ContractSection, ContractSectionLoading } from '../contracts/contract-section';
 import { endingInProgress } from '../employment-tab';
+import { Payslips, PayslipsLoading } from '../payslips/payslips-section';
 import { GeneratedDocuments, GeneratedDocumentsLoading } from './document-rows';
 
 // The profile's Contracts tab: what the company issues. First the current employment's contract (its signed version,
 // a draft to sign, New contract or Renew, the filing dates, every version), moved here from the Employment tab; then the
 // documents generated from the templates, per contract version and for hiring, letters and leaving. Social insurance
 // (its details and Forms 1 and 6) has its own tab since 16 October 2026 (owner's request); the contract's social
-// insurance copy stays here, with the contract. The papers the employee brings stay on the Documents tab.
+// insurance copy stays here, with the contract. The papers the employee brings stay on the Documents tab. Last, the
+// payslips, one per paid payroll run (owner's decisions, 16 October 2026).
 //
 // Whoever sees the Employment details sees the contract, as before; the generated documents are HR's and the CEO's
-// (HR generates and moves them along, the CEO views and downloads; the API checks this again).
+// (HR generates and moves them along, the CEO views and downloads); the payslips are HR's, Finance's and the CEO's, as
+// the salary. The API checks this again.
 
 export async function ContractsTab({ profile: p }: { profile: EmployeeProfile }) {
   const user = await getCurrentUser();
@@ -49,6 +53,15 @@ export async function ContractsTab({ profile: p }: { profile: EmployeeProfile })
         <Suspense fallback={<GeneratedDocumentsLoading />}>
           <GeneratedDocuments employee={p} can={{ act: p.access.edit, delete: canDelete(user) }} />
         </Suspense>
+      )}
+
+      {canSeePayroll(user) && (
+        // where a link to the employee's payslips points (#payslips); loads on its own too
+        <div id="payslips" className="scroll-mt-6">
+          <Suspense fallback={<PayslipsLoading />}>
+            <Payslips employee={p} />
+          </Suspense>
+        </div>
       )}
     </div>
   );

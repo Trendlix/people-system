@@ -117,7 +117,6 @@ export function breakdown(line: Line, rules: PayrollRules): BreakdownRow[] {
     { key: 'tax', label: 'Income tax', value: cutText(r.monthlyTax), kind: 'cut' },
     { key: 'martyrsFund', label: 'Martyrs’ fund', value: cutText(r.martyrsFund), kind: 'cut' },
     { key: 'penalties', label: 'Penalties', value: cutText(r.penaltyCut), kind: 'cut', note: i.penaltyDays ? `${days(i.penaltyDays)} of the contract's net` : undefined },
-    { key: 'medical', label: 'Medical', value: cutText(r.medical), kind: 'cut' },
     { key: 'deductions', label: 'Deductions', value: cutText(r.deductions), kind: 'total' },
     { key: 'net', label: 'Net', value: formatEgp(r.net), kind: 'total' },
     { key: 'released', label: 'Released', value: cutText(r.released), kind: 'cut', note: r.released ? 'Already paid out this month' : undefined },

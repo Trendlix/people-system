@@ -1,9 +1,10 @@
 import { formatHours, parseHours, type PayrollInputs } from '@trendlix/shared';
 
 // The run's inputs grid (owner's decisions, 16 October 2026): the month's figures HR types for each employee, laid out
-// like the owner's payroll sheet, until attendance fills the hours and days itself. Pure code, tested: the columns, how
-// each cell is read and shown, which rows changed (only those are sent, in one PATCH /payroll/runs/:id/lines), and the
-// API's refusals put by the cell they are about.
+// like the owner's payroll sheet, until attendance fills the hours and days itself; without the sheet's Medical column,
+// as there is no medical subscription on the payroll any more (owner's decision, 16 October 2026). Pure code, tested:
+// the columns, how each cell is read and shown, which rows changed (only those are sent, in one PATCH
+// /payroll/runs/:id/lines), and the API's refusals put by the cell they are about.
 
 export type InputField = keyof PayrollInputs;
 
@@ -32,7 +33,6 @@ export const GRID_COLUMNS: readonly GridColumn[] = [
   { field: 'bonusDays', label: 'Bonus days', kind: 'days' },
   { field: 'commission', label: 'Commission', kind: 'amount' },
   { field: 'settlements', label: 'Settlements', kind: 'amount' },
-  { field: 'medical', label: 'Medical', kind: 'amount' },
   { field: 'released', label: 'Released', kind: 'released' },
 ];
 

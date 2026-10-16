@@ -6,11 +6,14 @@ import type { PayrollRules } from '@trendlix/shared';
 import type { PayrollLineView, PayrollTotals } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { profileHref } from '../../employees/tab-list';
+import { payslipHref } from '../payslips';
 import { breakdown, cutText, type BreakdownRow } from './breakdown';
 
 // The run's results (owner's decisions, 16 October 2026): what each employee earned, what is deducted, the net and what
 // the bank transfers, with the run's totals. Each row opens to every step of the employee's pay and its warnings, as
-// payrollLine worked them out.
+// payrollLine worked them out. Once the run is paid, each employee's English payslip opens from its row (a plain link,
+// never prefetched: the web server fetches the PDF from the API with the session); someone on hold that month was not
+// paid, so has none.
 
 const TONE: Record<BreakdownRow['kind'], string> = {
   add: '',
@@ -69,7 +72,18 @@ function Amounts({ values }: { values: { earned: number; allowances: number; emp
   );
 }
 
-export function ResultsTable({ lines, totals, rules }: { lines: PayrollLineView[]; totals: PayrollTotals; rules: PayrollRules }) {
+export function ResultsTable({
+  lines,
+  totals,
+  rules,
+  payslips,
+}: {
+  lines: PayrollLineView[];
+  totals: PayrollTotals;
+  rules: PayrollRules;
+  /** The run is paid: each line not on hold has its payslip. */
+  payslips: boolean;
+}) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = (id: string) =>
     setOpen((all) => {
@@ -96,6 +110,7 @@ export function ResultsTable({ lines, totals, rules }: { lines: PayrollLineView[
                   {c}
                 </th>
               ))}
+              {payslips && <th scope="col">Payslip</th>}
             </tr>
           </thead>
           <tbody>
@@ -135,10 +150,19 @@ export function ResultsTable({ lines, totals, rules }: { lines: PayrollLineView[
                       </div>
                     </td>
                     <Amounts values={l.result} />
+                    {payslips && (
+                      <td className="whitespace-nowrap">
+                        {!l.onHold && (
+                          <a href={payslipHref(l.id, 'en')} target="_blank" rel="noopener" className="text-sm font-semibold text-accent hover:underline">
+                            Payslip<span className="sr-only"> of {l.name} (English PDF), in a new tab</span>
+                          </a>
+                        )}
+                      </td>
+                    )}
                   </tr>
                   {expanded && (
                     <tr id={panel}>
-                      <td colSpan={COLUMNS.length + 1} className="p-0">
+                      <td colSpan={COLUMNS.length + (payslips ? 2 : 1)} className="p-0">
                         <Breakdown line={l} rules={rules} />
                         <p className="px-4 pb-3 text-xs text-muted">
                           <Link href={profileHref(l.employeeId, 'contracts')}>Open {l.name}&apos;s contract</Link>
@@ -159,6 +183,7 @@ export function ResultsTable({ lines, totals, rules }: { lines: PayrollLineView[
                 </span>
               </td>
               <Amounts values={totals} />
+              {payslips && <td />}
             </tr>
           </tfoot>
         </table>
