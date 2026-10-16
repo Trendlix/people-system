@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEmail,
   IsIn,
   IsInt,
@@ -131,6 +132,13 @@ class EmployeeDetailsDto {
   @Min(0.01, { message: COMPREHENSIVE_WAGE_MESSAGE })
   @Max(999_999.99, { message: COMPREHENSIVE_WAGE_MESSAGE })
   insuranceComprehensiveWage?: number | null;
+
+  /**
+   * Registered with social insurance (owner's decision, 16 October 2026): payroll deducts the employee's share and counts
+   * the company's only while it is on. HR sets it on the Social Insurance tab; it can't be emptied, only turned off.
+   */
+  @Sent() @IsBoolean({ message: 'Send whether the employee is registered with social insurance as true or false.' })
+  socialInsured?: boolean;
 
   /** The short name the person goes by (e.g. Hazem Magdy), as the email signature shows it. */
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(80)

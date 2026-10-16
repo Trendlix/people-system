@@ -1,4 +1,4 @@
-import { annualSalaryTax, grossToNet, hourlyRateFromNet, insuredWageOf, monthlyFromHourly, netToGross, type AllowanceTerms } from '@trendlix/shared';
+import { annualSalaryTax, grossToNet, hourlyRateFromNet, insuredWageOf, monthlyFromHourly, monthlySalaryTax, netToGross, type AllowanceTerms } from '@trendlix/shared';
 
 // The shared salary calculation (packages/shared/src/salary.ts), checked against the Ministry of Finance's salary tax
 // printout (February 2026) and the Tax Authority's own worked figures in its 2025 annual settlement guide.
@@ -31,6 +31,19 @@ describe('salary: gross to net', () => {
 
   it('loses the lower bands above 600,000 a year (Law 7/2024): gross 80,000 gives net 59,832.37', () => {
     expect(grossToNet(80_000, 2026)).toMatchObject({ annualNetIncome: 917_950, annualTax: 219_487.5, monthlyTax: 18_290.63, martyrsFund: 40, net: 59_832.37 });
+  });
+
+  it("works out a month's tax from the pay taxed and the insurance, as the gross to net does", () => {
+    expect(monthlySalaryTax({ taxedPay: 16_700, employeeInsurance: 1_837 })).toEqual({
+      healthInsurance: 0,
+      monthlyTaxable: 14_863,
+      annualNetIncome: 158_350,
+      annualTax: 21_420,
+      monthlyTax: 1_785,
+      martyrsFund: 8.35,
+    });
+    // pay below zero (a month's corrections): no tax, and nothing to the Martyrs' Fund
+    expect(monthlySalaryTax({ taxedPay: -500, employeeInsurance: 1_100 })).toMatchObject({ monthlyTaxable: -1_600, annualNetIncome: 0, monthlyTax: 0, martyrsFund: 0 });
   });
 
   it("reproduces the Tax Authority's own figures", () => {

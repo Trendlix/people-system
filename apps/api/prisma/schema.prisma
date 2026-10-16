@@ -49,6 +49,8 @@ model User {
   offersCreated     JobOffer[]             @relation("OfferCreation") // job offers this user drafted
   offersSent        JobOffer[]             @relation("OfferSending") // job offers this user sent last
   offersAnswered    JobOffer[]             @relation("OfferAnswer") // job offers whose answer this user recorded
+  payrollsCreated   PayrollRun[]           @relation("PayrollCreation") // payroll runs this user started
+  payrollsApproved  PayrollRun[]           @relation("PayrollApproval") // payroll runs this user approved as CEO
 
   @@map("users")
 }
@@ -248,6 +250,10 @@ model Employee {
   insuranceStartDate         DateTime?              @map("insurance_start_date") @db.Date
   insuranceBasicWage         Decimal?               @map("insurance_basic_wage") @db.Decimal(12, 2)
   insuranceComprehensiveWage Decimal?               @map("insurance_comprehensive_wage") @db.Decimal(12, 2)
+  // registered with social insurance (owner's decision, 16 October 2026): payroll deducts the employee's share and
+  // counts the company's only for those registered. HR sets it on the Social Insurance tab; the payroll migration set
+  // it for everyone with a social insurance number
+  socialInsured              Boolean                @default(false) @map("social_insured")
   fullNameEn                 String                 @map("full_name_en")
   fullNameAr                 String                 @map("full_name_ar") // as printed on contracts
   displayName                String?                @map("display_name") // the short name the person goes by (e.g. Hazem Magdy), for the email signature
@@ -288,6 +294,7 @@ model Employee {
   documents                  GeneratedDocument[]
   offers                     JobOffer[]             @relation("OfferPerson") // offers made to this person: as a former employee, or the offer they were hired from
   offersManaging             JobOffer[]             @relation("OfferManager") // offers whose position reports to this person
+  payrollLines               PayrollLine[] // the person's pay, month by month
 
   @@map("employees")
 }
@@ -326,6 +333,7 @@ model Employment {
   contracts        Contract[]
   endings          EmploymentEnding[]
   documents        GeneratedDocument[]
+  payrollLines     PayrollLine[]
 
   @@index([employeeId])
   @@index([departmentId])
@@ -490,6 +498,7 @@ model Contract {
   createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz
   documents           GeneratedDocument[] // its printed copies (the contract slots), generated from templates
+  payrollLines        PayrollLine[] // the months paid on its terms
 
   @@unique([employmentId, version])
   @@index([status, endDate])
@@ -826,4 +835,106 @@ model JobOffer {
   @@index([status])
   @@index([employeeId])
   @@map("job_offers")
+}
+
+// ---------- payroll ----------
+// Monthly payroll, phase 1 (owner's decisions, 16 October 2026): worked out the way the owner's payroll sheet does it,
+// with its formula errors fixed (packages/shared payroll.ts). Built before attendance: HR types the month's hours and
+// days on the run, and attendance will fill the same inputs later. HR prepares a run, the CEO approves it (the CEO
+// only), then it is locked and HR marks it paid; salaries go by bank file (CIB's payroll system for CIB accounts, ACH
+// for every other bank). Amounts are salary data: HR, Finance and the CEO only.
+
+// The rules a run is worked out with and the company's side of the bank files (one row, id 1). Each run copies the
+// rules when it is made and when it is refreshed, so a later change never alters a run already worked out.
+model PayrollSettings {
+  id                     Int      @id @default(1) // always 1
+  dayDivisor             Int      @default(30) @map("day_divisor") // a month counts as this many days (day rates, part months)
+  attendanceGracePercent Decimal  @default(90) @map("attendance_grace_percent") @db.Decimal(5, 2) // attendance from here on counts as full
+  kpiGracePercent        Decimal  @default(80) @map("kpi_grace_percent") @db.Decimal(5, 2) // a KPI average from here on counts as full
+  overtimeAbovePercent   Decimal  @default(110) @map("overtime_above_percent") @db.Decimal(5, 2) // overtime is paid for attendance above this
+  overtimeRate           Decimal  @default(1.5) @map("overtime_rate") @db.Decimal(4, 2)
+  noShowDayMultiplier    Decimal  @default(2) @map("no_show_day_multiplier") @db.Decimal(4, 2) // a no-show day costs this many days' pay
+  cibDebitAccount        String?  @map("cib_debit_account") // the company's CIB account the salaries are paid from: 12 digits
+  cibDebitAccountName    String?  @map("cib_debit_account_name") // its name, as CIB has it
+  achPurpose             String   @default("CASH") @map("ach_purpose") // the ACH file's TransactionPurpose
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("payroll_settings")
+}
+
+// One month's payroll: a run per month. Its lines are worked out again whenever their inputs change while it is a
+// draft; once the CEO approves it nothing changes but its being marked paid.
+model PayrollRun {
+  id             String        @id @default(uuid()) @db.Uuid
+  month          DateTime      @unique @db.Date // the month's first day
+  status         String        @default("draft") // PAYROLL_STATUSES: draft, pending_ceo, approved, paid
+  rules          Json // the PayrollRules it is worked out with: the settings', copied when made and when refreshed
+  exclusions     Json          @default("[]") // the people left out when made or refreshed, and why: [{ employeeId, employeeCode, name, reason }]
+  createdById    String?       @map("created_by") @db.Uuid
+  createdBy      User?         @relation("PayrollCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  submittedAt    DateTime?     @map("submitted_at") @db.Timestamptz // sent to the CEO, last
+  approvedById   String?       @map("approved_by") @db.Uuid
+  approvedBy     User?         @relation("PayrollApproval", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt     DateTime?     @map("approved_at") @db.Timestamptz
+  returnedReason String?       @map("returned_reason") // why the CEO sent it back to HR, until it is sent again
+  paidOn         DateTime?     @map("paid_on") @db.Date
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  lines          PayrollLine[]
+
+  @@map("payroll_runs")
+}
+
+// One employee's pay in a run: what it is worked out from (the contract in force and the profile, as they were when
+// the run was made or last refreshed), the month's inputs HR typed, and the result step by step, with its totals in
+// columns of their own for sums. RESTRICTED (HR, Finance, CEO), like the salary. The bank details are copied when the
+// CEO approves the run, so the bank files pay what was approved: RESTRICTED like EmployeeBank.
+model PayrollLine {
+  id                String         @id @default(uuid()) @db.Uuid
+  runId             String         @map("run_id") @db.Uuid
+  run               PayrollRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  // kept while any run has the person: their pay stays on record
+  employeeId        String         @map("employee_id") @db.Uuid
+  employee          Employee       @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  employmentId      String         @map("employment_id") @db.Uuid
+  employment        Employment     @relation(fields: [employmentId], references: [id], onDelete: Restrict)
+  contractId        String         @map("contract_id") @db.Uuid
+  contract          Contract       @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  // as they were when the run was made or refreshed
+  employeeCode      String         @map("employee_code")
+  nameEn            String         @map("name_en")
+  department        String? // a team as "Department › Team"
+  jobTitle          String?        @map("job_title")
+  employmentType    EmploymentType @map("employment_type")
+  payBasis          String         @map("pay_basis") // PAY_BASES
+  terms             Json // PayrollTerms
+  inputs            Json // PayrollInputs
+  result            Json // PayrollResult
+  // the result's totals, for sums across lines and runs
+  earned            Decimal        @db.Decimal(12, 2)
+  allowances        Decimal        @db.Decimal(12, 2)
+  employeeInsurance Decimal        @map("employee_insurance") @db.Decimal(12, 2)
+  employerInsurance Decimal        @map("employer_insurance") @db.Decimal(12, 2)
+  monthlyTax        Decimal        @map("monthly_tax") @db.Decimal(12, 2)
+  martyrsFund       Decimal        @map("martyrs_fund") @db.Decimal(12, 2)
+  deductions        Decimal        @db.Decimal(12, 2)
+  net               Decimal        @db.Decimal(12, 2)
+  released          Decimal        @db.Decimal(12, 2)
+  transfer          Decimal        @db.Decimal(12, 2)
+  companyCost       Decimal        @map("company_cost") @db.Decimal(12, 2)
+  onHold            Boolean        @default(false) @map("on_hold") // not paid by the bank files this month
+  comments          String?
+  // the bank details as they were when the CEO approved the run
+  bankShort         String?        @map("bank_short") // the EG-ACH list's short code (CIB, QNB …); a bank not on the list as typed
+  accountNo         String?        @map("account_no")
+  iban              String?
+  holderName        String?        @map("holder_name")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([runId, employeeId])
+  @@index([employeeId])
+  @@index([employmentId])
+  @@index([contractId])
+  @@map("payroll_lines")
 }

@@ -1,0 +1,77 @@
+import { Injectable } from '@nestjs/common';
+import type { PayrollRules } from '@trendlix/shared';
+import { AuditService, changes } from '../audit/audit.service.js';
+import type { SessionUser } from '../auth/session-user.js';
+import type { PayrollSettings } from '../generated/prisma/client.js';
+import { PrismaService } from '../prisma/prisma.service.js';
+import type { UpdatePayrollSettingsDto } from './payroll.dto.js';
+
+const ENTITY = 'payroll_settings';
+const ID = 1;
+
+/** The settings as the API sends them: the rules a run copies, and the company's side of the bank files. */
+export interface PayrollSettingsView extends PayrollRules {
+  /** The company's CIB account the salaries are paid from (12 digits), and its name as CIB has it. */
+  cibDebitAccount: string | null;
+  cibDebitAccountName: string | null;
+  /** The ACH file's TransactionPurpose. */
+  achPurpose: string;
+}
+
+/** The rules a run is worked out with, as the settings have them now. */
+export const rulesOf = (s: PayrollSettings): PayrollRules => ({
+  dayDivisor: s.dayDivisor,
+  attendanceGracePercent: s.attendanceGracePercent.toNumber(),
+  kpiGracePercent: s.kpiGracePercent.toNumber(),
+  overtimeAbovePercent: s.overtimeAbovePercent.toNumber(),
+  overtimeRate: s.overtimeRate.toNumber(),
+  noShowDayMultiplier: s.noShowDayMultiplier.toNumber(),
+});
+
+const view = (s: PayrollSettings): PayrollSettingsView => ({
+  ...rulesOf(s),
+  cibDebitAccount: s.cibDebitAccount,
+  cibDebitAccountName: s.cibDebitAccountName,
+  achPurpose: s.achPurpose,
+});
+
+// The payroll settings (owner's decisions, 16 October 2026): the sheet's rules to start with (a month of 30 days,
+// attendance from 90% and a KPI average from 80% count as full, overtime above 110% at 1.5, a no-show day costs 2 days'
+// pay), which each run copies when it is made or refreshed, and the company's CIB account the salaries are paid from.
+// One row, id 1, added by the payroll migration and prisma/seed.ts. HR, Finance, the CEO and Admin read them; HR and
+// Admin change them (Organization → Payroll).
+@Injectable()
+export class PayrollSettingsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
+
+  /** The one row; created with the defaults if it is missing. */
+  row(): Promise<PayrollSettings> {
+    return this.prisma.payrollSettings.upsert({ where: { id: ID }, update: {}, create: { id: ID } });
+  }
+
+  async get(): Promise<PayrollSettingsView> {
+    return view(await this.row());
+  }
+
+  async update(dto: UpdatePayrollSettingsDto, user: SessionUser): Promise<PayrollSettingsView> {
+    const before = await this.row();
+    const data = {
+      dayDivisor: dto.dayDivisor,
+      attendanceGracePercent: dto.attendanceGracePercent,
+      kpiGracePercent: dto.kpiGracePercent,
+      overtimeAbovePercent: dto.overtimeAbovePercent,
+      overtimeRate: dto.overtimeRate,
+      noShowDayMultiplier: dto.noShowDayMultiplier,
+      cibDebitAccount: dto.cibDebitAccount,
+      cibDebitAccountName: dto.cibDebitAccountName,
+      achPurpose: dto.achPurpose,
+    };
+    const after = await this.prisma.payrollSettings.update({ where: { id: ID }, data });
+    const diff = changes(view(before) as unknown as Record<string, unknown>, data);
+    if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, diff });
+    return view(after);
+  }
+}

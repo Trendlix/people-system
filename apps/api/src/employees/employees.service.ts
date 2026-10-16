@@ -4,7 +4,6 @@ import {
   accountLengthText,
   bankNamed,
   insurableWageLimits,
-  insuredWageFrom,
   PAPERWORK_LABELS,
   paperworkType,
   requiredPaperwork,
@@ -35,6 +34,7 @@ import {
 } from './access.js';
 import { birthDateFromNationalId, maskTail } from './checks.js';
 import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
+import { insuredWageOfEmployee } from './insured-wage.js';
 import { withOccupation } from './occupation-view.js';
 
 const ENTITY = 'employee';
@@ -411,7 +411,8 @@ export class EmployeesService {
    * 2026), and whether the signed-in user is this employee (`isSelf`: only they confirm or ask for a change). The social
    * insurance occupation comes with its name (owner's decision, 16 October 2026: the employee's, on the Social Insurance
    * tab); the social insurance wages and the default basic wage only for those who see salaries, with the insured wage
-   * Form 1 prints as it is worked out from the comprehensive wage, and this year's insurable limits.
+   * Form 1 prints as it is worked out from the comprehensive wage, and this year's insurable limits. `socialInsured`
+   * (registered with social insurance, which payroll deducts insurance for) is one of the profile's own columns.
    */
   async get(id: string, user: SessionUser) {
     const identity = seesIdentity(user);
@@ -455,9 +456,9 @@ export class EmployeesService {
     const { insuranceBasicWage, insuranceComprehensiveWage, ...open } = withOccupation(fields(own));
     // the insured wage Form 1 prints (owner's decision, 16 October 2026): the comprehensive wage, the employee's own
     // else the gross and allowances of the contract the Social Insurance tab is about (the current employment's, else
-    // the latest's), within this year's insurable limits in Cairo; worked out here as documents/values.ts prints it
+    // the latest's), within this year's insurable limits in Cairo; worked out here as documents/values.ts prints it,
+    // and as payroll deducts insurance on it for a run's year (insured-wage.ts)
     const year = Number(todayInCairo().slice(0, 4));
-    const comprehensive = salary ? (insuranceComprehensiveWage ?? (current ?? history[0])?.contract?.totalSalary ?? null) : null;
     return {
       ...open,
       // the social insurance wages, with the default basic wage printed for an employee who has none: salary data, for
@@ -466,7 +467,7 @@ export class EmployeesService {
         insuranceBasicWage,
         insuranceComprehensiveWage,
         insuranceBasicDefault: settings?.insuranceBasicDefault.toNumber() ?? INSURANCE_BASIC_DEFAULT,
-        insuredWage: comprehensive === null ? null : insuredWageFrom(comprehensive, year),
+        insuredWage: insuredWageOfEmployee(insuranceComprehensiveWage, (current ?? history[0])?.contract?.totalSalary ?? null, year),
         insurableLimits: insurableWageLimits(year),
       }),
       employment: current,

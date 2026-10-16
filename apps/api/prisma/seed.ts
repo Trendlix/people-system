@@ -58,6 +58,9 @@ async function main() {
   for (const [i, key] of ENDING_RULES.entries()) {
     await prisma.endingRule.upsert({ where: { key }, update: {}, create: { key, ...ENDING_RULE_DEFAULTS[key], sortOrder: i + 1 } });
   }
+  // the payroll rules, the sheet's to start with (owner's decisions, 16 October 2026); the payroll migration adds the
+  // same row to existing databases
+  await prisma.payrollSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
 
   for (const s of SHIFTS) {
     await prisma.shift.upsert({

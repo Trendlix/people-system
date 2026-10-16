@@ -98,6 +98,42 @@ export interface SalaryBreakdown {
   companyCost: number;
 }
 
+/** A month's salary tax and Martyrs' Fund, step by step: see monthlySalaryTax. */
+export interface MonthlySalaryTax {
+  /** Comprehensive health insurance, the employee's share: deducted before the tax (0 while it doesn't apply in Cairo). */
+  healthInsurance: number;
+  /** The pay taxed, less what is deducted before the tax. */
+  monthlyTaxable: number;
+  /** × 12, less the personal exemption, rounded down to ten pounds. */
+  annualNetIncome: number;
+  annualTax: number;
+  monthlyTax: number;
+  martyrsFund: number;
+}
+
+/**
+ * The salary tax and the Martyrs' Fund on a month's taxed pay (the salary and the taxable allowances), after the
+ * employee's social insurance: the month as if paid all year (× 12), less the personal exemption, rounded down to ten
+ * pounds, taxed in Law 7/2024's tiers and ÷ 12. Used for a contract's salary (grossToNet) and for a month's actual pay
+ * (payroll.ts). Nothing is paid to the Fund on pay below zero.
+ */
+export function monthlySalaryTax({ taxedPay, employeeInsurance }: { taxedPay: number; employeeInsurance: number }): MonthlySalaryTax {
+  const r = SALARY_RULES;
+  const healthInsurance = piasters(Math.max(0, taxedPay) * r.healthInsuranceRate);
+  const monthlyTaxable = piasters(taxedPay - employeeInsurance - healthInsurance);
+  const yearly = monthlyTaxable * 12 - r.personalExemption;
+  const annualNetIncome = yearly > 0 ? Math.floor(yearly / r.roundIncomeDownTo) * r.roundIncomeDownTo : 0;
+  const annualTax = annualSalaryTax(annualNetIncome);
+  return {
+    healthInsurance,
+    monthlyTaxable,
+    annualNetIncome,
+    annualTax,
+    monthlyTax: piasters(annualTax / 12),
+    martyrsFund: piasters(Math.max(0, taxedPay) * r.martyrsRate),
+  };
+}
+
 /** The total of some allowances, to the piaster. */
 const total = (allowances: readonly AllowanceTerms[], which: (a: AllowanceTerms) => boolean = () => true) =>
   piasters(allowances.reduce((sum, a) => sum + (which(a) ? Math.max(0, a.amount) : 0), 0));
@@ -114,13 +150,7 @@ export function grossToNet(gross: number, year = new Date().getFullYear(), allow
   const insuredWage = g > 0 ? insuredWageOf(g, allowances, year) : 0;
   const employeeInsurance = piasters(insuredWage * r.employeeInsuranceRate);
   const taxedPay = piasters(g + taxableAllowances);
-  const healthInsurance = piasters(taxedPay * r.healthInsuranceRate);
-  const monthlyTaxable = piasters(taxedPay - employeeInsurance - healthInsurance);
-  const yearly = monthlyTaxable * 12 - r.personalExemption;
-  const annualNetIncome = yearly > 0 ? Math.floor(yearly / r.roundIncomeDownTo) * r.roundIncomeDownTo : 0;
-  const annualTax = annualSalaryTax(annualNetIncome);
-  const monthlyTax = piasters(annualTax / 12);
-  const martyrsFund = piasters(taxedPay * r.martyrsRate);
+  const { healthInsurance, monthlyTaxable, annualNetIncome, annualTax, monthlyTax, martyrsFund } = monthlySalaryTax({ taxedPay, employeeInsurance });
   const deductions = piasters(employeeInsurance + healthInsurance + monthlyTax + martyrsFund);
   const employerInsurance = piasters(insuredWage * r.employerInsuranceRate);
   return {

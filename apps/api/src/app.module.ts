@@ -14,6 +14,7 @@ import { OffersModule } from './offers/offers.module.js';
 import { VersionController } from './health/version.controller.js';
 import { OrganisationModule } from './organisation/organisation.module.js';
 import { PaperworkModule } from './paperwork/paperwork.module.js';
+import { PayrollModule } from './payroll/payroll.module.js';
 import { PdfModule } from './pdf/pdf.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { TemplatesModule } from './templates/templates.module.js';
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module.js';
     TemplatesModule,
     DocumentsModule,
     OffersModule,
+    PayrollModule,
     UsersModule,
   ],
   controllers: [HealthController, VersionController],

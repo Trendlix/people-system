@@ -243,3 +243,6 @@ export * from './occupations.js';
 
 // nationalities in Arabic, in the person's gender, for the Arabic documents
 export * from './nationalities.js';
+
+// monthly payroll: a line worked out from the contract, the profile and the month's inputs
+export * from './payroll.js';
