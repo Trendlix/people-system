@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { bankNamed, LABELS } from '@trendlix/shared';
 import { DeleteForm } from '@/components/form';
+import { ageOn, ageText } from '@/lib/age';
 import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import type { EmployeeBank, EmployeeIdentity, EmployeeProfile } from '@/lib/types';
 import { deleteEmployee } from '../actions';
-import { ExpiryChip, FieldGrid, ProfileSection } from '../ui';
+import { ExpiryChip, FieldGrid, ProfileSection, todayInCairo } from '../ui';
 import { bankShown } from './edit/bank/bank-rules';
 
 // The Basic Data and Education tabs: the profile's fields in a grid, label above value. Fields counted in the profile's
@@ -46,6 +47,7 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
   const accountNo = bank ? bank.accountNo : p.bank?.accountNoMasked;
   const iban = bank ? bank.iban : p.bank?.ibanMasked;
   const revealBank = <Reveal href={bank ? base : `${base}?show=bank`} shown={Boolean(bank)} what="bank account number and IBAN" />;
+  const age = ageOn(p.dateOfBirth, todayInCairo());
 
   return (
     <div className="space-y-8">
@@ -64,6 +66,8 @@ export async function BasicTab({ profile: p, show, today }: { profile: EmployeeP
               required: true,
             },
             { key: 'dateOfBirth', label: 'Date of birth', value: formatDate(p.dateOfBirth), required: true },
+            // from the date of birth, in Cairo today (owner's request, 17 October 2026)
+            { key: 'age', label: 'Age', value: age === null ? null : ageText(age) },
             { key: 'gender', label: 'Gender', value: p.gender && LABELS.gender[p.gender], required: true },
             { key: 'nationality', label: 'Nationality', value: p.nationality, required: true },
             { key: 'maritalStatus', label: 'Marital status', value: p.maritalStatus && LABELS.maritalStatus[p.maritalStatus], required: true },
