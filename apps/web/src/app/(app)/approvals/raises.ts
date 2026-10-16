@@ -1,0 +1,78 @@
+import { PAY_CHANGE_LABELS, RAISE_REASON_LABELS, payDifference, type Role } from '@trendlix/shared';
+import { formatDate, formatDateTime } from '../../../lib/format';
+import type { PendingRaise } from '../../../lib/raise-types';
+import { hasRole } from '../../../lib/roles';
+import { formatEgp } from '../employees/[id]/contracts/salary';
+import { changeText, fromToText } from '../employees/[id]/salary-history/salary-history';
+
+// Pay raises waiting for the CEO, on Approvals (owner's decisions, 16 October 2026: "HR, then the CEO"): a raise HR
+// entered and sent (an amendment or a new contract, effective the 1st of a month), or a renewal with new pay, which
+// counts as a raise. The CEO alone approves it, returns it to HR with a reason, or declines it with a reason; HR follows
+// them here until then. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+
+type WithRoles = { roles: readonly Role[] };
+
+/** The changes of pay waiting for the CEO (GET /raises/pending). */
+export const PENDING_RAISES = '/raises/pending';
+
+/** HR and the CEO see the pay raises waiting for the CEO. The API checks this again. */
+export function followsRaises(user: WithRoles): boolean {
+  return hasRole(user, 'hr', 'ceo');
+}
+
+/** Only the CEO approves, returns or declines a raise. The API checks this again. */
+export function decidesRaises(user: WithRoles): boolean {
+  return hasRole(user, 'ceo');
+}
+
+/** A pending raise as its card shows it. */
+export interface PendingRaiseView {
+  /** "Amendment", "New contract", "Renewal". */
+  kind: string;
+  /** "CON-2026-0001-A1 · version 3". */
+  reference: string;
+  effective: string;
+  gross: string;
+  /** "+EGP 2,500.00 (+25%)"; null without the pay before it. */
+  change: string | null;
+  allowances: string;
+  total: string;
+  /** By the hour: the rate from → to. */
+  hourly: string | null;
+  reason: string | null;
+  promotion: string | null;
+  sentAt: string | null;
+  /** The CEO's question before approving. */
+  confirmApprove: string;
+}
+
+/** The pay it changes from (the version before) and to, the change, why, the promotion and when HR sent it. */
+export function pendingRaiseView(r: PendingRaise): PendingRaiseView {
+  const before = r.previous;
+  const gross = r.grossSalary ?? 0;
+  const grossBefore = before?.grossSalary ?? null;
+  const rateBefore = before?.hourlyRate ?? null;
+  const promotion = r.raise && [r.raise.newJobTitle?.titleEn, r.raise.newGrade && `grade ${r.raise.newGrade.code}`].filter(Boolean).join(', ');
+  const hourly =
+    r.payBasis === 'hourly' && r.hourlyRate !== null
+      ? `${rateBefore !== null && rateBefore !== r.hourlyRate ? `${formatEgp(rateBefore)} → ` : ''}${formatEgp(r.hourlyRate)} an hour; the gross is the monthly estimate`
+      : null;
+  const name = r.employee.fullNameEn;
+  return {
+    kind: PAY_CHANGE_LABELS[r.change] ?? r.change,
+    reference: `${r.number} · version ${r.version}`,
+    effective: r.endDate && r.change !== 'amendment' ? `${formatDate(r.startDate)} – ${formatDate(r.endDate)}` : `From ${formatDate(r.startDate)}`,
+    gross: fromToText(grossBefore, gross),
+    change: grossBefore !== null ? changeText(payDifference(grossBefore, gross)) : null,
+    allowances: fromToText(before?.allowancesTotal ?? null, r.allowancesTotal ?? 0),
+    total: fromToText(before?.totalSalary ?? null, r.totalSalary ?? gross),
+    hourly,
+    reason: r.raise ? (RAISE_REASON_LABELS[r.raise.reason] ?? r.raise.reason) : null,
+    promotion: promotion || null,
+    sentAt: r.raise?.sentAt ? formatDateTime(r.raise.sentAt) : null,
+    confirmApprove: `Approve ${name}'s new pay, ${formatEgp(gross)} a month from ${formatDate(r.startDate)}? HR then has ${r.number} signed.`,
+  };
+}
+
+/** "1 raise", "3 raises", waiting. */
+export const raisesLabel = (n: number) => `${n} ${n === 1 ? 'raise' : 'raises'}`;

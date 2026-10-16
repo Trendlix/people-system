@@ -9,11 +9,13 @@ import { ContractForm, type ContractDefaults } from '../contract-form';
 import { loadAllowanceTypes, loadContractSettings, loadContracts } from '../data';
 import { addDays } from '../dates';
 import { firstContractDefaults, noProbationAgain } from '../first-contract';
+import { changeOf, editHref, versionPay } from '../raise';
 
 // Drafting the current employment's contract: its first one, or the renewal of the signed one (every contract is for a
 // fixed term, renewed in writing before it ends). It is saved as a draft, one at a time, and signed on the Employment
 // tab. A renewal starts from the pay of the version it renews: its pay basis, salary or hourly rate and hours, working
-// days and allowances.
+// days and allowances. It asks whether the pay changes (owner's decisions, 16 October 2026): a renewal with new pay
+// counts as a raise, with its reason, and the CEO approves it before it is signed.
 
 async function NewContract({ params }: { params: Promise<{ id: string }> }) {
   const employee = await loadEmployee(params);
@@ -36,8 +38,8 @@ async function NewContract({ params }: { params: Promise<{ id: string }> }) {
   } else if (draft) {
     body = (
       <Empty>
-        Version {draft.version} is already drafted. <Link href={`/employees/${employee.id}/contracts/${draft.id}/edit`}>Change the draft</Link>, or sign it
-        with the contract on the <Link href={back}>Employment tab</Link>. Only a Super Admin can delete it.
+        Version {draft.version} is already drafted. <Link href={editHref(employee.id, draft.id, changeOf(draft, contracts))}>Change the draft</Link>, or
+        sign it with the contract on the <Link href={back}>Employment tab</Link>. Only a Super Admin can delete it.
       </Empty>
     );
   } else {
@@ -73,6 +75,7 @@ async function NewContract({ params }: { params: Promise<{ id: string }> }) {
           defaults={defaults}
           allowanceTypes={allowanceTypes}
           renewal={previous ? { startDate: previous.endDate ? addDays(previous.endDate, 1) : null, after: `version ${previous.version}` } : null}
+          payChange={previous ? { version: previous.version, pay: versionPay(previous), changes: false, reason: null } : undefined}
           probationHint={hadProbation && !previous ? noProbationAgain(employee.fullNameEn) : undefined}
           fullTime={e.employmentType === 'full_time'}
           today={today}

@@ -168,12 +168,12 @@ describe('progress', () => {
   it('counts the templates in use, not the copy slots', () => {
     // the social insurance copy of the full-time contract has its own file, so every slot counts
     const slots = library();
-    expect(progress(slots)).toEqual({ inUse: 0, total: 23, text: '0 of 23 templates in use' });
+    expect(progress(slots)).toEqual({ inUse: 0, total: 25, text: '0 of 25 templates in use' });
 
     slots[0].published = published(1); // the full-time contract (official copy)
     slots[1].published = published(1); // its social insurance copy, a template of its own
     slots[5].latestDraft = draft(1); // a draft isn't in use
-    expect(progress(slots).text).toBe('2 of 23 templates in use');
+    expect(progress(slots).text).toBe('2 of 25 templates in use');
     // a slot printed from another's file is not counted
     expect(progress([{ copyOf: 'contract_full_time', published: published(1) }, { copyOf: null, published: published(1) }]).text).toBe('1 of 1 template in use');
   });
@@ -187,7 +187,7 @@ describe('byFolder', () => {
   it('groups the slots in the library’s folder order, keeping their order within a folder', () => {
     const groups = byFolder([...library()].reverse());
     expect(groups.map((g) => g.folder)).toEqual(['contracts', 'job_offers', 'nda', 'certificates', 'letters', 'social_insurance', 'payslips', 'resignation']);
-    expect(groups[0].slots.map((s) => s.key)[0]).toBe('agreement_freelance'); // reversed in, reversed out
+    expect(groups[0].slots.map((s) => s.key)[0]).toBe('contract_amendment'); // reversed in, reversed out: the salary amendment is the last contract slot
   });
 
   it('leaves out empty folders', () => {

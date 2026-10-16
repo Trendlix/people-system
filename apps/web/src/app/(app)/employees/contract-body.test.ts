@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contractBody } from './contract-body';
+import { contractBody, payBody } from './contract-body';
 
 /** A submitted form: each entry once, or a list for repeated fields. */
 function form(entries: Record<string, string | string[]>): FormData {
@@ -86,5 +86,49 @@ describe('a contract as the API takes it', () => {
     expect(body).not.toHaveProperty('probationMonths');
     expect(body).toMatchObject({ daysPerWeek: null, netSalary: null });
     expect(contractBody(form({ ...monthly, netSalary: '' }), errors, false, false)).not.toHaveProperty('netSalary');
+  });
+
+  // a renewal whose pay changes counts as a raise, with its reason, for the CEO to approve (owner's decisions, 16 October 2026)
+  it('sends why the pay changes on a renewal whose pay changes, and nothing with the same pay', () => {
+    const errors: string[] = [];
+    expect(contractBody(form({ ...monthly, payChange: 'changes', raiseReason: 'annual' }), errors, true, false)).toMatchObject({ raiseReason: 'annual' });
+    expect(errors).toEqual([]);
+    expect(contractBody(form({ ...monthly, payChange: 'same', raiseReason: 'annual' }), errors, true, false)).not.toHaveProperty('raiseReason');
+    // a first contract has no question to answer
+    expect(contractBody(form({ ...monthly, raiseReason: 'annual' }), errors, false, false)).not.toHaveProperty('raiseReason');
+    expect(errors).toEqual([]);
+  });
+
+  it('asks why the pay changes when none is chosen', () => {
+    const errors: string[] = [];
+    const body = contractBody(form({ ...monthly, payChange: 'changes', raiseReason: '' }), errors, true, true);
+    expect(errors).toEqual(['Choose why the pay changes: annual raise, promotion, adjustment or other.']);
+    expect(body).not.toHaveProperty('raiseReason');
+    const unknown: string[] = [];
+    contractBody(form({ ...monthly, payChange: 'changes', raiseReason: 'bonus' }), unknown, true, true);
+    expect(unknown).toHaveLength(1);
+  });
+});
+
+describe('the pay fields as the API takes them', () => {
+  it('sends the pay alone, without the term or the note', () => {
+    const errors: string[] = [];
+    expect(payBody(form({ ...monthly, allowanceTypeId: 'a-1', allowanceAmount: '1,000' }), errors, false)).toEqual({
+      payBasis: 'monthly',
+      grossSalary: 15000,
+      basicPercent: 80,
+      netSalary: 12519.38,
+      allowances: [{ allowanceTypeId: 'a-1', amount: 1000 }],
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it('clears an emptied net and days on a draft only', () => {
+    const errors: string[] = [];
+    expect(payBody(form({ ...monthly, netSalary: '' }), errors, true)).toMatchObject({ daysPerWeek: null, netSalary: null });
+    const fresh = payBody(form({ ...monthly, netSalary: '' }), errors, false);
+    expect(fresh).not.toHaveProperty('netSalary');
+    expect(fresh).not.toHaveProperty('daysPerWeek');
+    expect(errors).toEqual([]);
   });
 });

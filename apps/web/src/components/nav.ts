@@ -29,6 +29,9 @@ export const NAV: NavItem[] = [
   { href: '/contracts', label: 'Contracts', section: '/contracts', roles: ['hr', 'ceo', 'finance'] },
   // the month's pay: HR prepares a run, the CEO approves it, HR marks it paid (owner's decisions, 16 October 2026)
   { href: '/payroll', label: 'Payroll', section: '/payroll', roles: ['hr', 'finance', 'ceo'] },
+  // raises asked for by the employee, their manager or HR, through HR and the CEO (owner's decisions, 16 October 2026);
+  // Finance may view them
+  { href: '/raise-requests', label: 'Raise Requests', section: '/raise-requests', roles: ['hr', 'ceo', 'finance'] },
   // job offers: the offer stage, before someone is an employee (owner's request, 15 October 2026)
   { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },

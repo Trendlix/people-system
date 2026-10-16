@@ -4,8 +4,10 @@ import { Suspense } from 'react';
 import { API_URL, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
+import type { PendingRaise } from '@/lib/raise-types';
 import type { EndingSummary, ExpiringContract, ProbationEnding, SessionUser } from '@/lib/types';
 import { decidesEndings, followsEndings, getOrNull, PENDING_ENDINGS } from './approvals/data';
+import { PENDING_RAISES } from './approvals/raises';
 import { profileHref, todayInCairo } from './employees/ui';
 import { dueNote } from './organization/contracts/labels';
 
@@ -91,13 +93,16 @@ function AlertCard<T>({
   );
 }
 
-/** The CEO's count of endings waiting for them, linked to Approvals. */
-function WaitingForYou({ pending }: { pending: EndingSummary[] | null }) {
-  if (pending === null) return <p className="text-sm text-muted">Approvals couldn&apos;t load.</p>;
+/**
+ * The CEO's count of what waits for them, linked to Approvals: the endings, and the pay raises (owner's decisions, 16
+ * October 2026). Null when the endings couldn't load; raises from a server from before them count none.
+ */
+function WaitingForYou({ count }: { count: number | null }) {
+  if (count === null) return <p className="text-sm text-muted">Approvals couldn&apos;t load.</p>;
   return (
     <p className="text-sm">
-      <Link href="/approvals" className={pending.length > 0 ? 'font-semibold' : undefined}>
-        Waiting for your approval: {pending.length}
+      <Link href="/approvals" className={count > 0 ? 'font-semibold' : undefined}>
+        Waiting for your approval: {count}
       </Link>
     </p>
   );
@@ -114,17 +119,18 @@ async function ContractAlerts() {
   }
   if (!followsEndings(user)) return null;
   const ceo = decidesEndings(user);
-  const [contracts, probations, pending] = await Promise.all([
+  const [contracts, probations, pending, raises] = await Promise.all([
     getOrNull<ExpiringContract[]>(`/contracts/expiring?within=${CONTRACTS_WITHIN}`),
     getOrNull<ProbationEnding[]>(`/employments/probation-ending?within=${PROBATION_WITHIN}`),
     ceo ? getOrNull<EndingSummary[]>(PENDING_ENDINGS) : null,
+    ceo ? getOrNull<PendingRaise[]>(PENDING_RAISES) : null,
   ]);
   const today = todayInCairo();
   const byDate = <T,>(rows: T[] | null, date: (row: T) => string) => rows && [...rows].sort((a, b) => date(a).localeCompare(date(b)));
 
   return (
     <div className="mt-6 space-y-3">
-      {ceo && <WaitingForYou pending={pending} />}
+      {ceo && <WaitingForYou count={pending && pending.length + (raises?.length ?? 0)} />}
       <div className="grid gap-3 lg:grid-cols-2">
         <AlertCard
           title="Contracts Ending Soon"

@@ -1,6 +1,7 @@
 import { expectedHoursOf, formatHours, lawRatesFor, paysOvertime, type LawRates, type PayrollInputs, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
 import type { PayrollLineView } from '../../../../lib/types';
 import { formatEgp, formatPercent } from '../../employees/[id]/contracts/salary';
+import { monthName } from '../list';
 
 // One employee's pay, step by step, as the run's results table opens it (owner's decisions, 16 October 2026): from the
 // gross split into its fixed and variable parts, through the attendance and KPI cuts and what is added, to the pay
@@ -168,7 +169,14 @@ export function breakdown(line: Line, rules: PayrollRules, law?: LawRates): Brea
     { key: 'settlements', label: 'Settlements', value: r.settlements < 0 ? cutText(r.settlements) : formatEgp(r.settlements), kind: r.settlements < 0 ? 'cut' : 'add' },
     { key: 'earned', label: 'Earned', value: formatEgp(r.earned), kind: 'total' },
     { key: 'allowances', label: 'Allowances', value: formatEgp(r.allowances), kind: 'add', note: allowanceNames || undefined },
-    { key: 'insuredWage', label: 'Insured wage', value: formatEgp(r.insuredWage), kind: 'info' },
+    {
+      key: 'insuredWage',
+      label: 'Insured wage',
+      value: formatEgp(r.insuredWage),
+      kind: 'info',
+      // after a raise, as before it until the next January or the Form 2 date (owner's decision, 16 October 2026)
+      note: t.insuredWageAsBefore ? `As before the raise until ${monthName(t.insuredWageAsBefore.slice(0, 7))}` : undefined,
+    },
     { key: 'employeeInsurance', label: 'Social insurance', value: cutText(r.employeeInsurance), kind: 'cut', note: insuranceNote },
     {
       key: 'taxable',

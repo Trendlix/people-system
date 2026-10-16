@@ -1,16 +1,16 @@
-import type { PayBasis } from '@trendlix/shared';
+import { RAISE_REASONS, type PayBasis, type RaiseReason } from '@trendlix/shared';
 import { allowancesFrom } from '../../../lib/allowances';
 import { dateFrom } from '../../../lib/form-data';
 import { MAX_HOURS_PER_WEEK, parseAmount, parseHours } from './[id]/contracts/salary';
 
 // The contract form's fields as the API takes them (pure code, tested; relative imports for the tests), for the
-// drafting actions in contract-actions.ts. Dates are typed as DD/MM/YYYY and sent as YYYY-MM-DD; amounts are typed as
-// "15,000" and sent as numbers.
+// drafting actions in contract-actions.ts; its pay fields (payBody) also for the raise form (contracts/raise.ts). Dates
+// are typed as DD/MM/YYYY and sent as YYYY-MM-DD; amounts are typed as "15,000" and sent as numbers.
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
 
 /** A whole number of months, within limits; "" → undefined (the API's default). */
-function monthsFrom(fd: FormData, key: string, label: string, max: number, errors: string[]): number | undefined {
+export function monthsFrom(fd: FormData, key: string, label: string, max: number, errors: string[]): number | undefined {
   const raw = text(fd, key);
   if (raw === '') return undefined;
   const n = Number(raw);
@@ -58,20 +58,14 @@ function daysFrom(fd: FormData, errors: string[]): number | null {
 }
 
 /**
- * The contract form's fields (contracts/contract-form.tsx). A renewal has no start date or probation to send: it
- * starts the day after the previous version ends, without probation. Every contract runs for a fixed term (owner, 15
- * October 2026), so the length is always sent and the form (always fixed) isn't. The pay (owner's requests of the same
- * day) is a monthly salary, its gross, or by the hour, the rate and the hours a week, from which the API works out the
- * gross (the monthly estimate); then the working days a week, and the allowances, which replace the contract's set.
- * Starting from the net per hour (rateBasis 'net'), the rate is the gross rate the form worked out from it, so a
- * missing one asks for the net per hour. `draft`: changing a draft, where an emptied net or number of working days is
- * cleared (null); a new contract just leaves them out.
+ * The pay fields (contracts/pay-fields.tsx), of a contract or a raise. The pay (owner's requests of 15 October 2026) is
+ * a monthly salary, its gross, or by the hour, the rate and the hours a week, from which the API works out the gross
+ * (the monthly estimate); then the working days a week, and the allowances, which replace the version's set. Starting
+ * from the net per hour (rateBasis 'net'), the rate is the gross rate the form worked out from it, so a missing one
+ * asks for the net per hour. `draft`: changing a draft, where an emptied net or number of working days is cleared
+ * (null); a new one just leaves them out.
  */
-export function contractBody(fd: FormData, errors: string[], renewal: boolean, draft: boolean) {
-  const startDate = renewal ? '' : dateFrom(fd, 'startDate', 'start date', errors);
-  const durationMonths = monthsFrom(fd, 'durationMonths', 'length', 60, errors);
-  if (durationMonths === 0) errors.push('A fixed term runs for 1 to 60 months.');
-  const probationMonths = renewal ? undefined : monthsFrom(fd, 'probationMonths', 'probation', 3, errors);
+export function payBody(fd: FormData, errors: string[], draft: boolean) {
   const payBasis: PayBasis = text(fd, 'payBasis') === 'hourly' ? 'hourly' : 'monthly';
   const netRate = text(fd, 'rateBasis') === 'net';
   const pay =
@@ -89,15 +83,45 @@ export function contractBody(fd: FormData, errors: string[], renewal: boolean, d
   }
   const netSalary = amountFrom(fd, 'netSalary', 'net salary', errors);
   return {
-    ...(startDate && { startDate }),
-    ...(durationMonths !== undefined && { durationMonths }),
-    ...(probationMonths !== undefined && { probationMonths }),
     payBasis,
     ...pay,
     ...(daysPerWeek !== null ? { daysPerWeek } : draft ? { daysPerWeek: null } : {}),
     ...(basicPercent !== undefined && { basicPercent }),
     ...(netSalary !== null ? { netSalary } : draft ? { netSalary: null } : {}),
     allowances: allowancesFrom(fd, errors),
+  };
+}
+
+/** Why the pay changes, chosen from the list (`key`: the field's name); a mistake when none is chosen. */
+export function raiseReasonFrom(fd: FormData, key: string, errors: string[]): RaiseReason | undefined {
+  const reason = text(fd, key);
+  if ((RAISE_REASONS as readonly string[]).includes(reason)) return reason as RaiseReason;
+  errors.push('Choose why the pay changes: annual raise, promotion, adjustment or other.');
+  return undefined;
+}
+
+/**
+ * The contract form's fields (contracts/contract-form.tsx). A renewal has no start date or probation to send: it
+ * starts the day after the previous version ends, without probation. Every contract runs for a fixed term (owner, 15
+ * October 2026), so the length is always sent and the form (always fixed) isn't. Then the pay (payBody) and the note.
+ *
+ * A renewal whose pay changes counts as a raise (owner's decisions, 16 October 2026): the form asks whether the pay
+ * changes (payChange), and when it does, why (raiseReason, required), which the API needs to send it to the CEO, who
+ * approves it before it is signed. With the same pay (or no question: a first contract) no reason is sent.
+ */
+export function contractBody(fd: FormData, errors: string[], renewal: boolean, draft: boolean) {
+  const startDate = renewal ? '' : dateFrom(fd, 'startDate', 'start date', errors);
+  const durationMonths = monthsFrom(fd, 'durationMonths', 'length', 60, errors);
+  if (durationMonths === 0) errors.push('A fixed term runs for 1 to 60 months.');
+  const probationMonths = renewal ? undefined : monthsFrom(fd, 'probationMonths', 'probation', 3, errors);
+  const pay = payBody(fd, errors, draft);
+  const raiseReason = text(fd, 'payChange') === 'changes' ? raiseReasonFrom(fd, 'raiseReason', errors) : undefined;
+  return {
+    ...(startDate && { startDate }),
+    ...(durationMonths !== undefined && { durationMonths }),
+    ...(probationMonths !== undefined && { probationMonths }),
+    ...pay,
+    ...(raiseReason && { raiseReason }),
     note: text(fd, 'note'),
   };
 }

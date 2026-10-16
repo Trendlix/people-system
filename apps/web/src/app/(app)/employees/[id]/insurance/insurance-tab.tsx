@@ -24,6 +24,7 @@ import {
   insuranceCopyHref,
   insuranceForms,
   insuredEmployment,
+  asBeforeRaiseNote,
   insuredNote,
   insuredPrinted,
   printHref,
@@ -181,7 +182,8 @@ function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
         label: 'Insured wage (social insurance)',
         protected: true,
         value: <PrintedText printed={insuredPrinted(p)} />,
-        note: p.insurableLimits ? insuredNote(p.insurableLimits) : undefined,
+        // after a signed raise, as before it until January or the Form 2 date (owner's decision, 16 October 2026)
+        note: [asBeforeRaiseNote(p), p.insurableLimits ? insuredNote(p.insurableLimits) : null].filter(Boolean).join(' ') || undefined,
       },
       {
         key: 'insuranceComprehensiveWage',

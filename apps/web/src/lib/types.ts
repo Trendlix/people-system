@@ -1,6 +1,7 @@
 import type {
   ChangeRequestStatus,
   ContractForm,
+  ContractKind,
   ContractStatus,
   Degree,
   EducationGrade,
@@ -19,6 +20,7 @@ import type {
   NoticeUnit,
   PaperworkKind,
   PayBasis,
+  PayStage,
   PayrollInputs,
   PayrollResult,
   PayrollRules,
@@ -36,6 +38,7 @@ import type {
   TemplateVersionStatus,
   WorkArrangement,
 } from '@trendlix/shared';
+import type { ContractRaise } from './raise-types';
 
 // Shapes returned by the API.
 
@@ -363,6 +366,12 @@ export interface EmployeeProfile {
    * within this year's insurable limits, and how; null without a comprehensive wage. Salary data, as the wages.
    */
   insuredWage?: InsuredWage | null;
+  /**
+   * After a signed raise (owner's decision, 16 October 2026: "From the next January unless amended in Form 2"): the
+   * insured wage is the one before it until this date (the next 1 January, or the Form 2 date), and whether Form 2 was
+   * filed; null otherwise, and with the employee's own comprehensive wage. Salary data, as the wages.
+   */
+  insuredWageAsBefore?: { until: string; form2Filed: boolean } | null;
   /** This year's insurable wage limits (the latest year known when this one isn't in the table). Salary data, as the wages. */
   insurableLimits?: InsuredWage['limits'];
   /**
@@ -855,6 +864,12 @@ export interface Contract extends ContractPay {
   /** A fixed contract's last day to tell the employee it won't be renewed: 45 working days before it ends. */
   nonRenewalNoticeBy: string | null;
   salaryHidden?: boolean;
+  /** A whole contract, or a salary amendment (owner's decisions, 16 October 2026); missing from an older API. */
+  kind?: ContractKind;
+  /** Where it stands: draft, returned, with the CEO, approved, signed, replaced or ended (raises.ts). */
+  stage?: PayStage;
+  /** A version that changes the pay (a raise, or a renewal with new pay): its CEO step; null otherwise. */
+  raise?: ContractRaise | null;
 }
 
 /**

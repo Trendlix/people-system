@@ -41,6 +41,16 @@ describe('the sidebar', () => {
     expect(COMING_SOON).not.toContain('Payroll');
   });
 
+  it('shows Raise Requests after Payroll to HR, the CEO and Finance only', () => {
+    const labels = NAV.map((n) => n.label);
+    expect(labels.indexOf('Raise Requests')).toBe(labels.indexOf('Payroll') + 1);
+    const requests = NAV.find((n) => n.href === '/raise-requests')!;
+    expect(requests.section).toBe('/raise-requests');
+    for (const role of ['hr', 'ceo', 'finance'] as const) expect(hasRole(as(role), ...(requests.roles ?? []))).toBe(true);
+    // the employee and the manager ask on the profile; an Admin as such doesn't see salaries
+    expect(hasRole(as('employee', 'manager', 'admin', 'super_admin'), ...(requests.roles ?? []))).toBe(false);
+  });
+
   it('has no sub-item to highlight for an item without any', () => {
     expect(activeSubItem(NAV.find((n) => n.href === '/employees')!, '/employees')).toBeNull();
   });

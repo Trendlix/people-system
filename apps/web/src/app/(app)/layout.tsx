@@ -7,10 +7,13 @@ import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { UserMenu } from '@/components/user-menu';
 import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
+import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import type { ChangeRequest, EmployeeProfile, EmployeeSummary, EndingSummary, SessionUser } from '@/lib/types';
 import { decidesChangeRequests, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './approvals/data';
+import { followsRaises, PENDING_RAISES } from './approvals/raises';
 import { ReviewNowLink } from './employees/[id]/confirm/confirm-notices';
 import { bannerMessage } from './employees/confirmation';
+import { handlesRaiseRequests, WITH_HR_REQUESTS } from './raise-requests/list';
 
 /** The sidebar links for the signed-in user's roles. */
 async function MainNav() {
@@ -21,14 +24,20 @@ async function MainNav() {
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
   }
-  // Beside Approvals: for HR and the CEO, the endings waiting for the CEO; for HR and Admin (a Super Admin too), the
-  // employees' change requests waiting for them. Each is left out when it can't be read.
-  const [endings, changes] = await Promise.all([
+  // Beside Approvals: for HR and the CEO, the endings and the pay raises waiting for the CEO; for HR and Admin (a Super
+  // Admin too), the employees' change requests waiting for them. Beside Raise Requests, for HR, the requests waiting for
+  // HR (owner's decisions, 16 October 2026). Each is left out when it can't be read.
+  const [endings, changes, raises, requests] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS) : null,
     decidesChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS) : null,
+    followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES) : null,
+    handlesRaiseRequests({ roles }) ? getOrNull<RaiseRequest[]>(WITH_HR_REQUESTS) : null,
   ]);
-  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0);
-  return <NavLinks roles={roles} counts={waiting ? { '/approvals': waiting } : undefined} />;
+  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0);
+  const counts: Record<string, number> = {};
+  if (waiting) counts['/approvals'] = waiting;
+  if (requests?.length) counts['/raise-requests'] = requests.length;
+  return <NavLinks roles={roles} counts={Object.keys(counts).length ? counts : undefined} />;
 }
 
 /**

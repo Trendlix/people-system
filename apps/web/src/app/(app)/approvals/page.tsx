@@ -1,21 +1,28 @@
-import { ENDING_STATUS_LABELS } from '@trendlix/shared';
+import { ENDING_STATUS_LABELS, PAY_STAGE_LABELS } from '@trendlix/shared';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
+import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import { getCurrentUser } from '@/lib/session';
 import type { ChangeRequest, EndingSummary } from '@/lib/types';
 import { ChangeRequestStatusBadge, ChangesTable } from '../employees/[id]/change-request/request-parts';
-import { profileHref } from '../employees/ui';
+import { contractHref, profileHref } from '../employees/ui';
 import { INITIATOR_LABELS } from '../organization/contracts/labels';
 import { Empty, Loading } from '../organization/ui';
-import { decideChangeRequest, decideEnding } from './actions';
+import { raiseRequestsHref, REQUESTER_PHRASES } from '../raise-requests/list';
+import { decideChangeRequest, decideEnding, decideRaise } from './actions';
 import { decidesChangeRequests, decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
 import { DecisionForm } from './decision-form';
+import { RaiseDecisionForm } from './raise-decision-form';
+import { decidesRaises, followsRaises, PENDING_RAISES, pendingRaiseView, raisesLabel } from './raises';
 
-// What waits for a decision, in two sections:
+// What waits for a decision, in three sections:
 // - Endings HR has recorded and approved, waiting for the CEO (owner's decision of 15 October 2026: HR approves, then
 //   the CEO). The CEO approves or rejects each one; HR sees them here until then.
+// - Pay raises HR has sent, and renewals with new pay, which count as raises (owner's decisions of 16 October 2026: HR,
+//   then the CEO). The CEO approves each, returns it to HR or declines it, with a reason; HR follows them here. A raise
+//   prepared from a raise request says so: the CEO's decision is the request's too.
 // - Employees' requests to change their details (owner's decision of 15 October 2026), for HR and Admin to approve,
 //   which makes the change, or reject with a note. The CEO doesn't decide these.
 // The API checks every decision again.
@@ -25,6 +32,9 @@ const DONE: Record<string, string> = {
   rejected: 'Ending rejected.',
   'change-approved': 'Change request approved: the profile is updated.',
   'change-rejected': 'Change request rejected. The employee sees your note.',
+  'raise-approved': 'Pay raise approved. HR now has it signed; it is paid from its effective date.',
+  'raise-returned': 'Pay raise returned to HR with your reason.',
+  'raise-declined': 'Pay raise declined. The raise request it came from, if any, is declined too.',
 };
 
 function Item({ label, children }: { label: string; children: React.ReactNode }) {
@@ -109,6 +119,93 @@ async function PendingEndings({ decides }: { decides: boolean }) {
   );
 }
 
+// ---------- pay raises ----------
+
+/** The raise request a raise was prepared from: who asked, and why. */
+function FromRequest({ request: q }: { request: RaiseRequest }) {
+  return (
+    <>
+      Asked for by {REQUESTER_PHRASES[q.requester] ?? q.requester}
+      {q.requestedBy?.email && <span className="text-muted"> ({q.requestedBy.email})</span>} on {formatDate(q.createdAt)}
+      <span className="mt-0.5 block whitespace-pre-line text-muted">“{q.reason}”</span>
+    </>
+  );
+}
+
+function RaiseCard({ raise: r, request, decides }: { raise: PendingRaise; request: RaiseRequest | null; decides: boolean }) {
+  const v = pendingRaiseView(r);
+  return (
+    <li className="card p-6">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="font-semibold">
+            <Link href={contractHref(r.employee.id)}>{r.employee.fullNameEn}</Link>
+            <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>
+          </h3>
+          <p className="mt-0.5 text-sm">
+            {v.kind}
+            <span className="text-muted tabular-nums"> · {v.reference}</span>
+            {r.jobTitleEn && <span className="text-muted"> · {r.jobTitleEn}</span>}
+          </p>
+        </div>
+        <span className="badge bg-warn-soft text-warn">{PAY_STAGE_LABELS.pending_ceo}</span>
+      </div>
+      <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <Item label="Effective">
+          <span className="font-medium tabular-nums">{v.effective}</span>
+        </Item>
+        <Item label="Gross a month">
+          <span className="tabular-nums">{v.gross}</span>
+          {v.change && <span className="block text-xs font-semibold">{v.change}</span>}
+          {v.hourly && <span className="block text-xs text-muted">{v.hourly}</span>}
+        </Item>
+        <Item label="Allowances a month">
+          <span className="tabular-nums">{v.allowances}</span>
+        </Item>
+        <Item label="Total a month">
+          <span className="tabular-nums">{v.total}</span>
+        </Item>
+        <Item label="Reason">{v.reason ?? none}</Item>
+        <Item label="Promotion">{v.promotion ?? <span className="text-muted">None</span>}</Item>
+        <Item label="Sent by HR">{v.sentAt ?? none}</Item>
+        {r.raise?.requestId && (
+          <div className="sm:col-span-2 lg:col-span-4">
+            <dt className="text-xs text-muted">From a raise request</dt>
+            <dd className="mt-0.5">
+              {request ? <FromRequest request={request} /> : <Link href={raiseRequestsHref('with_ceo')}>See the raise requests with the CEO</Link>}
+            </dd>
+          </div>
+        )}
+      </dl>
+      {decides && <RaiseDecisionForm action={decideRaise.bind(null, r.id)} confirmApprove={v.confirmApprove} name={r.employee.fullNameEn} />}
+    </li>
+  );
+}
+
+async function PendingRaises({ decides }: { decides: boolean }) {
+  // Read quietly, like the change requests: an API from before raises must not take the endings down with it.
+  const raises = await getOrNull<PendingRaise[]>(PENDING_RAISES);
+  if (raises === null) return <Empty>Pay raises couldn&apos;t load.</Empty>;
+  if (raises.length === 0) return <Empty>No pay raises are waiting for approval.</Empty>;
+  // the requests they were prepared from, to say who asked and why
+  const requests = raises.some((r) => r.raise?.requestId) ? ((await getOrNull<RaiseRequest[]>(raiseRequestsHref('with_ceo'))) ?? []) : [];
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">
+        {raisesLabel(raises.length)} waiting, oldest sent first.{' '}
+        {decides
+          ? 'Approve, return to HR or decline each one; returning or declining needs a reason.'
+          : 'The CEO approves, returns or declines each one; you can follow them here until then.'}
+      </p>
+      <ul className="space-y-4">
+        {raises.map((r) => (
+          <RaiseCard key={r.id} raise={r} request={requests.find((q) => q.id === r.raise?.requestId) ?? null} decides={decides} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // ---------- profile change requests ----------
 
 function ChangeRequestCard({ request: r }: { request: ChangeRequest }) {
@@ -180,8 +277,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   const endings = followsEndings(user);
+  const raises = followsRaises(user);
   const changes = decidesChangeRequests(user);
-  if (!endings && !changes) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
+  if (!endings && !raises && !changes) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
 
   return (
@@ -194,6 +292,11 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
       {endings && (
         <Section title="Endings of Employment">
           <PendingEndings decides={decidesEndings(user)} />
+        </Section>
+      )}
+      {raises && (
+        <Section title="Pay Raises">
+          <PendingRaises decides={decidesRaises(user)} />
         </Section>
       )}
       {changes && (

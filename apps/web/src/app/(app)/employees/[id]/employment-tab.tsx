@@ -29,6 +29,8 @@ import { GeneratedDocuments, GeneratedDocumentsLoading } from './documents/docum
 import { EndingPanel } from './ending/ending-panel';
 import { DeleteRowButton } from './inline-forms';
 import { Payslips, PayslipsLoading } from './payslips/payslips-section';
+import { RaiseRequestsSection } from './raise-requests/raise-requests-section';
+import { SalaryHistoryLoading, SalaryHistorySection } from './salary-history/salary-history-section';
 
 // The Employment tab: everything about the job, in one place (owner, 16 October 2026: "there is no point of adding
 // employment then adding contract and no active employment without a contract, its like a loop for me"; the Contracts
@@ -42,6 +44,10 @@ import { Payslips, PayslipsLoading } from './payslips/payslips-section';
 // Whoever sees the employment sees its contract; the generated documents are HR's and the CEO's (HR generates and moves
 // them along, the CEO views and downloads); the payslips are HR's, Finance's and the CEO's, as the salary. The social
 // insurance work is on its own tab.
+// After the contract (owner's decisions, 16 October 2026): the Salary History, every pay event of each employment and
+// the pay received (HR, Finance and the CEO, as the salary; #salary-history), then the Raise Requests, where the
+// employee asks for themself, their direct manager for them, or HR, and each decision shows (#raise-requests; the API
+// sends each viewer only what they may see, and nothing to anyone else).
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -344,6 +350,21 @@ export async function EmploymentTab({
         </div>
       )}
       {lastEnding && <EndingPanel ending={lastEnding} employeeName={p.fullNameEn} canEdit={p.access.edit} isCeo={isCeo} today={today} />}
+
+      {canSeePayroll(user) && (
+        // each loads on its own, like the contract
+        <div id="salary-history" className="scroll-mt-6">
+          <Suspense fallback={<SalaryHistoryLoading />}>
+            <SalaryHistorySection employee={p} />
+          </Suspense>
+        </div>
+      )}
+      <div id="raise-requests" className="scroll-mt-6">
+        {/* no placeholder: for many who open the tab there is nothing here (the API decides) */}
+        <Suspense fallback={null}>
+          <RaiseRequestsSection employee={p} user={user} />
+        </Suspense>
+      </div>
 
       <ProfileSection
         title="Employment History"

@@ -1,0 +1,117 @@
+import type { EmployeeProfile, SessionUser } from '@/lib/types';
+import { requestRaise } from '../../../raise-requests/actions';
+import { loadEmployeeRaiseRequests } from '../../../raise-requests/data';
+import { askedAt, handlesRaiseRequests } from '../../../raise-requests/list';
+import { RequestRaiseForm } from '../../../raise-requests/request-forms';
+import { HrRequestActions, PreparedRaise, Progress, RaiseRequestStatusBadge, Requester, SuggestedGross } from '../../../raise-requests/ui';
+import { ProfileSection } from '../../ui';
+
+// Raise Requests, on the Employment tab after the Salary History (owner, 16 October 2026: "a place to request raise by
+// employee, or his manager or the HR, with a reason and to be going through an approval cycle"). The employee asks for
+// themself on their own profile, their direct manager on a direct report's, and HR on anyone's: a reason, and from the
+// employee or HR a suggested gross; one open per person. HR declines a request with a reason, or prepares the raise from
+// it, which goes to the CEO; the CEO's decision on that raise is the request's. The manager is told, not asked: they see
+// their reports' requests and every decision, never a figure. The employee sees their own requests' status and
+// decisions and, once done, their new salary; HR, Finance and the CEO see everything. The API sends each only what they
+// may see, and refuses anyone else (then this shows nothing).
+
+type Profile = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'isSelf' | 'employment'>;
+
+const Title = ({ note, children }: { note?: string; children: React.ReactNode }) => (
+  <ProfileSection title="Raise Requests" note={note}>
+    {children}
+  </ProfileSection>
+);
+
+function Quiet({ children }: { children: React.ReactNode }) {
+  return <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">{children}</p>;
+}
+
+function Item({ label, wide = false, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={wide ? 'sm:col-span-2' : undefined}>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="mt-0.5">{children}</dd>
+    </div>
+  );
+}
+
+/** Whether the signed-in user is this person's direct manager now (their own profile is the manager on the employment). */
+const isManagerOf = (user: SessionUser, p: Profile) => !!user.employeeId && p.employment?.manager?.id === user.employeeId;
+
+export async function RaiseRequestsSection({ employee: p, user }: { employee: Profile; user: SessionUser }) {
+  const load = await loadEmployeeRaiseRequests(p.id);
+  // not the caller's to see, or a server from before raise requests: nothing here
+  if (load.kind === 'forbidden' || load.kind === 'unavailable') return null;
+  if (load.kind === 'failed') {
+    return (
+      <Title>
+        <Quiet>The raise requests could not be loaded. Please try again in a moment.</Quiet>
+      </Title>
+    );
+  }
+
+  const { requests, canRequest, cannotRequestBecause, suggestsAmount } = load.value;
+  if (requests.length === 0 && !canRequest) return null;
+  const forSelf = Boolean(p.isSelf);
+  // those who may ask are told why they can't now (e.g. one is open); the CEO and Finance only follow them
+  const asks = forSelf || handlesRaiseRequests(user) || isManagerOf(user, p);
+  const hidden = requests.some((r) => r.amountsHidden) && !forSelf;
+
+  return (
+    <Title
+      note={
+        requests.length > 0 ? `Newest first${hidden ? ' · amounts are private: you see the reasons, the status and each decision' : ''}` : undefined
+      }
+    >
+      {canRequest ? (
+        <RequestRaiseForm
+          action={requestRaise.bind(null, p.id, suggestsAmount)}
+          suggestsAmount={suggestsAmount}
+          forSelf={forSelf}
+          name={p.fullNameEn}
+        />
+      ) : (
+        asks && cannotRequestBecause && <p className="text-sm text-muted">{cannotRequestBecause}</p>
+      )}
+      {requests.length === 0 ? (
+        <Quiet>{forSelf ? "You haven't asked for a raise yet." : `No raise requests for ${p.fullNameEn} yet.`}</Quiet>
+      ) : (
+        <ul className="space-y-4">
+          {requests.map((r) => (
+            <li key={r.id} className="card space-y-4 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="text-sm">
+                  Asked <span className="font-medium">{askedAt(r)}</span>
+                </p>
+                <RaiseRequestStatusBadge status={r.status} />
+              </div>
+              <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                <Item label="Asked by">
+                  <Requester request={r} />
+                </Item>
+                {r.suggestedGross !== null && (
+                  <Item label="Suggested gross a month">
+                    <SuggestedGross request={r} />
+                  </Item>
+                )}
+                <Item label="Why" wide>
+                  <span className="whitespace-pre-line">{r.reason}</span>
+                </Item>
+                {r.raise && (
+                  <Item label="The raise">
+                    <PreparedRaise request={r} />
+                  </Item>
+                )}
+                <Item label="Where it stands">
+                  <Progress request={r} />
+                </Item>
+              </dl>
+              <HrRequestActions request={r} user={user} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Title>
+  );
+}

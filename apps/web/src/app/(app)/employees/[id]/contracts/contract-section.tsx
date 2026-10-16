@@ -3,12 +3,16 @@ import { CONTRACT_FORM_LABELS, CONTRACT_STATUS_LABELS, PAY_BASIS_LABELS, type Co
 import { treatmentText } from '@/lib/allowances';
 import { ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { hasRole } from '@/lib/roles';
+import { getCurrentUser } from '@/lib/session';
 import type { AllowanceLine, Contract, EmployeeProfile, Employment } from '@/lib/types';
 import { deleteContract, signContract, unsignContract, updateSignedContract } from '../../contract-actions';
-import { FieldGrid, Loading, ProfileSection, todayInCairo, type GridField } from '../../ui';
+import { canSeeEmployeeFiles, FieldGrid, Loading, ProfileSection, todayInCairo, type GridField } from '../../ui';
 import { ActionButton, SignContract, SignedContractDetails } from './contract-buttons';
 import { loadContracts } from './data';
-import { daysBetween } from './dates';
+import { daysBetween, termLabel } from './dates';
+import { PayHistory } from './pay-history';
+import { RaiseCard } from './raise-card';
 import { allowancesLabel, daysLabel, formatEgp, hourlyNetTerms, hourlyTerms, payLabel } from './salary';
 
 // The Contract section of the Employment tab, right below the current employment (the Contracts tab was merged into
@@ -17,6 +21,11 @@ import { allowancesLabel, daysLabel, formatEgp, hourlyNetTerms, hourlyTerms, pay
 // be signed, and every version. HR drafts the first contract or a renewal, signs a draft or changes it, and sets a
 // signed one's filing dates and note; only a Super Admin deletes a draft, or undoes a signing recorded by mistake
 // (owner's decision, 15 October 2026). Every contract is for a fixed term (owner, the same day).
+//
+// Pay raises during a contract (owner's decisions, 16 October 2026): HR raises the pay of the signed contract in force
+// (Raise, beside Renew), as an amendment or a new contract; a raise, or a renewal with new pay, waits in its own card for
+// the CEO's approval before it is signed ("HR, then the CEO"). The Pay History lists every version with the change of
+// pay, its stage and the CEO's decision, and from when the insured wage follows it.
 
 /** A fixed-term contract gets a warning this many days before it ends, if no renewal is drafted. */
 const RENEWAL_WARNING_DAYS = 60;
@@ -24,7 +33,6 @@ const RENEWAL_WARNING_DAYS = 60;
 const NOTICE_WARNING_DAYS = 30;
 
 const small = 'btn min-h-9 px-3';
-const dash = <span className="text-muted">—</span>;
 const notYet = <span className="text-muted">Not yet</span>;
 
 const STATUS_STYLE: Record<ContractStatus, string> = {
@@ -38,10 +46,8 @@ export function ContractStatusBadge({ status }: { status: ContractStatus }) {
   return <span className={`badge ${STATUS_STYLE[status]}`}>{CONTRACT_STATUS_LABELS[status]}</span>;
 }
 
-/** "01/11/2026 – 31/10/2027", or "From 01/11/2026" when the end isn't known. */
-export function termLabel(c: Pick<Contract, 'startDate' | 'endDate'>): string {
-  return c.endDate ? `${formatDate(c.startDate)} – ${formatDate(c.endDate)}` : `From ${formatDate(c.startDate)}`;
-}
+// in dates.ts, where the raise card uses it too; still exported from here
+export { termLabel };
 
 /** Each allowance with its amount a month and how it is treated. */
 function AllowanceList({ lines }: { lines: AllowanceLine[] }) {
@@ -273,43 +279,6 @@ function UndoSigning({ contract: c, draft, endingInProgress }: { contract: Contr
   );
 }
 
-/** Every version, newest first. */
-function Versions({ contracts }: { contracts: Contract[] }) {
-  return (
-    <div className="card overflow-x-auto">
-      <table className="table">
-        <caption className="sr-only">Contract versions, newest first</caption>
-        <thead>
-          <tr>
-            <th>Version</th>
-            <th>Number</th>
-            <th>Pay</th>
-            <th>Start – End</th>
-            <th>Probation</th>
-            <th>Signed On</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {contracts.map((c) => (
-            <tr key={c.id}>
-              <td className="tabular-nums">{c.version}</td>
-              <td className="whitespace-nowrap">{c.number}</td>
-              <td>{payLabel(c)}</td>
-              <td className="whitespace-nowrap tabular-nums">{termLabel(c)}</td>
-              <td className="whitespace-nowrap tabular-nums">{c.probationEnd ? `To ${formatDate(c.probationEnd)}` : dash}</td>
-              <td className="whitespace-nowrap tabular-nums">{c.signedOn ? formatDate(c.signedOn) : dash}</td>
-              <td>
-                <ContractStatusBadge status={c.status} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 /**
  * An employment with no contract at all, from before hiring took the contract's terms in the same form (owner, 16
  * October 2026: "no active employment without a contract"): HR is asked to add it here.
@@ -377,23 +346,35 @@ export async function ContractSection({
   }
 
   const today = todayInCairo();
+  const user = await getCurrentUser();
   const canEdit = employee.access.edit;
   const active = contracts.find((c) => c.status === 'active');
   const draft = contracts.find((c) => c.status === 'draft');
   const previous = contracts.find((c) => c.status !== 'draft');
   // HR renews the last one (one draft at a time); an employment with no contract at all is asked for one below
   const offer = canEdit && !draft && !endingInProgress && previous && 'Renew';
+  // HR raises the pay of the signed contract in force, one change at a time (owner's decisions, 16 October 2026)
+  const raise = canEdit && !draft && !endingInProgress && active;
 
   return (
     <ProfileSection
       title="Contract"
       note={active ? `Version ${active.version}${active.signedOn ? `, signed ${formatDate(active.signedOn)}` : ''}` : undefined}
       actions={
-        offer && (
-          <Link href={`/employees/${employee.id}/contracts/new`} className={`${small} ${offer === 'Renew' ? 'btn-secondary' : 'btn-primary'}`}>
-            {offer}
-            {offer === 'Renew' && <span className="sr-only"> the contract</span>}
-          </Link>
+        (raise || offer) && (
+          <>
+            {raise && (
+              <Link href={`/employees/${employee.id}/contracts/raise`} className={`${small} btn-secondary`}>
+                Raise<span className="sr-only"> the pay</span>
+              </Link>
+            )}
+            {offer && (
+              <Link href={`/employees/${employee.id}/contracts/new`} className={`${small} ${offer === 'Renew' ? 'btn-secondary' : 'btn-primary'}`}>
+                {offer}
+                {offer === 'Renew' && <span className="sr-only"> the contract</span>}
+              </Link>
+            )}
+          </>
         )
       }
     >
@@ -413,11 +394,25 @@ export async function ContractSection({
       ) : (
         !draft && <NoContract employeeId={employee.id} canEdit={canEdit && !endingInProgress} />
       )}
-      {draft && <DraftCard draft={draft} employeeId={employee.id} canEdit={canEdit} canDelete={employee.access.delete} today={today} />}
+      {draft &&
+        (draft.raise ? (
+          // a change of pay: the CEO approves it before it is signed
+          <RaiseCard
+            draft={draft}
+            contracts={contracts}
+            employeeId={employee.id}
+            canEdit={canEdit}
+            canDelete={employee.access.delete}
+            isCeo={hasRole(user, 'ceo')}
+            today={today}
+          />
+        ) : (
+          <DraftCard draft={draft} employeeId={employee.id} canEdit={canEdit} canDelete={employee.access.delete} today={today} />
+        ))}
       {contracts.length > 0 && (
         <div className="space-y-2 pt-2">
-          <h3 className="text-sm font-semibold">Versions</h3>
-          <Versions contracts={contracts} />
+          <h3 className="text-sm font-semibold">Pay History</h3>
+          <PayHistory contracts={contracts} canRecordForm2={canEdit} seesDocuments={canSeeEmployeeFiles(user)} />
         </div>
       )}
     </ProfileSection>

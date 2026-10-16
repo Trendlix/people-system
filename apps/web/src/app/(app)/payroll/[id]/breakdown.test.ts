@@ -216,3 +216,13 @@ describe('breakdown: overtime (owner, 16 October 2026: "No overtime for now")', 
     expect(overtimeOf(older)?.note).toBe('For attendance above 110%, at 1.5×');
   });
 });
+
+describe('breakdown: the insured wage after a raise (owner, 16 October 2026: "From the next January unless amended in Form 2")', () => {
+  const insuredOf = (t: PayrollTerms) => breakdown({ ...line, terms: t }, PAYROLL_RULE_DEFAULTS).find((r) => r.key === 'insuredWage');
+
+  it('says it is as before the raise until the next January, or the Form 2 date', () => {
+    expect(insuredOf(terms)?.note).toBeUndefined();
+    expect(insuredOf({ ...terms, insuredWageAsBefore: '2027-01-01' })?.note).toBe('As before the raise until January 2027');
+    expect(insuredOf({ ...terms, insuredWageAsBefore: '2026-12-01' })?.note).toBe('As before the raise until December 2026');
+  });
+});

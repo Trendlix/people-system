@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DocumentItem, Employment } from '../../../../../lib/types';
 import type { MissingLink } from '../documents/wording';
 import {
+  asBeforeRaiseNote,
   basicPrinted,
   comprehensivePrinted,
   formsGap,
@@ -205,5 +206,28 @@ describe('the social insurance print', () => {
   it('is viewed or uploaded on the Documents tab, at its row when the checklist has one', () => {
     expect(printHref(ID, true)).toBe('/employees/emp-1?tab=documents#paper-insurance_print');
     expect(printHref(ID, false)).toBe('/employees/emp-1?tab=documents');
+  });
+});
+
+describe('the insured wage after a raise', () => {
+  const LIMITS = { year: 2026, min: 2700, max: 16700 };
+  const insuredWage = { amount: 10500, comprehensive: 10500, adjusted: null, limits: LIMITS };
+
+  it('says it stays as before the raise until January, or the Form 2 date once filed (owner’s decision, 16 October 2026)', () => {
+    expect(asBeforeRaiseNote({ insuredWageAsBefore: { until: '2027-01-01', form2Filed: false } })).toBe('As before the raise until January 2027; Form 2 not filed.');
+    expect(asBeforeRaiseNote({ insuredWageAsBefore: { until: '2026-12-01', form2Filed: true } })).toBe('As before the raise until December 2026; Form 2 filed.');
+    expect(asBeforeRaiseNote({ insuredWageAsBefore: null })).toBeNull();
+    expect(asBeforeRaiseNote({})).toBeNull();
+  });
+
+  it('the comprehensive wage is the contract’s before the raise meanwhile; the employee’s own stands', () => {
+    const contract = { totalSalary: 13500, salaryHidden: false };
+    const asBefore = { until: '2027-01-01', form2Filed: false };
+    expect(comprehensivePrinted({ insuranceComprehensiveWage: null, insuredWage, insuredWageAsBefore: asBefore }, contract)).toEqual({
+      text: 'EGP 10,500.00',
+      from: 'from the contract before the raise',
+    });
+    expect(comprehensivePrinted({ insuranceComprehensiveWage: 11000, insuredWage, insuredWageAsBefore: null }, contract)).toEqual({ text: 'EGP 11,000.00', from: null });
+    expect(comprehensivePrinted({ insuranceComprehensiveWage: null, insuredWage, insuredWageAsBefore: null }, contract)).toEqual({ text: 'EGP 13,500.00', from: 'from the contract' });
   });
 });

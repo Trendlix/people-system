@@ -82,8 +82,8 @@ export function ActionButton({
   );
 }
 
-/** Sign, on a draft: asks for the date it was signed (today, to start with). */
-export function SignContract({ action, today, name }: { action: Action; today: string; name: string }) {
+/** Sign, on a draft: asks for the date it was signed (today, to start with). `hint`: what signing does, when not a contract's. */
+export function SignContract({ action, today, name, hint }: { action: Action; today: string; name: string; hint?: string }) {
   const { state, pending, form } = useKeptForm(action);
   const [open, setOpen] = useClosesOnSave(state);
   const fid = useFieldIds();
@@ -111,8 +111,8 @@ export function SignContract({ action, today, name }: { action: Action; today: s
         />
       </div>
       <p id={fid('signedOn-hint')} className="hint">
-        The day the employee and the company signed it. A first contract starts the probation it sets; a renewal replaces the version before it. A signed
-        contract can&apos;t be changed, except its filing dates and note.
+        {hint ??
+          "The day the employee and the company signed it. A first contract starts the probation it sets; a renewal replaces the version before it. A signed contract can't be changed, except its filing dates and note."}
       </p>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending} pendingText="Signing…">

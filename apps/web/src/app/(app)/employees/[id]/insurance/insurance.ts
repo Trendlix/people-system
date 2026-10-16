@@ -1,6 +1,7 @@
 import { LABELS, paperworkType, requiredPaperwork } from '@trendlix/shared';
 import { formatDate } from '../../../../../lib/format';
 import type { Contract, DocumentItem, DocumentsTab, EmployeeProfile, Employment, PaperworkItem } from '../../../../../lib/types';
+import { monthName } from '../../../payroll/list';
 import { profileHref } from '../../tab-list';
 import { formatEgp } from '../contracts/salary';
 import { templateStateText, type CheckResult, type MissingLink } from '../documents/wording';
@@ -99,12 +100,26 @@ export function insuredPrinted(p: Pick<EmployeeProfile, 'insuredWage'>): Printed
 /** Under the insured wage, which isn't edited: "Set by the comprehensive wage, within EGP 2,700.00 to 16,700.00 in 2026." */
 export const insuredNote = (limits: InsurableLimits): string => `Set by the comprehensive wage, within ${insurableLimitsText(limits)}.`;
 
+/**
+ * After a signed raise (owner's decision, 16 October 2026: "From the next January unless amended in Form 2"): "As
+ * before the raise until January 2027; Form 2 not filed", or until the Form 2 date once it is filed. Null otherwise.
+ */
+export function asBeforeRaiseNote(p: Pick<EmployeeProfile, 'insuredWageAsBefore'>): string | null {
+  const b = p.insuredWageAsBefore;
+  if (!b) return null;
+  return `As before the raise until ${monthName(b.until.slice(0, 7))}; Form 2 ${b.form2Filed ? 'filed' : 'not filed'}.`;
+}
+
 /** Under "Registered with social insurance", in one plain sentence. */
 export const REGISTERED_NOTE = 'Payroll deducts social insurance only for registered employees.';
 
-/** The comprehensive wage: the employee's own, else the contract's gross and allowances; null with neither. */
-export function comprehensivePrinted(p: Pick<EmployeeProfile, 'insuranceComprehensiveWage'>, c: ContractWages): Printed {
+/**
+ * The comprehensive wage: the employee's own, else the contract's gross and allowances (after a signed raise, those
+ * before it until the insured wage follows the raise); null with neither.
+ */
+export function comprehensivePrinted(p: Pick<EmployeeProfile, 'insuranceComprehensiveWage' | 'insuredWage' | 'insuredWageAsBefore'>, c: ContractWages): Printed {
   if (typeof p.insuranceComprehensiveWage === 'number') return { text: formatEgp(p.insuranceComprehensiveWage), from: null };
+  if (p.insuredWageAsBefore && p.insuredWage) return { text: formatEgp(p.insuredWage.comprehensive), from: 'from the contract before the raise' };
   return c && !c.salaryHidden && typeof c.totalSalary === 'number' ? { text: formatEgp(c.totalSalary), from: 'from the contract' } : null;
 }
 

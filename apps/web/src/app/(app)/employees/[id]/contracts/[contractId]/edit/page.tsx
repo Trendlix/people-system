@@ -1,4 +1,5 @@
-import { notFound } from 'next/navigation';
+import Link from 'next/link';
+import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { formatDate } from '@/lib/format';
 import { loadLawRates } from '@/lib/law-rates';
@@ -7,9 +8,13 @@ import { loadEmployee } from '../../../../data';
 import { contractHref, EditHeading, Empty, Loading, RequireHr, todayInCairo } from '../../../../ui';
 import { ContractForm } from '../../contract-form';
 import { loadAllowanceTypes, loadContractSettings, loadContracts } from '../../data';
+import { changeOf, editHref, stageOf, versionBefore, versionPay } from '../../raise';
 
 // Changing a draft of the current employment's contract, before it is signed. A signed version changes only in its
-// filing dates and note, with the contract on the Employment tab.
+// filing dates and note, with the contract on the Employment tab. A renewal asks whether its pay changes (owner's
+// decisions, 16 October 2026): with new pay it counts as a raise, which can't change while it is with the CEO, and an
+// approved one changed goes back to HR, to send to the CEO again. A raise (an amendment, or a new contract within the
+// term) is changed on its own page.
 
 async function EditContract({ params }: { params: Promise<{ id: string; contractId: string }> }) {
   const { contractId } = await params;
@@ -23,6 +28,9 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
   const today = todayInCairo();
   const contract = contracts?.find((c) => c.id === contractId);
   if (contracts && !contract) notFound();
+  const change = contract && contracts ? changeOf(contract, contracts) : null;
+  if (contract && change && (change === 'amendment' || change === 'new_contract')) redirect(editHref(employee.id, contract.id, change));
+  const previous = contract && contracts ? versionBefore(contract, contracts) : null;
 
   let body: React.ReactNode;
   if (!e || !contracts || !contract) {
@@ -34,14 +42,35 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
         can change, with the contract on the Employment tab. A change of terms is a new version.
       </Empty>
     );
+  } else if (stageOf(contract) === 'pending_ceo') {
+    body = (
+      <Empty>
+        Version {contract.version} ({contract.number}) changes the pay and is with the CEO: it can&apos;t be changed unless the CEO returns it. See it with
+        the contract on the <Link href={back}>Employment tab</Link>.
+      </Empty>
+    );
   } else {
     const renewal = contract.version > 1;
+    const raise = contract.raise;
     body = (
       <div className="max-w-3xl space-y-4">
         <p className="text-sm text-muted">
-          Draft of version {contract.version} ({contract.number}){renewal ? `, renewing version ${contract.version - 1}` : ''}. Sign it on the Employment tab
-          once the employee and the company have signed it.
+          Draft of version {contract.version} ({contract.number}){renewal ? `, renewing version ${contract.version - 1}` : ''}.{' '}
+          {raise
+            ? 'It changes the pay: send it to the CEO on the Employment tab, and sign it there once the CEO approves it and the employee and the company have signed it.'
+            : 'Sign it on the Employment tab once the employee and the company have signed it.'}
         </p>
+        {raise?.returnedReason && (
+          <p role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
+            The CEO returned it: {raise.returnedReason}
+          </p>
+        )}
+        {raise?.approval === 'approved' && (
+          <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+            The CEO approved its new pay. Changing its terms sends it back to HR as a draft, to send to the CEO again; changing the note alone keeps the
+            approval.
+          </p>
+        )}
         <ContractForm
           action={updateContract.bind(null, employee.id, contract.id, renewal)}
           defaults={{
@@ -60,6 +89,9 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
           }}
           allowanceTypes={allowanceTypes}
           renewal={renewal ? { startDate: contract.startDate, after: `version ${contract.version - 1}` } : null}
+          payChange={
+            renewal && previous ? { version: previous.version, pay: versionPay(previous), changes: Boolean(raise), reason: raise?.reason ?? null } : undefined
+          }
           fullTime={e.employmentType === 'full_time'}
           today={today}
           lawYears={lawYears}
