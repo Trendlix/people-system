@@ -3,6 +3,11 @@
 // (the contract's basic percent, 80 by default) follows attendance, the variable part follows the KPIs; tax is on the
 // actual pay (Law 7/2024, salary.ts) and social insurance on the insured wage the Social Insurance tab shows. Built
 // before attendance: HR types the month's hours and days on the run, and attendance will fill the same inputs later.
+// Absent days (owner's decisions, 16 October 2026): a no-show day costs 2 days' pay ("as the sheet"), and is never
+// charged twice ("make sure it is not duplicated in the noshow deduction and the attendance percentage"): its hours, a
+// day of the employee's shift, come out of the expected hours before attendance is worked out, so attendance measures
+// only short hours on the days the employee came in; the cut is never more than the salary left for the days paid.
+// The variable part follows the KPIs only ("No, fixed only" until the KPIs module): with no KPI given it isn't cut.
 
 import type { AllowanceTerms } from './contracts.js';
 import type { PayBasis } from './contracts.js';
@@ -25,13 +30,16 @@ export interface PayrollRules {
   dayDivisor: number;
   /** Attendance at or above this percent counts as full: the fixed pay isn't cut (the sheet: 90). */
   attendanceGracePercent: number;
-  /** A KPI average at or above this percent counts as full: the variable pay isn't cut (the sheet: 80). */
+  /**
+   * A KPI average at or above this percent counts as full: the variable pay isn't cut (the sheet: 80). With no KPI
+   * given, it isn't cut at all.
+   */
   kpiGracePercent: number;
   /** Overtime is paid for attendance above this percent (the sheet: 110). */
   overtimeAbovePercent: number;
   /** Overtime is paid at this rate (the sheet: 1.5). */
   overtimeRate: number;
-  /** A no-show day costs this many days' pay (the sheet: 2). */
+  /** A no-show day costs this many days' pay (the sheet: 2); its hours aren't counted again in attendance. */
   noShowDayMultiplier: number;
 }
 
@@ -69,6 +77,12 @@ export interface PayrollTerms {
   insured: boolean;
   /** The insured wage, as the Social Insurance tab and Form 1 show it. */
   insuredWage: number;
+  /**
+   * A working day's hours, from the employment's shift (its start to its end; an end before the start runs past
+   * midnight): the hours a no-show day takes out of the expected hours (owner's decision, 16 October 2026). Null
+   * without a shift, and missing on lines worked out before then: the expected hours are then taken as typed.
+   */
+  hoursPerDay: number | null;
 }
 
 /**
@@ -78,10 +92,20 @@ export interface PayrollTerms {
  */
 export interface PayrollInputs {
   workedHours: number | null;
+  /** The month's working hours, the no-show days' too: their hours are taken out before attendance is worked out. */
   expectedHours: number | null;
+  /**
+   * The KPIs. Not typed on the inputs grid since 16 October 2026 (owner: "this is going to be from the KPI's module,
+   * lets remove it till we work on it"): the KPIs module will fill them; any given still count.
+   */
   softSkills: number | null;
   performance: number | null;
   clientSatisfaction: number | null;
+  /**
+   * Days absent without notice (owner's decisions, 16 October 2026): each costs the no-show multiplier's days of the
+   * gross, and its hours (a day of the shift) are taken out of the expected hours, so attendance doesn't charge it
+   * again. Not for pay by the hour.
+   */
   noShowDays: number | null;
   penaltyDays: number | null;
   bonusDays: number | null;
@@ -111,11 +135,17 @@ export interface PayrollResult {
   /** The fixed and variable parts of the gross for the days paid. By the hour: the hours' pay, and no variable part. */
   fixed: number;
   variable: number;
-  /** Worked ÷ expected hours; null when attendance isn't tracked. */
+  /**
+   * The no-show days' hours (a day of the shift each), taken out of the expected hours: 0 without no-show days, the
+   * shift's hours or expected hours, and for pay by the hour. Missing on lines worked out before 16 October 2026, when
+   * none were.
+   */
+  absentHours: number;
+  /** Worked ÷ (expected less absent) hours; null when attendance isn't tracked or can't be counted. */
   attendanceRatio: number | null;
   /** The attendance that counts (1 at or above the grace percent). */
   attendanceScore: number;
-  /** The KPI average that counts (1 at or above the grace percent). */
+  /** The KPI average that counts (1 at or above the grace percent, and with no KPI given). */
   kpiScore: number;
   attendanceCut: number;
   kpiCut: number;
@@ -159,16 +189,43 @@ const fraction = (v: number) => Math.round(v * 1e10) / 1e10;
 const given = (v: number | null) => v ?? 0;
 
 /** The salary part of a line before the bonus, the commission and the settlements. */
-type SalaryPart = Pick<PayrollResult, 'fixed' | 'variable' | 'attendanceRatio' | 'attendanceScore' | 'kpiScore' | 'attendanceCut' | 'kpiCut' | 'noShowCut' | 'overtime'>;
+type SalaryPart = Pick<
+  PayrollResult,
+  'fixed' | 'variable' | 'absentHours' | 'attendanceRatio' | 'attendanceScore' | 'kpiScore' | 'attendanceCut' | 'kpiCut' | 'noShowCut' | 'overtime'
+>;
+
+/**
+ * A working day's hours from a shift's start and end ("HH:mm"): an end before the start runs past midnight. Null when
+ * they are the same, or not times.
+ */
+export function shiftHours(start: string, end: string): number | null {
+  const minutes = (t: string) => {
+    const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(t);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const [from, to] = [minutes(start), minutes(end)];
+  if (from === null || to === null || from === to) return null;
+  return ((to - from + 1440) % 1440) / 60;
+}
+
+/**
+ * The hours of the no-show days, a day of the shift each, that come out of the expected hours (owner's decision,
+ * 16 October 2026): 0 without no-show days or the shift's hours.
+ */
+export function noShowHours(noShowDays: number | null, hoursPerDay: number | null | undefined): number {
+  const n = given(noShowDays);
+  return n > 0 && typeof hoursPerDay === 'number' && hoursPerDay > 0 ? fraction(n * hoursPerDay) : 0;
+}
 
 /**
  * A payroll line worked out from its terms and the month's inputs, with the run's rules, every amount rounded to the
- * piaster as it is worked out. Monthly pay: the fixed part of the gross (its basic percent) is cut for attendance below
- * the grace percent and paid overtime above the overtime percent, the variable part is cut for a KPI average below its
- * grace percent, and a no-show day costs days of the gross (two by default). By the hour: the hours worked at the
- * contract's rate. Then for both: the bonus days, the commission and the settlements; the allowances for the days paid;
- * social insurance on the insured wage, whole for a part month; the salary tax and the Martyrs' Fund on the actual pay;
- * penalty days at the contract's net after the tax.
+ * piaster as it is worked out. Monthly pay: a no-show day costs days of the gross (two by default), never more than
+ * the salary left for the days paid, and its hours (the shift's) come out of the expected hours; the fixed part of the
+ * gross (its basic percent) is cut for attendance on those hours below the grace percent and paid overtime above the
+ * overtime percent; the variable part is cut for a KPI average below its grace percent, and not at all with no KPI
+ * given. By the hour: the hours worked at the contract's rate. Then for both: the bonus days, the commission and the
+ * settlements; the allowances for the days paid; social insurance on the insured wage, whole for a part month; the
+ * salary tax and the Martyrs' Fund on the actual pay; penalty days at the contract's net after the tax.
  */
 export function payrollLine(terms: PayrollTerms, inputs: PayrollInputs, rules: PayrollRules = PAYROLL_RULE_DEFAULTS): PayrollResult {
   const days = rules.dayDivisor;
@@ -184,7 +241,11 @@ export function payrollLine(terms: PayrollTerms, inputs: PayrollInputs, rules: P
   /** An amount for the days paid. */
   const forDaysPaid = (amount: number) => piasters((amount * terms.paidDays) / days);
 
-  const salary = terms.payBasis === 'hourly' ? hourlyPart(terms, i, warnings) : monthlyPart(i, rules, { gross, fixedFull, variableFull, forDaysPaid }, warnings);
+  const salary =
+    terms.payBasis === 'hourly'
+      ? hourlyPart(terms, i, warnings)
+      : // terms saved before the hours a day existed read as without a shift
+        monthlyPart(i, rules, { gross, fixedFull, variableFull, forDaysPaid, hoursPerDay: terms.hoursPerDay ?? null }, warnings);
   // a bonus day is a day of the fixed part, also for pay by the hour (its monthly estimate's)
   const bonus = piasters((given(i.bonusDays) * fixedFull) / days);
   const commission = piasters(given(i.commission));
@@ -254,42 +315,66 @@ export function payrollLine(terms: PayrollTerms, inputs: PayrollInputs, rules: P
 
 /**
  * A monthly salary for the days paid, with the cuts and the overtime the owner's sheet works out (its formula errors
- * fixed): attendance is worked ÷ expected hours, counted as full at or above the grace percent (90); the KPI average
- * is that attendance score and the KPIs given, counted as full at or above its grace percent (80); overtime is paid on
- * the fixed part for the days paid (the expected hours are the part month's) for attendance above the overtime percent
- * (110), at the overtime rate (1.5); a no-show
- * day costs the no-show multiplier (2) days of the gross (the sheet used the declared insurance salary, empty for most).
+ * fixed), and its no-show days charged once (owner's decisions, 16 October 2026). Attendance is the worked hours ÷ the
+ * expected hours less the no-show days' hours (a day of the shift each), counted as full at or above the grace percent
+ * (90); without the shift's hours, the expected hours as typed, with a warning. With a KPI given, the KPI average is
+ * that attendance score and the KPIs given, counted as full at or above its grace percent (80); with none, the variable
+ * part isn't cut ("fixed only"). Overtime is paid on the fixed part for the days paid (the expected hours are the part
+ * month's) for attendance above the overtime percent (110), at the overtime rate (1.5). A no-show day costs the no-show
+ * multiplier (2) days of the gross (the sheet used the declared insurance salary, empty for most), never more than the
+ * salary left for the days paid after the other cuts.
  */
 function monthlyPart(
   i: PayrollInputs,
   rules: PayrollRules,
-  pay: { gross: number; fixedFull: number; variableFull: number; forDaysPaid: (amount: number) => number },
+  pay: { gross: number; fixedFull: number; variableFull: number; forDaysPaid: (amount: number) => number; hoursPerDay: number | null },
   warnings: string[],
 ): SalaryPart {
   const fixed = pay.forDaysPaid(pay.fixedFull);
   const variable = pay.forDaysPaid(pay.variableFull);
 
+  // a no-show day's hours come out of the expected hours: the no-show cut alone charges the day
+  const noShowDays = given(i.noShowDays);
   const { workedHours: worked, expectedHours: expected } = i;
-  const attendanceRatio = worked !== null && expected !== null && expected > 0 ? fraction(worked / expected) : null;
+  const shiftDays = noShowHours(i.noShowDays, pay.hoursPerDay);
+  const absentHours = expected !== null && expected > 0 ? shiftDays : 0;
+  /** The expected hours attendance is measured on. */
+  const counted = expected === null ? 0 : fraction(expected - absentHours);
+  const attendanceRatio = worked !== null && expected !== null && expected > 0 && counted > 0 ? fraction(worked / counted) : null;
   if (worked !== null && expected === null) warnings.push("Worked hours are given without the expected hours: attendance isn't counted");
   if (worked === null && expected !== null) warnings.push("Expected hours are given without the worked hours: attendance isn't counted");
   if (worked !== null && expected !== null && !(expected > 0)) warnings.push("The expected hours are 0: attendance isn't counted");
+  if (worked !== null && expected !== null && expected > 0 && !(counted > 0)) {
+    warnings.push("The no-show days' hours are all the expected hours or more: attendance isn't counted, only the no-show cut");
+  }
+  if (noShowDays > 0 && expected !== null && shiftDays === 0) {
+    warnings.push("No shift on the employment, so the no-show days' hours couldn't be taken out of the expected hours: type the expected hours without them");
+  }
   const attendanceScore = attendanceRatio === null || attendanceRatio >= rules.attendanceGracePercent / 100 ? 1 : attendanceRatio;
 
   const kpis = [i.softSkills, i.performance, i.clientSatisfaction].filter((v): v is number => v !== null).map((v) => v / 100);
   const kpiAverage = fraction([attendanceScore, ...kpis].reduce((sum, v) => sum + v, 0) / (kpis.length + 1));
-  const kpiScore = kpiAverage >= rules.kpiGracePercent / 100 ? 1 : kpiAverage;
+  const kpiScore = kpis.length === 0 || kpiAverage >= rules.kpiGracePercent / 100 ? 1 : kpiAverage;
+
+  const attendanceCut = piasters(fixed * Math.max(0, 1 - attendanceScore));
+  const kpiCut = piasters(variable * Math.max(0, 1 - kpiScore));
+  // never more than the salary left for the days paid, so absences alone can't take the pay below 0
+  const noShowFull = piasters((noShowDays * rules.noShowDayMultiplier * pay.gross) / rules.dayDivisor);
+  const salaryLeft = Math.max(0, piasters(fixed - attendanceCut + variable - kpiCut));
+  const noShowCut = Math.min(noShowFull, salaryLeft);
+  if (noShowFull > noShowCut) warnings.push('The no-show days cost more than the salary left for the days paid: the cut is capped there');
 
   const above = rules.overtimeAbovePercent / 100;
   return {
     fixed,
     variable,
+    absentHours,
     attendanceRatio,
     attendanceScore,
     kpiScore,
-    attendanceCut: piasters(fixed * Math.max(0, 1 - attendanceScore)),
-    kpiCut: piasters(variable * Math.max(0, 1 - kpiScore)),
-    noShowCut: piasters((given(i.noShowDays) * rules.noShowDayMultiplier * pay.gross) / rules.dayDivisor),
+    attendanceCut,
+    kpiCut,
+    noShowCut,
     // the sheet's intent: its overtime column multiplied the money amount by the attendance again, not copied
     overtime: attendanceRatio !== null && attendanceRatio > above ? piasters(fixed * (attendanceRatio - above) * rules.overtimeRate) : 0,
   };
@@ -297,7 +382,7 @@ function monthlyPart(
 
 /**
  * Pay by the hour: the hours worked at the contract's rate, as one amount (in `fixed`). There is no split of the gross,
- * so no attendance or KPI cuts, no overtime on the attendance ratio and no no-show cut.
+ * so no attendance or KPI cuts, no overtime on the attendance ratio and no no-show cut (nor absent hours).
  */
 function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): SalaryPart {
   if (i.workedHours === null) warnings.push('Paid by the hour, but no worked hours are given: nothing is paid for hours');
@@ -308,6 +393,7 @@ function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): 
   return {
     fixed: piasters(given(i.workedHours) * given(terms.hourlyRate)),
     variable: 0,
+    absentHours: 0,
     attendanceRatio: null,
     attendanceScore: 1,
     kpiScore: 1,

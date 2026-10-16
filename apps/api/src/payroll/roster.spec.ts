@@ -12,6 +12,7 @@ function employment(over: Partial<RosterEmployment> = {}, employee: Partial<Rost
     endDate: null,
     department: { nameEn: 'Accounts', parent: { nameEn: 'Sales' } },
     jobTitle: 'Account Manager',
+    shift: { startTime: '09:00', endTime: '18:00' },
     employee: { id: `employee-${n}`, employeeCode: `EMP-${String(n).padStart(4, '0')}`, fullNameEn: `Person ${n}`, socialInsured: true, insuranceComprehensiveWage: null, ...employee },
     contracts: [contract()],
     ...over,
@@ -62,6 +63,8 @@ describe('roster', () => {
           insured: true,
           // the comprehensive wage (gross and allowances) within 2026's limits
           insuredWage: 13000,
+          // the shift's 09:00 to 18:00
+          hoursPerDay: 9,
         },
       },
     ]);
@@ -74,6 +77,15 @@ describe('roster', () => {
     const terms = (id: string) => lines.find((l) => l.employeeId === id)!.terms;
     expect(terms(own.employee.id)).toMatchObject({ insuredWage: 16700, insured: false, statutory: true });
     expect(terms(freelance.employee.id)).toMatchObject({ statutory: false });
+  });
+
+  it('takes a working day’s hours from the employment’s shift, past midnight too; none without a shift', () => {
+    const half = employment({ shift: { startTime: '09:00', endTime: '17:30' } });
+    const night = employment({ shift: { startTime: '22:00', endTime: '06:00' } });
+    const none = employment({ shift: null });
+    const { lines } = roster('2026-09', [half, night, none], rules);
+    const hours = (e: RosterEmployment) => lines.find((l) => l.employeeId === e.employee.id)!.terms.hoursPerDay;
+    expect([hours(half), hours(night), hours(none)]).toEqual([8.5, 8, null]);
   });
 
   it('pays a joiner or a leaver for the days employed in the month', () => {

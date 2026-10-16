@@ -8,7 +8,9 @@ import { byDepartment } from './roster.js';
 // The payroll register (owner's decisions, 16 October 2026): the run as a spreadsheet, like the owner's payroll sheet,
 // one row per employee grouped by department, every step of the pay, and a totals row. A draft says so in its title.
 // No Medical column: there is no medical subscription any more (owner's decision, 16 October 2026). A run approved
-// before then keeps its results as they were, so its net and transfer may still have one taken off.
+// before then keeps its results as they were, so its net and transfer may still have one taken off. The no-show days'
+// hours, taken out of the expected hours, have a column after them (owner's decision, 16 October 2026), so the
+// Attendance % reads as the worked hours over what is left: empty when none were taken out.
 
 export interface RegisterLine {
   department: string | null;
@@ -60,6 +62,8 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'Paid days', kind: 'days', width: 9, value: (l) => l.terms.paidDays },
   { header: 'Worked hours', kind: 'hours', width: 11, value: (l) => l.inputs.workedHours },
   { header: 'Expected hours', kind: 'hours', width: 11, value: (l) => l.inputs.expectedHours },
+  // missing on lines worked out before 16 October 2026, when none were taken out
+  { header: 'No-show hours', kind: 'hours', width: 11, value: (l) => l.result.absentHours || null },
   { header: 'Attendance %', kind: 'percent', width: 11, value: (l) => l.result.attendanceRatio },
   { header: 'Soft skills %', kind: 'percent', width: 11, value: (l) => pct(l.inputs.softSkills) },
   { header: 'Performance %', kind: 'percent', width: 12, value: (l) => pct(l.inputs.performance) },
@@ -93,7 +97,7 @@ export const REGISTER_COLUMNS: readonly Column[] = [
 
 const FORMATS: Record<Kind, string> = { text: '@', money: MONEY, percent: PERCENT, hours: HOURS, days: DAYS, count: '0' };
 
-/** The column's letter, A … AO. */
+/** The column's letter, A … AP. */
 function letter(n: number): string {
   let s = '';
   for (let i = n; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s;

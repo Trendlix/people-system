@@ -200,6 +200,7 @@ describe('payroll register', () => {
   const result = (net: number) => ({
     fixed: 8000,
     variable: 2000,
+    absentHours: 0,
     attendanceRatio: 0.95,
     attendanceScore: 1,
     kpiScore: 1,
@@ -234,7 +235,7 @@ describe('payroll register', () => {
     name,
     jobTitle: 'Invented Title',
     payBasis: 'monthly',
-    terms: { year: 2026, payBasis: 'monthly', gross: 10000, basicPercent: 80, hourlyRate: null, allowances: [], paidDays: 30, statutory: true, insured: true, insuredWage: 10500 },
+    terms: { year: 2026, payBasis: 'monthly', gross: 10000, basicPercent: 80, hourlyRate: null, allowances: [], paidDays: 30, statutory: true, insured: true, insuredWage: 10500, hoursPerDay: 8 },
     inputs: {
       workedHours: 190,
       expectedHours: 200,
@@ -284,5 +285,25 @@ describe('payroll register', () => {
     const letter = ws.getRow(8).getCell(net).address.replace(/\d+/g, '');
     expect(ws.getRow(8).getCell(net).value).toEqual({ formula: `SUM(${letter}5:${letter}7)`, result: 24763.16 });
     expect(ws.getRow(8).getCell(2).value).toBe('Total');
+    expect(ws.getRow(8).getCell(REGISTER_COLUMNS.length).address).toBe('AP8');
+  });
+
+  it('the no-show days’ hours after the expected hours (owner’s decision, 16 October 2026); empty when none were taken out', async () => {
+    // one no-show day of an 8-hour shift: 190 worked of the 200 expected less 8
+    const absent = line('Amy Invented', 'Sales', 8000);
+    absent.inputs = { ...absent.inputs, noShowDays: 1 };
+    absent.result = { ...absent.result, absentHours: 8, attendanceRatio: 0.9895833333 };
+    // a line worked out before then has no absent hours at all
+    const older = line('Zed Invented', 'Sales', 8381.58);
+    delete (older.result as Partial<RegisterLine['result']>).absentHours;
+    const ws = (await read(await registerWorkbook({ month: '2026-09', status: 'approved', paidOn: null, lines: [absent, older, line('Bob Invented', 'Sales', 8381.58)] })))
+      .worksheets[0];
+    const headers = REGISTER_COLUMNS.map((c) => c.header);
+    const expected = headers.indexOf('Expected hours');
+    expect(headers.slice(expected, expected + 3)).toEqual(['Expected hours', 'No-show hours', 'Attendance %']);
+    const column = expected + 2;
+    // Amy, Bob, Zed
+    expect([5, 6, 7].map((r) => ws.getRow(r).getCell(column).value)).toEqual([8, null, null]);
+    expect(ws.getRow(5).getCell(column).numFmt).toBe('#,##0.00');
   });
 });

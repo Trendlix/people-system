@@ -201,14 +201,28 @@ describe('payslipContent: the month’s cuts and extras, with the run’s own ru
   it('no-show and penalty days: a cell each, the no-show cut in the earnings, the penalty in the deductions', () => {
     const source = payslipSource('monthly', { inputs: { noShowDays: 1, penaltyDays: 2 } });
     const c = payslipContent(source, 'en');
+    // the day's 8 hours out of the 176 expected (owner's decisions, 16 October 2026): 165:30 of 168:00 is 98.51%
+    expect(c.thisMonth!.cells[0]).toEqual({ label: 'Hours worked', value: '165:30 of 168:00', note: '98.51%: counts as full (90% or more)' });
     expect(c.thisMonth!.cells.slice(3)).toEqual([
-      { label: 'No-show days', value: '1', note: 'Each costs 2 days’ pay' },
+      { label: 'No-show days', value: '1', note: 'Each costs 2 days’ pay; their 8:00 hours aren’t counted again in attendance' },
       { label: 'Penalty days', value: '2', note: 'A day’s net salary each' },
     ]);
-    expect(c.earnings!.rows.find((r) => r.label === 'No-show')).toMatchObject({ note: '1 day, 2 days’ pay each', value: -source.line.result.noShowCut });
+    // 1 × 2 × 24,000 ÷ 30
+    expect(c.earnings!.rows.find((r) => r.label === 'No-show')).toMatchObject({ note: '1 day, 2 days’ pay each', amount: '−1,600.00', value: -1600 });
     expect(c.deductions!.rows.find((r) => r.label === 'Penalty')).toMatchObject({ note: '2 days', value: source.line.result.penaltyCut });
     expect(sum(c.earnings!.rows)).toBe(c.earnings!.total.value);
     expect(sum(c.deductions!.rows)).toBe(c.deductions!.total.value);
+  });
+
+  it('a line worked out before the no-show days’ hours came out of the expected hours (16 October 2026): the hours as typed', () => {
+    const source = payslipSource('monthly', { inputs: { noShowDays: 1 } });
+    // its stored result as payrollLine worked it out then: no absent hours, attendance on the 176 typed
+    const { absentHours, ...was } = source.line.result;
+    expect(absentHours).toBe(8);
+    const old = { ...source, line: { ...source.line, result: { ...was, attendanceRatio: 0.9403409091 } as typeof source.line.result } };
+    const c = payslipContent(old, 'en');
+    expect(c.thisMonth!.cells[0]).toEqual({ label: 'Hours worked', value: '165:30 of 176:00', note: '94.03%: counts as full (90% or more)' });
+    expect(c.thisMonth!.cells.find((x) => x.label === 'No-show days')!.note).toBe('Each costs 2 days’ pay');
   });
 
   it('a commission and a negative settlement: rows of their own, the settlement minus, still adding up', () => {
@@ -385,6 +399,8 @@ describe('payslipContent: in Arabic', () => {
     const part = payslipContent(payslipSource('monthly', { terms: { paidDays: 19 }, inputs: { noShowDays: 2, penaltyDays: 1 } }), 'ar');
     expect(part.earnings!.rows[0].note).toBe('٨٠٪ من الراتب الشامل ٢٤٬٠٠٠٫٠٠، عن ١٩ من ٣٠ يومًا');
     expect(part.earnings!.rows.find((r) => r.label === 'الغياب دون إذن')!.note).toBe('يومان، بأجر يومين عن كل يوم');
+    // two 8-hour days out of the expected hours
+    expect(part.thisMonth!.cells.find((x) => x.label === 'أيام الغياب دون إذن')!.note).toBe('يُخصم عن كل يوم أجر يومين، ولا تُحتسب ساعاتها (١٦:٠٠) مرة أخرى في الحضور');
     expect(part.deductions!.rows.find((r) => r.label === 'جزاء')!.note).toBe('يوم واحد');
     const hourly = payslipContent(payslipSource('hourly'), 'ar');
     expect(hourly.earnings!.rows[0]).toMatchObject({ label: 'أجر الساعات', note: '٩٢:٣٠ × ١٥٠٫٠٠ للساعة' });

@@ -14,6 +14,7 @@ import { AuditService, changes } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
+import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
@@ -64,6 +65,7 @@ const rosterSelect = (from: Date, to: Date) =>
     endDate: true,
     department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
     jobTitle: { select: { titleEn: true } },
+    shift: { select: { startTime: true, endTime: true } },
     employee: { select: { id: true, employeeCode: true, fullNameEn: true, socialInsured: true, insuranceComprehensiveWage: true } },
     // signed versions (active, superseded or ended) that may be in force in the month
     contracts: {
@@ -91,6 +93,7 @@ function rosterEmployment(e: EmploymentRow): RosterEmployment {
     endDate: fromDateOnly(e.endDate),
     department: e.department,
     jobTitle: e.jobTitle?.titleEn ?? null,
+    shift: e.shift && { startTime: fromTimeOfDay(e.shift.startTime), endTime: fromTimeOfDay(e.shift.endTime) },
     employee: { ...e.employee, insuranceComprehensiveWage: e.employee.insuranceComprehensiveWage?.toNumber() ?? null },
     contracts: e.contracts.map((c) => ({
       id: c.id,
@@ -200,9 +203,9 @@ export class PayrollService {
   }
 
   /**
-   * Takes a draft's people, contracts, insured wages and rules again as they are now: someone newly under contract is
-   * added, someone no longer is taken off, everyone's terms are taken afresh; the inputs typed, the holds and the
-   * comments stay.
+   * Takes a draft's people, contracts, insured wages, shifts and rules again as they are now: someone newly under
+   * contract is added, someone no longer is taken off, everyone's terms are taken afresh; the inputs typed, the holds
+   * and the comments stay.
    */
   async refresh(id: string, user: SessionUser): Promise<PayrollRunView> {
     const run = await this.row(id);

@@ -5,7 +5,7 @@ import type { PayslipSource } from '../../src/payroll/payslip-content.js';
 // Payslips for the tests (owner's decisions, 16 October 2026): the payslip proposal's two people, a monthly salary and
 // pay by the hour, their figures worked out by payrollLine itself so every row adds up. Everyone is invented.
 
-/** Mariam: a monthly salary all October, insured, two allowances (one not taxed), KPIs below 80%, a bonus day. */
+/** Mariam: a monthly salary all October, insured, two allowances (one not taxed), KPIs below 80%, a bonus day; 8-hour days. */
 export const MONTHLY_TERMS: PayrollTerms = {
   year: 2026,
   payBasis: 'monthly',
@@ -20,6 +20,7 @@ export const MONTHLY_TERMS: PayrollTerms = {
   statutory: true,
   insured: true,
   insuredWage: 16700,
+  hoursPerDay: 8,
 };
 
 export const MONTHLY_INPUTS: PayrollInputs = {
@@ -45,6 +46,7 @@ export const HOURLY_TERMS: PayrollTerms = {
   statutory: true,
   insured: false,
   insuredWage: 0,
+  hoursPerDay: null,
 };
 
 export const HOURLY_INPUTS: PayrollInputs = { ...EMPTY_PAYROLL_INPUTS, workedHours: 92.5, settlements: 450 };

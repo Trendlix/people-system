@@ -117,7 +117,7 @@ describe('Payroll (e2e)', () => {
   const api = () => request(app.getHttpServer());
 
   // the people on the run
-  let regular: Person; // monthly, all month, CIB, insured
+  let regular: Person; // monthly, all month, CIB, insured, on the seeded shift A (09:00 to 18:00)
   let joiner: Person; // joined on the 12th, QNB
   let freelancer: Person; // no bank details
   let hourly: Person; // by the hour, CIB, put on hold
@@ -179,7 +179,8 @@ describe('Payroll (e2e)', () => {
     departmentId = (await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Payroll ${RUN}` }).expect(201)).body.id;
     transportId = (await api().post('/api/allowance-types').set('Cookie', hr).send({ nameEn: `Transport ${RUN}`, nameAr: 'بدل انتقال', taxable: true }).expect(201)).body.id;
 
-    regular = await hire('Regular');
+    const shifts = (await api().get('/api/shifts').set('Cookie', hr).expect(200)).body as { id: string; code: string }[];
+    regular = await hire('Regular', { shiftId: shifts.find((s) => s.code === 'A')!.id });
     await signed(regular, { allowances: [{ allowanceTypeId: transportId, amount: 1000 }] });
     await bank(regular, { bankName: 'CIB', accountNo: CIB_ACCOUNT, holderName: `REGULAR HOLDER ${RUN}` });
     await employee(regular, { socialInsured: true }).expect(200);
@@ -311,6 +312,7 @@ describe('Payroll (e2e)', () => {
         statutory: true,
         insured: true,
         insuredWage: 13000, // the gross and the allowances, as the Social Insurance tab shows it
+        hoursPerDay: 9, // the shift's 09:00 to 18:00: what a no-show day takes out of the expected hours
       });
       expect(r.inputs).toEqual({
         workedHours: null,
@@ -330,7 +332,7 @@ describe('Payroll (e2e)', () => {
 
       // the joiner is paid for the days from the 12th
       const j = lineOf(run, joiner)!;
-      expect(j.terms).toMatchObject({ paidDays: JOINER_DAYS, gross: 9000, insured: false });
+      expect(j.terms).toMatchObject({ paidDays: JOINER_DAYS, gross: 9000, insured: false, hoursPerDay: null }); // no shift
       expect(j.result.employeeInsurance).toBe(0); // not registered with social insurance
       expect(j.result.warnings.join(' ')).toContain(`${JOINER_DAYS} of 30`);
       expect(j.bank).toEqual({ file: 'ach', bankShort: 'QNB', problem: null });
@@ -450,7 +452,11 @@ describe('Payroll (e2e)', () => {
       );
       // negative settlements are corrections
       run = (await patchLines(run.id, [{ id, inputs: { settlements: -250.5, noShowDays: 0.5 } }]).expect(200)).body as Run;
-      expect(lineOf(run, regular)!.result.settlements).toBe(-250.5);
+      const corrected = lineOf(run, regular)!;
+      expect(corrected.result.settlements).toBe(-250.5);
+      // half a day off: half the shift's 9 hours out of the 200 expected (owner's decisions, 16 October 2026)
+      expect(corrected.result).toMatchObject({ absentHours: 4.5, attendanceRatio: Math.round((180 / 195.5) * 1e10) / 1e10, noShowCut: 400 });
+      expect(corrected.result).toEqual(payrollLine(corrected.terms, corrected.inputs, run.rules));
       for (const session of [finance, ceo, admin]) await patchLines(run.id, [{ id, inputs: { commission: 100 } }], session).expect(403);
     });
 

@@ -20,7 +20,9 @@ import { monthArabic, monthName } from './months.js';
 // KPI scores (they explain the cuts), the earnings and the deductions row by row, the net with the amount in words,
 // what was already paid and what the bank transfers, the company's insurance share, and the year to date. Every figure
 // is the approved line's (packages/shared payrollLine): nothing is worked out again but the allowances for the days
-// paid, as payrollLine prorates them, and the KPI average, as it averages them. A row that is 0 is left out, and so is
+// paid, as payrollLine prorates them, and the KPI average, as it averages them. The hours are those attendance counted:
+// the expected hours less the no-show days' hours, so a no-show day reads as charged once (owner's decisions,
+// 16 October 2026); a line worked out before then has none taken out. A row that is 0 is left out, and so is
 // a section with nothing in it. Left off on purpose: the company cost, the tax working, HR's comments, the warnings,
 // the full account number, the IBAN and the national ID. In English for everyone; in Arabic on request, right to left,
 // every number in ٠-٩ but the codes with Latin letters (EMP-0007, PAY-2026-10) and the banks' short names (CIB, QNB).
@@ -351,6 +353,8 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   const hourly = line.payBasis === 'hourly';
   const partMonth = terms.paidDays < days;
   const row = (label: string, value: number, note: string | null = null): PayslipRow => ({ label, note, amount: money(value), value });
+  // the no-show days' hours taken out of the expected hours: none on a line worked out before 16 October 2026
+  const absentHours = Number.isFinite(result.absentHours) && result.absentHours > 0 ? result.absentHours : 0;
 
   // the company, under its logo or name
   const city = company.city?.trim() ? (ar ? (GOVERNORATES_AR[company.city.trim() as keyof typeof GOVERNORATES_AR] ?? company.city.trim()) : company.city.trim()) : null;
@@ -403,7 +407,7 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     }
     cells.push({
       label: t(L.hoursWorked),
-      value: num(`${formatHours(inputs.workedHours)} ${ar ? 'من' : 'of'} ${formatHours(inputs.expectedHours)}`),
+      value: num(`${formatHours(inputs.workedHours)} ${ar ? 'من' : 'of'} ${formatHours(inputs.expectedHours - absentHours)}`),
       note: num(note),
     });
   } else if (inputs.workedHours !== null) {
@@ -441,11 +445,10 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   const noShowDays = hourly ? null : given(inputs.noShowDays);
   const multiplier = rules.noShowDayMultiplier;
   if (noShowDays !== null) {
-    cells.push({
-      label: t(L.noShowDays),
-      value: num(plainNumber(noShowDays)),
-      note: ar ? `يُخصم عن كل يوم ${arabicDaysPay(multiplier)}` : `Each costs ${multiplier === 1 ? 'a day’s' : `${plainNumber(multiplier)} days’`} pay`,
-    });
+    const pay = ar ? `يُخصم عن كل يوم ${arabicDaysPay(multiplier)}` : `Each costs ${multiplier === 1 ? 'a day’s' : `${plainNumber(multiplier)} days’`} pay`;
+    // their hours, out of the expected hours, aren't counted again in the attendance
+    const hours = absentHours > 0 ? num(ar ? `، ولا تُحتسب ساعاتها (${formatHours(absentHours)}) مرة أخرى في الحضور` : `; their ${formatHours(absentHours)} hours aren’t counted again in attendance`) : '';
+    cells.push({ label: t(L.noShowDays), value: num(plainNumber(noShowDays)), note: `${pay}${hours}` });
   }
   const penaltyDays = given(inputs.penaltyDays);
   if (penaltyDays !== null) {

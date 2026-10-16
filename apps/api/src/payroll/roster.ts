@@ -1,4 +1,4 @@
-import { paidDaysIn, type EmploymentType, type PayBasis, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
+import { paidDaysIn, shiftHours, type EmploymentType, type PayBasis, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
 import { departmentName } from '../contracts/views.js';
 import { insuredWageOfEmployee } from '../employees/insured-wage.js';
 import { firstDay, lastDay } from './months.js';
@@ -6,7 +6,8 @@ import { firstDay, lastDay } from './months.js';
 // Who is on a month's payroll (owner's decisions, 16 October 2026): every employment that touches the month (joined by
 // its last day, not ended before its first) whose person has a signed contract in force in the month, taken as far as
 // the employment ran. With two (a renewal starting mid-month) the later one's terms are paid for the whole month. The
-// others are left out, with the reason, for HR to see.
+// others are left out, with the reason, for HR to see. A working day's hours are the employment's shift's, what a
+// no-show day takes out of the expected hours (owner's decision, 16 October 2026).
 
 /** An employment as the roster reads it, with its signed contracts that may be in force in the month. */
 export interface RosterEmployment {
@@ -16,6 +17,8 @@ export interface RosterEmployment {
   endDate: string | null;
   department: { nameEn: string; parent: { nameEn: string } | null } | null;
   jobTitle: string | null;
+  /** The employment's shift, "HH:mm"; null without one. */
+  shift: { startTime: string; endTime: string } | null;
   employee: {
     id: string;
     employeeCode: string;
@@ -124,6 +127,7 @@ export function roster(month: string, employments: readonly RosterEmployment[], 
         insured: p.socialInsured,
         // as the Social Insurance tab shows it, for the run's year
         insuredWage: insuredWageOfEmployee(p.insuranceComprehensiveWage, contractTotal, year)!.amount,
+        hoursPerDay: e.shift ? shiftHours(e.shift.startTime, e.shift.endTime) : null,
       },
     });
   }
