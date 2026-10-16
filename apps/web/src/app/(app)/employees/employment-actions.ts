@@ -1,8 +1,8 @@
 'use server';
 
-// Employment actions: hiring someone whose profile exists (again, after an earlier employment ended), changing an
-// employment (the current one, or an ended one in the history), ending the current one, and deleting one added by
-// mistake. Each one forwards to the API, which checks the session and the HR role (deleting: a Super Admin only), so
+// Employment actions: hiring someone whose profile exists (again, after an earlier employment ended), with the first
+// contract's terms in the same form (owner's decision, 16 October 2026), changing an employment (the current one, or an
+// ended one in the history), ending the current one, and deleting one added by mistake. Each one forwards to the API, which checks the session and the HR role (deleting: a Super Admin only), so
 // calling these directly can't bypass permissions. Dates are typed as DD/MM/YYYY and sent as YYYY-MM-DD.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -10,7 +10,8 @@ import { ApiError, apiSend } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
-import { profileHref } from './ui';
+import { contractBody } from './contract-body';
+import { contractHref, profileHref } from './ui';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '');
 
@@ -28,8 +29,11 @@ function submitted(fd: FormData): Record<string, string | string[]> {
 /** The API's messages, with its dates (YYYY-MM-DD) as the screens show them (DD/MM/YYYY). */
 const asShown = (messages: string[]) => messages.map((m) => m.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$3/$2/$1'));
 
-/** Sends the request unless reading the form already found mistakes, then goes back to the profile's Employment tab. */
-async function save(employeeId: string, fd: FormData, errors: string[], request: () => Promise<unknown>): Promise<FormState> {
+/**
+ * Sends the request unless reading the form already found mistakes, then goes back to the profile's Employment tab (`to`:
+ * a place on it).
+ */
+async function save(employeeId: string, fd: FormData, errors: string[], request: () => Promise<unknown>, to = profileHref(employeeId, 'employment')): Promise<FormState> {
   if (errors.length) return { errors, values: submitted(fd) };
   try {
     await request();
@@ -37,7 +41,7 @@ async function save(employeeId: string, fd: FormData, errors: string[], request:
     if (err instanceof ApiError) return { errors: asShown(err.messages), values: submitted(fd) };
     throw err;
   }
-  redirect(profileHref(employeeId, 'employment'));
+  redirect(to);
 }
 
 /**
@@ -74,8 +78,22 @@ function endBody(fd: FormData, errors: string[]) {
 }
 
 /**
- * Hires someone: a new current employment (the API refuses one while another is current, or one overlapping the
- * history). No status: the API sets it, Probation while the probation runs, else Active.
+ * Hires someone in one form: the job and the first contract's terms, sent together (POST /employees/:id/hire), which
+ * makes the employment and its contract version 1 as a draft, or neither. The contract starts on the join date, so no
+ * start date is sent. Every mistake the form shows is found at once, the job's and the contract's; then the profile
+ * opens on the new contract, to print and sign.
+ */
+export async function hire(employeeId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const errors: string[] = [];
+  const employment = employmentBody(fd, errors, false);
+  const contract = contractBody(fd, errors, false, false);
+  return save(employeeId, fd, errors, () => apiSend('POST', `/employees/${employeeId}/hire`, { employment, contract }), contractHref(employeeId));
+}
+
+/**
+ * Hires someone without the contract: a new current employment (the API refuses one while another is current, or one
+ * overlapping the history). For a server from before hiring in one form. No status: the API sets it, Probation while
+ * the probation runs, else Active.
  */
 export async function addEmployment(employeeId: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const errors: string[] = [];

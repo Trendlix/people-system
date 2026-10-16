@@ -11,7 +11,8 @@ import { loadContracts } from './data';
 import { daysBetween } from './dates';
 import { allowancesLabel, daysLabel, formatEgp, hourlyNetTerms, hourlyTerms, payLabel } from './salary';
 
-// The Contract section of the Contracts tab: the signed contract (its number, term, probation, signing and filing
+// The Contract section of the Employment tab, right below the current employment (the Contracts tab was merged into
+// Employment, owner's request, 16 October 2026): the signed contract (its number, term, probation, signing and filing
 // dates, its pay basis and working days, and the salary and allowances for HR, Finance and the CEO), a draft waiting to
 // be signed, and every version. HR drafts the first contract or a renewal, signs a draft or changes it, and sets a
 // signed one's filing dates and note; only a Super Admin deletes a draft, or undoes a signing recorded by mistake
@@ -309,6 +310,26 @@ function Versions({ contracts }: { contracts: Contract[] }) {
   );
 }
 
+/**
+ * An employment with no contract at all, from before hiring took the contract's terms in the same form (owner, 16
+ * October 2026: "no active employment without a contract"): HR is asked to add it here.
+ */
+function NoContract({ employeeId, canEdit }: { employeeId: string; canEdit: boolean }) {
+  return (
+    <div role={canEdit ? 'alert' : undefined} className="space-y-3 rounded-lg bg-warn-soft px-4 py-4 text-sm text-warn">
+      <p>
+        This employment has no contract yet.
+        {canEdit && ' Add it now: its terms are saved as a draft to print, and signed here once the employee and the company have signed it.'}
+      </p>
+      {canEdit && (
+        <Link href={`/employees/${employeeId}/contracts/new`} className={`${small} btn-primary`}>
+          Add the contract
+        </Link>
+      )}
+    </div>
+  );
+}
+
 function Title({ children }: { children: React.ReactNode }) {
   return <ProfileSection title="Contract">{children}</ProfileSection>;
 }
@@ -360,8 +381,8 @@ export async function ContractSection({
   const active = contracts.find((c) => c.status === 'active');
   const draft = contracts.find((c) => c.status === 'draft');
   const previous = contracts.find((c) => c.status !== 'draft');
-  // HR drafts the first contract, or renews the last one (one draft at a time)
-  const offer = canEdit && !draft && !endingInProgress && (previous ? 'Renew' : 'New contract');
+  // HR renews the last one (one draft at a time); an employment with no contract at all is asked for one below
+  const offer = canEdit && !draft && !endingInProgress && previous && 'Renew';
 
   return (
     <ProfileSection
@@ -390,11 +411,7 @@ export async function ContractSection({
           {previous.endDate && `, with its end on ${formatDate(previous.endDate)}`}.
         </p>
       ) : (
-        !draft && (
-          <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">
-            No signed contract yet.{canEdit && ' Draft the first one with New contract, and sign it once the employee and the company have signed it.'}
-          </p>
-        )
+        !draft && <NoContract employeeId={employee.id} canEdit={canEdit && !endingInProgress} />
       )}
       {draft && <DraftCard draft={draft} employeeId={employee.id} canEdit={canEdit} canDelete={employee.access.delete} today={today} />}
       {contracts.length > 0 && (

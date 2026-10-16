@@ -13,6 +13,7 @@ import type {
   Governorate,
   Initiator,
   InsuredWage,
+  LawRates,
   MaritalStatus,
   MilitaryStatus,
   NoticeUnit,
@@ -671,6 +672,11 @@ export interface ContractSettings {
    * 16 October 2026). Optional: left out by an API from before it.
    */
   insuranceBasicDefault?: number;
+  /**
+   * The basic salary's share of the gross a new contract or offer starts with, in percent (80 to start with; owner, 16
+   * October 2026: edited on Payroll Setup). Optional: left out by an API from before it.
+   */
+  basicPercentDefault?: number;
 }
 
 /**
@@ -983,12 +989,12 @@ export interface TemplateFields {
   standardLayout?: boolean;
 }
 
-// ---------- documents generated from the templates: the profile's Contracts and Social Insurance tabs ----------
+// ---------- documents generated from the templates: the profile's Employment and Social Insurance tabs ----------
 // The company issues them from its published templates; each one goes Generated → Printed → Signed copy uploaded →
 // Verified. HR generates and moves them along, the CEO views and downloads them, only a Super Admin deletes one. Dates
 // are "YYYY-MM-DD"; moments are ISO.
 
-/** The parts of the documents, in this order; social insurance is listed on its own tab, the others on Contracts. */
+/** The parts of the documents, in this order; social insurance is listed on its own tab, the others on Employment. */
 export type DocumentSectionKey = 'contract' | 'hiring' | 'insurance' | 'letters' | 'leaving';
 
 /** Where a generated document stands. */
@@ -1048,7 +1054,7 @@ export interface DocumentItem {
   documents: GeneratedDocument[];
 }
 
-/** GET /employees/:id/documents (HR and the CEO): the Contracts tab's documents, part by part. */
+/** GET /employees/:id/documents (HR and the CEO): the Employment tab's documents, part by part. */
 export interface DocumentsTab {
   sections: { key: DocumentSectionKey; items: DocumentItem[] }[];
 }
@@ -1056,7 +1062,7 @@ export interface DocumentsTab {
 /**
  * Where a missing detail is filled in: a profile tab and the field's cell there (#field-<key>, on Documents the paper's
  * row #paper-<key>; `insurance`: the Social Insurance tab, e.g. key `occupationCode`), the company profile (`company`),
- * or the contract on the Contracts tab (`contracts`).
+ * or the contract, on the Employment tab (`contracts`).
  */
 export interface DocumentDetailPlace {
   tab: ProfileGap['tab'] | 'contracts' | 'insurance' | 'company';
@@ -1340,6 +1346,11 @@ export interface PayrollRunView {
   bankCheck: { cib: number; ach: number; problems: number };
   /** How many English payslips are stored for the run (issued when it is marked paid). Optional like a line's `payslips`. */
   payslips?: number;
+  /**
+   * The rates set by law the run is worked out with (owner's request, 16 October 2026): a copy of its year's, taken
+   * when it was made or last refreshed. Left out by an API from before them.
+   */
+  lawRates?: LawRates;
 }
 
 /**
@@ -1379,4 +1390,32 @@ export interface PayrollSettingsView extends PayrollRules {
   cibDebitAccountName: string | null;
   /** The ACH file's transaction purpose ("CASH"). */
   achPurpose: string;
+  /**
+   * The day of the month salaries are paid, 1 to 31; null when not set (owner's request, 16 October 2026: Payroll
+   * Setup). The date a run is marked paid on, to start with. Optional: left out by an API from before it.
+   */
+  payday?: number | null;
+}
+
+/**
+ * An official holiday, from GET /payroll/holidays?year= (HR, Finance, the CEO and Admin), in date order (owner's request,
+ * 16 October 2026: Payroll Setup). One day each; on a shift's working day, it takes that day's hours out of the expected
+ * hours a run works out.
+ */
+export interface Holiday {
+  id: string;
+  /** YYYY-MM-DD */
+  date: string;
+  nameEn: string;
+  nameAr: string | null;
+}
+
+/**
+ * GET /payroll/law-rates (HR, Finance, the CEO, Admin and the Super Admin), oldest year first: the rates set by law of
+ * each year kept (owner's request, 16 October 2026), with who changed them last and when (ISO). `updatedBy` is null for
+ * the rows the law rates migration added. PUT /payroll/law-rates/:year answers one (the Super Admin only).
+ */
+export interface LawRatesView extends LawRates {
+  updatedAt: string;
+  updatedBy: { id: string; name: string } | null;
 }

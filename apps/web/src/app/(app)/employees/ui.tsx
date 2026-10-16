@@ -246,6 +246,6 @@ export function EditHeading({
   );
 }
 
-// The profile's tabs (Basic Data | Education | Employment | Contracts | Social Insurance | Documents) and their addresses
-// live in pure code, for tested helpers that link to a tab.
-export { PROFILE_TABS, profileHref, type ProfileTabKey } from './tab-list';
+// The profile's tabs (Basic Data | Education | Employment | Social Insurance | Documents) and their addresses live in
+// pure code, for tested helpers that link to a tab.
+export { askedTab, contractHref, PROFILE_TABS, payslipsHref, profileHref, type ProfileTabKey } from './tab-list';

@@ -7,9 +7,11 @@ import { formatHours, parseHours, type PayrollInputs } from '@trendlix/shared';
 // from the KPI's module, lets remove it till we work on it"): the KPIs module will fill those inputs, which the pay
 // still counts; a line's step-by-step pay shows any it has, and the grid never sends them, so none saved is lost. The
 // Attendance % is worked out as the pay counts it: the worked hours over the expected hours less the no-show days'
-// hours, a day of the shift each (owner's decisions, 16 October 2026). Pure code, tested: the columns, how each cell
-// is read and shown, which rows changed (only those are sent, in one PATCH /payroll/runs/:id/lines), and the API's
-// refusals put by the cell they are about.
+// hours, a day of the shift each (owner's decisions, 16 October 2026). An Expected hours cell left empty counts the
+// hours the run worked out from the shift less the holidays, shown greyed in it (owner's request, 16 October 2026,
+// Payroll Setup): what HR types replaces them, and clearing it brings them back. Pure code, tested: the columns, how
+// each cell is read and shown, which rows changed (only those are sent, in one PATCH /payroll/runs/:id/lines), and the
+// API's refusals put by the cell they are about.
 
 export type InputField = keyof PayrollInputs;
 
@@ -102,6 +104,17 @@ export function attendancePercent(worked: number | null, expected: number | null
   const counted = expected - absentHours;
   return counted > 0 ? Math.round((worked / counted) * 10_000) / 100 : null;
 }
+
+/**
+ * What an empty Expected hours cell shows: the hours a run worked out from the employee's shift less the holidays,
+ * which count until HR types others (owner's request, 16 October 2026), else the hours' usual hint.
+ */
+export function expectedPlaceholder(shiftExpected: number | null): string {
+  return shiftExpected === null ? '0:00' : formatHours(shiftExpected);
+}
+
+/** The expected hours a row counts: as typed (or saved) in its cell, else the shift's; null when neither. */
+export const countedExpected = (cell: number | null, shiftExpected: number | null) => cell ?? shiftExpected;
 
 /** What a no-show day costs, under the column: "2 days' pay each". */
 export const noShowPay = (multiplier: number) => `${multiplier} ${multiplier === 1 ? "day's" : "days'"} pay each`;

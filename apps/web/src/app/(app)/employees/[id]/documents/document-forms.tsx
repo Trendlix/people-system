@@ -15,7 +15,7 @@ import { limitFileSize, PAPERWORK_ACCEPT, PDF_MAX_BYTES } from '../../paperwork'
 import { withSmallerPhotos } from '../../shrink-photo';
 import { INPUT_LABELS, inputLabel, type CheckResult, type GenerateResult, type MissingLink } from './wording';
 
-// The HR-only parts of a document row on the Contracts and Social Insurance tabs: Generate (check first, then what is
+// The HR-only parts of a document row on the Employment and Social Insurance tabs: Generate (check first, then what is
 // typed and the date) and uploading the signed copy (chosen, dropped or scanned, checked, then confirmed).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;

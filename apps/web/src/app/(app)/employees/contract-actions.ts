@@ -1,6 +1,6 @@
 'use server';
 
-// Contract and ending actions on the profile's Contracts and Employment tabs: drafting a contract or its renewal, signing it, its
+// Contract and ending actions on the profile's Employment tab: drafting a contract or its renewal, signing it, its
 // filing dates; confirming probation; recording an ending (HR, which counts as HR's approval), the CEO's decision on
 // it, withdrawing and completing it. Each one forwards to the API, which checks the session and the role (HR; the
 // CEO for the decision; a Super Admin for deleting a draft or undoing a signing), so calling these directly can't
@@ -12,7 +12,7 @@ import { dateFrom } from '@/lib/form-data';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 import { contractBody } from './contract-body';
-import { profileHref, type ProfileTabKey } from './ui';
+import { contractHref, profileHref } from './ui';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
 
@@ -39,10 +39,10 @@ function messagesOf(err: ApiError): string[] {
 }
 
 /**
- * Sends the request unless reading the form already found mistakes, then goes back to the profile: its Employment tab
- * (an ending), or its Contracts tab (a contract).
+ * Sends the request unless reading the form already found mistakes, then goes back to the profile's Employment tab: at
+ * the top (an ending), or at the contract (`to`: contractHref, #contract).
  */
-async function save(employeeId: string, fd: FormData, errors: string[], request: () => Promise<unknown>, tab: ProfileTabKey = 'employment'): Promise<FormState> {
+async function save(employeeId: string, fd: FormData, errors: string[], request: () => Promise<unknown>, to = profileHref(employeeId, 'employment')): Promise<FormState> {
   if (errors.length) return { errors, values: submitted(fd) };
   try {
     await request();
@@ -50,7 +50,7 @@ async function save(employeeId: string, fd: FormData, errors: string[], request:
     if (err instanceof ApiError) return { errors: messagesOf(err), values: submitted(fd) };
     throw err;
   }
-  redirect(profileHref(employeeId, tab));
+  redirect(to);
 }
 
 /** Sends the request and shows the change in place (the profile is rendered again); `message` closes a small form. */
@@ -79,14 +79,14 @@ function requiredDate(fd: FormData, key: string, label: string, errors: string[]
 export async function createContract(employeeId: string, employmentId: string, renewal: boolean, _prev: FormState, fd: FormData): Promise<FormState> {
   const errors: string[] = [];
   const body = contractBody(fd, errors, renewal, false);
-  return save(employeeId, fd, errors, () => apiSend('POST', `/employees/${employeeId}/employments/${employmentId}/contracts`, body), 'contracts');
+  return save(employeeId, fd, errors, () => apiSend('POST', `/employees/${employeeId}/employments/${employmentId}/contracts`, body), contractHref(employeeId));
 }
 
 /** Changes a draft (a signed version is changed only in its filing dates and note: see `updateSignedContract`). */
 export async function updateContract(employeeId: string, contractId: string, renewal: boolean, _prev: FormState, fd: FormData): Promise<FormState> {
   const errors: string[] = [];
   const body = contractBody(fd, errors, renewal, true);
-  return save(employeeId, fd, errors, () => apiSend('PATCH', `/contracts/${contractId}`, body), 'contracts');
+  return save(employeeId, fd, errors, () => apiSend('PATCH', `/contracts/${contractId}`, body), contractHref(employeeId));
 }
 
 /** Deletes a draft: a Super Admin only (owner's decision, 15 October 2026). */

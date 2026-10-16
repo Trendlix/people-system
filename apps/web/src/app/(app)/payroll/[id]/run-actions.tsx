@@ -60,8 +60,11 @@ export function ReturnRun({ action, title }: { action: Action; title: string }) 
   );
 }
 
-/** HR marks an approved run paid: the day the bank paid it (today, to start with). */
-export function MarkPaid({ action, today, title }: { action: Action; today: string; title: string }) {
+/**
+ * HR marks an approved run paid: the day the bank paid it, starting from `paidOn` (the payday set on Payroll Setup, in
+ * the month after the run's, unless it is still to come; else today: owner's request, 16 October 2026).
+ */
+export function MarkPaid({ action, paidOn, title }: { action: Action; paidOn: string; title: string }) {
   const { state, pending, form } = useKeptForm(action);
   const [open, setOpen] = useClosesOnSave(state);
   const fid = useFieldIds();
@@ -79,11 +82,11 @@ export function MarkPaid({ action, today, title }: { action: Action; today: stri
         <label htmlFor={fid('paidOn')} className="label">
           Paid on
         </label>
-        <DateInput id={fid('paidOn')} name="paidOn" required aria-describedby={fid('paidOn-hint')} defaultValue={valueOf(state, 'paidOn', formatDate(today))} />
+        <DateInput id={fid('paidOn')} name="paidOn" required aria-describedby={fid('paidOn-hint')} defaultValue={valueOf(state, 'paidOn', formatDate(paidOn))} />
       </div>
       <p id={fid('paidOn-hint')} className="hint">
-        The day the bank paid the salaries. The run stays as it is; this records that it was paid, and issues each employee’s
-        payslip in English.
+        The day the bank paid the salaries: the payday set on Payroll Setup to start with, or today without one. The run
+        stays as it is; this records that it was paid, and issues each employee’s payslip in English.
       </p>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending} pendingText="Saving…">

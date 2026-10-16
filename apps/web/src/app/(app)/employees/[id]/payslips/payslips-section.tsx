@@ -7,7 +7,7 @@ import { formatEgp } from '../contracts/salary';
 import { Loading, ProfileSection } from '../../ui';
 import { loadPayslips } from './data';
 
-// The employee's payslips, on the profile's Contracts tab with the rest of what the company issues (owner's decisions,
+// The employee's payslips, on the profile's Employment tab with the rest of what the company issues (owner's decisions,
 // 16 October 2026): one per paid payroll run, newest month first, with the month's net. The English one is issued when
 // HR marks the run paid; the Arabic one is made on request, the first time it is opened here. Both open as protected
 // PDFs in the browser. Someone on hold that month was not paid, so has none. HR, Finance and the CEO only, as the salary

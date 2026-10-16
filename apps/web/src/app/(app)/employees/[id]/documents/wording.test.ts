@@ -3,7 +3,7 @@ import type { DocumentItem, GeneratedDocument } from '../../../../../lib/types';
 import {
   contractGroups,
   contractGroupTitle,
-  contractsTabSections,
+  employmentTabSections,
   documentDownloadHref,
   documentFileHref,
   inputsText,
@@ -64,10 +64,11 @@ describe('where a missing detail is filled in', () => {
     expect(missingHref(ID, { tab: 'documents', key: 'birth_certificate' })).toBe('/employees/emp-1?tab=documents#paper-birth_certificate');
   });
 
-  it('sends the company’s details to the company profile, and a contract term to the contract on this tab', () => {
+  it('sends the company’s details to the company profile, and a contract term to the contract on the Employment tab', () => {
     expect(missingHref(ID, { tab: 'company', key: 'taxRegNo' })).toBe('/organization/company');
-    expect(missingHref(ID, { tab: 'contracts', key: 'grossSalary' })).toBe('/employees/emp-1?tab=contracts#contract');
-    expect(missingHref(ID, { tab: 'contracts', key: 'contract' })).toBe('/employees/emp-1?tab=contracts#contract');
+    // the Contracts tab was merged into Employment (owner, 16 October 2026): the contract is there, at #contract
+    expect(missingHref(ID, { tab: 'contracts', key: 'grossSalary' })).toBe('/employees/emp-1?tab=employment#contract');
+    expect(missingHref(ID, { tab: 'contracts', key: 'contract' })).toBe('/employees/emp-1?tab=employment#contract');
   });
 
   it('sends the occupation, subscription start and wages to their item on the Social Insurance tab', () => {
@@ -125,9 +126,9 @@ describe('the sections', () => {
     expect(keys).toEqual(['contract', 'hiring', 'insurance', 'letters', 'leaving', 'other']);
   });
 
-  it('leave social insurance to its own tab: the Contracts tab lists the others, in its order', () => {
+  it('leave social insurance to its own tab: the Employment tab lists the others, in its order', () => {
     const sections = [{ key: 'leaving' }, { key: 'insurance' }, { key: 'contract' }, { key: 'hiring' }, { key: 'letters' }];
-    expect(contractsTabSections(sections).map((s) => s.key)).toEqual(['contract', 'hiring', 'letters', 'leaving']);
+    expect(employmentTabSections(sections).map((s) => s.key)).toEqual(['contract', 'hiring', 'letters', 'leaving']);
   });
 
   it('are titled for the screen', () => {

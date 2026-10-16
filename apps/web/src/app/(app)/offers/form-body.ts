@@ -227,12 +227,12 @@ export interface OfferDefaults {
   note: string;
 }
 
-/** The basic part of the gross unless HR sets another, as on contracts. */
+/** The basic part of the gross unless HR sets another, as on contracts; the contract settings' when they have it. */
 export const DEFAULT_BASIC_PERCENT = 80;
 
 /**
- * A new offer: the contract settings' probation and length (3 and 12 months unless HR or Admin changed them), open
- * until today + OFFER_VALID_DAYS (7).
+ * A new offer: the contract settings' probation and length (3 and 12 months unless HR or Admin changed them) and basic
+ * share of the gross (80%, changed on Payroll Setup), open until today + OFFER_VALID_DAYS (7).
  */
 export function newOfferDefaults(settings: ContractSettings | null, today: string): OfferDefaults {
   return {
@@ -255,7 +255,8 @@ export function newOfferDefaults(settings: ContractSettings | null, today: strin
     hourlyRate: null,
     hoursPerWeek: null,
     daysPerWeek: null,
-    basicPercent: DEFAULT_BASIC_PERCENT,
+    // the company's default share (Payroll Setup, 16 October 2026)
+    basicPercent: settings?.basicPercentDefault ?? DEFAULT_BASIC_PERCENT,
     netSalary: null,
     allowances: [],
     probationMonths: settings?.probationMonths ?? PROBATION_MONTHS,

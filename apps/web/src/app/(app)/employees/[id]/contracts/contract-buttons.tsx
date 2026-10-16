@@ -6,7 +6,7 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import { formatDate } from '@/lib/format';
 import type { Contract, FormState } from '@/lib/types';
 
-// Small actions on the profile's Contracts and Employment tabs: a button that runs one action (after a confirmation, if
+// Small actions on the profile's Employment tab: a button that runs one action (after a confirmation, if
 // it needs one), signing a draft contract, and a signed contract's dates and note. The endings' own are in
 // ../ending/ending-buttons.tsx.
 

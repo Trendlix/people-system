@@ -1,19 +1,20 @@
-import { annualSalaryTax, grossToNet, hourlyRateFromNet, netToGross, TAX_TIER_LIMITS } from '@trendlix/shared';
+import {
+  annualSalaryTax,
+  BUILT_IN_LAW_RATES,
+  grossToNet,
+  hourlyRateFromNet,
+  LAW_7_2024_TAX_TIERS,
+  lawRatesFor,
+  netToGross,
+  TAX_TIER_LIMITS,
+  taxTierLimits,
+  type LawRates,
+  type TaxTier,
+} from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import type { AllowanceType } from '../../../../lib/types';
-import {
-  allowancesEffect,
-  bracketLabels,
-  calculatorRows,
-  calculatorSearch,
-  calculatorYears,
-  namedAllowances,
-  readCalculatorQuery,
-  TAX_BRACKETS,
-  TAX_TIERS,
-  TOP_TIER,
-  type CalculatorInput,
-} from './calculator';
+import { tierLabels } from '../../organization/payroll/law-rates';
+import { allowancesEffect, calculatorRows, calculatorSearch, calculatorYears, namedAllowances, readCalculatorQuery, type CalculatorInput } from './calculator';
 
 /** An input with the defaults: a monthly gross, nothing typed, 2026, no allowances. */
 const input = (o: Partial<CalculatorInput> = {}): CalculatorInput => ({
@@ -39,14 +40,44 @@ const kind = (id: string, nameEn: string, taxable: boolean, insured: boolean): A
   sortOrder: 0,
   inUse: false,
 });
+/** Rates set by law the Super Admin might keep for 2027 (invented): every value changed, and one simpler tax table. */
+const TABLE_2027: TaxTier[] = [
+  {
+    upTo: 500_000,
+    bands: [
+      { upTo: 30_000, rate: 0 },
+      { upTo: 100_000, rate: 0.125 },
+      { upTo: null, rate: 0.2 },
+    ],
+  },
+  { upTo: null, bands: [{ upTo: null, rate: 0.3 }] },
+];
+const RATES_2027: LawRates = {
+  year: 2027,
+  employeeInsuranceRate: 0.12,
+  employerInsuranceRate: 0.19,
+  insurableWageMin: 3000,
+  insurableWageMax: 18000,
+  personalExemption: 25000,
+  martyrsRate: 0.001,
+  healthInsuranceRate: 0.01,
+  taxTiers: TABLE_2027,
+};
+const KEPT = [...BUILT_IN_LAW_RATES, RATES_2027];
+
 const TRANSPORT = kind('t1', 'Transport', true, false);
 const MOBILE = kind('m1', 'Mobile', false, false);
 const HOUSING = kind('h1', 'Housing', true, true);
 
 describe('the salary calculator', () => {
-  it('offers the years with insurable wage limits, and this year', () => {
+  it('offers the years with rates set by law of their own, and this year', () => {
     expect(calculatorYears(2026)).toEqual([2025, 2026]);
     expect(calculatorYears(2027)).toEqual([2025, 2026, 2027]);
+    // the years the Super Admin keeps
+    expect(calculatorYears(2026, KEPT)).toEqual([2025, 2026, 2027]);
+    expect(calculatorYears(2028, KEPT.slice(1))).toEqual([2026, 2027, 2028]);
+    expect(readCalculatorQuery({ year: '2027' }, 2026, KEPT).year).toBe(2027);
+    expect(readCalculatorQuery({ year: '2027' }, 2026).year).toBe(2026);
   });
 
   it('reads the input from the address', () => {
@@ -216,35 +247,65 @@ describe('the salary calculator', () => {
     expect(calculatorRows(grossToNet(25000, 2027), 2027).employee[1].how).toContain('2026 maximum');
   });
 
-  it('lists the brackets', () => {
-    expect(bracketLabels()).toEqual([
-      'Up to 40,000.00: 0%',
-      '40,000.00 to 55,000.00: 10%',
-      '55,000.00 to 70,000.00: 15%',
-      '70,000.00 to 200,000.00: 20%',
-      '200,000.00 to 400,000.00: 22.5%',
-      'Above 400,000.00: 25%',
-    ]);
+  it('works the rows out with the year’s rates set by law, and says so', () => {
+    const rates = lawRatesFor(2027, KEPT);
+    const b = grossToNet(20000, rates);
+    const { employee, company } = calculatorRows(b, rates);
+    expect(b).not.toEqual(grossToNet(20000, 2026));
+    expect(employee.find((r) => r.label === 'Insured wage')).toMatchObject({
+      amount: 18000,
+      note: 'capped at 18,000.00',
+      how: 'The gross, at most the 2027 maximum insurable wage (18,000.00) and at least its minimum (3,000.00)',
+    });
+    expect(employee.find((r) => r.label === 'Employee social insurance')).toMatchObject({ amount: 2160, how: '12% of the insured wage' });
+    // health insurance applies once its rate is above 0
+    expect(employee.find((r) => r.label === 'Health insurance')).toMatchObject({ amount: 200, how: '1% of the gross' });
+    expect(employee.find((r) => r.label === 'Monthly taxable')?.how).toBe('The gross less social insurance and health insurance');
+    expect(employee.find((r) => r.label === 'Annual net income (a year)')?.how).toBe(
+      'Monthly taxable × 12, less the 25,000.00 personal exemption, rounded down to 10 pounds',
+    );
+    expect(employee.find((r) => r.label === 'Annual tax (a year)')).toMatchObject({ amount: annualSalaryTax(b.annualNetIncome, TABLE_2027), how: 'The 2027 salary tax tiers on the annual net income' });
+    expect(employee.find((r) => r.label === "Martyrs' Fund")).toMatchObject({ amount: 20, how: '0.1% of the gross' });
+    expect(employee.find((r) => r.label === 'Total deductions')?.how).toBe("Social insurance, health insurance, tax and the Martyrs' Fund");
+    expect(company[0]).toMatchObject({ amount: 3420, how: '19% of the insured wage' });
+    // a later year without its own uses 2027's
+    expect(calculatorRows(grossToNet(20000, lawRatesFor(2029, KEPT)), lawRatesFor(2029, KEPT)).employee[1].how).toContain('2027 maximum');
+    expect(allowancesEffect(grossToNet(20000, rates, [{ amount: 1000, taxable: false, insured: false }]), rates)).toBe(1000);
   });
 
-  it('describes the tax exactly as it is worked out', () => {
-    const bands = (income: number, brackets: readonly { upTo: number; rate: number }[]) => {
+  it('lists the tiers and bands exactly as the tax is worked out', () => {
+    const amount = (text: string) => Number(text.replace(/,/g, ''));
+    /** A listed range back as numbers: [from, up to], Infinity for no limit. */
+    const range = (text: string): [number, number] => {
+      if (text === 'Any amount') return [0, Infinity];
+      const upTo = /^Up to ([\d,.]+)$/.exec(text);
+      if (upTo) return [0, amount(upTo[1])];
+      const above = /^Above ([\d,.]+)$/.exec(text);
+      if (above) return [amount(above[1]), Infinity];
+      const between = /^([\d,.]+) to ([\d,.]+)$/.exec(text);
+      if (between) return [amount(between[1]), amount(between[2])];
+      throw new Error(`Not a range: ${text}`);
+    };
+    /** The tax as the list says it: the tier whose range the whole income is in, its bands each taxed from 0. */
+    const asListed = (income: number, tiers: readonly TaxTier[]) => {
+      const tier = tierLabels(tiers).find((t) => income <= range(t.range)[1])!;
       let tax = 0;
-      let from = 0;
-      for (const { upTo, rate } of brackets) {
-        tax += Math.max(0, Math.min(income, upTo) - from) * rate;
-        from = upTo;
+      for (const band of tier.bands) {
+        const [text, rate] = band.split(': ');
+        const [from, upTo] = range(text);
+        tax += Math.max(0, Math.min(income, upTo) - from) * (Number(rate.replace('%', '')) / 100);
       }
-      return Math.round(tax * 100) / 100;
+      return Math.round((tax + Number.EPSILON) * 100) / 100;
     };
-    const asListed = (income: number) => {
-      if (income > TOP_TIER.over) return bands(income, [{ upTo: TOP_TIER.over, rate: TOP_TIER.below }, { upTo: Infinity, rate: TOP_TIER.rate }]);
-      const tier = TAX_TIERS.findLast((t) => income > t.over);
-      if (!tier) return bands(income, TAX_BRACKETS);
-      return bands(income, [{ upTo: tier.firstUpTo, rate: tier.rate }, ...TAX_BRACKETS.filter((b) => b.upTo > tier.firstUpTo)]);
-    };
-    expect([...TAX_TIERS.map((t) => t.over), TOP_TIER.over]).toEqual(TAX_TIER_LIMITS);
-    for (let income = 0; income <= 1_500_000; income += 2_510) expect(asListed(income)).toBe(annualSalaryTax(income));
-    for (const limit of TAX_TIER_LIMITS) for (const income of [limit - 10, limit, limit + 10]) expect(asListed(income)).toBe(annualSalaryTax(income));
+    // Law 7/2024's table, and one the Super Admin might set instead
+    expect(taxTierLimits(LAW_7_2024_TAX_TIERS)).toEqual(TAX_TIER_LIMITS);
+    for (const tiers of [LAW_7_2024_TAX_TIERS, TABLE_2027]) {
+      for (let income = 0; income <= 1_500_000; income += 2_510) expect(asListed(income, tiers)).toBe(annualSalaryTax(income, tiers));
+      for (const limit of taxTierLimits(tiers)) for (const income of [limit - 10, limit, limit + 10]) expect(asListed(income, tiers)).toBe(annualSalaryTax(income, tiers));
+    }
+    expect(tierLabels(TABLE_2027)).toEqual([
+      { range: 'Up to 500,000.00', bands: ['Up to 30,000.00: 0%', '30,000.00 to 100,000.00: 12.5%', 'Above 100,000.00: 20%'] },
+      { range: 'Above 500,000.00', bands: ['Any amount: 30%'] },
+    ]);
   });
 });

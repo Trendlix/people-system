@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { loadLawRates } from '@/lib/law-rates';
 import { getCurrentUser } from '@/lib/session';
 import { loadPickers } from '../../employees/data';
 import { todayInCairo } from '../../employees/ui';
@@ -15,7 +16,7 @@ import { OfferForm } from '../offer-form';
 async function NewOffer() {
   const user = await getCurrentUser();
   if (!managesOffers(user)) return <Empty>{WHO_CHANGES}</Empty>;
-  const [pickers, allowanceTypes, settings] = await Promise.all([loadPickers(), loadAllowanceTypes(), loadContractSettings()]);
+  const [pickers, allowanceTypes, settings, lawYears] = await Promise.all([loadPickers(), loadAllowanceTypes(), loadContractSettings(), loadLawRates()]);
   const today = todayInCairo();
   return (
     <OfferForm
@@ -23,6 +24,7 @@ async function NewOffer() {
       pickers={{ ...pickers, allowanceTypes }}
       defaults={newOfferDefaults(settings, today)}
       today={today}
+      lawYears={lawYears}
       cancelHref="/offers"
       submitLabel="Save draft"
     />

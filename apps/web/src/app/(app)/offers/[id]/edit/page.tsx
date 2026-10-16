@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { loadLawRates } from '@/lib/law-rates';
 import { getCurrentUser } from '@/lib/session';
 import { loadPickers } from '../../../employees/data';
 import { todayInCairo } from '../../../employees/ui';
@@ -40,13 +41,14 @@ async function EditOffer({ params }: { params: Promise<{ id: string }> }) {
   const status = shownStatus(offer.status, offer.expiresOn, today);
   let body: React.ReactNode;
   if (status === 'draft') {
-    const [pickers, allowanceTypes] = await Promise.all([loadPickers(), loadAllowanceTypes()]);
+    const [pickers, allowanceTypes, lawYears] = await Promise.all([loadPickers(), loadAllowanceTypes(), loadLawRates()]);
     body = (
       <OfferForm
         action={updateOffer.bind(null, offer.id)}
         pickers={{ ...pickers, allowanceTypes }}
         defaults={offerDefaults(offer)}
         today={today}
+        lawYears={lawYears}
         cancelHref={back}
         submitLabel="Save draft"
       />

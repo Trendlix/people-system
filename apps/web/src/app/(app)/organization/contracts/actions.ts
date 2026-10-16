@@ -7,7 +7,6 @@ import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import type { FormState } from '@/lib/types';
-import { parseAmount } from '../../employees/[id]/contracts/salary';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '');
 
@@ -25,15 +24,11 @@ function submitted(fd: FormData): Record<string, string> {
 }
 
 /**
- * What a new contract starts with: the probation and how long it runs, in months; and the default basic wage on social
- * insurance forms (owner, 16 October 2026), sent when the form has it ("" is left out, for the API to say it is missing).
+ * What a new contract starts with: the probation and how long it runs, in months. The basic share of the gross and the
+ * default basic wage on social insurance forms are saved from Payroll Setup (owner's request, 16 October 2026).
  */
 export async function updateContractSettings(_prev: FormState, fd: FormData): Promise<FormState> {
-  const basic = fd.has('insuranceBasicDefault') ? parseAmount(text(fd, 'insuranceBasicDefault')) : null;
-  if (basic !== null && (Number.isNaN(basic) || basic <= 0)) {
-    return { errors: ['Enter the default basic wage as an amount in EGP, e.g. 410.'], values: submitted(fd) };
-  }
-  const body = { probationMonths: whole(fd, 'probationMonths'), durationMonths: whole(fd, 'durationMonths'), insuranceBasicDefault: basic ?? undefined };
+  const body = { probationMonths: whole(fd, 'probationMonths'), durationMonths: whole(fd, 'durationMonths') };
   try {
     await apiSend('PATCH', '/contract-settings', body);
   } catch (err) {

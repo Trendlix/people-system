@@ -2,12 +2,12 @@
 
 import Link from 'next/link';
 import { Fragment, useState } from 'react';
-import type { PayrollRules } from '@trendlix/shared';
+import type { LawRates, PayrollRules } from '@trendlix/shared';
 import { GroupHeading } from '@/components/group-heading';
 import { groupByPlace, showsDepartment } from '@/lib/place-groups';
 import type { PayrollLineView, PayrollTotals } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
-import { profileHref } from '../../employees/tab-list';
+import { contractHref } from '../../employees/tab-list';
 import { payslipHref } from '../payslips';
 import { breakdown, cutText, type BreakdownRow } from './breakdown';
 
@@ -24,8 +24,8 @@ const TONE: Record<BreakdownRow['kind'], string> = {
   info: 'text-muted',
 };
 
-function Breakdown({ line, rules }: { line: PayrollLineView; rules: PayrollRules }) {
-  const steps = breakdown(line, rules);
+function Breakdown({ line, rules, lawRates }: { line: PayrollLineView; rules: PayrollRules; lawRates?: LawRates }) {
+  const steps = breakdown(line, rules, lawRates);
   return (
     <div className="space-y-4 bg-canvas px-4 py-4">
       {line.result.warnings.length > 0 && (
@@ -78,11 +78,14 @@ export function ResultsTable({
   lines,
   totals,
   rules,
+  lawRates,
   payslips,
 }: {
   lines: PayrollLineView[];
   totals: PayrollTotals;
   rules: PayrollRules;
+  /** The run's copy of the rates set by law (left out by an API from before them). */
+  lawRates?: LawRates;
   /** The run is paid: each line not on hold has its payslip. */
   payslips: boolean;
 }) {
@@ -172,9 +175,9 @@ export function ResultsTable({
                         {expanded && (
                           <tr id={panel}>
                             <td colSpan={span} className="p-0">
-                              <Breakdown line={l} rules={rules} />
+                              <Breakdown line={l} rules={rules} lawRates={lawRates} />
                               <p className="px-4 pb-3 text-xs text-muted">
-                                <Link href={profileHref(l.employeeId, 'contracts')}>Open {l.name}&apos;s contract</Link>
+                                <Link href={contractHref(l.employeeId)}>Open {l.name}&apos;s contract</Link>
                               </p>
                             </td>
                           </tr>

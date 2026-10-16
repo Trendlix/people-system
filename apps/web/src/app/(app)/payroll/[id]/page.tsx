@@ -5,7 +5,9 @@ import { getCurrentUser } from '@/lib/session';
 import type { PayrollLineView, PayrollRunView, SessionUser } from '@/lib/types';
 import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
-import { profileHref, todayInCairo } from '../../employees/ui';
+import { contractHref, profileHref, todayInCairo } from '../../employees/ui';
+import { loadPayrollSettings } from '../../organization/payroll/data';
+import { paidOnDefault } from '../../organization/payroll/settings';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { approveRun, deleteRun, markRunPaid, refreshRun, returnRun, saveRunLines, submitRun } from '../actions';
 import { loadRun } from '../data';
@@ -65,7 +67,7 @@ function SummaryCards({ run }: { run: PayrollRunView }) {
   );
 }
 
-function Actions({ run, user, title }: { run: PayrollRunView; user: SessionUser; title: string }) {
+function Actions({ run, user, title, payday }: { run: PayrollRunView; user: SessionUser; title: string; payday: number | null }) {
   const can = runActions(user, run.status);
   const today = todayInCairo();
   const problems = run.bankCheck.problems;
@@ -97,7 +99,8 @@ function Actions({ run, user, title }: { run: PayrollRunView; user: SessionUser;
         </ActionButton>
       )}
       {can.returnToHr && <ReturnRun action={returnRun.bind(null, run.id)} title={title} />}
-      {can.markPaid && <MarkPaid action={markRunPaid.bind(null, run.id)} today={today} title={title} />}
+      {/* the payday set on Payroll Setup, in the month after the run's, to start with (owner's request, 16 October 2026) */}
+      {can.markPaid && <MarkPaid action={markRunPaid.bind(null, run.id)} paidOn={paidOnDefault(run.month, payday, today)} title={title} />}
       <a href={fileHref(run.id, 'register')} className="btn btn-secondary min-h-9 px-3">
         Download register
       </a>
@@ -144,13 +147,15 @@ function gridRows(lines: PayrollLineView[]): GridRow[] {
     hourlyRate: l.terms.hourlyRate,
     // missing on lines worked out before 16 October 2026
     hoursPerDay: l.terms.hoursPerDay ?? null,
+    // the expected hours from the shift less the holidays, shown in the cell until HR types others (16 October 2026)
+    shiftExpectedHours: l.terms.expectedHours ?? null,
   }));
 }
 
-/** A line's name, linked to the employee. */
-function Person({ id, name, code, tab }: { id: string; name: string; code: string; tab?: 'contracts' }) {
+/** A line's name, linked to the employee (`contract`: to their contract, on the Employment tab). */
+function Person({ id, name, code, contract = false }: { id: string; name: string; code: string; contract?: boolean }) {
   return (
-    <Link href={profileHref(id, tab)} className="font-medium">
+    <Link href={contract ? contractHref(id) : profileHref(id)} className="font-medium">
       {name}
       <span className="font-normal text-muted"> · {code}</span>
     </Link>
@@ -240,7 +245,7 @@ function Exclusions({ run }: { run: PayrollRunView }) {
       <ul className="card divide-y divide-line-soft">
         {run.exclusions.map((x) => (
           <li key={x.employeeId} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3 text-sm">
-            <Person id={x.employeeId} name={x.name} code={x.employeeCode} tab="contracts" />
+            <Person id={x.employeeId} name={x.name} code={x.employeeCode} contract />
             <span className="text-muted">{x.reason}</span>
           </li>
         ))}
@@ -259,6 +264,9 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
   const can = runActions(user, run.status);
   const locked = lockedNote(run, user);
   const paid = payslipsIssued(run.status);
+  // the payday, for Mark as paid to start from; only read when the run can be marked paid
+  const settings = can.markPaid ? await loadPayrollSettings() : null;
+  const payday = settings?.kind === 'ok' ? (settings.value.payday ?? null) : null;
 
   return (
     <div className="space-y-8">
@@ -280,7 +288,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
         </section>
       )}
 
-      <Actions run={run} user={user} title={title} />
+      <Actions run={run} user={user} title={title} payday={payday} />
       <SummaryCards run={run} />
 
       <section className="space-y-3">
@@ -308,11 +316,11 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
             {paid && (
               <span className="text-sm text-muted">
                 {run.payslips !== undefined && `${payslipsIssuedLabel(run.payslips)}, in English. `}
-                Each opens as a protected PDF; the Arabic one is made from the employee’s Contracts tab.
+                Each opens as a protected PDF; the Arabic one is made from the employee’s Employment tab.
               </span>
             )}
           </div>
-          <ResultsTable lines={run.lines} totals={run.totals} rules={run.rules} payslips={paid} />
+          <ResultsTable lines={run.lines} totals={run.totals} rules={run.rules} lawRates={run.lawRates} payslips={paid} />
         </section>
       )}
 
@@ -328,7 +336,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
         </ul>
         <p className="text-sm text-muted">
           {run.status === 'draft' ? 'Refreshing the run takes the rules as they are now, ' : 'The rules are '}
-          under <Link href="/organization/payroll">Organization → Payroll</Link>.
+          under <Link href="/organization/payroll">Organization → Payroll Setup</Link>.
         </p>
       </section>
     </div>

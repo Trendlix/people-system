@@ -1,4 +1,4 @@
-import { grossToNet, hourlyRateFromNet, monthlyFromHourly, netToGross } from '@trendlix/shared';
+import { grossToNet, hourlyRateFromNet, lawRatesFor, monthlyFromHourly, netToGross, type LawRates } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
   estimateText,
@@ -151,7 +151,7 @@ describe('switching between the gross and the net per hour', () => {
 describe('the breakdown rows', () => {
   it('lists the allowances and the net, and says when the insured wage is capped', () => {
     const b = grossToNet(20000, 2026, [housing]);
-    const rows = offerBreakdownRows(b, { insuredAllowances: insuredAllowancesOf([housing, transport]) });
+    const rows = offerBreakdownRows(b, 2026, { insuredAllowances: insuredAllowancesOf([housing, transport]) });
     expect(rows.map((r) => r.label)).toEqual([
       'Gross salary',
       'Allowances',
@@ -168,7 +168,7 @@ describe('the breakdown rows', () => {
   });
 
   it('leaves the allowances out without any, and marks the monthly estimate', () => {
-    const rows = offerBreakdownRows(grossToNet(8000, 2026), { hourly: true });
+    const rows = offerBreakdownRows(grossToNet(8000, 2026), 2026, { hourly: true });
     expect(rows.some((r) => r.label === 'Allowances')).toBe(false);
     expect(rows[0].note).toBe('the monthly estimate');
     expect(rows.find((r) => r.label === 'Insured wage')?.note).toBeUndefined();
@@ -176,7 +176,7 @@ describe('the breakdown rows', () => {
 
   it('does not take insured allowances for a raised minimum', () => {
     const b = grossToNet(2000, 2026, [{ amount: 500, taxable: false, insured: true }]);
-    const rows = offerBreakdownRows(b, { insuredAllowances: 500 });
+    const rows = offerBreakdownRows(b, 2026, { insuredAllowances: 500 });
     expect(rows.find((r) => r.label === 'Insured wage')?.note).toBe('raised to the minimum, 2,700.00');
   });
 });
@@ -186,5 +186,26 @@ describe('the total pay', () => {
     expect(totalPay(15000, 1500.5)).toBe(16500.5);
     expect(totalPay(15000, null)).toBe(15000);
     expect(insuredAllowancesOf([housing, transport])).toBe(2000);
+  });
+});
+
+describe('the rates set by law of the join date’s year', () => {
+  /** Rates the Super Admin might keep for 2027 (invented). */
+  const RATES_2027: LawRates = { ...lawRatesFor(2026), year: 2027, employeeInsuranceRate: 0.12, employerInsuranceRate: 0.2, insurableWageMax: 18000, martyrsRate: 0.001 };
+
+  it('works the offer’s salary out with them', () => {
+    expect(offerSalary(typed({ grossSalary: '20000' }), RATES_2027, [housing])).toEqual({ kind: 'ok', breakdown: grossToNet(20000, RATES_2027, [housing]), estimate: null });
+    expect(offerSalary(typed({ salaryBasis: 'net', wantedNet: '15000' }), RATES_2027)).toEqual({ kind: 'ok', breakdown: netToGross(15000, RATES_2027), estimate: null });
+    const toNet = switchStart('net', typed({ grossSalary: '20000' }), RATES_2027);
+    expect(Number(toNet.wantedNet)).toBe(grossToNet(20000, RATES_2027).net);
+    expect(Number(toNet.wantedNet)).not.toBe(grossToNet(20000, 2026).net);
+  });
+
+  it('gives their rates in the breakdown rows', () => {
+    const rows = offerBreakdownRows(grossToNet(20000, RATES_2027), RATES_2027);
+    expect(rows.map((r) => r.label)).toContain('Employee social insurance (12%)');
+    expect(rows.map((r) => r.label)).toContain("Martyrs' Fund (0.1%)");
+    expect(rows.find((r) => r.label === 'Insured wage')?.note).toBe('capped at 18,000.00');
+    expect(rows.at(-1)?.note).toBe("gross and allowances, plus the company's 20% insurance, 3,600.00");
   });
 });

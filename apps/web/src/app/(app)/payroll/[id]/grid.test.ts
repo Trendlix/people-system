@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   attendancePercent,
   cellText,
+  countedExpected,
   errorLine,
+  expectedPlaceholder,
   GRID_COLUMNS,
   linePatches,
   noShowPay,
@@ -115,6 +117,19 @@ describe('showing a cell', () => {
     expect(attendancePercent(238, 280, 8)).toBe(87.5);
     // nothing left once the days off are out
     expect(attendancePercent(0, 16, 16)).toBeNull();
+  });
+
+  it('counts the hours from the shift less the holidays while the expected hours cell is empty, shown greyed in it (16 October 2026)', () => {
+    expect(expectedPlaceholder(189)).toBe('189:00');
+    expect(expectedPlaceholder(187.5)).toBe('187:30');
+    // without a shift: the hours' usual hint
+    expect(expectedPlaceholder(null)).toBe('0:00');
+    // what HR typed, 0 too, replaces them
+    expect(countedExpected(200, 189)).toBe(200);
+    expect(countedExpected(0, 189)).toBe(0);
+    expect(countedExpected(null, 189)).toBe(189);
+    expect(countedExpected(null, null)).toBeNull();
+    expect(attendancePercent(170.1, countedExpected(null, 189))).toBe(90);
   });
 });
 

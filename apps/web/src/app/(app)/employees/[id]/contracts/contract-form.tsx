@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { PAY_BASES, PAY_BASIS_LABELS, type PayBasis } from '@trendlix/shared';
+import { lawRatesFor, PAY_BASES, PAY_BASIS_LABELS, type LawRates, type PayBasis } from '@trendlix/shared';
 import { AllowanceRows } from '@/components/allowance-rows';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
@@ -23,6 +23,7 @@ import {
   netPerHourText,
   plainAmount,
   RATE_BASIS_LABELS,
+  ratesYearText,
   SALARY_BASES,
   SALARY_BASIS_LABELS,
   salaryFor,
@@ -55,6 +56,9 @@ import { SalaryBreakdownList } from './salary-breakdown';
 // By the hour, HR can also start from the net rate agreed, e.g. 120 net an hour × 16 hours a week (owner, the same
 // day): the gross rate is worked out to the piaster and sent as hourlyRate, with the net worked out; the typed net rate
 // (netRate) and the switch (rateBasis) go along only to be kept if the save is refused.
+//
+// The rates set by law are those of the year the contract starts (owner's request, 16 October 2026: the Super Admin
+// keeps them by year in Organization → Payroll), from the years the page loaded (`lawYears`).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -89,8 +93,10 @@ export function ContractForm({
   allowanceTypes,
   renewal,
   probationHint,
-  fullTime,
+  fullTime: fullTimeProp,
   today,
+  lawYears,
+  job,
   cancelHref,
   submitLabel,
 }: {
@@ -104,8 +110,16 @@ export function ContractForm({
   probationHint?: string;
   /** Full-time contracts have a social insurance copy, whose salary is the insured salary. */
   fullTime: boolean;
-  /** YYYY-MM-DD, for the salary's year (its insurable wage limits) while there is no start date. */
+  /** YYYY-MM-DD, for the salary's year (its rates set by law) while there is no start date. */
   today: string;
+  /** The rates set by law of each year kept (GET /payroll/law-rates, else the built-in ones): the salary's year's are used. */
+  lawYears: readonly LawRates[];
+  /**
+   * Hiring in one form (Add employment; owner's decision, 16 October 2026): the job's fields, above the contract's terms
+   * in the same form and saved with them. The contract then starts on the join date typed there (no start date is
+   * asked), and its kind follows the employment type chosen there rather than `fullTime`.
+   */
+  job?: (state: FormState, fid: (name: string) => string) => React.ReactNode;
   cancelHref: string;
   submitLabel: string;
 }) {
@@ -127,26 +141,32 @@ export function ContractForm({
     netRate: valueOf(state, 'netRate', ''),
     hoursPerWeek: valueOf(state, 'hoursPerWeek', amountText(defaults.hoursPerWeek)),
     basicPercent: valueOf(state, 'basicPercent', String(defaults.basicPercent)),
+    // hiring in one form: the job's join date and employment type, typed above the contract's terms
+    joinDate: valueOf(state, 'joinDate', ''),
+    employmentType: valueOf(state, 'employmentType', ''),
   }));
   // the allowance rows report their own changes
   const [rows, setRows] = useState<AllowanceRow[]>(() => allowanceRows(state, defaults.allowances));
 
-  const start = renewal ? renewal.startDate : parseDate(typed.startDate) || null;
+  // hiring in one form, the contract starts on the join date typed with the job, and its kind follows the employment type
+  const start = renewal ? renewal.startDate : parseDate(job ? typed.joinDate : typed.startDate) || null;
+  const fullTime = job ? typed.employmentType === 'full_time' : fullTimeProp;
   const months = Number(typed.durationMonths);
   const end = start && Number.isInteger(months) && months >= 1 ? contractEnd(start, months) : null;
   const probation = renewal ? 0 : Number(typed.probationMonths);
   const probationEnds = start && Number.isInteger(probation) && probation > 0 && probation <= 3 ? probationEnd(start, probation) : null;
-  // the salary, with the insurable wage limits of the year the contract starts (this year while there is no start date)
+  // the salary, with the rates set by law of the year the contract starts (this year while there is no start date)
   const year = Number((start ?? today).slice(0, 4));
+  const rates = lawRatesFor(year, lawYears);
   const hourly = typed.payBasis === 'hourly';
   const terms = allowanceTerms(rows, allowanceTypes);
   // by the hour, the gross is the monthly estimate of the gross rate, typed or worked out from the net rate
   const basis = hourly ? 'gross' : basisFrom(typed.salaryBasis);
   const rateBasis = basisFrom(typed.rateBasis);
   const fromNetRate = rateBasis === 'net';
-  const pay = hourlyPayFor(rateBasis, fromNetRate ? typed.netRate : typed.hourlyRate, typed.hoursPerWeek, year, terms, typed.hourlyRate);
+  const pay = hourlyPayFor(rateBasis, fromNetRate ? typed.netRate : typed.hourlyRate, typed.hoursPerWeek, rates, terms, typed.hourlyRate);
   const salary: SalaryResult = !hourly
-    ? salaryFor(basis, basis === 'net' ? typed.wantedNet : typed.grossSalary, year, terms)
+    ? salaryFor(basis, basis === 'net' ? typed.wantedNet : typed.grossSalary, rates, terms)
     : pay.kind === 'ok'
       ? { kind: 'ok', typed: pay.gross, breakdown: pay.breakdown }
       : pay;
@@ -154,7 +174,7 @@ export function ContractForm({
   const gross = calc?.gross ?? null;
   const basicPercent = Number(typed.basicPercent);
   const split = gross !== null && Number.isInteger(basicPercent) && basicPercent >= 1 && basicPercent <= 100 ? splitSalary(gross, basicPercent) : null;
-  const insured = gross !== null ? insuredFor(gross, year, terms) : null;
+  const insured = gross !== null ? insuredFor(gross, rates, terms) : null;
   const insuredText = fullTime && insured ? `Insured salary on the social insurance copy: ${formatMoney(insured.amount)}, ${insured.why}.` : null;
   // only for the same gross and allowances: a change of either changes the net anyway
   const savedNet = sameAllowances(rows, defaults.allowances) ? savedNetChange({ gross: defaults.grossSalary, net: defaults.netSalary }, calc) : null;
@@ -169,7 +189,7 @@ export function ContractForm({
     if (name === 'salaryBasis') {
       // the other field starts with what this one gives, so the salary stays the same
       setTyped((v) => {
-        const s = switchBasis(basisFrom(value), { gross: v.grossSalary, net: v.wantedNet }, year, terms);
+        const s = switchBasis(basisFrom(value), { gross: v.grossSalary, net: v.wantedNet }, rates, terms);
         return { ...v, salaryBasis: value, grossSalary: s.gross, wantedNet: s.net };
       });
       return;
@@ -177,7 +197,7 @@ export function ContractForm({
     if (name === 'rateBasis') {
       // the same by the hour: the other rate starts with what this one gives
       setTyped((v) => {
-        const s = switchRateBasis(basisFrom(value), { rate: v.hourlyRate, netRate: v.netRate, hours: v.hoursPerWeek }, year, terms);
+        const s = switchRateBasis(basisFrom(value), { rate: v.hourlyRate, netRate: v.netRate, hours: v.hoursPerWeek }, rates, terms);
         return { ...v, rateBasis: value, hourlyRate: s.rate, netRate: s.netRate };
       });
       return;
@@ -189,16 +209,24 @@ export function ContractForm({
     <form {...form} onChange={track} className="card max-w-3xl space-y-6 p-6">
       <FormErrors errors={state.errors} />
 
+      {job && (
+        <>
+          <h2 className="font-semibold">Job</h2>
+          {job(state, fid)}
+          <h2 className="border-t border-line pt-6 font-semibold">Contract</h2>
+        </>
+      )}
+
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <label htmlFor={fid('startDate')} className="label">
             Start date
           </label>
-          {renewal ? (
-            // not sent: a renewal starts the day after the version before it ends
+          {renewal || job ? (
+            // not sent: a renewal starts the day after the version before it ends, a hire's first contract on the join date
             <input
               id={fid('startDate')}
-              value={renewal.startDate ? formatDate(renewal.startDate) : 'The day after the current version ends'}
+              value={renewal ? (renewal.startDate ? formatDate(renewal.startDate) : 'The day after the current version ends') : start ? formatDate(start) : 'The join date'}
               readOnly
               aria-describedby={fid('startDate-hint')}
               className="input bg-canvas text-muted"
@@ -214,7 +242,9 @@ export function ContractForm({
           <p id={fid('startDate-hint')} className="hint">
             {renewal
               ? `A renewal starts the day after ${renewal.after} ends.`
-              : 'The join date, unless the contract starts later. Leave empty for the join date.'}
+              : job
+                ? 'The first contract starts on the join date.'
+                : 'The join date, unless the contract starts later. Leave empty for the join date.'}
           </p>
         </div>
 
@@ -509,7 +539,7 @@ export function ContractForm({
             Monthly breakdown
           </p>
           {calc ? (
-            <SalaryBreakdownList rows={breakdownRows(calc, terms)} labelledBy={fid('breakdown')} />
+            <SalaryBreakdownList rows={breakdownRows(calc, rates, terms)} labelledBy={fid('breakdown')} />
           ) : (
             <p className="rounded-lg border border-dashed border-line px-4 py-3 text-sm text-muted">
               {salary.kind === 'belowAllowances'
@@ -527,10 +557,10 @@ export function ContractForm({
             </p>
           )}
           <p className="hint">
-            Calculated as the Ministry of Finance&apos;s salary tax system does: social insurance on the insured wage, salary tax in Law 7/2024&apos;s brackets,
-            and the Martyrs&apos; Fund. Allowances are added to the gross: the taxed ones are taxed with it and the insured ones counted in the insured wage.
-            Assumes the full gross, including the variable part, is paid{hourly && ', for the contracted hours every week'}. Uses the insurable wage limits for{' '}
-            {year}, the year the contract starts.
+            Calculated as the Ministry of Finance&apos;s salary tax system does: social insurance on the insured wage, salary tax in its tiers, and the
+            Martyrs&apos; Fund. Allowances are added to the gross: the taxed ones are taxed with it and the insured ones counted in the insured wage. Assumes
+            the full gross, including the variable part, is paid{hourly && ', for the contracted hours every week'}. Uses {ratesYearText(year, rates)}, the
+            year the contract starts.
           </p>
         </div>
       </div>

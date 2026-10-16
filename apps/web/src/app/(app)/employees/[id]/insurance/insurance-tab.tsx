@@ -8,7 +8,7 @@ import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { DocumentItem, EmployeeProfile, PaperworkItem } from '@/lib/types';
 import { saveInsuranceDetail } from '../../insurance-actions';
-import { canSeeEmployeeFiles, FieldGrid, Loading, ProfileSection, profileHref, todayInCairo, type GridField } from '../../ui';
+import { canSeeEmployeeFiles, contractHref, FieldGrid, Loading, ProfileSection, profileHref, todayInCairo, type GridField } from '../../ui';
 import { formatEgp } from '../contracts/salary';
 import { loadDocuments } from '../documents/data';
 import { checkDocument } from '../documents/document-actions';
@@ -39,13 +39,13 @@ import {
 import { OccupationDetail, RegisteredSwitch, StartDateDetail, WageDetail } from './insurance-fields';
 
 // The profile's Social Insurance tab: all the social insurance work in one place (owner's request, 16 October 2026:
-// "creating a tab here for all social insurance work"), moved out of the Contracts tab. The insurance details (the
-// occupation, the subscription start, the basic, insured and comprehensive wages, the contract's filing dates); for HR,
-// whether Forms 1 and 6 can be generated or what they still need, each with its link; the forms themselves, generated
-// and taken through printing, the signed copy and verifying as on the Contracts tab; and the social insurance print
-// from the employee file. The insurance number (Basic Data) and the company's insurance office and employer number (the
-// company profile) are not repeated here (owner, 16 October 2026): a form missing one lists it under Readiness, with
-// where to fill it in.
+// "creating a tab here for all social insurance work"), moved out of the Contracts tab (since merged into Employment).
+// The insurance details (the occupation, the subscription start, the basic, insured and comprehensive wages, the
+// contract's filing dates); for HR, whether Forms 1 and 6 can be generated or what they still need, each with its
+// link; the forms themselves, generated and taken through printing, the signed copy and verifying as on the Employment
+// tab; and the social insurance print from the employee file. The insurance number (Basic Data) and the company's
+// insurance office and employer number (the company profile) are not repeated here (owner, 16 October 2026): a form
+// missing one lists it under Readiness, with where to fill it in.
 //
 // The occupation, the subscription start and the basic and comprehensive wages are the employee's own, changed here in
 // place by HR (owner's decisions, 16 October 2026: the occupation no longer the job title's); while one isn't set, Form
@@ -57,7 +57,7 @@ import { OccupationDetail, RegisteredSwitch, StartDateDetail, WageDetail } from 
 // Whether the employee is registered with social insurance is a switch HR turns here (owner's decision, 16 October 2026):
 // payroll deducts social insurance only for those who are.
 //
-// Whoever sees the Contracts tab sees this one, and the wages only with the right to see salaries, as before.
+// Whoever sees the Employment tab sees this one, and the wages only with the right to see salaries, as before.
 // The forms are HR's and the CEO's (HR generates and moves them along, the CEO views and downloads); the print is the
 // employee file's, for those who see the national ID (HR and the CEO). The API checks all of it again.
 
@@ -222,8 +222,8 @@ function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
       {c && p.access.edit && (
         <p className="text-xs text-muted">
           The filing dates are set on the contract, on the{' '}
-          <Link href={`${profileHref(p.id, 'contracts')}#contract`} className={LINK}>
-            Contracts tab
+          <Link href={contractHref(p.id)} className={LINK}>
+            Employment tab
           </Link>
           , with Edit filing dates and note.
         </p>
@@ -277,7 +277,7 @@ function FormsReadiness({ forms, checks }: { forms: DocumentItem[]; checks: (Che
 
 /**
  * The readiness (HR) and the forms themselves: the documents the API offers in its insurance section, each as on the
- * Contracts tab, with a pointer to the contract's social insurance copy, which stays with the contract.
+ * Employment tab, with a pointer to the contract's social insurance copy, which stays with the contract.
  */
 async function InsuranceForms({ profile: p, can }: { profile: EmployeeProfile; can: DocumentAccess }) {
   const load = await loadDocuments(p.id);
@@ -328,7 +328,7 @@ async function InsuranceForms({ profile: p, can }: { profile: EmployeeProfile; c
           <p className="text-sm text-muted">
             The contract&apos;s social insurance copy is with the contract, on the{' '}
             <Link href={insuranceCopyHref(p.id)} className={LINK}>
-              Contracts tab
+              Employment tab
             </Link>
             .
           </p>

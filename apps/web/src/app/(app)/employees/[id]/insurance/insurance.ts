@@ -14,7 +14,7 @@ import { occupationLabel } from './occupation';
 export const FORM_1 = 'insurance_form_1';
 export const FORM_6 = 'insurance_form_6';
 
-/** The contract's social insurance copy: a copy of the contract, so it is listed with the contract on the Contracts tab. */
+/** The contract's social insurance copy: a copy of the contract, so it is listed with the contract on the Employment tab. */
 export const CONTRACT_INSURANCE_COPY = 'contract_full_time_insurance';
 
 /**
@@ -30,13 +30,13 @@ export function insuranceForms(tab: Pick<DocumentsTab, 'sections'>): DocumentIte
   return tab.sections.find((s) => s.key === 'insurance')?.items ?? [];
 }
 
-/** Whether the Contracts tab lists the contract's social insurance copy (a full-time contract version has one). */
+/** Whether the Employment tab lists the contract's social insurance copy (a full-time contract version has one). */
 export function hasInsuranceCopy(tab: Pick<DocumentsTab, 'sections'>): boolean {
   return tab.sections.some((s) => s.key === 'contract' && s.items.some((i) => i.slotKey === CONTRACT_INSURANCE_COPY));
 }
 
-/** Where the contract's social insurance copy is: with the contract's documents on the Contracts tab. */
-export const insuranceCopyHref = (employeeId: string) => `${profileHref(employeeId, 'contracts')}#contract-documents`;
+/** Where the contract's social insurance copy is: with the contract's documents on the Employment tab. */
+export const insuranceCopyHref = (employeeId: string) => `${profileHref(employeeId, 'employment')}#contract-documents`;
 
 /** Why a form isn't listed: none without an employment or for one that isn't full time, Form 6 only once there is an ending. */
 export type FormsGap = { kind: 'not_employed' | 'not_full_time' | 'no_ending'; text: string };

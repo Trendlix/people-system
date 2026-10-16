@@ -1,22 +1,47 @@
 import Link from 'next/link';
-import { END_REASON_LABELS, LABELS } from '@trendlix/shared';
-import { apiGet } from '@/lib/api';
+import { Suspense } from 'react';
+import { CONTRACT_STATUS_LABELS, END_REASON_LABELS, LABELS } from '@trendlix/shared';
+import { ApiError, apiGet } from '@/lib/api';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
+import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
-import type { EmployeeProfile, Employment, Grade } from '@/lib/types';
+import type { Contract, EmployeeProfile, Employment, Grade } from '@/lib/types';
+import { canSeePayroll } from '../../payroll/list';
 import { deleteEmployment } from '../employment-actions';
-import { arrangementLabel, FieldGrid, gradeLabel, periodLabel, ProfileSection, profileHref, shiftLabel, StatusBadge, todayInCairo, type GridField } from '../ui';
-import { termLabel } from './contracts/contract-section';
+import {
+  arrangementLabel,
+  canSeeEmployeeFiles,
+  FieldGrid,
+  gradeLabel,
+  periodLabel,
+  ProfileSection,
+  profileHref,
+  shiftLabel,
+  StatusBadge,
+  todayInCairo,
+  type GridField,
+} from '../ui';
+import { ContractSection, ContractSectionLoading, termLabel } from './contracts/contract-section';
+import { loadContracts } from './contracts/data';
 import { ProbationBanner } from './contracts/probation-banner';
+import { GeneratedDocuments, GeneratedDocumentsLoading } from './documents/document-rows';
 import { EndingPanel } from './ending/ending-panel';
 import { DeleteRowButton } from './inline-forms';
+import { Payslips, PayslipsLoading } from './payslips/payslips-section';
 
-// The Employment tab: the probation banner and an ending in progress, the current employment (Edit, End employment),
-// or a way to add one; every employment in the history, newest first; and the people who report to this person now.
-// HR changes employments, confirms probation and records endings; the CEO approves or rejects endings here; only a
-// Super Admin may delete an employment added by mistake (the API checks all of it again). The contract (its versions,
-// New contract and Renew, signing and filing dates) is on the Contracts tab; the social insurance work on its own tab.
+// The Employment tab: everything about the job, in one place (owner, 16 October 2026: "there is no point of adding
+// employment then adding contract and no active employment without a contract, its like a loop for me"; the Contracts
+// tab was merged into it). In order: the probation banner and an ending in progress; the current employment (Edit, End
+// employment) with its contract (the signed version, a draft to sign, New contract or Renew, the filing dates, every
+// version), or a way to hire, which takes the job and the contract's terms in one form; every employment in the
+// history, newest first, with its contracts; the people who report to this person now; then the documents generated
+// from the templates and the payslips, as the Contracts tab had them, with its anchors (#contract, #payslips) so old
+// links land right. HR changes employments and contracts, confirms probation and records endings; the CEO approves or
+// rejects endings here; only a Super Admin may delete an employment added by mistake (the API checks all of it again).
+// Whoever sees the employment sees its contract; the generated documents are HR's and the CEO's (HR generates and moves
+// them along, the CEO views and downloads); the payslips are HR's, Finance's and the CEO's, as the salary. The social
+// insurance work is on its own tab.
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -83,10 +108,47 @@ function described(e: Employment): string {
   return `the ${LABELS.employmentType[e.employmentType].toLowerCase()} employment${e.jobTitle ? ` as ${e.jobTitle.titleEn}` : ''}, ${periodLabel(e)}`;
 }
 
+/** A contract version as the history lists it: its number, then its version, term and status. */
+function ContractLine({ contract: c, status = true }: { contract: Contract; status?: boolean }) {
+  return (
+    <>
+      {c.number}
+      <span className="block text-xs text-muted tabular-nums">
+        Version {c.version} · {termLabel(c)}
+        {status && ` · ${CONTRACT_STATUS_LABELS[c.status]}`}
+      </span>
+    </>
+  );
+}
+
+/**
+ * An ended employment's contracts, every version newest first (the current employment's are in its Contract section).
+ * Loaded on their own, so the history shows at once; nothing when they can't be seen or loaded.
+ */
+async function PastContracts({ employeeId, employment: e }: { employeeId: string; employment: Employment }) {
+  let contracts: Contract[] | null;
+  try {
+    contracts = await loadContracts(employeeId, e.id);
+  } catch (err) {
+    if (err instanceof ApiError) return e.contract ? <ContractLine contract={e.contract} status={false} /> : dash;
+    throw err;
+  }
+  if (!contracts?.length) return dash;
+  return (
+    <ul className="space-y-1.5">
+      {contracts.map((c) => (
+        <li key={c.id}>
+          <ContractLine contract={c} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function History({ profile: p }: { profile: EmployeeProfile }) {
   const base = `/employees/${p.id}`;
   const actions = p.access.edit || p.access.delete;
-  // the newest signed contract of each employment, from an API that has contracts (October 2026)
+  // the contracts of each employment, from an API that has contracts (October 2026)
   const contracts = p.employments.some((e) => e.contract !== undefined);
   if (p.employments.length === 0) {
     return <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">No employments yet.</p>;
@@ -101,7 +163,7 @@ function History({ profile: p }: { profile: EmployeeProfile }) {
             <th>Team</th>
             <th>Job Title</th>
             <th>Grade</th>
-            {contracts && <th>Contract</th>}
+            {contracts && <th>Contracts</th>}
             <th>Status</th>
             <th>Note</th>
             {actions && (
@@ -123,16 +185,16 @@ function History({ profile: p }: { profile: EmployeeProfile }) {
               <td>{e.jobTitle?.titleEn ?? dash}</td>
               <td className="whitespace-nowrap">{e.grade ? gradeLabel(e.grade) : dash}</td>
               {contracts && (
-                <td className="whitespace-nowrap">
-                  {e.contract ? (
-                    <>
-                      {e.contract.number}
-                      <span className="block text-xs text-muted tabular-nums">
-                        Version {e.contract.version} · {termLabel(e.contract)}
-                      </span>
-                    </>
+                <td className="min-w-48 whitespace-nowrap">
+                  {e.endDate ? (
+                    <Suspense fallback={<span className="text-xs text-muted">Loading…</span>}>
+                      <PastContracts employeeId={p.id} employment={e} />
+                    </Suspense>
+                  ) : e.contract ? (
+                    // the signed one; every version is in the Contract section above
+                    <ContractLine contract={e.contract} status={false} />
                   ) : (
-                    dash
+                    <span className="text-muted">Not signed yet</span>
                   )}
                 </td>
               )}
@@ -223,53 +285,63 @@ export async function EmploymentTab({
     <div className="space-y-8">
       {justAdded && !e && p.employments.length === 0 && (
         <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
-          The profile of {p.fullNameEn} is saved, with the ID card in the employee file. Next, add the employment.
+          The profile of {p.fullNameEn} is saved, with the ID card in the employee file. Next, add the employment and its contract.
         </p>
       )}
       {e && <ProbationBanner employee={p} employment={e} today={today} endingInProgress={Boolean(ending)} />}
       {ending && <EndingPanel ending={ending} employeeName={p.fullNameEn} canEdit={p.access.edit} isCeo={isCeo} today={today} />}
       {e ? (
-        <ProfileSection
-          title="Current Employment"
-          note={`Since ${formatDate(e.joinDate)}`}
-          actions={
-            p.access.edit && (
-              <>
-                <Link href={`${base}/employment/${e.id}/edit`} className={`${small} btn-secondary`}>
-                  Edit<span className="sr-only"> current employment</span>
-                </Link>
-                {/* an ending in progress is withdrawn (or completed) in its panel */}
-                {!ending && (
-                  <Link href={`${base}/ending/new`} className={`${small} btn-danger`}>
-                    End employment
+        <>
+          <ProfileSection
+            title="Current Employment"
+            note={`Since ${formatDate(e.joinDate)}`}
+            actions={
+              p.access.edit && (
+                <>
+                  <Link href={`${base}/employment/${e.id}/edit`} className={`${small} btn-secondary`}>
+                    Edit<span className="sr-only"> current employment</span>
                   </Link>
-                )}
-              </>
-            )
-          }
-        >
-          <FieldGrid fields={employmentFields(e, linkPeople, topGrade)} />
-          <p className="text-sm text-muted">
-            {e.contract ? `Contract ${e.contract.number}, version ${e.contract.version}. ` : ''}The contract, its versions and the documents generated from
-            the templates are on the <Link href={profileHref(p.id, 'contracts')}>Contracts tab</Link>; the social insurance forms are on the{' '}
-            <Link href={profileHref(p.id, 'insurance')}>Social Insurance tab</Link>.
-          </p>
-        </ProfileSection>
-      ) : (
-        <ProfileSection title="Current Employment">
-          <div className="card space-y-4 px-6 py-8 text-center">
+                  {/* an ending in progress is withdrawn (or completed) in its panel */}
+                  {!ending && (
+                    <Link href={`${base}/ending/new`} className={`${small} btn-danger`}>
+                      End employment
+                    </Link>
+                  )}
+                </>
+              )
+            }
+          >
+            <FieldGrid fields={employmentFields(e, linkPeople, topGrade)} />
             <p className="text-sm text-muted">
-              {lastEnded?.endDate
-                ? `No current employment. ${p.fullNameEn} left on ${formatDate(lastEnded.endDate)}${lastEnded.endReason ? ` (${END_REASON_LABELS[lastEnded.endReason].toLowerCase()})` : ''}. The profile and the employment history are kept.`
-                : `${p.fullNameEn} is not employed yet. Add the employment once they are hired: type, team and job title, manager, join date.`}
+              The social insurance forms are on the <Link href={profileHref(p.id, 'insurance')}>Social Insurance tab</Link>.
             </p>
-            {p.access.edit && (
-              <Link href={`${base}/employment/new`} className="btn btn-primary">
-                {lastEnded ? 'Add a new employment' : 'Add employment'}
-              </Link>
-            )}
+          </ProfileSection>
+          {/* the employment's contract, right with it; where a missing contract detail links to (#contract) */}
+          <div id="contract" className="scroll-mt-6">
+            {/* loads on its own, so a slow contract list doesn't hold up the tab */}
+            <Suspense fallback={<ContractSectionLoading />}>
+              <ContractSection employee={p} employment={e} endingInProgress={Boolean(ending)} />
+            </Suspense>
           </div>
-        </ProfileSection>
+        </>
+      ) : (
+        // #contract here too: with no current employment, hiring (the job and its contract) is where a contract starts
+        <div id="contract" className="scroll-mt-6">
+          <ProfileSection title="Current Employment">
+            <div className="card space-y-4 px-6 py-8 text-center">
+              <p className="text-sm text-muted">
+                {lastEnded?.endDate
+                  ? `No current employment. ${p.fullNameEn} left on ${formatDate(lastEnded.endDate)}${lastEnded.endReason ? ` (${END_REASON_LABELS[lastEnded.endReason].toLowerCase()})` : ''}. The profile and the employment history are kept.`
+                  : `${p.fullNameEn} is not employed yet. Add the employment once they are hired: the job and the terms of its contract, in one form.`}
+              </p>
+              {p.access.edit && (
+                <Link href={`${base}/employment/new`} className="btn btn-primary">
+                  {lastEnded ? 'Add a new employment' : 'Add employment'}
+                </Link>
+              )}
+            </div>
+          </ProfileSection>
+        </div>
       )}
       {lastEnding && <EndingPanel ending={lastEnding} employeeName={p.fullNameEn} canEdit={p.access.edit} isCeo={isCeo} today={today} />}
 
@@ -281,6 +353,22 @@ export async function EmploymentTab({
       </ProfileSection>
 
       {p.reports.length > 0 && <DirectReports profile={p} />}
+
+      {canSeeEmployeeFiles(user) && (
+        // loads on its own too
+        <Suspense fallback={<GeneratedDocumentsLoading />}>
+          <GeneratedDocuments employee={p} can={{ act: p.access.edit, delete: canDelete(user) }} />
+        </Suspense>
+      )}
+
+      {canSeePayroll(user) && (
+        // where a link to the employee's payslips points (#payslips); loads on its own too
+        <div id="payslips" className="scroll-mt-6">
+          <Suspense fallback={<PayslipsLoading />}>
+            <Payslips employee={p} />
+          </Suspense>
+        </div>
+      )}
     </div>
   );
 }

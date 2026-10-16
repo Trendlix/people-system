@@ -241,6 +241,8 @@ describe('what the form starts with', () => {
     const d = newOfferDefaults({ probationMonths: 2, durationMonths: 24 }, '2026-10-15');
     expect(d).toMatchObject({ expiresOn: '2026-10-22', probationMonths: 2, durationMonths: 24, payBasis: 'monthly', basicPercent: 80, workArrangement: 'office' });
     expect(newOfferDefaults(null, '2026-12-28')).toMatchObject({ expiresOn: '2027-01-04', probationMonths: 3, durationMonths: 12 });
+    // the basic share of the gross set on Payroll Setup (16 October 2026)
+    expect(newOfferDefaults({ probationMonths: 3, durationMonths: 12, basicPercentDefault: 75 }, '2026-10-15').basicPercent).toBe(75);
   });
 
   it("takes a draft's values", () => {

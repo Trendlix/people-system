@@ -13,7 +13,8 @@ import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitl
 import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
 import { statusField } from './employment-status';
 
-// The fields of an employment, used by the Add employment and Edit employment pages.
+// The fields of an employment, used by the Add employment page (above the first contract's terms: hiring in one form,
+// owner's decision, 16 October 2026) and the Edit employment page.
 
 export type EmploymentPickers = {
   departments: Department[];
@@ -49,10 +50,13 @@ export function EmploymentFields({
   fid,
   pickers,
   employment,
+  contractBelow = false,
 }: {
   state: FormState;
   fid: (name: string) => string;
   pickers: EmploymentPickers;
+  /** Hiring in one form: the first contract's terms follow in the same form. */
+  contractBelow?: boolean;
   /**
    * The employment being changed; none when adding one. HR chooses Active or On leave only; a new one's status, and
    * Probation and Notice period, are the system's, and an ended one's follows why it ended (employment-status.ts).
@@ -149,7 +153,9 @@ export function EmploymentFields({
           {/* the pay terms belong to the contract, not the employment (owner, 15 October 2026) */}
           {type === 'part_time' && (
             <p id={fid('employmentType-hint')} className="hint">
-              Pay by the hour, hours a week and days a week are set on the contract: after saving, Contracts tab → New contract.
+              {contractBelow
+                ? "Pay by the hour, hours a week and days a week are the contract's terms, below."
+                : "Pay by the hour, hours a week and days a week are the contract's terms: a new version of it, on the Employment tab."}
             </p>
           )}
         </div>
@@ -294,8 +300,9 @@ export function EmploymentFields({
           />
           {/* the probation end is worked out, never typed (owner, 15 October 2026) */}
           <p id={fid('joinDate-hint')} className="hint">
-            Probation is worked out from it: {PROBATION_MONTHS} months, or none for someone who worked here before (Labour Law Art. 90). Once the first
-            contract is drafted, its probation applies.
+            {contractBelow
+              ? "The contract starts on it, and its probation, set below, runs from it: at most 3 months, and none for someone who worked here before (Labour Law Art. 90)."
+              : `Probation is worked out from it: ${PROBATION_MONTHS} months, or none for someone who worked here before (Labour Law Art. 90). Once the first contract is drafted, its probation applies.`}
             {employment?.probationEnd && ` Probation ends ${formatDate(employment.probationEnd)}.`}
           </p>
         </div>

@@ -8,8 +8,12 @@ import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import type { Employment, FormState } from '@/lib/types';
 import { EmploymentFields, type EmploymentPickers } from '../../employment-fields';
+import { ContractForm } from '../contracts/contract-form';
 
-// The forms of the Add employment, Edit employment and Record a past ending pages.
+// The forms of the Add employment, Edit employment and Record a past ending pages. Add employment hires in one form
+// (owner's decision, 16 October 2026: "there is no point of adding employment then adding contract"): the job, then the
+// first contract's terms, saved together; editing an employment later is the job only, as its contract changes through
+// its own versions.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -67,9 +71,59 @@ function EndFields({ state, fid, employment }: { state: FormState; fid: (name: s
   );
 }
 
+/** The day the employee signed their job description; empty until then. */
+function JobDescriptionField({ state, fid, employment }: { state: FormState; fid: (name: string) => string; employment?: Employment }) {
+  return (
+    <div className="max-w-72">
+      <label htmlFor={fid('jdAcknowledgedAt')} className="label">
+        Job description acknowledged on
+      </label>
+      <DateInput
+        id={fid('jdAcknowledgedAt')}
+        name="jdAcknowledgedAt"
+        aria-describedby={fid('jdAcknowledgedAt-hint')}
+        defaultValue={valueOf(state, 'jdAcknowledgedAt', formatDate(employment?.jdAcknowledgedAt))}
+      />
+      <p id={fid('jdAcknowledgedAt-hint')} className="hint">
+        The date the employee signed their job description{employment?.jobTitle ? ` (version ${employment.jobTitle.jdVersion})` : ''}. Leave empty
+        until then.
+      </p>
+    </div>
+  );
+}
+
 /**
- * Adding an employment (`employment` left out) or changing one. A current one has a status; an ended one has, instead,
- * the end date, reason and note, which can be corrected here.
+ * Hiring: the job (as Add employment always asked it) and, below it in the same form, the first contract's terms (the
+ * contract form's own fields), saved in one request as the employment and its contract version 1, a draft to print and
+ * sign. The contract starts on the join date, and the employment type decides its kind (full time: the social
+ * insurance copy).
+ */
+export function HireForm({
+  pickers,
+  contract,
+}: {
+  pickers: EmploymentPickers;
+  /** The contract form's props: the hire's action, the first contract's defaults, the submit label … */
+  contract: Omit<React.ComponentProps<typeof ContractForm>, 'job' | 'fullTime' | 'renewal'>;
+}) {
+  return (
+    <ContractForm
+      {...contract}
+      renewal={null}
+      fullTime={false}
+      job={(state, fid) => (
+        <>
+          <EmploymentFields state={state} fid={fid} pickers={pickers} contractBelow />
+          <JobDescriptionField state={state} fid={fid} />
+        </>
+      )}
+    />
+  );
+}
+
+/**
+ * Changing an employment, the job only: a current one has a status; an ended one has, instead, the end date, reason and
+ * note, which can be corrected here. (Adding one without its contract is for a server from before hiring in one form.)
  */
 export function EmploymentForm({
   action,
@@ -92,21 +146,7 @@ export function EmploymentForm({
     <form {...form} className="card max-w-3xl space-y-6 p-6">
       <FormErrors errors={state.errors} />
       <EmploymentFields state={state} fid={fid} pickers={pickers} employment={employment} />
-      <div className="max-w-72">
-        <label htmlFor={fid('jdAcknowledgedAt')} className="label">
-          Job description acknowledged on
-        </label>
-        <DateInput
-          id={fid('jdAcknowledgedAt')}
-          name="jdAcknowledgedAt"
-          aria-describedby={fid('jdAcknowledgedAt-hint')}
-          defaultValue={valueOf(state, 'jdAcknowledgedAt', formatDate(employment?.jdAcknowledgedAt))}
-        />
-        <p id={fid('jdAcknowledgedAt-hint')} className="hint">
-          The date the employee signed their job description{employment?.jobTitle ? ` (version ${employment.jobTitle.jdVersion})` : ''}. Leave
-          empty until then.
-        </p>
-      </div>
+      <JobDescriptionField state={state} fid={fid} employment={employment} />
       {employment?.endDate && (
         <div className="border-t border-line pt-6">
           <fieldset className="space-y-5">

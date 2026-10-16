@@ -4,7 +4,7 @@ import { passPdfOn, wantsDownload } from '@/lib/protected-pdf';
 
 // Serves a generated document from the API under the web domain, with the caller's session: the browser never talks to
 // the API. The API checks the role (HR, CEO). It is only ever a protected PDF (owner's request, 15 October 2026: "No doc
-// file export, just a protected PDF"): opened in the browser (the Contracts tab's Preview (PDF)), or saved with
+// file export, just a protected PDF"): opened in the browser (the Employment tab's Preview (PDF)), or saved with
 // ?download=1 (Download PDF). Without the server's PDF converter there is no document to give out, and the API's reason
 // is shown as plain text. Links here are plain links, never prefetched.
 

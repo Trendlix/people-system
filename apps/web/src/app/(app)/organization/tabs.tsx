@@ -9,8 +9,9 @@ const TABS = [
   { key: 'shifts', href: '/organization/shifts', label: 'Shifts' },
   { key: 'allowances', href: '/organization/allowances', label: 'Allowances' },
   { key: 'contracts', href: '/organization/contracts', label: 'Contracts & Endings' },
-  // the rules payroll runs are worked out with, and the company's bank account for the CIB file (16 October 2026)
-  { key: 'payroll', href: '/organization/payroll', label: 'Payroll' },
+  // everything that changes the payroll sheet: the rules, the rates set by law, the holidays and how salaries are paid
+  // (Payroll Setup, owner's request of 16 October 2026)
+  { key: 'payroll', href: '/organization/payroll', label: 'Payroll Setup' },
 ] as const;
 
 export type TabKey = (typeof TABS)[number]['key'];

@@ -8,9 +8,9 @@ import type {
   MissingDocumentDetail,
 } from '../../../../../lib/types';
 import { SIGNER_LABELS, templateHref } from '../../../templates/wording';
-import { isProfileTab, profileHref } from '../../tab-list';
+import { contractHref, isProfileTab, profileHref } from '../../tab-list';
 
-// How the profile's Contracts tab words the documents generated from templates (its sections, a document's progress,
+// How the profile's Employment tab words the documents generated from templates (its sections, a document's progress,
 // where a template stands) and where each missing detail is filled in; the Social Insurance tab words its forms the
 // same way. Pure code (no server-only), tested; relative imports, as vitest doesn't know the @/ paths.
 //
@@ -42,11 +42,11 @@ export function sectionTitle(key: string): string {
 }
 
 /**
- * The sections the Contracts tab lists, in its order: all but social insurance, whose forms are on the Social Insurance
+ * The sections the Employment tab lists, in its order: all but social insurance, whose forms are on the Social Insurance
  * tab (owner's request, 16 October 2026). The contract's social insurance copy is a copy of the contract: it stays with
  * the contract's documents.
  */
-export function contractsTabSections<S extends { key: string }>(sections: readonly S[]): S[] {
+export function employmentTabSections<S extends { key: string }>(sections: readonly S[]): S[] {
   return orderedSections(sections).filter((s) => s.key !== 'insurance');
 }
 
@@ -167,12 +167,13 @@ const JOB_TITLE_PLACE = 'Job title, under Organization › Departments & Job Tit
 /**
  * The link to where a missing detail is filled in: the field's cell on a profile tab (`#field-<key>`, a paper's row
  * `#paper-<key>` on Documents; the occupation, subscription start and wages on the Social Insurance tab), the company
- * profile, or the contract on the Contracts tab. Null for a place the screens don't know.
+ * profile, or the contract on the Employment tab. Null for a place the screens don't know.
  */
 export function missingHref(employeeId: string, where: Pick<DocumentDetailPlace, 'key'> & { tab: string }): string | null {
   const key = encodeURIComponent(where.key ?? '');
   if (where.tab === 'company') return '/organization/company';
-  if (where.tab === 'contracts') return `${profileHref(employeeId, 'contracts')}#contract`;
+  // `contracts`: the contract, with the job on the Employment tab since the Contracts tab was merged into it (16 October 2026)
+  if (where.tab === 'contracts') return contractHref(employeeId);
   if (!isProfileTab(where.tab)) return null;
   const anchor = where.tab === 'documents' ? 'paper' : 'field';
   return key ? `${profileHref(employeeId, where.tab)}#${anchor}-${key}` : profileHref(employeeId, where.tab);

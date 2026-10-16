@@ -1,14 +1,16 @@
 import {
   grossToNet,
   hourlyRateFromNet,
-  INSURABLE_WAGE,
+  insurableWageLimits,
   insuredWageOf,
   monthlyFromHourly,
   netToGross,
   PAY_BASIS_LABELS,
-  SALARY_RULES,
+  ratesOf,
   WEEKS_PER_MONTH,
   type AllowanceTerms,
+  type LawRates,
+  type LawRatesOrYear,
   type PayBasis,
   type SalaryBreakdown,
 } from '@trendlix/shared';
@@ -23,6 +25,10 @@ import {
 // gross is the monthly estimate, rate × hours a week × 52 ÷ 12 (monthlyFromHourly in @trendlix/shared). By the hour,
 // HR can also start from an agreed net rate, and the gross rate is worked out (hourlyRateFromNet); the contract keeps
 // the gross rate.
+//
+// The rates set by law (owner's request, 16 October 2026: the Super Admin keeps them by year in Organization → Payroll):
+// each helper takes the year's rates (`rates`, lawRatesFor in @trendlix/shared on the years the page loaded), or a year
+// for the built-in ones, and the rows' rates (e.g. "Employee social insurance (11%)") are those rates'.
 
 const money = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 const piastres = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -65,18 +71,20 @@ export function splitSalary(gross: number, basicPercent: number): { basic: numbe
   return { basic, variable: cents(gross - basic) };
 }
 
-/** The year whose insurable wage limits apply: the year itself, or the latest one known before it. */
-function limitsYear(year: number): number {
-  const known = Object.keys(INSURABLE_WAGE)
-    .map(Number)
-    .sort((a, b) => a - b);
-  return INSURABLE_WAGE[year] ? year : (known.filter((y) => y <= year).at(-1) ?? known[0]);
+/**
+ * The insurable wage limits of the year's rates, and the year they are from (for a year, the built-in ones: the latest
+ * known for a later year).
+ */
+export function insurableLimits(rates: LawRatesOrYear): { year: number; min: number; max: number } {
+  return insurableWageLimits(rates);
 }
 
-/** The insurable wage limits that apply in `year`, and the year they are from (the latest known for a later year). */
-export function insurableLimits(year: number): { year: number; min: number; max: number } {
-  const from = limitsYear(year);
-  return { year: from, ...INSURABLE_WAGE[from] };
+/**
+ * Which year's rates set by law a year uses, in a few words: "the rates set by law for 2026", or for a year without its
+ * own "the rates set by law for 2027, those of 2026" (the latest earlier one, or the earliest for a year before them).
+ */
+export function ratesYearText(year: number, rates: LawRates): string {
+  return `the rates set by law for ${year}${rates.year === year ? '' : `, those of ${rates.year}`}`;
 }
 
 /** Allowances added up, a month: all of them, the taxed ones and the insured ones. */
@@ -87,16 +95,17 @@ export function allowanceTotals(allowances: readonly AllowanceTerms[]): { total:
 
 /**
  * The insured salary for a gross and its allowances, and why it is that amount: "the 2026 maximum" when the gross and
- * the insured allowances are above the year's maximum insurable wage, "the 2026 minimum" when below its minimum, else
- * "the actual gross" (or "the gross and the insured allowances").
+ * the insured allowances are above the maximum insurable wage of the year's rates, "the 2026 minimum" when below its
+ * minimum, else "the actual gross" (or "the gross and the insured allowances").
  */
-export function insuredFor(gross: number, year: number, allowances: readonly AllowanceTerms[] = []): { amount: number; why: string } {
+export function insuredFor(gross: number, rates: LawRatesOrYear, allowances: readonly AllowanceTerms[] = []): { amount: number; why: string } {
   const insured = allowanceTotals(allowances).insured;
   const base = cents(gross + insured);
-  const amount = insuredWageOf(gross, allowances, year);
-  const limits = limitsYear(year);
-  if (amount < base) return { amount, why: `the ${limits} maximum` };
-  if (amount > base) return { amount, why: `the ${limits} minimum` };
+  const amount = insuredWageOf(gross, allowances, rates);
+  // the year the rates are from: a year without its own uses the latest earlier one's
+  const from = ratesOf(rates).year;
+  if (amount < base) return { amount, why: `the ${from} maximum` };
+  if (amount > base) return { amount, why: `the ${from} minimum` };
   return { amount, why: insured > 0 ? 'the gross and the insured allowances' : 'the actual gross' };
 }
 
@@ -122,17 +131,17 @@ export type SalaryResult =
 
 /**
  * The breakdown for an amount as typed (see `parseAmount`): a gross's net, or for a net the lowest whole-pound gross
- * whose net reaches it, with the allowances on top (their net included). `year` sets the insurable wage limits. Left
- * empty → empty; not an amount, or 0 → invalid.
+ * whose net reaches it, with the allowances on top (their net included), with the year's rates set by law (`rates`, or
+ * a year for the built-in ones). Left empty → empty; not an amount, or 0 → invalid.
  */
-export function salaryFor(basis: SalaryBasis, input: string, year: number, allowances: readonly AllowanceTerms[] = []): SalaryResult {
+export function salaryFor(basis: SalaryBasis, input: string, rates: LawRatesOrYear, allowances: readonly AllowanceTerms[] = []): SalaryResult {
   const n = parseAmount(input);
   if (n === null) return { kind: 'empty' };
   if (Number.isNaN(n) || n <= 0) return { kind: 'invalid' };
-  if (basis === 'gross') return { kind: 'ok', typed: n, breakdown: grossToNet(n, year, allowances) };
+  if (basis === 'gross') return { kind: 'ok', typed: n, breakdown: grossToNet(n, rates, allowances) };
   // asked first: just above 0 the insured wage jumps to the year's minimum, so a tiny gross could seem to reach it
-  const allowancesNet = allowances.length > 0 ? grossToNet(0, year, allowances).net : 0;
-  const b = netToGross(n, year, 1, allowances);
+  const allowancesNet = allowances.length > 0 ? grossToNet(0, rates, allowances).net : 0;
+  const b = netToGross(n, rates, 1, allowances);
   return allowancesNet < n && b.gross > 0 ? { kind: 'ok', typed: n, breakdown: b } : { kind: 'belowAllowances', net: allowancesNet };
 }
 
@@ -156,10 +165,10 @@ export function plainAmount(amount: number): string {
 export function switchBasis(
   to: SalaryBasis,
   typed: { gross: string; net: string },
-  year: number,
+  rates: LawRatesOrYear,
   allowances: readonly AllowanceTerms[] = [],
 ): { gross: string; net: string } {
-  const from = salaryFor(to === 'net' ? 'gross' : 'net', to === 'net' ? typed.gross : typed.net, year, allowances);
+  const from = salaryFor(to === 'net' ? 'gross' : 'net', to === 'net' ? typed.gross : typed.net, rates, allowances);
   if (from.kind !== 'ok') return typed;
   return to === 'net' ? { ...typed, net: plainAmount(from.breakdown.net) } : { ...typed, gross: plainAmount(from.breakdown.gross) };
 }
@@ -204,24 +213,23 @@ export interface BreakdownRow {
   kind: 'amount' | 'addition' | 'deduction' | 'total' | 'company';
 }
 
-const healthRow = (b: SalaryBreakdown): BreakdownRow[] =>
-  b.healthInsurance > 0
-    ? [{ label: `Health insurance (${formatPercent(SALARY_RULES.healthInsuranceRate)})`, amount: b.healthInsurance, kind: 'deduction' }]
-    : [];
+const healthRow = (b: SalaryBreakdown, r: LawRates): BreakdownRow[] =>
+  b.healthInsurance > 0 ? [{ label: `Health insurance (${formatPercent(r.healthInsuranceRate)})`, amount: b.healthInsurance, kind: 'deduction' }] : [];
 
 /**
  * The contract form's breakdown, monthly: the gross, the allowances (`allowances`: those `b` was worked out with), the
- * insured wage, what is deducted, the net and the company's cost.
+ * insured wage, what is deducted, the net and the company's cost. `rates`: those `b` was worked out with (or a year for
+ * the built-in ones), whose shares and rates the rows give.
  */
-export function breakdownRows(b: SalaryBreakdown, allowances: readonly AllowanceTerms[] = []): BreakdownRow[] {
-  const r = SALARY_RULES;
+export function breakdownRows(b: SalaryBreakdown, rates: LawRatesOrYear, allowances: readonly AllowanceTerms[] = []): BreakdownRow[] {
+  const r = ratesOf(rates);
   const withAllowances = b.allowances > 0;
   return [
     { label: 'Gross salary', amount: b.gross, kind: 'amount' },
     ...(withAllowances ? [{ label: 'Allowances', amount: b.allowances, note: allowancesNote(allowances), kind: 'addition' as const }] : []),
     { label: 'Insured wage', amount: b.insuredWage, note: insuredWageNote(b, allowanceTotals(allowances).insured), kind: 'amount' },
     { label: `Employee social insurance (${formatPercent(r.employeeInsuranceRate)})`, amount: b.employeeInsurance, kind: 'deduction' },
-    ...healthRow(b),
+    ...healthRow(b, r),
     { label: 'Income tax', amount: b.monthlyTax, kind: 'deduction' },
     { label: `Martyrs' Fund (${formatPercent(r.martyrsRate)})`, amount: b.martyrsFund, kind: 'deduction' },
     // the allowances are in the net: say so, as the owner looked for them there (15 October 2026)
@@ -320,24 +328,24 @@ export function hourlyPayFor(
   basis: SalaryBasis,
   rateInput: string,
   hoursInput: string,
-  year: number,
+  rates: LawRatesOrYear,
   allowances: readonly AllowanceTerms[] = [],
   kept = '',
 ): HourlyPayResult {
   const typed = hourlyFor(rateInput, hoursInput);
   if (typed.kind !== 'ok') return typed;
   const { rate, hours } = typed;
-  if (basis === 'gross') return { ...typed, breakdown: grossToNet(typed.gross, year, allowances) };
+  if (basis === 'gross') return { ...typed, breakdown: grossToNet(typed.gross, rates, allowances) };
   const before = hourlyFor(kept, hoursInput);
   if (before.kind === 'ok') {
-    const breakdown = grossToNet(before.gross, year, allowances);
+    const breakdown = grossToNet(before.gross, rates, allowances);
     if (netPerHour(breakdown.net, hours) === rate) return { ...before, breakdown };
   }
   // asked first: just above 0 the insured wage jumps to the year's minimum, so a tiny gross could seem to reach it
   // (typed.gross is the net rate's month here)
-  const allowancesNet = allowances.length > 0 ? grossToNet(0, year, allowances).net : 0;
+  const allowancesNet = allowances.length > 0 ? grossToNet(0, rates, allowances).net : 0;
   if (allowancesNet >= typed.gross) return { kind: 'belowAllowances', net: allowancesNet };
-  const worked = hourlyRateFromNet(rate, hours, year, allowances);
+  const worked = hourlyRateFromNet(rate, hours, rates, allowances);
   if (!(worked.hourlyRate > 0)) return { kind: 'belowAllowances', net: allowancesNet };
   return { kind: 'ok', rate: worked.hourlyRate, hours, gross: worked.breakdown.gross, breakdown: worked.breakdown };
 }
@@ -355,15 +363,15 @@ export function workedOutRate(p: { rate: number; hours: number; breakdown: Salar
 export function switchRateBasis(
   to: SalaryBasis,
   typed: { rate: string; netRate: string; hours: string },
-  year: number,
+  rates: LawRatesOrYear,
   allowances: readonly AllowanceTerms[] = [],
 ): { rate: string; netRate: string } {
   const unchanged = { rate: typed.rate, netRate: typed.netRate };
   if (to === 'net') {
-    const from = hourlyPayFor('gross', typed.rate, typed.hours, year, allowances);
+    const from = hourlyPayFor('gross', typed.rate, typed.hours, rates, allowances);
     return from.kind === 'ok' ? { ...unchanged, netRate: plainAmount(netPerHour(from.breakdown.net, from.hours)) } : unchanged;
   }
-  const from = hourlyPayFor('net', typed.netRate, typed.hours, year, allowances, typed.rate);
+  const from = hourlyPayFor('net', typed.netRate, typed.hours, rates, allowances, typed.rate);
   return from.kind === 'ok' ? { ...unchanged, rate: plainAmount(from.rate) } : unchanged;
 }
 

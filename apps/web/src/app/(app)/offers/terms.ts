@@ -1,4 +1,4 @@
-import { grossToNet, netToGross, SALARY_RULES, type AllowanceTerms, type PayBasis, type SalaryBreakdown } from '@trendlix/shared';
+import { grossToNet, netToGross, ratesOf, type AllowanceTerms, type LawRatesOrYear, type PayBasis, type SalaryBreakdown } from '@trendlix/shared';
 import {
   belowAllowancesText,
   formatAmount,
@@ -20,7 +20,9 @@ import {
 // when the gross is the monthly estimate, hourly rate × hours a week × 52 ÷ 12 (monthlyFromHourly), the rate typed as
 // the gross per hour or as the net per hour agreed (the gross rate is worked out, as on the contract form). Allowances
 // are paid on top of the gross; the taxed ones are taxed with it, the insured ones insured with it, and all are in the
-// net (grossToNet in @trendlix/shared). The API works the same amounts out again when it saves.
+// net (grossToNet in @trendlix/shared). The API works the same amounts out again when it saves. The rates set by law
+// (owner's request, 16 October 2026) are the join date's year's, as the Super Admin keeps them in Organization →
+// Payroll: each helper takes them (`rates`), or a year for the built-in ones.
 
 /** What HR types the monthly salary as, the gross or the net wanted; by the hour, the rate as the gross or the net per hour. */
 export type SalaryStart = 'gross' | 'net';
@@ -63,15 +65,15 @@ export const GROSS_INVALID = 'Enter the gross salary as an amount in EGP, e.g. 1
 export const NET_INVALID = 'Enter the net salary as an amount in EGP, e.g. 13,000.';
 
 /**
- * The month's breakdown for what is typed, in `year` (its insurable wage limits), with the allowances: by the hour, of
+ * The month's breakdown for what is typed, with the year's rates set by law (`rates`) and the allowances: by the hour, of
  * the monthly estimate of the gross rate typed, or worked out from the net per hour typed (hourlyPayFor, which keeps
  * the gross rate typed before while it gives that net rate); else of the gross typed, or of the lowest whole-pound
  * gross whose net reaches the net typed.
  */
-export function offerSalary(t: TermsTyped, year: number, allowances: readonly AllowanceTerms[] = []): TermsResult {
+export function offerSalary(t: TermsTyped, rates: LawRatesOrYear, allowances: readonly AllowanceTerms[] = []): TermsResult {
   if (payBasisFrom(t.payBasis) === 'hourly') {
     const net = salaryStartFrom(t.rateBasis) === 'net';
-    const pay = hourlyPayFor(net ? 'net' : 'gross', net ? t.netRate : t.hourlyRate, t.hoursPerWeek, year, allowances, t.hourlyRate);
+    const pay = hourlyPayFor(net ? 'net' : 'gross', net ? t.netRate : t.hourlyRate, t.hoursPerWeek, rates, allowances, t.hourlyRate);
     if (pay.kind === 'invalid' && pay.field === 'hours') return { kind: 'invalid', field: 'hoursPerWeek', reason: HOURS_INVALID };
     if (pay.kind === 'invalid') return net ? { kind: 'invalid', field: 'netRate', reason: NET_RATE_INVALID } : { kind: 'invalid', field: 'hourlyRate', reason: RATE_INVALID };
     if (pay.kind === 'belowAllowances') return { kind: 'invalid', field: 'netRate', reason: belowAllowancesText(pay.net, true) };
@@ -86,15 +88,15 @@ export function offerSalary(t: TermsTyped, year: number, allowances: readonly Al
   if (Number.isNaN(n) || n <= 0) {
     return start === 'net' ? { kind: 'invalid', field: 'wantedNet', reason: NET_INVALID } : { kind: 'invalid', field: 'grossSalary', reason: GROSS_INVALID };
   }
-  return { kind: 'ok', breakdown: start === 'net' ? netToGross(n, year, 1, allowances) : grossToNet(n, year, allowances), estimate: null };
+  return { kind: 'ok', breakdown: start === 'net' ? netToGross(n, rates, 1, allowances) : grossToNet(n, rates, allowances), estimate: null };
 }
 
 /**
  * Switching between typing the gross and typing the net: the other field starts with what the current one gives, so
  * the salary stays the same. Left as it was when there is nothing to work from.
  */
-export function switchStart(to: SalaryStart, typed: TermsTyped, year: number, allowances: readonly AllowanceTerms[] = []): TermsTyped {
-  const from = offerSalary({ ...typed, payBasis: 'monthly', salaryBasis: to === 'net' ? 'gross' : 'net' }, year, allowances);
+export function switchStart(to: SalaryStart, typed: TermsTyped, rates: LawRatesOrYear, allowances: readonly AllowanceTerms[] = []): TermsTyped {
+  const from = offerSalary({ ...typed, payBasis: 'monthly', salaryBasis: to === 'net' ? 'gross' : 'net' }, rates, allowances);
   if (from.kind !== 'ok') return { ...typed, salaryBasis: to };
   return to === 'net'
     ? { ...typed, salaryBasis: to, wantedNet: plainAmount(from.breakdown.net) }
@@ -105,8 +107,8 @@ export function switchStart(to: SalaryStart, typed: TermsTyped, year: number, al
  * Switching between typing the gross per hour and the net per hour: the other rate starts with what the current one
  * gives, so the pay stays the same (see switchRateBasis). Left as it was when there is nothing to work from.
  */
-export function switchRate(to: SalaryStart, typed: TermsTyped, year: number, allowances: readonly AllowanceTerms[] = []): TermsTyped {
-  const s = switchRateBasis(to, { rate: typed.hourlyRate, netRate: typed.netRate, hours: typed.hoursPerWeek }, year, allowances);
+export function switchRate(to: SalaryStart, typed: TermsTyped, rates: LawRatesOrYear, allowances: readonly AllowanceTerms[] = []): TermsTyped {
+  const s = switchRateBasis(to, { rate: typed.hourlyRate, netRate: typed.netRate, hours: typed.hoursPerWeek }, rates, allowances);
   return { ...typed, rateBasis: to, hourlyRate: s.rate, netRate: s.netRate };
 }
 
@@ -117,11 +119,16 @@ export function estimateText(rate: number, hours: number, estimate: number): str
 
 /**
  * The month's breakdown as the offer form lists it: the gross, the allowances, what is deducted, the net and the
- * company's cost. `insuredAllowances`: the allowances counted in the insured wage, to say when the wage is capped at the
+ * company's cost. `rates`: those `b` was worked out with (or a year for the built-in ones), whose shares and rates the
+ * rows give. `insuredAllowances`: the allowances counted in the insured wage, to say when the wage is capped at the
  * year's maximum or raised to its minimum.
  */
-export function offerBreakdownRows(b: SalaryBreakdown, { hourly = false, insuredAllowances = 0 }: { hourly?: boolean; insuredAllowances?: number } = {}): BreakdownRow[] {
-  const r = SALARY_RULES;
+export function offerBreakdownRows(
+  b: SalaryBreakdown,
+  rates: LawRatesOrYear,
+  { hourly = false, insuredAllowances = 0 }: { hourly?: boolean; insuredAllowances?: number } = {},
+): BreakdownRow[] {
+  const r = ratesOf(rates);
   return [
     { label: 'Gross salary', amount: b.gross, note: hourly ? 'the monthly estimate' : undefined, kind: 'amount' },
     ...(b.allowances > 0

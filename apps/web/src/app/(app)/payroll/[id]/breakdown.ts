@@ -1,6 +1,6 @@
-import { formatHours, type PayrollRules } from '@trendlix/shared';
+import { expectedHoursOf, formatHours, lawRatesFor, type LawRates, type PayrollInputs, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
 import type { PayrollLineView } from '../../../../lib/types';
-import { formatEgp } from '../../employees/[id]/contracts/salary';
+import { formatEgp, formatPercent } from '../../employees/[id]/contracts/salary';
 
 // One employee's pay, step by step, as the run's results table opens it (owner's decisions, 16 October 2026): from the
 // gross split into its fixed and variable parts, through the attendance and KPI cuts and what is added, to the pay
@@ -8,8 +8,9 @@ import { formatEgp } from '../../employees/[id]/contracts/salary';
 // the company. Each step as payrollLine (@trendlix/shared) worked it out; nothing is worked out again here. The hours
 // attendance is measured on are the expected hours less the no-show days' hours, so a day off is charged once, and
 // with no KPI given the variable part isn't cut (owner's decisions, 16 October 2026). The KPIs a line has are listed
-// with its KPI score, as the inputs grid doesn't show them (the KPIs module will fill them). Pure code, tested;
-// relative imports, as vitest doesn't know the @/ paths.
+// with its KPI score, as the inputs grid doesn't show them (the KPIs module will fill them). The expected hours say
+// where they came from: as HR typed them, or the shift's working days less the holidays (owner's request, 16 October
+// 2026, Payroll Setup). Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 export interface BreakdownRow {
   key: string;
@@ -35,6 +36,23 @@ const listed = (items: readonly string[]) => (items.length > 1 ? `${items.slice(
 
 type Line = Pick<PayrollLineView, 'payBasis' | 'terms' | 'inputs' | 'result'>;
 
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+
+/**
+ * Where a line's expected hours came from, and what came out of them: as HR typed them, or the shift's working days in
+ * the days employed less the holidays, at its hours a day (owner's request, 16 October 2026); less the no-show days'
+ * hours. Nothing to say without either.
+ */
+export function expectedHoursNote(t: PayrollTerms, i: PayrollInputs, absent: number): string | undefined {
+  const less = absent > 0 ? `less ${formatHours(absent)} for the no-show ${i.noShowDays === 1 ? 'day' : 'days'}` : null;
+  if (i.expectedHours !== null) return less ? `${formatHours(i.expectedHours)} expected as typed, ${less}` : 'Expected hours as typed';
+  if (t.expectedHours === null || t.expectedHours === undefined) return undefined;
+  const d = t.expectedDays;
+  const from =
+    d && t.hoursPerDay ? `${plural(d.workingDays, 'working day')} of the shift${d.holidays ? ` less ${plural(d.holidays, 'holiday')}` : ''}, at ${formatHours(t.hoursPerDay)} a day` : 'the shift';
+  return `${formatHours(t.expectedHours)} expected from ${from}${less ? `; ${less}` : ''}`;
+}
+
 /** The steps of a line on monthly pay: the gross's parts, the cuts and what is added. */
 function monthlySteps({ terms: t, inputs: i, result: r }: Line, rules: PayrollRules): BreakdownRow[] {
   const variablePercent = Math.round((100 - t.basicPercent) * 100) / 100;
@@ -42,15 +60,17 @@ function monthlySteps({ terms: t, inputs: i, result: r }: Line, rules: PayrollRu
   // the no-show days' hours out of the expected hours: none on a line worked out before 16 October 2026
   const absent = r.absentHours > 0 ? r.absentHours : 0;
   const typed = i.workedHours !== null || i.expectedHours !== null;
+  // as HR typed them, else the shift's less the holidays
+  const expected = expectedHoursOf(t, i);
   const hours: BreakdownRow[] =
-    i.workedHours !== null && i.expectedHours !== null
+    i.workedHours !== null && expected !== null
       ? [
           {
             key: 'hours',
             label: 'Hours worked',
-            value: `${formatHours(i.workedHours)} of ${formatHours(Math.max(0, i.expectedHours - absent))}`,
+            value: `${formatHours(i.workedHours)} of ${formatHours(Math.max(0, expected - absent))}`,
             kind: 'info',
-            note: absent > 0 ? `${formatHours(i.expectedHours)} expected, less ${formatHours(absent)} for the no-show ${i.noShowDays === 1 ? 'day' : 'days'}` : undefined,
+            note: expectedHoursNote(t, i, absent),
           },
         ]
       : [];
@@ -126,13 +146,16 @@ function hourlySteps({ terms: t, inputs: i, result: r }: Line): BreakdownRow[] {
 }
 
 /** Every step of a line, in order, as its row in the results table opens it. */
-export function breakdown(line: Line, rules: PayrollRules): BreakdownRow[] {
+export function breakdown(line: Line, rules: PayrollRules, law?: LawRates): BreakdownRow[] {
   const { terms: t, inputs: i, result: r } = line;
+  // the employee's share as the run's copy of the rates set by law has it (owner's request, 16 October 2026); a run from
+  // an API before them: the built-in rates of its year
+  const share = (law ?? lawRatesFor(t.year)).employeeInsuranceRate;
   const insuranceNote = !t.statutory
     ? 'Freelance: no social insurance, tax or Martyrs’ fund'
     : !t.insured
       ? 'Not registered with social insurance: nothing deducted'
-      : '11% of the insured wage';
+      : `${formatPercent(share)} of the insured wage`;
   const allowanceNames = t.allowances.map((a) => a.name).join(', ');
   return [
     ...(line.payBasis === 'hourly' ? hourlySteps(line) : monthlySteps(line, rules)),

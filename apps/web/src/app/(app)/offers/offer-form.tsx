@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { lawRatesFor, type LawRates } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { PhoneInput } from '@/components/phone-input';
@@ -19,7 +20,9 @@ import { salaryStartFrom, switchRate, switchStart, type TermsTyped } from './ter
 // The form of the New offer and Edit draft pages, in four parts: the candidate (a candidate is not an employee: their
 // names, personal email and mobile, and a former employee's profile when one is offered again), the position, the terms
 // and the offer itself (its last day to accept, a few words to the candidate, a note for HR). It is saved as a draft;
-// nothing reaches the candidate until HR sends it from the offer's page (owner's request, 15 October 2026).
+// nothing reaches the candidate until HR sends it from the offer's page (owner's request, 15 October 2026). The salary
+// is estimated with the rates set by law of the join date's year (owner's request, 16 October 2026), from the years the
+// page loaded (`lawYears`).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -53,6 +56,7 @@ export function OfferForm({
   pickers,
   defaults,
   today,
+  lawYears,
   cancelHref,
   submitLabel,
 }: {
@@ -61,6 +65,8 @@ export function OfferForm({
   defaults: OfferDefaults;
   /** YYYY-MM-DD, for the salary's year while there is no join date. */
   today: string;
+  /** The rates set by law of each year kept (GET /payroll/law-rates, else the built-in ones): the salary's year's are used. */
+  lawYears: readonly LawRates[];
   cancelHref: string;
   submitLabel: string;
 }) {
@@ -82,9 +88,10 @@ export function OfferForm({
   }));
   const [rows, setRows] = useState<AllowanceRow[]>(() => allowanceRows(state, defaults.allowances));
 
-  // the salary, with the insurable wage limits of the join date's year (this year while there is none)
+  // the salary, with the rates set by law of the join date's year (this year while there is none)
   const join = parseDate(typed.joinDate);
   const year = Number((join || today).slice(0, 4));
+  const rates = lawRatesFor(year, lawYears);
   const termsTyped: TermsTyped = typed;
 
   function track(e: React.FormEvent<HTMLFormElement>) {
@@ -94,12 +101,12 @@ export function OfferForm({
     if (!(TRACKED as readonly string[]).includes(name)) return;
     if (name === 'salaryBasis') {
       // the other field starts with what this one gives, so the salary stays the same
-      setTyped((v) => ({ ...v, ...switchStart(salaryStartFrom(value), v, year, allowanceTerms(rows, pickers.allowanceTypes)) }));
+      setTyped((v) => ({ ...v, ...switchStart(salaryStartFrom(value), v, rates, allowanceTerms(rows, pickers.allowanceTypes)) }));
       return;
     }
     if (name === 'rateBasis') {
       // the same by the hour: the other rate starts with what this one gives
-      setTyped((v) => ({ ...v, ...switchRate(salaryStartFrom(value), v, year, allowanceTerms(rows, pickers.allowanceTypes)) }));
+      setTyped((v) => ({ ...v, ...switchRate(salaryStartFrom(value), v, rates, allowanceTerms(rows, pickers.allowanceTypes)) }));
       return;
     }
     setTyped((v) => ({ ...v, [name]: value }));
@@ -225,6 +232,7 @@ export function OfferForm({
           onRows={setRows}
           allowanceTypes={pickers.allowanceTypes}
           year={year}
+          rates={rates}
         />
       </Section>
 

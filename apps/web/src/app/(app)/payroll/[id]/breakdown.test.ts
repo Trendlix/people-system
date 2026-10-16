@@ -1,6 +1,6 @@
-import { EMPTY_PAYROLL_INPUTS, PAYROLL_RULE_DEFAULTS, payrollLine, type PayrollInputs, type PayrollResult, type PayrollTerms } from '@trendlix/shared';
+import { EMPTY_PAYROLL_INPUTS, lawRatesFor, PAYROLL_RULE_DEFAULTS, payrollLine, type PayrollInputs, type PayrollResult, type PayrollTerms } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { breakdown, cutText, percentText } from './breakdown';
+import { breakdown, cutText, expectedHoursNote, percentText } from './breakdown';
 
 // An invented employee's month, worked out by hand: one no-show day of an 8-hour shift, so 238 hours worked of the 280
 // expected less 8 is 87.5%, below the 90% grace: 1,000 off the fixed 8,000. A performance of 65%: (87.5 + 65) ÷ 2 =
@@ -106,13 +106,20 @@ describe('a line’s breakdown', () => {
 
   it('explains the attendance, the KPIs, the no-shows and the insurance', () => {
     // the no-show day's hours out of the expected hours (owner's decisions, 16 October 2026)
-    expect(row('hours')).toMatchObject({ value: '238:00 of 272:00', kind: 'info', note: '280:00 expected, less 8:00 for the no-show day' });
+    expect(row('hours')).toMatchObject({ value: '238:00 of 272:00', kind: 'info', note: '280:00 expected as typed, less 8:00 for the no-show day' });
     expect(row('attendance')).toMatchObject({ value: '87.5%', note: 'Below 90%: the fixed part follows it' });
     // the KPIs typed, which the inputs grid no longer shows
     expect(row('kpi')).toMatchObject({ value: '76.25%', note: 'The average of performance 65% and attendance 87.5%; at or above 80% counts in full' });
     expect(row('noShowCut')?.note).toBe("1 day, each costing 2 days' pay");
     expect(row('employeeInsurance')?.note).toBe('11% of the insured wage');
     expect(row('allowances')?.note).toBe('Transport');
+  });
+
+  it('gives the employee’s share of the run’s rates set by law (owner’s request, 16 October 2026)', () => {
+    const law = { ...lawRatesFor(2026), employeeInsuranceRate: 0.115 };
+    expect(breakdown(line, PAYROLL_RULE_DEFAULTS, law).find((r) => r.key === 'employeeInsurance')?.note).toBe('11.5% of the insured wage');
+    // a run from an API before them: the built-in rates of its year
+    expect(breakdown(line, PAYROLL_RULE_DEFAULTS).find((r) => r.key === 'employeeInsurance')?.note).toBe('11% of the insured wage');
   });
 
   it('lists every KPI given; with none, the variable part isn’t cut (owner, 16 October 2026: "fixed only")', () => {
@@ -131,7 +138,26 @@ describe('a line’s breakdown', () => {
     const older: Partial<PayrollResult> = { ...result, attendanceRatio: 0.85, attendanceScore: 0.85 };
     delete older.absentHours;
     const steps = breakdown({ ...line, result: older as PayrollResult }, PAYROLL_RULE_DEFAULTS);
-    expect(steps.find((r) => r.key === 'hours')).toMatchObject({ value: '238:00 of 280:00', note: undefined });
+    expect(steps.find((r) => r.key === 'hours')).toMatchObject({ value: '238:00 of 280:00', note: 'Expected hours as typed' });
+  });
+
+  it('says where the expected hours came from: the shift less the holidays unless HR typed them (16 October 2026)', () => {
+    // 22 working days of an 8-hour shift less 1 holiday: 168 hours; the no-show day's 8 out of them
+    const fromShift = { ...terms, expectedHours: 168, expectedDays: { workingDays: 22, holidays: 1 } };
+    const hoursOf = (t: PayrollTerms, i: Partial<PayrollInputs>, r: Partial<PayrollResult> = {}) =>
+      breakdown({ ...line, terms: t, inputs: { ...inputs, ...i }, result: { ...result, ...r } }, PAYROLL_RULE_DEFAULTS).find((s) => s.key === 'hours');
+    expect(hoursOf(fromShift, { expectedHours: null })).toMatchObject({
+      value: '238:00 of 160:00',
+      note: '168:00 expected from 22 working days of the shift less 1 holiday, at 8:00 a day; less 8:00 for the no-show day',
+    });
+    expect(hoursOf({ ...fromShift, expectedDays: { workingDays: 21, holidays: 0 } }, { expectedHours: null, noShowDays: null }, { absentHours: 0 })?.note).toBe(
+      '168:00 expected from 21 working days of the shift, at 8:00 a day',
+    );
+    // typed over: HR's figure, as typed
+    expect(hoursOf(fromShift, {})).toMatchObject({ value: '238:00 of 272:00', note: '280:00 expected as typed, less 8:00 for the no-show day' });
+    // without a shift's figure or a typed one: no hours row
+    expect(hoursOf(terms, { expectedHours: null })).toBeUndefined();
+    expect(expectedHoursNote({ ...fromShift, expectedDays: null }, { ...inputs, expectedHours: null }, 0)).toBe('168:00 expected from the shift');
   });
 
   it('says when attendance isn’t tracked or can’t be counted, the part month, and who has no insurance deducted', () => {
@@ -144,7 +170,7 @@ describe('a line’s breakdown', () => {
     expect(find('hours')).toBeUndefined();
     // hours typed, but the no-show days' hours are all of them: the warnings say so
     const notCounted = breakdown({ ...line, inputs: { ...inputs, expectedHours: 8 }, result: { ...result, attendanceRatio: null, attendanceScore: 1 } }, PAYROLL_RULE_DEFAULTS);
-    expect(notCounted.find((r) => r.key === 'hours')).toMatchObject({ value: '238:00 of 0:00', note: '8:00 expected, less 8:00 for the no-show day' });
+    expect(notCounted.find((r) => r.key === 'hours')).toMatchObject({ value: '238:00 of 0:00', note: '8:00 expected as typed, less 8:00 for the no-show day' });
     expect(notCounted.find((r) => r.key === 'attendance')).toMatchObject({ value: 'Not counted', note: 'See the warnings: counts in full' });
     expect(find('fixed')?.note).toBe('80% of the gross, for 19 of 30 days');
     expect(find('employeeInsurance')?.note).toBe('Not registered with social insurance: nothing deducted');

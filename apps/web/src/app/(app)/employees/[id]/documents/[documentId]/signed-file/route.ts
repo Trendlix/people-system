@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 
-// Serves a generated document's signed copy (a photo or a PDF, the Contracts tab's View signed copy) from the API under
+// Serves a generated document's signed copy (a photo or a PDF, the Employment tab's View signed copy) from the API under
 // the web domain, with the caller's session: the browser never talks to the API. The API checks the role (HR, CEO).
 // Shown in the page's document viewer, so links here are never prefetched.
 

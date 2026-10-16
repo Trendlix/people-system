@@ -1,6 +1,6 @@
 'use client';
 
-import { PAY_BASES, PAY_BASIS_LABELS } from '@trendlix/shared';
+import { PAY_BASES, PAY_BASIS_LABELS, type LawRates } from '@trendlix/shared';
 import { AllowanceRows } from '@/components/allowance-rows';
 import { valueOf } from '@/components/form';
 import { allowanceTerms, type AllowanceRow } from '@/lib/allowances';
@@ -11,6 +11,7 @@ import {
   parseAmount,
   plainAmount,
   RATE_BASIS_LABELS,
+  ratesYearText,
   SALARY_BASES,
   SALARY_BASIS_LABELS,
   splitSalary,
@@ -25,7 +26,7 @@ import { estimateText, insuredAllowancesOf, offerBreakdownRows, offerSalary, pay
 // or as the net wanted, or by the hour (the hourly rate, typed as the gross or as the net per hour agreed, and the hours
 // a week, whose monthly estimate is the gross); the working days a week, the basic part, the allowances, and the
 // probation and the contract's length. While HR types, the month's breakdown down to the net is shown with the
-// allowances in it (terms.ts), for the year of the join date. The form sends the gross worked out (grossSalary), the
+// allowances in it (terms.ts), with the rates set by law of the join date's year. The form sends the gross worked out (grossSalary), the
 // gross rate worked out from a net rate (hourlyRate) and the net worked out (netSalary), as the contract form does.
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
@@ -42,6 +43,7 @@ export function OfferTerms({
   onRows,
   allowanceTypes,
   year,
+  rates,
 }: {
   state: FormState;
   fid: (name: string) => string;
@@ -53,14 +55,16 @@ export function OfferTerms({
   rows: AllowanceRow[];
   onRows: (rows: AllowanceRow[]) => void;
   allowanceTypes: AllowanceType[];
-  /** The year whose insurable wage limits apply: the join date's, else this year. */
+  /** The salary's year: the join date's, else this year. */
   year: number;
+  /** That year's rates set by law (lawRatesFor on the years kept). */
+  rates: LawRates;
 }) {
   const hourly = payBasisFrom(typed.payBasis) === 'hourly';
   const start = salaryStartFrom(typed.salaryBasis);
   const rateStart = salaryStartFrom(typed.rateBasis);
   const terms = allowanceTerms(rows, allowanceTypes);
-  const salary = offerSalary(typed, year, terms);
+  const salary = offerSalary(typed, rates, terms);
   const calc = salary.kind === 'ok' ? salary.breakdown : null;
   const basicPercent = Number(basicTyped);
   const split = calc && Number.isInteger(basicPercent) && basicPercent >= 1 && basicPercent <= 100 ? splitSalary(calc.gross, basicPercent) : null;
@@ -292,7 +296,7 @@ export function OfferTerms({
         </p>
         {salary.kind === 'ok' ? (
           <SalaryBreakdownList
-            rows={offerBreakdownRows(salary.breakdown, { hourly, insuredAllowances: insuredAllowancesOf(terms) })}
+            rows={offerBreakdownRows(salary.breakdown, rates, { hourly, insuredAllowances: insuredAllowancesOf(terms) })}
             labelledBy={fid('breakdown')}
           />
         ) : (
@@ -304,8 +308,8 @@ export function OfferTerms({
         {/* what is saved, and goes into the offer as {{net_salary}}: the net worked out */}
         <input type="hidden" name="netSalary" value={calc ? plainAmount(calc.net) : ''} />
         <p className="hint">
-          Calculated as the Ministry of Finance&apos;s salary tax system does: social insurance on the insured wage, salary tax in Law 7/2024&apos;s brackets, and
-          the Martyrs&apos; Fund. Uses the insurable wage limits for {year}, the year of the join date.
+          Calculated as the Ministry of Finance&apos;s salary tax system does: social insurance on the insured wage, salary tax in its tiers, and the
+          Martyrs&apos; Fund. Uses {ratesYearText(year, rates)}, the year of the join date.
         </p>
       </div>
 

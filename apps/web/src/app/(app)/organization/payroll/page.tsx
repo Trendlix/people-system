@@ -1,91 +1,64 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { ApiError, apiFetch, messagesOf } from '@/lib/api';
-import { canEditOrganisation, getCurrentUser } from '@/lib/session';
-import type { PayrollSettingsView } from '@/lib/types';
-import { rulesSummary } from '../../payroll/list';
+import { getCurrentUser } from '@/lib/session';
+import type { SessionUser } from '@/lib/types';
+import { todayInCairo } from '../../employees/ui';
 import { Empty, Loading } from '../ui';
-import { updatePayrollSettings } from './actions';
-import { PayrollSettingsForm } from './settings-form';
-import { seesPayrollSettings } from './settings';
+import { HolidaysSection } from './holidays-section';
+import { LawRatesSection } from './law-rates-section';
+import { PayingSalariesSection } from './paying-section';
+import { YourRulesSection } from './rules-section';
+import { holidaysYear, seesPayrollSettings } from './settings';
 
-// The payroll settings (owner's decisions, 16 October 2026): the rules runs are worked out with, after the owner's
-// payroll sheet with its formula errors fixed, and what the bank files need (the company's CIB account the salaries are
-// paid from, its name as CIB has it, the ACH file's purpose). HR, Finance, the CEO and Admin see them; HR and Admin
-// change them (the API checks this again). A run keeps the rules it was made or last refreshed with.
+// Payroll Setup (owner's request, 16 October 2026: "creating a setup page for payroll to enter the variables that might
+// affect the sheet"), in place of Organization → Payroll: everything that changes the payroll sheet, in four sections,
+// in this order, each loading and saving on its own. 1 Your Rules: the company's rules after its payroll sheet, and the
+// defaults new contracts start with. 2 Rates Set by Law: the year's legal rates and tax brackets. 3 Holidays and Working
+// Days: the official holidays, which come out of each shift's working days for the expected hours. 4 Paying Salaries:
+// the bank files' details and the payday. HR, Finance, the CEO and Admin see it; HR and Admin change it (the API
+// checks every request again). Changed rules apply to runs made or refreshed afterwards; approved runs keep what they
+// were worked out with (each run copies them).
 
-type Loaded = { kind: 'ok'; settings: PayrollSettingsView } | { kind: 'unavailable' } | { kind: 'failed'; message: string };
+export const metadata: Metadata = { title: 'Payroll Setup · People System' };
 
-/** GET /payroll/settings; an API from before payroll answers 404, "not available yet". */
-async function loadSettings(): Promise<Loaded> {
-  try {
-    const res = await apiFetch('/payroll/settings');
-    if (res.status === 401) redirect('/login');
-    if (res.status === 404) return { kind: 'unavailable' };
-    if (!res.ok) return { kind: 'failed', message: (await messagesOf(res)).join(' ') };
-    return { kind: 'ok', settings: (await res.json()) as PayrollSettingsView };
-  } catch (err) {
-    if (err instanceof ApiError) return { kind: 'failed', message: err.message };
-    throw err;
-  }
-}
+/** Each section waits for its own data only. */
+const Section = ({ children }: { children: React.ReactNode }) => <Suspense fallback={<Loading />}>{children}</Suspense>;
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-1 border-b border-line-soft py-3 last:border-0 sm:grid-cols-[16rem_1fr] sm:gap-4">
-      <dt className="text-sm text-muted">{label}</dt>
-      <dd className="text-sm">{children}</dd>
-    </div>
-  );
-}
-
-const notSet = <span className="text-muted">Not set</span>;
-
-async function PayrollSettings() {
-  const user = await getCurrentUser();
-  if (!seesPayrollSettings(user)) return <Empty>Only HR, Finance, the CEO and Admin can see the payroll settings.</Empty>;
-  const loaded = await loadSettings();
-  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server does not have payroll yet.</Empty>;
-  if (loaded.kind === 'failed') return <Empty>The payroll settings could not be loaded. {loaded.message}</Empty>;
-  const s = loaded.settings;
-
+function PayrollSetup({ user, year }: { user: SessionUser; year: number }) {
   return (
     <div className="space-y-6">
       <p className="max-w-3xl text-sm text-muted">
-        How each month&apos;s <Link href="/payroll">payroll</Link> is worked out, following the company&apos;s payroll sheet, and what the bank files need. A
-        run keeps the rules it was made with until it is refreshed, so a change here applies to runs made or refreshed afterwards.
+        Everything that changes how each month&apos;s <Link href="/payroll">payroll</Link> is worked out and paid. A run keeps what it was made or last
+        refreshed with, so a change here applies to runs made or refreshed afterwards; approved runs keep theirs.
       </p>
-      <section className="card p-6">
-        <h2 className="font-semibold">Payroll Settings</h2>
-        {canEditOrganisation(user) ? (
-          <div className="mt-4">
-            <PayrollSettingsForm action={updatePayrollSettings} settings={s} />
-          </div>
-        ) : (
-          <>
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
-              {rulesSummary(s).map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
-            <h3 className="mt-6 font-semibold">Bank Files</h3>
-            <dl className="mt-2">
-              <Row label="CIB account the salaries are paid from">{s.cibDebitAccount ? <span className="tabular-nums">{s.cibDebitAccount}</span> : notSet}</Row>
-              <Row label="Account name">{s.cibDebitAccountName ?? notSet}</Row>
-              <Row label="ACH purpose">{s.achPurpose || notSet}</Row>
-            </dl>
-          </>
-        )}
-      </section>
+      <Section>
+        <YourRulesSection user={user} />
+      </Section>
+      <Section>
+        <LawRatesSection user={user} />
+      </Section>
+      <Section>
+        <HolidaysSection user={user} year={year} />
+      </Section>
+      <Section>
+        <PayingSalariesSection user={user} />
+      </Section>
     </div>
   );
 }
 
-export default function PayrollSettingsPage() {
+async function Gate({ searchParams }: { searchParams: PageProps<'/organization/payroll'>['searchParams'] }) {
+  const user = await getCurrentUser();
+  if (!seesPayrollSettings(user)) return <Empty>Only HR, Finance, the CEO and Admin can see the payroll setup.</Empty>;
+  const year = holidaysYear((await searchParams).year, todayInCairo());
+  return <PayrollSetup user={user} year={year} />;
+}
+
+export default function PayrollSetupPage({ searchParams }: PageProps<'/organization/payroll'>) {
   return (
     <Suspense fallback={<Loading />}>
-      <PayrollSettings />
+      <Gate searchParams={searchParams} />
     </Suspense>
   );
 }

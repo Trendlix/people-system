@@ -5,7 +5,7 @@ import { monthName } from './list';
 // Payslips (owner's decisions, 16 October 2026): the system draws each employee's payslip from the approved run, as a
 // protected PDF. The English one for everyone each month, issued when HR marks the run paid; the Arabic one made on
 // request from the employee file, the first time it is opened. HR, Finance and the CEO open one, or download all of a
-// run's as a ZIP, and they are kept on the employee file (the profile's Contracts tab). The browser gets them under the
+// run's as a ZIP, and they are kept on the employee file (the profile's Employment tab). The browser gets them under the
 // web domain with the caller's session ([id]/payslips/route.ts, lines/[lineId]/payslip/[language]/route.ts). Pure code,
 // tested; relative imports, as vitest doesn't know the @/ paths.
 

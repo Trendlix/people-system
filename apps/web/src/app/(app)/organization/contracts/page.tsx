@@ -5,6 +5,7 @@ import { apiGet } from '@/lib/api';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { ContractSettings, EndingRule } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
+import { seesPayrollSettings } from '../payroll/settings';
 import { Empty, Loading } from '../ui';
 import { updateContractSettings } from './actions';
 import { ContractDefaultsForm } from './defaults-form';
@@ -12,6 +13,9 @@ import { INITIATOR_LABELS, monthsLabel, noticeLabel } from './labels';
 
 // What a new contract starts with, and the ways an employment can end (owner's decisions of 15 October 2026, checked
 // against Labour Law 14/2025). Everyone signed in can see them; HR and Admin change them (the API checks this again).
+// The basic share of the gross a new contract starts with and the basic wage social insurance forms print by default
+// change the payroll sheet, so they are changed on Payroll Setup (owner's request, 16 October 2026); they are shown
+// here, with the way there.
 
 /** The rules in the order the shared list gives them (probation first); any the list doesn't know go last. */
 function inOrder(rules: EndingRule[]): EndingRule[] {
@@ -48,7 +52,7 @@ async function ContractsAndEndings() {
 
       <section className="card p-6">
         <h2 className="font-semibold">Contract Defaults</h2>
-        <p className="mt-1 text-sm text-muted">What every new contract starts with, and the basic wage social insurance forms print by default.</p>
+        <p className="mt-1 text-sm text-muted">What every new contract starts with.</p>
         {canEdit ? (
           <ContractDefaultsForm action={updateContractSettings} settings={settings} />
         ) : (
@@ -60,13 +64,35 @@ async function ContractsAndEndings() {
               {monthsLabel(settings.probationMonths, 'No probation')}
               <span className="text-muted"> · the law allows it once per employer, up to 3 months (Art. 90)</span>
             </Row>
-            {settings.insuranceBasicDefault !== undefined && (
-              <Row label="Basic wage on social insurance forms (default)">
-                <span className="tabular-nums">{formatEgp(settings.insuranceBasicDefault)}</span>
-                <span className="text-muted"> · for an employee without a basic wage of their own</span>
-              </Row>
-            )}
           </dl>
+        )}
+        {(settings.basicPercentDefault !== undefined || settings.insuranceBasicDefault !== undefined) && (
+          <>
+            <dl className={canEdit ? 'mt-6 border-t border-line-soft pt-3' : ''}>
+              {settings.basicPercentDefault !== undefined && (
+                <Row label="Basic share of the gross">
+                  <span className="tabular-nums">{settings.basicPercentDefault}%</span>
+                  <span className="text-muted"> · the rest is the variable part, which follows the KPIs</span>
+                </Row>
+              )}
+              {settings.insuranceBasicDefault !== undefined && (
+                <Row label="Basic wage on social insurance forms (default)">
+                  <span className="tabular-nums">{formatEgp(settings.insuranceBasicDefault)}</span>
+                  <span className="text-muted"> · for an employee without a basic wage of their own</span>
+                </Row>
+              )}
+            </dl>
+            <p className="mt-2 text-sm text-muted">
+              These change the payroll sheet, so they are set with the payroll rules
+              {seesPayrollSettings(user) ? (
+                <>
+                  : <Link href="/organization/payroll#your-rules">Payroll Setup → Your Rules</Link>.
+                </>
+              ) : (
+                ', on Payroll Setup.'
+              )}
+            </p>
+          </>
         )}
       </section>
 

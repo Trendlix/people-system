@@ -1,4 +1,14 @@
-import { grossToNet, INSURABLE_WAGE, SALARY_RULES, type AllowanceTerms, type PayBasis, type SalaryBreakdown } from '@trendlix/shared';
+import {
+  BUILT_IN_LAW_RATES,
+  grossToNet,
+  ratesOf,
+  ROUND_INCOME_DOWN_TO,
+  type AllowanceTerms,
+  type LawRates,
+  type LawRatesOrYear,
+  type PayBasis,
+  type SalaryBreakdown,
+} from '@trendlix/shared';
 import {
   allowancesNote,
   allowanceTotals,
@@ -19,11 +29,12 @@ import { treatmentText, type AllowanceRow } from '../../../../lib/allowances';
 import type { AllowanceType } from '../../../../lib/types';
 
 // Plain helpers for the Salary Calculator page (no server-only, so they are unit tested): what it reads from and
-// writes to the address, the years it offers, the rows of its table and the tax brackets of its "How it's calculated"
-// list. The calculation itself is grossToNet / netToGross in @trendlix/shared. Relative imports: the tests run without
-// the "@/" alias. As on the contract form (owner's requests, 15 October 2026), the pay can be by the hour, when the
-// gross is the monthly estimate (rate × hours a week × 52 ÷ 12) of the gross rate typed or worked out from a net rate,
-// and allowances of HR's kinds come on top of the gross.
+// writes to the address, the years it offers and the rows of its table. The calculation itself is grossToNet /
+// netToGross in @trendlix/shared. Relative imports: the tests run without the "@/" alias. As on the contract form
+// (owner's requests, 15 October 2026), the pay can be by the hour, when the gross is the monthly estimate (rate × hours a
+// week × 52 ÷ 12) of the gross rate typed or worked out from a net rate, and allowances of HR's kinds come on top of the
+// gross. The rates set by law (owner's request, 16 October 2026) are the chosen year's, as the Super Admin keeps them in
+// Organization → Payroll (lawRatesFor on the years the page loaded): the rows' rates, limits and exemption are theirs.
 
 export interface CalculatorInput {
   /** A monthly salary, or by the hour. */
@@ -50,17 +61,17 @@ const all = (v: string | string[] | undefined) => (v === undefined ? [] : Array.
 /** The most allowance rows read from the address. */
 const MAX_ALLOWANCES = 20;
 
-/** The years offered: those with known insurable wage limits (they differ by year), and this year. */
-export function calculatorYears(thisYear: number): number[] {
-  return [...new Set([...Object.keys(INSURABLE_WAGE).map(Number), thisYear])].sort((a, b) => a - b);
+/** The years offered: those with rates set by law of their own (`lawYears`: the years kept, else the built-in ones), and this year. */
+export function calculatorYears(thisYear: number, lawYears: readonly LawRates[] = BUILT_IN_LAW_RATES): number[] {
+  return [...new Set([...lawYears.map((r) => r.year), thisYear])].sort((a, b) => a - b);
 }
 
 /**
  * ?gross=16700&year=2026 or ?net=13000: from the gross unless only a net is given; ?rate=150&hours=20 or
- * ?netRate=120&hours=16: by the hour, from the gross rate unless only a net rate is given; a year not offered → this
- * year. Each ?allowance=<kind id>:<amount> is an allowance row.
+ * ?netRate=120&hours=16: by the hour, from the gross rate unless only a net rate is given; a year not offered (see
+ * calculatorYears) → this year. Each ?allowance=<kind id>:<amount> is an allowance row.
  */
-export function readCalculatorQuery(q: Query, thisYear: number): CalculatorInput {
+export function readCalculatorQuery(q: Query, thisYear: number, lawYears: readonly LawRates[] = BUILT_IN_LAW_RATES): CalculatorInput {
   const gross = first(q.gross);
   const net = first(q.net);
   const rate = first(q.rate);
@@ -78,7 +89,7 @@ export function readCalculatorQuery(q: Query, thisYear: number): CalculatorInput
     rate: rate ?? '',
     netRate: rateBasis === 'net' ? (netRate ?? '') : '',
     hours: hours ?? '',
-    year: calculatorYears(thisYear).includes(year) ? year : thisYear,
+    year: calculatorYears(thisYear, lawYears).includes(year) ? year : thisYear,
     allowances: all(q.allowance)
       .slice(0, MAX_ALLOWANCES)
       .map((v) => {
@@ -131,9 +142,9 @@ export function namedAllowances(rows: readonly AllowanceRow[], types: readonly A
   });
 }
 
-/** What the allowances add to the net: the net with them less the net of the gross alone. */
-export function allowancesEffect(b: SalaryBreakdown, year: number): number {
-  return Math.round((b.net - grossToNet(b.gross, year).net) * 100) / 100;
+/** What the allowances add to the net: the net with them less the net of the gross alone (with the same rates set by law). */
+export function allowancesEffect(b: SalaryBreakdown, rates: LawRatesOrYear): number {
+  return Math.round((b.net - grossToNet(b.gross, rates).net) * 100) / 100;
 }
 
 export interface CalculatorRow {
@@ -149,17 +160,18 @@ export interface CalculatorRow {
 
 /**
  * The table: the employee's side (gross down to net, monthly unless the label says a year), then the company's.
- * `allowances`: those `b` was worked out with, each listed under the gross; `hourly`: the gross rate and hours a week
- * the gross was estimated from, and the net rate typed when the gross rate was worked out from it.
+ * `rates`: the rates set by law `b` was worked out with (or a year for the built-in ones); `allowances`: those `b` was
+ * worked out with, each listed under the gross; `hourly`: the gross rate and hours a week the gross was estimated from,
+ * and the net rate typed when the gross rate was worked out from it.
  */
 export function calculatorRows(
   b: SalaryBreakdown,
-  year: number,
+  rates: LawRatesOrYear,
   allowances: readonly NamedAllowance[] = [],
   hourly?: { rate: number; hours: number; netRate?: number },
 ): { employee: CalculatorRow[]; company: CalculatorRow[] } {
-  const r = SALARY_RULES;
-  const limits = insurableLimits(year);
+  const r = ratesOf(rates);
+  const limits = insurableLimits(r);
   const totals = allowanceTotals(allowances);
   const withAllowances = totals.total > 0;
   const taxed = totals.taxable > 0 ? 'the gross and the taxed allowances' : 'the gross';
@@ -193,17 +205,27 @@ export function calculatorRows(
       ...(b.healthInsurance > 0
         ? [{ label: 'Health insurance', how: `${formatPercent(r.healthInsuranceRate)} of ${taxed}`, amount: b.healthInsurance, kind: 'deduction' as const }]
         : []),
-      { label: 'Monthly taxable', how: `${totals.taxable > 0 ? 'The gross and the taxed allowances' : 'The gross'} less social insurance`, amount: b.monthlyTaxable, kind: 'subtotal' },
+      {
+        label: 'Monthly taxable',
+        how: `${totals.taxable > 0 ? 'The gross and the taxed allowances' : 'The gross'} less social insurance${b.healthInsurance > 0 ? ' and health insurance' : ''}`,
+        amount: b.monthlyTaxable,
+        kind: 'subtotal',
+      },
       {
         label: 'Annual net income (a year)',
-        how: `Monthly taxable × 12, less the ${formatMoney(r.personalExemption)} personal exemption, rounded down to ${r.roundIncomeDownTo} pounds`,
+        how: `Monthly taxable × 12, less the ${formatMoney(r.personalExemption)} personal exemption, rounded down to ${ROUND_INCOME_DOWN_TO} pounds`,
         amount: b.annualNetIncome,
         kind: 'amount',
       },
-      { label: 'Annual tax (a year)', how: "Law 7/2024's brackets on the annual net income", amount: b.annualTax, kind: 'amount' },
+      { label: 'Annual tax (a year)', how: `The ${r.year} salary tax tiers on the annual net income`, amount: b.annualTax, kind: 'amount' },
       { label: 'Monthly tax', how: 'The annual tax ÷ 12', amount: b.monthlyTax, kind: 'deduction' },
       { label: "Martyrs' Fund", how: `${formatPercent(r.martyrsRate)} of ${taxed}`, amount: b.martyrsFund, kind: 'deduction' },
-      { label: 'Total deductions', how: "Social insurance, tax and the Martyrs' Fund", amount: b.deductions, kind: 'subtotal' },
+      {
+        label: 'Total deductions',
+        how: b.healthInsurance > 0 ? "Social insurance, health insurance, tax and the Martyrs' Fund" : "Social insurance, tax and the Martyrs' Fund",
+        amount: b.deductions,
+        kind: 'subtotal',
+      },
       {
         label: 'Net salary',
         how: `${withAllowances ? 'The gross and the allowances, less the deductions' : 'The gross less the deductions'}${hourly ? `, ${netPerHourText(b.net, hourly.hours)}` : ''}`,
@@ -226,40 +248,4 @@ export function calculatorRows(
       },
     ],
   };
-}
-
-// ---------- the tax, for the "How it's calculated" list ----------
-
-/**
- * Law 7/2024's brackets of the annual net income (Law 91/2005 Art. 8), as the list shows them. The calculation is
- * annualSalaryTax in @trendlix/shared; the tests check these against it.
- */
-export const TAX_BRACKETS: readonly { upTo: number; rate: number }[] = [
-  { upTo: 40_000, rate: 0 },
-  { upTo: 55_000, rate: 0.1 },
-  { upTo: 70_000, rate: 0.15 },
-  { upTo: 200_000, rate: 0.2 },
-  { upTo: 400_000, rate: 0.225 },
-  { upTo: Infinity, rate: 0.25 },
-];
-
-/**
- * Above 600,000 a year the whole income moves to a higher tier: the income up to `firstUpTo` is taxed at `rate`
- * instead of the lower brackets (the rest as before). Above 1,200,000: 25% up to it and 27.5% on the rest.
- */
-export const TAX_TIERS: readonly { over: number; firstUpTo: number; rate: number }[] = [
-  { over: 600_000, firstUpTo: 55_000, rate: 0.1 },
-  { over: 700_000, firstUpTo: 70_000, rate: 0.15 },
-  { over: 800_000, firstUpTo: 200_000, rate: 0.2 },
-  { over: 900_000, firstUpTo: 400_000, rate: 0.225 },
-];
-export const TOP_TIER = { over: 1_200_000, rate: 0.275, below: 0.25 } as const;
-
-/** "Up to 40,000: 0%", "40,000 to 55,000: 10%", …, "Above 400,000: 25%". */
-export function bracketLabels(): string[] {
-  return TAX_BRACKETS.map(({ upTo, rate }, i) => {
-    const from = i === 0 ? 0 : TAX_BRACKETS[i - 1].upTo;
-    const range = i === 0 ? `Up to ${formatMoney(upTo)}` : upTo === Infinity ? `Above ${formatMoney(from)}` : `${formatMoney(from)} to ${formatMoney(upTo)}`;
-    return `${range}: ${formatPercent(rate)}`;
-  });
 }

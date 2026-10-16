@@ -11,7 +11,7 @@ import { GenerateDocument, UploadSignedCopy } from './document-forms';
 import {
   contractGroups,
   contractGroupTitle,
-  contractsTabSections,
+  employmentTabSections,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_STATUS_TONE,
   documentDownloadHref,
@@ -32,7 +32,7 @@ import {
   type Tone,
 } from './wording';
 
-// The documents generated from templates, on the profile's Contracts tab: per contract version its documents (the
+// The documents generated from templates, on the profile's Employment tab: per contract version its documents (the
 // official and social insurance copies), then Hiring, Letters & Certificates and Leaving. Social insurance Forms 1 and 6
 // are listed the same way on the Social Insurance tab (owner's request, 16 October 2026). Each item says where its
 // template stands; HR generates it (after a check of what it needs) and takes each document through Generated → Printed
@@ -237,7 +237,7 @@ export function GeneratedDocumentsLoading() {
   );
 }
 
-/** The Contracts tab's documents, part by part (HR and the CEO). */
+/** The Employment tab's documents, part by part (HR and the CEO). */
 export async function GeneratedDocuments({ employee, can }: { employee: Employee; can: DocumentAccess }) {
   const load = await loadDocuments(employee.id);
   if (load.kind === 'forbidden') return null;
@@ -253,7 +253,7 @@ export async function GeneratedDocuments({ employee, can }: { employee: Employee
 
   const today = formatDate(todayInCairo());
   // social insurance has its own tab
-  const listed = contractsTabSections(load.tab.sections);
+  const listed = employmentTabSections(load.tab.sections);
   if (!listed.some((s) => s.items.length > 0)) {
     return <Unavailable>No documents apply to {employee.fullNameEn} yet: they follow the employment and its contract.</Unavailable>;
   }

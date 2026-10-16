@@ -2,20 +2,31 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { END_REASON_LABELS } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
-import { addEmployment } from '../../../employment-actions';
+import { loadLawRates } from '@/lib/law-rates';
+import { addEmployment, hire } from '../../../employment-actions';
 import { loadEmployee, loadPickers } from '../../../data';
-import { EditHeading, Empty, Loading, profileHref, RequireHr } from '../../../ui';
-import { EmploymentForm } from '../employment-form';
+import { EditHeading, Empty, Loading, profileHref, RequireHr, todayInCairo } from '../../../ui';
+import { loadAllowanceTypes, loadContractSettings } from '../../contracts/data';
+import { firstContractDefaults, noProbationAgain } from '../../contracts/first-contract';
+import { EmploymentForm, HireForm } from '../employment-form';
 
 // Hiring someone whose profile exists: their first employment, or a new one after the last ended (a rehire). One
-// employment is current at a time, and a new one starts after the last one ended.
+// employment is current at a time, and a new one starts after the last one ended. Hiring is one form (owner's decision,
+// 16 October 2026: "there is no point of adding employment then adding contract and no active employment without a
+// contract"): the job and the first contract's terms, saved together as the employment and its contract, a draft to
+// print and sign, as accepting a job offer does. With a server from before contracts, the job alone, as before.
 
 async function AddEmployment({ params }: { params: Promise<{ id: string }> }) {
   const employee = await loadEmployee(params);
   const back = profileHref(employee.id, 'employment');
   const current = employee.employment;
   const lastEnded = employee.employments.find((e) => e.endDate);
-  const pickers = employee.access.edit && !current ? await loadPickers(employee.id) : null;
+  const hiring = employee.access.edit && !current;
+  const [pickers, settings, allowanceTypes, lawYears] = hiring
+    ? await Promise.all([loadPickers(employee.id), loadContractSettings(), loadAllowanceTypes(), loadLawRates()])
+    : [null, null, [], []];
+  // probation comes once with an employer (Labour Law Art. 90): none for someone employed here before
+  const employedBefore = employee.employments.length > 0;
 
   return (
     <>
@@ -36,7 +47,28 @@ async function AddEmployment({ params }: { params: Promise<{ id: string }> }) {
                   ones stay in the employment history.
                 </p>
               )}
-              <EmploymentForm action={addEmployment.bind(null, employee.id)} pickers={pickers} cancelHref={back} submitLabel="Add employment" />
+              {settings ? (
+                <>
+                  <p className="text-sm text-muted">
+                    The job, then the terms of its contract. Saving adds both: the contract as a draft, version 1, to print and sign on the Employment tab.
+                  </p>
+                  <HireForm
+                    pickers={pickers}
+                    contract={{
+                      action: hire.bind(null, employee.id),
+                      defaults: firstContractDefaults(settings, '', employedBefore),
+                      allowanceTypes,
+                      probationHint: employedBefore ? noProbationAgain(employee.fullNameEn) : undefined,
+                      today: todayInCairo(),
+                      lawYears,
+                      cancelHref: back,
+                      submitLabel: 'Add employment and contract',
+                    }}
+                  />
+                </>
+              ) : (
+                <EmploymentForm action={addEmployment.bind(null, employee.id)} pickers={pickers} cancelHref={back} submitLabel="Add employment" />
+              )}
             </div>
           )
         )}

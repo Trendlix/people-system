@@ -5,7 +5,7 @@ import { formatDate } from '@/lib/format';
 import type { ContractListItem } from '@/lib/types';
 import { ContractStatusBadge, termLabel } from '../employees/[id]/contracts/contract-section';
 import { allowancesLabel, formatEgp, hourlyTerms, payLabel } from '../employees/[id]/contracts/salary';
-import { profileHref } from '../employees/ui';
+import { contractHref } from '../employees/ui';
 import { loadContractList } from './data';
 import { contractsHref, countLabel, ENDING_WITHIN_DAYS, isFiltered, listPaths, readFilters, STATUS_FILTERS, type ContractFilters } from './list';
 
@@ -111,7 +111,7 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
   return (
     <tr>
       <td>
-        <Link href={profileHref(c.employee.id, 'contracts')} className="font-semibold">
+        <Link href={contractHref(c.employee.id)} className="font-semibold">
           {c.employee.fullNameEn}
         </Link>
         <div className="text-xs text-muted">

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { formatDate } from '@/lib/format';
-import { getCurrentUser } from '@/lib/session';
+import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { PayrollRunSummary } from '@/lib/types';
 import { formatEgp } from '../employees/[id]/contracts/salary';
 import { todayInCairo } from '../employees/ui';
@@ -75,6 +75,12 @@ async function Runs() {
 
   return (
     <div className="space-y-8">
+      {/* what changes the sheet, for those who change it (Payroll Setup, owner's request of 16 October 2026) */}
+      {canEditOrganisation(user) && (
+        <Link href="/organization/payroll" className="btn btn-secondary no-underline">
+          Payroll setup
+        </Link>
+      )}
       {preparesPayroll(user) && listing.kind === 'ok' && (
         <section className="card space-y-3 p-6">
           <h2 className="font-semibold">New Payroll Run</h2>
@@ -104,8 +110,8 @@ export default function PayrollPage() {
     <div className="max-w-6xl">
       <h1 className="text-2xl font-semibold">Payroll</h1>
       <p className="mt-1 text-muted">
-        Each month&apos;s pay: HR prepares the run, the CEO approves it, then the bank files are made and HR marks it paid. The rules it is worked
-        out with are under <Link href="/organization/payroll">Organization → Payroll</Link>.
+        Each month&apos;s pay: HR prepares the run, the CEO approves it, then the bank files are made and HR marks it paid. The rules, rates,
+        holidays and payday it is worked out with are under <Link href="/organization/payroll">Organization → Payroll Setup</Link>.
       </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
