@@ -78,9 +78,12 @@ the right way up and says which side it is. See `app/cards.py` for how.
 - `frame` is where the card lies on `image`: [left, top, right, bottom] as shares of its width and height, usually
   about [0.021, 0.021, 0.979, 0.979]; below 0 or above 1 on a side where the card runs off the page.
 - `side` is `"front"`, `"back"`, or `null` when unsure; `confidence` is how sure the side is, from 0 to 1 (`side` is
-  given from 0.6; 0 when it is `null`). The front is told by "جمهورية مصر العربية" and "بطاقة تحقيق الشخصية" and its
-  14-digit number along the bottom; the back by "البطاقة سارية حتى", gender, religion and marital status, and its
-  barcode band along the bottom. Which way up is decided by reading the card both ways.
+  given from 0.6; 0 when it is `null`). The front is told by "جمهورية مصر العربية" and "بطاقة تحقيق الشخصية", its
+  14-digit number along the bottom and, a little, its printed serial (two capitals and seven digits); the back by
+  "البطاقة سارية حتى", gender, religion and marital status, its 14-digit number along the top and its barcode band along
+  the bottom. A word misread by a letter still counts, but a word read shorter than the card's never does, and a word
+  only like سارية counts only beside حتى or البطاقة: names such as سارة and سامية are not taken for the card's words.
+  Which way up is decided by reading the card both ways; the numbers and the serial count only towards which side it is.
 - `cards` holds the front first, when one is known; then the others page by page, top to bottom, left to right. At
   most 4. No card: `"cards": []`, still 200.
 - A picture that is a card cut out already (a picture shaped like a card, 1.48 to 1.72, with the card filling it, level)

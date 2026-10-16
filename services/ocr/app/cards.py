@@ -572,6 +572,10 @@ _BACK_WORDS = [
     ({"اعزب", "عزباء", "متزوج", "متزوجه", "مطلق", "مطلقه", "ارمل", "ارمله"}, 0.6),
 ]
 _DECISIVE = 1.5  # this much of one side's words, read one way up, settles which way up the card goes
+# the card's printed serial (two capitals and seven digits, as the API reads it), on the front only
+_SERIAL = re.compile(r"(?<![A-Za-z0-9])[A-Z]{2} ?[0-9]{7}(?![A-Za-z0-9])")
+_LATIN_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+_SERIAL_WEIGHT = 0.4  # a sign of the front, more modest than its words: a short code is easily misread
 
 
 def _normal_words(text: str) -> list[str]:
@@ -580,11 +584,29 @@ def _normal_words(text: str) -> list[str]:
 
 
 def _matches(word: str, wanted: str) -> bool:
+    """A word read is taken for a word of the card when it is that word or, from four letters, very like it and no shorter
+    (at most two letters longer): a word a letter short of one of the card's is a name, not that word (ساره is not ساريه,
+    nor العرب العربيه). After Prime ERP's reader, 16 October 2026."""
     if word == wanted:
         return True
-    if len(wanted) <= 3 or abs(len(word) - len(wanted)) > 2:
+    if len(wanted) <= 3 or not 0 <= len(word) - len(wanted) <= 2:
         return False
     return SequenceMatcher(None, word, wanted).ratio() >= (0.75 if len(wanted) == 4 else 0.8)
+
+
+# Card words that a name can look like, letter for letter, and the words printed beside them that a word only like them
+# needs on its line: سامية is as like سارية as a misreading of it, so it is taken for "سارية" only in "البطاقة سارية حتى".
+_ONLY_BESIDE = {"ساريه": ("حتي", "البطاقه")}
+
+
+def _has(words: list[str], wanted: str) -> bool:
+    """Whether the words of a line show a word of the card (see _matches and _ONLY_BESIDE)."""
+    if wanted in words:
+        return True
+    if not any(_matches(word, wanted) for word in words):
+        return False
+    beside = _ONLY_BESIDE.get(wanted)
+    return beside is None or any(_matches(word, other) for word in words for other in beside)
 
 
 def _word_score(lines, groups) -> float:
@@ -592,7 +614,8 @@ def _word_score(lines, groups) -> float:
     for words, weight in groups:
         best = 0.0
         for line in lines:
-            if any(_matches(word, wanted) for word in _normal_words(line.text) for wanted in words):
+            read = _normal_words(line.text)
+            if any(_has(read, wanted) for wanted in words):
                 best = max(best, weight * line.confidence)
         total += best
     return total
@@ -603,11 +626,25 @@ def _letter_score(lines) -> float:
     return sum(line.confidence**2 * len(_LETTER.findall(line.text)) for line in lines if line.confidence >= 0.3)
 
 
+def _serial(lines) -> float:
+    """The front's printed serial, as sure as the reader was of it (from Prime ERP's reader, 16 October 2026)."""
+    return max((line.confidence for line in lines if _SERIAL.search(line.text.translate(_LATIN_DIGITS))), default=0.0)
+
+
 def _number_at_bottom(lines, height: int) -> float:
     """The front's 14-digit number runs along the bottom of the card."""
     best = 0.0
     for line in lines:
         if len(_DIGIT.findall(line.text)) >= 12 and (line.box[1] + line.box[3]) / 2 > 0.6 * height:
+            best = max(best, line.confidence)
+    return best
+
+
+def _number_at_top(lines, height: int) -> float:
+    """The back's 14-digit number runs along the top of the card, beside the issue month (after Prime ERP's reader)."""
+    best = 0.0
+    for line in lines:
+        if len(_DIGIT.findall(line.text)) >= 12 and (line.box[1] + line.box[3]) / 2 < 0.4 * height:
             best = max(best, line.confidence)
     return best
 
@@ -661,8 +698,9 @@ def judge(engine, card: np.ndarray) -> Verdict:
             pick = 0 if not readings[0][0] else 1
     flip, lines, front, back, letters = readings[pick]
 
-    front += 0.6 * _number_at_bottom(lines, small.shape[0])
-    back += 1.5 * (top if flip else bottom)
+    # signs of a side that are not words: they tell the side once the way up is chosen, never the way up itself
+    front += 0.6 * _number_at_bottom(lines, small.shape[0]) + _SERIAL_WEIGHT * _serial(lines)
+    back += 0.6 * _number_at_top(lines, small.shape[0]) + 1.5 * (top if flip else bottom)
     margin = front - back
     confidence = abs(2 / (1 + math.exp(-2 * margin)) - 1)
     side = ("front" if margin > 0 else "back") if confidence >= SIDE_THRESHOLD else None

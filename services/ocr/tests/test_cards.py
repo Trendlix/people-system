@@ -305,6 +305,67 @@ def test_side_words_are_matched_loosely_and_digits_upside_down_do_not_count():
     assert C._letter_score([line("٢٩١٠٣٠٤٠٢٠٠٤٥٦", (0, 0, 9, 9), 0.99)]) == 0
 
 
+def test_the_printed_serial_is_read_as_the_api_reads_it():
+    for text in ["KM4729105", "KM 4729105", "KM ٤٧٢٩١٠٥", "| KM4729105 ."]:
+        assert C._serial([line(text, (0, 0, 9, 9), 0.9)]) == 0.9, text
+    for text in ["KM47291", "km4729105", "XKM4729105", "KM47291050", "٤٧٢٩١٠٥"]:
+        assert C._serial([line(text, (0, 0, 9, 9), 0.9)]) == 0, text
+
+
+def test_the_printed_serial_is_a_modest_sign_of_the_front_and_never_turns_the_card():
+    plain = np.full((CARD_H, CARD_W, 3), 236, np.uint8)  # no barcode, no print: only what the reader gives counts
+    heading = line("العربية", (420, 60, 760, 110), 0.9)  # one word of the front's heading: not enough on its own
+    serial = line("KM 4729105", (60, 520, 330, 560), 0.95)
+    alone = C.judge(StubEngine(lambda image: [heading]), plain)
+    assert alone.side is None
+    both = C.judge(StubEngine(lambda image: [heading, serial]), plain)
+    assert both.side == "front" and not both.flip
+    assert C.judge(StubEngine(lambda image: [serial]), plain).side is None  # a serial alone does not make a front
+
+    # seen only on the card turned upside down, it does not make the reader turn the card
+    marked = plain.copy()
+    marked[:40, :40] = 30  # tells the stub which way up it is shown the card
+    upside_down = C.judge(StubEngine(lambda image: [serial] if image[-10:, -10:].mean() < 100 else []), marked)
+    assert not upside_down.flip and upside_down.side is None
+
+
+def test_a_name_is_not_taken_for_a_word_of_the_card():
+    # a word read shorter than the card's word is never it; one as long or a letter longer still is, as misread
+    assert not C._matches("ساره", "ساريه") and not C._matches("العرب", "العربيه")
+    assert C._matches("ساريه", "ساريه") and C._matches("سارييه", "ساريه") and C._matches("العربيىه", "العربيه")
+    # سامية is as like سارية as a misreading of it: it is taken for it only beside the words printed with it on the back
+    name = [line("سامية", (600, 150, 760, 190), 0.95)]
+    assert C._word_score(name, C._BACK_WORDS) == 0
+    misread = [line("البطاقة سامية حتى ٢٠٣١/٠٥/٠٢", (300, 330, 760, 370), 0.9)]
+    assert C._word_score(misread, C._BACK_WORDS) >= 1.5 * 0.9 - 1e-9  # سارية and حتى
+    assert C._word_score([line("سامية البطاقه", (0, 0, 9, 9), 0.9)], C._BACK_WORDS) > 1
+    # the Persian forms of ي and ك, which the reader sometimes gives, are the Arabic ones
+    assert C._normal_words("مسیحیة کفر") == ["مسيحيه", "كفر"]
+
+
+def test_a_front_whose_holder_is_named_like_a_word_of_the_back_is_still_the_front():
+    plain = np.full((CARD_H, CARD_W, 3), 236, np.uint8)
+    front = [
+        line("مصر العربية", (430, 30, 760, 70), 0.9),  # the heading, half read
+        line("سامية", (640, 150, 760, 190), 0.95),  # a made-up holder: Samia Adel Fathy
+        line("عادل فتحي", (560, 200, 760, 240), 0.95),
+        line("٢٨٨٠٧١٥٠٢١٢٣٤٥", (420, 430, 760, 470), 0.95),  # the number along the bottom
+    ]
+    verdict = C.judge(StubEngine(lambda image: front), plain)
+    assert verdict.side == "front" and verdict.confidence >= 0.8
+
+
+def test_the_number_along_the_head_of_the_card_is_a_sign_of_the_back():
+    plain = np.full((CARD_H, CARD_W, 3), 236, np.uint8)
+    marital = line("متزوجة", (620, 230, 760, 270), 0.9)  # one word of the back: not enough on its own
+    number = line("٢٨٨٠٧١٥٠٢١٢٣٤٥  ٢٠٢١/٠٣", (330, 25, 760, 65), 0.95)
+    assert C.judge(StubEngine(lambda image: [marital]), plain).side is None
+    assert C.judge(StubEngine(lambda image: [marital, number]), plain).side == "back"
+    # the same number along the foot is the front's
+    foot = line(number.text, (330, 430, 760, 470), 0.95)
+    assert C._number_at_top([foot], 504) == 0 and C._number_at_top([number], 504) == 0.95
+
+
 # POST /cards
 
 
