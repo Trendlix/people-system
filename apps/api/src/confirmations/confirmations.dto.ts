@@ -32,7 +32,11 @@ export class DecisionNoteDto {
   note?: string | null;
 }
 
+/** Every status, for the Details Changes page's All (owner's decision, 17 October 2026). */
+export const ALL_CHANGE_REQUESTS = 'all';
+
+/** A status, or `all` for every request; none: those waiting (HR's queue). */
 export class ListChangeRequestsDto {
-  @IsOptional() @IsIn(CHANGE_REQUEST_STATUSES, { message: 'Choose a status: pending, approved, rejected or cancelled.' })
-  status?: ChangeRequestStatus;
+  @IsOptional() @IsIn([...CHANGE_REQUEST_STATUSES, ALL_CHANGE_REQUESTS], { message: 'Choose a status: pending, approved, rejected, cancelled or all.' })
+  status?: ChangeRequestStatus | typeof ALL_CHANGE_REQUESTS;
 }

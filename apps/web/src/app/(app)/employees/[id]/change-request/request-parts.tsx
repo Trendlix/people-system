@@ -1,8 +1,12 @@
 import { CHANGE_REQUEST_STATUS_LABELS, type ChangeRequestStatus } from '@trendlix/shared';
-import type { ChangeRequestChange } from '@/lib/types';
+import Link from 'next/link';
+import { formatDateTime } from '@/lib/format';
+import type { ChangeRequest, ChangeRequestChange } from '@/lib/types';
 import { changeShown } from '../../confirmation';
+import { profileHref } from '../../tab-list';
 
-// Parts of a change request shown both to the employee (their requests) and to HR and Admin (Approvals).
+// Parts of a change request shown both to the employee (their requests) and to HR and Admin (Approvals, and Details
+// Changes under Requests).
 
 const STATUS_STYLE: Record<ChangeRequestStatus, string> = {
   pending: 'bg-warn-soft text-warn',
@@ -57,5 +61,41 @@ export function ChangesTable({ changes, fromLabel, toLabel, caption }: { changes
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * A change request as HR and Admin see it (Approvals, Details Changes): whose profile (linked), when and by whom it was
+ * asked, its status, the employee's note and the changes asked for (`fromLabel`: what the values were), then
+ * `children`: the decision, or the form to make it.
+ */
+export function ChangeRequestCard({ request: r, fromLabel = 'Current', children }: { request: ChangeRequest; fromLabel?: string; children?: React.ReactNode }) {
+  const name = r.employee.fullNameEn;
+  return (
+    <li className="card p-6">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="font-semibold">
+            <Link href={profileHref(r.employee.id)}>{name}</Link>
+            <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>
+          </h3>
+          <p className="mt-0.5 text-sm text-muted">
+            Asked {formatDateTime(r.requestedAt)}
+            {r.requestedBy?.email && <> by {r.requestedBy.email}</>}
+          </p>
+        </div>
+        <ChangeRequestStatusBadge status={r.status} />
+      </div>
+      {r.note && (
+        <div className="mt-4 text-sm">
+          <p className="text-xs text-muted">What should change and why</p>
+          <p className="mt-0.5 whitespace-pre-line">{r.note}</p>
+        </div>
+      )}
+      <div className="mt-4">
+        <ChangesTable changes={r.changes} fromLabel={fromLabel} toLabel="Requested" caption={`Changes ${name} asked for`} />
+      </div>
+      {children}
+    </li>
   );
 }

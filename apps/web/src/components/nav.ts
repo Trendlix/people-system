@@ -14,7 +14,10 @@ export interface NavItem {
    * convenience: the API checks every request.
    */
   roles?: Role[];
-  /** Links shown under this one (indented, smaller), for whoever sees it. */
+  /**
+   * Links shown under this one (indented, smaller), each for whoever sees the item or for the roles it names. An item
+   * with them links to the first one the user sees (navFor).
+   */
   items?: NavSubItem[];
 }
 
@@ -23,7 +26,18 @@ export interface NavSubItem {
   label: string;
   /** Highlighted on every page under this path; when several match, the one with the longest path. */
   section: string;
+  /**
+   * Shown only to users with one of these roles, as an item's `roles`; none: to whoever sees its item. An item whose
+   * sub-items all have roles is shown to whoever sees at least one of them, and links to the first they see.
+   */
+  roles?: Role[];
 }
+
+/** The Raise Requests page (app/(app)/raise-requests), under Requests. */
+export const RAISE_REQUESTS_PATH = '/raise-requests';
+
+/** The employees' requests to change their details (app/(app)/requests/details-changes), under Requests. */
+export const DETAILS_CHANGES_PATH = '/requests/details-changes';
 
 export const NAV: NavItem[] = [
   { href: '/', label: 'Home' },
@@ -40,9 +54,24 @@ export const NAV: NavItem[] = [
     roles: ['hr', 'finance', 'ceo'],
     items: PAYROLL_SECTIONS.map((s) => ({ href: s.href, label: s.label, section: s.href })),
   },
-  // raises asked for by the employee, their manager or HR, through HR and the CEO (owner's decisions, 16 October 2026);
-  // Finance may view them
-  { href: '/raise-requests', label: 'Raise Requests', section: '/raise-requests', roles: ['hr', 'ceo', 'finance'] },
+  // the requests HR and the others decide, under one heading (owner, 17 October 2026: asked whether raise requests are
+  // about money or requests like the others, the owner chose "A Requests heading"); each page for its own roles, the
+  // heading for whoever sees one of them, with no page of its own: it links to the first page they see (navFor), Raise
+  // Requests for HR, Finance and the CEO, Details Changes for an Admin. Approvals stays the inbox of what waits for the
+  // user, and an employee's own requests stay on My Requests.
+  {
+    href: RAISE_REQUESTS_PATH,
+    label: 'Requests',
+    items: [
+      // raises asked for by the employee, their manager or HR, through HR and the CEO (owner's decisions, 16 October
+      // 2026); Finance may view them
+      { href: RAISE_REQUESTS_PATH, label: 'Raise Requests', section: RAISE_REQUESTS_PATH, roles: ['hr', 'ceo', 'finance'] },
+      // the employees' requests to change their details, which HR and Admin (a Super Admin too) decide (owner's decision,
+      // 15 October 2026)
+      { href: DETAILS_CHANGES_PATH, label: 'Details Changes', section: DETAILS_CHANGES_PATH, roles: ['hr', 'admin'] },
+      // later: Leave, once the Leave module exists (it is under Coming Next until then)
+    ],
+  },
   // job offers: the offer stage, before someone is an employee (owner's request, 15 October 2026)
   { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
@@ -90,13 +119,21 @@ function selfServiceNav(user: NavUser): NavItem[] {
 
 /**
  * The sidebar's items for this user: an employee's or a manager's own (above); for HR, Finance, the CEO and Admins (a
- * Super Admin counts as an Admin) NAV as before, each item for the roles it names. Null (who it is couldn't be read,
- * e.g. the API is down): Home alone, which everyone has. Hiding a link is a convenience: the API checks every request.
+ * Super Admin counts as an Admin) NAV, each item and sub-item for the roles it names, and an item with sub-items only
+ * when the user sees one of them, linking to the first. Null (who it is couldn't be read, e.g. the API is down): Home
+ * alone, which everyone has. Hiding a link is a convenience: the API checks every request.
  */
 export function navFor(user: NavUser | null): NavItem[] {
   if (!user) return NAV.filter((item) => item.href === '/');
   if (isSelfService(user)) return selfServiceNav(user);
-  return NAV.filter((item) => !item.roles || hasRole(user, ...item.roles));
+  const sees = (entry: { roles?: Role[] }) => !entry.roles || hasRole(user, ...entry.roles);
+  return NAV.filter(sees).flatMap((item) => {
+    if (!item.items) return [item];
+    const items = item.items.filter(sees);
+    if (!items.length) return [];
+    // links to the first of its pages the user sees: Payroll's and Templates' first is their own page; Requests has none
+    return [{ ...item, href: items[0].href, items }];
+  });
 }
 
 /**
@@ -111,6 +148,14 @@ export function profileBack(user: NavUser, profile: { id: string; isSelf?: boole
 /** Whether `pathname` is `section` or a page under it ("/templates/tags" is under "/templates"; "/templatesx" isn't). */
 export function isUnder(pathname: string, section: string): boolean {
   return pathname === section || pathname.startsWith(`${section}/`);
+}
+
+/**
+ * Whether an item is the section this page is in: under its section (its own page alone when it has none), or on a
+ * page of one of its sub-items (Requests, whose pages aren't under one path).
+ */
+export function isActive(item: Pick<NavItem, 'href' | 'section' | 'items'>, pathname: string): boolean {
+  return (item.section ? pathname.startsWith(item.section) : pathname === item.href) || activeSubItem(item, pathname) !== null;
 }
 
 /** The sub-item highlighted on this page: the one whose section matches most closely; null when none does. */

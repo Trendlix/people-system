@@ -2,7 +2,7 @@ import type { Role } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
-import { COMING_SOON, navFor } from '@/components/nav';
+import { COMING_SOON, DETAILS_CHANGES_PATH, navFor, RAISE_REQUESTS_PATH } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { UserMenu } from '@/components/user-menu';
 import { ViewAsBanner } from '@/components/view-as-banner';
@@ -31,8 +31,9 @@ async function MainNav() {
   }
   const roles: Role[] = user?.roles ?? [];
   // Beside Approvals: for HR and the CEO, the endings and the pay raises waiting for the CEO; for HR and Admin (a Super
-  // Admin too), the employees' change requests waiting for them. Beside Raise Requests, for HR, the requests waiting for
-  // HR (owner's decisions, 16 October 2026). Each is left out when it can't be read.
+  // Admin too), the employees' change requests waiting for them. Under Requests: beside Raise Requests, for HR, the
+  // requests waiting for HR (owner's decisions, 16 October 2026); beside Details Changes, for HR and Admin, the change
+  // requests waiting (the same read as Approvals'). Each is left out when it can't be read.
   const [endings, changes, raises, requests] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS) : null,
     decidesChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS) : null,
@@ -42,7 +43,8 @@ async function MainNav() {
   const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0);
   const counts: Record<string, number> = {};
   if (waiting) counts['/approvals'] = waiting;
-  if (requests?.length) counts['/raise-requests'] = requests.length;
+  if (requests?.length) counts[RAISE_REQUESTS_PATH] = requests.length;
+  if (changes?.length) counts[DETAILS_CHANGES_PATH] = changes.length;
   return <NavLinks items={navFor(user)} counts={Object.keys(counts).length ? counts : undefined} />;
 }
 

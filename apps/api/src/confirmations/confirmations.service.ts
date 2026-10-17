@@ -8,7 +8,7 @@ import { UpdateEmployeeDto } from '../employees/employee.dto.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import type { Employee, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type { ConfirmDto, CreateChangeRequestDto, DecisionNoteDto } from './confirmations.dto.js';
+import { ALL_CHANGE_REQUESTS, type ConfirmDto, type CreateChangeRequestDto, type DecisionNoteDto } from './confirmations.dto.js';
 import {
   type Change,
   changeRequestView,
@@ -107,9 +107,17 @@ export class ConfirmationsService {
     return changeRequestView(row);
   }
 
-  /** Change requests with their employee, newest first: those waiting for HR unless `status` says otherwise. */
-  async list(status: ChangeRequestStatus = 'pending') {
-    const rows = await this.prisma.profileChangeRequest.findMany({ where: { status }, orderBy: { requestedAt: 'desc' }, include: REQUEST_INCLUDE });
+  /**
+   * Change requests with their employee, newest first: those waiting for HR unless `status` says otherwise; `all`, every
+   * request whatever its status (the Details Changes page, under Requests: owner's decision, 17 October 2026).
+   */
+  async list(status: ChangeRequestStatus | typeof ALL_CHANGE_REQUESTS = 'pending') {
+    const rows = await this.prisma.profileChangeRequest.findMany({
+      where: status === ALL_CHANGE_REQUESTS ? {} : { status },
+      // the same moment: the later id first, so the order is the same on every read
+      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
+      include: REQUEST_INCLUDE,
+    });
     return rows.map(changeRequestView);
   }
 

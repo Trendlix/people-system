@@ -6,7 +6,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import { getCurrentUser } from '@/lib/session';
 import type { ChangeRequest, EndingSummary } from '@/lib/types';
-import { ChangeRequestStatusBadge, ChangesTable } from '../employees/[id]/change-request/request-parts';
+import { ChangeRequestCard } from '../employees/[id]/change-request/request-parts';
 import { contractHref, profileHref } from '../employees/ui';
 import { INITIATOR_LABELS } from '../organization/contracts/labels';
 import { Empty, Loading } from '../organization/ui';
@@ -228,38 +228,15 @@ async function PendingRaises({ decides }: { decides: boolean }) {
 
 // ---------- profile change requests ----------
 
-function ChangeRequestCard({ request: r }: { request: ChangeRequest }) {
-  const name = r.employee.fullNameEn;
+function PendingChangeRequestCard({ request: r }: { request: ChangeRequest }) {
   return (
-    <li className="card p-6">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="font-semibold">
-            <Link href={profileHref(r.employee.id)}>{name}</Link>
-            <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>
-          </h3>
-          <p className="mt-0.5 text-sm text-muted">
-            Asked {formatDateTime(r.requestedAt)}
-            {r.requestedBy?.email && <> by {r.requestedBy.email}</>}
-          </p>
-        </div>
-        <ChangeRequestStatusBadge status={r.status} />
-      </div>
-      {r.note && (
-        <div className="mt-4 text-sm">
-          <p className="text-xs text-muted">What should change and why</p>
-          <p className="mt-0.5 whitespace-pre-line">{r.note}</p>
-        </div>
-      )}
-      <div className="mt-4">
-        <ChangesTable changes={r.changes} fromLabel="Current" toLabel="Requested" caption={`Changes ${name} asked for`} />
-      </div>
+    <ChangeRequestCard request={r}>
       <DecisionForm
         action={decideChangeRequest.bind(null, r.id)}
-        confirmApprove={`Approve the change to ${name}'s details? Their profile is updated with what they asked for.`}
+        confirmApprove={`Approve the change to ${r.employee.fullNameEn}'s details? Their profile is updated with what they asked for.`}
         noteMax={1000}
       />
-    </li>
+    </ChangeRequestCard>
   );
 }
 
@@ -275,7 +252,7 @@ async function PendingChangeRequests() {
       </p>
       <ul className="space-y-4">
         {requests.map((r) => (
-          <ChangeRequestCard key={r.id} request={r} />
+          <PendingChangeRequestCard key={r.id} request={r} />
         ))}
       </ul>
     </div>

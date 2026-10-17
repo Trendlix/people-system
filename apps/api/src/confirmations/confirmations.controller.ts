@@ -22,7 +22,7 @@ export class ConfirmationsController {
     return this.confirmations.request(id, dto, user);
   }
 
-  /** HR's queue is the default: the requests waiting (status pending). */
+  /** HR's queue is the default: the requests waiting (status pending); `?status=all` lists every request. */
   @Roles('hr', 'admin')
   @Get('change-requests')
   list(@Query() query: ListChangeRequestsDto) {

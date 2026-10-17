@@ -360,5 +360,53 @@ describe('Profile confirmation and change requests (e2e)', () => {
       await api().get('/api/change-requests').set('Cookie', ceo).expect(403);
       await api().get('/api/change-requests?status=sometime').set('Cookie', hr).expect(400);
     });
+
+    it('lists every request whatever its status with ?status=all, newest first, for HR and Admin only (the Details Changes page)', async () => {
+      const a = await newStaff('All Approved');
+      const b = await newStaff('All Rejected');
+      const c = await newStaff('All Cancelled');
+      const d = await newStaff('All Waiting');
+      const approved = await asked(a, { nationality: 'Egyptian' });
+      const rejected = await asked(b, { nationality: 'Egyptian' });
+      const cancelled = await asked(c, { nationality: 'Egyptian' });
+      const waiting = await asked(d, { nationality: 'Egyptian' }, 'My nationality is missing.');
+      await act(approved.id, 'approve', hr, { note: 'Checked against the passport.' }).expect(200);
+      await act(rejected.id, 'reject', admin, { note: 'Send a copy of the passport first.' }).expect(200);
+      await act(cancelled.id, 'cancel', c.session).expect(200);
+
+      for (const session of [hr, admin]) {
+        const all = (await api().get('/api/change-requests?status=all').set('Cookie', session).expect(200)).body as ChangeRequest[];
+        const ours = all.filter((x) => [approved.id, rejected.id, cancelled.id, waiting.id].includes(x.id));
+        // newest first, each with its status and its decision: who, when and why
+        expect(ours.map((x) => [x.id, x.status])).toEqual([
+          [waiting.id, 'pending'],
+          [cancelled.id, 'cancelled'],
+          [rejected.id, 'rejected'],
+          [approved.id, 'approved'],
+        ]);
+        expect(ours[0]).toMatchObject({ employee: { id: d.id, employeeCode: d.employeeCode }, note: 'My nationality is missing.', decidedBy: null, decidedAt: null, decisionNote: null });
+        expect(ours[1]).toMatchObject({ decidedBy: { email: c.email }, decisionNote: null });
+        expect(ours[2]).toMatchObject({ decidedBy: { email: adminEmail }, decisionNote: 'Send a copy of the passport first.' });
+        expect(ours[3]).toMatchObject({ decidedBy: { email: hrEmail }, decisionNote: 'Checked against the passport.', changes: [{ field: 'nationality', to: 'Egyptian' }] });
+        expect(ours.every((x) => x.decidedAt === null || Date.parse(x.decidedAt) >= Date.parse(x.requestedAt))).toBe(true);
+        const times = all.map((x) => Date.parse(x.requestedAt));
+        expect(times).toEqual([...times].sort((x, y) => y - x));
+        // every status is in it
+        expect(new Set(all.map((x) => x.status))).toEqual(new Set(['pending', 'approved', 'rejected', 'cancelled']));
+      }
+      // a status still lists that status alone; none, the waiting ones
+      const onlyRejected = (await api().get('/api/change-requests?status=rejected').set('Cookie', hr).expect(200)).body as ChangeRequest[];
+      expect(onlyRejected.every((x) => x.status === 'rejected')).toBe(true);
+      expect(onlyRejected.some((x) => x.id === rejected.id)).toBe(true);
+      const cancelledOnes = (await api().get('/api/change-requests?status=cancelled').set('Cookie', admin).expect(200)).body as ChangeRequest[];
+      expect(cancelledOnes.map((x) => x.id)).toContain(cancelled.id);
+      expect(cancelledOnes.every((x) => x.status === 'cancelled')).toBe(true);
+      expect(((await api().get('/api/change-requests').set('Cookie', hr).expect(200)).body as ChangeRequest[]).every((x) => x.status === 'pending')).toBe(true);
+
+      // not for the employee, the CEO or Finance
+      for (const session of [d.session, ceo, finance]) await api().get('/api/change-requests?status=all').set('Cookie', session).expect(403);
+      const unknown = await api().get('/api/change-requests?status=everything').set('Cookie', hr).expect(400);
+      expect(unknown.body.message).toEqual(['Choose a status: pending, approved, rejected, cancelled or all.']);
+    });
   });
 });
