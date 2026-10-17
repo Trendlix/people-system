@@ -1,4 +1,14 @@
-import { expectedHoursOf, formatHours, parseHours, type PayrollInputs, type PayrollSegment, type PayrollTerms } from '@trendlix/shared';
+import {
+  expectedHoursOf,
+  formatHours,
+  paidAdjustments,
+  parseHours,
+  type PayrollInputs,
+  type PayrollResult,
+  type PayrollSegment,
+  type PayrollTerms,
+} from '@trendlix/shared';
+import { formatEgp } from '../../employees/[id]/contracts/salary';
 
 // The run's inputs grid (owner's decisions, 16 October 2026): the month's figures HR types for each employee, laid out
 // like the owner's payroll sheet, until attendance fills the hours and days itself; without the sheet's Medical column,
@@ -15,18 +25,25 @@ import { expectedHoursOf, formatHours, parseHours, type PayrollInputs, type Payr
 // hours over those expected hours, as the pay counts it. Leave days (approved paid leave) are typed by HR until the
 // Leave module fills the same input: nothing is cut for them. A month under two contracts (owner, 17 October 2026: "take
 // into consideration the start and end date of the contract if it is in the middle of the billing period") says so by
-// the employee's name (contractsNote). Pure code, tested: the columns, how each cell is read and shown, which rows
-// changed (only those are sent, in one PATCH /payroll/runs/:id/lines), and the API's refusals put by the cell they are
-// about.
+// the employee's name (contractsNote). The Penalty days, Bonus days, Commission and Settlements columns are gone (owner,
+// 17 October 2026, pointing at them: "instead of there, i think earnings and deductions will be enough"; he chose "Yes,
+// as proposed"): two read-only columns, Earnings and Deductions, show the month's totals of the person's additions and
+// deductions as the line has them (the taxed and untaxed additions together, marked when some aren't taxed; the
+// deductions after tax), each opening that person's month on Additions / Deductions, the one place to enter them. A
+// draft's line is worked out again whenever one of them changes, so the totals follow. Released (it changes the bank
+// transfer, not the pay), Hold and Comments stay. Pure code, tested: the columns, how each cell is read and shown,
+// which rows changed (only those are sent, in one PATCH /payroll/runs/:id/lines), and the API's refusals put by the
+// cell they are about.
 
-export type InputField = keyof PayrollInputs;
+/** The inputs HR types on the grid: not the CEO's attendance waiver (17 October 2026), which the results table has. */
+export type InputField = Exclude<keyof PayrollInputs, 'attendanceWaived'>;
 
 /**
  * How a cell is typed, and the limits the API checks: hours as attendance shows them ("270:00") or as a number
- * ("270.5"), up to 744 (31 days); days 0 to 31, whole or half; amounts in EGP within ±10,000,000 (settlements may be
- * negative: corrections); what was already released this month, 0 or more.
+ * ("270.5"), up to 744 (31 days); days 0 to 31, whole or half; what was already released this month, in EGP, 0 or
+ * more, up to 10,000,000.
  */
-export type FieldKind = 'hours' | 'days' | 'amount' | 'released';
+export type FieldKind = 'hours' | 'days' | 'released';
 
 export interface GridColumn {
   field: InputField;
@@ -34,18 +51,21 @@ export interface GridColumn {
   kind: FieldKind;
 }
 
-/** The typed columns, in the sheet's order. The attendance % after the hours is worked out from them. */
+/**
+ * The typed columns, in the sheet's order. The attendance % after the hours is worked out from them; the Earnings and
+ * Deductions (read only, 17 October 2026) come after the leave days, where the bonus and penalty days, commission and
+ * settlements were.
+ */
 export const GRID_COLUMNS: readonly GridColumn[] = [
   { field: 'workedHours', label: 'Worked hours', kind: 'hours' },
   { field: 'expectedHours', label: 'Expected hours', kind: 'hours' },
   { field: 'noShowDays', label: 'No-show days', kind: 'days' },
   { field: 'leaveDays', label: 'Leave days', kind: 'days' },
-  { field: 'penaltyDays', label: 'Penalty days', kind: 'days' },
-  { field: 'bonusDays', label: 'Bonus days', kind: 'days' },
-  { field: 'commission', label: 'Commission', kind: 'amount' },
-  { field: 'settlements', label: 'Settlements', kind: 'amount' },
   { field: 'released', label: 'Released', kind: 'released' },
 ];
+
+/** The Earnings and Deductions columns come after this one. */
+export const ITEMS_AFTER: InputField = 'leaveDays';
 
 const COLUMN = new Map(GRID_COLUMNS.map((c) => [c.field as string, c]));
 
@@ -56,7 +76,6 @@ export const AMOUNT_MAX = 10_000_000;
 const HINTS: Record<FieldKind, string> = {
   hours: `Type the hours as 270:00 or 270.5, up to ${HOURS_MAX}.`,
   days: `Type the days from 0 to ${DAYS_MAX}, whole or half, e.g. 1.5.`,
-  amount: 'Type an amount in EGP, e.g. 1,500 or -250.50.',
   released: 'Type an amount in EGP of 0 or more, e.g. 1,500.',
 };
 
@@ -80,19 +99,19 @@ export function parseCell(kind: FieldKind, text: string): Parsed {
     const n = Number(s);
     return n <= DAYS_MAX ? { ok: true, value: n } : bad(kind);
   }
-  // an amount: "1,500", "1 500", "-250.50" (with a typed minus or a dash)
+  // an amount: "1,500", "1 500", "250.50"; none below 0 (a minus typed, or a dash, is refused)
   const amount = s.replace(/[,\s]/g, '').replace(/^[−–]/, '-');
   if (!/^-?\d+(\.\d{1,2})?$/.test(amount)) return bad(kind);
   const n = Number(amount);
-  if (kind === 'released' && n < 0) return bad(kind);
-  return Math.abs(n) <= AMOUNT_MAX ? { ok: true, value: n === 0 ? 0 : n } : bad(kind);
+  if (n < 0) return bad(kind);
+  return n <= AMOUNT_MAX ? { ok: true, value: n === 0 ? 0 : n } : bad(kind);
 }
 
 /** A saved value as its cell shows it: hours as attendance shows them ("270:30"), amounts with two decimals. */
 export function cellText(kind: FieldKind, value: number | null): string {
   if (value === null) return '';
   if (kind === 'hours') return formatHours(value);
-  if (kind === 'amount' || kind === 'released') return value.toFixed(2);
+  if (kind === 'released') return value.toFixed(2);
   return String(value);
 }
 
@@ -139,6 +158,38 @@ export function columnNote(field: InputField, noShowDayMultiplier: number): stri
   if (field === 'leaveDays') return 'Paid, out of the expected hours';
   return null;
 }
+
+// ---------- the month's additions and deductions ----------
+
+/**
+ * A line's additions and deductions for the month, as its Earnings and Deductions columns show them (owner, 17 October
+ * 2026: "instead of there, i think earnings and deductions will be enough"), from what the line was worked out with:
+ * the earnings are the additions, taxed and not (a Bonus (days) as the run worked it out; on a line saved before then,
+ * the bonus, commission and settlements typed on the grid), `untaxed` the part not taxed; the deductions those after
+ * tax (a Penalty (days) as worked out, and the penalty days typed before then). `count`: how many additions and
+ * deductions it has.
+ */
+export interface LineItems {
+  earnings: number;
+  untaxed: number;
+  deductions: number;
+  count: number;
+}
+
+const cents = (v: number | undefined) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 100) : 0);
+
+export function lineItems(line: { terms: Pick<PayrollTerms, 'adjustments'>; result: PayrollResult }): LineItems {
+  const r = line.result;
+  return {
+    earnings: (cents(r.bonus) + cents(r.commission) + cents(r.settlements) + cents(r.additionsTaxed) + cents(r.additionsUntaxed)) / 100 + 0,
+    untaxed: cents(r.additionsUntaxed) / 100 + 0,
+    deductions: (cents(r.penaltyCut) + cents(r.adjustmentDeductions)) / 100 + 0,
+    count: paidAdjustments(line).length,
+  };
+}
+
+/** The mark under the Earnings when some aren't taxed: "EGP 200.00 not taxed"; null when all are. */
+export const untaxedNote = (items: Pick<LineItems, 'untaxed'>) => (items.untaxed > 0 ? `${formatEgp(items.untaxed)} not taxed` : null);
 
 // ---------- the month's contracts ----------
 

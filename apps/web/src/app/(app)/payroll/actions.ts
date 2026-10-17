@@ -77,6 +77,16 @@ export async function approveRun(id: string): Promise<FormState> {
   return act(() => apiSend('POST', `/payroll/runs/${id}/approve`), 'Approved.');
 }
 
+/**
+ * The CEO waives a line's attendance deduction, or takes the waiver back, while the run is with the CEO (owner, 17
+ * October 2026: "if there is an attendance deduction, allow the CEO to wave the deduction by ticking a box").
+ */
+export async function setAttendanceWaiver(id: string, lineId: string, waived: boolean): Promise<FormState> {
+  if (!UUID.test(id) || !UUID.test(lineId)) return NOT_FOUND;
+  if (typeof waived !== 'boolean') return { errors: ['Tick the box to waive the attendance deduction, or untick it to take it again.'] };
+  return act(() => apiSend('POST', `/payroll/runs/${id}/lines/${lineId}/attendance-waiver`, { waived }), waived ? 'Waived.' : 'Deducted again.');
+}
+
 /** The CEO returns the run to HR as a draft, with the reason HR sees on it. */
 export async function returnRun(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   if (!UUID.test(id)) return NOT_FOUND;

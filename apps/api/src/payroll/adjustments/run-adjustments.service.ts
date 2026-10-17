@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { AdjustmentKind, AdjustmentType, PayrollAdjustmentItem, PayrollRules, PayrollTerms } from '@trendlix/shared';
+import { isDaysType, type AdjustmentKind, type AdjustmentType, type PayrollAdjustmentItem, type PayrollResult, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
 import { AuditService } from '../../audit/audit.service.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import { toDateOnly } from '../../common/date-only.js';
@@ -13,15 +13,30 @@ import { ADJUSTMENT } from './views.js';
 
 const LINE = 'payroll_line';
 
-/** An addition or deduction as a line keeps it. */
-export const itemOf = (a: { id: string; kind: string; type: string; taxed: boolean; amount: Prisma.Decimal; reason: string }): PayrollAdjustmentItem => ({
+/**
+ * An addition or deduction as a line keeps it: one in days with its days and no amount, which the run works out
+ * (owner, 17 October 2026).
+ */
+export const itemOf = (a: {
+  id: string;
+  kind: string;
+  type: string;
+  taxed: boolean;
+  amount: Prisma.Decimal | null;
+  days: Prisma.Decimal | null;
+  reason: string;
+}): PayrollAdjustmentItem => ({
   id: a.id,
   kind: a.kind as AdjustmentKind,
   type: a.type as AdjustmentType,
   taxed: a.taxed,
-  amount: a.amount.toNumber(),
+  amount: isDaysType(a.type) ? null : (a.amount?.toNumber() ?? 0),
+  ...(isDaysType(a.type) && { days: a.days?.toNumber() ?? 0 }),
   reason: a.reason,
 });
+
+/** What the line's result says each of its additions and deductions came to, by id. */
+export const paidAmounts = (result: Prisma.JsonValue) => new Map(((result as unknown as PayrollResult | null)?.adjustments ?? []).map((a) => [a.id, a.amount]));
 
 /** The ids of the additions and deductions a line's terms hold. */
 export const itemIds = (terms: Prisma.JsonValue) => ((terms as unknown as PayrollTerms | null)?.adjustments ?? []).map((a) => a.id);
@@ -84,18 +99,22 @@ export class RunAdjustmentsService {
 
   /**
    * On the CEO's approval, within its transaction: each line's additions and deductions applied to it (still pending:
-   * nothing changes them from the CEO's step on), and the advances and loans they recover settled when nothing of them
-   * is outstanding. Answers what was applied, for the audit log once the approval is saved.
+   * nothing changes them from the CEO's step on), one in days with the amount the line paid for it (owner, 17 October
+   * 2026), and the advances and loans they recover settled when nothing of them is outstanding. Answers what was
+   * applied, for the audit log once the approval is saved.
    */
   async applyRun(runId: string, tx: Prisma.TransactionClient): Promise<{ applied: { id: string; lineId: string; employeeCode: string }[]; settled: string[] }> {
-    const lines = await tx.payrollLine.findMany({ where: { runId }, select: { id: true, employeeCode: true, terms: true } });
+    const lines = await tx.payrollLine.findMany({ where: { runId }, select: { id: true, employeeCode: true, terms: true, result: true } });
     const applied: { id: string; lineId: string; employeeCode: string }[] = [];
     const at = new Date();
     for (const line of lines) {
       const ids = itemIds(line.terms);
       if (!ids.length) continue;
-      const pending = await tx.payrollAdjustment.findMany({ where: { id: { in: ids }, status: 'pending' }, select: { id: true } });
+      const pending = await tx.payrollAdjustment.findMany({ where: { id: { in: ids }, status: 'pending' }, select: { id: true, type: true } });
       if (!pending.length) continue;
+      // one in days with what the line worked it out to (it can't be applied without)
+      const paid = paidAmounts(line.result);
+      for (const p of pending.filter((x) => isDaysType(x.type))) await tx.payrollAdjustment.update({ where: { id: p.id }, data: { amount: paid.get(p.id) ?? 0 } });
       await tx.payrollAdjustment.updateMany({ where: { id: { in: pending.map((p) => p.id) } }, data: { status: 'applied', lineId: line.id, appliedAt: at } });
       applied.push(...pending.map((p) => ({ id: p.id, lineId: line.id, employeeCode: line.employeeCode })));
     }

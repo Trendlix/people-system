@@ -109,12 +109,14 @@ describe('Payslips (e2e)', () => {
     broken = await hire('Broken');
     await signed(broken);
 
-    run = (await api().post('/api/payroll/runs').set('Cookie', hr).send({ month: MONTH }).expect(201)).body as Run;
+    // a bonus day, on Additions / Deductions (owner, 17 October 2026: no longer typed on the run)
     await api()
-      .patch(`/api/payroll/runs/${run.id}/lines`)
+      .post('/api/payroll/adjustments')
       .set('Cookie', hr)
-      .send({ lines: [{ id: lineOf(paid).id, inputs: { bonusDays: 1 } }, { id: lineOf(held).id, onHold: true }] })
-      .expect(200);
+      .send({ employeeId: paid.id, month: MONTH, kind: 'addition', type: 'bonus_days', days: 1, reason: 'Invented bonus day' })
+      .expect(201);
+    run = (await api().post('/api/payroll/runs').set('Cookie', hr).send({ month: MONTH }).expect(201)).body as Run;
+    await api().patch(`/api/payroll/runs/${run.id}/lines`).set('Cookie', hr).send({ lines: [{ id: lineOf(held).id, onHold: true }] }).expect(200);
     await act('submit', hr).expect(200);
     run = (await act('approve', ceo).expect(200)).body as Run;
   });
@@ -122,6 +124,7 @@ describe('Payslips (e2e)', () => {
   afterAll(async () => {
     // runs keep their people on record: remove them so other test files can delete theirs
     await prisma.payrollRun.deleteMany();
+    await prisma.payrollAdjustment.deleteMany({ where: { employeeId: paid.id } });
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: emailDomainBefore ?? '' }).expect(200);
     await app.close();
   });

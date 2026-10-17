@@ -95,8 +95,10 @@ describe('what each role may do on a run', () => {
     expect(allowed(['hr'], 'paid')).toEqual(['bankFiles']);
   });
 
-  it('lets only the CEO approve or return a run with the CEO', () => {
-    expect(allowed(['ceo'], 'pending_ceo')).toEqual(['approve', 'returnToHr']);
+  it('lets only the CEO approve or return a run with the CEO, and waive an attendance deduction on it', () => {
+    // the waiver (owner, 17 October 2026: "allow the CEO to wave the deduction by ticking a box")
+    expect(allowed(['ceo'], 'pending_ceo')).toEqual(['approve', 'returnToHr', 'waiveAttendance']);
+    expect(allowed(['ceo'], 'approved')).toEqual(['bankFiles']);
     expect(allowed(['ceo'], 'draft')).toEqual([]);
     expect(allowed(['hr', 'finance'], 'pending_ceo')).toEqual([]);
   });

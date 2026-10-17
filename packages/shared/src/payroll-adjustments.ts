@@ -8,16 +8,23 @@
 //   and the advances and loans still being recovered.
 // The amounts are EGP to the piaster. A run takes a line's additions and deductions with adjustmentSums (payroll.ts):
 // the taxed additions into the gross, the untaxed ones after tax, the deductions after tax.
+// The one place to enter them (owner, 17 October 2026, on the run's inputs grid, pointing at its Penalty Days, Bonus
+// Days, Commission and Settlements columns: "instead of there, i think earnings and deductions will be enough"; he chose
+// "Yes, as proposed"): two types work in days, the run working the amount out from the person's pay for the month: a
+// Bonus (days), an addition, taxed, a day of the fixed part of the gross; a Penalty (days), a deduction after tax, a
+// day of the contract's net; each a day ÷ the run's day divisor, as the grid's bonus and penalty days were. A
+// commission is an addition, as it was already; a settlement is a Correction, an addition or (a negative one) a
+// deduction after tax.
 
 export const ADJUSTMENT_KINDS = ['addition', 'deduction'] as const;
 export type AdjustmentKind = (typeof ADJUSTMENT_KINDS)[number];
 
 export const ADJUSTMENT_KIND_LABELS: Record<AdjustmentKind, string> = { addition: 'Addition', deduction: 'Deduction' };
 
-export const ADDITION_TYPES = ['bonus', 'commission', 'incentive', 'correction', 'reimbursement', 'other'] as const;
+export const ADDITION_TYPES = ['bonus', 'bonus_days', 'commission', 'incentive', 'correction', 'reimbursement', 'other'] as const;
 export type AdditionType = (typeof ADDITION_TYPES)[number];
 
-export const DEDUCTION_TYPES = ['penalty', 'damage_loss', 'advance_recovery', 'loan_installment', 'other'] as const;
+export const DEDUCTION_TYPES = ['penalty', 'penalty_days', 'correction', 'damage_loss', 'advance_recovery', 'loan_installment', 'other'] as const;
 export type DeductionType = (typeof DEDUCTION_TYPES)[number];
 
 export type AdjustmentType = AdditionType | DeductionType;
@@ -30,6 +37,7 @@ export const ADJUSTMENT_TYPES: { addition: readonly AdditionType[]; deduction: r
 
 export const ADDITION_TYPE_LABELS: Record<AdditionType, string> = {
   bonus: 'Bonus',
+  bonus_days: 'Bonus (days)',
   commission: 'Commission',
   incentive: 'Incentive',
   correction: 'Correction',
@@ -39,6 +47,8 @@ export const ADDITION_TYPE_LABELS: Record<AdditionType, string> = {
 
 export const DEDUCTION_TYPE_LABELS: Record<DeductionType, string> = {
   penalty: 'Penalty',
+  penalty_days: 'Penalty (days)',
+  correction: 'Correction',
   damage_loss: 'Damage or loss',
   advance_recovery: 'Advance recovery',
   loan_installment: 'Loan installment',
@@ -48,6 +58,7 @@ export const DEDUCTION_TYPE_LABELS: Record<DeductionType, string> = {
 /** The types as the Arabic payslip names them. */
 export const ADDITION_TYPE_LABELS_AR: Record<AdditionType, string> = {
   bonus: 'مكافأة',
+  bonus_days: 'مكافأة (أيام)',
   commission: 'عمولة',
   incentive: 'حافز',
   correction: 'تصحيح',
@@ -57,6 +68,8 @@ export const ADDITION_TYPE_LABELS_AR: Record<AdditionType, string> = {
 
 export const DEDUCTION_TYPE_LABELS_AR: Record<DeductionType, string> = {
   penalty: 'جزاء',
+  penalty_days: 'جزاء (أيام)',
+  correction: 'تصحيح',
   damage_loss: 'تلفيات أو فقد',
   advance_recovery: 'استرداد سلفة',
   loan_installment: 'قسط قرض',
@@ -83,6 +96,7 @@ export function isAdjustmentType(kind: AdjustmentKind, type: string): type is Ad
 /** Whether an addition of each type is taxed (the owner's list); null: HR chooses (Other). */
 export const ADDITION_TAXED: Record<AdditionType, boolean | null> = {
   bonus: true,
+  bonus_days: true,
   commission: true,
   incentive: true,
   correction: true,
@@ -100,6 +114,32 @@ export function adjustmentTaxed(kind: AdjustmentKind, type: string, chosen: bool
   if (fixed === undefined) return null;
   return fixed ?? (typeof chosen === 'boolean' ? chosen : null);
 }
+
+// ---------- in days ----------
+
+/**
+ * The types entered in days (owner, 17 October 2026: "Yes, as proposed"), the amount worked out by the month's run: a
+ * Bonus (days), a day of the fixed part of the gross; a Penalty (days), a day of the contract's net; each ÷ the run's
+ * day divisor (payrollLine). Whole or half days, up to 31.
+ */
+export const DAYS_TYPES = ['bonus_days', 'penalty_days'] as const;
+export type DaysType = (typeof DAYS_TYPES)[number];
+
+/** Whether a type is entered in days (whatever the kind: isAdjustmentType checks the kind). */
+export const isDaysType = (type: string): type is DaysType => (DAYS_TYPES as readonly string[]).includes(type);
+
+/** The days type of each kind: a Bonus (days) is an addition, a Penalty (days) a deduction. */
+export const DAYS_TYPE_OF: Record<AdjustmentKind, DaysType> = { addition: 'bonus_days', deduction: 'penalty_days' };
+
+/** The most days one can be for: a month's. */
+export const ADJUSTMENT_DAYS_MAX = 31;
+
+/** Days as one takes them: more than 0, up to 31, whole or half. */
+export const isAdjustmentDays = (days: unknown): days is number =>
+  typeof days === 'number' && Number.isFinite(days) && days > 0 && days <= ADJUSTMENT_DAYS_MAX && Number.isInteger(days * 2);
+
+/** "1 day", "2.5 days". */
+export const daysText = (days: number) => `${days} ${days === 1 ? 'day' : 'days'}`;
 
 export const ADJUSTMENT_STATUSES = ['pending', 'applied', 'cancelled'] as const;
 export type AdjustmentStatus = (typeof ADJUSTMENT_STATUSES)[number];

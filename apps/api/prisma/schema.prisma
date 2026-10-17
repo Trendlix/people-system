@@ -1151,6 +1151,10 @@ model PayrollLawYear {
 // tax: a penalty, damage or loss, an advance's recovery or a loan's installment (linked to it), or other. Pending until
 // the month's run is approved with it on the line (applied), or cancelled. HR changes and cancels one while it
 // is pending and the month's run isn't with the CEO, approved or paid.
+// In days (owner, 17 October 2026, the run's grid columns moved here: "instead of there, i think earnings and
+// deductions will be enough"): a Bonus (days) addition and a Penalty (days) deduction have their days and no amount,
+// which the month's run works out from the person's pay (packages/shared payrollLine) and keeps on the line; the amount
+// it came to is copied here when the CEO's approval applies it. A Correction is an addition or a deduction.
 model PayrollAdjustment {
   id            String          @id @default(uuid()) @db.Uuid
   employeeId    String          @map("employee_id") @db.Uuid
@@ -1159,7 +1163,8 @@ model PayrollAdjustment {
   kind          String // ADJUSTMENT_KINDS: addition, deduction
   type          String // ADDITION_TYPES or DEDUCTION_TYPES, by kind
   taxed         Boolean // an addition taxed with the pay; never a deduction (taken after tax)
-  amount        Decimal         @db.Decimal(12, 2) // RESTRICTED: EGP, more than 0
+  amount        Decimal?        @db.Decimal(12, 2) // RESTRICTED: EGP, more than 0; in days, none until applied (what the line paid)
+  days          Decimal?        @db.Decimal(3, 1) // a Bonus (days) or a Penalty (days): whole or half days, up to 31; none for the others
   reason        String
   advanceId     String?         @map("advance_id") @db.Uuid // an advance's recovery or a loan's installment: which one
   advance       PayrollAdvance? @relation(fields: [advanceId], references: [id], onDelete: Restrict)

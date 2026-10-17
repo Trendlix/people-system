@@ -95,7 +95,8 @@ export interface Exclusion {
 }
 
 export const NO_CONTRACT = 'No signed contract for this month';
-export const EARLIER_EMPLOYMENT = 'Left and was hired again this month: paid for the later employment only (add the earlier days as settlements)';
+// the earlier days as a Correction on Additions / Deductions, as there are no settlements on the run since 17 October 2026
+export const EARLIER_EMPLOYMENT = 'Left and was hired again this month: paid for the later employment only (add the earlier days as a correction on Additions / Deductions)';
 
 /** Departments in alphabetical order, no department last. */
 export const byDepartment = (a: string | null, b: string | null) => (a === null ? 1 : 0) - (b === null ? 1 : 0) || (a ?? '').localeCompare(b ?? '');

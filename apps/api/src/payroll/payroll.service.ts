@@ -3,6 +3,7 @@ import {
   bankNamed,
   EMPTY_PAYROLL_INPUTS,
   insuredWageDate,
+  payrollLine,
   type LawRates,
   type PayBasis,
   type PayrollInputs,
@@ -18,6 +19,7 @@ import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/dat
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { GridInputsService } from './adjustments/grid-inputs.service.js';
 import { RunAdjustmentsService } from './adjustments/run-adjustments.service.js';
 import { cleanBankDetails, inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
 import { achWorkbook, cibWorkbook } from './bank-files.js';
@@ -25,7 +27,7 @@ import { HolidaysService } from './holidays.service.js';
 import { LawRatesService } from './law-rates/law-rates.service.js';
 import { json, savedInputs, withAdjustments, worked } from './line-work.js';
 import { firstDay, lastDay, monthName, monthShort, monthsLater } from './months.js';
-import type { CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
+import type { AttendanceWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
 import { PayrollSettingsService, rulesOf } from './payroll-settings.service.js';
 import { PayslipsService } from './payslips.service.js';
 import { registerWorkbook } from './register.js';
@@ -49,8 +51,11 @@ import {
 const RUN = 'payroll_run';
 const LINE = 'payroll_line';
 
-/** Inputs that are money: the audit log only says they changed, as for a contract's salary. */
-const MONEY_INPUTS: readonly (keyof PayrollInputs)[] = ['commission', 'settlements', 'released'];
+/**
+ * Inputs that are money: the audit log only says they changed, as for a contract's salary. The commission and the
+ * settlements went to Additions / Deductions (owner, 17 October 2026).
+ */
+const MONEY_INPUTS: readonly (keyof PayrollInputs)[] = ['released'];
 
 /** The employments that may be on a month's run, with what the roster needs of them. */
 const rosterSelect = (from: Date, to: Date) =>
@@ -152,7 +157,12 @@ const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto
 // downloaded is in the audit log. A Super Admin deletes a draft made by mistake.
 // The month's additions and deductions (owner, 17 October 2026: Additions / Deductions under Payroll) are taken with
 // each person's terms when the run is made or refreshed, and as they change while it is a draft
-// (adjustments/run-adjustments.service.ts); the CEO's approval applies them to their lines.
+// (adjustments/run-adjustments.service.ts); the CEO's approval applies them to their lines. The grid's bonus and penalty
+// days, commission and settlements went there too (owner, 17 October 2026: "instead of there, i think earnings and
+// deductions will be enough"): a run the CEO returns has any still typed on it moved (adjustments/grid-inputs.service.ts).
+// While the run is with the CEO, the CEO may waive a line's attendance deduction (owner, 17 October 2026: "if there is
+// an attendance deduction, allow the CEO to wave the deduction by ticking a box"): the line is worked out again without
+// it at once, and the approval takes it as it is.
 @Injectable()
 export class PayrollService {
   constructor(
@@ -163,6 +173,7 @@ export class PayrollService {
     private readonly holidays: HolidaysService,
     private readonly lawRates: LawRatesService,
     private readonly adjustments: RunAdjustmentsService,
+    private readonly gridInputs: GridInputsService,
   ) {}
 
   /** Every run, newest month first, with its totals. */
@@ -351,6 +362,47 @@ export class PayrollService {
     this.assertStatus(run, 'pending_ceo', 'returned');
     await this.prisma.payrollRun.update({ where: { id }, data: { status: 'draft', returnedReason: dto.reason } });
     await this.statusChanged(run, 'draft', 'return', user, { reason: dto.reason });
+    // a draft again: any bonus or penalty days, commission or settlements still typed on its grid (sent before they
+    // moved, 17 October 2026) become additions and deductions
+    await this.gridInputs.convert(id);
+    return this.get(id);
+  }
+
+  /**
+   * The CEO waives a line's attendance deduction, or takes the waiver back (owner, 17 October 2026: "if there is an
+   * attendance deduction, allow the CEO to wave the deduction by ticking a box"): only while the run is with the CEO,
+   * and only on a line with an attendance cut to waive. The line is worked out again at once, its no-show and KPI cuts
+   * as they were; the approval takes it as it is, and nothing changes it after. The audit log has the waiver's from and
+   * to, the amount only as changed.
+   */
+  async waiveAttendance(id: string, lineId: string, dto: AttendanceWaiverDto, user: SessionUser): Promise<PayrollRunView> {
+    const run = await this.row(id);
+    const month = monthOf(run);
+    if (run.status !== 'pending_ceo') {
+      throw new ConflictException(`The ${monthName(month)} payroll ${STATUS_TEXT[run.status as PayrollStatus]}: an attendance deduction is waived only while the run is with the CEO.`);
+    }
+    const line = run.lines.find((l) => l.id === lineId);
+    if (!line) throw new NotFoundException('This line is not on this payroll. Reload it and try again.');
+    const rules = run.rules as unknown as PayrollRules;
+    const law = runLawRates(run);
+    const terms = line.terms as unknown as PayrollTerms;
+    // the inputs as saved, those of a line sent before 17 October 2026 included, so it is worked out as it was
+    const saved = { ...EMPTY_PAYROLL_INPUTS, ...(line.inputs as object) } as PayrollInputs;
+    const was = saved.attendanceWaived === true;
+    if (dto.waived === was) return this.get(id);
+    if (dto.waived && !(payrollLine(terms, { ...saved, attendanceWaived: false }, rules, law).attendanceCut > 0)) {
+      throw new ConflictException(`${line.nameEn} has no attendance deduction to waive this month.`);
+    }
+    const inputs: PayrollInputs = { ...saved, attendanceWaived: dto.waived };
+    await this.prisma.payrollLine.update({ where: { id: line.id }, data: { inputs: json(inputs), ...worked(terms, inputs, rules, law) } });
+    await this.audit.record({
+      userId: user.id,
+      action: dto.waived ? 'waive_attendance' : 'restore_attendance',
+      entityType: LINE,
+      entityId: line.id,
+      // the amount only as changed, as for a salary
+      diff: { runId: id, month, employeeCode: line.employeeCode, attendanceWaived: { from: was, to: dto.waived }, attendanceCut: 'changed' },
+    });
     return this.get(id);
   }
 

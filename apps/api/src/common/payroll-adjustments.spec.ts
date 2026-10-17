@@ -6,7 +6,9 @@ import {
   advanceBalance,
   daysBetween,
   DEDUCTION_TYPES,
+  isAdjustmentDays,
   isAdjustmentType,
+  isDaysType,
   isRecovered,
   recoveredKind,
   sumAmounts,
@@ -22,8 +24,9 @@ const cut = (amount: number, status: AdjustmentAmount['status'] = 'pending'): Ad
 
 describe('the types', () => {
   it('are the owner’s lists, each of its kind', () => {
-    expect(ADDITION_TYPES).toEqual(['bonus', 'commission', 'incentive', 'correction', 'reimbursement', 'other']);
-    expect(DEDUCTION_TYPES).toEqual(['penalty', 'damage_loss', 'advance_recovery', 'loan_installment', 'other']);
+    // the Bonus (days) and Penalty (days), and a Correction taken off (17 October 2026: the grid's columns moved here)
+    expect(ADDITION_TYPES).toEqual(['bonus', 'bonus_days', 'commission', 'incentive', 'correction', 'reimbursement', 'other']);
+    expect(DEDUCTION_TYPES).toEqual(['penalty', 'penalty_days', 'correction', 'damage_loss', 'advance_recovery', 'loan_installment', 'other']);
     expect(isAdjustmentType('addition', 'bonus')).toBe(true);
     expect(isAdjustmentType('addition', 'penalty')).toBe(false);
     expect(isAdjustmentType('deduction', 'other')).toBe(true);
@@ -31,10 +34,23 @@ describe('the types', () => {
     expect(adjustmentTypeLabel('addition', 'other')).toBe('Other addition');
     expect(adjustmentTypeLabel('deduction', 'damage_loss')).toBe('Damage or loss');
     expect(adjustmentTypeLabel('deduction', 'unknown')).toBe('unknown');
+    expect([adjustmentTypeLabel('addition', 'bonus_days'), adjustmentTypeLabel('deduction', 'penalty_days'), adjustmentTypeLabel('deduction', 'correction')]).toEqual([
+      'Bonus (days)',
+      'Penalty (days)',
+      'Correction',
+    ]);
+    expect(isAdjustmentType('deduction', 'bonus_days')).toBe(false);
+    expect(isAdjustmentType('addition', 'penalty_days')).toBe(false);
+  });
+
+  it('takes the Bonus (days) and Penalty (days) in whole or half days, up to a month’s', () => {
+    expect(['bonus_days', 'penalty_days', 'bonus', 'correction'].map(isDaysType)).toEqual([true, true, false, false]);
+    expect([0.5, 1, 2.5, 31].every(isAdjustmentDays)).toBe(true);
+    expect([0, -1, 0.25, 31.5, Number.NaN, '2', null].some(isAdjustmentDays)).toBe(false);
   });
 
   it('taxes every addition but a reimbursement; Other as chosen; never a deduction', () => {
-    for (const type of ['bonus', 'commission', 'incentive', 'correction']) expect(adjustmentTaxed('addition', type, undefined)).toBe(true);
+    for (const type of ['bonus', 'bonus_days', 'commission', 'incentive', 'correction']) expect(adjustmentTaxed('addition', type, undefined)).toBe(true);
     expect(adjustmentTaxed('addition', 'reimbursement', undefined)).toBe(false);
     expect(adjustmentTaxed('addition', 'other', true)).toBe(true);
     expect(adjustmentTaxed('addition', 'other', false)).toBe(false);

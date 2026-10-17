@@ -1,5 +1,5 @@
 import type { PayrollAdjustmentItem } from '@trendlix/shared';
-import { payslipSource } from '../../test/fixtures/payslip.js';
+import { BONUS_DAY, payslipSource } from '../../test/fixtures/payslip.js';
 import { payslipContent, withoutMarks, type PayslipRow } from './payslip-content.js';
 import { REGISTER_COLUMNS } from './register.js';
 
@@ -63,5 +63,35 @@ describe('the register’s columns for them', () => {
     // a line worked out before 17 October 2026: none
     const older = { ...line, result: { ...line.result, additionsTaxed: undefined, additionsUntaxed: undefined, adjustmentDeductions: undefined } };
     expect(REGISTER_COLUMNS.find((c) => c.header === 'Additions (taxed)')!.value(older, 1)).toBe(0);
+  });
+});
+
+describe('the register: the grid’s days, commission and settlements on Additions / Deductions (owner, 17 October 2026)', () => {
+  const col = (header: string) => REGISTER_COLUMNS.find((c) => c.header === header)!;
+  const lineOf = (source: ReturnType<typeof payslipSource>) => ({ ...source.line, name: source.line.nameEn, bankFile: null, onHold: false, comments: null });
+
+  it('takes the bonus and penalty days from the Bonus (days) and Penalty (days), and lists each by type with its reason', () => {
+    const penalty: PayrollAdjustmentItem = { id: 'p1', kind: 'deduction', type: 'penalty_days', taxed: false, amount: null, days: 1.5, reason: 'Late twice' };
+    const line = lineOf(payslipSource('monthly', { terms: { adjustments: [BONUS_DAY, ...ADJUSTMENTS, penalty] } }));
+    expect([col('Bonus days').value(line, 1), col('Bonus').value(line, 1), col('Penalty days').value(line, 1)]).toEqual([1, 640, 1.5]);
+    expect(col('Penalties').value(line, 1)).toBe(line.result.penaltyCut);
+    // the grid's commission and settlements: none since
+    expect([col('Commission').value(line, 1), col('Settlements').value(line, 1)]).toEqual([null, null]);
+    expect(col('Additions and deductions').value(line, 1)).toBe(
+      `Bonus (days): 1 day, 640.00 (Campaign launch); Incentive: 1,500.00 (Campaign launch); Reimbursement: 320.75, not taxed (Taxi to the client); Loan installment: −1,000.00 (Car loan, 2 of 6); Penalty (days): 1.5 days, −${line.result.penaltyCut.toLocaleString('en-US', { minimumFractionDigits: 2 })} (Late twice)`,
+    );
+    expect(col('Additions and deductions').value(lineOf(payslipSource('monthly', { terms: { adjustments: [] } })), 1)).toBeNull();
+  });
+
+  it('a line saved before then: its days, commission and settlements as typed', () => {
+    const line = lineOf(payslipSource('monthly', { terms: { adjustments: [] }, inputs: { bonusDays: 2, penaltyDays: null, commission: 1250, settlements: -300 } }));
+    expect(['Bonus days', 'Bonus', 'Penalty days', 'Commission', 'Settlements'].map((h) => col(h).value(line, 1))).toEqual([2, 1280, null, 1250, -300]);
+  });
+
+  it('has the attendance cut the CEO waived after the cut (17 October 2026)', () => {
+    const headers = REGISTER_COLUMNS.map((c) => c.header);
+    expect(headers.slice(headers.indexOf('Attendance cut'), headers.indexOf('Attendance cut') + 2)).toEqual(['Attendance cut', 'Attendance waived']);
+    const line = lineOf(payslipSource('monthly', { inputs: { workedHours: 149.6, attendanceWaived: true } }));
+    expect([col('Attendance cut').value(line, 1), col('Attendance waived').value(line, 1)]).toEqual([0, 2880]);
   });
 });

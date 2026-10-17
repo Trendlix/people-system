@@ -35,9 +35,21 @@
 // one changes while the run is a draft); the taxed additions are in the pay earned, so in the gross and the taxed pay,
 // the untaxed ones are added after tax, and the deductions are taken after tax with the others. Lines worked out before
 // then have none, and never change.
+// The bonus and penalty days, the commission and the settlements (owner, 17 October 2026, on the inputs grid: "instead
+// of there, i think earnings and deductions will be enough"; he chose "Yes, as proposed"): no longer typed on the run,
+// but entered on Additions / Deductions with a type and a reason. A Bonus (days) is pay earned, taxed, a day of the
+// fixed part ÷ the day divisor; a Penalty (days) is taken after tax, a day of the contract's net ÷ the day divisor;
+// each line's days summed, so the same days pay what the grid's did (the bonus and the penalty cut), the amount shared
+// out between the items by their days. A commission and a Correction are additions or deductions like the others.
+// Lines saved before then with the grid's figures (a draft's were made additions and deductions) keep them, read and
+// worked out again with EarlierPayrollInputs.
+// The attendance deduction waived (owner, 17 October 2026: "if there is an attendance deduction, allow the CEO to wave
+// the deduction by ticking a box"): while the run is with the CEO, the CEO may waive a line's attendance cut; the line
+// is worked out with none, the cut it would have been kept as attendanceWaived. The no-show and KPI cuts stay as they
+// are worked out, and the attendance still counts in the KPI average: the CEO waives the money, not the measure.
 
 import type { AllowanceTerms } from './contracts.js';
-import { adjustmentSums, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
+import { adjustmentSums, DAYS_TYPE_OF, isDaysType, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
 import type { PayBasis } from './contracts.js';
 import { lawRatesFor, type LawRates } from './law-rates.js';
 import { grossToNet, monthlySalaryTax } from './salary.js';
@@ -187,16 +199,25 @@ export interface PayrollTerms {
   adjustments?: PayrollAdjustmentItem[];
 }
 
-/** An addition or deduction as a line keeps it: what it is, whether it is taxed, the amount and why. */
+/** An addition or deduction as a line keeps it: what it is, whether it is taxed, the amount (or the days) and why. */
 export interface PayrollAdjustmentItem {
   /** The PayrollAdjustment's id: applied to the line when the CEO approves the run. */
   id: string;
   kind: AdjustmentKind;
   type: AdjustmentType;
   taxed: boolean;
-  amount: number;
+  /**
+   * EGP. Null for a Bonus (days) or a Penalty (days) (owner, 17 October 2026): the run works it out (payrollLine), and
+   * the line keeps what it came to with its result (PayrollResult.adjustments).
+   */
+  amount: number | null;
+  /** A Bonus (days) or a Penalty (days): its days, whole or half. Missing for the others. */
+  days?: number;
   reason: string;
 }
+
+/** An addition or deduction as a line paid it: a Bonus (days)'s or a Penalty (days)'s amount worked out. */
+export type PaidAdjustment = Omit<PayrollAdjustmentItem, 'amount'> & { amount: number };
 
 /** A shift's working days within the days someone is employed in a month, and the official holidays on them. */
 export interface ShiftDays {
@@ -241,13 +262,14 @@ export interface PayrollInputs {
    * then: none.
    */
   leaveDays: number | null;
-  penaltyDays: number | null;
-  bonusDays: number | null;
-  commission: number | null;
-  /** One-off amounts in the gross, such as last month's corrections; may be negative. */
-  settlements: number | null;
   /** Already paid out this month: not in the bank transfer. */
   released: number | null;
+  /**
+   * The CEO waived the attendance deduction (owner, 17 October 2026: "if there is an attendance deduction, allow the
+   * CEO to wave the deduction by ticking a box"): ticked while the run is with the CEO, never typed by HR; the line is
+   * worked out without the attendance cut. Missing on inputs saved before then: not waived.
+   */
+  attendanceWaived: boolean;
 }
 
 export const EMPTY_PAYROLL_INPUTS: PayrollInputs = {
@@ -258,12 +280,25 @@ export const EMPTY_PAYROLL_INPUTS: PayrollInputs = {
   clientSatisfaction: null,
   noShowDays: null,
   leaveDays: null,
-  penaltyDays: null,
-  bonusDays: null,
-  commission: null,
-  settlements: null,
   released: null,
+  attendanceWaived: false,
 };
+
+/**
+ * The inputs typed on the grid until 17 October 2026, when they went to Additions / Deductions (owner: "instead of
+ * there, i think earnings and deductions will be enough"): kept on the lines approved before then, which are read as
+ * they were; a draft's were made pending additions and deductions (apps/api grid-inputs.service.ts).
+ */
+export interface EarlierPayrollInputs {
+  penaltyDays?: number | null;
+  bonusDays?: number | null;
+  commission?: number | null;
+  /** One-off amounts in the gross, such as last month's corrections; may be negative. */
+  settlements?: number | null;
+}
+
+/** The inputs a line was saved with, those since taken off the grid included (EarlierPayrollInputs). */
+export type SavedPayrollInputs = PayrollInputs & EarlierPayrollInputs;
 
 /** A part of the month as paid: its contract's fixed and variable pay and allowances for its days. */
 export interface PayrollPart {
@@ -315,10 +350,24 @@ export interface PayrollResult {
   attendanceCut: number;
   kpiCut: number;
   noShowCut: number;
+  /**
+   * The attendance cut the CEO waived (owner, 17 October 2026: "if there is an attendance deduction, allow the CEO to
+   * wave the deduction by ticking a box"): what attendanceCut would have been, now 0; 0 when not waived. Missing on lines
+   * worked out before then: none waived.
+   */
+  attendanceWaived?: number;
   overtime: number;
+  /**
+   * The bonus days' pay, a day of the fixed part each: since 17 October 2026 the Bonus (days) additions' days summed,
+   * before then the bonus days typed on the grid.
+   */
   bonus: number;
-  commission: number;
-  settlements: number;
+  /**
+   * The commission and the settlements typed on the grid, in the pay earned: on lines worked out before 17 October
+   * 2026 only. Since then a commission is an addition and a settlement a Correction (additionsTaxed, adjustmentDeductions).
+   */
+  commission?: number;
+  settlements?: number;
   /** The pay earned before allowances: the salary part, all of it taxed. */
   earned: number;
   allowances: number;
@@ -331,6 +380,10 @@ export interface PayrollResult {
   annualNetIncome: number;
   monthlyTax: number;
   martyrsFund: number;
+  /**
+   * The penalty days' cut, after tax, a day of the contract's net each: since 17 October 2026 the Penalty (days)
+   * deductions' days summed, before then the penalty days typed on the grid.
+   */
   penaltyCut: number;
   /** All the employee's deductions: insurance, tax, Martyrs' Fund, penalties, the month's deductions (after tax). */
   deductions: number;
@@ -342,11 +395,18 @@ export interface PayrollResult {
   companyCost: number;
   /**
    * The month's additions and deductions (owner, 17 October 2026): the taxed additions, in the pay earned; the untaxed
-   * ones, added after tax; the deductions, in the deductions after tax. Missing on lines worked out before then: none.
+   * ones, added after tax; the deductions, in the deductions after tax. A Bonus (days) is in `bonus` and a Penalty
+   * (days) in `penaltyCut` instead. Missing on lines worked out before then: none.
    */
   additionsTaxed?: number;
   additionsUntaxed?: number;
   adjustmentDeductions?: number;
+  /**
+   * The month's additions and deductions as paid, in the order entered, a Bonus (days)'s and a Penalty (days)'s amount
+   * worked out (their days' share of `bonus` and `penaltyCut`): the line's record of what each came to. Missing on a
+   * line without any, and on lines worked out before 17 October 2026, whose terms have every amount (paidAdjustments).
+   */
+  adjustments?: PaidAdjustment[];
   /** Plain-English notes for HR, e.g. "Paid for 19 of 30 days: employed or under contract for part of the month". */
   warnings: string[];
 }
@@ -361,6 +421,83 @@ export function resultAdjustments(r: Pick<PayrollResult, 'additionsTaxed' | 'add
   return { taxed: n(r.additionsTaxed), untaxed: n(r.additionsUntaxed), deductions: n(r.adjustmentDeductions) };
 }
 
+/**
+ * A line's additions and deductions as paid (owner, 17 October 2026), in the order entered: its result's record since
+ * the days types, else its terms' (every amount given then). None without any.
+ */
+export function paidAdjustments(line: { terms: Pick<PayrollTerms, 'adjustments'>; result: Pick<PayrollResult, 'adjustments'> }): PaidAdjustment[] {
+  if (line.result.adjustments) return line.result.adjustments;
+  return (line.terms.adjustments ?? []).map((a) => ({ ...a, amount: a.amount ?? 0 }));
+}
+
+/**
+ * A line's bonus and penalty days: its Bonus (days) and Penalty (days)' days summed (owner, 17 October 2026), and on a
+ * line approved before then, those typed on the grid.
+ */
+export function lineDays(line: { terms: Pick<PayrollTerms, 'adjustments'>; inputs: EarlierPayrollInputs }): { bonusDays: number; penaltyDays: number } {
+  const items = line.terms.adjustments ?? [];
+  return {
+    bonusDays: fraction(daysOf(items, 'addition') + (line.inputs.bonusDays ?? 0)),
+    penaltyDays: fraction(daysOf(items, 'deduction') + (line.inputs.penaltyDays ?? 0)),
+  };
+}
+
+/** The days of a kind's days type among the items (Bonus (days) for the additions, Penalty (days) for the deductions). */
+function daysOf(items: readonly Pick<PayrollAdjustmentItem, 'kind' | 'type' | 'days'>[], kind: AdjustmentKind): number {
+  const type = DAYS_TYPE_OF[kind];
+  return fraction(items.filter((a) => a.kind === kind && a.type === type).reduce((sum, a) => sum + (a.days ?? 0), 0));
+}
+
+/**
+ * A total shared out between items by their days, to the piaster, the last taking what rounding leaves, so they add up
+ * to it: a Bonus (days)'s share of the bonus, a Penalty (days)'s of the penalty cut.
+ */
+function byDays(total: number, days: readonly number[]): number[] {
+  const all = days.reduce((sum, d) => sum + d, 0);
+  let left = total;
+  return days.map((d, n) => {
+    if (n === days.length - 1) return piasters(left);
+    const part = all > 0 ? piasters((total * d) / all) : 0;
+    left = piasters(left - part);
+    return part;
+  });
+}
+
+/**
+ * The items as a line pays them: each with its amount, a Bonus (days)'s and a Penalty (days)'s their share of the bonus
+ * and the penalty cut by their days (with the grid's days of a line saved before 17 October 2026, which keep theirs).
+ */
+function paidItems(items: readonly PayrollAdjustmentItem[], totals: { bonus: number; penaltyCut: number }, earlier: EarlierFigures): PaidAdjustment[] {
+  const shares = new Map<string, number>();
+  for (const [kind, total, typed] of [
+    ['addition', totals.bonus, earlier.bonusDays],
+    ['deduction', totals.penaltyCut, earlier.penaltyDays],
+  ] as const) {
+    const inDays = items.filter((a) => a.kind === kind && a.type === DAYS_TYPE_OF[kind]);
+    byDays(total, [...inDays.map((a) => a.days ?? 0), ...(typed > 0 ? [typed] : [])])
+      .slice(0, inDays.length)
+      .forEach((amount, n) => shares.set(inDays[n].id, amount));
+  }
+  return items.map((a) => ({ ...a, amount: shares.get(a.id) ?? piasters(a.amount ?? 0) }));
+}
+
+/** The grid's figures a line was saved with before 17 October 2026 (EarlierPayrollInputs), as numbers. */
+interface EarlierFigures {
+  /** Saved with them (every line saved before then has them, if only as not given). */
+  saved: boolean;
+  bonusDays: number;
+  penaltyDays: number;
+  commission: number;
+  settlements: number;
+}
+
+function earlierFigures(inputs: PayrollInputs): EarlierFigures {
+  const e = inputs as SavedPayrollInputs;
+  const keys = ['bonusDays', 'penaltyDays', 'commission', 'settlements'] as const;
+  const n = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return { saved: keys.some((k) => k in e), bonusDays: n(e.bonusDays), penaltyDays: n(e.penaltyDays), commission: n(e.commission), settlements: n(e.settlements) };
+}
+
 /** Half-up to the piaster, as salary.ts rounds (+ 0 turns a −0 into 0). */
 const piasters = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100 + 0;
 
@@ -370,7 +507,7 @@ const fraction = (v: number) => Math.round(v * 1e10) / 1e10;
 /** An input not given counts as 0. */
 const given = (v: number | null) => v ?? 0;
 
-/** The salary part of a line before the bonus, the commission and the settlements. */
+/** The salary part of a line before the month's additions and deductions. */
 type SalaryPart = Pick<
   PayrollResult,
   | 'fixed'
@@ -385,7 +522,7 @@ type SalaryPart = Pick<
   | 'kpiCut'
   | 'noShowCut'
   | 'overtime'
->;
+> & { attendanceWaived: number };
 
 /**
  * A shift's window in hours, from its start and end ("HH:mm"): an end before the start runs past midnight. Null when
@@ -517,11 +654,13 @@ function daysOffName(noShowDays: number, leaveDays: number): string | null {
  * the days paid; the fixed part of the gross (its basic percent) is cut for attendance on the expected hours (HR's, else
  * the shift's less the no-show and leave days: expectedHoursOf) below the grace percent and, while the rules pay it,
  * paid overtime above the overtime percent; the variable part is cut for a KPI average below its grace percent, and
- * not at all with no KPI given. By the hour: the hours worked at the contract's rate. Then for both: the bonus days,
- * the commission and the settlements; the allowances for the days paid; social insurance on the insured wage, whole
- * for a part month; the salary tax and the Martyrs' Fund on the actual pay; penalty days at the contract's net after
- * the tax. The insurance shares, the tax and the Fund follow `law`, the rates set by law the run keeps (owner's
- * request, 16 October 2026); without them, the built-in ones of the run's year.
+ * not at all with no KPI given; the attendance cut is 0 when the CEO waived it (17 October 2026). By the hour: the hours
+ * worked at the contract's rate. Then for both: the month's additions and deductions (17 October 2026), a Bonus (days)
+ * at a day of the fixed part and the other taxed additions in the pay earned; the allowances for the days paid; social
+ * insurance on the insured wage, whole for a part month; the salary tax and the Martyrs' Fund on the actual pay; a
+ * Penalty (days) at a day of the contract's net and the other deductions after the tax, the untaxed additions after
+ * them. The insurance shares, the tax and the Fund follow `law`, the rates set by law the run keeps (owner's request,
+ * 16 October 2026); without them, the built-in ones of the run's year.
  */
 export function payrollLine(
   terms: PayrollTerms,
@@ -539,6 +678,9 @@ export function payrollLine(
   // the contract at the month's end: its gross for the no-show and bonus days and the penalty days' net
   const gross = piasters(terms.gross);
   const fixedFull = piasters((gross * terms.basicPercent) / 100);
+  // a penalty day costs a day of the contract's net (the sheet's "Original Net"), a freelancer's a day of the gross,
+  // which is their net
+  const contractNet = terms.statutory ? grossToNet(gross, law).net : gross;
   /** An amount for so many days. */
   const forDays = (amount: number, n: number) => piasters((amount * n) / days);
 
@@ -584,12 +726,22 @@ export function payrollLine(
           },
           warnings,
         );
-  // a bonus day is a day of the fixed part, also for pay by the hour (its monthly estimate's)
-  const bonus = piasters((given(i.bonusDays) * fixedFull) / days);
-  const commission = piasters(given(i.commission));
-  const settlements = piasters(given(i.settlements));
-  // the month's additions and deductions (owner, 17 October 2026): the taxed additions are pay earned
-  const adjustments = adjustmentSums((terms.adjustments ?? []).map((a) => ({ ...a, status: 'pending' as const })));
+  // the month's additions and deductions (owner, 17 October 2026), in days or amounts: a line's days summed, so the
+  // same days pay what the grid's did. A bonus day is a day of the fixed part, also for pay by the hour (its monthly
+  // estimate's); a penalty day a day of the contract's net, taken after the tax. A line saved before then with the
+  // grid's figures (with the CEO then, approved or paid: a draft's were made additions and deductions) is worked out
+  // with them as it was, so working it out again (the CEO's waiver) pays what it did
+  const earlier = earlierFigures(inputs);
+  const items = terms.adjustments ?? [];
+  const bonusDays = fraction(daysOf(items, 'addition') + earlier.bonusDays);
+  const penaltyDays = fraction(daysOf(items, 'deduction') + earlier.penaltyDays);
+  const bonus = piasters((bonusDays * fixedFull) / days);
+  const penaltyCut = penaltyDays ? piasters((penaltyDays * contractNet) / days) : 0;
+  const commission = piasters(earlier.commission);
+  const settlements = piasters(earlier.settlements);
+  const paid = paidItems(items, { bonus, penaltyCut }, earlier);
+  // the others by their amounts: the taxed additions are pay earned
+  const adjustments = adjustmentSums(paid.filter((a) => !isDaysType(a.type)).map((a) => ({ ...a, status: 'pending' as const })));
   const additionsTaxed = adjustments.taxedAdditions;
   const earned = piasters(
     salary.fixed - salary.attendanceCut + salary.variable - salary.kpiCut - salary.noShowCut + salary.overtime + bonus + commission + settlements + additionsTaxed,
@@ -613,12 +765,6 @@ export function payrollLine(
     ? monthlySalaryTax({ taxedPay, employeeInsurance }, law)
     : { healthInsurance: 0, monthlyTaxable: 0, annualNetIncome: 0, annualTax: 0, monthlyTax: 0, martyrsFund: 0 };
 
-  // after the tax: a penalty day costs a day of the contract's net (the sheet's "Original Net"), a freelancer's a day of
-  // the gross, which is their net
-  const penaltyDays = given(i.penaltyDays);
-  const contractNet = terms.statutory ? grossToNet(gross, law).net : gross;
-  const penaltyCut = penaltyDays ? piasters((penaltyDays * contractNet) / days) : 0;
-
   // comprehensive health insurance is 0 while it doesn't apply in Cairo; it is in the deductions so the net stays right;
   // the month's deductions (17 October 2026) are taken after tax with the others, its untaxed additions added after it
   const adjustmentDeductions = adjustments.deductions;
@@ -639,8 +785,8 @@ export function payrollLine(
         : { contractId: p.contractId, fixed: p.fixed, variable: p.variable, allowances: p.allowances },
     ),
     bonus,
-    commission,
-    settlements,
+    // the grid's, on a line saved with them (before 17 October 2026)
+    ...(earlier.saved ? { commission, settlements } : {}),
     earned,
     allowances: allowancesTotal,
     taxableAllowances,
@@ -661,6 +807,7 @@ export function payrollLine(
     additionsTaxed,
     additionsUntaxed,
     adjustmentDeductions,
+    ...(paid.length ? { adjustments: paid } : {}),
     warnings,
   };
 }
@@ -679,7 +826,8 @@ export function payrollLine(
  * (1.5). Worked hours above the most attendance counts (the shift's hours to work a day on its days: mostCountedHours)
  * are warned about, not cut. A no-show day costs the no-show multiplier (2) days of the gross (the sheet used the
  * declared insurance salary, empty for most), never more than the salary left for the days paid after the other cuts.
- * A leave day costs nothing.
+ * A leave day costs nothing. The attendance cut the CEO waived (owner, 17 October 2026) is 0, kept as attendanceWaived;
+ * the other cuts are as without the waiver.
  */
 function monthlyPart(
   i: PayrollInputs,
@@ -732,13 +880,18 @@ function monthlyPart(
   const kpiAverage = fraction([attendanceScore, ...kpis].reduce((sum, v) => sum + v, 0) / (kpis.length + 1));
   const kpiScore = kpis.length === 0 || kpiAverage >= rules.kpiGracePercent / 100 ? 1 : kpiAverage;
 
-  const attendanceCut = piasters(fixed * Math.max(0, 1 - attendanceScore));
+  const workedOut = piasters(fixed * Math.max(0, 1 - attendanceScore));
   const kpiCut = piasters(variable * Math.max(0, 1 - kpiScore));
   // never more than the salary left for the days paid, so absences alone can't take the pay below 0
   const noShowFull = piasters((noShowDays * rules.noShowDayMultiplier * pay.gross) / rules.dayDivisor);
-  const salaryLeft = Math.max(0, piasters(fixed - attendanceCut + variable - kpiCut));
+  const salaryLeft = Math.max(0, piasters(fixed - workedOut + variable - kpiCut));
   const noShowCut = Math.min(noShowFull, salaryLeft);
   if (noShowFull > noShowCut) warnings.push('The no-show days cost more than the salary left for the days paid: the cut is capped there');
+  // the CEO waived the attendance deduction (owner, 17 October 2026: "if there is an attendance deduction, allow the CEO
+  // to wave the deduction by ticking a box"): none taken, what it was kept; the no-show cut stays as worked out with it,
+  // and the attendance score still counts in the KPI average
+  const waived = i.attendanceWaived === true ? workedOut : 0;
+  const attendanceCut = piasters(workedOut - waived);
 
   // the most attendance will count (owner, 16 October 2026: "maximum working hours to be recorded per day is 9 hours
   // between checkin and check out"): the shift's hours to work a day on its working days in the days paid, less the
@@ -760,6 +913,7 @@ function monthlyPart(
     attendanceScore,
     kpiScore,
     attendanceCut,
+    attendanceWaived: waived,
     kpiCut,
     noShowCut,
     // none while the rules don't pay it (owner, 16 October 2026: "No overtime for now"); the sheet's intent: its overtime
@@ -790,6 +944,7 @@ function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): 
     attendanceScore: 1,
     kpiScore: 1,
     attendanceCut: 0,
+    attendanceWaived: 0,
     kpiCut: 0,
     noShowCut: 0,
     overtime: 0,

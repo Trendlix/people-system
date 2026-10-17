@@ -28,7 +28,8 @@ interface Adjustment {
   kind: string;
   type: string;
   taxed: boolean;
-  amount: number;
+  amount: number | null;
+  days: number | null;
   reason: string;
   advance: { id: string; kind: string; givenOn: string; amount: number } | null;
   status: string;
@@ -118,6 +119,7 @@ describe('Payroll additions and deductions (e2e)', () => {
         type: 'bonus',
         taxed: true, // a bonus is taxed (the owner's list)
         amount: 1500,
+        days: null,
         reason: 'Invented target bonus',
         advance: null,
         status: 'pending',
@@ -155,10 +157,61 @@ describe('Payroll additions and deductions (e2e)', () => {
       expect(await refused(bonus({ taxed: false }))).toBe('A bonus is always taxed.');
       expect(await refused(bonus({ type: 'reimbursement', taxed: true }))).toBe('A reimbursement is never taxed.');
       expect(await refused(bonus({ kind: 'deduction', type: 'penalty', taxed: true }))).toBe('A deduction is taken after tax, so it is never taxed.');
-      expect(await refused(bonus({ type: 'penalty' }))).toBe('Choose the type of addition: Bonus, Commission, Incentive, Correction, Reimbursement or Other addition.');
-      expect(await refused(bonus({ kind: 'deduction', type: 'bonus' }))).toBe(
-        'Choose the type of deduction: Penalty, Damage or loss, Advance recovery, Loan installment or Other deduction.',
+      expect(await refused(bonus({ type: 'penalty' }))).toBe(
+        'Choose the type of addition: Bonus, Bonus (days), Commission, Incentive, Correction, Reimbursement or Other addition.',
       );
+      expect(await refused(bonus({ kind: 'deduction', type: 'bonus' }))).toBe(
+        'Choose the type of deduction: Penalty, Penalty (days), Correction, Damage or loss, Advance recovery, Loan installment or Other deduction.',
+      );
+    });
+
+    it('takes a Bonus (days) or a Penalty (days) in days, every other type in EGP; a Correction either way (owner, 17 October 2026)', async () => {
+      // the run's grid columns moved here: "instead of there, i think earnings and deductions will be enough"
+      const days = (over: object) => bonus({ month: NEXT, amount: undefined, ...over });
+      const inDays = (await post(days({ type: 'bonus_days', days: 1.5 })).expect(201)).body as Adjustment;
+      // no run for the month yet: the days, no amount
+      expect(inDays).toMatchObject({ kind: 'addition', type: 'bonus_days', taxed: true, days: 1.5, amount: null, status: 'pending' });
+      const penalty = (await post(days({ kind: 'deduction', type: 'penalty_days', days: 2 })).expect(201)).body as Adjustment;
+      expect(penalty).toMatchObject({ kind: 'deduction', type: 'penalty_days', taxed: false, days: 2, amount: null });
+      // a correction taken off: a deduction, after tax (a negative settlement)
+      expect((await post(bonus({ month: NEXT, kind: 'deduction', type: 'correction', amount: 250 })).expect(201)).body).toMatchObject({
+        kind: 'deduction',
+        type: 'correction',
+        taxed: false,
+        amount: 250,
+        days: null,
+      });
+
+      const refused = async (body: object) => (await post(body).expect(400)).body.message as string | string[];
+      const DAYS = ['Enter the days, more than 0 and up to 31, in whole or half days, e.g. 2 or 1.5.'];
+      expect(await refused(days({ type: 'bonus_days', amount: 500, days: 1 }))).toBe('A bonus or penalty in days is worked out by the payroll run: send the days, not an amount.');
+      expect(await refused(days({ type: 'bonus_days' }))).toEqual(DAYS);
+      for (const d of [0, 0.25, 31.5, -1, '2']) expect(await refused(days({ type: 'penalty_days', kind: 'deduction', days: d }))).toEqual(DAYS);
+      expect(await refused(bonus({ month: NEXT, days: 1 }))).toBe('Only a Bonus (days) or a Penalty (days) is entered in days: enter the amount in EGP.');
+      expect(await refused(days({ type: 'bonus_days', days: 1, taxed: false }))).toBe('A bonus (days) is always taxed.');
+      expect(await refused(days({ type: 'penalty_days', days: 1 }))).toMatch(/^Choose the type of addition/);
+      // the days as they are in the audit log; no amount was set
+      expect((await auditOf('payroll_adjustment', inDays.id))[0].diff).toEqual({
+        employeeCode: alpha.employeeCode,
+        month: NEXT,
+        kind: 'addition',
+        type: 'bonus_days',
+        taxed: true,
+        days: 1.5,
+        reason: 'Invented target bonus',
+      });
+
+      // changed: its days; to an amount's type it needs its amount, and back its days
+      expect((await patch(inDays.id, { days: 2.5 }).expect(200)).body).toMatchObject({ days: 2.5, amount: null });
+      expect((await patch(inDays.id, { amount: 5 }).expect(400)).body.message).toBe('A bonus or penalty in days is worked out by the payroll run: send the days, not an amount.');
+      expect((await patch(inDays.id, { type: 'bonus' }).expect(400)).body.message).toBe('Enter the amount in EGP, more than 0, e.g. 1500 or 1500.50.');
+      expect((await patch(inDays.id, { type: 'bonus', amount: 100 }).expect(200)).body).toMatchObject({ type: 'bonus', amount: 100, days: null });
+      expect((await patch(inDays.id, { type: 'bonus_days' }).expect(400)).body.message).toBe('Enter the days, more than 0 and up to 31, in whole or half days, e.g. 2 or 1.5.');
+      expect((await patch(inDays.id, { type: 'bonus_days', days: 1 }).expect(200)).body).toMatchObject({ type: 'bonus_days', amount: null, days: 1 });
+      expect((await patch(inDays.id, { days: 0.3 }).expect(400)).body.message).toEqual(DAYS);
+      const audit = await auditOf('payroll_adjustment', inDays.id);
+      expect(audit[1].diff).toEqual({ employeeCode: alpha.employeeCode, kind: 'addition', days: { from: 1.5, to: 2.5 } });
+      expect(audit[2].diff).toMatchObject({ type: { from: 'bonus_days', to: 'bonus' }, amount: 'changed', days: { from: 2.5, to: null } });
     });
 
     it('refuses an amount, a reason, a month or a person it can’t take', async () => {

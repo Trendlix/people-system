@@ -1,9 +1,24 @@
 import { crc32, deflateSync } from 'node:zlib';
-import { EMPTY_PAYROLL_INPUTS, lawRatesFor, PAYROLL_RULE_DEFAULTS, payrollLine, type PayrollInputs, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
+import {
+  EMPTY_PAYROLL_INPUTS,
+  lawRatesFor,
+  PAYROLL_RULE_DEFAULTS,
+  payrollLine,
+  type PayrollAdjustmentItem,
+  type PayrollRules,
+  type PayrollTerms,
+  type SavedPayrollInputs,
+} from '@trendlix/shared';
 import type { PayslipSource } from '../../src/payroll/payslip-content.js';
 
 // Payslips for the tests (owner's decisions, 16 October 2026): the payslip proposal's two people, a monthly salary and
 // pay by the hour, their figures worked out by payrollLine itself so every row adds up. Everyone is invented.
+
+/** Mariam's bonus day (owner, 17 October 2026: entered on Additions / Deductions as a Bonus (days)). */
+export const BONUS_DAY: PayrollAdjustmentItem = { id: 'adj-bonus-day', kind: 'addition', type: 'bonus_days', taxed: true, amount: null, days: 1, reason: 'Campaign launch' };
+
+/** Youssef's correction (a settlement until 17 October 2026). */
+export const CORRECTION: PayrollAdjustmentItem = { id: 'adj-correction', kind: 'addition', type: 'correction', taxed: true, amount: 450, reason: 'September’s hours' };
 
 /** Mariam: a monthly salary all October, insured, two allowances (one not taxed), KPIs below 80%, a bonus day; 8-hour days. */
 export const MONTHLY_TERMS: PayrollTerms = {
@@ -21,20 +36,20 @@ export const MONTHLY_TERMS: PayrollTerms = {
   insured: true,
   insuredWage: 16700,
   hoursPerDay: 8,
+  adjustments: [BONUS_DAY],
 };
 
-export const MONTHLY_INPUTS: PayrollInputs = {
+export const MONTHLY_INPUTS: SavedPayrollInputs = {
   ...EMPTY_PAYROLL_INPUTS,
   workedHours: 165.5,
   expectedHours: 176,
   softSkills: 70,
   performance: 65,
   clientSatisfaction: 72,
-  bonusDays: 1,
   released: 2000,
 };
 
-/** Youssef: part-time by the hour, not registered with social insurance, a settlement, paid to QNB by IBAN. */
+/** Youssef: part-time by the hour, not registered with social insurance, a correction, paid to QNB by IBAN. */
 export const HOURLY_TERMS: PayrollTerms = {
   year: 2026,
   payBasis: 'hourly',
@@ -47,14 +62,15 @@ export const HOURLY_TERMS: PayrollTerms = {
   insured: false,
   insuredWage: 0,
   hoursPerDay: null,
+  adjustments: [CORRECTION],
 };
 
-export const HOURLY_INPUTS: PayrollInputs = { ...EMPTY_PAYROLL_INPUTS, workedHours: 92.5, settlements: 450 };
+export const HOURLY_INPUTS: SavedPayrollInputs = { ...EMPTY_PAYROLL_INPUTS, workedHours: 92.5 };
 
 /** A payslip source: Mariam's (monthly) or Youssef's (hourly), with the terms, inputs or rules changed as given. */
 export function payslipSource(
   kind: 'monthly' | 'hourly',
-  change: { terms?: Partial<PayrollTerms>; inputs?: Partial<PayrollInputs>; rules?: Partial<PayrollRules>; source?: Partial<PayslipSource> } = {},
+  change: { terms?: Partial<PayrollTerms>; inputs?: Partial<SavedPayrollInputs>; rules?: Partial<PayrollRules>; source?: Partial<PayslipSource> } = {},
 ): PayslipSource {
   const monthly = kind === 'monthly';
   const rules = { ...PAYROLL_RULE_DEFAULTS, ...change.rules };

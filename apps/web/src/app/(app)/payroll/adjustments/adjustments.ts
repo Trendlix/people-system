@@ -6,6 +6,10 @@ import {
   ADDITION_TAXED,
   adjustmentSums,
   adjustmentTypeLabel,
+  daysText,
+  isAdjustmentDays,
+  isDaysType,
+  paidAdjustments,
   recoveredKind,
   type AdjustmentKind,
   type AdjustmentStatus,
@@ -14,7 +18,9 @@ import {
   type AdditionType,
   type AdvanceKind,
   type AdvanceStatus,
+  type PayrollResult,
   type PayrollStatus,
+  type PayrollTerms,
   type Role,
 } from '@trendlix/shared';
 import { formatDate } from '../../../../lib/format';
@@ -28,6 +34,10 @@ import { ADJUSTMENTS_PATH } from '../sections';
 // for the page (no server-only, so they are unit tested): the month in the address, the month's additions and deductions
 // by employee with their totals, the form's types and what it sends, and each row in words. Relative imports: the tests
 // run without the "@/" alias. Salary data: HR, Finance and the CEO see it; HR changes it; the API checks every request.
+// The one place to enter them (owner, 17 October 2026, on the run's inputs grid: "instead of there, i think earnings
+// and deductions will be enough"; he chose "Yes, as proposed"): a Bonus (days) or a Penalty (days) is entered in days,
+// the month's run working out the amount, shown as "2 days ≈ EGP 640.00" once a run has it, else "2 days"; a
+// Correction is an addition or a deduction. The run's grid opens one person's month here (?employee=).
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -51,7 +61,13 @@ export interface AdjustmentRow {
   kind: AdjustmentKind;
   type: AdjustmentType;
   taxed: boolean;
-  amount: number;
+  /**
+   * EGP. A Bonus (days) or a Penalty (days): what the month's run worked it out to, null while no run has it (17
+   * October 2026).
+   */
+  amount: number | null;
+  /** A Bonus (days) or a Penalty (days): its days; null for the others, and left out by an API from before them. */
+  days?: number | null;
   reason: string;
   advance: { id: string; kind: AdvanceKind; givenOn: string; amount: number } | null;
   status: AdjustmentStatus;
@@ -119,8 +135,22 @@ export function readMonth(query: Query, today: string): string {
   return isMonth(month) ? month : monthOf(today);
 }
 
-/** The page's address for a month: plain for this month. */
-export const adjustmentsHref = (month: string, today: string) => (month === monthOf(today) ? ADJUSTMENTS_PATH : `${ADJUSTMENTS_PATH}?month=${month}`);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The employee in the address (?employee=), whose month alone is shown: the run's grid opens it; null for everyone. */
+export function readEmployee(query: Query): string | null {
+  const id = one(query.employee);
+  return UUID.test(id) ? id : null;
+}
+
+/** The page's address for a month (plain for this month), and one person's month (the run's grid's Earnings and Deductions). */
+export function adjustmentsHref(month: string, today: string, employeeId: string | null = null): string {
+  const query = new URLSearchParams();
+  if (month !== monthOf(today) || employeeId) query.set('month', month);
+  if (employeeId) query.set('employee', employeeId);
+  const q = query.toString();
+  return q ? `${ADJUSTMENTS_PATH}?${q}` : ADJUSTMENTS_PATH;
+}
 
 /** The months the picker offers, newest first: a year ahead back to a year ago, and the month shown if it is outside them. */
 export function monthChoices(today: string, month: string): { value: string; label: string }[] {
@@ -142,6 +172,12 @@ export interface PersonGroup {
 
 const statusOrder = (s: AdjustmentStatus) => (s === 'cancelled' ? 1 : 0);
 
+/**
+ * A row as the sums take it: one in days at what the run worked it out to, nothing until then (it is said as days
+ * alone, "2 days").
+ */
+const summed = (r: AdjustmentRow) => ({ ...r, amount: r.amount ?? 0 });
+
 /** The month's rows by person, by name; in each, as entered with the cancelled ones last. */
 export function byEmployee(rows: readonly AdjustmentRow[]): PersonGroup[] {
   const groups = new Map<string, PersonGroup>();
@@ -154,7 +190,7 @@ export function byEmployee(rows: readonly AdjustmentRow[]): PersonGroup[] {
     .map((g) => ({
       ...g,
       rows: [...g.rows].sort((a, b) => statusOrder(a.status) - statusOrder(b.status) || a.createdAt.localeCompare(b.createdAt)),
-      sums: adjustmentSums(g.rows),
+      sums: adjustmentSums(g.rows.map(summed)),
     }))
     .sort((a, b) => a.employee.name.localeCompare(b.employee.name));
 }
@@ -162,8 +198,11 @@ export function byEmployee(rows: readonly AdjustmentRow[]): PersonGroup[] {
 /** The month's totals (the cancelled ones left out) and how many people have one. */
 export function monthTotals(rows: readonly AdjustmentRow[]): AdjustmentSums & { people: number } {
   const counted = rows.filter((r) => r.status !== 'cancelled');
-  return { ...adjustmentSums(rows), people: new Set(counted.map((r) => r.employee.id)).size };
+  return { ...adjustmentSums(rows.map(summed)), people: new Set(counted.map((r) => r.employee.id)).size };
 }
+
+/** How many of the month's (not cancelled) are in days with no amount worked out yet: no run has them. */
+export const daysNotWorkedOut = (rows: readonly AdjustmentRow[]) => rows.filter((r) => r.status !== 'cancelled' && r.amount === null).length;
 
 /** A pending one HR may still change: while the month isn't locked. */
 export const changeable = (row: Pick<AdjustmentRow, 'status'>, locked: string | null) => row.status === 'pending' && locked === null;
@@ -189,8 +228,21 @@ export function taxText(row: Pick<AdjustmentRow, 'kind' | 'taxed'>): string {
   return row.taxed ? 'Taxed' : 'Not taxed';
 }
 
-/** An addition as +EGP 1,500.00, a deduction as −EGP 250.00. */
-export const signedAmount = (row: Pick<AdjustmentRow, 'kind' | 'amount'>) => `${row.kind === 'deduction' ? '−' : '+'}${formatEgp(row.amount)}`;
+/**
+ * An addition as +EGP 1,500.00, a deduction as −EGP 250.00; one in days (17 October 2026) with its days and what the
+ * run worked it out to, "+2 days ≈ EGP 640.00", or its days alone until a run has it, "−1 day".
+ */
+export function signedAmount(row: Pick<AdjustmentRow, 'kind' | 'amount' | 'days'>): string {
+  const sign = row.kind === 'deduction' ? '−' : '+';
+  if (typeof row.days === 'number') return row.amount === null ? `${sign}${daysText(row.days)}` : `${sign}${daysText(row.days)} ≈ ${formatEgp(row.amount)}`;
+  return `${sign}${formatEgp(row.amount ?? 0)}`;
+}
+
+/** What a day of each type in days is (17 October 2026), as the form says it. */
+export const DAYS_HINTS: Record<string, string> = {
+  bonus_days: 'A day of the fixed part of the salary (the gross’s basic percent) ÷ the days a month counts as, taxed with the pay. The month’s run works the amount out.',
+  penalty_days: 'A day of the contract’s net salary ÷ the days a month counts as, taken after tax. The month’s run works the amount out.',
+};
 
 /** An amount with its sign, "EGP 0.00" for none: a person's or the month's net effect. */
 export function netText(amount: number): string {
@@ -213,13 +265,27 @@ export const enteredText = (row: Pick<AdjustmentRow, 'createdBy' | 'createdAt'>)
 
 export const KIND_CHOICES = (['addition', 'deduction'] as const).map((k) => ({ value: k, label: ADJUSTMENT_KIND_LABELS[k] }));
 
-/** A kind's types for the form, each with whether it is taxed (null: HR chooses, Other). */
-export function typeChoices(kind: AdjustmentKind): { value: string; label: string; taxed: boolean | null }[] {
+/** A kind's types for the form, each with whether it is taxed (null: HR chooses, Other) and whether it is in days. */
+export function typeChoices(kind: AdjustmentKind): { value: string; label: string; taxed: boolean | null; inDays: boolean }[] {
   return ADJUSTMENT_TYPES[kind].map((t) => ({
     value: t,
     label: adjustmentTypeLabel(kind, t),
     taxed: kind === 'deduction' ? false : ADDITION_TAXED[t as AdditionType],
+    inDays: isDaysType(t),
   }));
+}
+
+/** Whether the form asks for days, not an amount: a Bonus (days) or a Penalty (days) (17 October 2026). */
+export const asksDays = (type: string) => isDaysType(type);
+
+const DAYS_MESSAGE = 'Enter the days, more than 0 and up to 31, in whole or half days, e.g. 2 or 1.5.';
+
+/** Days as typed: "2", "1.5", "٢" (an Arabic keyboard's digits); null when they can't be read. */
+function parseDays(text: string): number | null {
+  const s = text.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/٫/g, '.').trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  const n = Number(s);
+  return isAdjustmentDays(n) ? n : null;
 }
 
 /** Whether the form asks if it is taxed: an Other addition only. */
@@ -262,9 +328,16 @@ export function adjustmentBody(fd: FormData, entering: boolean): { body: Record<
     if (taxed !== 'yes' && taxed !== 'no') errors.push('Say whether this other addition is taxed.');
     else body.taxed = taxed === 'yes';
   }
-  const amount = parseAmount(text('amount'));
-  if (amount === null || Number.isNaN(amount) || amount <= 0) errors.push('Enter the amount in EGP, more than 0, e.g. 1500 or 1500.50.');
-  else body.amount = amount;
+  if (asksDays(type)) {
+    // in days (17 October 2026): the run works the amount out
+    const days = parseDays(text('days'));
+    if (days === null) errors.push(DAYS_MESSAGE);
+    else body.days = days;
+  } else {
+    const amount = parseAmount(text('amount'));
+    if (amount === null || Number.isNaN(amount) || amount <= 0) errors.push('Enter the amount in EGP, more than 0, e.g. 1500 or 1500.50.');
+    else body.amount = amount;
+  }
   const reason = text('reason');
   if (!reason) errors.push('Say what it is for.');
   body.reason = reason;
@@ -281,22 +354,25 @@ export function adjustmentBody(fd: FormData, entering: boolean): { body: Record<
 
 /** The note on how they reach the pay (owner, 17 October 2026): the month's run takes them. */
 export const RUN_NOTE =
-  "Each is added to its month's payroll run: taxed additions into the gross, untaxed ones after tax, deductions after tax. A draft run takes a change at once; from the CEO's step on they can't change, and the CEO's approval applies them.";
+  "Each is added to its month's payroll run: taxed additions into the gross, untaxed ones after tax, deductions after tax; a bonus or penalty in days is worked out from the person's pay that month. A draft run takes a change at once; from the CEO's step on they can't change, and the CEO's approval applies them.";
 
 // ---------- on a run ----------
 
-/** A run's additions and deductions (owner, 17 October 2026): on how many lines, how many, and their sums. */
-export function runAdjustments(lines: readonly { terms: { adjustments?: readonly { kind: string; taxed: boolean; amount: number }[] } }[]): {
+/**
+ * A run's additions and deductions (owner, 17 October 2026): on how many lines, how many, and their sums, those in days
+ * as each line worked them out.
+ */
+export function runAdjustments(lines: readonly { terms: Pick<PayrollTerms, 'adjustments'>; result: Pick<PayrollResult, 'adjustments'> }[]): {
   lines: number;
   count: number;
   taxed: number;
   untaxed: number;
   deductions: number;
 } {
-  const items = lines.flatMap((l) => l.terms.adjustments ?? []);
+  const items = lines.flatMap((l) => paidAdjustments(l));
   const sum = (pick: (a: (typeof items)[number]) => boolean) => Math.round(items.filter(pick).reduce((c, a) => c + Math.round(a.amount * 100), 0)) / 100;
   return {
-    lines: lines.filter((l) => (l.terms.adjustments ?? []).length > 0).length,
+    lines: lines.filter((l) => paidAdjustments(l).length > 0).length,
     count: items.length,
     taxed: sum((a) => a.kind === 'addition' && a.taxed),
     untaxed: sum((a) => a.kind === 'addition' && !a.taxed),

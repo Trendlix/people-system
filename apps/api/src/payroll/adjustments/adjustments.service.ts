@@ -7,6 +7,7 @@ import {
   adjustmentTaxed,
   adjustmentTypeLabel,
   isAdjustmentType,
+  isDaysType,
   recoveredKind,
   sumAmounts,
   type AdjustmentKind,
@@ -22,7 +23,7 @@ import { firstDay, monthName, monthsLater } from '../months.js';
 import { STATUS_TEXT } from '../status.js';
 import type { AdjustmentChoicesQueryDto, AdjustmentsQueryDto, CreateAdjustmentDto, MoveAdjustmentsDto, UpdateAdjustmentDto } from './adjustments.dto.js';
 import { AdvancesService } from './advances.service.js';
-import { RunAdjustmentsService } from './run-adjustments.service.js';
+import { paidAmounts, RunAdjustmentsService } from './run-adjustments.service.js';
 import { egp, employedIn, placeName, userNames } from './people.js';
 import { ADJUSTMENT, ADJUSTMENT_INCLUDE, adjustmentView, balanceOf, personOf, type AdjustmentRow, type AdjustmentView, type AdvanceView, type PersonRef } from './views.js';
 
@@ -64,7 +65,10 @@ export interface AdjustmentChoices {
 // one of its person's changes (run-adjustments.service.ts); the CEO's approval applies them. One left pending on a
 // month approved without it (entered before runs took them, or for someone not on the run) is moved to a later month.
 // HR, Finance and the CEO see them, like the payroll lines; every change is in the audit log, the amounts only as set
-// or changed.
+// or changed. The one place to enter them (owner, 17 October 2026, on the run's grid: "instead of there, i think
+// earnings and deductions will be enough"): a Bonus (days) or a Penalty (days) is entered in days, its amount worked
+// out by the month's run and shown as its line has it (an applied one with what the line paid); every other type in
+// EGP.
 @Injectable()
 export class AdjustmentsService {
   constructor(
@@ -144,10 +148,11 @@ export class AdjustmentsService {
     if (!employee) throw new NotFoundException('Employee not found.');
     if (!isAdjustmentType(dto.kind, dto.type)) throw new BadRequestException(this.typeMessage(dto.kind));
     const taxed = this.taxed(dto.kind, dto.type, dto.taxed);
+    const { amount, days } = this.amountOrDays(dto.type, dto.amount ?? null, dto.days ?? null);
     this.assertMonthInRange(dto.month);
     await this.assertEmployed(employee, dto.month);
     await this.assertUnlocked(dto.month);
-    const advanceId = await this.checkedAdvance({ employee, month: dto.month, kind: dto.kind, type: dto.type, amount: dto.amount, advanceId: dto.advanceId ?? null });
+    const advanceId = await this.checkedAdvance({ employee, month: dto.month, kind: dto.kind, type: dto.type, amount: amount ?? 0, advanceId: dto.advanceId ?? null });
 
     const row = await this.prisma.payrollAdjustment.create({
       data: {
@@ -156,7 +161,8 @@ export class AdjustmentsService {
         kind: dto.kind,
         type: dto.type,
         taxed,
-        amount: dto.amount,
+        amount,
+        days,
         reason: dto.reason,
         advanceId,
         createdById: user.id,
@@ -167,14 +173,26 @@ export class AdjustmentsService {
       action: 'create',
       entityType: ADJUSTMENT,
       entityId: row.id,
-      // the amount only as set (restricted, as a salary)
-      diff: { employeeCode: employee.employeeCode, month: dto.month, kind: dto.kind, type: dto.type, taxed, amount: 'set', reason: dto.reason, ...(advanceId && { advanceId }) },
+      // the amount only as set (restricted, as a salary); the days as they are, like the run's days
+      diff: {
+        employeeCode: employee.employeeCode,
+        month: dto.month,
+        kind: dto.kind,
+        type: dto.type,
+        taxed,
+        ...(days === null ? { amount: 'set' } : { days }),
+        reason: dto.reason,
+        ...(advanceId && { advanceId }),
+      },
     });
     await this.runs.syncDrafts([dto.month], [employee.id], user);
     return this.get(row.id);
   }
 
-  /** Changes a pending one: its month (to another not locked), type (of the same kind), taxed (Other), amount, reason, advance. */
+  /**
+   * Changes a pending one: its month (to another not locked), type (of the same kind), taxed (Other), amount or days (by
+   * its type: a type in days takes days, the others an amount), reason, advance.
+   */
   async update(id: string, dto: UpdateAdjustmentDto, user: SessionUser): Promise<AdjustmentView> {
     const row = await this.row(id);
     const kind = row.kind as AdjustmentKind;
@@ -184,8 +202,14 @@ export class AdjustmentsService {
 
     const month = dto.month ?? was;
     const type = dto.type ?? row.type;
-    const amount = dto.amount ?? row.amount.toNumber();
     if (!isAdjustmentType(kind, type)) throw new BadRequestException(this.typeMessage(kind));
+    // what the type takes: the one sent, else the one it has (an amount for an amount, days for days)
+    const { amount, days } = this.amountOrDays(
+      type,
+      dto.amount ?? (isDaysType(type) ? null : (row.amount?.toNumber() ?? null)),
+      dto.days ?? (isDaysType(type) ? (row.days?.toNumber() ?? null) : null),
+      { amount: dto.amount !== undefined, days: dto.days !== undefined },
+    );
     // Other keeps what HR chose unless it is sent again; the other types are taxed as their type says
     const taxed = this.taxed(kind, type, dto.taxed !== undefined && dto.taxed !== null ? dto.taxed : type === row.type ? row.taxed : null);
     if (month !== was) {
@@ -195,17 +219,25 @@ export class AdjustmentsService {
     }
     // the advance stays unless another is sent, or the type no longer recovers one
     const wanted = dto.advanceId !== undefined ? dto.advanceId : recoveredKind(kind, type) ? row.advanceId : null;
-    const advanceId = await this.checkedAdvance({ employee: row.employee, month, kind, type, amount, advanceId: wanted, excluding: row.id });
+    const advanceId = await this.checkedAdvance({ employee: row.employee, month, kind, type, amount: amount ?? 0, advanceId: wanted, excluding: row.id });
 
-    const before = { month: was, type: row.type, taxed: row.taxed, amount: row.amount.toNumber(), reason: row.reason, advanceId: row.advanceId };
-    const after = { month, type, taxed, amount, reason: dto.reason ?? row.reason, advanceId };
+    const before = {
+      month: was,
+      type: row.type,
+      taxed: row.taxed,
+      amount: row.amount?.toNumber() ?? null,
+      days: row.days?.toNumber() ?? null,
+      reason: row.reason,
+      advanceId: row.advanceId,
+    };
+    const after = { month, type, taxed, amount, days, reason: dto.reason ?? row.reason, advanceId };
     const diff: Record<string, unknown> = changes(before, after);
     if (!Object.keys(diff).length) return this.get(id);
     if ('amount' in diff) diff.amount = 'changed';
 
     await this.prisma.payrollAdjustment.update({
       where: { id },
-      data: { month: toDateOnly(firstDay(month)), type, taxed, amount, reason: after.reason, advanceId },
+      data: { month: toDateOnly(firstDay(month)), type, taxed, amount, days, reason: after.reason, advanceId },
     });
     await this.audit.record({ userId: user.id, action: 'update', entityType: ADJUSTMENT, entityId: id, diff: { employeeCode: row.employee.employeeCode, kind, ...diff } });
     await this.runs.syncDrafts([was, month], [row.employeeId], user);
@@ -256,7 +288,15 @@ export class AdjustmentsService {
       }
       if (to === from) throw new BadRequestException(`It is for ${monthName(from)} already: choose another month.`);
       await this.assertEmployed(row.employee, to);
-      await this.checkedAdvance({ employee: row.employee, month: to, kind: row.kind as AdjustmentKind, type: row.type, amount: row.amount.toNumber(), advanceId: row.advanceId, excluding: row.id });
+      await this.checkedAdvance({
+        employee: row.employee,
+        month: to,
+        kind: row.kind as AdjustmentKind,
+        type: row.type,
+        amount: row.amount?.toNumber() ?? 0,
+        advanceId: row.advanceId,
+        excluding: row.id,
+      });
     }
     await this.prisma.payrollAdjustment.updateMany({ where: { id: { in: ids } }, data: { month: toDateOnly(firstDay(to)) } });
     for (const row of rows) {
@@ -282,8 +322,24 @@ export class AdjustmentsService {
   }
 
   private async views(rows: readonly AdjustmentRow[]): Promise<AdjustmentView[]> {
-    const names = await userNames(this.prisma, rows.flatMap((r) => [r.createdBy, r.cancelledBy]));
-    return rows.map((r) => adjustmentView(r, names));
+    const [names, worked] = await Promise.all([userNames(this.prisma, rows.flatMap((r) => [r.createdBy, r.cancelledBy])), this.workedOut(rows)]);
+    return rows.map((r) => adjustmentView(r, names, worked));
+  }
+
+  /**
+   * What the months' runs worked the pending ones in days out to (owner, 17 October 2026: "N days ≈ EGP x" once
+   * known), by id: as the lines of their people on those months' runs have them. None without a run, or off it.
+   */
+  private async workedOut(rows: readonly AdjustmentRow[]): Promise<Map<string, number>> {
+    const inDays = rows.filter((r) => isDaysType(r.type) && r.status === 'pending' && r.amount === null);
+    if (!inDays.length) return new Map();
+    const lines = await this.prisma.payrollLine.findMany({
+      where: { employeeId: { in: [...new Set(inDays.map((r) => r.employeeId))] }, run: { month: { in: [...new Set(inDays.map((r) => fromDateOnly(r.month)))].map(toDateOnly) } } },
+      select: { result: true },
+    });
+    const worked = new Map<string, number>();
+    for (const l of lines) for (const [id, amount] of paidAmounts(l.result)) worked.set(id, amount);
+    return worked;
   }
 
   private monthOf = (row: { month: Date }) => fromDateOnly(row.month).slice(0, 7);
@@ -302,6 +358,27 @@ export class AdjustmentsService {
       throw new BadRequestException(kind === 'deduction' ? 'A deduction is taken after tax, so it is never taxed.' : `${what[0].toUpperCase()}${what.slice(1)} is ${taxed ? 'always' : 'never'} taxed.`);
     }
     return taxed;
+  }
+
+  /**
+   * What a type takes (owner, 17 October 2026): one in days its days and no amount, which the run works out; every other
+   * an amount and no days. `sent`: which of them were sent, changing one (an amount sent for a type in days is refused,
+   * not dropped).
+   */
+  private amountOrDays(
+    type: string,
+    amount: number | null,
+    days: number | null,
+    sent: { amount: boolean; days: boolean } = { amount: amount !== null, days: days !== null },
+  ): { amount: number | null; days: number | null } {
+    if (isDaysType(type)) {
+      if (sent.amount) throw new BadRequestException('A bonus or penalty in days is worked out by the payroll run: send the days, not an amount.');
+      if (days === null) throw new BadRequestException('Enter the days, more than 0 and up to 31, in whole or half days, e.g. 2 or 1.5.');
+      return { amount: null, days };
+    }
+    if (sent.days) throw new BadRequestException('Only a Bonus (days) or a Penalty (days) is entered in days: enter the amount in EGP.');
+    if (amount === null) throw new BadRequestException('Enter the amount in EGP, more than 0, e.g. 1500 or 1500.50.');
+    return { amount, days: null };
   }
 
   private assertMonthInRange(month: string) {

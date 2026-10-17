@@ -351,11 +351,10 @@ describe('Payroll (e2e)', () => {
         clientSatisfaction: null,
         noShowDays: null,
         leaveDays: null,
-        penaltyDays: null,
-        bonusDays: null,
-        commission: null,
-        settlements: null,
         released: null,
+        // the CEO's waiver (17 October 2026); no bonus or penalty days, commission or settlements: they are on
+        // Additions / Deductions since then
+        attendanceWaived: false,
       });
       expect(r.result).toEqual(payrollLine(r.terms, r.inputs, run.rules));
       expect(r.result).toMatchObject({ earned: 12000, allowances: 1000, employeeInsurance: 1430, employerInsurance: 2437.5 });
@@ -421,11 +420,11 @@ describe('Payroll (e2e)', () => {
     it('HR types the month’s inputs: each changed line is worked out again, and the audit log has what changed', async () => {
       const r = lineOf(run, regular)!;
       const res = await patchLines(run.id, [
-        { id: r.id, inputs: { workedHours: 180, expectedHours: 200, softSkills: 70, commission: 500, released: 1000 }, comments: '  Invented note ' },
+        { id: r.id, inputs: { workedHours: 180, expectedHours: 200, softSkills: 70, released: 1000 }, comments: '  Invented note ' },
       ]).expect(200);
       run = res.body as Run;
       const after = lineOf(run, regular)!;
-      expect(after.inputs).toMatchObject({ workedHours: 180, expectedHours: 200, softSkills: 70, commission: 500, released: 1000, performance: null });
+      expect(after.inputs).toMatchObject({ workedHours: 180, expectedHours: 200, softSkills: 70, released: 1000, performance: null });
       expect(after.comments).toBe('Invented note');
       expect(after.result).toEqual(payrollLine(after.terms, after.inputs, run.rules));
       expect(after.result.attendanceRatio).toBe(0.9);
@@ -442,8 +441,7 @@ describe('Payroll (e2e)', () => {
             workedHours: { from: null, to: 180 },
             expectedHours: { from: null, to: 200 },
             softSkills: { from: null, to: 70 },
-            commission: 'changed', // money: only that it changed
-            released: 'changed',
+            released: 'changed', // money: only that it changed
             comments: { from: null, to: 'Invented note' },
           },
         ],
@@ -451,7 +449,7 @@ describe('Payroll (e2e)', () => {
 
       // null clears an input; the others stay; a line sent unchanged leaves no audit entry
       run = (await patchLines(run.id, [{ id: r.id, inputs: { softSkills: null } }, { id: lineOf(run, joiner)!.id, inputs: {} }]).expect(200)).body as Run;
-      expect(lineOf(run, regular)!.inputs).toMatchObject({ softSkills: null, workedHours: 180, commission: 500 });
+      expect(lineOf(run, regular)!.inputs).toMatchObject({ softSkills: null, workedHours: 180, released: 1000 });
       expect(await auditOf('payroll_line', lineOf(run, joiner)!.id)).toEqual([]);
 
       // by the hour: the hours worked are the pay; on hold, the bank files leave it out
@@ -468,37 +466,39 @@ describe('Payroll (e2e)', () => {
       expect(await refused({ softSkills: 201 })).toEqual(['Enter the percent from 0 to 200, e.g. 95.']);
       expect(await refused({ noShowDays: 1.25 })).toEqual(['Enter the days from 0 to 31, in whole or half days, e.g. 2 or 1.5.']);
       expect(await refused({ leaveDays: 0.3 })).toEqual(['Enter the days from 0 to 31, in whole or half days, e.g. 2 or 1.5.']);
-      expect(await refused({ bonusDays: 32 })).toEqual(['Enter the days from 0 to 31, in whole or half days, e.g. 2 or 1.5.']);
-      expect(await refused({ settlements: -10_000_001 })).toEqual(['Enter the amount, to the piaster, within 10,000,000 either way.']);
-      expect(await refused({ commission: 10.555 })).toEqual(['Enter the amount, to the piaster, within 10,000,000 either way.']);
       expect(await refused({ released: -1 })).toEqual(['Enter what was already paid out this month: 0 or more, up to 10,000,000.']);
+      // the bonus and penalty days, the commission and the settlements are on Additions / Deductions (owner, 17 October
+      // 2026: "instead of there, i think earnings and deductions will be enough"): refused as any unknown field is
+      for (const field of ['bonusDays', 'penaltyDays', 'commission', 'settlements']) {
+        expect(await refused({ [field]: 1 })).toEqual([`property ${field} should not exist`]);
+      }
+      // nor is the CEO's waiver typed with HR's inputs
+      expect(await refused({ attendanceWaived: true })).toEqual(['property attendanceWaived should not exist']);
       await patchLines(run.id, [{ id, inputs: { overtime: 5 } }]).expect(400);
       // no medical subscription any more (owner's decision, 16 October 2026): refused as any unknown field is
       expect(await refused({ medical: 100 })).toEqual(['property medical should not exist']);
       await patchLines(run.id, [{ id, onHold: 'yes' }]).expect(400);
       await patchLines(run.id, []).expect(400);
-      expect((await patchLines(run.id, [{ id, inputs: { settlements: -250.5, noShowDays: 0.5 } }, { id }]).expect(400)).body.message).toBe('Send each line once.');
+      expect((await patchLines(run.id, [{ id, inputs: { noShowDays: 0.5 } }, { id }]).expect(400)).body.message).toBe('Send each line once.');
       expect((await patchLines(run.id, [{ id: '00000000-0000-4000-8000-000000000000', inputs: {} }]).expect(400)).body.message).toBe(
         'Some of these lines are not on this payroll. Reload it and try again.',
       );
-      // negative settlements are corrections
-      run = (await patchLines(run.id, [{ id, inputs: { settlements: -250.5, noShowDays: 0.5 } }]).expect(200)).body as Run;
+      run = (await patchLines(run.id, [{ id, inputs: { noShowDays: 0.5 } }]).expect(200)).body as Run;
       const corrected = lineOf(run, regular)!;
-      expect(corrected.result.settlements).toBe(-250.5);
       // half a day off: the 200 HR typed are taken as already without it (owner, 17 October 2026: "dont count abcent
       // days or leave days, as they already have their own deduction and fields"), so 180 of 200 is 90%
       expect(corrected.result).toMatchObject({ absentHours: 0, expectedHours: 200, attendanceRatio: 0.9, noShowCut: 400 });
       expect(corrected.result).toEqual(payrollLine(corrected.terms, corrected.inputs, run.rules));
       // paid leave: no cut, in the audit log as the other inputs
       run = (await patchLines(run.id, [{ id, inputs: { leaveDays: 1.5 } }]).expect(200)).body as Run;
-      expect(lineOf(run, regular)!.result).toMatchObject({ leaveHours: 0, expectedHours: 200, attendanceRatio: 0.9, noShowCut: 400, settlements: -250.5 });
+      expect(lineOf(run, regular)!.result).toMatchObject({ leaveHours: 0, expectedHours: 200, attendanceRatio: 0.9, noShowCut: 400 });
       expect((await auditOf('payroll_line', id)).at(-1)!.diff).toMatchObject({ leaveDays: { from: null, to: 1.5 } });
       // no more than the days paid: the joiner's
       const j = lineOf(run, joiner)!;
       expect((await patchLines(run.id, [{ id: j.id, inputs: { leaveDays: JOINER_DAYS + 1 } }]).expect(400)).body.message).toBe(
         `Joiner ${RUN}: the leave days (${JOINER_DAYS + 1}) can't be more than the ${JOINER_DAYS} days paid this month.`,
       );
-      for (const session of [finance, ceo, admin]) await patchLines(run.id, [{ id, inputs: { commission: 100 } }], session).expect(403);
+      for (const session of [finance, ceo, admin]) await patchLines(run.id, [{ id, inputs: { workedHours: 100 } }], session).expect(403);
     });
 
     it('refresh takes the people, contracts and insured wages again; the inputs stay', async () => {
@@ -584,7 +584,7 @@ describe('Payroll (e2e)', () => {
       expect(run.status).toBe('pending_ceo');
       expect(run.submittedAt).not.toBeNull();
       // locked while with the CEO
-      expect((await patchLines(run.id, [{ id: lineOf(run, regular)!.id, inputs: { commission: 50 } }]).expect(409)).body.message).toBe(
+      expect((await patchLines(run.id, [{ id: lineOf(run, regular)!.id, inputs: { workedHours: 50 } }]).expect(409)).body.message).toBe(
         `The ${monthName(MONTH)} payroll is with the CEO, so it can't be changed.`,
       );
       await act(run.id, 'refresh', hr).expect(409);
@@ -608,7 +608,7 @@ describe('Payroll (e2e)', () => {
       await bank(joiner, { bankName: 'QNB', accountNo: QNB_ACCOUNT });
       expect(lineOf((await getRun(run.id).expect(200)).body as Run, joiner)!.bank).toEqual({ file: 'ach', bankShort: 'NBE', problem: null });
 
-      expect((await patchLines(run.id, [{ id: lineOf(run, regular)!.id, inputs: { commission: 50 } }]).expect(409)).body.message).toBe(
+      expect((await patchLines(run.id, [{ id: lineOf(run, regular)!.id, inputs: { workedHours: 50 } }]).expect(409)).body.message).toBe(
         `The ${monthName(MONTH)} payroll is approved, so it can't be changed.`,
       );
       await act(run.id, 'return', ceo, { reason: 'Too late' }).expect(409);

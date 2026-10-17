@@ -253,6 +253,7 @@ describe('payroll register', () => {
       commission: null,
       settlements: null,
       released: null,
+      attendanceWaived: false,
     },
     result: result(net),
     bankFile: 'cib',
@@ -290,7 +291,8 @@ describe('payroll register', () => {
     const letter = ws.getRow(8).getCell(net).address.replace(/\d+/g, '');
     expect(ws.getRow(8).getCell(net).value).toEqual({ formula: `SUM(${letter}5:${letter}7)`, result: 24763.16 });
     expect(ws.getRow(8).getCell(2).value).toBe('Total');
-    expect(ws.getRow(8).getCell(REGISTER_COLUMNS.length).address).toBe('AS8');
+    // two columns more since 17 October 2026: the attendance waived, and the additions and deductions in words
+    expect(ws.getRow(8).getCell(REGISTER_COLUMNS.length).address).toBe('AU8');
   });
 
   it('the expected hours attendance was measured on, and the leave days after the no-show days (17 October 2026)', async () => {

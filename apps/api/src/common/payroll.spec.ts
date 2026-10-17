@@ -15,10 +15,12 @@ import {
   shiftHours,
   shiftWorkHours,
   splitSegments,
+  type PayrollAdjustmentItem,
   type PayrollAllowance,
   type PayrollInputs,
   type PayrollSegment,
   type PayrollTerms,
+  type SavedPayrollInputs,
 } from '@trendlix/shared';
 
 // The shared payroll calculation (packages/shared/src/payroll.ts): a month's line worked out the way the owner's payroll
@@ -49,6 +51,19 @@ const onShift: PayrollTerms = { ...salaried, expectedHours: 198, expectedDays: {
 const PART_MONTH = (n: number) => `Paid for ${n} of 30 days: employed or under contract for part of the month`;
 
 const inputs = (given: Partial<PayrollInputs> = {}): PayrollInputs => ({ ...EMPTY_PAYROLL_INPUTS, ...given });
+
+/**
+ * The month's additions and deductions (owner, 17 October 2026: the grid's bonus and penalty days, commission and
+ * settlements moved to Additions / Deductions): a Bonus (days) or a Penalty (days) of so many days, a commission, a
+ * correction (an addition, or a deduction for a negative one).
+ */
+let itemNo = 0;
+const item = (over: Partial<PayrollAdjustmentItem>): PayrollAdjustmentItem => ({ id: `item-${++itemNo}`, kind: 'addition', type: 'bonus', taxed: true, amount: null, reason: 'Invented', ...over });
+const bonusDays = (days: number) => item({ type: 'bonus_days', days });
+const penaltyDays = (days: number) => item({ kind: 'deduction', type: 'penalty_days', taxed: false, days });
+const commission = (amount: number) => item({ type: 'commission', amount });
+const correction = (amount: number) => (amount > 0 ? item({ type: 'correction', amount }) : item({ kind: 'deduction', type: 'correction', taxed: false, amount: -amount }));
+const withItems = (terms: PayrollTerms, ...items: PayrollAdjustmentItem[]): PayrollTerms => ({ ...terms, adjustments: items });
 
 describe('payroll: a whole month with nothing typed', () => {
   it('pays the contract: its net is what the salary calculator gives for the same gross', () => {
@@ -244,21 +259,59 @@ describe('payroll: KPIs', () => {
   });
 });
 
-describe('payroll: days, bonus, commission and settlements', () => {
-  it('cuts two days of the gross for a no-show day, and a day of the contract\'s net for a penalty day after the tax', () => {
+describe('payroll: days, bonus, commission and corrections', () => {
+  it('cuts two days of the gross for a no-show day, and a day of the contract\'s net for a Penalty (days) after the tax', () => {
     // no-show: 1 × 2 × 12,000 ÷ 30 = 800, taken from the pay before the tax; penalty: 9,725.50 ÷ 30 = 324.18, after it
-    const line = payrollLine(salaried, inputs({ noShowDays: 1, penaltyDays: 1 }));
+    const line = payrollLine(withItems(salaried, penaltyDays(1)), inputs({ noShowDays: 1 }));
     expect(line).toMatchObject({ noShowCut: 800, earned: 11_200, monthlyTaxable: 9_880, monthlyTax: 788.5, martyrsFund: 5.6, penaltyCut: 324.18, deductions: 2_438.28, net: 8_761.72 });
+    // in the penalty cut, not in the other deductions
+    expect(line).toMatchObject({ adjustmentDeductions: 0, adjustments: [expect.objectContaining({ type: 'penalty_days', days: 1, amount: 324.18 })] });
     // half days are allowed
-    expect(payrollLine(salaried, inputs({ noShowDays: 0.5, penaltyDays: 2.5 }))).toMatchObject({ noShowCut: 400, penaltyCut: 810.46 });
+    expect(payrollLine(withItems(salaried, penaltyDays(2.5)), inputs({ noShowDays: 0.5 }))).toMatchObject({ noShowCut: 400, penaltyCut: 810.46 });
   });
 
-  it('adds bonus days of the fixed part, the commission and the settlements to the taxed pay', () => {
+  it('sums a line\'s days, so they cost what the same days typed on the grid did, shared out by their days', () => {
+    // 1 + 1.5 = 2.5 days: 2.5 × 9,725.50 ÷ 30 = 810.46; 1 day's share 810.46 × 1 ÷ 2.5 = 324.18, the rest 486.28
+    const line = payrollLine(withItems(salaried, penaltyDays(1), penaltyDays(1.5)), inputs());
+    expect(line.penaltyCut).toBe(810.46);
+    expect(line.adjustments!.map((a) => [a.days, a.amount])).toEqual([
+      [1, 324.18],
+      [1.5, 486.28],
+    ]);
+    // a bonus day is a day of the fixed part, 9,600 ÷ 30 = 320: 1.5 + 0.5 days = 640, 480 and 160
+    const bonus = payrollLine(withItems(salaried, bonusDays(1.5), bonusDays(0.5)), inputs());
+    expect(bonus).toMatchObject({ bonus: 640, additionsTaxed: 0, earned: 12_640 });
+    expect(bonus.adjustments!.map((a) => a.amount)).toEqual([480, 160]);
+  });
+
+  it('adds a Bonus (days) of the fixed part and a commission to the taxed pay, and takes a negative correction after tax', () => {
+    // 2 × 9,600 ÷ 30 = 640; earned 12,000 + 640 + 1,500 = 14,140, all of it taxed; taxable 14,140 − 1,320 = 12,820, a
+    // year 153,840 − 20,000 = 133,840: 3,750 + 20% of 63,840 = 16,518, 1,376.50 a month; the Fund 14,140 × 0.05% = 7.07;
+    // the correction of 250 after it: 1,320 + 1,376.50 + 7.07 + 250 = 2,953.57, net 11,186.43
+    const line = payrollLine(withItems(salaried, bonusDays(2), commission(1_500), correction(-250)), inputs());
+    expect(line).toMatchObject({ bonus: 640, additionsTaxed: 1_500, adjustmentDeductions: 250, earned: 14_140, monthlyTaxable: 12_820, monthlyTax: 1_376.5, martyrsFund: 7.07 });
+    expect(line).toMatchObject({ deductions: 2_953.57, net: 11_186.43 });
+    // the grid's commission and settlements are no more (17 October 2026)
+    expect(line).not.toHaveProperty('commission');
+    expect(line).not.toHaveProperty('settlements');
+    // a correction added is taxed pay, as a settlement was: 12,000 + 160 + 300.25
+    expect(payrollLine(withItems(salaried, bonusDays(0.5), correction(300.25)), inputs())).toMatchObject({ bonus: 160, additionsTaxed: 300.25, earned: 12_460.25 });
+  });
+
+  it('works a line saved with the grid\'s figures (before 17 October 2026) out as it was', () => {
     // 2 × 9,600 ÷ 30 = 640; earned 12,000 + 640 + 1,500 − 250 = 13,890, all of it taxed
-    const line = payrollLine(salaried, inputs({ bonusDays: 2, commission: 1_500, settlements: -250 }));
+    const saved: SavedPayrollInputs = { ...inputs(), bonusDays: 2, penaltyDays: null, commission: 1_500, settlements: -250 };
+    const line = payrollLine(salaried, saved);
     expect(line).toMatchObject({ bonus: 640, commission: 1_500, settlements: -250, earned: 13_890, monthlyTaxable: 12_570, martyrsFund: 6.95 });
     expect(line.net).toBe(Math.round((13_890 - line.deductions) * 100) / 100);
-    expect(payrollLine(salaried, inputs({ bonusDays: 0.5, settlements: 300.25 }))).toMatchObject({ bonus: 160, settlements: 300.25, earned: 12_460.25 });
+    expect(payrollLine(salaried, { ...inputs(), noShowDays: 1, penaltyDays: 1 } as SavedPayrollInputs)).toMatchObject({ penaltyCut: 324.18, net: 8_761.72 });
+    // with the grid's empty: as without, the two old fields at 0
+    const empty: SavedPayrollInputs = { ...inputs(), bonusDays: null, penaltyDays: null, commission: null, settlements: null };
+    expect(payrollLine(salaried, empty)).toEqual({
+      ...payrollLine(salaried, inputs()),
+      commission: 0,
+      settlements: 0,
+    });
   });
 
   it('ignores a medical subscription in inputs saved before it was taken off the payroll (16 October 2026)', () => {
@@ -540,7 +593,7 @@ describe('payroll: insurance and tax', () => {
 
   it('deducts nothing statutory for a freelancer: no insurance, no tax, no Martyrs\' Fund', () => {
     // a freelancer's penalty day is a day of the gross, which is their net (12,000 ÷ 30)
-    const line = payrollLine({ ...salaried, statutory: false }, inputs({ penaltyDays: 1 }));
+    const line = payrollLine(withItems({ ...salaried, statutory: false }, penaltyDays(1)), inputs());
     expect(line).toMatchObject({
       earned: 12_000,
       insuredWage: 0,
@@ -563,10 +616,10 @@ describe('payroll: by the hour', () => {
   // rate 150 for 24 hours a week: a monthly estimate of 15,600 (its fixed part 12,480 gives a bonus day of 416)
   const hourly: PayrollTerms = { ...salaried, payBasis: 'hourly', gross: 15_600, hourlyRate: 150, insuredWage: 15_600 };
 
-  it('pays the hours worked at the rate, with the bonus, the commission and the settlements', () => {
+  it('pays the hours worked at the rate, with a Bonus (days) and a commission', () => {
     // 96:30 × 150 = 14,475; + 416 + 500 = 15,391
-    const line = payrollLine(hourly, inputs({ workedHours: parseHours('96:30'), bonusDays: 1, commission: 500 }));
-    expect(line).toMatchObject({ fixed: 14_475, variable: 0, attendanceRatio: null, attendanceCut: 0, kpiCut: 0, overtime: 0, bonus: 416, earned: 15_391, employeeInsurance: 1_716 });
+    const line = payrollLine(withItems(hourly, bonusDays(1), commission(500)), inputs({ workedHours: parseHours('96:30') }));
+    expect(line).toMatchObject({ fixed: 14_475, variable: 0, attendanceRatio: null, attendanceCut: 0, kpiCut: 0, overtime: 0, bonus: 416, additionsTaxed: 500, earned: 15_391, employeeInsurance: 1_716 });
     expect(line.warnings).toEqual([]);
   });
 
@@ -582,7 +635,7 @@ describe('payroll: by the hour', () => {
   });
 
   it('pays nothing for hours without them or without a rate, and says so', () => {
-    const none = payrollLine(hourly, inputs({ settlements: 3_000 }));
+    const none = payrollLine(withItems(hourly, correction(3_000)), inputs());
     expect(none).toMatchObject({ fixed: 0, earned: 3_000 });
     expect(none.warnings).toEqual(['Paid by the hour, but no worked hours are given: nothing is paid for hours']);
     const noRate = payrollLine({ ...hourly, hourlyRate: null }, inputs({ workedHours: 80 }));
@@ -604,9 +657,16 @@ describe('payroll: what the bank pays', () => {
     expect(over.warnings).toEqual(['More was released than the net: the transfer is below 0']);
   });
 
-  it('warns of a net below zero; nothing is paid to the Martyrs\' Fund on pay below zero', () => {
-    // a correction bigger than the month: earned 12,000 − 15,000 = −3,000, no tax, the insurance still due
-    const line = payrollLine(salaried, inputs({ settlements: -15_000 }));
+  it('warns of a net below zero', () => {
+    // a correction bigger than the month, taken after tax: 2,274.50 + 15,000 = 17,274.50 off 12,000
+    const line = payrollLine(withItems(salaried, correction(-15_000)), inputs());
+    expect(line).toMatchObject({ earned: 12_000, monthlyTax: 948.5, deductions: 17_274.5, net: -5_274.5, transfer: -5_274.5 });
+    expect(line.warnings).toEqual(['The net is below 0: the cuts and deductions are more than the pay']);
+  });
+
+  it('pays nothing to the Martyrs\' Fund on pay below zero (settlements typed before 17 October 2026)', () => {
+    // a settlement bigger than the month was in the gross: earned 12,000 − 15,000 = −3,000, no tax, the insurance still due
+    const line = payrollLine(salaried, { ...inputs(), settlements: -15_000 } as SavedPayrollInputs);
     expect(line).toMatchObject({ earned: -3_000, monthlyTaxable: -4_320, annualNetIncome: 0, monthlyTax: 0, martyrsFund: 0, deductions: 1_320, net: -4_320, transfer: -4_320 });
     expect(line.warnings).toEqual(['The net is below 0: the cuts and deductions are more than the pay']);
   });
@@ -750,7 +810,7 @@ describe('payroll: a month under two contracts (owner, 17 October 2026)', () => 
     // 15,000 ÷ 30 = 1,000. A penalty day: the new contract's net ÷ 30. Its net: insurance 1,650, taxable 13,350, × 12
     // − 20,000 = 140,200, tax 3,750 + 20% of 70,200 = 17,790 a year, 1,482.50 a month, Martyrs' Fund 7.50: 15,000 −
     // 1,650 − 1,482.50 − 7.50 = 11,860; ÷ 30 = 395.33
-    const line = payrollLine(renewed, inputs({ workedHours: 160, expectedHours: 200, bonusDays: 1, noShowDays: 1, penaltyDays: 1 }));
+    const line = payrollLine(withItems(renewed, bonusDays(1), penaltyDays(1)), inputs({ workedHours: 160, expectedHours: 200, noShowDays: 1 }));
     expect(line).toMatchObject({ attendanceRatio: 0.8, attendanceCut: 2_176, bonus: 400, noShowCut: 1_000, penaltyCut: 395.33 });
     // 10,880 − 2,176 + 2,720 − 1,000 + 400
     expect(line.earned).toBe(10_824);
@@ -848,5 +908,34 @@ describe('payroll: hours as typed', () => {
     expect(formatHours(0.004)).toBe('0:00'); // a quarter of a minute
     expect(formatHours(-1.5)).toBe('-1:30');
     expect(formatHours(Number.NaN)).toBe('');
+  });
+});
+
+describe('payroll: the attendance deduction waived by the CEO (owner, 17 October 2026)', () => {
+  // "if there is an attendance deduction, allow the CEO to wave the deduction by ticking a box"
+  it('takes no attendance cut, and keeps what it was', () => {
+    // 160 of 200 hours: 80%, below 90%: 20% of the fixed 9,600 = 1,920
+    const cut = payrollLine(salaried, inputs({ workedHours: 160, expectedHours: 200 }));
+    expect(cut).toMatchObject({ attendanceRatio: 0.8, attendanceCut: 1_920, attendanceWaived: 0, earned: 10_080 });
+    const waived = payrollLine(salaried, inputs({ workedHours: 160, expectedHours: 200, attendanceWaived: true }));
+    expect(waived).toMatchObject({ attendanceRatio: 0.8, attendanceScore: 0.8, attendanceCut: 0, attendanceWaived: 1_920, earned: 12_000 });
+    // the rest as without the attendance cut
+    expect(waived.net).toBe(payrollLine(salaried, inputs()).net);
+  });
+
+  it('leaves the KPI cut and the no-show cut as they are worked out', () => {
+    // the attendance still counts in the KPI average: (80% + 70%) ÷ 2 = 75%, below 80%: 25% of the variable 2,400 = 600
+    const kpi = payrollLine(salaried, inputs({ workedHours: 160, expectedHours: 200, softSkills: 70, attendanceWaived: true }));
+    expect(kpi).toMatchObject({ attendanceCut: 0, attendanceWaived: 1_920, kpiScore: 0.75, kpiCut: 600, earned: 11_400 });
+    // 100 of 200 hours: 50%, a cut of 4,800; 10 no-show days would cost 8,000, capped at the 7,200 left after the cut:
+    // still 7,200 once the cut is waived, so 9,600 + 2,400 − 7,200 = 4,800 is earned
+    const capped = payrollLine(salaried, inputs({ workedHours: 100, expectedHours: 200, noShowDays: 10, attendanceWaived: true }));
+    expect(capped).toMatchObject({ attendanceCut: 0, attendanceWaived: 4_800, noShowCut: 7_200, earned: 4_800 });
+  });
+
+  it('waives nothing without a cut, nor for pay by the hour', () => {
+    expect(payrollLine(salaried, inputs({ workedHours: 190, expectedHours: 200, attendanceWaived: true }))).toMatchObject({ attendanceCut: 0, attendanceWaived: 0 });
+    const hourly: PayrollTerms = { ...salaried, payBasis: 'hourly', gross: 15_600, hourlyRate: 150, insuredWage: 15_600 };
+    expect(payrollLine(hourly, inputs({ workedHours: 80, attendanceWaived: true }))).toMatchObject({ attendanceCut: 0, attendanceWaived: 0, earned: 12_000 });
   });
 });

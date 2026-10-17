@@ -150,6 +150,7 @@ describe('Rates set by law (e2e)', () => {
   afterAll(async () => {
     // runs keep their people on record: remove them, then the people hired here and their department
     await prisma.payrollRun.deleteMany();
+    await prisma.payrollAdjustment.deleteMany({ where: { employeeId: { in: hiredIds } } });
     await prisma.employee.deleteMany({ where: { id: { in: hiredIds } } });
     await prisma.department.deleteMany({ where: { id: departmentId } });
     await restore();
@@ -287,10 +288,15 @@ describe('Rates set by law (e2e)', () => {
       expect(run.lawRates.employeeInsuranceRate).toBe(0.11);
       expect(lineOf(run).result.employeeInsurance).toBe(1_320);
 
-      const patched = (await api().patch(`/api/payroll/runs/${runId}/lines`).set('Cookie', hr).send({ lines: [{ id: lineOf(run).id, inputs: { commission: 1_000 } }] }).expect(200))
-        .body as Run;
+      // a commission on Additions / Deductions (owner, 17 October 2026): the draft's line worked out again with it
+      await api()
+        .post('/api/payroll/adjustments')
+        .set('Cookie', hr)
+        .send({ employeeId: person.id, month: MONTH, kind: 'addition', type: 'commission', amount: 1_000, reason: 'Invented commission' })
+        .expect(201);
+      const patched = await getRun(runId);
       const line = lineOf(patched);
-      expect(line.result).toMatchObject({ commission: 1_000, employeeInsurance: 1_320 });
+      expect(line.result).toMatchObject({ additionsTaxed: 1_000, employeeInsurance: 1_320 });
       expect(line.result).toEqual(payrollLine(line.terms, line.inputs, patched.rules, normalLawRates(lawRatesFor(YEAR))));
     });
 
@@ -299,7 +305,7 @@ describe('Rates set by law (e2e)', () => {
       // the year's own row now
       expect(run.lawRates).toMatchObject({ year: YEAR, employeeInsuranceRate: 0.12, taxTiers: FLAT });
       const line = lineOf(run);
-      expect(line.inputs.commission).toBe(1_000);
+      expect(line.terms.adjustments?.map((a) => [a.type, a.amount])).toEqual([['commission', 1_000]]);
       expect(line.result).toMatchObject({ employeeInsurance: 1_440, employerInsurance: 2_250 });
       expect(line.result).toEqual(expected(run, line));
       // 13,000 less 1,440, × 12, less 20,000, rounded down to ten pounds: 118,720 a year, 20% above 50,000
@@ -327,7 +333,7 @@ describe('Rates set by law (e2e)', () => {
       const old = await getRun(made.id);
       const builtIn = lawRatesFor(Number(OLD_MONTH.slice(0, 4)));
       expect(old.lawRates).toEqual(normalLawRates(builtIn));
-      const patched = (await api().patch(`/api/payroll/runs/${made.id}/lines`).set('Cookie', hr).send({ lines: [{ id: lineOf(old).id, inputs: { bonusDays: 1 } }] }).expect(200))
+      const patched = (await api().patch(`/api/payroll/runs/${made.id}/lines`).set('Cookie', hr).send({ lines: [{ id: lineOf(old).id, inputs: { noShowDays: 1 } }] }).expect(200))
         .body as Run;
       const line = lineOf(patched);
       expect(line.result.employeeInsurance).toBe(1_320);

@@ -10,7 +10,8 @@ import { contractHref, profileHref, todayInCairo } from '../../employees/ui';
 import { loadPayrollSettings } from '../../organization/payroll/data';
 import { paidOnDefault } from '../../organization/payroll/settings';
 import { BackLink, Empty, Loading } from '../../organization/ui';
-import { approveRun, deleteRun, markRunPaid, refreshRun, returnRun, saveRunLines, submitRun } from '../actions';
+import { adjustmentsHref } from '../adjustments/adjustments';
+import { approveRun, deleteRun, markRunPaid, refreshRun, returnRun, saveRunLines, setAttendanceWaiver, submitRun } from '../actions';
 import { loadRun } from '../data';
 import { bankFilesReady, bankLeftOut, fileHref } from '../files';
 import { canSeePayroll, employeesLabel, preparesPayroll, rulesSummary, runActions, runTitle } from '../list';
@@ -18,7 +19,7 @@ import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslip
 import { PayrollStatusBadge, PayrollStepper } from '../ui';
 import { RunAdjustments } from './adjustments-section';
 import { CibFileForm } from './downloads';
-import { contractsNote } from './grid';
+import { contractsNote, lineItems } from './grid';
 import { InputsGrid, type GridRow } from './inputs-grid';
 import { ResultsTable } from './results-table';
 import { MarkPaid, ReturnRun } from './run-actions';
@@ -29,8 +30,11 @@ import { MarkPaid, ReturnRun } from './run-actions';
 // gets with every step of it, who is left out and why, and the files: the payroll register any time, the CIB and ACH
 // bank files once approved, and once it is paid the payslips: each employee's English one, and all of them as a ZIP
 // (the Arabic one is made from the employee file). The month's additions and deductions on its lines, and any for
-// people not on it (owner, 17 October 2026: Additions / Deductions). Salary data: HR, Finance and the CEO only; the API
-// checks every request again.
+// people not on it (owner, 17 October 2026: Additions / Deductions), each line's on the grid as its Earnings and
+// Deductions (owner, 17 October 2026: "instead of there, i think earnings and deductions will be enough"). While the
+// run is with the CEO, the CEO may waive a line's attendance deduction in its row of the pay (owner, 17 October 2026:
+// "if there is an attendance deduction, allow the CEO to wave the deduction by ticking a box"). Salary data: HR,
+// Finance and the CEO only; the API checks every request again.
 
 const LINK = 'font-medium text-accent hover:underline';
 
@@ -135,7 +139,7 @@ function lockedNote(run: PayrollRunView, user: SessionUser): string | null {
   return 'Approved: the figures are locked.';
 }
 
-function gridRows(lines: PayrollLineView[]): GridRow[] {
+function gridRows(lines: PayrollLineView[], month: string, today: string): GridRow[] {
   return lines.map((l) => ({
     id: l.id,
     name: l.name,
@@ -157,6 +161,9 @@ function gridRows(lines: PayrollLineView[]): GridRow[] {
     shiftExpectedHours: l.payBasis === 'hourly' ? null : (l.terms.expectedHours ?? null),
     // a month under two contracts (owner, 17 October 2026)
     contractsNote: contractsNote(l.terms),
+    // the month's additions and deductions, opening the person's month on Additions / Deductions (17 October 2026)
+    items: lineItems(l),
+    itemsHref: adjustmentsHref(month, today, l.employeeId),
   }));
 }
 
@@ -309,7 +316,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
         ) : (
           <InputsGrid
             key={run.status}
-            rows={gridRows(run.lines)}
+            rows={gridRows(run.lines, run.month, todayInCairo())}
             noShowDayMultiplier={run.rules.noShowDayMultiplier}
             editable={can.editInputs}
             save={can.editInputs ? saveRunLines.bind(null, run.id) : null}
@@ -330,7 +337,14 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
               </span>
             )}
           </div>
-          <ResultsTable lines={run.lines} totals={run.totals} rules={run.rules} lawRates={run.lawRates} payslips={paid} />
+          <ResultsTable
+            lines={run.lines}
+            totals={run.totals}
+            rules={run.rules}
+            lawRates={run.lawRates}
+            payslips={paid}
+            waive={can.waiveAttendance ? setAttendanceWaiver.bind(null, run.id) : null}
+          />
         </section>
       )}
 

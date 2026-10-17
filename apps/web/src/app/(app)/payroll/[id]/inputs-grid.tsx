@@ -9,6 +9,7 @@ import { groupByPlace, showsDepartment } from '@/lib/place-groups';
 import type { FormState } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { profileHref } from '../../employees/tab-list';
+import { cutText } from './breakdown';
 import {
   attendancePercent,
   cellText,
@@ -16,6 +17,7 @@ import {
   errorLine,
   expectedCell,
   GRID_COLUMNS,
+  ITEMS_AFTER,
   linePatches,
   noShowPay,
   parseCell,
@@ -23,11 +25,13 @@ import {
   tidyCell,
   unsavedCount,
   unsavedText,
+  untaxedNote,
   type CellError,
   type FieldKind,
   type GridEdits,
   type GridLine,
   type InputField,
+  type LineItems,
   type LinePatch,
   type RowEdits,
 } from './grid';
@@ -45,7 +49,10 @@ import {
 // Attendance % is the worked hours over those expected hours, as the pay counts it, so a day off is charged once
 // (owner's decisions, 16 October 2026). A month under two contracts says so under the employee's name (owner,
 // 17 October 2026: "take into consideration the start and end date of the contract if it is in the middle of the
-// billing period").
+// billing period"). Earnings and Deductions, read only, in place of the Penalty days, Bonus days, Commission and
+// Settlements columns (owner, 17 October 2026: "instead of there, i think earnings and deductions will be enough"): the
+// month's totals of the person's additions and deductions as the line has them, each a link to that person's month on
+// Additions / Deductions, where they are entered.
 
 export interface GridRow extends GridLine {
   employeeId: string;
@@ -68,15 +75,18 @@ export interface GridRow extends GridLine {
   shiftExpectedHours: number | null;
   /** A month under two contracts or more: each one's days (contractsNote); null on one. */
   contractsNote: string | null;
+  /** The month's additions and deductions as the line has them (17 October 2026), and where they are entered. */
+  items: LineItems;
+  itemsHref: string;
 }
 
-const WIDTH: Record<FieldKind, string> = { hours: 'w-24', days: 'w-20', amount: 'w-28', released: 'w-28' };
+const WIDTH: Record<FieldKind, string> = { hours: 'w-24', days: 'w-20', released: 'w-28' };
 const cellInput = 'input min-h-9 px-2 py-1 text-right tabular-nums';
 const invalid = 'border-danger bg-danger-soft/40';
 const stickyCell = 'sticky left-0 z-10 bg-card';
 
-/** Employee, Gross, the inputs, Attendance %, Hold and Comments: what a group's heading spans. */
-const COLUMN_COUNT = GRID_COLUMNS.length + 5;
+/** Employee, Gross, the inputs, Attendance %, Earnings, Deductions, Hold and Comments: what a group's heading spans. */
+const COLUMN_COUNT = GRID_COLUMNS.length + 7;
 
 const cellId = (lineId: string, field: string) => `payroll-cell-${lineId}-${field}`;
 const cellKey = (e: Pick<CellError, 'lineId' | 'field'>) => `${e.lineId}:${e.field}`;
@@ -91,6 +101,34 @@ function expectedTitle(own: boolean, editable: boolean): string {
   return own
     ? `Typed by HR: taken as the expected hours already without the no-show and leave days.${editable ? " Clear it to use the shift's hours." : ''}`
     : `From the shift: its working days this month less the holidays, the no-show and leave days, at its hours to work a day.${editable ? ' Type other hours to replace them.' : ''}`;
+}
+
+/**
+ * A row's Earnings and Deductions (owner, 17 October 2026), read only: the totals, each opening the person's month on
+ * Additions / Deductions; the earnings marked when some aren't taxed.
+ */
+function ItemCells({ row }: { row: GridRow }) {
+  const { items } = row;
+  const note = untaxedNote(items);
+  const link = 'block text-right whitespace-nowrap tabular-nums';
+  const none = items.count === 0 && items.earnings === 0 && items.deductions === 0;
+  return (
+    <>
+      <td className="px-2 py-2">
+        <Link href={row.itemsHref} prefetch={false} className={link}>
+          {none ? <span className="text-muted">—</span> : formatEgp(items.earnings)}
+          <span className="sr-only"> earnings for {row.name}, on Additions / Deductions</span>
+        </Link>
+        {note && <span className="mt-0.5 block text-right text-[11px] whitespace-nowrap text-muted">{note}</span>}
+      </td>
+      <td className="px-2 py-2">
+        <Link href={row.itemsHref} prefetch={false} className={link}>
+          {none ? <span className="text-muted">—</span> : cutText(items.deductions)}
+          <span className="sr-only"> deductions for {row.name}, on Additions / Deductions</span>
+        </Link>
+      </td>
+    </>
+  );
 }
 
 /** The text a cell shows: as typed, else the saved value. */
@@ -215,6 +253,8 @@ const Row = memo(function Row({
             {c.field === ATTENDANCE_AFTER && (
               <td className="text-right whitespace-nowrap tabular-nums">{attendance === null ? '—' : `${percentFormat.format(attendance)}%`}</td>
             )}
+            {/* the month's additions and deductions, after the leave days (17 October 2026) */}
+            {c.field === ITEMS_AFTER && <ItemCells row={row} />}
           </Fragment>
         );
       })}
@@ -442,6 +482,18 @@ export function InputsGrid({
                       Attendance %
                     </th>
                   )}
+                  {c.field === ITEMS_AFTER && (
+                    <>
+                      <th scope="col" className="px-2 text-right">
+                        Earnings
+                        <span className="ml-auto block max-w-32 text-xs font-normal whitespace-normal text-muted">On Additions / Deductions</span>
+                      </th>
+                      <th scope="col" className="px-2 text-right">
+                        Deductions
+                        <span className="ml-auto block max-w-32 text-xs font-normal whitespace-normal text-muted">After tax</span>
+                      </th>
+                    </>
+                  )}
                 </Fragment>
               ))}
               <th scope="col" className="text-center">
@@ -510,8 +562,11 @@ export function InputsGrid({
           them, already without the no-show and leave days; clearing them brings the shift&apos;s back. Without a shift,
           type them yourself, without those days. No-show days: {noShowPay(noShowDayMultiplier)}, and their hours
           aren&apos;t counted in attendance. Leave days: approved paid leave this month, typed until the Leave module
-          fills them: nothing is cut, and their hours aren&apos;t counted in attendance. On hold: left out of the bank
-          files this month.
+          fills them: nothing is cut, and their hours aren&apos;t counted in attendance. Earnings and deductions: the
+          month&apos;s on <Link href="/payroll/adjustments">Additions / Deductions</Link>, where a bonus or penalty in
+          days, a commission or a correction is entered with its reason; open one to add or change them, and the pay
+          below follows. Released: already paid out this month, so not in the bank transfer. On hold: left out of the
+          bank files this month.
         </p>
       )}
     </div>

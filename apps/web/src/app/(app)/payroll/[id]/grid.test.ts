@@ -1,4 +1,4 @@
-import { EMPTY_PAYROLL_INPUTS, type PayrollInputs, type PayrollSegment } from '@trendlix/shared';
+import { EMPTY_PAYROLL_INPUTS, payrollLine, type PayrollAdjustmentItem, type PayrollInputs, type PayrollSegment, type PayrollTerms, type SavedPayrollInputs } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
   attendancePercent,
@@ -9,6 +9,8 @@ import {
   errorLine,
   expectedCell,
   GRID_COLUMNS,
+  ITEMS_AFTER,
+  lineItems,
   linePatches,
   noShowPay,
   parseCell,
@@ -16,6 +18,7 @@ import {
   tidyCell,
   unsavedCount,
   unsavedText,
+  untaxedNote,
   type GridLine,
 } from './grid';
 
@@ -25,26 +28,20 @@ const B = '22222222-2222-4222-8222-222222222222';
 
 const lines: GridLine[] = [
   // a performance saved before the KPI columns came off the grid
-  { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 270.5, expectedHours: 280, performance: 90, bonusDays: 1 }, onHold: false, comments: null },
-  { id: B, name: 'Karim Nabil', inputs: { ...EMPTY_PAYROLL_INPUTS, commission: 1500 }, onHold: true, comments: 'Bank details pending' },
+  { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 270.5, expectedHours: 280, performance: 90, leaveDays: 1 }, onHold: false, comments: null },
+  { id: B, name: 'Karim Nabil', inputs: { ...EMPTY_PAYROLL_INPUTS, released: 1500 }, onHold: true, comments: 'Bank details pending' },
 ];
 
 describe('the grid’s columns', () => {
   it('follow the owner’s sheet, every input once but the KPIs, which the KPIs module will fill (owner, 16 October 2026)', () => {
-    // the leave days after the no-show days (owner, 17 October 2026)
-    expect(GRID_COLUMNS.map((c) => c.label)).toEqual([
-      'Worked hours',
-      'Expected hours',
-      'No-show days',
-      'Leave days',
-      'Penalty days',
-      'Bonus days',
-      'Commission',
-      'Settlements',
-      'Released',
-    ]);
-    const kpis = ['softSkills', 'performance', 'clientSatisfaction'];
-    expect(new Set(GRID_COLUMNS.map((c) => c.field))).toEqual(new Set(Object.keys(EMPTY_PAYROLL_INPUTS).filter((k) => !kpis.includes(k))));
+    // the leave days after the no-show days; no Penalty days, Bonus days, Commission or Settlements (owner, 17 October
+    // 2026: "instead of there, i think earnings and deductions will be enough"): Earnings and Deductions after the leave
+    // days, read only
+    expect(GRID_COLUMNS.map((c) => c.label)).toEqual(['Worked hours', 'Expected hours', 'No-show days', 'Leave days', 'Released']);
+    expect(ITEMS_AFTER).toBe('leaveDays');
+    // nor the CEO's attendance waiver, ticked on the results table (17 October 2026)
+    const notTyped = ['softSkills', 'performance', 'clientSatisfaction', 'attendanceWaived'];
+    expect(new Set(GRID_COLUMNS.map((c) => c.field))).toEqual(new Set(Object.keys(EMPTY_PAYROLL_INPUTS).filter((k) => !notTyped.includes(k))));
   });
 
   it('say what a no-show day costs under its column', () => {
@@ -55,7 +52,7 @@ describe('the grid’s columns', () => {
     expect(columnNote('noShowDays', 2)).toBe("2 days' pay each, out of the expected hours");
     expect(columnNote('noShowDays', 1)).toBe("1 day's pay each, out of the expected hours");
     expect(columnNote('leaveDays', 2)).toBe('Paid, out of the expected hours');
-    expect(columnNote('penaltyDays', 2)).toBeNull();
+    expect(columnNote('released', 2)).toBeNull();
     expect(columnNote('expectedHours', 2)).toBeNull();
   });
 });
@@ -90,20 +87,15 @@ describe('reading a cell', () => {
     expect(value('days', '32')).toBe('error');
   });
 
-  it('reads amounts in EGP, negative ones too, within ten million', () => {
-    expect(value('amount', '1,500')).toBe(1500);
-    expect(value('amount', '1 500.5')).toBe(1500.5);
-    expect(value('amount', '-250.50')).toBe(-250.5);
-    expect(value('amount', '−250')).toBe(-250);
-    expect(value('amount', '10000000')).toBe(10_000_000);
-    expect(value('amount', '10000000.01')).toBe('error');
-    expect(value('amount', '12.345')).toBe('error');
-  });
-
-  it('reads what was released this month as 0 or more', () => {
+  it('reads what was released this month in EGP, 0 or more, within ten million', () => {
     expect(value('released', '2,000')).toBe(2000);
+    expect(value('released', '1 500.5')).toBe(1500.5);
     expect(value('released', '0')).toBe(0);
+    expect(value('released', '10000000')).toBe(10_000_000);
     expect(value('released', '-1')).toBe('error');
+    expect(value('released', '−250')).toBe('error');
+    expect(value('released', '10000000.01')).toBe('error');
+    expect(value('released', '12.345')).toBe('error');
   });
 
   it('says how to type it when it can’t be read', () => {
@@ -116,7 +108,7 @@ describe('showing a cell', () => {
   it('shows hours as attendance does, amounts with two decimals', () => {
     expect(cellText('hours', 270.5)).toBe('270:30');
     expect(cellText('hours', 270)).toBe('270:00');
-    expect(cellText('amount', 1500)).toBe('1500.00');
+    expect(cellText('released', 1500)).toBe('1500.00');
     expect(cellText('released', 99.5)).toBe('99.50');
     expect(cellText('days', 1.5)).toBe('1.5');
     expect(cellText('hours', null)).toBe('');
@@ -124,7 +116,7 @@ describe('showing a cell', () => {
 
   it('tidies a cell once it is left, and keeps one typed wrongly as typed', () => {
     expect(tidyCell('hours', '270.5')).toBe('270:30');
-    expect(tidyCell('amount', '1,500')).toBe('1500.00');
+    expect(tidyCell('released', '1,500')).toBe('1500.00');
     expect(tidyCell('hours', '27o')).toBe('27o');
     expect(tidyCell('days', '')).toBe('');
   });
@@ -223,11 +215,11 @@ describe('a month under two contracts (owner, 17 October 2026: "take into consid
 describe('what changed', () => {
   it('sends only the rows and the cells that changed', () => {
     const { patches, errors } = linePatches(lines, {
-      [A]: { inputs: { workedHours: '271:00', expectedHours: '280', bonusDays: '' } },
+      [A]: { inputs: { workedHours: '271:00', expectedHours: '280', leaveDays: '' } },
     });
     expect(errors).toEqual([]);
     // the expected hours were typed as they are saved: not a change; the performance saved isn't sent
-    expect(patches).toEqual([{ id: A, inputs: { workedHours: 271, bonusDays: null } }]);
+    expect(patches).toEqual([{ id: A, inputs: { workedHours: 271, leaveDays: null } }]);
   });
 
   it('sends the leave days typed, and reads a line saved before them as without any (17 October 2026)', () => {
@@ -270,7 +262,7 @@ describe('what changed', () => {
   });
 
   it('lists the cells typed wrongly, which count as unsaved', () => {
-    const edits = { [A]: { inputs: { workedHours: 'abc', penaltyDays: '1' } }, [B]: { inputs: { released: '-1' } } };
+    const edits = { [A]: { inputs: { workedHours: 'abc', noShowDays: '1' } }, [B]: { inputs: { released: '-1' } } };
     const { errors } = linePatches(lines, edits);
     expect(errors.map((e) => [e.lineId, e.field])).toEqual([
       [A, 'workedHours'],
@@ -312,5 +304,59 @@ describe('the API’s refusals', () => {
       'Mona Farid · Worked hours must not be greater than 744.',
     );
     expect(errorLine({ lineId: A, field: null, message: 'Not on this payroll.' }, 'Mona Farid')).toBe('Mona Farid · Not on this payroll.');
+  });
+});
+
+describe('the Earnings and Deductions columns (owner, 17 October 2026: "instead of there, i think earnings and deductions will be enough")', () => {
+  // gross 10,000, fixed 8,000: a bonus day is 8,000 ÷ 30 = 266.67; 1.5 days 400. Invented.
+  const terms: PayrollTerms = {
+    year: 2026,
+    payBasis: 'monthly',
+    gross: 10_000,
+    basicPercent: 80,
+    hourlyRate: null,
+    allowances: [],
+    paidDays: 30,
+    statutory: true,
+    insured: true,
+    insuredWage: 10_000,
+    hoursPerDay: 8,
+  };
+  let n = 0;
+  const item = (over: Partial<PayrollAdjustmentItem>): PayrollAdjustmentItem => ({ id: `i${++n}`, kind: 'addition', type: 'commission', taxed: true, amount: 1000, reason: 'Invented', ...over });
+  const lineOf = (items: PayrollAdjustmentItem[], inputs: SavedPayrollInputs = EMPTY_PAYROLL_INPUTS) => {
+    const t = { ...terms, adjustments: items };
+    return { terms: t, result: payrollLine(t, inputs) };
+  };
+
+  it('total the month’s additions, taxed or not, and its deductions after tax, as the line has them', () => {
+    // 1.5 bonus days 400 + a commission 1,000 + a reimbursement 250 not taxed = 1,650; a correction of 300 and a
+    // loan's installment of 500 taken after tax = 800
+    const line = lineOf([
+      item({ type: 'bonus_days', amount: null, days: 1.5 }),
+      item({}),
+      item({ type: 'reimbursement', taxed: false, amount: 250 }),
+      item({ kind: 'deduction', type: 'correction', taxed: false, amount: 300 }),
+      item({ kind: 'deduction', type: 'loan_installment', taxed: false, amount: 500 }),
+    ]);
+    expect(lineItems(line)).toEqual({ earnings: 1650, untaxed: 250, deductions: 800, count: 5 });
+    expect(untaxedNote(lineItems(line))).toBe('EGP 250.00 not taxed');
+  });
+
+  it('count a Penalty (days) in the deductions, at a day of the contract’s net', () => {
+    const line = lineOf([item({ kind: 'deduction', type: 'penalty_days', taxed: false, amount: null, days: 1 })]);
+    expect(lineItems(line)).toMatchObject({ earnings: 0, deductions: line.result.penaltyCut, count: 1 });
+    expect(line.result.penaltyCut).toBeGreaterThan(0);
+    expect(untaxedNote(lineItems(line))).toBeNull();
+  });
+
+  it('are none without any', () => {
+    expect(lineItems(lineOf([]))).toEqual({ earnings: 0, untaxed: 0, deductions: 0, count: 0 });
+  });
+
+  it('take a line saved before then with what the grid had: its bonus, commission and settlements, its penalty days', () => {
+    // 2 bonus days 533.33 + a commission 1,500 − settlements 250 = 1,783.33
+    const line = lineOf([], { ...EMPTY_PAYROLL_INPUTS, bonusDays: 2, penaltyDays: 1, commission: 1500, settlements: -250 });
+    expect(lineItems(line)).toMatchObject({ earnings: 1783.33, deductions: line.result.penaltyCut, count: 0 });
   });
 });

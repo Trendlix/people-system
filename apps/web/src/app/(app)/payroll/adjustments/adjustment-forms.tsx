@@ -6,12 +6,25 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import { Select } from '@/components/select';
 import type { FormState } from '@/lib/types';
 import { ActionButton, focusFirstField, useClosesOnSave } from '../../employees/[id]/contracts/contract-buttons';
-import { advanceOption, advancesFor, asksTaxed, KIND_CHOICES, linksAdvance, typeChoices, type AdjustmentChoices, type AdjustmentRow, type AdvanceRow } from './adjustments';
+import {
+  advanceOption,
+  advancesFor,
+  asksDays,
+  asksTaxed,
+  DAYS_HINTS,
+  KIND_CHOICES,
+  linksAdvance,
+  typeChoices,
+  type AdjustmentChoices,
+  type AdjustmentRow,
+  type AdvanceRow,
+} from './adjustments';
 
 // Additions / Deductions' forms (owner, 17 October 2026): HR adds an addition or a deduction for someone employed in the
 // month, and changes or cancels a pending one while the month's run is still a draft. The form asks only what the type
-// needs: whether an Other addition is taxed, and for an advance's recovery or a loan's installment, which one. The API
-// checks everything again.
+// needs: whether an Other addition is taxed, for an advance's recovery or a loan's installment which one, and for a
+// Bonus (days) or a Penalty (days) its days in place of an amount (owner, 17 October 2026: the run's grid columns moved
+// here), the month's run working the amount out. The API checks everything again.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -96,21 +109,43 @@ function Fields({
           </div>
         </fieldset>
       )}
-      <div>
-        <label htmlFor={fid('amount')} className="label">
-          Amount (EGP)
-        </label>
-        <input
-          id={fid('amount')}
-          name="amount"
-          required
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="e.g. 1500.00"
-          defaultValue={valueOf(state, 'amount', row ? row.amount.toFixed(2) : '')}
-          className="input tabular-nums"
-        />
-      </div>
+      {asksDays(chosen) ? (
+        <div>
+          <label htmlFor={fid('days')} className="label">
+            Days
+          </label>
+          <input
+            id={fid('days')}
+            name="days"
+            required
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="e.g. 2 or 1.5"
+            defaultValue={valueOf(state, 'days', typeof row?.days === 'number' ? String(row.days) : '')}
+            aria-describedby={fid('days-hint')}
+            className="input tabular-nums"
+          />
+          <p id={fid('days-hint')} className="hint">
+            Whole or half days, up to 31. {DAYS_HINTS[chosen]}
+          </p>
+        </div>
+      ) : (
+        <div>
+          <label htmlFor={fid('amount')} className="label">
+            Amount (EGP)
+          </label>
+          <input
+            id={fid('amount')}
+            name="amount"
+            required
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="e.g. 1500.00"
+            defaultValue={valueOf(state, 'amount', row?.amount !== null && row?.amount !== undefined && !asksDays(row.type) ? row.amount.toFixed(2) : '')}
+            className="input tabular-nums"
+          />
+        </div>
+      )}
       {advanceKind && (
         <div>
           <label htmlFor={fid('advanceId')} className="label">
@@ -137,20 +172,23 @@ function Fields({
   );
 }
 
-/** A new addition or deduction for the month; emptied once it is added, for the next one. */
-export function AddAdjustmentForm({ action, choices }: { action: Action; choices: AdjustmentChoices }) {
+/**
+ * A new addition or deduction for the month; emptied once it is added, for the next one. `employeeId`: the person whose
+ * month is shown (opened from the run's grid), chosen to start with and kept for the next one.
+ */
+export function AddAdjustmentForm({ action, choices, employeeId: shown = null }: { action: Action; choices: AdjustmentChoices; employeeId?: string | null }) {
   const { state, pending, form } = useKeptForm(action);
   const ref = useRef<HTMLFormElement>(null);
   const fid = useFieldIds();
   const [kind, setKind] = useState<AdjustmentKind>(valueOf(state, 'kind', 'addition') === 'deduction' ? 'deduction' : 'addition');
-  const [employeeId, setEmployeeId] = useState(valueOf(state, 'employeeId', ''));
+  const [employeeId, setEmployeeId] = useState(valueOf(state, 'employeeId', shown ?? ''));
   // the fields start afresh after each one added
   const [round, setRound] = useState(0);
   const [answered, setAnswered] = useState(state);
   if (state !== answered) {
     setAnswered(state);
     if (state.message) {
-      setEmployeeId('');
+      setEmployeeId(shown ?? '');
       setRound((n) => n + 1);
     }
   }
@@ -255,7 +293,7 @@ export function AdjustmentActions({
 
 /** The open advances, with the one this row recovers made room for: its own amount is free again when it is changed. */
 function withOwn(advances: readonly AdvanceRow[], row: AdjustmentRow): AdvanceRow[] {
-  return advances.map((a) => (a.id === row.advance?.id ? { ...a, unplanned: Math.round((a.unplanned + row.amount) * 100) / 100 } : a));
+  return advances.map((a) => (a.id === row.advance?.id ? { ...a, unplanned: Math.round((a.unplanned + (row.amount ?? 0)) * 100) / 100 } : a));
 }
 
 /**

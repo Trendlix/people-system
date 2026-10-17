@@ -5,16 +5,20 @@ import {
   adjustmentsHref,
   advanceOption,
   advancesFor,
+  asksDays,
   asksTaxed,
   byEmployee,
   canSeeAdjustments,
   changeable,
+  daysNotWorkedOut,
   entersAdjustments,
   linksAdvance,
   monthChoices,
   monthTotals,
   netText,
+  readEmployee,
   readMonth,
+  runAdjustments,
   signedAmount,
   taxText,
   typeChoices,
@@ -102,6 +106,15 @@ describe('the month', () => {
     expect(adjustmentsHref('2026-09', TODAY)).toBe('/payroll/adjustments?month=2026-09');
   });
 
+  it('opens one person’s month, as the run’s grid does (owner, 17 October 2026)', () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    expect(adjustmentsHref('2026-10', TODAY, id)).toBe(`/payroll/adjustments?month=2026-10&employee=${id}`);
+    expect(adjustmentsHref('2026-09', TODAY, id)).toBe(`/payroll/adjustments?month=2026-09&employee=${id}`);
+    expect(readEmployee({ employee: id })).toBe(id);
+    expect(readEmployee({ employee: 'nobody' })).toBeNull();
+    expect(readEmployee({})).toBeNull();
+  });
+
   it('offers a year ahead back to a year ago, newest first, and the month shown when outside', () => {
     const months = monthChoices(TODAY, '2026-10');
     expect(months).toHaveLength(25);
@@ -131,12 +144,22 @@ describe('the month’s rows', () => {
     expect(t).toMatchObject({ additions: 300.3, people: 1, count: 2 });
   });
 
+  it('sums one in days at what the run worked it out to, and says how many no run has worked out yet', () => {
+    const rows = [row({ amount: 100 }), row({ type: 'bonus_days', days: 2, amount: 640 }), row({ type: 'bonus_days', days: 1, amount: null }), row({ status: 'cancelled', amount: null, days: 1, type: 'bonus_days' })];
+    expect(monthTotals(rows)).toMatchObject({ additions: 740, count: 3 });
+    expect(daysNotWorkedOut(rows)).toBe(1);
+  });
+
   it('says each one in words', () => {
     expect(taxText(row())).toBe('Taxed');
     expect(taxText(row({ type: 'reimbursement', taxed: false }))).toBe('Not taxed');
     expect(taxText(row({ kind: 'deduction', taxed: false }))).toBe('After tax');
     expect(signedAmount(row({ amount: 1500 }))).toBe('+EGP 1,500.00');
     expect(signedAmount(row({ kind: 'deduction', amount: 250.5 }))).toBe('−EGP 250.50');
+    // in days (17 October 2026): what the run worked it out to once a run has it, else the days alone
+    expect(signedAmount(row({ type: 'bonus_days', days: 2, amount: 640 }))).toBe('+2 days ≈ EGP 640.00');
+    expect(signedAmount(row({ type: 'bonus_days', days: 1, amount: null }))).toBe('+1 day');
+    expect(signedAmount(row({ kind: 'deduction', type: 'penalty_days', days: 1.5, amount: 486.28 }))).toBe('−1.5 days ≈ EGP 486.28');
     expect(netText(-1000)).toBe('−EGP 1,000.00');
     expect(netText(0.001)).toBe('EGP 0.00');
     expect(netText(12.5)).toBe('+EGP 12.50');
@@ -152,15 +175,19 @@ describe('the month’s rows', () => {
 
 describe('the form', () => {
   it('lists each kind’s types with whether they are taxed, and asks only what the type needs', () => {
-    expect(typeChoices('addition').map((t) => [t.value, t.taxed])).toEqual([
-      ['bonus', true],
-      ['commission', true],
-      ['incentive', true],
-      ['correction', true],
-      ['reimbursement', false],
-      ['other', null],
+    // a Bonus (days) and a Penalty (days) in days, and a Correction either way (17 October 2026)
+    expect(typeChoices('addition').map((t) => [t.value, t.taxed, t.inDays])).toEqual([
+      ['bonus', true, false],
+      ['bonus_days', true, true],
+      ['commission', true, false],
+      ['incentive', true, false],
+      ['correction', true, false],
+      ['reimbursement', false, false],
+      ['other', null, false],
     ]);
+    expect(typeChoices('deduction').map((t) => t.label)).toEqual(['Penalty', 'Penalty (days)', 'Correction', 'Damage or loss', 'Advance recovery', 'Loan installment', 'Other deduction']);
     expect(typeChoices('deduction').every((t) => t.taxed === false)).toBe(true);
+    expect([asksDays('bonus_days'), asksDays('penalty_days'), asksDays('bonus')]).toEqual([true, true, false]);
     expect(asksTaxed('addition', 'other')).toBe(true);
     expect(asksTaxed('deduction', 'other')).toBe(false);
     expect(linksAdvance('deduction', 'loan_installment')).toBe('loan');
@@ -204,9 +231,31 @@ describe('the form', () => {
     ]);
   });
 
+  it('sends one in days with its days, not an amount (17 October 2026)', () => {
+    expect(adjustmentBody(form({ employeeId: 'e1', kind: 'addition', month: '2026-10', type: 'bonus_days', days: ' 1.5 ', amount: '99', reason: 'Target' }), true)).toEqual({
+      body: { employeeId: 'e1', kind: 'addition', month: '2026-10', type: 'bonus_days', days: 1.5, reason: 'Target' },
+      errors: [],
+    });
+    expect(adjustmentBody(form({ currentKind: 'deduction', month: '2026-10', type: 'penalty_days', days: '٢', reason: 'Late' }), false).body).toMatchObject({ days: 2 });
+    for (const days of ['', '0', '0.25', '32', 'two']) {
+      expect(adjustmentBody(form({ employeeId: 'e1', kind: 'addition', month: '2026-10', type: 'bonus_days', days, reason: 'x' }), true).errors).toEqual([
+        'Enter the days, more than 0 and up to 31, in whole or half days, e.g. 2 or 1.5.',
+      ]);
+    }
+  });
+
   it('sends a change with the kind it has, and no advance once the type recovers none', () => {
     const { body, errors } = adjustmentBody(form({ currentKind: 'deduction', month: '2026-11', type: 'penalty', amount: '250', reason: 'Late' }), false);
     expect(errors).toEqual([]);
     expect(body).toEqual({ month: '2026-11', type: 'penalty', amount: 250, reason: 'Late', advanceId: null });
+  });
+});
+
+describe('on a run', () => {
+  it('sums its lines’ additions and deductions as each line paid them, one in days as the line worked it out', () => {
+    const terms = { adjustments: [{ id: 'b', kind: 'addition' as const, type: 'bonus_days' as const, taxed: true, amount: null, days: 1, reason: 'x' }] };
+    const result = { adjustments: [{ id: 'b', kind: 'addition' as const, type: 'bonus_days' as const, taxed: true, amount: 320, days: 1, reason: 'x' }] };
+    const older = { terms: { adjustments: [{ id: 'd', kind: 'deduction' as const, type: 'penalty' as const, taxed: false, amount: 100, reason: 'y' }] }, result: {} };
+    expect(runAdjustments([{ terms, result }, older, { terms: {}, result: {} }])).toEqual({ lines: 2, count: 2, taxed: 320, untaxed: 0, deductions: 100 });
   });
 });

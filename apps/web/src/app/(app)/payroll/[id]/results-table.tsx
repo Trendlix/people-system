@@ -1,21 +1,65 @@
 'use client';
 
 import Link from 'next/link';
-import { Fragment, useState } from 'react';
+import { Fragment, useOptimistic, useState, useTransition } from 'react';
 import type { LawRates, PayrollRules } from '@trendlix/shared';
 import { GroupHeading } from '@/components/group-heading';
 import { groupByPlace, showsDepartment } from '@/lib/place-groups';
-import type { PayrollLineView, PayrollTotals } from '@/lib/types';
+import type { FormState, PayrollLineView, PayrollTotals } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { contractHref } from '../../employees/tab-list';
 import { payslipHref } from '../payslips';
-import { breakdown, cutText, type BreakdownRow } from './breakdown';
+import { breakdown, cutText, waivedByCeo, waiverOf, type BreakdownRow } from './breakdown';
 
 // The run's results (owner's decisions, 16 October 2026): what each employee earned, what is deducted, the net and what
 // the bank transfers, with the run's totals. Each row opens to every step of the employee's pay and its warnings, as
 // payrollLine worked them out. Once the run is paid, each employee's English payslip opens from its row (a plain link,
 // never prefetched: the web server fetches the PDF from the API with the session); someone on hold that month was not
-// paid, so has none.
+// paid, so has none. While the run is with the CEO, the CEO sees a box on each line with an attendance deduction to
+// waive it, with the amount, saved as it is ticked (owner, 17 October 2026: "if there is an attendance deduction,
+// allow the CEO to wave the deduction by ticking a box"); unticking takes it again. HR and Finance, and everyone once
+// it is approved, see "Waived by the CEO" on such a line.
+
+/** The CEO's waiver of a line's attendance deduction: saves it as it is ticked or unticked (POST …/attendance-waiver). */
+type Waive = (lineId: string, waived: boolean) => Promise<FormState>;
+
+function WaiverBox({ line, waive }: { line: PayrollLineView; waive: Waive }) {
+  const w = waiverOf(line);
+  const [pending, startTransition] = useTransition();
+  const [shown, setShown] = useOptimistic(w?.waived ?? false);
+  const [error, setError] = useState<string | null>(null);
+  if (!w) return null;
+  return (
+    <div className="pl-5">
+      <label className="inline-flex min-h-9 items-center gap-2 text-xs">
+        <input
+          type="checkbox"
+          checked={shown}
+          disabled={pending}
+          onChange={(e) => {
+            const next = e.target.checked;
+            setError(null);
+            startTransition(async () => {
+              setShown(next);
+              const answer = await waive(line.id, next);
+              if (answer.errors?.length) setError(answer.errors.join(' '));
+            });
+          }}
+          className="size-4 accent-accent"
+        />
+        <span>
+          Waive the attendance deduction of <span className="tabular-nums">{formatEgp(w.amount)}</span>
+          <span className="sr-only"> for {line.name}</span>
+        </span>
+      </label>
+      {error && (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 const TONE: Record<BreakdownRow['kind'], string> = {
   add: '',
@@ -80,6 +124,7 @@ export function ResultsTable({
   rules,
   lawRates,
   payslips,
+  waive = null,
 }: {
   lines: PayrollLineView[];
   totals: PayrollTotals;
@@ -88,6 +133,8 @@ export function ResultsTable({
   lawRates?: LawRates;
   /** The run is paid: each line not on hold has its payslip. */
   payslips: boolean;
+  /** The CEO, while the run is with the CEO: waives a line's attendance deduction (17 October 2026); null otherwise. */
+  waive?: Waive | null;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = (id: string) =>
@@ -154,12 +201,14 @@ export function ResultsTable({
                             </button>
                             <div className="mt-1 flex flex-wrap gap-1 pl-5">
                               {l.onHold && <span className="badge bg-warn-soft text-warn">On hold</span>}
+                              {!waive && waivedByCeo(l) && <span className="badge bg-ok-soft text-ok">Waived by the CEO</span>}
                               {l.result.warnings.length > 0 && (
                                 <span className="badge bg-warn-soft text-warn">
                                   {l.result.warnings.length} {l.result.warnings.length === 1 ? 'warning' : 'warnings'}
                                 </span>
                               )}
                             </div>
+                            {waive && <WaiverBox line={l} waive={waive} />}
                           </td>
                           <Amounts values={l.result} />
                           {payslips && (

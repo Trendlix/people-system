@@ -1,5 +1,19 @@
 import ExcelJS from 'exceljs';
-import { measuredExpectedHours, PAY_BASIS_LABELS, PAYROLL_STATUS_LABELS, resultAdjustments, type PayBasis, type PayrollInputs, type PayrollResult, type PayrollStatus, type PayrollTerms } from '@trendlix/shared';
+import {
+  adjustmentTypeLabel,
+  daysText,
+  lineDays,
+  measuredExpectedHours,
+  paidAdjustments,
+  PAY_BASIS_LABELS,
+  PAYROLL_STATUS_LABELS,
+  resultAdjustments,
+  type PayBasis,
+  type PayrollResult,
+  type PayrollStatus,
+  type PayrollTerms,
+  type SavedPayrollInputs,
+} from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import type { BankFileKind } from './bank.js';
 import { monthName } from './months.js';
@@ -15,7 +29,13 @@ import { byDepartment } from './roster.js';
 // no-show days' hours it took out (they had a column of their own until then). So the Attendance % reads as the worked
 // hours over the Expected hours on every line. A month split between two contracts (17 October 2026) shows its sums.
 // The month's additions and deductions (owner, 17 October 2026: Additions / Deductions): the taxed additions in the
-// pay earned, the deductions after tax, the untaxed additions after them, each a column of its own.
+// pay earned, the deductions after tax, the untaxed additions after them, each a column of its own, and each one by
+// its type with its reason in the Additions and deductions column. The bonus and penalty days, the commission and the
+// settlements went there from the grid (owner, 17 October 2026: "instead of there, i think earnings and deductions will
+// be enough"): the Bonus days and Penalty days are the Bonus (days) and Penalty (days) ones' days, the Bonus and
+// Penalties what they came to; the Commission and Settlements columns have what a line saved before then had typed (a
+// commission since is a taxed addition, a settlement a Correction). The attendance cut the CEO waived (owner, 17
+// October 2026: "allow the CEO to wave the deduction by ticking a box") has a column of its own after the cut.
 
 export interface RegisterLine {
   department: string | null;
@@ -24,7 +44,8 @@ export interface RegisterLine {
   jobTitle: string | null;
   payBasis: PayBasis;
   terms: PayrollTerms;
-  inputs: PayrollInputs;
+  /** As saved: a line from before 17 October 2026 has the grid's bonus and penalty days, commission and settlements. */
+  inputs: SavedPayrollInputs;
   result: PayrollResult;
   bankFile: BankFileKind | null;
   onHold: boolean;
@@ -54,6 +75,26 @@ interface Column {
 
 const pct = (v: number | null) => (v === null ? null : v / 100);
 
+const egp = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * A line's additions and deductions in words, by type with the reason: "Bonus (days): 2 days, 640.00 (Target met);
+ * Loan installment: −1,000.00 (Car loan, 2 of 6)". Null without any.
+ */
+export function adjustmentsText(l: Pick<RegisterLine, 'terms' | 'result'>): string | null {
+  const items = paidAdjustments(l);
+  if (!items.length) return null;
+  return items
+    .map((a) => {
+      const amount = `${a.kind === 'deduction' ? '−' : ''}${egp(a.amount)}`;
+      return `${adjustmentTypeLabel(a.kind, a.type)}: ${a.days ? `${daysText(a.days)}, ` : ''}${amount}${a.taxed || a.kind === 'deduction' ? '' : ', not taxed'} (${a.reason})`;
+    })
+    .join('; ');
+}
+
+/** Days for a column: none, an empty cell. */
+const someDays = (n: number) => (n > 0 ? n : null);
+
 export const REGISTER_COLUMNS: readonly Column[] = [
   { header: '#', kind: 'count', width: 5, value: (_l, n) => n },
   { header: 'Department', kind: 'text', width: 24, value: (l) => l.department },
@@ -76,15 +117,19 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'No-show days', kind: 'days', width: 9, value: (l) => l.inputs.noShowDays },
   // paid leave (17 October 2026): none on inputs saved before then
   { header: 'Leave days', kind: 'days', width: 9, value: (l) => l.inputs.leaveDays ?? null },
-  { header: 'Penalty days', kind: 'days', width: 9, value: (l) => l.inputs.penaltyDays },
+  // the Penalty (days) ones' days (17 October 2026), or as typed on the grid before then
+  { header: 'Penalty days', kind: 'days', width: 9, value: (l) => someDays(lineDays(l).penaltyDays) },
   { header: 'Attendance cut', kind: 'money', width: 12, value: (l) => l.result.attendanceCut },
+  // waived by the CEO (17 October 2026): none on lines worked out before then
+  { header: 'Attendance waived', kind: 'money', width: 12, value: (l) => l.result.attendanceWaived ?? 0 },
   { header: 'KPI cut', kind: 'money', width: 12, value: (l) => l.result.kpiCut },
   { header: 'No-show cut', kind: 'money', width: 12, value: (l) => l.result.noShowCut },
   { header: 'Overtime', kind: 'money', width: 12, value: (l) => l.result.overtime },
-  { header: 'Bonus days', kind: 'days', width: 9, value: (l) => l.inputs.bonusDays },
+  { header: 'Bonus days', kind: 'days', width: 9, value: (l) => someDays(lineDays(l).bonusDays) },
   { header: 'Bonus', kind: 'money', width: 12, value: (l) => l.result.bonus },
-  { header: 'Commission', kind: 'money', width: 12, value: (l) => l.result.commission },
-  { header: 'Settlements', kind: 'money', width: 12, value: (l) => l.result.settlements },
+  // typed on the grid until 17 October 2026: empty on lines since
+  { header: 'Commission', kind: 'money', width: 12, value: (l) => l.result.commission ?? null },
+  { header: 'Settlements', kind: 'money', width: 12, value: (l) => l.result.settlements ?? null },
   // the month's additions and deductions (owner, 17 October 2026): none on lines worked out before then
   { header: 'Additions (taxed)', kind: 'money', width: 12, value: (l) => resultAdjustments(l.result).taxed },
   { header: 'Allowances', kind: 'money', width: 12, value: (l) => l.result.allowances },
@@ -102,12 +147,13 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'On hold', kind: 'text', width: 8, value: (l) => (l.onHold ? 'Yes' : null) },
   { header: 'Company insurance', kind: 'money', width: 14, value: (l) => l.result.employerInsurance },
   { header: 'Company cost', kind: 'money', width: 14, value: (l) => l.result.companyCost },
+  { header: 'Additions and deductions', kind: 'text', width: 50, value: (l) => adjustmentsText(l) },
   { header: 'Comments', kind: 'text', width: 40, value: (l) => l.comments },
 ];
 
 const FORMATS: Record<Kind, string> = { text: '@', money: MONEY, percent: PERCENT, hours: HOURS, days: DAYS, count: '0' };
 
-/** The column's letter, A … AS. */
+/** The column's letter, A … AU. */
 function letter(n: number): string {
   let s = '';
   for (let i = n; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s;

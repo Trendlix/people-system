@@ -10,13 +10,14 @@ export const json = (value: unknown) => value as Prisma.InputJsonValue;
 
 /**
  * A line's saved inputs, only those there are today: one saved before it was taken off (the medical subscription,
- * owner's decision, 16 October 2026) is dropped when the line is refreshed or changed, and one saved before it existed
- * (the leave days, 17 October 2026) reads as not given.
+ * owner's decision, 16 October 2026; the bonus and penalty days, the commission and the settlements, 17 October 2026,
+ * made additions and deductions first: grid-inputs.service.ts) is dropped when the line is refreshed or changed, and one
+ * saved before it existed (the leave days, the CEO's attendance waiver, 17 October 2026) reads as not given.
  */
 export const savedInputs = (saved: Prisma.JsonValue): PayrollInputs => {
   const values = (saved ?? {}) as Partial<PayrollInputs>;
   const fields = Object.keys(EMPTY_PAYROLL_INPUTS) as (keyof PayrollInputs)[];
-  return Object.fromEntries(fields.map((k) => [k, values[k] ?? null])) as unknown as PayrollInputs;
+  return Object.fromEntries(fields.map((k) => [k, values[k] ?? EMPTY_PAYROLL_INPUTS[k]])) as unknown as PayrollInputs;
 };
 
 /** A line worked out with the run's rules and rates set by law: its result, and the result's totals for their columns. */

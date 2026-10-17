@@ -21,7 +21,6 @@ import type {
   PaperworkKind,
   PayBasis,
   PayStage,
-  PayrollInputs,
   PayrollResult,
   PayrollRules,
   PayrollStatus,
@@ -30,6 +29,7 @@ import type {
   PdfPageSize,
   PhotoCrop,
   Role,
+  SavedPayrollInputs,
   Standing,
   TemplateFolder,
   TemplateLanguage,
@@ -1327,7 +1327,11 @@ export interface PayrollLineView {
   onHold: boolean;
   comments: string | null;
   terms: PayrollTerms;
-  inputs: PayrollInputs;
+  /**
+   * As saved: a line saved before 17 October 2026 has the grid's bonus and penalty days, commission and settlements
+   * (since then on Additions / Deductions), and the CEO's attendance waiver once given.
+   */
+  inputs: SavedPayrollInputs;
   result: PayrollResult;
   /**
    * The bank file the line goes in, from the live bank details before the CEO approves and the snapshot taken then

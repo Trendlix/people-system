@@ -20,6 +20,7 @@ import {
   byEmployee,
   canSeeAdjustments,
   changeable,
+  daysNotWorkedOut,
   enteredText,
   entersAdjustments,
   laterMonths,
@@ -28,6 +29,7 @@ import {
   monthTotals,
   netText,
   pendingIds,
+  readEmployee,
   readMonth,
   RUN_NOTE,
   signedAmount,
@@ -44,7 +46,10 @@ import {
 // in the address so a view can be shared (this month unless asked): its totals, HR's form to add one, and every
 // addition and deduction by employee with each person's totals; HR changes or cancels a pending one while the month's
 // run is still a draft, and moves one left on a month approved without it to a later month; what no run pays is said at
-// the top. HR, Finance and the CEO, as salaries; the API checks it again.
+// the top. HR, Finance and the CEO, as salaries; the API checks it again. The one place to enter them (owner, 17 October
+// 2026, on the run's grid: "instead of there, i think earnings and deductions will be enough"): a bonus or penalty in
+// days shows its days and, once a run has worked it out, about what it came to; the run's grid opens one person's
+// month (?employee=), with the form set to them.
 
 export const metadata: Metadata = { title: 'Additions / Deductions · People System' };
 
@@ -53,10 +58,16 @@ type Query = Record<string, string | string[] | undefined>;
 const quiet = 'px-4 py-10 text-center text-sm text-muted';
 const dash = <span className="text-muted">—</span>;
 
-function MonthPicker({ month, today }: { month: string; today: string }) {
+function MonthPicker({ month, today, employeeId }: { month: string; today: string; employeeId: string | null }) {
   return (
     <form key={month} className="flex flex-wrap items-end gap-3" aria-label="Choose the month">
-      <Link href={adjustmentsHref(addMonths(month, -1), today)} className="btn btn-secondary" aria-label={`Previous month, ${monthName(addMonths(month, -1))}`}>
+      {/* one person's month stays theirs as the month changes */}
+      {employeeId && <input type="hidden" name="employee" value={employeeId} />}
+      <Link
+        href={adjustmentsHref(addMonths(month, -1), today, employeeId)}
+        className="btn btn-secondary"
+        aria-label={`Previous month, ${monthName(addMonths(month, -1))}`}
+      >
         ←
       </Link>
       <div>
@@ -74,7 +85,7 @@ function MonthPicker({ month, today }: { month: string; today: string }) {
       <button type="submit" className="btn btn-secondary">
         Show
       </button>
-      <Link href={adjustmentsHref(addMonths(month, 1), today)} className="btn btn-secondary" aria-label={`Next month, ${monthName(addMonths(month, 1))}`}>
+      <Link href={adjustmentsHref(addMonths(month, 1), today, employeeId)} className="btn btn-secondary" aria-label={`Next month, ${monthName(addMonths(month, 1))}`}>
         →
       </Link>
     </form>
@@ -89,6 +100,8 @@ function Totals({ rows }: { rows: AdjustmentRow[] }) {
     { label: 'Net effect on pay', value: netText(t.net), note: 'Before the tax the taxed additions bring' },
     { label: 'People', value: String(t.people), note: `${t.count} ${t.count === 1 ? 'entry' : 'entries'}, the cancelled left out` },
   ];
+  // in days with no run to work them out yet (17 October 2026): not in the sums
+  const unknown = daysNotWorkedOut(rows);
   return (
     <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {tiles.map((x) => (
@@ -98,6 +111,12 @@ function Totals({ rows }: { rows: AdjustmentRow[] }) {
           <dd className="text-xs text-muted">{x.note}</dd>
         </div>
       ))}
+      {unknown > 0 && (
+        <p className="text-xs text-muted sm:col-span-2 lg:col-span-4">
+          {unknown === 1 ? 'One is' : `${unknown} are`} in days with no run to work {unknown === 1 ? 'it' : 'them'} out yet: not in these sums until the month&apos;s
+          run is made.
+        </p>
+      )}
     </dl>
   );
 }
@@ -236,15 +255,17 @@ async function MonthView({ searchParams }: { searchParams: Promise<Query> }) {
   if (!canSeeAdjustments(user)) return <Empty>Only HR, Finance and the CEO can see the additions and deductions.</Empty>;
   const today = todayInCairo();
   const month = readMonth(query, today);
+  // one person's month, opened from the run's grid (17 October 2026)
+  const employeeId = readEmployee(query);
   const [list, options] = await Promise.all([
-    loadJson<AdjustmentRow[]>(`/payroll/adjustments?month=${month}`),
+    loadJson<AdjustmentRow[]>(`/payroll/adjustments?month=${month}${employeeId ? `&employeeId=${employeeId}` : ''}`),
     loadJson<AdjustmentChoices>(`/payroll/adjustments/choices?month=${month}`),
   ]);
   const hr = entersAdjustments(user);
 
   const header = (
     <section className="card flex flex-wrap items-end justify-between gap-4 p-4">
-      <MonthPicker month={month} today={today} />
+      <MonthPicker month={month} today={today} employeeId={employeeId} />
       {options.kind === 'ok' && (
         <p className="text-sm">
           {options.value.run ? (
@@ -270,9 +291,19 @@ async function MonthView({ searchParams }: { searchParams: Promise<Query> }) {
 
   const rows = list.value;
   const choices = options.value;
+  const person = employeeId ? (choices.people.find((p) => p.id === employeeId) ?? rows[0]?.employee ?? null) : null;
   return (
     <div className="space-y-6">
       {header}
+      {employeeId && (
+        <p role="status" className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+          <span>
+            Showing {person ? <span className="font-semibold">{person.name}</span> : 'one employee'}
+            {person ? <span className="text-muted"> · {person.employeeCode}</span> : null} only.
+          </span>
+          <Link href={adjustmentsHref(month, today)}>Show everyone</Link>
+        </p>
+      )}
       {choices.locked && (
         <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
           {choices.locked}
@@ -286,7 +317,7 @@ async function MonthView({ searchParams }: { searchParams: Promise<Query> }) {
             New Addition or Deduction
           </h2>
           {choices.people.length ? (
-            <AddAdjustmentForm action={createAdjustment} choices={choices} />
+            <AddAdjustmentForm action={createAdjustment} choices={choices} employeeId={person && 'department' in person ? person.id : null} />
           ) : (
             <p className="text-sm text-muted">Nobody is employed in {monthName(month)}.</p>
           )}
@@ -303,7 +334,10 @@ async function MonthView({ searchParams }: { searchParams: Promise<Query> }) {
           {rows.length ? (
             <AdjustmentsTable rows={rows} choices={choices} hr={hr} today={today} />
           ) : (
-            <p className={quiet}>No additions or deductions for {monthName(month)}.</p>
+            <p className={quiet}>
+              No additions or deductions for {person ? `${person.name} in ` : ''}
+              {monthName(month)}.
+            </p>
           )}
         </div>
       </section>
@@ -317,8 +351,8 @@ export default function AdjustmentsPage({ searchParams }: PageProps<'/payroll/ad
       <div className="max-w-6xl">
         <h1 className="text-2xl font-semibold">Additions / Deductions</h1>
         <p className="mt-1 text-muted">
-          One-off amounts on an employee&apos;s pay for a month: a bonus, commission, incentive, correction or reimbursement added; a penalty, damage or
-          loss, an advance&apos;s recovery or a loan&apos;s installment taken. {RUN_NOTE}
+          One-off amounts on an employee&apos;s pay for a month: a bonus (in EGP or in days), commission, incentive, correction or reimbursement added;
+          a penalty (in EGP or in days), correction, damage or loss, an advance&apos;s recovery or a loan&apos;s installment taken. {RUN_NOTE}
         </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

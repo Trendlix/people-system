@@ -193,7 +193,9 @@ describe('law rates: changed rates change the result', () => {
     const builtIn = payrollLine(terms, EMPTY_PAYROLL_INPUTS);
     expect(payrollLine(terms, EMPTY_PAYROLL_INPUTS, PAYROLL_RULE_DEFAULTS, Y2026)).toEqual(builtIn);
     const law = changed({ employeeInsuranceRate: 0.12, employerInsuranceRate: 0.2, martyrsRate: 0.001 });
-    const line = payrollLine(terms, { ...EMPTY_PAYROLL_INPUTS, penaltyDays: 1 }, PAYROLL_RULE_DEFAULTS, law);
+    // a Penalty (days) of 1 day (owner, 17 October 2026: entered on Additions / Deductions)
+    const penalty = { id: 'p1', kind: 'deduction', type: 'penalty_days', taxed: false, amount: null, days: 1, reason: 'Invented' } as const;
+    const line = payrollLine({ ...terms, adjustments: [penalty] }, EMPTY_PAYROLL_INPUTS, PAYROLL_RULE_DEFAULTS, law);
     expect(line).toMatchObject({ employeeInsurance: 1_440, employerInsurance: 2_400, martyrsFund: 12 });
     // a penalty day costs a day of the contract's net with the same rates
     expect(line.penaltyCut).toBe(Math.round((grossToNet(12_000, law).net / 30) * 100) / 100);

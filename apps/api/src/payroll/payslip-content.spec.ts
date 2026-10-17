@@ -1,5 +1,5 @@
-import { payrollLine, PAYROLL_RULE_DEFAULTS, type PayrollSegment } from '@trendlix/shared';
-import { MONTHLY_TERMS, payslipSource } from '../../test/fixtures/payslip.js';
+import { payrollLine, PAYROLL_RULE_DEFAULTS, type PayrollAdjustmentItem, type PayrollSegment } from '@trendlix/shared';
+import { BONUS_DAY, MONTHLY_TERMS, payslipSource } from '../../test/fixtures/payslip.js';
 import {
   arabicNumerals,
   formatAmount,
@@ -16,6 +16,12 @@ import {
 
 /** Mariam's shift hours for October: 22 working days of 8 hours, no holidays (her expected hours when HR types none). */
 const SHIFT = { expectedHours: 176, expectedDays: { workingDays: 22, holidays: 0 } };
+
+/** A Penalty (days) (owner, 17 October 2026: the grid's penalty days moved to Additions / Deductions). */
+const penaltyDays = (days: number): PayrollAdjustmentItem => ({ id: `adj-penalty-${days}`, kind: 'deduction', type: 'penalty_days', taxed: false, amount: null, days, reason: 'Late twice' });
+
+/** No bonus day: none of the month's additions and deductions. */
+const NONE = { adjustments: [] };
 
 const labels = (rows: readonly PayslipRow[] | undefined) => (rows ?? []).map((r) => r.label);
 const sum = (rows: readonly PayslipRow[]) => rows.reduce((cents, r) => cents + Math.round(r.value * 100), 0) / 100;
@@ -81,9 +87,10 @@ describe('payslipContent: a monthly salary in English', () => {
       { label: 'Fixed salary', note: '80% of the 24,000.00 gross', amount: '19,200.00', value: 19200 },
       { label: 'Variable salary', note: '20% of the gross', amount: '4,800.00', value: 4800 },
       { label: 'Performance adjustment', note: 'Variable paid at 76.75%', amount: '−1,116.00', value: -1116 },
-      { label: 'Bonus', note: '1 day of the fixed salary', amount: '640.00', value: 640 },
       { label: 'Transportation allowance', note: 'Not taxed', amount: '1,500.00', value: 1500 },
       { label: 'Mobile allowance', note: null, amount: '500.00', value: 500 },
+      // the Bonus (days) on Additions / Deductions (17 October 2026), with its days and reason: 19,200 ÷ 30
+      { label: 'Bonus (days)', note: '1 day of the fixed salary · Campaign launch', amount: '640.00', value: 640 },
     ]);
     expect(c.earnings!.total).toEqual({ label: 'Total earnings', note: null, amount: '25,524.00', value: 25524 });
     expect(sum(c.earnings!.rows)).toBe(c.earnings!.total.value);
@@ -141,7 +148,7 @@ describe('payslipContent: a monthly salary in English', () => {
 
 describe('payslipContent: rows that are 0 are left out', () => {
   it('no bonus, released or KPIs: no row, no cell, no line for them', () => {
-    const c = payslipContent(payslipSource('monthly', { inputs: { bonusDays: null, released: null, softSkills: null, performance: null, clientSatisfaction: null } }), 'en');
+    const c = payslipContent(payslipSource('monthly', { terms: NONE, inputs: { released: null, softSkills: null, performance: null, clientSatisfaction: null } }), 'en');
     expect(labels(c.earnings?.rows)).toEqual(['Fixed salary', 'Variable salary', 'Transportation allowance', 'Mobile allowance']);
     expect(labels(c.deductions?.rows)).toEqual(['Social insurance', 'Salary tax', 'Martyrs’ Fund']);
     expect(c.thisMonth!.cells.map((x) => x.label)).toEqual(['Hours worked']);
@@ -150,7 +157,7 @@ describe('payslipContent: rows that are 0 are left out', () => {
   });
 
   it('nothing typed for the month: no This Month section at all', () => {
-    const c = payslipContent(payslipSource('monthly', { inputs: { workedHours: null, expectedHours: null, softSkills: null, performance: null, clientSatisfaction: null, bonusDays: null } }), 'en');
+    const c = payslipContent(payslipSource('monthly', { terms: NONE, inputs: { workedHours: null, expectedHours: null, softSkills: null, performance: null, clientSatisfaction: null } }), 'en');
     expect(c.thisMonth).toBeNull();
   });
 
@@ -208,8 +215,8 @@ describe('payslipContent: the month’s cuts and extras, with the run’s own ru
     expect(labels(c.earnings!.rows)).not.toContain('Overtime');
   });
 
-  it('no-show and penalty days: a cell each, the no-show cut in the earnings, the penalty in the deductions', () => {
-    const source = payslipSource('monthly', { terms: SHIFT, inputs: { expectedHours: null, noShowDays: 1, penaltyDays: 2 } });
+  it('no-show and penalty days: a cell each, the no-show cut in the earnings, the Penalty (days) in the deductions', () => {
+    const source = payslipSource('monthly', { terms: { ...SHIFT, adjustments: [BONUS_DAY, penaltyDays(2)] }, inputs: { expectedHours: null, noShowDays: 1 } });
     const c = payslipContent(source, 'en');
     // the day's 8 hours out of the shift's 176 (owner's decisions, 16 and 17 October 2026): 165:30 of 168:00 is 98.51%
     expect(c.thisMonth!.cells[0]).toEqual({ label: 'Hours worked', value: '165:30 of 168:00', note: '98.51%: counts as full (90% or more)' });
@@ -219,6 +226,18 @@ describe('payslipContent: the month’s cuts and extras, with the run’s own ru
     ]);
     // 1 × 2 × 24,000 ÷ 30
     expect(c.earnings!.rows.find((r) => r.label === 'No-show')).toMatchObject({ note: '1 day, 2 days’ pay each', amount: '−1,600.00', value: -1600 });
+    // by its type, with its days and reason; no Penalty row besides (none typed on the grid)
+    expect(c.deductions!.rows.find((r) => r.label === 'Penalty (days)')).toMatchObject({ note: '2 days of the net salary · Late twice', value: source.line.result.penaltyCut });
+    expect(labels(c.deductions!.rows)).not.toContain('Penalty');
+    expect(sum(c.earnings!.rows)).toBe(c.earnings!.total.value);
+    expect(sum(c.deductions!.rows)).toBe(c.deductions!.total.value);
+  });
+
+  it('a line saved with the grid’s bonus and penalty days (before 17 October 2026) reads as it was', () => {
+    const source = payslipSource('monthly', { terms: { ...SHIFT, ...NONE }, inputs: { expectedHours: null, noShowDays: 1, bonusDays: 1, penaltyDays: 2, commission: null, settlements: null } });
+    const c = payslipContent(source, 'en');
+    expect(c.thisMonth!.cells.map((x) => x.label)).toEqual(['Hours worked', 'KPI average', 'Bonus days', 'No-show days', 'Penalty days']);
+    expect(c.earnings!.rows.find((r) => r.label === 'Bonus')).toEqual({ label: 'Bonus', note: '1 day of the fixed salary', amount: '640.00', value: 640 });
     expect(c.deductions!.rows.find((r) => r.label === 'Penalty')).toMatchObject({ note: '2 days', value: source.line.result.penaltyCut });
     expect(sum(c.earnings!.rows)).toBe(c.earnings!.total.value);
     expect(sum(c.deductions!.rows)).toBe(c.deductions!.total.value);
@@ -261,12 +280,42 @@ describe('payslipContent: the month’s cuts and extras, with the run’s own ru
     expect(payslipContent(payslipSource('hourly', { inputs: { leaveDays: 2 } }), 'en').thisMonth!.cells.map((x) => x.label)).toEqual(['Hours worked']);
   });
 
-  it('a commission and a negative settlement: rows of their own, the settlement minus, still adding up', () => {
+  it('a commission and a correction taken off (17 October 2026): rows of their own by type, the correction after tax', () => {
+    const items: PayrollAdjustmentItem[] = [
+      BONUS_DAY,
+      { id: 'c1', kind: 'addition', type: 'commission', taxed: true, amount: 1250, reason: 'September sales' },
+      { id: 'c2', kind: 'deduction', type: 'correction', taxed: false, amount: 300, reason: 'Overpaid in September' },
+    ];
+    const source = payslipSource('monthly', { terms: { adjustments: items } });
+    const c = payslipContent(source, 'en');
+    expect(c.earnings!.rows.at(-1)).toEqual({ label: 'Commission', note: 'September sales', amount: '1,250.00', value: 1250 });
+    expect(c.deductions!.rows.at(-1)).toEqual({ label: 'Correction', note: 'Overpaid in September', amount: '300.00', value: 300 });
+    // 25,524 + 1,250: the correction isn't in the earnings
+    expect(c.earnings!.total.amount).toBe('26,774.00');
+    expect(sum(c.earnings!.rows)).toBe(c.earnings!.total.value);
+    expect(sum(c.deductions!.rows)).toBe(source.line.result.deductions);
+  });
+
+  it('a commission and a negative settlement typed on the grid (before 17 October 2026): rows of their own, as they were', () => {
     const c = payslipContent(payslipSource('monthly', { inputs: { commission: 1250, settlements: -300 } }), 'en');
     expect(c.earnings!.rows.find((r) => r.label === 'Commission')).toEqual({ label: 'Commission', note: null, amount: '1,250.00', value: 1250 });
     expect(c.earnings!.rows.find((r) => r.label === 'Settlement')).toEqual({ label: 'Settlement', note: 'One-off amount this month', amount: '−300.00', value: -300 });
     expect(c.earnings!.total.amount).toBe('26,474.00');
     expect(sum(c.earnings!.rows)).toBe(c.earnings!.total.value);
+  });
+
+  it('an attendance deduction the CEO waived (owner, 17 October 2026): said under This Month, not deducted', () => {
+    // 149:36 of 176:00 is 85%: 15% of the fixed 19,200 = 2,880, waived
+    const source = payslipSource('monthly', { inputs: { workedHours: 149.6, softSkills: null, performance: null, clientSatisfaction: null, attendanceWaived: true } });
+    expect(source.line.result).toMatchObject({ attendanceCut: 0, attendanceWaived: 2880 });
+    const c = payslipContent(source, 'en');
+    expect(c.thisMonth!.cells[0]).toEqual({ label: 'Hours worked', value: '149:36 of 176:00', note: '85.00%: below 90%, the attendance deduction waived' });
+    expect(c.thisMonth!.cells[1]).toEqual({ label: 'Attendance deduction', value: '2,880.00', note: 'Waived by the CEO: not deducted' });
+    expect(labels(c.earnings!.rows)).not.toContain('Attendance adjustment');
+    expect(c.earnings!.total.value).toBe(payslipContent(payslipSource('monthly', { inputs: { workedHours: 176, softSkills: null, performance: null, clientSatisfaction: null } }), 'en').earnings!.total.value);
+    const ar = payslipContent(source, 'ar');
+    expect(ar.thisMonth!.cells[0].note).toBe('٨٥٫٠٠٪: أقل من ٩٠٪، وأُعفي من خصم الحضور');
+    expect(ar.thisMonth!.cells[1]).toEqual({ label: 'خصم الحضور', value: '٢٬٨٨٠٫٠٠', note: 'أعفى منه الرئيس التنفيذي: لا يُخصم' });
   });
 
   it('anything else the line deducts (comprehensive health insurance, 0 today) is a row of its own', () => {
@@ -376,11 +425,11 @@ describe('payslipContent: a month under two contracts (owner, 17 October 2026)',
       { label: 'Variable salary · 1–14 Oct', note: '20% of the gross, for 14 of 30 days', amount: '2,240.00', value: 2240 },
       { label: 'Variable salary · 15–31 Oct', note: '20% of the gross, for 16 of 30 days', amount: '2,880.00', value: 2880 },
       { label: 'Performance adjustment', note: 'Variable paid at 76.75%', amount: '−1,190.40', value: -1190.4 },
-      { label: 'Bonus', note: '1 day of the fixed salary', amount: '720.00', value: 720 },
       { label: 'Transportation allowance · 1–14 Oct', note: 'For 14 of 30 days, not taxed', amount: '700.00', value: 700 },
       { label: 'Mobile allowance · 1–14 Oct', note: 'For 14 of 30 days', amount: '233.33', value: 233.33 },
       { label: 'Transportation allowance · 15–31 Oct', note: 'For 16 of 30 days, not taxed', amount: '800.00', value: 800 },
       { label: 'Mobile allowance · 15–31 Oct', note: 'For 16 of 30 days', amount: '320.00', value: 320 },
+      { label: 'Bonus (days)', note: '1 day of the fixed salary · Campaign launch', amount: '720.00', value: 720 },
     ]);
     expect(c.earnings!.total).toMatchObject({ amount: '27,182.93', value: 27182.93 });
     expect(sum(c.earnings!.rows)).toBe(c.earnings!.total.value);
@@ -395,11 +444,11 @@ describe('payslipContent: a month under two contracts (owner, 17 October 2026)',
       'الراتب المتغير · ١–١٤ أكتوبر',
       'الراتب المتغير · ١٥–٣١ أكتوبر',
       'تسوية المتغير',
-      'مكافأة',
       'بدل انتقال · ١–١٤ أكتوبر',
       'بدل هاتف محمول · ١–١٤ أكتوبر',
       'بدل انتقال · ١٥–٣١ أكتوبر',
       'بدل هاتف محمول · ١٥–٣١ أكتوبر',
+      'مكافأة (أيام)',
     ]);
     expect(ar.earnings!.rows[0].note).toBe('٨٠٪ من الراتب الشامل ٢٤٬٠٠٠٫٠٠، عن ١٤ من ٣٠ يومًا');
   });
@@ -418,7 +467,8 @@ describe('payslipContent: by the hour', () => {
   it('pays the hours at the contract’s rate in place of the fixed and variable salary', () => {
     expect(c.earnings!.rows).toEqual([
       { label: 'Hours worked', note: '92:30 × 150.00 an hour', amount: '13,875.00', value: 13875 },
-      { label: 'Settlement', note: 'One-off amount this month', amount: '450.00', value: 450 },
+      // a correction (a settlement until 17 October 2026), taxed with the pay
+      { label: 'Correction', note: 'September’s hours', amount: '450.00', value: 450 },
     ]);
     expect(c.earnings!.total.amount).toBe('14,325.00');
     expect(c.deductions!.rows.map((r) => [r.label, r.amount])).toEqual([
@@ -494,10 +544,13 @@ describe('payslipContent: in Arabic', () => {
   });
 
   it('names the allowances in Arabic (the contract’s), and the year to date’s months', () => {
-    expect(c.earnings!.rows.slice(-2).map((r) => [r.label, r.note])).toEqual([
+    expect(c.earnings!.rows.slice(-3, -1).map((r) => [r.label, r.note])).toEqual([
       ['بدل انتقال', 'غير خاضع للضريبة'],
       ['بدل هاتف محمول', null],
     ]);
+    // the Bonus (days) by its Arabic name, its days in Arabic and the reason typed in English kept left to right
+    expect(c.earnings!.rows.at(-1)!.label).toBe('مكافأة (أيام)');
+    expect(withoutMarks(c.earnings!.rows.at(-1)!.note!)).toBe('يوم واحد من الراتب الثابت، Campaign launch');
     expect(c.yearToDate!.period).toBe('يناير إلى أكتوبر ٢٠٢٦');
     expect(c.companyShare).toBe('إلى جانب راتبك، تدفع الشركة ٣٬١٣١٫٢٥ حصتها في التأمينات الاجتماعية عنك: ١٨٫٧٥٪ من أجر الاشتراك.');
   });
@@ -506,19 +559,22 @@ describe('payslipContent: in Arabic', () => {
     const source = payslipSource('monthly');
     const content = payslipContent({ ...source, employee: { ...source.employee, nameAr: null, jobTitleAr: null, departmentAr: null }, allowancesAr: {} }, 'ar');
     expect(content.facts.slice(0, 4).map((f) => f.value)).toEqual(['Mariam Adel Hassan', 'EMP-0142', 'Senior Content Writer', 'Marketing › Content Team']);
-    expect(content.earnings!.rows.at(-1)!.label).toBe('Mobile allowance');
+    expect(content.earnings!.rows.at(-2)!.label).toBe('Mobile allowance');
   });
 
   it('a part month, hours and days in Arabic', () => {
     const part = payslipContent(
-      payslipSource('monthly', { terms: { paidDays: 19, expectedHours: 104, expectedDays: { workingDays: 13, holidays: 0 } }, inputs: { expectedHours: null, noShowDays: 2, penaltyDays: 1 } }),
+      payslipSource('monthly', {
+        terms: { paidDays: 19, expectedHours: 104, expectedDays: { workingDays: 13, holidays: 0 }, adjustments: [BONUS_DAY, penaltyDays(1)] },
+        inputs: { expectedHours: null, noShowDays: 2 },
+      }),
       'ar',
     );
     expect(part.earnings!.rows[0].note).toBe('٨٠٪ من الراتب الشامل ٢٤٬٠٠٠٫٠٠، عن ١٩ من ٣٠ يومًا');
     expect(part.earnings!.rows.find((r) => r.label === 'الغياب دون إذن')!.note).toBe('يومان، بأجر يومين عن كل يوم');
     // two 8-hour days out of the expected hours
     expect(part.thisMonth!.cells.find((x) => x.label === 'أيام الغياب دون إذن')!.note).toBe('يُخصم عن كل يوم أجر يومين، ولا تُحتسب ساعاتها (١٦:٠٠) مرة أخرى في الحضور');
-    expect(part.deductions!.rows.find((r) => r.label === 'جزاء')!.note).toBe('يوم واحد');
+    expect(withoutMarks(part.deductions!.rows.find((r) => r.label === 'جزاء (أيام)')!.note!)).toBe('يوم واحد من صافي الراتب، Late twice');
     const hourly = payslipContent(payslipSource('hourly'), 'ar');
     expect(hourly.earnings!.rows[0]).toMatchObject({ label: 'أجر الساعات', note: '٩٢:٣٠ × ١٥٠٫٠٠ للساعة' });
     expect(hourly.facts.find((f) => f.label === 'نوع التعاقد')!.value).toBe('دوام جزئي بالساعة · منذ ١٥/٠٢/٢٠٢٦');

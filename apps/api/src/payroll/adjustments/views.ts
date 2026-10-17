@@ -45,7 +45,13 @@ export interface AdjustmentView {
   kind: AdjustmentKind;
   type: AdjustmentType;
   taxed: boolean;
-  amount: number;
+  /**
+   * EGP. One in days (owner, 17 October 2026): what the month's run worked it out to, as its line has it, or once
+   * applied what the line paid; null while no run has it (no run yet, or not on it).
+   */
+  amount: number | null;
+  /** A Bonus (days) or a Penalty (days): its days, whole or half; null for the others. */
+  days: number | null;
   reason: string;
   /** The advance or loan an advance's recovery or a loan's installment recovers. */
   advance: { id: string; kind: AdvanceKind; givenOn: string; amount: number } | null;
@@ -62,7 +68,11 @@ export interface AdjustmentView {
 
 export const monthOfDate = (d: Date) => fromDateOnly(d).slice(0, 7);
 
-export function adjustmentView(a: AdjustmentRow, names: ReadonlyMap<string, UserRef>): AdjustmentView {
+/**
+ * An addition or deduction as the API sends it; `worked`: what the month's run worked the ones in days out to, by id
+ * (an applied one has its own).
+ */
+export function adjustmentView(a: AdjustmentRow, names: ReadonlyMap<string, UserRef>, worked: ReadonlyMap<string, number> = new Map()): AdjustmentView {
   return {
     id: a.id,
     employee: personOf(a.employee),
@@ -70,7 +80,8 @@ export function adjustmentView(a: AdjustmentRow, names: ReadonlyMap<string, User
     kind: a.kind as AdjustmentKind,
     type: a.type as AdjustmentType,
     taxed: a.taxed,
-    amount: a.amount.toNumber(),
+    amount: a.amount?.toNumber() ?? worked.get(a.id) ?? null,
+    days: a.days?.toNumber() ?? null,
     reason: a.reason,
     advance: a.advance && { id: a.advance.id, kind: a.advance.kind as AdvanceKind, givenOn: fromDateOnly(a.advance.givenOn), amount: a.advance.amount.toNumber() },
     status: a.status as AdjustmentStatus,
@@ -123,7 +134,8 @@ export interface AdvanceView extends AdvanceBalance {
 }
 
 export const recoveriesOf = (a: Pick<AdvanceRow, 'recoveries'>): RecoveryView[] =>
-  a.recoveries.map((r) => ({ id: r.id, month: monthOfDate(r.month), amount: r.amount.toNumber(), status: r.status as AdjustmentStatus }));
+  // a recovery always has its amount (only a bonus or penalty in days has none)
+  a.recoveries.map((r) => ({ id: r.id, month: monthOfDate(r.month), amount: r.amount?.toNumber() ?? 0, status: r.status as AdjustmentStatus }));
 
 /** An advance's balance from its recoveries as they are saved. */
 export const balanceOf = (a: Pick<AdvanceRow, 'amount' | 'recoveries'>): AdvanceBalance => advanceBalance(a.amount.toNumber(), recoveriesOf(a));

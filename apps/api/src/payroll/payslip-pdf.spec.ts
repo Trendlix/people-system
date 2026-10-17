@@ -203,8 +203,17 @@ describe('payslipPdf: fitting on one page', () => {
   it('a long payslip (many allowances, every cut, a part month) is drawn closer and smaller, still on one page', async () => {
     const allowances = Array.from({ length: 14 }, (_, i) => ({ name: `Allowance ${i + 1}`, amount: 100 + i, taxable: i % 2 === 0, insured: false }));
     const source = payslipSource('monthly', {
-      terms: { paidDays: 19, allowances },
-      inputs: { workedHours: 120, noShowDays: 1, penaltyDays: 1, commission: 1250, settlements: -300 },
+      terms: {
+        paidDays: 19,
+        allowances,
+        // the month's additions and deductions (17 October 2026: the grid's moved there)
+        adjustments: [
+          { id: 'p1', kind: 'deduction', type: 'penalty_days', taxed: false, amount: null, days: 1, reason: 'Invented' },
+          { id: 'c1', kind: 'addition', type: 'commission', taxed: true, amount: 1250, reason: 'Invented sales' },
+          { id: 'c2', kind: 'deduction', type: 'correction', taxed: false, amount: 300, reason: 'Invented correction' },
+        ],
+      },
+      inputs: { workedHours: 120, noShowDays: 1 },
     });
     for (const language of ['en', 'ar'] as const) {
       const pdf = await draw(payslipContent(source, language));
@@ -221,7 +230,7 @@ describe('payslipPdf: fitting on one page', () => {
 
   it('a short one is drawn at full size: 9-point rows, 7-point labels', async () => {
     const glyphs = await shownGlyphs(await draw(payslipContent(payslipSource('hourly'), 'en')));
-    expect(glyphsOf(glyphs, 'Settlement')[0].size).toBe(9);
+    expect(glyphsOf(glyphs, 'Correction')[0].size).toBe(9);
     expect(glyphsOf(glyphs, 'Days paid')[0].size).toBe(7);
   });
 });

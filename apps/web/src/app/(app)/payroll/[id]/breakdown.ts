@@ -1,9 +1,11 @@
 import {
   adjustmentTypeLabel,
+  daysText,
   EMPTY_PAYROLL_INPUTS,
   formatHours,
   lawRatesFor,
   measuredExpectedHours,
+  paidAdjustments,
   paysOvertime,
   resultAdjustments,
   splitSegments,
@@ -37,8 +39,12 @@ import { contractLabel, dayRange } from './grid';
 // them, and each part's fixed and variable pay and allowances for its days. Overtime says "not paid" while the run's
 // rules don't pay it (owner, 16 October 2026: "No overtime for now"). The month's additions and deductions (owner, 17
 // October 2026: Additions / Deductions) are rows of their own, each by its type with its reason: the taxed additions in
-// the pay earned, the deductions after tax with the others, the untaxed additions after them, before the net. Pure
-// code, tested; relative imports, as vitest doesn't know the @/ paths.
+// the pay earned, the deductions after tax with the others, the untaxed additions after them, before the net. A Bonus
+// (days) or a Penalty (days) (owner, 17 October 2026: the grid's bonus and penalty days, commission and settlements
+// moved to Additions / Deductions) says its days with what the run worked it out to; a line saved before then has its
+// Bonus, Commission, Settlements and Penalties rows as typed on the grid. An attendance deduction the CEO waived (owner,
+// 17 October 2026: "allow the CEO to wave the deduction by ticking a box") says so on the attendance cut. Pure code,
+// tested; relative imports, as vitest doesn't know the @/ paths.
 
 export interface BreakdownRow {
   key: string;
@@ -179,6 +185,8 @@ function grossSteps({ terms: t, result: r }: Line, rules: PayrollRules, split: S
 /** The steps of a line on monthly pay: the gross's parts, the hours, the cuts and what is added. */
 function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null): BreakdownRow[] {
   const { inputs: i, result: r } = line;
+  // the attendance deduction the CEO waived (17 October 2026): none on a line worked out before then
+  const waived = typeof r.attendanceWaived === 'number' && r.attendanceWaived > 0 ? r.attendanceWaived : 0;
   const typed = i.workedHours !== null || i.expectedHours !== null;
   // the expected hours attendance was measured on: as recorded since 17 October 2026, else as they were worked out
   const expected = measuredExpectedHours(line);
@@ -216,9 +224,17 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
             : 'No hours typed: counts in full'
           : r.attendanceScore >= 1
             ? `At or above ${rules.attendanceGracePercent}%: counts in full`
-            : `Below ${rules.attendanceGracePercent}%: the fixed part follows it`,
+            : waived > 0
+              ? `Below ${rules.attendanceGracePercent}%: its deduction waived by the CEO`
+              : `Below ${rules.attendanceGracePercent}%: the fixed part follows it`,
     },
-    { key: 'attendanceCut', label: 'Attendance cut', value: cutText(r.attendanceCut), kind: 'cut' },
+    {
+      key: 'attendanceCut',
+      label: 'Attendance cut',
+      value: cutText(r.attendanceCut),
+      kind: 'cut',
+      ...(waived > 0 && { note: `Attendance deduction of ${formatEgp(waived)} waived by the CEO` }),
+    },
     {
       key: 'kpi',
       label: 'KPI score',
@@ -254,7 +270,7 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
 
 /** The steps of a line paid by the hour: the hours at the rate (no split, no attendance or KPI cuts). */
 function hourlySteps({ terms: t, inputs: i, result: r }: Line): BreakdownRow[] {
-  const forHours = Math.round((r.earned - r.bonus - r.commission - r.settlements - resultAdjustments(r).taxed) * 100) / 100;
+  const forHours = Math.round((r.earned - r.bonus - (r.commission ?? 0) - (r.settlements ?? 0) - resultAdjustments(r).taxed) * 100) / 100;
   const rate = t.hourlyRate === null ? null : formatEgp(t.hourlyRate);
   return [
     {
@@ -267,24 +283,70 @@ function hourlySteps({ terms: t, inputs: i, result: r }: Line): BreakdownRow[] {
   ];
 }
 
-/** The line's additions or deductions of a kind (owner, 17 October 2026), each a row by its type with its reason. */
-function adjustmentRows(t: PayrollTerms, kind: 'addition' | 'deduction', taxed: boolean | null): BreakdownRow[] {
-  return (t.adjustments ?? [])
+/**
+ * The line's additions or deductions of a kind (owner, 17 October 2026), each a row by its type with its reason, as the
+ * line paid them: a Bonus (days) or a Penalty (days) with its days and what the run worked it out to.
+ */
+function adjustmentRows(line: Line, kind: 'addition' | 'deduction', taxed: boolean | null): BreakdownRow[] {
+  return paidAdjustments(line)
     .filter((a) => a.kind === kind && (taxed === null || a.taxed === taxed))
-    .map((a) => ({
-      key: `adjustment-${a.id}`,
-      label: adjustmentTypeLabel(a.kind, a.type),
-      value: kind === 'deduction' ? cutText(a.amount) : formatEgp(a.amount),
-      kind: kind === 'deduction' ? ('cut' as const) : ('add' as const),
-      note: kind === 'deduction' ? `${a.reason} · after tax` : a.taxed ? `${a.reason} · taxed` : `${a.reason} · not taxed, added after tax`,
-    }));
+    .map((a) => {
+      const inDays = a.days ? `${daysText(a.days)} of ${kind === 'addition' ? 'the fixed part' : "the contract's net"}` : null;
+      const tax = kind === 'deduction' ? 'after tax' : a.taxed ? 'taxed' : 'not taxed, added after tax';
+      return {
+        key: `adjustment-${a.id}`,
+        label: adjustmentTypeLabel(a.kind, a.type),
+        value: kind === 'deduction' ? cutText(a.amount) : formatEgp(a.amount),
+        kind: kind === 'deduction' ? ('cut' as const) : ('add' as const),
+        note: [inDays, a.reason, tax].filter(Boolean).join(' · '),
+      };
+    });
 }
+
+/**
+ * What a line saved before 17 October 2026 had typed on the grid: its bonus, commission, settlements and penalty
+ * rows, as they were (the bonus and the penalty cut less what any Bonus (days) and Penalty (days) came to); none on a
+ * line since, whose are rows of their own by type.
+ */
+function gridRows(line: Line): { additions: BreakdownRow[]; penalties: BreakdownRow[] } {
+  const { inputs: i, result: r } = line;
+  if (r.commission === undefined && r.settlements === undefined) return { additions: [], penalties: [] };
+  const paid = paidAdjustments(line);
+  const ofType = (type: string) => paid.filter((a) => a.type === type).reduce((c, a) => c + Math.round(a.amount * 100), 0);
+  const bonus = (Math.round(r.bonus * 100) - ofType('bonus_days')) / 100;
+  const penalty = (Math.round(r.penaltyCut * 100) - ofType('penalty_days')) / 100;
+  const settlements = r.settlements ?? 0;
+  return {
+    additions: [
+      { key: 'bonus', label: 'Bonus', value: formatEgp(bonus), kind: 'add', note: i.bonusDays ? days(i.bonusDays) : undefined },
+      { key: 'commission', label: 'Commission', value: formatEgp(r.commission ?? 0), kind: 'add' },
+      { key: 'settlements', label: 'Settlements', value: settlements < 0 ? cutText(settlements) : formatEgp(settlements), kind: settlements < 0 ? 'cut' : 'add' },
+    ],
+    penalties: [{ key: 'penalties', label: 'Penalties', value: cutText(penalty), kind: 'cut', note: i.penaltyDays ? `${days(i.penaltyDays)} of the contract's net` : undefined }],
+  };
+}
+
+/**
+ * What the CEO may waive on a line while the run is with the CEO (owner, 17 October 2026: "if there is an attendance
+ * deduction, allow the CEO to wave the deduction by ticking a box"): its attendance cut, or the one waived already
+ * (to take the waiver back); null when there is none, as for pay by the hour.
+ */
+export function waiverOf(line: Pick<Line, 'inputs' | 'result'>): { amount: number; waived: boolean } | null {
+  const waived = line.inputs.attendanceWaived === true;
+  const amount = waived ? (line.result.attendanceWaived ?? 0) : line.result.attendanceCut;
+  if (!(amount > 0) && !waived) return null;
+  return { amount, waived };
+}
+
+/** A line whose attendance deduction the CEO waived: "Waived by the CEO" on it for HR and Finance. */
+export const waivedByCeo = (line: Pick<Line, 'inputs' | 'result'>) => line.inputs.attendanceWaived === true && (line.result.attendanceWaived ?? 0) > 0;
 
 /** Every step of a line, in order, as its row in the results table opens it. */
 export function breakdown(given: Line, rules: PayrollRules, law?: LawRates): BreakdownRow[] {
   // inputs saved before a field existed (the leave days, 17 October 2026) read as not given
   const line: Line = { ...given, inputs: { ...EMPTY_PAYROLL_INPUTS, ...given.inputs } };
-  const { terms: t, inputs: i, result: r } = line;
+  const { terms: t, result: r } = line;
+  const typed = gridRows(line);
   // the employee's share as the run's copy of the rates set by law has it (owner's request, 16 October 2026); a run from
   // an API before them: the built-in rates of its year
   const share = (law ?? lawRatesFor(t.year)).employeeInsuranceRate;
@@ -306,10 +368,8 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates): Bre
     : [{ key: 'allowances', label: 'Allowances', value: formatEgp(r.allowances), kind: 'add', note: allowanceNames(t.allowances) }];
   return [
     ...(line.payBasis === 'hourly' ? hourlySteps(line) : monthlySteps(line, rules, split)),
-    { key: 'bonus', label: 'Bonus', value: formatEgp(r.bonus), kind: 'add', note: i.bonusDays ? days(i.bonusDays) : undefined },
-    { key: 'commission', label: 'Commission', value: formatEgp(r.commission), kind: 'add' },
-    { key: 'settlements', label: 'Settlements', value: r.settlements < 0 ? cutText(r.settlements) : formatEgp(r.settlements), kind: r.settlements < 0 ? 'cut' : 'add' },
-    ...adjustmentRows(t, 'addition', true),
+    ...typed.additions,
+    ...adjustmentRows(line, 'addition', true),
     { key: 'earned', label: 'Earned', value: formatEgp(r.earned), kind: 'total' },
     ...allowances,
     {
@@ -330,10 +390,10 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates): Bre
     },
     { key: 'tax', label: 'Income tax', value: cutText(r.monthlyTax), kind: 'cut' },
     { key: 'martyrsFund', label: 'Martyrs’ fund', value: cutText(r.martyrsFund), kind: 'cut' },
-    { key: 'penalties', label: 'Penalties', value: cutText(r.penaltyCut), kind: 'cut', note: i.penaltyDays ? `${days(i.penaltyDays)} of the contract's net` : undefined },
-    ...adjustmentRows(t, 'deduction', null),
+    ...typed.penalties,
+    ...adjustmentRows(line, 'deduction', null),
     { key: 'deductions', label: 'Deductions', value: cutText(r.deductions), kind: 'total' },
-    ...adjustmentRows(t, 'addition', false),
+    ...adjustmentRows(line, 'addition', false),
     { key: 'net', label: 'Net', value: formatEgp(r.net), kind: 'total' },
     { key: 'released', label: 'Released', value: cutText(r.released), kind: 'cut', note: r.released ? 'Already paid out this month' : undefined },
     { key: 'transfer', label: 'Transfer', value: formatEgp(r.transfer), kind: 'total', note: 'What the bank pays' },

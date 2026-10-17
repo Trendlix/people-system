@@ -3,23 +3,28 @@ import {
   lawRatesFor,
   PAYROLL_RULE_DEFAULTS,
   payrollLine,
+  type PayrollAdjustmentItem,
   type PayrollInputs,
   type PayrollResult,
   type PayrollSegment,
   type PayrollTerms,
+  type SavedPayrollInputs,
 } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { breakdown, cutText, expectedHoursNote, percentText, shiftHoursNote } from './breakdown';
+import { breakdown, cutText, expectedHoursNote, percentText, shiftHoursNote, waivedByCeo, waiverOf } from './breakdown';
 
 // An invented employee's month, worked out by hand. The shift: 22 working days in the month less 1 holiday, at 8:00 to
 // work a day, 168:00 scheduled; a no-show day and a leave day come out of them, a day of the shift each (owner,
 // 17 October 2026): 168 − 2 × 8 = 152 expected. 133 worked of 152 is 87.5%, below the 90% grace: 1,000 off the fixed
 // 8,000. A performance of 65%: (87.5 + 65) ÷ 2 = 76.25%, below 80%: 475 off the variable 2,000. The no-show day 2 ×
-// 10,000 ÷ 30 = 666.67; the leave day costs nothing. Earned 8,000 − 1,000 + 2,000 − 475 − 666.67 + 1,000 commission −
-// 100 settlements = 8,758.33. Taxable 8,758.33 + 500 − 1,100 = 8,158.33; × 12 − 20,000 = 77,899.96, 77,890 a year (to
-// the 10 below); tax 1,500 + 2,250 + 20% of 7,890 = 5,328, 444 a month. Martyrs' Fund 9,258.33 × 0.05% = 4.63.
-// Deductions 1,548.63; net 8,758.33 + 500 − 1,548.63 = 7,709.70; 1,000 released. No warnings: the most attendance
-// counts, (22 − 1 holiday − 2 days off) × 8 = 152, is not less than the 133 worked.
+// 10,000 ÷ 30 = 666.67; the leave day costs nothing. On Additions / Deductions (17 October 2026): a commission of 1,000,
+// taxed, and a correction of 100 taken after tax. Earned 8,000 − 1,000 + 2,000 − 475 − 666.67 + 1,000 = 8,858.33.
+// Taxable 8,858.33 + 500 − 1,100 = 8,258.33; × 12 − 20,000 = 79,099.96, 79,090 a year (to the 10 below); tax 1,500 +
+// 2,250 + 20% of 9,090 = 5,568, 464 a month. Martyrs' Fund 9,358.33 × 0.05% = 4.68. Deductions 1,100 + 464 + 4.68 +
+// the correction's 100 = 1,668.68; net 8,858.33 + 500 − 1,668.68 = 7,689.65; 1,000 released. No warnings: the most
+// attendance counts, (22 − 1 holiday − 2 days off) × 8 = 152, is not less than the 133 worked.
+const COMMISSION = { id: 'c1', kind: 'addition', type: 'commission', taxed: true, amount: 1000, reason: 'September sales' } satisfies PayrollAdjustmentItem;
+const CORRECTION = { id: 'c2', kind: 'deduction', type: 'correction', taxed: false, amount: 100, reason: 'Overpaid in September' } satisfies PayrollAdjustmentItem;
 const terms: PayrollTerms = {
   year: 2026,
   payBasis: 'monthly',
@@ -34,6 +39,7 @@ const terms: PayrollTerms = {
   hoursPerDay: 8,
   expectedHours: 168,
   expectedDays: { workingDays: 22, holidays: 1 },
+  adjustments: [COMMISSION, CORRECTION],
 };
 
 const result: PayrollResult = {
@@ -48,32 +54,33 @@ const result: PayrollResult = {
   attendanceScore: 0.875,
   kpiScore: 0.7625,
   attendanceCut: 1000,
+  // not waived by the CEO (17 October 2026)
+  attendanceWaived: 0,
   kpiCut: 475,
   noShowCut: 666.67,
   overtime: 0,
   bonus: 0,
-  commission: 1000,
-  settlements: -100,
-  earned: 8758.33,
+  earned: 8858.33,
   allowances: 500,
   taxableAllowances: 500,
   insuredWage: 10_000,
   employeeInsurance: 1100,
   employerInsurance: 1875,
-  monthlyTaxable: 8158.33,
-  annualNetIncome: 77_890,
-  monthlyTax: 444,
-  martyrsFund: 4.63,
+  monthlyTaxable: 8258.33,
+  annualNetIncome: 79_090,
+  monthlyTax: 464,
+  martyrsFund: 4.68,
   penaltyCut: 0,
-  deductions: 1548.63,
-  net: 7709.7,
+  deductions: 1668.68,
+  net: 7689.65,
   released: 1000,
-  transfer: 6709.7,
-  companyCost: 11_133.33,
-  // no additions or deductions this month (17 October 2026)
-  additionsTaxed: 0,
+  transfer: 6689.65,
+  companyCost: 11_233.33,
+  // the commission and the correction (17 October 2026)
+  additionsTaxed: 1000,
   additionsUntaxed: 0,
-  adjustmentDeductions: 0,
+  adjustmentDeductions: 100,
+  adjustments: [COMMISSION, CORRECTION],
   warnings: [],
 };
 
@@ -83,8 +90,6 @@ const inputs: PayrollInputs = {
   leaveDays: 1,
   workedHours: 133,
   performance: 65,
-  commission: 1000,
-  settlements: -100,
   released: 1000,
 };
 const line = { payBasis: 'monthly' as const, terms, inputs, result };
@@ -117,9 +122,8 @@ describe('a line’s breakdown', () => {
       'No-show cut',
       'Leave days',
       'Overtime',
-      'Bonus',
+      // the month's additions and deductions by type (17 October 2026): no Bonus, Settlements or Penalties of the grid's
       'Commission',
-      'Settlements',
       'Earned',
       'Allowances',
       'Insured wage',
@@ -127,7 +131,7 @@ describe('a line’s breakdown', () => {
       'Taxable pay',
       'Income tax',
       'Martyrs’ fund',
-      'Penalties',
+      'Correction',
       'Deductions',
       'Net',
       'Released',
@@ -139,9 +143,10 @@ describe('a line’s breakdown', () => {
   it('shows every amount in EGP with two decimals, what is taken off with a minus', () => {
     expect(row('fixed')?.value).toBe('EGP 8,000.00');
     expect(row('attendanceCut')?.value).toBe('−EGP 1,000.00');
-    expect(row('settlements')).toMatchObject({ value: '−EGP 100.00', kind: 'cut' });
+    expect(row('adjustment-c1')).toEqual({ key: 'adjustment-c1', label: 'Commission', value: 'EGP 1,000.00', kind: 'add', note: 'September sales · taxed' });
+    expect(row('adjustment-c2')).toEqual({ key: 'adjustment-c2', label: 'Correction', value: '−EGP 100.00', kind: 'cut', note: 'Overpaid in September · after tax' });
     expect(row('overtime')?.value).toBe('EGP 0.00');
-    expect(row('net')).toMatchObject({ value: 'EGP 7,709.70', kind: 'total' });
+    expect(row('net')).toMatchObject({ value: 'EGP 7,689.65', kind: 'total' });
     expect(row('companyCost')?.note).toBe("Earned, allowances and the company's social insurance (EGP 1,875.00)");
   });
 
@@ -205,11 +210,12 @@ describe('a line’s breakdown', () => {
         payBasis: 'hourly',
         terms: { ...terms, payBasis: 'hourly', hourlyRate: 100, expectedHours: null, expectedDays: null },
         inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 120.5, leaveDays: 1 },
-        result: { ...result, fixed: 0, variable: 0, expectedHours: null, earned: 12_950, bonus: 0, commission: 1000, settlements: -100 },
+        // the hours' 12,050 and the commission's 1,000
+        result: { ...result, fixed: 0, variable: 0, expectedHours: null, earned: 13_050, bonus: 0 },
       },
       PAYROLL_RULE_DEFAULTS,
     );
-    expect(hourly.slice(0, 2).map((r) => r.label)).toEqual(['Pay for the hours', 'Bonus']);
+    expect(hourly.slice(0, 2).map((r) => r.label)).toEqual(['Pay for the hours', 'Commission']);
     expect(hourly[0]).toMatchObject({ value: 'EGP 12,050.00', note: '120:30 hours at EGP 100.00 an hour' });
     expect(hourly.find((r) => r.key === 'expected' || r.key === 'leave')).toBeUndefined();
   });
@@ -339,7 +345,7 @@ describe('breakdown: a month under two contracts (owner, 17 October 2026: "take 
   };
   const renewal: PayrollSegment = { ...first, contractId: 'c2', number: 'CON-2026-0019', version: 2, from: '2026-10-15', to: '2026-10-31', days: 16, gross: 12_000, allowances: [transport(600), mobile] };
   // the pay at the month's end is the renewal's
-  const split: PayrollTerms = { ...terms, gross: 12_000, allowances: [transport(600), mobile], segments: [first, renewal] };
+  const split: PayrollTerms = { ...terms, gross: 12_000, allowances: [transport(600), mobile], segments: [first, renewal], adjustments: undefined };
   const month = lineOf(split, EMPTY_PAYROLL_INPUTS);
   const steps = breakdown(month, PAYROLL_RULE_DEFAULTS);
   const step = (key: string) => steps.find((s) => s.key === key);
@@ -446,8 +452,8 @@ describe('breakdown: the month’s additions and deductions (owner, 17 October 2
   const keys = rows.map((r) => r.key);
 
   it('puts the taxed additions before the pay earned, the deductions with the others, the untaxed additions before the net', () => {
-    expect(keys.slice(keys.indexOf('settlements'), keys.indexOf('earned') + 1)).toEqual(['settlements', 'adjustment-a1', 'earned']);
-    expect(keys.slice(keys.indexOf('penalties'), keys.indexOf('net') + 1)).toEqual(['penalties', 'adjustment-a3', 'deductions', 'adjustment-a2', 'net']);
+    expect(keys.slice(keys.indexOf('overtime'), keys.indexOf('earned') + 1)).toEqual(['overtime', 'adjustment-a1', 'earned']);
+    expect(keys.slice(keys.indexOf('martyrsFund'), keys.indexOf('net') + 1)).toEqual(['martyrsFund', 'adjustment-a3', 'deductions', 'adjustment-a2', 'net']);
     expect(rows.find((r) => r.key === 'adjustment-a1')).toEqual({ key: 'adjustment-a1', label: 'Incentive', value: 'EGP 1,500.00', kind: 'add', note: 'Campaign launch · taxed' });
     expect(rows.find((r) => r.key === 'adjustment-a2')).toMatchObject({ label: 'Reimbursement', kind: 'add', note: 'Taxi · not taxed, added after tax' });
     expect(rows.find((r) => r.key === 'adjustment-a3')).toEqual({ key: 'adjustment-a3', label: 'Damage or loss', value: '−EGP 250.00', kind: 'cut', note: 'Broken charger · after tax' });
@@ -462,6 +468,86 @@ describe('breakdown: the month’s additions and deductions (owner, 17 October 2
   });
 
   it('a line without any has no such rows', () => {
-    expect(breakdown({ payBasis: 'monthly', terms, inputs: EMPTY_PAYROLL_INPUTS, result: payrollLine(terms, EMPTY_PAYROLL_INPUTS) }, PAYROLL_RULE_DEFAULTS).some((r) => r.key.startsWith('adjustment-'))).toBe(false);
+    const none = { ...terms, adjustments: [] };
+    expect(breakdown({ payBasis: 'monthly', terms: none, inputs: EMPTY_PAYROLL_INPUTS, result: payrollLine(none, EMPTY_PAYROLL_INPUTS) }, PAYROLL_RULE_DEFAULTS).some((r) => r.key.startsWith('adjustment-'))).toBe(false);
+  });
+});
+
+describe('breakdown: a Bonus (days) and a Penalty (days) (owner, 17 October 2026: "Yes, as proposed")', () => {
+  // a bonus day is a day of the fixed 8,000: 1.5 × 8,000 ÷ 30 = 400. A penalty day a day of the contract's net: 10,000
+  // less 1,100 insurance; taxable 8,900, × 12 − 20,000 = 86,800, tax 1,500 + 2,250 + 20% of 16,800 = 7,110 a year,
+  // 592.50 a month; the Fund 5: a net of 8,302.50, ÷ 30 = 276.75
+  const inDays: PayrollTerms = {
+    ...terms,
+    adjustments: [
+      { id: 'b1', kind: 'addition', type: 'bonus_days', taxed: true, amount: null, days: 1.5, reason: 'Target met' },
+      { id: 'p1', kind: 'deduction', type: 'penalty_days', taxed: false, amount: null, days: 1, reason: 'Late twice' },
+    ],
+  };
+  const steps = breakdown(lineOf(inDays, EMPTY_PAYROLL_INPUTS), PAYROLL_RULE_DEFAULTS);
+  const step = (key: string) => steps.find((s) => s.key === key);
+
+  it('says each one’s days, what the run worked it out to and its reason', () => {
+    expect(step('adjustment-b1')).toEqual({ key: 'adjustment-b1', label: 'Bonus (days)', value: 'EGP 400.00', kind: 'add', note: '1.5 days of the fixed part · Target met · taxed' });
+    expect(step('adjustment-p1')).toEqual({
+      key: 'adjustment-p1',
+      label: 'Penalty (days)',
+      value: '−EGP 276.75',
+      kind: 'cut',
+      note: "1 day of the contract's net · Late twice · after tax",
+    });
+    // no rows of the grid's
+    expect(steps.find((s) => ['bonus', 'commission', 'settlements', 'penalties'].includes(s.key))).toBeUndefined();
+  });
+});
+
+describe('breakdown: a line saved with the grid’s figures (before 17 October 2026), as it was', () => {
+  // 1,000 commission and −100 settlements in the gross, 2 bonus days of 8,000 ÷ 30 = 533.33 and a penalty day: earned
+  // 8,000 − 1,000 + 2,000 − 475 − 666.67 + 533.33 + 1,000 − 100 = 9,291.66
+  const typed: SavedPayrollInputs = { ...inputs, bonusDays: 2, penaltyDays: 1, commission: 1000, settlements: -100 };
+  const was = { ...terms, adjustments: undefined };
+  const old = lineOf(was, typed);
+  const steps = breakdown(old, PAYROLL_RULE_DEFAULTS);
+  const step = (key: string) => steps.find((s) => s.key === key);
+
+  it('has its Bonus, Commission, Settlements and Penalties rows, with the days typed', () => {
+    expect(old.result).toMatchObject({ bonus: 533.33, commission: 1000, settlements: -100, earned: 9291.66 });
+    expect(steps.slice(steps.findIndex((s) => s.key === 'overtime') + 1, steps.findIndex((s) => s.key === 'earned')).map((s) => s.label)).toEqual([
+      'Bonus',
+      'Commission',
+      'Settlements',
+    ]);
+    expect(step('bonus')).toMatchObject({ value: 'EGP 533.33', note: '2 days' });
+    expect(step('settlements')).toMatchObject({ value: '−EGP 100.00', kind: 'cut' });
+    expect(step('penalties')).toMatchObject({ value: cutText(old.result.penaltyCut), note: "1 day of the contract's net" });
+  });
+});
+
+describe('breakdown: the attendance deduction waived by the CEO (owner, 17 October 2026)', () => {
+  // "if there is an attendance deduction, allow the CEO to wave the deduction by ticking a box": the 1,000 off the fixed
+  // 8,000 for 87.5% attendance
+  const waived = lineOf(terms, { ...inputs, attendanceWaived: true });
+
+  it('says what was waived on the attendance cut, which is 0', () => {
+    expect(waived.result).toMatchObject({ attendanceCut: 0, attendanceWaived: 1000 });
+    expect(stepOf(waived, 'attendanceCut')).toMatchObject({ value: 'EGP 0.00', note: 'Attendance deduction of EGP 1,000.00 waived by the CEO' });
+    expect(stepOf(waived, 'attendance')?.note).toBe('Below 90%: its deduction waived by the CEO');
+    expect(stepOf(lineOf(terms, inputs), 'attendanceCut')?.note).toBeUndefined();
+  });
+
+  it('offers the CEO the cut to waive, or the waiver to take back; nothing without a cut', () => {
+    expect(waiverOf(lineOf(terms, inputs))).toEqual({ amount: 1000, waived: false });
+    expect(waiverOf(waived)).toEqual({ amount: 1000, waived: true });
+    // 150 of 152 hours: no cut
+    expect(waiverOf(lineOf(terms, { ...inputs, workedHours: 150 }))).toBeNull();
+    // a line worked out before the waiver existed
+    const older: Partial<PayrollResult> = { ...lineOf(terms, inputs).result };
+    delete older.attendanceWaived;
+    expect(waiverOf({ inputs, result: older as PayrollResult })).toEqual({ amount: 1000, waived: false });
+  });
+
+  it('marks a waived line for HR and Finance', () => {
+    expect(waivedByCeo(waived)).toBe(true);
+    expect(waivedByCeo(lineOf(terms, inputs))).toBe(false);
   });
 });

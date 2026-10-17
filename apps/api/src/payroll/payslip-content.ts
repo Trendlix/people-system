@@ -3,18 +3,21 @@ import {
   adjustmentTypeLabelAr,
   formatHours,
   LABELS,
+  lineDays,
   measuredExpectedHours,
+  paidAdjustments,
   paysOvertime,
   resultAdjustments,
   splitSegments,
   toArabicDigits,
   type EmploymentType,
   type LawRates,
+  type PaidAdjustment,
   type PayBasis,
-  type PayrollInputs,
   type PayrollResult,
   type PayrollRules,
   type PayrollTerms,
+  type SavedPayrollInputs,
 } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import { arabicAmountInWords } from '../documents/engine/arabic.js';
@@ -34,7 +37,11 @@ import { monthArabic, monthName } from './months.js';
 // middle of the billing period") has each part's fixed and variable salary and allowances, with its days ("Fixed salary
 // · 1–14 Oct"). The month's additions and deductions (owner, 17 October 2026: Additions / Deductions) are rows of their
 // own, each by its type with its reason: the additions with the earnings (an untaxed one says so), the deductions with
-// the deductions. A row that is 0 is left out, and so is a section with nothing in it. Left off on purpose: the company cost, the tax working, HR's comments, the warnings,
+// the deductions; a Bonus (days) or a Penalty (days) (owner, 17 October 2026: the grid's days moved to Additions /
+// Deductions) with its days, what it came to as the run worked it out. A line saved before then has its bonus and
+// penalty days, commission and settlement as typed on the grid. An attendance deduction the CEO waived (owner, 17
+// October 2026: "allow the CEO to wave the deduction by ticking a box") is said under This Month, and not deducted.
+// A row that is 0 is left out, and so is a section with nothing in it. Left off on purpose: the company cost, the tax working, HR's comments, the warnings,
 // the full account number, the IBAN and the national ID. In English for everyone; in Arabic on request, right to left,
 // every number in ٠-٩ but the codes with Latin letters (EMP-0007, PAY-2026-10) and the banks' short names (CIB, QNB).
 // Pure: the drawing is payslip-pdf.ts.
@@ -75,7 +82,8 @@ export interface PayslipSource {
     employmentType: EmploymentType;
     payBasis: PayBasis;
     terms: PayrollTerms;
-    inputs: PayrollInputs;
+    /** As saved: a line from before 17 October 2026 has the grid's bonus and penalty days, commission and settlements. */
+    inputs: SavedPayrollInputs;
     result: PayrollResult;
     /** The bank details as copied at the approval: only the bank and the last 4 digits are printed. */
     bankShort: string | null;
@@ -160,6 +168,7 @@ const L = {
   noShowDays: { en: 'No-show days', ar: 'أيام الغياب دون إذن' },
   leaveDays: { en: 'Leave days', ar: 'أيام الإجازة' },
   penaltyDays: { en: 'Penalty days', ar: 'أيام الجزاء' },
+  attendanceWaived: { en: 'Attendance deduction', ar: 'خصم الحضور' },
   softSkills: { en: 'Soft skills', ar: 'المهارات الشخصية' },
   performance: { en: 'Performance', ar: 'الأداء' },
   clientSatisfaction: { en: 'Client satisfaction', ar: 'رضا العملاء' },
@@ -232,6 +241,9 @@ export function arabicNumerals(text: string): string {
 
 /** Half-up to the piaster, as payrollLine rounds. */
 const piasters = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100 + 0;
+
+/** Amounts added to the piaster. */
+const total = (values: readonly number[]) => values.reduce((cents, v) => cents + Math.round(v * 100), 0) / 100;
 
 /** An amount as printed: two decimals, thousands separated, a minus sign (−) when below 0. */
 export const formatAmount = (v: number): string =>
@@ -334,8 +346,6 @@ const PRINTED: readonly (keyof PayrollResult)[] = [
   'noShowCut',
   'overtime',
   'bonus',
-  'commission',
-  'settlements',
   'earned',
   'allowances',
   'insuredWage',
@@ -412,6 +422,8 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   const cells: PayslipCell[] = [];
   // the expected hours attendance was measured on: HR's, else the shift's less the no-show and leave days
   const expected = measuredExpectedHours({ payBasis: line.payBasis, terms, inputs, result });
+  // the attendance deduction the CEO waived (17 October 2026): none on a line worked out before then
+  const waived = Number.isFinite(result.attendanceWaived) && (result.attendanceWaived ?? 0) > 0 ? result.attendanceWaived! : 0;
   if (hourly) {
     if (inputs.workedHours !== null) {
       const rate = terms.hourlyRate ?? 0;
@@ -430,6 +442,9 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
       note = ar ? `${percent2(ratio)}: يُصرف إضافي عمّا فوق ${percentOf(rules.overtimeAbovePercent)}` : `${percent2(ratio)}: overtime paid above ${percentOf(rules.overtimeAbovePercent)}`;
     } else if (ratio >= rules.attendanceGracePercent / 100) {
       note = ar ? `${percent2(ratio)}: تُحتسب كاملة (${grace} فأكثر)` : `${percent2(ratio)}: counts as full (${grace} or more)`;
+    } else if (waived > 0) {
+      // the CEO waived the deduction (owner, 17 October 2026): the fixed salary paid in full
+      note = ar ? `${percent2(ratio)}: أقل من ${grace}، وأُعفي من خصم الحضور` : `${percent2(ratio)}: below ${grace}, the attendance deduction waived`;
     } else {
       const paid = percent2(result.attendanceScore);
       note = ar ? `${percent2(ratio)}: أقل من ${grace}، يُصرف الراتب الثابت بنسبة ${paid}` : `${percent2(ratio)}: below ${grace}, fixed salary paid at ${paid}`;
@@ -468,8 +483,17 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
       [...kpis.map(([label, v]) => `${t(label)} ${percentOf(v)}`), `${t(L.attendance)} ${percentOf(result.attendanceScore * 100)}`].join(' · '),
     );
   }
+  if (waived > 0) {
+    cells.push({
+      label: t(L.attendanceWaived),
+      value: money(waived),
+      note: ar ? 'أعفى منه الرئيس التنفيذي: لا يُخصم' : 'Waived by the CEO: not deducted',
+    });
+  }
   const given = (v: number | null) => (v !== null && v > 0 ? v : null);
-  const bonusDays = given(inputs.bonusDays);
+  // the Bonus (days) and Penalty (days) ones' days (17 October 2026), or as typed on the grid before then
+  const typedDays = lineDays({ terms, inputs });
+  const bonusDays = given(typedDays.bonusDays);
   if (bonusDays !== null) cells.push({ label: t(L.bonusDays), value: num(plainNumber(bonusDays)), note: ar ? 'أيام من الراتب الثابت' : 'Days of the fixed salary' });
   const noShowDays = hourly ? null : given(inputs.noShowDays);
   const multiplier = rules.noShowDayMultiplier;
@@ -486,7 +510,7 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     const hours = leaveHours > 0 ? num(ar ? `، ولا تُحتسب ساعاتها (${formatHours(leaveHours)}) في الحضور` : `; their ${formatHours(leaveHours)} hours aren’t counted in attendance`) : '';
     cells.push({ label: t(L.leaveDays), value: num(plainNumber(leaveDays)), note: `${paid}${hours}` });
   }
-  const penaltyDays = given(inputs.penaltyDays);
+  const penaltyDays = given(typedDays.penaltyDays);
   if (penaltyDays !== null) {
     const of = terms.statutory ? (ar ? 'أجر يوم صافٍ عن كل يوم' : 'A day’s net salary each') : ar ? 'أجر يوم عن كل يوم' : 'A day’s pay each';
     cells.push({ label: t(L.penaltyDays), value: num(plainNumber(penaltyDays)), note: of });
@@ -531,10 +555,16 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
       num(ar ? `الحضور فوق ${percentOf(rules.overtimeAbovePercent)}، بمعدل ${plainNumber(rules.overtimeRate)}` : `Attendance above ${percentOf(rules.overtimeAbovePercent)}, at ${plainNumber(rules.overtimeRate)}`),
     );
   }
-  const bonusOf = inputs.bonusDays ?? 0;
-  earn(L.bonus, result.bonus, ar ? `${arabicDays(bonusOf)} من الراتب الثابت` : `${englishDays(bonusOf)} of the fixed salary`);
-  earn(L.commission, result.commission);
-  earn(L.settlement, result.settlements, t(L.oneOff));
+  // the month's additions and deductions as the line paid them (17 October 2026), a Bonus (days)'s and a Penalty
+  // (days)'s worked out; what is left of the bonus and the penalty cut was typed on the grid before then
+  const items = paidAdjustments({ terms, result });
+  const ofType = (type: string) => total(items.filter((a) => a.type === type).map((a) => a.amount));
+  const fixedDays = (n: number) => (ar ? `${arabicDays(n)} من الراتب الثابت` : `${englishDays(n)} of the fixed salary`);
+  const netDays = (n: number) =>
+    terms.statutory ? (ar ? `${arabicDays(n)} من صافي الراتب` : `${englishDays(n)} of the net salary`) : ar ? arabicDaysPay(n) : n === 1 ? 'A day’s pay' : `${plainNumber(n)} days’ pay`;
+  earn(L.bonus, piasters(result.bonus - ofType('bonus_days')), fixedDays(inputs.bonusDays ?? 0));
+  earn(L.commission, result.commission ?? 0);
+  earn(L.settlement, result.settlements ?? 0, t(L.oneOff));
   // each allowance for the days paid, as payrollLine prorates it (so they add up to its allowances); a split month's each
   // part's own, for its days
   const allowanceParts = split
@@ -551,13 +581,15 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
       earnings.push(row(part ? `${name} · ${part}` : name, amount, note));
     }
   }
-  // the month's additions (owner, 17 October 2026), each by its type, with its reason; an untaxed one says so
-  const items = terms.adjustments ?? [];
+  // the month's additions (owner, 17 October 2026), each by its type, with its reason (a Bonus (days) with its days
+  // first); an untaxed one says so
   const typeLabel = (kind: string, type: string) => (ar ? adjustmentTypeLabelAr(kind, type) : adjustmentTypeLabel(kind, type));
   // the reason as HR typed it; Latin text kept left to right inside the Arabic
   const reasonText = (reason: string) => (ar && !/[\u0600-\u06FF]/.test(reason) ? `${LEFT_TO_RIGHT_ISOLATE}${reason}${POP_ISOLATE}` : reason);
+  const notes = (...parts: (string | null)[]) => parts.filter((x): x is string => !!x).join(ar ? '، ' : ' · ');
+  const daysNote = (a: PaidAdjustment) => (a.days ? (a.kind === 'addition' ? fixedDays(a.days) : netDays(a.days)) : null);
   for (const a of items.filter((x) => x.kind === 'addition' && x.amount !== 0)) {
-    earnings.push(row(typeLabel(a.kind, a.type), a.amount, a.taxed ? reasonText(a.reason) : `${reasonText(a.reason)}${ar ? '، ' : ' · '}${t(L.notTaxed)}`));
+    earnings.push(row(typeLabel(a.kind, a.type), a.amount, notes(daysNote(a), reasonText(a.reason), a.taxed ? null : t(L.notTaxed))));
   }
   const adjusted = resultAdjustments(result);
   const earningsTotal = piasters(result.earned + result.allowances + adjusted.untaxed);
@@ -579,10 +611,11 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   // what else is in the deductions: comprehensive health insurance, 0 while it doesn't apply in Cairo
   const named = result.employeeInsurance + result.monthlyTax + result.martyrsFund + result.penaltyCut + oldMedical + adjusted.deductions;
   deduct(L.healthInsurance, piasters(result.deductions - named));
-  deduct(L.penalty, result.penaltyCut, ar ? arabicDays(inputs.penaltyDays ?? 0) : englishDays(inputs.penaltyDays ?? 0));
+  // the penalty days typed on the grid before 17 October 2026; a Penalty (days) since is a row of its own below
+  deduct(L.penalty, piasters(result.penaltyCut - ofType('penalty_days')), ar ? arabicDays(inputs.penaltyDays ?? 0) : englishDays(inputs.penaltyDays ?? 0));
   deduct(L.medical, oldMedical, t(L.monthlySubscription));
-  // the month's deductions (owner, 17 October 2026), each by its type, with its reason
-  for (const a of items.filter((x) => x.kind === 'deduction' && x.amount !== 0)) deductions.push(row(typeLabel(a.kind, a.type), a.amount, reasonText(a.reason)));
+  // the month's deductions (owner, 17 October 2026), each by its type, with its reason (a Penalty (days) with its days)
+  for (const a of items.filter((x) => x.kind === 'deduction' && x.amount !== 0)) deductions.push(row(typeLabel(a.kind, a.type), a.amount, notes(daysNote(a), reasonText(a.reason))));
 
   // ---------- the net, and what the bank pays ----------
   const afterNet: PayslipRow[] = [];

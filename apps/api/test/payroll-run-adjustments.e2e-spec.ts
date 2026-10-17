@@ -160,10 +160,10 @@ describe('Payroll run with additions and deductions (e2e)', () => {
     await getRun();
     expect(lineOf(alpha).result).toMatchObject({ additionsTaxed: 1500, earned: 11500 });
     // the inputs typed stay, and a refresh takes them again too
-    await api().patch(`/api/payroll/runs/${run.id}/lines`).set('Cookie', hr).send({ lines: [{ id: lineOf(alpha).id, inputs: { bonusDays: 1 } }] }).expect(200);
+    await api().patch(`/api/payroll/runs/${run.id}/lines`).set('Cookie', hr).send({ lines: [{ id: lineOf(alpha).id, inputs: { noShowDays: 1 } }] }).expect(200);
     await act('refresh', hr).expect(200);
     await getRun();
-    expect(lineOf(alpha).inputs.bonusDays).toBe(1);
+    expect(lineOf(alpha).inputs.noShowDays).toBe(1);
     expect(lineOf(alpha).result.additionsTaxed).toBe(1500);
   });
 

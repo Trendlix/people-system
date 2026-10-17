@@ -1,10 +1,30 @@
 import { applyDecorators } from '@nestjs/common';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateBy,
+  ValidateIf,
+} from 'class-validator';
+import {
+  ADJUSTMENT_DAYS_MAX,
   ADJUSTMENT_KINDS,
   ADJUSTMENT_STATUSES,
   ADVANCE_KINDS,
   ADVANCE_STATUSES,
+  isAdjustmentDays,
+  isDaysType,
   type AdjustmentKind,
   type AdjustmentStatus,
   type AdvanceKind,
@@ -17,7 +37,9 @@ import { MONTH } from '../months.js';
 
 // Additions / Deductions and advances and loans (owner, 17 October 2026; packages/shared payroll-adjustments.ts).
 // Months: YYYY-MM. Dates: YYYY-MM-DD. Money: a number of EGP, to the piaster, more than 0. Text: an empty string clears
-// an optional field. A type is checked against its kind, and whether it is taxed, by the service.
+// an optional field. A type is checked against its kind, and whether it is taxed, by the service. A Bonus (days) or a
+// Penalty (days) (owner, 17 October 2026) takes its days, whole or half, and no amount: the month's run works it out;
+// every other type its amount and no days (the service says so when the wrong one is sent).
 
 /** Present (even as null) means "change it"; for fields that cannot be empty, null is then refused. */
 const Sent = () => ValidateIf((_o, v) => v !== undefined);
@@ -29,10 +51,17 @@ const AMOUNT_MESSAGE = 'Enter the amount in EGP, more than 0, e.g. 1500 or 1500.
 const REASON_MESSAGE = 'Say what it is for.';
 const TAXED_MESSAGE = 'Send whether it is taxed as true or false.';
 const ADVANCE_MESSAGE = 'Choose the advance or loan it recovers.';
+const DAYS_MESSAGE = `Enter the days, more than 0 and up to ${ADJUSTMENT_DAYS_MAX}, in whole or half days, e.g. 2 or 1.5.`;
 
 /** An amount of EGP to the piaster, more than 0. */
 const Amount = (message: string) =>
   applyDecorators(IsNumber({ maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false }, { message }), Min(0.01, { message }), Max(MAX_MONEY, { message }));
+
+/** Days, whole or half, more than 0 and up to a month's. */
+const Days = () => ValidateBy({ name: 'adjustmentDays', validator: { validate: (v) => isAdjustmentDays(v), defaultMessage: () => DAYS_MESSAGE } });
+
+/** The type sent is in days (or, changing one, may be: the service checks it against the one it has). */
+const typedInDays = (o: { type?: unknown }) => typeof o.type === 'string' && isDaysType(o.type.trim());
 
 /** An addition or deduction for an employee's month. */
 export class CreateAdjustmentDto {
@@ -52,8 +81,13 @@ export class CreateAdjustmentDto {
   @IsOptional() @IsBoolean({ message: TAXED_MESSAGE })
   taxed?: boolean | null;
 
-  @Amount(AMOUNT_MESSAGE)
-  amount: number;
+  /** Every type but one in days, which has none (refused by the service when sent). */
+  @ValidateIf((o: CreateAdjustmentDto) => !typedInDays(o) || o.amount !== undefined) @Amount(AMOUNT_MESSAGE)
+  amount?: number;
+
+  /** A Bonus (days) or a Penalty (days) only (owner, 17 October 2026): its days. */
+  @ValidateIf((o: CreateAdjustmentDto) => typedInDays(o) || o.days !== undefined) @Days()
+  days?: number;
 
   @Trim() @IsString({ message: REASON_MESSAGE }) @MinLength(1, { message: REASON_MESSAGE }) @MaxLength(500, { message: 'Keep the reason to 500 characters or fewer.' })
   reason: string;
@@ -76,6 +110,10 @@ export class UpdateAdjustmentDto {
 
   @Sent() @Amount(AMOUNT_MESSAGE)
   amount?: number;
+
+  /** A Bonus (days) or a Penalty (days): its days (owner, 17 October 2026). */
+  @Sent() @Days()
+  days?: number;
 
   @Trim() @Sent() @IsString({ message: REASON_MESSAGE }) @MinLength(1, { message: REASON_MESSAGE }) @MaxLength(500, { message: 'Keep the reason to 500 characters or fewer.' })
   reason?: string;

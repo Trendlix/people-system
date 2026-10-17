@@ -4,7 +4,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { attachment } from '../templates/template-file.js';
 import type { BankFileKind } from './bank.js';
 import { XLSX_TYPE } from './bank-files.js';
-import { CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto, UpdatePayrollSettingsDto } from './payroll.dto.js';
+import { AttendanceWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto, UpdatePayrollSettingsDto } from './payroll.dto.js';
 import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayrollService } from './payroll.service.js';
 
@@ -84,6 +84,22 @@ export class PayrollController {
   @HttpCode(200)
   returnToHr(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ReturnPayrollDto, @CurrentUser() user: SessionUser) {
     return this.payroll.returnToHr(id, dto, user);
+  }
+
+  /**
+   * { waived }: the CEO waives a line's attendance deduction while the run is with the CEO, or takes the waiver back
+   * (owner, 17 October 2026: "if there is an attendance deduction, allow the CEO to wave the deduction by ticking a box").
+   */
+  @Roles('ceo')
+  @Post(':id/lines/:lineId/attendance-waiver')
+  @HttpCode(200)
+  waiveAttendance(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('lineId', ParseUUIDPipe) lineId: string,
+    @Body() dto: AttendanceWaiverDto,
+    @CurrentUser() user: SessionUser,
+  ) {
+    return this.payroll.waiveAttendance(id, lineId, dto, user);
   }
 
   @Roles('ceo')

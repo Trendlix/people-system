@@ -112,7 +112,6 @@ export class CreatePayrollRunDto {
 const HOURS_MESSAGE = 'Enter the hours from 0 to 744, e.g. 270 or 270:30.';
 const PERCENT_MESSAGE = 'Enter the percent from 0 to 200, e.g. 95.';
 const DAYS_MESSAGE = 'Enter the days from 0 to 31, in whole or half days, e.g. 2 or 1.5.';
-const AMOUNT_MESSAGE = 'Enter the amount, to the piaster, within 10,000,000 either way.';
 const RELEASED_MESSAGE = 'Enter what was already paid out this month: 0 or more, up to 10,000,000.';
 /** decimal(12, 2) holds far more; ten million is the most any one month's input may be. */
 const MAX_AMOUNT = 10_000_000;
@@ -140,7 +139,7 @@ const Days = () => (target: object, key: string) => {
   Max(31, { message: DAYS_MESSAGE })(target, key);
   HalfDays()(target, key);
 };
-const Amount = (min = -MAX_AMOUNT, message = AMOUNT_MESSAGE) => (target: object, key: string) => {
+const Amount = (min: number, message: string) => (target: object, key: string) => {
   IsOptional()(target, key);
   IsNumber({ maxDecimalPlaces: 2 }, { message })(target, key);
   Min(min, { message })(target, key);
@@ -151,7 +150,10 @@ const Amount = (min = -MAX_AMOUNT, message = AMOUNT_MESSAGE) => (target: object,
  * The month's inputs of a line, any of them (null clears one: not given). The hours are numbers (the screen reads
  * 270:30 as 270.5); attendance will fill the same inputs later. The expected hours HR types are taken as already
  * without the no-show and leave days (owner, 17 October 2026). There is no medical subscription any more (owner's
- * decision, 16 October 2026): `medical` is refused as any field not here is.
+ * decision, 16 October 2026): `medical` is refused as any field not here is. Nor bonus or penalty days, commission or
+ * settlements (owner, 17 October 2026: "instead of there, i think earnings and deductions will be enough"): they are
+ * entered on Additions / Deductions, so `bonusDays`, `penaltyDays`, `commission` and `settlements` are refused too.
+ * The CEO's attendance waiver has its own request (AttendanceWaiverDto), never sent with HR's inputs.
  */
 export class PayrollInputsDto {
   @Hours() workedHours?: number | null;
@@ -165,11 +167,6 @@ export class PayrollInputsDto {
    * hours; typed until the Leave module fills it. No more than the line's days paid (PayrollService.updateLines).
    */
   @Days() leaveDays?: number | null;
-  @Days() penaltyDays?: number | null;
-  @Days() bonusDays?: number | null;
-  @Amount() commission?: number | null;
-  /** One-off amounts in the gross, such as last month's corrections: may be negative. */
-  @Amount() settlements?: number | null;
   @Amount(0, RELEASED_MESSAGE) released?: number | null;
 }
 
@@ -198,6 +195,15 @@ export class UpdatePayrollLinesDto {
   @ValidateNested({ each: true })
   @Type(() => PayrollLineChangeDto)
   lines: PayrollLineChangeDto[];
+}
+
+/**
+ * The CEO waives a line's attendance deduction, or takes the waiver back (owner, 17 October 2026: "if there is an
+ * attendance deduction, allow the CEO to wave the deduction by ticking a box").
+ */
+export class AttendanceWaiverDto {
+  @IsBoolean({ message: 'Send whether the attendance deduction is waived as true or false.' })
+  waived: boolean;
 }
 
 export class ReturnPayrollDto {
