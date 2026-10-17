@@ -58,9 +58,37 @@ export interface PendingRaise extends Contract {
     payBasis: PayBasis;
     grossSalary: number | null;
     hourlyRate: number | null;
+    /** By the hour: its hours a week (17 October 2026; an API from before doesn't send them). */
+    hoursPerWeek?: number | null;
     allowancesTotal: number | null;
+    /** Its allowances as the net is worked out from them, for the figures of the CEO's other raise (17 October 2026). */
+    allowances?: PayAllowance[] | null;
     totalSalary: number | null;
   } | null;
+}
+
+/** An allowance as the net is worked out from it: its amount a month, taxed or not, insured or not. */
+export interface PayAllowance {
+  amount: number;
+  taxable: boolean;
+  insured: boolean;
+}
+
+/**
+ * The pay in force a raise's figures are worked out from (owner, 17 October 2026: "while raising a request show some
+ * figures regarding the raise (Gross and net) but mainly we are working on the gross salary"): the gross (by the hour,
+ * the monthly estimate), the rate and hours, and the allowances. Sent to HR, Finance and the CEO, and to the employee
+ * for their own pay; never to a manager. The rate, hours and allowances are left out by an API from before.
+ */
+export interface PayInForce {
+  number: string;
+  startDate: string;
+  endDate: string | null;
+  payBasis: PayBasis;
+  grossSalary: number;
+  hourlyRate?: number | null;
+  hoursPerWeek?: number | null;
+  allowances?: PayAllowance[];
 }
 
 /** A document generated for a version, on a pay event (HR and the CEO; null for Finance). */
@@ -173,8 +201,13 @@ export interface RaiseRequest {
   /** The requester's comment: the same as `reason`. */
   comment?: string;
   suggestion?: RaiseSuggestion | null;
-  /** The contract in force now, which a raise is weighed against (HR, Finance and the CEO). */
-  inForce?: { number: string; startDate: string; endDate: string | null; payBasis: PayBasis; grossSalary: number } | null;
+  /** The contract in force now, which a raise is weighed against, with what its net needs (HR, Finance and the CEO). */
+  inForce?: PayInForce | null;
+  /**
+   * The month the raise is asked from, as its 1st (owner, 17 October 2026: "Effective from"): everyone who sees the
+   * request sees it; null on one from before then (and left out by an API from before).
+   */
+  effectiveFrom?: string | null;
   /** Every step, oldest first. */
   steps?: RaiseRequestStep[];
   status: RaiseRequestStatus;
@@ -212,4 +245,6 @@ export interface EmployeeRaiseRequests {
   suggestionKinds?: RaiseFigureKind[];
   /** The gross in force, for those who see salaries, to show what a suggestion comes to. */
   currentGross?: number | null;
+  /** The pay in force for the figures while asking: HR, Finance, the CEO and the employee themself; null for a manager. */
+  pay?: PayInForce | null;
 }

@@ -25,6 +25,7 @@ const PERCENT_MESSAGE = `Enter the raise as a percent of more than 0 and up to $
 const COMMENT_MESSAGE = 'Write a comment.';
 const REQUEST_REASON_MESSAGE = 'Choose why the raise is asked for: annual, performance, counter_offer, promotion, market_adjustment, cost_of_living or other.';
 const DECISION_MESSAGE = 'Choose approve (as suggested) or approve_other (with another raise). To reject it, decline it.';
+const EFFECTIVE_FROM_MESSAGE = 'Choose the month the raise is to take effect from, as its 1st (YYYY-MM-01), e.g. 2026-11-01.';
 
 /** A raise as an amount (EGP a month added to the gross) or a percent of the gross: one or the other (the service checks). */
 class RaiseFigureDto {
@@ -119,9 +120,9 @@ export class SendRaiseDto {
 
 /**
  * HR approves a raise request (owner, 17 October 2026): as suggested, or with another raise (an amount or a percent of
- * the gross in force), with a comment; and how the raise is made: the way, the effective date (the 1st of a month) and a
- * new contract's length. The raise is prepared from it and sent to the CEO. Its reason is the request's, unless sent
- * (a request from before then has none).
+ * the gross in force), with a comment; and how the raise is made: the way, the effective date (the 1st of a month; the
+ * request's Effective from unless sent, 17 October 2026) and a new contract's length. The raise is prepared from it and
+ * sent to the CEO. Its reason is the request's, unless sent (a request from before then has none).
  */
 export class ApproveRaiseRequestDto extends RaiseFigureDto {
   @IsIn(['approve', 'approve_other'], { message: DECISION_MESSAGE })
@@ -133,8 +134,9 @@ export class ApproveRaiseRequestDto extends RaiseFigureDto {
   @IsIn(RAISE_WAYS, { message: WAY_MESSAGE })
   way: RaiseWay;
 
-  @IsDateOnly(EFFECTIVE_MESSAGE)
-  effectiveDate: string;
+  /** The request's Effective from unless sent (a request from before 17 October 2026 has none: then it is required). */
+  @IsOptional() @IsDateOnly(EFFECTIVE_MESSAGE)
+  effectiveDate?: string;
 
   @Sent() @IsInt({ message: DURATION_MESSAGE }) @Min(1, { message: DURATION_MESSAGE }) @Max(60, { message: DURATION_MESSAGE })
   durationMonths?: number;
@@ -151,12 +153,17 @@ export class RaiseForm2Dto {
 
 /**
  * A raise request (owner, 17 October 2026: "a drop list reason first ... then add requester comment, suggest raise amount
- * or percentage"): the reason from the list and the requester's comment (both required), and, if any, the raise
- * suggested: an amount in EGP added to the gross (the employee or HR) or a percent of it (anyone), not both.
+ * or percentage"; "in the request their should be a tab called Effective from"): the reason from the list, the month the
+ * raise is asked from (its 1st: this month in Cairo or a later one, the service checks) and the requester's comment (all
+ * required), and, if any, the raise suggested: an amount in EGP added to the gross (the employee or HR) or a percent of
+ * it (anyone), not both.
  */
 export class CreateRaiseRequestDto {
   @IsIn(RAISE_REASON_CHOICES, { message: REQUEST_REASON_MESSAGE })
   raiseReason: RaiseReasonChoice;
+
+  @Trim() @IsDateOnly(EFFECTIVE_FROM_MESSAGE)
+  effectiveFrom: string;
 
   @Trim() @IsString({ message: 'Write a comment: what the raise is for.' }) @MinLength(1, { message: 'Write a comment: what the raise is for.' }) @MaxLength(2000)
   comment: string;

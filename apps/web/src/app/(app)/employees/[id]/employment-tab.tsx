@@ -50,8 +50,8 @@ import { SalaryHistoryLoading, SalaryHistorySection } from './salary-history/sal
 //   the history, newest first, with its contracts; the people who report to this person now.
 // - Salary: the Salary History (#salary-history: each employment's pay events, with what the Pay History table had)
 //   and the pay received with the payslips (#payslips), HR's, Finance's and the CEO's, as the salary; between them the
-//   Raise Requests (#raise-requests), where the employee asks for themself, their direct manager for them, or HR, and
-//   each decision shows; then the advances and loans with what is outstanding (#advances: owner, 17 October 2026),
+//   Raise Requests (#raise-requests), the person's requests with each decision and log, read only (asked for and
+//   decided under Requests → Raise Requests since 17 October 2026, Request a raise opening the form there); then the advances and loans with what is outstanding (#advances: owner, 17 October 2026),
 //   as the salary. The API sends each viewer only what they may see: the employee and their manager get only the
 //   requests, so they are offered Salary only when there is something there for them.
 // - Issued Documents, HR's and the CEO's: the documents generated from the templates (#contract-documents), which HR

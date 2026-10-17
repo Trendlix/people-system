@@ -115,6 +115,25 @@ describe('a step as each viewer sees it', () => {
   });
 });
 
+describe('Effective from, on the log (owner, 17 October 2026: "in the request their should be a tab called Effective from")', () => {
+  const asked = step(1, 'submitted', { raiseReason: 'annual', comment: 'A year with us', effectiveDate: new Date('2026-12-01T00:00:00Z') });
+  const decided = step(2, 'hr_decision', { decision: 'approve', comment: 'Yes', effectiveDate: new Date('2027-01-01T00:00:00Z') });
+
+  it('the month asked from, on the submitted step, for everyone who sees the request: a date, not a figure', () => {
+    for (const viewer of ['full', 'self', 'manager'] as const) {
+      for (const mine of [true, false]) expect(stepView(asked, viewer, { mine, done: false }).effectiveDate).toBe('2026-12-01');
+    }
+  });
+
+  it('the date HR chose, on HR’s step: the raise’s, so HR, Finance and the CEO’s until it is signed', () => {
+    expect(stepView(decided, 'full', { mine: false, done: false }).effectiveDate).toBe('2027-01-01');
+    for (const viewer of ['self', 'manager'] as const) {
+      expect(stepView(decided, viewer, { mine: true, done: false }).effectiveDate).toBeNull();
+      expect(stepView(decided, viewer, { mine: true, done: true }).effectiveDate).toBe('2027-01-01');
+    }
+  });
+});
+
 /** A request as the database has it, done, with the log above. */
 function request(over: Partial<RequestRow> = {}): RequestRow {
   return {
@@ -128,6 +147,7 @@ function request(over: Partial<RequestRow> = {}): RequestRow {
     suggestedIncrease: d(1500),
     suggestedPercent: null,
     suggestedGross: d(11500),
+    effectiveFrom: null,
     status: 'done',
     contractId: 'c2',
     declinedById: null,
@@ -165,6 +185,7 @@ function request(over: Partial<RequestRow> = {}): RequestRow {
           grossSalary: new Prisma.Decimal(11200),
           hourlyRate: null,
           hoursPerWeek: null,
+          allowances: [{ amount: new Prisma.Decimal(500), taxable: true, insured: false }],
         },
       ],
     },
@@ -184,7 +205,17 @@ describe('a request as each viewer sees it', () => {
       suggestion: { kind: 'amount', amount: 1500, percent: null, gross: 11500 },
       raise: { number: 'CON-2026-0001-A1', way: 'amendment', stage: 'signed', effectiveDate: '2026-11-01', previousGross: 10000, newGross: 11200 },
       decision: null,
-      inForce: { number: 'CON-2026-0001-A1', startDate: '2026-11-01', endDate: '2027-06-30', payBasis: 'monthly', grossSalary: 11200 },
+      inForce: {
+        number: 'CON-2026-0001-A1',
+        startDate: '2026-11-01',
+        endDate: '2027-06-30',
+        payBasis: 'monthly',
+        grossSalary: 11200,
+        // what the figures shown while deciding are worked out from (17 October 2026)
+        hourlyRate: null,
+        hoursPerWeek: null,
+        allowances: [{ amount: 500, taxable: true, insured: false }],
+      },
       amountsHidden: false,
     });
     expect(v.steps).toHaveLength(7);
@@ -213,6 +244,12 @@ describe('a request as each viewer sees it', () => {
     const old = request({ raiseReason: null, comment: 'A year of good reviews', suggestedIncrease: null, suggestedGross: d(11000), status: 'with_hr', contract: null, steps: [step(1, 'submitted', { comment: 'A year of good reviews', gross: d(11000) })] });
     expect(raiseRequestView(old, 'self', 'ben')).toMatchObject({ reason: 'A year of good reviews', raiseReason: null, suggestedGross: 11000, suggestion: { kind: 'gross', gross: 11000 } });
     expect(raiseRequestView(old, 'manager', 'mona')).toMatchObject({ suggestedGross: null, suggestion: null });
+  });
+
+  it('Effective from: the month asked from, for every viewer; none on a request from before 17 October 2026', () => {
+    const asked = request({ effectiveFrom: new Date('2026-11-01T00:00:00Z') });
+    for (const viewer of ['full', 'self', 'manager'] as const) expect(raiseRequestView(asked, viewer, 'mona').effectiveFrom).toBe('2026-11-01');
+    expect(raiseRequestView(request({ effectiveFrom: null }), 'self', 'ben').effectiveFrom).toBeNull();
   });
 
   it('the suggestion: who sees which part', () => {

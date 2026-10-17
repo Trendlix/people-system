@@ -11,8 +11,8 @@ import { employeeRaiseRequestsHref, Loading } from '../employees/ui';
 import { loadTeam } from '../my-team/data';
 import { loadOwnProfile } from '../own-profile';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
-import { askedAt } from '../raise-requests/list';
-import { FoldedRequestLog, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, Requester, Suggestion } from '../raise-requests/ui';
+import { askedAt, justSent, newRaiseRequestHref, raiseRequestAnchor } from '../raise-requests/list';
+import { EffectiveFrom, FoldedRequestLog, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, RequestSent, Requester, Suggestion } from '../raise-requests/ui';
 import {
   askedByManager,
   filterRequests,
@@ -34,7 +34,10 @@ import {
 // keeps them), each with its decisions as the API gives them to the employee; buttons to ask again; for a direct
 // manager also the raises they asked for for their direct reports (no figure: the API sends a manager none). The
 // changes to their details are their profile's: the one waiting for HR and the latest ten decided. Leave and attendance
-// requests come later. Cancelling a change waiting for HR stays on the change request page.
+// requests come later. Cancelling a change waiting for HR stays on the change request page. Request a raise opens the
+// request form under Requests → Raise Requests for themself (17 October 2026: "i think raising a request should be moved
+// from the Employee tab to the raise requests tab"), which comes back here once sent, saying so; each raise shows the
+// month it is asked from ("Effective from").
 
 export const metadata: Metadata = { title: 'My Requests · People System' };
 
@@ -112,7 +115,7 @@ function DetailsCard({ item, employeeId }: { item: Extract<MyRequest, { kind: 'd
 function RaiseCard({ item }: { item: Extract<MyRequest, { kind: 'raise' | 'team' }> }) {
   const r = item.request;
   return (
-    <li className="card space-y-4 p-5">
+    <li id={raiseRequestAnchor(r.id)} className="card scroll-mt-6 space-y-4 p-5 target:ring-2 target:ring-accent">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="font-semibold">{requestTitle(item)}</h3>
@@ -123,6 +126,9 @@ function RaiseCard({ item }: { item: Extract<MyRequest, { kind: 'raise' | 'team'
       <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
         <Item label="Asked by">
           <Requester request={r} />
+        </Item>
+        <Item label="Effective from">
+          <EffectiveFrom request={r} />
         </Item>
         {/* the raise suggested, as far as the API lets the viewer see it (a manager: a percent only) */}
         {(r.suggestion || r.suggestedGross !== null) && (
@@ -179,7 +185,7 @@ function NewRequestButtons({ profile, canRequestRaise }: { profile: EmployeeProf
         Ask to change my details
       </Link>
       {canRequestRaise && (
-        <Link href={employeeRaiseRequestsHref(profile.id)} className="btn btn-primary">
+        <Link href={newRaiseRequestHref(profile.id)} className="btn btn-primary">
           Request a raise
         </Link>
       )}
@@ -202,6 +208,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/my-request
 
   return (
     <div className="space-y-5">
+      {justSent(query) && <RequestSent />}
       <NewRequestButtons profile={profile} canRequestRaise={!!own?.canRequest} />
       {unloaded && <p className="text-sm text-muted">Some of your raise requests couldn&apos;t be loaded. Please try again in a moment.</p>}
       {all.length === 0 ? (

@@ -103,8 +103,9 @@ const money = (d: Prisma.Decimal | null | undefined) => (d === null || d === und
  * A step as `viewer` may see it. `mine`: the viewer made the request (the employee always, on the requests they see);
  * `done`: its raise is signed. The employee sees the figure they typed when asking (a gross on a request from before
  * 17 October 2026) and, once signed, their new salary on the signing; the manager only the percent they suggested
- * themself; neither sees HR's or the CEO's figures, nor a gross before the signing, nor the effective date before then,
- * nor the comments HR and the CEO exchange (a return, HR's note on sending).
+ * themself; neither sees HR's or the CEO's figures, nor a gross before the signing, nor the raise's effective date
+ * before then, nor the comments HR and the CEO exchange (a return, HR's note on sending). The submitted step's date is
+ * the request's Effective from (17 October 2026), which everyone who sees the request sees: a date, not a figure.
  */
 export function stepView(s: StepRow, viewer: RequestViewer, ctx: { mine: boolean; done: boolean }) {
   const full = viewer === 'full';
@@ -135,7 +136,7 @@ export function stepView(s: StepRow, viewer: RequestViewer, ctx: { mine: boolean
     comment: full || SHARED_COMMENTS.includes(s.kind as RaiseRequestStepKind) ? s.comment : null,
     ...figures,
     way: s.way as RaiseWay | null,
-    effectiveDate: full || ctx.done ? fromDateOnly(s.effectiveDate) : null,
+    effectiveDate: full || ctx.done || s.kind === 'submitted' ? fromDateOnly(s.effectiveDate) : null,
     contractNumber: s.contractNumber,
     by: s.actor && { email: s.actor.email },
     at: s.at,

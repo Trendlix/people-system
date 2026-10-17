@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  effectiveFromProblem,
   OPEN_RAISE_REQUEST_STATUSES,
   payStage,
   RAISE_REQUEST_STATUS_LABELS,
@@ -13,7 +14,7 @@ import {
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { fromDateOnly } from '../common/date-only.js';
+import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { editsEmployees, isSelf, seesSalary } from '../employees/access.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
@@ -25,8 +26,42 @@ export type { RequestViewer } from './raise-request-steps.js';
 
 const ENTITY = 'raise_request';
 
-/** The pay of the contract in force a request is weighed against: its gross, and by the hour its rate and hours. */
-const IN_FORCE = { number: true, startDate: true, endDate: true, payBasis: true, grossSalary: true, hourlyRate: true, hoursPerWeek: true } satisfies Prisma.ContractSelect;
+/**
+ * The pay of the contract in force a request is weighed against: its gross, by the hour its rate and hours, and its
+ * allowances as the net is worked out from them (the figures shown while asking or deciding, 17 October 2026).
+ */
+const IN_FORCE = {
+  number: true,
+  startDate: true,
+  endDate: true,
+  payBasis: true,
+  grossSalary: true,
+  hourlyRate: true,
+  hoursPerWeek: true,
+  allowances: { select: { amount: true, taxable: true, insured: true } },
+} satisfies Prisma.ContractSelect;
+
+type InForceRow = Prisma.ContractGetPayload<{ select: typeof IN_FORCE }>;
+
+/**
+ * The pay in force as the figures of a raise are worked out from it (owner, 17 October 2026: "while raising a request
+ * show some figures regarding the raise (Gross and net) but mainly we are working on the gross salary"): the gross (by
+ * the hour, the monthly estimate), the rate and hours, and the allowances with how each is taxed and insured. RESTRICTED:
+ * sent only to HR, Finance and the CEO, and to the employee for their own pay ("allow the requestor raiser to see figures
+ * too"); never to a manager ("No, only percent").
+ */
+export function payView(c: InForceRow) {
+  return {
+    number: c.number,
+    startDate: fromDateOnly(c.startDate),
+    endDate: fromDateOnly(c.endDate),
+    payBasis: c.payBasis as PayBasis,
+    grossSalary: c.grossSalary.toNumber(),
+    hourlyRate: c.hourlyRate?.toNumber() ?? null,
+    hoursPerWeek: c.hoursPerWeek?.toNumber() ?? null,
+    allowances: c.allowances.map((a) => ({ amount: a.amount.toNumber(), taxable: a.taxable, insured: a.insured })),
+  };
+}
 
 /**
  * What a request is shown with: its person, who asked and who declined it, the raise prepared from it, its log in order,
@@ -88,6 +123,9 @@ export function raiseRequestView(r: RequestRow, viewer: RequestViewer, userId: s
     status: r.status as RaiseRequestStatus,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
+    // the month the raise is asked from (17 October 2026), for everyone who sees the request: a date, not a figure; null
+    // on a request from before then
+    effectiveFrom: fromDateOnly(r.effectiveFrom),
     // the gross suggested: the employee sees one only as they typed it themself (before 17 October 2026)
     suggestedGross: full || (viewer === 'self' && r.requester === 'self' && suggestionView(r, 'full', true)?.kind === 'gross') ? money(r.suggestedGross) : null,
     suggestion: suggestionView(r, viewer, mine),
@@ -106,17 +144,9 @@ export function raiseRequestView(r: RequestRow, viewer: RequestViewer, userId: s
     },
     decision: r.status === 'declined' ? { stage: r.declinedStage as 'hr' | 'ceo', reason: r.declineReason, at: r.declinedAt, by: r.declinedBy && { email: r.declinedBy.email } } : null,
     doneAt: r.doneAt,
-    // the contract in force now, which a raise is weighed against (HR, Finance and the CEO)
-    inForce:
-      full && inForce
-        ? {
-            number: inForce.number,
-            startDate: fromDateOnly(inForce.startDate)!,
-            endDate: fromDateOnly(inForce.endDate),
-            payBasis: inForce.payBasis as PayBasis,
-            grossSalary: inForce.grossSalary.toNumber(),
-          }
-        : null,
+    // the contract in force now, which a raise is weighed against, with what its net is worked out from (HR, Finance and
+    // the CEO)
+    inForce: full && inForce ? payView(inForce) : null,
     steps: r.steps.map((s) => stepView(s, viewer, { mine, done })),
     amountsHidden: !full,
   };
@@ -136,7 +166,10 @@ export type RaiseRequestView = ReturnType<typeof raiseRequestView>;
 // on that raise is the request's (RaisesService), and it is done once the raise is signed (ContractsService.sign). The
 // manager is told, not asked: they see their reports' requests and every decision. Each step is logged on the request
 // (raise-request-steps.ts), in the transaction it is taken in; amounts stay private (RequestViewer). Every step is in
-// the audit log too, an amount only as set.
+// the audit log too, an amount only as set. Since 17 October 2026 ("in the request their should be a tab called Effective
+// from") a request also says the month the raise is asked from (Effective from, its 1st: this month in Cairo or a later
+// one), required on a new one and logged with its submitted step; everyone who sees the request sees it, and HR's
+// approval takes it as the raise's effective date unless HR sets another (RaisesService.approveRequest).
 @Injectable()
 export class RaiseRequestsService {
   constructor(
@@ -145,11 +178,16 @@ export class RaiseRequestsService {
     private readonly employees: EmployeesService,
   ) {}
 
-  /** A request for the employee, by themself, their direct manager or HR. */
+  /**
+   * A request for the employee, by themself, their direct manager or HR, from a month (Effective from, 17 October 2026:
+   * the 1st of this month in Cairo or a later one).
+   */
   async create(employeeId: string, dto: CreateRaiseRequestDto, user: SessionUser) {
     const { employee, employment, requester, viewer } = await this.asker(employeeId, user);
     if (!requester || !viewer) throw new ForbiddenException('Only the employee themself, their direct manager or HR can ask for a raise for them.');
     if (!employment) throw new ConflictException(`${employee.fullNameEn} has no current employment: a raise is asked for under one.`);
+    const effectiveProblem = effectiveFromProblem(dto.effectiveFrom, todayInCairo());
+    if (effectiveProblem) throw new BadRequestException(effectiveProblem);
     const typed = typedFigure(dto.suggestedIncrease, dto.suggestedPercent);
     if (typed && !suggestionKindsFor(requester).includes(typed.kind)) {
       throw new BadRequestException("A manager suggests a raise as a percent only, as managers don't see salaries: HR and the CEO set the amount.");
@@ -181,10 +219,17 @@ export class RaiseRequestsService {
           suggestedIncrease: typed?.kind === 'amount' ? typed.value : null,
           suggestedPercent: typed?.kind === 'percent' ? typed.value : null,
           suggestedGross: gross,
+          effectiveFrom: toDateOnly(dto.effectiveFrom),
         },
         select: { id: true },
       });
-      await recordStep(tx, made.id, user.id, { kind: 'submitted', raiseReason: dto.raiseReason, comment: dto.comment, ...(typed && stepFigures(before, gross, typed)) });
+      await recordStep(tx, made.id, user.id, {
+        kind: 'submitted',
+        raiseReason: dto.raiseReason,
+        comment: dto.comment,
+        effectiveDate: dto.effectiveFrom,
+        ...(typed && stepFigures(before, gross, typed)),
+      });
       return tx.raiseRequest.findUniqueOrThrow({ where: { id: made.id }, include: REQUEST_INCLUDE });
     });
     await this.audit.record({
@@ -198,6 +243,7 @@ export class RaiseRequestsService {
         requester,
         raiseReason: dto.raiseReason,
         comment: dto.comment,
+        effectiveFrom: dto.effectiveFrom,
         status: 'with_hr',
         ...(typed && { [typed.kind === 'amount' ? 'suggestedIncrease' : 'suggestedPercent']: 'set' }),
       },
@@ -222,8 +268,9 @@ export class RaiseRequestsService {
   /**
    * The employee's requests as the caller may see them, newest first, and whether the caller may ask for one now: HR,
    * Finance and the CEO see all of them; the employee those they made; their direct manager all of them, without a
-   * figure. Anyone else is refused. With what the caller may suggest, and for HR the gross in force (to show what a
-   * suggestion comes to).
+   * figure. Anyone else is refused. With what the caller may suggest, for HR the gross in force (to show what a
+   * suggestion comes to), and the pay in force for the figures shown while asking (`pay`: HR, Finance, the CEO and the
+   * employee themself, 17 October 2026; null for a manager).
    */
   async forEmployee(employeeId: string, user: SessionUser) {
     const { employee, employment, requester, viewer } = await this.asker(employeeId, user);
@@ -245,6 +292,9 @@ export class RaiseRequestsService {
             : `A raise request for ${employee.fullNameEn} is open: it is decided first.`
           : null;
     const inForce = employment?.contracts[0] ?? null;
+    // the pay the figures of a raise are worked out from, while asking: HR, Finance and the CEO, and the employee for
+    // their own (17 October 2026: "allow the requestor raiser to see figures too"); a manager never ("No, only percent")
+    const seesPay = viewer === 'full' || (viewer === 'self' && requester === 'self');
     return {
       requests: rows.map((r) => raiseRequestView(r, viewer, user.id, previous.get(r.id) ?? null)),
       canRequest: why === null,
@@ -254,6 +304,7 @@ export class RaiseRequestsService {
       suggestionKinds: requester ? suggestionKindsFor(requester) : [],
       // what a suggestion comes to, for those who see salaries
       currentGross: viewer === 'full' && inForce ? inForce.grossSalary.toNumber() : null,
+      pay: seesPay && inForce ? payView(inForce) : null,
     };
   }
 

@@ -248,6 +248,36 @@ export const RAISE_REQUEST_STATUS_LABELS: Record<RaiseRequestStatus, string> = {
 /** Open: one per person at a time. */
 export const OPEN_RAISE_REQUEST_STATUSES: readonly RaiseRequestStatus[] = ['with_hr', 'with_ceo', 'approved'];
 
+// ---------- when a requested raise is to take effect ----------
+
+// Effective from (owner, 17 October 2026: "in the request their should be a tab called Effective from"): the month the
+// raise is asked from, as the 1st of it (a raise takes effect on the 1st of a month, 16 October 2026), picked when
+// asking: this month or a later one, next month unless another is chosen. Required on a new request; a request from
+// before has none. HR's approval takes it as the raise's effective date unless HR sets another.
+
+/** How many months the request form offers, this month first. */
+export const EFFECTIVE_FROM_CHOICES = 12;
+
+/** The 1st of the month a date is in: 2026-10-17 → 2026-10-01. */
+const startOfMonth = (ymd: string) => `${ymd.slice(0, 7)}-01`;
+
+/** The month a request is asked from unless another is chosen: next month's 1st (today 17/10/2026 → 01/11/2026). */
+export const defaultEffectiveFrom = (today: string) => nextFirstOfMonth(today);
+
+/** The months a request may be asked from, as their 1sts: this month's (today in Cairo) and the next ones, `count` in all. */
+export function effectiveFromChoices(today: string, count = EFFECTIVE_FROM_CHOICES): string[] {
+  const out = [startOfMonth(today)];
+  while (out.length < count) out.push(nextFirstOfMonth(out[out.length - 1]));
+  return out;
+}
+
+/** Why a request can't be asked from that date, or null: the 1st of a month, this month (today in Cairo) or a later one. */
+export function effectiveFromProblem(effectiveFrom: string, today: string): string | null {
+  if (!isFirstOfMonth(effectiveFrom)) return 'Choose the month the raise is to take effect from: a raise takes effect on the 1st of a month, e.g. 01/11/2026.';
+  if (effectiveFrom < startOfMonth(today)) return `A raise is asked for from this month or a later one: choose ${shown(startOfMonth(today))} or after.`;
+  return null;
+}
+
 // ---------- the suggested and decided raise ----------
 
 /**

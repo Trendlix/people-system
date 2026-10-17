@@ -54,27 +54,49 @@ describe('the raise typed', () => {
 });
 
 describe('the request', () => {
-  it('the reason from the list, the comment, the raise suggested', () => {
+  const TODAY = '2026-10-17';
+  const from = { effectiveFrom: '2026-11-01' };
+
+  it('the reason from the list, the month it is asked from, the comment, the raise suggested', () => {
     const errors: string[] = [];
-    expect(requestBody(form({ raiseReason: 'performance', comment: ' Led the audit ', figureKind: 'amount', figureValue: '1500' }), ['amount', 'percent'], errors)).toEqual({
+    expect(requestBody(form({ raiseReason: 'performance', ...from, comment: ' Led the audit ', figureKind: 'amount', figureValue: '1500' }), ['amount', 'percent'], errors, TODAY)).toEqual({
       raiseReason: 'performance',
+      effectiveFrom: '2026-11-01',
       comment: 'Led the audit',
       suggestedIncrease: 1500,
     });
-    expect(requestBody(form({ raiseReason: 'annual', comment: 'A year', figureKind: 'percent', figureValue: '8' }), ['percent'], errors)).toEqual({
+    expect(requestBody(form({ raiseReason: 'annual', effectiveFrom: '2026-10-01', comment: 'A year', figureKind: 'percent', figureValue: '8' }), ['percent'], errors, TODAY)).toEqual({
       raiseReason: 'annual',
+      effectiveFrom: '2026-10-01',
       comment: 'A year',
       suggestedPercent: 8,
     });
-    expect(requestBody(form({ raiseReason: 'other', comment: 'Why not', figureValue: '' }), ['percent'], errors)).toEqual({ raiseReason: 'other', comment: 'Why not' });
+    expect(requestBody(form({ raiseReason: 'other', ...from, comment: 'Why not', figureValue: '' }), ['percent'], errors, TODAY)).toEqual({
+      raiseReason: 'other',
+      effectiveFrom: '2026-11-01',
+      comment: 'Why not',
+    });
     expect(errors).toEqual([]);
   });
 
   it('refuses no reason, one not on the list (adjustment is from before), and no comment', () => {
     const errors: string[] = [];
-    requestBody(form({ raiseReason: '', comment: '' }), ['percent'], errors);
-    requestBody(form({ raiseReason: 'adjustment', comment: 'x' }), ['percent'], errors);
+    requestBody(form({ raiseReason: '', ...from, comment: '' }), ['percent'], errors, TODAY);
+    requestBody(form({ raiseReason: 'adjustment', ...from, comment: 'x' }), ['percent'], errors, TODAY);
     expect(errors).toEqual(['Choose why the raise is asked for.', 'Write a comment: what the raise is for.', 'Choose why the raise is asked for.']);
+  });
+
+  it('Effective from (17 October 2026): required, the 1st of a month, this month or a later one', () => {
+    const asked = (effectiveFrom: string) => {
+      const errors: string[] = [];
+      const body = requestBody(form({ raiseReason: 'annual', effectiveFrom, comment: 'A year' }), ['percent'], errors, TODAY);
+      return { body, errors };
+    };
+    expect(asked('').errors).toEqual(['Choose the month the raise is to take effect from.']);
+    expect(asked('2026-11-15').errors[0]).toMatch(/1st of a month/);
+    expect(asked('2026-09-01').errors).toEqual(['A raise is asked for from this month or a later one: choose 01/10/2026 or after.']);
+    expect(asked('2026-09-01').body).not.toHaveProperty('effectiveFrom');
+    expect(asked('2027-09-01')).toEqual({ body: { raiseReason: 'annual', effectiveFrom: '2027-09-01', comment: 'A year' }, errors: [] });
   });
 });
 

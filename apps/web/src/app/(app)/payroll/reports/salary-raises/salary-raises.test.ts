@@ -1,6 +1,6 @@
 import type { DueForReviewRow, Role, SalaryRaiseRow } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { contractHref, employeeRaiseRequestsHref, salaryHistoryHref as historyOnProfile } from '../../../employees/tab-list';
+import { contractHref, salaryHistoryHref as historyOnProfile } from '../../../employees/tab-list';
 import {
   apiExcelPath,
   apiReportPath,
@@ -184,17 +184,18 @@ describe('due for review', () => {
   it('HR prepares or asks for the raise, decides a request with HR, or carries on with what is open; Finance and the CEO only read', () => {
     expect(reviewActions(as('hr'), DUE)).toEqual([
       { key: 'prepare', label: 'Prepare a raise', href: '/employees/e-4/contracts/raise' },
-      { key: 'request', label: 'Request a raise', href: employeeRaiseRequestsHref('e-4') },
+      // the request form under Requests → Raise Requests, with them chosen (17 October 2026)
+      { key: 'request', label: 'Request a raise', href: '/raise-requests/new?employee=e-4' },
     ]);
+    // the request's row on the Raise Requests page, where HR decides it
     expect(reviewActions(as('hr'), { ...DUE, openRequest: { id: 'r-1', status: 'with_hr' } })).toEqual([
-      { key: 'decide', label: 'Decide on the request', href: employeeRaiseRequestsHref('e-4') },
+      { key: 'decide', label: 'Decide on the request', href: '/raise-requests?status=with_hr#raise-request-r-1' },
     ]);
     expect(reviewActions(as('hr'), { ...DUE, openRequest: { id: 'r-1', status: 'with_ceo' } })).toEqual([
-      { key: 'request', label: 'See the request', href: employeeRaiseRequestsHref('e-4') },
+      { key: 'request', label: 'See the request', href: '/raise-requests?status=with_ceo#raise-request-r-1' },
     ]);
     const open = { ...DUE, openRaise: { contractId: 'c', number: 'CON-2026-0009-A1', stage: 'approved' as const, effectiveDate: '2026-11-01' }, openRequest: { id: 'r-1', status: 'approved' as const } };
     expect(reviewActions(as('hr'), open)).toEqual([{ key: 'open', label: 'Open the raise', href: contractHref('e-4') }]);
-    expect(employeeRaiseRequestsHref('e-4')).toMatch(/#raise-requests$/);
     expect(contractHref('e-4')).toMatch(/#contract$/);
     for (const role of ['finance', 'ceo'] as const) expect(reviewActions(as(role), DUE)).toEqual([]);
   });

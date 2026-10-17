@@ -18,9 +18,10 @@ import { formatEgp } from '../salary';
 // time, which HR sends to the CEO with the contract on the Employment tab, and signs there once the CEO approves it. Not
 // while a draft is waiting to be signed, or an ending of the employment is in progress. Prepared from a raise request
 // (?request=<id>, from the request's own page), it is HR's approval of the request in the whole form (owner, 17 October
-// 2026), for a promotion or other allowances with it: it starts with the request's reason, the gross its suggestion
-// comes to, and its comment as the note; HR's own comment is required, and saving sends it to the CEO at once. It is
-// linked to the request, so the CEO's decision on the raise is the request's.
+// 2026), for a promotion or other allowances with it: it starts with the request's reason, the month it is asked from
+// (its Effective from, 17 October 2026), the gross its suggestion comes to, and its comment as the note; HR's own
+// comment is required, and saving sends it to the CEO at once. It is linked to the request, so the CEO's decision on the
+// raise is the request's.
 
 const UUID = /^[0-9a-f-]{36}$/i;
 /** The note a raise takes from its request: up to the note's 500 characters. */
@@ -75,7 +76,7 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
   } else {
     const defaults: RaiseDefaults = {
       way: 'amendment',
-      effectiveDate: defaultEffectiveDate(today, active),
+      effectiveDate: preparable?.effectiveFrom ?? defaultEffectiveDate(today, active),
       durationMonths: settings.durationMonths,
       reason: preparable?.raiseReason ?? '',
       note: preparable ? commentText(preparable).slice(0, NOTE_MAX) : '',
@@ -111,7 +112,7 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
               Approving the raise request by {RAISE_REQUESTER_LABELS[preparable.requester].toLowerCase()}
               {preparable.requestedBy && ` (${preparable.requestedBy.email})`} on {formatDate(preparable.createdAt)}
               {suggestionText(preparable.suggestion ?? null) && `, suggesting ${suggestionText(preparable.suggestion ?? null)}`}. The gross starts from what it
-              suggests and the note from its comment. Saving approves it with your comment and sends the raise to the CEO at once; the CEO&apos;s
+              suggests, the date from the month it is asked from and the note from its comment. Saving approves it with your comment and sends the raise to the CEO at once; the CEO&apos;s
               decision on the raise is the request&apos;s.
             </p>
           ) : (

@@ -7,7 +7,7 @@ import { NoProfile } from '../dashboard/cards';
 import { inDaysText } from '../dashboard/dashboard';
 import { Empty, employeeRaiseRequestsHref, Loading, StatusBadge, todayInCairo } from '../employees/ui';
 import { loadOwnProfile } from '../own-profile';
-import { progressText } from '../raise-requests/list';
+import { newRaiseRequestHref, progressText } from '../raise-requests/list';
 import { RaiseRequestStatusBadge } from '../raise-requests/ui';
 import { loadTeam } from './data';
 import { askedByText, latestRaise, probationOf } from './team';
@@ -15,8 +15,10 @@ import { askedByText, latestRaise, probationOf } from './team';
 // My Team (owner's decisions, 17 October 2026): a direct manager's direct reports, in their sidebar, so they reach
 // their profiles (the Employees list isn't theirs any more). Each one with their job title and status, the probation
 // end while on probation (highlighted when it is soon), and their latest raise request with where it stands (the
-// manager is told, not asked, and sees no figure), with Request a raise when the manager may ask for one now (the form
-// on the report's Salary sub-tab). The API decides who the manager may see, as everywhere.
+// manager is told, not asked, and sees no figure), with Request a raise when the manager may ask for one now: the form
+// under Requests → Raise Requests with the report chosen (17 October 2026: "i think raising a request should be moved
+// from the Employee tab to the raise requests tab"), else See the requests on their Salary sub-tab. The API decides who
+// the manager may see, as everywhere.
 
 export const metadata: Metadata = { title: 'My Team · People System' };
 
@@ -83,7 +85,7 @@ async function Team() {
                     <span className="text-sm text-muted">None yet</span>
                   )}
                   {raises.kind === 'ok' && (latest || raises.value.canRequest) && (
-                    <Link href={employeeRaiseRequestsHref(r.id)} className="mt-1.5 block text-sm font-semibold">
+                    <Link href={raises.value.canRequest ? newRaiseRequestHref(r.id) : employeeRaiseRequestsHref(r.id)} className="mt-1.5 block text-sm font-semibold">
                       {raises.value.canRequest ? 'Request a raise' : 'See the requests'}
                       <span className="sr-only"> for {r.fullNameEn}</span>
                     </Link>

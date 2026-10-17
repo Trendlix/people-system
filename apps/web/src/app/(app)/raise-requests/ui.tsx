@@ -1,13 +1,14 @@
 import Link from 'next/link';
-import { nextFirstOfMonth, type RaiseRequestStatus, type Role } from '@trendlix/shared';
+import type { LawRates, RaiseRequestStatus, Role } from '@trendlix/shared';
 import { formatDateTime } from '@/lib/format';
 import type { RaiseRequest } from '@/lib/raise-types';
 import { contractHref, todayInCairo } from '../employees/ui';
-import { defaultEffectiveDate } from '../employees/[id]/contracts/raise';
 import { formatEgp } from '../employees/[id]/contracts/salary';
 import { declineRaiseRequest, decideRaiseRequest } from './actions';
 import {
   commentText,
+  decisionEffectiveDate,
+  effectiveFromText,
   preparedRaiseText,
   prepareRaiseHref,
   progressText,
@@ -27,9 +28,24 @@ import { DeclineRequestForm, HrDecisionForm } from './request-forms';
 // decisions, 16 October 2026; reworked 17 October 2026), worded as the profile change requests and the payroll
 // approvals are: who asked, the reason from the list and the comment, the raise suggested and the raise prepared from
 // it (only what the API sends the caller), where it stands with the comment given, its log of every step as a
-// timeline, and HR's decision while it is with HR.
+// timeline, and HR's decision while it is with HR. Since 17 October 2026 also the month it is asked from ("Effective
+// from"), and the line saying a request was just sent, on the page the requester lands on.
 
 const dash = <span className="text-muted">—</span>;
+
+/** The line on the page a requester lands on once a request is sent (?sent=1). */
+export function RequestSent() {
+  return (
+    <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
+      Raise request sent. HR approves or rejects it, then the CEO decides; each step shows on the request.
+    </p>
+  );
+}
+
+/** The month a request is asked from, "November 2026"; "Not given" (muted) on one from before 17 October 2026. */
+export function EffectiveFrom({ request }: { request: Pick<RaiseRequest, 'effectiveFrom'> }) {
+  return <span className={request.effectiveFrom ? 'tabular-nums' : 'text-muted'}>{effectiveFromText(request)}</span>;
+}
 
 /** With HR, With the CEO, Approved, Rejected or Done. */
 export function RaiseRequestStatusBadge({ status }: { status: RaiseRequestStatus }) {
@@ -143,9 +159,10 @@ export function FoldedRequestLog({ request }: { request: RaiseRequest }) {
  * HR's actions on a request with HR: Decide (approve it as suggested or with another raise, which prepares the raise and
  * sends it to the CEO, or reject it), with the whole raise form a link away; or, once a raise is prepared from it, where
  * to carry on with it (the Contract section, where HR changes it and sends it to the CEO) and Reject. Nothing for anyone
- * else, or once it has left HR.
+ * else, or once it has left HR. The decision starts from the month the request is asked from, and another raise shows
+ * what it comes to (the pay in force with `rates`, 17 October 2026).
  */
-export function HrRequestActions({ request: r, user }: { request: RaiseRequest; user: { roles: readonly Role[] } }) {
+export function HrRequestActions({ request: r, user, rates = [] }: { request: RaiseRequest; user: { roles: readonly Role[] }; rates?: readonly LawRates[] }) {
   const can = requestActions(user, r);
   if (!can.decide && !can.continueRaise && !can.decline) return null;
   const name = r.employee.fullNameEn;
@@ -161,8 +178,10 @@ export function HrRequestActions({ request: r, user }: { request: RaiseRequest; 
           suggestion={suggestionText(r.suggestion ?? null) ?? (r.suggestedGross !== null ? `Gross ${formatEgp(r.suggestedGross)}` : null)}
           gross={inForce?.grossSalary ?? null}
           inForce={inForce}
-          defaultEffective={inForce ? defaultEffectiveDate(today, inForce) : nextFirstOfMonth(today)}
+          defaultEffective={decisionEffectiveDate(r, today)}
           fullFormHref={prepareRaiseHref(r.employee.id, r.id)}
+          pay={inForce}
+          rates={rates}
         />
       )}
       {can.continueRaise && (

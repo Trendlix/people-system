@@ -6,7 +6,7 @@ import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import type { FormState } from '@/lib/types';
 import { choice } from '../employees/[id]/contracts/pay-fields';
 import { commentReaders } from '../raise-requests/list';
-import { FigureField } from '../raise-requests/request-forms';
+import { FigureField, type FiguresFor } from '../raise-requests/request-forms';
 
 const SUBMIT: Record<RaiseDecision, { label: string; busy: string }> = {
   approve: { label: 'Approve', busy: 'Approving…' },
@@ -21,7 +21,8 @@ const SUBMIT: Record<RaiseDecision, { label: string; busy: string }> = {
  * or Reject it (the draft goes, and the raise request it came from is rejected with it), always with a comment; Return
  * to HR stays a secondary action, with the comment as what HR should change. The choice is sent as `decision`, Return to
  * HR as `intent`; it asks before approving or rejecting; a refusal shows on the card. Approvals and the raise card in
- * the Contract section both use it.
+ * the Contract section both use it. Another raise shows what it comes to beside it, the gross and the net
+ * approximately, when the pay before it is given (`figures`: Approvals, 17 October 2026).
  */
 export function RaiseDecisionForm({
   action,
@@ -29,6 +30,7 @@ export function RaiseDecisionForm({
   name,
   previousGross = null,
   requester = null,
+  figures = null,
 }: {
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
   /** The question asked before approving it as it is. */
@@ -39,6 +41,8 @@ export function RaiseDecisionForm({
   previousGross?: number | null;
   /** Who asked for the raise it came from, to say who reads the comment; null: a raise HR entered on its own. */
   requester?: RaiseRequester | null;
+  /** The pay before it and the rates, for the figures of another raise; null: none shown. */
+  figures?: FiguresFor | null;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const [decision, setDecision] = useState<RaiseDecision | ''>(() => valueOf(state, 'decision') as RaiseDecision | '');
@@ -86,6 +90,7 @@ export function RaiseDecisionForm({
           fid={fid}
           state={state}
           gross={previousGross}
+          figures={figures}
           label="The raise"
           hint="Over the pay before it: an amount in EGP added to the monthly gross, or a percent of it. The allowances stay as they are."
           required

@@ -65,7 +65,7 @@ interface RaiseInput {
   allowances: readonly AllowanceSnapshot[];
 }
 
-/** A raise request as HR prepares the raise from it: its state, reason and suggestion. */
+/** A raise request as HR prepares the raise from it: its state, reason, suggestion and the month it is asked from. */
 const PREPARABLE = {
   id: true,
   employeeId: true,
@@ -76,6 +76,7 @@ const PREPARABLE = {
   suggestedIncrease: true,
   suggestedPercent: true,
   suggestedGross: true,
+  effectiveFrom: true,
 } satisfies Prisma.RaiseRequestSelect;
 
 type Preparable = Prisma.RaiseRequestGetPayload<{ select: typeof PREPARABLE }>;
@@ -154,8 +155,10 @@ export class RaisesService {
    * HR approves a raise request (owner, 17 October 2026: "Approve - Approve with another raise amount or percentge -
    * Reject, and add a comment"): as suggested, or with another raise (an amount or a percent of the gross in force), with
    * HR's comment, which also sets how the raise is made (the way, the effective date, a new contract's length). The
-   * raise is prepared from it, as the raise form would (the pay in force with the gross, or by the hour the rate, raised
-   * by the figure; the allowances as they are; the request's reason) and sent to the CEO at once.
+   * effective date is the request's Effective from unless HR sends another (17 October 2026: "in the request their
+   * should be a tab called Effective from"); a request from before then has none, so HR gives one. The raise is prepared
+   * from it, as the raise form would (the pay in force with the gross, or by the hour the rate, raised by the figure; the
+   * allowances as they are; the request's reason) and sent to the CEO at once.
    */
   async approveRequest(requestId: string, dto: ApproveRaiseRequestDto, user: SessionUser) {
     const r = await this.prisma.raiseRequest.findUnique({ where: { id: requestId }, select: { employeeId: true, employmentId: true } });
@@ -180,12 +183,14 @@ export class RaisesService {
     }
     const reason = dto.raiseReason ?? request.raiseReason;
     if (!reason) throw new BadRequestException('Choose why the pay changes: this request is from before the reasons were listed.');
+    const effectiveDate = dto.effectiveDate ?? fromDateOnly(request.effectiveFrom);
+    if (!effectiveDate) throw new BadRequestException('Enter the date the raise takes effect, the 1st of a month: this request is from before Effective from was asked.');
 
     const allowances = current.allowances.map(allowanceView);
-    const effectiveYear = Number(dto.effectiveDate.slice(0, 4));
+    const effectiveYear = Number(effectiveDate.slice(0, 4));
     const terms = await this.terms(employment, current, {
       way: dto.way,
-      effectiveDate: dto.effectiveDate,
+      effectiveDate,
       durationMonths: dto.durationMonths,
       basicPercent: current.basicPercent,
       // the net of the new pay, as the raise form works it out
@@ -422,7 +427,10 @@ export class RaisesService {
           payBasis: before.payBasis as PayBasis,
           grossSalary: sees ? before.grossSalary.toNumber() : null,
           hourlyRate: sees ? (before.hourlyRate?.toNumber() ?? null) : null,
+          hoursPerWeek: before.hoursPerWeek?.toNumber() ?? null,
           allowancesTotal: sees ? beforeAllowances : null,
+          // how each was taxed and insured, for the net before and after the CEO's other raise (17 October 2026)
+          allowances: sees ? before.allowances.map((a) => ({ amount: a.amount.toNumber(), taxable: a.taxable, insured: a.insured })) : null,
           totalSalary: sees && beforeAllowances !== null ? Math.round((before.grossSalary.toNumber() + beforeAllowances) * 100) / 100 : null,
         },
       };
@@ -643,10 +651,12 @@ export class RaisesService {
       if (!approval) return made;
       const { request } = approval;
       await tx.raiseRequest.update({ where: { id: request.id }, data: { contractId: made.id, status: 'with_ceo' } });
+      // with the effective date HR chose (the request's Effective from unless HR set another, 17 October 2026)
       await recordStep(tx, request.id, user.id, {
         kind: 'hr_decision',
         decision: approval.decision,
         comment: approval.comment,
+        effectiveDate: terms.startDate,
         ...stepFigures(current.grossSalary.toNumber(), terms.grossSalary, approval.figure),
       });
       await recordStep(tx, request.id, user.id, { kind: 'prepared', way: raise.way, effectiveDate: terms.startDate, contractNumber: made.number });

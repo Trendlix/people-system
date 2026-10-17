@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import {
+  defaultEffectiveFrom,
   RAISE_DECISION_LABELS,
   RAISE_FIGURE_KIND_LABELS,
   RAISE_FIGURE_KINDS,
@@ -12,6 +13,8 @@ import {
   RAISE_WAY_LABELS,
   RAISE_WAYS,
   raiseEffectiveProblem,
+  type AllowanceTerms,
+  type LawRates,
   type RaiseDecision,
   type RaiseFigureKind,
   type RaiseRequester,
@@ -25,16 +28,20 @@ import type { FormState } from '@/lib/types';
 import { choice } from '../employees/[id]/contracts/pay-fields';
 import { formatEgp } from '../employees/[id]/contracts/salary';
 import { previewGross } from './decisions';
-import { commentReaders } from './list';
+import { changeWords, typedRaiseFigures, yearOf, type Change, type PayBefore, type RaiseFigures } from './figures';
+import { commentReaders, effectiveFromOptions, figuresNote } from './list';
 
 // The small forms of raise requests (owner's decisions, 16 October 2026; reworked 17 October 2026: "requesting a raise
 // should have a drop list reason first ( Annual Raise - Performance Raise - Counter Offer Raise - etc..) then add
 // requester comment, suggest raise amount or percentage, then the approver to Approve - Approve with another raise amount
-// or percentge - Reject, and add a comment"): Request a raise, on the Employment tab for the employee themself, their
-// direct manager and HR; HR's decision on a request (Approve as suggested, Approve with another raise, Reject), and
-// Reject alone for a request whose raise is prepared, on the profile and the Raise Requests page. The raise typed (an
-// amount or a percent) is the shared figure field, the CEO's decision on Approvals too. Each opens in place; one that
-// went through closes and says so, one refused stays open with the reason.
+// or percentge - Reject, and add a comment"): the request form, on its own page under Requests → Raise Requests since 17
+// October 2026 ("i think raising a request should be moved from the Employee tab to the raise requests tab"), for the
+// employee themself, their direct manager and HR, with the month the raise is asked from ("Effective from"); HR's
+// decision on a request (Approve as suggested, Approve with another raise, Reject), and Reject alone for a request whose
+// raise is prepared, on the Raise Requests page. The raise typed (an amount or a percent) is the shared figure field, the
+// CEO's decision on Approvals too, with what it comes to beside it for those sent the pay ("while raising a request show
+// some figures regarding the raise (Gross and net) but mainly we are working on the gross salary"). HR's forms open in
+// place; one that went through closes and says so, one refused stays open with the reason.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -61,16 +68,80 @@ function Done({ message }: { message?: string }) {
   );
 }
 
+/** What the figures panel works the raise out from, and how it says who sees it. */
+export interface FiguresFor {
+  /** The pay before the raise: the pay in force (or, for the CEO, the version the raise replaces). */
+  pay: PayBefore;
+  /** The years' rates set by law, for the net. */
+  rates: readonly LawRates[];
+  /** The year the raise takes effect in, for the rates. */
+  year: number;
+  /** Who sees these figures, under them. */
+  note: string;
+  /** The allowances after the raise, when they change with it; else the same. */
+  allowancesAfter?: readonly AllowanceTerms[] | null;
+  /** By the hour, the raise's own hours a week, when they change with it. */
+  hoursAfter?: number | null;
+}
+
+function ChangeRow({ label, c, prominent = false, suffix }: { label: string; c: Change; prominent?: boolean; suffix?: string }) {
+  return (
+    <div>
+      <dt className={prominent ? 'text-sm font-medium' : 'text-xs text-muted'}>{label}</dt>
+      <dd className={`tabular-nums ${prominent ? 'text-base font-semibold' : 'text-sm'}`}>
+        {formatEgp(c.from)} → {formatEgp(c.to)}
+        {suffix && <span className="font-normal text-muted"> {suffix}</span>}
+        <span className={`block ${prominent ? 'text-sm text-ok' : 'text-xs text-muted'}`}>{changeWords(c, formatEgp)}</span>
+      </dd>
+    </div>
+  );
+}
+
+/**
+ * What the raise typed comes to (owner, 17 October 2026: "show some figures regarding the raise (Gross and net) but
+ * mainly we are working on the gross salary"): the gross a month now, after it and the change, first and largest; by
+ * the hour the rate, which the raise is on, with the monthly estimate; then the net a month, approximately, with the
+ * allowances as they are. Live as the raise is typed; a line asking for it until it is a valid raise.
+ */
+export function FiguresPanel({ figures, note, id }: { figures: RaiseFigures | null; note: string; id?: string }) {
+  return (
+    <section id={id} aria-label="What the raise comes to" className="space-y-3 rounded-lg border border-line bg-canvas p-4">
+      <h3 className="text-sm font-semibold">What the Raise Comes To</h3>
+      <div role="status" aria-live="polite">
+        {figures ? (
+          <dl className="space-y-3">
+            {figures.hourly && <ChangeRow label="Hourly rate" c={figures.hourly} prominent />}
+            <ChangeRow label={figures.hourly ? 'Gross a month (estimate from the hours)' : 'Gross a month'} c={figures.gross} prominent={!figures.hourly} />
+            <ChangeRow label="Net a month (approximate)" c={figures.net} />
+            <p className="text-xs text-muted">
+              {figures.allowances > 0
+                ? `The net includes the allowances, ${formatEgp(figures.allowances)} a month, unchanged by the raise.`
+                : 'No allowances: the net is from the gross alone.'}{' '}
+              Worked out with the {figures.year} rates set by law.
+            </p>
+          </dl>
+        ) : (
+          <p className="text-sm text-muted">Type the raise, as an amount or a percent, to see the gross and the net it comes to.</p>
+        )}
+      </div>
+      <p className="hint">{note}</p>
+    </section>
+  );
+}
+
 /**
  * A raise typed as an amount in EGP a month (added to the gross) or a percent of the gross, of the kinds the caller may
  * use (a manager: a percent only, with no switch), sent as figureKind and figureValue. With the gross in force (only
- * for those who see salaries), it says what the raise comes to.
+ * for those who see salaries), it says what the raise comes to; with the pay (`figures`: HR, Finance, the CEO, and the
+ * employee for their own, 17 October 2026), the figures panel beside it, live as it is typed.
  */
 export function FigureField({
   fid,
   state,
   kinds = RAISE_FIGURE_KINDS,
   gross = null,
+  figures = null,
+  wide = false,
   label,
   hint,
   required = false,
@@ -80,6 +151,10 @@ export function FigureField({
   kinds?: readonly RaiseFigureKind[];
   /** The gross the raise is on, to show what it comes to; null: not shown. */
   gross?: number | null;
+  /** The pay and rates for the figures panel; null: no panel. */
+  figures?: FiguresFor | null;
+  /** The panel beside the field on a wide screen, rather than under it. */
+  wide?: boolean;
   label: string;
   hint?: string;
   required?: boolean;
@@ -89,9 +164,11 @@ export function FigureField({
     return (kinds as readonly string[]).includes(kept) ? (kept as RaiseFigureKind) : kinds[0];
   });
   const [value, setValue] = useState(() => valueOf(state, 'figureValue'));
-  const preview = previewGross(gross, kind, value);
+  // the panel says it all when there is one; else the one line of the gross it comes to
+  const preview = figures ? null : previewGross(gross, kind, value);
+  const worked = figures ? typedRaiseFigures(figures.pay, kind, value, figures.rates, figures.year, figures) : null;
   const describedBy = `${fid('figureValue-hint')}${preview !== null ? ` ${fid('figureValue-preview')}` : ''}`;
-  return (
+  const field = (
     <fieldset className="space-y-2">
       <legend className="label">
         {label} {!required && optional}
@@ -138,6 +215,13 @@ export function FigureField({
       </div>
     </fieldset>
   );
+  if (!figures) return field;
+  return (
+    <div className={wide ? 'grid gap-4 md:grid-cols-2 md:items-start' : 'space-y-4'}>
+      {field}
+      <FiguresPanel id={fid('figures')} figures={worked} note={figures.note} />
+    </div>
+  );
 }
 
 /** A required comment, saying who reads it. */
@@ -165,9 +249,12 @@ function CommentField({ fid, state, label, readers, rows = 3, maxLength = 1000 }
 }
 
 /**
- * Request a raise: why, from the list (first), the comment, and the raise suggested: an amount or a percent for the
- * employee and HR (`suggestsAmount`), a percent only for a manager, who doesn't see salaries. `suggestionKinds`, when
- * the API sends them, say the same; `currentGross` (HR only) shows what a suggestion comes to.
+ * Request a raise (its own page under Requests → Raise Requests, 17 October 2026): why, from the list (first), the
+ * month it is asked from ("Effective from": this month or a later one, next month unless another is chosen), the
+ * comment, and the raise suggested: an amount or a percent for the employee and HR (`suggestsAmount`), a percent only
+ * for a manager, who doesn't see salaries. `suggestionKinds`, when the API sends them, say the same; `currentGross`
+ * (HR only) shows what a suggestion comes to; `pay` (HR, Finance, the CEO, and the employee for their own) the figures
+ * panel beside it. Open from the start; Cancel goes back (`cancelHref`); once sent, the action opens where it is listed.
  */
 export function RequestRaiseForm({
   action,
@@ -176,6 +263,10 @@ export function RequestRaiseForm({
   name,
   suggestionKinds,
   currentGross = null,
+  pay = null,
+  rates = [],
+  today,
+  cancelHref,
 }: {
   action: Action;
   suggestsAmount: boolean;
@@ -183,51 +274,75 @@ export function RequestRaiseForm({
   name: string;
   suggestionKinds?: readonly RaiseFigureKind[];
   currentGross?: number | null;
+  /** The pay in force for the figures panel; null: none (a manager, or no signed contract yet). */
+  pay?: PayBefore | null;
+  /** The years' rates set by law, for the net. */
+  rates?: readonly LawRates[];
+  /** Today in Cairo (YYYY-MM-DD): the months offered start from this one. */
+  today: string;
+  cancelHref: string;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
-  const [open, setOpen] = useState(false);
   const fid = useFieldIds();
-  useClosesOnSuccess(state, () => setOpen(false));
+  const months = effectiveFromOptions(today);
+  const [effectiveFrom, setEffectiveFrom] = useState(() => {
+    const kept = valueOf(state, 'effectiveFrom', defaultEffectiveFrom(today));
+    return months.some((m) => m.value === kept) ? kept : defaultEffectiveFrom(today);
+  });
   const kinds: readonly RaiseFigureKind[] = suggestionKinds?.length ? suggestionKinds : suggestsAmount ? RAISE_FIGURE_KINDS : ['percent'];
   const requester: RaiseRequester = forSelf ? 'self' : suggestsAmount ? 'hr' : 'manager';
-
-  if (!open) {
-    return (
-      <div className="space-y-3">
-        <Done message={state.message} />
-        <button type="button" aria-expanded={false} onClick={() => setOpen(true)} className="btn btn-primary">
-          Request a raise
-        </button>
-      </div>
-    );
-  }
+  const year = yearOf(effectiveFrom, today);
 
   return (
-    <form action={formAction} aria-label={forSelf ? 'Request a raise' : `Request a raise for ${name}`} className="card max-w-2xl space-y-5 p-5">
+    <form action={formAction} aria-label={forSelf ? 'Request a raise' : `Request a raise for ${name}`} className="card space-y-5 p-5">
       <FormErrors errors={state.errors} />
-      <div>
-        <label htmlFor={fid('raiseReason')} className="label">
-          Reason
-        </label>
-        <Select
-          ref={focusOnOpen}
-          id={fid('raiseReason')}
-          name="raiseReason"
-          required
-          defaultValue={valueOf(state, 'raiseReason')}
-          aria-describedby={fid('raiseReason-hint')}
-          className="input max-w-xs"
-        >
-          <option value="">Choose a reason</option>
-          {RAISE_REASON_CHOICES.map((r) => (
-            <option key={r} value={r}>
-              {RAISE_REASON_LABELS[r]}
-            </option>
-          ))}
-        </Select>
-        <p id={fid('raiseReason-hint')} className="hint">
-          Why the raise is asked for. HR decides first, then the CEO.
-        </p>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div>
+          <label htmlFor={fid('raiseReason')} className="label">
+            Reason
+          </label>
+          <Select
+            id={fid('raiseReason')}
+            name="raiseReason"
+            required
+            defaultValue={valueOf(state, 'raiseReason')}
+            aria-describedby={fid('raiseReason-hint')}
+            className="input"
+          >
+            <option value="">Choose a reason</option>
+            {RAISE_REASON_CHOICES.map((r) => (
+              <option key={r} value={r}>
+                {RAISE_REASON_LABELS[r]}
+              </option>
+            ))}
+          </Select>
+          <p id={fid('raiseReason-hint')} className="hint">
+            Why the raise is asked for. HR decides first, then the CEO.
+          </p>
+        </div>
+        <div>
+          <label htmlFor={fid('effectiveFrom')} className="label">
+            Effective from
+          </label>
+          <Select
+            id={fid('effectiveFrom')}
+            name="effectiveFrom"
+            required
+            value={effectiveFrom}
+            onChange={(e) => setEffectiveFrom(e.target.value)}
+            aria-describedby={fid('effectiveFrom-hint')}
+            className="input"
+          >
+            {months.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </Select>
+          <p id={fid('effectiveFrom-hint')} className="hint">
+            The month the raise is to take effect from, on its 1st. HR and the CEO may set another.
+          </p>
+        </div>
       </div>
       <CommentField
         fid={fid}
@@ -242,6 +357,8 @@ export function RequestRaiseForm({
         state={state}
         kinds={kinds}
         gross={currentGross}
+        figures={pay ? { pay, rates, year, note: figuresNote(forSelf) } : null}
+        wide
         label="Suggested raise"
         hint={
           kinds.length === 1
@@ -253,9 +370,9 @@ export function RequestRaiseForm({
         <SubmitButton busy={pending} pendingText="Sending…">
           Send request
         </SubmitButton>
-        <button type="button" onClick={() => setOpen(false)} disabled={pending} className="btn btn-secondary">
+        <Link href={cancelHref} className={`btn btn-secondary ${pending ? 'pointer-events-none opacity-60' : ''}`} aria-disabled={pending || undefined}>
           Cancel
-        </button>
+        </Link>
       </div>
     </form>
   );
@@ -272,7 +389,8 @@ const SUBMIT: Record<RaiseDecision, { label: string; busy: string }> = {
  * with another raise (an amount or a percent of the gross in force), or Reject; always with a comment. Approving also
  * says how the raise is made, the way and the effective date (a new contract's length too): the raise is prepared from
  * it with the pay in force raised by the figure, and sent to the CEO. For a promotion or other allowances with it, the
- * whole raise form (`fullFormHref`).
+ * whole raise form (`fullFormHref`). The date starts as the month the request is asked from (17 October 2026). Another
+ * raise shows what it comes to beside it (`pay`, the pay in force; `rates` for the net).
  */
 export function HrDecisionForm({
   action,
@@ -283,6 +401,8 @@ export function HrDecisionForm({
   inForce,
   defaultEffective,
   fullFormHref,
+  pay = null,
+  rates = [],
 }: {
   action: Action;
   name: string;
@@ -293,9 +413,12 @@ export function HrDecisionForm({
   gross: number | null;
   /** The contract in force: a raise takes effect after it started and not after it ends. */
   inForce: { startDate: string; endDate: string | null } | null;
-  /** YYYY-MM-DD: the next 1st of a month it may take effect on. */
+  /** YYYY-MM-DD: the date it starts with, the request's Effective from (else the next 1st of a month it may take effect on). */
   defaultEffective: string;
   fullFormHref: string;
+  /** The pay in force, for the figures of another raise. */
+  pay?: PayBefore | null;
+  rates?: readonly LawRates[];
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const [open, setOpen] = useState(false);
@@ -360,7 +483,16 @@ export function HrDecisionForm({
         {!suggestion && <p className="hint">The request suggests no raise: approving it sets the raise.</p>}
       </fieldset>
 
-      {decision === 'approve_other' && <FigureField fid={fid} state={state} gross={gross} label="The raise" required />}
+      {decision === 'approve_other' && (
+        <FigureField
+          fid={fid}
+          state={state}
+          gross={gross}
+          figures={pay ? { pay, rates, year: yearOf(date, defaultEffective), note: figuresNote(false) } : null}
+          label="The raise"
+          required
+        />
+      )}
 
       {approving && (
         <>

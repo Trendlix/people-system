@@ -20,7 +20,8 @@ import { hasRole } from '../../../../../lib/roles';
 import { addMonths, monthName, monthOf } from '../../list';
 import { formatEgp } from '../../../employees/[id]/contracts/salary';
 import { changeText, fromToText, monthsAgoText, signedEgp, signedPercent } from '../../../employees/[id]/salary-history/salary-history';
-import { contractHref, employeeRaiseRequestsHref, salaryHistoryHref } from '../../../employees/tab-list';
+import { contractHref, salaryHistoryHref } from '../../../employees/tab-list';
+import { newRaiseRequestHref, raiseRequestOnListHref } from '../../../raise-requests/list';
 
 // The Salary Raises report (owner's decision, 16 October 2026: the salary raises tracked on each profile's Salary
 // History and in a company-wide report), for HR, Finance and the CEO, as salaries. For a period of months (this calendar
@@ -234,21 +235,21 @@ export interface ReviewAction {
 
 /**
  * What HR may do for someone due for review: carry on with their open raise (the contract on the Employment tab's
- * Details), decide their request with HR (on its card), see a request further along; with nothing open, prepare a
- * raise (the raise form) or ask for one (their Raise Requests, on the Salary sub-tab). Nothing for Finance and the CEO,
- * who read the report. The API checks it all again.
+ * Details), decide their request with HR or see a request further along (its row on the Raise Requests page, where HR
+ * decides since 17 October 2026); with nothing open, prepare a raise (the raise form) or ask for one (the request form
+ * under Requests → Raise Requests, with them chosen). Nothing for Finance and the CEO, who read the report. The API
+ * checks it all again.
  */
 export function reviewActions(user: WithRoles, r: Pick<DueForReviewRow, 'employee' | 'openRaise' | 'openRequest'>): ReviewAction[] {
   if (!preparesRaises(user)) return [];
   const id = r.employee.id;
-  const requests = employeeRaiseRequestsHref(id);
   if (r.openRaise) return [{ key: 'open', label: 'Open the raise', href: contractHref(id) }];
-  // HR decides the request on its card (17 October 2026: approve it as suggested or with another raise, or reject it)
-  if (r.openRequest?.status === 'with_hr') return [{ key: 'decide', label: 'Decide on the request', href: requests }];
-  if (r.openRequest) return [{ key: 'request', label: 'See the request', href: requests }];
+  // HR decides the request on its row (17 October 2026: approve it as suggested or with another raise, or reject it)
+  if (r.openRequest?.status === 'with_hr') return [{ key: 'decide', label: 'Decide on the request', href: raiseRequestOnListHref(r.openRequest) }];
+  if (r.openRequest) return [{ key: 'request', label: 'See the request', href: raiseRequestOnListHref(r.openRequest) }];
   return [
     { key: 'prepare', label: 'Prepare a raise', href: `/employees/${encodeURIComponent(id)}/contracts/raise` },
-    { key: 'request', label: 'Request a raise', href: requests },
+    { key: 'request', label: 'Request a raise', href: newRaiseRequestHref(id) },
   ];
 }
 

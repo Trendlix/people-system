@@ -8,12 +8,18 @@
 // HR's decision on one: approve it as suggested or with another raise, which prepares the raise and sends it to the CEO,
 // or reject it, always with a comment. Each forwards to the API, which checks who may ask (and that a manager suggests
 // no amount) and that only HR decides, so calling these directly can't bypass that. The whole raise form is the
-// Contract section's; the CEO's decision on the raise is on Approvals (approvals/actions.ts).
+// Contract section's; the CEO's decision on the raise is on Approvals (approvals/actions.ts). Asked for on its own page
+// under Requests → Raise Requests since 17 October 2026 ("i think raising a request should be moved from the Employee
+// tab to the raise requests tab"), with the month it is asked from ("Effective from"); once sent, the requester lands
+// where it is listed.
 import { refresh } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { RAISE_FIGURE_KINDS } from '@trendlix/shared';
 import { ApiError, apiSend } from '@/lib/api';
+import { getCurrentUser } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 import { hrDecisionBody, requestBody } from './decisions';
+import { requestSentHref } from './list';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
 
@@ -23,15 +29,19 @@ const typed = (fd: FormData, keys: readonly string[]) => Object.fromEntries(keys
 /** The API's messages, with its dates (YYYY-MM-DD) as the screens show them (DD/MM/YYYY). */
 const asShown = (messages: string[]) => messages.map((m) => m.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$3/$2/$1'));
 
+/** Today in Cairo, YYYY-MM-DD: a raise is asked from this month or a later one. */
+const todayInCairo = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date());
+
 /**
- * Asks for a raise for the employee: the reason from the list, the comment, and the raise suggested if any.
- * `suggestsAmount`: whether the asker may suggest an amount (the employee and HR); a manager suggests a percent only.
- * The list on the page shows it once sent.
+ * Asks for a raise for the employee: the reason from the list, the month it is asked from, the comment, and the raise
+ * suggested if any. `suggestsAmount`: whether the asker may suggest an amount (the employee and HR); a manager suggests
+ * a percent only. Once sent, opens where it is listed (the Raise Requests page, or the requester's My Requests), which
+ * says so.
  */
 export async function requestRaise(employeeId: string, suggestsAmount: boolean, _prev: FormState, fd: FormData): Promise<FormState> {
-  const values = typed(fd, ['raiseReason', 'comment', 'figureKind', 'figureValue']);
+  const values = typed(fd, ['raiseReason', 'effectiveFrom', 'comment', 'figureKind', 'figureValue']);
   const errors: string[] = [];
-  const body = requestBody(fd, suggestsAmount ? RAISE_FIGURE_KINDS : ['percent'], errors);
+  const body = requestBody(fd, suggestsAmount ? RAISE_FIGURE_KINDS : ['percent'], errors, todayInCairo());
   if (errors.length) return { errors, values };
 
   try {
@@ -40,9 +50,10 @@ export async function requestRaise(employeeId: string, suggestsAmount: boolean, 
     if (err instanceof ApiError) return { errors: asShown(err.messages), values };
     throw err;
   }
-  // the profile's list (and HR's count beside Raise Requests in the sidebar) now has it
+  const user = await getCurrentUser();
+  // the lists (and HR's count beside Raise Requests in the sidebar) now have it
   refresh();
-  return { message: 'Raise request sent. HR approves or rejects it, then the CEO decides; each step shows here.' };
+  redirect(requestSentHref(user, user.employeeId === employeeId));
 }
 
 /**

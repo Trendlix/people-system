@@ -1,13 +1,27 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { Select } from '@/components/select';
+import { loadLawRates } from '@/lib/law-rates';
 import type { RaiseRequest } from '@/lib/raise-types';
 import { getCurrentUser } from '@/lib/session';
 import { employeeRaiseRequestsHref } from '../employees/ui';
 import { Empty, Loading } from '../organization/ui';
 import { loadRaiseRequests } from './data';
-import { askedAt, canSeeRaiseRequests, raiseRequestsHref, readStatus, requestsLabel, STATUS_FILTERS, type StatusFilter } from './list';
-import { FoldedRequestLog, HrRequestActions, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, Requester, Suggestion } from './ui';
+import {
+  askedAt,
+  canSeeRaiseRequests,
+  effectiveFromText,
+  handlesRaiseRequests,
+  justSent,
+  newRaiseRequestHref,
+  raiseRequestAnchor,
+  raiseRequestsHref,
+  readStatus,
+  requestsLabel,
+  STATUS_FILTERS,
+  type StatusFilter,
+} from './list';
+import { FoldedRequestLog, HrRequestActions, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, RequestSent, Requester, Suggestion } from './ui';
 
 // Raise Requests (owner's decisions, 16 October 2026: "a place to request raise by employee, or his manager or the HR,
 // with a reason and to be going through an approval cycle"; reworked 17 October 2026): every request, newest first,
@@ -15,7 +29,10 @@ import { FoldedRequestLog, HrRequestActions, PreparedRaise, Progress, RaiseReque
 // raise suggested and its log of every step. HR decides a request with HR, with a comment: approves it as suggested or
 // with another raise (the raise is prepared and goes to the CEO on Approvals) or rejects it; the CEO's decision on that
 // raise is the request's. HR and the CEO see the page, and Finance may view it; the API checks every request again and
-// sends the amounts only to them.
+// sends the amounts only to them. Requests are asked for here since 17 October 2026 ("i think raising a request should
+// be moved from the Employee tab to the raise requests tab"): New raise request opens the form (/raise-requests/new),
+// for HR anyone employed now, for the CEO and Finance themselves; once sent, it is listed first here. Each request says
+// the month it is asked from ("Effective from"), and HR's decision starts with it.
 
 const quiet = 'border-t border-line px-4 py-10 text-center text-sm text-muted';
 
@@ -54,9 +71,10 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!canSeeRaiseRequests(user)) return <Empty>Only HR, the CEO and Finance can see raise requests.</Empty>;
   const status = readStatus(query);
-  const listing = await loadRaiseRequests(status);
   const ceo = user.roles.includes('ceo');
   const hr = user.roles.includes('hr');
+  // the years' rates set by law, for the figures of HR's other raise
+  const [listing, rates] = await Promise.all([loadRaiseRequests(status), hr ? loadLawRates() : []]);
 
   return (
     <div className="card">
@@ -71,7 +89,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
         </p>
       ) : listing.value.length === 0 ? (
         <p className={quiet}>
-          {status ? 'No raise requests with this status.' : 'No raise requests yet. They are asked for on the Employment tab of a profile.'}{' '}
+          {status ? 'No raise requests with this status.' : 'No raise requests yet. Ask for one with New raise request.'}{' '}
           {status && <Link href={raiseRequestsHref('')}>Show all</Link>}
         </p>
       ) : (
@@ -83,6 +101,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                   <th scope="col">Employee</th>
                   <th scope="col">Asked By</th>
                   <th scope="col">Reason</th>
+                  <th scope="col">Effective From</th>
                   <th scope="col" className="text-right">
                     Suggested Raise
                   </th>
@@ -98,7 +117,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
               </thead>
               <tbody>
                 {listing.value.map((r) => (
-                  <tr key={r.id} className="align-top">
+                  <tr key={r.id} id={raiseRequestAnchor(r.id)} className="scroll-mt-6 align-top target:bg-accent-soft">
                     <td className="align-top">
                       <Link href={requestHref(r)} className="font-semibold">
                         {r.employee.fullNameEn}
@@ -113,6 +132,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                     <td className="max-w-80 min-w-56 align-top">
                       <RequestReason request={r} />
                     </td>
+                    <td className={`align-top whitespace-nowrap ${r.effectiveFrom ? 'tabular-nums' : 'text-muted'}`}>{effectiveFromText(r)}</td>
                     <td className="text-right align-top whitespace-nowrap">
                       <Suggestion request={r} />
                     </td>
@@ -133,7 +153,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                     </td>
                     {hr && (
                       <td className="align-top">
-                        <HrRequestActions request={r} user={user} />
+                        <HrRequestActions request={r} user={user} rates={rates} />
                       </td>
                     )}
                   </tr>
@@ -143,6 +163,27 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
           </div>
           <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(listing.value.length)}</p>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * New raise request, for those who may ask for one (HR for anyone employed now; the CEO and Finance for themselves: the
+ * API checks it), and the line saying one was just sent (?sent=1).
+ */
+async function Asking({ searchParams }: { searchParams: PageProps<'/raise-requests'>['searchParams'] }) {
+  const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
+  const asks = canSeeRaiseRequests(user) && (handlesRaiseRequests(user) || !!user.employeeId);
+  const sent = justSent(query);
+  if (!asks && !sent) return null;
+  return (
+    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">{sent && <RequestSent />}</div>
+      {asks && (
+        <Link href={newRaiseRequestHref()} className="btn btn-primary">
+          New raise request
+        </Link>
       )}
     </div>
   );
@@ -158,6 +199,9 @@ export default function RaiseRequestsPage({ searchParams }: PageProps<'/raise-re
         <Link href="/approvals">Approvals</Link>. Every step is logged on the request.
       </p>
       <div className="mt-6">
+        <Suspense fallback={null}>
+          <Asking searchParams={searchParams} />
+        </Suspense>
         <Suspense fallback={<Loading />}>
           <Requests searchParams={searchParams} />
         </Suspense>

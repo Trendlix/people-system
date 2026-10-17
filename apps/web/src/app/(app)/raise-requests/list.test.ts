@@ -12,7 +12,23 @@ import {
   stepTone,
   suggestionText,
   canSeeRaiseRequests,
+  decisionEffectiveDate,
+  effectiveFromOptions,
+  effectiveFromText,
+  figuresNote,
   handlesRaiseRequests,
+  isRequestForSelf,
+  justSent,
+  monthText,
+  newRaiseRequestHref,
+  pickerOptions,
+  preselectedPerson,
+  raiseRequestOnListHref,
+  readEmployee,
+  requestablePeople,
+  requestBackHref,
+  requestPlace,
+  requestSentHref,
   preparedRaiseText,
   prepareRaiseHref,
   progressText,
@@ -265,11 +281,21 @@ describe('the log', () => {
       detail: 'Performance raise · Suggested +EGP 1,500.00',
     });
     expect(stepText(step({ raiseReason: 'annual' }), 'manager')).toEqual({ title: 'Asked for by their direct manager', detail: 'Annual raise' });
+    // the month asked from (17 October 2026), for everyone who sees the request
+    expect(stepText(step({ raiseReason: 'annual', effectiveDate: '2026-11-01', figure: 'percent', increasePercent: 8 }), 'manager')).toEqual({
+      title: 'Asked for by their direct manager',
+      detail: 'Annual raise · Effective from November 2026 · Suggested +8%',
+    });
     expect(stepText(step({ kind: 'hr_decision', decision: 'approve', figure: 'percent', increaseAmount: 896, increasePercent: 8, gross: 12096 }), 'manager')).toEqual({
       title: 'HR approved it as suggested',
       detail: '+8% (+EGP 896.00) → EGP 12,096.00',
     });
     expect(stepText(step({ kind: 'hr_decision', decision: 'approve_other' }), 'self')).toEqual({ title: 'HR approved it with another raise', detail: null });
+    // the date HR chose, once the caller is sent it
+    expect(stepText(step({ kind: 'hr_decision', decision: 'approve', figure: 'percent', increaseAmount: 896, increasePercent: 8, gross: 12096, effectiveDate: '2026-12-01' }), 'hr')).toEqual({
+      title: 'HR approved it as suggested',
+      detail: '+8% (+EGP 896.00) → EGP 12,096.00 · Effective from December 2026',
+    });
     expect(stepText(step({ kind: 'hr_decision', decision: 'reject', comment: 'Not now' }), 'hr').title).toBe('HR rejected it');
     expect(stepText(step({ kind: 'ceo_decision', decision: 'approve' }), 'self').title).toBe('The CEO approved it');
     expect(stepText(step({ kind: 'ceo_decision', decision: 'approve_other', figure: 'amount', increaseAmount: 1200, increasePercent: 12, gross: 11200 }), 'self')).toEqual({
@@ -306,11 +332,126 @@ describe('the log', () => {
   });
 });
 
+describe('asking for a raise under Requests (owner, 17 October 2026: "Under Requests")', () => {
+  /** Someone GET /employees lists: currently employed (with their direct manager) unless `employment` is null. */
+  const person = (id: string, name: string, manager: string | null, employed = true, workEmail: string | null = null) => ({
+    id,
+    fullNameEn: name,
+    employeeCode: `EMP-${id}`,
+    workEmail,
+    employment: employed ? { manager: manager ? { id: manager } : null } : null,
+  });
+  const people = [
+    person('mona', 'Mona Manager', null, true, 'mona@trendlix.com'),
+    person('ben', 'Ben Asking', 'mona', true, 'ben@trendlix.com'),
+    person('dana', 'Dana Decided', 'mona'),
+    person('omar', 'Omar Left', 'mona', false),
+    person('sam', 'Sam Other', 'sara'),
+  ];
+  const hr = { roles: ['hr'] as Role[], email: 'hr@trendlix.com', employeeId: null };
+  const mona = { roles: ['manager', 'employee'] as Role[], email: 'mona@trendlix.com', employeeId: 'mona' };
+  const ben = { roles: ['employee'] as Role[], email: 'ben@trendlix.com', employeeId: 'ben' };
+  const ids = (list: { id: string }[]) => list.map((p) => p.id);
+
+  it('offers HR everyone employed now; a manager themself and their direct reports; an employee themself', () => {
+    expect(ids(requestablePeople(hr, people))).toEqual(['mona', 'ben', 'dana', 'sam']);
+    expect(ids(requestablePeople(mona, people))).toEqual(['mona', 'ben', 'dana']);
+    expect(ids(requestablePeople(ben, people))).toEqual(['ben']);
+    // the CEO and Finance, who see everyone, ask for themselves (and their own direct reports)
+    expect(ids(requestablePeople({ roles: ['ceo'], email: 'ceo@trendlix.com', employeeId: 'sara' }, [...people, person('sara', 'Sara Chief', null)]))).toEqual(['sam', 'sara']);
+    // no profile of their own: no one (HR aside)
+    expect(requestablePeople({ roles: ['finance'], email: 'x@trendlix.com', employeeId: null }, people)).toEqual([]);
+    // an API that doesn't name the profile: found by the work email
+    expect(ids(requestablePeople({ roles: ['manager'], email: 'Mona@Trendlix.com' }, people))).toEqual(['mona', 'ben', 'dana']);
+    expect(isRequestForSelf(ben, people[1])).toBe(true);
+    expect(isRequestForSelf(mona, people[1])).toBe(false);
+  });
+
+  it('lists them by name, the user marked; preselects the one asked for when allowed, else the only one', () => {
+    expect(pickerOptions(mona, requestablePeople(mona, people))).toEqual([
+      { id: 'ben', label: 'Ben Asking · EMP-ben' },
+      { id: 'dana', label: 'Dana Decided · EMP-dana' },
+      { id: 'mona', label: 'Mona Manager · EMP-mona (you)' },
+    ]);
+    const team = requestablePeople(mona, people);
+    expect(preselectedPerson(team, 'dana')).toBe('dana');
+    expect(preselectedPerson(team, 'sam')).toBeNull(); // not hers to ask for
+    expect(preselectedPerson(team, null)).toBeNull();
+    expect(preselectedPerson(requestablePeople(ben, people), null)).toBe('ben');
+    expect(preselectedPerson(requestablePeople(ben, people), 'dana')).toBe('ben');
+    expect(readEmployee({ employee: 'dana' })).toBe('dana');
+    expect(readEmployee({ employee: ['a', 'b'] })).toBeNull();
+    expect(readEmployee({})).toBeNull();
+  });
+
+  it('links to the form, and back to where each requester follows their requests', () => {
+    expect(newRaiseRequestHref()).toBe('/raise-requests/new');
+    expect(newRaiseRequestHref('e 1')).toBe('/raise-requests/new?employee=e%201');
+    expect(requestBackHref(hr, false)).toBe('/raise-requests');
+    expect(requestBackHref({ roles: ['ceo'] }, true)).toBe('/raise-requests');
+    expect(requestBackHref(ben, true)).toBe('/my-requests');
+    expect(requestBackHref(mona, false)).toBe('/my-team');
+    // once sent: listed first, and said so
+    expect(requestSentHref(hr, false)).toBe('/raise-requests?sent=1');
+    expect(requestSentHref(ben, true)).toBe('/my-requests?kind=raise&sent=1');
+    expect(requestSentHref(mona, false)).toBe('/my-requests?kind=team&sent=1');
+    expect(justSent({ sent: '1' })).toBe(true);
+    expect(justSent({ status: 'with_hr' })).toBe(false);
+  });
+
+  it('opens a request listed on a profile in its place under Requests, or nowhere else for a manager told of it', () => {
+    const q = request({ id: 'q1', status: 'with_hr', requester: 'manager', requestedBy: { email: 'mona@trendlix.com' } });
+    expect(raiseRequestOnListHref(q)).toBe('/raise-requests?status=with_hr#raise-request-q1');
+    expect(requestPlace(hr, q, false)).toEqual({ href: '/raise-requests?status=with_hr#raise-request-q1', label: 'Open in Raise Requests' });
+    expect(requestPlace(mona, q, false)).toEqual({ href: '/my-requests?kind=team#raise-request-q1', label: 'Open in My Requests' });
+    expect(requestPlace(ben, request({ requester: 'self', requestedBy: { email: 'ben@trendlix.com' } }), true)).toEqual({
+      href: '/my-requests?kind=raise#raise-request-q1',
+      label: 'Open in My Requests',
+    });
+    // the employee's own, or HR's, read by their manager: the profile is its place
+    expect(requestPlace(mona, request({ requester: 'self', requestedBy: { email: 'ben@trendlix.com' } }), false)).toBeNull();
+    expect(requestPlace(mona, request({ requester: 'hr', requestedBy: { email: 'hr@trendlix.com' } }), false)).toBeNull();
+  });
+
+  it('says who sees the figures while asking', () => {
+    expect(figuresNote(true)).toMatch(/^Your own pay, which only you, HR, Finance and the CEO see: your direct manager doesn’t/);
+    expect(figuresNote(false)).toMatch(/^HR, Finance and the CEO see these figures; a direct manager sees no salary figures/);
+    expect(figuresNote(false)).toMatch(/The net is approximate\.$/);
+  });
+});
+
+describe('Effective from (owner, 17 October 2026: "in the request their should be a tab called Effective from")', () => {
+  it('says the month a request is asked from, or Not given on one from before', () => {
+    expect(monthText('2026-11-01')).toBe('November 2026');
+    expect(effectiveFromText(request({ effectiveFrom: '2027-01-01' }))).toBe('January 2027');
+    expect(effectiveFromText(request({ effectiveFrom: null }))).toBe('Not given');
+    expect(effectiveFromText(request())).toBe('Not given');
+  });
+
+  it('offers this month and the next eleven, by name', () => {
+    const options = effectiveFromOptions('2026-10-17');
+    expect(options).toHaveLength(12);
+    expect(options[0]).toEqual({ value: '2026-10-01', label: 'October 2026' });
+    expect(options[1]).toEqual({ value: '2026-11-01', label: 'November 2026' });
+    expect(options[3]).toEqual({ value: '2027-01-01', label: 'January 2027' });
+    expect(options.at(-1)).toEqual({ value: '2027-09-01', label: 'September 2027' });
+  });
+
+  it('starts HR’s decision from it; on one from before, the next 1st after today and the contract’s start', () => {
+    const inForce = { number: 'CON-2026-0001', startDate: '2026-11-01', endDate: null, payBasis: 'monthly' as const, grossSalary: 10_000 };
+    expect(decisionEffectiveDate(request({ effectiveFrom: '2027-01-01', inForce }), '2026-10-17')).toBe('2027-01-01');
+    expect(decisionEffectiveDate(request({ effectiveFrom: null, inForce }), '2026-10-17')).toBe('2026-12-01');
+    expect(decisionEffectiveDate(request({ effectiveFrom: null, inForce: null }), '2026-10-17')).toBe('2026-11-01');
+  });
+});
+
 describe('who reads a comment', () => {
   it('says so under each box', () => {
-    expect(commentReaders('request', 'self', true)).toBe('HR, Finance, the CEO and your direct manager see this comment.');
+    expect(commentReaders('request', 'self', true)).toBe(
+      'HR, Finance, the CEO and your direct manager see this comment; the figures of the raise you suggest, only you, HR, Finance and the CEO.',
+    );
     expect(commentReaders('request', 'manager')).toMatch(/the employee doesn’t see a request you make/);
-    expect(commentReaders('request', 'hr')).toMatch(/^Finance, the CEO and the employee’s direct manager see this comment/);
+    expect(commentReaders('request', 'hr')).toMatch(/^Finance, the CEO and the employee’s direct manager see this comment, the manager no figures/);
     expect(commentReaders('decision', 'self')).toBe('The employee and their manager see this comment.');
     expect(commentReaders('decision', 'manager')).toBe('The employee’s manager sees this comment; the employee doesn’t see this request.');
     expect(commentReaders('decision', null)).toBe('HR, Finance and the CEO see this comment, with the raise.');

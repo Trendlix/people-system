@@ -17,8 +17,8 @@ import { loadTeam } from '../my-team/data';
 import { askedByText, probationOf, raiseNews } from '../my-team/team';
 import { loadOwnProfile } from '../own-profile';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
-import { progressText } from '../raise-requests/list';
-import { FoldedRequestLog, RaiseRequestStatusBadge, RequestReason, Suggestion } from '../raise-requests/ui';
+import { effectiveFromText, newRaiseRequestHref, progressText } from '../raise-requests/list';
+import { EffectiveFrom, FoldedRequestLog, RaiseRequestStatusBadge, RequestReason, Suggestion } from '../raise-requests/ui';
 import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toDoItems, upcomingHolidays, workingDaysText } from './dashboard';
 
 // The employee's dashboard: the home page (/) of someone who is only an employee and/or a direct manager (owner, 17
@@ -207,8 +207,9 @@ async function UpcomingHolidays({ today }: { today: string }) {
 /**
  * Their open requests, each with where it stands (the changes to their details they asked HR for, and the raises they
  * asked for, as the API shows them to the employee: the reason from the list, the raise suggested and the log, 17
- * October 2026), and ways to ask: Request a raise (the form on their profile's
- * Salary sub-tab, when they may ask now) and Ask to change my details (the change request page).
+ * October 2026; the month it is asked from too), and ways to ask: Request a raise (the request form under Requests →
+ * Raise Requests for themself, when they may ask now: "i think raising a request should be moved from the Employee tab
+ * to the raise requests tab", 17 October 2026) and Ask to change my details (the change request page).
  */
 async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
   const raises = await loadEmployeeRaiseRequests(p.id);
@@ -242,6 +243,9 @@ async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
                   <div className="text-xs">
                     <RequestReason request={r.request} />
                   </div>
+                  <p className="text-xs text-muted">
+                    Effective from <EffectiveFrom request={r.request} />
+                  </p>
                   {(r.request.suggestion || r.request.suggestedGross !== null) && (
                     <p className="text-xs text-muted">
                       Suggested: <Suggestion request={r.request} />
@@ -257,7 +261,7 @@ async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
       {raises.kind === 'failed' && <p className="mt-2 text-xs text-muted">Your raise requests couldn&apos;t be loaded.</p>}
       <div className="mt-4 flex flex-wrap gap-2">
         {own?.canRequest && (
-          <Link href={employeeRaiseRequestsHref(p.id)} className={`${small} btn-primary`}>
+          <Link href={newRaiseRequestHref(p.id)} className={`${small} btn-primary`}>
             Request a raise
           </Link>
         )}
@@ -369,6 +373,7 @@ async function MyTeamCard({ profile, user, today }: { profile: EmployeeProfile; 
                     <p className="text-xs text-muted">
                       Asked by {askedByText(r, user.email)} on <span className="tabular-nums">{formatDate(r.createdAt)}</span> · {progressText(r).text}
                     </p>
+                    {r.effectiveFrom && <p className="text-xs text-muted">Effective from {effectiveFromText(r)}</p>}
                   </li>
                 ))}
               </ul>

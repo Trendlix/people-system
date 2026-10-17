@@ -566,7 +566,10 @@ model Contract {
 // it (anyone's: a manager suggests a percent only). HR approves it, which prepares the raise from it (contractId) and
 // sends it to the CEO, or rejects it; the CEO's decision on that raise is the request's; it is done once the raise is
 // signed. One open per person. Each step is logged on it (RaiseRequestStep). The amounts are RESTRICTED (HR, Finance,
-// CEO): the manager never sees one, the employee only their own suggestion and, once signed, their new salary.
+// CEO): the manager never sees one, the employee only their own suggestion and, once signed, their new salary. Effective
+// from (owner, 17 October 2026: "in the request their should be a tab called Effective from"): the 1st of the month the
+// raise is asked from, required on a new request and seen by everyone who sees it (a date, not a figure); HR's approval
+// takes it as the raise's effective date unless HR sets another.
 model RaiseRequest {
   id                String             @id @default(uuid()) @db.Uuid
   employeeId        String             @map("employee_id") @db.Uuid
@@ -581,6 +584,7 @@ model RaiseRequest {
   suggestedIncrease Decimal?           @map("suggested_increase") @db.Decimal(12, 2) // RESTRICTED: EGP added to the gross; never a manager's
   suggestedPercent  Decimal?           @map("suggested_percent") @db.Decimal(5, 2) // a percent of the gross; one or the other
   suggestedGross    Decimal?           @map("suggested_gross") @db.Decimal(12, 2) // RESTRICTED: the gross the suggestion came to (typed before 17 October 2026)
+  effectiveFrom     DateTime?          @map("effective_from") @db.Date // the 1st of the month the raise is asked from; none on a request from before 17 October 2026
   status            String             @default("with_hr") // RAISE_REQUEST_STATUSES: with_hr, with_ceo, approved, declined, done
   contractId        String?            @unique @map("contract_id") @db.Uuid // the raise HR prepared from it
   contract          Contract?          @relation(fields: [contractId], references: [id], onDelete: SetNull)

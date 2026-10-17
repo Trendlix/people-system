@@ -1,8 +1,9 @@
-import { ENDING_STATUS_LABELS, PAY_STAGE_LABELS } from '@trendlix/shared';
+import { ENDING_STATUS_LABELS, PAY_STAGE_LABELS, type LawRates } from '@trendlix/shared';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { loadLawRates } from '@/lib/law-rates';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import { getCurrentUser } from '@/lib/session';
 import type { ChangeRequest, EndingSummary } from '@/lib/types';
@@ -10,7 +11,7 @@ import { ChangeRequestCard } from '../employees/[id]/change-request/request-part
 import { contractHref, profileHref } from '../employees/ui';
 import { INITIATOR_LABELS } from '../organization/contracts/labels';
 import { Empty, Loading } from '../organization/ui';
-import { raiseRequestsHref, REQUESTER_PHRASES } from '../raise-requests/list';
+import { figuresNote, raiseRequestsHref, REQUESTER_PHRASES } from '../raise-requests/list';
 import { FoldedRequestLog, RequestReason, Suggestion } from '../raise-requests/ui';
 import { decideChangeRequest, decideEnding, decideRaise } from './actions';
 import { decidesChangeRequests, decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
@@ -144,8 +145,10 @@ function FromRequest({ request: q }: { request: RaiseRequest }) {
   );
 }
 
-function RaiseCard({ raise: r, request, decides }: { raise: PendingRaise; request: RaiseRequest | null; decides: boolean }) {
+function RaiseCard({ raise: r, request, decides, rates }: { raise: PendingRaise; request: RaiseRequest | null; decides: boolean; rates: readonly LawRates[] }) {
   const v = pendingRaiseView(r);
+  // the pay before it, for the figures of another raise (17 October 2026): over it, with the raise's own allowances and hours
+  const before = r.previous;
   return (
     <li className="card p-6">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -196,6 +199,18 @@ function RaiseCard({ raise: r, request, decides }: { raise: PendingRaise; reques
           name={r.employee.fullNameEn}
           previousGross={r.previous?.grossSalary ?? null}
           requester={request?.requester ?? null}
+          figures={
+            before && before.grossSalary !== null && before.allowances
+              ? {
+                  pay: { payBasis: r.payBasis, grossSalary: before.grossSalary, hourlyRate: before.hourlyRate, hoursPerWeek: before.hoursPerWeek ?? r.hoursPerWeek, allowances: before.allowances },
+                  allowancesAfter: r.allowances,
+                  hoursAfter: r.hoursPerWeek,
+                  rates,
+                  year: Number(r.startDate.slice(0, 4)),
+                  note: figuresNote(false),
+                }
+              : null
+          }
         />
       )}
     </li>
@@ -209,6 +224,8 @@ async function PendingRaises({ decides }: { decides: boolean }) {
   if (raises.length === 0) return <Empty>No pay raises are waiting for approval.</Empty>;
   // the requests they were prepared from, to say who asked and why
   const requests = raises.some((r) => r.raise?.requestId) ? ((await getOrNull<RaiseRequest[]>(raiseRequestsHref('with_ceo'))) ?? []) : [];
+  // the years' rates set by law, for the net in the figures of another raise
+  const rates = decides ? await loadLawRates() : [];
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
@@ -219,7 +236,7 @@ async function PendingRaises({ decides }: { decides: boolean }) {
       </p>
       <ul className="space-y-4">
         {raises.map((r) => (
-          <RaiseCard key={r.id} raise={r} request={requests.find((q) => q.id === r.raise?.requestId) ?? null} decides={decides} />
+          <RaiseCard key={r.id} raise={r} request={requests.find((q) => q.id === r.raise?.requestId) ?? null} decides={decides} rates={rates} />
         ))}
       </ul>
     </div>

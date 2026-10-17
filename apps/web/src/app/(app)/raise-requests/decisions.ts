@@ -1,4 +1,5 @@
 import {
+  effectiveFromProblem,
   RAISE_DECISIONS,
   RAISE_FIGURE_KINDS,
   RAISE_REASON_CHOICES,
@@ -18,7 +19,8 @@ import { parseAmount } from '../employees/[id]/contracts/salary';
 // The forms of raise requests and their decisions (owner, 17 October 2026: "requesting a raise should have a drop list
 // reason first ( Annual Raise - Performance Raise - Counter Offer Raise - etc..) then add requester comment, suggest raise
 // amount or percentage, then the approver to Approve - Approve with another raise amount or percentge - Reject, and add
-// a comment"), read as the API takes them: the request (the reason from the list, the comment, the raise suggested),
+// a comment"), read as the API takes them: the request (the reason from the list, the month it is asked from, the
+// comment, the raise suggested),
 // HR's decision on it (approve as suggested, with another raise, or reject; with the way and effective date of the raise
 // it prepares), and the CEO's on the raise (approve as it reached them, with another raise, reject, or return to HR).
 // The comment is required on each. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
@@ -77,16 +79,23 @@ export function previewGross(gross: number | null | undefined, kind: RaiseFigure
   return raisedGross(gross, { kind, value });
 }
 
-/** The request form as the API takes it: the reason from the list, the comment, and the raise suggested if any. */
-export function requestBody(fd: FormData, kinds: readonly RaiseFigureKind[], errors: string[]) {
+/**
+ * The request form as the API takes it: the reason from the list, the month the raise is asked from (Effective from, 17
+ * October 2026: its 1st, this month or a later one; `today` is Cairo's), the comment, and the raise suggested if any.
+ */
+export function requestBody(fd: FormData, kinds: readonly RaiseFigureKind[], errors: string[], today: string) {
   const reason = text(fd, 'raiseReason');
   const raiseReason: RaiseReasonChoice | null = isIn(RAISE_REASON_CHOICES, reason) ? reason : null;
   if (!raiseReason) errors.push('Choose why the raise is asked for.');
+  const effectiveFrom = text(fd, 'effectiveFrom');
+  const effectiveProblem = effectiveFrom ? effectiveFromProblem(effectiveFrom, today) : 'Choose the month the raise is to take effect from.';
+  if (effectiveProblem) errors.push(effectiveProblem);
   const comment = text(fd, 'comment');
   if (!comment) errors.push('Write a comment: what the raise is for.');
   const figure = figureFrom(fd, errors, kinds);
   return {
     ...(raiseReason && { raiseReason }),
+    ...(!effectiveProblem && { effectiveFrom }),
     comment,
     ...(figure?.kind === 'amount' && { suggestedIncrease: figure.value }),
     ...(figure?.kind === 'percent' && { suggestedPercent: figure.value }),
