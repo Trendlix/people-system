@@ -13,7 +13,7 @@ import type { Department, EmployeeSummary, Grade } from '@/lib/types';
 import { StaffOnly } from '../staff-only';
 import { directorySections } from './directory-groups';
 import { canSeeSalaryRaises, RAISES_PATH } from '../payroll/reports/salary-raises/salary-raises';
-import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge } from './ui';
+import { Avatar, canAddEmployees, Empty, gradeLabel, Loading, seesEveryone, StandingBadge } from './ui';
 
 // Not an employee's: someone who is only an employee and/or a direct manager is sent to their dashboard, which links
 // their own profile, and a manager's My Team their direct reports' (owner's decisions, 17 October 2026).
@@ -276,24 +276,10 @@ async function HeaderActions() {
   const user = await getCurrentUser();
   return (
     <div className="flex flex-wrap gap-3">
-      {canSeeEmployeeFiles(user) && (
-        <>
-          <Link href="/employees/documents" className="btn btn-secondary">
-            Search documents
-          </Link>
-          <Link href="/employees/missing" className="btn btn-secondary">
-            Missing details
-          </Link>
-        </>
-      )}
+      {/* Search Documents, Missing Details and Card Reading Fixes are under People in the sidebar (owner, 17 October 2026) */}
       {canSeeSalaryRaises(user) && (
         <Link href={RAISES_PATH} className="btn btn-secondary">
           Salary raises
-        </Link>
-      )}
-      {canSeeCardFixes(user) && (
-        <Link href="/employees/card-corrections" className="btn btn-secondary">
-          Card reading fixes
         </Link>
       )}
       {canAddEmployees(user) && (

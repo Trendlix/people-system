@@ -37,11 +37,12 @@ describe('who sees the Contracts page', () => {
   });
 
   it('matches who gets the sidebar link', () => {
-    const item = NAV.find((n) => n.href === '/contracts');
+    // under People, after Employees (owner, 17 October 2026: "employees, contracts and offers need to be grouped")
+    const pages = NAV.find((n) => n.label === 'People')?.items ?? [];
+    const item = pages.find((n) => n.href === '/contracts');
     expect(item).toBeDefined();
     expect(item?.section).toBe('/contracts');
-    // after Employees
-    expect(NAV.findIndex((n) => n.href === '/contracts')).toBe(NAV.findIndex((n) => n.href === '/employees') + 1);
+    expect(pages.findIndex((n) => n.href === '/contracts')).toBe(pages.findIndex((n) => n.href === '/employees') + 1);
     for (const role of ROLES) {
       const user = as('employee', role);
       expect(hasRole(user, ...(item?.roles ?? ROLES)), role).toBe(canSeeContracts(user));

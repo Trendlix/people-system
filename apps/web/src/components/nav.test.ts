@@ -30,9 +30,9 @@ describe('the sidebar', () => {
     expect(current('/templatesx')).toBeNull();
   });
 
-  it('shows Payroll after Contracts to HR, Finance and the CEO only, and no longer as coming next', () => {
+  it('shows Payroll after People to HR, Finance and the CEO only, and no longer as coming next', () => {
     const labels = NAV.map((n) => n.label);
-    expect(labels.indexOf('Payroll')).toBe(labels.indexOf('Contracts') + 1);
+    expect(labels.indexOf('Payroll')).toBe(labels.indexOf('People') + 1);
     const payroll = NAV.find((n) => n.href === '/payroll')!;
     expect(payroll.section).toBe('/payroll');
     for (const role of ['hr', 'finance', 'ceo'] as const) expect(hasRole(as(role), ...(payroll.roles ?? []))).toBe(true);
@@ -113,7 +113,7 @@ describe('the sidebar', () => {
   });
 
   it('has no sub-item to highlight for an item without any', () => {
-    expect(activeSubItem(NAV.find((n) => n.href === '/employees')!, '/employees')).toBeNull();
+    expect(activeSubItem(NAV.find((n) => n.href === '/approvals')!, '/approvals')).toBeNull();
   });
 
   it('counts a page under a path, not one that only starts with the same letters', () => {
@@ -178,12 +178,37 @@ describe('the sidebar of an employee or a manager', () => {
 describe('the sidebar of HR, Finance, the CEO and Admins', () => {
   const labels = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).map((n) => n.label);
 
-  it('is the sidebar as before, each item for the roles it names, with Requests in Raise Requests’ place', () => {
-    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'Employees', 'Contracts', 'Payroll', 'Requests', 'Offers', 'Approvals', 'Templates']);
-    expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'Employees', 'Contracts', 'Payroll', 'Requests']);
-    expect(labels('ceo')).toEqual(['Home', 'Organization', 'Employees', 'Contracts', 'Payroll', 'Requests', 'Offers', 'Approvals', 'Templates']);
-    expect(labels('admin')).toEqual(['Home', 'Organization', 'Employees', 'Requests', 'Approvals', 'Templates', 'Users']);
-    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'Employees', 'Requests', 'Approvals', 'Templates', 'Users']);
+  it('is the sidebar, each item for the roles it names: Employees, Contracts and Offers under People', () => {
+    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Approvals', 'Templates']);
+    expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests']);
+    expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Approvals', 'Templates']);
+    expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Approvals', 'Templates', 'Users']);
+    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Approvals', 'Templates', 'Users']);
+  });
+
+  describe('People', () => {
+    // owner, 17 October 2026: "i think employees, contracts and offers need to be grouped from the side bar", with the
+    // Employees page's reports
+    const peopleFor = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).find((n) => n.label === 'People') ?? null;
+    const pages = (...roles: Role[]) => peopleFor(...roles)?.items?.map((i) => i.label) ?? null;
+
+    it('has each page for the roles that open it, and links to Employees', () => {
+      expect(pages('hr')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details', 'Search Documents', 'Card Reading Fixes']);
+      expect(pages('ceo')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details', 'Search Documents']);
+      expect(pages('finance')).toEqual(['Employees', 'Contracts']);
+      expect(pages('admin')).toEqual(['Employees', 'Card Reading Fixes']);
+      expect(pages('super_admin')).toEqual(['Employees', 'Card Reading Fixes']);
+      expect(peopleFor('hr')?.href).toBe('/employees');
+    });
+
+    it('highlights the page the user is on, a report rather than Employees', () => {
+      const people = NAV.find((n) => n.label === 'People')!;
+      expect(activeSubItem(people, '/employees')?.label).toBe('Employees');
+      expect(activeSubItem(people, '/employees/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')?.label).toBe('Employees');
+      expect(activeSubItem(people, '/employees/missing')?.label).toBe('Missing Details');
+      expect(activeSubItem(people, '/contracts/calculator')?.label).toBe('Contracts');
+      expect(activeSubItem(people, '/offers/new')?.label).toBe('Offers');
+    });
   });
 
   describe('Requests', () => {

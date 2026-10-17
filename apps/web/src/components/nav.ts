@@ -42,8 +42,23 @@ export const DETAILS_CHANGES_PATH = '/requests/details-changes';
 export const NAV: NavItem[] = [
   { href: '/', label: 'Home' },
   { href: '/organization/company', label: 'Organization', section: '/organization' },
-  { href: '/employees', label: 'Employees', section: '/employees' },
-  { href: '/contracts', label: 'Contracts', section: '/contracts', roles: ['hr', 'ceo', 'finance'] },
+  // the people the company employs, under one heading (owner, 17 October 2026: "i think employees, contracts and offers
+  // need to be grouped from the side bar", with the Employees page's reports: Missing Details, Search Documents and Card
+  // Reading Fixes); each page for its own roles, the heading for whoever sees one of them, linking to the first they see
+  {
+    href: '/employees',
+    label: 'People',
+    items: [
+      { href: '/employees', label: 'Employees', section: '/employees' },
+      { href: '/contracts', label: 'Contracts', section: '/contracts', roles: ['hr', 'ceo', 'finance'] },
+      // job offers: the offer stage, before someone is an employee (owner's request, 15 October 2026)
+      { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
+      // what each profile still lacks; the scanned paperwork, searched; what the ID card reader learned from HR
+      { href: '/employees/missing', label: 'Missing Details', section: '/employees/missing', roles: ['hr', 'ceo'] },
+      { href: '/employees/documents', label: 'Search Documents', section: '/employees/documents', roles: ['hr', 'ceo'] },
+      { href: '/employees/card-corrections', label: 'Card Reading Fixes', section: '/employees/card-corrections', roles: ['hr', 'admin'] },
+    ],
+  },
   // the month's pay: HR prepares a run, the CEO approves it, HR marks it paid (owner's decisions, 16 October 2026); a
   // heading with its pages under it (owner, 17 October 2026: "make the Payroll in the side tab a main title below it -
   // Overview - Unsettled - Additions / Deductions - Reports (Statistics)"), the runs under Overview
@@ -72,8 +87,6 @@ export const NAV: NavItem[] = [
       // later: Leave, once the Leave module exists (it is under Coming Next until then)
     ],
   },
-  // job offers: the offer stage, before someone is an employee (owner's request, 15 October 2026)
-  { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
   {
     href: '/templates',
@@ -131,7 +144,7 @@ export function navFor(user: NavUser | null): NavItem[] {
     if (!item.items) return [item];
     const items = item.items.filter(sees);
     if (!items.length) return [];
-    // links to the first of its pages the user sees: Payroll's and Templates' first is their own page; Requests has none
+    // links to the first of its pages the user sees: Payroll's, Templates' and People's first is their own page; Requests has none
     return [{ ...item, href: items[0].href, items }];
   });
 }
