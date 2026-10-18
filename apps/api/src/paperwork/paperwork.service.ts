@@ -101,12 +101,15 @@ export type IdCardFiles = { front?: Express.Multer.File[]; back?: Express.Multer
 /** National ID scans are restricted like the national ID itself. */
 const isRestricted = (kind: string) => (RESTRICTED_PAPERWORK as readonly string[]).includes(kind);
 
+/** The papers whose text keptText changes: the two sides of the national ID card. */
+export const ID_CARD_SIDES = ['national_id_front', 'national_id_back'] as const;
+
 /**
  * The text of a paper as it is shown and kept: for a side of the national ID card, without the religion printed on its
  * back (as Prime ERP's reader does, at the owner's request of 16 October 2026: it is never shown or kept); any other paper
- * as read.
+ * as read. Text kept before then is cleaned by this same rule when the API starts (id-card-texts.service.ts).
  */
-function keptText(text: string, kind: string): string {
+export function keptText(text: string, kind: string): string {
   if (kind === 'national_id_back') return withoutReligion(text, 'back');
   if (kind === 'national_id_front') return withoutReligion(text, 'front');
   return text;
@@ -290,7 +293,7 @@ export class PaperworkService {
 
   /**
    * The text read from the file. Audited like the file for national ID scans, whose text never shows the religion, even
-   * when it was read before the religion was left out of what is kept.
+   * when it was read before the religion was left out of what is kept and is not cleaned yet.
    */
   async text(itemId: string, user: SessionUser) {
     const item = await this.prisma.paperworkItem.findUnique({

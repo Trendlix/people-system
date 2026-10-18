@@ -631,7 +631,8 @@ describe('Paperwork (e2e)', () => {
       const both = await upload(pdf('BOTHSIDES'), 'card.pdf', 'national_id_front');
       expect(await textOf(both.id)).toBe(`${FRONT}\f${BACK_SHOWN}`);
 
-      // text read before the religion was left out is not shown either (what is stored is not rewritten)
+      // text read before the religion was left out is not shown either, before the API cleans it when it next starts
+      // (id-card-texts.e2e-spec.ts): showing it does not rewrite it
       await prisma.paperworkItem.update({ where: { id: scan.body.back.itemId }, data: { ocrText: BACK } });
       expect(await textOf(scan.body.back.itemId)).toBe(BACK_SHOWN);
 
