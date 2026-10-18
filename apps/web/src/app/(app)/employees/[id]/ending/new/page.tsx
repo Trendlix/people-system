@@ -83,6 +83,8 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
             initialRule={rule}
             contract={fixed}
             probationEnd={e.status === 'probation' ? e.probationEnd : null}
+            // Art. 154's estimate for a non-renewal (18 October 2026): the wage a month, the gross and the allowances
+            art154={{ joinDate: e.joinDate, monthlyWage: e.contract && !e.contract.salaryHidden ? (e.contract.totalSalary ?? e.contract.grossSalary) : null }}
             today={today}
             cancelHref={back}
           />

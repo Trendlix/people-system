@@ -11,6 +11,7 @@ import type { OfferView } from '@/lib/types';
 import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
 import { addDays } from '../../employees/[id]/contracts/dates';
 import { formatEgp, hourlyNetTerms } from '../../employees/[id]/contracts/salary';
+import { FREELANCE_SHORT, workNatureLabel, workPatternNote } from '../../employees/employment-law';
 import { arrangementLabel, FieldGrid, todayInCairo, type GridField } from '../../employees/ui';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { answerOffer, deleteOffer, emailOffer, extendOffer, hireFromOffer, linkOffer, withdrawOffer } from '../actions';
@@ -92,7 +93,13 @@ function candidateFields(o: OfferView): GridField[] {
 
 function positionFields(o: OfferView): GridField[] {
   return [
-    { key: 'offer-type', label: 'Employment type', value: LABELS.employmentType[o.employmentType] ?? o.employmentType },
+    {
+      key: 'offer-type',
+      label: 'Employment type',
+      value: LABELS.employmentType[o.employmentType] ?? o.employmentType,
+      // by the labour law (18 October 2026): Sales became Full-time paid by commission
+      note: o.paidByCommission ? 'Paid by commission' : o.employmentType === 'freelance' ? FREELANCE_SHORT : undefined,
+    },
     { key: 'offer-place', label: 'Department or team', value: placeName(o.department) },
     {
       key: 'offer-title',
@@ -107,7 +114,8 @@ function positionFields(o: OfferView): GridField[] {
     { key: 'offer-grade', label: 'Grade', value: o.grade && `${o.grade.code} · ${o.grade.levelEn}` },
     { key: 'offer-manager', label: 'Direct manager', value: o.manager && <Link href={`/employees/${o.manager.id}`}>{o.manager.fullNameEn}</Link> },
     { key: 'offer-shift', label: 'Shift', value: o.shift && `Shift ${o.shift.code}` },
-    { key: 'offer-arrangement', label: 'Work arrangement', value: arrangementLabel(o) },
+    { key: 'offer-arrangement', label: 'Work arrangement', value: arrangementLabel(o), note: workPatternNote(o.workArrangement) },
+    ...(o.workNature !== undefined ? [{ key: 'offer-nature', label: 'Nature of the work', value: workNatureLabel(o.workNature) }] : []),
     { key: 'offer-join', label: 'Join date', value: formatDate(o.joinDate) },
   ];
 }

@@ -7,11 +7,14 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import { Select } from '@/components/select';
 import { formatDate, parseDate } from '@/lib/format';
 import type { EndingRule, FormState } from '@/lib/types';
+import { ART_154_NOTE, art154Estimate, art154Text } from '../../employment-law';
 import { addDays, noticeLabel, noticeLastDay } from '../contracts/dates';
 
 // The End employment form: how the employment ends (one of the ending rules), who started it, when notice was given,
 // pay in lieu, and for a resignation its certification at the labour office. While HR types, it shows the rule's
-// notice and the last working day. HR saving it counts as HR's approval; it then goes to the CEO.
+// notice and the last working day, and for a fixed term the company doesn't renew, Art. 154's note and estimate (owner,
+// 18 October 2026: "فإذا كان الإنهاء من جانب صاحب العمل استحق العامل مكافأة تعادل أجر شهر عن كل سنة من سنوات الخدمة"),
+// information only. HR saving it counts as HR's approval; it then goes to the CEO.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -44,6 +47,7 @@ function Preview({
   payInLieu,
   contract,
   probationEnd,
+  art154,
 }: {
   rule: EndingRule | undefined;
   /** YYYY-MM-DD, or null while not (properly) typed. */
@@ -51,6 +55,7 @@ function Preview({
   payInLieu: boolean;
   contract: { endDate: string; nonRenewalNoticeBy: string | null } | null;
   probationEnd: string | null;
+  art154: Art154Basis | null;
 }) {
   if (!rule) return null;
   const source = rule.source ? ` (${rule.source})` : '';
@@ -91,6 +96,16 @@ function Preview({
       </span>,
     );
   }
+  // the company not renewing a fixed term: Art. 154's note, with the estimate to the last working day
+  if (rule.key === 'non_renewal' && art154) {
+    const lastDay = given && payInLieu ? given : contract?.endDate;
+    lines.push(
+      <>
+        <span className="font-semibold">{ART_154_NOTE}.</span>
+        {lastDay && ` ${art154Text(art154Estimate(art154.joinDate, lastDay, art154.monthlyWage))}`}
+      </>,
+    );
+  }
   if (rule.key === 'resignation' && given) {
     lines.push(<>The company decides by {formatDate(addDays(given, RESIGNATION_DECISION_DAYS))}, or the resignation counts as accepted (Decree 187/2025).</>);
   }
@@ -103,12 +118,16 @@ function Preview({
   );
 }
 
+/** What Art. 154's estimate is worked out from: the join date, and the last monthly wage (null when hidden with the salary). */
+type Art154Basis = { joinDate: string; monthlyWage: number | null };
+
 export function EndingForm({
   action,
   rules,
   initialRule,
   contract,
   probationEnd,
+  art154 = null,
   today,
   cancelHref,
 }: {
@@ -120,6 +139,8 @@ export function EndingForm({
   contract: { endDate: string; nonRenewalNoticeBy: string | null } | null;
   /** While on probation: its end date, by which notice during probation must be given. */
   probationEnd: string | null;
+  /** For a non-renewal, Art. 154's estimate: the join date and the last monthly wage (the contract's gross and allowances). */
+  art154?: Art154Basis | null;
   /** YYYY-MM-DD in Cairo: the notice date to start with. */
   today: string;
   cancelHref: string;
@@ -312,7 +333,7 @@ export function EndingForm({
         </div>
       </div>
 
-      <Preview rule={rule} given={given} payInLieu={payInLieu} contract={contract} probationEnd={probationEnd} />
+      <Preview rule={rule} given={given} payInLieu={payInLieu} contract={contract} probationEnd={probationEnd} art154={art154} />
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line pt-6">
         <SubmitButton busy={pending} pendingText="Sending…">

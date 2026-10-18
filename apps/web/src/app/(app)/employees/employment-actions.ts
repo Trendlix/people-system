@@ -52,8 +52,13 @@ async function save(employeeId: string, fd: FormData, errors: string[], request:
  */
 function employmentBody(fd: FormData, errors: string[], withStatus: boolean) {
   const workArrangement = text(fd, 'workArrangement');
+  const employmentType = text(fd, 'employmentType');
   return {
-    employmentType: text(fd, 'employmentType'),
+    employmentType,
+    // by the labour law (owner, 18 October 2026): paid by commission, as Sales was, for full-time only (the box shows only
+    // then; unticked or another type is no), and the nature of the work (Labour Law Art. 1(6–8)), regular unless chosen
+    paidByCommission: employmentType === 'full_time' && fd.has('paidByCommission'),
+    workNature: text(fd, 'workNature') || 'regular',
     ...(withStatus && fd.has('status') && { status: text(fd, 'status') }),
     // the form keeps the team in line with the job title, so the API gets a matching pair
     departmentId: text(fd, 'departmentId'),

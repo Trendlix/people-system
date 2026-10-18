@@ -351,7 +351,8 @@ export function OfferTerms({
             className="input tabular-nums"
           />
           <p id={fid('durationMonths-hint')} className="hint">
-            Contracts are fixed-term. Accepting the offer drafts a contract for this length from the join date.
+            Accepting the offer drafts a fixed-term contract for this length from the join date; on the draft it can be made open-ended or for a specific job
+            instead.
           </p>
         </div>
       </div>

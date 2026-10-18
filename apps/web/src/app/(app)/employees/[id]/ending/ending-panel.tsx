@@ -2,6 +2,7 @@ import { ENDING_STATUS_LABELS, type EndingStatus } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '@/lib/format';
 import type { Ending } from '@/lib/types';
 import { completeEnding, decideEnding, withdrawEnding } from '../../contract-actions';
+import { art154Text } from '../../employment-law';
 import { FieldGrid, ProfileSection, type GridField } from '../../ui';
 import { ActionButton } from '../contracts/contract-buttons';
 import { EndingDecision, WithdrawEnding } from './ending-buttons';
@@ -9,7 +10,8 @@ import { EndingDecision, WithdrawEnding } from './ending-buttons';
 // An ending on the Employment tab: how and when the employment ends, where its approval stands, and what is left to do.
 // HR recorded it (which counts as HR's approval); the CEO approves or rejects it here; HR may withdraw it until it is
 // completed, and completes it on or after the last working day, which ends the employment. Once completed: the
-// deadlines for the final dues and for filing the ending with the labour office.
+// deadlines for the final dues and for filing the ending with the labour office. A fixed term the company doesn't renew
+// carries Art. 154's note and estimate (owner, 18 October 2026), information only: no money is moved.
 
 const STATUS_STYLE: Record<EndingStatus, string> = {
   pending_ceo: 'bg-warn-soft text-warn',
@@ -115,6 +117,13 @@ export function EndingPanel({
             )}
             {withdraws && <WithdrawEnding action={withdrawEnding.bind(null, x.id)} name={name} />}
           </div>
+        )}
+
+        {x.art154Note && (
+          <p className="rounded-lg bg-canvas px-4 py-3 text-sm">
+            <span className="font-semibold">{x.art154Note}.</span>
+            {x.art154Estimate && ` ${art154Text(x.art154Estimate)}`}
+          </p>
         )}
 
         {x.status === 'completed' && x.deadlines && (

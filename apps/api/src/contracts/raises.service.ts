@@ -8,6 +8,7 @@ import {
   raiseEffectiveProblem,
   raisedPay,
   samePay,
+  type ContractForm,
   type PayBasis,
   type RaiseDecision,
   type RaiseFigure,
@@ -451,6 +452,11 @@ export class RaisesService {
     let terms;
     if (input.way === 'contract') {
       const { allowances: _rows, ...t } = await this.contracts.terms(employment, current, {
+        // the contract's length as it is (owner, 18 October 2026): open-ended stays open-ended, a specific job its job
+        // and the day it is expected to be done
+        form: current.form as ContractForm,
+        jobToDo: current.jobToDo,
+        endDate: current.form === 'specific_job' ? fromDateOnly(current.endDate) : null,
         startDate: input.effectiveDate,
         durationMonths: input.durationMonths,
         probationMonths: 0,
@@ -472,7 +478,10 @@ export class RaisesService {
       }
       terms = {
         kind: 'amendment' as const,
-        form: 'fixed' as const,
+        // the contract's length and job as they are (an open-ended one has no end, Art. 87)
+        form: current.form as ContractForm,
+        jobToDo: current.jobToDo,
+        traineeStages: null,
         startDate: input.effectiveDate,
         // the contract's term as it is: its end, no length or probation of its own
         durationMonths: null,
@@ -574,6 +583,11 @@ export class RaisesService {
   /** The contract in force a raise is made on: signed, with no draft after it, and no ending of the employment in progress. */
   private async raisable(employment: EmploymentRow): Promise<ContractRow> {
     assertCurrent(employment);
+    // a trainee is paid by the training agreement's stages (owner, 18 October 2026; Labour Law Art. 29: "المكافأة التى
+    // يحصل عليها المتدرج فى كل مرحلة بصورة تصاعدية"), which payroll follows: not by a raise
+    if (employment.employmentType === 'trainee') {
+      throw new BadRequestException('A trainee is paid by the stages of the training agreement (Labour Law Art. 29): to change the pay, add a new training agreement with new stages.');
+    }
     const versions = await this.prisma.contract.findMany({ where: { employmentId: employment.id }, orderBy: { version: 'desc' }, include: CONTRACT_INCLUDE });
     const draft = versions.find((v) => v.status === 'draft');
     if (draft) throw new ConflictException(`Version ${draft.version} (${draft.number}) is still a draft. Sign or delete it before adding a raise.`);

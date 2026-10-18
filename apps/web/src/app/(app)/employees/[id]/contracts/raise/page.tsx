@@ -57,6 +57,14 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
     body = <Empty>{employee.fullNameEn} has no current employment, so there is no contract to raise the pay on.</Empty>;
   } else if (!contracts || !settings || !pickers) {
     body = <Empty>Contracts are not available yet.</Empty>;
+  } else if (e.employmentType === 'trainee') {
+    // paid by the training agreement's stages, which payroll follows (18 October 2026; Labour Law Art. 29)
+    body = (
+      <Empty>
+        A trainee is paid by the stages of the training agreement, each stage&apos;s pay in its months (Labour Law Art. 29): to change the pay, add a new
+        training agreement with new stages (Renew, with the contract on the <Link href={back}>Employment tab</Link>).
+      </Empty>
+    );
   } else if (draft) {
     body = (
       <Empty>

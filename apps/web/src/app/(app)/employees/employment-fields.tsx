@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { EMPLOYMENT_TYPES, LABELS, PROBATION_MONTHS, WORK_ARRANGEMENTS } from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, LABELS, PROBATION_MONTHS, WORK_ARRANGEMENTS, WORK_NATURE_LABELS, WORK_NATURES, type WorkNature } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
@@ -12,11 +12,15 @@ import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
+import { COMMISSION_HINT, employmentTypeHint, WORK_NATURE_HINTS, workPatternNote } from './employment-law';
 import { statusField } from './employment-status';
 import { HazardousWorkField } from './leave-fields';
 
 // The fields of an employment, used by the Add employment page (above the first contract's terms: hiring in one form,
-// owner's decision, 16 October 2026) and the Edit employment page.
+// owner's decision, 16 October 2026) and the Edit employment page. The employment types are the labour law's (owner, 18
+// October 2026: "can we update the employment types based on the labour law?"): Sales became Full-time with Paid by
+// commission, Internship became Trainee, Freelance is outside the labour law; with them the nature of the work (Labour
+// Law Art. 1(6–8)), casual work warned past its 6 months.
 
 export type EmploymentPickers = {
   departments: Department[];
@@ -47,6 +51,32 @@ function officeDaysOf(state: FormState, saved: number[]): Set<number> {
   return new Set((Array.isArray(typed) ? typed : typed ? [typed] : []).map(Number));
 }
 
+/**
+ * Paid by commission, under a full-time employment type (the employment form, and the offer's): a checkbox, which the
+ * actions send as yes when ticked with a full-time type, and as no otherwise (unticked, or the box not shown).
+ */
+export function CommissionField({ state, fid, saved }: { state: FormState; fid: (name: string) => string; saved: boolean }) {
+  // after a refused save, ticked if it was sent; otherwise as saved
+  const ticked = state.values ? 'paidByCommission' in state.values : saved;
+  return (
+    <div className="mt-3">
+      <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
+        <input
+          type="checkbox"
+          name="paidByCommission"
+          defaultChecked={ticked}
+          aria-describedby={fid('paidByCommission-hint')}
+          className="size-4 accent-accent"
+        />
+        Paid by commission
+      </label>
+      <p id={fid('paidByCommission-hint')} className="hint">
+        {COMMISSION_HINT}
+      </p>
+    </div>
+  );
+}
+
 export function EmploymentFields({
   state,
   fid,
@@ -70,6 +100,7 @@ export function EmploymentFields({
   // Kept in state: office days show only for Hybrid, and the job titles listed are the chosen department's or team's.
   const [arrangement, setArrangement] = useState(() => valueOf(state, 'workArrangement', employment?.workArrangement ?? 'office'));
   const [type, setType] = useState(() => valueOf(state, 'employmentType', employment?.employmentType));
+  const [nature, setNature] = useState(() => valueOf(state, 'workNature', employment?.workNature ?? 'regular'));
   const [jobTitleId, setJobTitleId] = useState(() => valueOf(state, 'jobTitleId', employment?.jobTitleId));
   // A job title without a department on the employment brings its own department or team, so it stays selected.
   const savedDepartmentId = employment?.departmentId ?? pickers.jobTitles.find((j) => j.id === employment?.jobTitleId)?.departmentId;
@@ -110,6 +141,8 @@ export function EmploymentFields({
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn));
 
   const officeDays = officeDaysOf(state, employment?.officeDays ?? []);
+  const typeHint = employmentTypeHint(type, contractBelow ? 'below' : 'tab');
+  const pattern = workPatternNote(arrangement);
 
   function pickDepartment(id: string) {
     setDepartmentId(id);
@@ -142,7 +175,7 @@ export function EmploymentFields({
             required
             defaultValue={valueOf(state, 'employmentType', employment?.employmentType)}
             onChange={(e) => setType(e.target.value)}
-            aria-describedby={type === 'part_time' ? fid('employmentType-hint') : undefined}
+            aria-describedby={typeHint ? fid('employmentType-hint') : undefined}
             className="input"
           >
             <option value="">Choose a type</option>
@@ -152,14 +185,13 @@ export function EmploymentFields({
               </option>
             ))}
           </Select>
-          {/* the pay terms belong to the contract, not the employment (owner, 15 October 2026) */}
-          {type === 'part_time' && (
+          {typeHint && (
             <p id={fid('employmentType-hint')} className="hint">
-              {contractBelow
-                ? "Pay by the hour, hours a week and days a week are the contract's terms, below."
-                : "Pay by the hour, hours a week and days a week are the contract's terms: a new version of it, on the Employment tab."}
+              {typeHint}
             </p>
           )}
+          {/* Sales became Full-time paid by commission (18 October 2026): full-time only, the API refuses it otherwise */}
+          {type === 'full_time' && <CommissionField state={state} fid={fid} saved={employment?.paidByCommission ?? false} />}
         </div>
         <div>
           <label htmlFor={fid('status')} className="label">
@@ -310,6 +342,30 @@ export function EmploymentFields({
         </div>
 
         <div>
+          <label htmlFor={fid('workNature')} className="label">
+            Nature of the work
+          </label>
+          <Select
+            id={fid('workNature')}
+            name="workNature"
+            value={nature}
+            onChange={(e) => setNature(e.target.value)}
+            aria-describedby={fid('workNature-hint')}
+            className="input"
+          >
+            {WORK_NATURES.map((n) => (
+              <option key={n} value={n}>
+                {WORK_NATURE_LABELS[n]}
+              </option>
+            ))}
+          </Select>
+          <p id={fid('workNature-hint')} className={`hint ${nature === 'casual' && employment?.casualTooLong ? 'text-danger' : ''}`}>
+            {WORK_NATURE_HINTS[nature as WorkNature] ?? WORK_NATURE_HINTS.regular}
+            {nature === 'casual' && employment?.casualTooLong && ' It has gone past them.'}
+          </p>
+        </div>
+
+        <div>
           <label htmlFor={fid('workArrangement')} className="label">
             Work arrangement
           </label>
@@ -318,6 +374,7 @@ export function EmploymentFields({
             name="workArrangement"
             value={arrangement}
             onChange={(e) => setArrangement(e.target.value)}
+            aria-describedby={pattern ? fid('workArrangement-hint') : undefined}
             className="input"
           >
             {WORK_ARRANGEMENTS.map((w) => (
@@ -326,6 +383,12 @@ export function EmploymentFields({
               </option>
             ))}
           </Select>
+          {/* the law's remote work (Art. 96(1)), as the contract and its documents name it */}
+          {pattern && (
+            <p id={fid('workArrangement-hint')} className="hint">
+              In the law&apos;s words: {pattern}.
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor={fid('shiftId')} className="label">

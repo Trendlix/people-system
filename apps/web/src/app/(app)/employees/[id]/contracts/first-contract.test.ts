@@ -7,8 +7,13 @@ describe('the first contract, as hiring in one form starts it', () => {
   it('takes the settings’ length and probation, and the company’s basic share, with a monthly salary still to type', () => {
     expect(firstContractDefaults(settings, '', false)).toEqual({
       startDate: '',
+      // fixed-term stays the default (owner, 18 October 2026), with no job and no training stages
+      form: 'fixed',
       durationMonths: 12,
+      jobToDo: '',
+      endDate: '',
       probationMonths: 3,
+      traineeStages: null,
       payBasis: 'monthly',
       grossSalary: null,
       hourlyRate: null,

@@ -9,14 +9,15 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateEndingDto, EndingNoteDto, RejectEndingDto } from './contracts.dto.js';
 import { EndingRulesService } from './ending-rules.service.js';
 import { noticeEnds } from './notice.js';
-import { ENDING_INCLUDE, endReasonOf, endingView, nonRenewalNoticeBy } from './views.js';
+import { seesSalary } from '../employees/access.js';
+import { ENDING_EMPLOYMENT, ENDING_INCLUDE, endReasonOf, endingView, nonRenewalNoticeBy } from './views.js';
 
 const ENTITY = 'employment_ending';
 
 /** An ending with what its view shows, and what its steps need of the employment. */
 const ROW = {
   ...ENDING_INCLUDE,
-  employment: { select: { id: true, employeeId: true, endDate: true, status: true, probationEnd: true } },
+  employment: { select: { ...ENDING_EMPLOYMENT, id: true, employeeId: true, status: true, probationEnd: true } },
 } satisfies Prisma.EmploymentEndingInclude;
 
 type EndingRow = Prisma.EmploymentEndingGetPayload<{ include: typeof ROW }>;
@@ -143,20 +144,20 @@ export class EndingsService {
       entityId: row.id,
       diff: { employeeId, employmentId, ruleKey: rule.key, initiator, noticeGivenOn: givenOn, payInLieu, lastWorkingDay, status: 'pending_ceo', ...certification },
     });
-    return endingView(row);
+    return endingView(row, seesSalary(user));
   }
 
   /** Endings with their employee, newest first; `status` narrows them (the CEO's queue: pending_ceo). */
-  async list(status?: EndingStatus) {
+  async list(status: EndingStatus | undefined, user: SessionUser) {
     const rows = await this.prisma.employmentEnding.findMany({
       where: status ? { status } : {},
       orderBy: { createdAt: 'desc' },
       include: {
         ...ENDING_INCLUDE,
-        employment: { select: { id: true, endDate: true, employee: { select: { id: true, employeeCode: true, fullNameEn: true } } } },
+        employment: { select: { ...ENDING_EMPLOYMENT, id: true, employee: { select: { id: true, employeeCode: true, fullNameEn: true } } } },
       },
     });
-    return rows.map((e) => ({ ...endingView(e), employee: e.employment.employee, employmentId: e.employment.id }));
+    return rows.map((e) => ({ ...endingView(e, seesSalary(user)), employee: e.employment.employee, employmentId: e.employment.id }));
   }
 
   /** The CEO approves: the employment is then in its notice period, until HR completes the ending. */
@@ -174,7 +175,7 @@ export class EndingsService {
     });
     await this.record(user, before, 'approve', 'approved', { ceoNote: dto.note ?? null });
     await this.recordEmploymentStatus(user, before, 'notice_period');
-    return endingView(row);
+    return endingView(row, seesSalary(user));
   }
 
   /** The CEO rejects, with the reason. The employment goes on as it was. */
@@ -187,7 +188,7 @@ export class EndingsService {
       include: ROW,
     });
     await this.record(user, before, 'reject', 'rejected', { ceoNote: dto.note });
-    return endingView(row);
+    return endingView(row, seesSalary(user));
   }
 
   /**
@@ -212,7 +213,7 @@ export class EndingsService {
     });
     await this.record(user, before, 'withdraw', 'withdrawn', { note: dto.note ?? null });
     if (restored) await this.recordEmploymentStatus(user, before, restored);
-    return endingView(row);
+    return endingView(row, seesSalary(user));
   }
 
   /**
@@ -232,7 +233,7 @@ export class EndingsService {
       return tx.employmentEnding.update({ where: { id }, data: { status: 'completed', completedAt: new Date() }, include: ROW });
     });
     await this.record(user, before, 'complete', 'completed', { endDate: lastWorkingDay, endReason });
-    return endingView(row);
+    return endingView(row, seesSalary(user));
   }
 
   // ---------- helpers ----------

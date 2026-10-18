@@ -185,9 +185,12 @@ export class TemplatePreviewService {
   private async ranked(version: VersionRow, slot: TemplateSlot, user: SessionUser): Promise<PreviewPerson[]> {
     const employees = await this.prisma.employee.findMany({
       where: { employments: { some: {} } },
-      select: { id: true, employeeCode: true, fullNameEn: true, employments: { select: { employmentType: true }, orderBy: NEWEST_FIRST, take: 1 } },
+      select: { id: true, employeeCode: true, fullNameEn: true, employments: { select: { employmentType: true, paidByCommission: true }, orderBy: NEWEST_FIRST, take: 1 } },
     });
-    const candidates = employees.filter((e) => e.employments[0] && slot.appliesTo.includes(e.employments[0].employmentType));
+    // a commission slot's previews are those paid by commission (owner, 18 October 2026)
+    const candidates = employees.filter(
+      (e) => e.employments[0] && slot.appliesTo.includes(e.employments[0].employmentType) && (!slot.paidByCommission || e.employments[0].paidByCommission),
+    );
     const people = await inTurns(candidates, AT_ONCE, async (e): Promise<PreviewPerson | null> => {
       try {
         const { filled, total } = await this.documents.previewFill(e.id, slot.key, { language: version.language, tags: version.tags }, user);
@@ -206,7 +209,7 @@ export class TemplatePreviewService {
   /** The newest 50 offers of the employment type the job offer template is for, the most of its tags filled in first. */
   private async rankedOffers(version: VersionRow, slot: TemplateSlot, user: SessionUser): Promise<PreviewOffer[]> {
     const offers = await this.prisma.jobOffer.findMany({
-      where: { employmentType: { in: [...slot.appliesTo] } },
+      where: { employmentType: { in: [...slot.appliesTo] }, ...(slot.paidByCommission && { paidByCommission: true }) },
       include: OFFER_INCLUDE,
       omit: WITHOUT_FILES,
       orderBy: [{ createdAt: 'desc' }, { number: 'desc' }],

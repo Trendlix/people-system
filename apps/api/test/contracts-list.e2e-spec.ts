@@ -71,7 +71,7 @@ describe('Contracts list (e2e)', () => {
   let moved: Hire; // signed in the Desk team 9 months ago, then moved to the Field team; a renewal drafted since
   let movedV1: Contract;
   let movedV2: Contract;
-  let drafted: Hire; // sales, only a draft, in the department itself
+  let drafted: Hire; // a trainee (Sales before 18 October 2026: now Full-time paid by commission), only a draft, in the department itself
   let draftedC: Contract;
   let renewed: Hire; // freelance, hired 30 months ago: three versions, two superseded, the third ends in about 6 months
   let renewedV1: Contract;
@@ -153,8 +153,9 @@ describe('Contracts list (e2e)', () => {
     // new pay: a reason, for the CEO to approve before it is signed (owner's decisions, 16 October 2026)
     movedV2 = await draft(moved, { grossSalary: 14000, raiseReason: 'adjustment' });
 
-    drafted = await hire('Draft Only', { employmentType: 'sales', jobTitleId: opsHead });
-    draftedC = await draft(drafted); // the newest draft
+    drafted = await hire('Draft Only', { employmentType: 'trainee', jobTitleId: opsHead });
+    // the newest draft: a training agreement, with its stages (Labour Law Art. 29; owner, 18 October 2026)
+    draftedC = await draft(drafted, { traineeStages: [{ name: 'Basics', months: 12, pay: 12000 }] });
 
     renewed = await hire('Renewed Twice', { employmentType: 'freelance', joinDate: addMonths(today, -30) });
     renewedV1 = await sign(await draft(renewed));
@@ -228,14 +229,16 @@ describe('Contracts list (e2e)', () => {
     expect((await list({ status: 'ended' })).every((i) => i.status === 'ended')).toBe(true);
   });
 
-  it('filters by form (every contract is fixed-term) and by employment type', async () => {
+  it('filters by form (every contract here is fixed-term) and by employment type', async () => {
     const fixed = await mine({ form: 'fixed' });
     expect(fixed.every((i) => i.form === 'fixed')).toBe(true);
     expect(ids(fixed)).toEqual(ids(await mine()));
 
     expect(ids(await mine({ type: 'part_time' }))).toEqual([laterC.id]);
-    expect(ids(await mine({ type: 'sales' }))).toEqual([draftedC.id]);
-    expect(ids(await mine({ type: 'internship', form: 'fixed' }))).toEqual([]);
+    expect(ids(await mine({ type: 'trainee' }))).toEqual([draftedC.id]);
+    // open-ended and specific-job contracts came back on 18 October 2026: none here
+    expect(ids(await mine({ type: 'trainee', form: 'open_ended' }))).toEqual([]);
+    expect(ids(await mine({ form: 'specific_job' }))).toEqual([]);
     expect(ids(await mine({ type: 'freelance', status: 'superseded' }))).toEqual([renewedV2.id, renewedV1.id]);
     expect((await list({ type: 'part_time' })).every((i) => i.employmentType === 'part_time')).toBe(true);
   });
@@ -314,6 +317,15 @@ describe('Contracts list (e2e)', () => {
       employee: { id: moved.id, employeeCode: moved.employeeCode, fullNameEn: moved.fullNameEn, fullNameAr: moved.fullNameAr },
       employmentId: moved.employmentId,
       employmentType: 'full_time',
+      // by the labour law (owner, 18 October 2026): its length's job (none), and the employment's commission, nature
+      // of the work and remote work; neither warning
+      jobToDo: null,
+      traineeMonths: null,
+      paidByCommission: false,
+      workNature: 'regular',
+      workPattern: 'on_site',
+      casualTooLong: false,
+      becameOpenEnded: false,
       employmentCurrent: true,
       jobTitleEn: 'Desk Officer',
       departmentName: `${deptName} › Desk`,
@@ -338,7 +350,7 @@ describe('Contracts list (e2e)', () => {
       employmentCurrent: true,
     });
     // a job title of the department itself
-    expect(items.find((i) => i.id === draftedC.id)).toMatchObject({ jobTitleEn: 'Ops Head', departmentName: deptName, employmentType: 'sales' });
+    expect(items.find((i) => i.id === draftedC.id)).toMatchObject({ jobTitleEn: 'Ops Head', departmentName: deptName, employmentType: 'trainee', traineeMonths: 12 });
     // signed without a job title: none, even though the snapshot is what counts
     expect(items.find((i) => i.id === soonC.id)).toMatchObject({ jobTitleEn: null, departmentName: null, nonRenewalNoticeBy: soonC.nonRenewalNoticeBy });
     // by the hour: the monthly estimate (150 × 24 × 52 ÷ 12) and the allowance on top
@@ -356,12 +368,13 @@ describe('Contracts list (e2e)', () => {
     });
   });
 
-  it('refuses an unknown status, a form other than fixed, an unknown type, and endingWithin that is not a number of days', async () => {
+  it('refuses an unknown status, an unknown contract length, an unknown type, and endingWithin that is not a number of days', async () => {
     const bad = async (query: Record<string, string>) => (await api().get('/api/contracts').query(query).set('Cookie', hr).expect(400)).body.message as string[];
     expect(await bad({ status: 'signed' })).toEqual(['Choose a status: draft, active, ended or superseded.']);
-    expect(await bad({ form: 'temporary' })).toEqual(['Every contract runs for a fixed term: leave the form out, or send fixed.']);
-    expect(await bad({ form: 'open_ended' })).toEqual(['Every contract runs for a fixed term: leave the form out, or send fixed.']);
-    expect(await bad({ type: 'contractor' })).toEqual(['Choose an employment type: full_time, part_time, internship, freelance or sales.']);
+    expect(await bad({ form: 'temporary' })).toEqual(['Choose the contract’s length: fixed (fixed-term), open_ended or specific_job.']);
+    expect(await bad({ type: 'contractor' })).toEqual(['Choose an employment type: full_time, part_time, trainee or freelance (outside the labour law).']);
+    // the types before 18 October 2026 are gone
+    expect(await bad({ type: 'sales' })).toEqual(['Choose an employment type: full_time, part_time, trainee or freelance (outside the labour law).']);
     for (const endingWithin of ['soon', '1.5', '-1', '1831']) {
       expect(await bad({ endingWithin })).toEqual(['Enter endingWithin as a whole number of days, 0 to 1830 (e.g. 30).']);
     }

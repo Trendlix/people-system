@@ -286,6 +286,22 @@ function LawRatesForm({
           </fieldset>
         </div>
 
+        {/* the minimum wage (owner, 18 October 2026): a trainee's last training stage is paid at least this (Labour Law Art. 29) */}
+        <div className="border-t border-line-soft pt-5">
+          <fieldset className="space-y-4">
+            <legend className="font-semibold">Minimum Wage</legend>
+            <div className="sm:max-w-sm">
+              <Field
+                id={fid('minimumWage')}
+                label="Minimum wage (EGP a month)"
+                hint="The private sector's minimum wage. A trainee's last training stage is paid at least this (Labour Law Art. 29). Leave it empty while it isn't set: nothing is checked against it."
+                value={typed.minimumWage}
+                onChange={set('minimumWage')}
+              />
+            </div>
+          </fieldset>
+        </div>
+
         <TierEditor fid={fid} rows={typed.taxTiers} onChange={(taxTiers) => setTyped((t) => ({ ...t, taxTiers }))} />
 
         <p className="text-sm text-muted">

@@ -1,5 +1,7 @@
 import {
   bankNamed,
+  CONTRACT_FORM_LABELS,
+  CONTRACT_FORM_LABELS_AR,
   insuredWageFrom,
   LABELS,
   lawRatesFor,
@@ -13,12 +15,19 @@ import {
   TEMPLATE_TAGS,
   WEEKS_PER_MONTH,
   WORK_ARRANGEMENT_LABELS_AR,
+  WORK_NATURE_LABELS,
+  WORK_NATURE_LABELS_AR,
+  WORK_PATTERN_LABELS,
+  WORK_PATTERN_LABELS_AR,
+  workPatternOf,
+  type ContractForm,
   type EmploymentType,
   type LawRates,
   type PayBasis,
   type RaiseReason,
   type TemplateLanguage,
   type WorkArrangement,
+  type WorkNature,
 } from '@trendlix/shared';
 import { fromDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
@@ -38,8 +47,10 @@ import {
   printedPhone,
   printedProbation,
   printedShift,
+  printedTraineeStages,
   type PrintedLanguage,
 } from './format.js';
+import { traineeStagesOf } from '../contracts/views.js';
 import { TYPED_TAGS } from './offer.js';
 
 // Every tag's value for one document (spec §8; owner's request, 15 October 2026), from the employee's profile, their
@@ -103,6 +114,9 @@ export interface ValueSources {
      */
     shift: { startTime: Date; endTime: Date; hoursPerDay?: Decimal | null; workingDays: readonly number[] } | null;
     workArrangement: WorkArrangement;
+    /** By the labour law (owner, 18 October 2026): paid by commission (missing: no), the nature of the work (missing: regular). */
+    paidByCommission?: boolean;
+    workNature?: string;
   } | null;
   contract: {
     number: string;
@@ -128,6 +142,9 @@ export interface ValueSources {
     daysPerWeek: number | null;
     /** A month each, as on the contract or offer. */
     allowances: readonly { nameEn: string; nameAr: string; amount: Decimal }[];
+    /** A specific job's contract: the job (Art. 155); a trainee's training agreement: its stages (Art. 29). Missing: none. */
+    jobToDo?: string | null;
+    traineeStages?: Prisma.JsonValue | null;
   } | null;
   ending: { noticeGivenOn: Date; lastWorkingDay: Date; reason: string | null } | null;
   /** The job offer: the one being sent, or for an employee the offer they accepted. */
@@ -261,6 +278,14 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
       : '';
   // none is a value too: "No probation" / "لا توجد فترة اختبار"
   const probation = (lang: Lang) => (c ? printedProbation(c.probationMonths, lang) : '');
+  // by the labour law (owner, 18 October 2026): the contract's length (Arts. 87, 88, 155), the nature of the work (Art.
+  // 1(6–8)), remote work (Art. 96(1)), paid by commission (yes or no), and a trainee's training stages (Art. 29)
+  const contractForm = (lang: Lang) => (c ? ((lang === 'ar' ? CONTRACT_FORM_LABELS_AR : CONTRACT_FORM_LABELS)[c.form as ContractForm] ?? '') : '');
+  const workNature = (lang: Lang) => (job ? ((lang === 'ar' ? WORK_NATURE_LABELS_AR : WORK_NATURE_LABELS)[(job.workNature ?? 'regular') as WorkNature] ?? '') : '');
+  const workPattern = (lang: Lang) => (job ? (lang === 'ar' ? WORK_PATTERN_LABELS_AR : WORK_PATTERN_LABELS)[workPatternOf(job.workArrangement)] : '');
+  const commission = (lang: Lang) => (job ? (job.paidByCommission ? (lang === 'ar' ? 'نعم' : 'Yes') : lang === 'ar' ? 'لا' : 'No') : '');
+  const stages = c?.traineeStages ? traineeStagesOf({ traineeStages: c.traineeStages }) : null;
+  const traineeStages = (lang: Lang) => printedTraineeStages(stages, lang);
   // the role's duties as written, with their formatting (owner's request, 15 October 2026), in whatever language HR
   // wrote them; none when there is nothing to read
   const duties = (): TagValue => {
@@ -361,6 +386,22 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     pay_basis_en: () => payBasis('en'),
     days_per_week: () => (c?.daysPerWeek ? String(c.daysPerWeek) : ''),
     hours_per_week: () => (hours === null ? '' : String(hours)),
+    contract_form: () => contractForm(language),
+    contract_form_ar: () => contractForm('ar'),
+    contract_form_en: () => contractForm('en'),
+    job_to_do: () => text(c?.jobToDo),
+    work_nature: () => workNature(language),
+    work_nature_ar: () => workNature('ar'),
+    work_nature_en: () => workNature('en'),
+    work_pattern: () => workPattern(language),
+    work_pattern_ar: () => workPattern('ar'),
+    work_pattern_en: () => workPattern('en'),
+    paid_by_commission: () => commission(language),
+    paid_by_commission_ar: () => commission('ar'),
+    paid_by_commission_en: () => commission('en'),
+    trainee_stages: () => traineeStages(language),
+    trainee_stages_ar: () => traineeStages('ar'),
+    trainee_stages_en: () => traineeStages('en'),
 
     gross_salary: () => printedMoney(amount(c?.grossSalary)),
     gross_salary_words: () => words(amount(c?.grossSalary)),
@@ -556,6 +597,23 @@ const WHERE: Record<string, Where> = {
   pay_basis_en: CONTRACTS('payBasis'),
   days_per_week: CONTRACTS('daysPerWeek'),
   hours_per_week: CONTRACTS('hoursPerWeek'),
+  // by the labour law (owner, 18 October 2026)
+  contract_form: CONTRACTS('form'),
+  contract_form_ar: CONTRACTS('form'),
+  contract_form_en: CONTRACTS('form'),
+  job_to_do: CONTRACTS('jobToDo'),
+  trainee_stages: CONTRACTS('traineeStages'),
+  trainee_stages_ar: CONTRACTS('traineeStages'),
+  trainee_stages_en: CONTRACTS('traineeStages'),
+  work_nature: EMPLOYMENT('workNature'),
+  work_nature_ar: EMPLOYMENT('workNature'),
+  work_nature_en: EMPLOYMENT('workNature'),
+  work_pattern: EMPLOYMENT('workArrangement'),
+  work_pattern_ar: EMPLOYMENT('workArrangement'),
+  work_pattern_en: EMPLOYMENT('workArrangement'),
+  paid_by_commission: EMPLOYMENT('paidByCommission'),
+  paid_by_commission_ar: EMPLOYMENT('paidByCommission'),
+  paid_by_commission_en: EMPLOYMENT('paidByCommission'),
   hourly_rate: CONTRACTS('hourlyRate'),
   net_hourly_rate: CONTRACTS('netSalary'), // by the hour; a monthly salary has none
   allowances: CONTRACTS('allowances'),

@@ -37,12 +37,13 @@ export const lawRatesOf = (row: PayrollLawYear): LawRates =>
     martyrsRate: row.martyrsRate.toNumber(),
     healthInsuranceRate: row.healthInsuranceRate.toNumber(),
     taxTiers: row.taxTiers as unknown as TaxTier[],
+    minimumWage: row.minimumWage?.toNumber() ?? null,
   });
 
-/** What a row keeps of a year's rates (all but the year). */
+/** What a row keeps of a year's rates (all but the year); the minimum wage null when not set. */
 const rowData = (r: LawRates) => {
-  const { year: _year, taxTiers, ...rates } = normalLawRates(r);
-  return { ...rates, taxTiers: taxTiers as unknown as Prisma.InputJsonValue };
+  const { year: _year, taxTiers, minimumWage, ...rates } = normalLawRates(r);
+  return { ...rates, minimumWage: minimumWage ?? null, taxTiers: taxTiers as unknown as Prisma.InputJsonValue };
 };
 
 // The rates set by law, by year (owner's request, 16 October 2026: "creating a setup page for payroll to enter the
@@ -88,6 +89,8 @@ export class LawRatesService {
     const names = new Map(people.map((p) => [p.workEmail?.toLowerCase(), p.fullNameEn]));
     return rows.map((r) => ({
       ...lawRatesOf(r),
+      // always there for the page: null when not set (owner, 18 October 2026)
+      minimumWage: r.minimumWage?.toNumber() ?? null,
       updatedAt: r.updatedAt,
       updatedBy: r.updatedBy && { id: r.updatedBy.id, name: names.get(r.updatedBy.email.toLowerCase()) ?? r.updatedBy.email },
     }));
@@ -99,11 +102,13 @@ export class LawRatesService {
    */
   async put(year: number, dto: PutLawRatesDto, user: SessionUser): Promise<LawRatesView> {
     if (!isSuperAdmin(user)) throw new ForbiddenException(ONLY_SUPER_ADMIN_CHANGES_LAW_RATES);
-    const rates = normalLawRates(ratesSent(year, dto));
+    const before = await this.prisma.payrollLawYear.findUnique({ where: { year } });
+    // the minimum wage left out keeps the year's (a page from before it came sends none)
+    const sent = ratesSent(year, dto);
+    const rates = normalLawRates(dto.minimumWage === undefined ? { ...sent, minimumWage: before?.minimumWage?.toNumber() ?? null } : sent);
     const problems = lawRatesProblems(rates);
     if (problems.length) throw new BadRequestException(problems);
 
-    const before = await this.prisma.payrollLawYear.findUnique({ where: { year } });
     const data = { ...rowData(rates), updatedById: user.id };
     await this.prisma.payrollLawYear.upsert({ where: { year }, create: { year, ...data }, update: data });
     this.kept = null;
@@ -113,7 +118,11 @@ export class LawRatesService {
       await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, diff: { year, ...after } });
     } else {
       const { year: _was, ...was } = lawRatesOf(before);
-      const diff = changes(was as unknown as Record<string, unknown>, after as unknown as Record<string, unknown>);
+      // the minimum wage as null when not set, so clearing it is recorded too
+      const diff = changes({ ...was, minimumWage: was.minimumWage ?? null } as unknown as Record<string, unknown>, {
+        ...after,
+        minimumWage: after.minimumWage ?? null,
+      } as unknown as Record<string, unknown>);
       if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, diff: { year, ...diff } });
     }
     return (await this.list()).find((r) => r.year === year)!;

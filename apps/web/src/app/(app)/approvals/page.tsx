@@ -8,6 +8,7 @@ import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import { getCurrentUser } from '@/lib/session';
 import type { ChangeRequest, EndingSummary } from '@/lib/types';
 import { ChangeRequestCard } from '../employees/[id]/change-request/request-parts';
+import { art154Text } from '../employees/employment-law';
 import { contractHref, profileHref } from '../employees/ui';
 import { INITIATOR_LABELS } from '../organization/contracts/labels';
 import { Empty, Loading } from '../organization/ui';
@@ -86,6 +87,15 @@ function EndingCard({ ending: e, decides }: { ending: EndingSummary; decides: bo
           <div className="sm:col-span-2 lg:col-span-4">
             <dt className="text-xs text-muted">Note</dt>
             <dd className="mt-0.5 whitespace-pre-line">{e.note}</dd>
+          </div>
+        )}
+        {/* a fixed term the company doesn't renew (18 October 2026): Art. 154, information only */}
+        {e.art154Note && (
+          <div className="sm:col-span-2 lg:col-span-4">
+            <dt className="text-xs text-muted">Labour Law Art. 154</dt>
+            <dd className="mt-0.5">
+              {e.art154Note}. {e.art154Estimate && art154Text(e.art154Estimate)}
+            </dd>
           </div>
         )}
         <div className="sm:col-span-2 lg:col-span-4">

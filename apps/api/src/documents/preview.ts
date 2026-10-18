@@ -13,7 +13,9 @@ import { rightFor, sourceTag, type RestrictedRight } from './values.js';
  * than an employee's (owner's request, 15 October 2026: "Job offer preview should call data from the offer tab, even if
  * not published yet").
  */
-export const isOfferSlot = (slot: Pick<TemplateSlot, 'key' | 'appliesTo'>): boolean => slot.appliesTo.some((t) => offerSlotKey(t) === slot.key);
+export const isOfferSlot = (slot: Pick<TemplateSlot, 'key' | 'appliesTo'>): boolean =>
+  // the commission one too (offer_sales: a full-time offer paid by commission, owner, 18 October 2026)
+  slot.appliesTo.some((t) => offerSlotKey(t) === slot.key || offerSlotKey(t, true) === slot.key);
 
 /** What a restricted value the caller may not see prints as. */
 export const MASK = '••••';

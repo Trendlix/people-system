@@ -24,8 +24,19 @@ export const OFFER_VALID_DAYS = 7;
 export const OFFER_SEND_WAYS = ['email', 'link'] as const;
 export type OfferSendWay = (typeof OFFER_SEND_WAYS)[number];
 
-/** The job offer template for an employment type: its slot in the template library. */
-export const offerSlotKey = (employmentType: string) => `offer_${employmentType}`;
+/**
+ * The job offer template for an employment type: its slot in the template library. The slots kept their keys when the
+ * types changed (owner, 18 October 2026): a trainee's is offer_internship; one paid by commission (full-time only) is
+ * offer_sales, which is used only when it has a published version (offerSlotFor).
+ */
+export function offerSlotKey(employmentType: string, paidByCommission = false): string {
+  if (paidByCommission && employmentType === 'full_time') return 'offer_sales';
+  return `offer_${employmentType === 'trainee' ? 'internship' : employmentType}`;
+}
+
+/** The job offer slot an offer is filled from: the commission one when paid by commission and it is published, else the type's. */
+export const offerSlotFor = (employmentType: string, paidByCommission: boolean, published: (slotKey: string) => boolean): string =>
+  paidByCommission && employmentType === 'full_time' && published('offer_sales') ? 'offer_sales' : offerSlotKey(employmentType);
 
 /** What the candidate agrees to by accepting, on the offer's page (shown in both languages). */
 export const OFFER_ACCEPTANCE = {

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { EMPLOYMENT_TYPES, LABELS, WORK_ARRANGEMENTS } from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, LABELS, WORK_ARRANGEMENTS, WORK_NATURE_LABELS, WORK_NATURES, type WorkNature } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
@@ -11,15 +11,17 @@ import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import type { FormState, Grade } from '@/lib/types';
-import type { EmploymentPickers } from '../employees/employment-fields';
+import { CommissionField, type EmploymentPickers } from '../employees/employment-fields';
+import { employmentTypeHint, WORK_NATURE_HINTS, workPatternNote } from '../employees/employment-law';
 import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
 import type { OfferDefaults } from './form-body';
 
 // The Position part of the offer form: the employment the candidate is offered, as the employment form picks it
 // (employees/employment-fields.tsx): the department or team, then its job titles, then a grade within the title's range;
-// the direct manager, the shift, the work arrangement (office days for Hybrid) and the expected join date. Accepting the
-// offer makes the employment from these. Each field's box has an anchor (#field-<name>) for the offer page's list of
-// what the template lacks.
+// the direct manager, the shift, the work arrangement (office days for Hybrid) and the expected join date; by the labour
+// law (owner, 18 October 2026), Paid by commission for full-time (as Sales was: its job offer is the commission one once
+// published) and the nature of the work (Art. 1(6–8)). Accepting the offer makes the employment from these. Each field's
+// box has an anchor (#field-<name>) for the offer page's list of what the template lacks.
 
 const OFFICE_DAYS = [
   [0, 'Sun'],
@@ -52,6 +54,8 @@ export function OfferPositionFields({
 }) {
   const router = useRouter();
   const [arrangement, setArrangement] = useState(() => valueOf(state, 'workArrangement', defaults.workArrangement));
+  const [type, setType] = useState(() => valueOf(state, 'employmentType', defaults.employmentType));
+  const [nature, setNature] = useState(() => valueOf(state, 'workNature', defaults.workNature));
   const [jobTitleId, setJobTitleId] = useState(() => valueOf(state, 'jobTitleId', defaults.jobTitleId));
   // a job title without a department on the offer brings its own department or team, so it stays selected
   const savedDepartmentId = defaults.departmentId || pickers.jobTitles.find((j) => j.id === defaults.jobTitleId)?.departmentId;
@@ -85,6 +89,9 @@ export function OfferPositionFields({
     .filter((m) => EMPLOYED.includes(m.standing) || m.id === managerId)
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn));
   const officeDays = officeDaysOf(state, defaults.officeDays);
+  // trainee and freelance say what they mean by the law
+  const typeHint = employmentTypeHint(type, 'offer');
+  const pattern = workPatternNote(arrangement);
 
   function pickDepartment(id: string) {
     setDepartmentId(id);
@@ -117,6 +124,7 @@ export function OfferPositionFields({
             required
             aria-describedby={fid('employmentType-hint')}
             defaultValue={valueOf(state, 'employmentType', defaults.employmentType)}
+            onChange={(e) => setType(e.target.value)}
             className="input"
           >
             <option value="">Choose a type</option>
@@ -127,8 +135,9 @@ export function OfferPositionFields({
             ))}
           </Select>
           <p id={fid('employmentType-hint')} className="hint">
-            Picks the job offer template: each type has its own in Templates.
+            Picks the job offer template: each type has its own in Templates.{typeHint && ` ${typeHint}`}
           </p>
+          {type === 'full_time' && <CommissionField state={state} fid={fid} saved={defaults.paidByCommission} />}
         </div>
         <div id="field-joinDate" className="scroll-mt-6">
           <label htmlFor={fid('joinDate')} className="label">
@@ -237,6 +246,28 @@ export function OfferPositionFields({
           </Select>
         </div>
 
+        <div id="field-workNature" className="scroll-mt-6">
+          <label htmlFor={fid('workNature')} className="label">
+            Nature of the work
+          </label>
+          <Select
+            id={fid('workNature')}
+            name="workNature"
+            value={nature}
+            onChange={(e) => setNature(e.target.value)}
+            aria-describedby={fid('workNature-hint')}
+            className="input"
+          >
+            {WORK_NATURES.map((n) => (
+              <option key={n} value={n}>
+                {WORK_NATURE_LABELS[n]}
+              </option>
+            ))}
+          </Select>
+          <p id={fid('workNature-hint')} className="hint">
+            {WORK_NATURE_HINTS[nature as WorkNature] ?? WORK_NATURE_HINTS.regular}
+          </p>
+        </div>
         <div id="field-workArrangement" className="scroll-mt-6">
           <label htmlFor={fid('workArrangement')} className="label">
             Work arrangement
@@ -246,6 +277,7 @@ export function OfferPositionFields({
             name="workArrangement"
             value={arrangement}
             onChange={(e) => setArrangement(e.target.value)}
+            aria-describedby={pattern ? fid('workArrangement-hint') : undefined}
             className="input"
           >
             {WORK_ARRANGEMENTS.map((w) => (
@@ -254,6 +286,11 @@ export function OfferPositionFields({
               </option>
             ))}
           </Select>
+          {pattern && (
+            <p id={fid('workArrangement-hint')} className="hint">
+              In the law&apos;s words: {pattern}.
+            </p>
+          )}
         </div>
         <div id="field-shiftId" className="scroll-mt-6">
           <label htmlFor={fid('shiftId')} className="label">

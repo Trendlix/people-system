@@ -39,10 +39,13 @@ export function dateKind(tag: string | null | undefined): 'date' | 'month' | nul
   return null;
 }
 
-/** An amount of the Pay group (15,000.50), whose pounds or piastres alone can go in boxes; not its words or a share. */
+/**
+ * An amount of the Pay group (15,000.50), whose pounds or piastres alone can go in boxes; not its words or a share, nor
+ * a list (the allowances, a trainee's training stages: 18 October 2026).
+ */
 export function isAmountTag(tag: string | null | undefined): boolean {
   const t = tagInfo(tag);
-  return !!t && t.group === 'pay' && !/words|percent|^allowances(_ar|_en)?$/.test(t.tag);
+  return !!t && t.group === 'pay' && !/words|percent|^allowances(_ar|_en)?$|^trainee_stages/.test(t.tag);
 }
 
 const DIGITS = '1234567890';

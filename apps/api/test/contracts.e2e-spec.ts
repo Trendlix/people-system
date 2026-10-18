@@ -14,7 +14,7 @@ const RUN = Date.now().toString(36).toLowerCase();
 const PROBATION_CAP = "Probation can't be longer than 3 months (Labour Law Art. 90).";
 const LEGAL_NOTICE = "The law requires at least 3 months' notice for this (Art. 156); it can be longer, not shorter.";
 const CERTIFIED = { certifiedOffice: 'Nasr City labour office', certifiedSerial: 'R-2026-118', certifiedOn: '2026-09-30' };
-const FIXED_ONLY = 'Every contract runs for a fixed term: leave the form out, or send fixed.';
+const FORM_REFUSED = 'Choose the contract’s length: fixed (fixed-term), open_ended or specific_job.';
 
 /** A contract version as the API sends it. */
 interface Contract {
@@ -273,6 +273,11 @@ describe('Contracts (e2e)', () => {
         number: expect.stringMatching(/^CON-2026-\d{4}$/),
         version: 1,
         form: 'fixed',
+        // by the labour law (owner, 18 October 2026): no job (a specific job's), no training stages (a trainee's)
+        jobToDo: null,
+        traineeStages: null,
+        traineeMonths: null,
+        traineeStage: null,
         startDate: '2026-01-15',
         endDate: '2027-01-14',
         durationMonths: 12,
@@ -302,6 +307,9 @@ describe('Contracts (e2e)', () => {
         labourOfficeFiledOn: null,
         note: null,
         nonRenewalNoticeBy: null, // a draft
+        // neither of the law's warnings (Art. 88(3), Art. 1(7))
+        becameOpenEnded: false,
+        casualTooLong: false,
         salaryHidden: false,
         // a whole contract, not a raise (owner's decisions, 16 October 2026)
         kind: 'contract',
@@ -379,9 +387,11 @@ describe('Contracts (e2e)', () => {
       // the end, probation end and insured salary follow the terms
       const changed = await patchContract(draft.id, { durationMonths: 6, grossSalary: 18000, startDate: '2026-02-01', probationMonths: 2, note: 'Offer accepted' }).expect(200);
       expect(changed.body).toMatchObject({ number: draft.number, startDate: '2026-02-01', durationMonths: 6, endDate: '2026-07-31', probationMonths: 2, probationEnd: '2026-03-31', grossSalary: 18000, insuredSalary: 16700, note: 'Offer accepted' });
-      // every contract runs for a fixed term: the company has no open-ended contracts (owner, 15 October 2026)
-      expect((await patchContract(draft.id, { form: 'open_ended' }).expect(400)).body.message).toEqual([FIXED_ONLY]);
-      expect((await patchContract(draft.id, { form: 'fixed' }).expect(200)).body).toMatchObject({ form: 'fixed', endDate: '2026-07-31' });
+      // the contract's length (owner, 18 October 2026, after 15 October's fixed term only): an unknown one refused; a
+      // draft made open-ended has no duration or end, and back to fixed-term takes the settings' months again
+      expect((await patchContract(draft.id, { form: 'temporary' }).expect(400)).body.message).toEqual([FORM_REFUSED]);
+      expect((await patchContract(draft.id, { form: 'open_ended' }).expect(200)).body).toMatchObject({ form: 'open_ended', durationMonths: null, endDate: null });
+      expect((await patchContract(draft.id, { form: 'fixed', durationMonths: 6 }).expect(200)).body).toMatchObject({ form: 'fixed', endDate: '2026-07-31' });
       const early = await patchContract(draft.id, { startDate: '2026-01-01' }).expect(400);
       expect(early.body.message).toBe("The contract can't start before the join date, 15/01/2026.");
       const long = await patchContract(draft.id, { durationMonths: 2, probationMonths: 3 }).expect(400);
@@ -578,9 +588,9 @@ describe('Contracts (e2e)', () => {
       mobile = await addKind('Mobile', { taxable: false });
     });
 
-    it('rejects an open-ended contract: every contract runs for a fixed term', async () => {
-      const e = await newHire('Open Ended Refused');
-      expect((await postContract(e, { grossSalary: 9000, form: 'open_ended' }).expect(400)).body.message).toEqual([FIXED_ONLY]);
+    it('rejects an unknown contract length; fixed-term for 12 months unless another is sent (owner, 18 October 2026)', async () => {
+      const e = await newHire('Unknown Length Refused');
+      expect((await postContract(e, { grossSalary: 9000, form: 'forever' }).expect(400)).body.message).toEqual([FORM_REFUSED]);
       expect(await addContract(e, { form: 'fixed' })).toMatchObject({ form: 'fixed', durationMonths: 12, endDate: '2027-01-14' });
     });
 
@@ -890,6 +900,9 @@ describe('Contracts (e2e)', () => {
         completedAt: null,
         endReason: 'resigned',
         deadlines: null,
+        // only for a fixed term the company doesn't renew (Art. 154; owner, 18 October 2026)
+        art154Note: null,
+        art154Estimate: null,
       });
       const twice = await postEnding(a, { ruleKey: 'probation', initiator: 'company', noticeGivenOn: today }).expect(409);
       expect(twice.body.message).toBe('An ending of this employment is already waiting for the CEO. Withdraw it before recording another.');
@@ -1165,6 +1178,8 @@ describe('Contracts (e2e)', () => {
         endDate: soonContract.endDate,
         nonRenewalNoticeBy: soonContract.nonRenewalNoticeBy,
         renewalDraft: false,
+        // not past its end yet (Art. 88(3))
+        becameOpenEnded: false,
       });
       expect(list.some((x) => x.endDate > addDays(today, 60))).toBe(false);
       expect(list.map((x) => x.endDate)).toEqual(list.map((x) => x.endDate).sort());

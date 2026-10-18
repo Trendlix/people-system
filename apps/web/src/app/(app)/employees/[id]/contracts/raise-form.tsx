@@ -10,6 +10,7 @@ import {
   RAISE_WAYS,
   raiseEffectiveProblem,
   raiseReasonOptions,
+  type ContractForm,
   type LawRates,
   type RaiseReason,
   type RaiseRequester,
@@ -73,8 +74,11 @@ export function RaiseForm({
 }: {
   action: Action;
   defaults: RaiseDefaults;
-  /** The signed contract in force the raise changes (its pay, as HR, Finance and the CEO see it). */
-  current: { version: number; startDate: string; endDate: string | null; grossSalary: number | null; allowancesTotal: number | null };
+  /**
+   * The signed contract in force the raise changes (its pay, as HR, Finance and the CEO see it), and its length: a new
+   * contract keeps an open-ended or specific-job one's (18 October 2026), so only a fixed term asks for its months.
+   */
+  current: { version: number; form?: ContractForm; startDate: string; endDate: string | null; grossSalary: number | null; allowancesTotal: number | null };
   allowanceTypes: readonly AllowanceType[];
   fullTime: boolean;
   /** YYYY-MM-DD, for the salary's year while there is no effective date. */
@@ -113,7 +117,9 @@ export function RaiseForm({
     effective === null ? 'Enter the date it takes effect as DD/MM/YYYY, e.g. 01/12/2026.' : effective ? raiseEffectiveProblem(effective, current) : null;
   const starts = effective && !problem ? effective : null;
   const months = Number(typed.durationMonths);
-  const end = way === 'contract' && starts && Number.isInteger(months) && months >= 1 ? contractEnd(starts, months) : null;
+  // a new contract keeps the length of the one in force: an open-ended one has no term, a specific job's its job
+  const fixedTerm = (current.form ?? 'fixed') === 'fixed';
+  const end = way === 'contract' && fixedTerm && starts && Number.isInteger(months) && months >= 1 ? contractEnd(starts, months) : null;
   // the salary, with the rates set by law of the year the raise takes effect (this year while there is no date)
   const year = Number((starts ?? today).slice(0, 4));
   const pay = usePay(state, defaults.pay, allowanceTypes, lawRatesFor(year, lawYears));
@@ -209,7 +215,26 @@ export function RaiseForm({
           </div>
         </div>
 
-        {way === 'contract' ? (
+        {way === 'contract' && !fixedTerm ? (
+          <div key="length">
+            <label htmlFor={fid('length')} className="label">
+              Contract length
+            </label>
+            {/* not sent: the new contract keeps the length of the one in force */}
+            <input
+              id={fid('length')}
+              value={current.form === 'open_ended' ? 'Open-ended' : 'For a specific job'}
+              readOnly
+              aria-describedby={fid('length-hint')}
+              className="input bg-canvas text-muted"
+            />
+            <p id={fid('length-hint')} className="hint">
+              {current.form === 'open_ended'
+                ? `Open-ended, as version ${current.version}: no end date, without probation, replacing it once signed.`
+                : `For the same job as version ${current.version}, with its expected end, without probation, replacing it once signed.`}
+            </p>
+          </div>
+        ) : way === 'contract' ? (
           <div key="durationMonths">
             <label htmlFor={fid('durationMonths')} className="label">
               Length in months

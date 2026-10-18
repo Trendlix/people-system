@@ -1,5 +1,21 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength, ValidateBy, ValidateIf } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateBy,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
 import {
   CONTRACT_FORMS,
   CONTRACT_STATUSES,
@@ -21,6 +37,7 @@ import {
 import { AllowanceRows, type AllowanceAmountDto } from '../allowances/allowances.dto.js';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
+import { EMPLOYMENT_TYPE_MESSAGE } from '../employees/employment.dto.js';
 
 // Contracts, their settings, the ending rules and endings (owner's decisions, 15 October 2026, checked against Labour
 // Law 14/2025). Dates: YYYY-MM-DD. Money: a number, to the piastre. Text fields: an empty string clears them.
@@ -32,8 +49,13 @@ export const PROBATION_CAP_MESSAGE = "Probation can't be longer than 3 months (L
 export const DURATION_MESSAGE = 'A fixed term runs for 1 to 60 months.';
 const INSURANCE_BASIC_MESSAGE = 'Enter the default basic wage as an amount of more than 0 and up to 99,999.99, e.g. 410.';
 const BASIC_PERCENT_DEFAULT_MESSAGE = 'Enter the basic share of the gross as a whole percent from 1 to 100, e.g. 80.';
-/** The company has no open-ended contracts (owner, 15 October 2026). */
-export const FIXED_ONLY_MESSAGE = 'Every contract runs for a fixed term: leave the form out, or send fixed.';
+/**
+ * A contract's length (Labour Law 14/2025 Arts. 87, 88, 155): on 15 October 2026 the owner had every contract
+ * fixed-term; open-ended and specific-job ones came back on 18 October 2026, fixed-term staying the default.
+ */
+export const FORM_MESSAGE = 'Choose the contract’s length: fixed (fixed-term), open_ended or specific_job.';
+const JOB_TO_DO_MESSAGE = 'Enter the job the contract is for, up to 500 characters (Labour Law Art. 155).';
+const STAGES_MESSAGE = 'Send the training stages as a list, each with its name, months and pay a month, e.g. [{ "name": "Basics", "months": 3, "pay": 4000 }].';
 /** decimal(12, 2) holds up to 9,999,999,999.99 */
 export const MAX_MONEY = 9_999_999_999.99;
 /** decimal(10, 2) holds up to 99,999,999.99 */
@@ -140,13 +162,53 @@ export class PayTermsDto {
 }
 
 /**
+ * A stage of a trainee's training agreement (Labour Law 14/2025 Art. 29): its name, whole months and pay a month. Only
+ * the kinds are checked here; the rules (each stage's pay more than the one before, the last at least the minimum wage
+ * …) by traineeProblems in packages/shared, the same check the page makes, so the messages are the same.
+ */
+export class TraineeStageDto {
+  @Trim() @IsString({ message: 'Enter each training stage’s name.' }) @MaxLength(100, { message: 'Keep each training stage’s name to 100 characters.' })
+  name: string;
+
+  @IsNumber({ allowNaN: false, allowInfinity: false }, { message: 'Enter each training stage’s months as a number.' })
+  months: number;
+
+  @IsNumber({ maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false }, { message: 'Enter each training stage’s pay a month as an amount, e.g. 4000.' })
+  @Max(MAX_MONEY)
+  pay: number;
+}
+
+/**
  * A contract's terms: what HR types. The end date, probation end and insured salary follow from them, and by the hour
  * the gross too.
  */
 class ContractTermsDto extends PayTermsDto {
-  /** Always a fixed term: the company has no open-ended contracts (owner, 15 October 2026). */
-  @Sent() @IsIn(CONTRACT_FORMS, { message: FIXED_ONLY_MESSAGE })
+  /**
+   * The contract's length: fixed-term unless sent (for a renewal, the version before's). Open-ended: no duration and no
+   * end date, it ends by notice (Art. 156); for a specific job: the job (jobToDo) and, optional, the day it is expected
+   * to be done (endDate). A trainee's training agreement is fixed-term, for the training's length.
+   */
+  @Sent() @IsIn(CONTRACT_FORMS, { message: FORM_MESSAGE })
   form?: ContractForm;
+
+  /** For a specific job only (required then): the job the contract is for (Art. 155). */
+  @TrimOrNull() @IsOptional() @IsString({ message: JOB_TO_DO_MESSAGE }) @MaxLength(500, { message: JOB_TO_DO_MESSAGE })
+  jobToDo?: string | null;
+
+  /** For a specific job only: the day the job is expected to be done, on or after the start; empty for none. */
+  @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real date for when the job is expected to be done.')
+  endDate?: string | null;
+
+  /**
+   * A trainee's training agreement only (required then): its stages in order (Art. 29). The gross is the first stage's
+   * pay (whatever gross is sent) and the duration the stages' months together; payroll pays the stage in force.
+   */
+  @IsOptional()
+  @IsArray({ message: STAGES_MESSAGE })
+  @ArrayMaxSize(24, { message: 'Keep the training to 24 stages or fewer.' })
+  @ValidateNested({ each: true })
+  @Type(() => TraineeStageDto)
+  traineeStages?: TraineeStageDto[] | null;
 
   /** Version 1: the join date unless sent; a renewal: the day after the version before ends. */
   @Sent() @IsDateOnly('Enter the start date.')
@@ -213,12 +275,12 @@ export class ListContractsDto {
   @EmptyIsUnset() @IsOptional() @IsString({ message: 'Search with one text, e.g. a name or a contract number.' }) @MaxLength(100, { message: 'Search with at most 100 characters.' })
   q?: string;
 
-  /** Every contract is fixed-term now; kept so a filter sent as before still works. */
-  @EmptyIsUnset() @IsOptional() @IsIn(CONTRACT_FORMS, { message: FIXED_ONLY_MESSAGE })
+  /** The contract's length: fixed, open_ended or specific_job. */
+  @EmptyIsUnset() @IsOptional() @IsIn(CONTRACT_FORMS, { message: FORM_MESSAGE })
   form?: ContractForm;
 
   /** The employment's type. */
-  @EmptyIsUnset() @IsOptional() @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type: full_time, part_time, internship, freelance or sales.' })
+  @EmptyIsUnset() @IsOptional() @IsIn(EMPLOYMENT_TYPES, { message: EMPLOYMENT_TYPE_MESSAGE })
   type?: EmploymentType;
 
   /** Signed contracts that end within this many days of today, those already past their end included. */

@@ -9,15 +9,21 @@ import type { ContractDefaults } from './contract-form';
 const BASIC_PERCENT = 80;
 
 /**
- * The first contract's defaults: the settings' length and probation, none for someone employed here before (probation
- * comes once with an employer, Labour Law Art. 90), the company's basic share, and a monthly salary still to type.
+ * The first contract's defaults: fixed-term for the settings' length, their probation, none for someone employed here
+ * before (probation comes once with an employer, Labour Law Art. 90), the company's basic share, and a monthly salary
+ * still to type (a trainee's training stages too).
  * `startDate` is YYYY-MM-DD, or '' when it is the join date still to be typed.
  */
 export function firstContractDefaults(settings: ContractSettings, startDate: string, employedBefore: boolean): ContractDefaults {
   return {
     startDate,
+    // fixed-term for the settings' months stays the default (owner, 18 October 2026)
+    form: 'fixed',
     durationMonths: settings.durationMonths,
+    jobToDo: '',
+    endDate: '',
     probationMonths: employedBefore ? 0 : settings.probationMonths,
+    traineeStages: null,
     payBasis: 'monthly',
     grossSalary: null,
     hourlyRate: null,

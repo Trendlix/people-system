@@ -59,10 +59,15 @@ export const SIGNER_LABELS: Record<TemplateSigners, string> = {
   none: 'Not signed',
 };
 
-/** "All employment types", or the ones named: "Full-time", "Part-time, Internship". */
-export function appliesToLabel(types: readonly EmploymentType[]): string {
+/**
+ * "All employment types", or the ones named: "Full-time", "Part-time, Trainee". A Sales slot (`paidByCommission`;
+ * owner, 18 October 2026: Sales became Full-time paid by commission): "Full-time, paid by commission (the full-time one
+ * until this is published)".
+ */
+export function appliesToLabel(types: readonly EmploymentType[], paidByCommission = false): string {
   if (EMPLOYMENT_TYPES.every((t) => types.includes(t))) return 'All employment types';
-  return types.map((t) => LABELS.employmentType[t] ?? t).join(', ');
+  const names = types.map((t) => LABELS.employmentType[t] ?? t).join(', ');
+  return paidByCommission ? `${names}, paid by commission (the ${names.toLowerCase()} one until this is published)` : names;
 }
 
 /** "On hiring · On renewal" */

@@ -1,4 +1,4 @@
-import type { EmploymentType, TemplateLanguage, TemplateSigners, TemplateTrigger } from '@trendlix/shared';
+import { COMMISSION_SLOTS, type EmploymentType, type TemplateLanguage, type TemplateSigners, type TemplateTrigger } from '@trendlix/shared';
 import { appliesToLabel, languageLabel, SIGNER_LABELS, triggersLabel, type StatusLine, type StatusTone } from './wording';
 
 // Building blocks shared by the library and a template's page.
@@ -8,12 +8,20 @@ export function SlotDetails({
   slot,
   className = '',
 }: {
-  slot: { language: TemplateLanguage | null; appliesTo: readonly EmploymentType[]; triggers: readonly TemplateTrigger[]; signers: TemplateSigners };
+  slot: {
+    key: string;
+    language: TemplateLanguage | null;
+    appliesTo: readonly EmploymentType[];
+    /** A Sales slot, for those paid by commission (18 October 2026); the shared slots say so when the API doesn't. */
+    paidByCommission?: boolean;
+    triggers: readonly TemplateTrigger[];
+    signers: TemplateSigners;
+  };
   className?: string;
 }) {
   const items: [string, string][] = [
     ['Language', languageLabel(slot.language)],
-    ['Applies to', appliesToLabel(slot.appliesTo)],
+    ['Applies to', appliesToLabel(slot.appliesTo, slot.paidByCommission ?? slot.key in COMMISSION_SLOTS)],
     ['Offered', triggersLabel(slot.triggers)],
     ['Signed by', SIGNER_LABELS[slot.signers] ?? slot.signers],
   ];

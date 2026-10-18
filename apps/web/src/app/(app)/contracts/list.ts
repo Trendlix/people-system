@@ -1,7 +1,10 @@
 import {
+  CONTRACT_FORM_LABELS,
+  CONTRACT_FORMS,
   CONTRACT_STATUS_LABELS,
   EMPLOYMENT_TYPES,
   ENDING_STATUS_LABELS,
+  type ContractForm,
   type ContractStatus,
   type EmploymentType,
   type EndingStatus,
@@ -46,16 +49,24 @@ export const STATUS_FILTERS: readonly { value: StatusFilter; label: string }[] =
 /** "Ending within" choices, in days. */
 export const ENDING_WITHIN_DAYS = [30, 60, 90] as const;
 
-// No filter by term: every contract is for a fixed term (owner, 15 October 2026), so an old ?form= is left out.
+/** "Contract length" choices: fixed-term, open-ended or for a specific job (owner, 18 October 2026: by the labour law). */
+export const FORM_FILTERS: readonly { value: ContractForm | ''; label: string }[] = [
+  { value: '', label: 'Any length' },
+  ...CONTRACT_FORMS.map((f) => ({ value: f, label: CONTRACT_FORM_LABELS[f] })),
+];
+
+// The filter by length came back on 18 October 2026, with open-ended and specific-job contracts (from 15 October every
+// contract had been fixed-term, and ?form= was left out).
 export interface ContractFilters {
   q: string;
   status: StatusFilter;
   type: EmploymentType | '';
+  form: ContractForm | '';
   /** Signed contracts ending within this many days, those past their end included; null = any. */
   endingWithin: number | null;
 }
 
-export const NO_FILTERS: ContractFilters = { q: '', status: '', type: '', endingWithin: null };
+export const NO_FILTERS: ContractFilters = { q: '', status: '', type: '', form: '', endingWithin: null };
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -69,13 +80,14 @@ export function readFilters(query: Query): ContractFilters {
     q: one(query.q).trim().slice(0, 100),
     status: oneOf(one(query.status), STATUS_FILTERS.map((s) => s.value)),
     type: oneOf(one(query.type), EMPLOYMENT_TYPES),
+    form: oneOf(one(query.form), CONTRACT_FORMS),
     endingWithin: (ENDING_WITHIN_DAYS as readonly number[]).includes(days) ? days : null,
   };
 }
 
 /** Whether any filter is chosen (the default status, drafts and signed, is not one). */
 export function isFiltered(f: ContractFilters): boolean {
-  return Boolean(f.q || f.status || f.type || f.endingWithin !== null);
+  return Boolean(f.q || f.status || f.type || f.form || f.endingWithin !== null);
 }
 
 /** The filters as a query string, without the empty ones and in a fixed order: "status=active&endingWithin=30". */
@@ -84,6 +96,7 @@ function queryOf(f: ContractFilters, status: string): string {
   if (f.q) params.set('q', f.q);
   if (status) params.set('status', status);
   if (f.type) params.set('type', f.type);
+  if (f.form) params.set('form', f.form);
   if (f.endingWithin !== null) params.set('endingWithin', String(f.endingWithin));
   return params.toString();
 }

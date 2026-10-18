@@ -6,7 +6,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { LABELS, type EmploymentType, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
+import { COMMISSION_SLOTS, LABELS, type EmploymentType, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
 import { ALLOWANCE_ORDER } from '../allowances/rows.js';
 import { AuditService } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
@@ -67,6 +67,9 @@ const EMPLOYMENT = {
   manager: { select: { fullNameEn: true, fullNameAr: true } },
   shift: { select: { startTime: true, endTime: true, hoursPerDay: true, workingDays: true } },
   workArrangement: true,
+  // employment types by the labour law (owner, 18 October 2026): the commission contract, and the nature of the work's tags
+  paidByCommission: true,
+  workNature: true,
   contracts: {
     orderBy: { version: 'desc' },
     include: {
@@ -159,8 +162,9 @@ function termsContract(contracts: readonly ContractRow[]): ContractRow | null {
   return live.find((c) => c.status === 'active') ?? live.find((c) => c.status === 'draft') ?? live[0] ?? null;
 }
 
-function situation(e: EmploymentRow): Situation {
-  return { employmentType: e.employmentType, ending: e.endings[0] ?? null, ended: e.endDate !== null };
+/** Where the employment stands; `commissionPublished`: the commission slots with a published version (commissionSlots). */
+function situation(e: EmploymentRow, commissionPublished: readonly string[]): Situation {
+  return { employmentType: e.employmentType, paidByCommission: e.paidByCommission, commissionPublished, ending: e.endings[0] ?? null, ended: e.endDate !== null };
 }
 
 /** Why a slot isn't offered for the employment, in words HR act on. */
@@ -171,6 +175,17 @@ function notOffered(slot: TemplateSlot, s: Situation, name: string): string {
   if (!slot.appliesTo.includes(s.employmentType)) {
     const type = typeText(s.employmentType);
     return `${slot.name} is for ${slot.appliesTo.map(typeText).join(', ')} employments; ${name}’s is ${type}. Choose the document for a ${type} employment.`;
+  }
+  // the commission contract and the full-time one stand for each other (owner, 18 October 2026)
+  if (COMMISSION_SLOTS[slot.key]) {
+    const instead = SLOTS.get(COMMISSION_SLOTS[slot.key])!.name;
+    return s.paidByCommission
+      ? `${slot.name} has no published version yet, so ${name}’s contract is ${instead}. Publish it in Templates first.`
+      : `${slot.name} is for a full-time employment paid by commission; ${name}’s isn’t. Choose ${instead}.`;
+  }
+  const commission = Object.keys(COMMISSION_SLOTS).find((k) => COMMISSION_SLOTS[k] === slot.key);
+  if (commission && s.paidByCommission && s.commissionPublished?.includes(commission)) {
+    return `${name} is paid by commission: choose ${SLOTS.get(commission)!.name}.`;
   }
   // otherwise its moment hasn't come: the documents of an ending
   if (slot.key === 'insurance_form_6') return 'Form 6 is generated once the employment is ending or has ended. Record the ending on the Employment tab first.';
@@ -212,7 +227,7 @@ export class DocumentsService {
     const employment = await this.employmentOf(employeeId);
     if (!employment) return { sections: SECTION_KEYS.map((key) => ({ key, items: [] })) };
 
-    const s = situation(employment);
+    const s = situation(employment, await this.commissionSlots());
     const slots = offeredSlots(s);
     const keys = SECTION_KEYS.flatMap((k) => slots[k]);
     const [versions, rows] = await Promise.all([
@@ -507,7 +522,8 @@ export class DocumentsService {
     // other documents print (the signed one, else the newest draft); so it is read through the document itself when the
     // tab offers it, else through one the tab does, and the document's own slot (its overrides) is put back.
     const employment = await this.employmentOf(employeeId);
-    const offers = employment ? SECTION_KEYS.flatMap((k) => offeredSlots(situation(employment))[k]).filter((k) => !isVersionSlot(k)) : [];
+    const s = employment && situation(employment, await this.commissionSlots());
+    const offers = s ? SECTION_KEYS.flatMap((k) => offeredSlots(s)[k]).filter((k) => !isVersionSlot(k)) : [];
     const through = offers.includes(slot.key) ? slot.key : (offers[0] ?? slot.key);
     const ctx: Context = { ...(await this.context(employeeId, through, undefined)), slot };
     const { values } = this.fill(ctx, template, todayInCairo(), {});
@@ -529,6 +545,16 @@ export class DocumentsService {
     return e;
   }
 
+  /** The commission slots (COMMISSION_SLOTS) with a published version: chosen for an employment paid by commission. */
+  private async commissionSlots(): Promise<string[]> {
+    const rows = await this.prisma.templateVersion.findMany({
+      where: { slotKey: { in: Object.keys(COMMISSION_SLOTS) }, status: 'published' },
+      select: { slotKey: true },
+      distinct: ['slotKey'],
+    });
+    return rows.map((r) => r.slotKey);
+  }
+
   /** The current employment, else the latest; null for someone never employed. */
   private employmentOf(employeeId: string): Promise<EmploymentRow | null> {
     return this.prisma.employment.findFirst({ where: { employeeId }, select: EMPLOYMENT, orderBy: NEWEST_FIRST });
@@ -541,7 +567,7 @@ export class DocumentsService {
     if (!slot) throw new BadRequestException('Choose a document the Employment tab offers.');
     const employment = await this.employmentOf(employeeId);
     if (!employment) throw new BadRequestException(`${employee.fullNameEn} has no employment yet. Add it on the Employment tab before generating documents.`);
-    const s = situation(employment);
+    const s = situation(employment, await this.commissionSlots());
     if (!offered(slot.key, s)) throw new BadRequestException(notOffered(slot, s, employee.fullNameEn));
 
     let contract: ContractRow | null;

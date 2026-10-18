@@ -3,6 +3,7 @@ import { PAY_BASIS_LABELS } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import type { ContractEmployeeRef, ContractListItem, EndingSummary, ExpiringContract, ProbationEnding, SessionUser } from '@/lib/types';
 import { followsEndings, getOrNull, PENDING_ENDINGS } from '../approvals/data';
+import { LawWarningBadges } from '../employees/law-badges';
 import { profileHref, todayInCairo } from '../employees/ui';
 import { dueNote } from '../organization/contracts/labels';
 import { loadContractList } from './data';
@@ -102,7 +103,11 @@ function EndingSoon({ rows, today }: { rows: Rows<ExpiringContract>; today: stri
               <span>
                 Non-renewal notice by <Due date={c.nonRenewalNoticeBy} today={today} />
               </span>
-              {c.renewalDraft && <span className="badge">Renewal drafted</span>}
+              <span className="flex flex-wrap gap-1.5">
+                {c.renewalDraft && <span className="badge">Renewal drafted</span>}
+                {/* past its end without a signed renewal: open-ended by the law (Art. 88), 18 October 2026 */}
+                <LawWarningBadges of={c} />
+              </span>
             </div>
           </li>
         ))

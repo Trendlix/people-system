@@ -94,8 +94,11 @@ describe('a slot as the library words it', () => {
 
   it('names the employment types, or says all of them', () => {
     expect(appliesToLabel(['full_time'])).toBe('Full-time');
-    expect(appliesToLabel(['part_time', 'internship'])).toBe('Part-time, Internship');
-    expect(appliesToLabel(['full_time', 'part_time', 'internship', 'freelance', 'sales'])).toBe('All employment types');
+    expect(appliesToLabel(['part_time', 'trainee'])).toBe('Part-time, Trainee');
+    expect(appliesToLabel(['full_time', 'part_time', 'trainee', 'freelance'])).toBe('All employment types');
+    // the Sales slots (18 October 2026): full-time paid by commission
+    expect(appliesToLabel(['full_time'], true)).toBe('Full-time, paid by commission (the full-time one until this is published)');
+    expect(appliesToLabel(['freelance'])).toBe('Freelance (outside the labour law)');
   });
 
   it('says when it is offered', () => {

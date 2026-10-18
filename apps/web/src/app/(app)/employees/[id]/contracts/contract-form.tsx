@@ -2,21 +2,40 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { lawRatesFor, RAISE_REASON_LABELS, raiseReasonOptions, type LawRates, type PayTerms as VersionPay, type RaiseReason } from '@trendlix/shared';
+import {
+  CONTRACT_FORM_LABELS,
+  CONTRACT_FORMS,
+  lawRatesFor,
+  RAISE_REASON_LABELS,
+  raiseReasonOptions,
+  traineeMonths,
+  type ContractForm as Length,
+  type LawRates,
+  type PayTerms as VersionPay,
+  type RaiseReason,
+} from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
 import { formatDate, parseDate } from '@/lib/format';
 import type { AllowanceType, FormState } from '@/lib/types';
+import { OPEN_ENDED_NOTE, SPECIFIC_JOB_NOTE } from '../../employment-law';
 import { contractEnd, probationEnd } from './dates';
 import { choice, PayFields, typedPayOf, usePay, type PayDefaults } from './pay-fields';
 import { payChangeWarning } from './raise';
+import { stageRows, stagesOf, type SavedStage, type StageRow } from './trainee-stages';
+import { TraineeStagesEditor } from './trainee-stages-editor';
 
 // The form of the New contract, Renew and Edit draft pages. While HR types, it shows when the contract ends, when
 // probation ends, and the pay (pay-fields.tsx): the basic and variable parts of the gross, for a full-time contract the
 // insured salary on the social insurance copy, and the salary's breakdown down to the net. The API works the dates and
-// parts out again when it saves. Every contract runs for a fixed term (owner, 15 October 2026: no open-ended contracts),
-// so only its length is asked.
+// parts out again when it saves.
+//
+// Its length (owner, 18 October 2026: "can we update the employment types based on the labour law?"; on 15 October every
+// contract was fixed-term): fixed-term, the default, for its months (12 to start with); open-ended, with no end date and
+// no renewal, ended by notice (Labour Law Art. 156); or for a specific job, named in The job, with its expected end date
+// if known (Art. 155). A trainee's contract is the training agreement (Arts. 28–30): its length is its training stages'
+// months, each stage with its pay (trainee-stages-editor.tsx), and its gross the first stage's pay.
 //
 // The rates set by law are those of the year the contract starts (owner's request, 16 October 2026: the Super Admin
 // keeps them by year in Organization → Payroll), from the years the page loaded (`lawYears`).
@@ -30,10 +49,26 @@ type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 /** What the form starts with: the draft being changed, the version renewed, or the settings and defaults. Dates are YYYY-MM-DD. */
 export type ContractDefaults = PayDefaults & {
   startDate: string;
+  /** Fixed-term unless the draft (or the version renewed) is another. */
+  form: Length;
   durationMonths: number;
+  /** For a specific job: the job, and the expected end date ('' for none). */
+  jobToDo: string;
+  endDate: string;
   probationMonths: number;
+  /** A trainee's training stages; null for none yet (or not a trainee). */
+  traineeStages: SavedStage[] | null;
   note: string;
 };
+
+/** What Contract length says under each choice. */
+const LENGTH_HINTS: Record<Length, string> = {
+  fixed: 'For a set number of months, renewed in writing before it ends. Carried on after its end without a written renewal, the law counts it as open-ended (Labour Law Art. 88).',
+  open_ended: OPEN_ENDED_NOTE,
+  specific_job: SPECIFIC_JOB_NOTE,
+};
+
+const lengthOf = (value: string): Length => ((CONTRACT_FORMS as readonly string[]).includes(value) ? (value as Length) : 'fixed');
 
 /** A renewal's answers to "Does the pay change?". */
 const PAY_CHANGE_ANSWERS = { same: 'Same pay', changes: 'The pay changes' } as const;
@@ -49,7 +84,8 @@ export function ContractForm({
   renewal,
   payChange,
   probationHint,
-  fullTime: fullTimeProp,
+  employmentType: employmentTypeProp,
+  dateOfBirth,
   today,
   lawYears,
   job,
@@ -69,8 +105,13 @@ export function ContractForm({
   payChange?: { version: number; pay: VersionPay; changes: boolean; reason: RaiseReason | null };
   /** Why the probation starts as it does, e.g. someone who already had probation with the company. */
   probationHint?: string;
-  /** Full-time contracts have a social insurance copy, whose salary is the insured salary. */
-  fullTime: boolean;
+  /**
+   * The employment's type: a full-time contract has a social insurance copy, whose salary is the insured salary; a
+   * trainee's is the training agreement, with its stages. Hiring in one form, the type chosen with the job instead.
+   */
+  employmentType: string;
+  /** The person's date of birth (YYYY-MM-DD), for a trainee's age (at least 14, Art. 28); null when not recorded. */
+  dateOfBirth: string | null;
   /** YYYY-MM-DD, for the salary's year (its rates set by law) while there is no start date. */
   today: string;
   /** The rates set by law of each year kept (GET /payroll/law-rates, else the built-in ones): the salary's year's are used. */
@@ -78,7 +119,7 @@ export function ContractForm({
   /**
    * Hiring in one form (Add employment; owner's decision, 16 October 2026): the job's fields, above the contract's terms
    * in the same form and saved with them. The contract then starts on the join date typed there (no start date is
-   * asked), and its kind follows the employment type chosen there rather than `fullTime`.
+   * asked), and its kind follows the employment type chosen there rather than `employmentType`.
    */
   job?: (state: FormState, fid: (name: string) => string) => React.ReactNode;
   cancelHref: string;
@@ -91,7 +132,11 @@ export function ContractForm({
   // What is typed, for the previews (the fields themselves stay uncontrolled); the pay fields keep their own (usePay).
   const [typed, setTyped] = useState<Record<string, string>>(() => ({
     startDate: valueOf(state, 'startDate', formatDate(defaults.startDate)),
+    form: valueOf(state, 'form', defaults.form),
     durationMonths: valueOf(state, 'durationMonths', String(defaults.durationMonths)),
+    // for a specific job, kept while another length is tried
+    jobToDo: valueOf(state, 'jobToDo', defaults.jobToDo),
+    endDate: valueOf(state, 'endDate', formatDate(defaults.endDate)),
     probationMonths: valueOf(state, 'probationMonths', String(defaults.probationMonths)),
     // hiring in one form: the job's join date and employment type, typed above the contract's terms
     joinDate: valueOf(state, 'joinDate', ''),
@@ -100,16 +145,32 @@ export function ContractForm({
     payChange: valueOf(state, 'payChange', payChange?.changes ? 'changes' : 'same'),
   }));
 
+  // a trainee's training stages, as typed (the editor reports them): the gross and the length follow them
+  const [stages, setStages] = useState<StageRow[]>(() => stageRows(state, defaults.traineeStages));
+
   // hiring in one form, the contract starts on the join date typed with the job, and its kind follows the employment type
   const start = renewal ? renewal.startDate : parseDate(job ? typed.joinDate : typed.startDate) || null;
-  const fullTime = job ? typed.employmentType === 'full_time' : fullTimeProp;
-  const months = Number(typed.durationMonths);
-  const end = start && Number.isInteger(months) && months >= 1 ? contractEnd(start, months) : null;
+  const type = job ? typed.employmentType : employmentTypeProp;
+  const fullTime = type === 'full_time';
+  const trainee = type === 'trainee';
+  // a training agreement runs for its stages, one after the other: a fixed term of their months
+  const length = trainee ? 'fixed' : lengthOf(typed.form);
+  const trainingMonths = traineeMonths(stagesOf(stages));
+  const months = trainee ? trainingMonths : Number(typed.durationMonths);
+  const end =
+    length === 'fixed'
+      ? start && Number.isInteger(months) && months >= 1
+        ? contractEnd(start, months)
+        : null
+      : length === 'specific_job'
+        ? parseDate(typed.endDate) || null
+        : null;
   const probation = renewal ? 0 : Number(typed.probationMonths);
   const probationEnds = start && Number.isInteger(probation) && probation > 0 && probation <= 3 ? probationEnd(start, probation) : null;
   // the salary, with the rates set by law of the year the contract starts (this year while there is no start date)
   const year = Number((start ?? today).slice(0, 4));
-  const pay = usePay(state, defaults, allowanceTypes, lawRatesFor(year, lawYears));
+  const rates = lawRatesFor(year, lawYears);
+  const pay = usePay(state, defaults, allowanceTypes, rates, trainee ? (stages[0]?.pay ?? '') : null);
   const answer = answerOf(typed.payChange);
   const payWarning = payChange && payChangeWarning(answer, typedPayOf(pay), payChange.pay, payChange.version);
 
@@ -117,8 +178,8 @@ export function ContractForm({
     const t = e.target;
     if (!((t instanceof HTMLInputElement || t instanceof HTMLSelectElement) && t.name)) return;
     const { name, value } = t;
-    // the allowance rows report their changes through onChange
-    if (name === 'allowanceTypeId' || name === 'allowanceAmount') return;
+    // the allowance rows and the training stages report their changes through onChange
+    if (name === 'allowanceTypeId' || name === 'allowanceAmount' || name.startsWith('traineeStage')) return;
     if (pay.track(name, value)) return;
     setTyped((v) => ({ ...v, [name]: value }));
   }
@@ -167,29 +228,6 @@ export function ContractForm({
         </div>
 
         <div>
-          <label htmlFor={fid('durationMonths')} className="label">
-            Length in months
-          </label>
-          <input
-            id={fid('durationMonths')}
-            name="durationMonths"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={60}
-            step={1}
-            required
-            aria-describedby={fid('durationMonths-hint')}
-            defaultValue={typed.durationMonths}
-            className="input tabular-nums"
-          />
-          <p id={fid('durationMonths-hint')} className="hint">
-            {end ? `Ends on ${formatDate(end)}.` : start ? 'Enter the length to see when it ends.' : 'Enter the start date to see when it ends.'} Every
-            contract is for a fixed term, renewed in writing before it ends.
-          </p>
-        </div>
-
-        <div>
           <label htmlFor={fid('probationMonths')} className="label">
             Probation in months
           </label>
@@ -217,6 +255,92 @@ export function ContractForm({
           </p>
         </div>
       </div>
+
+      {trainee ? (
+        // the training agreement: its length is its stages' months, one after the other (not sent: worked out from them)
+        <div className="space-y-2">
+          <input type="hidden" name="form" value="fixed" />
+          <TraineeStagesEditor
+            state={state}
+            fid={fid}
+            saved={defaults.traineeStages}
+            minimumWage={typeof rates.minimumWage === 'number' ? rates.minimumWage : null}
+            dateOfBirth={dateOfBirth}
+            startDate={start}
+            onChange={setStages}
+          />
+          {end && <p className="text-sm">The training agreement ends on {formatDate(end)}, after its last stage.</p>}
+        </div>
+      ) : (
+        <fieldset className="space-y-4" aria-describedby={fid('form-hint')}>
+          <legend className="label">Contract length</legend>
+          <div className="flex flex-wrap gap-2">
+            {CONTRACT_FORMS.map((f) => (
+              <label key={f} className={choice}>
+                <input type="radio" name="form" value={f} defaultChecked={length === f} className="size-4 accent-accent" />
+                {f === 'fixed' ? `${CONTRACT_FORM_LABELS.fixed} (the default)` : CONTRACT_FORM_LABELS[f]}
+              </label>
+            ))}
+          </div>
+          <p id={fid('form-hint')} className="hint">
+            {LENGTH_HINTS[length]}
+          </p>
+          {length === 'fixed' && (
+            <div className="sm:max-w-[calc(50%-0.625rem)]">
+              <label htmlFor={fid('durationMonths')} className="label">
+                Length in months
+              </label>
+              <input
+                id={fid('durationMonths')}
+                name="durationMonths"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={60}
+                step={1}
+                required
+                aria-describedby={fid('durationMonths-hint')}
+                defaultValue={typed.durationMonths}
+                className="input tabular-nums"
+              />
+              <p id={fid('durationMonths-hint')} className="hint">
+                {end ? `Ends on ${formatDate(end)}.` : start ? 'Enter the length to see when it ends.' : 'Enter the start date to see when it ends.'}
+              </p>
+            </div>
+          )}
+          {length === 'specific_job' && (
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div>
+                <label htmlFor={fid('jobToDo')} className="label">
+                  The job
+                </label>
+                <input
+                  id={fid('jobToDo')}
+                  name="jobToDo"
+                  required
+                  maxLength={500}
+                  autoComplete="off"
+                  aria-describedby={fid('jobToDo-hint')}
+                  defaultValue={typed.jobToDo}
+                  className="input"
+                />
+                <p id={fid('jobToDo-hint')} className="hint">
+                  What the contract is for, as the contract names it, e.g. &quot;Building the new website&quot;.
+                </p>
+              </div>
+              <div>
+                <label htmlFor={fid('endDate')} className="label">
+                  Expected end date {optional}
+                </label>
+                <DateInput id={fid('endDate')} name="endDate" aria-describedby={fid('endDate-hint')} defaultValue={typed.endDate} />
+                <p id={fid('endDate-hint')} className="hint">
+                  When the job should be done, if known. The contract ends when it is done.
+                </p>
+              </div>
+            </div>
+          )}
+        </fieldset>
+      )}
 
       <PayFields
         pay={pay}

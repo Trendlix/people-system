@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { ArrayUnique, IsArray, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateBy, ValidateIf } from 'class-validator';
+import { ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateBy, ValidateIf } from 'class-validator';
 import {
   EMPLOYMENT_TYPES,
   OFFER_SEND_WAYS,
@@ -8,16 +8,19 @@ import {
   phoneOk,
   phoneTidy,
   WORK_ARRANGEMENTS,
+  WORK_NATURES,
   type EmploymentType,
   type OfferSendWay,
   type OfferShownStatus,
   type PayBasis,
   type WorkArrangement,
+  type WorkNature,
 } from '@trendlix/shared';
 import { AllowanceRows, type AllowanceAmountDto } from '../allowances/allowances.dto.js';
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
 import { PROBATION_CAP_MESSAGE } from '../contracts/contracts.dto.js';
+import { COMMISSION_MESSAGE, EMPLOYMENT_TYPE_MESSAGE, WORK_NATURE_MESSAGE } from '../employees/employment.dto.js';
 import { PDF_ONLY } from '../pdf/pdf-file.js';
 
 // Job offers (owner's request, 15 October 2026): the candidate, the position and the terms HR drafts, sending the
@@ -102,6 +105,17 @@ class OfferFieldsDto {
   @Sent() @IsArray() @ArrayUnique() @IsInt({ each: true }) @Min(0, { each: true }) @Max(6, { each: true })
   officeDays?: number[];
 
+  /**
+   * Paid by commission, a full-time offer only (owner, 18 October 2026: Sales became Full-time with this flag): its job
+   * offer is the commission one when published. Off unless sent; carried to the employment when accepted.
+   */
+  @Sent() @IsBoolean({ message: COMMISSION_MESSAGE })
+  paidByCommission?: boolean;
+
+  /** The nature of the work (Labour Law 14/2025 Art. 1(6–8)): regular unless sent; carried to the employment. */
+  @Sent() @IsIn(WORK_NATURES, { message: WORK_NATURE_MESSAGE })
+  workNature?: WorkNature;
+
   /** Monthly unless sent; by the hour, the gross is the monthly estimate (hourly rate × hours a week × 52 ÷ 12). */
   @Sent() @IsIn(PAY_BASES, { message: 'Choose Monthly salary or By the hour.' })
   payBasis?: PayBasis;
@@ -166,7 +180,7 @@ export class CreateOfferDto extends OfferFieldsDto {
   @LowerEmail() @IsEmail({}, { message: EMAIL_MESSAGE }) @MaxLength(254)
   email: string;
 
-  @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
+  @IsIn(EMPLOYMENT_TYPES, { message: EMPLOYMENT_TYPE_MESSAGE })
   employmentType: EmploymentType;
 
   /** The expected first day. */
@@ -185,7 +199,7 @@ export class UpdateOfferDto extends OfferFieldsDto {
   @Sent() @LowerEmail() @IsEmail({}, { message: EMAIL_MESSAGE }) @MaxLength(254)
   email?: string;
 
-  @Sent() @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
+  @Sent() @IsIn(EMPLOYMENT_TYPES, { message: EMPLOYMENT_TYPE_MESSAGE })
   employmentType?: EmploymentType;
 
   @Sent() @IsDateOnly('Enter the expected join date.')

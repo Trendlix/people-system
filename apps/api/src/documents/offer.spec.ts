@@ -43,9 +43,13 @@ describe('which documents the Employment tab offers', () => {
     expect(offered('clearance_dues', s)).toBe(false);
   });
 
-  it('an intern gets the internship contract, offer and certificate; payslips never', () => {
-    const s = { employmentType: 'internship', ending: null, ended: false } as const;
-    expect(offeredSlots(s)).toMatchObject({ contract: ['contract_internship', 'contract_amendment'], letters: ['bank_letter', 'hr_letter_ar', 'hr_letter_en', 'cert_experience', 'cert_internship'] });
+  it('a trainee gets the training agreement, offer and certificate (the internship slots, 18 October 2026); payslips never', () => {
+    const s = { employmentType: 'trainee', ending: null, ended: false } as const;
+    expect(offeredSlots(s)).toMatchObject({
+      contract: ['contract_internship', 'contract_amendment'],
+      hiring: ['offer_internship', 'nda'],
+      letters: ['bank_letter', 'hr_letter_ar', 'hr_letter_en', 'cert_experience', 'cert_internship'],
+    });
     expect(offered('payslip_ar', s)).toBe(false);
     expect(offered('offer_full_time', s)).toBe(false);
     expect(offered('no_such_slot', s)).toBe(false);
@@ -53,7 +57,25 @@ describe('which documents the Employment tab offers', () => {
 
   it('a freelancer’s contract is the freelance agreement', () => {
     expect(offeredSlots({ employmentType: 'freelance', ending: null, ended: false }).contract).toEqual(['agreement_freelance', 'contract_amendment']);
-    expect(offeredSlots({ employmentType: 'sales', ending: null, ended: false }).contract).toEqual(['contract_sales', 'contract_amendment']);
+  });
+
+  it('a full-time employment paid by commission gets the commission contract and offer once published, else the full-time ones (owner, 18 October 2026)', () => {
+    const commission = { employmentType: 'full_time', paidByCommission: true, ending: null, ended: false } as const;
+    expect(offeredSlots(commission)).toMatchObject({
+      contract: ['contract_full_time', 'contract_full_time_insurance', 'contract_amendment'],
+      hiring: ['offer_full_time', 'nda'],
+    });
+    expect(offeredSlots({ ...commission, commissionPublished: ['contract_sales', 'offer_sales'] })).toMatchObject({
+      // the social insurance copy stays: it is the full-time contract's second copy
+      contract: ['contract_full_time_insurance', 'contract_sales', 'contract_amendment'],
+      hiring: ['offer_sales', 'nda'],
+    });
+    // not paid by commission: never the commission ones
+    expect(offeredSlots({ ...commission, paidByCommission: false, commissionPublished: ['contract_sales'] }).contract).toEqual([
+      'contract_full_time',
+      'contract_full_time_insurance',
+      'contract_amendment',
+    ]);
   });
 
   it('a salary amendment gets its letter, a whole contract its copies (owner’s decisions, 16 October 2026)', () => {

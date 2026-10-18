@@ -44,6 +44,16 @@ export class ContractsController {
     return this.contracts.expiring(query.within ?? 60);
   }
 
+  /**
+   * The labour law's warnings for HR's dashboard (owner, 18 October 2026): fixed terms become open-ended (Art. 88(3)) and
+   * casual work past six months (Art. 1(7)).
+   */
+  @Roles('hr', 'ceo')
+  @Get('contracts/law-warnings')
+  lawWarnings() {
+    return this.contracts.lawWarnings();
+  }
+
   @Roles('hr')
   @Patch('contracts/:id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateContractDto, @CurrentUser() user: SessionUser) {

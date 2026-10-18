@@ -20,8 +20,20 @@ export const ROLE_LABELS: Record<Role, string> = {
   super_admin: 'Super Admin',
 };
 
-export const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'internship', 'freelance', 'sales'] as const;
+/**
+ * The employment types, by Labour Law 14/2025 (owner, 18 October 2026: "can we update the employment types based on the
+ * labour law?"). Sales became Full-time paid by commission (Employment.paidByCommission: the law's wage includes "العمولة
+ * أو النسبة المئوية", Art. 1(4)(أ), so a sales person is a full-time worker); Internship became Trainee, the law's
+ * المتدرج (Art. 1(2): "كل من التحق لدى صاحب عمل بقصد تعلم مهنة أو صنعة أو حرفة لقاء أجر"), with a written training
+ * agreement (Arts. 28–30); Freelance is kept, outside the labour law, whose worker works for an employer "تحت إدارته أو
+ * إشرافه" (Art. 1(1)): a freelancer doesn't, so they get no leave, no company social insurance and a service agreement
+ * rather than an employment contract. More of the law's dimensions: employment-types.ts.
+ */
+export const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'trainee', 'freelance'] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
+
+/** Whether an employment type is under the labour law: all but freelance (Art. 1(1); see EMPLOYMENT_TYPES). */
+export const underLabourLaw = (type: EmploymentType | string): boolean => type !== 'freelance';
 
 export const EMPLOYEE_STATUSES = ['active', 'probation', 'on_leave', 'notice_period', 'resigned', 'terminated'] as const;
 export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
@@ -63,7 +75,7 @@ export type Governorate = (typeof GOVERNORATES)[number];
 
 // What the screens show for each stored value.
 export const LABELS = {
-  employmentType: { full_time: 'Full-time', part_time: 'Part-time', internship: 'Internship', freelance: 'Freelance', sales: 'Sales' },
+  employmentType: { full_time: 'Full-time', part_time: 'Part-time', trainee: 'Trainee', freelance: 'Freelance (outside the labour law)' },
   status: {
     active: 'Active',
     probation: 'Probation',
@@ -105,6 +117,17 @@ export const WORK_ARRANGEMENT_LABELS_AR: Record<WorkArrangement, string> = {
   indoor_outdoor: 'داخل المكتب وخارجه',
   hybrid: 'هجين (المكتب والمنزل)',
   wfh: 'العمل من المنزل',
+};
+
+/**
+ * The employment types in Arabic, as an Arabic document prints them ({{employment_type_ar}}); the screens show
+ * LABELS.employmentType. Part-time in the law's words, "العمل بعض الوقت" (Art. 96(2)); the trainee "المتدرج" (Art. 1(2)).
+ */
+export const EMPLOYMENT_TYPE_LABELS_AR: Record<EmploymentType, string> = {
+  full_time: 'دوام كامل',
+  part_time: 'عمل بعض الوقت',
+  trainee: 'متدرج',
+  freelance: 'عمل حر (غير خاضع لقانون العمل)',
 };
 
 /** Months of probation after the join date, unless HR sets another end date. */
@@ -283,6 +306,10 @@ export * from './reimbursements.js';
 // installments of advances and loans made at once, recurring deductions (e.g. a medical share), and the Labour Law's
 // limits on them: 10% of the wage for installments, 25% for other deductions, 5 days' wage for damage
 export * from './installments.js';
+
+// employment types by the labour law (owner, 18 October 2026): the nature of the work (temporary, casual, seasonal),
+// remote work, the trainee's training stages, and when a fixed-term contract has become open-ended (Art. 88)
+export * from './employment-types.js';
 
 // leave (Labour Law 14/2025, Arts. 54–57 and 124–133): the law's leave types, the annual leave's days, counting a leave's
 // days, the requests' statuses and steps, their problems, Year Closing, and the month's leave days for the payroll

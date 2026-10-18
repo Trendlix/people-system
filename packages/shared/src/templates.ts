@@ -43,7 +43,7 @@ export const TEMPLATE_TRIGGER_LABELS: Record<TemplateTrigger, string> = {
   resignation_recorded: 'When a resignation is recorded',
   last_working_day: 'On the last working day',
   end_of_service: 'At the end of service',
-  end_of_internship: 'At the end of an internship',
+  end_of_internship: 'At the end of the training',
   raise: 'On a raise',
 };
 
@@ -58,7 +58,7 @@ export type TemplateLanguage = (typeof TEMPLATE_LANGUAGES)[number];
 export const TEMPLATE_SIGNERS = ['both', 'employee', 'company', 'none'] as const;
 export type TemplateSigners = (typeof TEMPLATE_SIGNERS)[number];
 
-const ALL: readonly EmploymentType[] = ['full_time', 'part_time', 'internship', 'freelance', 'sales'];
+const ALL: readonly EmploymentType[] = ['full_time', 'part_time', 'trainee', 'freelance'];
 
 export interface TemplateSlot {
   key: string;
@@ -73,6 +73,11 @@ export interface TemplateSlot {
   copyOf?: string;
   /** Tags that read another value on this document (tag → the tag whose value it takes), e.g. the insured salary. */
   overrides?: Readonly<Record<string, string>>;
+  /**
+   * For a full-time employment or offer paid by commission (the Sales slots, since 18 October 2026): chosen for one
+   * when a version is published, else the full-time slot is (contractSlotKeys, offerSlotKeys).
+   */
+  paidByCommission?: boolean;
 }
 
 /** The template library: one slot per document. */
@@ -91,20 +96,42 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
     overrides: { gross_salary: 'insured_salary', gross_salary_words: 'insured_salary_words', gross_salary_words_en: 'insured_salary_words_en' },
   },
   { key: 'contract_part_time', name: 'Contract · Part-time', folder: 'contracts', language: null, appliesTo: ['part_time'], triggers: ['on_hire', 'renewal'], signers: 'both' },
-  { key: 'contract_internship', name: 'Contract · Internship', folder: 'contracts', language: null, appliesTo: ['internship'], triggers: ['on_hire'], signers: 'both' },
-  { key: 'contract_sales', name: 'Contract · Sales', folder: 'contracts', language: null, appliesTo: ['sales'], triggers: ['on_hire', 'renewal'], signers: 'both' },
-  { key: 'agreement_freelance', name: 'Freelance agreement', folder: 'contracts', language: null, appliesTo: ['freelance'], triggers: ['on_hire'], signers: 'both' },
+  // employment types by the labour law (owner, 18 October 2026): every slot keeps its key, so the templates uploaded
+  // keep working. Internship became Trainee, whose contract is the training agreement (Labour Law 14/2025 Art. 29: "يجب
+  // أن يكون اتفاق التدرج مكتوبا"); Sales became Full-time paid by commission, its slots chosen for one (paidByCommission);
+  // a freelancer, outside the labour law, signs a service agreement rather than an employment contract
+  { key: 'contract_internship', name: 'Training agreement · Trainee', folder: 'contracts', language: null, appliesTo: ['trainee'], triggers: ['on_hire'], signers: 'both' },
+  {
+    key: 'contract_sales',
+    name: 'Contract · Full-time, paid by commission',
+    folder: 'contracts',
+    language: null,
+    appliesTo: ['full_time'],
+    triggers: ['on_hire', 'renewal'],
+    signers: 'both',
+    paidByCommission: true,
+  },
+  { key: 'agreement_freelance', name: 'Service agreement · Freelance (outside the labour law)', folder: 'contracts', language: null, appliesTo: ['freelance'], triggers: ['on_hire'], signers: 'both' },
   // a raise by amendment (owner's decision, 16 October 2026): the new pay on the same contract, signed as a letter
   // added to it instead of a whole contract, for an amendment the CEO approved; its language set when it is uploaded
   { key: 'contract_amendment', name: 'Salary amendment (ملحق عقد)', folder: 'contracts', language: null, appliesTo: ALL, triggers: ['raise'], signers: 'both' },
   { key: 'offer_full_time', name: 'Job offer · Full-time', folder: 'job_offers', language: null, appliesTo: ['full_time'], triggers: ['offer_stage'], signers: 'both' },
   { key: 'offer_part_time', name: 'Job offer · Part-time', folder: 'job_offers', language: null, appliesTo: ['part_time'], triggers: ['offer_stage'], signers: 'both' },
   { key: 'offer_freelance', name: 'Job offer · Freelance', folder: 'job_offers', language: null, appliesTo: ['freelance'], triggers: ['offer_stage'], signers: 'both' },
-  { key: 'offer_internship', name: 'Job offer · Internship', folder: 'job_offers', language: null, appliesTo: ['internship'], triggers: ['offer_stage'], signers: 'both' },
-  { key: 'offer_sales', name: 'Job offer · Sales', folder: 'job_offers', language: null, appliesTo: ['sales'], triggers: ['offer_stage'], signers: 'both' },
+  { key: 'offer_internship', name: 'Job offer · Trainee', folder: 'job_offers', language: null, appliesTo: ['trainee'], triggers: ['offer_stage'], signers: 'both' },
+  {
+    key: 'offer_sales',
+    name: 'Job offer · Full-time, paid by commission',
+    folder: 'job_offers',
+    language: null,
+    appliesTo: ['full_time'],
+    triggers: ['offer_stage'],
+    signers: 'both',
+    paidByCommission: true,
+  },
   { key: 'nda', name: 'NDA', folder: 'nda', language: null, appliesTo: ALL, triggers: ['on_hire'], signers: 'both' },
   { key: 'cert_experience', name: 'Experience certificate', folder: 'certificates', language: null, appliesTo: ALL, triggers: ['end_of_service', 'on_request'], signers: 'company' },
-  { key: 'cert_internship', name: 'Internship certificate', folder: 'certificates', language: null, appliesTo: ['internship'], triggers: ['end_of_internship'], signers: 'company' },
+  { key: 'cert_internship', name: 'Training certificate', folder: 'certificates', language: null, appliesTo: ['trainee'], triggers: ['end_of_internship'], signers: 'company' },
   { key: 'hr_letter_en', name: 'HR letter · English', folder: 'letters', language: 'en', appliesTo: ALL, triggers: ['on_request'], signers: 'company' },
   { key: 'hr_letter_ar', name: 'HR letter · Arabic', folder: 'letters', language: 'ar', appliesTo: ALL, triggers: ['on_request'], signers: 'company' },
   { key: 'bank_letter', name: 'Bank account letter', folder: 'letters', language: null, appliesTo: ALL, triggers: ['on_hire', 'on_request'], signers: 'company' },
@@ -118,6 +145,24 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   { key: 'resignation_request', name: 'Resignation request (طلب استقالة)', folder: 'resignation', language: 'ar', appliesTo: ALL, triggers: ['resignation_recorded'], signers: 'employee' },
   { key: 'clearance_dues', name: 'Clearance and dues (إقرار إخلاء طرف واستلام مستحقات)', folder: 'resignation', language: 'ar', appliesTo: ALL, triggers: ['last_working_day'], signers: 'both' },
 ];
+
+/**
+ * The commission slots and the full-time slot each stands in for (owner, 18 October 2026: Sales became Full-time paid by
+ * commission): a full-time employment or offer paid by commission is given the commission slot when it has a published
+ * version, else the full-time slot; one not paid by commission the full-time slot only.
+ */
+export const COMMISSION_SLOTS: Readonly<Record<string, string>> = { contract_sales: 'contract_full_time', offer_sales: 'offer_full_time' };
+
+/**
+ * Whether a slot is chosen by the pay (see COMMISSION_SLOTS): a commission slot for one paid by commission when
+ * `published(it)`; the full-time slot it stands in for unless that one is; every other slot always (its employment
+ * types are checked apart).
+ */
+export function slotChosenByPay(slotKey: string, paidByCommission: boolean, published: (slotKey: string) => boolean): boolean {
+  if (COMMISSION_SLOTS[slotKey]) return paidByCommission && published(slotKey);
+  const commission = Object.keys(COMMISSION_SLOTS).find((k) => COMMISSION_SLOTS[k] === slotKey);
+  return !(commission && paidByCommission && published(commission));
+}
 
 /** The groups the tags are listed in. */
 export const TAG_GROUPS = ['employee', 'national_id', 'job_contract', 'pay', 'raise', 'offer', 'bank', 'ending', 'letters', 'payslip', 'company', 'auto'] as const;
@@ -259,6 +304,36 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'pay_basis_en', group: 'job_contract', labelEn: 'Pay basis (English)', labelAr: 'طريقة الأجر بالإنجليزية', source: 'Contract or offer', note: 'Monthly salary / By the hour' },
   { tag: 'days_per_week', group: 'job_contract', labelEn: 'Working days a week', labelAr: 'أيام العمل أسبوعياً', source: 'Contract or offer' },
   { tag: 'hours_per_week', group: 'job_contract', labelEn: 'Hours a week', labelAr: 'ساعات العمل أسبوعياً', source: 'Contract or offer: by the hour' },
+  // employment types by the labour law (owner, 18 October 2026): the contract's length (Labour Law 14/2025 Arts. 87, 88,
+  // 155), the job of a specific-job contract, the nature of the work (Art. 1(6–8)), remote work (Art. 96(1)) and the pay
+  // by commission (Art. 1(4)(أ)); each in Arabic and English
+  { tag: 'contract_form', group: 'job_contract', labelEn: 'Contract length', labelAr: 'مدة العقد', source: 'Contract: in the template’s language', note: 'Fixed-term / Open-ended / For a specific job' },
+  { tag: 'contract_form_ar', group: 'job_contract', labelEn: 'Contract length (Arabic)', labelAr: 'مدة العقد بالعربي', source: 'Contract', note: 'محدد المدة / غير محدد المدة / لإنجاز عمل معين' },
+  { tag: 'contract_form_en', group: 'job_contract', labelEn: 'Contract length (English)', labelAr: 'مدة العقد بالإنجليزية', source: 'Contract', note: 'Fixed-term / Open-ended / For a specific job' },
+  { tag: 'job_to_do', group: 'job_contract', labelEn: 'The job (specific-job contract)', labelAr: 'العمل المتفق على إنجازه', source: 'Contract: for a specific job, as typed (Labour Law Art. 155)' },
+  {
+    tag: 'work_nature',
+    group: 'job_contract',
+    labelEn: 'Nature of the work',
+    labelAr: 'نوع العمل',
+    source: 'Employment or offer: in the template’s language (Labour Law Art. 1)',
+    note: 'Regular / Temporary / Casual / Seasonal',
+  },
+  { tag: 'work_nature_ar', group: 'job_contract', labelEn: 'Nature of the work (Arabic)', labelAr: 'نوع العمل بالعربي', source: 'Employment or offer', note: 'عمل دائم / عمل مؤقت / عمل عرضي / عمل موسمي' },
+  { tag: 'work_nature_en', group: 'job_contract', labelEn: 'Nature of the work (English)', labelAr: 'نوع العمل بالإنجليزية', source: 'Employment or offer', note: 'Regular / Temporary / Casual / Seasonal' },
+  {
+    tag: 'work_pattern',
+    group: 'job_contract',
+    labelEn: 'Remote work',
+    labelAr: 'نمط العمل',
+    source: 'Employment or offer: the work arrangement in the law’s words (Labour Law Art. 96), in the template’s language',
+    note: 'On site / Partly remote work (Hybrid) / Remote work (Work from home)',
+  },
+  { tag: 'work_pattern_ar', group: 'job_contract', labelEn: 'Remote work (Arabic)', labelAr: 'نمط العمل بالعربي', source: 'Employment or offer', note: 'في موقع العمل / عمل عن بعد جزئيًا / عمل عن بعد' },
+  { tag: 'work_pattern_en', group: 'job_contract', labelEn: 'Remote work (English)', labelAr: 'نمط العمل بالإنجليزية', source: 'Employment or offer', note: 'On site / Partly remote work / Remote work' },
+  { tag: 'paid_by_commission', group: 'job_contract', labelEn: 'Paid by commission', labelAr: 'بالعمولة', source: 'Employment or offer: in the template’s language', note: 'Yes / No' },
+  { tag: 'paid_by_commission_ar', group: 'job_contract', labelEn: 'Paid by commission (Arabic)', labelAr: 'بالعمولة بالعربي', source: 'Employment or offer', note: 'نعم / لا' },
+  { tag: 'paid_by_commission_en', group: 'job_contract', labelEn: 'Paid by commission (English)', labelAr: 'بالعمولة بالإنجليزية', source: 'Employment or offer', note: 'Yes / No' },
   { tag: 'gross_salary', group: 'pay', labelEn: 'Gross salary', labelAr: 'راتب شامل', source: 'Contract', restricted: true },
   { tag: 'gross_salary_words', group: 'pay', labelEn: 'Gross salary in words (Arabic)', labelAr: 'تفقيط الراتب', source: 'Contract: in Arabic words, فقط … لا غير', restricted: true },
   { tag: 'gross_salary_words_en', group: 'pay', labelEn: 'Gross salary in words (English)', labelAr: 'تفقيط الراتب بالإنجليزية', source: 'Contract or offer: in English words', note: 'E.g. Fifteen thousand Egyptian pounds only', restricted: true },
@@ -280,6 +355,19 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
     source: 'Contract or offer: by the hour, the approximate net ÷ the hours of a month (hours a week × 52 ÷ 12)',
     restricted: true,
   },
+  // a trainee's training agreement (owner, 18 October 2026; Labour Law Art. 29: "ومراحلها المتتابعة والمكافأة التى يحصل
+  // عليها المتدرج فى كل مرحلة بصورة تصاعدية"): each stage, its months and its pay a month, in order
+  {
+    tag: 'trainee_stages',
+    group: 'pay',
+    labelEn: 'Training stages',
+    labelAr: 'مراحل التدرج',
+    source: 'Contract: a trainee’s training stages, each with its months and pay a month, in the template’s language',
+    restricted: true,
+    note: 'e.g. 1. Basics: 3 months, 4,000 a month; 2. Practice: 3 months, 5,500 a month',
+  },
+  { tag: 'trainee_stages_ar', group: 'pay', labelEn: 'Training stages (Arabic)', labelAr: 'مراحل التدرج بالعربي', source: 'Contract: a trainee’s training stages', restricted: true, note: 'e.g. 1. الأساسيات: ثلاثة أشهر، 4,000 شهريًا' },
+  { tag: 'trainee_stages_en', group: 'pay', labelEn: 'Training stages (English)', labelAr: 'مراحل التدرج بالإنجليزية', source: 'Contract: a trainee’s training stages', restricted: true, note: 'e.g. 1. Basics: 3 months, 4,000 a month' },
   { tag: 'allowances', group: 'pay', labelEn: 'Allowances', labelAr: 'البدلات', source: 'Contract or offer: each allowance and its amount a month, in the template’s language', restricted: true },
   { tag: 'allowances_ar', group: 'pay', labelEn: 'Allowances (Arabic)', labelAr: 'البدلات بالعربي', source: 'Contract or offer: each allowance and its amount a month', restricted: true },
   { tag: 'allowances_en', group: 'pay', labelEn: 'Allowances (English)', labelAr: 'البدلات بالإنجليزية', source: 'Contract or offer: each allowance and its amount a month', restricted: true },

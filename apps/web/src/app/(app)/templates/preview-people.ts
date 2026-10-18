@@ -1,4 +1,4 @@
-import { EMPLOYMENT_TYPES, OFFER_STATUS_LABELS, offerSlotKey, type OfferShownStatus } from '@trendlix/shared';
+import { OFFER_STATUS_LABELS, TEMPLATE_SLOTS, type OfferShownStatus } from '@trendlix/shared';
 
 // Previewing a template version with a real employee's data (owner's request, 15 October 2026: "When previewing a
 // template, fetch any demo data already uploaded"): where the browser opens the filled version, where the people to
@@ -36,9 +36,11 @@ export interface PreviewOffer {
 /** Whose data a version can be previewed with. */
 export type PreviewChoice = PreviewPerson | PreviewOffer;
 
-const OFFER_SLOTS: readonly string[] = EMPLOYMENT_TYPES.map(offerSlotKey);
+// every job offer slot, by its folder: their keys stayed when the employment types changed (owner, 18 October 2026: a
+// trainee's is offer_internship, one paid by commission offer_sales), so they no longer follow the types' names
+const OFFER_SLOTS: readonly string[] = TEMPLATE_SLOTS.filter((s) => s.folder === 'job_offers').map((s) => s.key);
 
-/** Whether a template is an employment type's job offer template, previewed with job offers' data. */
+/** Whether a template is a job offer template (an employment type's, or paid by commission), previewed with job offers' data. */
 export const isOfferSlot = (slotKey: string) => OFFER_SLOTS.includes(slotKey);
 
 export const PREVIEW_HINT = "Filled with a real employee's data, nothing saved. Missing values show as [Field].";

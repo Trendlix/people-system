@@ -1,4 +1,4 @@
-import { insuredWageOf, lawRatesFor, type LawRates, type OfferShownStatus } from '@trendlix/shared';
+import { insuredWageOf, lawRatesFor, workPatternOf, type LawRates, type OfferShownStatus, type WorkNature } from '@trendlix/shared';
 import { ALLOWANCE_ORDER, allowancesTotal, allowanceView } from '../allowances/rows.js';
 import { fromDateOnly } from '../common/date-only.js';
 import { departmentName } from '../contracts/views.js';
@@ -99,6 +99,10 @@ export function offerView(o: OfferRow, ctx: OfferContext) {
     shift: o.shift && { id: o.shift.id, code: o.shift.code, workingDays: o.shift.workingDays },
     workArrangement: o.workArrangement,
     officeDays: [...o.officeDays].sort((a, b) => a - b),
+    // by the labour law (owner, 18 October 2026): paid by commission (full-time), the nature of the work, remote work
+    paidByCommission: o.paidByCommission,
+    workNature: o.workNature as WorkNature,
+    workPattern: workPatternOf(o.workArrangement),
     joinDate: fromDateOnly(o.joinDate),
     payBasis: o.payBasis,
     grossSalary: sees ? o.grossSalary.toNumber() : null,
@@ -151,6 +155,7 @@ export const OFFER_LIST_SELECT = {
   fullNameAr: true,
   email: true,
   employmentType: true,
+  paidByCommission: true,
   jobTitle: { select: { titleEn: true, titleAr: true } },
   department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
   joinDate: true,
@@ -176,6 +181,7 @@ export function offerListView(o: OfferListRow, seesSalary: boolean) {
     fullNameAr: o.fullNameAr,
     email: o.email,
     employmentType: o.employmentType,
+    paidByCommission: o.paidByCommission,
     jobTitle: o.jobTitle,
     departmentName: departmentName(o.department),
     joinDate: fromDateOnly(o.joinDate),

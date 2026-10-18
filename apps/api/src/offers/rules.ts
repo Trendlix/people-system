@@ -86,6 +86,17 @@ const OFFER_FIELDS: Record<string, string> = {
   work_arrangement: 'workArrangement',
   work_arrangement_ar: 'workArrangement',
   work_arrangement_en: 'workArrangement',
+  // by the labour law (owner, 18 October 2026): remote work is the work arrangement in the law's words
+  work_pattern: 'workArrangement',
+  work_pattern_ar: 'workArrangement',
+  work_pattern_en: 'workArrangement',
+  work_nature: 'workNature',
+  work_nature_ar: 'workNature',
+  work_nature_en: 'workNature',
+  paid_by_commission: 'paidByCommission',
+  paid_by_commission_ar: 'paidByCommission',
+  paid_by_commission_en: 'paidByCommission',
+  contract_form: 'durationMonths', // an offer's contract is fixed-term
   shift: 'shiftId',
   shift_ar: 'shiftId',
   shift_en: 'shiftId',

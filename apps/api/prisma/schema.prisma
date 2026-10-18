@@ -234,12 +234,14 @@ model JobTitleDuty {
 
 // ---------- employees ----------
 
+// By Labour Law 14/2025 (owner, 18 October 2026: "can we update the employment types based on the labour law?"): Sales
+// became Full-time paid by commission (Employment.paidByCommission), Internship became Trainee (المتدرج, Art. 1(2)),
+// and Freelance is kept, outside the labour law (Art. 1(1): a freelancer doesn't work "تحت إدارته أو إشرافه").
 enum EmploymentType {
   full_time
   part_time
-  internship
-  freelance
-  sales
+  trainee // the law's المتدرج: a written training agreement, its stages and rising pay (Arts. 28–30)
+  freelance // outside the labour law: no leave, no company social insurance, a service agreement
 
   @@map("employment_type")
 }
@@ -374,6 +376,10 @@ model Employment {
   // hazardous or unhealthy work, or work in a remote area: 7 more days of annual leave (Labour Law 14/2025 Art. 124:
   // "تزاد مدة الإجازة السنوية بمقدار سبعة أيام للعمال الذين يعملون فى الأعمال الخطرة، أو المضرة بالصحة، أو فى المناطق النائية")
   hazardousWork    Boolean              @default(false) @map("hazardous_work")
+  // employment types by the labour law (owner, 18 October 2026): paid by commission (full-time only; the law's wage
+  // includes "العمولة أو النسبة المئوية", Art. 1(4)(أ)), what Sales was; and the nature of the work (Art. 1(6–8))
+  paidByCommission Boolean              @default(false) @map("paid_by_commission")
+  workNature       String               @default("regular") @map("work_nature") // WORK_NATURES: regular, temporary, casual, seasonal
   shift            Shift?               @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   jdAcknowledgedAt DateTime?            @map("jd_acknowledged_at") @db.Date
   endDate          DateTime?            @map("end_date") @db.Date // empty while current
@@ -529,10 +535,17 @@ model Contract {
   employmentId        String              @map("employment_id") @db.Uuid
   employment          Employment          @relation(fields: [employmentId], references: [id], onDelete: Cascade)
   version             Int // 1, 2 … within the employment
-  form                String              @default("fixed") // always fixed: the company has no open-ended contracts (owner, 15 October 2026)
+  // CONTRACT_FORMS (Labour Law 14/2025 Arts. 87, 88, 155): fixed (the default, a year), open_ended (no end date, no
+  // duration, no renewal: it ends by notice, Art. 156) or specific_job (its job, the end date optional). On 15 October
+  // 2026 the owner had every contract fixed-term; open-ended and specific-job came back on 18 October 2026.
+  form                String              @default("fixed")
+  jobToDo             String?             @map("job_to_do") // specific_job only: the job the contract is for (Art. 155)
+  // a trainee's training agreement (Art. 29): TraineeStage[], [{ name, months, pay }], each stage's pay more than the one
+  // before, the last at least the minimum wage; the gross is the first stage's pay and payroll pays the stage in force
+  traineeStages       Json?               @map("trainee_stages")
   startDate           DateTime            @map("start_date") @db.Date
-  endDate             DateTime?           @map("end_date") @db.Date // start + duration − 1 day
-  durationMonths      Int?                @map("duration_months")
+  endDate             DateTime?           @map("end_date") @db.Date // start + duration − 1 day; none when open-ended; a specific job's optional, as expected
+  durationMonths      Int?                @map("duration_months") // none when open-ended or for a specific job
   probationMonths     Int                 @default(0) @map("probation_months") // 0–3, and 0 on a renewal (Art. 90)
   probationEnd        DateTime?           @map("probation_end") @db.Date // start + probation − 1 day; empty without probation
   // RESTRICTED (HR, Finance, CEO), like bank details
@@ -948,6 +961,8 @@ model JobOffer {
   shift             Shift?           @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   workArrangement   WorkArrangement  @default(office) @map("work_arrangement")
   officeDays        Int[]            @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
+  paidByCommission  Boolean          @default(false) @map("paid_by_commission") // full-time only; carried to the employment (18 October 2026)
+  workNature        String           @default("regular") @map("work_nature") // WORK_NATURES; carried to the employment
   joinDate          DateTime         @map("join_date") @db.Date // the expected first day
   // the terms: RESTRICTED (HR, Finance, CEO), like a contract's
   payBasis          String           @default("monthly") @map("pay_basis") // PAY_BASES
@@ -1166,6 +1181,9 @@ model PayrollLawYear {
   martyrsRate           Decimal  @map("martyrs_rate") @db.Decimal(8, 6)
   healthInsuranceRate   Decimal  @map("health_insurance_rate") @db.Decimal(8, 6)
   taxTiers              Json     @map("tax_tiers") // TaxTier[]: [{ upTo, bands: [{ upTo, rate }] }], upTo null for no limit
+  // the private sector's minimum wage a month (owner, 18 October 2026): a trainee's last stage is paid at least this
+  // (Labour Law 14/2025 Art. 29); not seeded, the owner sets it; null: not set, nothing checked against it
+  minimumWage           Decimal? @map("minimum_wage") @db.Decimal(12, 2)
   updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
   updatedById           String?  @map("updated_by") @db.Uuid // null for the rows the migration added
   updatedBy             User?    @relation("LawRatesChange", fields: [updatedById], references: [id], onDelete: SetNull)

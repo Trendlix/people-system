@@ -94,7 +94,7 @@ describe('an offer as shown', () => {
 
   it('names the position by its job title, else the employment type', () => {
     expect(positionTitle({ jobTitle: { titleEn: 'Content Creator', titleAr: null }, employmentType: 'part_time' })).toBe('Content Creator');
-    expect(positionTitle({ jobTitle: null, employmentType: 'internship' })).toBe('Internship');
+    expect(positionTitle({ jobTitle: null, employmentType: 'trainee' })).toBe('Trainee');
   });
 
   it('names a team with its department', () => {

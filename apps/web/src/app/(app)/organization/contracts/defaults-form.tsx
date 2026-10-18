@@ -58,7 +58,7 @@ export function ContractDefaultsForm({
             className="input"
           />
           <p id={fid('durationMonths-hint')} className="hint">
-            Contracts are fixed-term: each runs this long, then is renewed or ends.
+            A fixed-term contract, the default, runs this long, then is renewed or ends. Open-ended and specific-job contracts have no length (Labour Law Arts. 87, 155).
           </p>
         </div>
       </div>

@@ -220,19 +220,17 @@ describe('Template preview with data (e2e)', () => {
   });
 
   it('with no one employed of the type a template is for: nobody to choose, and the preview says so (409)', async () => {
-    // a type nobody in the database has (this file hires full- and part-time people only)
-    const SLOT_OF: Partial<Record<EmploymentType, string>> = { internship: 'cert_internship', freelance: 'agreement_freelance', sales: 'contract_sales' };
-    let slot: string | undefined;
-    for (const [type, key] of Object.entries(SLOT_OF)) {
-      if ((await prisma.employment.count({ where: { employmentType: type as EmploymentType } })) === 0) {
-        slot = key;
-        break;
-      }
+    // the commission contract is for full-time employments paid by commission (owner, 18 October 2026); other files may
+    // have left some in the shared test database, so theirs are set aside for this test and put back after it
+    const paid = await prisma.employment.findMany({ where: { paidByCommission: true }, select: { id: true } });
+    await prisma.employment.updateMany({ where: { id: { in: paid.map((e) => e.id) } }, data: { paidByCommission: false } });
+    try {
+      const v = await draft('contract_sales', docx({ body: p(r('{{full_name_en}}')) }), 'en');
+      expect(await people(v.id)).toEqual([]);
+      expect((await preview(v.id).expect(409)).body.toString()).toContain(NO_ONE);
+    } finally {
+      await prisma.employment.updateMany({ where: { id: { in: paid.map((e) => e.id) } }, data: { paidByCommission: true } });
     }
-    expect(slot, 'every employment type has someone in the test database').toBeDefined();
-    const v = await draft(slot!, docx({ body: p(r('{{full_name_en}}')) }), 'en');
-    expect(await people(v.id)).toEqual([]);
-    expect((await preview(v.id).expect(409)).body.toString()).toContain(NO_ONE);
   });
 
   it('lists those the template is for, the most of its tags filled in first, with how many have a value', async () => {
@@ -455,20 +453,20 @@ describe('Template preview with data (e2e)', () => {
       const res = await preview(partTime.id).expect(200);
       expect(res.headers['x-preview-employee']).toBe(list[0].id);
 
-      // nobody of the type at all: nothing to preview with
-      const SLOT_OF: Partial<Record<EmploymentType, string>> = { internship: 'offer_internship', freelance: 'offer_freelance', sales: 'offer_sales' };
-      let slot: string | undefined;
-      for (const [type, key] of Object.entries(SLOT_OF)) {
-        const t = type as EmploymentType;
-        if ((await prisma.employment.count({ where: { employmentType: t } })) === 0 && (await prisma.jobOffer.count({ where: { employmentType: t } })) === 0) {
-          slot = key;
-          break;
-        }
+      // nobody of the type at all: nothing to preview with — the commission offer, with the employments and offers paid
+      // by commission that other files may have left set aside for this check, and put back after it
+      const paidPeople = await prisma.employment.findMany({ where: { paidByCommission: true }, select: { id: true } });
+      const paidOffers = await prisma.jobOffer.findMany({ where: { paidByCommission: true }, select: { id: true } });
+      await prisma.employment.updateMany({ where: { id: { in: paidPeople.map((e) => e.id) } }, data: { paidByCommission: false } });
+      await prisma.jobOffer.updateMany({ where: { id: { in: paidOffers.map((o) => o.id) } }, data: { paidByCommission: false } });
+      try {
+        const empty = await draft('offer_sales', docx({ body: p(r('{{full_name_en}}')) }), 'en');
+        expect(await people(empty.id)).toEqual([]);
+        expect((await preview(empty.id).expect(409)).body.toString()).toContain(NO_OFFER);
+      } finally {
+        await prisma.employment.updateMany({ where: { id: { in: paidPeople.map((e) => e.id) } }, data: { paidByCommission: true } });
+        await prisma.jobOffer.updateMany({ where: { id: { in: paidOffers.map((o) => o.id) } }, data: { paidByCommission: true } });
       }
-      expect(slot, 'every employment type has someone or an offer in the test database').toBeDefined();
-      const empty = await draft(slot!, docx({ body: p(r('{{full_name_en}}')) }), 'en');
-      expect(await people(empty.id)).toEqual([]);
-      expect((await preview(empty.id).expect(409)).body.toString()).toContain(NO_OFFER);
     });
 
     it('the offer checked: for a job offer template only, not with an employee as well, and it must exist', async () => {

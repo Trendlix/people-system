@@ -70,6 +70,8 @@ function fields(o: OfferRow) {
     shiftId: o.shiftId,
     workArrangement: o.workArrangement,
     officeDays: [...o.officeDays].sort((a, b) => a - b),
+    paidByCommission: o.paidByCommission,
+    workNature: o.workNature,
     joinDate: fromDateOnly(o.joinDate),
     payBasis: o.payBasis,
     grossSalary: o.grossSalary.toNumber() as number | undefined,
@@ -236,7 +238,7 @@ export class OffersService {
 
     if (o.status === 'draft') {
       if (!this.documents.pdfAvailable) throw new ConflictException(PDF_NOT_SET_UP);
-      const draft = await this.previewTemplate(o.employmentType);
+      const draft = await this.previewTemplate(o);
       const filled = draft ? await this.fillFromDraft(o, draft) : await this.documents.fill(o, todayInCairo());
       ({ fileName, restricted } = filled);
       templateDraft = draft?.version ?? null;
@@ -417,8 +419,8 @@ export class OffersService {
 
   private async view(o: OfferRow, user: SessionUser): Promise<OfferView> {
     const [template, draft, hasPdf, lawYears] = await Promise.all([
-      this.documents.template(o.employmentType),
-      this.previewTemplate(o.employmentType),
+      this.documents.template(o),
+      this.previewTemplate(o),
       o.fileName ? this.hasPdf(o.id) : Promise.resolve(false),
       this.lawRates.years(),
     ]);
@@ -427,7 +429,7 @@ export class OffersService {
       o.status !== 'draft'
         ? []
         : draft
-          ? (await this.documents.check(o, offerSlot(o.employmentType), draft, todayInCairo())).missing
+          ? (await this.documents.check(o, await this.documents.slotOf(o), draft, todayInCairo())).missing
           : await this.documents.missing(o);
     return offerView(o, {
       seesSalary: seesSalary(user),
@@ -442,13 +444,13 @@ export class OffersService {
   }
 
   /**
-   * The newest draft of the employment type's job offer template while it has no published version: what a draft
-   * offer is previewed with meanwhile. Null once one is published, or with no draft either.
+   * The newest draft of the offer's job offer template (OfferDocumentsService.slotOf) while it has no published
+   * version: what a draft offer is previewed with meanwhile. Null once one is published, or with no draft either.
    */
   private async previewTemplate(
-    employmentType: string,
+    o: Pick<OfferRow, 'employmentType' | 'paidByCommission'>,
   ): Promise<{ id: string; version: number; language: string; tags: string[]; pdfFields: Prisma.JsonValue | null } | null> {
-    const slot = offerSlot(employmentType);
+    const slot = await this.documents.slotOf(o);
     const versions = await this.prisma.templateVersion.findMany({
       where: { slotKey: slot.copyOf ?? slot.key, status: { in: ['draft', 'published'] } },
       select: { id: true, version: true, status: true, language: true, tags: true, pdfFields: true },
@@ -467,11 +469,11 @@ export class OffersService {
     o: OfferRow,
     template: { id: string; language: string; tags: string[]; pdfFields: Prisma.JsonValue | null },
   ): Promise<{ data: Buffer; fileName: string; restricted: string[] }> {
-    const slot = offerSlot(o.employmentType);
+    const slot = await this.documents.slotOf(o);
     const { values, missing } = await this.documents.check(o, slot, template, todayInCairo());
     if (missing.length) throw new UnprocessableEntityException({ statusCode: 422, message: FILL_IN, missing });
     const version = await this.prisma.templateVersion.findUniqueOrThrow({ where: { id: template.id }, select: FILLED_FROM });
-    return { data: await fillVersion(version, values), fileName: this.documents.fileName(o, version.format), restricted: restrictedTags(template.tags, slot.overrides) };
+    return { data: await fillVersion(version, values), fileName: this.documents.fileName(o, version.format, slot), restricted: restrictedTags(template.tags, slot.overrides) };
   }
 
   /** The filled .docx as a protected PDF; refused (409, `notSetUp`) without a PDF converter, (503) when it fails. */
@@ -528,6 +530,8 @@ export class OffersService {
             shiftId: null,
             workArrangement: 'office' as const,
             officeDays: [],
+            paidByCommission: false,
+            workNature: 'regular',
             joinDate: '',
             payBasis: 'monthly',
             grossSalary: undefined,
@@ -621,6 +625,13 @@ export class OffersService {
       const exists = await this.prisma.shift.count({ where: { id: v.shiftId } });
       if (!exists) throw new BadRequestException('Shift not found. Choose one from the list.');
     }
+
+    // paid by commission is a full-time offer's (owner, 18 October 2026: Sales became Full-time with the flag): refused
+    // for another type, and cleared when the type changes from full-time unless sent
+    if (dto.paidByCommission && v.employmentType !== 'full_time') {
+      throw new BadRequestException('Paid by commission is for a full-time offer only. Choose Full-time, or leave paid by commission off.');
+    }
+    if (v.employmentType !== 'full_time') v.paidByCommission = false;
 
     // office days are kept for Hybrid only
     if (creating || dto.workArrangement !== undefined || dto.officeDays !== undefined) {

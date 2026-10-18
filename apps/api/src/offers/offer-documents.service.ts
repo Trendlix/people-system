@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common';
-import type { LawRates, TemplateLanguage, TemplateSlot } from '@trendlix/shared';
+import { offerSlotFor, TEMPLATE_SLOTS, type LawRates, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
 import { isBlankValue } from '../documents/engine/index.js';
@@ -87,6 +87,8 @@ export function offerSources(
       manager: o.manager && { fullNameEn: o.manager.fullNameEn, fullNameAr: o.manager.fullNameAr },
       shift: o.shift && { startTime: o.shift.startTime, endTime: o.shift.endTime, hoursPerDay: o.shift.hoursPerDay, workingDays: o.shift.workingDays },
       workArrangement: o.workArrangement,
+      paidByCommission: o.paidByCommission,
+      workNature: o.workNature,
     },
     contract: {
       number: o.number,
@@ -132,9 +134,20 @@ export class OfferDocumentsService {
     private readonly lawRates: LawRatesService,
   ) {}
 
-  /** The employment type's job offer template as the library has it now: published (with its version), a draft only, or missing. */
-  async template(employmentType: string): Promise<OfferContext['template']> {
-    const slot = offerSlot(employmentType);
+  /**
+   * The job offer slot an offer is filled from (owner, 18 October 2026: Sales became Full-time paid by commission): for
+   * a full-time offer paid by commission, the commission one (offer_sales) while it has a published version, else the
+   * employment type's (shared offerSlotFor).
+   */
+  async slotOf(o: Pick<OfferRow, 'employmentType' | 'paidByCommission'>): Promise<TemplateSlot> {
+    const commission = o.paidByCommission && o.employmentType === 'full_time' && (await this.prisma.templateVersion.count({ where: { slotKey: 'offer_sales', status: 'published' } })) > 0;
+    const key = offerSlotFor(o.employmentType, o.paidByCommission, () => commission);
+    return TEMPLATE_SLOTS.find((s) => s.key === key) ?? offerSlot(o.employmentType);
+  }
+
+  /** The offer's job offer template (slotOf) as the library has it now: published (with its version), a draft only, or missing. */
+  async template(o: Pick<OfferRow, 'employmentType' | 'paidByCommission'>): Promise<OfferContext['template']> {
+    const slot = await this.slotOf(o);
     const versions = await this.prisma.templateVersion.findMany({
       where: { slotKey: slot.key, status: { in: ['draft', 'published'] } },
       select: { version: true, status: true },
@@ -145,7 +158,7 @@ export class OfferDocumentsService {
 
   /** A draft's empty values (none without a published template: `template.status` says so). */
   async missing(o: OfferRow): Promise<MissingTag[]> {
-    const slot = offerSlot(o.employmentType);
+    const slot = await this.slotOf(o);
     const template = await this.published(slot);
     if (!template) return [];
     return (await this.check(o, slot, template, todayInCairo())).missing;
@@ -156,14 +169,14 @@ export class OfferDocumentsService {
    * (422, with what is missing and where to fill it in) while the template prints a value the offer doesn't have.
    */
   async fill(o: OfferRow, documentDate: string): Promise<FilledOffer> {
-    const slot = offerSlot(o.employmentType);
+    const slot = await this.slotOf(o);
     const template = await this.published(slot, true);
     if (!template) throw new ConflictException(`Publish the ${slot.name} template first (Templates).`);
     const { values, missing } = await this.check(o, slot, template, documentDate);
     if (missing.length) throw new UnprocessableEntityException({ statusCode: 422, message: FILL_IN, missing });
     return {
       data: await fillVersion(template, values),
-      fileName: this.fileName(o, template.format),
+      fileName: this.fileName(o, template.format, slot),
       templateVersionId: template.id,
       templateVersion: template.version,
       restricted: restrictedTags(template.tags, slot.overrides),
@@ -194,9 +207,9 @@ export class OfferDocumentsService {
     return { filled: preview.filled, total: preview.total, shown: data ? preview.shown : [], data };
   }
 
-  /** "<Slot name> - <OFF number> - <full name>.docx" (.pdf from a PDF form), cleaned as documents' names are. */
-  fileName(o: Pick<OfferRow, 'employmentType' | 'number' | 'fullNameEn'>, format = 'docx'): string {
-    return filledFileName(documentStem(offerSlot(o.employmentType).name, o.number, o.fullNameEn), format);
+  /** "<Slot name> - <OFF number> - <full name>.docx" (.pdf from a PDF form), cleaned as documents' names are; the slot filled (slotOf). */
+  fileName(o: Pick<OfferRow, 'employmentType' | 'number' | 'fullNameEn'>, format = 'docx', slot: TemplateSlot = offerSlot(o.employmentType)): string {
+    return filledFileName(documentStem(slot.name, o.number, o.fullNameEn), format);
   }
 
   /** A Word file's PDF name. */

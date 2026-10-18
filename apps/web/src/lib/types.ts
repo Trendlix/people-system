@@ -47,6 +47,8 @@ import type {
   TemplateTrigger,
   TemplateVersionStatus,
   WorkArrangement,
+  WorkNature,
+  WorkPattern,
 } from '@trendlix/shared';
 import type { ContractRaise } from './raise-types';
 
@@ -277,6 +279,22 @@ export interface Employment {
    * API from before leave (18 October 2026), and for those who don't see HR data.
    */
   hazardousWork?: boolean;
+  /**
+   * Employment types by the labour law (owner, 18 October 2026: "can we update the employment types based on the labour
+   * law?"): a full-time employment paid by commission, as Sales was (the law's wage includes "العمولة أو النسبة
+   * المئوية", Art. 1(4)(أ)); the nature of the work, regular unless the law's temporary, casual or seasonal (Art. 1(6–8));
+   * and HR's warnings: a fixed-term contract past its end date with the work going on and no signed renewal, which the
+   * law counts as open-ended (Art. 88(3)), and casual work past its 6 months (Art. 1(7)). Each left out by an API from
+   * before them.
+   */
+  paidByCommission?: boolean;
+  workNature?: WorkNature;
+  /** All but freelance (Art. 1(1)). */
+  underLabourLaw?: boolean;
+  /** The work arrangement in the law's words: remote work (Work from home), partly remote (Hybrid), on site (Art. 96(1)). */
+  workPattern?: WorkPattern;
+  becameOpenEnded?: boolean;
+  casualTooLong?: boolean;
   jdAcknowledgedAt: string | null;
   /** The last working day; null while current. */
   endDate: string | null;
@@ -756,6 +774,25 @@ export interface ExpiringContract {
   nonRenewalNoticeBy: string;
   /** A renewal (the next contract version) is already drafted. */
   renewalDraft: boolean;
+  /** Past its end with the work going on and no signed renewal: open-ended by the law (Art. 88(3)). Left out by an older API. */
+  becameOpenEnded?: boolean;
+}
+
+/**
+ * One of GET /contracts/law-warnings (HR and the CEO; owner, 18 October 2026: "can we update the employment types based
+ * on the labour law?"): a signed fixed-term contract past its end while the employment goes on without a signed renewal,
+ * which the law counts as open-ended (Labour Law 14/2025 Art. 88(3)), by end date; then current casual work past its 6
+ * months (Art. 1(7)), by join date. `since`: the fixed term's last day, or the day the 6 months were up (YYYY-MM-DD).
+ */
+export interface LawWarningItem {
+  kind: 'became_open_ended' | 'casual_too_long';
+  employee: ContractEmployeeRef;
+  employmentId: string;
+  contractId: string | null;
+  contractNumber: string | null;
+  since: string | null;
+  /** In plain words, with what to do. */
+  message: string;
 }
 
 /** GET /employments/probation-ending?within=30 (HR and CEO): current employments whose probation ends soon. */
@@ -786,6 +823,9 @@ export interface EndingSummary {
   endReason: EndReason;
   employee: ContractEmployeeRef;
   employmentId: string;
+  /** A fixed term the company doesn't renew: Art. 154's note and estimate (as on `Ending`); null otherwise. */
+  art154Note?: Ending['art154Note'];
+  art154Estimate?: Ending['art154Estimate'];
 }
 
 /**
@@ -794,14 +834,15 @@ export interface EndingSummary {
  * only; `endingWithin` keeps signed ones ending within that many days, overdue included. Signed by end date first, then
  * drafts, then the rest. The salary fields are null, with `salaryHidden`, for anyone but HR, Finance and the CEO.
  */
-export interface ContractListItem extends ContractPay {
+export interface ContractListItem extends ContractPay, Omit<ContractLaw, 'traineeStages' | 'traineeStage'> {
   id: string;
   number: string;
   version: number;
+  /** Fixed-term (the default), open-ended or for a specific job (contractLengthText in employment-law.ts). */
   form: ContractForm;
   status: ContractStatus;
   startDate: string;
-  /** Null only for a contract from before every contract was fixed-term (owner, 15 October 2026). */
+  /** Null for an open-ended contract, a specific-job one without an expected end, and one from before every contract was fixed-term. */
   endDate: string | null;
   probationMonths: number;
   probationEnd: string | null;
@@ -817,11 +858,46 @@ export interface ContractListItem extends ContractPay {
   employee: ContractEmployeeRef & { fullNameAr: string };
   employmentId: string;
   employmentType: EmploymentType;
+  /**
+   * The employment's, by the labour law: paid by commission (full-time only), the nature of the work, the work pattern
+   * (Art. 96(1)), and casual work past its 6 months. Left out by an API from before them.
+   */
+  paidByCommission?: boolean;
+  workNature?: WorkNature;
+  workPattern?: WorkPattern;
+  casualTooLong?: boolean;
   /** The employment hasn't ended. */
   employmentCurrent: boolean;
   /** As signed; a draft's are the employment's current ones. */
   jobTitleEn: string | null;
   departmentName: string | null;
+}
+
+/** A training stage as a contract shows it: its pay null, with the salary, for anyone but HR, Finance and the CEO. */
+export interface TraineeStageView {
+  name: string;
+  months: number;
+  pay: number | null;
+}
+
+/**
+ * What a contract carries of the labour law's dimensions (owner, 18 October 2026: "can we update the employment types
+ * based on the labour law?"): the job of a contract for a specific job ("إذا أبرم عقد العمل لإنجاز عمل معين، انتهى العقد
+ * بإنجاز هذا العمل", Labour Law 14/2025 Art. 155); a trainee's contract is the training agreement, with its stages, each
+ * with its months and pay a month, rising from stage to stage (Art. 29), and the stage in force today; and HR's warning
+ * that a fixed-term contract past its end date while the work goes on without a signed renewal counts as open-ended
+ * (Art. 88(3)). Each left out by an API from before them.
+ */
+export interface ContractLaw {
+  /** A specific-job contract's job; null otherwise. */
+  jobToDo?: string | null;
+  /** A trainee's training stages, in order; null for any other contract. */
+  traineeStages?: TraineeStageView[] | null;
+  /** The training's whole length (its stages' months); null for any other contract. */
+  traineeMonths?: number | null;
+  /** The stage in force today (the first before the start), numbered from 1; null for any other contract. */
+  traineeStage?: { number: number; name: string; pay: number | null } | null;
+  becameOpenEnded?: boolean;
 }
 
 /**
@@ -853,15 +929,19 @@ export interface ContractPay {
  * starting the day after the previous one ends. Signed versions are never edited, except their filing dates and note.
  * The salary fields are null, with `salaryHidden`, for anyone but HR, Finance and the CEO.
  */
-export interface Contract extends ContractPay {
+export interface Contract extends ContractPay, ContractLaw {
   id: string;
   number: string;
   version: number;
-  /** Always 'fixed': every contract runs for a fixed term (owner, 15 October 2026). */
+  /**
+   * Fixed-term, the default (owner, 15 October 2026: every contract for a year); since 18 October 2026 open-ended (no end
+   * date, no length, no renewal: ended by notice, Art. 156) or for a specific job (Art. 155) too.
+   */
   form: ContractForm;
   startDate: string;
-  /** Null only for a contract from before every contract was fixed-term. */
+  /** Null for an open-ended contract, a specific-job one without an expected end, and one from before every contract was fixed-term. */
   endDate: string | null;
+  /** A fixed-term contract's length (a trainee's, the training's months); null for an open-ended or specific-job one. */
   durationMonths: number | null;
   /** 0 = no probation (a renewal, or someone who already had one with the company: once per employer, Art. 90). */
   probationMonths: number;
@@ -933,6 +1013,16 @@ export interface Ending {
   endReason: EndReason;
   /** Once completed: when the final dues must be paid (Art. 108) and the ending filed with the labour office (Decree 214/2025). */
   deadlines: { finalDuesBy: string; labourOfficeFilingBy: string } | null;
+  /**
+   * The company not renewing a fixed-term contract (owner, 18 October 2026): "فإذا كان الإنهاء من جانب صاحب العمل استحق
+   * العامل مكافأة تعادل أجر شهر عن كل سنة من سنوات الخدمة" (Labour Law 14/2025 Art. 154). The note to check it with the
+   * lawyer, and the estimate: the years of service (to two decimals, from the join date to the last working day) × the
+   * last monthly wage (the last signed contract's gross and allowances), the wage and the amount in EGP, null for anyone
+   * but HR, Finance and the CEO. Information only: no money is moved. Null for any other ending; left out by an API from
+   * before them.
+   */
+  art154Note?: string | null;
+  art154Estimate?: { serviceYears: number; lastMonthlyWage: number | null; amount: number | null } | null;
 }
 
 // ---------- document templates: the library (spec §8; packages/shared/src/templates.ts) ----------
@@ -954,6 +1044,12 @@ export interface TemplateSlotView {
   /** Null: each version's language is set when it is uploaded. */
   language: TemplateLanguage | null;
   appliesTo: EmploymentType[];
+  /**
+   * A Sales slot (owner, 18 October 2026: Sales became Full-time paid by commission): chosen for a full-time employment
+   * or offer paid by commission while it has a published version, else the full-time slot is. Left out by an API from
+   * before it.
+   */
+  paidByCommission?: boolean;
   triggers: TemplateTrigger[];
   signers: TemplateSigners;
   copyOf?: string | null;
@@ -1221,6 +1317,12 @@ export interface OfferView {
   employeeId: string | null;
   employee: { id: string; employeeCode: string; fullNameEn: string } | null;
   employmentType: EmploymentType;
+  /**
+   * Full-time only: paid by commission, as Sales was (owner, 18 October 2026), and the nature of the work (Labour Law Art.
+   * 1(6–8)), both carried to the employment on acceptance. Left out by an API from before them.
+   */
+  paidByCommission?: boolean;
+  workNature?: WorkNature;
   department: (DepartmentRef & { parent: DepartmentRef | null }) | null;
   jobTitle: { id: string; titleEn: string; titleAr: string | null } | null;
   grade: { id: string; code: string; levelEn: string } | null;

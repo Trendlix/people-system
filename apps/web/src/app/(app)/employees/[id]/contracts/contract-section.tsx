@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CONTRACT_FORM_LABELS, CONTRACT_STATUS_LABELS, PAY_BASIS_LABELS, type ContractStatus } from '@trendlix/shared';
+import { CONTRACT_STATUS_LABELS, PAY_BASIS_LABELS, type ContractStatus } from '@trendlix/shared';
 import { treatmentText } from '@/lib/allowances';
 import { ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/format';
@@ -8,19 +8,27 @@ import { getCurrentUser } from '@/lib/session';
 import type { AllowanceLine, Contract, EmployeeProfile, Employment } from '@/lib/types';
 import { canSeePayroll } from '../../../payroll/list';
 import { deleteContract, signContract, unsignContract, updateSignedContract } from '../../contract-actions';
+import { contractLengthText, OPEN_ENDED_NOTE, SPECIFIC_JOB_NOTE } from '../../employment-law';
+import { LawWarningBadges, LawWarningNotes } from '../../law-badges';
 import { FieldGrid, Loading, ProfileSection, salaryHistoryHref, todayInCairo, type GridField } from '../../ui';
 import { ActionButton, SignContract, SignedContractDetails } from './contract-buttons';
 import { loadContracts } from './data';
 import { daysBetween, termLabel } from './dates';
 import { RaiseCard } from './raise-card';
 import { allowancesLabel, daysLabel, formatEgp, hourlyNetTerms, hourlyTerms, payLabel } from './salary';
+import { stageLabel, trainingSummary } from './trainee-stages';
 
 // The Contract section of the Employment tab's Details, right below the current employment (the Contracts tab was
 // merged into Employment, owner's request, 16 October 2026): the signed contract (its number, term, probation, signing
 // and filing dates, its pay basis and working days, and the salary and allowances for HR, Finance and the CEO) and a
 // draft waiting to be signed. HR drafts the first contract or a renewal, signs a draft or changes it, and sets a
 // signed one's filing dates and note; only a Super Admin deletes a draft, or undoes a signing recorded by mistake
-// (owner's decision, 15 October 2026). Every contract is for a fixed term (owner, the same day).
+// (owner's decision, 15 October 2026).
+//
+// Its length by the labour law (owner, 18 October 2026: "can we update the employment types based on the labour law?";
+// on 15 October every contract was fixed-term): fixed-term (renewed in writing; past its end without a signed renewal
+// the law counts it as open-ended, Art. 88(3), warned here), open-ended (no end date and no renewal, Art. 156) or for a
+// specific job (Art. 155); a trainee's is the training agreement, with its stages and the pay of each (Art. 29).
 //
 // Pay raises during a contract (owner's decisions, 16 October 2026): HR raises the pay of the signed contract in force
 // (Raise, beside Renew), as an amendment or a new contract; a raise, or a renewal with new pay, waits in its own card for
@@ -67,16 +75,44 @@ function AllowanceList({ lines }: { lines: AllowanceLine[] }) {
 /** The signed contract, in the profile's field grid. The salary only when the caller may see it. */
 function contractFields(c: Contract): GridField[] {
   const hourly = c.payBasis === 'hourly';
+  // a trainee's training agreement (18 October 2026)
+  const stages = c.traineeStages?.length ? c.traineeStages : null;
   const position = [c.jobTitleEn, c.gradeCode, c.departmentName, c.shiftCode && `Shift ${c.shiftCode}`].filter(Boolean).join(' · ');
   const fields: GridField[] = [
     { key: 'contract-number', label: 'Contract number', value: c.number, note: `Version ${c.version}` },
+    stages
+      ? { key: 'contract-form', label: 'Contract length', value: 'Training agreement', note: trainingSummary(stages) }
+      : {
+          key: 'contract-form',
+          label: 'Contract length',
+          value: contractLengthText(c),
+          note: c.form === 'open_ended' ? OPEN_ENDED_NOTE : c.form === 'specific_job' ? SPECIFIC_JOB_NOTE : undefined,
+        },
     {
-      key: 'contract-form',
-      label: 'Term',
-      value: CONTRACT_FORM_LABELS[c.form] ?? CONTRACT_FORM_LABELS.fixed,
-      note: c.durationMonths && c.endDate ? `${c.durationMonths} months` : undefined,
+      key: 'contract-period',
+      label: 'Start – end',
+      value: termLabel(c),
+      note: c.form === 'specific_job' && c.endDate ? 'The end: when the job is expected to be done' : undefined,
     },
-    { key: 'contract-period', label: 'Start – end', value: termLabel(c) },
+    ...(stages
+      ? [
+          {
+            key: 'contract-stages',
+            label: 'Training stages',
+            value: (
+              <ol className="list-decimal space-y-0.5 pl-4">
+                {stages.map((s, i) => (
+                  <li key={i}>{stageLabel(s)}</li>
+                ))}
+              </ol>
+            ),
+            protected: !c.salaryHidden,
+            note: c.traineeStage
+              ? `Now stage ${c.traineeStage.number}, ${c.traineeStage.name}. The pay rises from stage to stage (Labour Law Art. 29); payroll pays each stage’s in its months`
+              : 'The pay rises from stage to stage (Labour Law Art. 29); payroll pays each stage’s in its months',
+          },
+        ]
+      : []),
     {
       key: 'contract-probation',
       label: 'Probation end date',
@@ -155,10 +191,11 @@ function contractFields(c: Contract): GridField[] {
 /**
  * Renew in writing before a fixed-term contract ends: warned 60 days before the end, or 30 days before the
  * non-renewal notice is due, whichever comes first. After the end, without a written renewal, the law counts it as
- * open-ended (Labour Law Art. 88): a warning about the law, as every contract here is for a fixed term.
+ * open-ended (Labour Law Art. 88): from an API that works it out (becameOpenEnded), its warning says so instead. Not for
+ * an open-ended contract, nor one for a specific job (carried on after the job, it counts as renewed: Art. 155).
  */
 function RenewalWarning({ contract: c, today }: { contract: Contract; today: string }) {
-  if (!c.endDate) return null;
+  if (!c.endDate || c.form !== 'fixed' || c.becameOpenEnded) return null;
   const toEnd = daysBetween(today, c.endDate);
   const noticeBy = c.nonRenewalNoticeBy;
   const toNotice = noticeBy ? daysBetween(today, noticeBy) : null;
@@ -200,7 +237,7 @@ function DraftCard({
   const name = `version ${d.version} (${d.number})`;
   const allowances = d.allowances ?? [];
   const what = [
-    CONTRACT_FORM_LABELS[d.form] ?? CONTRACT_FORM_LABELS.fixed,
+    d.traineeStages?.length ? `Training agreement, ${trainingSummary(d.traineeStages)}` : contractLengthText(d),
     termLabel(d),
     d.probationMonths > 0 ? `${d.probationMonths} months' probation` : 'no probation',
     payLabel(d),
@@ -352,15 +389,24 @@ export async function ContractSection({
   const active = contracts.find((c) => c.status === 'active');
   const draft = contracts.find((c) => c.status === 'draft');
   const previous = contracts.find((c) => c.status !== 'draft');
-  // HR renews the last one (one draft at a time); an employment with no contract at all is asked for one below
-  const offer = canEdit && !draft && !endingInProgress && previous && 'Renew';
-  // HR raises the pay of the signed contract in force, one change at a time (owner's decisions, 16 October 2026)
-  const raise = canEdit && !draft && !endingInProgress && active;
+  // HR renews the last one (one draft at a time), unless it is open-ended (never renewed, Art. 156); an employment with
+  // no contract at all is asked for one below
+  const offer = canEdit && !draft && !endingInProgress && previous && !(previous.form === 'open_ended' && previous.status === 'active') && 'Renew';
+  // HR raises the pay of the signed contract in force, one change at a time (owner's decisions, 16 October 2026); not a
+  // trainee's, paid by the training agreement's stages (18 October 2026: a new agreement with new stages instead)
+  const raise = canEdit && !draft && !endingInProgress && active && e.employmentType !== 'trainee';
 
   return (
     <ProfileSection
       title="Contract"
-      note={active ? `Version ${active.version}${active.signedOn ? `, signed ${formatDate(active.signedOn)}` : ''}` : undefined}
+      note={
+        active ? (
+          <>
+            Version {active.version}
+            {active.signedOn && `, signed ${formatDate(active.signedOn)}`} <LawWarningBadges of={{ becameOpenEnded: active.becameOpenEnded }} />
+          </>
+        ) : undefined
+      }
       actions={
         (raise || offer) && (
           <>
@@ -380,6 +426,9 @@ export async function ContractSection({
       }
     >
       {active && !draft && !endingInProgress && <RenewalWarning contract={active} today={today} />}
+      {/* by the labour law (18 October 2026): a fixed term that became open-ended (Art. 88); casual work past its 6 months
+          is the employment's, warned with it */}
+      {active && <LawWarningNotes of={{ becameOpenEnded: active.becameOpenEnded }} />}
       {active ? (
         <div className="space-y-3">
           <FieldGrid fields={contractFields(active)} />

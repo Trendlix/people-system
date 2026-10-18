@@ -11,6 +11,8 @@ import { canSeePayroll } from '../../payroll/list';
 import { loadEmployeeRaiseRequests, type EmployeeRaiseRequestsLoad } from '../../raise-requests/data';
 import { showsRaiseRequests } from '../../raise-requests/list';
 import { deleteEmployment } from '../employment-actions';
+import { FREELANCE_SHORT, typeWord, workNatureLabel, workPatternNote } from '../employment-law';
+import { LawWarningBadges } from '../law-badges';
 import { openSubTab, visibleSubTabs } from '../tab-list';
 import {
   arrangementLabel,
@@ -83,7 +85,13 @@ const placeLabel = (e: Employment) => (e.department && !e.department.parent ? 'D
 function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean): GridField[] {
   const grade = e.grade; // the person's own grade in this employment (within the job title's range, if it has one)
   return [
-    { key: 'employmentType', label: 'Employment type', value: LABELS.employmentType[e.employmentType] },
+    {
+      key: 'employmentType',
+      label: 'Employment type',
+      value: LABELS.employmentType[e.employmentType],
+      // by the labour law (18 October 2026): Sales became Full-time paid by commission; freelance is outside the law
+      note: e.paidByCommission ? 'Paid by commission' : e.employmentType === 'freelance' ? FREELANCE_SHORT : undefined,
+    },
     { key: 'status', label: 'Status', value: <StatusBadge status={e.status} /> },
     { key: 'team', label: placeLabel(e), value: e.department && departmentName(e.department), required: true },
     {
@@ -116,7 +124,21 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
     },
     { key: 'joinDate', label: 'Join date', value: formatDate(e.joinDate) },
     { key: 'probationEnd', label: 'Probation end date', value: formatDate(e.probationEnd) },
-    { key: 'workArrangement', label: 'Work arrangement', value: arrangementLabel(e) },
+    { key: 'workArrangement', label: 'Work arrangement', value: arrangementLabel(e), note: workPatternNote(e.workArrangement) },
+    // the nature of the work (Labour Law Art. 1(6–8)), from an API that has it, with casual work past its 6 months warned
+    ...(e.workNature !== undefined
+      ? [
+          {
+            key: 'workNature',
+            label: 'Nature of the work',
+            value: (
+              <span className="flex flex-wrap items-center gap-1.5">
+                {workNatureLabel(e.workNature)} <LawWarningBadges of={{ casualTooLong: e.casualTooLong }} />
+              </span>
+            ),
+          },
+        ]
+      : []),
     { key: 'shift', label: 'Shift', value: e.shift && shiftLabel(e.shift), required: true },
     // 7 more days of annual leave (18 October 2026; Labour Law Art. 124), from an API that has it
     ...(e.hazardousWork !== undefined
@@ -136,7 +158,7 @@ export const endingInProgress = (e: Employment) => e.ending?.status === 'pending
 
 /** What an employment was, for a confirmation: "the Full-time employment as Senior Designer, 01/03/2024 – now". */
 function described(e: Employment): string {
-  return `the ${LABELS.employmentType[e.employmentType].toLowerCase()} employment${e.jobTitle ? ` as ${e.jobTitle.titleEn}` : ''}, ${periodLabel(e)}`;
+  return `the ${typeWord(e.employmentType)} employment${e.jobTitle ? ` as ${e.jobTitle.titleEn}` : ''}, ${periodLabel(e)}`;
 }
 
 /** A contract version as the history lists it: its number, then its version, term and status. */

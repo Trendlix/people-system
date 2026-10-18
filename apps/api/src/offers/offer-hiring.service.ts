@@ -1,5 +1,5 @@
 import { ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { offerSlotKey } from '@trendlix/shared';
+import { TEMPLATE_SLOTS } from '@trendlix/shared';
 import { allowanceData } from '../allowances/rows.js';
 import { AuditService } from '../audit/audit.service.js';
 import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
@@ -73,7 +73,7 @@ export class OfferHiringService {
         // one query at a time: a transaction runs on one connection
         const row = await tx.jobOffer.findUniqueOrThrow({ where: { id: offerId } });
         const allowances = await tx.offerAllowance.findMany({ where: { offerId } });
-        const templateVersion = row.templateVersionId ? await tx.templateVersion.findUnique({ where: { id: row.templateVersionId }, select: { tags: true } }) : null;
+        const templateVersion = row.templateVersionId ? await tx.templateVersion.findUnique({ where: { id: row.templateVersionId }, select: { tags: true, slotKey: true } }) : null;
         const o = { ...row, allowances, templateVersion };
         const joinDate = fromDateOnly(o.joinDate);
 
@@ -118,6 +118,9 @@ export class OfferHiringService {
           workArrangement: o.workArrangement,
           officeDays: o.workArrangement === 'hybrid' ? [...o.officeDays].sort((a, b) => a - b) : [],
           shiftId: o.shiftId,
+          // by the labour law (owner, 18 October 2026): paid by commission (full-time) and the nature of the work
+          paidByCommission: o.employmentType === 'full_time' && o.paidByCommission,
+          workNature: o.workNature,
         };
         const employment = await tx.employment.create({
           data: { ...employmentValues, employeeId: person.id, joinDate: o.joinDate, probationEnd: probationEnd ? toDateOnly(probationEnd) : null },
@@ -161,16 +164,17 @@ export class OfferHiringService {
         }
 
         // the offer as sent, on the profile's Employment tab
-        let document: { id: string; fileName: string; sizeBytes: number; documentDate: string } | null = null;
+        let document: { id: string; slotKey: string; fileName: string; sizeBytes: number; documentDate: string } | null = null;
         if (o.data && o.templateVersionId && o.templateVersion && o.fileName) {
-          const slot = offerSlot(o.employmentType);
+          // the slot it was filled from (a commission offer's may be the commission one: OfferDocumentsService.slotOf)
+          const slot = TEMPLATE_SLOTS.find((s) => s.key === o.templateVersion!.slotKey) ?? offerSlot(o.employmentType);
           const online = !o.answeredById && o.acceptedName && o.respondedAt;
           const documentDate = o.documentDate ? fromDateOnly(o.documentDate) : todayInCairo();
           const row = await tx.generatedDocument.create({
             data: {
               employeeId: person.id,
               employmentId: employment.id,
-              slotKey: offerSlotKey(o.employmentType),
+              slotKey: slot.key,
               templateVersionId: o.templateVersionId,
               documentDate: toDateOnly(documentDate),
               fileName: o.fileName,
@@ -183,7 +187,7 @@ export class OfferHiringService {
             },
             select: { id: true },
           });
-          document = { id: row.id, fileName: o.fileName, sizeBytes: o.data.length, documentDate };
+          document = { id: row.id, slotKey: slot.key, fileName: o.fileName, sizeBytes: o.data.length, documentDate };
         }
 
         await tx.jobOffer.update({ where: { id: offerId }, data: { employeeId: person.id } });
@@ -227,7 +231,7 @@ export class OfferHiringService {
         action: 'generate',
         entityType: 'generated_document',
         entityId: made.document.id,
-        diff: { employeeId: person.id, slot: offerSlotKey(o.employmentType), documentDate: made.document.documentDate, fileName: made.document.fileName, sizeBytes: made.document.sizeBytes, fromOffer },
+        diff: { employeeId: person.id, slot: made.document.slotKey, documentDate: made.document.documentDate, fileName: made.document.fileName, sizeBytes: made.document.sizeBytes, fromOffer },
       });
     }
     await this.audit.record({

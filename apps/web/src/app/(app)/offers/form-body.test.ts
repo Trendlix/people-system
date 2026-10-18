@@ -60,6 +60,8 @@ describe('a new offer', () => {
       mobile: '+201012345678',
       employeeId: undefined,
       employmentType: 'full_time',
+      paidByCommission: false,
+      workNature: 'regular',
       departmentId: 'dep-1',
       jobTitleId: 'title-1',
       gradeId: undefined,
@@ -84,6 +86,22 @@ describe('a new offer', () => {
     });
     // left out of the JSON: the API's defaults apply
     expect(JSON.parse(JSON.stringify(body))).not.toHaveProperty('gradeId');
+  });
+
+  it('sends paid by commission for a full-time offer only, and the nature of the work (18 October 2026)', () => {
+    const errors: string[] = [];
+    expect(offerBody(form({ ...filled, paidByCommission: 'on', workNature: 'seasonal' }), errors, { draft: false, allowances })).toMatchObject({
+      employmentType: 'full_time',
+      paidByCommission: true,
+      workNature: 'seasonal',
+    });
+    // another type: never by commission, even if the box came along
+    expect(offerBody(form({ ...filled, employmentType: 'part_time', paidByCommission: 'on' }), errors, { draft: false, allowances })).toMatchObject({
+      paidByCommission: false,
+      workNature: 'regular',
+    });
+    expect(errors).toEqual([]);
+    expect(newOfferDefaults(null, '2026-10-15')).toMatchObject({ paidByCommission: false, workNature: 'regular' });
   });
 
   it('says what is missing or wrong', () => {

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { accountLengthOk, accountLengthText, bankNamed, insurableWageLimits, type PhotoCrop, type Standing } from '@trendlix/shared';
+import { accountLengthOk, accountLengthText, bankNamed, insurableWageLimits, underLabourLaw, workPatternOf, type PhotoCrop, type Standing } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -7,7 +7,15 @@ import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import { changeRequestView, CONFIRMATION_INCLUDE, confirmationView, REQUEST_INCLUDE } from '../confirmations/views.js';
 import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
-import { CONTRACT_INCLUDE, contractView, ENDING_INCLUDE, endingView, type ContractContext } from '../contracts/views.js';
+import {
+  CONTRACT_INCLUDE,
+  contractBecameOpenEnded,
+  contractView,
+  employmentCasualTooLong,
+  ENDING_INCLUDE,
+  endingView,
+  type ContractContext,
+} from '../contracts/views.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
 import { storedCrop } from '../paperwork/photo-crop.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
@@ -100,8 +108,14 @@ export function employmentView(e: EmploymentRow, { seesEndings, ...ctx }: Employ
       endTime: fromTimeOfDay(shift.endTime),
       hoursPerDay: shift.hoursPerDay?.toNumber() ?? null,
     },
-    contract: contract ? contractView(contract, { ...ctx, workingDays: shift?.workingDays ?? null }) : null,
-    ending: ending && seesEndings ? endingView(ending) : null,
+    contract: contract ? contractView(contract, { ...ctx, workingDays: shift?.workingDays ?? null, employmentEndDate: endDate, casualTooLong: employmentCasualTooLong(e) }) : null,
+    ending: ending && seesEndings ? endingView(ending, ctx.seesSalary) : null,
+    // by the labour law (owner, 18 October 2026): under it or not (freelance isn't, Art. 1(1)), remote work (Art. 96(1)),
+    // and the warnings: casual work past 6 months (Art. 1(7)), the fixed term become open-ended (Art. 88(3))
+    underLabourLaw: underLabourLaw(e.employmentType),
+    workPattern: workPatternOf(e.workArrangement),
+    casualTooLong: employmentCasualTooLong(e),
+    becameOpenEnded: contract ? contractBecameOpenEnded(contract, endDate) : false,
   };
 }
 

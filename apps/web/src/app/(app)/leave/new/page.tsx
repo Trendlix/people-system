@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { underLabourLaw } from '@trendlix/shared';
 import { getCurrentUser } from '@/lib/session';
+import { FREELANCE_NO_LEAVE } from '../../employees/employment-law';
 import { todayInCairo } from '../../employees/ui';
 import { loadOwnProfile } from '../../own-profile';
 import { BackLink, Empty, Loading } from '../../organization/ui';
@@ -48,6 +50,15 @@ async function NewLeave() {
               ? 'Your profile couldn’t be loaded. Please try again in a moment.'
               : 'Leave is asked for during an employment: you have no current employment on file.'}
         </Empty>
+      </>
+    );
+  }
+  // a freelancer works outside the labour law (owner, 18 October 2026; Art. 1(1)): there is no leave to ask for
+  if (!underLabourLaw(profile.employment.employmentType)) {
+    return (
+      <>
+        <Heading back={back} />
+        <Empty>{FREELANCE_NO_LEAVE}</Empty>
       </>
     );
   }

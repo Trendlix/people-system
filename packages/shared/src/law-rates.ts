@@ -41,6 +41,12 @@ export interface LawRates {
   healthInsuranceRate: number;
   /** The salary tax's tiers, lowest first (Law 91/2005 Art. 8 as replaced by Law 7/2024). */
   taxTiers: readonly TaxTier[];
+  /**
+   * The private sector's minimum wage a month (owner, 18 October 2026): a trainee's last training stage is paid at least
+   * this (Labour Law 14/2025 Art. 29: "على ألا تقل فى المرحلة الأخيرة عن الحد الأدنى للأجر"). Not built in: the owner
+   * sets it; missing or null when not set, and nothing is checked against it.
+   */
+  minimumWage?: number | null;
 }
 
 /** The rates' fields other than the year: what a year's row holds. */
@@ -147,6 +153,8 @@ export function normalLawRates(r: LawRates): LawRates {
     martyrsRate: r.martyrsRate,
     healthInsuranceRate: r.healthInsuranceRate,
     taxTiers: normalTaxTiers(r.taxTiers),
+    // only when set, so a table without it compares as it did
+    ...(typeof r.minimumWage === 'number' && { minimumWage: r.minimumWage }),
   };
 }
 
@@ -247,8 +255,8 @@ const RATE_NAMES = {
 
 /**
  * What is wrong with a year's rates, in plain words (none: they can be kept): the year from 2000 to 2100, each rate
- * from 0% to 100%, the insurable wage's minimum above 0 and its maximum not below it, the exemption not below 0, all to
- * the piaster, and the tax table (taxTiersProblems).
+ * from 0% to 100%, the insurable wage's minimum above 0 and its maximum not below it, the exemption not below 0, the
+ * minimum wage above 0 when set, all to the piaster, and the tax table (taxTiersProblems).
  */
 export function lawRatesProblems(r: LawRates): string[] {
   const problems: string[] = [];
@@ -263,6 +271,9 @@ export function lawRatesProblems(r: LawRates): string[] {
   }
   if (!isNumber(r.personalExemption) || r.personalExemption < 0 || !decimals(r.personalExemption, 2)) {
     problems.push('Enter the personal exemption as an amount of 0 or more, to the piaster.');
+  }
+  if (r.minimumWage !== undefined && r.minimumWage !== null && !isLimit(r.minimumWage)) {
+    problems.push('Enter the minimum wage as an amount above 0, to the piaster, or leave it empty.');
   }
   problems.push(...taxTiersProblems(r.taxTiers));
   return problems;

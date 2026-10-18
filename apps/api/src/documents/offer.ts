@@ -1,4 +1,4 @@
-import { TEMPLATE_SLOTS, type EmploymentType, type TemplateSlot, type TemplateTrigger } from '@trendlix/shared';
+import { slotChosenByPay, TEMPLATE_SLOTS, type EmploymentType, type TemplateSlot, type TemplateTrigger } from '@trendlix/shared';
 
 // Which documents the Employment tab offers an employee (spec §8.3; owner's request, 15 October 2026): those whose
 // template applies to the employment type (`appliesTo`) and whose moment has come (`triggers`), grouped in sections.
@@ -50,6 +50,13 @@ export const TYPED_TAGS: readonly string[] = ['letter_to', 'letter_purpose'];
 /** Where an employment stands, as far as which documents it is offered. */
 export interface Situation {
   employmentType: EmploymentType;
+  /**
+   * Paid by commission (owner, 18 October 2026: Sales became Full-time with the flag), and the commission slots with a
+   * published version: such an employment is offered the commission contract in place of the full-time one when
+   * published (shared slotChosenByPay). Missing: not paid by commission.
+   */
+  paidByCommission?: boolean;
+  commissionPublished?: readonly string[];
   /** Its ending, unless there is none or it was rejected or withdrawn. */
   ending: { initiator: string | null } | null;
   /** The employment has ended (an end date), with or without an ending recorded. */
@@ -59,8 +66,8 @@ export interface Situation {
 /**
  * When each trigger's moment has come. Every document of the hire is offered for as long as the employment is there
  * (HR prints them again on request). The experience certificate (end of service, or on request) is therefore always
- * offered, and so is the internship certificate to an intern: an intern asks for it before the last day as well
- * (decisions, 15 October 2026). Form 6 once the employment is ending or has ended. The resignation request only when
+ * offered, and so is the training certificate to a trainee (an intern before 18 October 2026): a trainee asks for it
+ * before the last day as well (decisions, 15 October 2026). Form 6 once the employment is ending or has ended. The resignation request only when
  * the employee started the ending (a resignation, family reasons, or ending their own probation), and the clearance
  * whenever there is an ending. Payslips never: there is no payroll yet.
  */
@@ -83,6 +90,7 @@ export function offered(slotKey: string, s: Situation): boolean {
   const slot = SLOTS.get(slotKey);
   if (!slot || !sectionOf(slotKey)) return false;
   if (!slot.appliesTo.includes(s.employmentType)) return false;
+  if (!slotChosenByPay(slotKey, s.paidByCommission ?? false, (k) => s.commissionPublished?.includes(k) ?? false)) return false;
   // the leaving documents only while there is an ending (spec §8.3: only when a resignation is recorded)
   if (sectionOf(slotKey) === 'leaving' && !s.ending) return false;
   return slot.triggers.some((t) => TRIGGERED[t](s));

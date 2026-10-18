@@ -1,19 +1,33 @@
 import Link from 'next/link';
-import { EMPLOYMENT_TYPES, LABELS } from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, LABELS, WORK_PATTERN_LABELS } from '@trendlix/shared';
 import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import type { ContractListItem } from '@/lib/types';
 import { ContractStatusBadge, termLabel } from '../employees/[id]/contracts/contract-section';
 import { allowancesLabel, formatEgp, hourlyTerms, payLabel } from '../employees/[id]/contracts/salary';
+import { contractLengthText, workNatureLabel } from '../employees/employment-law';
+import { LawWarningBadges } from '../employees/law-badges';
+import { trainingLengthText } from '../employees/[id]/contracts/trainee-stages';
 import { contractHref } from '../employees/ui';
 import { loadContractList } from './data';
-import { contractsHref, countLabel, ENDING_WITHIN_DAYS, isFiltered, listPaths, readFilters, STATUS_FILTERS, type ContractFilters } from './list';
+import {
+  contractsHref,
+  countLabel,
+  ENDING_WITHIN_DAYS,
+  FORM_FILTERS,
+  isFiltered,
+  listPaths,
+  readFilters,
+  STATUS_FILTERS,
+  type ContractFilters,
+} from './list';
 
 // Every contract in the company, filtered by a GET form so the address can be shared: a search, the status (drafts and
-// signed unless chosen), the employment type and "ending within" (every contract is for a fixed term, so there is no
-// term to filter by). The API does the filtering and the order (signed by end date, then drafts, then the rest). Each
-// shows its term and how its pay is set; the salary (the gross, for pay by the hour the rate, the allowances and the
-// total, and the insured salary) only for those who see salaries.
+// signed unless chosen), the employment type, the contract's length and "ending within". The API does the filtering
+// and the order (signed by end date, then drafts, then the rest). Each shows its length and term, how its pay is set,
+// and HR's warnings by the labour law (owner, 18 October 2026: a fixed term that became open-ended, Art. 88; casual work
+// past its 6 months, Art. 1(7)); the salary (the gross, for pay by the hour the rate, the allowances and the total, and
+// the insured salary) only for those who see salaries.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -71,6 +85,7 @@ function Filters({ filters: f }: { filters: ContractFilters }) {
       </div>
       <FilterSelect id="contract-status" name="status" label="Status" value={f.status} options={STATUS_FILTERS} />
       <FilterSelect id="contract-type" name="type" label="Employment type" value={f.type} options={TYPE_OPTIONS} />
+      <FilterSelect id="contract-form" name="form" label="Contract length" value={f.form} options={FORM_FILTERS} />
       <FilterSelect id="contract-ending" name="endingWithin" label="Ending within" value={f.endingWithin === null ? '' : String(f.endingWithin)} options={ENDING_OPTIONS} />
       <button type="submit" className="btn btn-secondary">
         Search
@@ -107,6 +122,16 @@ function SalaryLines({ contract: c }: { contract: ContractListItem }) {
   );
 }
 
+/** Under the employment type: "Paid by commission", "Casual", "Remote work", as they apply, or nothing. */
+const employmentNotes = (c: ContractListItem) =>
+  [
+    c.paidByCommission && 'Paid by commission',
+    c.workNature && c.workNature !== 'regular' && workNatureLabel(c.workNature),
+    c.workPattern && c.workPattern !== 'on_site' && WORK_PATTERN_LABELS[c.workPattern],
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
 function ContractRow({ contract: c, salary }: { contract: ContractListItem; salary: boolean }) {
   return (
     <tr>
@@ -123,18 +148,27 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
         <span className="tabular-nums">{c.number}</span>
         <div className="text-xs text-muted">Version {c.version}</div>
       </td>
-      <td className="whitespace-nowrap">{LABELS.employmentType[c.employmentType] ?? c.employmentType}</td>
+      <td>
+        <span className="whitespace-nowrap">{LABELS.employmentType[c.employmentType] ?? c.employmentType}</span>
+        {/* by the labour law (18 October 2026): paid by commission, as Sales was; a nature of the work other than regular;
+            remote work (Art. 96(1)) */}
+        {employmentNotes(c) && <div className="text-xs text-muted">{employmentNotes(c)}</div>}
+      </td>
       <td>
         {c.jobTitleEn ?? dash}
         {c.departmentName && <div className="text-xs text-muted">{c.departmentName}</div>}
       </td>
       <td>
+        <div className="text-xs text-muted">{c.traineeMonths ? trainingLengthText(c.traineeMonths) : contractLengthText(c)}</div>
         <span className="whitespace-nowrap tabular-nums">{termLabel(c)}</span>
         {/* the hourly rate is with the salary */}
         <div className="text-xs text-muted">{payLabel({ ...c, salaryHidden: true })}</div>
       </td>
       <td>
-        <ContractStatusBadge status={c.status} />
+        <div className="flex flex-wrap gap-1.5">
+          <ContractStatusBadge status={c.status} />
+          <LawWarningBadges of={c} />
+        </div>
       </td>
       <td className="whitespace-nowrap tabular-nums">{c.signedOn ? formatDate(c.signedOn) : dash}</td>
       {salary && (
@@ -176,7 +210,7 @@ export async function AllContracts({ searchParams, salary }: { searchParams: Pro
                   <th>Contract</th>
                   <th>Employment Type</th>
                   <th>Job Title</th>
-                  <th>Term and Pay</th>
+                  <th>Length, Term and Pay</th>
                   <th>Status</th>
                   <th>Signed On</th>
                   {salary && <th className="text-right">Salary</th>}

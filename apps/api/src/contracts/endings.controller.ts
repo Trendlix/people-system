@@ -24,8 +24,8 @@ export class EndingsController {
   /** The CEO's queue is ?status=pending_ceo. */
   @Roles('hr', 'ceo')
   @Get('endings')
-  list(@Query() query: ListEndingsDto) {
-    return this.endings.list(query.status);
+  list(@Query() query: ListEndingsDto, @CurrentUser() user: SessionUser) {
+    return this.endings.list(query.status, user);
   }
 
   /** The CEO only: HR's approval is recording the ending. */

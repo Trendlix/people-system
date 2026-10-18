@@ -7,12 +7,13 @@ import { formatMoney, formatPercent, parseAmount, plainAmount } from '../../empl
 // Organization → Payroll, Rates Set by Law (owner's request, 16 October 2026: "creating a setup page for payroll to
 // enter the variables that might affect the sheet"): by year, the social insurance shares and the insurable wage's
 // limits, the personal exemption, the Martyrs' Fund, comprehensive health insurance and the salary tax's tiers and
-// bands, "editable by superadmin, to modify it if the law changed". Each year's values apply from that year: a year
-// without its own uses the latest earlier one (the earliest for a year before them all). HR, Finance, the CEO and Admin
-// read them; only the Super Admin changes them, and the API checks this again. Pure code, tested: who sees and changes
-// them, the form as typed (rates as percents, amounts in EGP) into the rates PUT /payroll/law-rates/:year takes, the
-// tier editor's rows, and the words the table and the Salary Calculator show them in. Relative imports: the tests run
-// without the "@/" alias.
+// bands, "editable by superadmin, to modify it if the law changed"; since 18 October 2026 the minimum wage too, which a
+// trainee's last training stage is paid at least (Labour Law 14/2025 Art. 29), left empty until the owner sets it. Each
+// year's values apply from that year: a year without its own uses the latest earlier one (the earliest for a year before
+// them all). HR, Finance, the CEO and Admin read them; only the Super Admin changes them, and the API checks this again.
+// Pure code, tested: who sees and changes them, the form as typed (rates as percents, amounts in EGP) into the rates PUT
+// /payroll/law-rates/:year takes, the tier editor's rows, and the words the table and the Salary Calculator show them
+// in. Relative imports: the tests run without the "@/" alias.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -54,6 +55,9 @@ const rateOf = (input: string) => parsePercent(input) ?? NaN;
 
 /** An amount as typed for the rates (parseAmount: to the piaster, Arabic digits too), or NaN when left empty or not one. */
 const amountOf = (input: string) => parseAmount(latin(input)) ?? NaN;
+
+/** An amount that may be left empty (the minimum wage): null when empty, else as amountOf. */
+const optionalAmountOf = (input: string) => (input.trim() === '' ? null : amountOf(input));
 
 // ---------- the tier editor ----------
 
@@ -144,6 +148,8 @@ export interface LawRatesTyped {
   personalExemption: string;
   martyrsRate: string;
   healthInsuranceRate: string;
+  /** Empty: not set (owner, 18 October 2026: the owner sets it; a trainee's last stage is checked against it). */
+  minimumWage: string;
   taxTiers: TierRow[];
 }
 
@@ -158,13 +164,18 @@ export function typedOf(r: LawRates, year = r.year): LawRatesTyped {
     personalExemption: plainAmount(r.personalExemption),
     martyrsRate: percentField(r.martyrsRate),
     healthInsuranceRate: percentField(r.healthInsuranceRate),
+    minimumWage: typeof r.minimumWage === 'number' ? plainAmount(r.minimumWage) : '',
     taxTiers: tierRowsOf(r.taxTiers),
   };
 }
 
-/** The rates the form gives, as PUT /payroll/law-rates/:year takes them (with the year); what can't be read is NaN. */
+/**
+ * The rates the form gives, as PUT /payroll/law-rates/:year takes them (with the year); what can't be read is NaN. The
+ * minimum wage only when typed, as normalLawRates keeps it.
+ */
 export function lawRatesOf(t: LawRatesTyped): LawRates {
   const year = latin(t.year).trim();
+  const minimumWage = optionalAmountOf(t.minimumWage);
   return {
     year: /^\d{4}$/.test(year) ? Number(year) : NaN,
     employeeInsuranceRate: rateOf(t.employeeInsuranceRate),
@@ -174,6 +185,7 @@ export function lawRatesOf(t: LawRatesTyped): LawRates {
     personalExemption: amountOf(t.personalExemption),
     martyrsRate: rateOf(t.martyrsRate),
     healthInsuranceRate: rateOf(t.healthInsuranceRate),
+    ...(minimumWage !== null && { minimumWage }),
     taxTiers: taxTiersOf(t.taxTiers),
   };
 }
@@ -192,7 +204,10 @@ export function formProblems(t: LawRatesTyped, adding: { kept: readonly number[]
   return problems;
 }
 
-/** What PUT /payroll/law-rates/:year takes: every rate but the year, which is in the address (unknown fields are refused). */
+/**
+ * What PUT /payroll/law-rates/:year takes: every rate but the year, which is in the address (unknown fields are
+ * refused); the minimum wage null when it isn't set.
+ */
 export function lawRatesBody(r: LawRates): Omit<LawRates, 'year'> {
   return {
     employeeInsuranceRate: r.employeeInsuranceRate,
@@ -202,6 +217,7 @@ export function lawRatesBody(r: LawRates): Omit<LawRates, 'year'> {
     personalExemption: r.personalExemption,
     martyrsRate: r.martyrsRate,
     healthInsuranceRate: r.healthInsuranceRate,
+    minimumWage: r.minimumWage ?? null,
     taxTiers: normalTaxTiers(r.taxTiers),
   };
 }

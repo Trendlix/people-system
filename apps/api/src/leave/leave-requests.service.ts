@@ -14,6 +14,7 @@ import {
   leaveStatusAfterApproval,
   serviceMonths,
   takesFromAnnual,
+  underLabourLaw,
   type LeaveGender,
   type LeaveStatus,
 } from '@trendlix/shared';
@@ -347,6 +348,15 @@ export class LeaveRequestsService {
     const user = caller.user;
     const employeeId = employment.employeeId;
     const name = byHr ? employment.employee.fullNameEn : null;
+    // leave is the labour law's (Arts. 124–133); a freelancer works outside it (owner, 18 October 2026; Art. 1(1)), with
+    // no leave to ask for or record
+    if (!underLabourLaw(employment.employmentType)) {
+      throw new BadRequestException([
+        name
+          ? `${name} is a freelancer, outside the labour law: there is no leave to record for a freelance employment.`
+          : 'You work freelance, outside the labour law: there is no leave to ask for under a freelance employment.',
+      ]);
+    }
     const type = await this.prisma.leaveType.findUnique({ where: { id: dto.typeId } });
     if (!type) throw new BadRequestException(['Choose a leave type from the list.']);
     if (!type.active) throw new BadRequestException([`${type.nameEn} is turned off, so it can't be asked for. Choose another type.`]);

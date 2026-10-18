@@ -235,6 +235,18 @@ describe('the form', () => {
     expect(formProblems(typedOf(Y2026), null)).toEqual([]);
   });
 
+  it('takes the minimum wage, left empty while it isn’t set (18 October 2026: a trainee’s last stage, Art. 29)', () => {
+    expect(typedOf(Y2026).minimumWage).toBe('');
+    expect(typedOf({ ...Y2026, minimumWage: 7000 }).minimumWage).toBe('7000');
+    expect(lawRatesOf({ ...typedOf(Y2026), minimumWage: '7,000' }).minimumWage).toBe(7000);
+    expect(lawRatesOf({ ...typedOf(Y2026), minimumWage: '٧٠٠٠.٥' }).minimumWage).toBe(7000.5);
+    // empty: not in the rates (and sent as null)
+    expect(lawRatesOf({ ...typedOf(Y2026), minimumWage: '  ' })).not.toHaveProperty('minimumWage');
+    expect(lawRatesOf(typedOf({ ...Y2026, minimumWage: 7000 }))).toEqual(normalLawRates({ ...Y2026, minimumWage: 7000 }));
+    expect(formProblems({ ...typedOf(Y2026), minimumWage: 'soon' }, null)).toEqual(['Enter the minimum wage as an amount above 0, to the piaster, or leave it empty.']);
+    expect(formProblems({ ...typedOf(Y2026), minimumWage: '0' }, null)).toEqual(['Enter the minimum wage as an amount above 0, to the piaster, or leave it empty.']);
+  });
+
   it('refuses to add a year already kept, which would replace it', () => {
     expect(formProblems(typedOf(Y2026, 2026), { kept: [2025, 2026] })).toEqual([
       'There are rates for 2026 already: change them with its Change button instead.',
@@ -253,8 +265,11 @@ describe('the form', () => {
       personalExemption: 20000,
       martyrsRate: 0.0005,
       healthInsuranceRate: 0,
+      // not set: sent as null, which clears it
+      minimumWage: null,
       taxTiers: normalTaxTiers(LAW_7_2024_TAX_TIERS),
     });
+    expect(lawRatesBody({ ...Y2026, minimumWage: 7000 }).minimumWage).toBe(7000);
   });
 });
 

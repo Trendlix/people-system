@@ -3,8 +3,9 @@ import { formatMoney, formatPercent } from '../../employees/[id]/contracts/salar
 import { changedText, limitsText, tierLabels, tiersSummary } from './law-rates';
 
 // The years' rates set by law as Rates Set by Law lists them (owner's request, 16 October 2026), oldest year first:
-// each year's values, its salary tax summed up with every tier and band behind it, and who changed it last. Read-only
-// here; the Super Admin's buttons come in `actions`. No hooks, so the section renders it on the server for those who
+// each year's values (the minimum wage since 18 October 2026, "Not set" until the owner sets it), its salary tax summed
+// up with every tier and band behind it, and who changed it last. Read-only here; the Super Admin's buttons come in
+// `actions`. No hooks, so the section renders it on the server for those who
 // only read the rates.
 
 const quiet = 'block text-xs text-muted';
@@ -65,6 +66,7 @@ export function LawRatesTable({
             <th scope="col">Personal exemption</th>
             <th scope="col">Martyrs&apos; Fund</th>
             <th scope="col">Health insurance</th>
+            <th scope="col">Minimum wage</th>
             <th scope="col">Salary tax</th>
             <th scope="col">Last changed</th>
             {actions && (
@@ -102,6 +104,16 @@ export function LawRatesTable({
                 <td className="align-top whitespace-nowrap tabular-nums">
                   {formatPercent(v.healthInsuranceRate)}
                   <span className={quiet}>{v.healthInsuranceRate > 0 ? 'of the taxed pay' : 'not applied'}</span>
+                </td>
+                <td className="align-top whitespace-nowrap tabular-nums">
+                  {typeof v.minimumWage === 'number' ? (
+                    <>
+                      {formatMoney(v.minimumWage)}
+                      <span className={quiet}>EGP a month</span>
+                    </>
+                  ) : (
+                    <span className="text-muted">Not set</span>
+                  )}
                 </td>
                 <td className="align-top tabular-nums">
                   <TaxTiers view={v} />

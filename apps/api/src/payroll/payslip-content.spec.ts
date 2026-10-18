@@ -577,7 +577,7 @@ describe('payslipContent: in Arabic', () => {
     expect(withoutMarks(part.deductions!.rows.find((r) => r.label === 'جزاء (أيام)')!.note!)).toBe('يوم واحد من صافي الراتب، Late twice');
     const hourly = payslipContent(payslipSource('hourly'), 'ar');
     expect(hourly.earnings!.rows[0]).toMatchObject({ label: 'أجر الساعات', note: '٩٢:٣٠ × ١٥٠٫٠٠ للساعة' });
-    expect(hourly.facts.find((f) => f.label === 'نوع التعاقد')!.value).toBe('دوام جزئي بالساعة · منذ ١٥/٠٢/٢٠٢٦');
+    expect(hourly.facts.find((f) => f.label === 'نوع التعاقد')!.value).toBe('عمل بعض الوقت بالساعة · منذ ١٥/٠٢/٢٠٢٦');
   });
 });
 

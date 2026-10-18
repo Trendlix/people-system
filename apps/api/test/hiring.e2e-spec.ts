@@ -219,7 +219,12 @@ describe('Hiring in one form (e2e)', () => {
     const e = await addEmployee('Both Parts');
     const both = await postHire(e.id, { employment: { joinDate: 'soon' }, contract: { grossSalary: -1, durationMonths: 0 } }).expect(400);
     expect(both.body.message).toEqual(
-      expect.arrayContaining(['Choose an employment type.', 'Enter the join date.', 'Enter a gross salary of more than 0.', 'A fixed term runs for 1 to 60 months.']),
+      expect.arrayContaining([
+        'Choose an employment type: full_time, part_time, trainee or freelance (outside the labour law).',
+        'Enter the join date.',
+        'Enter a gross salary of more than 0.',
+        'A fixed term runs for 1 to 60 months.',
+      ]),
     );
     expect((await postHire(e.id, { employment: job() }).expect(400)).body.message).toEqual(["Send the contract's terms as an object."]);
     expect((await postHire(e.id, { contract: { grossSalary: 12000 } }).expect(400)).body.message).toEqual(['Send the employment as an object.']);

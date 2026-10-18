@@ -4,10 +4,12 @@ import {
   EMPLOYMENT_TYPES,
   END_REASONS,
   WORK_ARRANGEMENTS,
+  WORK_NATURES,
   type ChosenStatus,
   type EmploymentType,
   type EndReason,
   type WorkArrangement,
+  type WorkNature,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { TrimOrNull } from '../common/transforms.js';
@@ -16,6 +18,11 @@ import { TrimOrNull } from '../common/transforms.js';
 
 /** Present (even as null) means "change it"; for fields that cannot be empty, null is then refused. */
 const Sent = () => ValidateIf((_o, v) => v !== undefined);
+
+/** The employment types by the labour law (owner, 18 October 2026), as the messages name them. */
+export const EMPLOYMENT_TYPE_MESSAGE = 'Choose an employment type: full_time, part_time, trainee or freelance (outside the labour law).';
+export const WORK_NATURE_MESSAGE = 'Choose the nature of the work: regular, temporary, casual or seasonal.';
+export const COMMISSION_MESSAGE = 'Send whether the pay is by commission as true or false.';
 
 class EmploymentFieldsDto {
   /**
@@ -59,6 +66,18 @@ class EmploymentFieldsDto {
    */
   @Sent() @IsBoolean({ message: 'Send whether the work is hazardous as true or false.' })
   hazardousWork?: boolean;
+
+  /**
+   * Paid by commission, a full-time employment only (owner, 18 October 2026: Sales became Full-time with this flag; the
+   * law's wage includes "العمولة أو النسبة المئوية", Labour Law 14/2025 Art. 1(4)(أ)). Off unless sent; cleared when the
+   * type changes to another than full-time.
+   */
+  @Sent() @IsBoolean({ message: COMMISSION_MESSAGE })
+  paidByCommission?: boolean;
+
+  /** The nature of the work (Art. 1(6–8)): regular unless sent; casual work is warned of past 6 months. */
+  @Sent() @IsIn(WORK_NATURES, { message: WORK_NATURE_MESSAGE })
+  workNature?: WorkNature;
 }
 
 /**
@@ -66,7 +85,7 @@ class EmploymentFieldsDto {
  * October 2026). Sent, it is refused as a field the employment does not take, like the probation end.
  */
 export class CreateEmploymentDto extends EmploymentFieldsDto {
-  @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
+  @IsIn(EMPLOYMENT_TYPES, { message: EMPLOYMENT_TYPE_MESSAGE })
   employmentType: EmploymentType;
 
   @IsDateOnly('Enter the join date.')
@@ -81,7 +100,7 @@ export class UpdateEmploymentDto extends EmploymentFieldsDto {
   @Sent() @IsIn(CHOSEN_STATUSES, { message: 'Choose Active or On leave. Probation and Notice period are set by the system.' })
   status?: ChosenStatus;
 
-  @Sent() @IsIn(EMPLOYMENT_TYPES, { message: 'Choose an employment type.' })
+  @Sent() @IsIn(EMPLOYMENT_TYPES, { message: EMPLOYMENT_TYPE_MESSAGE })
   employmentType?: EmploymentType;
 
   @Sent() @IsDateOnly('Enter the join date.')

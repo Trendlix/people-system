@@ -1,7 +1,8 @@
-import { RAISE_REASONS, type PayBasis, type RaiseReason } from '@trendlix/shared';
+import { CONTRACT_FORMS, RAISE_REASONS, traineeMonths, type ContractForm, type PayBasis, type RaiseReason } from '@trendlix/shared';
 import { allowancesFrom } from '../../../lib/allowances';
 import { dateFrom } from '../../../lib/form-data';
 import { MAX_HOURS_PER_WEEK, parseAmount, parseHours } from './[id]/contracts/salary';
+import { traineeStagesFrom } from './[id]/contracts/trainee-stages';
 
 // The contract form's fields as the API takes them (pure code, tested; relative imports for the tests), for the
 // drafting actions in contract-actions.ts; its pay fields (payBody) also for the raise form (contracts/raise.ts). Dates
@@ -101,9 +102,36 @@ export function raiseReasonFrom(fd: FormData, key: string, errors: string[]): Ra
 }
 
 /**
+ * The contract's length (owner, 18 October 2026: "can we update the employment types based on the labour law?"), as the
+ * API takes it: fixed-term (the default) for its months, 1 to 60; open-ended with no length or end date (Labour Law Art.
+ * 87); for a specific job with the job, required, and its expected end date, if known (Art. 155). A trainee's (the form
+ * sends the training stages) is the training agreement: a fixed term of its stages' months, with the stages (Art. 29).
+ * `draft`: changing a draft, where an emptied expected end date is cleared (null).
+ */
+export function lengthBody(fd: FormData, errors: string[], draft: boolean) {
+  if (fd.has('traineeStageName')) {
+    const traineeStages = traineeStagesFrom(fd, errors);
+    const months = traineeMonths(traineeStages);
+    return { form: 'fixed' as const, ...(Number.isInteger(months) && months >= 1 && { durationMonths: months }), traineeStages };
+  }
+  const raw = text(fd, 'form');
+  const form: ContractForm = (CONTRACT_FORMS as readonly string[]).includes(raw) ? (raw as ContractForm) : 'fixed';
+  if (form === 'open_ended') return { form };
+  if (form === 'specific_job') {
+    const jobToDo = text(fd, 'jobToDo');
+    if (!jobToDo) errors.push('Enter the job the contract is for: a contract for a specific job ends when it is done (Labour Law Art. 155).');
+    const endDate = dateFrom(fd, 'endDate', 'expected end date', errors);
+    return { form, jobToDo, ...(endDate ? { endDate } : draft ? { endDate: null } : {}) };
+  }
+  const durationMonths = monthsFrom(fd, 'durationMonths', 'length', 60, errors);
+  if (durationMonths === 0) errors.push('A fixed term runs for 1 to 60 months.');
+  return { form, ...(durationMonths !== undefined && { durationMonths }) };
+}
+
+/**
  * The contract form's fields (contracts/contract-form.tsx). A renewal has no start date or probation to send: it
- * starts the day after the previous version ends, without probation. Every contract runs for a fixed term (owner, 15
- * October 2026), so the length is always sent and the form (always fixed) isn't. Then the pay (payBody) and the note.
+ * starts the day after the previous version ends, without probation. Then its length (lengthBody), the pay (payBody)
+ * and the note.
  *
  * A renewal whose pay changes counts as a raise (owner's decisions, 16 October 2026): the form asks whether the pay
  * changes (payChange), and when it does, why (raiseReason, required), which the API needs to send it to the CEO, who
@@ -111,14 +139,13 @@ export function raiseReasonFrom(fd: FormData, key: string, errors: string[]): Ra
  */
 export function contractBody(fd: FormData, errors: string[], renewal: boolean, draft: boolean) {
   const startDate = renewal ? '' : dateFrom(fd, 'startDate', 'start date', errors);
-  const durationMonths = monthsFrom(fd, 'durationMonths', 'length', 60, errors);
-  if (durationMonths === 0) errors.push('A fixed term runs for 1 to 60 months.');
+  const length = lengthBody(fd, errors, draft);
   const probationMonths = renewal ? undefined : monthsFrom(fd, 'probationMonths', 'probation', 3, errors);
   const pay = payBody(fd, errors, draft);
   const raiseReason = text(fd, 'payChange') === 'changes' ? raiseReasonFrom(fd, 'raiseReason', errors) : undefined;
   return {
     ...(startDate && { startDate }),
-    ...(durationMonths !== undefined && { durationMonths }),
+    ...length,
     ...(probationMonths !== undefined && { probationMonths }),
     ...pay,
     ...(raiseReason && { raiseReason }),

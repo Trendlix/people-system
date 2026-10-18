@@ -71,8 +71,8 @@ const body = (r: LawRates) => {
   return rest;
 };
 
-/** The rates without who changed them. */
-const ratesOf = ({ updatedAt: _at, updatedBy: _by, ...r }: View): LawRates => r;
+/** The rates without who changed them; the minimum wage (18 October 2026) only when set, as the shared shape has it. */
+const ratesOf = ({ updatedAt: _at, updatedBy: _by, minimumWage, ...r }: View): LawRates => ({ ...r, ...(typeof minimumWage === 'number' && { minimumWage }) });
 
 /** A flat table: nothing up to 50,000 a year, 20% above. */
 const FLAT: TaxTier[] = [
@@ -204,6 +204,8 @@ describe('Rates set by law (e2e)', () => {
       const years = (await list(session).expect(200)).body as View[];
       expect(years.map(ratesOf)).toEqual(BUILT_IN_LAW_RATES.map(normalLawRates));
       expect(years.map((y) => y.updatedBy)).toEqual([null, null]);
+      // the minimum wage isn't seeded: the owner sets it (18 October 2026)
+      expect(years.map((y) => y.minimumWage)).toEqual([null, null]);
     }
     for (const session of [staff, manager]) await list(session).expect(403);
   });

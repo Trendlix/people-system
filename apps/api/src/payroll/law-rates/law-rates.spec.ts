@@ -28,6 +28,7 @@ function rowOf(r: LawRates, updatedById: string | null = null): PayrollLawYear {
     healthInsuranceRate: new Prisma.Decimal(r.healthInsuranceRate),
     // as JSONB gives them back: its own key order
     taxTiers: JSON.parse(JSON.stringify(normalTaxTiers(r.taxTiers).map((t) => ({ bands: t.bands.map((b) => ({ rate: b.rate, upTo: b.upTo })), upTo: t.upTo })))),
+    minimumWage: typeof r.minimumWage === 'number' ? new Prisma.Decimal(r.minimumWage) : null,
     updatedAt: new Date('2026-10-16T10:00:00Z'),
     updatedById,
   };
@@ -51,6 +52,7 @@ function service(rows: PayrollLawYear[] = BUILT_IN_LAW_RATES.map((r) => rowOf(r)
         const row = {
           ...data,
           ...Object.fromEntries(['employeeInsuranceRate', 'employerInsuranceRate', 'insurableWageMin', 'insurableWageMax', 'personalExemption', 'martyrsRate', 'healthInsuranceRate'].map((k) => [k, new Prisma.Decimal(data[k] as number)])),
+          minimumWage: typeof data.minimumWage === 'number' ? new Prisma.Decimal(data.minimumWage) : (data.minimumWage ?? null),
           year: where.year,
           updatedAt: new Date(),
         } as unknown as PayrollLawYear;
@@ -142,6 +144,23 @@ describe('LawRatesService', () => {
       },
       { userId: 'user-1', action: 'create', entityType: 'payroll_law_rates', diff: { year: 2028, ...body(Y2026) } },
     ]);
+  });
+
+  it('keeps the minimum wage a year has, set, cleared, or kept when left out (owner, 18 October 2026)', async () => {
+    const { lawRates, db, audit } = service();
+    // not built in: none until the Super Admin sets one, and the page always gets the field
+    expect((await lawRates.list()).map((r) => r.minimumWage)).toEqual([null, null]);
+    expect((await lawRates.put(2026, { ...body(Y2026), minimumWage: 7000 }, superAdmin)).minimumWage).toBe(7000);
+    expect((await lawRates.forYear(2026)).minimumWage).toBe(7000);
+    // a page from before it came sends none: the year keeps it
+    expect((await lawRates.put(2026, body({ ...Y2026, personalExemption: 21_000 }), superAdmin)).minimumWage).toBe(7000);
+    // null clears it
+    expect((await lawRates.put(2026, { ...body(Y2026), minimumWage: null }, superAdmin)).minimumWage).toBeNull();
+    expect(db.rows.find((r) => r.year === 2026)!.minimumWage).toBeNull();
+    await expect(lawRates.put(2026, { ...body(Y2026), minimumWage: 0 }, superAdmin)).rejects.toMatchObject({
+      response: { message: ['Enter the minimum wage as an amount above 0, to the piaster, or leave it empty.'] },
+    });
+    expect(audit.map((a) => (a.diff as Record<string, unknown>).minimumWage)).toEqual([{ from: null, to: 7000 }, undefined, { from: 7000, to: null }]);
   });
 
   it('deletes a year for a Super Admin only, never the earliest', async () => {

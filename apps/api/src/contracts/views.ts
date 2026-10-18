@@ -1,16 +1,24 @@
 import {
+  becameOpenEnded,
+  casualTooLong,
   ENDING_RULE_DEFAULTS,
   insuredWageDate,
   payStage,
+  traineeMonths,
+  traineeStageOn,
+  workPatternOf,
+  type ContractForm,
   type ContractKind,
   type EndReason,
   type NoticeUnit,
   type PayBasis,
   type RaiseApproval,
   type RaiseReason,
+  type TraineeStage,
+  type WorkNature,
 } from '@trendlix/shared';
 import { ALLOWANCE_ORDER, allowancesTotal, allowanceView } from '../allowances/rows.js';
-import { addDays, fromDateOnly } from '../common/date-only.js';
+import { addDays, addMonths, fromDateOnly, todayInCairo } from '../common/date-only.js';
 import type { Contract, Prisma } from '../generated/prisma/client.js';
 import { latestNoticeDay } from './notice.js';
 
@@ -31,6 +39,10 @@ export interface ContractContext {
   workingDays: readonly number[] | null;
   /** The non-renewal rule's notice (seeded: 45 working days, contract clause 2). */
   nonRenewal: NonRenewalNotice | null;
+  /** The employment's end, for the Art. 88 warning (becameOpenEnded); a current one's when not given. */
+  employmentEndDate?: Date | null;
+  /** The employment's casual work past six months (Art. 1(7)), shown with its contracts; false when not given. */
+  casualTooLong?: boolean;
 }
 
 /** An amount of money as a number, to the piastre. */
@@ -59,6 +71,47 @@ export function nonRenewalNoticeBy(c: Pick<Contract, 'form' | 'status' | 'endDat
   if (c.form !== 'fixed' || c.status !== 'active' || !c.endDate) return null;
   const notice = ctx.nonRenewal ?? ENDING_RULE_DEFAULTS.non_renewal;
   return latestNoticeDay(fromDateOnly(c.endDate), notice.noticeAmount, notice.noticeUnit as NoticeUnit, ctx.workingDays);
+}
+
+/** A contract's training stages (a trainee's training agreement, Labour Law Art. 29), as kept; null for none. */
+export function traineeStagesOf(c: Pick<Contract, 'traineeStages'>): TraineeStage[] | null {
+  const stages = c.traineeStages;
+  if (!Array.isArray(stages) || !stages.length) return null;
+  return stages.map((s) => {
+    const o = (s ?? {}) as Record<string, unknown>;
+    return { name: typeof o.name === 'string' ? o.name : '', months: Number(o.months), pay: Number(o.pay) };
+  });
+}
+
+/**
+ * Whether a signed fixed-term contract has become open-ended (owner, 18 October 2026; Labour Law 14/2025 Art. 88(3):
+ * "إذا كان مبرما لمدة محددة واستمر الطرفان فى تنفيذه بعد انتهاء هذه المدة دون اتفاق مكتوب بينهما"): the contract in
+ * force (signed: a signed renewal would have replaced it) is past its end date and the employment goes on. A warning
+ * for HR to renew it in writing or end the employment; nothing changes on its own.
+ */
+export function contractBecameOpenEnded(c: Pick<Contract, 'form' | 'status' | 'endDate'>, employmentEndDate: Date | null | undefined, today = todayInCairo()): boolean {
+  if (c.status !== 'active') return false;
+  return becameOpenEnded({ form: c.form, endDate: fromDateOnly(c.endDate), renewedOrEnded: !!employmentEndDate }, today);
+}
+
+/**
+ * Whether casual work has gone on past the law's six months (owner, 18 October 2026; Art. 1(7): casual work "لا يستغرق
+ * إنجازه أكثر من ستة أشهر"): counted from the join date to today, or to the day the employment ended.
+ */
+export function employmentCasualTooLong(e: { workNature: string; joinDate: Date; endDate: Date | null }, today = todayInCairo()): boolean {
+  if (e.workNature !== 'casual') return false;
+  const end = fromDateOnly(e.endDate);
+  return casualTooLong(fromDateOnly(e.joinDate), end && end < today ? end : today);
+}
+
+/** An employment's fields by the labour law (owner, 18 October 2026), as the views send them. */
+export function lawFieldsOf(e: { workArrangement: string; paidByCommission: boolean; workNature: string; joinDate: Date; endDate: Date | null }) {
+  return {
+    paidByCommission: e.paidByCommission,
+    workNature: e.workNature as WorkNature,
+    workPattern: workPatternOf(e.workArrangement),
+    casualTooLong: employmentCasualTooLong(e),
+  };
 }
 
 /**
@@ -97,11 +150,21 @@ export function contractView(c: ContractRow, ctx: ContractContext) {
         allowancesTotal: null,
         totalSalary: null,
       };
+  // a trainee's training stages (Art. 29): their pay is salary data, the names and months not
+  const stages = traineeStagesOf(c);
+  const today = todayInCairo();
+  const inForce = stages && traineeStageOn(stages, fromDateOnly(c.startDate), today < fromDateOnly(c.startDate) ? fromDateOnly(c.startDate) : today);
   return {
     id: c.id,
     number: c.number,
     version: c.version,
-    form: c.form,
+    form: c.form as ContractForm,
+    // for a specific job (Art. 155)
+    jobToDo: c.jobToDo,
+    traineeStages: stages && (ctx.seesSalary ? stages : stages.map((st) => ({ ...st, pay: null }))),
+    traineeMonths: stages && traineeMonths(stages),
+    // the stage in force today (the first before the start): its number from 1, name and pay
+    traineeStage: inForce && { number: inForce.index + 1, name: inForce.name, pay: ctx.seesSalary ? inForce.pay : null },
     startDate: fromDateOnly(c.startDate),
     endDate: fromDateOnly(c.endDate),
     durationMonths: c.durationMonths,
@@ -122,6 +185,10 @@ export function contractView(c: ContractRow, ctx: ContractContext) {
     labourOfficeFiledOn: fromDateOnly(c.labourOfficeFiledOn),
     note: c.note,
     nonRenewalNoticeBy: nonRenewalNoticeBy(c, ctx),
+    // a fixed term past its end with the employment going on and no signed renewal (Art. 88(3)); the employment's
+    // casual work past six months (Art. 1(7))
+    becameOpenEnded: contractBecameOpenEnded(c, ctx.employmentEndDate, today),
+    casualTooLong: ctx.casualTooLong ?? false,
     salaryHidden: !ctx.seesSalary,
     kind: c.kind as ContractKind,
     stage: payStage(c),
@@ -171,6 +238,10 @@ export const CONTRACT_LIST_INCLUDE = {
     select: {
       id: true,
       employmentType: true,
+      paidByCommission: true,
+      workNature: true,
+      workArrangement: true,
+      joinDate: true,
       endDate: true,
       employee: { select: { id: true, employeeCode: true, fullNameEn: true, fullNameAr: true } },
       jobTitle: { select: { titleEn: true } },
@@ -188,14 +259,17 @@ export type ContractListRow = Prisma.ContractGetPayload<{ include: typeof CONTRA
  * salary follows contractView's rule.
  */
 export function contractListView(c: ContractListRow, ctx: ContractContext) {
-  const v = contractView(c, ctx);
   const e = c.employment;
+  const law = lawFieldsOf(e);
+  const v = contractView(c, { ...ctx, employmentEndDate: e.endDate, casualTooLong: law.casualTooLong });
   const signed = c.status !== 'draft';
   return {
     id: v.id,
     number: v.number,
     version: v.version,
     form: v.form,
+    jobToDo: v.jobToDo,
+    traineeMonths: v.traineeMonths,
     status: v.status,
     startDate: v.startDate,
     endDate: v.endDate,
@@ -220,6 +294,10 @@ export function contractListView(c: ContractListRow, ctx: ContractContext) {
     employee: { id: e.employee.id, employeeCode: e.employee.employeeCode, fullNameEn: e.employee.fullNameEn, fullNameAr: e.employee.fullNameAr },
     employmentId: e.id,
     employmentType: e.employmentType,
+    // by the labour law (owner, 18 October 2026): paid by commission, the nature of the work, remote work, and the
+    // warnings: the fixed term become open-ended (Art. 88(3)), casual work past 6 months (Art. 1(7))
+    ...law,
+    becameOpenEnded: v.becameOpenEnded,
     employmentCurrent: e.endDate === null,
     jobTitleEn: signed ? c.jobTitleEn : (e.jobTitle?.titleEn ?? null),
     departmentName: signed ? c.departmentName : departmentName(e.department),
@@ -228,12 +306,27 @@ export function contractListView(c: ContractListRow, ctx: ContractContext) {
 
 export type ContractListView = ReturnType<typeof contractListView>;
 
-/** What an ending is shown with: its rule, who approved it, and the end date of its employment once it ended. */
+/**
+ * What an ending's view reads of its employment: the end date once it ended; the join date and the last signed
+ * contract's pay, for the Art. 154 estimate of a fixed term not renewed.
+ */
+export const ENDING_EMPLOYMENT = {
+  endDate: true,
+  joinDate: true,
+  contracts: {
+    where: { status: { in: ['active', 'ended'] } },
+    orderBy: { version: 'desc' },
+    take: 1,
+    select: { grossSalary: true, allowances: { select: { amount: true } } },
+  },
+} satisfies Prisma.EmploymentSelect;
+
+/** What an ending is shown with: its rule, who approved it, and of its employment what the view reads (ENDING_EMPLOYMENT). */
 export const ENDING_INCLUDE = {
   rule: { select: { label: true, endReason: true } },
   hrApprovedBy: { select: { email: true } },
   ceoDecidedBy: { select: { email: true } },
-  employment: { select: { endDate: true } },
+  employment: { select: ENDING_EMPLOYMENT },
 } satisfies Prisma.EmploymentEndingInclude;
 
 export type EndingRow = Prisma.EmploymentEndingGetPayload<{ include: typeof ENDING_INCLUDE }>;
@@ -248,11 +341,42 @@ export function endReasonOf(ruleKey: string, ruleEndReason: string, initiator: s
 }
 
 /**
- * An ending. Once completed it has its deadlines: the final dues within 7 days of the end (Art. 108), and the filing
- * at the labour office within 15 days (Decree 214/2025).
+ * A fixed term the company doesn't renew (owner, 18 October 2026): Labour Law 14/2025 Art. 154 ends a fixed-term
+ * contract when its term runs out ("ينتهى عقد العمل محدد المدة بانقضاء مدته"), and adds "فإذا كان الإنهاء من جانب صاحب
+ * العمل استحق العامل مكافأة تعادل أجر شهر عن كل سنة من سنوات الخدمة". Whether that applies to a term of five years or
+ * less is for the company's lawyer: the ending says so, with an estimate, and moves no money.
  */
-export function endingView(e: EndingRow) {
+export const ART_154_NOTE = "Under Art. 154 the employee may be owed one month's wage for each year of service — check with your lawyer";
+
+/** Whole months from one date to the next: 1 January to 31 December is 11, to 1 January next year 12. */
+function fullMonths(from: string, to: string): number {
+  let months = (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(from.slice(5, 7));
+  if (addMonths(from, months) > to) months--;
+  return Math.max(0, months);
+}
+
+/**
+ * Art. 154's estimate for a fixed term the company doesn't renew: the years of service, from the join date to the last
+ * working day (in whole months, as years to two decimals), × the last monthly wage (the last signed contract's gross and
+ * allowances). The wage and the amount are salary data: null for those who don't see salaries. Information only.
+ */
+export function art154Estimate(e: Pick<EndingRow, 'lastWorkingDay'> & { employment: Pick<EndingRow['employment'], 'joinDate' | 'contracts'> }, seesSalary: boolean) {
+  const months = fullMonths(fromDateOnly(e.employment.joinDate), addDays(fromDateOnly(e.lastWorkingDay), 1));
+  const serviceYears = Math.round((months / 12) * 100) / 100;
+  const [last] = e.employment.contracts;
+  const wageCents = last ? Math.round(last.grossSalary.toNumber() * 100) + last.allowances.reduce((sum, a) => sum + Math.round(a.amount.toNumber() * 100), 0) : null;
+  const amount = wageCents === null ? null : Math.round((wageCents * months) / 12) / 100;
+  return { serviceYears, lastMonthlyWage: seesSalary && wageCents !== null ? wageCents / 100 : null, amount: seesSalary ? amount : null };
+}
+
+/**
+ * An ending. Once completed it has its deadlines: the final dues within 7 days of the end (Art. 108), and the filing
+ * at the labour office within 15 days (Decree 214/2025). A fixed term the company doesn't renew carries Art. 154's note
+ * and estimate (the amounts for those who see salaries).
+ */
+export function endingView(e: EndingRow, seesSalary = false) {
   const endDate = fromDateOnly(e.employment.endDate ?? e.lastWorkingDay);
+  const nonRenewal = e.ruleKey === 'non_renewal';
   return {
     id: e.id,
     ruleKey: e.ruleKey,
@@ -276,6 +400,8 @@ export function endingView(e: EndingRow) {
     completedAt: e.completedAt,
     endReason: endReasonOf(e.ruleKey, e.rule.endReason, e.initiator),
     deadlines: e.status === 'completed' ? { finalDuesBy: addDays(endDate, 7), labourOfficeFilingBy: addDays(endDate, 15) } : null,
+    art154Note: nonRenewal ? ART_154_NOTE : null,
+    art154Estimate: nonRenewal ? art154Estimate(e, seesSalary) : null,
   };
 }
 

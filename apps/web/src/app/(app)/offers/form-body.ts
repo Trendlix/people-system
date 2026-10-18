@@ -91,6 +91,10 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
 
   const employmentType = text(fd, 'employmentType');
   if (!employmentType) errors.push('Choose the employment type.');
+  // by the labour law (owner, 18 October 2026): paid by commission, as Sales was, for a full-time offer only (unticked or
+  // another type is no), and the nature of the work (Art. 1(6–8)), regular unless chosen; both go to the employment
+  const paidByCommission = employmentType === 'full_time' && fd.has('paidByCommission');
+  const workNature = text(fd, 'workNature') || 'regular';
   const workArrangement = text(fd, 'workArrangement') || 'office';
   const officeDays =
     workArrangement === 'hybrid'
@@ -139,6 +143,8 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
     mobile: optional('mobile'),
     employeeId: optional('employeeId'),
     employmentType,
+    paidByCommission,
+    workNature,
     departmentId: optional('departmentId'),
     // a job title picker left disabled sends nothing, which clears the job title
     jobTitleId: optional('jobTitleId'),
@@ -204,6 +210,9 @@ export interface OfferDefaults {
   mobile: string;
   employeeId: string;
   employmentType: string;
+  /** Full-time only (18 October 2026). */
+  paidByCommission: boolean;
+  workNature: string;
   departmentId: string;
   jobTitleId: string;
   gradeId: string;
@@ -242,6 +251,8 @@ export function newOfferDefaults(settings: ContractSettings | null, today: strin
     mobile: '',
     employeeId: '',
     employmentType: '',
+    paidByCommission: false,
+    workNature: 'regular',
     departmentId: '',
     jobTitleId: '',
     gradeId: '',
@@ -276,6 +287,8 @@ export function offerDefaults(o: OfferView): OfferDefaults {
     mobile: o.mobile ?? '',
     employeeId: o.employeeId ?? '',
     employmentType: o.employmentType,
+    paidByCommission: o.paidByCommission ?? false,
+    workNature: o.workNature ?? 'regular',
     departmentId: o.department?.id ?? '',
     jobTitleId: o.jobTitle?.id ?? '',
     gradeId: o.grade?.id ?? '',

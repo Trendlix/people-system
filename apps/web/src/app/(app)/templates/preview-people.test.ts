@@ -76,7 +76,8 @@ describe('a template previewed with data', () => {
       expect(isOfferSlot(key)).toBe(true);
       expect(previewHint(key)).toBe(OFFER_PREVIEW_HINT);
     }
-    for (const key of ['contract_full_time', 'hr_letter_en', 'nda', 'offer']) {
+    // the slots kept their keys (18 October 2026): a trainee's is offer_internship, there is no offer_trainee
+    for (const key of ['contract_full_time', 'hr_letter_en', 'nda', 'offer', 'offer_trainee']) {
       expect(isOfferSlot(key)).toBe(false);
       expect(previewHint(key)).toBe(PREVIEW_HINT);
     }

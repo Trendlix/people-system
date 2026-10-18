@@ -176,15 +176,19 @@ function slotRow(slot: TemplateSlot): string[] {
     cellParagraph(runs(titleCase(slot.name), { bold: true })) + notes.map((note) => cellParagraph(runs(note, { color: MUTED }))).join(''),
     cellParagraph(runs(TEMPLATE_FOLDER_LABELS[slot.folder] ?? slot.folder)),
     cellParagraph(runs(slot.language ? LANGUAGE_LABELS[slot.language] : 'Chosen on upload')),
-    cellParagraph(runs(appliesTo(slot.appliesTo))),
+    cellParagraph(runs(appliesTo(slot.appliesTo, slot.paidByCommission))),
     cellParagraph(runs(SIGNER_LABELS[slot.signers] ?? slot.signers)),
   ];
 }
 
-/** "All employment types", or the ones named: "Full-time", "Part-time, Internship". */
-function appliesTo(types: readonly EmploymentType[]): string {
+/**
+ * "All employment types", or the ones named: "Full-time", "Part-time, Trainee"; a commission slot "Full-time, paid by
+ * commission" (owner, 18 October 2026: Sales became Full-time with the flag).
+ */
+function appliesTo(types: readonly EmploymentType[], paidByCommission = false): string {
   if (EMPLOYMENT_TYPES.every((t) => types.includes(t))) return 'All employment types';
-  return types.map((t) => LABELS.employmentType[t] ?? t).join(', ');
+  const named = types.map((t) => LABELS.employmentType[t] ?? t).join(', ');
+  return paidByCommission ? `${named}, paid by commission` : named;
 }
 
 /** The tags that print another tag's value on this template, e.g. the insured salary on the social insurance copy. */

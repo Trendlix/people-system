@@ -75,8 +75,13 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
           action={updateContract.bind(null, employee.id, contract.id, renewal)}
           defaults={{
             startDate: contract.startDate,
+            form: contract.form,
             durationMonths: contract.durationMonths ?? settings?.durationMonths ?? 12,
+            jobToDo: contract.jobToDo ?? '',
+            // a specific job's expected end (a fixed term's follows its length)
+            endDate: contract.form === 'specific_job' ? (contract.endDate ?? '') : '',
             probationMonths: contract.probationMonths,
+            traineeStages: contract.traineeStages ?? null,
             payBasis: contract.payBasis ?? 'monthly',
             grossSalary: contract.grossSalary,
             hourlyRate: contract.hourlyRate ?? null,
@@ -92,7 +97,8 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
           payChange={
             renewal && previous ? { version: previous.version, pay: versionPay(previous), changes: Boolean(raise), reason: raise?.reason ?? null } : undefined
           }
-          fullTime={e.employmentType === 'full_time'}
+          employmentType={e.employmentType}
+          dateOfBirth={employee.dateOfBirth}
           today={today}
           lawYears={lawYears}
           cancelHref={back}

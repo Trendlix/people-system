@@ -1,13 +1,17 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  CASUAL_MAX_MONTHS,
   insuredWageOf,
   monthlyFromHourly,
   samePay,
+  traineeMonths,
+  traineeProblems,
   type ContractForm,
   type ContractStatus,
   type PayBasis,
   type PayTerms,
   type RaiseReason,
+  type TraineeStage,
 } from '@trendlix/shared';
 import { AllowancesService } from '../allowances/allowances.service.js';
 import { allowanceData, allowancesTotal, allowanceView, type AllowanceSnapshot } from '../allowances/rows.js';
@@ -17,7 +21,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { seesSalary } from '../employees/access.js';
 import { EmployeesService } from '../employees/employees.service.js';
-import type { EmployeeStatus, Prisma } from '../generated/prisma/client.js';
+import { Prisma, type EmployeeStatus } from '../generated/prisma/client.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ContractSettingsService } from './contract-settings.service.js';
@@ -34,10 +38,13 @@ import {
 import {
   CONTRACT_INCLUDE,
   CONTRACT_LIST_INCLUDE,
+  contractBecameOpenEnded,
   contractListView,
   contractView,
   departmentName,
+  employmentCasualTooLong,
   nonRenewalNoticeBy,
+  traineeStagesOf,
   type ContractContext,
   type ContractRow,
   type NonRenewalNotice,
@@ -49,11 +56,17 @@ type Db = PrismaService | Prisma.TransactionClient;
 /** Undoing a signing is for a Super Admin only, like deleting (owner's decision, 15 October 2026). */
 export const ONLY_SUPER_ADMIN_UNSIGNS = 'Only a Super Admin can undo a signing.';
 const DATE_FIELDS = ['startDate', 'endDate', 'probationEnd', 'signedOn', 'insuranceFiledOn', 'labourOfficeFiledOn', 'form2From'] as const;
-/** Restricted (HR, Finance, CEO): the audit log only says they changed, as for bank details. */
-export const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary', 'hourlyRate', 'allowances'];
+/**
+ * Restricted (HR, Finance, CEO): the audit log only says they changed, as for bank details. A trainee's training stages
+ * too, as each has its pay (18 October 2026).
+ */
+export const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary', 'hourlyRate', 'allowances', 'traineeStages'];
 /** A contract's terms: a draft takes them, a signed contract never changes them. */
 const TERMS = [
   'form',
+  'jobToDo',
+  'endDate',
+  'traineeStages',
   'startDate',
   'durationMonths',
   'probationMonths',
@@ -76,6 +89,9 @@ const EMPLOYEE_REF = { select: { id: true, employeeCode: true, fullNameEn: true 
 const EMPLOYMENT = {
   id: true,
   employeeId: true,
+  // a trainee's contract is the training agreement (owner, 18 October 2026; Labour Law 14/2025 Arts. 28–29)
+  employmentType: true,
+  workNature: true, // for the casual work warning on its contracts (Art. 1(7))
   joinDate: true,
   endDate: true,
   status: true,
@@ -83,7 +99,7 @@ const EMPLOYMENT = {
   jobTitleId: true,
   departmentId: true,
   gradeId: true,
-  employee: { select: { fullNameEn: true } },
+  employee: { select: { fullNameEn: true, dateOfBirth: true } },
   jobTitle: { select: { titleEn: true, titleAr: true } },
   grade: { select: { code: true } },
   department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
@@ -107,6 +123,13 @@ const LIST_GROUPS: { statuses: readonly ContractStatus[]; orderBy: Prisma.Contra
 
 /** The terms to work out a contract from: as sent, or as the draft has them. */
 export interface TermsInput {
+  /** Its length (CONTRACT_FORMS): fixed unless sent. */
+  form?: ContractForm;
+  /** For a specific job: the job (required), and the day it is expected to be done (optional). */
+  jobToDo?: string | null;
+  endDate?: string | null;
+  /** A trainee's training agreement: its stages (required then). */
+  traineeStages?: readonly TraineeStage[] | null;
   startDate?: string;
   durationMonths?: number | null;
   probationMonths?: number;
@@ -134,6 +157,8 @@ export function fields(c: ContractRow) {
   return {
     number: c.number,
     form: c.form as ContractForm,
+    jobToDo: c.jobToDo,
+    traineeStages: traineeStagesOf(c),
     startDate: fromDateOnly(c.startDate),
     endDate: fromDateOnly(c.endDate),
     durationMonths: c.durationMonths,
@@ -207,11 +232,15 @@ export function payChangeStep(previous: { version: number } & Parameters<typeof 
   return { raiseReason: reason, approval: 'draft' as const };
 }
 
-/** What Prisma writes: YYYY-MM-DD strings become dates. */
-export function toData<T extends Record<string, unknown>>(values: T): T {
+/** The values as Prisma writes them: no training stages is the database's null (a JSON column). */
+type Written<T> = { [K in keyof T]: K extends 'traineeStages' ? Exclude<T[K], null> | typeof Prisma.DbNull : T[K] };
+
+/** What Prisma writes: YYYY-MM-DD strings become dates; no training stages, the database's null. */
+export function toData<T extends Record<string, unknown>>(values: T): Written<T> {
   const data: Record<string, unknown> = { ...values };
   for (const key of DATE_FIELDS) if (typeof data[key] === 'string') data[key] = toDateOnly(data[key]);
-  return data as T;
+  if (data.traineeStages === null) data.traineeStages = Prisma.DbNull;
+  return data as Written<T>;
 }
 
 /**
@@ -238,7 +267,10 @@ function assertNotFuture(date: string | null | undefined, what: string) {
 }
 
 // Contracts (owner's decisions, 15 October 2026, checked against Labour Law 14/2025): every employment type has a
-// fixed-term contract of 12 months, renewed in writing before it expires; the company has no open-ended contracts.
+// fixed-term contract of 12 months, renewed in writing before it expires. Since 18 October 2026 ("can we update the
+// employment types based on the labour law?") a contract may instead be open-ended (no end, no renewal: it ends by
+// notice, Art. 156) or for a specific job (Art. 155), fixed-term staying the default; a trainee's is the written training
+// agreement (Arts. 28–29), its stages' pay rising to at least the minimum wage, the gross the first stage's pay.
 // Version 1 starts on the join date with 3 months of probation, once per employer (Art. 90): none for someone who
 // already had one with the company. A renewal is a new version, starting the day after the one before ends, with no
 // probation; signing it supersedes the one before. The pay is a monthly gross, or by the hour (part-time), when the
@@ -325,6 +357,11 @@ export class ContractsService {
     if (draft) throw new ConflictException(`Version ${draft.version} (${draft.number}) is still a draft. Sign or delete it before adding another.`);
     const previous = versions[0] ?? null;
     if (previous && previous.status !== 'active') throw new ConflictException(`Sign version ${previous.version} first: a renewal follows a signed contract.`);
+    // an open-ended contract runs until it is ended by notice (Labour Law Art. 156: "إذا كان عقد العمل غير محدد المدة،
+    // جاز لأى من طرفيه إنهاؤه بشرط أن يخطر الطرف الآخر كتابة قبل الإنهاء بثلاثة أشهر"): nothing to renew
+    if (previous?.form === 'open_ended') {
+      throw new ConflictException(`${previous.number} is open-ended: it isn't renewed, it runs until it is ended by notice (Labour Law Art. 156). To change its pay, add a raise.`);
+    }
 
     // a kind made inactive since stays allowed on the renewal of a version that has it
     const previousAllowances = previous?.allowances.map(allowanceView) ?? [];
@@ -333,6 +370,11 @@ export class ContractsService {
         ? await this.allowances.snapshot(dto.allowances, { allowInactive: previousAllowances.map((a) => a.allowanceTypeId) })
         : previousAllowances;
     const { allowances: rows, ...terms } = await this.terms(employment, previous, {
+      // a renewal keeps the length of the version before unless another is sent
+      form: dto.form ?? (previous?.form as ContractForm | undefined),
+      jobToDo: dto.jobToDo ?? (dto.form === undefined && previous?.form === 'specific_job' ? previous.jobToDo : null),
+      endDate: dto.endDate,
+      traineeStages: dto.traineeStages,
       startDate: dto.startDate,
       durationMonths: dto.durationMonths,
       probationMonths: dto.probationMonths,
@@ -394,9 +436,16 @@ export class ContractsService {
       // switched to a monthly salary: the hourly terms go, and the monthly estimate stays the gross unless one is sent
       const payBasis = dto.payBasis ?? was.payBasis;
       const hourly = payBasis === 'hourly';
+      // another length: what belonged to the one before goes (a fixed term's duration, a specific job's job and end)
+      const form = dto.form ?? was.form;
+      const sameForm = form === was.form;
       const { allowances: _rows, ...terms } = await this.terms(employment, previous, {
+        form,
+        jobToDo: dto.jobToDo !== undefined ? dto.jobToDo : sameForm ? was.jobToDo : null,
+        endDate: dto.endDate !== undefined ? dto.endDate : sameForm && form === 'specific_job' ? was.endDate : null,
+        traineeStages: dto.traineeStages !== undefined ? dto.traineeStages : was.traineeStages,
         startDate: dto.startDate ?? was.startDate,
-        durationMonths: dto.durationMonths ?? was.durationMonths,
+        durationMonths: dto.durationMonths ?? (sameForm ? was.durationMonths : undefined),
         probationMonths: dto.probationMonths ?? was.probationMonths,
         basicPercent: dto.basicPercent ?? was.basicPercent,
         netSalary: dto.netSalary !== undefined ? dto.netSalary : was.netSalary,
@@ -479,6 +528,19 @@ export class ContractsService {
     const employment = await this.employmentOf(before);
     assertCurrent(employment);
     assertNotFuture(dto.signedOn, 'signing');
+    // a trainee's training agreement is signed with its stages, checked again (the minimum wage may have been set since):
+    // a written agreement setting them (Labour Law Art. 29)
+    if (employment.employmentType === 'trainee' && before.kind === 'contract') {
+      const startDate = fromDateOnly(before.startDate)!;
+      const law = await this.lawRates.forYear(Number(startDate.slice(0, 4)));
+      const problems = traineeProblems({
+        stages: traineeStagesOf(before) ?? [],
+        minimumWage: law.minimumWage ?? null,
+        dateOfBirth: fromDateOnly(employment.employee.dateOfBirth),
+        startDate,
+      });
+      if (problems.length) throw new BadRequestException(problems.map((p) => `${before.number} can't be signed yet: ${p.charAt(0).toLowerCase()}${p.slice(1)}`));
+    }
     // a promotion with a raise is applied when it is signed, checked again (the job title's grades may have changed)
     const promotion = await checkedPromotion(this.prisma, employment, { newJobTitleId: before.newJobTitleId, newGradeId: before.newGradeId });
 
@@ -678,7 +740,59 @@ export class ContractsService {
       endDate: fromDateOnly(c.endDate),
       nonRenewalNoticeBy: nonRenewalNoticeBy(c, { workingDays: c.employment.shift?.workingDays ?? null, nonRenewal }),
       renewalDraft: c.employment.contracts.length > 0,
+      // past its end with the employment going on and no signed renewal: open-ended by the law (Art. 88(3)), a draft
+      // renewal or not (only a signed one is the written agreement)
+      becameOpenEnded: contractBecameOpenEnded(c, null),
     }));
+  }
+
+  /**
+   * What the labour law warns HR of (owner, 18 October 2026: "can we update the employment types based on the labour
+   * law?"), for the dashboard: signed fixed-term contracts past their end while the employment goes on without a signed
+   * renewal, which the law makes open-ended (Labour Law 14/2025 Art. 88(3): "إذا كان مبرما لمدة محددة واستمر الطرفان فى
+   * تنفيذه بعد انتهاء هذه المدة دون اتفاق مكتوب بينهما"), and current casual work past six months (Art. 1(7): casual
+   * work "لا يستغرق إنجازه أكثر من ستة أشهر"). The contracts by end date, then the casual work by join date.
+   */
+  async lawWarnings() {
+    const today = todayInCairo();
+    const [contracts, casual] = await Promise.all([
+      this.prisma.contract.findMany({
+        where: { status: 'active', form: 'fixed', endDate: { lt: toDateOnly(today) }, employment: { endDate: null } },
+        orderBy: [{ endDate: 'asc' }, { number: 'asc' }],
+        select: { id: true, number: true, form: true, status: true, endDate: true, employment: { select: { id: true, employee: EMPLOYEE_REF } } },
+      }),
+      this.prisma.employment.findMany({
+        where: { endDate: null, workNature: 'casual' },
+        orderBy: [{ joinDate: 'asc' }],
+        select: { id: true, workNature: true, joinDate: true, endDate: true, employee: EMPLOYEE_REF },
+      }),
+    ]);
+    return [
+      ...contracts
+        .filter((c) => contractBecameOpenEnded(c, null, today))
+        .map((c) => ({
+          kind: 'became_open_ended' as const,
+          employee: c.employment.employee,
+          employmentId: c.employment.id,
+          contractId: c.id,
+          contractNumber: c.number,
+          // the fixed term's last day: open-ended from the day after
+          since: fromDateOnly(c.endDate),
+          message: `${c.number} ended on ${shownDate(fromDateOnly(c.endDate)!)} and the work goes on without a signed renewal: by Labour Law Art. 88 it is now open-ended. Renew it in writing, or end the employment.`,
+        })),
+      ...casual
+        .filter((e) => employmentCasualTooLong(e, today))
+        .map((e) => ({
+          kind: 'casual_too_long' as const,
+          employee: e.employee,
+          employmentId: e.id,
+          contractId: null,
+          contractNumber: null,
+          // the day the six months were up
+          since: addMonths(fromDateOnly(e.joinDate), CASUAL_MAX_MONTHS),
+          message: `Casual work since ${shownDate(fromDateOnly(e.joinDate))}: past the 6 months casual work may last (Labour Law Art. 1(7)). Change the nature of the work, or end it.`,
+        })),
+    ];
   }
 
   /**
@@ -731,11 +845,16 @@ export class ContractsService {
     }
     if (probationMonths > 3) throw new BadRequestException(PROBATION_CAP_MESSAGE); // the DTO refuses it first
 
-    // every contract runs for a fixed term (owner, 15 October 2026)
-    const durationMonths = input.durationMonths ?? settings.durationMonths;
-    const endDate = addDays(addMonths(startDate, durationMonths), -1);
+    // its length: a fixed term (the settings' 12 months unless sent), open-ended or for a specific job (owner, 18
+    // October 2026); a trainee's training agreement for its stages' months, the gross the first stage's pay
+    const length = await this.length(employment, input, startDate, settings.durationMonths);
+    const { durationMonths, endDate } = length;
+    if (length.traineeStages) {
+      if (input.payBasis === 'hourly') throw new BadRequestException('A trainee is paid by the training stages, a month each: choose a monthly salary.');
+      input = { ...input, grossSalary: length.traineeStages[0].pay };
+    }
     const probationEnd = probationMonths > 0 ? addDays(addMonths(startDate, probationMonths), -1) : null;
-    if (probationEnd && probationEnd > endDate) {
+    if (probationEnd && endDate && probationEnd > endDate) {
       throw new BadRequestException(`The probation would end after the contract, on ${shownDate(probationEnd)}. Shorten the probation or lengthen the contract.`);
     }
     const pay = this.pay(input);
@@ -746,7 +865,9 @@ export class ContractsService {
       throw new BadRequestException(allowances.length ? "The net salary can't be more than the gross salary and the allowances together." : "The net salary can't be more than the gross salary.");
     }
     return {
-      form: 'fixed' as const,
+      form: length.form,
+      jobToDo: length.jobToDo,
+      traineeStages: length.traineeStages,
       startDate,
       durationMonths,
       endDate,
@@ -760,6 +881,61 @@ export class ContractsService {
       insuredSalary: insuredWageOf(pay.grossSalary, allowances, await this.lawRates.forYear(Number(startDate.slice(0, 4)))),
       allowances,
     };
+  }
+
+  /**
+   * A contract's length and what goes with it (owner, 18 October 2026: "can we update the employment types based on the
+   * labour law?"; Labour Law 14/2025 Art. 87: "يبرم عقد العمل الفردى لمدة غير محددة، أو لمدة محددة إذا كانت طبيعة العمل
+   * تقتضى ذلك"). Fixed-term: its months (the settings' unless sent) and its end. Open-ended: no duration and no end, it
+   * ends by notice (Art. 156). For a specific job (Art. 155: "إذا أبرم عقد العمل لإنجاز عمل معين، انتهى العقد بإنجاز هذا
+   * العمل"): the job, and the day it is expected to be done when known; no duration. A trainee's training agreement (Art.
+   * 29: "يجب أن يكون اتفاق التدرج مكتوبا، وتحدد فيه على الأخص مدة تعلم المهنة … ومراحلها المتتابعة والمكافأة التى يحصل
+   * عليها المتدرج فى كل مرحلة بصورة تصاعدية"): fixed-term for its stages' months together, the stages checked with
+   * traineeProblems, the minimum wage the start year's (Payroll Setup) and the age (Art. 28) the profile's date of birth.
+   */
+  private async length(employment: EmploymentRow, input: TermsInput, startDate: string, defaultMonths: number) {
+    const form: ContractForm = input.form ?? 'fixed';
+    const none = { jobToDo: null, traineeStages: null };
+    if (form !== 'specific_job' && input.jobToDo) {
+      throw new BadRequestException('Only a contract for a specific job names the job: choose For a specific job, or leave the job out.');
+    }
+    if (form !== 'specific_job' && input.endDate) {
+      throw new BadRequestException(
+        form === 'fixed'
+          ? 'A fixed-term contract ends when its duration does: send its months (durationMonths), not an end date.'
+          : 'An open-ended contract has no end date (Labour Law Art. 87): leave it out.',
+      );
+    }
+    if (employment.employmentType === 'trainee') {
+      if (form !== 'fixed') {
+        throw new BadRequestException('A trainee’s training agreement runs for the training’s length, which its stages set (Labour Law Art. 29): leave the contract fixed-term.');
+      }
+      const stages = (input.traineeStages ?? []).map((s) => ({ name: s.name, months: s.months, pay: s.pay }));
+      const law = await this.lawRates.forYear(Number(startDate.slice(0, 4)));
+      const problems = traineeProblems({ stages, minimumWage: law.minimumWage ?? null, dateOfBirth: fromDateOnly(employment.employee.dateOfBirth), startDate });
+      if (problems.length) throw new BadRequestException(problems);
+      const durationMonths = traineeMonths(stages);
+      return { form, durationMonths, endDate: addDays(addMonths(startDate, durationMonths), -1), jobToDo: null, traineeStages: stages };
+    }
+    if (input.traineeStages?.length) throw new BadRequestException('Training stages are for a trainee’s training agreement only.');
+    if (form === 'open_ended') {
+      if (input.durationMonths != null) throw new BadRequestException('An open-ended contract has no duration or end date (Labour Law Art. 87): leave the months out.');
+      return { form, durationMonths: null, endDate: null, ...none };
+    }
+    if (form === 'specific_job') {
+      if (input.durationMonths != null) {
+        throw new BadRequestException(
+          'A contract for a specific job ends when the job is done (Labour Law Art. 155): leave the months out, and give the day it is expected to be done (endDate) if you know it.',
+        );
+      }
+      const job = input.jobToDo?.trim();
+      if (!job) throw new BadRequestException('Enter the job the contract is for (Labour Law Art. 155).');
+      const endDate = input.endDate ?? null;
+      if (endDate && endDate < startDate) throw new BadRequestException(`The job can't be expected to be done before the contract starts, on ${shownDate(startDate)}.`);
+      return { form, durationMonths: null, endDate, jobToDo: job, traineeStages: null };
+    }
+    const durationMonths = input.durationMonths ?? defaultMonths;
+    return { form, durationMonths, endDate: addDays(addMonths(startDate, durationMonths), -1), ...none };
   }
 
   /**
@@ -826,7 +1002,13 @@ export class ContractsService {
 
   /** How contracts are shown to this user: the salary or not, and the dates that follow from the employment's shift. */
   async context(user: SessionUser, employment: EmploymentRow): Promise<ContractContext> {
-    return { seesSalary: seesSalary(user), workingDays: employment.shift?.workingDays ?? null, nonRenewal: await this.nonRenewal() };
+    return {
+      seesSalary: seesSalary(user),
+      workingDays: employment.shift?.workingDays ?? null,
+      nonRenewal: await this.nonRenewal(),
+      employmentEndDate: employment.endDate,
+      casualTooLong: employmentCasualTooLong(employment),
+    };
   }
 
   private nonRenewal(): Promise<NonRenewalNotice | null> {

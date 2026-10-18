@@ -1,11 +1,22 @@
 // Contracts and how an employment ends. The owner's decisions of 15 October 2026, checked against Labour Law No. 14 of
-// 2025 (in force 1 September 2025): contracts are fixed-term for a year, the first three months are probation (once per
-// employer, Art. 90), resignation needs three months' notice (Art. 156), and an ending is approved by HR, then the CEO.
+// 2025 (in force 1 September 2025): contracts are fixed-term for a year (since 18 October 2026 the default, open-ended
+// and specific-job ones allowed too: CONTRACT_FORMS), the first three months are probation (once per employer, Art.
+// 90), resignation needs three months' notice (Art. 156), and an ending is approved by HR, then the CEO.
 
-/** Every contract runs for a fixed term: the company has no open-ended contracts (owner, 15 October 2026). */
-export const CONTRACT_FORMS = ['fixed'] as const;
+/**
+ * A contract's length (Labour Law 14/2025 Art. 87: "يبرم عقد العمل الفردى لمدة غير محددة، أو لمدة محددة إذا كانت طبيعة
+ * العمل تقتضى ذلك"; Art. 155: "إذا أبرم عقد العمل لإنجاز عمل معين، انتهى العقد بإنجاز هذا العمل"). On 15 October 2026 the
+ * owner had every contract fixed-term; on 18 October 2026 ("can we update the employment types based on the labour
+ * law?") open-ended and specific-job contracts came back as choices, fixed-term for a year staying the default. An
+ * open-ended contract has no end date, no duration and no renewal: it ends by notice (Art. 156: "إذا كان عقد العمل غير
+ * محدد المدة، جاز لأى من طرفيه إنهاؤه بشرط أن يخطر الطرف الآخر كتابة قبل الإنهاء بثلاثة أشهر"); a specific-job one names
+ * the job, its end date (when the job is expected to be done) optional.
+ */
+export const CONTRACT_FORMS = ['fixed', 'open_ended', 'specific_job'] as const;
 export type ContractForm = (typeof CONTRACT_FORMS)[number];
-export const CONTRACT_FORM_LABELS: Record<ContractForm, string> = { fixed: 'Fixed term' };
+export const CONTRACT_FORM_LABELS: Record<ContractForm, string> = { fixed: 'Fixed-term', open_ended: 'Open-ended', specific_job: 'For a specific job' };
+export const CONTRACT_FORM_LABELS_AR: Record<ContractForm, string> = { fixed: 'محدد المدة', open_ended: 'غير محدد المدة', specific_job: 'لإنجاز عمل معين' };
+export const isContractForm = (form: unknown): form is ContractForm => (CONTRACT_FORMS as readonly unknown[]).includes(form);
 
 /**
  * How a contract's or an offer's pay is set (owner's request, 15 October 2026): a monthly salary, or by the hour

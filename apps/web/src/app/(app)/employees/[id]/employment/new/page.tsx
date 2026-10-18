@@ -59,6 +59,7 @@ async function AddEmployment({ params }: { params: Promise<{ id: string }> }) {
                       defaults: firstContractDefaults(settings, '', employedBefore),
                       allowanceTypes,
                       probationHint: employedBefore ? noProbationAgain(employee.fullNameEn) : undefined,
+                      dateOfBirth: employee.dateOfBirth,
                       today: todayInCairo(),
                       lawYears,
                       cancelHref: back,

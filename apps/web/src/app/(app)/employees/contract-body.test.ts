@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contractBody, payBody } from './contract-body';
+import { contractBody, lengthBody, payBody } from './contract-body';
 
 /** A submitted form: each entry once, or a list for repeated fields. */
 function form(entries: Record<string, string | string[]>): FormData {
@@ -28,6 +28,8 @@ describe('a contract as the API takes it', () => {
     const errors: string[] = [];
     expect(contractBody(form({ ...monthly, allowanceTypeId: 'a-1', allowanceAmount: '1,000' }), errors, false, false)).toEqual({
       startDate: '2026-11-01',
+      // fixed-term unless another length is chosen (18 October 2026)
+      form: 'fixed',
       durationMonths: 12,
       probationMonths: 3,
       payBasis: 'monthly',
@@ -130,5 +132,64 @@ describe('the pay fields as the API takes them', () => {
     expect(fresh).not.toHaveProperty('netSalary');
     expect(fresh).not.toHaveProperty('daysPerWeek');
     expect(errors).toEqual([]);
+  });
+});
+
+describe('the contract’s length by the labour law (18 October 2026)', () => {
+  it('sends a fixed term’s months, fixed-term unless another is chosen', () => {
+    const errors: string[] = [];
+    expect(lengthBody(form({ form: 'fixed', durationMonths: '12' }), errors, false)).toEqual({ form: 'fixed', durationMonths: 12 });
+    expect(lengthBody(form({ durationMonths: '6' }), errors, false)).toEqual({ form: 'fixed', durationMonths: 6 });
+    expect(lengthBody(form({ form: 'permanent', durationMonths: '6' }), errors, false)).toEqual({ form: 'fixed', durationMonths: 6 });
+    expect(errors).toEqual([]);
+    const zero: string[] = [];
+    lengthBody(form({ form: 'fixed', durationMonths: '0' }), zero, false);
+    expect(zero).toEqual(['A fixed term runs for 1 to 60 months.']);
+  });
+
+  it('sends an open-ended contract with no length or end date (Art. 87)', () => {
+    const errors: string[] = [];
+    // the months typed before switching to open-ended are not sent
+    expect(lengthBody(form({ form: 'open_ended', durationMonths: '12' }), errors, true)).toEqual({ form: 'open_ended' });
+    expect(errors).toEqual([]);
+  });
+
+  it('sends a specific job’s job, with its expected end date when known (Art. 155)', () => {
+    const errors: string[] = [];
+    expect(lengthBody(form({ form: 'specific_job', jobToDo: ' Building the new website ', endDate: '31/3/2027', durationMonths: '12' }), errors, false)).toEqual({
+      form: 'specific_job',
+      jobToDo: 'Building the new website',
+      endDate: '2027-03-31',
+    });
+    expect(lengthBody(form({ form: 'specific_job', jobToDo: 'Launch', endDate: '' }), errors, false)).toEqual({ form: 'specific_job', jobToDo: 'Launch' });
+    // a draft's emptied expected end is cleared
+    expect(lengthBody(form({ form: 'specific_job', jobToDo: 'Launch', endDate: '' }), errors, true)).toEqual({ form: 'specific_job', jobToDo: 'Launch', endDate: null });
+    expect(errors).toEqual([]);
+    const missing: string[] = [];
+    lengthBody(form({ form: 'specific_job', jobToDo: '  ' }), missing, false);
+    expect(missing).toEqual(['Enter the job the contract is for: a contract for a specific job ends when it is done (Labour Law Art. 155).']);
+  });
+
+  it('sends a trainee’s training agreement: fixed-term for its stages’ months, with the stages (Art. 29)', () => {
+    const errors: string[] = [];
+    const stages = { traineeStageName: ['Basics', 'Practice'], traineeStageMonths: ['3', '9'], traineeStagePay: ['4,000', '6,000'] };
+    expect(lengthBody(form({ form: 'fixed', durationMonths: '24', ...stages }), errors, false)).toEqual({
+      form: 'fixed',
+      durationMonths: 12,
+      traineeStages: [
+        { name: 'Basics', months: 3, pay: 4000 },
+        { name: 'Practice', months: 9, pay: 6000 },
+      ],
+    });
+    expect(errors).toEqual([]);
+    // the whole contract: the stages go with the pay
+    expect(contractBody(form({ ...monthly, ...stages }), errors, false, false)).toMatchObject({ form: 'fixed', durationMonths: 12, traineeStages: expect.any(Array) });
+    expect(errors).toEqual([]);
+    const falling: string[] = [];
+    lengthBody(form({ traineeStageName: ['Basics', 'Practice'], traineeStageMonths: ['3', ''], traineeStagePay: ['6000', '4000'] }), falling, false);
+    expect(falling).toEqual([
+      'Training stage 2’s length must be a whole number of months, 1 or more.',
+      expect.stringMatching(/^Training stage 2’s pay must be more than stage 1’s/),
+    ]);
   });
 });

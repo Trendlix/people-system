@@ -401,7 +401,7 @@ async function Template({ params, searchParams }: PageProps<'/templates/[slot]'>
   if (!known) notFound();
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
 
-  const header = (slot: Pick<TemplateSlot, 'name' | 'folder' | 'language' | 'appliesTo' | 'triggers' | 'signers'>, status?: React.ReactNode) => (
+  const header = (slot: Pick<TemplateSlot, 'key' | 'name' | 'folder' | 'language' | 'appliesTo' | 'triggers' | 'signers'>, status?: React.ReactNode) => (
     <div className="card space-y-4 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">

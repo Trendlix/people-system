@@ -254,8 +254,16 @@ export class EmploymentsService {
    * Returns the values to write as well.
    */
   private async checked(employeeId: string, before: Employment | null, dto: CreateEmploymentDto | UpdateEmploymentDto) {
-    const derived: { departmentId?: string | null; officeDays?: number[]; probationEnd?: string | null } = {};
+    const derived: { departmentId?: string | null; officeDays?: number[]; probationEnd?: string | null; paidByCommission?: boolean } = {};
     const current = before ? fields(before) : null;
+
+    // paid by commission is a full-time employment's (owner, 18 October 2026: Sales became Full-time with the flag):
+    // refused for another type, and cleared when the type changes from full-time unless sent
+    const type = dto.employmentType ?? before?.employmentType;
+    if (dto.paidByCommission && type !== 'full_time') {
+      throw new BadRequestException('Paid by commission is for a full-time employment only. Choose Full-time, or leave paid by commission off.');
+    }
+    if (dto.paidByCommission === undefined && before?.paidByCommission && type !== 'full_time') derived.paidByCommission = false;
 
     // the department or team follows the job title: the one it belongs to, a department itself (e.g. Head of
     // Marketing, in Marketing) or one of its teams (owner's decision, 15 October 2026)

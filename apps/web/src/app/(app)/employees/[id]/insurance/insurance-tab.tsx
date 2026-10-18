@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { LABELS } from '@trendlix/shared';
 import { ApiError, apiGet } from '@/lib/api';
 import { formatDate, titleCase } from '@/lib/format';
 import { PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { DocumentItem, EmployeeProfile, PaperworkItem } from '@/lib/types';
+import { typeWord } from '../../employment-law';
 import { saveInsuranceDetail } from '../../insurance-actions';
 import { canSeeEmployeeFiles, contractHref, FieldGrid, Loading, ProfileSection, profileHref, todayInCairo, type GridField } from '../../ui';
 import { formatEgp } from '../contracts/salary';
@@ -391,7 +391,7 @@ async function InsurancePrint({ profile: p }: { profile: EmployeeProfile }) {
             </>
           ) : (
             <span className="text-muted">
-              Not uploaded. {type ? `A ${LABELS.employmentType[type].toLowerCase()} employee's file doesn't need it.` : 'The employee file doesn’t need it.'}
+              Not uploaded. {type ? `A ${typeWord(type)} employee's file doesn't need it.` : 'The employee file doesn’t need it.'}
             </span>
           )}
         </p>

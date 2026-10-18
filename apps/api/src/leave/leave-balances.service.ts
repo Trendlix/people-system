@@ -7,6 +7,7 @@ import {
   leaveDayRate,
   leaveTypeLeft,
   takesFromAnnual,
+  underLabourLaw,
   type LeaveBalanceKind,
   type LeaveRules,
 } from '@trendlix/shared';
@@ -28,6 +29,8 @@ export const TAKING = ['with_manager', 'with_hr', 'approved'] as const;
 export interface LeaveEmployment {
   id: string;
   employeeId: string;
+  /** A freelancer is outside the labour law: no annual leave, no leave to ask for (owner, 18 October 2026). */
+  employmentType: string;
   joinDate: string;
   endDate: string | null;
   hazardousWork: boolean;
@@ -85,6 +88,7 @@ export interface YearFigures {
 const EMPLOYMENT_SELECT = {
   id: true,
   employeeId: true,
+  employmentType: true,
   joinDate: true,
   endDate: true,
   hazardousWork: true,
@@ -100,6 +104,7 @@ export function leaveEmployment(e: EmploymentRow): LeaveEmployment {
   return {
     id: e.id,
     employeeId: e.employeeId,
+    employmentType: e.employmentType,
     joinDate: fromDateOnly(e.joinDate),
     endDate: fromDateOnly(e.endDate),
     hazardousWork: e.hazardousWork,
@@ -190,7 +195,9 @@ export class LeaveBalancesService {
     const adjustmentOf = new Map(adjustments.map((a) => [`${a.employmentId}:${a.year}`, days(a._sum.days)]));
     for (const { employment: e, year } of pairs) {
       const key = `${e.id}:${year}`;
-      const entitlement = annualEntitlement({
+      // a freelancer is outside the labour law (owner, 18 October 2026; Labour Law 14/2025 Art. 1(1): a worker works
+      // "تحت إدارته أو إشرافه", a freelancer doesn't): the law's annual leave (Art. 124) isn't theirs
+      const entitlement = !underLabourLaw(e.employmentType) ? { days: 0, usableFrom: `${year}-01-01` } : annualEntitlement({
         year,
         joinDate: e.joinDate,
         endDate: e.endDate,

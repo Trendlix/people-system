@@ -11,11 +11,12 @@ import { addDays } from '../dates';
 import { firstContractDefaults, noProbationAgain } from '../first-contract';
 import { changeOf, editHref, versionPay } from '../raise';
 
-// Drafting the current employment's contract: its first one, or the renewal of the signed one (every contract is for a
-// fixed term, renewed in writing before it ends). It is saved as a draft, one at a time, and signed on the Employment
-// tab. A renewal starts from the pay of the version it renews: its pay basis, salary or hourly rate and hours, working
-// days and allowances. It asks whether the pay changes (owner's decisions, 16 October 2026): a renewal with new pay
-// counts as a raise, with its reason, and the CEO approves it before it is signed.
+// Drafting the current employment's contract: its first one, or the renewal of the signed one (a fixed-term or
+// specific-job contract is renewed in writing; an open-ended one, since 18 October 2026, never is). It is saved as a
+// draft, one at a time, and signed on the Employment tab. A renewal starts from the version it renews: its length, and
+// its pay basis, salary or hourly rate and hours, working days and allowances. It asks whether the pay changes (owner's
+// decisions, 16 October 2026): a renewal with new pay counts as a raise, with its reason, and the CEO approves it before
+// it is signed.
 
 async function NewContract({ params }: { params: Promise<{ id: string }> }) {
   const employee = await loadEmployee(params);
@@ -35,6 +36,14 @@ async function NewContract({ params }: { params: Promise<{ id: string }> }) {
     body = <Empty>{employee.fullNameEn} has no current employment. Add the employment, which takes its contract&apos;s terms too.</Empty>;
   } else if (!contracts || !settings) {
     body = <Empty>Contracts are not available yet.</Empty>;
+  } else if (previous?.form === 'open_ended' && previous.status === 'active') {
+    // an open-ended contract runs on, with no renewal: it ends by notice (Labour Law Art. 156)
+    body = (
+      <Empty>
+        Version {previous.version} ({previous.number}) is open-ended: it has no end date and is never renewed. A change of pay is a raise, on the{' '}
+        <Link href={back}>Employment tab</Link>.
+      </Empty>
+    );
   } else if (draft) {
     body = (
       <Empty>
@@ -48,8 +57,13 @@ async function NewContract({ params }: { params: Promise<{ id: string }> }) {
     const defaults: ContractDefaults = previous
       ? {
           startDate: '',
+          // a renewal goes on as the version renewed: its length, its job, a trainee's stages
+          form: previous.form,
           durationMonths: settings.durationMonths,
+          jobToDo: previous.jobToDo ?? '',
+          endDate: '',
           probationMonths: 0,
+          traineeStages: previous.traineeStages ?? null,
           // the pay so far, to start from
           payBasis: previous.payBasis ?? 'monthly',
           grossSalary: previous.grossSalary,
@@ -77,7 +91,8 @@ async function NewContract({ params }: { params: Promise<{ id: string }> }) {
           renewal={previous ? { startDate: previous.endDate ? addDays(previous.endDate, 1) : null, after: `version ${previous.version}` } : null}
           payChange={previous ? { version: previous.version, pay: versionPay(previous), changes: false, reason: null } : undefined}
           probationHint={hadProbation && !previous ? noProbationAgain(employee.fullNameEn) : undefined}
-          fullTime={e.employmentType === 'full_time'}
+          employmentType={e.employmentType}
+          dateOfBirth={employee.dateOfBirth}
           today={today}
           lawYears={lawYears}
           cancelHref={back}

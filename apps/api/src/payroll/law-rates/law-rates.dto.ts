@@ -1,4 +1,4 @@
-import { IsArray, IsNumber } from 'class-validator';
+import { IsArray, IsNumber, IsOptional } from 'class-validator';
 import type { LawRates, TaxTier } from '@trendlix/shared';
 
 // A year's rates set by law, as the Super Admin sends them (owner's request, 16 October 2026): every value, the rates
@@ -33,6 +33,13 @@ export class PutLawRatesDto {
   /** Checked by taxTiersProblems: each tier's limit and bands, the last of each without a limit. */
   @IsArray({ message: 'Send the tax tiers as a list.' })
   taxTiers: TaxTier[];
+
+  /**
+   * The private sector's minimum wage a month (owner, 18 October 2026): a trainee's last training stage is paid at least
+   * this (Labour Law 14/2025 Art. 29). Null clears it; left out, the year keeps the one it has.
+   */
+  @IsOptional() @Numeric('the minimum wage')
+  minimumWage?: number | null;
 }
 
 /** A year's rates from what was sent for it. */
@@ -46,4 +53,5 @@ export const ratesSent = (year: number, d: PutLawRatesDto): LawRates => ({
   martyrsRate: d.martyrsRate,
   healthInsuranceRate: d.healthInsuranceRate,
   taxTiers: d.taxTiers,
+  ...(d.minimumWage !== undefined && { minimumWage: d.minimumWage }),
 });
