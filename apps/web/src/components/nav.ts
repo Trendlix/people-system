@@ -43,8 +43,9 @@ export const NAV: NavItem[] = [
   { href: '/', label: 'Home' },
   { href: '/organization/company', label: 'Organization', section: '/organization' },
   // the people the company employs, under one heading (owner, 17 October 2026: "i think employees, contracts and offers
-  // need to be grouped from the side bar", with the Employees page's reports: Missing Details, Search Documents and Card
-  // Reading Fixes); each page for its own roles, the heading for whoever sees one of them, linking to the first they see
+  // need to be grouped from the side bar", with the Missing Details report; Search Documents and Card Reading Fixes left
+  // it on 18 October 2026, as not used every day: the first is a button on the Employees page, the second a link in the
+  // ID card scan); each page for its own roles, the heading for whoever sees one of them, linking to the first they see
   {
     href: '/employees',
     label: 'People',
@@ -53,10 +54,8 @@ export const NAV: NavItem[] = [
       { href: '/contracts', label: 'Contracts', section: '/contracts', roles: ['hr', 'ceo', 'finance'] },
       // job offers: the offer stage, before someone is an employee (owner's request, 15 October 2026)
       { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
-      // what each profile still lacks; the scanned paperwork, searched; what the ID card reader learned from HR
+      // what each profile still lacks
       { href: '/employees/missing', label: 'Missing Details', section: '/employees/missing', roles: ['hr', 'ceo'] },
-      { href: '/employees/documents', label: 'Search Documents', section: '/employees/documents', roles: ['hr', 'ceo'] },
-      { href: '/employees/card-corrections', label: 'Card Reading Fixes', section: '/employees/card-corrections', roles: ['hr', 'admin'] },
     ],
   },
   // the month's pay: HR prepares a run, the CEO approves it, HR marks it paid (owner's decisions, 16 October 2026); a

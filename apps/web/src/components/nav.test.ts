@@ -193,11 +193,11 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     const pages = (...roles: Role[]) => peopleFor(...roles)?.items?.map((i) => i.label) ?? null;
 
     it('has each page for the roles that open it, and links to Employees', () => {
-      expect(pages('hr')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details', 'Search Documents', 'Card Reading Fixes']);
-      expect(pages('ceo')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details', 'Search Documents']);
+      expect(pages('hr')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details']);
+      expect(pages('ceo')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details']);
       expect(pages('finance')).toEqual(['Employees', 'Contracts']);
-      expect(pages('admin')).toEqual(['Employees', 'Card Reading Fixes']);
-      expect(pages('super_admin')).toEqual(['Employees', 'Card Reading Fixes']);
+      expect(pages('admin')).toEqual(['Employees']);
+      expect(pages('super_admin')).toEqual(['Employees']);
       expect(peopleFor('hr')?.href).toBe('/employees');
     });
 
@@ -208,6 +208,9 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       expect(activeSubItem(people, '/employees/missing')?.label).toBe('Missing Details');
       expect(activeSubItem(people, '/contracts/calculator')?.label).toBe('Contracts');
       expect(activeSubItem(people, '/offers/new')?.label).toBe('Offers');
+      // not in the menu (owner, 18 October 2026): under Employees, where they are opened from
+      expect(activeSubItem(people, '/employees/documents')?.label).toBe('Employees');
+      expect(activeSubItem(people, '/employees/card-corrections')?.label).toBe('Employees');
     });
   });
 

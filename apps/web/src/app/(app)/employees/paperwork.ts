@@ -82,6 +82,8 @@ export const SCANS_TOO_LARGE =
  */
 export const LEARNED_FIELDS: readonly LearnedField[] = ['fullNameAr', 'addressAr'];
 export const readKey = (field: LearnedField) => `read_${field}`;
+/** The page of the fixes the card reader learned from HR's corrections (HR and Admin). */
+export const CARD_FIXES_PATH = '/employees/card-corrections';
 
 /** On a field filled in from the ID card. */
 export const FROM_CARD = 'Read from the card — check before saving.';

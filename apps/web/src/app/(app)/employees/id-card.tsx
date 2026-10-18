@@ -4,7 +4,7 @@ import { DateInput } from '@/components/date-time-inputs';
 import { valueOf } from '@/components/form';
 import { formatDate } from '@/lib/format';
 import type { EmployeeIdentity, FormState, IdCardScan, LearnedField } from '@/lib/types';
-import { cardNote, detailsRead, LEARNED_FIELDS, readKey } from './paperwork';
+import { CARD_FIXES_PATH, cardNote, detailsRead, LEARNED_FIELDS, readKey } from './paperwork';
 
 // The national ID card pieces shared by the Add employee page and the National ID edit page: the national ID fields,
 // the note on each field filled in from the card, what reading the card found, and the text read from it.
@@ -54,6 +54,21 @@ export function CardReadStatus({ suggestions, notes = [] }: { suggestions: CardS
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * That the reader learns from HR's corrections, with the way to what it has learned: the fixes are opened from here, where
+ * they come from, not from the sidebar (owner, 18 October 2026). In a new tab, so the scan and what is typed are kept.
+ */
+export function LearnedFixesNote() {
+  return (
+    <p className="mt-2 text-sm text-muted">
+      The reader learns from your corrections to the Arabic name and address.{' '}
+      <a href={CARD_FIXES_PATH} target="_blank" rel="noopener" className="font-semibold text-accent hover:underline">
+        See what it has learned
+      </a>
+    </p>
   );
 }
 

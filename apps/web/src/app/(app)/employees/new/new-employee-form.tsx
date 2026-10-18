@@ -6,7 +6,7 @@ import { DocumentViewer } from '@/components/document-viewer';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import type { FormState, IdCardReading } from '@/lib/types';
 import { createEmployee } from '../actions';
-import { CardReadStatus, CardTextDetails, NationalIdFields, ReadValues } from '../id-card';
+import { CardReadStatus, CardTextDetails, LearnedFixesNote, NationalIdFields, ReadValues } from '../id-card';
 import { idScanTitle } from '../paperwork';
 import { readIdCard } from '../paperwork-actions';
 import { PersonalFields } from '../personal-fields';
@@ -147,6 +147,7 @@ export function NewEmployeeForm({ emailDomain }: { emailDomain: string | null })
           straight; check both sides, then read them, and the details are filled in for you to check. The cut-out card is kept in the employee
           file once the profile is saved.
         </p>
+        <LearnedFixesNote />
 
         <div className="mt-4 space-y-4">
           <IdScan onRead={read} />

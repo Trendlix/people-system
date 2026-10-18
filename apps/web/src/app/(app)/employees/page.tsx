@@ -12,8 +12,9 @@ import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary, Grade } from '@/lib/types';
 import { StaffOnly } from '../staff-only';
 import { directorySections } from './directory-groups';
+import { CARD_FIXES_PATH } from './paperwork';
 import { canSeeSalaryRaises, RAISES_PATH } from '../payroll/reports/salary-raises/salary-raises';
-import { Avatar, canAddEmployees, Empty, gradeLabel, Loading, seesEveryone, StandingBadge } from './ui';
+import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge } from './ui';
 
 // Not an employee's: someone who is only an employee and/or a direct manager is sent to their dashboard, which links
 // their own profile, and a manager's My Team their direct reports' (owner's decisions, 17 October 2026).
@@ -268,18 +269,28 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
 }
 
 /**
- * HR and the CEO search the scanned paperwork and see what the profiles still lack (the Missing Details report); HR,
- * Finance and the CEO see the Salary Raises report, as salaries (owner's decision, 16 October 2026); HR and Admin see
- * what the card reader learned; only HR adds employees.
+ * HR and the CEO search the scanned paperwork; HR, Finance and the CEO see the Salary Raises report, as salaries
+ * (owner's decision, 16 October 2026); only HR adds employees. What the card reader learned is seen by HR and Admin:
+ * HR opens it from the ID card scan, an Admin who doesn't scan cards from here (owner, 18 October 2026, taking it and
+ * Search Documents out of the sidebar as not used every day; Missing Details is under People in the sidebar).
  */
 async function HeaderActions() {
   const user = await getCurrentUser();
   return (
     <div className="flex flex-wrap gap-3">
-      {/* Search Documents, Missing Details and Card Reading Fixes are under People in the sidebar (owner, 17 October 2026) */}
+      {canSeeEmployeeFiles(user) && (
+        <Link href="/employees/documents" className="btn btn-secondary">
+          Search documents
+        </Link>
+      )}
       {canSeeSalaryRaises(user) && (
         <Link href={RAISES_PATH} className="btn btn-secondary">
           Salary raises
+        </Link>
+      )}
+      {canSeeCardFixes(user) && !canAddEmployees(user) && (
+        <Link href={CARD_FIXES_PATH} className="btn btn-secondary">
+          Card reading fixes
         </Link>
       )}
       {canAddEmployees(user) && (

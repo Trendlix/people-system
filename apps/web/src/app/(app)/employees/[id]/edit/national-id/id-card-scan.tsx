@@ -3,7 +3,7 @@
 import { startTransition, useState } from 'react';
 import { DocumentViewer, type ViewerFile } from '@/components/document-viewer';
 import type { EmployeeIdentity, FormState, IdCardScan } from '@/lib/types';
-import { CardReadStatus, CardTextDetails } from '../../../id-card';
+import { CardReadStatus, CardTextDetails, LearnedFixesNote } from '../../../id-card';
 import { idScanTitle, paperworkHref, type IdScanState } from '../../../paperwork';
 import { IdScan } from '../../../scan/id-scan';
 import { NationalIdForm, type CardProfile } from './national-id-form';
@@ -51,6 +51,7 @@ export function NationalIdEditor({
           Scan the card, front and back. The card is found on the scan, cut out and set straight; check both sides, then read them, and the
           national ID details below are filled in for you to check. Nothing changes until you save. The cut-out card is kept in the employee file.
         </p>
+        <LearnedFixesNote />
 
         <div className="mt-4">
           <IdScan onRead={read} name={name} />
