@@ -232,8 +232,8 @@ describe('Payroll (e2e)', () => {
           payday: null,
           // the Salary Raises report: a review is due after a year without a raise (owner's decision, 16 October 2026)
           salaryReviewMonths: 12,
-          // a warning when a month's installments pass 10% of the pay (owner, 18 October 2026)
-          installmentWarnPercent: 10,
+          // the most a month's installments may take of the wage: the law's 10% (owner, 18 October 2026: "Block above 10%")
+          installmentLimitPercent: 10,
         });
       }
       await api().get('/api/payroll/settings').set('Cookie', staff).expect(403);
@@ -353,6 +353,8 @@ describe('Payroll (e2e)', () => {
         clientSatisfaction: null,
         noShowDays: null,
         leaveDays: null,
+        // unpaid leave (18 October 2026: the Leave module), filled in from the approved leave unless typed
+        unpaidLeaveDays: null,
         released: null,
         // the CEO's waiver (17 October 2026); no bonus or penalty days, commission or settlements: they are on
         // Additions / Deductions since then

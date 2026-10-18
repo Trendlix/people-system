@@ -1,26 +1,55 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { changeInstallment, postponeInstallment, RECOVERY_TYPE, type AdvanceKind, type AdvanceSettleWay, type Installment } from '@trendlix/shared';
+import {
+  changeInstallment,
+  grossToNet,
+  monthlySalaryTax,
+  postponeInstallment,
+  RECOVERY_TYPE,
+  type AdvanceKind,
+  type AdvanceSettleWay,
+  type Installment,
+} from '@trendlix/shared';
 import { AuditService } from '../../audit/audit.service.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import { toDateOnly, todayInCairo } from '../../common/date-only.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { LawRatesService } from '../law-rates/law-rates.service.js';
 import { firstDay, monthName } from '../months.js';
 import type { ChangeInstallmentDto, CreateAdvanceDto, PostponeInstallmentDto, SettleAdvanceDto } from './adjustments.dto.js';
 import { AdvancesService, kindWord } from './advances.service.js';
+import { assertInstallmentLimit, currentGross, installmentLimitPercent, installmentsByMonth } from './law-limits.js';
 import { firstLocked, lockedMonths, payrollIs } from './locks.js';
-import { byMonth, installmentReason, planChanges, renumbered, type SavedInstallment } from './plans.js';
+import { installmentReason, planChanges, renumbered, type SavedInstallment } from './plans.js';
 import { RunAdjustmentsService } from './run-adjustments.service.js';
-import { ADJUSTMENT, ADVANCE, balanceOf, monthOfDate, type AdvanceRow, type AdvanceView } from './views.js';
+import { ADJUSTMENT, ADVANCE, balanceOf, monthOfDate, recurringMonths, type AdvanceRow, type AdvanceView } from './views.js';
 
-/** What the plan form warns with (owner, 18 October 2026): the employee's pay, Payroll Setup's share, and their installments by month. */
+/**
+ * What the forms check the law's limits with as they are typed (owner, 18 October 2026, after reading the law: "Block
+ * above 10%", "Warn above 25%, record the consent"): the employee's wage, the limit on installments and their
+ * installments by month (the plan form, Art. 113), and what the 25% of their recurring deductions is worked out from
+ * (the recurring deduction forms, Art. 114).
+ */
 export interface InstallmentLimit {
-  /** The current contract's monthly gross; null without one. */
+  /** The current contract's monthly gross: the wage; null without one (nothing can be checked). */
   gross: number | null;
-  /** Payroll Setup's "Installments warning at % of pay"; null: no warning. */
-  percent: number | null;
-  /** The employee's installments (pending and applied) of every open advance and loan, by month (YYYY-MM). */
+  /** The most a month's installments may take, in percent of the wage: Payroll Setup's, at most the law's 10. */
+  percent: number;
+  /** The employee's installments (pending and applied) of every advance and loan, by month (YYYY-MM). */
   byMonth: Record<string, number>;
+  /**
+   * About what the gross comes to a month in income tax and the employee's social insurance (this year's rates set by
+   * law, the gross alone, as the raise figures do; no insurance for someone not registered with it, neither for a
+   * freelancer); null without a gross.
+   */
+  tax: number | null;
+  insurance: number | null;
+  /** The employee's recurring deductions not ended, for their months' total: id, amount a month and months. */
+  recurring: { id: string; amount: number; startMonth: string; endMonth: string | null; stoppedFrom: string | null }[];
 }
+
+/** What a refused change or move says to do instead. */
+const CHANGE_INSTEAD = 'Choose another amount, so that no month takes more.';
+const POSTPONE_INSTEAD = "Change the installments' amounts instead, so that no month takes more.";
 
 // The installments of advances and loans (owner, 18 October 2026: "in the deductions i might have a loan of a medical
 // subscription or something that needs to be deducted as installments on the employee. how will it be managed?"; his
@@ -29,9 +58,10 @@ export interface InstallmentLimit {
 // or change one's amount (the later ones share what is left, a lowered last one adds a month: changeInstallment), only
 // the pending ones in months whose run isn't with the CEO, approved or paid; an applied one never changes. Settling one
 // says how (on leaving: "taken from the final settlement, unless waived", the owner's words; or paid back otherwise),
-// and cancels the installments still pending. A warning, never a block, when a month's installments pass Payroll
-// Setup's share of the pay (installmentLimitWarning, worked out by the web from limit()). Every change is in the audit
-// log, the amounts only as set or changed, as for a salary.
+// and cancels the installments still pending. Moving or changing one that would take a month of the employee's
+// installments over the law's limit is refused (owner, 18 October 2026, after reading the law: "Block above 10%";
+// law-limits.ts), as recording a plan is; the forms check it as they are typed from limit(). Every change is in the
+// audit log, the amounts only as set or changed, as for a salary.
 @Injectable()
 export class InstallmentsService {
   constructor(
@@ -39,6 +69,7 @@ export class InstallmentsService {
     private readonly audit: AuditService,
     private readonly advances: AdvancesService,
     private readonly runs: RunAdjustmentsService,
+    private readonly lawRates: LawRatesService,
   ) {}
 
   /** Records one (AdvancesService.create), then works out again the draft runs of its installments' months. */
@@ -53,8 +84,10 @@ export class InstallmentsService {
     const row = await this.advances.row(id);
     this.advances.assertOpen(row, 'changed');
     const { pending } = await this.changeable(row, dto.month, 'moved');
-    const { update } = planChanges(pending, postponeInstallment(pending, dto.month));
+    const postponed = postponeInstallment(pending, dto.month);
+    const { update } = planChanges(pending, postponed);
     await this.assertTakes(update.map((u) => u.month), 'moved to');
+    await assertInstallmentLimit(this.prisma, row.employeeId, pending.map((p) => p.id), postponed, POSTPONE_INSTEAD);
     const from = new Map(pending.map((p) => [p.id, p.month]));
     await this.prisma.$transaction(update.map((u) => this.prisma.payrollAdjustment.update({ where: { id: u.id }, data: { month: toDateOnly(firstDay(u.month)) } })));
     for (const u of update) {
@@ -89,6 +122,7 @@ export class InstallmentsService {
     if (!update.length && !create.length && !cancel.length) return this.advances.get(id);
     const was = new Map(pending.map((p) => [p.id, p]));
     await this.assertTakes([...update.filter((u) => u.month !== was.get(u.id)!.month).map((u) => u.month), ...create.map((c) => c.month)], 'added to');
+    await assertInstallmentLimit(this.prisma, row.employeeId, pending.map((p) => p.id), changed.plan, CHANGE_INSTEAD);
 
     const type = RECOVERY_TYPE[kind];
     const { made, reasons } = await this.prisma.$transaction(async (tx) => {
@@ -238,29 +272,48 @@ export class InstallmentsService {
     return this.advances.get(id);
   }
 
-  /** The plan form's warning (owner, 18 October 2026): the employee's current gross, Payroll Setup's share, their installments by month. */
+  /**
+   * What the forms check the law's limits with (owner, 18 October 2026): the employee's current gross, the limit on
+   * installments, their installments by month, about what the gross comes to in tax and insurance, and their recurring
+   * deductions not ended.
+   */
   async limit(employeeId: string): Promise<InstallmentLimit> {
-    const employee = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true } });
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        socialInsured: true,
+        // the current employment's type: a freelancer pays no tax or insurance
+        employments: { where: { OR: [{ endDate: null }, { endDate: { gte: toDateOnly(todayInCairo()) } }] }, orderBy: { joinDate: 'desc' }, take: 1, select: { employmentType: true } },
+      },
+    });
     if (!employee) throw new NotFoundException('Employee not found.');
-    const today = toDateOnly(todayInCairo());
-    const [contract, settings, recoveries] = await Promise.all([
-      // the signed contract of the employment that is current (or ends from today on)
-      this.prisma.contract.findFirst({
-        where: { status: 'active', employment: { employeeId, OR: [{ endDate: null }, { endDate: { gte: today } }] } },
-        orderBy: { startDate: 'desc' },
-        select: { grossSalary: true },
-      }),
-      this.prisma.payrollSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 }, select: { installmentWarnPercent: true } }),
-      this.prisma.payrollAdjustment.findMany({
-        where: { employeeId, advance: { status: 'open' }, status: { in: ['pending', 'applied'] } },
-        select: { month: true, amount: true, status: true },
+    const current = todayInCairo().slice(0, 7);
+    const [gross, percent, byMonth, rates, recurring] = await Promise.all([
+      currentGross(this.prisma, employeeId),
+      installmentLimitPercent(this.prisma),
+      installmentsByMonth(this.prisma, employeeId),
+      this.lawRates.forYear(Number(current.slice(0, 4))),
+      this.prisma.recurringDeduction.findMany({
+        where: { employeeId },
+        orderBy: [{ startMonth: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, amount: true, startMonth: true, endMonth: true, stoppedFrom: true },
       }),
     ]);
-    const gross = contract?.grossSalary.toNumber() ?? null;
+    // Art. 114's base, about: the gross alone, with this year's rates, as the raise figures work out a net
+    const statutory = employee.employments[0]?.employmentType !== 'freelance';
+    const insurance = gross === null || !statutory || !employee.socialInsured ? 0 : grossToNet(gross, rates).employeeInsurance;
+    const tax = gross === null || !statutory ? 0 : monthlySalaryTax({ taxedPay: gross, employeeInsurance: insurance }, rates).monthlyTax;
     return {
-      gross: gross !== null && gross > 0 ? gross : null,
-      percent: settings.installmentWarnPercent?.toNumber() ?? null,
-      byMonth: byMonth(recoveries.map((r) => ({ month: monthOfDate(r.month), amount: r.amount?.toNumber() ?? 0, status: r.status }))),
+      gross,
+      percent,
+      byMonth,
+      tax: gross === null ? null : tax,
+      insurance: gross === null ? null : insurance,
+      recurring: recurring
+        .map((r) => ({ id: r.id, amount: r.amount.toNumber(), ...recurringMonths(r) }))
+        // ended ones take nothing from this month on
+        .filter((r) => (r.endMonth === null || r.endMonth >= current) && (r.stoppedFrom === null || r.stoppedFrom > current)),
     };
   }
 

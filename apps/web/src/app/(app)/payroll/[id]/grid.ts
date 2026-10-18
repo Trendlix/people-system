@@ -4,6 +4,7 @@ import {
   paidAdjustments,
   parseHours,
   type PayrollInputs,
+  type PayrollLeaveDays,
   type PayrollResult,
   type PayrollSegment,
   type PayrollTerms,
@@ -22,10 +23,13 @@ import { formatEgp } from '../../employees/[id]/contracts/salary';
 // day typed in the row, as the pay counts them (expectedHoursOf); they follow those days as they are typed. What HR
 // types instead is taken as the expected hours already without the no-show and leave days, nothing more taken out, and
 // clearing it brings the shift's back; the figure filled in is only shown, never sent. The Attendance % is the worked
-// hours over those expected hours, as the pay counts it. Leave days (approved paid leave) are typed by HR until the
-// Leave module fills the same input: nothing is cut for them. A month under two contracts (owner, 17 October 2026: "take
-// into consideration the start and end date of the contract if it is in the middle of the billing period") says so by
-// the employee's name (contractsNote). The Penalty days, Bonus days, Commission and Settlements columns are gone (owner,
+// hours over those expected hours, as the pay counts it. Leave days (approved paid leave: nothing cut) and Unpaid leave
+// days (unpaid leave, and the unpaid share of a partly paid one such as sick leave below 100%: a day of the gross ÷ the
+// day divisor cut for each) are filled in from the leave approved for the month (owner, 18 October 2026: "can you apply
+// the leaves according to the law?"; leaveFill), marked "from leave" as the expected hours are "from the shift": only
+// shown, never sent; what HR types instead wins, and clearing it brings the leave's back. A month under two contracts
+// (owner, 17 October 2026: "take into consideration the start and end date of the contract if it is in the middle of
+// the billing period") says so by the employee's name (contractsNote). The Penalty days, Bonus days, Commission and Settlements columns are gone (owner,
 // 17 October 2026, pointing at them: "instead of there, i think earnings and deductions will be enough"; he chose "Yes,
 // as proposed"): two read-only columns, Earnings and Deductions, show the month's totals of the person's additions and
 // deductions as the line has them (the taxed and untaxed additions together, marked when some aren't taxed; the
@@ -61,11 +65,13 @@ export const GRID_COLUMNS: readonly GridColumn[] = [
   { field: 'expectedHours', label: 'Expected hours', kind: 'hours' },
   { field: 'noShowDays', label: 'No-show days', kind: 'days' },
   { field: 'leaveDays', label: 'Leave days', kind: 'days' },
+  // unpaid leave (owner, 18 October 2026), beside the paid leave days
+  { field: 'unpaidLeaveDays', label: 'Unpaid leave days', kind: 'days' },
   { field: 'released', label: 'Released', kind: 'released' },
 ];
 
 /** The Earnings and Deductions columns come after this one. */
-export const ITEMS_AFTER: InputField = 'leaveDays';
+export const ITEMS_AFTER: InputField = 'unpaidLeaveDays';
 
 const COLUMN = new Map(GRID_COLUMNS.map((c) => [c.field as string, c]));
 
@@ -138,12 +144,28 @@ export function attendancePercent(worked: number | null, expected: number | null
  * by the hour, with nothing typed).
  */
 export function expectedCell(
-  row: { shiftExpectedHours: number | null; hoursPerDay: number | null },
-  cells: Pick<PayrollInputs, 'expectedHours' | 'noShowDays' | 'leaveDays'>,
+  row: { shiftExpectedHours: number | null; hoursPerDay: number | null; leave?: PayrollLeaveDays | null },
+  cells: Pick<PayrollInputs, 'expectedHours' | 'noShowDays' | 'leaveDays' | 'unpaidLeaveDays'>,
 ): { hours: number | null; fromShift: boolean } {
   if (cells.expectedHours !== null) return { hours: cells.expectedHours, fromShift: false };
-  const hours = expectedHoursOf({ expectedHours: row.shiftExpectedHours, hoursPerDay: row.hoursPerDay }, cells);
+  // the leave days filled in from the leave count as typed ones (leaveDaysOf, in expectedHoursOf)
+  const hours = expectedHoursOf({ expectedHours: row.shiftExpectedHours, hoursPerDay: row.hoursPerDay, leave: row.leave ?? null }, cells);
   return { hours, fromShift: hours !== null };
+}
+
+/** The columns the leave approved for the month fills in (owner, 18 October 2026). */
+export const LEAVE_FIELDS: readonly InputField[] = ['leaveDays', 'unpaidLeaveDays'];
+
+/**
+ * The days a Leave days or Unpaid leave days cell is filled in with when HR hasn't typed any (owner, 18 October 2026: the
+ * Leave module fills the leave days): the month's approved paid leave, and its unpaid leave with the unpaid share of a
+ * partly paid one, as the run took them (PayrollTerms.leave); null for the other cells, and without any.
+ */
+export function leaveFill(leave: PayrollLeaveDays | null | undefined, field: InputField): number | null {
+  if (!leave) return null;
+  if (field === 'leaveDays') return leave.paidDays > 0 ? leave.paidDays : null;
+  if (field === 'unpaidLeaveDays') return leave.unpaidDays > 0 ? leave.unpaidDays : null;
+  return null;
 }
 
 /** What a no-show day costs, under the column: "2 days' pay each". */
@@ -156,6 +178,7 @@ export const noShowPay = (multiplier: number) => `${multiplier} ${multiplier ===
 export function columnNote(field: InputField, noShowDayMultiplier: number): string | null {
   if (field === 'noShowDays') return `${noShowPay(noShowDayMultiplier)}, out of the expected hours`;
   if (field === 'leaveDays') return 'Paid, out of the expected hours';
+  if (field === 'unpaidLeaveDays') return "A day's pay each, out of the expected hours";
   return null;
 }
 

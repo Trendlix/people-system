@@ -8,6 +8,7 @@ import { ApiError, apiSend, apiUpload } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
 import { deleteRefusal } from '@/lib/session';
 import type { EmployeeProfile, FormState, LearnedField } from '@/lib/types';
+import { priorServiceFrom } from './leave-facts';
 import { LEARNED_FIELDS, readKey } from './paperwork';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '');
@@ -73,8 +74,8 @@ const PERSONAL_TEXT = [
  * Profile fields, shared by the Add employee page and the Personal Details and Education pages. Only the fields the
  * form has are sent, so a page with some of them (e.g. Education) leaves the others as they are; an empty field clears it.
  */
-function personalBody(fd: FormData, errors: string[]): Record<string, string | number | null> {
-  const body: Record<string, string | number | null> = {};
+function personalBody(fd: FormData, errors: string[]): Record<string, string | number | boolean | null> {
+  const body: Record<string, string | number | boolean | null> = {};
   for (const key of PERSONAL_TEXT) if (fd.has(key)) body[key] = text(fd, key);
   if (fd.has('dateOfBirth')) body.dateOfBirth = dateFrom(fd, 'dateOfBirth', 'date of birth', errors);
 
@@ -83,6 +84,14 @@ function personalBody(fd: FormData, errors: string[]): Record<string, string | n
     if (year === '') body.graduationYear = null;
     else if (/^\d{4}$/.test(year)) body.graduationYear = Number(year);
     else errors.push('Enter the graduation year as four digits, e.g. 2016.');
+  }
+  // the annual leave's facts (owner, 18 October 2026; Labour Law Art. 124), sent with their marker: a disability left
+  // unticked is saved as none, the prior service typed in years and months as months (both empty: none)
+  if (fd.has('leaveFacts')) {
+    body.disability = fd.has('disability');
+    const prior = priorServiceFrom(text(fd, 'priorServiceYears'), text(fd, 'priorServiceExtraMonths'));
+    if (prior.error) errors.push(prior.error);
+    else body.priorServiceMonths = prior.months;
   }
   return body;
 }

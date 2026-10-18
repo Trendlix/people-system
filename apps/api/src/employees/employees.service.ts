@@ -349,9 +349,12 @@ export class EmployeesService {
       this.lawRates.forYear(Number(todayInCairo().slice(0, 4))),
       salary ? this.insuredPay(current ?? history[0] ?? null) : null,
     ]);
-    const { insuranceBasicWage, insuranceComprehensiveWage, ...open } = withOccupation(fields(own));
+    const { insuranceBasicWage, insuranceComprehensiveWage, priorServiceMonths, disability, ...open } = withOccupation(fields(own));
     return {
       ...open,
+      // for the annual leave (owner, 18 October 2026; Art. 124): the service with earlier employers and a disability, as
+      // restricted as the national ID, for HR, the CEO and the employee themself
+      ...((identity || self) && { priorServiceMonths, disability }),
       // the social insurance wages, with the default basic wage printed for an employee who has none: salary data, for
       // those who see salaries only (owner, 16 October 2026)
       ...(salary && {

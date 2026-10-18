@@ -39,6 +39,17 @@ export class UnsettledController {
     return this.unsettled.reopen(employmentId, dto, user);
   }
 
+  /**
+   * The unused annual leave of an ended employment recorded paid (owner, 18 October 2026): an Unused leave paid addition
+   * in the final month. Answers the final settlement.
+   */
+  @Roles('hr')
+  @Post('final-settlements/:employmentId/unused-leave')
+  @HttpCode(200)
+  payUnusedLeave(@Param('employmentId', ParseUUIDPipe) employmentId: string, @CurrentUser() user: SessionUser) {
+    return this.unsettled.payUnusedLeave(employmentId, user);
+  }
+
   /** A line held on an approved or paid run, paid out since: { paidOn, method, note? }. */
   @Roles('hr')
   @Post('held-lines/:lineId/paid-out')

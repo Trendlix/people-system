@@ -1,8 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
-import { installmentLimitWarning } from '@trendlix/shared';
+import { damageLimitWarning, deductionLimitWarning, grossToNet, installmentLimitWarning, monthlySalaryTax } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { todayInCairo } from '../src/common/date-only.js';
+import { LawRatesService } from '../src/payroll/law-rates/law-rates.service.js';
 import { firstDay, lastDay, monthName, monthsLater } from '../src/payroll/months.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
@@ -12,9 +13,13 @@ import { createApp, createUser, signIn } from './helpers.js';
 // loan's installments made at once, moved and changed by HR but never in a month whose run is with the CEO, approved or
 // paid; a recurring deduction added once to each month's run it is due in, while the employee is employed, until it
 // ends or is stopped, stopped too when the employment ends; what is left of a leaver's loans "taken from the final
-// settlement, unless waived"; the share of pay warning set in Payroll Setup; and the employee's own plans. Other test
-// files leave people with signed contracts in the same database, who are on the runs too: these tests look at their own
-// people (names end with RUN), and delete everything they made. Every name and amount is invented.
+// settlement, unless waived"; the employee's own plans; and the Labour Law's limits (owner, 18 October 2026, after
+// reading the law: "Block above 10%", "Warn above 25%, record the consent"): installments past 10% of the wage (or
+// Payroll Setup's lower limit) refused, planned, changed, moved or entered by hand, and warned of on the run's line;
+// recurring deductions set up only with the employee's signed consent on file, and warned of past 25% after tax,
+// insurance and installments; damage past 5 days' wage warned of. Other test files leave people with signed contracts
+// in the same database, who are on the runs too: these tests look at their own people (names end with RUN), and delete
+// everything they made. Every name and amount is invented.
 
 const RUN = Date.now().toString(36).toLowerCase();
 const TODAY = todayInCairo();
@@ -25,6 +30,15 @@ const F = m(-5);
 /** The months whose runs these tests make. */
 const MONTHS = [m(-5), m(-4), m(-3), m(-2), m(-1), m(0)];
 const JOINED = firstDay(m(-11));
+/** Alpha's monthly gross: a month's installments may take EGP 1,500.00 of it (10%). */
+const ALPHA_GROSS = 15_000;
+/** The law's limit, as the API says it (Labour Law Art. 113). */
+const LIMIT_MESSAGE = `Enter the most a month's installments of advances and loans may take, from 1 to 10 percent of the wage, e.g. 10: the law allows at most 10% (Labour Law Art. 113).`;
+const CONSENT_MESSAGE =
+  "Tick that the employee's signed consent to this deduction is on file: a deduction from the pay they agree to needs their written consent (Labour Law Art. 114).";
+/** A real 1×1 PNG and a PDF's first bytes: the signed consent, as a photo or a scan. */
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+const PDF = Buffer.from('%PDF-1.4\n% the signed consent\n%%EOF\n');
 
 interface Installment {
   id: string;
@@ -61,18 +75,20 @@ interface Recurring {
   stopNote: string | null;
   status: string;
   deducted: { month: string; amount: number; status: string }[];
+  consent: { recordedAt: string; recordedBy: { id: string; name: string } | null; paper: { id: string; fileName: string } | null } | null;
 }
 
 interface Line {
   id: string;
   employeeId: string;
-  terms: { adjustments?: { id: string; kind: string; type: string; amount: number | null; reason: string }[] };
-  result: { warnings: string[]; adjustmentDeductions?: number };
+  terms: { gross: number; adjustments?: { id: string; kind: string; type: string; amount: number | null; reason: string }[] };
+  result: { warnings: string[]; adjustmentDeductions?: number; earned: number; allowances: number; monthlyTax: number; employeeInsurance: number };
 }
 
 interface Run {
   id: string;
   status: string;
+  rules: { dayDivisor: number };
   lines: Line[];
 }
 
@@ -91,6 +107,7 @@ describe('Installments and recurring deductions (e2e)', () => {
   let staff: string;
   let alphaSelf: string; // Alpha's own sign-in, an employee
   const people: string[] = [];
+  const ocrUrlBefore = process.env.OCR_URL;
   let alpha: Person; // a loan in installments; on the runs
   let beta: Person; // a medical subscription; on the runs
   let newcomer: Person; // joins this month
@@ -119,11 +136,14 @@ describe('Installments and recurring deductions (e2e)', () => {
   const postpone = (id: string, body: object, session = hr) => api().post(`/api/payroll/advances/${id}/installments/postpone`).set('Cookie', session).send(body);
   const change = (id: string, body: object, session = hr) => api().post(`/api/payroll/advances/${id}/installments/change`).set('Cookie', session).send(body);
   const settle = (id: string, body: object, session = hr) => api().post(`/api/payroll/advances/${id}/settle`).set('Cookie', session).send(body);
-  const recurring = (body: object, session = hr) => api().post('/api/payroll/recurring-deductions').set('Cookie', session).send(body);
+  /** Sets one up, the employee's signed consent on file unless the body says otherwise. */
+  const recurring = (body: object, session = hr) => api().post('/api/payroll/recurring-deductions').set('Cookie', session).send({ consentOnFile: true, ...body });
+  const adjust = (body: object) => api().post('/api/payroll/adjustments').set('Cookie', hr).send(body);
   const getRecurring = async (id: string) => (await api().get(`/api/payroll/recurring-deductions/${id}`).set('Cookie', hr).expect(200)).body as Recurring;
   const months = (a: Advance) => a.installments.map((i) => [i.month, i.amount, i.status]);
   const auditOf = (entityType: string, entityId: string) => prisma.auditLog.findMany({ where: { entityType, entityId }, orderBy: { id: 'asc' } });
   const settings = (body: object, session = hr) => api().patch('/api/payroll/settings').set('Cookie', session).send(body);
+  const limitOf = async (p: Person) => (await api().get(`/api/payroll/advances/limit?employeeId=${p.id}`).set('Cookie', hr).expect(200)).body;
 
   /** The month's run, made or refreshed. */
   async function runOf(month: string): Promise<Run> {
@@ -140,6 +160,8 @@ describe('Installments and recurring deductions (e2e)', () => {
     prisma.payrollAdjustment.findMany({ where: { recurringId }, orderBy: { month: 'asc' }, select: { month: true, status: true, amount: true, type: true } });
 
   beforeAll(async () => {
+    // no OCR service: the signed consents are kept unread
+    process.env.OCR_URL = '';
     ({ app, prisma } = await createApp());
     hr = await signIn(app, await createUser(prisma, ['hr']));
     finance = await signIn(app, await createUser(prisma, ['finance']));
@@ -148,7 +170,7 @@ describe('Installments and recurring deductions (e2e)', () => {
     const alphaEmail = await createUser(prisma, ['employee']);
     alphaSelf = await signIn(app, alphaEmail);
     await prisma.payrollRun.deleteMany({ where: { month: { in: MONTHS.map((x) => new Date(`${x}-01T00:00:00Z`)) } } });
-    alpha = await hire('Alpha');
+    alpha = await hire('Alpha', JOINED, ALPHA_GROSS);
     // Alpha's sign-in is their work email
     await prisma.employee.update({ where: { id: alpha.id }, data: { workEmail: alphaEmail } });
     beta = await hire('Beta');
@@ -163,8 +185,10 @@ describe('Installments and recurring deductions (e2e)', () => {
     await prisma.payrollAdvance.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.employment.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.employee.deleteMany({ where: { id: { in: people } } });
-    await prisma.payrollSettings.update({ where: { id: 1 }, data: { installmentWarnPercent: 10 } });
+    await prisma.payrollSettings.update({ where: { id: 1 }, data: { installmentLimitPercent: 10 } });
     await app.close();
+    if (ocrUrlBefore === undefined) delete process.env.OCR_URL;
+    else process.env.OCR_URL = ocrUrlBefore;
   });
 
   describe('a loan in installments', () => {
@@ -218,6 +242,21 @@ describe('Installments and recurring deductions (e2e)', () => {
       );
     });
 
+    it('refuses a plan that takes a month past 10% of the wage, all the employee’s installments together (Labour Law Art. 113)', async () => {
+      // Beta's 9,000: at most 900 a month; 6,000 in 6 is 1,000
+      const body = { employeeId: beta.id, kind: 'loan', amount: 6000, givenOn: firstDay(m(-6)), reason: 'Invented loan', installments: { count: 6, firstMonth: m(1) } };
+      expect((await advance(body).expect(400)).body.message).toBe(
+        `In ${monthName(m(1))} the installments of advances and loans would be EGP 1,000.00, more than 10% of the gross pay of EGP 9,000.00 (EGP 900.00), the most the law allows (Labour Law Art. 113). Spread it over more months: 7 monthly installments would keep every month within the limit.`,
+      );
+      // with Alpha's loan: 1,000 a month of the 1,500 taken from F to this month, so 3,000 more fits from m(-2) only in 6
+      const more = { employeeId: alpha.id, kind: 'advance', amount: 3000, givenOn: firstDay(m(-6)), reason: 'Invented advance', installments: { count: 3, firstMonth: m(-2) } };
+      expect((await advance(more).expect(400)).body.message).toBe(
+        `In ${monthName(m(-2))} the installments of advances and loans would be EGP 2,000.00, more than 10% of the gross pay of EGP 15,000.00 (EGP 1,500.00), the most the law allows (Labour Law Art. 113). Spread it over more months: 6 monthly installments would keep every month within the limit.`,
+      );
+      // nothing was made
+      expect(await prisma.payrollAdvance.count({ where: { employeeId: { in: [alpha.id, beta.id] } } })).toBe(1);
+    });
+
     it('HR moves one to a later month: it and every later one move a month on', async () => {
       for (const session of [finance, ceo]) await postpone(loan.id, { month: m(-4) }, session).expect(403);
       expect((await postpone(loan.id, { month: m(1) }).expect(400)).body.message).toBe(`This loan has no installment in ${monthName(m(1))}.`);
@@ -239,6 +278,11 @@ describe('Installments and recurring deductions (e2e)', () => {
         'The installment can be at most EGP 5,000.00, what is left from that month on.',
       );
       expect((await change(loan.id, { month: m(-3), amount: 0 }).expect(400)).body.message).toEqual(['Enter the installment in EGP, more than 0, e.g. 1000 or 1000.50.']);
+      // past 10% of Alpha's 15,000 (Labour Law Art. 113): refused, nothing changed
+      expect((await change(loan.id, { month: m(-3), amount: 1500.01 }).expect(400)).body.message).toBe(
+        `In ${monthName(m(-3))} the installments of advances and loans would be EGP 1,500.01, more than 10% of the gross pay of EGP 15,000.00 (EGP 1,500.00), the most the law allows (Labour Law Art. 113). Choose another amount, so that no month takes more.`,
+      );
+      expect(months(await getAdvance(loan.id)).map(([, amount]) => amount)).toEqual([1000, 1000, 1000, 1000, 1000, 1000]);
       loan = (await change(loan.id, { month: m(-3), amount: 1500 }).expect(200)).body as Advance;
       expect(months(loan)).toEqual([
         [m(-5), 1000, 'pending'],
@@ -260,12 +304,43 @@ describe('Installments and recurring deductions (e2e)', () => {
       expect((await auditOf('payroll_advance', loan.id)).at(-1)).toMatchObject({ action: 'change_installment', diff: { month: m(1), amount: 'changed', installments: { from: 6, to: 7 } } });
     });
 
+    it('refuses a move to a later month that takes that month past 10% of the wage', async () => {
+      // another advance's 1,200 in m(3): moving the loan's last (500, m(2)) there would make it 1,700
+      const other = (
+        await advance({ employeeId: alpha.id, kind: 'advance', amount: 1200, givenOn: firstDay(m(-1)), reason: 'Invented advance', installments: { count: 1, firstMonth: m(3) } }).expect(201)
+      ).body as Advance;
+      expect((await postpone(loan.id, { month: m(2) }).expect(400)).body.message).toBe(
+        `In ${monthName(m(3))} the installments of advances and loans would be EGP 1,700.00, more than 10% of the gross pay of EGP 15,000.00 (EGP 1,500.00), the most the law allows (Labour Law Art. 113). Change the installments' amounts instead, so that no month takes more.`,
+      );
+      expect(months(await getAdvance(loan.id)).at(-1)).toEqual([m(2), 500, 'pending']);
+      await settle(other.id, { how: 'paid_back', note: 'Invented: paid in cash' }).expect(200);
+    });
+
+    it('refuses a recovery entered by hand on Additions / Deductions past 10% of the wage, changed or moved there too', async () => {
+      const given = (await advance({ employeeId: alpha.id, kind: 'advance', amount: 2000, givenOn: firstDay(m(-6)), reason: 'Invented advance by hand' }).expect(201)).body as Advance;
+      const recovery = { employeeId: alpha.id, month: m(-2), kind: 'deduction', type: 'advance_recovery', amount: 625.01, reason: 'Invented recovery', advanceId: given.id };
+      // m(-2) has the loan's 875
+      const tooMuch = `In ${monthName(m(-2))} the installments of advances and loans would be EGP 1,500.01, more than 10% of the gross pay of EGP 15,000.00 (EGP 1,500.00), the most the law allows (Labour Law Art. 113). Enter a smaller amount, and recover the rest in a later month.`;
+      expect((await adjust(recovery).expect(400)).body.message).toBe(tooMuch);
+      const entered = (await adjust({ ...recovery, amount: 625 }).expect(201)).body as { id: string };
+      expect((await api().patch(`/api/payroll/adjustments/${entered.id}`).set('Cookie', hr).send({ amount: 625.01 }).expect(400)).body.message).toBe(tooMuch);
+      // m(-3) has 1,500 already
+      expect((await api().post('/api/payroll/adjustments/move').set('Cookie', hr).send({ ids: [entered.id], month: m(-3) }).expect(400)).body.message).toBe(
+        `In ${monthName(m(-3))} the installments of advances and loans would be EGP 2,125.00, more than 10% of the gross pay of EGP 15,000.00 (EGP 1,500.00), the most the law allows (Labour Law Art. 113). Move them to another month, or change their amounts.`,
+      );
+      // another deduction isn't an installment
+      await adjust({ ...recovery, type: 'other', amount: 5000, advanceId: undefined }).expect(201);
+      // its pending recovery cancelled with it
+      await settle(given.id, { how: 'paid_back', note: 'Invented: paid in cash' }).expect(200);
+      await prisma.payrollAdjustment.deleteMany({ where: { employeeId: alpha.id, type: 'other' } });
+    });
+
     it('never in a month whose run is with the CEO or approved; an applied one never', async () => {
       const run = await runOf(F);
-      // the run takes the month's installment, and warns: 1,000 is more than 10% of the 9,000 pay
+      // the run takes the month's installment: 1,000 is within 10% of the 15,000 pay, no warning
       const line = lineOf(run, alpha)!;
       expect(line.terms.adjustments?.map((a) => [a.type, a.amount])).toEqual([['loan_installment', 1000]]);
-      expect(line.result.warnings).toContain(installmentLimitWarning(1000, 9000, 10));
+      expect(line.result.warnings.filter((w) => w.includes('Art. 113'))).toEqual([]);
       await api().post(`/api/payroll/runs/${run.id}/submit`).set('Cookie', hr).send({}).expect(200);
 
       expect((await getAdvance(loan.id)).installments[0]).toMatchObject({ month: F, locked: true });
@@ -283,51 +358,59 @@ describe('Installments and recurring deductions (e2e)', () => {
       expect((await change(loan.id, { month: F, amount: 500 }).expect(409)).body.message).toBe(`The ${monthName(F)} installment is applied, so it can't be changed.`);
     });
 
-    it('the plan form’s warning: the current gross, Payroll Setup’s share, the installments by month', async () => {
+    it('the forms’ figures: the current gross, the limit, the installments by month, about the tax and insurance, the recurring deductions', async () => {
+      // this year's rates; Alpha isn't registered with social insurance: no insurance, the tax on the whole gross
+      const rates = await app.get(LawRatesService).forYear(Number(C.slice(0, 4)));
+      const tax = monthlySalaryTax({ taxedPay: ALPHA_GROSS, employeeInsurance: 0 }, rates).monthlyTax;
       for (const session of [hr, finance, ceo]) {
         expect((await api().get(`/api/payroll/advances/limit?employeeId=${alpha.id}`).set('Cookie', session).expect(200)).body).toEqual({
-          gross: 9000,
+          gross: ALPHA_GROSS,
           percent: 10,
+          // the cancelled ones of the advances paid back left out
           byMonth: { [m(-5)]: 1000, [m(-3)]: 1500, [m(-2)]: 875, [m(-1)]: 875, [m(0)]: 875, [m(1)]: 375, [m(2)]: 500 },
+          tax,
+          insurance: 0,
+          recurring: [],
         });
       }
+      expect(tax).toBeGreaterThan(0);
+      // registered: the employee's share, as the gross comes to
+      await prisma.employee.update({ where: { id: alpha.id }, data: { socialInsured: true } });
+      expect(await limitOf(alpha)).toMatchObject({ insurance: grossToNet(ALPHA_GROSS, rates).employeeInsurance, tax: grossToNet(ALPHA_GROSS, rates).monthlyTax });
+      await prisma.employee.update({ where: { id: alpha.id }, data: { socialInsured: false } });
       await api().get(`/api/payroll/advances/limit?employeeId=${alpha.id}`).set('Cookie', staff).expect(403);
       await api().get('/api/payroll/advances/limit?employeeId=x').set('Cookie', hr).expect(400);
-      // someone without a contract or installments
-      expect((await api().get(`/api/payroll/advances/limit?employeeId=${leaver.id}`).set('Cookie', hr).expect(200)).body).toEqual({ gross: null, percent: 10, byMonth: {} });
+      // someone without a contract or installments: nothing to check against
+      expect(await limitOf(leaver)).toEqual({ gross: null, percent: 10, byMonth: {}, tax: null, insurance: null, recurring: [] });
     });
   });
 
-  describe('the share of pay warning', () => {
-    const PERCENT = "Enter the share of the pay a month's installments may take before a warning, from 1 to 100 percent, e.g. 10, or leave it empty for no warning.";
+  describe('the law’s limit in Payroll Setup', () => {
+    it('is 10% to start with, lower if set so, never above the law’s; plans are refused past it and the run’s lines warn', async () => {
+      expect((await api().get('/api/payroll/settings').set('Cookie', finance).expect(200)).body.installmentLimitPercent).toBe(10);
+      for (const session of [finance, ceo, staff]) await settings({ installmentLimitPercent: 5 }, session).expect(403);
+      for (const bad of [0, 0.5, 10.01, 20, 100, 1.234, '10', null]) expect([...new Set((await settings({ installmentLimitPercent: bad }).expect(400)).body.message)]).toEqual([LIMIT_MESSAGE]);
+      // the old name is gone
+      await settings({ installmentWarnPercent: 10 }).expect(400);
 
-    it('is set in Payroll Setup, 10% to start with; the run’s lines warn with it', async () => {
-      expect((await api().get('/api/payroll/settings').set('Cookie', finance).expect(200)).body.installmentWarnPercent).toBe(10);
-      for (const session of [finance, ceo, staff]) await settings({ installmentWarnPercent: 20 }, session).expect(403);
-      for (const bad of [0, 100.5, 1.234, '10']) expect([...new Set((await settings({ installmentWarnPercent: bad }).expect(400)).body.message)]).toEqual([PERCENT]);
-
-      // the month's 1,500 is more than 10% of 9,000, not more than 20%
+      // the month's 1,500 is 10% of 15,000 exactly: no warning
       let line = lineOf(await runOf(m(-3)), alpha)!;
-      expect(line.result.warnings).toContain(installmentLimitWarning(1500, 9000, 10));
+      expect(line.result.warnings.filter((w) => w.includes('Art. 113'))).toEqual([]);
       const since = (await prisma.auditLog.aggregate({ _max: { id: true } }))._max.id ?? BigInt(0);
-      expect((await settings({ installmentWarnPercent: 20 }).expect(200)).body.installmentWarnPercent).toBe(20);
+      expect((await settings({ installmentLimitPercent: 5 }).expect(200)).body.installmentLimitPercent).toBe(5);
+      // planned within 10%, the line warns past the lower limit set
       line = lineOf(await getRun(m(-3)), alpha)!;
-      expect(line.result.warnings.filter((w) => w.startsWith("This month's installments"))).toEqual([]);
-      expect((await settings({ installmentWarnPercent: 16.5 }).expect(200)).body.installmentWarnPercent).toBe(16.5);
-      line = lineOf(await getRun(m(-3)), alpha)!;
-      expect(line.result.warnings).toContain(installmentLimitWarning(1500, 9000, 16.5));
-      // empty: no warning
-      expect((await settings({ installmentWarnPercent: null }).expect(200)).body.installmentWarnPercent).toBeNull();
-      line = lineOf(await getRun(m(-3)), alpha)!;
-      expect(line.result.warnings.filter((w) => w.startsWith("This month's installments"))).toEqual([]);
-      expect((await settings({ installmentWarnPercent: 10 }).expect(200)).body.installmentWarnPercent).toBe(10);
+      expect(line.result.warnings).toContain(installmentLimitWarning(1500, ALPHA_GROSS, 5));
+      expect(installmentLimitWarning(1500, ALPHA_GROSS, 5)).toContain('the limit set in Payroll Setup (the law allows at most 10%, Labour Law Art. 113)');
+      // a new plan past it is refused: 1,000 in m(3) is more than 750
+      expect(
+        (await advance({ employeeId: alpha.id, kind: 'advance', amount: 1000, givenOn: firstDay(m(-1)), reason: 'Invented', installments: { count: 1, firstMonth: m(3) } }).expect(400)).body.message,
+      ).toBe(
+        `In ${monthName(m(3))} the installments of advances and loans would be EGP 1,000.00, more than 5% of the gross pay of EGP 15,000.00 (EGP 750.00), the limit set in Payroll Setup (the law allows at most 10%, Labour Law Art. 113). Spread it over more months: 2 monthly installments would keep every month within the limit.`,
+      );
+      expect((await settings({ installmentLimitPercent: 10 }).expect(200)).body.installmentLimitPercent).toBe(10);
       const audit = await prisma.auditLog.findMany({ where: { entityType: 'payroll_settings', id: { gt: since } }, orderBy: { id: 'asc' } });
-      expect(audit.map((a) => a.diff)).toEqual([
-        { installmentWarnPercent: { from: 10, to: 20 } },
-        { installmentWarnPercent: { from: 20, to: 16.5 } },
-        { installmentWarnPercent: { from: 16.5, to: null } },
-        { installmentWarnPercent: { from: null, to: 10 } },
-      ]);
+      expect(audit.map((a) => a.diff)).toEqual([{ installmentLimitPercent: { from: 10, to: 5 } }, { installmentLimitPercent: { from: 5, to: 10 } }]);
     });
   });
 
@@ -343,6 +426,9 @@ describe('Installments and recurring deductions (e2e)', () => {
       expect(await refused({ amount: 0 })).toEqual(['Enter the amount a month in EGP, more than 0, e.g. 350 or 350.50.']);
       expect(await refused({ name: '' })).toEqual(['Say what it is for, e.g. Medical subscription (family).']);
       expect(await refused({ name: 'x'.repeat(101) })).toEqual(['Keep the name to 100 characters or fewer.']);
+      // the employee's signed consent on file (Labour Law Art. 114), required
+      expect(await refused({ consentOnFile: false })).toEqual([CONSENT_MESSAGE]);
+      expect((await api().post('/api/payroll/recurring-deductions').set('Cookie', hr).send(body).expect(400)).body.message).toEqual([CONSENT_MESSAGE]);
       // a month whose run is approved never takes it
       expect((await recurring({ ...body, startMonth: F }).expect(409)).body.message).toBe(
         `The ${monthName(F)} payroll is approved, so its deductions can't be changed: start it from a later month.`,
@@ -359,6 +445,7 @@ describe('Installments and recurring deductions (e2e)', () => {
         status: 'ended', // its last month is before this one
         // the m(-3) draft, made before, takes it at once
         deducted: [{ month: m(-3), amount: 350, status: 'pending' }],
+        consent: { recordedAt: expect.any(String), recordedBy: { id: expect.any(String), name: expect.any(String) }, paper: null },
       });
       for (const session of [hr, finance, ceo]) {
         const listed = (await api().get(`/api/payroll/recurring-deductions?employeeId=${beta.id}`).set('Cookie', session).expect(200)).body as Recurring[];
@@ -368,7 +455,7 @@ describe('Installments and recurring deductions (e2e)', () => {
       expect(((await api().get(`/api/payroll/recurring-deductions?employeeId=${beta.id}&status=running`).set('Cookie', hr).expect(200)).body as Recurring[]).length).toBe(0);
       expect(((await api().get(`/api/payroll/recurring-deductions?employeeId=${beta.id}&status=ended`).set('Cookie', hr).expect(200)).body as Recurring[]).length).toBe(1);
       expect((await auditOf('recurring_deduction', medical.id)).map((a) => [a.action, a.diff])).toEqual([
-        ['create', { employeeCode: beta.employeeCode, name: 'Medical subscription (family)', amount: 'set', startMonth: m(-4), endMonth: m(-2) }],
+        ['create', { employeeCode: beta.employeeCode, name: 'Medical subscription (family)', amount: 'set', startMonth: m(-4), endMonth: m(-2), consent: 'recorded' }],
       ]);
     });
 
@@ -414,8 +501,13 @@ describe('Installments and recurring deductions (e2e)', () => {
       expect((await changeIt({ amount: 400, fromMonth: m(-5) }).expect(400)).body.message).toBe(`It starts in ${monthName(m(-4))}: change it from then on.`);
       expect((await changeIt({ amount: 400, fromMonth: m(-1) }).expect(409)).body.message).toBe(`It isn't deducted in ${monthName(m(-1))}: its last month is ${monthName(m(-2))}.`);
       expect((await changeIt({ amount: 350, fromMonth: m(-3) }).expect(400)).body.message).toBe('It is EGP 350.00 a month already.');
+      // more needs the employee's signed consent to it (Labour Law Art. 114)
+      expect((await changeIt({ amount: 400, fromMonth: m(-3) }).expect(400)).body.message).toBe(
+        "Tick that the employee's signed consent to the new amount is on file: a deduction from the pay they agree to needs their written consent (Labour Law Art. 114).",
+      );
 
-      raised = (await changeIt({ amount: 400, fromMonth: m(-3) }).expect(200)).body as Recurring;
+      raised = (await changeIt({ amount: 400, fromMonth: m(-3), consentOnFile: true }).expect(200)).body as Recurring;
+      expect(raised.consent).toMatchObject({ recordedAt: expect.any(String), paper: null });
       expect(raised).toMatchObject({ name: 'Medical subscription (family)', amount: 400, startMonth: m(-3), endMonth: m(-2), stoppedFrom: null });
       // the m(-3) draft takes the new one, the old one's cancelled
       expect(raised.deducted).toEqual([{ month: m(-3), amount: 400, status: 'pending' }]);
@@ -459,6 +551,99 @@ describe('Installments and recurring deductions (e2e)', () => {
         status: 'ended',
         deducted: [{ month: m(0), amount: 120.5, status: 'cancelled' }],
       });
+    });
+
+    it('HR records the consent of one set up before it was asked, and attaches the signed consent, kept in the employee file', async () => {
+      const old = (await recurring({ employeeId: newcomer.id, name: 'Old canteen share', amount: 50, startMonth: m(1) }).expect(201)).body as Recurring;
+      // as one set up before 18 October 2026
+      await prisma.recurringDeduction.update({ where: { id: old.id }, data: { consentRecordedAt: null, consentRecordedById: null } });
+      expect((await getRecurring(old.id)).consent).toBeNull();
+      const consent = (id: string, session = hr) => api().post(`/api/payroll/recurring-deductions/${id}/consent`).set('Cookie', session);
+      for (const session of [finance, ceo, staff]) await consent(old.id, session).expect(403);
+      const recorded = (await consent(old.id).expect(200)).body as Recurring;
+      expect(recorded.consent).toMatchObject({ recordedAt: expect.any(String), recordedBy: { id: expect.any(String) }, paper: null });
+      expect((await consent(old.id).expect(409)).body.message).toBe('Its consent is recorded already. Attach the signed consent to keep it with it.');
+      // a file that isn't a photo or a PDF: refused, nothing changed
+      expect((await consent(old.id).attach('consentFile', Buffer.from('just text'), 'consent.txt').expect(400)).body.message).toBe('The file must be a JPEG, PNG or WebP image, or a PDF.');
+      const attached = (await consent(old.id).attach('consentFile', PDF, 'موافقة.pdf').expect(200)).body as Recurring;
+      expect(attached.consent).toMatchObject({ recordedAt: recorded.consent!.recordedAt, paper: { id: expect.any(String), fileName: 'موافقة.pdf' } });
+      // in the employee file, as a signed deduction consent
+      const paper = await prisma.paperworkItem.findUniqueOrThrow({ where: { id: attached.consent!.paper!.id } });
+      expect(paper).toMatchObject({ employeeId: newcomer.id, kind: 'deduction_consent', mimeType: 'application/pdf' });
+      expect((await api().get(`/api/paperwork/${paper.id}/file`).set('Cookie', hr).expect(200)).headers['content-type']).toBe('application/pdf');
+      expect((await auditOf('recurring_deduction', old.id)).map((a) => a.diff)).toEqual([
+        expect.objectContaining({ consent: 'recorded' }),
+        { employeeCode: newcomer.employeeCode, name: 'Old canteen share', consent: { from: 'not recorded', to: 'recorded' } },
+        { employeeCode: newcomer.employeeCode, name: 'Old canteen share', consent: 'as before', consentFile: 'موافقة.pdf', consentPaperworkId: { from: null, to: paper.id } },
+      ]);
+    });
+
+    it('is set up with the signed consent attached, as a form: refused whole when the file isn’t a photo or a PDF', async () => {
+      const form = (file: Buffer, name: string) =>
+        api()
+          .post('/api/payroll/recurring-deductions')
+          .set('Cookie', hr)
+          .field('employeeId', newcomer.id)
+          .field('name', 'Parking share')
+          .field('amount', '75.50')
+          .field('startMonth', m(2))
+          .field('endMonth', '')
+          .field('consentOnFile', 'true')
+          .attach('consentFile', file, name);
+      const before = await prisma.recurringDeduction.count({ where: { employeeId: newcomer.id } });
+      await form(Buffer.from('not a scan'), 'consent.png').expect(400);
+      expect(await prisma.recurringDeduction.count({ where: { employeeId: newcomer.id } })).toBe(before);
+      const made = (await form(PNG, 'consent.png').expect(201)).body as Recurring;
+      expect(made).toMatchObject({ name: 'Parking share', amount: 75.5, startMonth: m(2), endMonth: null, consent: { paper: { fileName: 'consent.png' } } });
+      expect((await prisma.paperworkItem.findUniqueOrThrow({ where: { id: made.consent!.paper!.id } })).kind).toBe('deduction_consent');
+      expect((await auditOf('recurring_deduction', made.id))[0].diff).toMatchObject({ consent: 'recorded', consentFile: 'consent.png' });
+      // without the tick, refused even with the file
+      await api()
+        .post('/api/payroll/recurring-deductions')
+        .set('Cookie', hr)
+        .field('employeeId', newcomer.id)
+        .field('name', 'Parking share')
+        .field('amount', '75.50')
+        .field('startMonth', m(2))
+        .attach('consentFile', PNG, 'consent.png')
+        .expect(400);
+    });
+
+    it('warns on the run’s line when the month’s recurring deductions pass 25% of the pay after tax, insurance and installments (Art. 114)', async () => {
+      // Beta's 9,000 less about the tax: 2,500 a month is more than a quarter of what is left
+      const gym = (await recurring({ employeeId: beta.id, name: 'Invented gym', amount: 2500, startMonth: m(0), endMonth: m(0) }).expect(201)).body as Recurring;
+      expect(gym.deducted).toEqual([{ month: m(0), amount: 2500, status: 'pending' }]);
+      const line = lineOf(await getRun(m(0)), beta)!;
+      const expected = deductionLimitWarning(2500, {
+        pay: line.result.earned + line.result.allowances,
+        tax: line.result.monthlyTax,
+        insurance: line.result.employeeInsurance,
+        installments: 0,
+      });
+      expect(expected).toMatch(/^This month's recurring deductions, EGP 2,500\.00, are more than 25% /);
+      expect(line.result.warnings).toContain(expected);
+      // the forms read it: Beta's recurring deductions not ended
+      expect((await limitOf(beta)).recurring).toEqual([{ id: gym.id, amount: 2500, startMonth: m(0), endMonth: m(0), stoppedFrom: null }]);
+      await api().post(`/api/payroll/recurring-deductions/${gym.id}/stop`).set('Cookie', hr).send({ fromMonth: m(0) }).expect(200);
+      expect(lineOf(await getRun(m(0)), beta)!.result.warnings.filter((w) => w.includes('Art. 114'))).toEqual([]);
+    });
+
+    it('warns on Additions / Deductions and the run’s line when a month’s damage or loss passes 5 days’ wage (Art. 151)', async () => {
+      // 9,000 ÷ 30 × 5 = 1,500
+      const damage = { employeeId: beta.id, month: m(-1), kind: 'deduction', type: 'damage_loss', amount: 1000, reason: 'Invented broken screen' };
+      const entered = [((await adjust(damage).expect(201)).body as { id: string }).id];
+      const choices = async () => (await api().get(`/api/payroll/adjustments/choices?month=${m(-1)}`).set('Cookie', finance).expect(200)).body.warnings as { employeeId: string; text: string }[];
+      expect((await choices()).filter((w) => w.employeeId === beta.id)).toEqual([]);
+      entered.push(((await adjust({ ...damage, amount: 500.01, reason: 'Invented lost charger' }).expect(201)).body as { id: string }).id);
+      const run = await getRun(m(-1));
+      const text = damageLimitWarning(1500.01, 9000, run.rules.dayDivisor);
+      expect(text).toMatch(/^This month's damage or loss deductions, EGP 1,500\.01, are more than 5 days' wage/);
+      expect((await choices()).filter((w) => w.employeeId === beta.id)).toEqual([{ employeeId: beta.id, text }]);
+      expect(lineOf(run, beta)!.result.warnings).toContain(text);
+      // a warning only: it stays
+      expect(lineOf(run, beta)!.result.adjustmentDeductions).toBe(1500.01);
+      for (const id of entered) await api().post(`/api/payroll/adjustments/${id}/cancel`).set('Cookie', hr).send({}).expect(200);
+      expect(lineOf(await getRun(m(-1)), beta)!.result.warnings.filter((w) => w.includes('Art. 151'))).toEqual([]);
     });
   });
 

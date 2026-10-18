@@ -1,8 +1,9 @@
-// Starting data: roles, the two shifts, the grades G1–G9, the contract settings and ending rules, and the first admin
-// account (Admin, HR and Super Admin). Safe to run more than once; existing rows are left as they are.
+// Starting data: roles, the two shifts, the grades G1–G9, the contract settings and ending rules, the payroll settings
+// and the rates set by law, the law's leave types and the Leave Setup, and the first admin account (Admin, HR and Super
+// Admin). Safe to run more than once; existing rows are left as they are.
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { BUILT_IN_LAW_RATES, ENDING_RULE_DEFAULTS, ENDING_RULES, normalTaxTiers, ROLE_LABELS, ROLES } from '@trendlix/shared';
+import { BUILT_IN_LAW_RATES, ENDING_RULE_DEFAULTS, ENDING_RULES, LAW_LEAVE_TYPES, normalTaxTiers, ROLE_LABELS, ROLES } from '@trendlix/shared';
 import { PrismaClient, type Prisma } from '../src/generated/prisma/client.js';
 import { hashPassword } from '../src/auth/password.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
@@ -67,6 +68,14 @@ async function main() {
     const row = { ...rates, taxTiers: normalTaxTiers(taxTiers) as unknown as Prisma.InputJsonValue };
     await prisma.payrollLawYear.upsert({ where: { year }, update: {}, create: { year, ...row } });
   }
+
+  // the law's leave types and the Leave Setup with the law's numbers (owner, 18 October 2026: "can you apply the leaves
+  // according to the law?"; Labour Law 14/2025 Arts. 54–57, 124–133); the leave migration adds the same rows to existing
+  // databases
+  for (const { key, ...t } of LAW_LEAVE_TYPES) {
+    await prisma.leaveType.upsert({ where: { key }, update: {}, create: { key, ...t } });
+  }
+  await prisma.leaveSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
 
   for (const s of SHIFTS) {
     await prisma.shift.upsert({

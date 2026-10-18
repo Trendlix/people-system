@@ -1,7 +1,11 @@
 import {
+  damageLimitWarning,
+  deductionLimitWarning,
   EMPTY_PAYROLL_INPUTS,
   installmentLimitWarning,
   lawRatesFor,
+  RECURRING_TYPE,
+  sumAmounts,
   normalLawRates,
   paidAdjustments,
   type EmploymentType,
@@ -143,22 +147,65 @@ export function bankDetailsOf(line: LineRow, live: BankDetails | undefined, appr
 }
 
 /**
- * The share of pay warning (owner, 18 October 2026): when the line's installments of advances and loans (not its other
- * deductions, nor its recurring ones) pass `percent` of the month's gross as the run worked it out (the pay earned and
- * the allowances); null when they don't, or no percent is set in Payroll Setup.
+ * What a line's warnings by the Labour Law are worked out with (Law No. 14 of 2025; owner, 18 October 2026, after
+ * reading the law: "Block above 10%", "Warn above 25%, record the consent"): Payroll Setup's limit on installments (at
+ * most the law's 10%) and the run's days in a month (5 days' wage of damage). Warnings, never blocks: the plans and the
+ * entries are refused past the 10% when made, but the month's pay can be less than the wage they were planned on.
+ */
+export interface LineLimits {
+  installmentPercent: number | null;
+  dayDivisor: number | null;
+}
+
+/** The month's pay a line's limits are of: the pay earned and the allowances, as the run worked them out. */
+const payOf = (result: PayrollResult) => Math.round((result.earned + result.allowances) * 100) / 100;
+
+/**
+ * Art. 113: when the line's installments of advances and loans (not its other deductions, nor its recurring ones) pass
+ * `percent` of the month's pay (the pay earned and the allowances); null when they don't, or no percent is given.
  */
 export function installmentWarning(line: { terms: PayrollTerms; result: PayrollResult }, percent: number | null): string | null {
   if (percent === null) return null;
   const installments = lineInstallments(paidAdjustments(line));
   if (!(installments > 0)) return null;
-  return installmentLimitWarning(installments, Math.round((line.result.earned + line.result.allowances) * 100) / 100, percent);
+  return installmentLimitWarning(installments, payOf(line.result), percent);
 }
 
-/** A line as the API sends it; `percent`: Payroll Setup's share of pay its installments are warned past (18 October 2026). */
-export function lineView(line: LineRow, bank: LineBank, percent: number | null = null): PayrollLineView {
+/**
+ * Art. 114 ("Warn above 25%"): when the line's recurring deductions pass 25% of the month's pay less its income tax,
+ * its social insurance and its installments of advances and loans; null when they don't.
+ */
+export function recurringWarning(line: { terms: PayrollTerms; result: PayrollResult }): string | null {
+  const items = paidAdjustments(line);
+  const recurring = sumAmounts(items.filter((a) => a.kind === 'deduction' && a.type === RECURRING_TYPE).map((a) => a.amount));
+  if (!(recurring > 0)) return null;
+  return deductionLimitWarning(recurring, {
+    pay: payOf(line.result),
+    tax: line.result.monthlyTax ?? 0,
+    insurance: line.result.employeeInsurance ?? 0,
+    installments: lineInstallments(items),
+  });
+}
+
+/** Art. 151: when the line's damage or loss deductions pass 5 days of its monthly gross (÷ the run's days in a month); null when they don't. */
+export function damageWarning(line: { terms: PayrollTerms; result: PayrollResult }, dayDivisor: number | null): string | null {
+  if (!dayDivisor) return null;
+  const damage = sumAmounts(paidAdjustments(line).filter((a) => a.kind === 'deduction' && a.type === 'damage_loss').map((a) => a.amount));
+  if (!(damage > 0)) return null;
+  return damageLimitWarning(damage, line.terms.gross, dayDivisor);
+}
+
+/** The line's warnings by the Labour Law, in the order of its articles. */
+export function lawWarnings(line: { terms: PayrollTerms; result: PayrollResult }, limits: LineLimits | null): string[] {
+  if (!limits) return [];
+  return [installmentWarning(line, limits.installmentPercent), recurringWarning(line), damageWarning(line, limits.dayDivisor)].filter((w): w is string => w !== null);
+}
+
+/** A line as the API sends it; `limits`: what its warnings by the Labour Law are worked out with (18 October 2026). */
+export function lineView(line: LineRow, bank: LineBank, limits: LineLimits | null = null): PayrollLineView {
   const terms = line.terms as unknown as PayrollTerms;
   const result = line.result as unknown as PayrollResult;
-  const warning = installmentWarning({ terms, result }, percent);
+  const warnings = lawWarnings({ terms, result }, limits);
   return {
     id: line.id,
     employeeId: line.employeeId,
@@ -173,8 +220,8 @@ export function lineView(line: LineRow, bank: LineBank, percent: number | null =
     terms,
     // inputs saved before one existed (the leave days, 17 October 2026) read as not given
     inputs: { ...EMPTY_PAYROLL_INPUTS, ...(line.inputs as object) } as PayrollInputs,
-    // with the share of pay warning when its installments pass it, as the line's other warnings
-    result: warning ? { ...result, warnings: [...result.warnings, warning] } : result,
+    // with its warnings by the Labour Law, as the line's other warnings
+    result: warnings.length ? { ...result, warnings: [...result.warnings, ...warnings] } : result,
     bank,
     payslips: { en: line.payslips.some((p) => p.language === 'en'), ar: line.payslips.some((p) => p.language === 'ar') },
   };
@@ -189,12 +236,14 @@ export function runView(
     banks: ReadonlyMap<string, BankDetails>;
     approvedByName: string | null;
     adjustmentsNotOnRun: PayrollRunView['adjustmentsNotOnRun'];
-    /** Payroll Setup's share of pay a line's installments are warned past (18 October 2026); null: no warning. */
-    installmentWarnPercent?: number | null;
+    /** Payroll Setup's limit on a month's installments (18 October 2026): its lines warn past it. */
+    installmentLimitPercent?: number | null;
   },
 ): PayrollRunView {
   const approved = isApproved(run.status);
-  const lines = run.lines.map((l) => lineView(l, lineBank(bankDetailsOf(l, ctx.banks.get(l.employeeId), approved)), ctx.installmentWarnPercent ?? null));
+  // the run's own days in a month, as it was worked out with
+  const limits: LineLimits = { installmentPercent: ctx.installmentLimitPercent ?? null, dayDivisor: (run.rules as unknown as PayrollRules | null)?.dayDivisor ?? null };
+  const lines = run.lines.map((l) => lineView(l, lineBank(bankDetailsOf(l, ctx.banks.get(l.employeeId), approved)), limits));
   return {
     id: run.id,
     month: monthOf(run),

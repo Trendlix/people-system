@@ -9,6 +9,7 @@ import { ContractsModule } from './contracts/contracts.module.js';
 import { DocumentsModule } from './documents/documents.module.js';
 import { EmployeesModule } from './employees/employees.module.js';
 import { HealthController } from './health/health.controller.js';
+import { LeaveModule } from './leave/leave.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { OffersModule } from './offers/offers.module.js';
 import { VersionController } from './health/version.controller.js';
@@ -49,6 +50,7 @@ import { UsersModule } from './users/users.module.js';
     UnsettledModule,
     PayrollStatisticsModule,
     ReimbursementsModule,
+    LeaveModule,
     UsersModule,
   ],
   controllers: [HealthController, VersionController],

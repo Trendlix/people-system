@@ -47,6 +47,10 @@
 // the deduction by ticking a box"): while the run is with the CEO, the CEO may waive a line's attendance cut; the line
 // is worked out with none, the cut it would have been kept as attendanceWaived. The no-show and KPI cuts stay as they
 // are worked out, and the attendance still counts in the KPI average: the CEO waives the money, not the measure.
+// Leave (owner, 18 October 2026: "can you apply the leaves according to the law?"): the month's approved leave from the
+// Leave module fills in the Leave days (paid leave: nothing cut) and a new Unpaid leave days (unpaid leave, and the
+// unpaid share of a partly paid one such as sick leave below 100%: a day of the gross ÷ the day divisor cut for each),
+// both taken out of the shift's expected hours like a no-show day's; what HR types still wins (leaveDaysOf).
 
 import type { AllowanceTerms } from './contracts.js';
 import { adjustmentSums, DAYS_TYPE_OF, isDaysType, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
@@ -197,6 +201,19 @@ export interface PayrollTerms {
    * when the run took them, in the order entered. Missing on lines without any, and on lines worked out before then.
    */
   adjustments?: PayrollAdjustmentItem[];
+  /**
+   * The month's approved leave (owner, 18 October 2026: "can you apply the leaves according to the law?"), within the
+   * days paid, counted as each type counts them (leaves.ts monthLeaveDays): the paid days, and the unpaid days (unpaid
+   * leave, and a partly paid leave's unpaid share). The Leave days and the Unpaid leave days the grid fills in when HR
+   * hasn't typed others (leaveDaysOf). Missing on lines without leave, for pay by the hour, and on lines made before then.
+   */
+  leave?: PayrollLeaveDays | null;
+}
+
+/** A month's approved leave as a line's terms keep it: the paid days and the unpaid days, whole, half or in shares. */
+export interface PayrollLeaveDays {
+  paidDays: number;
+  unpaidDays: number;
 }
 
 /** An addition or deduction as a line keeps it: what it is, whether it is taxed, the amount (or the days) and why. */
@@ -262,6 +279,14 @@ export interface PayrollInputs {
    * then: none.
    */
   leaveDays: number | null;
+  /**
+   * Unpaid leave taken this month (owner, 18 October 2026, the Leave module), and the unpaid share of a partly paid
+   * leave (sick leave at 75%: a quarter of each day): each costs a day of the gross ÷ the day divisor, never more than
+   * the salary left, and its hours (a day of the shift each) are taken out of the shift's expected hours, as a leave
+   * day's are. Filled in from the approved leave unless HR types it (leaveDaysOf). Not for pay by the hour. Missing on
+   * inputs saved before then: none.
+   */
+  unpaidLeaveDays?: number | null;
   /** Already paid out this month: not in the bank transfer. */
   released: number | null;
   /**
@@ -280,6 +305,7 @@ export const EMPTY_PAYROLL_INPUTS: PayrollInputs = {
   clientSatisfaction: null,
   noShowDays: null,
   leaveDays: null,
+  unpaidLeaveDays: null,
   released: null,
   attendanceWaived: false,
 };
@@ -350,6 +376,11 @@ export interface PayrollResult {
   attendanceCut: number;
   kpiCut: number;
   noShowCut: number;
+  /**
+   * The unpaid leave days' cut (owner, 18 October 2026): a day of the gross ÷ the day divisor for each, never more than
+   * the salary left after the other cuts. Missing on lines worked out before then: none.
+   */
+  unpaidLeaveCut?: number;
   /**
    * The attendance cut the CEO waived (owner, 17 October 2026: "if there is an attendance deduction, allow the CEO to
    * wave the deduction by ticking a box"): what attendanceCut would have been, now 0; 0 when not waived. Missing on lines
@@ -522,7 +553,7 @@ type SalaryPart = Pick<
   | 'kpiCut'
   | 'noShowCut'
   | 'overtime'
-> & { attendanceWaived: number };
+> & { attendanceWaived: number; unpaidLeaveCut: number };
 
 /**
  * A shift's window in hours, from its start and end ("HH:mm"): an end before the start runs past midnight. Null when
@@ -585,14 +616,33 @@ export const noShowHours = (noShowDays: number | null, hoursPerDay: number | nul
  * of the shift for each no-show and leave day, never below 0; null when neither. What HR types is never overwritten.
  */
 export function expectedHoursOf(
-  terms: Pick<PayrollTerms, 'expectedHours' | 'hoursPerDay'>,
-  inputs: Pick<PayrollInputs, 'expectedHours' | 'noShowDays' | 'leaveDays'>,
+  terms: Pick<PayrollTerms, 'expectedHours' | 'hoursPerDay' | 'leave'>,
+  inputs: Pick<PayrollInputs, 'expectedHours' | 'noShowDays' | 'leaveDays' | 'unpaidLeaveDays'>,
 ): number | null {
   if (inputs.expectedHours !== null && inputs.expectedHours !== undefined) return inputs.expectedHours;
   const shift = terms.expectedHours;
   if (shift === null || shift === undefined) return null;
-  const off = shiftDaysHours(inputs.noShowDays, terms.hoursPerDay) + shiftDaysHours(inputs.leaveDays, terms.hoursPerDay);
+  const leave = leaveDaysOf(terms, inputs);
+  const off =
+    shiftDaysHours(inputs.noShowDays, terms.hoursPerDay) + shiftDaysHours(leave.leaveDays, terms.hoursPerDay) + shiftDaysHours(leave.unpaidLeaveDays, terms.hoursPerDay);
   return Math.max(0, fraction(shift - off));
+}
+
+/**
+ * The leave days a line is worked out with (owner, 18 October 2026: the Leave module fills in the leave days): as HR
+ * typed them, else the month's approved leave the terms took (paid, and unpaid with a partly paid leave's unpaid
+ * share); null when neither. What HR types is never overwritten.
+ */
+export function leaveDaysOf(
+  terms: Pick<PayrollTerms, 'leave'>,
+  inputs: Pick<PayrollInputs, 'leaveDays' | 'unpaidLeaveDays'>,
+): { leaveDays: number | null; unpaidLeaveDays: number | null } {
+  const typed = (v: number | null | undefined) => (v === null || v === undefined ? null : v);
+  const leave = terms.leave ?? null;
+  return {
+    leaveDays: typed(inputs.leaveDays) ?? (leave && leave.paidDays > 0 ? leave.paidDays : null),
+    unpaidLeaveDays: typed(inputs.unpaidLeaveDays) ?? (leave && leave.unpaidDays > 0 ? leave.unpaidDays : null),
+  };
 }
 
 /**
@@ -709,12 +759,14 @@ export function payrollLine(
   });
   const sum = (pick: (p: (typeof parts)[number]) => number) => piasters(parts.reduce((total, p) => total + pick(p), 0));
 
+  // the leave days as the grid shows them (owner, 18 October 2026): HR's, else the month's approved leave's
+  const leave = leaveDaysOf(terms, i);
   const salary =
     terms.payBasis === 'hourly'
       ? hourlyPart(terms, i, warnings)
       : // terms saved before the hours a day (or the expected hours) existed read as without a shift
         monthlyPart(
-          i,
+          { ...i, ...leave },
           rules,
           {
             gross,
@@ -744,7 +796,17 @@ export function payrollLine(
   const adjustments = adjustmentSums(paid.filter((a) => !isDaysType(a.type)).map((a) => ({ ...a, status: 'pending' as const })));
   const additionsTaxed = adjustments.taxedAdditions;
   const earned = piasters(
-    salary.fixed - salary.attendanceCut + salary.variable - salary.kpiCut - salary.noShowCut + salary.overtime + bonus + commission + settlements + additionsTaxed,
+    salary.fixed -
+      salary.attendanceCut +
+      salary.variable -
+      salary.kpiCut -
+      salary.noShowCut -
+      salary.unpaidLeaveCut +
+      salary.overtime +
+      bonus +
+      commission +
+      settlements +
+      additionsTaxed,
   );
 
   const allowancesTotal = sum((p) => p.allowances);
@@ -826,7 +888,8 @@ export function payrollLine(
  * (1.5). Worked hours above the most attendance counts (the shift's hours to work a day on its days: mostCountedHours)
  * are warned about, not cut. A no-show day costs the no-show multiplier (2) days of the gross (the sheet used the
  * declared insurance salary, empty for most), never more than the salary left for the days paid after the other cuts.
- * A leave day costs nothing. The attendance cut the CEO waived (owner, 17 October 2026) is 0, kept as attendanceWaived;
+ * A paid leave day costs nothing; an unpaid leave day (owner, 18 October 2026) a day of the gross, never more than the
+ * salary the no-show cut leaves. The attendance cut the CEO waived (owner, 17 October 2026) is 0, kept as attendanceWaived;
  * the other cuts are as without the waiver.
  */
 function monthlyPart(
@@ -852,12 +915,14 @@ function monthlyPart(
   // a leave day is paid; HR's own figure is taken as already without them
   const noShowDays = given(i.noShowDays);
   const leaveDays = given(i.leaveDays);
-  const daysOff = daysOffName(noShowDays, leaveDays);
+  // unpaid leave and the unpaid share of a partly paid one (owner, 18 October 2026): days off like the paid leave's
+  const unpaidLeaveDays = given(i.unpaidLeaveDays ?? null);
+  const daysOff = daysOffName(noShowDays, leaveDays + unpaidLeaveDays);
   const worked = i.workedHours;
   const shift = pay.shiftExpectedHours;
   const fromShift = i.expectedHours === null && shift !== null && shift > 0;
   const absentHours = fromShift ? shiftDaysHours(i.noShowDays, pay.hoursPerDay) : 0;
-  const leaveHours = fromShift ? shiftDaysHours(i.leaveDays, pay.hoursPerDay) : 0;
+  const leaveHours = fromShift ? fraction(shiftDaysHours(i.leaveDays, pay.hoursPerDay) + shiftDaysHours(i.unpaidLeaveDays, pay.hoursPerDay)) : 0;
   /** The expected hours attendance is measured on, as the grid shows them. */
   const expected = expectedHoursOf({ expectedHours: shift, hoursPerDay: pay.hoursPerDay }, i);
   const attendanceRatio = worked !== null && expected !== null && expected > 0 ? fraction(worked / expected) : null;
@@ -887,6 +952,11 @@ function monthlyPart(
   const salaryLeft = Math.max(0, piasters(fixed - workedOut + variable - kpiCut));
   const noShowCut = Math.min(noShowFull, salaryLeft);
   if (noShowFull > noShowCut) warnings.push('The no-show days cost more than the salary left for the days paid: the cut is capped there');
+  // unpaid leave (owner, 18 October 2026): a day of the gross ÷ the day divisor for each, never more than the salary the
+  // no-show cut leaves
+  const unpaidLeaveFull = piasters((unpaidLeaveDays * pay.gross) / rules.dayDivisor);
+  const unpaidLeaveCut = Math.min(unpaidLeaveFull, Math.max(0, piasters(salaryLeft - noShowCut)));
+  if (unpaidLeaveFull > unpaidLeaveCut) warnings.push('The unpaid leave days cost more than the salary left for the days paid: the cut is capped there');
   // the CEO waived the attendance deduction (owner, 17 October 2026: "if there is an attendance deduction, allow the CEO
   // to wave the deduction by ticking a box"): none taken, what it was kept; the no-show cut stays as worked out with it,
   // and the attendance score still counts in the KPI average
@@ -896,7 +966,7 @@ function monthlyPart(
   // the most attendance will count (owner, 16 October 2026: "maximum working hours to be recorded per day is 9 hours
   // between checkin and check out"): the shift's hours to work a day on its working days in the days paid, less the
   // holidays and the no-show and leave days; the total typed isn't cut, only warned about
-  const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays, leaveDays);
+  const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays, leaveDays + unpaidLeaveDays);
   if (worked !== null && most !== null && pay.hoursPerDay !== null && worked > most) {
     const perDay = formatHours(pay.hoursPerDay);
     warnings.push(`Worked hours are more than ${perDay} a day on the shift's working days (${formatHours(most)} this month): attendance will count at most ${perDay} a day`);
@@ -916,6 +986,7 @@ function monthlyPart(
     attendanceWaived: waived,
     kpiCut,
     noShowCut,
+    unpaidLeaveCut,
     // none while the rules don't pay it (owner, 16 October 2026: "No overtime for now"); the sheet's intent: its overtime
     // column multiplied the money amount by the attendance again, not copied
     overtime:
@@ -931,7 +1002,7 @@ function monthlyPart(
 function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): SalaryPart {
   if (i.workedHours === null) warnings.push('Paid by the hour, but no worked hours are given: nothing is paid for hours');
   if (!(given(terms.hourlyRate) > 0)) warnings.push('Paid by the hour, but the contract has no hourly rate');
-  if ([i.expectedHours, i.softSkills, i.performance, i.clientSatisfaction, i.noShowDays, i.leaveDays].some((v) => v !== null)) {
+  if ([i.expectedHours, i.softSkills, i.performance, i.clientSatisfaction, i.noShowDays, i.leaveDays, i.unpaidLeaveDays ?? null].some((v) => v !== null)) {
     warnings.push("Paid by the hour: the expected hours, KPIs, no-show days and leave days don't change the pay");
   }
   return {
@@ -947,6 +1018,7 @@ function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): 
     attendanceWaived: 0,
     kpiCut: 0,
     noShowCut: 0,
+    unpaidLeaveCut: 0,
     overtime: 0,
   };
 }

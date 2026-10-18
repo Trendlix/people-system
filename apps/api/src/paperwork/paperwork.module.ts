@@ -12,5 +12,7 @@ import { PaperworkService } from './paperwork.service.js';
 @Module({
   controllers: [EmployeePaperworkController, PaperworkController, IdCardController],
   providers: [PaperworkService, CorrectionsService, OcrClient, IdCardTextsService],
+  // a recurring deduction's signed consent is kept in the employee file (payroll adjustments, 18 October 2026)
+  exports: [PaperworkService],
 })
 export class PaperworkModule {}

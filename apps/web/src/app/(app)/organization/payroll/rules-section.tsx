@@ -16,8 +16,9 @@ import { NotLoaded, SettingRow, SetupSection } from './section';
 // and the Form 1 basic wage stay with the contract settings (GET/PATCH /contract-settings), where the contracts and
 // the forms read them, and are edited only here: Organization → Contracts & Endings shows them with a link here. When a
 // salary review is due, after how many months without a raise, is a payroll setting the Salary Raises report reads
-// (owner's decision, 16 October 2026), and the share of the pay a month's installments may take before a warning (owner,
-// 18 October 2026). HR and Admin change them; Finance and the CEO read them.
+// (owner's decision, 16 October 2026), and the most a month's installments may take of the wage, the Labour Law's limit
+// (owner, 18 October 2026, after reading the law: "Block above 10%"). HR and Admin change them; Finance and the CEO read
+// them.
 
 const INTRO =
   'The company’s own rules for working out each month’s pay, following its payroll sheet, and the defaults new contracts start with. A run keeps the rules it was made or last refreshed with, so a change here applies to runs made or refreshed afterwards; approved runs keep theirs.';
@@ -50,17 +51,11 @@ export async function YourRulesSection({ user }: { user: SessionUser }) {
               </SettingRow>
             </dl>
           )}
-          {settings.value.installmentWarnPercent !== undefined && (
+          {settings.value.installmentLimitPercent !== undefined && (
             <dl className="mt-4">
-              <SettingRow label="Installments warning">
-                {settings.value.installmentWarnPercent === null ? (
-                  <span className="text-muted">No warning</span>
-                ) : (
-                  <>
-                    <span className="tabular-nums">{settings.value.installmentWarnPercent}%</span>
-                    <span className="text-muted"> · of the pay, when a month&apos;s installments pass it; a warning only</span>
-                  </>
-                )}
+              <SettingRow label="Most a month's installments may take">
+                <span className="tabular-nums">{settings.value.installmentLimitPercent}%</span>
+                <span className="text-muted"> · of the wage, all of an employee&apos;s advances and loans together; the law allows at most 10% (Art. 113)</span>
               </SettingRow>
             </dl>
           )}

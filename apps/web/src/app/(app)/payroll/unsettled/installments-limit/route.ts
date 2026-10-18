@@ -2,10 +2,11 @@ import { ApiError, apiFetch } from '@/lib/api';
 import { apiReason } from '../../../templates/file-response';
 import { UUID } from '../../actions-common';
 
-// The share-of-pay warning's figures for one employee (owner, 18 October 2026: a warning, never a block, when a
-// month's installments pass the share of the pay set in Payroll Setup), for Unsettled's record form, read when HR
-// chooses the employee: their current contract's monthly gross, the percent, and their installments already planned or
-// applied per month (GET /payroll/advances/limit). Answers JSON: those figures, or { message } with the API's reason.
+// The figures the Labour Law's limits are checked with for one employee (owner, 18 October 2026, after reading the law:
+// "Block above 10%", "Warn above 25%, record the consent"), for Unsettled's record form and Recurring Deductions' forms,
+// read when HR chooses the employee: their current contract's monthly gross, the limit on installments, their
+// installments already planned or applied per month, about what the gross comes to in tax and insurance, and their
+// recurring deductions not ended (GET /payroll/advances/limit). Answers JSON: those figures, or { message } with the API's reason.
 // The API checks the role (HR, Finance and the CEO, as salaries).
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'private, no-store' } });

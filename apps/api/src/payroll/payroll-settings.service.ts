@@ -27,10 +27,11 @@ export interface PayrollSettingsView extends Required<PayrollRules> {
    */
   salaryReviewMonths: number;
   /**
-   * A warning, never a block (owner, 18 October 2026), when a month's installments of advances and loans pass this
-   * share of the pay: 1 to 100 percent, 10 to start with; null: no warning. On the plan form and the run's lines.
+   * The most a month's installments of advances and loans may take, in percent of the wage (Labour Law 14/2025 Art.
+   * 113; owner, 18 October 2026, after reading the law: "Block above 10%"): 1 to 10, the law's 10 to start with. A plan
+   * or an installment past it is refused; the run's lines warn past it. Until then a warning at 1 to 100 (none: none).
    */
-  installmentWarnPercent: number | null;
+  installmentLimitPercent: number;
 }
 
 /** The rules a run is worked out with, as the settings have them now: Pay overtime always says on or off. */
@@ -51,7 +52,7 @@ const view = (s: PayrollSettings): PayrollSettingsView => ({
   achPurpose: s.achPurpose,
   payday: s.payday,
   salaryReviewMonths: s.salaryReviewMonths,
-  installmentWarnPercent: s.installmentWarnPercent?.toNumber() ?? null,
+  installmentLimitPercent: s.installmentLimitPercent.toNumber(),
 });
 
 // The payroll settings (owner's decisions, 16 October 2026): the sheet's rules to start with (a month of 30 days,
@@ -63,9 +64,11 @@ const view = (s: PayrollSettings): PayrollSettingsView => ({
 // Admin change them (Organization → Payroll Setup: the rules under Your Rules, the bank files and the payday, the day
 // of the month salaries are paid, under Paying Salaries; owner's request, 16 October 2026). Your Rules also has when a
 // salary review is due, after 12 months without a raise to start with (the Salary Raises report; owner's decision, 16
-// October 2026), which no run copies, and when a month's installments of advances and loans warn, past 10% of the pay to
-// start with (owner, 18 October 2026: "Warn when a month's installments pass __ % of the pay"; empty: no warning), which
-// no run copies either: the run's lines warn with it as it is.
+// October 2026), which no run copies, and the most a month's installments of advances and loans may take of the wage:
+// a warning past 10% of the pay to start with (owner, 18 October 2026: "Warn when a month's installments pass __ % of
+// the pay"), the law's limit since the owner read the Labour Law with us (owner, 18 October 2026, after reading the law:
+// "Block above 10%"; Art. 113): 10 to start with, lower if set so, never higher. No run copies it either: plans past
+// it are refused, and the run's lines warn with it as it is.
 @Injectable()
 export class PayrollSettingsService {
   constructor(
@@ -97,7 +100,7 @@ export class PayrollSettingsService {
       achPurpose: dto.achPurpose,
       payday: dto.payday,
       salaryReviewMonths: dto.salaryReviewMonths,
-      installmentWarnPercent: dto.installmentWarnPercent,
+      installmentLimitPercent: dto.installmentLimitPercent,
     };
     const after = await this.prisma.payrollSettings.update({ where: { id: ID }, data });
     const diff = changes(view(before) as unknown as Record<string, unknown>, data);

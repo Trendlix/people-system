@@ -74,8 +74,9 @@ export function byMonth(rows: readonly { month: string; amount: number; status: 
 }
 
 /**
- * A line's installments for the share of pay warning (owner, 18 October 2026): its advances' recoveries and loans'
- * installments, summed; never its recurring deductions nor any other.
+ * A line's installments for the law's limit on them (owner, 18 October 2026, after reading the law: "Block above 10%";
+ * Labour Law Art. 113): its advances' recoveries and loans' installments, summed; never its recurring deductions nor
+ * any other.
  */
 export const lineInstallments = (items: readonly { kind: string; type: string; amount: number | null }[]) =>
   sumAmounts(items.filter((a) => recoveredKind(a.kind, a.type) !== null).map((a) => a.amount ?? 0));

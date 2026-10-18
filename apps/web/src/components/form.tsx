@@ -30,10 +30,21 @@ export function FormErrors({ errors }: { errors?: string[] }) {
 }
 
 /** `busy`: also pending while something started by the form is still running (e.g. an upload after photos are resized). */
-export function SubmitButton({ children, pendingText = 'Saving…', busy = false }: { children: React.ReactNode; pendingText?: string; busy?: boolean }) {
+export function SubmitButton({
+  children,
+  pendingText = 'Saving…',
+  busy = false,
+  disabled = false,
+}: {
+  children: React.ReactNode;
+  pendingText?: string;
+  busy?: boolean;
+  /** Held back while what is typed can't be sent, e.g. past the law's limit (the form says why). */
+  disabled?: boolean;
+}) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending || busy} className="btn btn-primary">
+    <button type="submit" disabled={pending || busy || disabled} className="btn btn-primary">
       {pending || busy ? pendingText : children}
     </button>
   );

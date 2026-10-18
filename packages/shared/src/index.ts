@@ -122,6 +122,10 @@ export const PAPERWORK_KINDS = [
   'insurance_print', // برنت التأمينات: the social insurance statement of the person's insured periods (owner, 15 October 2026)
   'personal_photo',
   'syndicate_card', // كارنيه النقابة, for members of a professional syndicate: optional, never on the checklist
+  // the employee's signed consent to a recurring deduction (Labour Law 14/2025 Art. 114: "أن تصدر به موافقة مكتوبة من
+  // العامل"; owner, 18 October 2026, after reading the law: "record the consent"): attached on Recurring Deductions,
+  // optional, never on the checklist
+  'deduction_consent',
   'other',
 ] as const;
 export type PaperworkKind = (typeof PAPERWORK_KINDS)[number];
@@ -136,6 +140,7 @@ export const PAPERWORK_LABELS: Record<PaperworkKind, string> = {
   insurance_print: 'Social insurance print',
   personal_photo: 'Personal photo',
   syndicate_card: 'Syndicate card',
+  deduction_consent: 'Deduction consent (signed)',
   other: 'Other document',
 };
 
@@ -275,5 +280,10 @@ export * from './payroll-statistics.js';
 // reimbursement claims: the types HR sets up (caps, receipt, deadline, who may claim), the claim's statuses and steps
 export * from './reimbursements.js';
 
-// installments of advances and loans made at once, recurring deductions (e.g. a medical share), the share of pay warning
+// installments of advances and loans made at once, recurring deductions (e.g. a medical share), and the Labour Law's
+// limits on them: 10% of the wage for installments, 25% for other deductions, 5 days' wage for damage
 export * from './installments.js';
+
+// leave (Labour Law 14/2025, Arts. 54–57 and 124–133): the law's leave types, the annual leave's days, counting a leave's
+// days, the requests' statuses and steps, their problems, Year Closing, and the month's leave days for the payroll
+export * from './leaves.js';

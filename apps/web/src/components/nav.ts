@@ -42,6 +42,9 @@ export const DETAILS_CHANGES_PATH = '/requests/details-changes';
 /** The employees' reimbursement claims (app/(app)/reimbursements), under Requests. */
 export const REIMBURSEMENTS_PATH = '/reimbursements';
 
+/** The employees' leave requests and the month's calendar of who is off (app/(app)/leave), under Requests. */
+export const LEAVE_PATH = '/leave';
+
 export const NAV: NavItem[] = [
   { href: '/', label: 'Home' },
   { href: '/organization/company', label: 'Organization', section: '/organization' },
@@ -89,7 +92,11 @@ export const NAV: NavItem[] = [
       // the employees' reimbursement claims, through their direct manager, HR and Finance (owner, 18 October 2026: "allow
       // the employee to add reimbursement request … for specific preset up conditions"); the CEO may view them
       { href: REIMBURSEMENTS_PATH, label: 'Reimbursements', section: REIMBURSEMENTS_PATH, roles: ['hr', 'finance', 'ceo'] },
-      // later: Leave, once the Leave module exists (it is under Coming Next until then)
+      // the employees' leave, through their direct manager, then HR (owner, 18 October 2026: "if we will work on the
+      // attendance and leaves, how will we build it?", leaves first, then "can you apply the leaves according to the
+      // law?"), with the month's calendar of who is off; HR decides and records leave, the CEO may view them; a direct
+      // manager decides their team's from My Team, an employee asks from My Requests
+      { href: LEAVE_PATH, label: 'Leave Requests', section: LEAVE_PATH, roles: ['hr', 'ceo'] },
     ],
   },
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
@@ -185,4 +192,5 @@ export function activeSubItem(item: Pick<NavItem, 'items'>, pathname: string): N
   return best;
 }
 
-export const COMING_SOON = ['Attendance', 'Leave'];
+/** What is coming next, under the sidebar: Leave went live on 18 October 2026 (Requests → Leave Requests, My Requests). */
+export const COMING_SOON = ['Attendance'];

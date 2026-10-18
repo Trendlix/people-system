@@ -161,6 +161,8 @@ function gridRows(lines: PayrollLineView[], month: string, today: string): GridR
     shiftExpectedHours: l.payBasis === 'hourly' ? null : (l.terms.expectedHours ?? null),
     // a month under two contracts (owner, 17 October 2026)
     contractsNote: contractsNote(l.terms),
+    // the month's approved leave, which fills in the leave cells (18 October 2026); none on lines made before then
+    leave: l.terms.leave ?? null,
     // the month's additions and deductions, opening the person's month on Additions / Deductions (17 October 2026)
     items: lineItems(l),
     itemsHref: adjustmentsHref(month, today, l.employeeId),

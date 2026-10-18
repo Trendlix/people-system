@@ -19,7 +19,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { SALARY_REVIEW_MONTHS_MAX, SALARY_REVIEW_MONTHS_MIN } from '@trendlix/shared';
+import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT, SALARY_REVIEW_MONTHS_MAX, SALARY_REVIEW_MONTHS_MIN } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
 import { MONTH } from './months.js';
@@ -41,7 +41,7 @@ const CIB_ACCOUNT_MESSAGE = "Enter the company's CIB account number: 12 digits."
 const PURPOSE_MESSAGE = 'Enter the ACH transaction purpose in capital letters and digits, up to 20, e.g. CASH.';
 const PAYDAY_MESSAGE = 'Enter the day of the month salaries are paid, a whole number from 1 to 31, or leave it empty.';
 const REVIEW_MESSAGE = `Enter after how many months without a raise a salary review is due, a whole number from ${SALARY_REVIEW_MONTHS_MIN} to ${SALARY_REVIEW_MONTHS_MAX}, e.g. 12.`;
-const INSTALLMENT_WARN_MESSAGE = "Enter the share of the pay a month's installments may take before a warning, from 1 to 100 percent, e.g. 10, or leave it empty for no warning.";
+const INSTALLMENT_LIMIT_MESSAGE = `Enter the most a month's installments of advances and loans may take, from ${INSTALLMENT_LIMIT_MIN} to ${LAW_INSTALLMENT_PERCENT} percent of the wage, e.g. 10: the law allows at most ${LAW_INSTALLMENT_PERCENT}% (Labour Law Art. 113).`;
 
 export class UpdatePayrollSettingsDto {
   @Sent() @IsInt({ message: DIVISOR_MESSAGE }) @Min(20, { message: DIVISOR_MESSAGE }) @Max(31, { message: DIVISOR_MESSAGE })
@@ -103,14 +103,15 @@ export class UpdatePayrollSettingsDto {
   salaryReviewMonths?: number;
 
   /**
-   * Warn when a month's installments of advances and loans pass this percent of the pay (owner, 18 October 2026): a
-   * warning, never a block; null: no warning.
+   * The most a month's installments of advances and loans may take, in percent of the wage (Labour Law 14/2025 Art.
+   * 113; owner, 18 October 2026, after reading the law: "Block above 10%"): 1 to 10, never more than the law's 10, and
+   * never none (null is refused).
    */
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false }, { message: INSTALLMENT_WARN_MESSAGE })
-  @Min(1, { message: INSTALLMENT_WARN_MESSAGE })
-  @Max(100, { message: INSTALLMENT_WARN_MESSAGE })
-  installmentWarnPercent?: number | null;
+  @Sent()
+  @IsNumber({ maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false }, { message: INSTALLMENT_LIMIT_MESSAGE })
+  @Min(INSTALLMENT_LIMIT_MIN, { message: INSTALLMENT_LIMIT_MESSAGE })
+  @Max(LAW_INSTALLMENT_PERCENT, { message: INSTALLMENT_LIMIT_MESSAGE })
+  installmentLimitPercent?: number;
 }
 
 // ---------- runs ----------
@@ -175,9 +176,16 @@ export class PayrollInputsDto {
   @Days() noShowDays?: number | null;
   /**
    * Approved paid leave this month, whole or half days (owner, 17 October 2026): no cut, its hours out of the expected
-   * hours; typed until the Leave module fills it. No more than the line's days paid (PayrollService.updateLines).
+   * hours. Filled in from the Leave module's approved leave since 18 October 2026; typed, it wins (null: as the leave
+   * says). No more than the line's days paid (PayrollService.updateLines).
    */
   @Days() leaveDays?: number | null;
+  /**
+   * Unpaid leave this month, whole or half days (owner, 18 October 2026): a day of the gross cut for each, its hours out
+   * of the expected hours. Filled in from the approved unpaid leave (and the unpaid share of a partly paid one); typed, it
+   * wins (null: as the leave says). With the leave days, no more than the line's days paid.
+   */
+  @Days() unpaidLeaveDays?: number | null;
   @Amount(0, RELEASED_MESSAGE) released?: number | null;
 }
 

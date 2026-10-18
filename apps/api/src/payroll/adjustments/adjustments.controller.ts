@@ -1,6 +1,9 @@
-import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseFilters, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser, Roles } from '../../auth/decorators.js';
 import type { SessionUser } from '../../auth/session-user.js';
+import { FileTooLargeFilter } from '../../paperwork/file-too-large.filter.js';
+import { PAPERWORK_MAX_BYTES } from '../../paperwork/paperwork-file.js';
 import {
   AdjustmentChoicesQueryDto,
   AdjustmentsQueryDto,
@@ -84,7 +87,8 @@ export class AdjustmentsController {
 // Advances and loans (owner, 17 October 2026: on Unsettled "advances and loans (still being recovered)"): HR, Finance
 // and the CEO see them; HR records them, changes an open one and marks one settled with a note. Their installments
 // (owner, 18 October 2026): made at once when HR records one with { installments: { count, firstMonth } }; HR moves one
-// to a later month or changes one's amount; the plan form warns past Payroll Setup's share of the pay (limit). Each
+// to a later month or changes one's amount, never past the Labour Law's limit on a month's installments (owner, 18
+// October 2026, after reading the law: "Block above 10%"), which the forms check as they are typed (limit). Each
 // answer is the advance or loan, with its installments.
 @Controller('payroll/advances')
 export class AdvancesController {
@@ -100,7 +104,7 @@ export class AdvancesController {
     return this.advances.list(query);
   }
 
-  /** ?employeeId=: { gross, percent, byMonth }, for the plan form's share of pay warning. Before :id. */
+  /** ?employeeId=: { gross, percent, byMonth, tax, insurance, recurring }, for the forms' checks of the law's limits. Before :id. */
   @Roles('hr', 'finance', 'ceo')
   @Get('limit')
   limit(@Query() query: InstallmentLimitQueryDto) {
@@ -150,9 +154,17 @@ export class AdvancesController {
   }
 }
 
+/**
+ * The employee's signed consent to a recurring deduction, attached as `consentFile` (optional): a photo or a PDF of up to
+ * the employee file's size, its name read as UTF-8 (an Arabic name arrives intact); the form's other fields with it.
+ */
+const CONSENT_FILE = FileInterceptor('consentFile', { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 10 }, defParamCharset: 'utf8' });
+
 // Recurring deductions (owner, 18 October 2026, e.g. a medical subscription's share): salary data, so HR, Finance and
 // the CEO see them; HR sets one up, changes its amount from a month on (answering the new one), stops it, renames it or
-// changes its last month. Each answer is the recurring deduction, or the list.
+// changes its last month. The employee's written consent (Labour Law Art. 114; owner, 18 October 2026, after reading
+// the law: "record the consent"): HR ticks it is on file to set one up, and may attach the signed consent, there or
+// later (consent). Each answer is the recurring deduction, or the list.
 @Controller('payroll/recurring-deductions')
 export class RecurringDeductionsController {
   constructor(private readonly recurring: RecurringDeductionsService) {}
@@ -170,10 +182,23 @@ export class RecurringDeductionsController {
     return this.recurring.get(id);
   }
 
+  /** { employeeId, name, amount, startMonth, endMonth?, consentOnFile: true }, as JSON or a form with the signed consent as `consentFile`. */
   @Roles('hr')
   @Post()
-  create(@Body() dto: CreateRecurringDeductionDto, @CurrentUser() user: SessionUser) {
-    return this.recurring.create(dto, user);
+  @UseFilters(FileTooLargeFilter)
+  @UseInterceptors(CONSENT_FILE)
+  create(@Body() dto: CreateRecurringDeductionDto, @UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: SessionUser) {
+    return this.recurring.create(dto, file, user);
+  }
+
+  /** A form with the signed consent as `consentFile` (optional): records the consent is on file, and attaches it. */
+  @Roles('hr')
+  @Post(':id/consent')
+  @HttpCode(200)
+  @UseFilters(FileTooLargeFilter)
+  @UseInterceptors(CONSENT_FILE)
+  consent(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: SessionUser) {
+    return this.recurring.recordConsent(id, file, user);
   }
 
   /** { amount, fromMonth }: this one stops then, a new one starts then; answers the new one. */

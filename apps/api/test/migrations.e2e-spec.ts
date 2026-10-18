@@ -251,6 +251,42 @@ describe('Migrations (e2e)', () => {
     await expect(db.query("UPDATE recurring_deductions SET stopped_from = '2026-10-01'")).rejects.toThrow(/recurring_deductions_months_check/);
   });
 
+  it('the Labour Law’s limits: the installments warning becomes the law’s limit, 1 to 10 and never none; recurring deductions get their consent (owner, 18 October 2026)', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_labour_law_limits'))!;
+    await migratedUpTo(migration);
+    // before: a recurring deduction set up without a consent
+    await db.query(`
+      INSERT INTO employees (id, employee_code, full_name_en, full_name_ar, updated_at) VALUES ('00000000-0000-4000-8000-0000000000e1', 'EMP-0001', 'Omar', 'عمر', now());
+      INSERT INTO recurring_deductions (id, employee_id, name, amount, start_month, updated_at)
+        VALUES ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000e1', 'Medical subscription', 350, '2026-11-01', now());
+    `);
+    // the share as it was set: none (no warning) and above 10 become the law's 10; one of 1 to 10 is kept
+    for (const [before, after] of [
+      [null, 10],
+      [25, 10],
+      [7.5, 7.5],
+      [10, 10],
+    ] as const) {
+      await db.query('BEGIN');
+      await db.query('UPDATE payroll_settings SET installment_warn_percent = $1', [before]);
+      await db.query(sql(migration));
+      expect((await db.query('SELECT installment_limit_percent::float AS percent FROM payroll_settings')).rows).toEqual([{ percent: after }]);
+      await db.query('ROLLBACK');
+    }
+
+    await db.query(sql(migration));
+    expect((await db.query('SELECT installment_limit_percent::float AS percent FROM payroll_settings')).rows).toEqual([{ percent: 10 }]);
+    await expect(db.query('UPDATE payroll_settings SET installment_limit_percent = 10.5')).rejects.toThrow(/payroll_settings_installment_limit_percent_check/);
+    await expect(db.query('UPDATE payroll_settings SET installment_limit_percent = 0')).rejects.toThrow(/payroll_settings_installment_limit_percent_check/);
+    await expect(db.query('UPDATE payroll_settings SET installment_limit_percent = NULL')).rejects.toThrow(/null value/);
+    // the one set up before has no consent; who and the paper only with when
+    expect((await db.query('SELECT consent_recorded_at, consent_recorded_by, consent_paperwork_id FROM recurring_deductions')).rows).toEqual([
+      { consent_recorded_at: null, consent_recorded_by: null, consent_paperwork_id: null },
+    ]);
+    await expect(db.query("UPDATE recurring_deductions SET consent_paperwork_id = gen_random_uuid()")).rejects.toThrow(/recurring_deductions_consent_check/);
+    await db.query('UPDATE recurring_deductions SET consent_recorded_at = now()');
+  });
+
   describe('super admin: the role, given to the original admin account only (owner’s decision, 15 October 2026)', () => {
     const migration = () => readdirSync(MIGRATIONS).find((m) => m.endsWith('_super_admin'))!;
     const superAdmins = async () =>

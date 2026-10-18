@@ -1,8 +1,9 @@
 import { applyDecorators } from '@nestjs/common';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  Equals,
   IsArray,
   IsBoolean,
   IsIn,
@@ -290,19 +291,37 @@ const MONTHLY_MESSAGE = 'Enter the amount a month in EGP, more than 0, e.g. 350 
 const START_MESSAGE = 'Choose the first month it is deducted, as YYYY-MM.';
 const END_MESSAGE = 'Choose the last month it is deducted, as YYYY-MM, or leave it empty to deduct it until stopped.';
 const FROM_MESSAGE = 'Choose the month, as YYYY-MM.';
+/** Labour Law 14/2025 Art. 114 (owner, 18 October 2026, after reading the law: "record the consent"). */
+export const CONSENT_MESSAGE =
+  "Tick that the employee's signed consent to this deduction is on file: a deduction from the pay they agree to needs their written consent (Labour Law Art. 114).";
+export const MORE_CONSENT_MESSAGE =
+  "Tick that the employee's signed consent to the new amount is on file: a deduction from the pay they agree to needs their written consent (Labour Law Art. 114).";
+
+/** A number sent as a form's text (multipart, with the signed consent): "350.50", Arabic digits too. JSON's numbers as they are. */
+const NumberOf = () =>
+  Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const typed = value.trim().replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+    return typed === '' ? value : Number(typed);
+  });
+
+/** A yes sent as a form's text ("true", "yes", "on"), else as it is: JSON's true and false. */
+const YesOf = () => Transform(({ value }) => (typeof value === 'string' ? ['true', 'yes', 'on'].includes(value.trim().toLowerCase()) : value));
 
 /**
  * A recurring deduction (owner, 18 October 2026), e.g. the employee's share of a medical subscription: the employee,
- * what it is for, the amount a month, the first month and, if it ends, the last.
+ * what it is for, the amount a month, the first month and, if it ends, the last; and that the employee's signed
+ * consent is on file (owner, 18 October 2026, after reading the law: "record the consent"), required. As JSON, or as a
+ * form (multipart) with the signed consent attached as `consentFile` (optional).
  */
 export class CreateRecurringDeductionDto {
-  @IsUUID('all', { message: 'Choose the employee.' })
+  @Trim() @IsUUID('all', { message: 'Choose the employee.' })
   employeeId: string;
 
   @Trim() @IsString({ message: NAME_MESSAGE }) @MinLength(1, { message: NAME_MESSAGE }) @MaxLength(100, { message: NAME_LENGTH })
   name: string;
 
-  @Amount(MONTHLY_MESSAGE)
+  @NumberOf() @Amount(MONTHLY_MESSAGE)
   amount: number;
 
   @Trim() @Matches(MONTH, { message: START_MESSAGE })
@@ -310,15 +329,25 @@ export class CreateRecurringDeductionDto {
 
   @TrimOrNull() @IsOptional() @Matches(MONTH, { message: END_MESSAGE })
   endMonth?: string | null;
+
+  /** The employee's signed consent to it is on file (Labour Law Art. 114): only true is taken. */
+  @YesOf() @Equals(true, { message: CONSENT_MESSAGE })
+  consentOnFile: true;
 }
 
-/** The amount changed from a month on: this one stops then, a new one starts then. */
+/**
+ * The amount changed from a month on: this one stops then, a new one starts then. A higher amount needs the employee's
+ * signed consent to it on file (Labour Law Art. 114); a lower one keeps the consent it had.
+ */
 export class ChangeRecurringDeductionDto {
   @Amount(MONTHLY_MESSAGE)
   amount: number;
 
   @Trim() @Matches(MONTH, { message: FROM_MESSAGE })
   fromMonth: string;
+
+  @IsOptional() @IsBoolean({ message: 'Send whether the signed consent is on file as true or false.' })
+  consentOnFile?: boolean;
 }
 
 /** Stopped from a month on (the first month no longer deducted), with a note if HR wants. */

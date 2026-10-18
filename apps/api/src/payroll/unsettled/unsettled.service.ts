@@ -4,6 +4,7 @@ import { AuditService } from '../../audit/audit.service.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../../common/date-only.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { LeaveSettlementService, type UnusedLeaveView } from '../../leave/leave-settlement.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AdvancesService } from '../adjustments/advances.service.js';
 import { placeName, refOf, userNames, type UserRef } from '../adjustments/people.js';
@@ -86,6 +87,13 @@ export interface FinalSettlementView {
    * it is paid back: "taken from the final settlement, unless waived"): to deduct from the final settlement, or waive.
    */
   outstanding: { advanceId: string; kind: AdvanceKind; reason: string; outstanding: number }[];
+  /**
+   * The annual leave unused on the last working day, to pay with the final settlement (Labour Law 14/2025 Art. 125:
+   * "فإذا انتهت علاقة العمل قبل استنفاد العامل رصيد إجازته السنوية استحق الأجر المقابل لهذا الرصيد"; owner, 18 October
+   * 2026): its days, the day rate and the amount, and once HR recorded it paid the Unused leave paid addition. Null when
+   * it can't be told (no employment ended).
+   */
+  unusedLeave: UnusedLeaveView | null;
 }
 
 export interface UnsettledView {
@@ -134,6 +142,7 @@ export class UnsettledService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly advances: AdvancesService,
+    private readonly leave: LeaveSettlementService,
   ) {}
 
   async unsettled(): Promise<UnsettledView> {
@@ -240,6 +249,16 @@ export class UnsettledService {
 
   async settlement(employmentId: string): Promise<FinalSettlementView> {
     return (await this.settlementViews([await this.settlementRow(employmentId)], todayInCairo()))[0];
+  }
+
+  /**
+   * HR records an ended employment's unused annual leave paid (owner, 18 October 2026): an Unused leave paid addition in
+   * the final month, or the first after it still open (leave/leave-settlement.service.ts). Answers the final settlement.
+   */
+  async payUnusedLeave(employmentId: string, user: SessionUser): Promise<FinalSettlementView> {
+    await this.settlementRow(employmentId);
+    await this.leave.pay(employmentId, user);
+    return this.settlement(employmentId);
   }
 
   /**
@@ -353,7 +372,7 @@ export class UnsettledService {
   }
 
   private async settlementViews(rows: readonly SettlementRow[], today: string): Promise<FinalSettlementView[]> {
-    const [names, open] = await Promise.all([
+    const [names, open, unusedLeave] = await Promise.all([
       userNames(this.prisma, rows.map((r) => r.finalSettlement?.settledBy ?? null)),
       rows.length
         ? this.prisma.payrollAdvance.findMany({
@@ -362,6 +381,8 @@ export class UnsettledService {
             include: ADVANCE_INCLUDE,
           })
         : [],
+      // the annual leave unused on the last working day (18 October 2026)
+      this.leave.unused(rows.map((r) => r.id)),
     ]);
     const outstanding = new Map<string, FinalSettlementView['outstanding']>();
     for (const a of open) {
@@ -394,6 +415,7 @@ export class UnsettledService {
         settledAt: s?.settledAt ?? null,
         clearances: r.documents,
         outstanding: outstanding.get(r.employee.id) ?? [],
+        unusedLeave: unusedLeave.get(r.id) ?? null,
       };
     });
   }

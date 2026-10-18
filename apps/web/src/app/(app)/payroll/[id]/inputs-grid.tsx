@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Fragment, memo, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
-import { formatHours, type PayBasis } from '@trendlix/shared';
+import { formatHours, type PayBasis, type PayrollLeaveDays } from '@trendlix/shared';
 import { GroupHeading } from '@/components/group-heading';
 import { titleCase } from '@/lib/format';
 import { groupByPlace, showsDepartment } from '@/lib/place-groups';
@@ -18,6 +18,8 @@ import {
   expectedCell,
   GRID_COLUMNS,
   ITEMS_AFTER,
+  LEAVE_FIELDS,
+  leaveFill,
   linePatches,
   noShowPay,
   parseCell,
@@ -52,7 +54,9 @@ import {
 // billing period"). Earnings and Deductions, read only, in place of the Penalty days, Bonus days, Commission and
 // Settlements columns (owner, 17 October 2026: "instead of there, i think earnings and deductions will be enough"): the
 // month's totals of the person's additions and deductions as the line has them, each a link to that person's month on
-// Additions / Deductions, where they are entered.
+// Additions / Deductions, where they are entered. The Leave days and the Unpaid leave days are filled in from the leave
+// approved for the month (owner, 18 October 2026: "can you apply the leaves according to the law?"), marked "from
+// leave" and only shown, as the expected hours are; what HR types instead is marked "typed by HR" and wins.
 
 export interface GridRow extends GridLine {
   employeeId: string;
@@ -75,6 +79,8 @@ export interface GridRow extends GridLine {
   shiftExpectedHours: number | null;
   /** A month under two contracts or more: each one's days (contractsNote); null on one. */
   contractsNote: string | null;
+  /** The month's approved leave the run took (owner, 18 October 2026): what the leave cells are filled in with; null for none. */
+  leave: PayrollLeaveDays | null;
   /** The month's additions and deductions as the line has them (17 October 2026), and where they are entered. */
   items: LineItems;
   itemsHref: string;
@@ -133,7 +139,8 @@ function ItemCells({ row }: { row: GridRow }) {
 
 /** The text a cell shows: as typed, else the saved value. */
 function shownText(row: GridLine, edits: RowEdits | undefined, field: InputField, kind: FieldKind): string {
-  return edits?.inputs?.[field] ?? cellText(kind, row.inputs[field]);
+  // inputs saved before a field existed (the unpaid leave days, 18 October 2026) have it as not given
+  return edits?.inputs?.[field] ?? cellText(kind, row.inputs[field] ?? null);
 }
 
 /** The figures a row's expected hours and attendance are worked out from, as typed: a cell that can't be read counts as empty. */
@@ -147,7 +154,15 @@ function typedCells(row: GridRow, edits: RowEdits | undefined) {
     expectedHours: value('expectedHours', 'hours'),
     noShowDays: value('noShowDays', 'days'),
     leaveDays: value('leaveDays', 'days'),
+    unpaidLeaveDays: value('unpaidLeaveDays', 'days'),
   };
+}
+
+/** What a leave cell's figure is: filled in from the leave approved for the month, or typed by HR over it (18 October 2026). */
+function leaveTitle(own: boolean, editable: boolean): string {
+  return own
+    ? `Typed by HR: taken instead of the leave approved this month.${editable ? ' Clear it to use the approved leave.' : ''}`
+    : `From the leave approved this month (Requests → Leave Requests).${editable ? ' Type other days to replace them.' : ''}`;
 }
 
 const Row = memo(function Row({
@@ -173,8 +188,8 @@ const Row = memo(function Row({
   const rowError = errorOf(null);
   const held = edits?.onHold ?? row.onHold;
   const comments = edits?.comments ?? row.comments ?? '';
-  // while HR is in the Expected hours cell, the shift's figure is its placeholder, so typing starts afresh
-  const [inExpected, setInExpected] = useState(false);
+  // while HR is in a cell filled in (the expected hours, the leave days), its figure is the placeholder, so typing starts afresh
+  const [focused, setFocused] = useState<InputField | null>(null);
   const cells = typedCells(row, edits);
   // HR's expected hours, else the shift's less the no-show and leave days as typed now (owner, 17 October 2026)
   const expected = expectedCell(row, cells);
@@ -211,10 +226,14 @@ const Row = memo(function Row({
         const text = shownText(row, edits, c.field, c.kind);
         const error = errorOf(c.field);
         // the Expected hours of a row with a shift: filled in from the shift's unless HR typed others (owner, 17 October
-        // 2026); `filled` is only shown, never an edit, so it is never sent nor counts as unsaved
+        // 2026); the leave days from the leave approved for the month (18 October 2026); `filled` is only shown, never
+        // an edit, so it is never sent nor counts as unsaved
         const shift = c.field === 'expectedHours' && row.shiftExpectedHours !== null;
+        const fromLeave = LEAVE_FIELDS.includes(c.field) ? leaveFill(row.leave, c.field) : null;
+        const marked = shift || fromLeave !== null;
         const own = text.trim() !== '';
-        const filled = shift && !own && expected.hours !== null ? formatHours(expected.hours) : '';
+        const filled = own ? '' : shift && expected.hours !== null ? formatHours(expected.hours) : fromLeave !== null ? cellText('days', fromLeave) : '';
+        const title = shift ? expectedTitle : leaveTitle;
         const markId = `${cellId(row.id, c.field)}-from`;
         return (
           <Fragment key={c.field}>
@@ -222,30 +241,30 @@ const Row = memo(function Row({
               {editable ? (
                 <input
                   id={cellId(row.id, c.field)}
-                  value={filled && !inExpected ? filled : text}
+                  value={filled && focused !== c.field ? filled : text}
                   onChange={(e) => onCell(row.id, c.field, e.target.value)}
-                  onFocus={shift ? () => setInExpected(true) : undefined}
+                  onFocus={marked ? () => setFocused(c.field) : undefined}
                   onBlur={() => {
-                    if (shift) setInExpected(false);
+                    if (marked) setFocused(null);
                     onLeave(row.id, c.field, c.kind);
                   }}
                   inputMode={c.kind === 'hours' ? 'text' : 'decimal'}
                   autoComplete="off"
                   aria-label={`${c.label} for ${row.name}`}
-                  aria-describedby={shift ? markId : undefined}
+                  aria-describedby={marked ? markId : undefined}
                   aria-invalid={error ? true : undefined}
-                  title={error ?? (shift ? expectedTitle(own, true) : undefined)}
-                  placeholder={shift ? filled : c.kind === 'hours' ? '0:00' : undefined}
+                  title={error ?? (marked ? title(own, true) : undefined)}
+                  placeholder={marked ? filled : c.kind === 'hours' ? '0:00' : undefined}
                   className={`${cellInput} ${WIDTH[c.kind]} ${filled ? 'text-muted italic' : ''} ${error ? invalid : ''}`}
                 />
               ) : (
-                <span className="block text-right whitespace-nowrap tabular-nums" title={shift ? expectedTitle(own, false) : undefined}>
+                <span className="block text-right whitespace-nowrap tabular-nums" title={marked ? title(own, false) : undefined}>
                   {own ? text : filled ? <span className="text-muted italic">{filled}</span> : <span className="text-muted">—</span>}
                 </span>
               )}
-              {shift && (
+              {marked && (
                 <span id={markId} className={`mt-0.5 block text-right text-[11px] whitespace-nowrap ${own ? 'text-accent' : 'text-muted'}`}>
-                  {own ? 'typed by HR' : 'from the shift'}
+                  {own ? 'typed by HR' : shift ? 'from the shift' : 'from leave'}
                 </span>
               )}
             </td>
@@ -253,7 +272,7 @@ const Row = memo(function Row({
             {c.field === ATTENDANCE_AFTER && (
               <td className="text-right whitespace-nowrap tabular-nums">{attendance === null ? '—' : `${percentFormat.format(attendance)}%`}</td>
             )}
-            {/* the month's additions and deductions, after the leave days (17 October 2026) */}
+            {/* the month's additions and deductions, after the leave days (17 October 2026) and the unpaid ones (18 October) */}
             {c.field === ITEMS_AFTER && <ItemCells row={row} />}
           </Fragment>
         );
@@ -371,7 +390,7 @@ export function InputsGrid({
         const parsed = parseCell(kind, typed);
         const inputs = { ...all[lineId]?.inputs };
         // typed back to what is saved: no longer a change
-        if (parsed.ok && parsed.value === row.inputs[field]) delete inputs[field];
+        if (parsed.ok && parsed.value === (row.inputs[field] ?? null)) delete inputs[field];
         else inputs[field] = tidyCell(kind, typed);
         return withoutEmpty(all, lineId, { ...all[lineId], inputs });
       });
@@ -561,8 +580,11 @@ export function InputsGrid({
           leave days, at its hours to work a day, and they change as you type those days. Type other hours to replace
           them, already without the no-show and leave days; clearing them brings the shift&apos;s back. Without a shift,
           type them yourself, without those days. No-show days: {noShowPay(noShowDayMultiplier)}, and their hours
-          aren&apos;t counted in attendance. Leave days: approved paid leave this month, typed until the Leave module
-          fills them: nothing is cut, and their hours aren&apos;t counted in attendance. Earnings and deductions: the
+          aren&apos;t counted in attendance. Leave days and unpaid leave days: filled in from the leave approved this
+          month (<Link href="/leave">Requests → Leave Requests</Link>), the unpaid share of a partly paid leave, such as
+          sick leave below 100%, with the unpaid; type other days to replace them, and clearing them brings the
+          leave&apos;s back. A leave day is paid, nothing cut; an unpaid leave day costs a day&apos;s pay (the gross ÷ the
+          day divisor). Neither&apos;s hours are counted in attendance. Earnings and deductions: the
           month&apos;s on <Link href="/payroll/adjustments">Additions / Deductions</Link>, where a bonus or penalty in
           days, a commission or a correction is entered with its reason; open one to add or change them, and the pay
           below follows. Released: already paid out this month, so not in the bank transfer. On hold: left out of the

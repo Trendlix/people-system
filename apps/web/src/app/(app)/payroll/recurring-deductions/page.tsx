@@ -13,15 +13,18 @@ import { StaffOnly } from '../../staff-only';
 import type { AdjustmentChoices } from '../adjustments/adjustments';
 import { monthName, monthOf } from '../list';
 import { loadJson, notLoadedText } from '../load';
-import { changeRecurring, createRecurring, editRecurring, stopRecurring } from './actions';
+import { changeRecurring, createRecurring, editRecurring, recordConsent, stopRecurring } from './actions';
 import {
   canSeeRecurring,
   changesRecurring,
+  consentHref,
+  consentText,
   deductedText,
   editEndChoices,
   endChoices,
   fromChoices,
   monthlyTotal,
+  opensConsent,
   peopleOf,
   periodText,
   placeOfRecurring,
@@ -38,13 +41,35 @@ import { AddRecurringForm, RecurringActions } from './recurring-forms';
 // to come grouped by department, then team, as the other lists of people are, and those ended folded below. HR adds one,
 // changes its amount from a month, stops it from a month, or edits its name and last month. Each month's payroll run
 // takes those due that month as deductions after tax, named on the payslip as they are here. HR, Finance and the CEO,
-// as salaries; the API checks it again.
+// as salaries; the API checks it again. Each one says whether the employee's signed consent is on file (owner, 18
+// October 2026, after reading the law: "record the consent"; Labour Law Art. 114), who recorded it and when, with the
+// signed consent for HR and the CEO, who see the employee file it is kept in; HR records it for one added before.
 
 export const metadata: Metadata = { title: 'Recurring Deductions · People System' };
 
 const quiet = 'px-4 py-10 text-center text-sm text-muted';
 
-function RecurringTable({ rows, hr, today }: { rows: RecurringDeductionView[]; hr: boolean; today: string }) {
+/** Its consent in words, with the signed consent to open for those who see the employee file. */
+function Consent({ row, opens }: { row: RecurringDeductionView; opens: boolean }) {
+  const text = consentText(row);
+  if (text === null) return null;
+  const paper = row.consent?.paper;
+  return (
+    <div className={`text-xs ${row.consent ? 'text-muted' : 'text-warn'}`}>
+      {text}
+      {paper && opens && (
+        <>
+          {' · '}
+          <a href={consentHref(paper)} target="_blank" rel="noopener noreferrer">
+            Signed consent
+          </a>
+        </>
+      )}
+    </div>
+  );
+}
+
+function RecurringTable({ rows, hr, opens, today }: { rows: RecurringDeductionView[]; hr: boolean; opens: boolean; today: string }) {
   const groups = groupByPlace(rows, placeOfRecurring);
   const span = hr ? 7 : 6;
   const heading = (list: RecurringDeductionView[]) => ({ count: peopleOf(list), note: `${list.length} ${list.length === 1 ? 'deduction' : 'deductions'}` });
@@ -86,6 +111,7 @@ function RecurringTable({ rows, hr, today }: { rows: RecurringDeductionView[]; h
                         </td>
                         <td className="min-w-48">
                           {r.name}
+                          <Consent row={r} opens={opens} />
                           {r.stopNote && <div className="text-xs text-muted">Stopped: {r.stopNote}</div>}
                         </td>
                         <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(r.amount)}</td>
@@ -101,13 +127,22 @@ function RecurringTable({ rows, hr, today }: { rows: RecurringDeductionView[]; h
                           <td className="text-right">
                             {r.status !== 'ended' && (
                               <RecurringActions
-                                change={changeRecurring.bind(null, r.id)}
+                                change={changeRecurring.bind(null, r.id, r.amount)}
                                 stop={stopRecurring.bind(null, r.id)}
                                 edit={editRecurring.bind(null, r.id)}
-                                saved={{ name: r.name, amount: r.amount, endMonth: r.endMonth }}
+                                consent={recordConsent.bind(null, r.id)}
+                                saved={{
+                                  name: r.name,
+                                  amount: r.amount,
+                                  endMonth: r.endMonth,
+                                  stoppedFrom: r.stoppedFrom,
+                                  consent: r.consent === undefined ? undefined : { recorded: r.consent !== null, attached: !!r.consent?.paper },
+                                }}
                                 froms={fromChoices(r, today)}
                                 ends={editEndChoices(r, today)}
                                 name={`the ${r.name} of ${r.employee.fullNameEn}`}
+                                employeeId={r.employee.id}
+                                recurringId={r.id}
                               />
                             )}
                           </td>
@@ -129,6 +164,7 @@ async function RecurringDeductions() {
   const user = await getCurrentUser();
   if (!canSeeRecurring(user)) return <Empty>Only HR, Finance and the CEO can see the recurring deductions.</Empty>;
   const hr = changesRecurring(user);
+  const opens = opensConsent(user);
   const today = todayInCairo();
   const thisMonth = monthOf(today);
   const [loaded, choices] = await Promise.all([
@@ -181,7 +217,7 @@ async function RecurringDeductions() {
               </div>
             </details>
           )}
-          {current.length ? <RecurringTable rows={current} hr={hr} today={today} /> : <p className={quiet}>No recurring deductions running or to start.</p>}
+          {current.length ? <RecurringTable rows={current} hr={hr} opens={opens} today={today} /> : <p className={quiet}>No recurring deductions running or to start.</p>}
         </div>
       </section>
 
@@ -190,7 +226,7 @@ async function RecurringDeductions() {
           <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Ended ({ended.length})</summary>
           <div className="border-t border-line">
             {/* nothing to change on one ended */}
-            <RecurringTable rows={ended} hr={false} today={today} />
+            <RecurringTable rows={ended} hr={false} opens={opens} today={today} />
           </div>
         </details>
       )}
@@ -205,8 +241,9 @@ export default function RecurringDeductionsPage() {
         <h1 className="text-2xl font-semibold">Recurring Deductions</h1>
         <p className="mt-1 text-muted">
           A fixed amount taken from an employee&apos;s pay every month, such as their share of a medical subscription: from its first month to its last, or
-          until it is stopped. Each month&apos;s payroll run takes it after tax, named on the payslip as it is here. Advances and loans are recovered by
-          their installments, on Unsettled.
+          until it is stopped. Each month&apos;s payroll run takes it after tax, named on the payslip as it is here. The employee&apos;s signed consent
+          must be on file, and the law allows such deductions up to 25% of the pay after tax, insurance and installments (Labour Law Art. 114).
+          Advances and loans are recovered by their installments, on Unsettled.
         </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

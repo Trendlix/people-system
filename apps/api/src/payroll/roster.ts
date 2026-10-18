@@ -1,6 +1,8 @@
 import {
+  DEFAULT_WORKING_DAYS,
   insuredWageVersion,
   lawRatesFor,
+  monthLeaveDays,
   paidDaysOf,
   shiftDaysIn,
   shiftExpectedHours,
@@ -8,6 +10,8 @@ import {
   type EmploymentType,
   type LawRates,
   type PayBasis,
+  type PayrollLeave,
+  type PayrollLeaveDays,
   type PayrollRules,
   type PayrollSegment,
   type PayrollTerms,
@@ -30,7 +34,10 @@ import { firstDay, lastDay } from './months.js';
 // like flexible shift"). The month's shift hours of someone paid monthly (owner's request, 16 October 2026, Payroll
 // Setup): its working days within the days paid, less the official holidays on them, × those hours a day; none without
 // a shift, nor for pay by the hour. Less the no-show and leave days, the pay counts them unless HR types the expected
-// hours (payroll.ts expectedHoursOf).
+// hours (payroll.ts expectedHoursOf). The month's approved leave (owner, 18 October 2026: "can you apply the leaves
+// according to the law?"): its paid and unpaid days within the days paid, as each type counts them on the shift's
+// working days (Sunday to Thursday without a shift) less the holidays, the grid's Leave days and Unpaid leave days unless
+// HR types others (payroll.ts leaveDaysOf); none for pay by the hour.
 
 /** An employment as the roster reads it, with its signed contracts that may be in force in the month. */
 export interface RosterEmployment {
@@ -54,6 +61,8 @@ export interface RosterEmployment {
     insuranceComprehensiveWage: number | null;
   };
   contracts: RosterContract[];
+  /** The employment's approved leave that touches the month (the Leave module, 18 October 2026); none when missing. */
+  leaves?: PayrollLeave[];
 }
 
 /** A signed contract (a version of the employment's) that may be in force in the month. */
@@ -125,6 +134,33 @@ function shiftExpected(
     days.holidays += part.holidays;
   }
   return { expectedHours: shiftExpectedHours(days, hoursPerDay), expectedDays: days };
+}
+
+/**
+ * The month's approved leave a line's terms take (owner, 18 October 2026): each leave's paid and unpaid days within the
+ * parts of the month paid (leaves.ts monthLeaveDays), the unpaid no more than the days paid and the paid no more than
+ * what is left of them; null without any.
+ */
+export function leaveTermsOf(
+  month: string,
+  parts: readonly { from: string; to: string }[],
+  workingDays: readonly number[] | null | undefined,
+  holidays: readonly string[],
+  leaves: readonly PayrollLeave[],
+  paidDays: number,
+): PayrollLeaveDays | null {
+  if (!leaves.length) return null;
+  let paid = 0;
+  let unpaid = 0;
+  for (const p of parts) {
+    const days = monthLeaveDays(leaves, month, { workingDays: workingDays ?? DEFAULT_WORKING_DAYS, holidays, from: p.from, to: p.to });
+    paid += days.paid;
+    unpaid += days.unpaid;
+  }
+  const hundredths = (n: number) => Math.round(n * 100) / 100;
+  const unpaidDays = Math.min(hundredths(unpaid), paidDays);
+  const paidOnes = Math.min(hundredths(paid), Math.max(0, paidDays - unpaidDays));
+  return paidOnes > 0 || unpaidDays > 0 ? { paidDays: paidOnes, unpaidDays } : null;
 }
 
 /**
@@ -209,6 +245,11 @@ export function roster(
     const contractTotal = (cents(insuredOn.grossSalary) + insuredOn.allowances.reduce((sum, a) => sum + cents(a.amount), 0)) / 100;
     // the shift's hours to work a day, else its window
     const hoursPerDay = e.shift ? shiftWorkHours(e.shift) : null;
+    // the month's approved leave (owner, 18 October 2026), for the monthly paid
+    const leave =
+      contract.payBasis === 'monthly'
+        ? leaveTermsOf(month, parts, e.shift?.workingDays, holidays, e.leaves ?? [], paidDays.reduce((sum, n) => sum + n, 0))
+        : null;
     lines.push({
       employeeId: p.id,
       employmentId: e.id,
@@ -237,6 +278,7 @@ export function roster(
         ...(insuredOn !== contract && p.insuranceComprehensiveWage === null && { insuredWageAsBefore: contract.insuredWageFrom }),
         hoursPerDay,
         ...shiftExpected(month, e, parts, contract.payBasis, hoursPerDay, holidays),
+        ...(leave && { leave }),
       },
     });
   }

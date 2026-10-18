@@ -3,6 +3,7 @@ import {
   adjustmentTypeLabelAr,
   formatHours,
   LABELS,
+  leaveDaysOf,
   lineDays,
   measuredExpectedHours,
   paidAdjustments,
@@ -170,6 +171,7 @@ const L = {
   bonusDays: { en: 'Bonus days', ar: 'أيام المكافأة' },
   noShowDays: { en: 'No-show days', ar: 'أيام الغياب دون إذن' },
   leaveDays: { en: 'Leave days', ar: 'أيام الإجازة' },
+  unpaidLeaveDays: { en: 'Unpaid leave days', ar: 'أيام الإجازة بدون أجر' },
   penaltyDays: { en: 'Penalty days', ar: 'أيام الجزاء' },
   attendanceWaived: { en: 'Attendance deduction', ar: 'خصم الحضور' },
   softSkills: { en: 'Soft skills', ar: 'المهارات الشخصية' },
@@ -183,6 +185,7 @@ const L = {
   attendanceCut: { en: 'Attendance adjustment', ar: 'تسوية الحضور' },
   kpiCut: { en: 'Performance adjustment', ar: 'تسوية المتغير' },
   noShowCut: { en: 'No-show', ar: 'الغياب دون إذن' },
+  unpaidLeaveCut: { en: 'Unpaid leave', ar: 'إجازة بدون أجر' },
   overtime: { en: 'Overtime', ar: 'العمل الإضافي' },
   bonus: { en: 'Bonus', ar: 'مكافأة' },
   commission: { en: 'Commission', ar: 'عمولة' },
@@ -506,12 +509,18 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     const hours = absentHours > 0 ? num(ar ? `، ولا تُحتسب ساعاتها (${formatHours(absentHours)}) مرة أخرى في الحضور` : `; their ${formatHours(absentHours)} hours aren’t counted again in attendance`) : '';
     cells.push({ label: t(L.noShowDays), value: num(plainNumber(noShowDays)), note: `${pay}${hours}` });
   }
-  // paid leave (owner, 17 October 2026): nothing deducted, its hours out of the expected hours; not by the hour
-  const leaveDays = hourly ? null : given(inputs.leaveDays ?? null);
+  // paid leave (owner, 17 October 2026): nothing deducted, its hours out of the expected hours; not by the hour. As HR
+  // typed it, else the month's approved leave (18 October 2026: the Leave module), and the unpaid leave beside it
+  const leave = leaveDaysOf(terms, inputs);
+  const leaveDays = hourly ? null : given(leave.leaveDays);
+  const unpaidLeaveDays = hourly ? null : given(leave.unpaidLeaveDays);
   if (leaveDays !== null) {
     const paid = ar ? 'إجازة مدفوعة الأجر: لا يُخصم عنها' : 'Paid leave: nothing deducted';
     const hours = leaveHours > 0 ? num(ar ? `، ولا تُحتسب ساعاتها (${formatHours(leaveHours)}) في الحضور` : `; their ${formatHours(leaveHours)} hours aren’t counted in attendance`) : '';
     cells.push({ label: t(L.leaveDays), value: num(plainNumber(leaveDays)), note: `${paid}${hours}` });
+  }
+  if (unpaidLeaveDays !== null) {
+    cells.push({ label: t(L.unpaidLeaveDays), value: num(plainNumber(unpaidLeaveDays)), note: ar ? 'يُخصم أجر يوم عن كل يوم' : 'A day’s pay deducted for each' });
   }
   const penaltyDays = given(typedDays.penaltyDays);
   if (penaltyDays !== null) {
@@ -552,6 +561,8 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
       -result.noShowCut,
       ar ? `${arabicDays(noShows)}، ب${arabicDaysPay(multiplier)} عن كل يوم` : `${englishDays(noShows)}, ${multiplier === 1 ? 'a day’s' : `${plainNumber(multiplier)} days’`} pay each`,
     );
+    // unpaid leave (owner, 18 October 2026): a day of the gross for each
+    earn(L.unpaidLeaveCut, -(result.unpaidLeaveCut ?? 0), ar ? `${arabicDays(unpaidLeaveDays ?? 0)}، بأجر يوم عن كل يوم` : `${englishDays(unpaidLeaveDays ?? 0)}, a day’s pay each`);
     earn(
       L.overtime,
       result.overtime,

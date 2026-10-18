@@ -1,4 +1,4 @@
-import { ArrayUnique, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import {
   CHOSEN_STATUSES,
   EMPLOYMENT_TYPES,
@@ -52,6 +52,13 @@ class EmploymentFieldsDto {
 
   @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real date for the job description acknowledgement.')
   jdAcknowledgedAt?: string | null;
+
+  /**
+   * Hazardous or unhealthy work, or work in a remote area: 7 more days of annual leave (Labour Law 14/2025 Art. 124;
+   * owner, 18 October 2026: "can you apply the leaves according to the law?"). Off unless sent.
+   */
+  @Sent() @IsBoolean({ message: 'Send whether the work is hazardous as true or false.' })
+  hazardousWork?: boolean;
 }
 
 /**

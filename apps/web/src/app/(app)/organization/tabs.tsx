@@ -10,6 +10,10 @@ const TABS = [
   // the official holidays and the shifts' working days they come out of (owner, 16 October 2026: "make holiday a
   // separate tab"; they were a section of Payroll Setup)
   { key: 'holidays', href: '/organization/holidays', label: 'Holidays' },
+  // the leave types and the annual leave by Labour Law 14/2025 (Arts. 124–133), and the Year Closing of the unused days,
+  // beside the holidays they leave out (owner, 18 October 2026: "can you apply the leaves according to the law?", "make
+  // it with decision with the year closing")
+  { key: 'leave', href: '/organization/leave', label: 'Leave' },
   { key: 'allowances', href: '/organization/allowances', label: 'Allowances' },
   { key: 'contracts', href: '/organization/contracts', label: 'Contracts & Endings' },
   // what changes the payroll sheet: the rules, the rates set by law and how salaries are paid (Payroll Setup, owner's

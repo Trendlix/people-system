@@ -12,6 +12,7 @@ import { hasRole } from '../../../../lib/roles';
 import { formatEgp, parseAmount } from '../../employees/[id]/contracts/salary';
 import type { AdvanceRow, PersonRef, UserRef } from '../adjustments/adjustments';
 import { parseCount } from './installments';
+import type { UnusedLeave } from './unused-leave';
 
 // Unsettled (owner, 17 October 2026: "make the Payroll in the side tab a main title below it - Unsettled - Additions /
 // Deductions"; asked, the owner chose what it lists): the runs not yet paid, the lines on hold not paid out since, the
@@ -79,6 +80,12 @@ export interface FinalSettlement {
    * note. Left out by an API from before it.
    */
   outstanding?: FinalSettlementOutstanding[];
+  /**
+   * The annual leave unused on the last working day, to pay with the final settlement (owner, 18 October 2026; Labour
+   * Law Art. 125): its days, the day rate and the amount, and once HR recorded it paid, its addition. Null for none;
+   * left out by an API from before leave.
+   */
+  unusedLeave?: UnusedLeave | null;
 }
 
 /** An open advance or loan of someone who left, with what is outstanding on it. */

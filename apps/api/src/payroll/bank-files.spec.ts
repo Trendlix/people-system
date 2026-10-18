@@ -291,8 +291,9 @@ describe('payroll register', () => {
     const letter = ws.getRow(8).getCell(net).address.replace(/\d+/g, '');
     expect(ws.getRow(8).getCell(net).value).toEqual({ formula: `SUM(${letter}5:${letter}7)`, result: 24763.16 });
     expect(ws.getRow(8).getCell(2).value).toBe('Total');
-    // two columns more since 17 October 2026: the attendance waived, and the additions and deductions in words
-    expect(ws.getRow(8).getCell(REGISTER_COLUMNS.length).address).toBe('AU8');
+    // two columns more since 17 October 2026: the attendance waived, and the additions and deductions in words; two more
+    // since 18 October 2026: the unpaid leave days and their cut
+    expect(ws.getRow(8).getCell(REGISTER_COLUMNS.length).address).toBe('AW8');
   });
 
   it('the expected hours attendance was measured on, and the leave days after the no-show days (17 October 2026)', async () => {
@@ -314,7 +315,8 @@ describe('payroll register', () => {
     expect(headers.slice(expected, expected + 2)).toEqual(['Expected hours', 'Attendance %']);
     expect(headers).not.toContain('No-show hours');
     const noShow = headers.indexOf('No-show days');
-    expect(headers.slice(noShow, noShow + 3)).toEqual(['No-show days', 'Leave days', 'Penalty days']);
+    // the unpaid leave days beside the leave days (18 October 2026: the Leave module)
+    expect(headers.slice(noShow, noShow + 4)).toEqual(['No-show days', 'Leave days', 'Unpaid leave days', 'Penalty days']);
     // Amy, Bob, Zed: 152, the 200 typed, 200 − 8
     expect([5, 6, 7].map((r) => ws.getRow(r).getCell(expected + 1).value)).toEqual([152, 200, 192]);
     expect(ws.getRow(5).getCell(expected + 1).numFmt).toBe('#,##0.00');

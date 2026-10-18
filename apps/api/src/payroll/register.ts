@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import {
   adjustmentTypeLabel,
   daysText,
+  leaveDaysOf,
   lineDays,
   measuredExpectedHours,
   paidAdjustments,
@@ -115,8 +116,10 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'Client satisfaction %', kind: 'percent', width: 12, value: (l) => pct(l.inputs.clientSatisfaction) },
   { header: 'KPI %', kind: 'percent', width: 9, value: (l) => l.result.kpiScore },
   { header: 'No-show days', kind: 'days', width: 9, value: (l) => l.inputs.noShowDays },
-  // paid leave (17 October 2026): none on inputs saved before then
-  { header: 'Leave days', kind: 'days', width: 9, value: (l) => l.inputs.leaveDays ?? null },
+  // paid leave (17 October 2026): none on inputs saved before then; HR's, else the month's approved leave (18 October
+  // 2026: the Leave module), and the unpaid leave
+  { header: 'Leave days', kind: 'days', width: 9, value: (l) => leaveDaysOf(l.terms, l.inputs).leaveDays },
+  { header: 'Unpaid leave days', kind: 'days', width: 9, value: (l) => leaveDaysOf(l.terms, l.inputs).unpaidLeaveDays },
   // the Penalty (days) ones' days (17 October 2026), or as typed on the grid before then
   { header: 'Penalty days', kind: 'days', width: 9, value: (l) => someDays(lineDays(l).penaltyDays) },
   { header: 'Attendance cut', kind: 'money', width: 12, value: (l) => l.result.attendanceCut },
@@ -124,6 +127,8 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'Attendance waived', kind: 'money', width: 12, value: (l) => l.result.attendanceWaived ?? 0 },
   { header: 'KPI cut', kind: 'money', width: 12, value: (l) => l.result.kpiCut },
   { header: 'No-show cut', kind: 'money', width: 12, value: (l) => l.result.noShowCut },
+  // unpaid leave (18 October 2026): none on lines worked out before then
+  { header: 'Unpaid leave cut', kind: 'money', width: 12, value: (l) => l.result.unpaidLeaveCut ?? 0 },
   { header: 'Overtime', kind: 'money', width: 12, value: (l) => l.result.overtime },
   { header: 'Bonus days', kind: 'days', width: 9, value: (l) => someDays(lineDays(l).bonusDays) },
   { header: 'Bonus', kind: 'money', width: 12, value: (l) => l.result.bonus },

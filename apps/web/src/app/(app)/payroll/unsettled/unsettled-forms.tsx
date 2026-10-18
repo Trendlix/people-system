@@ -11,7 +11,7 @@ import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { ActionButton, focusFirstField, useClosesOnSave } from '../../employees/[id]/contracts/contract-buttons';
 import { monthName, monthOf } from '../list';
 import type { AdvanceRow, PersonRef } from '../adjustments/adjustments';
-import { changePreview, firstMonthChoices, limitHref, limitText, planPreview, planWarnings, postponeConfirm, SETTLE_CHOICES } from './installments';
+import { changePreview, firstMonthChoices, limitHref, limitText, planPreview, planProblem, postponeConfirm, SETTLE_CHOICES } from './installments';
 import { clearanceOption, METHOD_CHOICES, type ClearanceDocument } from './unsettled';
 
 // Unsettled's forms (owner, 17 October 2026), for HR: a final settlement marked settled (the day, the amount paid, a
@@ -19,9 +19,11 @@ import { clearanceOption, METHOD_CHOICES, type ClearanceDocument } from './unset
 // marked settled. Each opens in its place from a small button and closes once saved; a refused one stays open with the
 // API's reason. Installments (owner, 18 October 2026: "in the deductions i might have a loan of a medical subscription
 // or something that needs to be deducted as installments on the employee. how will it be managed?"): the record form
-// takes how many months and the first month, showing each installment and the share-of-pay warning as it is typed; a
-// pending installment is moved to the next month or changed; settling one asks how (paid back, deducted from the final
-// settlement, or waived with a note why: leaving, "taken from the final settlement, unless waived").
+// takes how many months and the first month, showing each installment as it is typed, and, past the Labour Law's limit
+// on a month's installments (owner, 18 October 2026, after reading the law: "Block above 10%"), why it can't be
+// recorded, Record held back until it can; a pending installment is moved to the next month or changed; settling one
+// asks how (paid back, deducted from the final settlement, or waived with a note why: leaving, "taken from the final
+// settlement, unless waived").
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -406,11 +408,22 @@ export function EditAdvanceForm({ action, advance, today }: { action: Action; ad
 
 /**
  * The plan of a new one recovered in installments, worked out as it is typed (owner, 18 October 2026): each month's
- * installment, and the share-of-pay warning for the months that pass it (a warning only: it can still be recorded).
+ * installment, and why it can't be recorded when a month passes the law's limit (`problem`, planProblem).
  */
-function PlanPreview({ amount, count, firstMonth, limit }: { amount: string; count: string; firstMonth: string; limit: AdvanceLimitView | null }) {
+function PlanPreview({
+  amount,
+  count,
+  firstMonth,
+  limit,
+  problem,
+}: {
+  amount: string;
+  count: string;
+  firstMonth: string;
+  limit: AdvanceLimitView | null;
+  problem: string | null;
+}) {
   const preview = planPreview(amount, count, firstMonth);
-  const warnings = preview?.ok ? planWarnings(preview.plan, limit) : [];
   const about = limitText(limit);
   return (
     <div aria-live="polite" className="space-y-2 sm:col-span-2">
@@ -438,15 +451,10 @@ function PlanPreview({ amount, count, firstMonth, limit }: { amount: string; cou
           )}
         </div>
       )}
-      {warnings.length > 0 && (
-        <div className="rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
-          <ul className="space-y-1">
-            {warnings.slice(0, 3).map((w) => (
-              <li key={w.month}>{w.text}</li>
-            ))}
-          </ul>
-          {warnings.length > 3 && <p className="mt-1">And {warnings.length - 3} more {warnings.length - 3 === 1 ? 'month' : 'months'}.</p>}
-          <p className="mt-1 text-xs">A warning only: it can still be recorded.</p>
+      {problem && (
+        <div role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+          <p>{problem}</p>
+          <p className="mt-1 text-xs">It can&apos;t be recorded so: the Labour Law allows at most 10% of the wage a month to repay an advance or a loan.</p>
         </div>
       )}
       {about && <p className="hint">{about}</p>}
@@ -497,6 +505,10 @@ export function NewAdvanceForm({ action, people, today }: { action: Action; peop
       .catch(() => null)
       .then((view) => setLimits((known) => ({ ...known, [id]: view })));
   }
+  // past the law's limit (owner, 18 October 2026: "Block above 10%"): said under the plan, and Record held back
+  const limit = limits[employeeId] ?? null;
+  const preview = byInstallments ? planPreview(amount, count, firstMonth) : null;
+  const problem = preview?.ok ? planProblem(preview.plan, limit) : null;
 
   return (
     <form {...form} ref={ref} aria-label="Record an advance or loan" className="space-y-3 rounded-lg border border-line bg-canvas p-4">
@@ -584,14 +596,15 @@ export function NewAdvanceForm({ action, people, today }: { action: Action; peop
                 ))}
               </Select>
             </div>
-            <PlanPreview amount={amount} count={count} firstMonth={firstMonth} limit={limits[employeeId] ?? null} />
+            <PlanPreview amount={amount} count={count} firstMonth={firstMonth} limit={limit} problem={problem} />
           </div>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <SubmitButton busy={pending} pendingText="Recording…">
+        <SubmitButton busy={pending} pendingText="Recording…" disabled={problem !== null}>
           Record
         </SubmitButton>
+        {problem && <p className="text-sm text-muted">Spread it over more months, or start it later, to record it.</p>}
         {state.message && !pending && (
           <p role="status" className="text-sm text-ok">
             {state.message}

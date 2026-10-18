@@ -33,6 +33,7 @@ import { ProbationBanner } from './contracts/probation-banner';
 import { GeneratedDocuments, GeneratedDocumentsLoading } from './documents/document-rows';
 import { EndingPanel } from './ending/ending-panel';
 import { DeleteRowButton } from './inline-forms';
+import { LeaveSection } from './leave/leave-section';
 import { PayReceived, PayReceivedLoading } from './payslips/pay-received';
 import { ProfileTabs } from './profile-tabs';
 import { RaiseRequestsSection } from './raise-requests/raise-requests-section';
@@ -48,7 +49,10 @@ import { SalaryHistoryLoading, SalaryHistorySection } from './salary-history/sal
 // - Details, for everyone who sees the profile: the probation banner and an ending in progress; the current employment
 //   (Edit, End employment) with its contract (#contract: the signed version, a draft or a raise to sign, Renew, Raise,
 //   the filing dates), or a way to hire, which takes the job and the contract's terms in one form; every employment in
-//   the history, newest first, with its contracts; the people who report to this person now.
+//   the history, newest first, with its contracts; the leave (#leave: owner, 18 October 2026, "can you apply the
+//   leaves according to the law?"), the annual balance of a year with what is left of the other types and the year's
+//   requests, for HR, the CEO, Finance, the employee and their manager, HR adjusting the balance and recording leave;
+//   the people who report to this person now.
 // - Salary: the Salary History (#salary-history: each employment's pay events, with what the Pay History table had)
 //   and the pay received with the payslips (#payslips), HR's, Finance's and the CEO's, as the salary; between them the
 //   Raise Requests (#raise-requests), the person's requests with each decision and log, read only (asked for and
@@ -114,6 +118,10 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
     { key: 'probationEnd', label: 'Probation end date', value: formatDate(e.probationEnd) },
     { key: 'workArrangement', label: 'Work arrangement', value: arrangementLabel(e) },
     { key: 'shift', label: 'Shift', value: e.shift && shiftLabel(e.shift), required: true },
+    // 7 more days of annual leave (18 October 2026; Labour Law Art. 124), from an API that has it
+    ...(e.hazardousWork !== undefined
+      ? [{ key: 'hazardousWork', label: 'Hazardous work', value: e.hazardousWork ? 'Yes' : 'No', note: e.hazardousWork ? '7 more days of annual leave (Art. 124)' : undefined }]
+      : []),
     {
       key: 'jdAcknowledgedAt',
       label: 'Job description acknowledged',
@@ -285,11 +293,14 @@ async function DetailsSubTab({
   user,
   linkPeople,
   justAdded,
+  leaveYear,
 }: {
   profile: EmployeeProfile;
   user: SessionUser;
   linkPeople: boolean;
   justAdded: boolean;
+  /** The year of the leave shown (&leaveYear=); this year for none. */
+  leaveYear: string;
 }) {
   const e = p.employment;
   const base = `/employees/${p.id}`;
@@ -366,6 +377,13 @@ async function DetailsSubTab({
         </div>
       )}
       {lastEnding && <EndingPanel ending={lastEnding} employeeName={p.fullNameEn} canEdit={p.access.edit} isCeo={isCeo} today={today} />}
+
+      {/* the leave balance and requests (18 October 2026), loading on their own; nothing for those who may not see them */}
+      <div id="leave" className="scroll-mt-6">
+        <Suspense fallback={null}>
+          <LeaveSection employee={p} user={user} year={leaveYear} />
+        </Suspense>
+      </div>
 
       <ProfileSection
         title="Employment History"
@@ -452,11 +470,14 @@ export async function EmploymentTab({
   linkPeople,
   sub = '',
   justAdded = false,
+  leaveYear = '',
 }: {
   profile: EmployeeProfile;
   linkPeople: boolean;
   /** The sub-tab the address asks for (&sub=); Details for none, or one the viewer doesn't see. */
   sub?: string;
+  /** The year of the leave Details shows (&leaveYear=); this year for none. */
+  leaveYear?: string;
   /** Just after Add employee saved the profile: say so, and what comes next. */
   justAdded?: boolean;
 }) {
@@ -481,7 +502,7 @@ export async function EmploymentTab({
     ) : open === 'documents' ? (
       <IssuedDocumentsSubTab profile={p} user={user} />
     ) : (
-      <DetailsSubTab profile={p} user={user} linkPeople={linkPeople} justAdded={justAdded} />
+      <DetailsSubTab profile={p} user={user} linkPeople={linkPeople} justAdded={justAdded} leaveYear={leaveYear} />
     );
 
   return (

@@ -27,11 +27,13 @@ const cut = (amount: number, status: AdjustmentAmount['status'] = 'pending'): Ad
 describe('the types', () => {
   it('are the owner’s lists, each of its kind', () => {
     // the Bonus (days) and Penalty (days), and a Correction taken off (17 October 2026: the grid's columns moved here)
-    expect(ADDITION_TYPES).toEqual(['bonus', 'bonus_days', 'commission', 'incentive', 'correction', 'reimbursement', 'other']);
+    // and Unused leave paid (18 October 2026: a Year Closing's or leaving's), which the Leave module adds
+    expect(ADDITION_TYPES).toEqual(['bonus', 'bonus_days', 'commission', 'incentive', 'correction', 'reimbursement', 'leave_payout', 'other']);
     // a Recurring deduction (18 October 2026: a monthly share, e.g. a medical subscription), added by the month's run
     expect(DEDUCTION_TYPES).toEqual(['penalty', 'penalty_days', 'correction', 'damage_loss', 'advance_recovery', 'loan_installment', 'recurring', 'other']);
     expect(ENTERED_TYPES.deduction).toEqual(['penalty', 'penalty_days', 'correction', 'damage_loss', 'advance_recovery', 'loan_installment', 'other']);
-    expect(ENTERED_TYPES.addition).toEqual(ADDITION_TYPES);
+    expect(ENTERED_TYPES.addition).toEqual(['bonus', 'bonus_days', 'commission', 'incentive', 'correction', 'reimbursement', 'other']);
+    expect([adjustmentTypeLabel('addition', 'leave_payout'), adjustmentTypeLabelAr('addition', 'leave_payout')]).toEqual(['Unused leave paid', 'مقابل رصيد الإجازات']);
     expect([adjustmentTypeLabel('deduction', 'recurring'), adjustmentTypeLabelAr('deduction', 'recurring')]).toEqual(['Recurring deduction', 'خصم شهري']);
     expect(isAdjustmentType('deduction', 'recurring')).toBe(true);
     expect(isAdjustmentType('addition', 'recurring')).toBe(false);

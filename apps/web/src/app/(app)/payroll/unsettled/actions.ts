@@ -25,6 +25,15 @@ export async function settleFinal(employmentId: string, _prev: FormState, fd: Fo
   return sendAndRefresh(() => apiSend('POST', `/payroll/final-settlements/${employmentId}/settle`, body), 'Marked settled.', values);
 }
 
+/**
+ * HR records a final settlement's unused annual leave paid (owner, 18 October 2026; Labour Law Art. 125): an Unused leave
+ * paid addition, taxed, on the payroll of the final month, or the next one open.
+ */
+export async function payUnusedLeave(employmentId: string): Promise<FormState> {
+  if (!UUID.test(employmentId)) return NOT_FOUND;
+  return sendAndRefresh(() => apiSend('POST', `/payroll/final-settlements/${employmentId}/unused-leave`), 'Recorded: added to the payroll as Unused leave paid.');
+}
+
 export async function reopenFinal(employmentId: string, _prev: FormState, fd: FormData): Promise<FormState> {
   if (!UUID.test(employmentId)) return NOT_FOUND;
   const reason = String(fd.get('reason') ?? '').trim();

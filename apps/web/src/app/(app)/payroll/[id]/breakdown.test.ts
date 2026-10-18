@@ -58,6 +58,8 @@ const result: PayrollResult = {
   attendanceWaived: 0,
   kpiCut: 475,
   noShowCut: 666.67,
+  // no unpaid leave (18 October 2026)
+  unpaidLeaveCut: 0,
   overtime: 0,
   bonus: 0,
   earned: 8858.33,
@@ -162,7 +164,7 @@ describe('a line’s breakdown', () => {
     // the KPIs typed, which the inputs grid no longer shows
     expect(row('kpi')).toMatchObject({ value: '76.25%', note: 'The average of performance 65% and attendance 87.5%; at or above 80% counts in full' });
     expect(row('noShowCut')?.note).toBe("1 day, each costing 2 days' pay");
-    expect(row('leave')).toMatchObject({ value: '1 day', kind: 'info', note: 'Paid leave: nothing cut, and not counted in attendance' });
+    expect(row('leave')).toMatchObject({ value: '1 day', kind: 'info', note: 'Paid leave: nothing cut, and not counted in attendance, as typed by HR' });
     expect(row('employeeInsurance')?.note).toBe('11% of the insured wage');
     expect(row('allowances')?.note).toBe('Transport');
   });
@@ -274,10 +276,27 @@ describe('breakdown: the expected hours (owner, 17 October 2026: "prefill the ex
   it('lists the leave days only when there are some, nothing cut for them', () => {
     // 2 leave days and the no-show day: 168 − 3 × 8 = 144, and 133 of 144 is 92.36%: no attendance cut
     const leave = lineOf(terms, { ...inputs, leaveDays: 2 });
-    expect(stepOf(leave, 'leave')).toMatchObject({ value: '2 days', note: 'Paid leave: nothing cut, and not counted in attendance' });
+    expect(stepOf(leave, 'leave')).toMatchObject({ value: '2 days', note: 'Paid leave: nothing cut, and not counted in attendance, as typed by HR' });
     expect(leave.result).toMatchObject({ expectedHours: 144, attendanceCut: 0, noShowCut: 666.67 });
     expect(stepOf(lineOf(terms, { ...inputs, leaveDays: null }), 'leave')).toBeUndefined();
     expect(stepOf(lineOf(terms, { ...inputs, leaveDays: 0 }), 'leave')).toBeUndefined();
+  });
+
+  it('takes the leave approved this month when HR typed none, and cuts a day’s pay for each unpaid leave day (owner, 18 October 2026)', () => {
+    // 1 paid and 2 unpaid days of the leave approved: 168 − (1 no-show + 1 + 2) × 8 = 136
+    const approved = lineOf({ ...terms, leave: { paidDays: 1, unpaidDays: 2 } }, { ...inputs, leaveDays: null });
+    expect(approved.result.expectedHours).toBe(136);
+    expect(approved.result.unpaidLeaveCut).toBeGreaterThan(0);
+    expect(stepOf(approved, 'leave')).toMatchObject({ value: '1 day', note: 'Paid leave: nothing cut, and not counted in attendance, from the leave approved this month' });
+    expect(stepOf(approved, 'unpaidLeaveCut')).toMatchObject({
+      value: cutText(approved.result.unpaidLeaveCut!),
+      kind: 'cut',
+      note: "2 days of unpaid leave, each a day's pay (the gross ÷ 30), from the leave approved this month",
+    });
+    // the shift's hours say so too
+    expect(stepOf(approved, 'expected')?.note).toContain('1 leave day and 2 unpaid leave days');
+    // none: no row
+    expect(stepOf(lineOf(terms, inputs), 'unpaidLeaveCut')).toBeUndefined();
   });
 });
 

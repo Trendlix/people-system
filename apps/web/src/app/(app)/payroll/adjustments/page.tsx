@@ -26,6 +26,7 @@ import {
   entersAdjustments,
   isRecurring,
   laterMonths,
+  lawWarningsOf,
   monthChoices,
   movable,
   monthTotals,
@@ -51,7 +52,10 @@ import {
 // the top. HR, Finance and the CEO, as salaries; the API checks it again. The one place to enter them (owner, 17 October
 // 2026, on the run's grid: "instead of there, i think earnings and deductions will be enough"): a bonus or penalty in
 // days shows its days and, once a run has worked it out, about what it came to; the run's grid opens one person's
-// month (?employee=), with the form set to them.
+// month (?employee=), with the form set to them. A person whose damage or loss deductions in the month pass 5 days'
+// wage is warned of under their name (owner, 18 October 2026, after reading the law; Labour Law Art. 151: a warning
+// only), and an advance's recovery or a loan's installment past 10% of the wage is refused by the API ("Block above
+// 10%"), its reason shown on the form.
 
 export const metadata: Metadata = { title: 'Additions / Deductions · People System' };
 
@@ -163,6 +167,11 @@ function AdjustmentsTable({ rows, choices, hr, today }: { rows: AdjustmentRow[];
                       <span className="font-semibold">Net {netText(g.sums.net)}</span>
                     </span>
                   </div>
+                  {lawWarningsOf(choices, g.employee.id).map((w) => (
+                    <p key={w} className="mt-2 rounded-lg bg-warn-soft px-3 py-2 text-sm font-normal tracking-normal text-warn tabular-nums">
+                      {w}
+                    </p>
+                  ))}
                 </th>
               </tr>
               {g.rows.map((r) => (

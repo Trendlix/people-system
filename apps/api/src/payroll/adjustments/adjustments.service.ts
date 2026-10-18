@@ -4,26 +4,30 @@ import {
   ADJUSTMENT_STATUS_LABELS,
   ADVANCE_KIND_LABELS,
   adjustmentTaxed,
+  damageLimitWarning,
   adjustmentTypeLabel,
   ENTERED_TYPES,
   isAdjustmentType,
   isDaysType,
+  LEAVE_PAYOUT_TYPE,
   RECURRING_TYPE,
   recoveredKind,
   sumAmounts,
   type AdjustmentKind,
   type AdjustmentStatus,
   type AdvanceKind,
+  type PayrollRules,
   type PayrollStatus,
 } from '@trendlix/shared';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../../common/date-only.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { firstDay, monthName, monthsLater } from '../months.js';
+import { firstDay, lastDay, monthName, monthsLater } from '../months.js';
 import { STATUS_TEXT } from '../status.js';
 import type { AdjustmentChoicesQueryDto, AdjustmentsQueryDto, CreateAdjustmentDto, MoveAdjustmentsDto, UpdateAdjustmentDto } from './adjustments.dto.js';
 import { AdvancesService } from './advances.service.js';
+import { assertInstallmentLimit } from './law-limits.js';
 import { paidAmounts, RunAdjustmentsService } from './run-adjustments.service.js';
 import { egp, employedIn, placeName, userNames } from './people.js';
 import { ADJUSTMENT, ADJUSTMENT_INCLUDE, adjustmentView, balanceOf, personOf, type AdjustmentRow, type AdjustmentView, type AdvanceView, type PersonRef } from './views.js';
@@ -35,6 +39,13 @@ export const ADJUSTMENT_MONTHS_AHEAD = 12;
 /** Why a Recurring deduction isn't entered by hand (owner, 18 October 2026): the month's run adds it. */
 const RECURRING_BY_HAND =
   "A recurring deduction is added to each month's payroll by itself: set it up as a recurring deduction, or choose Other deduction for a one-off.";
+
+/** Why unused leave paid isn't entered by hand (owner, 18 October 2026): Year Closing or the final settlement adds it. */
+const LEAVE_PAYOUT_BY_HAND =
+  'Unused leave is paid from Year Closing, or from the final settlement when someone leaves: it is not entered by hand. Choose Other addition for a one-off.';
+
+/** What a recovery refused at the law's limit says to do instead (owner, 18 October 2026: "Block above 10%"). */
+const RECOVERY_INSTEAD = 'Enter a smaller amount, and recover the rest in a later month.';
 
 /** "a bonus", "an advance recovery", as a message says it. */
 function typeWords(kind: string, type: string): string {
@@ -58,6 +69,11 @@ export interface AdjustmentChoices {
    * for someone not on the run. HR moves them to a later month.
    */
   leftBehind: { month: string; count: number }[];
+  /**
+   * The month's warnings by the Labour Law, by employee (owner, 18 October 2026, after reading the law; warnings, never
+   * blocks): damage or loss deductions past 5 days' wage (Art. 151).
+   */
+  warnings: { employeeId: string; text: string }[];
 }
 
 // Additions / Deductions (owner, 17 October 2026: "make the Payroll in the side tab a main title below it - Unsettled -
@@ -76,7 +92,10 @@ export interface AdjustmentChoices {
 // EGP. A Recurring deduction (owner, 18 October 2026: a monthly share, e.g. a medical subscription) is added by the
 // month's run from the recurring deduction set up (recurring.service.ts), never entered here: HR may change its amount
 // or reason, or cancel it, for that month (a month cancelled isn't added again), but not turn it into another type nor
-// give its recurring deduction a second deduction in a month.
+// give its recurring deduction a second deduction in a month. An advance's recovery or a loan's installment entered,
+// changed or moved here that would take the employee's installments in a month over the Labour Law's limit is refused
+// (owner, 18 October 2026, after reading the law: "Block above 10%"; law-limits.ts). The month's damage or loss
+// deductions past 5 days' wage are warned of (Art. 151, a warning only): choices().warnings.
 @Injectable()
 export class AdjustmentsService {
   constructor(
@@ -111,7 +130,7 @@ export class AdjustmentsService {
   async choices(query: AdjustmentChoicesQueryDto): Promise<AdjustmentChoices> {
     const month = query.month;
     const [run, employments] = await Promise.all([
-      this.prisma.payrollRun.findUnique({ where: { month: toDateOnly(firstDay(month)) }, select: { id: true, status: true } }),
+      this.prisma.payrollRun.findUnique({ where: { month: toDateOnly(firstDay(month)) }, select: { id: true, status: true, rules: true } }),
       this.prisma.employment.findMany({
         where: employedIn(month),
         orderBy: [{ employee: { fullNameEn: 'asc' } }, { joinDate: 'desc' }],
@@ -121,12 +140,13 @@ export class AdjustmentsService {
     // someone employed twice in the month is listed once, with their latest employment's place
     const people = new Map<string, PersonRef & { department: string | null }>();
     for (const e of employments) if (!people.has(e.employee.id)) people.set(e.employee.id, { ...personOf(e.employee), department: placeName(e.department) });
-    const [advances, notOnRun, leftBehind] = await Promise.all([
+    const [advances, notOnRun, leftBehind, warnings] = await Promise.all([
       this.advances.list({ status: 'open' }),
       run
         ? this.prisma.payrollAdjustment.count({ where: { month: toDateOnly(firstDay(month)), status: 'pending', employee: { payrollLines: { none: { runId: run.id } } } } })
         : 0,
       this.leftBehind(),
+      this.damageWarnings(month, (run?.rules as PayrollRules | null | undefined)?.dayDivisor ?? null),
     ]);
     return {
       month,
@@ -136,7 +156,39 @@ export class AdjustmentsService {
       advances: advances.filter((a) => people.has(a.employee.id)),
       notOnRun,
       leftBehind,
+      warnings,
     };
+  }
+
+  /**
+   * The employees whose damage or loss deductions in `month` (pending and applied) pass 5 days' wage (Labour Law Art.
+   * 151; owner, 18 October 2026: a warning only): the monthly gross of their signed contract in force in the month ÷ the
+   * payroll's days in a month (the month's run's, `runDivisor`, else Payroll Setup's) × 5.
+   */
+  private async damageWarnings(month: string, runDivisor: number | null): Promise<{ employeeId: string; text: string }[]> {
+    const [first, last] = [toDateOnly(firstDay(month)), toDateOnly(lastDay(month))];
+    const damage = await this.prisma.payrollAdjustment.groupBy({
+      by: ['employeeId'],
+      where: { month: first, kind: 'deduction', type: 'damage_loss', status: { in: ['pending', 'applied'] } },
+      _sum: { amount: true },
+    });
+    if (!damage.length) return [];
+    const [contracts, settings] = await Promise.all([
+      this.prisma.contract.findMany({
+        where: { status: { not: 'draft' }, startDate: { lte: last }, OR: [{ endDate: null }, { endDate: { gte: first } }], employment: { employeeId: { in: damage.map((d) => d.employeeId) } } },
+        orderBy: { startDate: 'desc' },
+        select: { grossSalary: true, employment: { select: { employeeId: true } } },
+      }),
+      runDivisor === null ? this.prisma.payrollSettings.findUnique({ where: { id: 1 }, select: { dayDivisor: true } }) : null,
+    ]);
+    const divisor = runDivisor ?? settings?.dayDivisor ?? 30;
+    // the latest contract of each in the month
+    const gross = new Map<string, number>();
+    for (const c of contracts) if (!gross.has(c.employment.employeeId)) gross.set(c.employment.employeeId, c.grossSalary.toNumber());
+    return damage.flatMap((d) => {
+      const text = damageLimitWarning(d._sum.amount?.toNumber() ?? 0, gross.get(d.employeeId) ?? 0, divisor);
+      return text ? [{ employeeId: d.employeeId, text }] : [];
+    });
   }
 
   /** The months approved (or paid) with pending additions or deductions left on them, oldest first, with how many. */
@@ -155,6 +207,7 @@ export class AdjustmentsService {
     const employee = await this.prisma.employee.findUnique({ where: { id: dto.employeeId }, select: { id: true, employeeCode: true, fullNameEn: true } });
     if (!employee) throw new NotFoundException('Employee not found.');
     if (dto.kind === 'deduction' && dto.type === RECURRING_TYPE) throw new BadRequestException(RECURRING_BY_HAND);
+    if (dto.kind === 'addition' && dto.type === LEAVE_PAYOUT_TYPE) throw new BadRequestException(LEAVE_PAYOUT_BY_HAND);
     if (!isAdjustmentType(dto.kind, dto.type)) throw new BadRequestException(this.typeMessage(dto.kind));
     const taxed = this.taxed(dto.kind, dto.type, dto.taxed);
     const { amount, days } = this.amountOrDays(dto.type, dto.amount ?? null, dto.days ?? null);
@@ -162,6 +215,7 @@ export class AdjustmentsService {
     await this.assertEmployed(employee, dto.month);
     await this.assertUnlocked(dto.month);
     const advanceId = await this.checkedAdvance({ employee, month: dto.month, kind: dto.kind, type: dto.type, amount: amount ?? 0, advanceId: dto.advanceId ?? null });
+    if (advanceId) await assertInstallmentLimit(this.prisma, employee.id, [], [{ month: dto.month, amount: amount ?? 0 }], RECOVERY_INSTEAD);
 
     const row = await this.prisma.payrollAdjustment.create({
       data: {
@@ -214,6 +268,9 @@ export class AdjustmentsService {
     if (type !== row.type && (row.type === RECURRING_TYPE || type === RECURRING_TYPE)) {
       throw new BadRequestException(row.type === RECURRING_TYPE ? "A recurring deduction's month stays a Recurring deduction: cancel it instead." : RECURRING_BY_HAND);
     }
+    if (type !== row.type && (row.type === LEAVE_PAYOUT_TYPE || type === LEAVE_PAYOUT_TYPE)) {
+      throw new BadRequestException(row.type === LEAVE_PAYOUT_TYPE ? 'Unused leave paid stays Unused leave paid: cancel it instead.' : LEAVE_PAYOUT_BY_HAND);
+    }
     if (!isAdjustmentType(kind, type)) throw new BadRequestException(this.typeMessage(kind));
     // what the type takes: the one sent, else the one it has (an amount for an amount, days for days)
     const { amount, days } = this.amountOrDays(
@@ -233,6 +290,8 @@ export class AdjustmentsService {
     // the advance stays unless another is sent, or the type no longer recovers one
     const wanted = dto.advanceId !== undefined ? dto.advanceId : recoveredKind(kind, type) ? row.advanceId : null;
     const advanceId = await this.checkedAdvance({ employee: row.employee, month, kind, type, amount: amount ?? 0, advanceId: wanted, excluding: row.id });
+    // still a recovery: the month's installments with it as it would be
+    if (advanceId) await assertInstallmentLimit(this.prisma, row.employeeId, [row.id], [{ month, amount: amount ?? 0 }], RECOVERY_INSTEAD);
 
     const before = {
       month: was,
@@ -312,6 +371,18 @@ export class AdjustmentsService {
       });
     }
     await this.assertRecurringFree(rows, to);
+    // recoveries moved: each employee's installments in the month moved to
+    const recoveries = rows.filter((r) => r.advanceId !== null && recoveredKind(r.kind, r.type) !== null);
+    for (const employeeId of new Set(recoveries.map((r) => r.employeeId))) {
+      const theirs = recoveries.filter((r) => r.employeeId === employeeId);
+      await assertInstallmentLimit(
+        this.prisma,
+        employeeId,
+        theirs.map((r) => r.id),
+        theirs.map((r) => ({ month: to, amount: r.amount?.toNumber() ?? 0 })),
+        'Move them to another month, or change their amounts.',
+      );
+    }
     await this.prisma.payrollAdjustment.updateMany({ where: { id: { in: ids } }, data: { month: toDateOnly(firstDay(to)) } });
     for (const row of rows) {
       await this.audit.record({

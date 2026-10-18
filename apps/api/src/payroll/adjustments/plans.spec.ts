@@ -1,11 +1,21 @@
-import { changeInstallment, installmentLimitWarning, installmentPlan, postponeInstallment, type PayrollResult, type PayrollTerms } from '@trendlix/shared';
-import { installmentWarning } from '../views.js';
+import {
+  changeInstallment,
+  damageLimitWarning,
+  deductionLimitWarning,
+  installmentLimitWarning,
+  installmentPlan,
+  postponeInstallment,
+  type PayrollResult,
+  type PayrollTerms,
+} from '@trendlix/shared';
+import { damageWarning, installmentWarning, lawWarnings, recurringWarning } from '../views.js';
 import { byMonth, installmentReason, isInstallmentReason, lastMonthOf, lineInstallments, planChanges, recurringStatus, renumbered } from './plans.js';
 
 // Installments and recurring deductions as the API keeps them (owner, 18 October 2026: "in the deductions i might have a
 // loan of a medical subscription or something that needs to be deducted as installments on the employee. how will it be
 // managed?"): the reasons the installments are made with, what a plan's change does to the deductions saved, where a
-// recurring deduction stands, and the share of pay warning on a run's line. Every figure is invented.
+// recurring deduction stands, and a run's line's warnings by the Labour Law (owner, 18 October 2026, after reading the
+// law: "Block above 10%", "Warn above 25%, record the consent"). Every figure is invented.
 
 const saved = (plan: { month: string; amount: number }[]) => plan.map((p, i) => ({ id: `d${i + 1}`, ...p }));
 
@@ -126,25 +136,49 @@ describe('recurring deductions', () => {
   });
 });
 
-describe('the share of pay warning on a run’s line', () => {
+describe('a run’s line’s warnings by the Labour Law', () => {
   const item = (type: string, amount: number) => ({ id: type, kind: 'deduction' as const, type: type as 'other', taxed: false, amount, reason: 'Invented' });
-  const line = (items: ReturnType<typeof item>[], earned = 9000, allowances = 1000) => ({
-    terms: { adjustments: items } as unknown as PayrollTerms,
-    result: { earned, allowances, warnings: [] } as unknown as PayrollResult,
+  const line = (items: ReturnType<typeof item>[], earned = 9000, allowances = 1000, gross = 9000) => ({
+    terms: { gross, adjustments: items } as unknown as PayrollTerms,
+    result: { earned, allowances, monthlyTax: 800, employeeInsurance: 1100, warnings: [] } as unknown as PayrollResult,
   });
 
-  it('counts the advances’ recoveries and the loans’ installments only', () => {
+  it('counts the advances’ recoveries and the loans’ installments only as installments', () => {
     expect(lineInstallments([item('loan_installment', 700), item('advance_recovery', 400.5), item('recurring', 350), item('penalty', 99)])).toBe(1100.5);
     expect(lineInstallments([{ kind: 'addition', type: 'loan_installment', amount: 5 }])).toBe(0);
   });
 
-  it('warns when they pass the share of the month’s gross (the pay earned and the allowances), else not', () => {
+  it('Art. 113: warns when the installments pass the limit of the month’s pay (the pay earned and the allowances)', () => {
     // 10% of 10,000 is 1,000
     expect(installmentWarning(line([item('loan_installment', 1000)]), 10)).toBeNull();
     expect(installmentWarning(line([item('loan_installment', 1000.01)]), 10)).toBe(installmentLimitWarning(1000.01, 10000, 10));
-    expect(installmentWarning(line([item('loan_installment', 1000.01)]), 10)).toMatch(/^This month's installments, EGP 1,000\.01, are more than 10% of the pay \(EGP 1,000\.00\)/);
-    // no percent set: no warning; recurring deductions don't count
+    expect(installmentWarning(line([item('loan_installment', 1000.01)]), 10)).toMatch(
+      /^This month's installments of advances and loans, EGP 1,000\.01, are more than 10% of the pay \(EGP 1,000\.00\), the most the law allows/,
+    );
+    // no percent: none; recurring deductions don't count
     expect(installmentWarning(line([item('loan_installment', 5000)]), null)).toBeNull();
     expect(installmentWarning(line([item('recurring', 5000)]), 10)).toBeNull();
+  });
+
+  it('Art. 114: warns when the recurring deductions pass 25% of the pay after its tax, insurance and installments', () => {
+    // 10,000 − 800 tax − 1,100 insurance − 600 installments = 7,500: 25% is 1,875
+    const within = line([item('loan_installment', 600), item('recurring', 1000), item('recurring', 875)]);
+    expect(recurringWarning(within)).toBeNull();
+    const over = line([item('loan_installment', 600), item('recurring', 1000), item('recurring', 875.01)]);
+    expect(recurringWarning(over)).toBe(deductionLimitWarning(1875.01, { pay: 10_000, tax: 800, insurance: 1100, installments: 600 }));
+    expect(recurringWarning(line([item('penalty', 9000)]))).toBeNull();
+  });
+
+  it('Art. 151: warns when the damage or loss deductions pass 5 days of the monthly gross', () => {
+    // 9,000 ÷ 30 × 5 = 1,500, whatever the month's pay
+    expect(damageWarning(line([item('damage_loss', 1000), item('damage_loss', 500)]), 30)).toBeNull();
+    expect(damageWarning(line([item('damage_loss', 1000), item('damage_loss', 500.01)]), 30)).toBe(damageLimitWarning(1500.01, 9000, 30));
+    expect(damageWarning(line([item('damage_loss', 5000)]), null)).toBeNull();
+  });
+
+  it('gives them in the order of the articles; none without the limits', () => {
+    const all = line([item('loan_installment', 2000), item('recurring', 3000), item('damage_loss', 2000)]);
+    expect(lawWarnings(all, { installmentPercent: 10, dayDivisor: 30 }).map((w) => /Art\. (\d+)/.exec(w)?.[1])).toEqual(['113', '114', '151']);
+    expect(lawWarnings(all, null)).toEqual([]);
   });
 });

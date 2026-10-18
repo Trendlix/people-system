@@ -9,7 +9,7 @@ import {
   paydayDate,
   payingBody,
   rulesBody,
-  INSTALLMENT_WARN_ERROR,
+  INSTALLMENT_LIMIT_ERROR,
   SALARY_REVIEW_ERROR,
   seesPayrollSettings,
 } from './settings';
@@ -88,14 +88,14 @@ describe('Your Rules', () => {
     expect(rulesBody(form(rules)).rules).not.toHaveProperty('salaryReviewMonths');
   });
 
-  it('sends the installments warning percent when the form has it, empty as no warning (owner, 18 October 2026)', () => {
-    expect(rulesBody(form({ ...rules, installmentWarnPercent: '10' }))).toMatchObject({ rules: { installmentWarnPercent: 10 }, errors: [] });
-    expect(rulesBody(form({ ...rules, installmentWarnPercent: '12.5' })).rules.installmentWarnPercent).toBe(12.5);
-    expect(rulesBody(form({ ...rules, installmentWarnPercent: '١٥' })).rules.installmentWarnPercent).toBe(15);
-    expect(rulesBody(form({ ...rules, installmentWarnPercent: ' ' }))).toMatchObject({ rules: { installmentWarnPercent: null }, errors: [] });
-    for (const bad of ['0', '101', '10.555', 'ten']) expect(rulesBody(form({ ...rules, installmentWarnPercent: bad })).errors).toEqual([INSTALLMENT_WARN_ERROR]);
+  it('sends the law’s limit on installments when the form has it: 1 to 10, never above the law’s, never empty (owner, 18 October 2026: "Block above 10%")', () => {
+    expect(rulesBody(form({ ...rules, installmentLimitPercent: '10' }))).toMatchObject({ rules: { installmentLimitPercent: 10 }, errors: [] });
+    expect(rulesBody(form({ ...rules, installmentLimitPercent: '7.5' })).rules.installmentLimitPercent).toBe(7.5);
+    expect(rulesBody(form({ ...rules, installmentLimitPercent: '٨' })).rules.installmentLimitPercent).toBe(8);
+    for (const bad of ['0', '10.01', '12.5', '100', '5.555', 'ten', ' ', '']) expect(rulesBody(form({ ...rules, installmentLimitPercent: bad })).errors).toEqual([INSTALLMENT_LIMIT_ERROR]);
+    expect(INSTALLMENT_LIMIT_ERROR).toBe("Enter the most a month's installments may take as a percent of the wage from 1 to 10, e.g. 10: the law allows at most 10%.");
     // an API from before it: not on the form, not sent
-    expect(rulesBody(form(rules)).rules).not.toHaveProperty('installmentWarnPercent');
+    expect(rulesBody(form(rules)).rules).not.toHaveProperty('installmentLimitPercent');
   });
 
   it('reads Arabic digits', () => {

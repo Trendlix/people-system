@@ -13,6 +13,7 @@ import { shiftTimesText } from '@/lib/shifts';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
 import { statusField } from './employment-status';
+import { HazardousWorkField } from './leave-fields';
 
 // The fields of an employment, used by the Add employment page (above the first contract's terms: hiring in one form,
 // owner's decision, 16 October 2026) and the Edit employment page.
@@ -349,6 +350,9 @@ export function EmploymentFields({
           </p>
         </div>
       </div>
+
+      {/* for the annual leave (18 October 2026), on an employment from an API that has it */}
+      {employment?.hazardousWork !== undefined && <HazardousWorkField state={state} fid={fid} employment={employment} />}
 
       {arrangement === 'hybrid' && (
         <fieldset>

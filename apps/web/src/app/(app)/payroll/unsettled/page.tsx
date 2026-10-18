@@ -13,8 +13,10 @@ import { monthName, runHref } from '../list';
 import { loadJson, notLoadedText } from '../load';
 import { ADJUSTMENTS_PATH } from '../sections';
 import { PayrollStatusBadge } from '../ui';
-import { changeInstallment, createAdvance, deductFromFinal, postponeInstallment, recordPaidOut, reopenFinal, settleAdvance, settleFinal, updateAdvance } from './actions';
+import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
+import { changeInstallment, createAdvance, deductFromFinal, payUnusedLeave, postponeInstallment, recordPaidOut, reopenFinal, settleAdvance, settleFinal, updateAdvance } from './actions';
 import { changesInstallment, installmentsOf, installmentStatusText, nextText } from './installments';
+import { canPayUnusedLeave, unusedLeaveText } from './unused-leave';
 import {
   advanceKindText,
   canSeeUnsettled,
@@ -48,6 +50,9 @@ import {
 // managed?"): an advance or loan is recorded with its monthly installments, each shown under it, a pending one moved to
 // the next month or changed; settling one asks how. Leaving before it is paid back, "taken from the final settlement,
 // unless waived": a final settlement lists what is outstanding, HR recording each deducted there or waived with a note.
+// Leave (owner, 18 October 2026: "can you apply the leaves according to the law?"; Labour Law Art. 125): it lists the
+// annual leave unused on the last working day as Unused leave to pay, its days, day rate and amount, which HR records
+// paid, an Unused leave paid addition on the final month's payroll.
 
 export const metadata: Metadata = { title: 'Unsettled · People System' };
 
@@ -222,6 +227,41 @@ function ToDeduct({ settlement: s, hr }: { settlement: FinalSettlement; hr: bool
   );
 }
 
+/**
+ * The annual leave unused on the last working day (owner, 18 October 2026; Labour Law Art. 125: "فإذا انتهت علاقة العمل
+ * قبل استنفاد العامل رصيد إجازته السنوية استحق الأجر المقابل لهذا الرصيد"): its days, the day rate and the amount, and for
+ * HR, Record as paid, an Unused leave paid addition on the final month's payroll.
+ */
+function UnusedLeaveToPay({ settlement: s, hr }: { settlement: FinalSettlement; hr: boolean }) {
+  const u = s.unusedLeave!;
+  const words = unusedLeaveText(u);
+  return (
+    <section aria-labelledby={`leave-${s.employmentId}`} className="space-y-2 rounded-lg bg-accent-soft/60 px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h3 id={`leave-${s.employmentId}`} className="font-semibold">
+              Unused Leave to Pay
+            </h3>
+            <span className="font-semibold tabular-nums">{formatEgp(u.amount)}</span>
+          </div>
+          <p className="text-xs text-muted tabular-nums">{words.figures}</p>
+          {words.status && <p className="mt-0.5 text-xs">{words.status}</p>}
+        </div>
+        {hr && canPayUnusedLeave(u) && (
+          <ActionButton
+            action={payUnusedLeave.bind(null, s.employmentId)}
+            pendingText="Recording…"
+            confirmText={`Record ${s.employee.name}'s unused leave paid? ${formatEgp(u.amount)} is added to the payroll of the final month (or the next one open) as Unused leave paid, taxed.`}
+          >
+            Record as paid<span className="sr-only"> for {s.employee.name}</span>
+          </ActionButton>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function FinalSettlements({ u, hr, today }: { u: UnsettledView; hr: boolean; today: string }) {
   const recent = u.settlements.recentlySettled;
   return (
@@ -282,6 +322,14 @@ function FinalSettlements({ u, hr, today }: { u: UnsettledView; hr: boolean; tod
                     <tr>
                       <td colSpan={hr ? 6 : 5} className="pt-0">
                         <ToDeduct settlement={s} hr={hr} />
+                      </td>
+                    </tr>
+                  )}
+                  {/* the annual leave unused on leaving (18 October 2026) */}
+                  {s.unusedLeave && (s.unusedLeave.days > 0 || s.unusedLeave.paid) && (
+                    <tr>
+                      <td colSpan={hr ? 6 : 5} className="pt-0">
+                        <UnusedLeaveToPay settlement={s} hr={hr} />
                       </td>
                     </tr>
                   )}

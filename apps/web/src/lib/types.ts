@@ -15,6 +15,12 @@ import type {
   Initiator,
   InsuredWage,
   LawRates,
+  LeaveBalanceKind,
+  LeaveDecision,
+  LeavePay,
+  LeaveStage,
+  LeaveStatus,
+  LeaveStepKind,
   MaritalStatus,
   MilitaryStatus,
   NoticeUnit,
@@ -265,6 +271,12 @@ export interface Employment {
   /** Hybrid only; 0 = Sunday … 6 = Saturday. */
   officeDays: number[];
   shiftId: string | null;
+  /**
+   * Hazardous or unhealthy work, or work in a remote area: seven more days of annual leave (Labour Law 14/2025, Art. 124:
+   * "تزاد مدة الإجازة السنوية بمقدار سبعة أيام للعمال الذين يعملون فى الأعمال الخطرة"). HR sets it. Optional: left out by an
+   * API from before leave (18 October 2026), and for those who don't see HR data.
+   */
+  hazardousWork?: boolean;
   jdAcknowledgedAt: string | null;
   /** The last working day; null while current. */
   endDate: string | null;
@@ -391,6 +403,14 @@ export interface EmployeeProfile {
   /** The short name the person goes by (e.g. Hazem Magdy), for the email signature. */
   displayName: string | null;
   dateOfBirth: string | null;
+  /**
+   * For the annual leave (owner, 18 October 2026: "can you apply the leaves according to the law?"): the months served
+   * with employers before this one, which count towards the 30 days of 10 full years' service "with one or more
+   * employers" (Labour Law 14/2025, Art. 124), null when none is recorded; and a disability, 45 days. HR sets them.
+   * Optional: left out by an API from before leave, and for those who don't see HR data.
+   */
+  priorServiceMonths?: number | null;
+  disability?: boolean;
   gender: Gender | null;
   nationality: string | null;
   maritalStatus: MaritalStatus | null;
@@ -1439,11 +1459,11 @@ export interface PayrollSettingsView extends PayrollRules {
    */
   salaryReviewMonths?: number;
   /**
-   * The share of the pay a month's installments (advances' recoveries and loans' installments) may take before a
-   * warning, 1 to 100; null: no warning (owner, 18 October 2026: a warning only, never a block). Optional: left out by
-   * an API from before it.
+   * The most a month's installments (advances' recoveries and loans' installments, all the employee's together) may
+   * take of the wage, 1 to 10: the Labour Law's limit (owner, 18 October 2026, after reading the law: "Block above 10%";
+   * Law 14/2025 Art. 113), a plan past it refused. Optional: left out by an API from before it.
    */
-  installmentWarnPercent?: number | null;
+  installmentLimitPercent?: number;
 }
 
 /**
@@ -1616,14 +1636,19 @@ export interface AdvanceInstallment {
 }
 
 /**
- * GET /payroll/advances/limit?employeeId= (HR, Finance and the CEO): what the share-of-pay warning is worked out with on
- * the record form: the current contract's monthly gross (null without one), the percent set in Payroll Setup (null: no
- * warning), and the employee's installments already planned or applied per month (YYYY-MM), all open advances.
+ * GET /payroll/advances/limit (HR, Finance and the CEO): what the forms check the Labour Law's limits with as they are
+ * typed (owner, 18 October 2026, after reading the law: "Block above 10%", "Warn above 25%, record the consent"): the
+ * current contract's gross (the wage; null without one), the most a month's installments may take of it in percent,
+ * the employee's installments by month, about what the gross comes to in tax and their insurance (null without a
+ * gross), and their recurring deductions not ended. The last three are left out by an API from before the law's limits.
  */
 export interface AdvanceLimitView {
   gross: number | null;
   percent: number | null;
   byMonth: Record<string, number>;
+  tax?: number | null;
+  insurance?: number | null;
+  recurring?: { id: string; amount: number; startMonth: string; endMonth: string | null; stoppedFrom: string | null }[];
 }
 
 export type RecurringDeductionStatus = 'upcoming' | 'running' | 'ended';
@@ -1644,6 +1669,12 @@ export interface RecurringDeductionView {
   stopNote: string | null;
   status: RecurringDeductionStatus;
   deducted: { month: string; amount: number; status: 'pending' | 'applied' | 'cancelled' }[];
+  /**
+   * The employee's written consent (Labour Law 14/2025 Art. 114; owner, 18 October 2026, after reading the law: "record
+   * the consent"): when HR recorded it was on file and who, and the signed consent attached (a paper in the employee
+   * file); null: not recorded. Left out by an API from before it.
+   */
+  consent?: { recordedAt: string; recordedBy: { id: string; name: string } | null; paper: { id: string; fileName: string } | null } | null;
   createdAt: string;
 }
 
@@ -1663,4 +1694,211 @@ export interface DeductionPlansView {
     status: 'open' | 'settled';
   }[];
   recurring: { id: string; name: string; amount: number; startMonth: string; endMonth: string | null; status: RecurringDeductionStatus }[];
+}
+
+// ---------- leave (owner, 18 October 2026: "if we will work on the attendance and leaves, how will we build it?",
+// leaves first, then "can you apply the leaves according to the law?" and "make it with decision with the year
+// closing"; Labour Law 14/2025, Arts. 54–57 and 124–133; packages/shared/src/leaves.ts) ----------
+// The leave types the law gives (annual, casual, a child's birth, exams, Hajj, sick, maternity, childcare, unpaid) are
+// seeded for HR to change, turn off or add to; an employee asks from My Requests, their direct manager then HR decide
+// (no manager: straight to HR), every step logged; HR records leave on someone's behalf, approved at once. The annual
+// balance follows the calendar year; HR's Year Closing decides, per employee, what of the unused days is carried into
+// the new year and what is paid. Days are numbers, half days allowed; dates YYYY-MM-DD, moments ISO.
+
+/**
+ * GET /leave/types (every signed-in user the active ones; HR, the CEO and Admin all of them), in their order: a type of
+ * leave and its rules. A limit left empty (null) has none. `requests`: how many requests use it, which keeps it from
+ * being deleted; left out by an API that doesn't send it.
+ */
+export interface LeaveTypeView {
+  id: string;
+  key: string;
+  /** One of the law's (LEAVE_KINDS), or 'custom' for a type HR added. */
+  kind: string;
+  nameEn: string;
+  nameAr: string;
+  paid: LeavePay;
+  /** The share of the pay a partly paid type pays, 0 to 100; null for the others. */
+  payPercent: number | null;
+  balance: LeaveBalanceKind;
+  daysPerYear: number | null;
+  maxPerRequest: number | null;
+  maxTimesInService: number | null;
+  minServiceMonths: number | null;
+  /** Days of notice an employee's request needs; HR recording one on someone's behalf needs none. */
+  noticeDays: number | null;
+  documentRequired: boolean;
+  /** For men only, women only, or anyone (null). */
+  gender: Gender | null;
+  /** Counted in calendar days (Hajj, maternity) rather than working days. */
+  calendarDays: boolean;
+  /** May be taken as half a day. */
+  halfDays: boolean;
+  active: boolean;
+  sortOrder: number;
+  requests?: number;
+}
+
+/** What POST /leave/types takes (a type of HR's own: its kind is custom), and PATCH /leave/types/:id (all of it, or part). */
+export type LeaveTypeBody = Omit<LeaveTypeView, 'id' | 'requests' | 'key' | 'kind'>;
+
+/**
+ * GET /leave/settings (all staff; HR changes it): the annual leave's tiers (Art. 124), each editable: the first year's
+ * days, from the second year, after so many years of service (with any employer) or over an age, for a person with a
+ * disability, the days added for hazardous work, the months served before a first year's leave may be used, and within
+ * how many years days carried over must be settled (Art. 125).
+ */
+export interface LeaveSettingsView {
+  firstYearDays: number;
+  standardDays: number;
+  longServiceDays: number;
+  longServiceYears: number;
+  longServiceAge: number;
+  disabilityDays: number;
+  hazardousExtraDays: number;
+  firstYearMinMonths: number;
+  settleWithinYears: number;
+}
+
+/** A step logged on a leave request: sent, sent straight to HR, recorded by HR, each stage's decision, cancelled. */
+export interface LeaveRequestStep {
+  id: string;
+  kind: LeaveStepKind;
+  decision: LeaveDecision | null;
+  comment: string | null;
+  /** Who, by their display name; null for a user since removed. */
+  actor: string | null;
+  at: string;
+}
+
+/**
+ * A leave request, as GET /leave/requests, GET /me/leave/requests and GET /leave/requests/:id give it to the caller (the
+ * employee, their manager, HR and the CEO). `waitingForYou`: the caller decides it now; `canCancel` and `hrCanCancel`:
+ * who may cancel it now (the employee while it is being decided, or approved and not started; HR an approved one).
+ * `balanceAfter`: for leave from the annual balance, what is available of it once this is taken.
+ */
+export interface LeaveRequestView {
+  id: string;
+  employee: { id: string; fullNameEn: string; fullNameAr: string | null; department: string | null; team: string | null };
+  type: { id: string; key: string; nameEn: string; nameAr: string; paid: LeavePay };
+  startDate: string;
+  endDate: string;
+  halfDay: boolean;
+  days: number;
+  reason: string | null;
+  status: LeaveStatus;
+  stage: LeaveStage | null;
+  waitingForYou: boolean;
+  /** The employee may cancel it now: theirs, being decided, or approved and not started. */
+  canCancel: boolean;
+  /** HR may cancel it now: approved, and not HR's own. Optional: left out by an API that doesn't send it. */
+  hrCanCancel?: boolean;
+  manager: { id: string; fullNameEn: string } | null;
+  rejectedStage: LeaveStage | null;
+  rejectReason: string | null;
+  recordedByHr: boolean;
+  documents: { id: string; fileName: string; mimeType: string; sizeBytes: number }[];
+  steps: LeaveRequestStep[];
+  balanceAfter: number | null;
+  createdAt: string;
+}
+
+/**
+ * The annual balance of a calendar year: the entitlement for the year (Art. 124, pro rata in a first year), the first
+ * day it may be used (6 months after joining, in a first year), what was carried in from the year before and HR's
+ * adjustments, the days taken (approved, started), booked (approved, to come) and waiting (being decided), and what is
+ * available.
+ */
+export interface AnnualLeaveBalance {
+  entitlement: number;
+  usableFrom: string;
+  carriedIn: number;
+  adjustments: number;
+  taken: number;
+  booked: number;
+  pending: number;
+  available: number;
+}
+
+/** The other types: the days used (in the year, or in the service for a type taken so many times), and what is left (null: no limit). */
+export interface LeaveTypeBalance {
+  typeId: string;
+  nameEn: string;
+  nameAr: string;
+  used: number;
+  timesInService: number;
+  left: number | null;
+}
+
+/** GET /me/leave/balances?year=: the employee's own. */
+export interface LeaveBalances {
+  year: number;
+  annual: AnnualLeaveBalance;
+  types: LeaveTypeBalance[];
+}
+
+/** An adjustment HR made to someone's annual balance, with its reason. */
+export interface LeaveAdjustmentView {
+  id: string;
+  year: number;
+  days: number;
+  reason: string;
+  by: string | null;
+  at: string;
+}
+
+/**
+ * GET /employees/:id/leave?year= (HR, the CEO, Finance, the employee and their manager): the balances, and the requests;
+ * `adjustments`, HR's to the year, when the API sends them.
+ */
+export interface EmployeeLeave extends LeaveBalances {
+  requests: LeaveRequestView[];
+  adjustments?: LeaveAdjustmentView[];
+}
+
+/** GET /leave/calendar?from=&to=&departmentId=: who is off when (approved leave, and for HR those being decided too). */
+export interface LeaveCalendarEntry {
+  /** The request's id when the API sends it. */
+  id?: string;
+  employee: { id: string; fullNameEn: string; department: string | null; team: string | null };
+  type: { nameEn: string };
+  startDate: string;
+  endDate: string;
+  halfDay: boolean;
+  status: LeaveStatus;
+}
+
+/** GET /leave/requests/counts: how many leave requests wait for the caller, for the sidebar. */
+export interface LeaveCounts {
+  waiting: number;
+}
+
+/**
+ * One employee of a year's closing: their unused annual days, the days carried in by the year they were first carried
+ * (`carriedByYear`, "2024": 3), those carried for `settleWithinYears` years or more (Art. 125: settled every three
+ * years at most), what is carried and paid (as proposed, or as decided once closed), the day rate (the gross ÷ the
+ * payroll's day divisor) and what the pay comes to.
+ */
+export interface YearClosingRow {
+  employee: { id: string; fullNameEn: string; department: string | null; team: string | null };
+  employmentId?: string;
+  unused: number;
+  carriedByYear: Record<string, number>;
+  mustSettle: number;
+  carry: number;
+  pay: number;
+  dayRate: number;
+  payAmount: number;
+  /** What the law asks for that can't be enforced (Art. 125: at least 15 days a year, 6 of them in a row): flagged, not blocked. */
+  flags?: string[];
+  /** Once closed with days paid: the Unused leave paid addition, as Additions / Deductions has it now (month YYYY-MM). */
+  payout?: { adjustmentId: string; month: string; status: 'pending' | 'applied' | 'cancelled' } | null;
+}
+
+/** GET /leave/year-closing/:year (HR and the CEO); `closedAt`: when it was closed (ISO), null while open. */
+export interface YearClosingView {
+  year: number;
+  closed: boolean;
+  closedAt?: string | null;
+  rows: YearClosingRow[];
 }

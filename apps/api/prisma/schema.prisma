@@ -59,6 +59,7 @@ model User {
   advancesGiven      PayrollAdvance[]         @relation("AdvanceEntry") // advances and loans this user entered
   advancesSettled    PayrollAdvance[]         @relation("AdvanceSettlement") // advances and loans this user marked settled
   recurringMade      RecurringDeduction[]     @relation("RecurringDeductionEntry") // recurring deductions this user set up
+  recurringConsents  RecurringDeduction[]     @relation("RecurringDeductionConsent") // recurring deductions whose signed consent this user recorded
   settlementsMade    FinalSettlement[]        @relation("FinalSettlementBy") // final settlements this user marked settled
   holdsReleased      PayrollHoldRelease[]     @relation("HoldReleaseBy") // held pay this user recorded as paid out
   raisesApproved     Contract[]               @relation("RaiseApproval") // raises (and renewals with new pay) this user approved as CEO
@@ -67,6 +68,12 @@ model User {
   raiseRequestSteps  RaiseRequestStep[]       @relation("RaiseRequestStepActor") // steps of raise requests this user took
   reimbursementsSent ReimbursementClaim[]     @relation("ReimbursementCreation") // reimbursement claims this user sent
   reimbursementSteps ReimbursementClaimStep[] @relation("ReimbursementStepActor") // steps of reimbursement claims this user took
+  leaveRequestsMade  LeaveRequest[]           @relation("LeaveRequestCreation") // leave requests this user sent, or recorded for an employee as HR
+  leaveSteps         LeaveRequestStep[]       @relation("LeaveStepActor") // steps of leave requests this user took
+  leaveAdjustments   LeaveAdjustment[]        @relation("LeaveAdjustmentBy") // changes to annual leave balances this user made as HR
+  leaveClosings      LeaveYearClosing[]       @relation("LeaveYearClosingBy") // the years this user closed the leave balances of
+  leaveYearsClosed   LeaveBalanceYear[]       @relation("LeaveBalanceClosedBy") // the balances this user closed: at a Year Closing, or paid on leaving
+  leaveSetupChanged  LeaveSettings[]          @relation("LeaveSettingsBy") // the Leave Setup, when this user changed it last
 
   @@map("users")
 }
@@ -279,6 +286,12 @@ model Employee {
   // counts the company's only for those registered. HR sets it on the Social Insurance tab; the payroll migration set
   // it for everyone with a social insurance number
   socialInsured              Boolean                @default(false) @map("social_insured")
+  // for the annual leave's days (Labour Law 14/2025 Art. 124; owner, 18 October 2026: "can you apply the leaves
+  // according to the law?"): the months of service with earlier employers, as 30 days are due after "عشر سنوات كاملة
+  // لدى صاحب عمل أو أكثر" (none: none), and a disability, which brings 45 days ("للأشخاص ذوى الإعاقة والأقزام"). HR
+  // sets them on the profile; HR, the CEO and the employee see them
+  priorServiceMonths         Int?                   @map("prior_service_months")
+  disability                 Boolean                @default(false)
   fullNameEn                 String                 @map("full_name_en")
   fullNameAr                 String                 @map("full_name_ar") // as printed on contracts
   displayName                String?                @map("display_name") // the short name the person goes by (e.g. Hazem Magdy), for the email signature
@@ -326,6 +339,10 @@ model Employee {
   raiseRequests              RaiseRequest[] // the raises asked for this person
   reimbursements             ReimbursementClaim[]   @relation("ReimbursementClaimant") // the reimbursements this person claimed
   reimbursementsToDecide     ReimbursementClaim[]   @relation("ReimbursementManager") // the claims this person decided, or decides, as the claimant's direct manager
+  leaveRequests              LeaveRequest[]         @relation("LeaveRequester") // the leave this person asked for, or HR recorded for them
+  leaveToDecide              LeaveRequest[]         @relation("LeaveManager") // the leave requests this person decided, or decides, as the requester's direct manager
+  leaveBalances              LeaveBalanceYear[] // each year's annual leave: carried in, closed
+  leaveAdjustments           LeaveAdjustment[] // HR's changes to the annual leave balance
 
   @@map("employees")
 }
@@ -354,6 +371,9 @@ model Employment {
   workArrangement  WorkArrangement      @default(office) @map("work_arrangement")
   officeDays       Int[]                @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
   shiftId          String?              @map("shift_id") @db.Uuid
+  // hazardous or unhealthy work, or work in a remote area: 7 more days of annual leave (Labour Law 14/2025 Art. 124:
+  // "تزاد مدة الإجازة السنوية بمقدار سبعة أيام للعمال الذين يعملون فى الأعمال الخطرة، أو المضرة بالصحة، أو فى المناطق النائية")
+  hazardousWork    Boolean              @default(false) @map("hazardous_work")
   shift            Shift?               @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   jdAcknowledgedAt DateTime?            @map("jd_acknowledged_at") @db.Date
   endDate          DateTime?            @map("end_date") @db.Date // empty while current
@@ -368,6 +388,9 @@ model Employment {
   raiseRequests    RaiseRequest[]
   reimbursements   ReimbursementClaim[] // the reimbursements claimed under it
   finalSettlement  FinalSettlement? // its final dues, once settled (open until then)
+  leaveRequests    LeaveRequest[] // the leave taken under it
+  leaveBalances    LeaveBalanceYear[] // each year's annual leave under it
+  leaveAdjustments LeaveAdjustment[]
 
   @@index([employeeId])
   @@index([departmentId])
@@ -412,25 +435,26 @@ model EmployeeBank {
 // The file is kept in the database, so the daily backup includes it. Its text, read by the OCR service, makes it
 // searchable. National ID scans are restricted like the national ID itself (HR, CEO).
 model PaperworkItem {
-  id           String    @id @default(uuid()) @db.Uuid
-  employeeId   String    @map("employee_id") @db.Uuid
-  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id           String               @id @default(uuid()) @db.Uuid
+  employeeId   String               @map("employee_id") @db.Uuid
+  employee     Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   kind         String // packages/shared PAPERWORK_KINDS
-  fileName     String    @map("file_name")
-  mimeType     String    @map("mime_type")
-  sizeBytes    Int       @map("size_bytes")
+  fileName     String               @map("file_name")
+  mimeType     String               @map("mime_type")
+  sizeBytes    Int                  @map("size_bytes")
   data         Bytes
-  ocrStatus    String    @default("pending") @map("ocr_status") // pending, done, failed, unavailable
-  ocrText      String?   @map("ocr_text")
-  ocrAt        DateTime? @map("ocr_at") @db.Timestamptz
-  documentNo   String?   @map("document_no") // the number printed on the paper, if any
-  expiresOn    DateTime? @map("expires_on") @db.Date // when the paper stops being valid, if it does
+  ocrStatus    String               @default("pending") @map("ocr_status") // pending, done, failed, unavailable
+  ocrText      String?              @map("ocr_text")
+  ocrAt        DateTime?            @map("ocr_at") @db.Timestamptz
+  documentNo   String?              @map("document_no") // the number printed on the paper, if any
+  expiresOn    DateTime?            @map("expires_on") @db.Date // when the paper stops being valid, if it does
   // a personal photo's square shown in the circle beside the name (PhotoCrop, packages/shared), as fractions of the
   // photo as shown; null: the whole photo, centred. The file itself is never changed by it.
-  photoCrop    Json?     @map("photo_crop")
-  uploadedById String?   @map("uploaded_by_id") @db.Uuid
-  uploadedBy   User?     @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
-  uploadedAt   DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz
+  photoCrop    Json?                @map("photo_crop")
+  uploadedById String?              @map("uploaded_by_id") @db.Uuid
+  uploadedBy   User?                @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedAt   DateTime             @default(now()) @map("uploaded_at") @db.Timestamptz
+  consentFor   RecurringDeduction[] // a signed deduction consent: the recurring deductions it is the consent of
 
   @@index([employeeId, kind])
   @@map("paperwork_items")
@@ -986,23 +1010,24 @@ model JobOffer {
 // The rules a run is worked out with and the company's side of the bank files (one row, id 1). Each run copies the
 // rules when it is made and when it is refreshed, so a later change never alters a run already worked out.
 model PayrollSettings {
-  id                     Int      @id @default(1) // always 1
-  dayDivisor             Int      @default(30) @map("day_divisor") // a month counts as this many days (day rates, part months)
-  attendanceGracePercent Decimal  @default(90) @map("attendance_grace_percent") @db.Decimal(5, 2) // attendance from here on counts as full
-  kpiGracePercent        Decimal  @default(80) @map("kpi_grace_percent") @db.Decimal(5, 2) // a KPI average from here on counts as full
-  payOvertime            Boolean  @default(false) @map("pay_overtime") // off from 16 October 2026 (owner: "No overtime for now")
-  overtimeAbovePercent   Decimal  @default(110) @map("overtime_above_percent") @db.Decimal(5, 2) // overtime is paid for attendance above this
-  overtimeRate           Decimal  @default(1.5) @map("overtime_rate") @db.Decimal(4, 2)
-  noShowDayMultiplier    Decimal  @default(2) @map("no_show_day_multiplier") @db.Decimal(4, 2) // a no-show day costs this many days' pay
-  cibDebitAccount        String?  @map("cib_debit_account") // the company's CIB account the salaries are paid from: 12 digits
-  cibDebitAccountName    String?  @map("cib_debit_account_name") // its name, as CIB has it
-  achPurpose             String   @default("CASH") @map("ach_purpose") // the ACH file's TransactionPurpose
-  payday                 Int? // the day of the month salaries are paid (1–31): the date a run is marked paid on, to start with
-  salaryReviewMonths     Int      @default(12) @map("salary_review_months") // 1–60: the Salary Raises report's review is due this many months after the last raise or the join date
-  // 1–100: a warning (never a block) when a month's installments of advances and loans pass this share of the pay
-  // (owner, 18 October 2026); null: no warning
-  installmentWarnPercent Decimal? @default(10) @map("installment_warn_percent") @db.Decimal(5, 2)
-  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id                      Int      @id @default(1) // always 1
+  dayDivisor              Int      @default(30) @map("day_divisor") // a month counts as this many days (day rates, part months)
+  attendanceGracePercent  Decimal  @default(90) @map("attendance_grace_percent") @db.Decimal(5, 2) // attendance from here on counts as full
+  kpiGracePercent         Decimal  @default(80) @map("kpi_grace_percent") @db.Decimal(5, 2) // a KPI average from here on counts as full
+  payOvertime             Boolean  @default(false) @map("pay_overtime") // off from 16 October 2026 (owner: "No overtime for now")
+  overtimeAbovePercent    Decimal  @default(110) @map("overtime_above_percent") @db.Decimal(5, 2) // overtime is paid for attendance above this
+  overtimeRate            Decimal  @default(1.5) @map("overtime_rate") @db.Decimal(4, 2)
+  noShowDayMultiplier     Decimal  @default(2) @map("no_show_day_multiplier") @db.Decimal(4, 2) // a no-show day costs this many days' pay
+  cibDebitAccount         String?  @map("cib_debit_account") // the company's CIB account the salaries are paid from: 12 digits
+  cibDebitAccountName     String?  @map("cib_debit_account_name") // its name, as CIB has it
+  achPurpose              String   @default("CASH") @map("ach_purpose") // the ACH file's TransactionPurpose
+  payday                  Int? // the day of the month salaries are paid (1–31): the date a run is marked paid on, to start with
+  salaryReviewMonths      Int      @default(12) @map("salary_review_months") // 1–60: the Salary Raises report's review is due this many months after the last raise or the join date
+  // 1–10: the most a month's installments of advances and loans may take of the wage (Labour Law 14/2025 Art. 113: 10%;
+  // owner, 18 October 2026, after reading the law: "Block above 10%"); set lower if the company wants, never higher.
+  // Until then a warning at a share of the pay (1–100, none: no warning)
+  installmentLimitPercent Decimal  @default(10) @map("installment_limit_percent") @db.Decimal(5, 2)
+  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("payroll_settings")
 }
@@ -1196,6 +1221,7 @@ model PayrollAdjustment {
   createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz
   reimbursement ReimbursementClaim? // a reimbursement addition: the claim whose approval by Finance added it
+  leavePayout   LeaveBalanceYear? // an Unused leave paid addition: the balance whose closing (or leaving) paid it
 
   @@unique([recurringId, month]) // a recurring deduction's month once, whatever became of it
   @@index([month])
@@ -1245,20 +1271,28 @@ model PayrollAdvance {
 // then) or stops it; an employment ending stops it from the month after the last working day ("Left the company").
 // RESTRICTED (HR, Finance, CEO; the employee their own), like a salary.
 model RecurringDeduction {
-  id          String              @id @default(uuid()) @db.Uuid
-  employeeId  String              @map("employee_id") @db.Uuid
-  employee    Employee            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  name        String // what it is for, up to 100 characters: "Medical subscription (family)"; the payslip line's
-  amount      Decimal             @db.Decimal(12, 2) // RESTRICTED: EGP a month, more than 0
-  startMonth  DateTime            @map("start_month") @db.Date // the first month's first day
-  endMonth    DateTime?           @map("end_month") @db.Date // the last month's first day; null: until stopped
-  stoppedFrom DateTime?           @map("stopped_from") @db.Date // the first day of the first month no longer deducted, once stopped
-  stopNote    String?             @map("stop_note") // why it was stopped: HR's, or "Left the company"
-  createdById String?             @map("created_by") @db.Uuid
-  createdBy   User?               @relation("RecurringDeductionEntry", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz
-  deductions  PayrollAdjustment[] // the months' Recurring deductions
+  id                  String              @id @default(uuid()) @db.Uuid
+  employeeId          String              @map("employee_id") @db.Uuid
+  employee            Employee            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  name                String // what it is for, up to 100 characters: "Medical subscription (family)"; the payslip line's
+  amount              Decimal             @db.Decimal(12, 2) // RESTRICTED: EGP a month, more than 0
+  startMonth          DateTime            @map("start_month") @db.Date // the first month's first day
+  endMonth            DateTime?           @map("end_month") @db.Date // the last month's first day; null: until stopped
+  stoppedFrom         DateTime?           @map("stopped_from") @db.Date // the first day of the first month no longer deducted, once stopped
+  stopNote            String?             @map("stop_note") // why it was stopped: HR's, or "Left the company"
+  createdById         String?             @map("created_by") @db.Uuid
+  createdBy           User?               @relation("RecurringDeductionEntry", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  deductions          PayrollAdjustment[] // the months' Recurring deductions
+  // The employee's written consent (Labour Law 14/2025 Art. 114; owner, 18 October 2026, after reading the law: "record
+  // the consent"): when HR recorded it was on file and who; null on those set up before then until HR records it. The
+  // signed consent, if HR attached it, is a paper in the employee file (kind deduction_consent).
+  consentRecordedAt   DateTime?           @map("consent_recorded_at") @db.Timestamptz
+  consentRecordedById String?             @map("consent_recorded_by") @db.Uuid
+  consentRecordedBy   User?               @relation("RecurringDeductionConsent", fields: [consentRecordedById], references: [id], onDelete: SetNull)
+  consentPaperworkId  String?             @map("consent_paperwork_id") @db.Uuid
+  consentPaperwork    PaperworkItem?      @relation(fields: [consentPaperworkId], references: [id], onDelete: SetNull)
 
   @@index([employeeId])
   @@map("recurring_deductions")
@@ -1408,4 +1442,197 @@ model ReimbursementReceipt {
 
   @@index([claimId])
   @@map("reimbursement_receipts")
+}
+
+// ---------- leave ----------
+// The owner, 18 October 2026: "if we will work on the attendance and leaves, how will we build it?" (leave first, as
+// attendance needs leave to tell an absence from a leave) and "can you apply the leaves according to the law?": the
+// leave types of Labour Law No. 14 of 2025 (Arts. 54–57, 124–133) as the default types, which HR may change, turn off or
+// add to; requests decided by the direct manager, then HR (no manager: straight to HR), each step logged; the annual
+// balance by calendar year, a joiner's first year pro-rated; and a Year Closing where HR decides how many unused days
+// carry into the new year and how many are paid ("make it with decision with the year closing"). The rules themselves:
+// packages/shared leaves.ts.
+
+// A leave type (Leave Setup): the law's, by key (annual, casual, birth, exam, hajj, sick, maternity, childcare, unpaid),
+// seeded by the leave migration, and HR's own (kind custom). Its pay (paid, unpaid, or partly at a percent: sick leave),
+// what its days are counted against (LEAVE_BALANCES), its limits (days a year, a request, times in service, months of
+// service first, days' notice), a document needed, for one gender, counted in calendar days, half days allowed. Turned
+// off, it isn't offered; only a Super Admin deletes one, and only one never asked for.
+model LeaveType {
+  id                String         @id @default(uuid()) @db.Uuid
+  key               String         @unique // the law's kind for its types; custom-… for HR's own
+  kind              String // LEAVE_KINDS
+  nameEn            String         @map("name_en")
+  nameAr            String         @map("name_ar")
+  paid              String // LEAVE_PAYS: paid, unpaid, partly
+  payPercent        Decimal?       @map("pay_percent") @db.Decimal(5, 2) // partly paid: 0–100
+  balance           String // LEAVE_BALANCES: annual, from_annual, yearly, per_request, none
+  daysPerYear       Int?           @map("days_per_year")
+  maxPerRequest     Int?           @map("max_per_request")
+  maxTimesInService Int?           @map("max_times_in_service")
+  minServiceMonths  Int?           @map("min_service_months")
+  noticeDays        Int?           @map("notice_days")
+  documentRequired  Boolean        @default(false) @map("document_required")
+  gender            String? // male, female; null: everyone
+  calendarDays      Boolean        @default(false) @map("calendar_days")
+  halfDays          Boolean        @default(false) @map("half_days")
+  active            Boolean        @default(true)
+  sortOrder         Int            @default(100) @map("sort_order")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  requests          LeaveRequest[]
+
+  @@map("leave_types")
+}
+
+// The Leave Setup's annual leave (one row, id 1; Art. 124): the days in the first year, from the second, after 10 years'
+// service (with one or more employers) or over the age of 50, with a disability, the days more for hazardous work, the
+// months served before the first year's leave may be used, and the years days may be carried before they are settled
+// (Art. 125). The migration seeds the law's numbers; HR changes them.
+model LeaveSettings {
+  id                 Int      @id @default(1) // always 1
+  firstYearDays      Int      @default(15) @map("first_year_days")
+  standardDays       Int      @default(21) @map("standard_days")
+  longServiceDays    Int      @default(30) @map("long_service_days")
+  longServiceYears   Int      @default(10) @map("long_service_years")
+  longServiceAge     Int      @default(50) @map("long_service_age")
+  disabilityDays     Int      @default(45) @map("disability_days")
+  hazardousExtraDays Int      @default(7) @map("hazardous_extra_days")
+  firstYearMinMonths Int      @default(6) @map("first_year_min_months")
+  settleWithinYears  Int      @default(3) @map("settle_within_years")
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById        String?  @map("updated_by") @db.Uuid
+  updatedBy          User?    @relation("LeaveSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("leave_settings")
+}
+
+// A leave request: the employee and the employment it is under, the type, the first and last day, a half day, its
+// days as counted when sent (LEAVE_STATUSES), the direct manager when it was sent (who decides the manager stage), and
+// where it is. Rejected: at which stage, and why. Recorded by HR on the employee's behalf (e.g. sick leave reported
+// after): approved at once. Cancelled by its employee (while being decided, or approved and not started) or by HR (an
+// approved one, with a comment): its days are back in the balance.
+model LeaveRequest {
+  id            String             @id @default(uuid()) @db.Uuid
+  employeeId    String             @map("employee_id") @db.Uuid
+  employee      Employee           @relation("LeaveRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId  String             @map("employment_id") @db.Uuid
+  employment    Employment         @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  typeId        String             @map("type_id") @db.Uuid
+  type          LeaveType          @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  startDate     DateTime           @map("start_date") @db.Date
+  endDate       DateTime           @map("end_date") @db.Date
+  halfDay       Boolean            @default(false) @map("half_day")
+  days          Decimal            @db.Decimal(5, 1)
+  reason        String?
+  status        String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
+  managerId     String?            @map("manager_id") @db.Uuid
+  manager       Employee?          @relation("LeaveManager", fields: [managerId], references: [id], onDelete: Restrict)
+  rejectedStage String?            @map("rejected_stage") // LEAVE_STAGES: manager, hr
+  rejectReason  String?            @map("reject_reason")
+  recordedByHr  Boolean            @default(false) @map("recorded_by_hr")
+  createdById   String?            @map("created_by") @db.Uuid
+  createdBy     User?              @relation("LeaveRequestCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  steps         LeaveRequestStep[]
+  documents     LeaveDocument[]
+
+  @@index([employeeId, startDate])
+  @@index([status])
+  @@index([managerId])
+  @@index([typeId])
+  @@map("leave_requests")
+}
+
+// Each step of a request, in the order taken (LEAVE_STEP_KINDS): sent, sent straight to HR, recorded by HR, each
+// stage's decision (approve or reject, with the comment), cancelled (with HR's comment).
+model LeaveRequestStep {
+  id        BigInt       @id @default(autoincrement())
+  requestId String       @map("request_id") @db.Uuid
+  request   LeaveRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind      String
+  decision  String? // LEAVE_DECISIONS, on the stages' decisions only
+  comment   String?
+  actorId   String?      @map("actor_id") @db.Uuid
+  actor     User?        @relation("LeaveStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  at        DateTime     @default(now()) @db.Timestamptz
+
+  @@index([requestId])
+  @@map("leave_request_steps")
+}
+
+// A request's documents (a medical certificate, proof of sitting the exam): photos or PDFs, kept like the employee file.
+model LeaveDocument {
+  id         String       @id @default(uuid()) @db.Uuid
+  requestId  String       @map("request_id") @db.Uuid
+  request    LeaveRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  fileName   String       @map("file_name")
+  mimeType   String       @map("mime_type")
+  sizeBytes  Int          @map("size_bytes")
+  data       Bytes
+  uploadedAt DateTime     @default(now()) @map("uploaded_at") @db.Timestamptz
+
+  @@index([requestId])
+  @@map("leave_documents")
+}
+
+// An employment's annual leave for a calendar year, once there is something to keep: the days carried in from the year
+// before (as its Year Closing decided; by the year each was earned in, for the three years' rule of Art. 125), and how
+// it was closed: at the Year Closing (the days unused, carried into the next year and paid, at the day rate then) or on
+// leaving (the days unused paid with the final settlement). What is paid is an Unused leave paid addition.
+model LeaveBalanceYear {
+  id                 String             @id @default(uuid()) @db.Uuid
+  employeeId         String             @map("employee_id") @db.Uuid
+  employee           Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId       String             @map("employment_id") @db.Uuid
+  employment         Employment         @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  year               Int
+  carriedIn          Decimal            @default(0) @map("carried_in") @db.Decimal(5, 1)
+  carriedInByYear    Json               @default("{}") @map("carried_in_by_year") // { "2025": 4 }: by the year each day was earned in
+  closedAt           DateTime?          @map("closed_at") @db.Timestamptz
+  closedById         String?            @map("closed_by") @db.Uuid
+  closedBy           User?              @relation("LeaveBalanceClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  closedOn           String?            @map("closed_on") // year_closing, leaving
+  unused             Decimal?           @db.Decimal(5, 1) // at the closing
+  carriedOut         Decimal?           @map("carried_out") @db.Decimal(5, 1)
+  paidOut            Decimal?           @map("paid_out") @db.Decimal(5, 1)
+  dayRate            Decimal?           @map("day_rate") @db.Decimal(12, 2) // RESTRICTED: the gross ÷ the payroll's day divisor, at the closing
+  payoutAdjustmentId String?            @unique @map("payout_adjustment_id") @db.Uuid
+  payoutAdjustment   PayrollAdjustment? @relation(fields: [payoutAdjustmentId], references: [id], onDelete: SetNull)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([employmentId, year])
+  @@index([employeeId])
+  @@map("leave_balance_years")
+}
+
+// HR's change to an employment's annual leave balance for a year: days more or fewer (whole or half), and why.
+model LeaveAdjustment {
+  id           String     @id @default(uuid()) @db.Uuid
+  employeeId   String     @map("employee_id") @db.Uuid
+  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId String     @map("employment_id") @db.Uuid
+  employment   Employment @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  year         Int
+  days         Decimal    @db.Decimal(5, 1)
+  reason       String
+  createdById  String?    @map("created_by") @db.Uuid
+  createdBy    User?      @relation("LeaveAdjustmentBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([employmentId, year])
+  @@map("leave_adjustments")
+}
+
+// A year whose annual leave balances HR closed (owner, 18 October 2026: "make it with decision with the year closing"):
+// when and by whom. HR may reopen it until what it paid is applied to a payroll.
+model LeaveYearClosing {
+  year       Int      @id
+  closedAt   DateTime @default(now()) @map("closed_at") @db.Timestamptz
+  closedById String?  @map("closed_by") @db.Uuid
+  closedBy   User?    @relation("LeaveYearClosingBy", fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@map("leave_year_closings")
 }

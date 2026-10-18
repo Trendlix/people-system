@@ -7,12 +7,15 @@ import { getCurrentUser } from '@/lib/session';
 import type { EmployeeProfile } from '@/lib/types';
 import { NoProfile } from '../dashboard/cards';
 import { ChangeRequestStatusBadge, ChangesTable } from '../employees/[id]/change-request/request-parts';
-import { employeeRaiseRequestsHref, Loading } from '../employees/ui';
+import { employeeRaiseRequestsHref, Loading, todayInCairo } from '../employees/ui';
 import { loadTeam } from '../my-team/data';
 import { loadOwnProfile } from '../own-profile';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
 import { askedAt, justSent, newRaiseRequestHref, raiseRequestAnchor } from '../raise-requests/list';
 import { EffectiveFrom, FoldedRequestLog, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, RequestSent, Requester, Suggestion } from '../raise-requests/ui';
+import { loadLeaveTypes, loadMyBalances, loadMyLeave } from '../leave/data';
+import { NEW_LEAVE_PATH, requestsLabel } from '../leave/list';
+import { LeaveBalanceFigures, MyLeaveTable } from '../leave/ui';
 import { loadMyClaims } from '../reimbursements/data';
 import { claimsLabel, NEW_CLAIM_PATH } from '../reimbursements/list';
 import { MyClaimsTable } from '../reimbursements/ui';
@@ -36,13 +39,15 @@ import {
 // Requests"): everything the employee asked for, newest first, filtered by kind and status in the address (so a link
 // keeps them), each with its decisions as the API gives them to the employee; buttons to ask again; for a direct
 // manager also the raises they asked for for their direct reports (no figure: the API sends a manager none). The
-// changes to their details are their profile's: the one waiting for HR and the latest ten decided. Leave and attendance
-// requests come later. Cancelling a change waiting for HR stays on the change request page. Request a raise opens the
+// changes to their details are their profile's: the one waiting for HR and the latest ten decided. Leave has a section
+// of its own (below); attendance comes later. Cancelling a change waiting for HR stays on the change request page. Request a raise opens the
 // request form under Requests → Raise Requests for themself (17 October 2026: "i think raising a request should be moved
 // from the Employee tab to the raise requests tab"), which comes back here once sent, saying so; each raise shows the
 // month it is asked from ("Effective from"). Reimbursements (owner, 18 October 2026: "allow the employee to add
 // reimbursement request … for specific preset up conditions") have a section of their own below: their claims, newest
-// first, each opening its page (receipts, every step, Cancel while it is being decided), and New reimbursement.
+// first, each opening its page (receipts, every step, Cancel while it is being decided), and New reimbursement. Leave
+// (owner, 18 October 2026: "can you apply the leaves according to the law?") has one too, above it: the annual balance
+// of the year and what is left of the other types, their requests, newest first, each opening its page, and New leave.
 
 export const metadata: Metadata = { title: 'My Requests · People System' };
 
@@ -245,6 +250,57 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/my-request
 }
 
 /**
+ * Their leave (owner, 18 October 2026): the annual balance of this year (the entitlement, carried in, adjusted, taken,
+ * booked, waiting, available, and from when it may be used in a first year) and what is left of the other types, and
+ * their requests, newest first (GET /me/leave/requests), each opening its page; and New leave. Nothing from an API from
+ * before leave, nor without a profile of their own.
+ */
+async function Leave() {
+  const user = await getCurrentUser();
+  const profile = await loadOwnProfile(user);
+  if (!profile) return null;
+  const year = Number(todayInCairo().slice(0, 4));
+  const [requests, balances, types] = await Promise.all([loadMyLeave(), loadMyBalances(year), loadLeaveTypes()]);
+  if (requests.kind === 'unavailable') return null;
+  return (
+    <section id="my-leave" aria-labelledby="my-leave-heading" className="mt-10 scroll-mt-6 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="my-leave-heading" className="text-lg font-semibold">
+            Leave
+          </h2>
+          <p className="text-sm text-muted">Your leave balance and requests. Your direct manager decides each request first, then HR.</p>
+        </div>
+        {profile.employment && (
+          <Link href={NEW_LEAVE_PATH} className="btn btn-primary">
+            New leave
+          </Link>
+        )}
+      </div>
+      {balances.kind === 'ok' ? (
+        <div className="card p-5">
+          <LeaveBalanceFigures balances={balances.value} types={types.kind === 'ok' ? types.value : null} />
+        </div>
+      ) : (
+        // no employment, no balance: the API answers so
+        balances.kind !== 'unavailable' &&
+        profile.employment && <div className="card px-6 py-6 text-sm text-muted">Your leave balance couldn&apos;t be loaded. Please try again in a moment.</div>
+      )}
+      {requests.kind !== 'ok' ? (
+        <div className="card px-6 py-6 text-sm text-muted">Your leave requests couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : requests.value.length === 0 ? (
+        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t asked for leave yet. Ask with New leave.</div>
+      ) : (
+        <div className="card">
+          <MyLeaveTable requests={requests.value} />
+          <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(requests.value.length)}, newest first.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
  * Their reimbursement claims (GET /me/reimbursements): the type, the expense's date, the amount claimed and the one
  * approved, where it stands and the payroll month it is paid with; and New reimbursement. Nothing from an API from before
  * them, nor without a profile of their own (the requests above say so).
@@ -296,9 +352,12 @@ export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests
         </Suspense>
       </div>
       <Suspense fallback={null}>
+        <Leave />
+      </Suspense>
+      <Suspense fallback={null}>
         <Reimbursements />
       </Suspense>
-      <p className="mt-8 text-sm text-muted">Leave and attendance requests are coming soon.</p>
+      <p className="mt-8 text-sm text-muted">Attendance is coming soon.</p>
     </div>
   );
 }

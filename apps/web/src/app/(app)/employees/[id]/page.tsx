@@ -51,7 +51,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
 
         <ProfileTabs tabs={tabs.map((t) => ({ key: t.key, label: t.label, href: profileHref(p.id, t.key) }))} active={tab} label={`Profile of ${p.fullNameEn}`}>
           {tab === 'employment' ? (
-            <EmploymentTab profile={p} linkPeople={linkPeople} sub={one(query.sub)} justAdded={one(query.added) === '1'} />
+            <EmploymentTab profile={p} linkPeople={linkPeople} sub={one(query.sub)} justAdded={one(query.added) === '1'} leaveYear={one(query.leaveYear)} />
           ) : tab === 'insurance' ? (
             <InsuranceTab profile={p} />
           ) : tab === 'documents' ? (

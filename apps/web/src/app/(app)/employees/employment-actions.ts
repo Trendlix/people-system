@@ -65,6 +65,9 @@ function employmentBody(fd: FormData, errors: string[], withStatus: boolean) {
     officeDays: workArrangement === 'hybrid' ? fd.getAll('officeDays').map(Number) : [],
     shiftId: text(fd, 'shiftId'),
     jdAcknowledgedAt: dateFrom(fd, 'jdAcknowledgedAt', 'job description acknowledgement date', errors),
+    // hazardous, unhealthy or remote work: 7 more days of annual leave (owner, 18 October 2026; Labour Law Art. 124),
+    // sent with its marker when the form has it, unticked as no
+    ...(fd.has('hazardousWorkSent') && { hazardousWork: fd.has('hazardousWork') }),
   };
 }
 

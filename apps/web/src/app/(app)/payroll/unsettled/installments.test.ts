@@ -14,7 +14,7 @@ import {
   nextText,
   parseCount,
   planPreview,
-  planWarnings,
+  planProblem,
   postponeConfirm,
   SETTLE_CHOICES,
   settleAdvanceBody,
@@ -79,29 +79,32 @@ describe('the record form', () => {
     expect(planPreview('6000', '6', '')).toEqual({ ok: false, problems: ['Choose the month of the first installment.'] });
   });
 
-  it('warns of each month whose installments, those already planned and the new ones, pass the share of the pay', () => {
+  it('refuses a plan that takes a month, with the installments already planned, past 10% of the gross (owner, 18 October 2026: "Block above 10%")', () => {
     const preview = planPreview('6000', '6', '2026-11');
     const plan = preview?.ok ? preview.plan : [];
-    // 1,500.00 already planned in November: 2,500.00 there, more than 10% of 20,000.00; 1,000.00 the other months
-    expect(planWarnings(plan, { gross: 20000, percent: 10, byMonth: { '2026-11': 1500 } })).toEqual([
-      {
-        month: '2026-11',
-        text: "November 2026: This month's installments, EGP 2,500.00, are more than 10% of the pay (EGP 2,000.00), the share set in Payroll Setup.",
-      },
-    ]);
-    expect(planWarnings(plan, { gross: 8000, percent: 10, byMonth: {} })).toHaveLength(6);
-    // no figures, no current contract or no percent set: no warning
-    expect(planWarnings(plan, null)).toEqual([]);
-    expect(planWarnings(plan, { gross: null, percent: 10, byMonth: {} })).toEqual([]);
-    expect(planWarnings(plan, { gross: 8000, percent: null, byMonth: {} })).toEqual([]);
+    // 1,000.00 a month is within 10% of 20,000.00
+    expect(planProblem(plan, { gross: 20000, percent: 10, byMonth: {} })).toBeNull();
+    // 1,500.00 already planned in November: 2,500.00 there, more than 2,000.00
+    expect(planProblem(plan, { gross: 20000, percent: 10, byMonth: { '2026-11': 1500 } })).toBe(
+      'In November 2026 the installments of advances and loans would be EGP 2,500.00, more than 10% of the gross pay of EGP 20,000.00 (EGP 2,000.00), the most the law allows (Labour Law Art. 113). Spread it over more months: 12 monthly installments would keep every month within the limit.',
+    );
+    // on 8,000.00, at most 800.00 a month: 8 months
+    expect(planProblem(plan, { gross: 8000, percent: 10, byMonth: {} })).toMatch(/8 monthly installments would keep every month within the limit\.$/);
+    // a lower limit set in Payroll Setup
+    expect(planProblem(plan, { gross: 20000, percent: 4, byMonth: {} })).toMatch(/more than 4% of the gross pay of EGP 20,000\.00 \(EGP 800\.00\), the limit set in Payroll Setup/);
+    // no figures (not read yet) or no current contract: nothing to check against, the API checks it
+    expect(planProblem(plan, null)).toBeNull();
+    expect(planProblem(plan, { gross: null, percent: 10, byMonth: {} })).toBeNull();
   });
 
-  it('says what the warning is worked out with', () => {
+  it('says what the law’s limit is worked out with', () => {
     expect(limitText({ gross: 20000, percent: 10, byMonth: {} })).toBe(
-      'The current gross is EGP 20,000.00 a month: Payroll Setup warns when a month’s installments pass 10% of it (EGP 2,000.00).',
+      'The current gross is EGP 20,000.00 a month: a month’s installments of all their advances and loans may take at most 10% of it (EGP 2,000.00), the most the law allows (Labour Law Art. 113).',
     );
-    expect(limitText({ gross: null, percent: 10, byMonth: {} })).toBe('No current contract, so the share of the pay can’t be checked.');
-    expect(limitText({ gross: 20000, percent: null, byMonth: {} })).toBeNull();
+    expect(limitText({ gross: 20000, percent: 7.5, byMonth: {} })).toBe(
+      'The current gross is EGP 20,000.00 a month: a month’s installments of all their advances and loans may take at most 7.5% of it (EGP 1,500.00), the limit set in Payroll Setup (the law’s is 10%).',
+    );
+    expect(limitText({ gross: null, percent: 10, byMonth: {} })).toBe('No current contract, so the law’s limit on installments can’t be checked.');
     expect(limitText(null)).toBeNull();
     expect(limitHref('e1')).toBe('/payroll/unsettled/installments-limit?employeeId=e1');
   });

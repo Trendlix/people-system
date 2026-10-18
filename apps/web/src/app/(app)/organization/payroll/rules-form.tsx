@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT } from '@trendlix/shared';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { ContractSettings, FormState, PayrollSettingsView } from '@/lib/types';
 import { plainAmount } from '../../employees/[id]/contracts/salary';
@@ -15,8 +16,10 @@ import { plainAmount } from '../../employees/[id]/contracts/salary';
 // 2026: the Salary Raises report): after how many months without a raise, or since joining, someone is due for a
 // salary review; an API from before it has none, and the field isn't shown. Installments (owner, 18 October 2026: "in the
 // deductions i might have a loan of a medical subscription or something that needs to be deducted as installments on
-// the employee. how will it be managed?"): the share of the pay a month's installments may take before a warning, on
-// the record form and the run's line, never a block; empty, no warning. Shown only when the API has it.
+// the employee. how will it be managed?"): the most a month's installments of advances and loans may take of the wage,
+// the Labour Law's limit (owner, 18 October 2026, after reading the law: "Block above 10%"; Art. 113): 10% at most,
+// lower if the company sets it so; a plan or an installment past it is refused, and the run's line warns past it.
+// Shown only when the API has it.
 
 type RuleKey = 'dayDivisor' | 'attendanceGracePercent' | 'kpiGracePercent' | 'overtimeAbovePercent' | 'overtimeRate' | 'noShowDayMultiplier';
 
@@ -57,7 +60,7 @@ export function YourRulesForm({
   const [paysOvertime, setPaysOvertime] = useState(typedSwitch !== undefined ? typedOn(typedSwitch) : rules.payOvertime !== false);
   const off = hasSwitch && !paysOvertime;
   const reviewMonths = rules.salaryReviewMonths;
-  const warnPercent = rules.installmentWarnPercent;
+  const limitPercent = rules.installmentLimitPercent;
 
   const numberField = (f: RuleField, disabled = false) => (
     <div key={f.key} className={disabled ? 'opacity-60' : undefined}>
@@ -148,32 +151,34 @@ export function YourRulesForm({
         </div>
       )}
 
-      {warnPercent !== undefined && (
+      {limitPercent !== undefined && (
         <div className="border-t border-line-soft pt-5">
           <fieldset className="space-y-4">
-            <legend className="font-semibold">Installments</legend>
+            <legend className="font-semibold">The Law&apos;s Limit on Installments</legend>
             <div>
-              <label htmlFor={fid('installmentWarnPercent')} className="label">
-                Warn when a month&apos;s installments pass
+              <label htmlFor={fid('installmentLimitPercent')} className="label">
+                A month&apos;s installments may take at most
               </label>
               <div className="flex flex-wrap items-center gap-2">
                 <input
-                  id={fid('installmentWarnPercent')}
-                  name="installmentWarnPercent"
+                  id={fid('installmentLimitPercent')}
+                  name="installmentLimitPercent"
+                  required
                   inputMode="decimal"
                   autoComplete="off"
-                  placeholder="No warning"
-                  defaultValue={valueOf(state, 'installmentWarnPercent', warnPercent === null ? '' : String(warnPercent))}
-                  aria-describedby={`${fid('installmentWarnPercent-unit')} ${fid('installmentWarnPercent-hint')}`}
+                  defaultValue={valueOf(state, 'installmentLimitPercent', String(limitPercent ?? LAW_INSTALLMENT_PERCENT))}
+                  aria-describedby={`${fid('installmentLimitPercent-unit')} ${fid('installmentLimitPercent-hint')}`}
                   className="input w-32 tabular-nums"
                 />
-                <span id={fid('installmentWarnPercent-unit')} className="text-sm">
-                  % of the pay
+                <span id={fid('installmentLimitPercent-unit')} className="text-sm">
+                  % of the wage
                 </span>
               </div>
-              <p id={fid('installmentWarnPercent-hint')} className="hint">
-                A month&apos;s advance recoveries and loan installments against the month&apos;s gross: a warning when an advance or loan is recorded and on
-                the run&apos;s line, never a block. 1 to 100, e.g. 10; leave it empty for no warning.
+              <p id={fid('installmentLimitPercent-hint')} className="hint">
+                The Labour Law allows at most {LAW_INSTALLMENT_PERCENT}% of the wage a month to repay an advance or a loan (Law No. 14 of 2025, Art. 113):
+                all of the employee&apos;s advance recoveries and loan installments in a month together, against their current contract&apos;s gross.
+                Recording a plan, changing or moving an installment, or entering a recovery past it is refused, and the run&apos;s line warns past it.
+                {` ${INSTALLMENT_LIMIT_MIN} to ${LAW_INSTALLMENT_PERCENT}`}; lower if the company wants less.
               </p>
             </div>
           </fieldset>

@@ -144,6 +144,22 @@ class EmployeeDetailsDto {
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(80)
   displayName?: string | null;
 
+  // ---------- for the annual leave (Labour Law 14/2025 Art. 124; owner, 18 October 2026) ----------
+
+  /**
+   * The months of service with earlier employers, for the 30 days due after "عشر سنوات كاملة لدى صاحب عمل أو أكثر":
+   * 0 to 600; null clears it (none).
+   */
+  @IsOptional()
+  @IsInt({ message: 'Enter the months of service with earlier employers as a whole number from 0 to 600, e.g. 96 for 8 years.' })
+  @Min(0, { message: 'Enter the months of service with earlier employers as a whole number from 0 to 600, e.g. 96 for 8 years.' })
+  @Max(600, { message: 'Enter the months of service with earlier employers as a whole number from 0 to 600, e.g. 96 for 8 years.' })
+  priorServiceMonths?: number | null;
+
+  /** A person with a disability: 45 days of annual leave ("خمسة وأربعون يوما للأشخاص ذوى الإعاقة والأقزام"). */
+  @Sent() @IsBoolean({ message: 'Send whether the employee has a disability as true or false.' })
+  disability?: boolean;
+
   // ---------- identity ----------
   @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real date of birth.')
   dateOfBirth?: string | null;

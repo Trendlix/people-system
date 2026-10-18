@@ -1,0 +1,190 @@
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { Suspense } from 'react';
+import { LEAVE_PAY_LABELS } from '@trendlix/shared';
+import { DocumentViewer } from '@/components/document-viewer';
+import { formatDateTime, titleCase } from '@/lib/format';
+import { getCurrentUser } from '@/lib/session';
+import type { LeaveRequestView } from '@/lib/types';
+import { sizeText } from '../../reimbursements/claim';
+import { BackLink, Empty, Loading, UUID } from '../../organization/ui';
+import { notLoadedText } from '../../payroll/load';
+import { cancelLeaveByHr, cancelMyLeave, decideLeave } from '../actions';
+import { CancelLeaveForm, HrCancelLeaveForm, LeaveDecisionForm } from '../leave-forms';
+import { loadLeaveRequest } from '../data';
+import { daysNumber, daysText, leaveBack, leaveDocumentHref, leaveDoneText, periodText, placeOfEmployee, recordsLeave, stageTitle } from '../list';
+import { LeaveProgress, LeaveStatusBadge, LeaveTimeline } from '../ui';
+
+// A leave request (owner, 18 October 2026: "can you apply the leaves according to the law?"), for the employee, their
+// direct manager, HR and the CEO (anyone else gets the 404 page: the API says it isn't there): the type and its pay, when
+// and how many days (as the law counts them: working days, the holidays and rest days left out, Art. 124), the reason,
+// the documents in the document viewer, where it stands and the annual balance after it, and its log of every step.
+// While it waits for the user, their decision (Approve, or Reject with a comment); the employee's Cancel while it is
+// being decided or before it starts; HR's Cancel of an approved one, with a comment, its days given back. What was just
+// done on it shows at the top (?done=).
+
+export const metadata: Metadata = { title: 'Leave Request · People System' };
+
+function Fact({ label, wide = false, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={wide ? 'sm:col-span-2' : undefined}>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="mt-0.5 text-sm break-words">{children}</dd>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="card p-5">
+      <h2 className="font-semibold">{title}</h2>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+/** The documents, each opened in the document viewer on its own (fetched only then, under the web domain). */
+function Documents({ request: r }: { request: LeaveRequestView }) {
+  if (!r.documents.length) return <p className="text-sm text-muted">No document attached.</p>;
+  return (
+    <ul className="divide-y divide-line-soft">
+      {r.documents.map((d, i) => (
+        <li key={d.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 text-sm">
+          <span className="min-w-0 break-all">
+            {d.fileName || `Document ${i + 1}`}{' '}
+            <span className="text-muted tabular-nums">
+              · {d.mimeType === 'application/pdf' ? 'PDF' : 'Photo'} · {sizeText(d.sizeBytes)}
+            </span>
+          </span>
+          <DocumentViewer
+            title={`Document ${i + 1} · ${r.type.nameEn} · ${r.employee.fullNameEn}`}
+            files={[{ alt: `Document ${i + 1} of the ${r.type.nameEn} request by ${r.employee.fullNameEn}`, src: leaveDocumentHref(r.id, d.id), mimeType: d.mimeType }]}
+          >
+            View<span className="sr-only"> {d.fileName}</span>
+          </DocumentViewer>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+async function LeaveRequest({ params, searchParams }: { params: PageProps<'/leave/[id]'>['params']; searchParams: PageProps<'/leave/[id]'>['searchParams'] }) {
+  const [{ id }, query] = await Promise.all([params, searchParams]);
+  if (!UUID.test(id)) notFound();
+  const [user, loaded] = await Promise.all([getCurrentUser(), loadLeaveRequest(id)]);
+  if (loaded.kind === 'unavailable') notFound();
+  if (loaded.kind === 'forbidden') return <Empty>This leave request isn&apos;t yours to see.</Empty>;
+  if (loaded.kind === 'failed') return <Empty>{notLoadedText(loaded, 'leave request')}</Empty>;
+  const r = loaded.value;
+  const back = leaveBack(user, r);
+  const done = leaveDoneText(query, r.status);
+  const place = placeOfEmployee(r.employee);
+  const what = `${r.type.nameEn.toLowerCase()} (${periodText(r)})`;
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <BackLink href={back.href}>{back.label}</BackLink>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-semibold">{titleCase(r.type.nameEn)}</h1>
+          <LeaveStatusBadge status={r.status} />
+        </div>
+        <p className="text-muted">
+          {r.employee.fullNameEn}
+          {place && ` · ${place}`} · {r.recordedByHr ? 'recorded by HR' : 'sent'} {formatDateTime(r.createdAt)}
+        </p>
+      </div>
+      {done && (
+        <p role="status" className={`rounded-lg px-4 py-3 text-sm ${done.tone === 'warn' ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'}`}>
+          {done.text}
+        </p>
+      )}
+
+      <div className="grid items-start gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <Section title="The Leave">
+            <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              <Fact label="Type">
+                {r.type.nameEn}{' '}
+                <span lang="ar" dir="rtl" className="inline-block text-muted">
+                  {r.type.nameAr}
+                </span>
+                <span className="block text-xs text-muted">{LEAVE_PAY_LABELS[r.type.paid] ?? r.type.paid}</span>
+              </Fact>
+              <Fact label="When">
+                <span className="tabular-nums">{periodText(r)}</span>
+              </Fact>
+              <Fact label="Days">
+                <span className="text-base font-semibold tabular-nums">{daysText(r.days)}</span>
+              </Fact>
+              {r.balanceAfter !== null && (
+                <Fact label="Annual balance after it">
+                  <span className="text-base font-semibold tabular-nums">{daysNumber(r.balanceAfter)}</span>
+                  <span className="block text-xs text-muted">Available once this is taken</span>
+                </Fact>
+              )}
+              {r.reason && (
+                <Fact label="Reason" wide>
+                  <span className="whitespace-pre-line">{r.reason}</span>
+                </Fact>
+              )}
+              <Fact label="Where it stands">
+                <LeaveProgress request={r} />
+              </Fact>
+              <Fact label="Direct manager">
+                {r.recordedByHr ? (
+                  <span className="text-muted">Recorded by HR: no decision needed</span>
+                ) : r.manager ? (
+                  r.manager.fullNameEn
+                ) : (
+                  <span className="text-muted">None: sent straight to HR</span>
+                )}
+              </Fact>
+            </dl>
+          </Section>
+
+          <Section title="Documents">
+            <Documents request={r} />
+          </Section>
+
+          {r.waitingForYou && r.stage && (
+            <Section title={`Your Decision as ${stageTitle(r.stage)}`}>
+              <LeaveDecisionForm action={decideLeave.bind(null, r.id, r.stage)} stage={r.stage} name={r.employee.fullNameEn} />
+            </Section>
+          )}
+
+          {r.canCancel && (
+            <Section title="Cancel the Leave">
+              <p className="mb-3 text-sm text-muted">
+                {r.status === 'approved'
+                  ? 'Approved and not started yet: you can still cancel it, and its days go back to your balance.'
+                  : 'While it is being decided you can cancel it, e.g. to ask again for other days.'}
+              </p>
+              <CancelLeaveForm action={cancelMyLeave.bind(null, r.id)} what={what} />
+            </Section>
+          )}
+          {!r.canCancel && (r.hrCanCancel ?? (recordsLeave(user) && r.status === 'approved' && user.employeeId !== r.employee.id)) && (
+            <Section title="Cancel the Leave">
+              <p className="mb-3 text-sm text-muted">Approved leave HR cancels gives its days back to the balance; the employee sees why.</p>
+              <HrCancelLeaveForm action={cancelLeaveByHr.bind(null, r.id)} what={what} />
+            </Section>
+          )}
+        </div>
+
+        <Section title="Every Step">
+          <LeaveTimeline request={r} />
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+export default function LeaveRequestPage({ params, searchParams }: PageProps<'/leave/[id]'>) {
+  return (
+    <div className="max-w-5xl">
+      <Suspense fallback={<Loading />}>
+        <LeaveRequest params={params} searchParams={searchParams} />
+      </Suspense>
+    </div>
+  );
+}

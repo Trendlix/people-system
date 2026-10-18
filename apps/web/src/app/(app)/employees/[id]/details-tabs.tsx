@@ -7,6 +7,7 @@ import { formatDate } from '@/lib/format';
 import type { EmployeeBank, EmployeeIdentity, EmployeeProfile } from '@/lib/types';
 import { deleteEmployee } from '../actions';
 import { ExpiryChip, FieldGrid, ProfileSection, todayInCairo } from '../ui';
+import { priorServiceText } from '../leave-facts';
 import { bankShown } from './edit/bank/bank-rules';
 
 // The Basic Data and Education tabs: the profile's fields in a grid, label above value. Fields counted in the profile's
@@ -78,6 +79,13 @@ export async function BasicTab({ profile: p, show, today, education }: { profile
               value: p.gender === 'female' ? LABELS.militaryStatus.not_applicable : p.militaryStatus && LABELS.militaryStatus[p.militaryStatus],
               required: true,
             },
+            // for the annual leave (owner, 18 October 2026: "can you apply the leaves according to the law?"; Labour Law
+            // Art. 124): 45 days with a disability, and the service with earlier employers towards the 30 days of 10
+            // years' service; HR's, left out by an API from before leave
+            ...(p.disability !== undefined ? [{ key: 'disability', label: 'Disability', value: p.disability ? 'Yes' : 'No', note: p.disability ? '45 days of annual leave (Labour Law Art. 124)' : undefined }] : []),
+            ...(p.priorServiceMonths !== undefined
+              ? [{ key: 'priorService', label: 'Service with earlier employers', value: priorServiceText(p.priorServiceMonths), note: 'Counts towards 10 years, for 30 days of annual leave' }]
+              : []),
           ]}
         />
       </ProfileSection>

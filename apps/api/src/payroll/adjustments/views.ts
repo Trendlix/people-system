@@ -204,6 +204,9 @@ export const RECURRING_INCLUDE = {
     },
   },
   deductions: { orderBy: [{ month: 'asc' }], select: { id: true, month: true, amount: true, status: true } },
+  // the employee's written consent (Labour Law Art. 114; owner, 18 October 2026): who recorded it, and the signed consent
+  consentRecordedBy: USER,
+  consentPaperwork: { select: { id: true, fileName: true } },
 } satisfies Prisma.RecurringDeductionInclude;
 
 export type RecurringRow = Prisma.RecurringDeductionGetPayload<{ include: typeof RECURRING_INCLUDE }>;
@@ -229,11 +232,17 @@ export interface RecurringDeductionView {
   status: RecurringStatus;
   /** Its months' Recurring deductions, oldest first: added by each month's run. */
   deducted: { month: string; amount: number; status: AdjustmentStatus }[];
+  /**
+   * The employee's written consent (Labour Law 14/2025 Art. 114; owner, 18 October 2026, after reading the law: "record
+   * the consent"): when HR recorded it was on file and who, and the signed consent if HR attached it (a paper in the
+   * employee file). Null: not recorded, as on those set up before then.
+   */
+  consent: { recordedAt: Date; recordedBy: UserRef | null; paper: { id: string; fileName: string } | null } | null;
   createdAt: Date;
 }
 
-/** A recurring deduction as the API sends it; `current`: this month, YYYY-MM. */
-export function recurringView(r: RecurringRow, current: string): RecurringDeductionView {
+/** A recurring deduction as the API sends it; `current`: this month, YYYY-MM; `names`: the users' names, by id. */
+export function recurringView(r: RecurringRow, current: string, names: ReadonlyMap<string, UserRef> = new Map()): RecurringDeductionView {
   const months = recurringMonths(r);
   const d = r.employee.employments[0]?.department ?? null;
   return {
@@ -245,6 +254,7 @@ export function recurringView(r: RecurringRow, current: string): RecurringDeduct
     stopNote: r.stopNote,
     status: recurringStatus(months, current),
     deducted: r.deductions.map((x) => ({ month: monthOfDate(x.month), amount: x.amount?.toNumber() ?? 0, status: x.status as AdjustmentStatus })),
+    consent: r.consentRecordedAt && { recordedAt: r.consentRecordedAt, recordedBy: refOf(names, r.consentRecordedBy), paper: r.consentPaperwork },
     createdAt: r.createdAt,
   };
 }

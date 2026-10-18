@@ -3,11 +3,12 @@ import {
   ADVANCE_SETTLED_HOW_LABELS,
   changeInstallment,
   installmentLimit,
-  installmentLimitWarning,
   installmentPlan,
   installmentPlanProblems,
   installmentPlanText,
+  LAW_INSTALLMENT_PERCENT,
   monthPlus,
+  planLimitProblem,
   type AdvanceSettleWay,
   type Installment,
 } from '@trendlix/shared';
@@ -21,10 +22,12 @@ import type { AdvanceRow } from '../adjustments/adjustments';
 // day: recording an advance or a loan with its total, how many months and the first month makes every monthly
 // installment at once, equal amounts, the last taking the rounding (installmentPlan, @trendlix/shared); HR may move one
 // to the next month (it and every later one move a month on) or change one's amount (the later ones share what is
-// left), while it is pending and its month's run isn't approved; a warning, never a block, when a month's installments
-// pass the share of the pay set in Payroll Setup. Leaving before it is paid back: "taken from the final settlement,
-// unless waived". Plain helpers for Unsettled (no server-only, so they are unit tested): the record form's live plan
-// and warning, each installment's state, the settle form and the change form. The rules are the shared ones, which the
+// left), while it is pending and its month's run isn't approved. A month's installments may take at most 10% of the
+// wage, all of the employee's advances and loans together (owner, 18 October 2026, after reading the law: "Block above
+// 10%"; Labour Law 14/2025 Art. 113), or the lower limit set in Payroll Setup: a plan past it can't be recorded, and the
+// record form says so as it is typed. Leaving before it is paid back: "taken from the final settlement, unless
+// waived". Plain helpers for Unsettled (no server-only, so they are unit tested): the record form's live plan and the
+// law's limit, each installment's state, the settle form and the change form. The rules are the shared ones, which the
 // API applies again. Relative imports: the tests run without the "@/" alias.
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
@@ -32,7 +35,7 @@ const latin = (s: string) => s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0)
 
 // ---------- the record form ----------
 
-/** Where the record form reads the share-of-pay warning's figures for an employee (./installments-limit/route.ts). */
+/** Where the forms read the figures the law's limits are checked with for an employee (./installments-limit/route.ts). */
 export const limitHref = (employeeId: string) => `/payroll/unsettled/installments-limit?employeeId=${encodeURIComponent(employeeId)}`;
 
 /** How many installments as typed: a whole number ("6", "٦"), else NaN; empty: null. */
@@ -73,26 +76,24 @@ export function planPreview(amountInput: string, countInput: string, first: stri
 }
 
 /**
- * The share-of-pay warnings for a plan (owner, 18 October 2026: a warning, never a block): each month whose
- * installments, those already planned or applied for the employee and the plan's, pass the percent set in Payroll
- * Setup of their current gross. None without a gross (no current contract), a percent, or the figures.
+ * Why a plan can't be recorded (owner, 18 October 2026, after reading the law: "Block above 10%"): the first month
+ * whose installments, those already planned or applied for the employee and the plan's, would take more than the
+ * limit of their current gross, with how many months would do, as the API says it. Null when it can be, or without the
+ * figures (no current contract: nothing to check against; or not read yet: the API checks it).
  */
-export function planWarnings(plan: readonly Installment[], limit: AdvanceLimitView | null): { month: string; text: string }[] {
-  if (!limit || limit.gross === null || limit.percent === null) return [];
-  const { gross, percent, byMonth } = limit;
-  return plan.flatMap((p) => {
-    const month = Math.round(((byMonth[p.month] ?? 0) + p.amount) * 100) / 100;
-    const warning = installmentLimitWarning(month, gross, percent);
-    return warning ? [{ month: p.month, text: `${monthName(p.month)}: ${warning}` }] : [];
-  });
+export function planProblem(plan: readonly Installment[], limit: AdvanceLimitView | null): string | null {
+  if (!limit || limit.gross === null) return null;
+  return planLimitProblem(plan, limit.byMonth, limit.gross, limit.percent ?? LAW_INSTALLMENT_PERCENT);
 }
 
-/** What the warning is worked out with, as the form says it under the plan; null without it. */
+/** What the law's limit is worked out with, as the form says it under the plan; null without the figures. */
 export function limitText(limit: AdvanceLimitView | null): string | null {
-  if (!limit || limit.percent === null) return null;
-  if (limit.gross === null) return 'No current contract, so the share of the pay can’t be checked.';
-  const most = installmentLimit(limit.gross, limit.percent);
-  return `The current gross is ${formatEgp(limit.gross)} a month: Payroll Setup warns when a month’s installments pass ${limit.percent}% of it (${formatEgp(most ?? 0)}).`;
+  if (!limit) return null;
+  if (limit.gross === null) return 'No current contract, so the law’s limit on installments can’t be checked.';
+  const percent = limit.percent ?? LAW_INSTALLMENT_PERCENT;
+  const most = installmentLimit(limit.gross, percent) ?? 0;
+  const whose = percent >= LAW_INSTALLMENT_PERCENT ? 'the most the law allows (Labour Law Art. 113)' : `the limit set in Payroll Setup (the law’s is ${LAW_INSTALLMENT_PERCENT}%)`;
+  return `The current gross is ${formatEgp(limit.gross)} a month: a month’s installments of all their advances and loans may take at most ${percent}% of it (${formatEgp(most)}), ${whose}.`;
 }
 
 // ---------- each installment ----------

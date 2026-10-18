@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { PaperworkModule } from '../../paperwork/paperwork.module.js';
 import { AdjustmentsController, AdvancesController, DeductionPlansController, RecurringDeductionsController } from './adjustments.controller.js';
 import { AdjustmentsService } from './adjustments.service.js';
 import { AdvancesService } from './advances.service.js';
@@ -16,9 +17,11 @@ import { RunAdjustmentsService } from './run-adjustments.service.js';
 // i might have a loan of a medical subscription or something that needs to be deducted as installments on the
 // employee"): an advance's or a loan's installments made at once and moved or changed by HR (InstallmentsService), and
 // monthly shares each month's run adds (RecurringDeductionsService, which an employment's end stops); the employee sees
-// their own (DeductionPlansService).
+// their own (DeductionPlansService). A recurring deduction's signed consent (Labour Law Art. 114; owner, 18 October
+// 2026) is kept in the employee file (PaperworkModule).
 @Global()
 @Module({
+  imports: [PaperworkModule],
   controllers: [AdjustmentsController, AdvancesController, RecurringDeductionsController, DeductionPlansController],
   providers: [AdjustmentsService, AdvancesService, RunAdjustmentsService, GridInputsService, InstallmentsService, RecurringDeductionsService, DeductionPlansService],
   exports: [AdjustmentsService, AdvancesService, RunAdjustmentsService, GridInputsService, InstallmentsService, RecurringDeductionsService],

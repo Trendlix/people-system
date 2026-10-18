@@ -16,6 +16,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { firstDay, monthName, monthsLater } from '../months.js';
 import type { AdvancesQueryDto, CreateAdvanceDto, UpdateAdvanceDto } from './adjustments.dto.js';
+import { assertPlanWithinLimit } from './law-limits.js';
 import { firstLocked, lockedMonths, payrollIs } from './locks.js';
 import { egp, employedIn, userNames } from './people.js';
 import { installmentReason } from './plans.js';
@@ -126,8 +127,9 @@ export class AdvancesService {
 
   /**
    * The installments of one being recorded (18 October 2026): the plan's problems none, the first month from the month
-   * it was given and at most a year ahead, the employee employed then, and none of the plan's months a month whose run
-   * is with the CEO, approved or paid (it would never take it).
+   * it was given and at most a year ahead, the employee employed then, none of the plan's months a month whose run is
+   * with the CEO, approved or paid (it would never take it), and none taking the employee's installments over the
+   * law's limit (owner, 18 October 2026, after reading the law: "Block above 10%"; law-limits.ts).
    */
   private async checkedPlan(
     employee: { id: string; fullNameEn: string },
@@ -147,6 +149,7 @@ export class AdvancesService {
     const schedule = installmentPlan(dto.amount, wanted.count, wanted.firstMonth);
     const locked = firstLocked(await lockedMonths(this.prisma, schedule.map((p) => p.month)));
     if (locked) throw new BadRequestException(`${payrollIs(locked.month, locked.status)}, so it can't take an installment: start the installments from a later month.`);
+    await assertPlanWithinLimit(this.prisma, employee.id, schedule);
     return schedule;
   }
 

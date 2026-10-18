@@ -22,6 +22,7 @@ import {
   signedAmount,
   taxText,
   isRecurring,
+  lawWarningsOf,
   typeChoices,
   type AdjustmentRow,
   type AdvanceRow,
@@ -262,5 +263,19 @@ describe('on a run', () => {
     const result = { adjustments: [{ id: 'b', kind: 'addition' as const, type: 'bonus_days' as const, taxed: true, amount: 320, days: 1, reason: 'x' }] };
     const older = { terms: { adjustments: [{ id: 'd', kind: 'deduction' as const, type: 'penalty' as const, taxed: false, amount: 100, reason: 'y' }] }, result: {} };
     expect(runAdjustments([{ terms, result }, older, { terms: {}, result: {} }])).toEqual({ lines: 2, count: 2, taxed: 320, untaxed: 0, deductions: 100 });
+  });
+});
+
+describe('the Labour Law’s warnings', () => {
+  it('gives each employee’s for the month (Art. 151: damage past 5 days’ wage), none from an API from before them', () => {
+    const choices = {
+      warnings: [
+        { employeeId: 'e1', text: "This month's damage or loss deductions, EGP 1,500.01, are more than 5 days' wage" },
+        { employeeId: 'e2', text: 'Another' },
+      ],
+    };
+    expect(lawWarningsOf(choices, 'e1')).toEqual(["This month's damage or loss deductions, EGP 1,500.01, are more than 5 days' wage"]);
+    expect(lawWarningsOf(choices, 'e3')).toEqual([]);
+    expect(lawWarningsOf({}, 'e1')).toEqual([]);
   });
 });

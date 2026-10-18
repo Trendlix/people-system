@@ -1,4 +1,4 @@
-import { SALARY_REVIEW_MONTHS_MAX, SALARY_REVIEW_MONTHS_MIN, type PayrollRules, type Role } from '@trendlix/shared';
+import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT, SALARY_REVIEW_MONTHS_MAX, SALARY_REVIEW_MONTHS_MIN, type PayrollRules, type Role } from '@trendlix/shared';
 import { hasRole } from '../../../../lib/roles';
 import { parseAmount } from '../../employees/[id]/contracts/salary';
 
@@ -7,8 +7,10 @@ import { parseAmount } from '../../employees/[id]/contracts/salary';
 // worked out with, after the owner's payroll sheet (PATCH /payroll/settings), and the company defaults that change the
 // sheet, kept with the contract settings (PATCH /contract-settings): the basic share of the gross new contracts start
 // with and the basic wage social insurance Form 1 prints by default; and when a salary review is due, after how many
-// months without a raise (owner's decision, 16 October 2026: the Salary Raises report), and the share of the pay a
-// month's installments may take before a warning (owner, 18 October 2026). 2 Rates Set by Law (law-rates-section.tsx). The
+// months without a raise (owner's decision, 16 October 2026: the Salary Raises report), and the most a month's
+// installments of advances and loans may take of the wage: a warning until the owner read the Labour Law with us, the
+// law's limit since (owner, 18 October 2026, after reading the law: "Block above 10%"; Art. 113: 10% at most, lower if
+// set so). 2 Rates Set by Law (law-rates-section.tsx). The
 // holidays and working days were the third section until they got a tab of their own (owner, 16 October 2026: "make
 // holiday a separate tab"; organization/holidays). 4 Paying Salaries: the company's CIB account, the ACH purpose and
 // the payday. Pure code, tested: who sees it, each form read into what the API takes and the payday's date. Relative
@@ -55,7 +57,7 @@ export const RULE_FIELDS = Object.keys(RULES) as RuleField[];
 export const BASIC_PERCENT_ERROR = 'Enter the basic share of the gross as a whole percent from 1 to 100, e.g. 80.';
 export const INSURANCE_BASIC_ERROR = 'Enter the default basic wage as an amount in EGP of more than 0 and up to 99,999.99, e.g. 410.';
 export const SALARY_REVIEW_ERROR = `Enter after how many months without a raise a salary review is due: a whole number from ${SALARY_REVIEW_MONTHS_MIN} to ${SALARY_REVIEW_MONTHS_MAX}, e.g. 12.`;
-export const INSTALLMENT_WARN_ERROR = 'Enter the share of the pay for the installments warning as a percent from 1 to 100, e.g. 10, or leave it empty for no warning.';
+export const INSTALLMENT_LIMIT_ERROR = `Enter the most a month's installments may take as a percent of the wage from ${INSTALLMENT_LIMIT_MIN} to ${LAW_INSTALLMENT_PERCENT}, e.g. 10: the law allows at most ${LAW_INSTALLMENT_PERCENT}%.`;
 
 /** The company defaults Your Rules edits, which PATCH /contract-settings takes: only those the form had. */
 export interface ContractDefaultsBody {
@@ -68,7 +70,7 @@ export interface ContractDefaultsBody {
  * the months after which a salary review is due when the form has them (an API from before it leaves it off the form).
  */
 export type RulesBody = Omit<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'> &
-  Partial<Pick<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'>> & { salaryReviewMonths?: number; installmentWarnPercent?: number | null };
+  Partial<Pick<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'>> & { salaryReviewMonths?: number; installmentLimitPercent?: number };
 
 /**
  * The Your Rules form: the rules as PATCH /payroll/settings takes them, the company defaults as PATCH
@@ -94,13 +96,12 @@ export function rulesBody(fd: FormData): { rules: RulesBody; defaults: ContractD
     if (Number.isNaN(months)) errors.push(SALARY_REVIEW_ERROR);
     rules.salaryReviewMonths = months;
   }
-  // the share of the pay a month's installments may take before a warning (owner, 18 October 2026: a warning only,
-  // never a block); left empty, no warning
-  if (fd.has('installmentWarnPercent')) {
-    const typed = latin(text(fd, 'installmentWarnPercent')).trim();
-    const percent = typed === '' ? null : numberFrom(typed, { min: 1, max: 100 });
-    if (percent !== null && Number.isNaN(percent)) errors.push(INSTALLMENT_WARN_ERROR);
-    rules.installmentWarnPercent = percent;
+  // the most a month's installments may take of the wage (owner, 18 October 2026, after reading the law: "Block above
+  // 10%"): 1 to 10, needed (the law's limit applies either way)
+  if (fd.has('installmentLimitPercent')) {
+    const percent = numberFrom(text(fd, 'installmentLimitPercent'), { min: INSTALLMENT_LIMIT_MIN, max: LAW_INSTALLMENT_PERCENT });
+    if (Number.isNaN(percent)) errors.push(INSTALLMENT_LIMIT_ERROR);
+    rules.installmentLimitPercent = percent;
   }
   const defaults: ContractDefaultsBody = {};
   if (fd.has('basicPercentDefault')) {

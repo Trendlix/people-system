@@ -7,6 +7,7 @@ import {
   DETAILS_CHANGES_PATH,
   isActive,
   isUnder,
+  LEAVE_PATH,
   MY_REQUESTS,
   MY_TEAM,
   NAV,
@@ -75,7 +76,7 @@ describe('the sidebar', () => {
     expect(payroll.items?.map((i) => i.label)).not.toContain('Raise Requests');
   });
 
-  it('has Requests as a heading after Payroll, with Raise Requests, Details Changes and Reimbursements under it (owner, 17 and 18 October 2026)', () => {
+  it('has Requests as a heading after Payroll, with Raise Requests, Details Changes, Reimbursements and Leave Requests under it (owner, 17 and 18 October 2026)', () => {
     const labels = NAV.map((n) => n.label);
     expect(labels.indexOf('Requests')).toBe(labels.indexOf('Payroll') + 1);
     // no longer an item of its own
@@ -85,14 +86,16 @@ describe('the sidebar', () => {
       ['Raise Requests', '/raise-requests'],
       ['Details Changes', '/requests/details-changes'],
       ['Reimbursements', '/reimbursements'],
+      ['Leave Requests', '/leave'],
     ]);
-    expect([RAISE_REQUESTS_PATH, DETAILS_CHANGES_PATH, REIMBURSEMENTS_PATH]).toEqual(['/raise-requests', '/requests/details-changes', '/reimbursements']);
+    expect([RAISE_REQUESTS_PATH, DETAILS_CHANGES_PATH, REIMBURSEMENTS_PATH, LEAVE_PATH]).toEqual(['/raise-requests', '/requests/details-changes', '/reimbursements', '/leave']);
     // each page for its own roles; the heading for whoever sees one of them
     expect(requests.roles).toBeUndefined();
     expect(requests.items?.map((i) => i.roles)).toEqual([
       ['hr', 'ceo', 'finance'],
       ['hr', 'admin'],
       ['hr', 'finance', 'ceo'],
+      ['hr', 'ceo'],
     ]);
     // the employee and the manager ask for raises on the profile; an Admin as such doesn't see salaries
     const raise = requests.items![0];
@@ -103,8 +106,14 @@ describe('the sidebar', () => {
     const claims = requests.items![2];
     for (const role of ['hr', 'finance', 'ceo'] as const) expect(hasRole(as(role), ...(claims.roles ?? []))).toBe(true);
     expect(hasRole(as('employee', 'manager', 'admin', 'super_admin'), ...(claims.roles ?? []))).toBe(false);
-    // Leave comes later, with the Leave module
-    expect(COMING_SOON).toContain('Leave');
+    // leave (owner, 18 October 2026: "can you apply the leaves according to the law?"): HR decides and records it, the
+    // CEO views it; the direct manager decides their team's from My Team and the employee asks from My Requests; Finance
+    // and an Admin as such don't
+    const leave = requests.items![3];
+    for (const role of ['hr', 'ceo'] as const) expect(hasRole(as(role), ...(leave.roles ?? []))).toBe(true);
+    expect(hasRole(as('employee', 'manager', 'finance', 'admin', 'super_admin'), ...(leave.roles ?? []))).toBe(false);
+    // no longer coming next
+    expect(COMING_SOON).not.toContain('Leave');
   });
 
   it('highlights the Requests page the user is on, and Requests as the section it is in', () => {
@@ -117,11 +126,17 @@ describe('the sidebar', () => {
     expect(current('/reimbursements/0b8f2c1e-1111-4222-8333-444455556666')).toBe('Reimbursements');
     expect(current('/reimbursements/new')).toBe('Reimbursements');
     expect(current('/reimbursementsx')).toBeNull();
+    // the list, a request, the calendar and recording leave
+    expect(current('/leave')).toBe('Leave Requests');
+    expect(current('/leave/0b8f2c1e-1111-4222-8333-444455556666')).toBe('Leave Requests');
+    expect(current('/leave/record')).toBe('Leave Requests');
+    expect(current('/leaves')).toBeNull();
     expect(current('/approvals')).toBeNull();
     expect(current('/raise-requestsx')).toBeNull();
     expect(isActive(requests, '/raise-requests')).toBe(true);
     expect(isActive(requests, '/requests/details-changes')).toBe(true);
     expect(isActive(requests, '/reimbursements/new')).toBe(true);
+    expect(isActive(requests, '/leave/new')).toBe(true);
     expect(isActive(requests, '/approvals')).toBe(false);
     expect(isActive(requests, '/payroll')).toBe(false);
   });
@@ -185,7 +200,7 @@ describe('the sidebar of an employee or a manager', () => {
   it('shows them no Organization, Employees or HR page', () => {
     for (const roles of [['employee'], ['manager'], ['employee', 'manager']] as Role[][]) {
       const hrefs = navFor({ roles, employeeId: ME }).map((n) => n.href);
-      for (const page of ['/organization/company', '/employees', '/contracts', '/payroll', '/raise-requests', '/requests/details-changes', '/reimbursements', '/offers', '/approvals', '/templates', '/users']) {
+      for (const page of ['/organization/company', '/employees', '/contracts', '/payroll', '/raise-requests', '/requests/details-changes', '/reimbursements', '/leave', '/offers', '/approvals', '/templates', '/users']) {
         expect(hrefs).not.toContain(page);
       }
     }
@@ -198,8 +213,8 @@ describe('the sidebar of an employee or a manager', () => {
     expect(isUnder('/employees/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e', profile.section!)).toBe(false);
   });
 
-  it('keeps Coming Next as it is', () => {
-    expect(COMING_SOON).toEqual(['Attendance', 'Leave']);
+  it('keeps Attendance alone under Coming Next, now that leave is live (18 October 2026)', () => {
+    expect(COMING_SOON).toEqual(['Attendance']);
   });
 });
 
@@ -246,15 +261,15 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     const requestsFor = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).find((n) => n.label === 'Requests') ?? null;
     const pages = (...roles: Role[]) => requestsFor(...roles)?.items?.map((i) => i.label) ?? null;
 
-    it('has Raise Requests, Details Changes and Reimbursements for HR, and links to Raise Requests', () => {
-      expect(pages('hr')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements']);
-      expect(pages('employee', 'hr', 'manager')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements']);
+    it('has Raise Requests, Details Changes, Reimbursements and Leave Requests for HR, and links to Raise Requests', () => {
+      expect(pages('hr')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests']);
+      expect(pages('employee', 'hr', 'manager')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests']);
       expect(requestsFor('hr')?.href).toBe('/raise-requests');
     });
 
-    it('has Raise Requests and Reimbursements for Finance and the CEO, who don’t decide details changes', () => {
+    it('has Raise Requests and Reimbursements for Finance, and Leave Requests too for the CEO, who don’t decide details changes', () => {
       expect(pages('finance')).toEqual(['Raise Requests', 'Reimbursements']);
-      expect(pages('ceo')).toEqual(['Raise Requests', 'Reimbursements']);
+      expect(pages('ceo')).toEqual(['Raise Requests', 'Reimbursements', 'Leave Requests']);
       expect(requestsFor('finance')?.href).toBe('/raise-requests');
       expect(requestsFor('ceo')?.href).toBe('/raise-requests');
     });
@@ -278,6 +293,7 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
         expect(shown.flatMap((n) => n.items ?? [])).toEqual([]);
         expect(shown.map((n) => n.href)).not.toContain(DETAILS_CHANGES_PATH);
         expect(shown.map((n) => n.href)).not.toContain(REIMBURSEMENTS_PATH);
+        expect(shown.map((n) => n.href)).not.toContain(LEAVE_PATH);
       }
     });
 
@@ -296,7 +312,7 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       navFor({ roles: ['admin'], employeeId: 'x' });
       const requests = NAV.find((n) => n.label === 'Requests')!;
       expect(requests.href).toBe('/raise-requests');
-      expect(requests.items).toHaveLength(3);
+      expect(requests.items).toHaveLength(4);
     });
   });
 

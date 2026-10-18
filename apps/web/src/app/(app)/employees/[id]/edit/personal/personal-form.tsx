@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm } from '@/components/form';
 import type { EmployeeProfile, FormState } from '@/lib/types';
+import { LeaveFactsFields } from '../../../leave-fields';
 import { PersonalFields, type Part } from '../../../personal-fields';
 
 /** The profile's fields, or one `part` of them (the Personal Details page: `profile`; the Education page: `education`). */
@@ -29,6 +30,8 @@ export function PersonalForm({
       <FormErrors errors={state.errors} />
 
       <PersonalFields state={state} fid={fid} employee={employee} part={part} emailDomain={emailDomain} />
+      {/* the annual leave's facts on the profile (18 October 2026), from an API that has them */}
+      {part === 'profile' && employee.disability !== undefined && <LeaveFactsFields state={state} fid={fid} employee={employee} />}
 
       <div className="flex flex-wrap gap-3 border-t border-line pt-6">
         <SubmitButton busy={pending}>Save changes</SubmitButton>

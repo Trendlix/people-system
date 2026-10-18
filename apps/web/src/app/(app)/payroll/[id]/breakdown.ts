@@ -4,6 +4,7 @@ import {
   EMPTY_PAYROLL_INPUTS,
   formatHours,
   lawRatesFor,
+  leaveDaysOf,
   measuredExpectedHours,
   paidAdjustments,
   paysOvertime,
@@ -104,17 +105,20 @@ export function expectedHoursNote(t: PayrollTerms, i: PayrollInputs, absent: num
  * hours each, so without its hours a day none are listed.
  */
 export function shiftHoursNote(
-  t: Pick<PayrollTerms, 'expectedHours' | 'expectedDays' | 'hoursPerDay'>,
-  i: Pick<PayrollInputs, 'noShowDays' | 'leaveDays'>,
+  t: Pick<PayrollTerms, 'expectedHours' | 'expectedDays' | 'hoursPerDay'> & Partial<Pick<PayrollTerms, 'leave'>>,
+  i: Pick<PayrollInputs, 'noShowDays' | 'leaveDays'> & Partial<Pick<PayrollInputs, 'unpaidLeaveDays'>>,
 ): string {
   const d = t.expectedDays;
   const from = d ? ` (${plural(d.workingDays, 'working day')} of the shift${d.holidays ? ` less ${plural(d.holidays, 'holiday')}` : ''})` : '';
   const scheduled = `Scheduled ${formatHours(t.expectedHours ?? 0)}${from}`;
   const perDay = typeof t.hoursPerDay === 'number' && t.hoursPerDay > 0 ? formatHours(t.hoursPerDay) : null;
   if (!perDay) return scheduled;
+  // the leave days as the line counted them: HR's, else the month's approved leave (owner, 18 October 2026)
+  const leave = leaveDaysOf({ leave: t.leave ?? null }, { leaveDays: i.leaveDays ?? null, unpaidLeaveDays: i.unpaidLeaveDays ?? null });
   const dayKinds: [number | null, string][] = [
     [i.noShowDays, 'no-show day'],
-    [i.leaveDays ?? null, 'leave day'],
+    [leave.leaveDays, 'leave day'],
+    [leave.unpaidLeaveDays, 'unpaid leave day'],
   ];
   const off = dayKinds.filter((k): k is [number, string] => k[0] !== null && k[0] > 0).map(([n, name]) => plural(n, name));
   return off.length ? `${scheduled}, less ${listed(off)}, ${perDay} a day` : `${scheduled}, at ${perDay} a day`;
@@ -200,8 +204,13 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
       kind: 'info',
     });
   }
-  // paid leave (owner, 17 October 2026): nothing cut, its hours out of the shift's
-  const leave = i.leaveDays ?? 0;
+  // paid leave (owner, 17 October 2026): nothing cut, its hours out of the shift's; unpaid leave (18 October 2026): a
+  // day's pay cut for each; as HR typed them, else the month's approved leave (leaveDaysOf)
+  const leaveDays = leaveDaysOf(line.terms, i);
+  const leave = leaveDays.leaveDays ?? 0;
+  const unpaid = leaveDays.unpaidLeaveDays ?? 0;
+  const unpaidCut = r.unpaidLeaveCut ?? 0;
+  const fromLeave = (typed: number | null | undefined) => (typed === null || typed === undefined ? ', from the leave approved this month' : ', as typed by HR');
   const typedKpis: [string, number | null][] = [
     ['soft skills', i.softSkills],
     ['performance', i.performance],
@@ -256,7 +265,18 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
       note: i.noShowDays ? `${days(i.noShowDays)}, each costing ${rules.noShowDayMultiplier} days' pay` : undefined,
     },
     ...(leave > 0
-      ? [{ key: 'leave', label: 'Leave days', value: days(leave), kind: 'info' as const, note: 'Paid leave: nothing cut, and not counted in attendance' }]
+      ? [{ key: 'leave', label: 'Leave days', value: days(leave), kind: 'info' as const, note: `Paid leave: nothing cut, and not counted in attendance${fromLeave(i.leaveDays)}` }]
+      : []),
+    ...(unpaid > 0 || unpaidCut > 0
+      ? [
+          {
+            key: 'unpaidLeaveCut',
+            label: 'Unpaid leave cut',
+            value: cutText(unpaidCut),
+            kind: 'cut' as const,
+            note: `${days(unpaid)} of unpaid leave, each a day's pay (the gross ÷ ${rules.dayDivisor})${fromLeave(i.unpaidLeaveDays)}`,
+          },
+        ]
       : []),
     {
       key: 'overtime',

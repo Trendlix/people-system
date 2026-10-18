@@ -1,4 +1,15 @@
-import { monthPlus, recurringDeductionProblems, sumAmounts, type Role } from '@trendlix/shared';
+import {
+  deductionBaseOf,
+  deductionLimit,
+  deductionLimitWarning,
+  LAW_DEDUCTION_PERCENT,
+  monthPlus,
+  recurringDeductionProblems,
+  recurringDue,
+  sumAmounts,
+  type Role,
+} from '@trendlix/shared';
+import { formatDate } from '../../../../lib/format';
 import { hasRole } from '../../../../lib/roles';
 import type { AdvanceLimitView, RecurringDeductionStatus, RecurringDeductionView } from '../../../../lib/types';
 import { formatEgp, parseAmount } from '../../employees/[id]/contracts/salary';
@@ -11,9 +22,15 @@ import { isMonth, monthName, monthOf } from '../list';
 // first month to its last, or until HR stops it; each month's payroll run takes it as a deduction after tax, named on
 // the payslip as it is here ("Medical subscription (family)"). HR adds one, changes its amount from a month (it stops
 // there and a new one starts with the new amount), stops it from a month, or changes its name and last month; leaving,
-// it stops from the month after the last working day by itself. Plain helpers for the page (no server-only, so they are
-// unit tested): who sees it, each one in words, the months the forms offer and what they send. Relative imports: the
-// tests run without the "@/" alias. Salary data: HR, Finance and the CEO; HR changes them; the API checks every request.
+// it stops from the month after the last working day by itself. The Labour Law (owner, 18 October 2026, after reading
+// the law: "Warn above 25%, record the consent"; Law 14/2025 Art. 114): a deduction the employee agrees to needs their
+// written consent, so HR ticks that the signed consent is on file to add one (kept with who and when) and may attach it,
+// kept in the employee file; one added before has "Consent not recorded" until HR records it; a higher amount needs it
+// again. And such deductions may take at most 25% of the pay after income tax, social insurance and the installments
+// of advances and loans: the forms warn, never block, as they are typed. Plain helpers for the page (no server-only,
+// so they are unit tested): who sees it, each one in words, the months the forms offer, what they come to and what
+// they send. Relative imports: the tests run without the "@/" alias. Salary data: HR, Finance and the CEO; HR changes
+// them; the API checks every request.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -22,6 +39,9 @@ export const canSeeRecurring = (user: WithRoles) => hasRole(user, 'hr', 'finance
 
 /** HR adds, changes and stops them. */
 export const changesRecurring = (user: WithRoles) => hasRole(user, 'hr');
+
+/** Who opens the signed consent: HR and the CEO, who see the employee file it is kept in. */
+export const opensConsent = (user: WithRoles) => hasRole(user, 'hr', 'ceo');
 
 /** The most a name may be: the API's. */
 export const NAME_MAX = 100;
@@ -69,6 +89,20 @@ export function deductedText(r: Pick<RecurringDeductionView, 'deducted'>): { app
     pending: pending ? `${pending} waiting for ${pending === 1 ? 'its run' : 'their runs'}` : null,
   };
 }
+
+/**
+ * The employee's written consent in words (Labour Law Art. 114; owner, 18 October 2026: "record the consent"):
+ * "Consent on file (recorded by Nour Ali on 18/10/2026)", or "Consent not recorded"; null from an API from before it.
+ */
+export function consentText(r: Pick<RecurringDeductionView, 'consent'>): string | null {
+  if (r.consent === undefined) return null;
+  if (r.consent === null) return 'Consent not recorded';
+  const who = r.consent.recordedBy?.name;
+  return `Consent on file (recorded ${who ? `by ${who} ` : ''}on ${formatDate(r.consent.recordedAt)})`;
+}
+
+/** Where the signed consent opens: the employee file's paper (HR and the CEO). */
+export const consentHref = (paper: { id: string }) => `/paperwork/${encodeURIComponent(paper.id)}`;
 
 /** The ones running or still to start, and those ended (shown apart, folded). */
 export function splitByStatus<T extends Pick<RecurringDeductionView, 'status'>>(rows: readonly T[]): { current: T[]; ended: T[] } {
@@ -122,29 +156,62 @@ export function editEndChoices(r: Pick<RecurringDeductionView, 'endMonth'>, toda
   return months;
 }
 
-// ---------- what a new one comes to ----------
+// ---------- what it comes to, and the law's 25% ----------
 
 /** How many months from `start` to `end`, both counted: October 2026 to July 2027 is 10. */
 export const monthsCounted = (start: string, end: string) =>
   (Number(end.slice(0, 4)) - Number(start.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(start.slice(5, 7)) + 1;
 
-/** The new one's figures as typed: what it comes to, in words, and its share of the employee's current gross. */
+/** The figures read for the employee (/payroll/advances/limit) a preview works with. */
+export type LimitFigures = Pick<AdvanceLimitView, 'gross' | 'byMonth'> & Partial<Pick<AdvanceLimitView, 'tax' | 'insurance' | 'recurring'>>;
+
+/** The figures as typed: what it comes to, and the law's 25% (Art. 114). */
 export interface RecurringPreview {
   /** "10 months, October 2026 to July 2027: EGP 15,000.00 a month, EGP 150,000.00 in all." */
   period: string;
-  /** Its share of the current gross pay, in words; null until the employee's pay is read. */
+  /**
+   * What the law counts the 25% from, in its first month, plainly, and its share of it with the employee's other
+   * recurring deductions; null until the employee's pay is read.
+   */
   share: string | null;
-  /** It takes more than the current gross: the run would have nothing left to pay. */
-  overGross: boolean;
+  /** The months their recurring deductions pass 25% of it, the earliest first: warnings only, it can still be saved. */
+  warnings: string[];
 }
 
+/** The most months the 25% is looked at in: five years. */
+const LOOKED_AT = 60;
+
 /**
- * The figures the add form shows as it is typed (owner, 18 October 2026, on the form: "view assumed numbers"): how many
- * months and what it comes to in all (a year's worth while it runs until stopped), and its share of the employee's
- * current gross (their signed contract's, as the share-of-pay warning reads it: `limit` from /payroll/advances/limit).
- * Null until an amount and a first month can be read, or when the rules refuse them (the form says why when sent).
+ * The months its deductions are looked at in: its first to its last; until stopped, a year, or to the employee's last
+ * installment when later (the pay left grows once they end), five years at most.
  */
-export function recurringPreview(amountInput: string, start: string, end: string, limit: Pick<AdvanceLimitView, 'gross'> | null | undefined): RecurringPreview | null {
+function lookedAt(start: string, last: string | null, byMonth: Record<string, number>): string[] {
+  const latest = Object.keys(byMonth).sort().at(-1);
+  const end = last ?? [monthPlus(start, 11), latest ?? start].reduce((a, b) => (a > b ? a : b));
+  const out: string[] = [];
+  for (let m = start; m <= end && out.length < LOOKED_AT; m = monthPlus(m, 1)) out.push(m);
+  return out;
+}
+
+const percentOf = (part: number, of: number) => Math.round((part / of) * 1000) / 10;
+
+/**
+ * The figures the add and change forms show as they are typed (owner, 18 October 2026, on the form: "view assumed
+ * numbers"): how many months and what it comes to in all (a year's worth while it runs until stopped); and the law's
+ * 25% (owner, 18 October 2026, after reading the law: "Warn above 25%"; Labour Law Art. 114): the employee's current
+ * gross (their signed contract's, `limit` from /payroll/advances/limit) less about its income tax and social insurance
+ * and the month's installments of advances and loans, of which a month's recurring deductions, this one and their
+ * others (`replacing`: the one a change of amount stops from its month, left out), may take 25%: what it is in its
+ * first month, and a warning for each month past it. Null until an amount and a first month can be read, or when the
+ * rules refuse them (the form says why when sent).
+ */
+export function recurringPreview(
+  amountInput: string,
+  start: string,
+  end: string,
+  limit: LimitFigures | null | undefined,
+  options: { replacing?: string } = {},
+): RecurringPreview | null {
   const amount = parseAmount(amountInput);
   if (amount === null || Number.isNaN(amount) || !isMonth(start)) return null;
   const last = isMonth(end) ? end : null;
@@ -154,16 +221,27 @@ export function recurringPreview(amountInput: string, start: string, end: string
     months !== null && last
       ? `${months} ${months === 1 ? 'month' : 'months'}, ${monthName(start)}${months > 1 ? ` to ${monthName(last)}` : ''}: ${formatEgp(amount)} a month, ${formatEgp(sumAmounts(Array(months).fill(amount)))} in all.`
       : `From ${monthName(start)} until stopped: ${formatEgp(amount)} a month, ${formatEgp(sumAmounts(Array(12).fill(amount)))} a year.`;
-  if (limit === undefined) return { period, share: null, overGross: false };
+  if (limit === undefined) return { period, share: null, warnings: [] };
   if (!limit || limit.gross === null || limit.gross <= 0) {
-    return { period, share: 'No current contract, so its share of the pay can’t be shown.', overGross: false };
+    return { period, share: 'No current contract, so its share of the pay can’t be shown.', warnings: [] };
   }
-  const percent = Math.round((amount / limit.gross) * 1000) / 10;
-  const overGross = amount > limit.gross;
-  const share = overGross
-    ? `More than the current gross pay of ${formatEgp(limit.gross)} a month: the run would have nothing left to pay.`
-    : `${percent}% of the current gross pay of ${formatEgp(limit.gross)} a month, leaving ${formatEgp(sumAmounts([limit.gross, -amount]))} before tax, insurance and other deductions.`;
-  return { period, share, overGross };
+  const gross = limit.gross;
+  const tax = limit.tax ?? 0;
+  const insurance = limit.insurance ?? 0;
+  const others = (limit.recurring ?? []).filter((r) => r.id !== options.replacing);
+  const baseIn = (month: string) => ({ pay: gross, tax, insurance, installments: limit.byMonth[month] ?? 0 });
+  const totalIn = (month: string) => sumAmounts([amount, ...others.filter((r) => recurringDue(r, month)).map((r) => r.amount)]);
+
+  const first = baseIn(start);
+  const left = deductionBaseOf(first);
+  const counted = `The law counts it against the pay after income tax, social insurance and the installments of advances and loans (Labour Law Art. 114): in ${monthName(start)}, the gross of ${formatEgp(gross)} less about ${formatEgp(tax)} tax, ${formatEgp(insurance)} insurance and ${formatEgp(first.installments)} installments leaves ${formatEgp(left)}, of which recurring deductions may take ${LAW_DEDUCTION_PERCENT}%, ${formatEgp(deductionLimit(first))}.`;
+  const total = totalIn(start);
+  const mine = total > amount ? `With their other recurring deductions, ${formatEgp(total)} a month, it is ${left > 0 ? `${percentOf(total, left)}%` : 'all'} of it.` : `It is ${left > 0 ? `${percentOf(amount, left)}%` : 'all'} of it.`;
+  const warnings = lookedAt(start, last, limit.byMonth).flatMap((m) => {
+    const w = deductionLimitWarning(totalIn(m), baseIn(m), m);
+    return w ? [w] : [];
+  });
+  return { period, share: `${counted} ${mine}`, warnings };
 }
 
 // ---------- what the forms send ----------
@@ -180,8 +258,34 @@ function nameOf(fd: FormData, errors: string[]): string {
 /** An amount a month as typed, NaN when it can't be read (the rules say why). */
 const amountOf = (fd: FormData) => parseAmount(text(fd, 'amount')) ?? NaN;
 
-/** A new one: the employee, what for, the amount a month, the first month and the last (empty: until stopped). */
-export function recurringBody(fd: FormData): { body: { employeeId: string; name: string; amount: number; startMonth: string; endMonth: string | null }; errors: string[] } {
+/** Why it can't be added without the tick (Labour Law Art. 114). */
+export const CONSENT_ERROR = "Tick that the employee's signed consent is on file: a deduction from the pay they agree to needs their written consent (Labour Law Art. 114).";
+/** Why a higher amount can't be saved without the tick. */
+export const MORE_CONSENT_ERROR = "Tick that the employee's signed consent to the new amount is on file: a deduction they agree to needs their written consent (Labour Law Art. 114).";
+
+/** The most the signed consent may be: the employee file's. */
+export const CONSENT_FILE_MAX_MB = 10;
+
+/** The signed consent chosen (a photo or a PDF, which the API checks), or null when none is; too large is said. */
+export function consentFileOf(fd: FormData, errors: string[]): File | null {
+  const file = fd.get('consentFile');
+  if (!(file instanceof File) || file.size === 0) return null;
+  if (file.size > CONSENT_FILE_MAX_MB * 1024 * 1024) errors.push(`The signed consent must be ${CONSENT_FILE_MAX_MB} MB or smaller.`);
+  return file;
+}
+
+/** The tick "The employee's signed consent is on file". */
+const ticked = (fd: FormData) => text(fd, 'consentOnFile') === 'yes';
+
+/**
+ * A new one: the employee, what for, the amount a month, the first month and the last (empty: until stopped), and the
+ * tick that the employee's signed consent is on file, needed; the signed consent itself if chosen.
+ */
+export function recurringBody(fd: FormData): {
+  body: { employeeId: string; name: string; amount: number; startMonth: string; endMonth: string | null; consentOnFile: true };
+  file: File | null;
+  errors: string[];
+} {
   const errors: string[] = [];
   const employeeId = text(fd, 'employeeId');
   if (!employeeId) errors.push('Choose the employee.');
@@ -190,18 +294,60 @@ export function recurringBody(fd: FormData): { body: { employeeId: string; name:
   const startMonth = text(fd, 'startMonth');
   const endMonth = text(fd, 'endMonth') || null;
   errors.push(...recurringDeductionProblems(amount, startMonth, endMonth));
-  return { body: { employeeId, name, amount, startMonth, endMonth }, errors };
+  if (!ticked(fd)) errors.push(CONSENT_ERROR);
+  const file = consentFileOf(fd, errors);
+  return { body: { employeeId, name, amount, startMonth, endMonth, consentOnFile: true }, file, errors };
 }
 
-/** A change of amount: the new amount a month and the month it starts (this one stops there, a new one starts). */
-export function changeRecurringBody(fd: FormData): { body: { amount: number; fromMonth: string }; errors: string[] } {
+/** What a new one is sent as: a form, with the signed consent when chosen. */
+export function recurringForm(body: ReturnType<typeof recurringBody>['body'], file: File | null): FormData {
+  const form = new FormData();
+  form.append('employeeId', body.employeeId);
+  form.append('name', body.name);
+  form.append('amount', body.amount.toFixed(2));
+  form.append('startMonth', body.startMonth);
+  form.append('endMonth', body.endMonth ?? '');
+  form.append('consentOnFile', 'true');
+  if (file) form.append('consentFile', file, file.name);
+  return form;
+}
+
+/**
+ * A change of amount: the new amount a month and the month it starts (this one stops there, a new one starts); for a
+ * higher amount, the tick that the employee's signed consent to it is on file (`saved`: the amount it has).
+ */
+export function changeRecurringBody(fd: FormData, saved?: number): { body: { amount: number; fromMonth: string; consentOnFile?: true }; errors: string[] } {
   const errors: string[] = [];
   const amount = amountOf(fd);
   // the rules' own wording for the amount
   errors.push(...recurringDeductionProblems(amount, '2000-01', null));
   const fromMonth = text(fd, 'fromMonth');
   if (!isMonth(fromMonth)) errors.push('Choose the month the new amount starts.');
-  return { body: { amount, fromMonth }, errors };
+  if (saved !== undefined && raisesAmount(amount, saved) && !ticked(fd)) errors.push(MORE_CONSENT_ERROR);
+  return { body: ticked(fd) ? { amount, fromMonth, consentOnFile: true } : { amount, fromMonth }, errors };
+}
+
+/** Whether a new amount is more than it has: the employee's consent to it is needed again. */
+export const raisesAmount = (amount: number, saved: number) => Number.isFinite(amount) && Math.round(amount * 100) > Math.round(saved * 100);
+
+/**
+ * Recording the consent of one added before it was asked (the tick, needed), or attaching the signed consent to one
+ * whose consent is recorded (`recorded`: the file, needed then).
+ */
+export function consentBody(fd: FormData): { file: File | null; errors: string[] } {
+  const errors: string[] = [];
+  const recorded = text(fd, 'recorded') === 'yes';
+  if (!recorded && !ticked(fd)) errors.push(CONSENT_ERROR);
+  const file = consentFileOf(fd, errors);
+  if (recorded && !file) errors.push('Choose the signed consent: a photo or a PDF.');
+  return { file, errors };
+}
+
+/** What a consent is sent as: a form, with the signed consent when chosen. */
+export function consentForm(file: File | null): FormData {
+  const form = new FormData();
+  if (file) form.append('consentFile', file, file.name);
+  return form;
 }
 
 /** A stop: the first month no longer deducted, and why (optional). */

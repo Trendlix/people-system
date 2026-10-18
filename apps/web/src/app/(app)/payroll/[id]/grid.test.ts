@@ -10,6 +10,8 @@ import {
   expectedCell,
   GRID_COLUMNS,
   ITEMS_AFTER,
+  LEAVE_FIELDS,
+  leaveFill,
   lineItems,
   linePatches,
   noShowPay,
@@ -37,8 +39,10 @@ describe('the grid’s columns', () => {
     // the leave days after the no-show days; no Penalty days, Bonus days, Commission or Settlements (owner, 17 October
     // 2026: "instead of there, i think earnings and deductions will be enough"): Earnings and Deductions after the leave
     // days, read only
-    expect(GRID_COLUMNS.map((c) => c.label)).toEqual(['Worked hours', 'Expected hours', 'No-show days', 'Leave days', 'Released']);
-    expect(ITEMS_AFTER).toBe('leaveDays');
+    // the unpaid leave days beside the leave days (owner, 18 October 2026: "can you apply the leaves according to the
+    // law?"), the Earnings and Deductions after them
+    expect(GRID_COLUMNS.map((c) => c.label)).toEqual(['Worked hours', 'Expected hours', 'No-show days', 'Leave days', 'Unpaid leave days', 'Released']);
+    expect(ITEMS_AFTER).toBe('unpaidLeaveDays');
     // nor the CEO's attendance waiver, ticked on the results table (17 October 2026)
     const notTyped = ['softSkills', 'performance', 'clientSatisfaction', 'attendanceWaived'];
     expect(new Set(GRID_COLUMNS.map((c) => c.field))).toEqual(new Set(Object.keys(EMPTY_PAYROLL_INPUTS).filter((k) => !notTyped.includes(k))));
@@ -360,3 +364,46 @@ describe('the Earnings and Deductions columns (owner, 17 October 2026: "instead 
     expect(lineItems(line)).toMatchObject({ earnings: 1783.33, deductions: line.result.penaltyCut, count: 0 });
   });
 });
+
+describe('the leave days filled in from the leave approved (owner, 18 October 2026: "can you apply the leaves according to the law?")', () => {
+  const leave = { paidDays: 3, unpaidDays: 0.25 };
+
+  it('fill the Leave days with the paid days and the Unpaid leave days with the unpaid ones, the other cells with nothing', () => {
+    expect(LEAVE_FIELDS).toEqual(['leaveDays', 'unpaidLeaveDays']);
+    expect(leaveFill(leave, 'leaveDays')).toBe(3);
+    // sick leave at 75% for a day: a quarter of it unpaid
+    expect(leaveFill(leave, 'unpaidLeaveDays')).toBe(0.25);
+    expect(leaveFill(leave, 'noShowDays')).toBeNull();
+    expect(leaveFill(leave, 'expectedHours')).toBeNull();
+    // none of a kind, or no leave at all (a line from before leave, or by the hour)
+    expect(leaveFill({ paidDays: 0, unpaidDays: 2 }, 'leaveDays')).toBeNull();
+    expect(leaveFill(null, 'leaveDays')).toBeNull();
+    expect(leaveFill(undefined, 'unpaidLeaveDays')).toBeNull();
+  });
+
+  it('come out of the shift’s expected hours like typed ones, unless HR typed the leave days', () => {
+    const shift = { shiftExpectedHours: 168, hoursPerDay: 8, leave: { paidDays: 2, unpaidDays: 1 } };
+    const cells = (c: Partial<PayrollInputs> = {}) => ({ expectedHours: null, noShowDays: null, leaveDays: null, unpaidLeaveDays: null, ...c });
+    // 2 paid and 1 unpaid day of the leave approved: 168 − 3 × 8 = 144
+    expect(expectedCell(shift, cells())).toEqual({ hours: 144, fromShift: true });
+    // HR typed 1 leave day: it wins over the 2 approved; the unpaid one still counts: 168 − 2 × 8 = 152
+    expect(expectedCell(shift, cells({ leaveDays: 1 }))).toEqual({ hours: 152, fromShift: true });
+    // HR typed 0 unpaid days: 0 is HR's too
+    expect(expectedCell(shift, cells({ unpaidLeaveDays: 0 }))).toEqual({ hours: 152, fromShift: true });
+    // HR's expected hours: taken as they are
+    expect(expectedCell(shift, cells({ expectedHours: 150 }))).toEqual({ hours: 150, fromShift: false });
+  });
+
+  it('say an unpaid leave day costs a day’s pay, under its column', () => {
+    expect(columnNote('unpaidLeaveDays', 2)).toBe("A day's pay each, out of the expected hours");
+    expect(columnNote('leaveDays', 2)).toBe('Paid, out of the expected hours');
+  });
+
+  it('are typed as days, whole or half, like the other days', () => {
+    expect(parseCell('days', '1.5')).toEqual({ ok: true, value: 1.5 });
+    expect(linePatches([{ id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS }, onHold: false, comments: null }], { [A]: { inputs: { unpaidLeaveDays: '2' } } }).patches).toEqual([
+      { id: A, inputs: { unpaidLeaveDays: 2 } },
+    ]);
+  });
+});
+

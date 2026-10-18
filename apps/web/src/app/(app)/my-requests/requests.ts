@@ -5,8 +5,8 @@ import type { ChangeRequest } from '../../../lib/types';
 // My Requests (owner, 17 October 2026: "my suggestion for the employee side bar is 1- Dashboard 2- My Profile 3- My
 // Requests"): everything the employee asked for, newest first, each with its decisions as the API gives them to the
 // employee: the changes to their details they asked HR for (on their profile: the one waiting and the latest decided)
-// and the raises they asked for; for a manager also the raises they asked for for their direct reports. Leave and
-// attendance requests come later. Pure code, tested: putting them in one list, and its filters by kind and status.
+// and the raises they asked for; for a manager also the raises they asked for for their direct reports. Leave has a
+// section of its own on the page (18 October 2026); attendance comes later. Pure code, tested: putting them in one list, and its filters by kind and status.
 // Relative imports: the tests run without the "@/" alias.
 
 /** Details changes, raises for themself, and a manager's raise requests for their direct reports. */

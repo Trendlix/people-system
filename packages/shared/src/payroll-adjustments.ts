@@ -20,13 +20,17 @@
 // share, e.g. a medical subscription, set up once (installments.ts) and added to each month's payroll as a Recurring
 // deduction, after tax like every deduction, its reason the share's name ("Medical subscription (family)"). HR doesn't
 // enter one by hand on Additions / Deductions (ENTERED_TYPES): the month's run adds it.
+// Unused leave paid (owner, 18 October 2026: "make it with decision with the year closing"; Labour Law 14/2025 Art.
+// 125): the days of annual leave a Year Closing pays, in January of the next year (or the next open month), and the
+// unused balance paid on leaving with the final settlement, at a day of the gross; taxed, as pay. The Leave module adds
+// it (leaves.ts), never HR by hand (ENTERED_TYPES).
 
 export const ADJUSTMENT_KINDS = ['addition', 'deduction'] as const;
 export type AdjustmentKind = (typeof ADJUSTMENT_KINDS)[number];
 
 export const ADJUSTMENT_KIND_LABELS: Record<AdjustmentKind, string> = { addition: 'Addition', deduction: 'Deduction' };
 
-export const ADDITION_TYPES = ['bonus', 'bonus_days', 'commission', 'incentive', 'correction', 'reimbursement', 'other'] as const;
+export const ADDITION_TYPES = ['bonus', 'bonus_days', 'commission', 'incentive', 'correction', 'reimbursement', 'leave_payout', 'other'] as const;
 export type AdditionType = (typeof ADDITION_TYPES)[number];
 
 export const DEDUCTION_TYPES = ['penalty', 'penalty_days', 'correction', 'damage_loss', 'advance_recovery', 'loan_installment', 'recurring', 'other'] as const;
@@ -43,12 +47,16 @@ export const ADJUSTMENT_TYPES: { addition: readonly AdditionType[]; deduction: r
 /** A recurring deduction's type: added to each month's payroll by the month's run, never entered by hand. */
 export const RECURRING_TYPE = 'recurring' satisfies DeductionType;
 
+/** Unused leave paid (18 October 2026): added by a Year Closing or on leaving (leaves.ts), never entered by hand. */
+export const LEAVE_PAYOUT_TYPE = 'leave_payout' satisfies AdditionType;
+
 /**
  * The types HR enters by hand on Additions / Deductions, in the order the form lists them: every type of the kind but
- * a Recurring deduction (owner, 18 October 2026), which the month's run adds from the recurring deduction set up.
+ * a Recurring deduction (owner, 18 October 2026), which the month's run adds from the recurring deduction set up, and
+ * Unused leave paid (18 October 2026), which a Year Closing or leaving adds.
  */
 export const ENTERED_TYPES: { addition: readonly AdditionType[]; deduction: readonly DeductionType[] } = {
-  addition: ADDITION_TYPES,
+  addition: ADDITION_TYPES.filter((t) => t !== LEAVE_PAYOUT_TYPE),
   deduction: DEDUCTION_TYPES.filter((t) => t !== RECURRING_TYPE),
 };
 
@@ -59,6 +67,7 @@ export const ADDITION_TYPE_LABELS: Record<AdditionType, string> = {
   incentive: 'Incentive',
   correction: 'Correction',
   reimbursement: 'Reimbursement',
+  leave_payout: 'Unused leave paid',
   other: 'Other addition',
 };
 
@@ -81,6 +90,7 @@ export const ADDITION_TYPE_LABELS_AR: Record<AdditionType, string> = {
   incentive: 'حافز',
   correction: 'تصحيح',
   reimbursement: 'استرداد مصروفات',
+  leave_payout: 'مقابل رصيد الإجازات',
   other: 'إضافة أخرى',
 };
 
@@ -120,6 +130,7 @@ export const ADDITION_TAXED: Record<AdditionType, boolean | null> = {
   incentive: true,
   correction: true,
   reimbursement: false,
+  leave_payout: true,
   other: null,
 };
 

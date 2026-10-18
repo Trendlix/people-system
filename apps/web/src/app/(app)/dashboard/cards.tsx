@@ -16,6 +16,9 @@ import { myRequests, requestLabel } from '../my-requests/requests';
 import { loadTeam } from '../my-team/data';
 import { askedByText, probationOf, raiseNews } from '../my-team/team';
 import { loadOwnProfile } from '../own-profile';
+import { loadLeaveTypes, loadMyBalances, loadMyLeave, loadWaitingLeave } from '../leave/data';
+import { daysText, leaveHref, leaveWhenText, MY_LEAVE_HREF, NEW_LEAVE_PATH, periodText, requestsLabel, upcomingLeave } from '../leave/list';
+import { LeaveBalanceFigures, LeaveStatusBadge } from '../leave/ui';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
 import { effectiveFromText, newRaiseRequestHref, progressText } from '../raise-requests/list';
 import { EffectiveFrom, FoldedRequestLog, RaiseRequestStatusBadge, RequestReason, Suggestion } from '../raise-requests/ui';
@@ -32,7 +35,9 @@ import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toD
 // details, the papers HR still needs) and, for a manager, My Team (their direct reports, a probation ending soon and the
 // raise requests they are told about). Everything is read as the employee may see it: the API decides, as everywhere.
 // The cards that need more than the profile load on their own. Reimbursements (owner, 18 October 2026): their open
-// claims on My Requests with New reimbursement, and for a manager with claims waiting, Reimbursements to Approve.
+// claims on My Requests with New reimbursement, and for a manager with claims waiting, Reimbursements to Approve. Leave
+// (owner, 18 October 2026: "can you apply the leaves according to the law?"): My Leave, their annual balance and their
+// leave coming up, with New leave; for a manager with requests waiting, Leave to Approve.
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -339,6 +344,99 @@ async function ToApproveCard() {
   );
 }
 
+// ---------- My Leave ----------
+
+/**
+ * Their annual balance of this year (the days available, large, and the entitlement, taken, booked and waiting) and their
+ * leave coming up or under way (approved, or being decided), each opening its page; New leave. Nothing from an API from
+ * before leave.
+ */
+async function MyLeaveCard({ profile: p, today }: { profile: EmployeeProfile; today: string }) {
+  const year = Number(today.slice(0, 4));
+  const [balances, requests, types] = await Promise.all([loadMyBalances(year), loadMyLeave(), loadLeaveTypes()]);
+  if (balances.kind === 'unavailable' && requests.kind === 'unavailable') return null;
+  const upcoming = requests.kind === 'ok' ? upcomingLeave(requests.value, today) : [];
+  return (
+    <Card
+      title="My Leave"
+      action={
+        <Link href={MY_LEAVE_HREF} className="text-sm">
+          See all
+        </Link>
+      }
+    >
+      {balances.kind === 'ok' ? (
+        <LeaveBalanceFigures balances={balances.value} types={types.kind === 'ok' ? types.value : null} compact />
+      ) : (
+        <Quiet>Your leave balance couldn&apos;t be loaded.</Quiet>
+      )}
+      <h3 className="mt-5 text-sm font-semibold">Coming Up</h3>
+      {upcoming.length === 0 ? (
+        <p className="mt-1 text-sm text-muted">No leave coming up.</p>
+      ) : (
+        <ul className="mt-1 divide-y divide-line-soft">
+          {upcoming.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 py-2.5 text-sm">
+              <div className="min-w-0">
+                <Link href={leaveHref(r.id)} className="font-medium">
+                  {r.type.nameEn}
+                </Link>
+                <p className="text-xs text-muted tabular-nums">
+                  {periodText(r)} · {daysText(r.days)}
+                </p>
+              </div>
+              <div className="text-right">
+                <LeaveStatusBadge status={r.status} />
+                <p className="mt-1 text-xs text-muted">{leaveWhenText(r, today)}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {p.employment && (
+        <div className="mt-4">
+          <Link href={NEW_LEAVE_PATH} className={`${small} btn-primary`}>
+            New leave
+          </Link>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** The leave requests waiting for the manager, the first to decide them: who, the type and when, each with Decide. Only when some are. */
+async function LeaveToApproveCard() {
+  const requests = await loadWaitingLeave();
+  if (requests.kind !== 'ok' || requests.value.length === 0) return null;
+  return (
+    <Card
+      title="Leave to Approve"
+      action={
+        <Link href={MY_TEAM} className="text-sm">
+          Open My Team
+        </Link>
+      }
+    >
+      <ul className="divide-y divide-line-soft">
+        {requests.value.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 py-2.5 text-sm first:pt-0">
+            <div className="min-w-0">
+              <p className="font-medium">{r.employee.fullNameEn}</p>
+              <p className="text-xs text-muted">
+                {r.type.nameEn} · <span className="tabular-nums">{periodText(r)}</span> · {daysText(r.days)}
+              </p>
+            </div>
+            <Link href={leaveHref(r.id)} className={`${small} btn-primary`}>
+              Decide<span className="sr-only"> on the {r.type.nameEn} request by {r.employee.fullNameEn}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-muted">{requestsLabel(requests.value.length)} waiting for you</p>
+    </Card>
+  );
+}
+
 // ---------- To Do ----------
 
 /** What is left for them to do, only what applies; a friendly line when nothing is. */
@@ -471,7 +569,7 @@ export async function Dashboard({ user }: { user: Session }) {
     <div className="max-w-6xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">{profile ? `Welcome, ${greetingName(profile)}` : 'Welcome'}</h1>
-        <p className="mt-1 text-muted">Your job, the official holidays coming up, your requests and what is left to do.</p>
+        <p className="mt-1 text-muted">Your job, the official holidays coming up, your leave, your requests and what is left to do.</p>
       </div>
       {!profile && <NoProfile user={user} />}
       <div className="grid items-start gap-4 lg:grid-cols-2">
@@ -481,6 +579,12 @@ export async function Dashboard({ user }: { user: Session }) {
         </Suspense>
         {profile && (
           <>
+            {/* leave is a current employment's (the API has no balance without one) */}
+            {profile.employment && (
+              <Suspense fallback={<CardLoading title="My Leave" />}>
+                <MyLeaveCard profile={profile} today={today} />
+              </Suspense>
+            )}
             <Suspense fallback={<CardLoading title="My Requests" />}>
               <MyRequestsCard profile={profile} />
             </Suspense>
@@ -489,6 +593,9 @@ export async function Dashboard({ user }: { user: Session }) {
         )}
         {profile && hasRole(user, 'manager') && (
           <>
+            <Suspense fallback={null}>
+              <LeaveToApproveCard />
+            </Suspense>
             <Suspense fallback={null}>
               <ToApproveCard />
             </Suspense>

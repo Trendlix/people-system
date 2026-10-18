@@ -3,8 +3,10 @@ import {
   bankNamed,
   EMPTY_PAYROLL_INPUTS,
   insuredWageDate,
+  leaveDaysOf,
   payrollLine,
   type LawRates,
+  type LeavePay,
   type PayBasis,
   type PayrollInputs,
   type PayrollRules,
@@ -69,6 +71,12 @@ const rosterSelect = (from: Date, to: Date) =>
     jobTitle: { select: { titleEn: true } },
     shift: { select: { startTime: true, endTime: true, hoursPerDay: true, workingDays: true } },
     employee: { select: { id: true, employeeCode: true, fullNameEn: true, socialInsured: true, insuranceComprehensiveWage: true } },
+    // the approved leave that touches the month (owner, 18 October 2026: "can you apply the leaves according to the
+    // law?"): the grid's leave days and unpaid leave days (roster.ts leaveTermsOf)
+    leaveRequests: {
+      where: { status: 'approved', startDate: { lte: to }, endDate: { gte: from } },
+      select: { startDate: true, endDate: true, halfDay: true, type: { select: { paid: true, payPercent: true, calendarDays: true } } },
+    },
     // signed versions (active, superseded or ended) that may be in force in the month, and those a raise's insured wage
     // may still stand on (owner's decision, 16 October 2026): ended within 13 months before it, as a raise's insured wage
     // follows its pay at the latest from the next 1 January after it takes effect (raises.ts)
@@ -126,6 +134,14 @@ function rosterEmployment(e: EmploymentRow): RosterEmployment {
       hourlyRate: c.hourlyRate?.toNumber() ?? null,
       allowances: c.allowances.map((a) => ({ ...a, amount: a.amount.toNumber() })),
     })),
+    leaves: e.leaveRequests.map((l) => ({
+      startDate: fromDateOnly(l.startDate),
+      endDate: fromDateOnly(l.endDate),
+      halfDay: l.halfDay,
+      paid: l.type.paid as LeavePay,
+      payPercent: l.type.payPercent?.toNumber() ?? null,
+      calendarDays: l.type.calendarDays,
+    })),
   };
 }
 
@@ -166,8 +182,11 @@ const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto
 // it at once, and the approval takes it as it is.
 // Recurring deductions (owner, 18 October 2026, e.g. a medical subscription's share): a run made or refreshed adds the
 // month's Recurring deduction of each one due that month first (adjustments/recurring.service.ts), so its lines take
-// them with the month's other deductions. Each line's warnings say when its installments of advances and loans pass
-// Payroll Setup's share of the pay (installmentLimitWarning): a warning, never a block.
+// them with the month's other deductions. Each line's warnings say when it passes the Labour Law's limits (owner, 18
+// October 2026, after reading the law: "Block above 10%", "Warn above 25%, record the consent"): its installments of
+// advances and loans past 10% of the pay (or Payroll Setup's lower limit), refused when planned but the month's pay can
+// be less; its recurring deductions past 25% of the pay after tax, insurance and installments; its damage or loss past
+// 5 days' wage. Warnings, never blocks (views.ts lawWarnings).
 @Injectable()
 export class PayrollService {
   constructor(
@@ -332,10 +351,17 @@ export class PayrollService {
       const line = lines.get(change.id)!;
       const was = savedInputs(line.inputs);
       const inputs: PayrollInputs = { ...was, ...(change.inputs ? sent(change.inputs) : {}) };
-      // paid leave is taken on days the month pays (owner, 17 October 2026)
-      const paidDays = (line.terms as unknown as PayrollTerms).paidDays;
+      // paid leave is taken on days the month pays (owner, 17 October 2026), and unpaid leave too (18 October 2026)
+      const lineTerms = line.terms as unknown as PayrollTerms;
+      const paidDays = lineTerms.paidDays;
       if (inputs.leaveDays !== null && inputs.leaveDays > paidDays) {
         throw new BadRequestException(`${line.nameEn}: the leave days (${inputs.leaveDays}) can't be more than the ${paidDays} days paid this month.`);
+      }
+      const leave = leaveDaysOf(lineTerms, inputs);
+      if ((leave.leaveDays ?? 0) + (leave.unpaidLeaveDays ?? 0) > paidDays) {
+        throw new BadRequestException(
+          `${line.nameEn}: the leave days (${leave.leaveDays ?? 0}) and the unpaid leave days (${leave.unpaidLeaveDays ?? 0}) can't be more than the ${paidDays} days paid this month together.`,
+        );
       }
       const diff: Record<string, unknown> = changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>);
       for (const key of MONEY_INPUTS) if (key in diff) diff[key] = 'changed';
@@ -591,7 +617,7 @@ export class PayrollService {
         where: { month: run.month, status: 'pending', employeeId: { notIn: run.lines.map((l) => l.employeeId) } },
         _count: { _all: true },
       }),
-      // the share of pay a month's installments may take before the lines warn (18 October 2026)
+      // the limit on a month's installments the lines warn past (18 October 2026)
       this.settings.row(),
     ]);
     const people = notOnRun.length
@@ -601,7 +627,7 @@ export class PayrollService {
     const adjustmentsNotOnRun = people
       .map((p) => ({ employeeId: p.id, employeeCode: p.employeeCode, name: p.fullNameEn, count: counts.get(p.id) ?? 0 }))
       .sort((a, b) => a.name.localeCompare(b.name));
-    return runView(run, { banks, approvedByName: approver?.fullNameEn ?? null, adjustmentsNotOnRun, installmentWarnPercent: settings.installmentWarnPercent?.toNumber() ?? null });
+    return runView(run, { banks, approvedByName: approver?.fullNameEn ?? null, adjustmentsNotOnRun, installmentLimitPercent: settings.installmentLimitPercent.toNumber() });
   }
 
   private assertStatus(run: RunRow, wanted: PayrollStatus, doing: string) {

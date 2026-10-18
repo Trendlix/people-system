@@ -125,7 +125,16 @@ export interface AdjustmentChoices {
   notOnRun?: number;
   /** Pending ones left on months approved without them, oldest first. Left out by an API from before runs took them. */
   leftBehind?: { month: string; count: number }[];
+  /**
+   * The month's warnings by the Labour Law, by employee (owner, 18 October 2026, after reading the law; warnings only):
+   * damage or loss deductions past 5 days' wage (Art. 151). Left out by an API from before them.
+   */
+  warnings?: { employeeId: string; text: string }[];
 }
+
+/** An employee's warnings by the Labour Law for the month, as their group on the page shows them. */
+export const lawWarningsOf = (choices: Pick<AdjustmentChoices, 'warnings'>, employeeId: string) =>
+  (choices.warnings ?? []).filter((w) => w.employeeId === employeeId).map((w) => w.text);
 
 /** Who sees the page: HR, Finance and the CEO, as the payroll lines. */
 export const canSeeAdjustments = (user: WithRoles) => hasRole(user, 'hr', 'finance', 'ceo');
