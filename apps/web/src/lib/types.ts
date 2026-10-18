@@ -28,6 +28,10 @@ import type {
   PdfField,
   PdfPageSize,
   PhotoCrop,
+  ReimbursementDecision,
+  ReimbursementStage,
+  ReimbursementStatus,
+  ReimbursementStepKind,
   Role,
   SavedPayrollInputs,
   Standing,
@@ -1494,4 +1498,95 @@ export interface HolidayImportPreview {
 /** POST /payroll/holidays/import: the file as checked when imported, and the holidays added, in date order. */
 export interface HolidayImportResult extends HolidayImportPreview {
   imported: Holiday[];
+}
+
+// ---------- reimbursements (owner, 18 October 2026: "allow the employee to add reimbursement request … for specific
+// preset up conditions", "in the setup i need to enter for it a cap"; packages/shared/src/reimbursements.ts) ----------
+// HR sets up the types in Payroll Setup; an employee claims one from My Requests; the direct manager, HR, then Finance
+// decide it; Finance's approval adds it, untaxed, to the next payroll. Amounts in EGP with 2 decimals, dates
+// YYYY-MM-DD, moments ISO.
+
+/**
+ * GET /reimbursement-types (HR, Finance, the CEO), active first, then by English name: a type and its conditions. A cap
+ * or the deadline left empty (null) has no limit; an empty list of departments, grades or employment types, everyone.
+ * `claims`: how many claims use it, which keeps it from being deleted.
+ */
+export interface ReimbursementTypeView {
+  id: string;
+  nameEn: string;
+  nameAr: string;
+  description: string | null;
+  receiptRequired: boolean;
+  capPerClaim: number | null;
+  capPerMonth: number | null;
+  capPerYear: number | null;
+  claimWithinDays: number | null;
+  departmentIds: string[];
+  gradeIds: string[];
+  employmentTypes: string[];
+  active: boolean;
+  claims: number;
+}
+
+/** What POST /reimbursement-types takes, and PATCH /reimbursement-types/:id (all of it, or part). */
+export type ReimbursementTypeBody = Omit<ReimbursementTypeView, 'id' | 'claims'>;
+
+/**
+ * GET /me/reimbursement-types?expenseDate=: the active types the employee may claim, with what their claims of each
+ * already take of its caps in that expense date's month and year (the claims being decided and those approved).
+ */
+export interface MyReimbursementType extends Omit<ReimbursementTypeView, 'departmentIds' | 'gradeIds' | 'employmentTypes' | 'claims'> {
+  usedInMonth: number;
+  usedInYear: number;
+}
+
+/** A step logged on a claim: sent, sent straight to HR, each stage's decision, cancelled, added to a payroll. */
+export interface ReimbursementClaimStep {
+  id: string;
+  kind: ReimbursementStepKind;
+  decision: ReimbursementDecision | null;
+  /** The amount approved at that step, or claimed on `submitted`. */
+  amount: number | null;
+  comment: string | null;
+  /** The payroll month it was added to (`added_to_payroll`), its first day. */
+  payMonth: string | null;
+  /** Who, by their display name; null for a user since removed. */
+  actor: string | null;
+  at: string;
+}
+
+/**
+ * A claim, as GET /reimbursements, GET /me/reimbursements and GET /reimbursements/:id give it to the caller (the
+ * claimant, the claim's manager, HR, Finance and the CEO). `waitingForYou`: the caller decides it now; `canCancel`: the
+ * caller is the claimant and it is still being decided.
+ */
+export interface ReimbursementClaimView {
+  id: string;
+  employee: { id: string; fullNameEn: string; fullNameAr: string | null; photoId?: string | null; department: string | null; team?: string | null };
+  type: { id: string; nameEn: string; nameAr: string; receiptRequired: boolean };
+  expenseDate: string;
+  /** As claimed. */
+  amount: number;
+  /** As last approved at any stage; the final amount once approved. */
+  approvedAmount: number | null;
+  description: string;
+  status: ReimbursementStatus;
+  stage: ReimbursementStage | null;
+  waitingForYou: boolean;
+  canCancel: boolean;
+  manager: { id: string; fullNameEn: string } | null;
+  rejectedStage: ReimbursementStage | null;
+  rejectReason: string | null;
+  /** The payroll month it was added to, its first day. */
+  payMonth: string | null;
+  /** Its payroll addition, once Finance approved it. */
+  payroll: { status: 'pending' | 'applied' | 'cancelled'; runMonth: string } | null;
+  receipts: { id: string; fileName: string; mimeType: string; sizeBytes: number }[];
+  steps: ReimbursementClaimStep[];
+  createdAt: string;
+}
+
+/** GET /reimbursements/counts: how many claims wait for the caller, for the sidebar. */
+export interface ReimbursementCounts {
+  waiting: number;
 }

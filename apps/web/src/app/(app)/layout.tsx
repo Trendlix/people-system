@@ -2,20 +2,22 @@ import type { Role } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
-import { COMING_SOON, DETAILS_CHANGES_PATH, navFor, RAISE_REQUESTS_PATH } from '@/components/nav';
+import { COMING_SOON, DETAILS_CHANGES_PATH, MY_TEAM, navFor, RAISE_REQUESTS_PATH, REIMBURSEMENTS_PATH } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { UserMenu } from '@/components/user-menu';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
+import { hasRole, isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
-import type { ChangeRequest, EndingSummary, SessionUser } from '@/lib/types';
+import type { ChangeRequest, EndingSummary, ReimbursementCounts, SessionUser } from '@/lib/types';
 import { decidesChangeRequests, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './approvals/data';
 import { followsRaises, PENDING_RAISES } from './approvals/raises';
 import { ReviewNowLink } from './employees/[id]/confirm/confirm-notices';
 import { bannerMessage } from './employees/confirmation';
 import { loadOwnProfile } from './own-profile';
 import { handlesRaiseRequests, WITH_HR_REQUESTS } from './raise-requests/list';
+import { canSeeReimbursements, CLAIM_COUNTS } from './reimbursements/list';
 
 /**
  * The sidebar links for the signed-in user: an employee's or a manager's own (Dashboard, My Profile, My Requests, and
@@ -33,18 +35,23 @@ async function MainNav() {
   // Beside Approvals: for HR and the CEO, the endings and the pay raises waiting for the CEO; for HR and Admin (a Super
   // Admin too), the employees' change requests waiting for them. Under Requests: beside Raise Requests, for HR, the
   // requests waiting for HR (owner's decisions, 16 October 2026); beside Details Changes, for HR and Admin, the change
-  // requests waiting (the same read as Approvals'). Each is left out when it can't be read.
-  const [endings, changes, raises, requests] = await Promise.all([
+  // requests waiting (the same read as Approvals'); beside Reimbursements, for HR, Finance and the CEO, and beside My
+  // Team, for a direct manager on their own side, the claims waiting for them (18 October 2026). Each is left out when
+  // it can't be read.
+  const self = isSelfService({ roles });
+  const [endings, changes, raises, requests, claims] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS) : null,
     decidesChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS) : null,
     followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES) : null,
     handlesRaiseRequests({ roles }) ? getOrNull<RaiseRequest[]>(WITH_HR_REQUESTS) : null,
+    canSeeReimbursements({ roles }) || (self && hasRole({ roles }, 'manager')) ? getOrNull<ReimbursementCounts>(CLAIM_COUNTS) : null,
   ]);
   const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0);
   const counts: Record<string, number> = {};
   if (waiting) counts['/approvals'] = waiting;
   if (requests?.length) counts[RAISE_REQUESTS_PATH] = requests.length;
   if (changes?.length) counts[DETAILS_CHANGES_PATH] = changes.length;
+  if (claims?.waiting) counts[self ? MY_TEAM : REIMBURSEMENTS_PATH] = claims.waiting;
   return <NavLinks items={navFor(user)} counts={Object.keys(counts).length ? counts : undefined} />;
 }
 

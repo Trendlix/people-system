@@ -9,6 +9,9 @@ import { Empty, employeeRaiseRequestsHref, Loading, StatusBadge, todayInCairo } 
 import { loadOwnProfile } from '../own-profile';
 import { newRaiseRequestHref, progressText } from '../raise-requests/list';
 import { RaiseRequestStatusBadge } from '../raise-requests/ui';
+import { loadWaitingClaims } from '../reimbursements/data';
+import { claimsLabel } from '../reimbursements/list';
+import { WaitingClaimsTable } from '../reimbursements/ui';
 import { loadTeam } from './data';
 import { askedByText, latestRaise, probationOf } from './team';
 
@@ -18,7 +21,9 @@ import { askedByText, latestRaise, probationOf } from './team';
 // manager is told, not asked, and sees no figure), with Request a raise when the manager may ask for one now: the form
 // under Requests → Raise Requests with the report chosen (17 October 2026: "i think raising a request should be moved
 // from the Employee tab to the raise requests tab"), else See the requests on their Salary sub-tab. The API decides who
-// the manager may see, as everywhere.
+// the manager may see, as everywhere. Reimbursements to Approve (owner, 18 October 2026: "allow the employee to add
+// reimbursement request … for specific preset up conditions"): the claims waiting for the manager, the first of the
+// three to decide them, each opening its page with the decision form.
 
 export const metadata: Metadata = { title: 'My Team · People System' };
 
@@ -103,12 +108,47 @@ async function Team() {
   );
 }
 
+/**
+ * The claims waiting for the manager (GET /reimbursements?status=waiting), newest first: who, the type, the date and the
+ * amount, each with Decide. Nothing from an API from before them.
+ */
+async function ToApprove() {
+  const claims = await loadWaitingClaims();
+  if (claims.kind === 'unavailable' || claims.kind === 'forbidden') return null;
+  return (
+    <section aria-labelledby="reimbursements-to-approve" className="space-y-3">
+      <div>
+        <h2 id="reimbursements-to-approve" className="text-lg font-semibold">
+          Reimbursements to Approve
+        </h2>
+        <p className="text-sm text-muted">
+          Your direct reports&apos; claims waiting for you. Approve one, approve a lower amount or reject it, with a comment; HR, then Finance, decide
+          it after you.
+        </p>
+      </div>
+      {claims.kind === 'failed' ? (
+        <div className="card px-6 py-6 text-sm text-muted">The claims waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : claims.value.length === 0 ? (
+        <div className="card px-6 py-6 text-sm text-muted">No claims are waiting for you.</div>
+      ) : (
+        <div className="card">
+          <WaitingClaimsTable claims={claims.value} />
+          <p className="border-t border-line px-4 py-3 text-sm text-muted">{claimsLabel(claims.value.length)} waiting for you</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function MyTeamPage() {
   return (
     <div className="max-w-5xl">
       <h1 className="text-2xl font-semibold">My Team</h1>
-      <p className="mt-1 text-muted">The people who report to you now. Open a profile to see their details and their raise requests.</p>
-      <div className="mt-6">
+      <p className="mt-1 text-muted">The people who report to you now, and their reimbursement claims waiting for you. Open a profile to see their details and their raise requests.</p>
+      <div className="mt-6 space-y-8">
+        <Suspense fallback={null}>
+          <ToApprove />
+        </Suspense>
         <Suspense fallback={<Loading />}>
           <Team />
         </Suspense>

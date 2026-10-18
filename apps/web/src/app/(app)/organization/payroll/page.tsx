@@ -9,6 +9,7 @@ import { holidaysHref, holidaysYear } from '../holidays/holidays';
 import { Empty, Loading } from '../ui';
 import { LawRatesSection } from './law-rates-section';
 import { PayingSalariesSection } from './paying-section';
+import { ReimbursementTypesSection } from './reimbursement-types-section';
 import { YourRulesSection } from './rules-section';
 import { seesPayrollSettings } from './settings';
 
@@ -18,9 +19,12 @@ import { seesPayrollSettings } from './settings';
 // contracts start with. 2 Rates Set by Law: the year's legal rates and tax brackets. The official holidays, which come
 // out of each shift's working days for the expected hours, were the third section until they got a tab of their own
 // (owner, 16 October 2026: "make holiday a separate tab"): a line points there in their place, and an old link to them
-// (?year=) goes there. 4 Paying Salaries: the bank files' details and the payday. HR, Finance, the CEO and Admin see
-// it; HR and Admin change it (the API checks every request again). Changed rules apply to runs made or refreshed
-// afterwards; approved runs keep what they were worked out with (each run copies them).
+// (?year=) goes there. 4 Paying Salaries: the bank files' details and the payday. 5 Reimbursement Types (owner, 18
+// October 2026: "allow the employee to add reimbursement request … for specific preset up conditions", "in the setup i
+// need to enter for it a cap"): the kinds of expense employees claim back, with their caps and conditions; HR changes
+// them, a Super Admin deletes an unused one. HR, Finance, the CEO and Admin see it; HR and Admin change the rest (the API
+// checks every request again). Changed rules apply to runs made or refreshed afterwards; approved runs keep what they
+// were worked out with (each run copies them).
 
 export const metadata: Metadata = { title: 'Payroll Setup · People System' };
 
@@ -45,6 +49,9 @@ function PayrollSetup({ user }: { user: SessionUser }) {
       </p>
       <Section>
         <PayingSalariesSection user={user} />
+      </Section>
+      <Section>
+        <ReimbursementTypesSection user={user} />
       </Section>
     </div>
   );

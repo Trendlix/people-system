@@ -13,6 +13,9 @@ import { loadOwnProfile } from '../own-profile';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
 import { askedAt, justSent, newRaiseRequestHref, raiseRequestAnchor } from '../raise-requests/list';
 import { EffectiveFrom, FoldedRequestLog, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, RequestSent, Requester, Suggestion } from '../raise-requests/ui';
+import { loadMyClaims } from '../reimbursements/data';
+import { claimsLabel, NEW_CLAIM_PATH } from '../reimbursements/list';
+import { MyClaimsTable } from '../reimbursements/ui';
 import {
   askedByManager,
   filterRequests,
@@ -37,7 +40,9 @@ import {
 // requests come later. Cancelling a change waiting for HR stays on the change request page. Request a raise opens the
 // request form under Requests → Raise Requests for themself (17 October 2026: "i think raising a request should be moved
 // from the Employee tab to the raise requests tab"), which comes back here once sent, saying so; each raise shows the
-// month it is asked from ("Effective from").
+// month it is asked from ("Effective from"). Reimbursements (owner, 18 October 2026: "allow the employee to add
+// reimbursement request … for specific preset up conditions") have a section of their own below: their claims, newest
+// first, each opening its page (receipts, every step, Cancel while it is being decided), and New reimbursement.
 
 export const metadata: Metadata = { title: 'My Requests · People System' };
 
@@ -239,6 +244,47 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/my-request
   );
 }
 
+/**
+ * Their reimbursement claims (GET /me/reimbursements): the type, the expense's date, the amount claimed and the one
+ * approved, where it stands and the payroll month it is paid with; and New reimbursement. Nothing from an API from before
+ * them, nor without a profile of their own (the requests above say so).
+ */
+async function Reimbursements() {
+  const user = await getCurrentUser();
+  const profile = await loadOwnProfile(user);
+  if (!profile) return null;
+  const claims = await loadMyClaims();
+  if (claims.kind === 'unavailable') return null;
+  return (
+    <section aria-labelledby="my-reimbursements" className="mt-10 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="my-reimbursements" className="text-lg font-semibold">
+            Reimbursements
+          </h2>
+          <p className="text-sm text-muted">
+            Expenses you paid for the company, claimed back. Your direct manager decides each first, then HR, then Finance; once approved, it is
+            paid with the next payroll.
+          </p>
+        </div>
+        <Link href={NEW_CLAIM_PATH} className="btn btn-primary">
+          New reimbursement
+        </Link>
+      </div>
+      {claims.kind !== 'ok' ? (
+        <div className="card px-6 py-6 text-sm text-muted">Your reimbursement claims couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : claims.value.length === 0 ? (
+        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t claimed a reimbursement yet. Claim one with New reimbursement.</div>
+      ) : (
+        <div className="card">
+          <MyClaimsTable claims={claims.value} />
+          <p className="border-t border-line px-4 py-3 text-sm text-muted">{claimsLabel(claims.value.length)}, newest first.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests'>) {
   return (
     <div className="max-w-4xl">
@@ -249,6 +295,9 @@ export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests
           <Requests searchParams={searchParams} />
         </Suspense>
       </div>
+      <Suspense fallback={null}>
+        <Reimbursements />
+      </Suspense>
       <p className="mt-8 text-sm text-muted">Leave and attendance requests are coming soon.</p>
     </div>
   );

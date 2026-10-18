@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { LABELS } from '@trendlix/shared';
+import { isOpenReimbursement, LABELS } from '@trendlix/shared';
 import { MY_REQUESTS, MY_TEAM } from '@/components/nav';
 import { departmentName } from '@/lib/departments';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -19,6 +19,9 @@ import { loadOwnProfile } from '../own-profile';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
 import { effectiveFromText, newRaiseRequestHref, progressText } from '../raise-requests/list';
 import { EffectiveFrom, FoldedRequestLog, RaiseRequestStatusBadge, RequestReason, Suggestion } from '../raise-requests/ui';
+import { loadMyClaims, loadWaitingClaims } from '../reimbursements/data';
+import { claimHref, claimsLabel, NEW_CLAIM_PATH, progressText as claimProgressText } from '../reimbursements/list';
+import { ClaimAmount, ClaimStatusBadge } from '../reimbursements/ui';
 import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toDoItems, upcomingHolidays, workingDaysText } from './dashboard';
 
 // The employee's dashboard: the home page (/) of someone who is only an employee and/or a direct manager (owner, 17
@@ -28,7 +31,8 @@ import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toD
 // Holidays), My Requests (the open ones, and asking for a raise or a change to their details), To Do (confirming their
 // details, the papers HR still needs) and, for a manager, My Team (their direct reports, a probation ending soon and the
 // raise requests they are told about). Everything is read as the employee may see it: the API decides, as everywhere.
-// The cards that need more than the profile load on their own.
+// The cards that need more than the profile load on their own. Reimbursements (owner, 18 October 2026): their open
+// claims on My Requests with New reimbursement, and for a manager with claims waiting, Reimbursements to Approve.
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -212,9 +216,11 @@ async function UpcomingHolidays({ today }: { today: string }) {
  * to the raise requests tab", 17 October 2026) and Ask to change my details (the change request page).
  */
 async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
-  const raises = await loadEmployeeRaiseRequests(p.id);
+  const [raises, claims] = await Promise.all([loadEmployeeRaiseRequests(p.id), loadMyClaims()]);
   const own = raises.kind === 'ok' ? raises.value : null;
   const open = myRequests({ changes: p.changeRequests ?? [], raises: own?.requests ?? [] }).filter((r) => r.open);
+  // their reimbursement claims still being decided (18 October 2026); none from an API from before them
+  const openClaims = claims.kind === 'ok' ? claims.value.filter((c) => isOpenReimbursement(c.status)) : [];
   return (
     <Card
       title="My Requests"
@@ -224,10 +230,26 @@ async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
         </Link>
       }
     >
-      {open.length === 0 ? (
+      {open.length === 0 && openClaims.length === 0 ? (
         <Quiet>No open requests.</Quiet>
       ) : (
         <ul className="divide-y divide-line-soft">
+          {openClaims.map((c) => (
+            <li key={`claim:${c.id}`} className="space-y-1 py-2.5 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="min-w-0">
+                  <Link href={claimHref(c.id)} className="font-medium">
+                    {c.type.nameEn} reimbursement
+                  </Link>
+                  <p className="text-xs text-muted">Sent {formatDateTime(c.createdAt)}</p>
+                </div>
+                <ClaimStatusBadge status={c.status} />
+              </div>
+              <p className="text-xs text-muted">
+                <ClaimAmount claim={c} /> · {claimProgressText(c).text}
+              </p>
+            </li>
+          ))}
           {open.map((r) => (
             <li key={`${r.kind}:${r.id}`} className="space-y-1.5 py-2.5 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -259,16 +281,60 @@ async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
         </ul>
       )}
       {raises.kind === 'failed' && <p className="mt-2 text-xs text-muted">Your raise requests couldn&apos;t be loaded.</p>}
+      {claims.kind === 'failed' && <p className="mt-2 text-xs text-muted">Your reimbursement claims couldn&apos;t be loaded.</p>}
       <div className="mt-4 flex flex-wrap gap-2">
         {own?.canRequest && (
           <Link href={newRaiseRequestHref(p.id)} className={`${small} btn-primary`}>
             Request a raise
           </Link>
         )}
+        {claims.kind !== 'unavailable' && (
+          <Link href={NEW_CLAIM_PATH} className={`${small} btn-secondary`}>
+            New reimbursement
+          </Link>
+        )}
         <Link href={`/employees/${p.id}/change-request`} className={`${small} btn-secondary`}>
           Ask to change my details
         </Link>
       </div>
+    </Card>
+  );
+}
+
+// ---------- Reimbursements to Approve (a manager) ----------
+
+/**
+ * The claims waiting for the manager, the first to decide them (18 October 2026): who, the type and the amount, each
+ * opening its page with the decision form. Only when some are waiting; My Team lists them too.
+ */
+async function ToApproveCard() {
+  const claims = await loadWaitingClaims();
+  if (claims.kind !== 'ok' || claims.value.length === 0) return null;
+  return (
+    <Card
+      title="Reimbursements to Approve"
+      action={
+        <Link href={MY_TEAM} className="text-sm">
+          Open My Team
+        </Link>
+      }
+    >
+      <ul className="divide-y divide-line-soft">
+        {claims.value.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 py-2.5 text-sm first:pt-0">
+            <div className="min-w-0">
+              <p className="font-medium">{c.employee.fullNameEn}</p>
+              <p className="text-xs text-muted">
+                {c.type.nameEn} · <span className="tabular-nums">{formatDate(c.expenseDate)}</span> · <ClaimAmount claim={c} />
+              </p>
+            </div>
+            <Link href={claimHref(c.id)} className={`${small} btn-primary`}>
+              Decide<span className="sr-only"> on the {c.type.nameEn} claim by {c.employee.fullNameEn}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-muted">{claimsLabel(claims.value.length)} waiting for you</p>
     </Card>
   );
 }
@@ -422,9 +488,14 @@ export async function Dashboard({ user }: { user: Session }) {
           </>
         )}
         {profile && hasRole(user, 'manager') && (
-          <Suspense fallback={<CardLoading title="My Team" wide />}>
-            <MyTeamCard profile={profile} user={user} today={today} />
-          </Suspense>
+          <>
+            <Suspense fallback={null}>
+              <ToApproveCard />
+            </Suspense>
+            <Suspense fallback={<CardLoading title="My Team" wide />}>
+              <MyTeamCard profile={profile} user={user} today={today} />
+            </Suspense>
+          </>
         )}
       </div>
     </div>

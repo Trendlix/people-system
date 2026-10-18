@@ -39,6 +39,9 @@ export const RAISE_REQUESTS_PATH = '/raise-requests';
 /** The employees' requests to change their details (app/(app)/requests/details-changes), under Requests. */
 export const DETAILS_CHANGES_PATH = '/requests/details-changes';
 
+/** The employees' reimbursement claims (app/(app)/reimbursements), under Requests. */
+export const REIMBURSEMENTS_PATH = '/reimbursements';
+
 export const NAV: NavItem[] = [
   { href: '/', label: 'Home' },
   { href: '/organization/company', label: 'Organization', section: '/organization' },
@@ -71,8 +74,8 @@ export const NAV: NavItem[] = [
   // the requests HR and the others decide, under one heading (owner, 17 October 2026: asked whether raise requests are
   // about money or requests like the others, the owner chose "A Requests heading"); each page for its own roles, the
   // heading for whoever sees one of them, with no page of its own: it links to the first page they see (navFor), Raise
-  // Requests for HR, Finance and the CEO, Details Changes for an Admin. Approvals stays the inbox of what waits for the
-  // user, and an employee's own requests stay on My Requests.
+  // Requests for HR, Finance and the CEO, Details Changes for an Admin; Reimbursements since 18 October 2026. Approvals
+  // stays the inbox of what waits for the user, and an employee's own requests stay on My Requests.
   {
     href: RAISE_REQUESTS_PATH,
     label: 'Requests',
@@ -83,6 +86,9 @@ export const NAV: NavItem[] = [
       // the employees' requests to change their details, which HR and Admin (a Super Admin too) decide (owner's decision,
       // 15 October 2026)
       { href: DETAILS_CHANGES_PATH, label: 'Details Changes', section: DETAILS_CHANGES_PATH, roles: ['hr', 'admin'] },
+      // the employees' reimbursement claims, through their direct manager, HR and Finance (owner, 18 October 2026: "allow
+      // the employee to add reimbursement request … for specific preset up conditions"); the CEO may view them
+      { href: REIMBURSEMENTS_PATH, label: 'Reimbursements', section: REIMBURSEMENTS_PATH, roles: ['hr', 'finance', 'ceo'] },
       // later: Leave, once the Leave module exists (it is under Coming Next until then)
     ],
   },
