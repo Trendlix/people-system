@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
-import type { FormState } from '@/lib/types';
+import type { AdvanceLimitView, FormState } from '@/lib/types';
 import type { PersonRef } from '../adjustments/adjustments';
+import { limitHref } from '../unsettled/installments';
 import { InlineForm, Note } from '../unsettled/unsettled-forms';
-import { NAME_MAX } from './recurring';
+import { NAME_MAX, recurringPreview } from './recurring';
 
 // Recurring Deductions' forms (owner, 18 October 2026: a medical subscription is an ongoing monthly share), for HR: a
 // new one for an employee (what for, the amount a month, the first month and, if it has one, the last); on each one
@@ -24,6 +25,7 @@ function MonthSelect({
   value,
   required = false,
   emptyLabel,
+  onChange,
 }: {
   id: string;
   name: string;
@@ -31,9 +33,11 @@ function MonthSelect({
   value: string;
   required?: boolean;
   emptyLabel?: string;
+  /** Told each month chosen, e.g. for the figures shown as the form is filled in. */
+  onChange?: (month: string) => void;
 }) {
   return (
-    <Select id={id} name={name} required={required} defaultValue={value} className="input">
+    <Select id={id} name={name} required={required} defaultValue={value} onChange={onChange && ((e) => onChange(e.target.value))} className="input">
       {emptyLabel !== undefined && <option value="">{emptyLabel}</option>}
       {months.map((m) => (
         <option key={m.value} value={m.value}>
@@ -68,7 +72,19 @@ function NameField({ state, fid, saved }: { state: FormState; fid: (n: string) =
   );
 }
 
-function AmountField({ state, fid, saved, label = 'Amount a month (EGP)' }: { state: FormState; fid: (n: string) => string; saved?: string; label?: string }) {
+function AmountField({
+  state,
+  fid,
+  saved,
+  label = 'Amount a month (EGP)',
+  onChange,
+}: {
+  state: FormState;
+  fid: (n: string) => string;
+  saved?: string;
+  label?: string;
+  onChange?: (typed: string) => void;
+}) {
   return (
     <div>
       <label htmlFor={fid('amount')} className="label">
@@ -82,6 +98,7 @@ function AmountField({ state, fid, saved, label = 'Amount a month (EGP)' }: { st
         autoComplete="off"
         placeholder="e.g. 350.00"
         defaultValue={valueOf(state, 'amount', saved)}
+        onChange={onChange && ((e) => onChange(e.target.value))}
         className="input tabular-nums"
       />
     </div>
@@ -105,9 +122,37 @@ export function AddRecurringForm({
   const { state, pending, form } = useKeptForm(action);
   const ref = useRef<HTMLFormElement>(null);
   const fid = useFieldIds();
+  // what is typed, for the figures under the fields (owner, 18 October 2026: "view assumed numbers")
+  const [employeeId, setEmployeeId] = useState(valueOf(state, 'employeeId', ''));
+  const [amount, setAmount] = useState(valueOf(state, 'amount', ''));
+  const [start, setStart] = useState(valueOf(state, 'startMonth', thisMonth));
+  const [end, setEnd] = useState(valueOf(state, 'endMonth', ''));
+  // each employee's current gross, read once when they are chosen (null: not to be had)
+  const [limits, setLimits] = useState<Record<string, AdvanceLimitView | null>>({});
+  const [answered, setAnswered] = useState(state);
+  if (state !== answered) {
+    setAnswered(state);
+    if (state.message) {
+      setEmployeeId('');
+      setAmount('');
+      setStart(thisMonth);
+      setEnd('');
+    }
+  }
   useEffect(() => {
     if (state.message) ref.current?.reset();
   }, [state]);
+
+  function choose(id: string) {
+    setEmployeeId(id);
+    if (!id || id in limits) return;
+    fetch(limitHref(id), { cache: 'no-store' })
+      .then((res) => (res.ok ? (res.json() as Promise<AdvanceLimitView>) : null))
+      .catch(() => null)
+      .then((view) => setLimits((known) => ({ ...known, [id]: view })));
+  }
+  const preview = recurringPreview(amount, start, end, employeeId ? limits[employeeId] : undefined);
+
   return (
     <form {...form} ref={ref} aria-label="Add a recurring deduction" className="space-y-3 rounded-lg border border-line bg-canvas p-4">
       <FormErrors errors={state.errors} />
@@ -116,7 +161,7 @@ export function AddRecurringForm({
           <label htmlFor={fid('employeeId')} className="label">
             Employee
           </label>
-          <Select id={fid('employeeId')} name="employeeId" required defaultValue={valueOf(state, 'employeeId', '')} className="input">
+          <Select id={fid('employeeId')} name="employeeId" required defaultValue={valueOf(state, 'employeeId', '')} onChange={(e) => choose(e.target.value)} className="input">
             <option value="">Choose…</option>
             {people.map((p) => (
               <option key={p.id} value={p.id}>
@@ -127,22 +172,29 @@ export function AddRecurringForm({
           </Select>
         </div>
         <NameField state={state} fid={fid} />
-        <AmountField state={state} fid={fid} />
+        <AmountField state={state} fid={fid} onChange={setAmount} />
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor={fid('startMonth')} className="label">
               First month
             </label>
-            <MonthSelect id={fid('startMonth')} name="startMonth" required months={starts} value={valueOf(state, 'startMonth', thisMonth)} />
+            <MonthSelect id={fid('startMonth')} name="startMonth" required months={starts} value={valueOf(state, 'startMonth', thisMonth)} onChange={setStart} />
           </div>
           <div>
             <label htmlFor={fid('endMonth')} className="label">
               Last month <span className="font-normal text-muted">(optional)</span>
             </label>
-            <MonthSelect id={fid('endMonth')} name="endMonth" months={ends} value={valueOf(state, 'endMonth', '')} emptyLabel="Until stopped" />
+            <MonthSelect id={fid('endMonth')} name="endMonth" months={ends} value={valueOf(state, 'endMonth', '')} emptyLabel="Until stopped" onChange={setEnd} />
           </div>
         </div>
       </div>
+      {preview && (
+        <div aria-live="polite" className={`space-y-1 rounded-lg border bg-card p-3 text-sm ${preview.overGross ? 'border-danger' : 'border-line'}`}>
+          <p className="text-xs font-semibold tracking-wide text-muted uppercase">What It Comes To</p>
+          <p className="font-semibold tabular-nums">{preview.period}</p>
+          {preview.share && <p className={`tabular-nums ${preview.overGross ? 'text-danger' : 'text-muted'}`}>{preview.share}</p>}
+        </div>
+      )}
       <p className="hint">
         Each month&apos;s payroll run takes it as a deduction after tax, from its first month to its last, or until it is stopped; it stops by itself
         from the month after someone&apos;s last working day.

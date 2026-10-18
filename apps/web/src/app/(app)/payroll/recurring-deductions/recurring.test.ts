@@ -12,7 +12,9 @@ import {
   fromChoices,
   lastMonth,
   monthlyTotal,
+  monthsCounted,
   peopleOf,
+  recurringPreview,
   periodText,
   placeOfRecurring,
   recurringBody,
@@ -182,5 +184,42 @@ describe('what the forms send', () => {
       'Say what it is for, e.g. Medical subscription (family).',
       'Choose the last month it is deducted, or leave it empty to deduct it until stopped.',
     ]);
+  });
+});
+
+describe('what a new one comes to', () => {
+  // owner, 18 October 2026, on the add form: "view assumed numbers"
+  it('counts the months, both ends included', () => {
+    expect(monthsCounted('2026-10', '2027-07')).toBe(10);
+    expect(monthsCounted('2026-10', '2026-10')).toBe(1);
+    expect(monthsCounted('2026-12', '2027-01')).toBe(2);
+  });
+
+  it('says what it comes to in all, or a year while it runs until stopped', () => {
+    expect(recurringPreview('15000', '2026-10', '2027-07', undefined)).toEqual({
+      period: '10 months, October 2026 to July 2027: EGP 15,000.00 a month, EGP 150,000.00 in all.',
+      share: null,
+      overGross: false,
+    });
+    expect(recurringPreview('350', '2026-11', '', undefined)?.period).toBe('From November 2026 until stopped: EGP 350.00 a month, EGP 4,200.00 a year.');
+    expect(recurringPreview('350', '2026-11', '2026-11', undefined)?.period).toBe('1 month, November 2026: EGP 350.00 a month, EGP 350.00 in all.');
+  });
+
+  it('gives its share of the current gross, and warns past it', () => {
+    expect(recurringPreview('15000', '2026-10', '2027-07', { gross: 50_000 })?.share).toBe(
+      '30% of the current gross pay of EGP 50,000.00 a month, leaving EGP 35,000.00 before tax, insurance and other deductions.',
+    );
+    const over = recurringPreview('60000', '2026-10', '', { gross: 50_000 });
+    expect(over?.overGross).toBe(true);
+    expect(over?.share).toBe('More than the current gross pay of EGP 50,000.00 a month: the run would have nothing left to pay.');
+    expect(recurringPreview('500', '2026-10', '', { gross: null })?.share).toBe('No current contract, so its share of the pay can’t be shown.');
+    expect(recurringPreview('500', '2026-10', '', null)?.share).toBe('No current contract, so its share of the pay can’t be shown.');
+  });
+
+  it('shows nothing until it can be read, or when the rules refuse it', () => {
+    expect(recurringPreview('', '2026-10', '', undefined)).toBeNull();
+    expect(recurringPreview('abc', '2026-10', '', undefined)).toBeNull();
+    expect(recurringPreview('0', '2026-10', '', undefined)).toBeNull();
+    expect(recurringPreview('500', '2026-10', '2026-09', undefined)).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { monthPlus, recurringDeductionProblems, sumAmounts, type Role } from '@trendlix/shared';
 import { hasRole } from '../../../../lib/roles';
-import type { RecurringDeductionStatus, RecurringDeductionView } from '../../../../lib/types';
+import type { AdvanceLimitView, RecurringDeductionStatus, RecurringDeductionView } from '../../../../lib/types';
 import { formatEgp, parseAmount } from '../../employees/[id]/contracts/salary';
 import { placeOfClaim } from '../../reimbursements/list';
 import { isMonth, monthName, monthOf } from '../list';
@@ -120,6 +120,50 @@ export function editEndChoices(r: Pick<RecurringDeductionView, 'endMonth'>, toda
   const months = endChoices(today);
   if (r.endMonth && !months.some((m) => m.value === r.endMonth)) months.unshift({ value: r.endMonth, label: monthName(r.endMonth) });
   return months;
+}
+
+// ---------- what a new one comes to ----------
+
+/** How many months from `start` to `end`, both counted: October 2026 to July 2027 is 10. */
+export const monthsCounted = (start: string, end: string) =>
+  (Number(end.slice(0, 4)) - Number(start.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(start.slice(5, 7)) + 1;
+
+/** The new one's figures as typed: what it comes to, in words, and its share of the employee's current gross. */
+export interface RecurringPreview {
+  /** "10 months, October 2026 to July 2027: EGP 15,000.00 a month, EGP 150,000.00 in all." */
+  period: string;
+  /** Its share of the current gross pay, in words; null until the employee's pay is read. */
+  share: string | null;
+  /** It takes more than the current gross: the run would have nothing left to pay. */
+  overGross: boolean;
+}
+
+/**
+ * The figures the add form shows as it is typed (owner, 18 October 2026, on the form: "view assumed numbers"): how many
+ * months and what it comes to in all (a year's worth while it runs until stopped), and its share of the employee's
+ * current gross (their signed contract's, as the share-of-pay warning reads it: `limit` from /payroll/advances/limit).
+ * Null until an amount and a first month can be read, or when the rules refuse them (the form says why when sent).
+ */
+export function recurringPreview(amountInput: string, start: string, end: string, limit: Pick<AdvanceLimitView, 'gross'> | null | undefined): RecurringPreview | null {
+  const amount = parseAmount(amountInput);
+  if (amount === null || Number.isNaN(amount) || !isMonth(start)) return null;
+  const last = isMonth(end) ? end : null;
+  if (recurringDeductionProblems(amount, start, last).length) return null;
+  const months = last ? monthsCounted(start, last) : null;
+  const period =
+    months !== null && last
+      ? `${months} ${months === 1 ? 'month' : 'months'}, ${monthName(start)}${months > 1 ? ` to ${monthName(last)}` : ''}: ${formatEgp(amount)} a month, ${formatEgp(sumAmounts(Array(months).fill(amount)))} in all.`
+      : `From ${monthName(start)} until stopped: ${formatEgp(amount)} a month, ${formatEgp(sumAmounts(Array(12).fill(amount)))} a year.`;
+  if (limit === undefined) return { period, share: null, overGross: false };
+  if (!limit || limit.gross === null || limit.gross <= 0) {
+    return { period, share: 'No current contract, so its share of the pay can’t be shown.', overGross: false };
+  }
+  const percent = Math.round((amount / limit.gross) * 1000) / 10;
+  const overGross = amount > limit.gross;
+  const share = overGross
+    ? `More than the current gross pay of ${formatEgp(limit.gross)} a month: the run would have nothing left to pay.`
+    : `${percent}% of the current gross pay of ${formatEgp(limit.gross)} a month, leaving ${formatEgp(sumAmounts([limit.gross, -amount]))} before tax, insurance and other deductions.`;
+  return { period, share, overGross };
 }
 
 // ---------- what the forms send ----------
