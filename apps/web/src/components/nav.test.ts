@@ -54,12 +54,13 @@ describe('the sidebar', () => {
     expect(COMING_SOON).not.toContain('Payroll');
   });
 
-  it('has Payroll as a heading with Overview, Unsettled, Additions / Deductions and Reports under it (owner, 17 October 2026)', () => {
+  it('has Payroll as a heading with Overview, Unsettled, Additions / Deductions, Recurring Deductions and Reports under it (owner, 17 and 18 October 2026)', () => {
     const payroll = NAV.find((n) => n.href === '/payroll')!;
     expect(payroll.items?.map((i) => [i.label, i.href])).toEqual([
       ['Overview', '/payroll'],
       ['Unsettled', '/payroll/unsettled'],
       ['Additions / Deductions', '/payroll/adjustments'],
+      ['Recurring Deductions', '/payroll/recurring-deductions'],
       ['Reports', '/payroll/reports'],
     ]);
     const current = (pathname: string) => activeSubItem(payroll, pathname)?.label ?? null;
@@ -68,6 +69,7 @@ describe('the sidebar', () => {
     expect(current('/payroll/0b8f2c1e-1111-4222-8333-444455556666')).toBe('Overview');
     expect(current('/payroll/unsettled')).toBe('Unsettled');
     expect(current('/payroll/adjustments')).toBe('Additions / Deductions');
+    expect(current('/payroll/recurring-deductions')).toBe('Recurring Deductions');
     expect(current('/payroll/reports/salary-raises')).toBe('Reports');
     // Raise Requests is under Requests, not Payroll
     expect(payroll.items?.map((i) => i.label)).not.toContain('Raise Requests');
@@ -284,7 +286,7 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
         navFor({ roles, employeeId: 'x' })
           .find((n) => n.label === label)
           ?.items?.map((i) => i.label);
-      expect(sub('Payroll', 'finance')).toEqual(['Overview', 'Unsettled', 'Additions / Deductions', 'Reports']);
+      expect(sub('Payroll', 'finance')).toEqual(['Overview', 'Unsettled', 'Additions / Deductions', 'Recurring Deductions', 'Reports']);
       expect(sub('Templates', 'admin')).toEqual(['Library', 'Fields Guide']);
       expect(navFor({ roles: ['hr'], employeeId: 'x' }).find((n) => n.label === 'Payroll')?.href).toBe('/payroll');
       expect(navFor({ roles: ['ceo'], employeeId: 'x' }).find((n) => n.label === 'Templates')?.href).toBe('/templates');

@@ -232,6 +232,8 @@ describe('Payroll (e2e)', () => {
           payday: null,
           // the Salary Raises report: a review is due after a year without a raise (owner's decision, 16 October 2026)
           salaryReviewMonths: 12,
+          // a warning when a month's installments pass 10% of the pay (owner, 18 October 2026)
+          installmentWarnPercent: 10,
         });
       }
       await api().get('/api/payroll/settings').set('Cookie', staff).expect(403);

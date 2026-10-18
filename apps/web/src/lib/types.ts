@@ -1438,6 +1438,12 @@ export interface PayrollSettingsView extends PayrollRules {
    * Raises report lists who is due). Optional: left out by an API from before it.
    */
   salaryReviewMonths?: number;
+  /**
+   * The share of the pay a month's installments (advances' recoveries and loans' installments) may take before a
+   * warning, 1 to 100; null: no warning (owner, 18 October 2026: a warning only, never a block). Optional: left out by
+   * an API from before it.
+   */
+  installmentWarnPercent?: number | null;
 }
 
 /**
@@ -1589,4 +1595,72 @@ export interface ReimbursementClaimView {
 /** GET /reimbursements/counts: how many claims wait for the caller, for the sidebar. */
 export interface ReimbursementCounts {
   waiting: number;
+}
+
+// ---------- installments and recurring deductions (owner, 18 October 2026: "in the deductions i might have a loan of
+// a medical subscription or something that needs to be deducted as installments on the employee. how will it be
+// managed?"; packages/shared/src/installments.ts) ----------
+// An advance or a loan recorded with installments has one pending deduction a month, made at once; a recurring
+// deduction (e.g. the employee's share of a medical subscription) adds one to each month's payroll until it ends or HR
+// stops it. Leaving before an advance is paid back: "taken from the final settlement, unless waived". Months YYYY-MM,
+// amounts in EGP with 2 decimals.
+
+/** A month's installment of an advance or loan: its deduction (the id is the deduction's), in month order. */
+export interface AdvanceInstallment {
+  id: string;
+  month: string;
+  amount: number;
+  status: 'pending' | 'applied' | 'cancelled';
+  /** Its month's run is approved or paid, or it was applied: it can't be moved or changed. */
+  locked: boolean;
+}
+
+/**
+ * GET /payroll/advances/limit?employeeId= (HR, Finance and the CEO): what the share-of-pay warning is worked out with on
+ * the record form: the current contract's monthly gross (null without one), the percent set in Payroll Setup (null: no
+ * warning), and the employee's installments already planned or applied per month (YYYY-MM), all open advances.
+ */
+export interface AdvanceLimitView {
+  gross: number | null;
+  percent: number | null;
+  byMonth: Record<string, number>;
+}
+
+export type RecurringDeductionStatus = 'upcoming' | 'running' | 'ended';
+
+/**
+ * GET /payroll/recurring-deductions (HR, Finance and the CEO): a fixed amount deducted every month, e.g. "Medical
+ * subscription (family)", from its first month to its last (none: until stopped), or until HR stopped it
+ * (`stoppedFrom`: the first month no longer deducted). `deducted`: its deduction of each month a run took it in.
+ */
+export interface RecurringDeductionView {
+  id: string;
+  employee: { id: string; fullNameEn: string; department: string | null; team: string | null };
+  name: string;
+  amount: number;
+  startMonth: string;
+  endMonth: string | null;
+  stoppedFrom: string | null;
+  stopNote: string | null;
+  status: RecurringDeductionStatus;
+  deducted: { month: string; amount: number; status: 'pending' | 'applied' | 'cancelled' }[];
+  createdAt: string;
+}
+
+/**
+ * GET /employees/:id/deduction-plans (HR, Finance, the CEO, and the employee themself): the open advances and loans
+ * with what is paid so far, what is left and the next installment, and the recurring deductions running or to come.
+ */
+export interface DeductionPlansView {
+  advances: {
+    id: string;
+    kind: 'advance' | 'loan';
+    reason: string;
+    amount: number;
+    recovered: number;
+    outstanding: number;
+    nextInstallment: { month: string; amount: number } | null;
+    status: 'open' | 'settled';
+  }[];
+  recurring: { id: string; name: string; amount: number; startMonth: string; endMonth: string | null; status: RecurringDeductionStatus }[];
 }

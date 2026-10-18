@@ -1,11 +1,14 @@
 import { applyDecorators } from '@nestjs/common';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -16,18 +19,22 @@ import {
   MinLength,
   ValidateBy,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import {
   ADJUSTMENT_DAYS_MAX,
   ADJUSTMENT_KINDS,
   ADJUSTMENT_STATUSES,
   ADVANCE_KINDS,
+  ADVANCE_SETTLE_WAYS,
   ADVANCE_STATUSES,
+  INSTALLMENTS_MAX,
   isAdjustmentDays,
   isDaysType,
   type AdjustmentKind,
   type AdjustmentStatus,
   type AdvanceKind,
+  type AdvanceSettleWay,
   type AdvanceStatus,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../../common/date-only.js';
@@ -164,6 +171,22 @@ const ADVANCE_AMOUNT_MESSAGE = 'Enter the amount given in EGP, more than 0, e.g.
 const GIVEN_MESSAGE = 'Enter the date it was given, as YYYY-MM-DD.';
 const ADVANCE_REASON_MESSAGE = 'Say what it was given for.';
 const PLAN_LENGTH = 'Keep the plan to 200 characters or fewer.';
+const COUNT_MESSAGE = `Enter how many monthly installments, 1 to ${INSTALLMENTS_MAX}.`;
+const FIRST_MONTH_MESSAGE = 'Choose the month of the first installment, as YYYY-MM.';
+const INSTALLMENT_MESSAGE = 'Enter the installment in EGP, more than 0, e.g. 1000 or 1000.50.';
+
+/**
+ * Recover in installments (owner, 18 October 2026: "in the deductions i might have a loan of a medical subscription or
+ * something that needs to be deducted as installments on the employee"): how many months and the first month; the
+ * amounts are the plan's, equal, the last taking the rounding.
+ */
+export class InstallmentsPlanDto {
+  @IsInt({ message: COUNT_MESSAGE }) @Min(1, { message: COUNT_MESSAGE }) @Max(INSTALLMENTS_MAX, { message: COUNT_MESSAGE })
+  count: number;
+
+  @Trim() @Matches(MONTH, { message: FIRST_MONTH_MESSAGE })
+  firstMonth: string;
+}
 
 export class CreateAdvanceDto {
   @IsUUID('all', { message: 'Choose the employee.' })
@@ -181,9 +204,37 @@ export class CreateAdvanceDto {
   @Trim() @IsString({ message: ADVANCE_REASON_MESSAGE }) @MinLength(1, { message: ADVANCE_REASON_MESSAGE }) @MaxLength(500, { message: 'Keep the reason to 500 characters or fewer.' })
   reason: string;
 
-  /** How it is to be recovered, in HR's words: "6 installments of 1,000". */
+  /** How it is to be recovered, in HR's words: "6 installments of 1,000". With installments, the plan's words instead. */
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(200, { message: PLAN_LENGTH })
   plan?: string | null;
+
+  /** Its installments, made at once (18 October 2026); none: recovered by deductions HR links by hand, as before. */
+  @IsOptional()
+  @IsObject({ message: 'Send the installments as { count, firstMonth }.' })
+  @ValidateNested()
+  @Type(() => InstallmentsPlanDto)
+  installments?: InstallmentsPlanDto | null;
+}
+
+/** Move an installment to a later month (it and every later one move a month on): the month it is in now. */
+export class PostponeInstallmentDto {
+  @Trim() @Matches(MONTH, { message: 'Choose the month of the installment, as YYYY-MM.' })
+  month: string;
+}
+
+/** Change an installment's amount (the later ones share what is left): its month and the new amount. */
+export class ChangeInstallmentDto {
+  @Trim() @Matches(MONTH, { message: 'Choose the month of the installment, as YYYY-MM.' })
+  month: string;
+
+  @Amount(INSTALLMENT_MESSAGE)
+  amount: number;
+}
+
+/** ?employeeId=: whose installments the plan form warns about. */
+export class InstallmentLimitQueryDto {
+  @IsUUID('all', { message: 'Choose the employee.' })
+  employeeId: string;
 }
 
 /** An open one's changes: the amount (not below what is recovered and planned), the date, the reason, the plan. */
@@ -201,10 +252,25 @@ export class UpdateAdvanceDto {
   plan?: string | null;
 }
 
-/** HR marks one settled with something still outstanding: why (e.g. "Paid back in cash on 12/10/2026"). */
+/** The note's message by the way it is settled: why it is waived, else how it was settled. */
+const settleNoteMessage = (o: object) => ((o as SettleAdvanceDto).how === 'waived' ? 'Say why it is waived.' : 'Say how it was settled.');
+
+/**
+ * HR marks one settled with something still outstanding, and how (18 October 2026, on leaving before it is paid back:
+ * "taken from the final settlement, unless waived"): deducted from the final settlement (a note if HR wants), waived (a
+ * note why, required) or paid back otherwise (a note how, e.g. "Paid back in cash on 12/10/2026"; the way an older
+ * caller, which sends no way, settles one).
+ */
 export class SettleAdvanceDto {
-  @Trim() @IsString({ message: 'Say how it was settled.' }) @MinLength(1, { message: 'Say how it was settled.' }) @MaxLength(500, { message: 'Keep the note to 500 characters or fewer.' })
-  note: string;
+  @IsOptional() @IsIn(ADVANCE_SETTLE_WAYS, { message: 'Choose how it is settled: deducted from the final settlement, waived or paid back.' })
+  how?: AdvanceSettleWay;
+
+  @TrimOrNull()
+  @ValidateIf((o: SettleAdvanceDto) => o.how !== 'final_settlement' || (o.note !== undefined && o.note !== null))
+  @IsString({ message: (args) => settleNoteMessage(args.object) })
+  @MinLength(1, { message: (args) => settleNoteMessage(args.object) })
+  @MaxLength(500, { message: 'Keep the note to 500 characters or fewer.' })
+  note?: string | null;
 }
 
 /** ?employeeId=&status=open|settled: every filter optional. */
@@ -214,4 +280,70 @@ export class AdvancesQueryDto {
 
   @IsOptional() @IsIn(ADVANCE_STATUSES, { message: 'Choose open or settled.' })
   status?: AdvanceStatus;
+}
+
+// ---------- recurring deductions ----------
+
+const NAME_MESSAGE = 'Say what it is for, e.g. Medical subscription (family).';
+const NAME_LENGTH = 'Keep the name to 100 characters or fewer.';
+const MONTHLY_MESSAGE = 'Enter the amount a month in EGP, more than 0, e.g. 350 or 350.50.';
+const START_MESSAGE = 'Choose the first month it is deducted, as YYYY-MM.';
+const END_MESSAGE = 'Choose the last month it is deducted, as YYYY-MM, or leave it empty to deduct it until stopped.';
+const FROM_MESSAGE = 'Choose the month, as YYYY-MM.';
+
+/**
+ * A recurring deduction (owner, 18 October 2026), e.g. the employee's share of a medical subscription: the employee,
+ * what it is for, the amount a month, the first month and, if it ends, the last.
+ */
+export class CreateRecurringDeductionDto {
+  @IsUUID('all', { message: 'Choose the employee.' })
+  employeeId: string;
+
+  @Trim() @IsString({ message: NAME_MESSAGE }) @MinLength(1, { message: NAME_MESSAGE }) @MaxLength(100, { message: NAME_LENGTH })
+  name: string;
+
+  @Amount(MONTHLY_MESSAGE)
+  amount: number;
+
+  @Trim() @Matches(MONTH, { message: START_MESSAGE })
+  startMonth: string;
+
+  @TrimOrNull() @IsOptional() @Matches(MONTH, { message: END_MESSAGE })
+  endMonth?: string | null;
+}
+
+/** The amount changed from a month on: this one stops then, a new one starts then. */
+export class ChangeRecurringDeductionDto {
+  @Amount(MONTHLY_MESSAGE)
+  amount: number;
+
+  @Trim() @Matches(MONTH, { message: FROM_MESSAGE })
+  fromMonth: string;
+}
+
+/** Stopped from a month on (the first month no longer deducted), with a note if HR wants. */
+export class StopRecurringDeductionDto {
+  @Trim() @Matches(MONTH, { message: FROM_MESSAGE })
+  fromMonth: string;
+
+  @TrimOrNull() @IsOptional() @IsString() @MaxLength(500, { message: 'Keep the note to 500 characters or fewer.' })
+  note?: string | null;
+}
+
+/** Its name, or its last month (null: until stopped). */
+export class UpdateRecurringDeductionDto {
+  @Trim() @Sent() @IsString({ message: NAME_MESSAGE }) @MinLength(1, { message: NAME_MESSAGE }) @MaxLength(100, { message: NAME_LENGTH })
+  name?: string;
+
+  @TrimOrNull() @IsOptional() @Matches(MONTH, { message: END_MESSAGE })
+  endMonth?: string | null;
+}
+
+/** ?employeeId=&status=running|ended: running lists those still to come too; every filter optional. */
+export class RecurringDeductionsQueryDto {
+  @IsOptional() @IsUUID('all', { message: 'Choose the employee.' })
+  employeeId?: string;
+
+  @IsOptional() @IsIn(['upcoming', 'running', 'ended'], { message: 'Choose running or ended.' })
+  status?: 'upcoming' | 'running' | 'ended';
 }

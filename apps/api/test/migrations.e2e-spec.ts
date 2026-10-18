@@ -208,6 +208,49 @@ describe('Migrations (e2e)', () => {
     await expect(db.query("UPDATE employees SET occupation_code = '12345' WHERE employee_code = 'EMP-0005'")).rejects.toThrow(/employees_occupation_code_check/);
   });
 
+  it('installments: the advances settled already told how, the warning at 10%, a Recurring deduction allowed (owner, 18 October 2026)', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_installments'))!;
+    await migratedUpTo(migration);
+
+    // before: an advance still open, one HR settled with a note (paid back), one settled automatically (recovered)
+    await db.query(`
+      INSERT INTO employees (id, employee_code, full_name_en, full_name_ar, updated_at) VALUES ('00000000-0000-4000-8000-0000000000e1', 'EMP-0001', 'Omar', 'عمر', now());
+      INSERT INTO payroll_advances (id, employee_id, kind, amount, given_on, reason, status, settled_at, settled_note, updated_at) VALUES
+        ('00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000e1', 'loan', 6000, '2026-05-01', 'Car repair', 'open', NULL, NULL, now()),
+        ('00000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-0000000000e1', 'advance', 500, '2026-05-01', 'Salary advance', 'settled', now(), 'Paid back in cash', now()),
+        ('00000000-0000-4000-8000-0000000000a3', '00000000-0000-4000-8000-0000000000e1', 'loan', 1000, '2026-05-01', 'Laptop', 'settled', now(), NULL, now());
+    `);
+
+    await db.query(sql(migration));
+
+    const { rows } = await db.query<{ reason: string; how: string | null }>('SELECT reason, settled_how AS how FROM payroll_advances ORDER BY id');
+    expect(rows).toEqual([
+      { reason: 'Car repair', how: null },
+      { reason: 'Salary advance', how: 'paid_back' },
+      { reason: 'Laptop', how: 'recovered' },
+    ]);
+    await expect(db.query("UPDATE payroll_advances SET status = 'settled' WHERE reason = 'Car repair'")).rejects.toThrow(/payroll_advances_settled_how_check/);
+    expect((await db.query('SELECT installment_warn_percent::float AS percent FROM payroll_settings')).rows).toEqual([{ percent: 10 }]);
+    await expect(db.query('UPDATE payroll_settings SET installment_warn_percent = 0')).rejects.toThrow(/payroll_settings_installment_warn_percent_check/);
+
+    // a recurring deduction and its month's Recurring deduction, once a month; only a Recurring deduction links to one
+    await db.query(`
+      INSERT INTO recurring_deductions (id, employee_id, name, amount, start_month, updated_at)
+        VALUES ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000e1', 'Medical subscription', 350, '2026-11-01', now());
+      INSERT INTO payroll_adjustments (id, employee_id, month, kind, type, taxed, amount, reason, recurring_id, updated_at)
+        VALUES (gen_random_uuid(), '00000000-0000-4000-8000-0000000000e1', '2026-11-01', 'deduction', 'recurring', false, 350, 'Medical subscription', '00000000-0000-4000-8000-0000000000b1', now());
+    `);
+    const again = (type: string, month: string) =>
+      db.query(
+        `INSERT INTO payroll_adjustments (id, employee_id, month, kind, type, taxed, amount, reason, recurring_id, updated_at)
+         VALUES (gen_random_uuid(), '00000000-0000-4000-8000-0000000000e1', $1, 'deduction', $2, false, 350, 'Medical subscription', '00000000-0000-4000-8000-0000000000b1', now())`,
+        [month, type],
+      );
+    await expect(again('recurring', '2026-11-01')).rejects.toThrow(/payroll_adjustments_recurring_id_month_key/);
+    await expect(again('other', '2026-12-01')).rejects.toThrow(/payroll_adjustments_recurring_check/);
+    await expect(db.query("UPDATE recurring_deductions SET stopped_from = '2026-10-01'")).rejects.toThrow(/recurring_deductions_months_check/);
+  });
+
   describe('super admin: the role, given to the original admin account only (owner’s decision, 15 October 2026)', () => {
     const migration = () => readdirSync(MIGRATIONS).find((m) => m.endsWith('_super_admin'))!;
     const superAdmins = async () =>

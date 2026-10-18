@@ -5,17 +5,21 @@ import {
   type AdjustmentType,
   type AdvanceBalance,
   type AdvanceKind,
+  type AdvanceSettledHow,
   type AdvanceStatus,
 } from '@trendlix/shared';
 import { fromDateOnly } from '../../common/date-only.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { placeOf } from '../../reimbursements/views.js';
 import { refOf, type UserRef } from './people.js';
+import { recurringStatus, type RecurringStatus } from './plans.js';
 
 // Additions and deductions, advances and loans as the API sends them (owner, 17 October 2026): months YYYY-MM, dates
 // YYYY-MM-DD, money as numbers to the piaster. Salary data: HR, Finance and the CEO only.
 
 export const ADJUSTMENT = 'payroll_adjustment';
 export const ADVANCE = 'payroll_advance';
+export const RECURRING = 'recurring_deduction';
 
 const PERSON = { select: { id: true, employeeCode: true, fullNameEn: true } } as const;
 const USER = { select: { id: true, email: true } } as const;
@@ -102,7 +106,7 @@ export const ADVANCE_INCLUDE = {
   employee: PERSON,
   createdBy: USER,
   settledBy: USER,
-  recoveries: { orderBy: [{ month: 'asc' }, { createdAt: 'asc' }], select: { id: true, month: true, amount: true, status: true } },
+  recoveries: { orderBy: [{ month: 'asc' }, { createdAt: 'asc' }], select: { id: true, month: true, amount: true, status: true, reason: true } },
 } satisfies Prisma.PayrollAdvanceInclude;
 
 export type AdvanceRow = Prisma.PayrollAdvanceGetPayload<{ include: typeof ADVANCE_INCLUDE }>;
@@ -113,6 +117,14 @@ export interface RecoveryView {
   month: string;
   amount: number;
   status: AdjustmentStatus;
+}
+
+/**
+ * An installment (owner, 18 October 2026): a deduction recovering the advance or loan, made from its plan or linked by
+ * hand. Locked: applied, or its month's run is with the CEO, approved or paid, so HR can't move or change it.
+ */
+export interface InstallmentView extends RecoveryView {
+  locked: boolean;
 }
 
 export interface AdvanceView extends AdvanceBalance {
@@ -128,9 +140,15 @@ export interface AdvanceView extends AdvanceBalance {
   /** Null when settled automatically (nothing outstanding), or still open. */
   settledBy: UserRef | null;
   settledNote: string | null;
+  /** How it was settled (18 October 2026): recovered, deducted from the final settlement, waived or paid back; null while open. */
+  settledHow: AdvanceSettledHow | null;
   createdBy: UserRef | null;
   createdAt: Date;
   recoveries: RecoveryView[];
+  /** Every deduction linked to it, in month order, with whether HR may still move or change it. */
+  installments: InstallmentView[];
+  /** The first one still to be deducted; null when none is. */
+  nextInstallment: { month: string; amount: number } | null;
 }
 
 export const recoveriesOf = (a: Pick<AdvanceRow, 'recoveries'>): RecoveryView[] =>
@@ -140,7 +158,13 @@ export const recoveriesOf = (a: Pick<AdvanceRow, 'recoveries'>): RecoveryView[] 
 /** An advance's balance from its recoveries as they are saved. */
 export const balanceOf = (a: Pick<AdvanceRow, 'amount' | 'recoveries'>): AdvanceBalance => advanceBalance(a.amount.toNumber(), recoveriesOf(a));
 
-export function advanceView(a: AdvanceRow, names: ReadonlyMap<string, UserRef>): AdvanceView {
+/**
+ * An advance or loan as the API sends it; `locked`: the months (YYYY-MM) whose run is with the CEO, approved or paid,
+ * whose installments HR can't move or change.
+ */
+export function advanceView(a: AdvanceRow, names: ReadonlyMap<string, UserRef>, locked: ReadonlySet<string> = new Set()): AdvanceView {
+  const recoveries = recoveriesOf(a);
+  const next = recoveries.find((r) => r.status === 'pending') ?? null;
   return {
     id: a.id,
     employee: personOf(a.employee),
@@ -153,9 +177,74 @@ export function advanceView(a: AdvanceRow, names: ReadonlyMap<string, UserRef>):
     settledAt: a.settledAt,
     settledBy: refOf(names, a.settledBy),
     settledNote: a.settledNote,
+    settledHow: a.settledHow as AdvanceSettledHow | null,
     createdBy: refOf(names, a.createdBy),
     createdAt: a.createdAt,
     ...balanceOf(a),
-    recoveries: recoveriesOf(a),
+    recoveries,
+    installments: recoveries.map((r) => ({ ...r, locked: r.status === 'applied' || locked.has(r.month) })),
+    nextInstallment: next && { month: next.month, amount: next.amount },
+  };
+}
+
+// ---------- recurring deductions ----------
+
+/** What a recurring deduction is shown with: the employee and where they work (their latest employment), and its months' deductions. */
+export const RECURRING_INCLUDE = {
+  employee: {
+    select: {
+      id: true,
+      employeeCode: true,
+      fullNameEn: true,
+      employments: {
+        orderBy: [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate: 'desc' }],
+        take: 1,
+        select: { department: { select: { nameEn: true, parent: { select: { nameEn: true } } } } },
+      },
+    },
+  },
+  deductions: { orderBy: [{ month: 'asc' }], select: { id: true, month: true, amount: true, status: true } },
+} satisfies Prisma.RecurringDeductionInclude;
+
+export type RecurringRow = Prisma.RecurringDeductionGetPayload<{ include: typeof RECURRING_INCLUDE }>;
+
+/** A recurring deduction's months as the shared rules take them (YYYY-MM). */
+export const recurringMonths = (r: { startMonth: Date; endMonth: Date | null; stoppedFrom: Date | null }) => ({
+  startMonth: monthOfDate(r.startMonth),
+  endMonth: r.endMonth && monthOfDate(r.endMonth),
+  stoppedFrom: r.stoppedFrom && monthOfDate(r.stoppedFrom),
+});
+
+export interface RecurringDeductionView {
+  id: string;
+  /** Where they work as their latest employment has it: a team as its department and the team. */
+  employee: { id: string; employeeCode: string; fullNameEn: string; department: string | null; team: string | null };
+  name: string;
+  /** EGP a month. */
+  amount: number;
+  startMonth: string;
+  endMonth: string | null;
+  stoppedFrom: string | null;
+  stopNote: string | null;
+  status: RecurringStatus;
+  /** Its months' Recurring deductions, oldest first: added by each month's run. */
+  deducted: { month: string; amount: number; status: AdjustmentStatus }[];
+  createdAt: Date;
+}
+
+/** A recurring deduction as the API sends it; `current`: this month, YYYY-MM. */
+export function recurringView(r: RecurringRow, current: string): RecurringDeductionView {
+  const months = recurringMonths(r);
+  const d = r.employee.employments[0]?.department ?? null;
+  return {
+    id: r.id,
+    employee: { id: r.employee.id, employeeCode: r.employee.employeeCode, fullNameEn: r.employee.fullNameEn, ...placeOf(d) },
+    name: r.name,
+    amount: r.amount.toNumber(),
+    ...months,
+    stopNote: r.stopNote,
+    status: recurringStatus(months, current),
+    deducted: r.deductions.map((x) => ({ month: monthOfDate(x.month), amount: x.amount?.toNumber() ?? 0, status: x.status as AdjustmentStatus })),
+    createdAt: r.createdAt,
   };
 }

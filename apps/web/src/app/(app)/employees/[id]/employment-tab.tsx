@@ -36,7 +36,8 @@ import { DeleteRowButton } from './inline-forms';
 import { PayReceived, PayReceivedLoading } from './payslips/pay-received';
 import { ProfileTabs } from './profile-tabs';
 import { RaiseRequestsSection } from './raise-requests/raise-requests-section';
-import { AdvancesLoading, AdvancesSection } from './advances/advances-section';
+import { hasPlans } from './advances/advances';
+import { AdvancesLoading, AdvancesSection, loadDeductionPlans } from './advances/advances-section';
 import { SalaryHistoryLoading, SalaryHistorySection } from './salary-history/salary-history-section';
 
 // The Employment tab: everything about the job, in one place (owner, 16 October 2026: "there is no point of adding
@@ -52,8 +53,12 @@ import { SalaryHistoryLoading, SalaryHistorySection } from './salary-history/sal
 //   and the pay received with the payslips (#payslips), HR's, Finance's and the CEO's, as the salary; between them the
 //   Raise Requests (#raise-requests), the person's requests with each decision and log, read only (asked for and
 //   decided under Requests → Raise Requests since 17 October 2026, Request a raise opening the form there); then the advances and loans with what is outstanding (#advances: owner, 17 October 2026),
-//   as the salary. The API sends each viewer only what they may see: the employee and their manager get only the
-//   requests, so they are offered Salary only when there is something there for them.
+//   as the salary, which became Loans and Deductions on 18 October 2026 (owner: "in the deductions i might have a loan
+//   of a medical subscription or something that needs to be deducted as installments on the employee. how will it be
+//   managed?"): the open advances and loans with the next installment, and the recurring deductions, which the employee
+//   sees on their own profile too. The API sends each viewer only what they may see: the employee and their manager get
+//   only the requests (the employee, their own plans), so they are offered Salary only when there is something there
+//   for them.
 // - Issued Documents, HR's and the CEO's: the documents generated from the templates (#contract-documents), which HR
 //   generates and moves along and the CEO views and downloads; not the Documents tab, the papers the employee brings.
 // Links from before the sub-tabs name only an anchor (?tab=employment#payslips): AnchorSubTab moves them to the sub-tab
@@ -375,20 +380,23 @@ async function DetailsSubTab({
 }
 
 /**
- * Salary: the Salary History, the pay received and the advances and loans for those who see salaries, and the Raise
+ * Salary: the Salary History, the pay received and the loans and deductions for those who see salaries, and the Raise
  * Requests after the Salary History
- * (`raiseRequests`: already read for an employee or a manager, to offer them the sub-tab). Each loads on its own.
+ * (`raiseRequests`: already read for an employee or a manager, to offer them the sub-tab; `plans`: the employee's own
+ * loans and deductions, read for them likewise). Each loads on its own.
  */
 function SalarySubTab({
   profile: p,
   user,
   seesPay,
   raiseRequests,
+  plans,
 }: {
   profile: EmployeeProfile;
   user: SessionUser;
   seesPay: boolean;
   raiseRequests: EmployeeRaiseRequestsLoad | undefined;
+  plans: Awaited<ReturnType<typeof loadDeductionPlans>> | undefined;
 }) {
   return (
     <div className="space-y-8">
@@ -413,11 +421,12 @@ function SalarySubTab({
           </Suspense>
         </div>
       )}
-      {seesPay && (
-        // their advances and loans, with what is outstanding (owner, 17 October 2026)
+      {(seesPay || plans?.kind === 'ok') && (
+        // their advances and loans, with what is outstanding (owner, 17 October 2026), and their recurring deductions
+        // (18 October 2026): the employee's own too
         <div id="advances" className="scroll-mt-6">
           <Suspense fallback={<AdvancesLoading />}>
-            <AdvancesSection employee={p} />
+            <AdvancesSection employee={p} staff={seesPay} loaded={plans} />
           </Suspense>
         </div>
       )}
@@ -453,11 +462,14 @@ export async function EmploymentTab({
 }) {
   const user = await getCurrentUser();
   const seesPay = canSeePayroll(user);
-  // to the employee and their manager, Salary is only the raise requests: offered when there is something there for them
-  const raiseRequests = seesPay ? undefined : await loadEmployeeRaiseRequests(p.id);
+  // to the employee and their manager, Salary is only the raise requests and, on the employee's own profile, their loans
+  // and deductions (18 October 2026): offered when there is something there for them
+  const own = !!user.employeeId && user.employeeId === p.id;
+  const [raiseRequests, plans] = seesPay ? [undefined, undefined] : await Promise.all([loadEmployeeRaiseRequests(p.id), own ? loadDeductionPlans(p.id) : undefined]);
   const tabs = visibleSubTabs({
     pay: seesPay,
     raiseRequests: raiseRequests !== undefined && showsRaiseRequests(raiseRequests),
+    deductionPlans: plans?.kind === 'ok' && hasPlans(plans.value),
     issuedDocuments: canSeeEmployeeFiles(user),
   });
   const visible = tabs.map((t) => t.key);
@@ -465,7 +477,7 @@ export async function EmploymentTab({
 
   const content =
     open === 'salary' ? (
-      <SalarySubTab profile={p} user={user} seesPay={seesPay} raiseRequests={raiseRequests} />
+      <SalarySubTab profile={p} user={user} seesPay={seesPay} raiseRequests={raiseRequests} plans={plans} />
     ) : open === 'documents' ? (
       <IssuedDocumentsSubTab profile={p} user={user} />
     ) : (

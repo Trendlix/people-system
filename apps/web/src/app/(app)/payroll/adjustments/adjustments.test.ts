@@ -21,6 +21,7 @@ import {
   runAdjustments,
   signedAmount,
   taxText,
+  isRecurring,
   typeChoices,
   type AdjustmentRow,
   type AdvanceRow,
@@ -187,6 +188,10 @@ describe('the form', () => {
     ]);
     expect(typeChoices('deduction').map((t) => t.label)).toEqual(['Penalty', 'Penalty (days)', 'Correction', 'Damage or loss', 'Advance recovery', 'Loan installment', 'Other deduction']);
     expect(typeChoices('deduction').every((t) => t.taxed === false)).toBe(true);
+    // a recurring deduction's month is made from its record (18 October 2026), never entered here
+    expect(typeChoices('deduction').map((t) => t.value)).not.toContain('recurring');
+    expect(isRecurring({ type: 'recurring' })).toBe(true);
+    expect(isRecurring({ type: 'other' })).toBe(false);
     expect([asksDays('bonus_days'), asksDays('penalty_days'), asksDays('bonus')]).toEqual([true, true, false]);
     expect(asksTaxed('addition', 'other')).toBe(true);
     expect(asksTaxed('deduction', 'other')).toBe(false);

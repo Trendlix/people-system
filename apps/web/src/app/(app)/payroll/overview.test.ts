@@ -12,11 +12,12 @@ const run = (month: string, status: PayrollRunSummary['status']): PayrollRunSumm
   ({ id: `run-${month}`, month, status, totals, createdAt: '2026-10-01T10:00:00Z', approvedAt: null, paidOn: status === 'paid' ? `${month}-28` : null }) as PayrollRunSummary;
 
 describe('the Payroll pages', () => {
-  it('are Overview, Unsettled, Additions / Deductions and Reports, in the owner’s order', () => {
+  it('are Overview, Unsettled, Additions / Deductions and Reports, in the owner’s order, with Recurring Deductions (18 October 2026)', () => {
     expect(PAYROLL_SECTIONS.map((s) => [s.label, s.href])).toEqual([
       ['Overview', '/payroll'],
       ['Unsettled', '/payroll/unsettled'],
       ['Additions / Deductions', '/payroll/adjustments'],
+      ['Recurring Deductions', '/payroll/recurring-deductions'],
       ['Reports', '/payroll/reports'],
     ]);
   });

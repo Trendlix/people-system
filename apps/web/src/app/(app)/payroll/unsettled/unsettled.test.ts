@@ -105,4 +105,26 @@ describe('what the forms send', () => {
       'Say what it was given for.',
     ]);
   });
+
+  it('a new one in installments (18 October 2026): how many and the first month in place of the plan, checked by the shared rules', () => {
+    expect(
+      advanceBody(
+        form({ employeeId: 'e1', kind: 'loan', amount: '6,000', givenOn: '30/09/2026', reason: 'Medical', plan: 'ignored', byInstallments: 'yes', count: '6', firstMonth: '2026-10' }),
+        true,
+      ),
+    ).toEqual({
+      body: { employeeId: 'e1', kind: 'loan', amount: 6000, givenOn: '2026-09-30', reason: 'Medical', installments: { count: 6, firstMonth: '2026-10' } },
+      errors: [],
+    });
+    expect(advanceBody(form({ employeeId: 'e1', kind: 'loan', amount: '6000', givenOn: '30/09/2026', reason: 'Medical', byInstallments: 'yes' }), true).errors).toEqual([
+      'Enter how many monthly installments, 1 to 60.',
+      'Choose the month of the first installment.',
+    ]);
+    // the amount's problem said once
+    expect(advanceBody(form({ employeeId: 'e1', kind: 'loan', amount: '', givenOn: '30/09/2026', reason: 'Medical', byInstallments: 'yes', count: '6', firstMonth: '2026-10' }), true).errors).toEqual([
+      'Enter the amount given in EGP, more than 0, e.g. 6000.',
+    ]);
+    // not ticked: the plan as before
+    expect(advanceBody(form({ employeeId: 'e1', kind: 'advance', amount: '500', givenOn: '30/09/2026', reason: 'Rent', plan: 'Next month' }), true).body).toMatchObject({ plan: 'Next month' });
+  });
 });

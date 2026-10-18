@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { Fragment, Suspense } from 'react';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
@@ -8,12 +8,13 @@ import { advancesHref } from '../../employees/tab-list';
 import { todayInCairo } from '../../employees/ui';
 import { Empty, Loading } from '../../organization/ui';
 import { StaffOnly } from '../../staff-only';
-import type { AdjustmentChoices } from '../adjustments/adjustments';
+import { STATUS_BADGE, type AdjustmentChoices, type AdvanceRow } from '../adjustments/adjustments';
 import { monthName, runHref } from '../list';
 import { loadJson, notLoadedText } from '../load';
 import { ADJUSTMENTS_PATH } from '../sections';
 import { PayrollStatusBadge } from '../ui';
-import { createAdvance, recordPaidOut, reopenFinal, settleAdvance, settleFinal, updateAdvance } from './actions';
+import { changeInstallment, createAdvance, deductFromFinal, postponeInstallment, recordPaidOut, reopenFinal, settleAdvance, settleFinal, updateAdvance } from './actions';
+import { changesInstallment, installmentsOf, installmentStatusText, nextText } from './installments';
 import {
   advanceKindText,
   canSeeUnsettled,
@@ -23,16 +24,30 @@ import {
   reasonText,
   settlesPayroll,
   summaryTiles,
+  type FinalSettlement,
   type UnsettledView,
 } from './unsettled';
-import { EditAdvanceForm, NewAdvanceForm, PaidOutForm, ReopenFinalForm, SettleAdvanceForm, SettleFinalForm } from './unsettled-forms';
+import {
+  EditAdvanceForm,
+  InstallmentActions,
+  NewAdvanceForm,
+  OutstandingActions,
+  PaidOutForm,
+  ReopenFinalForm,
+  SettleAdvanceForm,
+  SettleFinalForm,
+} from './unsettled-forms';
 
 // Unsettled (owner, 17 October 2026: "make the Payroll in the side tab a main title below it - Unsettled - Additions /
 // Deductions"; asked, the owner chose what it lists): the runs not yet paid (a draft, with the CEO, approved but not
 // marked paid), the lines on hold (held on an approved or paid run and not paid out since: HR records the payout), the
 // final settlements of people who left (open from the employment's end date until HR marks them settled), and the
 // advances and loans still being recovered. One GET /payroll/unsettled call. HR, Finance and the CEO, as salaries; HR
-// settles. The API checks it again.
+// settles. The API checks it again. Installments (owner, 18 October 2026: "in the deductions i might have a loan of a
+// medical subscription or something that needs to be deducted as installments on the employee. how will it be
+// managed?"): an advance or loan is recorded with its monthly installments, each shown under it, a pending one moved to
+// the next month or changed; settling one asks how. Leaving before it is paid back, "taken from the final settlement,
+// unless waived": a final settlement lists what is outstanding, HR recording each deducted there or waived with a note.
 
 export const metadata: Metadata = { title: 'Unsettled · People System' };
 
@@ -170,6 +185,43 @@ function LinesOnHold({ u, hr, today }: { u: UnsettledView; hr: boolean; today: s
   );
 }
 
+/**
+ * What is outstanding on the advances and loans of someone who left (owner, 18 October 2026: "taken from the final
+ * settlement, unless waived"): for HR, each recorded as deducted from the final settlement or waived with a note.
+ */
+function ToDeduct({ settlement: s, hr }: { settlement: FinalSettlement; hr: boolean }) {
+  const rows = s.outstanding ?? [];
+  const total = rows.reduce((c, o) => c + Math.round(o.outstanding * 100), 0) / 100;
+  return (
+    <section aria-labelledby={`deduct-${s.employmentId}`} className="space-y-2 rounded-lg bg-warn-soft px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 id={`deduct-${s.employmentId}`} className="font-semibold text-warn">
+          To Deduct from the Final Settlement
+        </h3>
+        <span className="text-warn tabular-nums">{formatEgp(total)}</span>
+      </div>
+      <ul className="divide-y divide-warn/20">
+        {rows.map((o) => (
+          <li key={o.advanceId} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-2">
+            <div>
+              <span className="font-semibold">{advanceKindText(o.kind)}</span>
+              <span className="tabular-nums"> · {formatEgp(o.outstanding)} outstanding</span>
+              <div className="max-w-md text-xs text-muted">{o.reason}</div>
+            </div>
+            {hr && (
+              <OutstandingActions
+                deduct={deductFromFinal.bind(null, o.advanceId)}
+                waive={settleAdvance.bind(null, o.advanceId)}
+                name={`the ${o.kind} of ${s.employee.name}`}
+              />
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function FinalSettlements({ u, hr, today }: { u: UnsettledView; hr: boolean; today: string }) {
   const recent = u.settlements.recentlySettled;
   return (
@@ -202,29 +254,38 @@ function FinalSettlements({ u, hr, today }: { u: UnsettledView; hr: boolean; tod
             </thead>
             <tbody>
               {u.settlements.rows.map((s) => (
-                <tr key={s.employmentId}>
-                  <td>
-                    <Person person={s.employee} />
-                    {s.reopened && <span className="badge mt-1 bg-warn-soft text-warn">Reopened</span>}
-                  </td>
-                  <td className="whitespace-nowrap tabular-nums">{formatDate(s.endDate)}</td>
-                  <td>{reasonText(s)}</td>
-                  <td className="text-right whitespace-nowrap tabular-nums">{daysText(s.daysOpen)}</td>
-                  <td className="text-sm">
-                    {s.clearances[0] ? (
-                      <a href={documentHref(s.employee.id, s.clearances[0].id)} className="whitespace-nowrap">
-                        Clearance and dues
-                      </a>
-                    ) : (
-                      <span className="text-muted">Not generated</span>
-                    )}
-                  </td>
-                  {hr && (
-                    <td className="text-right">
-                      <SettleFinalForm action={settleFinal.bind(null, s.employmentId)} name={`for ${s.employee.name}`} today={today} clearances={s.clearances} />
+                <Fragment key={s.employmentId}>
+                  <tr>
+                    <td>
+                      <Person person={s.employee} />
+                      {s.reopened && <span className="badge mt-1 bg-warn-soft text-warn">Reopened</span>}
                     </td>
+                    <td className="whitespace-nowrap tabular-nums">{formatDate(s.endDate)}</td>
+                    <td>{reasonText(s)}</td>
+                    <td className="text-right whitespace-nowrap tabular-nums">{daysText(s.daysOpen)}</td>
+                    <td className="text-sm">
+                      {s.clearances[0] ? (
+                        <a href={documentHref(s.employee.id, s.clearances[0].id)} className="whitespace-nowrap">
+                          Clearance and dues
+                        </a>
+                      ) : (
+                        <span className="text-muted">Not generated</span>
+                      )}
+                    </td>
+                    {hr && (
+                      <td className="text-right">
+                        <SettleFinalForm action={settleFinal.bind(null, s.employmentId)} name={`for ${s.employee.name}`} today={today} clearances={s.clearances} />
+                      </td>
+                    )}
+                  </tr>
+                  {(s.outstanding?.length ?? 0) > 0 && (
+                    <tr>
+                      <td colSpan={hr ? 6 : 5} className="pt-0">
+                        <ToDeduct settlement={s} hr={hr} />
+                      </td>
+                    </tr>
                   )}
-                </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -287,6 +348,69 @@ function FinalSettlements({ u, hr, today }: { u: UnsettledView; hr: boolean; tod
   );
 }
 
+/**
+ * An advance's or loan's installments (owner, 18 October 2026), by month: what each is and whether it was deducted; for
+ * HR, a pending one whose month's run isn't approved is moved to the next month or changed.
+ */
+function Installments({ advance: a, hr }: { advance: AdvanceRow; hr: boolean }) {
+  const installments = installmentsOf(a);
+  const deducted = installments.filter((i) => i.status === 'applied').length;
+  const counted = installments.filter((i) => i.status !== 'cancelled').length;
+  return (
+    <details className="rounded-lg border border-line-soft bg-canvas">
+      <summary className="cursor-pointer px-3 py-2 text-sm">
+        <span className="font-semibold">Installments</span>
+        <span className="text-muted tabular-nums">
+          {' '}
+          · {deducted} of {counted} deducted
+        </span>
+      </summary>
+      <div className="overflow-x-auto">
+        <table className="table">
+          <thead>
+            <tr>
+              <th scope="col">Month</th>
+              <th scope="col" className="text-right">
+                Amount
+              </th>
+              <th scope="col">Status</th>
+              {hr && (
+                <th scope="col" className="text-right">
+                  <span className="sr-only">Actions</span>
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {installments.map((i) => (
+              <tr key={i.id} className={i.status === 'cancelled' ? 'text-muted' : undefined}>
+                <td className="whitespace-nowrap">{monthName(i.month)}</td>
+                <td className={`text-right whitespace-nowrap tabular-nums ${i.status === 'cancelled' ? 'line-through' : ''}`}>{formatEgp(i.amount)}</td>
+                <td>
+                  <span className={`badge ${STATUS_BADGE[i.status] ?? ''}`}>{installmentStatusText(i)}</span>
+                </td>
+                {hr && (
+                  <td className="text-right">
+                    {a.status === 'open' && changesInstallment(i) && (
+                      <InstallmentActions
+                        postpone={postponeInstallment.bind(null, a.id, i.month)}
+                        change={changeInstallment.bind(null, a.id)}
+                        installments={installments}
+                        month={i.month}
+                        name={`the ${monthName(i.month)} installment of the ${a.kind} of ${a.employee.name}`}
+                      />
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
 function AdvancesAndLoans({ u, hr, today, people }: { u: UnsettledView; hr: boolean; today: string; people: AdjustmentChoices['people'] }) {
   return (
     <Section
@@ -294,7 +418,7 @@ function AdvancesAndLoans({ u, hr, today, people }: { u: UnsettledView; hr: bool
       title="Advances and Loans"
       count={counted(u.advances.count, 'open', 'open')}
       total={`${formatEgp(u.advances.outstanding)} outstanding of ${formatEgp(u.advances.amount)}`}
-      note="Recovered by deductions linked to each on Additions / Deductions: those applied to a run count as recovered, those pending as planned."
+      note="Each is recovered by its monthly installments, made when it is recorded, or by deductions linked to it on Additions / Deductions: those applied to a run count as recovered, those pending as planned."
     >
       {hr && (
         <details className="border-b border-line">
@@ -335,29 +459,41 @@ function AdvancesAndLoans({ u, hr, today, people }: { u: UnsettledView; hr: bool
             </thead>
             <tbody>
               {u.advances.rows.map((a) => (
-                <tr key={a.id}>
-                  <td>
-                    <Person person={a.employee} href={advancesHref(a.employee.id)} />
-                  </td>
-                  <td>
-                    {advanceKindText(a.kind)}
-                    <div className="max-w-56 text-xs text-muted">{[a.reason, a.plan].filter(Boolean).join(' · ')}</div>
-                  </td>
-                  <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(a.amount)}</td>
-                  <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(a.recovered)}</td>
-                  <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(a.planned)}</td>
-                  <td className="text-right font-semibold whitespace-nowrap tabular-nums">{formatEgp(a.outstanding)}</td>
-                  <td className="whitespace-nowrap tabular-nums">{formatDate(a.givenOn)}</td>
-                  {hr && (
-                    <td className="space-y-2 text-right">
-                      <Link href={ADJUSTMENTS_PATH} className="btn btn-secondary min-h-9 px-3">
-                        Plan a recovery
-                      </Link>
-                      <EditAdvanceForm action={updateAdvance.bind(null, a.id)} advance={a} today={today} />
-                      <SettleAdvanceForm action={settleAdvance.bind(null, a.id)} name={`the ${a.kind} of ${a.employee.name}`} />
+                <Fragment key={a.id}>
+                  <tr>
+                    <td>
+                      <Person person={a.employee} href={advancesHref(a.employee.id)} />
                     </td>
+                    <td>
+                      {advanceKindText(a.kind)}
+                      <div className="max-w-56 text-xs text-muted">{[a.reason, a.plan].filter(Boolean).join(' · ')}</div>
+                    </td>
+                    <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(a.amount)}</td>
+                    <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(a.recovered)}</td>
+                    <td className="text-right whitespace-nowrap tabular-nums">
+                      {formatEgp(a.planned)}
+                      {nextText(a.nextInstallment) && <div className="text-xs text-muted">{nextText(a.nextInstallment)}</div>}
+                    </td>
+                    <td className="text-right font-semibold whitespace-nowrap tabular-nums">{formatEgp(a.outstanding)}</td>
+                    <td className="whitespace-nowrap tabular-nums">{formatDate(a.givenOn)}</td>
+                    {hr && (
+                      <td className="space-y-2 text-right">
+                        <Link href={ADJUSTMENTS_PATH} className="btn btn-secondary min-h-9 px-3">
+                          Plan a recovery
+                        </Link>
+                        <EditAdvanceForm action={updateAdvance.bind(null, a.id)} advance={a} today={today} />
+                        <SettleAdvanceForm action={settleAdvance.bind(null, a.id)} name={`the ${a.kind} of ${a.employee.name}`} outstanding={a.outstanding} />
+                      </td>
+                    )}
+                  </tr>
+                  {installmentsOf(a).length > 0 && (
+                    <tr>
+                      <td colSpan={hr ? 8 : 7} className="pt-0">
+                        <Installments advance={a} hr={hr} />
+                      </td>
+                    </tr>
                   )}
-                </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>

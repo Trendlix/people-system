@@ -1,15 +1,16 @@
 import {
   ADJUSTMENT_KIND_LABELS,
   ADJUSTMENT_STATUS_LABELS,
-  ADJUSTMENT_TYPES,
   ADVANCE_KIND_LABELS,
   ADDITION_TAXED,
   adjustmentSums,
   adjustmentTypeLabel,
   daysText,
+  ENTERED_TYPES,
   isAdjustmentDays,
   isDaysType,
   paidAdjustments,
+  RECURRING_TYPE,
   recoveredKind,
   type AdjustmentKind,
   type AdjustmentStatus,
@@ -17,6 +18,7 @@ import {
   type AdjustmentType,
   type AdditionType,
   type AdvanceKind,
+  type AdvanceSettledHow,
   type AdvanceStatus,
   type PayrollResult,
   type PayrollStatus,
@@ -25,6 +27,7 @@ import {
 } from '@trendlix/shared';
 import { formatDate } from '../../../../lib/format';
 import { hasRole } from '../../../../lib/roles';
+import type { AdvanceInstallment } from '../../../../lib/types';
 import { formatEgp, parseAmount } from '../../employees/[id]/contracts/salary';
 import { addMonths, isMonth, monthName, monthOf } from '../list';
 import { ADJUSTMENTS_PATH } from '../sections';
@@ -100,6 +103,15 @@ export interface AdvanceRow {
   outstanding: number;
   unplanned: number;
   recoveries: { id: string; month: string; amount: number; status: AdjustmentStatus }[];
+  /**
+   * Every deduction linked to it, by month (owner, 18 October 2026: installments made at once when it is recorded),
+   * each with whether it is locked. Left out by an API from before them, like the two below.
+   */
+  installments?: AdvanceInstallment[];
+  /** The next pending one: its month and amount; null when none is pending. */
+  nextInstallment?: { month: string; amount: number } | null;
+  /** How it was settled; null while it is open. */
+  settledHow?: AdvanceSettledHow | null;
 }
 
 /** GET /payroll/adjustments/choices: the month's run, whether it is locked, its people and their open advances. */
@@ -265,9 +277,18 @@ export const enteredText = (row: Pick<AdjustmentRow, 'createdBy' | 'createdAt'>)
 
 export const KIND_CHOICES = (['addition', 'deduction'] as const).map((k) => ({ value: k, label: ADJUSTMENT_KIND_LABELS[k] }));
 
-/** A kind's types for the form, each with whether it is taxed (null: HR chooses, Other) and whether it is in days. */
+/**
+ * A recurring deduction's month (owner, 18 October 2026: e.g. the employee's share of a medical subscription): made by
+ * the month's run from its record on Payroll → Recurring Deductions, so changed there, not entered here.
+ */
+export const isRecurring = (row: Pick<AdjustmentRow, 'type'>) => row.type === RECURRING_TYPE;
+
+/**
+ * A kind's types for the form, each with whether it is taxed (null: HR chooses, Other) and whether it is in days: those
+ * HR enters by hand, a recurring deduction's left out (its record makes it).
+ */
 export function typeChoices(kind: AdjustmentKind): { value: string; label: string; taxed: boolean | null; inDays: boolean }[] {
-  return ADJUSTMENT_TYPES[kind].map((t) => ({
+  return ENTERED_TYPES[kind].map((t) => ({
     value: t,
     label: adjustmentTypeLabel(kind, t),
     taxed: kind === 'deduction' ? false : ADDITION_TAXED[t as AdditionType],

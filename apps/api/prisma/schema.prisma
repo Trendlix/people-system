@@ -58,6 +58,7 @@ model User {
   adjustmentsCut     PayrollAdjustment[]      @relation("AdjustmentCancel") // additions and deductions this user cancelled
   advancesGiven      PayrollAdvance[]         @relation("AdvanceEntry") // advances and loans this user entered
   advancesSettled    PayrollAdvance[]         @relation("AdvanceSettlement") // advances and loans this user marked settled
+  recurringMade      RecurringDeduction[]     @relation("RecurringDeductionEntry") // recurring deductions this user set up
   settlementsMade    FinalSettlement[]        @relation("FinalSettlementBy") // final settlements this user marked settled
   holdsReleased      PayrollHoldRelease[]     @relation("HoldReleaseBy") // held pay this user recorded as paid out
   raisesApproved     Contract[]               @relation("RaiseApproval") // raises (and renewals with new pay) this user approved as CEO
@@ -321,6 +322,7 @@ model Employee {
   payrollLines               PayrollLine[] // the person's pay, month by month
   payrollAdjustments         PayrollAdjustment[] // one-off additions and deductions on a month's pay
   payrollAdvances            PayrollAdvance[] // advances and loans given, recovered from the pay
+  recurringDeductions        RecurringDeduction[] // monthly shares taken from the pay, e.g. a medical subscription
   raiseRequests              RaiseRequest[] // the raises asked for this person
   reimbursements             ReimbursementClaim[]   @relation("ReimbursementClaimant") // the reimbursements this person claimed
   reimbursementsToDecide     ReimbursementClaim[]   @relation("ReimbursementManager") // the claims this person decided, or decides, as the claimant's direct manager
@@ -997,6 +999,9 @@ model PayrollSettings {
   achPurpose             String   @default("CASH") @map("ach_purpose") // the ACH file's TransactionPurpose
   payday                 Int? // the day of the month salaries are paid (1–31): the date a run is marked paid on, to start with
   salaryReviewMonths     Int      @default(12) @map("salary_review_months") // 1–60: the Salary Raises report's review is due this many months after the last raise or the join date
+  // 1–100: a warning (never a block) when a month's installments of advances and loans pass this share of the pay
+  // (owner, 18 October 2026); null: no warning
+  installmentWarnPercent Decimal? @default(10) @map("installment_warn_percent") @db.Decimal(5, 2)
   updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("payroll_settings")
@@ -1160,6 +1165,10 @@ model PayrollLawYear {
 // deductions will be enough"): a Bonus (days) addition and a Penalty (days) deduction have their days and no amount,
 // which the month's run works out from the person's pay (packages/shared payrollLine) and keeps on the line; the amount
 // it came to is copied here when the CEO's approval applies it. A Correction is an addition or a deduction.
+// Installments and recurring deductions (owner, 18 October 2026: "in the deductions i might have a loan of a medical
+// subscription or something that needs to be deducted as installments on the employee. how will it be managed?"): an
+// advance's or a loan's installments are made at once from its plan, each linked to it; a Recurring deduction is added
+// to each month's payroll for a recurring deduction (recurringId), one a month at most.
 model PayrollAdjustment {
   id            String              @id @default(uuid()) @db.Uuid
   employeeId    String              @map("employee_id") @db.Uuid
@@ -1173,6 +1182,8 @@ model PayrollAdjustment {
   reason        String
   advanceId     String?             @map("advance_id") @db.Uuid // an advance's recovery or a loan's installment: which one
   advance       PayrollAdvance?     @relation(fields: [advanceId], references: [id], onDelete: Restrict)
+  recurringId   String?             @map("recurring_id") @db.Uuid // a Recurring deduction: the recurring deduction it is that month's of
+  recurring     RecurringDeduction? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
   status        String              @default("pending") // ADJUSTMENT_STATUSES: pending, applied, cancelled
   lineId        String?             @map("line_id") @db.Uuid // applied: the run line it was paid on
   line          PayrollLine?        @relation(fields: [lineId], references: [id], onDelete: SetNull)
@@ -1186,6 +1197,7 @@ model PayrollAdjustment {
   updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz
   reimbursement ReimbursementClaim? // a reimbursement addition: the claim whose approval by Finance added it
 
+  @@unique([recurringId, month]) // a recurring deduction's month once, whatever became of it
   @@index([month])
   @@index([employeeId])
   @@index([advanceId])
@@ -1196,7 +1208,9 @@ model PayrollAdjustment {
 // An advance or a loan given to an employee, recovered from their pay by deductions linked to it (an advance's
 // recovery, a loan's installment): those applied count as recovered, those pending are planned. Open while something
 // is outstanding (the amount less what was recovered); settled automatically once nothing is (settledById null and no
-// note), or by HR with a note (e.g. paid back in cash).
+// note), or by HR with a note (e.g. paid back in cash). Since 18 October 2026 the installments are made at once from a
+// plan (the total, how many months, the first month), and settledHow says how it was settled: recovered, deducted from
+// the final settlement or waived on leaving (owner: "taken from the final settlement, unless waived"), or paid back.
 model PayrollAdvance {
   id          String              @id @default(uuid()) @db.Uuid
   employeeId  String              @map("employee_id") @db.Uuid
@@ -1211,6 +1225,7 @@ model PayrollAdvance {
   settledById String?             @map("settled_by") @db.Uuid // null when settled automatically
   settledBy   User?               @relation("AdvanceSettlement", fields: [settledById], references: [id], onDelete: SetNull)
   settledNote String?             @map("settled_note") // HR's, when HR marked it settled
+  settledHow  String?             @map("settled_how") // ADVANCE_SETTLED_HOWS: recovered, final_settlement, waived, paid_back; null while open
   createdById String?             @map("created_by") @db.Uuid
   createdBy   User?               @relation("AdvanceEntry", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz
@@ -1220,6 +1235,33 @@ model PayrollAdvance {
   @@index([employeeId])
   @@index([status])
   @@map("payroll_advances")
+}
+
+// A recurring deduction (owner, 18 October 2026: "in the deductions i might have a loan of a medical subscription or
+// something that needs to be deducted as installments on the employee. how will it be managed?"): an ongoing monthly
+// share, e.g. the employee's share of a medical subscription, of a fixed amount from a start month to an end month or
+// until HR stops it. Each month's run adds its Recurring deduction (a PayrollAdjustment linked to it) for the months it
+// is due and the employee is employed. HR changes the amount from a month on (this one stopped then, a new one from
+// then) or stops it; an employment ending stops it from the month after the last working day ("Left the company").
+// RESTRICTED (HR, Finance, CEO; the employee their own), like a salary.
+model RecurringDeduction {
+  id          String              @id @default(uuid()) @db.Uuid
+  employeeId  String              @map("employee_id") @db.Uuid
+  employee    Employee            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  name        String // what it is for, up to 100 characters: "Medical subscription (family)"; the payslip line's
+  amount      Decimal             @db.Decimal(12, 2) // RESTRICTED: EGP a month, more than 0
+  startMonth  DateTime            @map("start_month") @db.Date // the first month's first day
+  endMonth    DateTime?           @map("end_month") @db.Date // the last month's first day; null: until stopped
+  stoppedFrom DateTime?           @map("stopped_from") @db.Date // the first day of the first month no longer deducted, once stopped
+  stopNote    String?             @map("stop_note") // why it was stopped: HR's, or "Left the company"
+  createdById String?             @map("created_by") @db.Uuid
+  createdBy   User?               @relation("RecurringDeductionEntry", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  deductions  PayrollAdjustment[] // the months' Recurring deductions
+
+  @@index([employeeId])
+  @@map("recurring_deductions")
 }
 
 // The final settlement of an ended employment (its end date set): open from the end date until HR marks it settled,

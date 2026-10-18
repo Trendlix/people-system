@@ -2,12 +2,13 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import {
   ADJUSTMENT_KIND_LABELS,
   ADJUSTMENT_STATUS_LABELS,
-  ADJUSTMENT_TYPES,
   ADVANCE_KIND_LABELS,
   adjustmentTaxed,
   adjustmentTypeLabel,
+  ENTERED_TYPES,
   isAdjustmentType,
   isDaysType,
+  RECURRING_TYPE,
   recoveredKind,
   sumAmounts,
   type AdjustmentKind,
@@ -30,6 +31,10 @@ import { ADJUSTMENT, ADJUSTMENT_INCLUDE, adjustmentView, balanceOf, personOf, ty
 /** How far back and ahead an addition or deduction can be entered, in months: back as far as a run can be made, and a year ahead for a loan's installments. */
 export const ADJUSTMENT_MONTHS_BACK = 12;
 export const ADJUSTMENT_MONTHS_AHEAD = 12;
+
+/** Why a Recurring deduction isn't entered by hand (owner, 18 October 2026): the month's run adds it. */
+const RECURRING_BY_HAND =
+  "A recurring deduction is added to each month's payroll by itself: set it up as a recurring deduction, or choose Other deduction for a one-off.";
 
 /** "a bonus", "an advance recovery", as a message says it. */
 function typeWords(kind: string, type: string): string {
@@ -68,7 +73,10 @@ export interface AdjustmentChoices {
 // or changed. The one place to enter them (owner, 17 October 2026, on the run's grid: "instead of there, i think
 // earnings and deductions will be enough"): a Bonus (days) or a Penalty (days) is entered in days, its amount worked
 // out by the month's run and shown as its line has it (an applied one with what the line paid); every other type in
-// EGP.
+// EGP. A Recurring deduction (owner, 18 October 2026: a monthly share, e.g. a medical subscription) is added by the
+// month's run from the recurring deduction set up (recurring.service.ts), never entered here: HR may change its amount
+// or reason, or cancel it, for that month (a month cancelled isn't added again), but not turn it into another type nor
+// give its recurring deduction a second deduction in a month.
 @Injectable()
 export class AdjustmentsService {
   constructor(
@@ -146,6 +154,7 @@ export class AdjustmentsService {
   async create(dto: CreateAdjustmentDto, user: SessionUser): Promise<AdjustmentView> {
     const employee = await this.prisma.employee.findUnique({ where: { id: dto.employeeId }, select: { id: true, employeeCode: true, fullNameEn: true } });
     if (!employee) throw new NotFoundException('Employee not found.');
+    if (dto.kind === 'deduction' && dto.type === RECURRING_TYPE) throw new BadRequestException(RECURRING_BY_HAND);
     if (!isAdjustmentType(dto.kind, dto.type)) throw new BadRequestException(this.typeMessage(dto.kind));
     const taxed = this.taxed(dto.kind, dto.type, dto.taxed);
     const { amount, days } = this.amountOrDays(dto.type, dto.amount ?? null, dto.days ?? null);
@@ -202,6 +211,9 @@ export class AdjustmentsService {
 
     const month = dto.month ?? was;
     const type = dto.type ?? row.type;
+    if (type !== row.type && (row.type === RECURRING_TYPE || type === RECURRING_TYPE)) {
+      throw new BadRequestException(row.type === RECURRING_TYPE ? "A recurring deduction's month stays a Recurring deduction: cancel it instead." : RECURRING_BY_HAND);
+    }
     if (!isAdjustmentType(kind, type)) throw new BadRequestException(this.typeMessage(kind));
     // what the type takes: the one sent, else the one it has (an amount for an amount, days for days)
     const { amount, days } = this.amountOrDays(
@@ -216,6 +228,7 @@ export class AdjustmentsService {
       this.assertMonthInRange(month);
       await this.assertEmployed(row.employee, month);
       await this.assertUnlocked(month);
+      await this.assertRecurringFree([row], month);
     }
     // the advance stays unless another is sent, or the type no longer recovers one
     const wanted = dto.advanceId !== undefined ? dto.advanceId : recoveredKind(kind, type) ? row.advanceId : null;
@@ -298,6 +311,7 @@ export class AdjustmentsService {
         excluding: row.id,
       });
     }
+    await this.assertRecurringFree(rows, to);
     await this.prisma.payrollAdjustment.updateMany({ where: { id: { in: ids } }, data: { month: toDateOnly(firstDay(to)) } });
     for (const row of rows) {
       await this.audit.record({
@@ -344,8 +358,9 @@ export class AdjustmentsService {
 
   private monthOf = (row: { month: Date }) => fromDateOnly(row.month).slice(0, 7);
 
+  /** The types HR enters by hand: every one of the kind but a Recurring deduction, which the month's run adds. */
   private typeMessage(kind: AdjustmentKind): string {
-    const labels = ADJUSTMENT_TYPES[kind].map((t) => adjustmentTypeLabel(kind, t));
+    const labels = ENTERED_TYPES[kind].map((t) => adjustmentTypeLabel(kind, t));
     return `Choose the type of ${ADJUSTMENT_KIND_LABELS[kind].toLowerCase()}: ${labels.slice(0, -1).join(', ')} or ${labels.at(-1)}.`;
   }
 
@@ -403,6 +418,22 @@ export class AdjustmentsService {
     const run = await this.prisma.payrollRun.findUnique({ where: { month: toDateOnly(firstDay(month)) }, select: { status: true } });
     const locked = this.lockText(month, run?.status ?? null);
     if (locked) throw new ConflictException(locked);
+  }
+
+  /**
+   * A recurring deduction's month once (owner, 18 October 2026): a Recurring deduction moved to `month` only when its
+   * recurring deduction has none there, and two of the same one never together.
+   */
+  private async assertRecurringFree(rows: readonly AdjustmentRow[], month: string) {
+    const linked = rows.filter((r) => r.recurringId !== null);
+    if (!linked.length) return;
+    const ids = linked.map((r) => r.recurringId!);
+    const taken = await this.prisma.payrollAdjustment.findFirst({
+      where: { recurringId: { in: ids }, month: toDateOnly(firstDay(month)), id: { notIn: linked.map((r) => r.id) } },
+      select: { reason: true },
+    });
+    const twice = linked.find((r, i) => ids.indexOf(r.recurringId!) !== i);
+    if (taken || twice) throw new ConflictException(`${(taken ?? twice)!.reason} is deducted in ${monthName(month)} already: it is deducted once a month.`);
   }
 
   private assertPending(row: AdjustmentRow, doing: string) {

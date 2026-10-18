@@ -6,6 +6,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import type { Employment, Prisma } from '../generated/prisma/client.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
+import { RecurringDeductionsService } from '../payroll/adjustments/recurring.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateEmploymentDto, EndEmploymentDto, UpdateEmploymentDto } from './employment.dto.js';
 import { EmployeesService } from './employees.service.js';
@@ -44,6 +45,7 @@ export class EmploymentsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly employees: EmployeesService,
+    private readonly recurring: RecurringDeductionsService,
   ) {}
 
   /**
@@ -126,7 +128,9 @@ export class EmploymentsService {
   /**
    * What ending an employment does, by hand (End employment) or when HR completes an approved ending (the contracts
    * module): the checks, the end date, reason and status, and the signed contract marked ended (owner's decisions, 15
-   * October 2026). `db` is the transaction to run in, when the caller has one.
+   * October 2026); the employee's recurring deductions stop from the month after the last working day (owner, 18
+   * October 2026: a monthly share, e.g. a medical subscription, ends with the employment). `db` is the transaction to
+   * run in, when the caller has one.
    */
   async close(employeeId: string, employmentId: string, dto: EndEmploymentDto, user: SessionUser, db: Db = this.prisma) {
     const before = await this.row(employeeId, employmentId, db);
@@ -157,6 +161,7 @@ export class EmploymentsService {
         ...(contract && { contract: { number: contract.number, status: { from: 'active', to: 'ended' } } }),
       },
     });
+    await this.recurring.stopForLeaving(employeeId, dto.endDate, user, db);
   }
 
   /** Confirms someone on probation: the status becomes Active. */

@@ -439,20 +439,17 @@ describe('Payroll additions and deductions (e2e)', () => {
       );
     });
 
-    it('HR marks one settled with a note, once nothing more is planned', async () => {
+    it('HR marks one settled with a note: what is still planned is cancelled with it (18 October 2026)', async () => {
       const settle = (body: object, session = hr) => api().post(`/api/payroll/advances/${loan.id}/settle`).set('Cookie', session).send(body);
       for (const session of [finance, ceo]) await settle({ note: 'x' }, session).expect(403);
       expect((await settle({}).expect(400)).body.message).toContain('Say how it was settled.');
-      expect((await settle({ note: 'Paid back in cash' }).expect(409)).body.message).toBe(
-        'A recovery is still planned for this loan on Additions / Deductions: cancel it first, or let it be taken.',
-      );
       const planned = await prisma.payrollAdjustment.findFirstOrThrow({ where: { advanceId: loan.id, status: 'pending' } });
-      await cancel(planned.id).expect(200);
       const settled = (await settle({ note: ' Paid back in cash ' }).expect(200)).body as Advance;
-      expect(settled).toMatchObject({ status: 'settled', settledBy: { id: hrId }, settledNote: 'Paid back in cash', outstanding: 4000 });
+      expect(settled).toMatchObject({ status: 'settled', settledBy: { id: hrId }, settledNote: 'Paid back in cash', settledHow: 'paid_back', outstanding: 4000 });
+      expect((await prisma.payrollAdjustment.findUniqueOrThrow({ where: { id: planned.id } })).status).toBe('cancelled');
       expect((await auditOf('payroll_advance', loan.id)).at(-1)).toMatchObject({
         action: 'settle',
-        diff: { employeeCode: alpha.employeeCode, status: { from: 'open', to: 'settled' }, note: 'Paid back in cash', outstanding: 'some' },
+        diff: { employeeCode: alpha.employeeCode, status: { from: 'open', to: 'settled' }, how: 'paid_back', note: 'Paid back in cash', outstanding: 'some', installmentsCancelled: 1 },
       });
       expect((await settle({ note: 'again' }).expect(409)).body.message).toBe("This loan is settled, so it can't be settled.");
     });

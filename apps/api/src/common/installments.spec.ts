@@ -98,7 +98,7 @@ describe('changeInstallment', () => {
   });
 
   it('refuses more than what is left, nothing, or a month not waiting', () => {
-    expect(changeInstallment(plan, '2027-03', 2000.01)).toEqual({ problem: 'The installment can be at most EGP 2000.00, what is left from that month on.' });
+    expect(changeInstallment(plan, '2027-03', 2000.01)).toEqual({ problem: 'The installment can be at most EGP 2,000.00, what is left from that month on.' });
     expect('problem' in changeInstallment(plan, '2026-11', 0)).toBe(true);
     expect('problem' in changeInstallment(plan, '2028-01', 100)).toBe(true);
   });

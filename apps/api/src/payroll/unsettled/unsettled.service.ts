@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { daysBetween, END_REASON_LABELS, sumAmounts, type EndReason, type HoldReleaseMethod, type PayrollStatus } from '@trendlix/shared';
+import { daysBetween, END_REASON_LABELS, sumAmounts, type AdvanceKind, type EndReason, type HoldReleaseMethod, type PayrollStatus } from '@trendlix/shared';
 import { AuditService } from '../../audit/audit.service.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../../common/date-only.js';
@@ -7,7 +7,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AdvancesService } from '../adjustments/advances.service.js';
 import { placeName, refOf, userNames, type UserRef } from '../adjustments/people.js';
-import { personOf, type AdvanceView, type PersonRef } from '../adjustments/views.js';
+import { ADVANCE_INCLUDE, balanceOf, personOf, type AdvanceView, type PersonRef } from '../adjustments/views.js';
 import { firstDay, monthName } from '../months.js';
 import { STATUS_TEXT } from '../status.js';
 import { isApproved, monthOf } from '../views.js';
@@ -81,6 +81,11 @@ export interface FinalSettlementView {
   settledAt: Date | null;
   /** The employment's "Clearance and dues" documents, newest first: one may be linked when settling. */
   clearances: ClearanceDocument[];
+  /**
+   * The employee's advances and loans still open, with what is outstanding (owner, 18 October 2026, on leaving before
+   * it is paid back: "taken from the final settlement, unless waived"): to deduct from the final settlement, or waive.
+   */
+  outstanding: { advanceId: string; kind: AdvanceKind; reason: string; outstanding: number }[];
 }
 
 export interface UnsettledView {
@@ -120,7 +125,9 @@ type SettlementRow = Prisma.EmploymentGetPayload<{ select: typeof SETTLEMENT_SEL
 // people who left, open from their employment's end date until HR marks them settled; and the advances and loans still
 // being recovered. A held line counts as paid out once HR records it (the day, how, a note): a run never pays a line
 // held on it, and nothing else records that it was paid. HR, Finance and the CEO see it; HR settles, reopens and
-// records payouts. Every change is in the audit log, the amounts only as set, as for a salary.
+// records payouts. Every change is in the audit log, the amounts only as set, as for a salary. A final settlement lists
+// what is still outstanding of the employee's advances and loans (owner, 18 October 2026: "taken from the final
+// settlement, unless waived"), which HR settles as deducted from it or waives (POST /payroll/advances/:id/settle).
 @Injectable()
 export class UnsettledService {
   constructor(
@@ -346,7 +353,22 @@ export class UnsettledService {
   }
 
   private async settlementViews(rows: readonly SettlementRow[], today: string): Promise<FinalSettlementView[]> {
-    const names = await userNames(this.prisma, rows.map((r) => r.finalSettlement?.settledBy ?? null));
+    const [names, open] = await Promise.all([
+      userNames(this.prisma, rows.map((r) => r.finalSettlement?.settledBy ?? null)),
+      rows.length
+        ? this.prisma.payrollAdvance.findMany({
+            where: { employeeId: { in: [...new Set(rows.map((r) => r.employee.id))] }, status: 'open' },
+            orderBy: [{ givenOn: 'asc' }, { createdAt: 'asc' }],
+            include: ADVANCE_INCLUDE,
+          })
+        : [],
+    ]);
+    const outstanding = new Map<string, FinalSettlementView['outstanding']>();
+    for (const a of open) {
+      const left = balanceOf(a).outstanding;
+      if (!(left > 0)) continue;
+      outstanding.set(a.employeeId, [...(outstanding.get(a.employeeId) ?? []), { advanceId: a.id, kind: a.kind as AdvanceKind, reason: a.reason, outstanding: left }]);
+    }
     return rows.map((r) => {
       const s = r.finalSettlement;
       const endDate = fromDateOnly(r.endDate)!;
@@ -371,6 +393,7 @@ export class UnsettledService {
         settledBy: s ? refOf(names, s.settledBy) : null,
         settledAt: s?.settledAt ?? null,
         clearances: r.documents,
+        outstanding: outstanding.get(r.employee.id) ?? [],
       };
     });
   }

@@ -84,7 +84,7 @@ export function changeInstallment(pending: readonly Installment[], month: string
   if (at < 0) return { problem: 'That installment is no longer waiting to be deducted.' };
   if (!isMoney(amount) || amount <= 0) return { problem: 'Enter the installment, more than 0, e.g. 1000 or 1000.50.' };
   const fromHere = pending.slice(at).reduce((s, p) => s + cents(p.amount), 0);
-  if (cents(amount) > fromHere) return { problem: `The installment can be at most EGP ${money(fromHere).toFixed(2)}, what is left from that month on.` };
+  if (cents(amount) > fromHere) return { problem: `The installment can be at most EGP ${money(fromHere).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, what is left from that month on.` };
 
   const before = pending.slice(0, at).map((p) => ({ ...p }));
   const changed = { month, amount: money(cents(amount)) };

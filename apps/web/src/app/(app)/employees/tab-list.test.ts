@@ -96,6 +96,12 @@ describe('the Employment tab’s sub-tabs', () => {
     expect(keys({ pay: false, raiseRequests: false, issuedDocuments: false })).toEqual(['details']);
   });
 
+  it('show the employee Salary on their own profile with loans or deductions there for them (18 October 2026)', () => {
+    const keys = (can: Parameters<typeof visibleSubTabs>[0]) => visibleSubTabs(can).map((t) => t.key);
+    expect(keys({ pay: false, raiseRequests: false, deductionPlans: true, issuedDocuments: false })).toEqual(['details', 'salary']);
+    expect(keys({ pay: false, raiseRequests: false, deductionPlans: false, issuedDocuments: false })).toEqual(['details']);
+  });
+
   it('open the one asked for if the viewer sees it, else Details', () => {
     expect(openSubTab('salary', ALL)).toBe('salary');
     expect(openSubTab('documents', ALL)).toBe('documents');

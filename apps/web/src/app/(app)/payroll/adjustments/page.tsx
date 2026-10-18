@@ -11,6 +11,7 @@ import { Empty, Loading } from '../../organization/ui';
 import { StaffOnly } from '../../staff-only';
 import { addMonths, monthName, runHref } from '../list';
 import { loadJson, notLoadedText } from '../load';
+import { RECURRING_PATH } from '../sections';
 import { PayrollStatusBadge } from '../ui';
 import { cancelAdjustment, createAdjustment, moveAdjustments, updateAdjustment } from './actions';
 import { AddAdjustmentForm, AdjustmentActions, MoveForm } from './adjustment-forms';
@@ -23,6 +24,7 @@ import {
   daysNotWorkedOut,
   enteredText,
   entersAdjustments,
+  isRecurring,
   laterMonths,
   monthChoices,
   movable,
@@ -182,7 +184,12 @@ function AdjustmentsTable({ rows, choices, hr, today }: { rows: AdjustmentRow[];
                   <td className="text-xs whitespace-nowrap text-muted">{enteredText(r) || dash}</td>
                   {hr && (
                     <td className="text-right">
-                      {changeable(r, choices.locked) ? (
+                      {isRecurring(r) && r.status === 'pending' ? (
+                        // made by the run from its record (18 October 2026): changed or stopped there
+                        <Link href={RECURRING_PATH} className="btn btn-secondary min-h-9 px-3">
+                          Change on Recurring Deductions
+                        </Link>
+                      ) : changeable(r, choices.locked) ? (
                         <AdjustmentActions
                           row={r}
                           action={updateAdjustment.bind(null, r.id)}

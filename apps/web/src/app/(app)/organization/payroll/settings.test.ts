@@ -9,6 +9,7 @@ import {
   paydayDate,
   payingBody,
   rulesBody,
+  INSTALLMENT_WARN_ERROR,
   SALARY_REVIEW_ERROR,
   seesPayrollSettings,
 } from './settings';
@@ -85,6 +86,16 @@ describe('Your Rules', () => {
     for (const bad of ['0', '61', '6.5', '', 'twelve']) expect(rulesBody(form({ ...rules, salaryReviewMonths: bad })).errors).toEqual([SALARY_REVIEW_ERROR]);
     // an API from before it: not on the form, not sent
     expect(rulesBody(form(rules)).rules).not.toHaveProperty('salaryReviewMonths');
+  });
+
+  it('sends the installments warning percent when the form has it, empty as no warning (owner, 18 October 2026)', () => {
+    expect(rulesBody(form({ ...rules, installmentWarnPercent: '10' }))).toMatchObject({ rules: { installmentWarnPercent: 10 }, errors: [] });
+    expect(rulesBody(form({ ...rules, installmentWarnPercent: '12.5' })).rules.installmentWarnPercent).toBe(12.5);
+    expect(rulesBody(form({ ...rules, installmentWarnPercent: '١٥' })).rules.installmentWarnPercent).toBe(15);
+    expect(rulesBody(form({ ...rules, installmentWarnPercent: ' ' }))).toMatchObject({ rules: { installmentWarnPercent: null }, errors: [] });
+    for (const bad of ['0', '101', '10.555', 'ten']) expect(rulesBody(form({ ...rules, installmentWarnPercent: bad })).errors).toEqual([INSTALLMENT_WARN_ERROR]);
+    // an API from before it: not on the form, not sent
+    expect(rulesBody(form(rules)).rules).not.toHaveProperty('installmentWarnPercent');
   });
 
   it('reads Arabic digits', () => {

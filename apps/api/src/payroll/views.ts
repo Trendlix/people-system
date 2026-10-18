@@ -1,7 +1,9 @@
 import {
   EMPTY_PAYROLL_INPUTS,
+  installmentLimitWarning,
   lawRatesFor,
   normalLawRates,
+  paidAdjustments,
   type EmploymentType,
   type LawRates,
   type PayBasis,
@@ -13,6 +15,7 @@ import {
 } from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { lineInstallments } from './adjustments/plans.js';
 import { bankCheck, cleanBankDetails, lineBank, type BankDetails, type LineBank } from './bank.js';
 import type { Exclusion } from './roster.js';
 
@@ -139,7 +142,23 @@ export function bankDetailsOf(line: LineRow, live: BankDetails | undefined, appr
   return live ? cleanBankDetails(live) : { bank: null, accountNo: null, iban: null, holderName: null };
 }
 
-export function lineView(line: LineRow, bank: LineBank): PayrollLineView {
+/**
+ * The share of pay warning (owner, 18 October 2026): when the line's installments of advances and loans (not its other
+ * deductions, nor its recurring ones) pass `percent` of the month's gross as the run worked it out (the pay earned and
+ * the allowances); null when they don't, or no percent is set in Payroll Setup.
+ */
+export function installmentWarning(line: { terms: PayrollTerms; result: PayrollResult }, percent: number | null): string | null {
+  if (percent === null) return null;
+  const installments = lineInstallments(paidAdjustments(line));
+  if (!(installments > 0)) return null;
+  return installmentLimitWarning(installments, Math.round((line.result.earned + line.result.allowances) * 100) / 100, percent);
+}
+
+/** A line as the API sends it; `percent`: Payroll Setup's share of pay its installments are warned past (18 October 2026). */
+export function lineView(line: LineRow, bank: LineBank, percent: number | null = null): PayrollLineView {
+  const terms = line.terms as unknown as PayrollTerms;
+  const result = line.result as unknown as PayrollResult;
+  const warning = installmentWarning({ terms, result }, percent);
   return {
     id: line.id,
     employeeId: line.employeeId,
@@ -151,10 +170,11 @@ export function lineView(line: LineRow, bank: LineBank): PayrollLineView {
     payBasis: line.payBasis as PayBasis,
     onHold: line.onHold,
     comments: line.comments,
-    terms: line.terms as unknown as PayrollTerms,
+    terms,
     // inputs saved before one existed (the leave days, 17 October 2026) read as not given
     inputs: { ...EMPTY_PAYROLL_INPUTS, ...(line.inputs as object) } as PayrollInputs,
-    result: line.result as unknown as PayrollResult,
+    // with the share of pay warning when its installments pass it, as the line's other warnings
+    result: warning ? { ...result, warnings: [...result.warnings, warning] } : result,
     bank,
     payslips: { en: line.payslips.some((p) => p.language === 'en'), ar: line.payslips.some((p) => p.language === 'ar') },
   };
@@ -165,10 +185,16 @@ export const isApproved = (status: string) => status === 'approved' || status ==
 
 export function runView(
   run: RunRow,
-  ctx: { banks: ReadonlyMap<string, BankDetails>; approvedByName: string | null; adjustmentsNotOnRun: PayrollRunView['adjustmentsNotOnRun'] },
+  ctx: {
+    banks: ReadonlyMap<string, BankDetails>;
+    approvedByName: string | null;
+    adjustmentsNotOnRun: PayrollRunView['adjustmentsNotOnRun'];
+    /** Payroll Setup's share of pay a line's installments are warned past (18 October 2026); null: no warning. */
+    installmentWarnPercent?: number | null;
+  },
 ): PayrollRunView {
   const approved = isApproved(run.status);
-  const lines = run.lines.map((l) => lineView(l, lineBank(bankDetailsOf(l, ctx.banks.get(l.employeeId), approved))));
+  const lines = run.lines.map((l) => lineView(l, lineBank(bankDetailsOf(l, ctx.banks.get(l.employeeId), approved)), ctx.installmentWarnPercent ?? null));
   return {
     id: run.id,
     month: monthOf(run),

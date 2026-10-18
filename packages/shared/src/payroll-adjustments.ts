@@ -15,6 +15,11 @@
 // day of the contract's net; each a day ÷ the run's day divisor, as the grid's bonus and penalty days were. A
 // commission is an addition, as it was already; a settlement is a Correction, an addition or (a negative one) a
 // deduction after tax.
+// A recurring deduction (owner, 18 October 2026: "in the deductions i might have a loan of a medical subscription or
+// something that needs to be deducted as installments on the employee. how will it be managed?"): an ongoing monthly
+// share, e.g. a medical subscription, set up once (installments.ts) and added to each month's payroll as a Recurring
+// deduction, after tax like every deduction, its reason the share's name ("Medical subscription (family)"). HR doesn't
+// enter one by hand on Additions / Deductions (ENTERED_TYPES): the month's run adds it.
 
 export const ADJUSTMENT_KINDS = ['addition', 'deduction'] as const;
 export type AdjustmentKind = (typeof ADJUSTMENT_KINDS)[number];
@@ -24,15 +29,27 @@ export const ADJUSTMENT_KIND_LABELS: Record<AdjustmentKind, string> = { addition
 export const ADDITION_TYPES = ['bonus', 'bonus_days', 'commission', 'incentive', 'correction', 'reimbursement', 'other'] as const;
 export type AdditionType = (typeof ADDITION_TYPES)[number];
 
-export const DEDUCTION_TYPES = ['penalty', 'penalty_days', 'correction', 'damage_loss', 'advance_recovery', 'loan_installment', 'other'] as const;
+export const DEDUCTION_TYPES = ['penalty', 'penalty_days', 'correction', 'damage_loss', 'advance_recovery', 'loan_installment', 'recurring', 'other'] as const;
 export type DeductionType = (typeof DEDUCTION_TYPES)[number];
 
 export type AdjustmentType = AdditionType | DeductionType;
 
-/** The types of each kind, in the order the form lists them. */
+/** The types of each kind, in the order they are listed. */
 export const ADJUSTMENT_TYPES: { addition: readonly AdditionType[]; deduction: readonly DeductionType[] } = {
   addition: ADDITION_TYPES,
   deduction: DEDUCTION_TYPES,
+};
+
+/** A recurring deduction's type: added to each month's payroll by the month's run, never entered by hand. */
+export const RECURRING_TYPE = 'recurring' satisfies DeductionType;
+
+/**
+ * The types HR enters by hand on Additions / Deductions, in the order the form lists them: every type of the kind but
+ * a Recurring deduction (owner, 18 October 2026), which the month's run adds from the recurring deduction set up.
+ */
+export const ENTERED_TYPES: { addition: readonly AdditionType[]; deduction: readonly DeductionType[] } = {
+  addition: ADDITION_TYPES,
+  deduction: DEDUCTION_TYPES.filter((t) => t !== RECURRING_TYPE),
 };
 
 export const ADDITION_TYPE_LABELS: Record<AdditionType, string> = {
@@ -52,6 +69,7 @@ export const DEDUCTION_TYPE_LABELS: Record<DeductionType, string> = {
   damage_loss: 'Damage or loss',
   advance_recovery: 'Advance recovery',
   loan_installment: 'Loan installment',
+  recurring: 'Recurring deduction',
   other: 'Other deduction',
 };
 
@@ -73,6 +91,7 @@ export const DEDUCTION_TYPE_LABELS_AR: Record<DeductionType, string> = {
   damage_loss: 'تلفيات أو فقد',
   advance_recovery: 'استرداد سلفة',
   loan_installment: 'قسط قرض',
+  recurring: 'خصم شهري',
   other: 'استقطاع آخر',
 };
 
@@ -161,6 +180,25 @@ export const ADVANCE_STATUSES = ['open', 'settled'] as const;
 export type AdvanceStatus = (typeof ADVANCE_STATUSES)[number];
 
 export const ADVANCE_STATUS_LABELS: Record<AdvanceStatus, string> = { open: 'Being recovered', settled: 'Settled' };
+
+/**
+ * How one was settled (owner, 18 October 2026, on leaving before it is paid back: "taken from the final settlement,
+ * unless waived"): recovered by its deductions (automatically, once nothing is outstanding), deducted from the final
+ * settlement, waived (with HR's note why), or paid back otherwise, e.g. in cash (with HR's note how).
+ */
+export const ADVANCE_SETTLED_HOWS = ['recovered', 'final_settlement', 'waived', 'paid_back'] as const;
+export type AdvanceSettledHow = (typeof ADVANCE_SETTLED_HOWS)[number];
+
+export const ADVANCE_SETTLED_HOW_LABELS: Record<AdvanceSettledHow, string> = {
+  recovered: 'Recovered from the pay',
+  final_settlement: 'Deducted from the final settlement',
+  waived: 'Waived',
+  paid_back: 'Paid back',
+};
+
+/** The ways HR settles one: every way but recovered, which is the system's. */
+export const ADVANCE_SETTLE_WAYS = ['final_settlement', 'waived', 'paid_back'] as const satisfies readonly AdvanceSettledHow[];
+export type AdvanceSettleWay = (typeof ADVANCE_SETTLE_WAYS)[number];
 
 /** The deduction that recovers each kind: an advance's recovery, a loan's installment. */
 export const RECOVERY_TYPE: Record<AdvanceKind, DeductionType> = { advance: 'advance_recovery', loan: 'loan_installment' };

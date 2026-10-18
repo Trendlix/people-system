@@ -103,16 +103,24 @@ export interface SubTabAccess {
   pay: boolean;
   /** A Raise Requests section for them: the employee's own, their manager's (the API decides who). */
   raiseRequests: boolean;
+  /**
+   * The employee's own loans and deductions, on their own profile (owner, 18 October 2026): an open advance or loan, or
+   * a recurring deduction. Optional: none for anyone else.
+   */
+  deductionPlans?: boolean;
   /** The documents generated from the templates: HR and the CEO, as the employee file. */
   issuedDocuments: boolean;
 }
 
 /**
  * The sub-tabs a viewer sees, in order: Details always; Salary to those who see salaries, and to anyone else with raise
- * requests there for them (the employee, their manager: only the requests); Issued Documents to HR and the CEO.
+ * requests there for them (the employee, their manager: only the requests) or, on their own profile, loans and
+ * deductions (18 October 2026); Issued Documents to HR and the CEO.
  */
 export function visibleSubTabs(can: SubTabAccess): (typeof EMPLOYMENT_SUB_TABS)[number][] {
-  return EMPLOYMENT_SUB_TABS.filter((t) => (t.key === 'salary' ? can.pay || can.raiseRequests : t.key === 'documents' ? can.issuedDocuments : true));
+  return EMPLOYMENT_SUB_TABS.filter((t) =>
+    t.key === 'salary' ? can.pay || can.raiseRequests || !!can.deductionPlans : t.key === 'documents' ? can.issuedDocuments : true,
+  );
 }
 
 /** The sub-tab to open: the one the address asks for if the viewer sees it, else Details. */

@@ -1,8 +1,17 @@
-import { ADVANCE_KIND_LABELS, HOLD_RELEASE_METHOD_LABELS, HOLD_RELEASE_METHODS, type PayrollStatus, type Role } from '@trendlix/shared';
+import {
+  ADVANCE_KIND_LABELS,
+  HOLD_RELEASE_METHOD_LABELS,
+  HOLD_RELEASE_METHODS,
+  installmentPlanProblems,
+  type AdvanceKind,
+  type PayrollStatus,
+  type Role,
+} from '@trendlix/shared';
 import { formatDate, parseDate } from '../../../../lib/format';
 import { hasRole } from '../../../../lib/roles';
 import { formatEgp, parseAmount } from '../../employees/[id]/contracts/salary';
 import type { AdvanceRow, PersonRef, UserRef } from '../adjustments/adjustments';
+import { parseCount } from './installments';
 
 // Unsettled (owner, 17 October 2026: "make the Payroll in the side tab a main title below it - Unsettled - Additions /
 // Deductions"; asked, the owner chose what it lists): the runs not yet paid, the lines on hold not paid out since, the
@@ -64,6 +73,20 @@ export interface FinalSettlement {
   settledBy: UserRef | null;
   settledAt: string | null;
   clearances: ClearanceDocument[];
+  /**
+   * What is still outstanding on the employee's open advances and loans (owner, 18 October 2026: leaving before it is
+   * paid back, "taken from the final settlement, unless waived"): HR records each deducted there, or waives it with a
+   * note. Left out by an API from before it.
+   */
+  outstanding?: FinalSettlementOutstanding[];
+}
+
+/** An open advance or loan of someone who left, with what is outstanding on it. */
+export interface FinalSettlementOutstanding {
+  advanceId: string;
+  kind: AdvanceKind;
+  reason: string;
+  outstanding: number;
 }
 
 export interface UnsettledView {
@@ -150,7 +173,11 @@ export function paidOutBody(fd: FormData): { body: Record<string, unknown>; erro
   return { body: { paidOn, method, note: text(fd, 'note') || null }, errors };
 }
 
-/** A new advance or loan (`entering`), or an open one's changes: the amount, the day it was given, the reason, the plan. */
+/**
+ * A new advance or loan (`entering`), or an open one's changes: the amount, the day it was given, the reason, the plan.
+ * A new one recovered in installments (owner, 18 October 2026: "Recover in installments" ticked) sends how many and the
+ * first month in place of the plan, which the API words from the installments it makes.
+ */
 export function advanceBody(fd: FormData, entering: boolean): { body: Record<string, unknown>; errors: string[] } {
   const errors: string[] = [];
   const body: Record<string, unknown> = {};
@@ -166,6 +193,15 @@ export function advanceBody(fd: FormData, entering: boolean): { body: Record<str
   body.givenOn = day(fd, 'givenOn', 'day it was given', errors);
   body.reason = text(fd, 'reason');
   if (!body.reason) errors.push('Say what it was given for.');
-  body.plan = text(fd, 'plan') || null;
+  if (entering && text(fd, 'byInstallments') === 'yes') {
+    const count = parseCount(text(fd, 'count'));
+    const firstMonth = text(fd, 'firstMonth');
+    // the amount's own problem is said above
+    const valid = typeof amount === 'number' && amount > 0 ? amount : 1;
+    errors.push(...installmentPlanProblems(valid, count ?? NaN, firstMonth));
+    body.installments = { count, firstMonth };
+  } else {
+    body.plan = text(fd, 'plan') || null;
+  }
   return { body, errors };
 }

@@ -41,6 +41,7 @@ const CIB_ACCOUNT_MESSAGE = "Enter the company's CIB account number: 12 digits."
 const PURPOSE_MESSAGE = 'Enter the ACH transaction purpose in capital letters and digits, up to 20, e.g. CASH.';
 const PAYDAY_MESSAGE = 'Enter the day of the month salaries are paid, a whole number from 1 to 31, or leave it empty.';
 const REVIEW_MESSAGE = `Enter after how many months without a raise a salary review is due, a whole number from ${SALARY_REVIEW_MONTHS_MIN} to ${SALARY_REVIEW_MONTHS_MAX}, e.g. 12.`;
+const INSTALLMENT_WARN_MESSAGE = "Enter the share of the pay a month's installments may take before a warning, from 1 to 100 percent, e.g. 10, or leave it empty for no warning.";
 
 export class UpdatePayrollSettingsDto {
   @Sent() @IsInt({ message: DIVISOR_MESSAGE }) @Min(20, { message: DIVISOR_MESSAGE }) @Max(31, { message: DIVISOR_MESSAGE })
@@ -100,6 +101,16 @@ export class UpdatePayrollSettingsDto {
   @Min(SALARY_REVIEW_MONTHS_MIN, { message: REVIEW_MESSAGE })
   @Max(SALARY_REVIEW_MONTHS_MAX, { message: REVIEW_MESSAGE })
   salaryReviewMonths?: number;
+
+  /**
+   * Warn when a month's installments of advances and loans pass this percent of the pay (owner, 18 October 2026): a
+   * warning, never a block; null: no warning.
+   */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false }, { message: INSTALLMENT_WARN_MESSAGE })
+  @Min(1, { message: INSTALLMENT_WARN_MESSAGE })
+  @Max(100, { message: INSTALLMENT_WARN_MESSAGE })
+  installmentWarnPercent?: number | null;
 }
 
 // ---------- runs ----------

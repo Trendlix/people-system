@@ -45,6 +45,17 @@ describe('payslipContent: the month’s additions and deductions', () => {
     expect(c.deductions!.rows.at(-1)!.label).toBe('قسط قرض');
   });
 
+  it('a Recurring deduction by its name, its type as the note (18 October 2026: a medical subscription’s share)', () => {
+    const medical: PayrollAdjustmentItem = { id: 'r1', kind: 'deduction', type: 'recurring', taxed: false, amount: 350, reason: 'Medical subscription (family)' };
+    const withMedical = payslipSource('monthly', { terms: { adjustments: [...ADJUSTMENTS, medical] } });
+    const en = payslipContent(withMedical, 'en');
+    expect(en.deductions!.rows.at(-1)).toEqual({ label: 'Medical subscription (family)', note: 'Recurring deduction', amount: '350.00', value: 350 });
+    expect(sum(en.deductions!.rows)).toBe(withMedical.line.result.deductions);
+    const ar = payslipContent(withMedical, 'ar');
+    expect(withoutMarks(ar.deductions!.rows.at(-1)!.label)).toBe('Medical subscription (family)');
+    expect(ar.deductions!.rows.at(-1)!.note).toBe('خصم شهري');
+  });
+
   it('a payslip without any is as before', () => {
     const c = payslipContent(payslipSource('monthly'), 'en');
     expect(c.earnings!.rows.map((x) => x.label)).not.toContain('Incentive');

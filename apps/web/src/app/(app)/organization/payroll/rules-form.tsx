@@ -13,7 +13,10 @@ import { plainAmount } from '../../employees/[id]/contracts/salary';
 // overtime's percent and rate are greyed and not sent, and the API keeps them for when it is turned on. An API from
 // before the switch has none: the overtime fields then show as they did. Salary Reviews (owner's decision, 16 October
 // 2026: the Salary Raises report): after how many months without a raise, or since joining, someone is due for a
-// salary review; an API from before it has none, and the field isn't shown.
+// salary review; an API from before it has none, and the field isn't shown. Installments (owner, 18 October 2026: "in the
+// deductions i might have a loan of a medical subscription or something that needs to be deducted as installments on
+// the employee. how will it be managed?"): the share of the pay a month's installments may take before a warning, on
+// the record form and the run's line, never a block; empty, no warning. Shown only when the API has it.
 
 type RuleKey = 'dayDivisor' | 'attendanceGracePercent' | 'kpiGracePercent' | 'overtimeAbovePercent' | 'overtimeRate' | 'noShowDayMultiplier';
 
@@ -54,6 +57,7 @@ export function YourRulesForm({
   const [paysOvertime, setPaysOvertime] = useState(typedSwitch !== undefined ? typedOn(typedSwitch) : rules.payOvertime !== false);
   const off = hasSwitch && !paysOvertime;
   const reviewMonths = rules.salaryReviewMonths;
+  const warnPercent = rules.installmentWarnPercent;
 
   const numberField = (f: RuleField, disabled = false) => (
     <div key={f.key} className={disabled ? 'opacity-60' : undefined}>
@@ -139,6 +143,38 @@ export function YourRulesForm({
                   60; 12 is a year.
                 </p>
               </div>
+            </div>
+          </fieldset>
+        </div>
+      )}
+
+      {warnPercent !== undefined && (
+        <div className="border-t border-line-soft pt-5">
+          <fieldset className="space-y-4">
+            <legend className="font-semibold">Installments</legend>
+            <div>
+              <label htmlFor={fid('installmentWarnPercent')} className="label">
+                Warn when a month&apos;s installments pass
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  id={fid('installmentWarnPercent')}
+                  name="installmentWarnPercent"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="No warning"
+                  defaultValue={valueOf(state, 'installmentWarnPercent', warnPercent === null ? '' : String(warnPercent))}
+                  aria-describedby={`${fid('installmentWarnPercent-unit')} ${fid('installmentWarnPercent-hint')}`}
+                  className="input w-32 tabular-nums"
+                />
+                <span id={fid('installmentWarnPercent-unit')} className="text-sm">
+                  % of the pay
+                </span>
+              </div>
+              <p id={fid('installmentWarnPercent-hint')} className="hint">
+                A month&apos;s advance recoveries and loan installments against the month&apos;s gross: a warning when an advance or loan is recorded and on
+                the run&apos;s line, never a block. 1 to 100, e.g. 10; leave it empty for no warning.
+              </p>
             </div>
           </fieldset>
         </div>

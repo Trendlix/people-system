@@ -20,6 +20,7 @@ import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GridInputsService } from './adjustments/grid-inputs.service.js';
+import { RecurringDeductionsService } from './adjustments/recurring.service.js';
 import { RunAdjustmentsService } from './adjustments/run-adjustments.service.js';
 import { cleanBankDetails, inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
 import { achWorkbook, cibWorkbook } from './bank-files.js';
@@ -163,6 +164,10 @@ const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto
 // While the run is with the CEO, the CEO may waive a line's attendance deduction (owner, 17 October 2026: "if there is
 // an attendance deduction, allow the CEO to wave the deduction by ticking a box"): the line is worked out again without
 // it at once, and the approval takes it as it is.
+// Recurring deductions (owner, 18 October 2026, e.g. a medical subscription's share): a run made or refreshed adds the
+// month's Recurring deduction of each one due that month first (adjustments/recurring.service.ts), so its lines take
+// them with the month's other deductions. Each line's warnings say when its installments of advances and loans pass
+// Payroll Setup's share of the pay (installmentLimitWarning): a warning, never a block.
 @Injectable()
 export class PayrollService {
   constructor(
@@ -174,6 +179,7 @@ export class PayrollService {
     private readonly lawRates: LawRatesService,
     private readonly adjustments: RunAdjustmentsService,
     private readonly gridInputs: GridInputsService,
+    private readonly recurring: RecurringDeductionsService,
   ) {}
 
   /** Every run, newest month first, with its totals. */
@@ -216,7 +222,9 @@ export class PayrollService {
     const rules = rulesOf(await this.settings.row());
     const law = await this.lawRates.forYear(Number(month.slice(0, 4)));
     const { lines, exclusions } = await this.roster(month, rules, law);
-    // the month's additions and deductions (owner, 17 October 2026), with each person's terms
+    // the month's recurring deductions first (18 October 2026), then its additions and deductions (17 October 2026),
+    // with each person's terms
+    await this.recurring.addToMonth(month, user);
     const pending = await this.adjustments.pendingByEmployee(month);
     const run = await this.prisma.$transaction(async (tx) => {
       const made = await tx.payrollRun.create({
@@ -262,6 +270,7 @@ export class PayrollService {
     const rules = rulesOf(await this.settings.row());
     const law = await this.lawRates.forYear(Number(month.slice(0, 4)));
     const { lines, exclusions } = await this.roster(month, rules, law);
+    await this.recurring.addToMonth(month, user);
     const pending = await this.adjustments.pendingByEmployee(month);
     const kept = new Map(run.lines.map((l) => [l.employeeId, l]));
     const staying = new Set(lines.map((l) => l.employeeId));
@@ -573,7 +582,7 @@ export class PayrollService {
   }
 
   private async view(run: RunRow): Promise<PayrollRunView> {
-    const [banks, approver, notOnRun] = await Promise.all([
+    const [banks, approver, notOnRun, settings] = await Promise.all([
       isApproved(run.status) ? new Map<string, BankDetails>() : this.banks(run.lines.map((l) => l.employeeId)),
       run.approvedBy ? this.prisma.employee.findUnique({ where: { workEmail: run.approvedBy.email.toLowerCase() }, select: { fullNameEn: true } }) : null,
       // the month's pending additions and deductions no line takes (owner, 17 October 2026)
@@ -582,6 +591,8 @@ export class PayrollService {
         where: { month: run.month, status: 'pending', employeeId: { notIn: run.lines.map((l) => l.employeeId) } },
         _count: { _all: true },
       }),
+      // the share of pay a month's installments may take before the lines warn (18 October 2026)
+      this.settings.row(),
     ]);
     const people = notOnRun.length
       ? await this.prisma.employee.findMany({ where: { id: { in: notOnRun.map((g) => g.employeeId) } }, select: { id: true, employeeCode: true, fullNameEn: true } })
@@ -590,7 +601,7 @@ export class PayrollService {
     const adjustmentsNotOnRun = people
       .map((p) => ({ employeeId: p.id, employeeCode: p.employeeCode, name: p.fullNameEn, count: counts.get(p.id) ?? 0 }))
       .sort((a, b) => a.name.localeCompare(b.name));
-    return runView(run, { banks, approvedByName: approver?.fullNameEn ?? null, adjustmentsNotOnRun });
+    return runView(run, { banks, approvedByName: approver?.fullNameEn ?? null, adjustmentsNotOnRun, installmentWarnPercent: settings.installmentWarnPercent?.toNumber() ?? null });
   }
 
   private assertStatus(run: RunRow, wanted: PayrollStatus, doing: string) {

@@ -7,6 +7,7 @@ import {
   measuredExpectedHours,
   paidAdjustments,
   paysOvertime,
+  RECURRING_TYPE,
   resultAdjustments,
   splitSegments,
   toArabicDigits,
@@ -41,6 +42,8 @@ import { monthArabic, monthName } from './months.js';
 // Deductions) with its days, what it came to as the run worked it out. A line saved before then has its bonus and
 // penalty days, commission and settlement as typed on the grid. An attendance deduction the CEO waived (owner, 17
 // October 2026: "allow the CEO to wave the deduction by ticking a box") is said under This Month, and not deducted.
+// A Recurring deduction (owner, 18 October 2026, e.g. a medical subscription's share) reads as its name, "Medical
+// subscription (family)", with its type as the note.
 // A row that is 0 is left out, and so is a section with nothing in it. Left off on purpose: the company cost, the tax working, HR's comments, the warnings,
 // the full account number, the IBAN and the national ID. In English for everyone; in Arabic on request, right to left,
 // every number in ٠-٩ but the codes with Latin letters (EMP-0007, PAY-2026-10) and the banks' short names (CIB, QNB).
@@ -614,8 +617,12 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   // the penalty days typed on the grid before 17 October 2026; a Penalty (days) since is a row of its own below
   deduct(L.penalty, piasters(result.penaltyCut - ofType('penalty_days')), ar ? arabicDays(inputs.penaltyDays ?? 0) : englishDays(inputs.penaltyDays ?? 0));
   deduct(L.medical, oldMedical, t(L.monthlySubscription));
-  // the month's deductions (owner, 17 October 2026), each by its type, with its reason (a Penalty (days) with its days)
-  for (const a of items.filter((x) => x.kind === 'deduction' && x.amount !== 0)) deductions.push(row(typeLabel(a.kind, a.type), a.amount, notes(daysNote(a), reasonText(a.reason))));
+  // the month's deductions (owner, 17 October 2026), each by its type, with its reason (a Penalty (days) with its days);
+  // a Recurring deduction (18 October 2026) by its name, "Medical subscription (family)", its type the note
+  for (const a of items.filter((x) => x.kind === 'deduction' && x.amount !== 0)) {
+    if (a.type === RECURRING_TYPE) deductions.push(row(reasonText(a.reason), a.amount, typeLabel(a.kind, a.type)));
+    else deductions.push(row(typeLabel(a.kind, a.type), a.amount, notes(daysNote(a), reasonText(a.reason))));
+  }
 
   // ---------- the net, and what the bank pays ----------
   const afterNet: PayslipRow[] = [];
