@@ -271,3 +271,9 @@ export * from './payroll-adjustments.js';
 
 // payroll statistics: what the approved runs paid and cost, by month, department and team, and this year to date
 export * from './payroll-statistics.js';
+
+// reimbursement claims: the types HR sets up (caps, receipt, deadline, who may claim), the claim's statuses and steps
+export * from './reimbursements.js';
+
+// installments of advances and loans made at once, recurring deductions (e.g. a medical share), the share of pay warning
+export * from './installments.js';

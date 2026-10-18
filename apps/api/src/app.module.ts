@@ -21,6 +21,7 @@ import { PayrollStatisticsModule } from './payroll/statistics/statistics.module.
 import { UnsettledModule } from './payroll/unsettled/unsettled.module.js';
 import { PdfModule } from './pdf/pdf.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { ReimbursementsModule } from './reimbursements/reimbursements.module.js';
 import { TemplatesModule } from './templates/templates.module.js';
 import { UsersModule } from './users/users.module.js';
 
@@ -47,6 +48,7 @@ import { UsersModule } from './users/users.module.js';
     PayrollAdjustmentsModule,
     UnsettledModule,
     PayrollStatisticsModule,
+    ReimbursementsModule,
     UsersModule,
   ],
   controllers: [HealthController, VersionController],
