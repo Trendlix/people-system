@@ -1,17 +1,22 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
+import { leadShortLabel } from '@/lib/department-leads';
 import { groupDepartments } from '@/lib/departments';
 import { canEditOrganisation, canReorderDepartments, getCurrentUser } from '@/lib/session';
 import type { Department, JobTitleSummary } from '@/lib/types';
 import { reorderDepartments } from '../actions';
+import { seesEveryone } from '../../employees/ui';
 import { Empty, Loading } from '../ui';
 import { JobTitlesTable } from './job-titles-table';
+import { LeadName } from './lead-name';
 import { ReorderList } from './reorder-list';
 
 // Owner's words: Department → Team → Job title (e.g. Marketing → Content Team → Senior Content Creator), and a job
 // title may also belong to a department itself (e.g. Head of Marketing; owner's decision, 15 October 2026). Each
-// department is a card with its own job titles and its teams, each team with its job titles.
+// department is a card with its own job titles and its teams, each team with its job titles. Each names its person in
+// charge (owner, 19 October 2026: "i want to add department lead person, the person in charge"): "Head: …" on a
+// department, "Team lead: …" on a team, chosen in its Edit form.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -19,6 +24,16 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** The English or Arabic name contains the search text (already lower case). */
 const nameMatches = (needle: string, ...names: (string | null)[]) => names.some((n) => n?.toLowerCase().includes(needle));
+
+/** "Head: Hazem Magdy" on a department, "Team lead: Sara Ali" on a team: its person in charge, when it has one. */
+function Lead({ unit, link }: { unit: Department; link: boolean }) {
+  if (!unit.head) return null;
+  return (
+    <p className="mt-1 text-sm">
+      <span className="text-muted">{leadShortLabel(unit.parentId !== null)}:</span> <LeadName person={unit.head} link={link} />
+    </p>
+  );
+}
 
 /** "3 job titles · 1 matching" */
 const titleCount = (all: number, shown: number) => `${plural(all, 'job title', 'job titles')}${shown < all ? ` · ${shown} matching` : ''}`;
@@ -31,6 +46,7 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
     searchParams,
   ]);
   const canEdit = canEditOrganisation(user);
+  const linkPeople = seesEveryone(user);
   const q = typeof query.q === 'string' ? query.q.trim().slice(0, 100) : '';
 
   // Admins put the departments in order (?reorder=departments); the cards, pickers and filters all follow it.
@@ -174,6 +190,7 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
                       {d.nameAr}
                     </p>
                   )}
+                  <Lead unit={d} link={linkPeople} />
                   <p className="mt-1 text-sm text-muted">
                     {plural(teamTotal, 'team', 'teams')} · {titleCount(counts.titles, counts.shown)}
                   </p>
@@ -215,6 +232,7 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
                               {t.nameAr}
                             </p>
                           )}
+                          <Lead unit={t} link={linkPeople} />
                           <p className="mt-1 text-sm text-muted">{titleCount(teamAll.length, teamShown.length)}</p>
                         </div>
                         {canEdit && (

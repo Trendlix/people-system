@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { REIMBURSEMENT_STAGE_LABELS } from '@trendlix/shared';
 import { DocumentViewer } from '@/components/document-viewer';
+import { approverLabel } from '@/lib/department-leads';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import type { ReimbursementClaimView } from '@/lib/types';
@@ -21,7 +22,9 @@ import { ClaimProgress, ClaimStatusBadge, ClaimTimeline } from '../ui';
 // 404 page: the API says it isn't there): what was claimed and for what, the receipts in the document viewer, where it
 // stands and the payroll it is paid with, and its log of every step. While it waits for the user, their decision
 // (Approve, Approve a lower amount, Reject, with a comment for the last two); while it is being decided, the employee's
-// Cancel. What was just done on it shows at the top (?done=).
+// Cancel. What was just done on it shows at the top (?done=). Someone without a direct manager has it decided first by
+// their team lead, else their department's head (owner, 19 October 2026: "i want to add department lead person, the
+// person in charge"): the page says which.
 
 export const metadata: Metadata = { title: 'Reimbursement Claim · People System' };
 
@@ -79,7 +82,7 @@ async function Claim({ params, searchParams }: { params: PageProps<'/reimburseme
   if (loaded.kind === 'failed') return <Empty>{notLoadedText(loaded, 'claim')}</Empty>;
   const c = loaded.value;
   const back = claimBack(user, c);
-  const done = doneText(query, c.status);
+  const done = doneText(query, c.status, c.manager);
   const place = placeOfClaim(c.employee);
   const lower = lowerApproved(c);
   const month = payMonthOf(c);
@@ -131,7 +134,9 @@ async function Claim({ params, searchParams }: { params: PageProps<'/reimburseme
               <Fact label="Where it stands">
                 <ClaimProgress claim={c} />
               </Fact>
-              <Fact label="Direct manager">{c.manager ? c.manager.fullNameEn : <span className="text-muted">None: sent straight to HR</span>}</Fact>
+              <Fact label={c.manager ? approverLabel(c.manager) : 'Direct manager'}>
+                {c.manager ? c.manager.fullNameEn : <span className="text-muted">None: sent straight to HR</span>}
+              </Fact>
               {month && <Fact label="Paid with">{`The ${month} payroll, untaxed`}</Fact>}
             </dl>
           </Section>
@@ -141,7 +146,7 @@ async function Claim({ params, searchParams }: { params: PageProps<'/reimburseme
           </Section>
 
           {c.waitingForYou && c.stage && (
-            <Section title={`Your Decision as ${c.stage === 'manager' ? 'the Direct Manager' : REIMBURSEMENT_STAGE_LABELS[c.stage]}`}>
+            <Section title={`Your Decision as ${c.stage === 'manager' ? `the ${titleCase(approverLabel(c.manager))}` : REIMBURSEMENT_STAGE_LABELS[c.stage]}`}>
               <DecisionForm action={decideClaim.bind(null, c.id, currentAmount(c), c.stage)} stage={c.stage} current={currentAmount(c)} name={c.employee.fullNameEn} />
             </Section>
           )}

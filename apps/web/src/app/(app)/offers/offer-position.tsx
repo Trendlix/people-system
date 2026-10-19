@@ -8,6 +8,7 @@ import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
 import { Select } from '@/components/select';
+import { offerManagerHint, suggestManager } from '@/lib/department-leads';
 import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import type { FormState, Grade } from '@/lib/types';
@@ -21,7 +22,9 @@ import type { OfferDefaults } from './form-body';
 // the direct manager, the shift, the work arrangement (office days for Hybrid) and the expected join date; by the labour
 // law (owner, 18 October 2026), Paid by commission for full-time (as Sales was: its job offer is the commission one once
 // published) and the nature of the work (Art. 1(6–8)). Accepting the offer makes the employment from these. Each field's
-// box has an anchor (#field-<name>) for the offer page's list of what the template lacks.
+// box has an anchor (#field-<name>) for the offer page's list of what the template lacks. A direct manager left empty
+// becomes the department's or team's lead on acceptance (owner, 19 October 2026: "i want to add department lead person,
+// the person in charge"), which the field says.
 
 const OFFICE_DAYS = [
   [0, 'Sun'],
@@ -84,10 +87,16 @@ export function OfferPositionFields({
     return () => window.removeEventListener('focus', refresh);
   }, [noTitles, router]);
 
-  const managerId = valueOf(state, 'managerId', defaults.managerId);
+  const savedManagerId = valueOf(state, 'managerId', defaults.managerId);
+  // followed for the hint: left empty, the lead becomes the manager when the offer is accepted (the API's default)
+  const [managerId, setManagerId] = useState(savedManagerId);
   const managers = pickers.managers
-    .filter((m) => EMPLOYED.includes(m.standing) || m.id === managerId)
+    .filter((m) => EMPLOYED.includes(m.standing) || m.id === savedManagerId)
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn));
+  const managerHint = offerManagerHint(
+    managerId,
+    suggestManager(pickers.departments, departmentId, { canPick: (id) => pickers.managers.some((m) => m.id === id && EMPLOYED.includes(m.standing)) }),
+  );
   const officeDays = officeDaysOf(state, defaults.officeDays);
   // trainee and freelance say what they mean by the law
   const typeHint = employmentTypeHint(type, 'offer');
@@ -236,7 +245,14 @@ export function OfferPositionFields({
           <label htmlFor={fid('managerId')} className="label">
             Direct manager
           </label>
-          <Select id={fid('managerId')} name="managerId" defaultValue={managerId} className="input">
+          <Select
+            id={fid('managerId')}
+            name="managerId"
+            defaultValue={savedManagerId}
+            onChange={(e) => setManagerId(e.target.value)}
+            aria-describedby={managerHint ? fid('managerId-hint') : undefined}
+            className="input"
+          >
             <option value="">No direct manager</option>
             {managers.map((m) => (
               <option key={m.id} value={m.id}>
@@ -244,6 +260,11 @@ export function OfferPositionFields({
               </option>
             ))}
           </Select>
+          {managerHint && (
+            <p id={fid('managerId-hint')} className="hint">
+              {managerHint}
+            </p>
+          )}
         </div>
 
         <div id="field-workNature" className="scroll-mt-6">

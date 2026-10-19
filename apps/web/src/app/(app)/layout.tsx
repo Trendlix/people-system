@@ -2,12 +2,12 @@ import type { Role } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
-import { COMING_SOON, DETAILS_CHANGES_PATH, LEAVE_PATH, MY_TEAM, navFor, RAISE_REQUESTS_PATH, REIMBURSEMENTS_PATH } from '@/components/nav';
+import { COMING_SOON, decidesForTeam, DETAILS_CHANGES_PATH, LEAVE_PATH, MY_TEAM, navFor, RAISE_REQUESTS_PATH, REIMBURSEMENTS_PATH } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { UserMenu } from '@/components/user-menu';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
-import { hasRole, isSelfService } from '@/lib/roles';
+import { isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import type { ChangeRequest, EndingSummary, LeaveCounts, ReimbursementCounts, SessionUser } from '@/lib/types';
@@ -39,9 +39,10 @@ async function MainNav() {
   // requests waiting (the same read as Approvals'); beside Reimbursements, for HR, Finance and the CEO, and beside My
   // Team, for a direct manager on their own side, the claims waiting for them (18 October 2026); beside Leave Requests,
   // for HR and the CEO, the leave requests waiting for them, and those waiting for a direct manager added to My Team's
-  // (18 October 2026). Each is left out when it can't be read.
+  // (18 October 2026). A department's head or a team's lead, who decides the claims and leave of its people without a
+  // direct manager, gets My Team's as a direct manager does (19 October 2026). Each is left out when it can't be read.
   const self = isSelfService({ roles });
-  const manager = self && hasRole({ roles }, 'manager');
+  const manager = self && decidesForTeam({ roles, leads: user?.leads });
   const [endings, changes, raises, requests, claims, leave] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS) : null,
     decidesChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS) : null,

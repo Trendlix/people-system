@@ -4,6 +4,7 @@ import { hasRole } from '../lib/roles';
 import {
   activeSubItem,
   COMING_SOON,
+  decidesForTeam,
   DETAILS_CHANGES_PATH,
   isActive,
   isUnder,
@@ -189,6 +190,25 @@ describe('the sidebar of an employee or a manager', () => {
       ['My Team', MY_TEAM],
     ]);
     expect(links({ roles: ['manager'], employeeId: ME }).map(([label]) => label)).toContain('My Team');
+  });
+
+  it('adds My Team for a department head or team lead without the manager role (19 October 2026), for what waits for them', () => {
+    expect(links({ roles: ['employee'], employeeId: ME, leads: true })).toEqual([
+      ['Dashboard', '/'],
+      ['My Profile', `/employees/${ME}`],
+      ['My Requests', MY_REQUESTS],
+      ['My Team', MY_TEAM],
+    ]);
+    // once for a lead who is a manager too
+    expect(links({ roles: ['employee', 'manager'], employeeId: ME, leads: true }).filter(([label]) => label === 'My Team')).toHaveLength(1);
+    // not a lead, or an API from before leads: as before
+    expect(links({ roles: ['employee'], employeeId: ME, leads: false }).map(([label]) => label)).not.toContain('My Team');
+    expect(links({ roles: ['employee'], employeeId: ME }).map(([label]) => label)).not.toContain('My Team');
+    expect(decidesForTeam({ roles: ['employee'], leads: true })).toBe(true);
+    expect(decidesForTeam({ roles: ['manager'] })).toBe(true);
+    expect(decidesForTeam({ roles: ['employee'] })).toBe(false);
+    // HR who lead a department keep their own sidebar: no My Team there
+    expect(navFor({ roles: ['hr'], employeeId: ME, leads: true }).map((n) => n.href)).not.toContain(MY_TEAM);
   });
 
   it('leaves out My Profile without a profile of their own', () => {

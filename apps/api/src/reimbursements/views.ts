@@ -2,6 +2,7 @@ import {
   isOpenReimbursement,
   reimbursementStage,
   type AdjustmentStatus,
+  type ApproverRole,
   type ReimbursementDecision,
   type ReimbursementRules,
   type ReimbursementStage,
@@ -117,7 +118,9 @@ export function claimView(r: ClaimRow, caller: Caller, names: ReadonlyMap<string
     stage: reimbursementStage(status),
     waitingForYou: waitsFor(r, caller),
     canCancel: isClaimant(r, caller) && isOpenReimbursement(status),
-    manager: r.manager && { id: r.manager.id, fullNameEn: r.manager.fullNameEn },
+    // who decides (or decided) the manager stage, and as what (owner, 19 October 2026: "the person in charge"):
+    // APPROVER_ROLES, the direct manager, or for someone without one their team lead, else their department's head
+    manager: r.manager && { id: r.manager.id, fullNameEn: r.manager.fullNameEn, role: (r.approverRole as ApproverRole | null) ?? 'direct_manager' },
     rejectedStage: r.rejectedStage as ReimbursementStage | null,
     rejectReason: r.rejectReason,
     payMonth: fromDateOnly(r.payMonth),

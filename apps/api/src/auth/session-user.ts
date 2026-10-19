@@ -34,9 +34,13 @@ export function sessionUserOf(user: { id: string; email: string; roles: { role: 
  * GET /auth/me: the signed-in user, with their own employee profile's id: the profile whose work email is their email,
  * the same match as everywhere else (see employees/access.ts), or null. The web finds "my profile" with it. `name`: that
  * profile's name in English, or null; while switched, the banner says whom the Super Admin is viewing as with it.
+ * `leads`: whether that profile is in charge of a department or team (owner, 19 October 2026: "i want to add department
+ * lead person, the person in charge"), its head or its lead: the web shows them My Team without the manager role, for
+ * the leave and reimbursements of those without a direct manager that wait for them.
  */
 export interface Me extends SessionUser {
   employeeId: string | null;
   name: string | null;
+  leads: boolean;
   viewAs: ViewAs | null;
 }

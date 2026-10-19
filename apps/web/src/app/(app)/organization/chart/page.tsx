@@ -29,8 +29,8 @@ export default function OrgChartPage() {
       <div className="mt-2 mb-4">
         <h2 className="text-lg font-semibold">Org Chart</h2>
         <p className="mt-1 text-sm text-muted">
-          The departments in their saved order, each with its own job titles (the most senior first) and its teams. The number on each job title is how many
-          people hold it now.
+          The departments in their saved order, each with its head, its own job titles (the most senior first) and its teams with their team leads. The
+          number on each job title is how many people hold it now.
         </p>
       </div>
       <Suspense fallback={<Loading />}>

@@ -26,6 +26,7 @@ import {
   recordLeaveHref,
   recordsLeave,
   requestsLabel,
+  stageTitle,
   upcomingLeave,
   WAITING_LEAVE,
 } from './list';
@@ -137,7 +138,7 @@ describe('a request in words', () => {
   });
 
   it('says where it stands, with the comment of a rejection or a cancellation', () => {
-    expect(leaveProgressText(request())).toEqual({ text: 'Waiting for the direct manager, Omar Said', reason: null });
+    expect(leaveProgressText(request())).toEqual({ text: 'With the direct manager (Omar Said)', reason: null });
     expect(leaveProgressText(request({ status: 'with_hr' })).text).toBe('Waiting for HR');
     expect(leaveProgressText(request({ status: 'rejected', rejectedStage: 'hr', rejectReason: ' Busy week ' }))).toEqual({ text: 'Rejected by HR', reason: 'Busy week' });
     expect(leaveProgressText(request({ status: 'approved', recordedByHr: true })).text).toBe('Recorded by HR');
@@ -146,12 +147,41 @@ describe('a request in words', () => {
     expect(leaveProgressText(cancelled)).toEqual({ text: 'Cancelled by Mona (HR)', reason: 'Came back early' });
   });
 
+  it('names who has it at the manager stage: the direct manager, or the team lead or head of department of someone without one (19 October 2026)', () => {
+    expect(leaveProgressText(request({ manager: { id: 'l1', fullNameEn: 'Sara Ali', role: 'team_lead' } })).text).toBe('With the team lead (Sara Ali)');
+    expect(leaveProgressText(request({ manager: { id: 'h1', fullNameEn: 'Hazem Magdy', role: 'department_head' } })).text).toBe(
+      'With the head of department (Hazem Magdy)',
+    );
+    expect(leaveProgressText(request({ manager: { id: 'm1', fullNameEn: 'Omar Said', role: 'direct_manager' } })).text).toBe('With the direct manager (Omar Said)');
+    // an API from before it: the direct manager
+    expect(leaveProgressText(request({ manager: { id: 'm1', fullNameEn: 'Omar Said', role: null } })).text).toBe('With the direct manager (Omar Said)');
+    expect(leaveProgressText(request({ manager: null })).text).toBe('With the direct manager');
+    expect(leaveProgressText(request({ status: 'rejected', rejectedStage: 'manager', manager: { id: 'l1', fullNameEn: 'Sara Ali', role: 'team_lead' } })).text).toBe(
+      'Rejected by the team lead',
+    );
+    expect(leaveProgressText(request({ status: 'rejected', rejectedStage: 'manager' })).text).toBe('Rejected by the direct manager');
+    expect(stageTitle('manager', { role: 'team_lead' })).toBe('the Team Lead');
+    expect(stageTitle('manager', { role: 'department_head' })).toBe('the Head of Department');
+    expect(stageTitle('manager', null)).toBe('the Direct Manager');
+    expect(stageTitle('hr', { role: 'team_lead' })).toBe('HR');
+    expect(leaveDoneText({ done: 'sent' }, 'with_manager', { role: 'team_lead' })?.text).toBe(
+      'Request sent. It goes to your team lead, then HR; each step shows on the request.',
+    );
+    expect(leaveDoneText({ done: 'sent' }, 'with_manager', { role: 'department_head' })?.text).toBe(
+      'Request sent. It goes to your head of department, then HR; each step shows on the request.',
+    );
+  });
+
   it('words each step of its log, and marks the decisions', () => {
     expect(leaveStepText({ kind: 'submitted', decision: null, comment: null })).toBe('Asked for by the employee');
-    expect(leaveStepText({ kind: 'no_manager', decision: null, comment: null })).toBe('No direct manager: sent straight to HR');
+    expect(leaveStepText({ kind: 'no_manager', decision: null, comment: null })).toBe('No direct manager or lead: sent straight to HR');
     expect(leaveStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Recorded by HR, approved at once');
     expect(leaveStepText({ kind: 'manager_decision', decision: 'approve', comment: null })).toBe('The direct manager approved it');
     expect(leaveStepText({ kind: 'hr_decision', decision: 'reject', comment: 'No' })).toBe('HR rejected it');
+    // the manager stage by who decides it (19 October 2026)
+    expect(leaveStepText({ kind: 'manager_decision', decision: 'reject', comment: 'No' }, { role: 'team_lead' })).toBe('The team lead rejected it');
+    expect(leaveStepText({ kind: 'manager_decision', decision: 'approve', comment: null }, { role: 'department_head' })).toBe('The head of department approved it');
+    expect(leaveStepText({ kind: 'hr_decision', decision: 'approve', comment: null }, { role: 'team_lead' })).toBe('HR approved it');
     expect(leaveStepTone({ kind: 'hr_decision', decision: 'reject' })).toBe('danger');
     expect(leaveStepTone({ kind: 'recorded_by_hr', decision: null })).toBe('ok');
     expect(leaveStepTone({ kind: 'submitted', decision: null })).toBeNull();

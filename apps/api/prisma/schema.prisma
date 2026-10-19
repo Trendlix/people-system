@@ -137,6 +137,12 @@ model Department {
   nameAr      String?      @map("name_ar")
   parentId    String?      @map("parent_id") @db.Uuid
   sortOrder   Int          @default(0) @map("sort_order") // the order set by an Admin, among departments or among one department's teams
+  // the person in charge (owner, 19 October 2026: "i want to add department lead person, the person in charge"): a
+  // department's Head of department, a team's Team lead. Any current employee (checked by the API; cleared when their
+  // employment ends), one person may lead several. The default direct manager when hiring into it, and the approver of
+  // leave and reimbursements for someone in it with no direct manager (packages/shared department-leads.ts)
+  headId      String?      @map("head_id") @db.Uuid
+  head        Employee?    @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
   parent      Department?  @relation("SubDepartments", fields: [parentId], references: [id], onDelete: Restrict)
   children    Department[] @relation("SubDepartments")
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
@@ -146,6 +152,7 @@ model Department {
   offers      JobOffer[]
 
   @@unique([parentId, nameEn])
+  @@index([headId])
   @@map("departments")
 }
 
@@ -345,6 +352,7 @@ model Employee {
   leaveToDecide              LeaveRequest[]         @relation("LeaveManager") // the leave requests this person decided, or decides, as the requester's direct manager
   leaveBalances              LeaveBalanceYear[] // each year's annual leave: carried in, closed
   leaveAdjustments           LeaveAdjustment[] // HR's changes to the annual leave balance
+  leading                    Department[]           @relation("DepartmentHead") // the departments this person heads and the teams they lead
 
   @@map("employees")
 }
@@ -1407,6 +1415,9 @@ model ReimbursementClaim {
   status         String // REIMBURSEMENT_STATUSES: with_manager, with_hr, with_finance, approved, rejected, cancelled
   managerId      String?                  @map("manager_id") @db.Uuid // the direct manager when it was sent, who decides the manager stage
   manager        Employee?                @relation("ReimbursementManager", fields: [managerId], references: [id], onDelete: Restrict)
+  // who the manager stage's decider is (owner, 19 October 2026: "the person in charge"): APPROVER_ROLES, direct_manager,
+  // or for someone without one their team_lead, else their department_head; set exactly when managerId is
+  approverRole   String?                  @map("approver_role")
   rejectedStage  String?                  @map("rejected_stage") // REIMBURSEMENT_STAGES: manager, hr, finance
   rejectReason   String?                  @map("reject_reason") // the comment it was rejected with
   adjustmentId   String?                  @unique @map("adjustment_id") @db.Uuid // the Reimbursement addition Finance's approval made
@@ -1546,6 +1557,9 @@ model LeaveRequest {
   status        String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
   managerId     String?            @map("manager_id") @db.Uuid
   manager       Employee?          @relation("LeaveManager", fields: [managerId], references: [id], onDelete: Restrict)
+  // who the manager stage's decider is (owner, 19 October 2026: "the person in charge"): APPROVER_ROLES, direct_manager,
+  // or for someone without one their team_lead, else their department_head; set exactly when managerId is
+  approverRole  String?            @map("approver_role")
   rejectedStage String?            @map("rejected_stage") // LEAVE_STAGES: manager, hr
   rejectReason  String?            @map("reject_reason")
   recordedByHr  Boolean            @default(false) @map("recorded_by_hr")

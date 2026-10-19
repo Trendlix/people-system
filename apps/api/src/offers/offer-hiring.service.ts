@@ -6,6 +6,7 @@ import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/dat
 import { restrictedTags } from '../documents/values.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
+import { defaultManagerId } from '../organisation/departments/leads.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { answerEmail } from './offer-mail.js';
@@ -104,15 +105,19 @@ export class OfferHiringService {
           person = { ...e, created: true };
         }
 
-        // the employment: on probation while the offer's probation runs (it ends as the contract's does), else active
+        // the employment: on probation while the offer's probation runs (it ends as the contract's does), else active;
+        // reporting to the offer's manager, or with none on the offer to the person in charge of its department or team
+        // (owner, 19 October 2026: "i want to add department lead person, the person in charge"): its team lead, else
+        // its department's head
         const { endDate, probationEnd } = termDates(joinDate, o.durationMonths, o.probationMonths);
+        const managerId = o.managerId ?? (await defaultManagerId(tx, o.departmentId, person.id));
         const employmentValues = {
           employmentType: o.employmentType,
           status: probationEnd ? ('probation' as const) : ('active' as const),
           departmentId: o.departmentId,
           jobTitleId: o.jobTitleId,
           gradeId: o.gradeId,
-          managerId: o.managerId,
+          managerId,
           joinDate,
           probationEnd,
           workArrangement: o.workArrangement,

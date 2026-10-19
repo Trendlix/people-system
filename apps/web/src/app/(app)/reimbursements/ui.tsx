@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReimbursementStatus } from '@trendlix/shared';
+import { asLeadNote } from '@/lib/department-leads';
 import { formatDate, formatDateTime } from '@/lib/format';
 import type { ReimbursementClaimView } from '@/lib/types';
 import { formatEgp } from '../employees/[id]/contracts/salary';
@@ -43,13 +44,13 @@ export function ClaimProgress({ claim }: { claim: ReimbursementClaimView }) {
 const DOT: Record<'ok' | 'danger' | 'warn' | 'none', string> = { ok: 'bg-ok', danger: 'bg-danger', warn: 'bg-warn', none: 'bg-line' };
 
 /** The claim's log: every step in order, what happened and the amount with it, the comment, who and when. */
-export function ClaimTimeline({ claim }: { claim: Pick<ReimbursementClaimView, 'steps'> }) {
+export function ClaimTimeline({ claim }: { claim: Pick<ReimbursementClaimView, 'steps' | 'manager'> }) {
   const steps = claim.steps ?? [];
   if (!steps.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
   return (
     <ol className="space-y-3 border-l-2 border-line-soft pl-4" aria-label={`Every step of the claim, ${stepsLabel(steps.length)}`}>
       {steps.map((s) => {
-        const t = stepText(s);
+        const t = stepText(s, claim.manager);
         return (
           <li key={s.id} className="relative">
             <span aria-hidden="true" className={`absolute top-1.5 -left-[23px] size-3 rounded-full border-2 border-card ${DOT[stepTone(s) ?? 'none']}`} />
@@ -133,7 +134,8 @@ export function MyClaimsTable({ claims }: { claims: ReimbursementClaimView[] }) 
 
 /**
  * The claims waiting for a direct manager (My Team, Reimbursements to Approve): who, the type, the expense's date and the
- * amount, each with Decide, which opens the claim's page and its decision form.
+ * amount, each with Decide, which opens the claim's page and its decision form. One waiting for them as a team lead or
+ * head of department (19 October 2026: the claimant has no direct manager) says so.
  */
 export function WaitingClaimsTable({ claims }: { claims: ReimbursementClaimView[] }) {
   return (
@@ -158,6 +160,7 @@ export function WaitingClaimsTable({ claims }: { claims: ReimbursementClaimView[
               <td className="min-w-40">
                 <span className="font-semibold">{c.employee.fullNameEn}</span>
                 <div className="text-xs text-muted">Sent {formatDateTime(c.createdAt)}</div>
+                {asLeadNote(c.manager) && <div className="text-xs text-muted">{asLeadNote(c.manager)}</div>}
               </td>
               <td className="min-w-48">
                 <TypeLink claim={c} decide />

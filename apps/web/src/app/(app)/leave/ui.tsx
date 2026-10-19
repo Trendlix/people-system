@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { LeaveStatus } from '@trendlix/shared';
+import { asLeadNote } from '@/lib/department-leads';
 import { formatDateTime } from '@/lib/format';
 import type { LeaveBalances, LeaveRequestView, LeaveTypeView } from '@/lib/types';
 import { annualFigures, availableText, typeLeftText } from './balance';
@@ -29,8 +30,8 @@ export function LeaveProgress({ request }: { request: LeaveRequestView }) {
 
 const DOT: Record<'ok' | 'danger' | 'none', string> = { ok: 'bg-ok', danger: 'bg-danger', none: 'bg-line' };
 
-/** The request's log: every step in order, what happened, the comment, who and when. */
-export function LeaveTimeline({ request }: { request: Pick<LeaveRequestView, 'steps'> }) {
+/** The request's log: every step in order, what happened, the comment, who and when (the manager stage by who decides it). */
+export function LeaveTimeline({ request }: { request: Pick<LeaveRequestView, 'steps' | 'manager'> }) {
   const steps = request.steps ?? [];
   if (!steps.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
   return (
@@ -38,7 +39,7 @@ export function LeaveTimeline({ request }: { request: Pick<LeaveRequestView, 'st
       {steps.map((s) => (
         <li key={s.id} className="relative">
           <span aria-hidden="true" className={`absolute top-1.5 -left-[23px] size-3 rounded-full border-2 border-card ${DOT[leaveStepTone(s) ?? 'none']}`} />
-          <p className="text-sm font-medium">{leaveStepText(s)}</p>
+          <p className="text-sm font-medium">{leaveStepText(s, request.manager)}</p>
           {s.comment && <p className="mt-0.5 text-sm whitespace-pre-line">“{s.comment}”</p>}
           <p className="text-xs text-muted">
             {s.actor && <span className="break-words">{s.actor} · </span>}
@@ -112,7 +113,10 @@ export function MyLeaveTable({ requests }: { requests: LeaveRequestView[] }) {
   );
 }
 
-/** The requests waiting for a direct manager (My Team, Leave to Approve): who, the type, when, each with Decide. */
+/**
+ * The requests waiting for a direct manager (My Team, Leave to Approve): who, the type, when, each with Decide. One
+ * waiting for them as a team lead or head of department (19 October 2026: the employee has no direct manager) says so.
+ */
 export function WaitingLeaveTable({ requests }: { requests: LeaveRequestView[] }) {
   return (
     <div className="overflow-x-auto">
@@ -133,6 +137,7 @@ export function WaitingLeaveTable({ requests }: { requests: LeaveRequestView[] }
               <td className="min-w-40">
                 <span className="font-semibold">{r.employee.fullNameEn}</span>
                 <div className="text-xs text-muted">Sent {formatDateTime(r.createdAt)}</div>
+                {asLeadNote(r.manager) && <div className="text-xs text-muted">{asLeadNote(r.manager)}</div>}
               </td>
               <td className="min-w-40">
                 <TypeLink request={r} who />

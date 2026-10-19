@@ -17,6 +17,7 @@ import {
   type ContractContext,
 } from '../contracts/views.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
+import { leadsOf, NO_LEADS } from '../organisation/departments/leads.js';
 import { storedCrop } from '../paperwork/photo-crop.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -354,7 +355,9 @@ export class EmployeesService {
     // insurable limits in Cairo (the year's rates set by law); worked out here as documents/values.ts prints it, and as
     // payroll deducts insurance on it for a run's year (insured-wage.ts); after a raise, the contract's pay before it
     // until the raise's insured-wage date, as payroll (owner's decision, 16 October 2026)
-    const [papers, topRank, changeRequests, settings, photos, law, insuredPay] = await Promise.all([
+    // the people in charge of where the current employment places them (owner, 19 October 2026: "i want to add department
+    // lead person, the person in charge"): its team's lead and its department's head, for the Employment details
+    const [papers, topRank, changeRequests, settings, photos, law, insuredPay, leads] = await Promise.all([
       papersOf(this.prisma, [id]),
       current?.grade ? topGradeRank(this.prisma) : null,
       self || seesChangeRequests(user) ? this.changeRequestsOf(id) : [],
@@ -362,6 +365,7 @@ export class EmployeesService {
       seesEmployeeFile(user) ? this.photos([id]) : null,
       this.lawRates.forYear(Number(todayInCairo().slice(0, 4))),
       salary ? this.insuredPay(current ?? history[0] ?? null) : null,
+      current ? leadsOf(this.prisma, current.departmentId) : NO_LEADS,
     ]);
     const { insuranceBasicWage, insuranceComprehensiveWage, priorServiceMonths, disability, ...open } = withOccupation(fields(own));
     return {
@@ -382,8 +386,9 @@ export class EmployeesService {
       }),
       photoId: photos?.get(id)?.id ?? null,
       photoCrop: photos?.get(id)?.crop ?? null,
-      employment: current,
-      employments: history,
+      // `leads` on the current employment; an ended one's is null
+      employment: current && { ...current, leads },
+      employments: history.map((x) => ({ ...x, leads: x === current ? leads : null })),
       reports: managing.map((m) => ({ ...m.employee, status: m.status, jobTitle: m.jobTitle })),
       ...(identity && { identity: maskedIdentity(idRow) }),
       ...(bank && { bank: maskedBank(bankRow) }),

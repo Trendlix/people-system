@@ -160,8 +160,14 @@ describe('a claim, in words', () => {
   });
 
   it('says who has it now, or how it ended', () => {
-    expect(progressText(claim()).text).toBe('Waiting for the direct manager, Omar Khaled');
-    expect(progressText(claim({ manager: null })).text).toBe('Waiting for the direct manager');
+    expect(progressText(claim()).text).toBe('With the direct manager (Omar Khaled)');
+    expect(progressText(claim({ manager: null })).text).toBe('With the direct manager');
+    // someone without a direct manager: their team lead, else their department's head (19 October 2026)
+    expect(progressText(claim({ manager: { id: 'l1', fullNameEn: 'Sara Ali', role: 'team_lead' } })).text).toBe('With the team lead (Sara Ali)');
+    expect(progressText(claim({ manager: { id: 'h1', fullNameEn: 'Hazem Magdy', role: 'department_head' } })).text).toBe('With the head of department (Hazem Magdy)');
+    expect(progressText(claim({ status: 'rejected', rejectedStage: 'manager', manager: { id: 'h1', fullNameEn: 'Hazem Magdy', role: 'department_head' } })).text).toBe(
+      'Rejected by the head of department',
+    );
     expect(progressText(claim({ status: 'with_hr' })).text).toBe('Waiting for HR');
     expect(progressText(claim({ status: 'with_finance' })).text).toBe('Waiting for Finance');
     expect(progressText(claim({ status: 'rejected', rejectedStage: 'hr', rejectReason: ' Not a work trip ' }))).toEqual({ text: 'Rejected by HR', reason: 'Not a work trip' });
@@ -196,8 +202,14 @@ describe('a claim, in words', () => {
 describe('the timeline of a claim', () => {
   it('words each step, with its amount and the payroll it was added to', () => {
     expect(stepText(step({ amount: 250 }))).toEqual({ title: 'Claimed by the employee', detail: 'EGP 250.00' });
-    expect(stepText(step({ kind: 'no_manager' }))).toEqual({ title: 'No direct manager: sent straight to HR', detail: null });
+    expect(stepText(step({ kind: 'no_manager' }))).toEqual({ title: 'No direct manager or lead: sent straight to HR', detail: null });
     expect(stepText(step({ kind: 'manager_decision', decision: 'approve', amount: 250 }))).toEqual({ title: 'The direct manager approved it', detail: 'EGP 250.00' });
+    expect(stepText(step({ kind: 'manager_decision', decision: 'approve_other', amount: 200 }), { role: 'team_lead' })).toEqual({
+      title: 'The team lead approved a lower amount',
+      detail: 'EGP 200.00',
+    });
+    expect(stepText(step({ kind: 'manager_decision', decision: 'reject' }), { role: 'department_head' }).title).toBe('The head of department rejected it');
+    expect(stepText(step({ kind: 'finance_decision', decision: 'approve' }), { role: 'team_lead' }).title).toBe('Finance approved it');
     expect(stepText(step({ kind: 'hr_decision', decision: 'approve_other', amount: 200 }))).toEqual({ title: 'HR approved a lower amount', detail: 'EGP 200.00' });
     expect(stepText(step({ kind: 'finance_decision', decision: 'reject' }))).toEqual({ title: 'Finance rejected it', detail: null });
     expect(stepText(step({ kind: 'cancelled' }))).toEqual({ title: 'Cancelled by the employee', detail: null });
@@ -254,6 +266,7 @@ describe('deciding a claim', () => {
   it('says on the claim’s page what was just done there, and nothing for anything else', () => {
     expect(doneText({ done: 'sent' }, 'with_manager')?.text).toMatch(/^Claim sent\. It goes to your direct manager, then HR, then Finance/);
     expect(doneText({ done: 'sent' }, 'with_hr')?.text).toMatch(/^Claim sent\. It goes to HR, then Finance/);
+    expect(doneText({ done: 'sent' }, 'with_manager', { role: 'team_lead' })?.text).toMatch(/^Claim sent\. It goes to your team lead, then HR, then Finance/);
     expect(doneText({ done: 'cancelled' }, 'cancelled')).toEqual({ text: 'Claim cancelled. It stays on your list, cancelled.', tone: 'ok' });
     expect(doneText({ done: 'hr_approve_other' }, 'with_finance')).toEqual({ text: 'Approved: the claim goes to Finance.', tone: 'ok' });
     expect(doneText({ done: 'manager_reject' }, 'rejected')?.text).toBe('Claim rejected. The employee sees your comment.');

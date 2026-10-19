@@ -240,6 +240,45 @@ describe('the org chart’s layout', () => {
     expect(d.h).toBeGreaterThan(boxOf(english, marketing.id).h);
   });
 
+  it('draws each department’s head and each team’s lead under its name (19 October 2026), unless asked not to', () => {
+    const { chart, marketing, content, media } = sample();
+    const hazem = person('Hazem Magdy', 'EMP-0001', 'حازم مجدي');
+    const sara = person('Sara Ali', 'EMP-0012', 'سارة علي');
+    marketing.head = hazem;
+    content.head = sara;
+    media.head = null;
+    const layout = lay(chart);
+    const leadOf = (l: ChartLayout, id: string) => boxOf(l, id).lines.filter((x) => x.font === 'lead' || x.font === 'leadAr');
+    expect(leadOf(layout, marketing.id).map((l) => [l.text, l.tone, l.align])).toEqual([['Head: Hazem Magdy', 'paleOnDark', 'start']]);
+    expect(leadOf(layout, content.id).map((l) => [l.text, l.tone])).toEqual([['Team lead: Sara Ali', 'muted']]);
+    // none for a team without a lead
+    expect(leadOf(layout, media.id)).toEqual([]);
+    // under the name, and the box grows to hold it
+    const d = boxOf(layout, marketing.id);
+    expect(leadOf(layout, marketing.id)[0].y).toBeGreaterThan(d.lines[0].y);
+    const without = lay(chart, { leads: false });
+    expect(leadOf(without, marketing.id)).toEqual([]);
+    expect(d.h).toBeGreaterThan(boxOf(without, marketing.id).h);
+    // the Arabic name under it, right-aligned, with the Arabic names
+    const ar = leadOf(lay(chart, { arabic: true }), content.id);
+    expect(ar.map((l) => [l.text, l.font, l.align])).toEqual([
+      ['Team lead: Sara Ali', 'lead', 'start'],
+      ['سارة علي', 'leadAr', 'end'],
+    ]);
+    // an API from before leads: nothing, as before
+    delete marketing.head;
+    expect(leadOf(lay(chart), marketing.id)).toEqual([]);
+  });
+
+  it('cuts a long lead’s name short to fit its box', () => {
+    const d = department('Marketing');
+    d.head = person('Mohamed Abdel Rahman Abdel Aziz El Sayed Mostafa Ibrahim', 'EMP-0003');
+    const line = boxOf(lay(chartOf([d])), d.id).lines.find((l) => l.font === 'lead')!;
+    expect(line.text.startsWith('Head: Mohamed')).toBe(true);
+    expect(line.text.endsWith('…')).toBe(true);
+    expect(measure(line.text, 'lead')).toBeLessThanOrEqual(COLUMN - 20);
+  });
+
   it('puts each department’s teams side by side when asked, the department over their middle', () => {
     const { chart, marketing, finance, content, media, writer } = sample();
     const layout = lay(chart, { arrangement: 'spread' });

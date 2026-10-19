@@ -10,7 +10,9 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 //
 // Who sees what: the structure and the numbers, everyone signed in, as the Organization pages (GET /departments and GET
 // /job-titles are open to all); the people's names, only those who see every employee (HR, the CEO and Finance: see
-// employees/access.ts), so a manager or an employee never learns from the chart who works where.
+// employees/access.ts), so a manager or an employee never learns from the chart who works where. The person in charge
+// of each department and team (owner, 19 October 2026: "i want to add department lead person, the person in charge"),
+// for everyone: the Departments page (GET /departments) names them to everyone signed in too.
 
 const COMPANY_ID = 1; // one company per installation (see CompanyService)
 const ORDER = [{ sortOrder: 'asc' }, { nameEn: 'asc' }] as const;
@@ -37,6 +39,8 @@ export interface OrgChartTeam {
   id: string;
   nameEn: string;
   nameAr: string | null;
+  /** The person in charge: a department's Head of department, a team's Team lead (packages/shared leadTitle); or null. */
+  head: OrgChartPerson | null;
   /** Its own job titles, the most senior first (see byGrade). */
   jobTitles: OrgChartJobTitle[];
 }
@@ -75,7 +79,7 @@ export class OrgChartService {
     const [company, departments, titles, counts, holders] = await Promise.all([
       // the logo's bytes are never loaded: it has an update time exactly when there is one (see CompanyService.setLogo)
       this.prisma.company.findUnique({ where: { id: COMPANY_ID }, select: { nameEn: true, nameAr: true, logoUpdatedAt: true } }),
-      this.prisma.department.findMany({ orderBy: [...ORDER], select: { id: true, nameEn: true, nameAr: true, parentId: true } }),
+      this.prisma.department.findMany({ orderBy: [...ORDER], select: { id: true, nameEn: true, nameAr: true, parentId: true, head: PERSON } }),
       this.prisma.jobTitle.findMany({
         select: { id: true, departmentId: true, titleEn: true, titleAr: true, minGrade: { select: { rank: true } }, maxGrade: { select: { rank: true } } },
       }),
@@ -104,10 +108,11 @@ export class OrgChartService {
     }
 
     // one level only: a team's parent is a department (DepartmentsService.checkPlace), and the list is already in order
-    const unit = (d: { id: string; nameEn: string; nameAr: string | null }): OrgChartTeam => ({
+    const unit = (d: { id: string; nameEn: string; nameAr: string | null; head: OrgChartPerson | null }): OrgChartTeam => ({
       id: d.id,
       nameEn: d.nameEn,
       nameAr: d.nameAr,
+      head: d.head,
       jobTitles: titlesOf.get(d.id) ?? [],
     });
     const chart = departments.filter((d) => !d.parentId).map((d): OrgChartDepartment => ({ ...unit(d), teams: [] }));

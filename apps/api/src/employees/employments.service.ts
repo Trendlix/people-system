@@ -5,6 +5,7 @@ import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import type { Employment, Prisma } from '../generated/prisma/client.js';
+import { clearLeads, defaultManagerId } from '../organisation/departments/leads.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { RecurringDeductionsService } from '../payroll/adjustments/recurring.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -63,6 +64,9 @@ export class EmploymentsService {
    * What hiring writes: the checks, then the new current employment, in `db`. A transaction when the first contract is
    * drafted with it, all or nothing (HiringService: hiring in one form, owner's decision, 16 October 2026). Answers the
    * new row's id and its fields as the audit log records them: the caller records the entry once the row is saved.
+   * Without a direct manager chosen, the employee gets the person in charge of the department or team they are hired
+   * into (owner, 19 October 2026: "i want to add department lead person, the person in charge"): its team lead, else
+   * its department's head, never themself; HR changes it afterwards like any manager.
    */
   async add(employeeId: string, dto: CreateEmploymentDto, db: Db = this.prisma) {
     const person = await this.person(employeeId);
@@ -79,6 +83,11 @@ export class EmploymentsService {
     const { employmentType, joinDate, ...rest } = dto;
     const status = derived.probationEnd && derived.probationEnd >= todayInCairo() ? ('probation' as const) : ('active' as const);
     const values = { employmentType, joinDate, ...rest, ...derived, status };
+    if (!values.managerId) {
+      const lead = await defaultManagerId(db, values.departmentId, employeeId);
+      // never one who reports to this person, as a chosen manager isn't (assertNoLoop): then none, as before
+      if (lead && !(await this.loops(employeeId, lead))) values.managerId = lead;
+    }
 
     const row = await db.employment.create({ data: toData({ ...values, employeeId }) });
     const { id: _id, createdAt: _c, updatedAt: _u, ...created } = fields(row);
@@ -145,6 +154,8 @@ export class EmploymentsService {
       where: { id: employmentId },
       data: { endDate: toDateOnly(dto.endDate), endReason: dto.endReason, endNote: dto.endNote ?? null, status },
     });
+    // a lead is a current employee (owner, 19 October 2026): the departments and teams they led are left without one
+    await clearLeads(db, this.audit, employeeId, user.id);
     // the signed contract ends with the employment
     const contract = await db.contract.findFirst({ where: { employmentId, status: 'active' }, select: { id: true, number: true } });
     if (contract) await db.contract.update({ where: { id: contract.id }, data: { status: 'ended' } });
@@ -194,6 +205,7 @@ export class EmploymentsService {
       if (reports > 0) throw new ConflictException(`${reports} employee(s) report to this person. Choose another manager for them first.`);
     }
     await this.prisma.employment.delete({ where: { id: employmentId } });
+    if (!e.endDate) await clearLeads(this.prisma, this.audit, employeeId, user.id);
     await this.audit.record({
       userId: user.id,
       action: 'delete',
@@ -363,16 +375,22 @@ export class EmploymentsService {
 
   /** The chosen manager must not report to this person, directly or through others (by current employments). */
   private async assertNoLoop(employeeId: string, managerId: string) {
+    if (await this.loops(employeeId, managerId)) {
+      throw new BadRequestException('That manager reports to this employee, directly or through others. Choose someone else.');
+    }
+  }
+
+  /** Whether `managerId` is this person or reports to them, directly or through others (by current employments). */
+  private async loops(employeeId: string, managerId: string): Promise<boolean> {
     let current: string | null = managerId;
     for (let steps = 0; current && steps < 1000; steps++) {
-      if (current === employeeId) {
-        throw new BadRequestException('That manager reports to this employee, directly or through others. Choose someone else.');
-      }
+      if (current === employeeId) return true;
       const next: { managerId: string | null } | null = await this.prisma.employment.findFirst({
         where: { employeeId: current, endDate: null },
         select: { managerId: true },
       });
       current = next?.managerId ?? null;
     }
+    return false;
   }
 }

@@ -28,8 +28,8 @@ function Heading({ back }: { back: { href: string; label: string } | null }) {
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
       <h1 className="text-2xl font-semibold">New Leave</h1>
       <p className="text-muted">
-        Ask for leave: the type, the first and last day, and a reason, with a document when the type needs one. Your direct manager decides it first,
-        then HR; each step shows on the request.
+        Ask for leave: the type, the first and last day, and a reason, with a document when the type needs one. Your direct manager decides it first
+        (without one, your team lead, else the head of your department), then HR; each step shows on the request.
       </p>
     </div>
   );

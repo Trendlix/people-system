@@ -1,10 +1,13 @@
 import type { OrgChart, OrgChartDepartment, OrgChartJobTitle, OrgChartTeam } from '@/lib/types';
+import { leadLine } from '../../../../lib/department-leads';
 import { FIT, FONTS, truncate, wrapText, type FontName, type Measure } from './text';
 
 // Where everything on the org chart goes (owner's request, 15 October 2026: the company's org chart from the Departments
 // & Job Titles page, to export). The company at the top; under it the departments side by side, in the order an Admin
 // set; under each department its own job titles (e.g. Head of Marketing), then its teams in their order, each with its
-// job titles. A department with nothing in it still shows; a job title no one holds shows 0 and a dashed border.
+// job titles. A department with nothing in it still shows; a job title no one holds shows 0 and a dashed border. Under
+// a department's or team's name, its person in charge (owner, 19 October 2026: "i want to add department lead person,
+// the person in charge"): "Head: …" on a department, "Team lead: …" on a team.
 //
 // About eight departments make a wide chart for a landscape page, so a department's teams go one of two ways: stacked
 // under it in one column (narrow and tall), or side by side under it (wide and short). "Fit a landscape page" puts the
@@ -21,6 +24,8 @@ export interface ChartOptions {
   codes: boolean;
   /** The Arabic names and titles under the English. */
   arabic: boolean;
+  /** Each department's head and each team's lead under its name (when it has one). Left out: shown. */
+  leads?: boolean;
   arrangement: Arrangement;
   /** For 'balanced': the shape, width ÷ height, to come near (the page's). */
   aspect: number;
@@ -120,6 +125,8 @@ const PILL_H = 18;
 const PILL_MIN = 24;
 const PILL_GAP = 6;
 const NOTE_GAP = 20;
+/** Above the line of a department's head or a team's lead, under its name. */
+export const LEAD_GAP = 2;
 
 /** The key at the foot of the chart, so a printed copy explains itself. */
 export const NOTE =
@@ -232,6 +239,16 @@ function unitBox(c: Ctx, kind: 'department' | 'team', unit: OrgChartTeam, people
   if (options.arabic && unit.nameAr) {
     const font = dept ? 'departmentAr' : 'teamAr';
     at = addLines(lines, wrapText(unit.nameAr, textW * FIT, font, measure, 2), font, x + PAD_X + textW, at, 'end', dept ? 'paleOnDark' : 'muted');
+  }
+  // its head or team lead, on one line: beside the tag while level with it, the whole width below it
+  const lead = options.leads !== false ? leadLine(!dept, unit.head) : null;
+  if (lead && unit.head) {
+    const tone = dept ? 'paleOnDark' : 'muted';
+    const room = (at >= pill.y + pill.h ? w - 2 * PAD_X : textW) * FIT;
+    at = addLines(lines, [truncate(lead, room, 'lead', measure)], 'lead', x + PAD_X, at + LEAD_GAP, 'start', tone);
+    if (options.arabic && unit.head.fullNameAr) {
+      at = addLines(lines, [truncate(unit.head.fullNameAr, (w - 2 * PAD_X) * FIT, 'leadAr', measure)], 'leadAr', x + w - PAD_X, at, 'end', tone);
+    }
   }
   at = Math.max(at, pill.y + pill.h);
   return { kind, id: unit.id, x, y, w, h: at + PAD_Y + 1 - y, vacant: false, lines, pill, rule: null, logo: null };

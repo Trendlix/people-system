@@ -22,6 +22,7 @@ import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, shownDate, todayInCairo, toDateOnly } from '../common/date-only.js';
 import type { LeaveType } from '../generated/prisma/client.js';
+import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -57,7 +58,10 @@ export interface LeaveCalendarItem {
 // employment, from My Requests, with the documents the type needs; a request that breaks one of the type's rules (the
 // law's: packages/shared leaveRequestProblems) is refused with every reason, and one on days another request already
 // takes is refused too. It goes to the direct manager they have when they send it (a manager who is the employee
-// themself counts as none), then HR; each approves, or rejects with a comment; nobody decides their own. HR records leave
+// themself counts as none), then HR; each approves, or rejects with a comment; nobody decides their own. Without a
+// direct manager it goes to the person in charge of where they work (owner, 19 October 2026: "i want to add department
+// lead person, the person in charge"): their team lead, else their department's head, never themself, as the manager
+// stage (approverRole says which); with nobody in charge, straight to HR. HR records leave
 // on an employee's behalf (e.g. sick leave reported after): approved at once, without the notice an employee's request
 // needs. The employee cancels theirs while it is being decided, or approved and not started; HR cancels an approved one
 // with a comment, its days back in the balance. Approved or cancelled leave works the month's draft payroll lines out
@@ -372,8 +376,11 @@ export class LeaveRequestsService {
         ? (await this.prisma.holiday.findMany({ where: { date: { gte: toDateOnly(dto.startDate), lte: toDateOnly(dto.endDate) } }, select: { date: true } })).map((h) => fromDateOnly(h.date))
         : [];
     const days = leaveDaysBetween(dto.startDate, dto.endDate, { workingDays: employment.workingDays ?? DEFAULT_WORKING_DAYS, holidays, calendarDays: type.calendarDays, halfDay });
-    // a direct manager who is the employee themself is none: it goes straight to HR
-    const managerId = employment.managerId && employment.managerId !== employeeId ? employment.managerId : null;
+    // the direct manager, else the team lead, else the department's head (owner, 19 October 2026), never the employee
+    // themself: the manager stage's decider, kept in managerId; nobody in charge: straight to HR
+    const approver = await approverFor(this.prisma, { employeeId, managerId: employment.managerId, departmentId: employment.departmentId });
+    const managerId = approver?.employeeId ?? null;
+    const approverRole = approver?.role ?? null;
     const status: LeaveStatus = byHr ? 'approved' : firstLeaveStatus(managerId !== null);
     const uploadedAt = Date.now();
 
@@ -422,6 +429,7 @@ export class LeaveRequestsService {
           reason: dto.reason ?? null,
           status,
           managerId,
+          approverRole,
           recordedByHr: byHr,
           createdById: user.id,
           documents: {
@@ -453,6 +461,7 @@ export class LeaveRequestsService {
         reason: dto.reason ?? null,
         documents: documents.map((d) => d.fileName),
         managerId,
+        approverRole,
         status,
       },
     });

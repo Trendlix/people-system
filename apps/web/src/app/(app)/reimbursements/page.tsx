@@ -133,8 +133,8 @@ async function Claims({ searchParams }: { searchParams: PageProps<'/reimbursemen
   if (!canSeeReimbursements(user)) {
     return (
       <Empty>
-        Only HR, Finance and the CEO see every claim. Your own are on <Link href="/my-requests">My Requests</Link>; a direct manager decides their
-        team&apos;s on <Link href="/my-team">My Team</Link>.
+        Only HR, Finance and the CEO see every claim. Your own are on <Link href="/my-requests">My Requests</Link>; a direct manager, team lead or
+        head of department decides the claims waiting for them on <Link href="/my-team">My Team</Link>.
       </Empty>
     );
   }
@@ -175,7 +175,7 @@ export default function ReimbursementsPage({ searchParams }: PageProps<'/reimbur
       <p className="mt-1 text-muted">
         Expenses employees claim back, each of a type set up in{' '}
         <Link href="/organization/payroll#reimbursement-types">Payroll Setup</Link> with its caps and conditions. The direct manager decides a claim
-        first, then HR, then Finance: each approves it, approves a lower amount or rejects it, with a comment. Finance&apos;s approval adds it,
+        first (for someone without one, their team lead, else their department&apos;s head), then HR, then Finance: each approves it, approves a lower amount or rejects it, with a comment. Finance&apos;s approval adds it,
         untaxed, to the next payroll. Every step is logged on the claim.
       </p>
       <div className="mt-6">

@@ -19,6 +19,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { seesEmployeeFile } from '../employees/access.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { RunAdjustmentsService } from '../payroll/adjustments/run-adjustments.service.js';
 import { ADJUSTMENT } from '../payroll/adjustments/views.js';
@@ -47,7 +48,10 @@ const NOT_FOUND = 'Reimbursement claim not found.';
 // claims a type they may claim (mayClaimType) under their current employment, with the receipts, and a claim that breaks
 // one of the type's conditions is refused with every reason (reimbursementProblems), the caps counting their claims of
 // the type still open or approved. The claim goes to the direct manager they had when they sent it (a manager who is the
-// employee themself counts as none), HR and Finance in turn; nobody decides their own claim. Finance's approval adds it,
+// employee themself counts as none), HR and Finance in turn; nobody decides their own claim. Without a direct manager it
+// goes to the person in charge of where they work (owner, 19 October 2026: "i want to add department lead person, the
+// person in charge"): their team lead, else their department's head, never themself, as the manager stage (approverRole
+// says which); with nobody in charge, straight to HR. Finance's approval adds it,
 // untaxed, to the payroll of the month it is approved in, or of the first after it whose run isn't approved or paid
 // (reimbursementPayMonth), as a Reimbursement addition in Additions / Deductions, in the same transaction; a draft run of
 // that month takes it at once. The employee cancels it while it is open. Each step is logged on the claim
@@ -92,8 +96,11 @@ export class ReimbursementsService {
     if (!mayClaimType(type, placeOf(employment))) throw new BadRequestException([`${type.nameEn} isn't for your department, grade or employment type. Choose another type.`]);
     const { receipts, problems: receiptProblems } = checkedReceipts(files);
     const rules = rulesOf(type);
-    // a direct manager who is the employee themself is none: it goes straight to HR
-    const managerId = employment.managerId && employment.managerId !== employeeId ? employment.managerId : null;
+    // the direct manager, else the team lead, else the department's head (owner, 19 October 2026), never the employee
+    // themself: the manager stage's decider, kept in managerId; nobody in charge: straight to HR
+    const approver = await approverFor(this.prisma, { employeeId, managerId: employment.managerId, departmentId: employment.departmentId });
+    const managerId = approver?.employeeId ?? null;
+    const approverRole = approver?.role ?? null;
     const status = firstReimbursementStatus(managerId !== null);
     // the receipts listed in the order attached: each a millisecond after the one before, as they are saved together
     const uploadedAt = Date.now();
@@ -121,6 +128,7 @@ export class ReimbursementsService {
           description: dto.description,
           status,
           managerId,
+          approverRole,
           createdById: user.id,
           receipts: {
             create: receipts.map((r, i) => ({ fileName: r.fileName, mimeType: r.mimeType, sizeBytes: r.sizeBytes, data: new Uint8Array(r.data), uploadedAt: new Date(uploadedAt + i) })),
@@ -146,6 +154,7 @@ export class ReimbursementsService {
         description: dto.description,
         receipts: receipts.map((r) => r.fileName),
         managerId,
+        approverRole,
         status,
       },
     });

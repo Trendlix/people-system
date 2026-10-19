@@ -287,6 +287,50 @@ describe('Migrations (e2e)', () => {
     await db.query('UPDATE recurring_deductions SET consent_recorded_at = now()');
   });
 
+  it('department leads: departments without a head; the requests and claims sent so far went to the direct manager (owner, 19 October 2026)', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_department_leads'))!;
+    await migratedUpTo(migration);
+    // before: a department, its employees, a leave request and a claim to the direct manager, and one of each straight to HR
+    await db.query(`
+      INSERT INTO departments (id, name_en, updated_at) VALUES ('00000000-0000-4000-8000-0000000000d1', 'Sales', now());
+      INSERT INTO employees (id, employee_code, full_name_en, full_name_ar, updated_at) VALUES
+        ('00000000-0000-4000-8000-0000000000e1', 'EMP-0001', 'Mona', 'منى', now()),
+        ('00000000-0000-4000-8000-0000000000e2', 'EMP-0002', 'Ben', 'بن', now());
+      INSERT INTO employments (id, employee_id, employment_type, department_id, manager_id, join_date, updated_at) VALUES
+        ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000e1', 'full_time', '00000000-0000-4000-8000-0000000000d1', NULL, '2024-01-01', now()),
+        ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-0000000000e2', 'full_time', '00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000000e1', '2024-01-01', now());
+      INSERT INTO leave_requests (id, employee_id, employment_id, type_id, start_date, end_date, days, status, manager_id, updated_at) VALUES
+        ('00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000e2', '00000000-0000-4000-8000-000000000002', (SELECT id FROM leave_types WHERE key = 'annual'), '2026-11-01', '2026-11-02', 2, 'with_manager', '00000000-0000-4000-8000-0000000000e1', now()),
+        ('00000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-000000000001', (SELECT id FROM leave_types WHERE key = 'annual'), '2026-11-01', '2026-11-02', 2, 'with_hr', NULL, now());
+      INSERT INTO reimbursement_types (id, name_en, name_ar, updated_at) VALUES ('00000000-0000-4000-8000-0000000000c1', 'Travel', 'انتقالات', now());
+      INSERT INTO reimbursement_claims (id, employee_id, employment_id, type_id, expense_date, amount, description, status, manager_id, updated_at) VALUES
+        ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000e2', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-0000000000c1', '2026-10-01', 100, 'Taxi', 'with_manager', '00000000-0000-4000-8000-0000000000e1', now()),
+        ('00000000-0000-4000-8000-0000000000b2', '00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000c1', '2026-10-01', 100, 'Taxi', 'with_hr', NULL, now());
+    `);
+
+    await db.query(sql(migration));
+    expect((await db.query('SELECT head_id FROM departments')).rows).toEqual([{ head_id: null }]);
+    for (const table of ['leave_requests', 'reimbursement_claims']) {
+      expect((await db.query(`SELECT manager_id IS NOT NULL AS managed, approver_role FROM ${table} ORDER BY id`)).rows).toEqual([
+        { managed: true, approver_role: 'direct_manager' },
+        { managed: false, approver_role: null },
+      ]);
+      // one of the three, exactly when someone decides the manager stage
+      await expect(db.query(`UPDATE ${table} SET approver_role = 'manager' WHERE manager_id IS NOT NULL`)).rejects.toThrow(new RegExp(`${table}_approver_role_check`));
+      await expect(db.query(`UPDATE ${table} SET approver_role = NULL WHERE manager_id IS NOT NULL`)).rejects.toThrow(new RegExp(`${table}_approver_role_check`));
+      await expect(db.query(`UPDATE ${table} SET approver_role = 'team_lead' WHERE manager_id IS NULL`)).rejects.toThrow(new RegExp(`${table}_approver_role_check`));
+      await db.query(`UPDATE ${table} SET approver_role = 'department_head' WHERE manager_id IS NOT NULL`);
+    }
+
+    // a head is an employee; deleting the profile leaves the department without one
+    await db.query("UPDATE departments SET head_id = '00000000-0000-4000-8000-0000000000e1'");
+    await expect(db.query("UPDATE departments SET head_id = '00000000-0000-4000-8000-0000000000ff'")).rejects.toThrow(/departments_head_id_fkey/);
+    await db.query("INSERT INTO employees (id, employee_code, full_name_en, full_name_ar, updated_at) VALUES ('00000000-0000-4000-8000-0000000000e3', 'EMP-0003', 'Dan', 'دان', now())");
+    await db.query("UPDATE departments SET head_id = '00000000-0000-4000-8000-0000000000e3'");
+    await db.query("DELETE FROM employees WHERE id = '00000000-0000-4000-8000-0000000000e3'");
+    expect((await db.query('SELECT head_id FROM departments')).rows).toEqual([{ head_id: null }]);
+  });
+
   describe('super admin: the role, given to the original admin account only (owner’s decision, 15 October 2026)', () => {
     const migration = () => readdirSync(MIGRATIONS).find((m) => m.endsWith('_super_admin'))!;
     const superAdmins = async () =>

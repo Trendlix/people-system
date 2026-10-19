@@ -49,5 +49,5 @@ export async function loadPickers(employeeId?: string): Promise<EmploymentPicker
     apiGet<Shift[]>('/shifts'),
     apiGet<EmployeeSummary[]>('/employees'),
   ]);
-  return { departments, jobTitles, grades, shifts, managers: employees.filter((e) => e.id !== employeeId) };
+  return { departments, jobTitles, grades, shifts, managers: employees.filter((e) => e.id !== employeeId), employeeId: employeeId ?? null };
 }

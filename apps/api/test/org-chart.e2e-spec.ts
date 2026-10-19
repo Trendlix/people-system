@@ -93,7 +93,7 @@ describe('Org chart (e2e)', () => {
     const [marketing, finance] = mine(chart);
     expect(marketing).toMatchObject({ id: ids.marketing, nameEn: name('Marketing'), nameAr: 'التسويق' });
     // a department with nothing in it still shows
-    expect(finance).toEqual({ id: ids.finance, nameEn: name('Finance'), nameAr: null, jobTitles: [], teams: [] });
+    expect(finance).toEqual({ id: ids.finance, nameEn: name('Finance'), nameAr: null, head: null, jobTitles: [], teams: [] });
 
     // its own job titles: the highest grade first, a title open to any grade last
     expect(marketing.jobTitles.map((t) => [t.titleEn, t.headcount])).toEqual([

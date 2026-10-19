@@ -3,19 +3,25 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { DeleteForm } from '@/components/form';
 import { apiGet } from '@/lib/api';
+import { leadLabel } from '@/lib/department-leads';
 import { canDelete } from '@/lib/roles';
 import { canEditOrganisation, canReorderDepartments, getCurrentUser } from '@/lib/session';
-import type { Department, JobTitleSummary } from '@/lib/types';
+import type { Department, EmployeeSummary, JobTitleSummary } from '@/lib/types';
+import { getOrNull } from '../../../approvals/data';
+import { seesEveryone } from '../../../employees/ui';
 import { deleteDepartment, reorderDepartments, updateDepartment } from '../../actions';
 import { BackLink, Loading, UUID } from '../../ui';
 import { AnchorSection } from '../anchor-section';
 import { DepartmentForm } from '../department-form';
 import { JobTitlesTable } from '../job-titles-table';
+import { LeadName } from '../lead-name';
 import { ReorderList } from '../reorder-list';
 
 // Department → Team → Job title, and a job title may also belong to a department itself (owner's decision, 15 October
 // 2026): a department's page lists its own job titles (e.g. Head of Marketing) and its teams; a team's page (a team is
-// a department with a parent) lists its job titles, under a breadcrumb back to its department.
+// a department with a parent) lists its job titles, under a breadcrumb back to its department. Each names its person in
+// charge (owner, 19 October 2026: "i want to add department lead person, the person in charge"): a department's head of
+// department, a team's team lead, chosen in its Edit form; a department's teams list their team leads.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -67,9 +73,14 @@ function JobTitles({
   );
 }
 
-/** A department's teams, in their saved order, each with how many job titles it has. `canReorder`: Admin, 2+ teams. */
-function Teams({ department, canEdit, canReorder }: { department: Department; canEdit: boolean; canReorder: boolean }) {
+/**
+ * A department's teams, in their saved order, each with its team lead and how many job titles it has. `canReorder`:
+ * Admin, 2+ teams. `linkPeople`: the leads link to their profiles, for those who can open every profile.
+ */
+function Teams({ department, canEdit, canReorder, linkPeople }: { department: Department; canEdit: boolean; canReorder: boolean; linkPeople: boolean }) {
   const teams = department.children ?? [];
+  // from an API that names them
+  const leads = teams.some((t) => t.head !== undefined);
   return (
     <section className="card">
       <div className="flex flex-wrap items-center justify-between gap-3 p-5">
@@ -100,6 +111,7 @@ function Teams({ department, canEdit, canReorder }: { department: Department; ca
               <tr>
                 <th>Team</th>
                 <th>Arabic Name</th>
+                {leads && <th>Team Lead</th>}
                 <th>Job Titles</th>
               </tr>
             </thead>
@@ -114,6 +126,7 @@ function Teams({ department, canEdit, canReorder }: { department: Department; ca
                   <td lang="ar" dir="rtl" className="text-right">
                     {t.nameAr ?? dash}
                   </td>
+                  {leads && <td>{t.head ? <LeadName person={t.head} link={linkPeople} /> : dash}</td>}
                   <td className="text-muted tabular-nums">{t._count.jobTitles}</td>
                 </tr>
               ))}
@@ -136,6 +149,9 @@ async function DepartmentDetails({ params, searchParams }: { params: Promise<{ i
     searchParams,
   ]);
   const canEdit = canEditOrganisation(user);
+  const linkPeople = seesEveryone(user);
+  // who the lead is chosen from, for the Edit form: the people the caller may see (none when they can't be read)
+  const people = canEdit ? ((await getOrNull<EmployeeSummary[]>('/employees')) ?? []) : [];
   const { parent } = department;
   const teams = department.children ?? [];
   // Admins put a department's teams in order (?reorder=teams).
@@ -171,6 +187,13 @@ async function DepartmentDetails({ params, searchParams }: { params: Promise<{ i
             {department.nameAr}
           </p>
         )}
+        {/* the person in charge, from an API that names them */}
+        {department.head !== undefined && (
+          <p className="mt-1 text-sm">
+            <span className="text-muted">{leadLabel(department)}:</span>{' '}
+            {department.head ? <LeadName person={department.head} link={linkPeople} /> : <span className="text-muted">No one yet</span>}
+          </p>
+        )}
       </div>
 
       {parent ? (
@@ -196,14 +219,14 @@ async function DepartmentDetails({ params, searchParams }: { params: Promise<{ i
             cancelHref={`/organization/departments/${id}`}
           />
         ) : (
-          <Teams department={department} canEdit={canEdit} canReorder={canReorder} />
+          <Teams department={department} canEdit={canEdit} canReorder={canReorder} linkPeople={linkPeople} />
         ))}
 
       {canEdit && (
         <>
           <AnchorSection id="edit" className="space-y-2 pt-4">
             <h3 className="font-semibold">Edit {Kind}</h3>
-            <DepartmentForm action={updateDepartment.bind(null, id)} department={department} departments={departments} />
+            <DepartmentForm action={updateDepartment.bind(null, id)} department={department} departments={departments} people={people} />
           </AnchorSection>
           {/* only a Super Admin deletes (owner's decision, 15 October 2026) */}
           {canDelete(user) && (

@@ -53,7 +53,9 @@ export class AuthService {
    */
   async me(user: SessionUser): Promise<Me> {
     const own = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true, fullNameEn: true } });
-    return { ...user, viewAs: user.viewAs ?? null, employeeId: own?.id ?? null, name: own?.fullNameEn ?? null };
+    // in charge of a department or team, while a current employee (owner, 19 October 2026: the person in charge)
+    const leading = own ? await this.prisma.department.count({ where: { headId: own.id, head: { employments: { some: { endDate: null } } } } }) : 0;
+    return { ...user, viewAs: user.viewAs ?? null, employeeId: own?.id ?? null, name: own?.fullNameEn ?? null, leads: leading > 0 };
   }
 
   /** A signed-in person changes their own password; the current one is asked for again. */

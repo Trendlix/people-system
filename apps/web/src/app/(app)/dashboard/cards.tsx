@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { isOpenReimbursement, LABELS } from '@trendlix/shared';
-import { MY_REQUESTS, MY_TEAM } from '@/components/nav';
+import { decidesForTeam, MY_REQUESTS, MY_TEAM } from '@/components/nav';
 import { departmentName } from '@/lib/departments';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { hasRole } from '@/lib/roles';
@@ -591,7 +591,9 @@ export async function Dashboard({ user }: { user: Session }) {
             <ToDoCard profile={profile} />
           </>
         )}
-        {profile && hasRole(user, 'manager') && (
+        {/* what waits for a direct manager, or for a department's head or a team's lead (19 October 2026), who decides
+            for its people without a direct manager; the team itself for whoever has direct reports */}
+        {profile && decidesForTeam(user) && (
           <>
             <Suspense fallback={null}>
               <LeaveToApproveCard />
@@ -599,9 +601,11 @@ export async function Dashboard({ user }: { user: Session }) {
             <Suspense fallback={null}>
               <ToApproveCard />
             </Suspense>
-            <Suspense fallback={<CardLoading title="My Team" wide />}>
-              <MyTeamCard profile={profile} user={user} today={today} />
-            </Suspense>
+            {(hasRole(user, 'manager') || profile.reports.length > 0) && (
+              <Suspense fallback={<CardLoading title="My Team" wide />}>
+                <MyTeamCard profile={profile} user={user} today={today} />
+              </Suspense>
+            )}
           </>
         )}
       </div>

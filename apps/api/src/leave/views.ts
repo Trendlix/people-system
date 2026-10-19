@@ -1,6 +1,7 @@
 import {
   employeeMayCancelLeave,
   leaveStage,
+  type ApproverRole,
   type LeaveBalanceKind,
   type LeaveDecision,
   type LeaveGender,
@@ -137,7 +138,9 @@ export function requestView(r: RequestRow, caller: Caller, names: ReadonlyMap<st
     waitingForYou: waitsFor({ ...parties, status }, caller),
     canCancel: isRequester(parties, caller) && employeeMayCancelLeave({ status, startDate }, today),
     hrCanCancel: hrMayCancel({ ...parties, status }, caller),
-    manager: r.manager && { id: r.manager.id, fullNameEn: r.manager.fullNameEn },
+    // who decides (or decided) the manager stage, and as what (owner, 19 October 2026: "the person in charge"):
+    // APPROVER_ROLES, the direct manager, or for someone without one their team lead, else their department's head
+    manager: r.manager && { id: r.manager.id, fullNameEn: r.manager.fullNameEn, role: (r.approverRole as ApproverRole | null) ?? 'direct_manager' },
     rejectedStage: r.rejectedStage as LeaveStage | null,
     rejectReason: r.rejectReason,
     recordedByHr: r.recordedByHr,

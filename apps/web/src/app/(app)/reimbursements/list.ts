@@ -13,8 +13,9 @@ import {
   type Role,
 } from '@trendlix/shared';
 import { REIMBURSEMENTS_PATH } from '../../../components/nav';
+import { approverPhrase, approverSubject, withApproverText, yourApprover } from '../../../lib/department-leads';
 import { hasRole } from '../../../lib/roles';
-import type { ReimbursementClaimStep, ReimbursementClaimView } from '../../../lib/types';
+import type { ReimbursementClaimStep, ReimbursementClaimView, RequestApprover } from '../../../lib/types';
 import { formatEgp, parseAmount } from '../employees/[id]/contracts/salary';
 import { myRequestsHref } from '../my-requests/requests';
 import { monthName, monthOf } from '../payroll/list';
@@ -25,8 +26,10 @@ import { monthName, monthOf } from '../payroll/list';
 // approving a lower amount with a comment, or rejecting it with one, every step logged on the claim. Finance's approval
 // adds it, untaxed, to the next payroll not yet approved. HR and Finance decide theirs from Requests → Reimbursements,
 // which the CEO may view; a direct manager from My Team. The rules are @trendlix/shared's (reimbursements.ts), which the
-// API enforces; these helpers only word what it sent, and read the decision form. Pure code, tested; relative imports,
-// as vitest doesn't know the @/ paths.
+// API enforces; these helpers only word what it sent, and read the decision form. Someone without a direct manager has
+// their claim decided first by their team lead, else their department's head (owner, 19 October 2026: "i want to add
+// department lead person, the person in charge"): the manager stage says which, by the claim's `manager.role`. Pure
+// code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -158,11 +161,13 @@ export const STATUS_BADGE: Record<ReimbursementStatus, string> = {
 
 export const statusLabel = (status: ReimbursementStatus) => REIMBURSEMENT_STATUS_LABELS[status] ?? status;
 
-/** Each stage inside a sentence: "the direct manager", "HR", "Finance". */
-const STAGE_PHRASE: Record<ReimbursementStage, string> = { manager: 'the direct manager', hr: 'HR', finance: 'Finance' };
+type Approver = Pick<RequestApprover, 'role'> | null | undefined;
 
-/** Each stage starting a sentence: "The direct manager", "HR", "Finance". */
-const STAGE_SUBJECT: Record<ReimbursementStage, string> = { manager: 'The direct manager', hr: 'HR', finance: 'Finance' };
+/** Each stage inside a sentence: "the direct manager" (or "the team lead", "the head of department": `manager`), "HR", "Finance". */
+const stagePhrase = (stage: ReimbursementStage, manager?: Approver) => (stage === 'manager' ? approverPhrase(manager) : stage === 'hr' ? 'HR' : 'Finance');
+
+/** Each stage starting a sentence: "The direct manager" (or "The team lead", …), "HR", "Finance". */
+const stageSubject = (stage: ReimbursementStage, manager?: Approver) => (stage === 'manager' ? approverSubject(manager) : stage === 'hr' ? 'HR' : 'Finance');
 
 /** A payroll month (its first day, or "YYYY-MM") by name: "November 2026". */
 export const payMonthText = (month: string) => monthName(monthOf(month));
@@ -184,13 +189,14 @@ export function progressText(c: Pick<ReimbursementClaimView, 'status' | 'manager
 } {
   switch (c.status) {
     case 'with_manager':
-      return { text: c.manager ? `Waiting for the direct manager, ${c.manager.fullNameEn}` : 'Waiting for the direct manager', reason: null };
+      // "With the team lead (Sara Ali)": who decides it now
+      return { text: withApproverText(c.manager), reason: null };
     case 'with_hr':
       return { text: 'Waiting for HR', reason: null };
     case 'with_finance':
       return { text: 'Waiting for Finance', reason: null };
     case 'rejected':
-      return { text: c.rejectedStage ? `Rejected by ${STAGE_PHRASE[c.rejectedStage]}` : 'Rejected', reason: c.rejectReason?.trim() || null };
+      return { text: c.rejectedStage ? `Rejected by ${stagePhrase(c.rejectedStage, c.manager)}` : 'Rejected', reason: c.rejectReason?.trim() || null };
     case 'cancelled':
       return { text: 'Cancelled by the employee', reason: null };
     case 'approved':
@@ -211,20 +217,23 @@ export const payMonthOf = (c: Pick<ReimbursementClaimView, 'payMonth' | 'payroll
   return month ? payMonthText(month) : null;
 };
 
-/** What the page says once a claim is sent: where it goes, by where it starts (with the manager, or straight to HR). */
-export function sentText(status: ReimbursementStatus): string {
+/**
+ * What the page says once a claim is sent: where it goes, by where it starts (with the manager, or straight to HR);
+ * `manager`, who decides it first: the direct manager, or the team lead or head of department of someone without one.
+ */
+export function sentText(status: ReimbursementStatus, manager?: Approver): string {
   return status === 'with_manager'
-    ? 'Claim sent. It goes to your direct manager, then HR, then Finance; each step shows on the claim. Once approved, it is paid with the next payroll.'
+    ? `Claim sent. It goes to ${yourApprover(manager)}, then HR, then Finance; each step shows on the claim. Once approved, it is paid with the next payroll.`
     : 'Claim sent. It goes to HR, then Finance; each step shows on the claim. Once approved, it is paid with the next payroll.';
 }
 
 /**
  * What the claim's page says after `?done=`, and in which tone (a decision refused as the claim had moved on: a
- * warning); null for anything else. `status`: the claim's now, for where a sent one goes.
+ * warning); null for anything else. `status`: the claim's now, for where a sent one goes, and `manager` to whom.
  */
-export function doneText(query: Query, status: ReimbursementStatus): { text: string; tone: 'ok' | 'warn' } | null {
+export function doneText(query: Query, status: ReimbursementStatus, manager?: Approver): { text: string; tone: 'ok' | 'warn' } | null {
   const done = typeof query.done === 'string' ? query.done : '';
-  if (done === 'sent') return { text: sentText(status), tone: 'ok' };
+  if (done === 'sent') return { text: sentText(status, manager), tone: 'ok' };
   if (done === 'cancelled') return { text: 'Claim cancelled. It stays on your list, cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: MOVED_ON, tone: 'warn' };
   const [stage, ...rest] = done.split('_');
@@ -239,20 +248,22 @@ export const MOVED_ON = 'This claim has moved on since you opened it: someone el
 // ---------- the log ----------
 
 /**
- * A step of a claim as its timeline shows it: what happened ("HR approved a lower amount"), and what goes with it (the
- * amount claimed or approved, the payroll it was added to).
+ * A step of a claim as its timeline shows it: what happened ("HR approved a lower amount", "The team lead approved it":
+ * the manager stage by who decides it, the claim's `manager`), and what goes with it (the amount claimed or approved,
+ * the payroll it was added to).
  */
-export function stepText(s: ReimbursementClaimStep): { title: string; detail: string | null } {
+export function stepText(s: ReimbursementClaimStep, manager?: Approver): { title: string; detail: string | null } {
   const amount = s.amount !== null ? formatEgp(s.amount) : null;
   switch (s.kind) {
     case 'submitted':
       return { title: 'Claimed by the employee', detail: amount };
     case 'no_manager':
-      return { title: 'No direct manager: sent straight to HR', detail: null };
+      // nobody in charge: no direct manager, and no team lead or head of department other than the employee
+      return { title: 'No direct manager or lead: sent straight to HR', detail: null };
     case 'manager_decision':
     case 'hr_decision':
     case 'finance_decision': {
-      const who = STAGE_SUBJECT[s.kind.replace('_decision', '') as ReimbursementStage];
+      const who = stageSubject(s.kind.replace('_decision', '') as ReimbursementStage, manager);
       if (s.decision === 'reject') return { title: `${who} rejected it`, detail: null };
       if (s.decision === 'approve_other') return { title: `${who} approved a lower amount`, detail: amount };
       return { title: `${who} approved it`, detail: amount };

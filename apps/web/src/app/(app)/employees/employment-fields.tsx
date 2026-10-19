@@ -8,6 +8,7 @@ import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
 import { Select } from '@/components/select';
+import { firstPick, pickAfterPlace, suggestionHint, suggestManager, type ManagerPick } from '@/lib/department-leads';
 import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
@@ -20,7 +21,10 @@ import { HazardousWorkField } from './leave-fields';
 // owner's decision, 16 October 2026) and the Edit employment page. The employment types are the labour law's (owner, 18
 // October 2026: "can we update the employment types based on the labour law?"): Sales became Full-time with Paid by
 // commission, Internship became Trainee, Freelance is outside the labour law; with them the nature of the work (Labour
-// Law Art. 1(6–8)), casual work warned past its 6 months.
+// Law Art. 1(6–8)), casual work warned past its 6 months. Adding an employment, choosing its department or team fills in
+// the Direct manager with its lead (owner, 19 October 2026: "i want to add department lead person, the person in
+// charge"): the team lead, else the department's head, while the manager is still empty or still that suggestion; one
+// HR picked is never changed.
 
 export type EmploymentPickers = {
   departments: Department[];
@@ -31,6 +35,8 @@ export type EmploymentPickers = {
   shifts: Shift[];
   /** Who can be picked as direct manager (GET /employees), without the employee themself. */
   managers: EmployeeSummary[];
+  /** The employee whose employment it is: never suggested as their own manager. None for an offer's candidate. */
+  employeeId?: string | null;
 };
 
 const OFFICE_DAYS = [
@@ -134,7 +140,19 @@ export function EmploymentFields({
     return () => window.removeEventListener('focus', refresh);
   }, [noTitles, router]);
 
-  const managerId = valueOf(state, 'managerId', employment?.managerId);
+  // Adding an employment (the hire form), the department's or team's lead is suggested as the direct manager: one who
+  // can be picked (a current employee), never the employee themself (suggestManager). Changing one keeps its manager.
+  const suggestionFor = (placeId: string) =>
+    employment
+      ? null
+      : suggestManager(pickers.departments, placeId, {
+          employeeId: pickers.employeeId,
+          canPick: (id) => pickers.managers.some((m) => m.id === id && EMPLOYED.includes(m.standing)),
+        });
+  const [manager, setManager] = useState<ManagerPick>(() => firstPick(valueOf(state, 'managerId', employment?.managerId), suggestionFor(departmentId)));
+  const managerId = manager.managerId;
+  const suggestion = manager.suggested ? suggestionFor(departmentId) : null;
+  const suggested = suggestion && suggestion.person.id === managerId ? suggestion : null;
   // People who have left (or are not employed yet) can't be picked as a new manager, but a current choice stays visible.
   const managers = pickers.managers
     .filter((m) => EMPLOYED.includes(m.standing) || m.id === managerId)
@@ -148,6 +166,8 @@ export function EmploymentFields({
     setDepartmentId(id);
     const title = pickers.jobTitles.find((j) => j.id === jobTitleId);
     if (title && title.departmentId !== id) setJobTitleId('');
+    // its lead as the manager, unless HR picked one (adding an employment only)
+    if (!employment) setManager((m) => pickAfterPlace(m, suggestionFor(id)));
   }
 
   /** A grade the newly chosen job title doesn't allow is cleared, and the form says so. */
@@ -311,7 +331,14 @@ export function EmploymentFields({
           <label htmlFor={fid('managerId')} className="label">
             Direct manager
           </label>
-          <Select id={fid('managerId')} name="managerId" defaultValue={managerId} className="input">
+          <Select
+            id={fid('managerId')}
+            name="managerId"
+            value={managerId}
+            onChange={(e) => setManager({ managerId: e.target.value, suggested: null })}
+            aria-describedby={suggested ? fid('managerId-hint') : undefined}
+            className="input"
+          >
             <option value="">No direct manager</option>
             {managers.map((m) => (
               <option key={m.id} value={m.id}>
@@ -319,6 +346,11 @@ export function EmploymentFields({
               </option>
             ))}
           </Select>
+          {suggested && (
+            <p id={fid('managerId-hint')} className="hint">
+              {suggestionHint(suggested)}
+            </p>
+          )}
         </div>
 
         <div>

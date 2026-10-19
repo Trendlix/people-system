@@ -11,9 +11,10 @@ import {
   type Role,
 } from '@trendlix/shared';
 import { LEAVE_PATH, MY_TEAM } from '../../../components/nav';
-import { formatDate } from '../../../lib/format';
+import { approverLabel, approverPhrase, approverSubject, withApproverText, yourApprover } from '../../../lib/department-leads';
+import { formatDate, titleCase } from '../../../lib/format';
 import { hasRole } from '../../../lib/roles';
-import type { LeaveRequestStep, LeaveRequestView } from '../../../lib/types';
+import type { LeaveRequestStep, LeaveRequestView, RequestApprover } from '../../../lib/types';
 import { weekdayOf } from '../organization/holidays/holidays';
 import { myRequestsHref } from '../my-requests/requests';
 
@@ -24,7 +25,9 @@ import { myRequestsHref } from '../my-requests/requests';
 // (e.g. sick leave reported afterwards), approved at once. HR decides and the CEO views them on Requests → Leave
 // Requests, with the month's calendar of who is off; a direct manager decides their team's from My Team. The rules are
 // @trendlix/shared's (leaves.ts), which the API enforces; these helpers only word what it sent, and read the decision
-// form. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// form. Someone without a direct manager has their request decided first by their team lead, else their department's
+// head (owner, 19 October 2026: "i want to add department lead person, the person in charge"): the manager stage says
+// which, by the request's `manager.role`. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -199,12 +202,16 @@ export function periodText(r: Pick<LeaveRequestView, 'startDate' | 'endDate' | '
   return `${formatDate(r.startDate)} – ${formatDate(r.endDate)}`;
 }
 
-/** Each stage inside a sentence, and starting one. */
-const STAGE_PHRASE: Record<LeaveStage, string> = { manager: 'the direct manager', hr: 'HR' };
-const STAGE_SUBJECT: Record<LeaveStage, string> = { manager: 'The direct manager', hr: 'HR' };
+/**
+ * Each stage inside a sentence, and starting one: the manager stage by who decides it (`manager`: the direct manager,
+ * the team lead or the head of department), HR.
+ */
+const stagePhrase = (stage: LeaveStage, manager?: Pick<RequestApprover, 'role'> | null) => (stage === 'manager' ? approverPhrase(manager) : 'HR');
+const stageSubject = (stage: LeaveStage, manager?: Pick<RequestApprover, 'role'> | null) => (stage === 'manager' ? approverSubject(manager) : 'HR');
 
-/** Who the stage is, in the decision section's heading: "the Direct Manager", "HR". */
-export const stageTitle = (stage: LeaveStage) => (stage === 'manager' ? 'the Direct Manager' : 'HR');
+/** Who the stage is, in the decision section's heading: "the Direct Manager", "the Team Lead", "the Head of Department", "HR". */
+export const stageTitle = (stage: LeaveStage, manager?: Pick<RequestApprover, 'role'> | null) =>
+  stage === 'manager' ? `the ${titleCase(approverLabel(manager))}` : 'HR';
 
 /**
  * Where a request stands, for its list row and its page: who has it now, or how it ended (recorded by HR, cancelled), and
@@ -216,11 +223,12 @@ export function leaveProgressText(r: Pick<LeaveRequestView, 'status' | 'manager'
 } {
   switch (r.status) {
     case 'with_manager':
-      return { text: r.manager ? `Waiting for the direct manager, ${r.manager.fullNameEn}` : 'Waiting for the direct manager', reason: null };
+      // "With the team lead (Sara Ali)": who decides it now
+      return { text: withApproverText(r.manager), reason: null };
     case 'with_hr':
       return { text: 'Waiting for HR', reason: null };
     case 'rejected':
-      return { text: r.rejectedStage ? `Rejected by ${STAGE_PHRASE[r.rejectedStage]}` : 'Rejected', reason: r.rejectReason?.trim() || null };
+      return { text: r.rejectedStage ? `Rejected by ${stagePhrase(r.rejectedStage, r.manager)}` : 'Rejected', reason: r.rejectReason?.trim() || null };
     case 'cancelled': {
       // by the employee, or by HR once approved, with the comment HR gives
       const step = [...(r.steps ?? [])].reverse().find((s) => s.kind === 'cancelled');
@@ -232,11 +240,14 @@ export function leaveProgressText(r: Pick<LeaveRequestView, 'status' | 'manager'
   }
 }
 
-/** What the page says once a request is sent: where it goes, by where it starts (with the manager, or straight to HR). */
-export function leaveSentText(status: LeaveStatus): string {
+/**
+ * What the page says once a request is sent: where it goes, by where it starts (with the manager, or straight to HR);
+ * `manager`, who decides it first: the direct manager, or the team lead or head of department of someone without one.
+ */
+export function leaveSentText(status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null): string {
   if (status === 'approved') return 'Leave recorded, approved at once. It counts in the balance and in the month’s payroll.';
   return status === 'with_manager'
-    ? 'Request sent. It goes to your direct manager, then HR; each step shows on the request.'
+    ? `Request sent. It goes to ${yourApprover(manager)}, then HR; each step shows on the request.`
     : 'Request sent. It goes to HR; each step shows on the request.';
 }
 
@@ -251,11 +262,11 @@ export function leaveDecidedText(decision: LeaveDecision, stage: LeaveStage): st
 
 /**
  * What the request's page says after `?done=`, and in which tone (a decision refused as the request had moved on: a
- * warning); null for anything else. `status`: the request's now, for where a sent one goes.
+ * warning); null for anything else. `status`: the request's now, for where a sent one goes, and `manager` to whom.
  */
-export function leaveDoneText(query: Query, status: LeaveStatus): { text: string; tone: 'ok' | 'warn' } | null {
+export function leaveDoneText(query: Query, status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
-  if (done === 'sent' || done === 'recorded') return { text: leaveSentText(status), tone: 'ok' };
+  if (done === 'sent' || done === 'recorded') return { text: leaveSentText(status, manager), tone: 'ok' };
   if (done === 'cancelled') return { text: 'Leave cancelled. Its days are back in the balance; it stays on the list, cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: LEAVE_MOVED_ON, tone: 'warn' };
   const [stage, decision] = done.split('_');
@@ -265,18 +276,22 @@ export function leaveDoneText(query: Query, status: LeaveStatus): { text: string
 
 // ---------- the log ----------
 
-/** A step of a request as its timeline shows it: what happened ("HR approved it"). */
-export function leaveStepText(s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'comment'>): string {
+/**
+ * A step of a request as its timeline shows it: what happened ("HR approved it", "The team lead approved it": the
+ * manager stage by who decides it, the request's `manager`).
+ */
+export function leaveStepText(s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null): string {
   switch (s.kind) {
     case 'submitted':
       return 'Asked for by the employee';
     case 'no_manager':
-      return 'No direct manager: sent straight to HR';
+      // nobody in charge: no direct manager, and no team lead or head of department other than the employee
+      return 'No direct manager or lead: sent straight to HR';
     case 'recorded_by_hr':
       return 'Recorded by HR, approved at once';
     case 'manager_decision':
     case 'hr_decision': {
-      const who = STAGE_SUBJECT[s.kind === 'manager_decision' ? 'manager' : 'hr'];
+      const who = stageSubject(s.kind === 'manager_decision' ? 'manager' : 'hr', manager);
       return s.decision === 'reject' ? `${who} rejected it` : `${who} approved it`;
     }
     case 'cancelled':

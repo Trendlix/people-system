@@ -226,8 +226,8 @@ async function LeaveRequests({ searchParams }: { searchParams: PageProps<'/leave
   if (!canSeeLeaveRequests(user)) {
     return (
       <Empty>
-        Only HR and the CEO see everyone&apos;s leave. Your own is on <Link href="/my-requests">My Requests</Link>; a direct manager decides their
-        team&apos;s on <Link href="/my-team">My Team</Link>.
+        Only HR and the CEO see everyone&apos;s leave. Your own is on <Link href="/my-requests">My Requests</Link>; a direct manager, team lead or
+        head of department decides the requests waiting for them on <Link href="/my-team">My Team</Link>.
       </Empty>
     );
   }
@@ -263,7 +263,8 @@ export default function LeaveRequestsPage({ searchParams }: PageProps<'/leave'>)
       <h1 className="text-2xl font-semibold">Leave Requests</h1>
       <p className="mt-1 text-muted">
         Leave as the Labour Law gives it, of the types set up on <Link href="/organization/leave">Organization → Leave</Link>. The direct manager
-        decides a request first, then HR: each approves it or rejects it with a comment, and every step is logged on the request. HR records leave on
+        decides a request first (for someone without one, their team lead, else their department&apos;s head), then HR: each approves it or rejects
+        it with a comment, and every step is logged on the request. HR records leave on
         an employee&apos;s behalf, approved at once. The calendar shows who is off each day of a month.
       </p>
       <div className="mt-6">

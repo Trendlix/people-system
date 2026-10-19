@@ -1,4 +1,5 @@
 import type {
+  ApproverRole,
   ChangeRequestStatus,
   ContractForm,
   ContractKind,
@@ -63,6 +64,31 @@ export interface SessionUser {
    * none. Left out by an API from before 15 October 2026, hence optional: the layout then finds the profile itself.
    */
   employeeId?: string | null;
+  /**
+   * Whether they are the person in charge of a department or a team, its head or its team lead (owner, 19 October 2026:
+   * "i want to add department lead person, the person in charge"): they decide the leave and the claims of its people
+   * who have no direct manager, so they get My Team even without the manager role. Left out by an API from before it.
+   */
+  leads?: boolean;
+}
+
+/**
+ * The person in charge of a department (its head of department) or of a team (its team lead), or of where someone
+ * works (owner, 19 October 2026: "i want to add department lead person, the person in charge").
+ */
+export interface LeadPerson {
+  id: string;
+  fullNameEn: string;
+}
+
+/**
+ * Who decides the manager stage of a leave request or a reimbursement claim (owner, 19 October 2026): the requester's
+ * direct manager, else, when they have none, their team lead, else their department's head, never the requester
+ * themself (approverInCharge in @trendlix/shared). `role` says which; left out (or null) by an API from before it, when
+ * it was always the direct manager.
+ */
+export interface RequestApprover extends LeadPerson {
+  role?: ApproverRole | null;
 }
 
 /** A department as other records name it. `parent` is set when it is a team: the department the team belongs to. */
@@ -86,8 +112,13 @@ export interface Department extends DepartmentRef {
   sortOrder: number;
   /** `children`: how many teams it has. */
   _count: { jobTitles: number; children: number };
-  /** GET /departments/:id only: its teams, in their saved order. */
-  children?: (DepartmentRef & { sortOrder: number; _count: { jobTitles: number } })[];
+  /** GET /departments/:id only: its teams, in their saved order, each with its team lead (`head`, from an API that has it). */
+  children?: (DepartmentRef & { sortOrder: number; _count: { jobTitles: number }; head?: (LeadPerson & { employeeCode: string }) | null })[];
+  /**
+   * The person in charge (owner, 19 October 2026): a department's head of department, a team's team lead; null for none.
+   * Any current employee, and one may lead several. Left out by an API from before it.
+   */
+  head?: (LeadPerson & { employeeCode: string }) | null;
 }
 
 /**
@@ -226,6 +257,11 @@ export interface OrgChartJobTitle {
 /** A team, or the department part of a department: its own job titles, the most senior first. */
 export interface OrgChartTeam extends DepartmentRef {
   jobTitles: OrgChartJobTitle[];
+  /**
+   * The person in charge (owner, 19 October 2026): a department's head of department, a team's team lead, drawn under
+   * its name for everyone, as the Departments page names them; null for none. Left out by an API from before it.
+   */
+  head?: OrgChartPerson | null;
 }
 
 export interface OrgChartDepartment extends OrgChartTeam {
@@ -321,6 +357,12 @@ export interface Employment {
   contract?: Contract | null;
   /** The newest ending that was not rejected or withdrawn, or null. Optional for the same reason as `contract`. */
   ending?: Ending | null;
+  /**
+   * The people in charge of where it places them (owner, 19 October 2026: "i want to add department lead person, the
+   * person in charge"): their team's team lead (none in a department itself) and their department's head, each while a
+   * current employee. The current employment's only (null on an ended one); left out by an API from before it.
+   */
+  leads?: { teamLead: LeadPerson | null; departmentHead: LeadPerson | null } | null;
 }
 
 /** One row of GET /employees, already limited to the people the caller may see. */
@@ -1702,7 +1744,8 @@ export interface ReimbursementClaimView {
   stage: ReimbursementStage | null;
   waitingForYou: boolean;
   canCancel: boolean;
-  manager: { id: string; fullNameEn: string } | null;
+  /** Who decides its manager stage, and as what: see `RequestApprover`. Null: nobody, it went straight to HR. */
+  manager: RequestApprover | null;
   rejectedStage: ReimbursementStage | null;
   rejectReason: string | null;
   /** The payroll month it was added to, its first day. */
@@ -1895,7 +1938,8 @@ export interface LeaveRequestView {
   canCancel: boolean;
   /** HR may cancel it now: approved, and not HR's own. Optional: left out by an API that doesn't send it. */
   hrCanCancel?: boolean;
-  manager: { id: string; fullNameEn: string } | null;
+  /** Who decides its manager stage, and as what: see `RequestApprover`. Null: nobody, it went straight to HR. */
+  manager: RequestApprover | null;
   rejectedStage: LeaveStage | null;
   rejectReason: string | null;
   recordedByHr: boolean;

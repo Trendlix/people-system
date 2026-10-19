@@ -53,7 +53,7 @@ interface Claim {
   stage: string | null;
   waitingForYou: boolean;
   canCancel: boolean;
-  manager: { id: string; fullNameEn: string } | null;
+  manager: { id: string; fullNameEn: string; role: string } | null;
   rejectedStage: string | null;
   rejectReason: string | null;
   payMonth: string | null;
@@ -283,7 +283,7 @@ describe('Reimbursements (e2e)', () => {
         stage: 'manager',
         waitingForYou: false,
         canCancel: true,
-        manager: { id: ids.mona, fullNameEn: `Mona Manager ${RUN}` },
+        manager: { id: ids.mona, fullNameEn: `Mona Manager ${RUN}`, role: 'direct_manager' },
         payMonth: null,
         payroll: null,
       });

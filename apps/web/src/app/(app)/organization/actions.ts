@@ -49,11 +49,14 @@ const departmentPage = (id: string) => `/organization/departments/${id}`;
 const afterwards = (parentId: string | null) => (parentId ? departmentPage(parentId) : '/organization/departments');
 
 // A team is a department with a parent (`parentId`, empty for a department). The field is disabled, and so not sent,
-// for a department that has teams: it stays a department.
+// for a department that has teams: it stays a department. `headId`: the person in charge (owner, 19 October 2026: "i
+// want to add department lead person, the person in charge"), a department's head or a team's lead; "No one" sends
+// null, which clears it.
 const departmentBody = (fd: FormData) => ({
   nameEn: text(fd, 'nameEn'),
   nameAr: text(fd, 'nameAr'),
   ...(fd.has('parentId') && { parentId: text(fd, 'parentId') }),
+  ...(fd.has('headId') && { headId: text(fd, 'headId') || null }),
 });
 
 export async function createDepartment(_prev: FormState, fd: FormData): Promise<FormState> {

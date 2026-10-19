@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { LEAVE_PAY_LABELS } from '@trendlix/shared';
 import { DocumentViewer } from '@/components/document-viewer';
 import { formatDateTime, titleCase } from '@/lib/format';
+import { approverLabel } from '@/lib/department-leads';
 import { getCurrentUser } from '@/lib/session';
 import type { LeaveRequestView } from '@/lib/types';
 import { sizeText } from '../../reimbursements/claim';
@@ -21,7 +22,9 @@ import { LeaveProgress, LeaveStatusBadge, LeaveTimeline } from '../ui';
 // the documents in the document viewer, where it stands and the annual balance after it, and its log of every step.
 // While it waits for the user, their decision (Approve, or Reject with a comment); the employee's Cancel while it is
 // being decided or before it starts; HR's Cancel of an approved one, with a comment, its days given back. What was just
-// done on it shows at the top (?done=).
+// done on it shows at the top (?done=). Someone without a direct manager has it decided first by their team lead, else
+// their department's head (owner, 19 October 2026: "i want to add department lead person, the person in charge"): the
+// page says which.
 
 export const metadata: Metadata = { title: 'Leave Request · People System' };
 
@@ -77,7 +80,7 @@ async function LeaveRequest({ params, searchParams }: { params: PageProps<'/leav
   if (loaded.kind === 'failed') return <Empty>{notLoadedText(loaded, 'leave request')}</Empty>;
   const r = loaded.value;
   const back = leaveBack(user, r);
-  const done = leaveDoneText(query, r.status);
+  const done = leaveDoneText(query, r.status, r.manager);
   const place = placeOfEmployee(r.employee);
   const what = `${r.type.nameEn.toLowerCase()} (${periodText(r)})`;
 
@@ -131,7 +134,7 @@ async function LeaveRequest({ params, searchParams }: { params: PageProps<'/leav
               <Fact label="Where it stands">
                 <LeaveProgress request={r} />
               </Fact>
-              <Fact label="Direct manager">
+              <Fact label={r.manager ? approverLabel(r.manager) : 'Direct manager'}>
                 {r.recordedByHr ? (
                   <span className="text-muted">Recorded by HR: no decision needed</span>
                 ) : r.manager ? (
@@ -148,7 +151,7 @@ async function LeaveRequest({ params, searchParams }: { params: PageProps<'/leav
           </Section>
 
           {r.waitingForYou && r.stage && (
-            <Section title={`Your Decision as ${stageTitle(r.stage)}`}>
+            <Section title={`Your Decision as ${stageTitle(r.stage, r.manager)}`}>
               <LeaveDecisionForm action={decideLeave.bind(null, r.id, r.stage)} stage={r.stage} name={r.employee.fullNameEn} />
             </Section>
           )}

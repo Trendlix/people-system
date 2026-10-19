@@ -27,7 +27,9 @@ export function probationOf(probationEnd: string | null, today = todayInCairo())
 // print and sign, in one transaction (all or nothing), as accepting a job offer does (OfferHiringService). Each part
 // is checked as it is on its own (EmploymentsService.add, ContractsService.draft); the contract starts on the join
 // date, and the employment's probation is the contract's. The audit log records both once they are saved. Renewals and
-// new versions stay with the contract (ContractsService.create).
+// new versions stay with the contract (ContractsService.create). Without a direct manager chosen, the employment gets the
+// person in charge of its department or team (owner, 19 October 2026: "i want to add department lead person, the person
+// in charge"): its team lead, else its department's head, never the person hired (EmploymentsService.add).
 @Injectable()
 export class HiringService {
   constructor(

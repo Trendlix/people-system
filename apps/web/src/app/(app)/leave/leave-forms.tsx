@@ -443,7 +443,7 @@ export function NewLeaveForm({
         ) : (
           <p className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
             Ready to {byHr ? 'record' : 'send'}: {daysText(days)} of {type?.nameEn.toLowerCase()}
-            {byHr ? ` for ${person.name}, approved at once.` : ', to your direct manager, then HR.'}
+            {byHr ? ` for ${person.name}, approved at once.` : ', to your direct manager (without one, your lead), then HR.'}
           </p>
         )}
       </div>

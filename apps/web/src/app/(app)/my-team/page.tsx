@@ -32,7 +32,9 @@ import { askedByText, latestRaise, probationOf } from './team';
 // reimbursement request … for specific preset up conditions"): the claims waiting for the manager, the first of the
 // three to decide them, each opening its page with the decision form. Leave to Approve (owner, 18 October 2026: "can
 // you apply the leaves according to the law?"): the leave requests waiting for the manager, who decides them first, then
-// HR; and the team's calendar, a month of who is off (?month=2026-10), with the official holidays.
+// HR; and the team's calendar, a month of who is off (?month=2026-10), with the official holidays. A department's head
+// or a team's lead (owner, 19 October 2026: "i want to add department lead person, the person in charge") decides
+// first the leave and claims of its people without a direct manager: theirs wait here too, each saying why.
 
 export const metadata: Metadata = { title: 'My Team · People System' };
 
@@ -131,8 +133,8 @@ async function ToApprove() {
           Reimbursements to Approve
         </h2>
         <p className="text-sm text-muted">
-          Your direct reports&apos; claims waiting for you. Approve one, approve a lower amount or reject it, with a comment; HR, then Finance, decide
-          it after you.
+          Your direct reports&apos; claims waiting for you, and those of people without a direct manager in a team you lead or a department you head.
+          Approve one, approve a lower amount or reject it, with a comment; HR, then Finance, decide it after you.
         </p>
       </div>
       {claims.kind === 'failed' ? (
@@ -162,7 +164,10 @@ async function LeaveToApprove() {
         <h2 id="leave-to-approve" className="text-lg font-semibold">
           Leave to Approve
         </h2>
-        <p className="text-sm text-muted">Your direct reports&apos; leave requests waiting for you. Approve one, or reject it with a comment; HR decides it after you.</p>
+        <p className="text-sm text-muted">
+          Your direct reports&apos; leave requests waiting for you, and those of people without a direct manager in a team you lead or a department
+          you head. Approve one, or reject it with a comment; HR decides it after you.
+        </p>
       </div>
       {requests.kind === 'failed' ? (
         <div className="card px-6 py-6 text-sm text-muted">The leave requests waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>

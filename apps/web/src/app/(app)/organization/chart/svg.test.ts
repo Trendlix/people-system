@@ -87,6 +87,26 @@ describe('the chart as SVG', () => {
     expect(/<text ([^>]*)>Finance<\/text>/.exec(svg)![1]).not.toContain('text-anchor');
   });
 
+  it('draws a department’s head and a team’s lead under its name, in the downloads too (19 October 2026)', () => {
+    const led: OrgChart = {
+      ...chart,
+      departments: chart.departments.map((d) =>
+        d.id === 'd1'
+          ? {
+              ...d,
+              head: { id: 'p1', employeeCode: 'EMP-0001', fullNameEn: 'Hazem <Magdy>', fullNameAr: 'حازم مجدي' },
+              teams: d.teams.map((t) => ({ ...t, head: { id: 'p2', employeeCode: 'EMP-0012', fullNameEn: 'Sara Ali', fullNameAr: 'سارة علي' } })),
+            }
+          : d,
+      ),
+    };
+    const svg = chartSvg(layoutChart(led, OPTIONS, measure));
+    expect(svg).toContain('>Head: Hazem &lt;Magdy&gt;</text>');
+    expect(svg).toContain('>Team lead: Sara Ali</text>');
+    expect(svg).toContain(`>${RLE}سارة علي${PDF}</text>`);
+    expect(chartSvg(layoutChart(led, { ...OPTIONS, leads: false }, measure))).not.toContain('Team lead:');
+  });
+
   it('draws a job title no one holds dashed, and the logo only when it is given', () => {
     const svg = chartSvg(layout);
     expect(svg.match(/stroke-dasharray/g)).toHaveLength(1);

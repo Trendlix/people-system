@@ -18,6 +18,8 @@ export type FontName =
   | 'titleAr'
   | 'person'
   | 'personAr'
+  | 'lead'
+  | 'leadAr'
   | 'code'
   | 'count'
   | 'note'
@@ -46,6 +48,9 @@ export const FONTS: Readonly<Record<FontName, Font>> = {
   titleAr: font(11.5, 400, 16, true),
   person: font(11, 400, 14),
   personAr: font(11, 400, 15, true),
+  // a department's head, a team's lead (19 October 2026)
+  lead: font(11, 400, 15),
+  leadAr: font(11, 400, 15, true),
   code: font(10, 400, 14),
   count: font(11, 700, 14),
   note: font(11, 400, 15),

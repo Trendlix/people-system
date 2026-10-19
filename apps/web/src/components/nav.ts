@@ -120,11 +120,21 @@ export const NAV: NavItem[] = [
 /** The employee's own requests: the changes to their details and the raises they asked for (app/(app)/my-requests). */
 export const MY_REQUESTS = '/my-requests';
 
-/** A direct manager's direct reports (app/(app)/my-team). */
+/** A direct manager's direct reports (app/(app)/my-team), and what waits for them to decide. */
 export const MY_TEAM = '/my-team';
 
-/** Who the sidebar is for: their roles, and their own employee profile (none: null; an API from before it: left out). */
-type NavUser = { roles: readonly Role[]; employeeId?: string | null };
+/**
+ * Who the sidebar is for: their roles, their own employee profile (none: null; an API from before it: left out), and
+ * whether they lead a department or a team (`leads`; left out by an API from before it).
+ */
+type NavUser = { roles: readonly Role[]; employeeId?: string | null; leads?: boolean };
+
+/**
+ * Whether someone decides others' leave and reimbursement claims first, on My Team: a direct manager, or the person in
+ * charge of a department or team (owner, 19 October 2026: "i want to add department lead person, the person in
+ * charge"), who decides them for its people without a direct manager, with or without the manager role.
+ */
+export const decidesForTeam = (user: Pick<NavUser, 'roles' | 'leads'>) => hasRole(user, 'manager') || user.leads === true;
 
 /**
  * The sidebar of someone who is only an employee and/or a direct manager (isSelfService), as the owner suggested it (17
@@ -139,7 +149,8 @@ function selfServiceNav(user: NavUser): NavItem[] {
     { href: '/', label: 'Dashboard' },
     ...(profile ? [{ href: profile, label: 'My Profile', section: profile }] : []),
     { href: MY_REQUESTS, label: 'My Requests', section: MY_REQUESTS },
-    ...(hasRole(user, 'manager') ? [{ href: MY_TEAM, label: 'My Team', section: MY_TEAM }] : []),
+    // a department's head or a team's lead too (19 October 2026), for what waits for them there
+    ...(decidesForTeam(user) ? [{ href: MY_TEAM, label: 'My Team', section: MY_TEAM }] : []),
   ];
 }
 

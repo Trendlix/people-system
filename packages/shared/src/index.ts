@@ -314,3 +314,7 @@ export * from './employment-types.js';
 // leave (Labour Law 14/2025, Arts. 54–57 and 124–133): the law's leave types, the annual leave's days, counting a leave's
 // days, the requests' statuses and steps, their problems, Year Closing, and the month's leave days for the payroll
 export * from './leaves.js';
+
+// department heads and team leads (owner, 19 October 2026: "i want to add department lead person, the person in
+// charge"): what they are called, the default direct manager when hiring, and who approves when there is no manager
+export * from './department-leads.js';

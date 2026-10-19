@@ -19,6 +19,15 @@ export class CreateDepartmentDto {
   @IsOptional()
   @IsUUID('all', { message: 'Choose the department this team belongs to.' })
   parentId?: string | null;
+
+  /**
+   * The person in charge (owner, 19 October 2026: "i want to add department lead person, the person in charge"): a
+   * department's Head of department, a team's Team lead. A current employee; empty (null) for no one.
+   */
+  @TrimOrNull()
+  @IsOptional()
+  @IsUUID('all', { message: 'Choose the person in charge from the list.' })
+  headId?: string | null;
 }
 
 export class UpdateDepartmentDto {
@@ -40,6 +49,15 @@ export class UpdateDepartmentDto {
   @IsOptional()
   @IsUUID('all', { message: 'Choose the department this team belongs to.' })
   parentId?: string | null;
+
+  /**
+   * The person in charge (owner, 19 October 2026: "i want to add department lead person, the person in charge"): a
+   * department's Head of department, a team's Team lead. A current employee; empty (null) for no one.
+   */
+  @TrimOrNull()
+  @IsOptional()
+  @IsUUID('all', { message: 'Choose the person in charge from the list.' })
+  headId?: string | null;
 }
 
 /** The new order of all departments (parentId empty), or of all the teams of one department. */

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { CONTRACT_STATUS_LABELS, END_REASON_LABELS, LABELS } from '@trendlix/shared';
 import { ApiError, apiGet } from '@/lib/api';
+import { DECIDES_NOTE, leadRows } from '@/lib/department-leads';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import { canDelete } from '@/lib/roles';
@@ -81,7 +82,10 @@ const placeLabel = (e: Employment) => (e.department && !e.department.parent ? 'D
 
 /**
  * The current employment's details, in the profile's field grid. Its team, job title, grade, shift and manager count in
- * the profile's completeness (the manager except for the top grade, who reports to nobody), so they are Required.
+ * the profile's completeness (the manager except for the top grade, who reports to nobody), so they are Required. After
+ * the manager, the people in charge of where they work (owner, 19 October 2026: "i want to add department lead person,
+ * the person in charge"): their team's Team lead and their department's Head of department, the one who decides their
+ * leave and claims when they have no direct manager saying so.
  */
 function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean): GridField[] {
   const grade = e.grade; // the person's own grade in this employment (within the job title's range, if it has one)
@@ -123,6 +127,14 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
       value: e.manager && (linkPeople ? <Link href={`/employees/${e.manager.id}`}>{e.manager.fullNameEn}</Link> : e.manager.fullNameEn),
       required: !topGrade,
     },
+    ...leadRows(e).map(
+      (row): GridField => ({
+        key: row.key,
+        label: row.label,
+        value: row.person && (linkPeople ? <Link href={`/employees/${row.person.id}`}>{row.person.fullNameEn}</Link> : row.person.fullNameEn),
+        note: row.decides ? DECIDES_NOTE : undefined,
+      }),
+    ),
     { key: 'joinDate', label: 'Join date', value: formatDate(e.joinDate) },
     { key: 'probationEnd', label: 'Probation end date', value: formatDate(e.probationEnd) },
     { key: 'workArrangement', label: 'Work arrangement', value: arrangementLabel(e), note: workPatternNote(e.workArrangement) },

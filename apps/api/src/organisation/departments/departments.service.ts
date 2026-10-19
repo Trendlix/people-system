@@ -4,16 +4,21 @@ import { assertDeletes } from '../../auth/roles.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateDepartmentDto, UpdateDepartmentDto } from './department.dto.js';
+import { assertLeadChosen } from './leads.js';
 
 const ENTITY = 'department';
 const PARENT = { select: { id: true, nameEn: true, nameAr: true } } as const;
 const COUNTS = { select: { jobTitles: true, children: true } } as const;
+/** The person in charge, as the lists name them (owner, 19 October 2026: "i want to add department lead person"). */
+const HEAD = { select: { id: true, fullNameEn: true, employeeCode: true } } as const;
 const ORDER = [{ sortOrder: 'asc' }, { nameEn: 'asc' }] as const;
 
 // Departments and their teams (e.g. Marketing → Content Team). One level only: a team has no teams of its own.
 // In the database a team is a department with a parent (parent_id). Job titles and employees belong to a department
 // itself or to one of its teams (owner's decision, 15 October 2026); a department's count of job titles is its own,
-// without its teams'.
+// without its teams'. Each has a person in charge (owner, 19 October 2026: "i want to add department lead person, the
+// person in charge"): a department's Head of department, a team's Team lead, any current employee (leads.ts), shown
+// with the lists as `head`, and chosen by those who change departments.
 @Injectable()
 export class DepartmentsService {
   constructor(
@@ -21,11 +26,14 @@ export class DepartmentsService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Every department and team in one list, in the order an Admin set; each team says which department it belongs to. */
+  /**
+   * Every department and team in one list, in the order an Admin set; each team says which department it belongs to,
+   * and each names its person in charge (`head`: the head of a department, the lead of a team), or null.
+   */
   list() {
     return this.prisma.department.findMany({
       orderBy: [...ORDER],
-      include: { parent: PARENT, _count: COUNTS },
+      include: { parent: PARENT, head: HEAD, _count: COUNTS },
     });
   }
 
@@ -34,10 +42,11 @@ export class DepartmentsService {
       where: { id },
       include: {
         parent: PARENT,
+        head: HEAD,
         _count: COUNTS,
         children: {
           orderBy: [...ORDER],
-          select: { id: true, nameEn: true, nameAr: true, sortOrder: true, _count: { select: { jobTitles: true } } },
+          select: { id: true, nameEn: true, nameAr: true, sortOrder: true, head: HEAD, _count: { select: { jobTitles: true } } },
         },
       },
     });
@@ -47,29 +56,34 @@ export class DepartmentsService {
 
   async create(dto: CreateDepartmentDto, userId: string) {
     const parentId = dto.parentId ?? null;
+    const headId = dto.headId ?? null;
     await this.checkPlace(null, parentId, dto.nameEn);
+    if (headId) await assertLeadChosen(this.prisma, headId, parentId !== null);
     const sortOrder = await this.nextPosition(parentId);
-    const dept = await this.prisma.department.create({ data: { nameEn: dto.nameEn, nameAr: dto.nameAr ?? null, parentId, sortOrder } });
+    const dept = await this.prisma.department.create({ data: { nameEn: dto.nameEn, nameAr: dto.nameAr ?? null, parentId, headId, sortOrder } });
     await this.audit.record({
       userId,
       action: 'create',
       entityType: ENTITY,
       entityId: dept.id,
-      diff: { nameEn: dept.nameEn, nameAr: dept.nameAr, parentId },
+      diff: { nameEn: dept.nameEn, nameAr: dept.nameAr, parentId, headId },
     });
     return this.get(dept.id);
   }
 
   async update(id: string, dto: UpdateDepartmentDto, userId: string) {
     const before = await this.get(id);
+    const parentId = dto.parentId !== undefined ? dto.parentId : before.parentId;
     if (dto.parentId !== undefined || dto.nameEn !== undefined) {
-      await this.checkPlace(before, dto.parentId !== undefined ? dto.parentId : before.parentId, dto.nameEn ?? before.nameEn);
+      await this.checkPlace(before, parentId, dto.nameEn ?? before.nameEn);
     }
+    // a lead chosen anew (null clears it): a current employee; the one it has stays as it is
+    if (dto.headId && dto.headId !== before.headId) await assertLeadChosen(this.prisma, dto.headId, parentId !== null);
     // a department or team that moves goes to the end of its new list
     const moved = dto.parentId !== undefined && dto.parentId !== before.parentId;
     const sortOrder = moved ? await this.nextPosition(dto.parentId ?? null) : undefined;
-    await this.prisma.department.update({ where: { id }, data: { nameEn: dto.nameEn, nameAr: dto.nameAr, parentId: dto.parentId, sortOrder } });
-    const diff = changes(before, { nameEn: dto.nameEn, nameAr: dto.nameAr, parentId: dto.parentId });
+    await this.prisma.department.update({ where: { id }, data: { nameEn: dto.nameEn, nameAr: dto.nameAr, parentId: dto.parentId, headId: dto.headId, sortOrder } });
+    const diff = changes(before, { nameEn: dto.nameEn, nameAr: dto.nameAr, parentId: dto.parentId, headId: dto.headId });
     if (Object.keys(diff).length) await this.audit.record({ userId, action: 'update', entityType: ENTITY, entityId: id, diff });
     return this.get(id);
   }

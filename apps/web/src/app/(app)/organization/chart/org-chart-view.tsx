@@ -11,7 +11,9 @@ import { chartFileName, chartSvg, chartTitle, PAGE_ASPECT, type ChartPaper } fro
 import { canvasMeasure } from './text';
 
 // The org chart, its options and its downloads (owner's request, 15 October 2026). It is drawn in the browser only:
-// text is measured there, with the fonts the chart uses, so the server shows "Drawing the chart…" until then.
+// text is measured there, with the fonts the chart uses, so the server shows "Drawing the chart…" until then. Each
+// department's head and each team's lead (owner, 19 October 2026: "i want to add department lead person, the person in
+// charge") are drawn under its name, in the downloads too, unless Heads and team leads is unticked.
 
 type Format = 'pdf' | 'png' | 'svg';
 
@@ -80,6 +82,7 @@ export function OrgChartView({ chart }: { chart: OrgChart }) {
   const [people, setPeople] = useState(false);
   const [codes, setCodes] = useState(false);
   const [arabic, setArabic] = useState(false);
+  const [leads, setLeads] = useState(true);
   const [arrangement, setArrangement] = useState<Arrangement>('balanced');
   const [zoom, setZoom] = useState('fit');
   const [paper, setPaper] = useState<ChartPaper>('a4');
@@ -92,11 +95,13 @@ export function OrgChartView({ chart }: { chart: OrgChart }) {
 
   const measure = useMemo(() => (inBrowser ? canvasMeasure() : null), [inBrowser]);
   const withPeople = people && chart.showsPeople;
+  // the choice only when some department or team has a lead
+  const hasLeads = chart.departments.some((d) => d.head || d.teams.some((t) => t.head));
   const layout = useMemo(
     () =>
       measure &&
-      layoutChart(chart, { people: withPeople, codes: withPeople && codes, arabic, arrangement, aspect: PAGE_ASPECT, logo: chart.company.hasLogo }, measure),
-    [measure, chart, withPeople, codes, arabic, arrangement],
+      layoutChart(chart, { people: withPeople, codes: withPeople && codes, arabic, leads, arrangement, aspect: PAGE_ASPECT, logo: chart.company.hasLogo }, measure),
+    [measure, chart, withPeople, codes, arabic, leads, arrangement],
   );
   const address = useMemo(
     () => layout && `data:image/svg+xml;charset=utf-8,${encodeURIComponent(chartSvg(layout, { logo: logo?.address ?? null }))}`,
@@ -163,6 +168,12 @@ export function OrgChartView({ chart }: { chart: OrgChart }) {
                 <label className={choice}>
                   <input type="checkbox" checked={codes} onChange={(e) => setCodes(e.target.checked)} className="size-4 accent-accent" />
                   Employee codes
+                </label>
+              )}
+              {hasLeads && (
+                <label className={choice}>
+                  <input type="checkbox" checked={leads} onChange={(e) => setLeads(e.target.checked)} className="size-4 accent-accent" />
+                  Heads and team leads
                 </label>
               )}
               <label className={choice}>

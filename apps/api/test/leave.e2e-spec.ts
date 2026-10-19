@@ -45,7 +45,7 @@ interface View {
   waitingForYou: boolean;
   canCancel: boolean;
   hrCanCancel: boolean;
-  manager: { id: string; fullNameEn: string } | null;
+  manager: { id: string; fullNameEn: string; role: string } | null;
   rejectedStage: string | null;
   rejectReason: string | null;
   recordedByHr: boolean;
@@ -259,7 +259,7 @@ describe('Leave (e2e)', () => {
       const start = week(0);
       const res = await ask(ben, { type: 'annual', startDate: start, endDate: addDays(start, 1), reason: 'Family visit' }).expect(201);
       first = res.body;
-      expect(first).toMatchObject({ status: 'with_manager', stage: 'manager', days: 2, waitingForYou: false, canCancel: true, hrCanCancel: false, manager: { id: ids.mona }, recordedByHr: false });
+      expect(first).toMatchObject({ status: 'with_manager', stage: 'manager', days: 2, waitingForYou: false, canCancel: true, hrCanCancel: false, manager: { id: ids.mona, role: 'direct_manager' }, recordedByHr: false });
       expect(kinds(first)).toEqual(['submitted']);
       const year = Number(start.slice(0, 4));
       const before = (await mine(ben, year)).annual;
