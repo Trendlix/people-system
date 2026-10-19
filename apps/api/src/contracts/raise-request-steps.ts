@@ -4,7 +4,7 @@ import {
   type RaiseDecision,
   type RaiseFigure,
   type RaiseFigureKind,
-  type RaiseReasonChoice,
+  type RaiseReason,
   type RaiseRequestStepKind,
   type RaiseWay,
 } from '@trendlix/shared';
@@ -29,6 +29,8 @@ export interface StepInput {
   kind: RaiseRequestStepKind;
   decision?: RaiseDecision;
   raiseReason?: string | null;
+  /** The CEO's decision changing the reason (19 October 2026): the reason before; `raiseReason` the new one. */
+  raiseReasonFrom?: string | null;
   comment?: string | null;
   /** Which figure was typed, and both figures and the gross they come to (stepFigures). */
   figure?: RaiseFigureKind | null;
@@ -49,6 +51,7 @@ export async function recordStep(db: Db, requestId: string, actorId: string | nu
       kind: step.kind,
       decision: step.decision ?? null,
       raiseReason: step.raiseReason ?? null,
+      raiseReasonFrom: step.raiseReasonFrom ?? null,
       comment: step.comment ?? null,
       figure: step.figure ?? null,
       increaseAmount: step.increaseAmount ?? null,
@@ -132,7 +135,10 @@ export function stepView(s: StepRow, viewer: RequestViewer, ctx: { mine: boolean
     id: s.id.toString(),
     kind: s.kind as RaiseRequestStepKind,
     decision: s.decision as RaiseDecision | null,
-    raiseReason: s.raiseReason as RaiseReasonChoice | null,
+    // on the CEO's decision, the reason changed (owner, 19 October 2026: "when approving a raise as a ceo, i might want to
+    // ammend the raise reason, not only the money"): from and to, for everyone who sees the request (a reason, not a figure)
+    raiseReason: s.raiseReason as RaiseReason | null,
+    raiseReasonFrom: s.raiseReasonFrom as RaiseReason | null,
     comment: full || SHARED_COMMENTS.includes(s.kind as RaiseRequestStepKind) ? s.comment : null,
     ...figures,
     way: s.way as RaiseWay | null,

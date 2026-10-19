@@ -309,6 +309,9 @@ describe('Contracts (e2e)', () => {
         nonRenewalNoticeBy: null, // a draft
         // neither of the law's warnings (Art. 88(3), Art. 1(7))
         becameOpenEnded: false,
+        // not a trainee's or an intern's agreement, nor a conversion of one (19 October 2026)
+        convertsTo: null,
+        training: null,
         casualTooLong: false,
         salaryHidden: false,
         // a whole contract, not a raise (owner's decisions, 16 October 2026)
@@ -1178,8 +1181,11 @@ describe('Contracts (e2e)', () => {
         endDate: soonContract.endDate,
         nonRenewalNoticeBy: soonContract.nonRenewalNoticeBy,
         renewalDraft: false,
+        // neither a trainee's or an intern's agreement, nor its conversion to full-time drafted (19 October 2026)
+        conversionDraft: false,
         // not past its end yet (Art. 88(3))
         becameOpenEnded: false,
+        training: null,
       });
       expect(list.some((x) => x.endDate > addDays(today, 60))).toBe(false);
       expect(list.map((x) => x.endDate)).toEqual(list.map((x) => x.endDate).sort());

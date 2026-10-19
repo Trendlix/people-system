@@ -23,7 +23,10 @@
 // another raise amount or percentge - Reject, and add a comment, all the request steps to be logged in the request"): a
 // reason from the list, the requester's comment, a suggested raise as an amount or a percent of the gross; HR, then the
 // CEO, approve it as it reached them, approve it with another raise, or reject it, always with a comment; and every step
-// logged on the request. Pure code, for the API and the screens.
+// logged on the request. Since 19 October 2026 ("when a raise request was sent to the CEO, is showed in approvals not
+// raise requests, and after approved, it was not shown in the raise request history too") a raise HR prepares directly
+// (on the contract, or a renewal with new pay) has its request too, prepared directly by HR, so every raise is on Raise
+// Requests at every stage. Pure code, for the API and the screens.
 
 import { monthlyFromHourly } from './contracts.js';
 
@@ -245,8 +248,48 @@ export const RAISE_REQUEST_STATUS_LABELS: Record<RaiseRequestStatus, string> = {
   done: 'Done',
 };
 
-/** Open: one per person at a time. */
+/** Open: one per person at a time (of those asked for: a raise HR prepares directly doesn't count, as before). */
 export const OPEN_RAISE_REQUEST_STATUSES: readonly RaiseRequestStatus[] = ['with_hr', 'with_ceo', 'approved'];
+
+/**
+ * A request's history (owner, 19 October 2026: "after approved, it was not shown in the raise request history too"):
+ * approved by the CEO, done (signed) or rejected; for the Raise Requests page's History filter.
+ */
+export const RAISE_REQUEST_HISTORY_STATUSES: readonly RaiseRequestStatus[] = ['approved', 'done', 'declined'];
+
+/**
+ * Where a request came from (owner, 19 October 2026: "when a raise request was sent to the CEO, is showed in approvals not
+ * raise requests, and after approved, it was not shown in the raise request history too"): asked for (by the employee,
+ * their manager or HR), or prepared directly by HR, a raise entered on the contract in force or a renewal with new pay,
+ * which gets its request when it gets the CEO's step, so Raise Requests is the one place for every raise. A direct one
+ * follows its raise as an asked one does; HR doesn't reject it (nothing was asked for: the draft is changed and sent, or
+ * deleted), it doesn't count as the person's one open request, and only HR, Finance and the CEO see it, as the raise
+ * itself is kept from the others until it is signed.
+ */
+export const RAISE_REQUEST_ORIGINS = ['request', 'direct'] as const;
+export type RaiseRequestOrigin = (typeof RAISE_REQUEST_ORIGINS)[number];
+export const RAISE_REQUEST_ORIGIN_LABELS: Record<RaiseRequestOrigin, string> = { request: 'Asked for', direct: 'Prepared directly by HR' };
+
+/** A direct request's comment when its raise has no note. */
+export const PREPARED_DIRECTLY_COMMENT = 'Prepared directly by HR';
+
+/**
+ * What a direct request says, from its raise (owner, 19 October 2026): the raise's reason, its note as the comment (else
+ * "Prepared directly by HR"), the raise as suggested, the increase in the gross over the pay it replaces (none when the
+ * gross doesn't go up: an allowance changed, or a cut) and the gross it comes to, and its effective date as Effective
+ * from (a renewal's start, which may not be a 1st).
+ */
+export function directRequestFields(raise: { raiseReason: string; note: string | null; grossSalary: number; startDate: string }, previousGross: number) {
+  const { amount } = raiseFiguresOf(previousGross, raise.grossSalary);
+  return {
+    raiseReason: raise.raiseReason,
+    comment: raise.note?.trim() || PREPARED_DIRECTLY_COMMENT,
+    suggestedIncrease: amount > 0 ? amount : null,
+    suggestedPercent: null,
+    suggestedGross: raise.grossSalary,
+    effectiveFrom: raise.startDate,
+  };
+}
 
 // ---------- when a requested raise is to take effect ----------
 

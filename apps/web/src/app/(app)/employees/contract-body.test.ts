@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contractBody, lengthBody, payBody } from './contract-body';
+import { contractBody, conversionBody, lengthBody, payBody } from './contract-body';
 
 /** A submitted form: each entry once, or a list for repeated fields. */
 function form(entries: Record<string, string | string[]>): FormData {
@@ -191,5 +191,63 @@ describe('the contract’s length by the labour law (18 October 2026)', () => {
       'Training stage 2’s length must be a whole number of months, 1 or more.',
       expect.stringMatching(/^Training stage 2’s pay must be more than stage 1’s/),
     ]);
+  });
+});
+
+// owner, 19 October 2026: trainees and interns have no probation; an intern is unpaid; an agreement converts to full-time
+describe('trainees’, interns’ and converted contracts', () => {
+  it('sends an intern’s agreement without a gross, a net or a basic part, its allowances on top', () => {
+    const errors: string[] = [];
+    const intern = { startDate: '1/11/2026', form: 'fixed', durationMonths: '3', probationMonths: '0', unpaid: '1', payBasis: 'monthly', daysPerWeek: '5', note: '' };
+    const body = contractBody(form({ ...intern, allowanceTypeId: 'transport', allowanceAmount: '1,500' }), errors, false, false);
+    expect(body).toEqual({
+      startDate: '2026-11-01',
+      form: 'fixed',
+      durationMonths: 3,
+      probationMonths: 0,
+      payBasis: 'monthly',
+      daysPerWeek: 5,
+      allowances: [{ allowanceTypeId: 'transport', amount: 1500 }],
+      note: '',
+    });
+    expect(body).not.toHaveProperty('grossSalary');
+    expect(errors).toEqual([]);
+    // a draft clears the net and an emptied number of days, still no gross
+    expect(payBody(form({ unpaid: '1', payBasis: 'monthly', daysPerWeek: '' }), errors, true)).toEqual({
+      payBasis: 'monthly',
+      daysPerWeek: null,
+      netSalary: null,
+      allowances: [],
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it('sends a trainee’s or an intern’s probation as the form gives it: 0', () => {
+    const errors: string[] = [];
+    expect(contractBody(form({ ...monthly, probationMonths: '0' }), errors, false, false)).toMatchObject({ probationMonths: 0 });
+    expect(errors).toEqual([]);
+  });
+
+  it('converts an agreement to full-time: its start date, probation and pay, with convertsTo and no reason', () => {
+    const errors: string[] = [];
+    const body = conversionBody(form({ ...monthly, startDate: '1/4/2027', probationMonths: '2', allowanceTypeId: 'transport', allowanceAmount: '1,500' }), errors);
+    expect(body).toEqual({
+      startDate: '2027-04-01',
+      form: 'fixed',
+      durationMonths: 12,
+      probationMonths: 2,
+      payBasis: 'monthly',
+      grossSalary: 15000,
+      basicPercent: 80,
+      netSalary: 12519.38,
+      allowances: [{ allowanceTypeId: 'transport', amount: 1500 }],
+      note: 'Agreed on the phone',
+      convertsTo: 'full_time',
+    });
+    expect(errors).toEqual([]);
+    // the full-time gross is required
+    const missing: string[] = [];
+    conversionBody(form({ ...monthly, grossSalary: '' }), missing);
+    expect(missing).toEqual(['Enter the gross salary, e.g. 15,000.']);
   });
 });

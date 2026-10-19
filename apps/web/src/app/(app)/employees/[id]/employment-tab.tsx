@@ -12,7 +12,7 @@ import { canSeePayroll } from '../../payroll/list';
 import { loadEmployeeRaiseRequests, type EmployeeRaiseRequestsLoad } from '../../raise-requests/data';
 import { showsRaiseRequests } from '../../raise-requests/list';
 import { deleteEmployment } from '../employment-actions';
-import { FREELANCE_SHORT, typeWord, workNatureLabel, workPatternNote } from '../employment-law';
+import { outsideLawShort, typeWord, workNatureLabel, workPatternNote } from '../employment-law';
 import { LawWarningBadges } from '../law-badges';
 import { openSubTab, visibleSubTabs } from '../tab-list';
 import {
@@ -24,7 +24,9 @@ import {
   periodLabel,
   ProfileSection,
   profileHref,
+  reportStanding,
   shiftLabel,
+  StandingBadge,
   StatusBadge,
   todayInCairo,
   type GridField,
@@ -94,10 +96,12 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
       key: 'employmentType',
       label: 'Employment type',
       value: LABELS.employmentType[e.employmentType],
-      // by the labour law (18 October 2026): Sales became Full-time paid by commission; freelance is outside the law
-      note: e.paidByCommission ? 'Paid by commission' : e.employmentType === 'freelance' ? FREELANCE_SHORT : undefined,
+      // by the labour law (18 October 2026): Sales became Full-time paid by commission; freelance is outside the law, and
+      // the unpaid internship (19 October 2026)
+      note: e.paidByCommission ? 'Paid by commission' : outsideLawShort(e.employmentType),
     },
-    { key: 'status', label: 'Status', value: <StatusBadge status={e.status} /> },
+    // a trainee's or an intern's Active shows as Trainee or Intern (19 October 2026)
+    { key: 'status', label: 'Status', value: <StatusBadge status={e.status} employmentType={e.employmentType} /> },
     { key: 'team', label: placeLabel(e), value: e.department && departmentName(e.department), required: true },
     {
       key: 'jobTitle',
@@ -268,7 +272,7 @@ function History({ profile: p }: { profile: EmployeeProfile }) {
                 {e.endDate ? (
                   <span className="badge bg-line-soft text-muted">{e.endReason ? END_REASON_LABELS[e.endReason] : LABELS.status[e.status]}</span>
                 ) : (
-                  <StatusBadge status={e.status} />
+                  <StatusBadge status={e.status} employmentType={e.employmentType} />
                 )}
               </td>
               <td className="max-w-64 min-w-40 text-muted">{e.endNote ?? dash}</td>
@@ -314,7 +318,7 @@ function DirectReports({ profile: p }: { profile: EmployeeProfile }) {
                 {r.jobTitle && ` · ${r.jobTitle.titleEn}`}
               </p>
             </div>
-            <StatusBadge status={r.status} />
+            <StandingBadge standing={reportStanding(r)} />
           </li>
         ))}
       </ul>

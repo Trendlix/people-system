@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { ENDING_STATUS_LABELS, NOTICE_UNIT_LABELS, type EndingStatus, type NoticeUnit } from '@trendlix/shared';
+import { agreementName, ENDING_STATUS_LABELS, isTrainingType, NOTICE_UNIT_LABELS, type EndingStatus, type NoticeUnit } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
@@ -46,7 +46,16 @@ export class EndingsService {
   async create(employeeId: string, employmentId: string, dto: CreateEndingDto, user: SessionUser) {
     const employment = await this.prisma.employment.findFirst({
       where: { id: employmentId, employeeId },
-      select: { id: true, joinDate: true, endDate: true, status: true, probationEnd: true, employee: { select: { fullNameEn: true } }, shift: { select: { workingDays: true } } },
+      select: {
+        id: true,
+        employmentType: true,
+        joinDate: true,
+        endDate: true,
+        status: true,
+        probationEnd: true,
+        employee: { select: { fullNameEn: true } },
+        shift: { select: { workingDays: true } },
+      },
     });
     if (!employment) throw new NotFoundException('Employment not found.');
     if (employment.endDate) throw new ConflictException(`This employment already ended on ${shownDate(fromDateOnly(employment.endDate))}.`);
@@ -84,6 +93,19 @@ export class EndingsService {
       }
     }
 
+    // a trainee's training agreement or an intern's internship agreement (owner, 19 October 2026: "their contracts are
+    // never renewed", then renewed once at most): not a fixed term the company doesn't renew, it ends as Training
+    // completed; and Training completed ends nothing else
+    const training = isTrainingType(employment.employmentType);
+    if (rule.key === 'non_renewal' && training) {
+      throw new BadRequestException(
+        `A${employment.employmentType === 'intern' ? 'n' : ''} ${agreementName(employment.employmentType)} isn’t renewed as a fixed term is: end it as Training completed, or convert it to a full-time contract.`,
+      );
+    }
+    if (rule.key === 'training_completed' && !training) {
+      throw new BadRequestException(`${employment.employee.fullNameEn} isn’t a trainee or an intern: "${rule.label}" ends a training or internship agreement. Choose another way to end the employment.`);
+    }
+
     // a resignation is certified at the labour office (Decree 187/2025); the company decides within 10 days, or it counts as accepted
     const certification =
       rule.key === 'resignation'
@@ -116,6 +138,15 @@ export class EndingsService {
         );
       }
       if (!payInLieu) lastWorkingDay = fromDateOnly(contract.endDate);
+    }
+    // the agreement ends with its last day; recorded after that day, on the day it is recorded
+    if (rule.key === 'training_completed') {
+      const contract = await this.prisma.contract.findFirst({ where: { employmentId, status: 'active' }, orderBy: { version: 'desc' } });
+      if (!contract?.endDate) {
+        throw new BadRequestException(`Only a signed ${agreementName(employment.employmentType)} ends as "${rule.label}". Sign it first, or choose another way to end the employment.`);
+      }
+      const end = fromDateOnly(contract.endDate);
+      lastWorkingDay = givenOn > end ? givenOn : end;
     }
 
     const row = await this.prisma.employmentEnding.create({

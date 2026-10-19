@@ -170,6 +170,22 @@ describe('payslipContent: rows that are 0 are left out', () => {
     expect(c.net.amount).toBe(c.earnings!.total.amount);
   });
 
+  it('an unpaid intern (19 October 2026): the transportation allowance alone, no salary rows, nothing deducted', () => {
+    const quiet = { workedHours: null, expectedHours: null, softSkills: null, performance: null, clientSatisfaction: null, released: null };
+    const allowances = [{ name: 'Transportation allowance', amount: 1500, taxable: false, insured: false }];
+    const source = payslipSource('monthly', { terms: { statutory: false, gross: 0, allowances, adjustments: [] }, inputs: quiet });
+    const intern = { ...source, line: { ...source.line, employmentType: 'intern' as const } };
+    const c = payslipContent(intern, 'en');
+    // the salary rows are 0, so left out
+    expect(c.earnings!.rows).toEqual([{ label: 'Transportation allowance', note: 'Not taxed', amount: '1,500.00', value: 1500 }]);
+    expect(c.deductions).toBeNull();
+    expect(c.facts).toContainEqual({ label: 'Employment', value: 'Unpaid internship (outside the labour law) · since 01/03/2025' });
+    expect(c.facts.map((f) => f.label)).not.toContain('Social insurance no.');
+    expect(c.net.amount).toBe('1,500.00');
+    expect(c.companyShare).toBeNull();
+    expect(texts(payslipContent(intern, 'ar')).join(' ')).toContain('تدريب غير مدفوع (غير خاضع لقانون العمل)');
+  });
+
   it('not registered with social insurance: no insurance row, number or company share; the year to date leaves it out', () => {
     const source = payslipSource('monthly', { terms: { insured: false } });
     const c = payslipContent({ ...source, yearToDate: { ...source.yearToDate!, insurance: 0 } }, 'en');

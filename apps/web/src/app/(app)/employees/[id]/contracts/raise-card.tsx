@@ -148,6 +148,8 @@ export function RaiseCard({
                 confirmApprove={`Approve ${name}? HR can then sign it, and its documents are generated.`}
                 name={name}
                 previousGross={before?.grossSalary ?? null}
+                // the CEO may change the reason when approving (19 October 2026)
+                reason={d.raise?.reason ?? null}
               />
             </div>
           )}

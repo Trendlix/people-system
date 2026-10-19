@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { ENDING_STATUS_LABELS, LABELS } from '@trendlix/shared';
+import { ENDING_STATUS_LABELS, isTrainingType, LABELS } from '@trendlix/shared';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import { startEnding } from '../../../contract-actions';
@@ -8,10 +8,13 @@ import { loadEmployee } from '../../../data';
 import { EditHeading, Empty, gradeLabel, Loading, profileHref, RequireHr, todayInCairo } from '../../../ui';
 import { loadEndingRules } from '../../contracts/data';
 import { EndingForm } from '../ending-form';
+import { endingRulesFor } from '../rules';
 
 // Ending the current employment: HR records how and when it ends (which counts as HR's approval), and it goes to the
 // CEO for approval. Once approved, HR completes it on or after the last working day, which ends the employment; the
-// profile stays, and the person is then a former employee. `?rule=probation` comes from the probation banner.
+// profile stays, and the person is then a former employee. `?rule=probation` comes from the probation banner. A
+// trainee's or an intern's agreement (owner, 19 October 2026) ends with Training completed, on the agreement's last day:
+// no non-renewal and no Art. 154 note for it.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -41,10 +44,12 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
       </Empty>
     );
   } else {
-    // Probation can end only while on probation; a non-renewal needs a signed fixed-term contract, ending on its end date.
+    // Probation can end only while on probation; a non-renewal needs a signed fixed-term contract, ending on its end date;
+    // a trainee's or an intern's agreement ends with Training completed instead (rules.ts)
     const fixed =
       e.contract?.form === 'fixed' && e.contract.endDate ? { endDate: e.contract.endDate, nonRenewalNoticeBy: e.contract.nonRenewalNoticeBy } : null;
-    const rules = allRules.filter((r) => r.active && (r.key !== 'probation' || e.status === 'probation') && (r.key !== 'non_renewal' || fixed));
+    const training = isTrainingType(e.employmentType);
+    const rules = endingRulesFor(allRules, e, Boolean(fixed));
     const what = [LABELS.employmentType[e.employmentType], e.jobTitle?.titleEn, e.grade && gradeLabel(e.grade), e.department && departmentName(e.department)]
       .filter(Boolean)
       .join(' · ');
@@ -81,10 +86,14 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
             action={startEnding.bind(null, employee.id, e.id)}
             rules={rules}
             initialRule={rule}
-            contract={fixed}
-            probationEnd={e.status === 'probation' ? e.probationEnd : null}
+            contract={training ? null : fixed}
+            // the agreement's last day, which Training completed ends the employment on
+            training={training && e.contract?.endDate ? { endDate: e.contract.endDate } : null}
+            probationEnd={e.status === 'probation' && !training ? e.probationEnd : null}
             // Art. 154's estimate for a non-renewal (18 October 2026): the wage a month, the gross and the allowances
-            art154={{ joinDate: e.joinDate, monthlyWage: e.contract && !e.contract.salaryHidden ? (e.contract.totalSalary ?? e.contract.grossSalary) : null }}
+            art154={
+              training ? null : { joinDate: e.joinDate, monthlyWage: e.contract && !e.contract.salaryHidden ? (e.contract.totalSalary ?? e.contract.grossSalary) : null }
+            }
             today={today}
             cancelHref={back}
           />

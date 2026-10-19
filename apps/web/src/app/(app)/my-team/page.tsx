@@ -6,7 +6,7 @@ import { getCurrentUser } from '@/lib/session';
 import { NoProfile } from '../dashboard/cards';
 import { inDaysText } from '../dashboard/dashboard';
 import { MY_TEAM } from '@/components/nav';
-import { Empty, employeeRaiseRequestsHref, Loading, StatusBadge, todayInCairo } from '../employees/ui';
+import { Empty, employeeRaiseRequestsHref, Loading, reportStanding, StandingBadge, todayInCairo } from '../employees/ui';
 import { calendarDays, calendarPeople, readMonth } from '../leave/calendar';
 import { LeaveCalendar } from '../leave/calendar-view';
 import { loadHolidaysOf, loadLeaveCalendar, loadWaitingLeave } from '../leave/data';
@@ -74,7 +74,8 @@ async function Team() {
                 </td>
                 <td>{r.jobTitle?.titleEn ?? dash}</td>
                 <td>
-                  <StatusBadge status={r.status} />
+                  {/* Trainee or Intern for a trainee's or an intern's Active (19 October 2026) */}
+                  <StandingBadge standing={reportStanding(r)} />
                 </td>
                 <td className="whitespace-nowrap">
                   {probation ? (

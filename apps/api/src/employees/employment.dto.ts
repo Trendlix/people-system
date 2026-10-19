@@ -19,8 +19,12 @@ import { TrimOrNull } from '../common/transforms.js';
 /** Present (even as null) means "change it"; for fields that cannot be empty, null is then refused. */
 const Sent = () => ValidateIf((_o, v) => v !== undefined);
 
-/** The employment types by the labour law (owner, 18 October 2026), as the messages name them. */
-export const EMPLOYMENT_TYPE_MESSAGE = 'Choose an employment type: full_time, part_time, trainee or freelance (outside the labour law).';
+/**
+ * The employment types by the labour law (owner, 18 October 2026), with the unpaid internship (19 October 2026), as the
+ * messages name them.
+ */
+export const EMPLOYMENT_TYPE_MESSAGE =
+  'Choose an employment type: full_time, part_time, trainee, intern (an unpaid internship, outside the labour law) or freelance (outside the labour law).';
 export const WORK_NATURE_MESSAGE = 'Choose the nature of the work: regular, temporary, casual or seasonal.';
 export const COMMISSION_MESSAGE = 'Send whether the pay is by commission as true or false.';
 

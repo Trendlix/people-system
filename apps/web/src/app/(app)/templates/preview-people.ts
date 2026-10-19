@@ -36,8 +36,9 @@ export interface PreviewOffer {
 /** Whose data a version can be previewed with. */
 export type PreviewChoice = PreviewPerson | PreviewOffer;
 
-// every job offer slot, by its folder: their keys stayed when the employment types changed (owner, 18 October 2026: a
-// trainee's is offer_internship, one paid by commission offer_sales), so they no longer follow the types' names
+// every job offer slot, by its folder: their keys stayed when the employment types changed (owner, 18 October 2026: one
+// paid by commission is offer_sales; since 19 October 2026 an intern's, the unpaid internship, is offer_internship and a
+// trainee's offer_trainee), so they don't all follow the types' names
 const OFFER_SLOTS: readonly string[] = TEMPLATE_SLOTS.filter((s) => s.folder === 'job_offers').map((s) => s.key);
 
 /** Whether a template is a job offer template (an employment type's, or paid by commission), previewed with job offers' data. */

@@ -21,7 +21,7 @@ const RUN = Date.now().toString(36).toLowerCase();
 const MIGRATIONS = fileURLToPath(new URL('../prisma/migrations/', import.meta.url));
 const MIGRATION = '20261018190000_employment_types_by_law';
 const SCHEMA = 'employment_types_check';
-const TYPE_MESSAGE = 'Choose an employment type: full_time, part_time, trainee or freelance (outside the labour law).';
+const TYPE_MESSAGE = 'Choose an employment type: full_time, part_time, trainee, intern (an unpaid internship, outside the labour law) or freelance (outside the labour law).';
 
 interface Contract {
   id: string;
@@ -460,7 +460,8 @@ describe('Employment types by the labour law (e2e)', () => {
       expect((await api().patch(`/api/offers/${draft.id}`).set('Cookie', hr).send({ employmentType: 'trainee' }).expect(200)).body).toMatchObject({
         employmentType: 'trainee',
         paidByCommission: false,
-        template: { slotKey: 'offer_internship', name: 'Job offer · Trainee' },
+        // the trainee's own offer since 19 October 2026 (offer_internship is the unpaid intern's)
+        template: { slotKey: 'offer_trainee', name: 'Job offer · Trainee' },
       });
     });
   });
@@ -488,9 +489,9 @@ describe('Employment types by the labour law (e2e)', () => {
   });
 
   describe('reimbursement types', () => {
-    it('are limited to the four employment types', async () => {
+    it('are limited to the employment types', async () => {
       const create = (employmentTypes: string[]) => api().post('/api/reimbursement-types').set('Cookie', hr).send({ nameEn: `Law ${RUN} ${employmentTypes.join(' ')}`, nameAr: 'نوع', employmentTypes });
-      expect(messageOf(await create(['sales']).expect(400))).toEqual(['Choose the employment types from: full_time, part_time, trainee, freelance; [] for every employment type.']);
+      expect(messageOf(await create(['sales']).expect(400))).toEqual(['Choose the employment types from: full_time, part_time, trainee, intern, freelance; [] for every employment type.']);
       const made = (await create(['trainee', 'full_time']).expect(201)).body;
       reimbursementTypes.push(made.id);
       expect(made.employmentTypes).toEqual(['trainee', 'full_time']);

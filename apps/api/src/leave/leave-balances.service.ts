@@ -29,7 +29,10 @@ export const TAKING = ['with_manager', 'with_hr', 'approved'] as const;
 export interface LeaveEmployment {
   id: string;
   employeeId: string;
-  /** A freelancer is outside the labour law: no annual leave, no leave to ask for (owner, 18 October 2026). */
+  /**
+   * A freelancer is outside the labour law: no annual leave, no leave to ask for (owner, 18 October 2026); so is an
+   * unpaid intern (owner, 19 October 2026).
+   */
   employmentType: string;
   joinDate: string;
   endDate: string | null;
@@ -196,7 +199,8 @@ export class LeaveBalancesService {
     for (const { employment: e, year } of pairs) {
       const key = `${e.id}:${year}`;
       // a freelancer is outside the labour law (owner, 18 October 2026; Labour Law 14/2025 Art. 1(1): a worker works
-      // "تحت إدارته أو إشرافه", a freelancer doesn't): the law's annual leave (Art. 124) isn't theirs
+      // "تحت إدارته أو إشرافه", a freelancer doesn't): the law's annual leave (Art. 124) isn't theirs; nor an unpaid
+      // intern's (owner, 19 October 2026: the unpaid internship, outside the labour law)
       const entitlement = !underLabourLaw(e.employmentType) ? { days: 0, usableFrom: `${year}-01-01` } : annualEntitlement({
         year,
         joinDate: e.joinDate,

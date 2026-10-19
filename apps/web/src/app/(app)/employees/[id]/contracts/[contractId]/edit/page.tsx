@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
+import { agreementName } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import { loadLawRates } from '@/lib/law-rates';
 import { updateContract } from '../../../../contract-actions';
@@ -9,12 +10,14 @@ import { contractHref, EditHeading, Empty, Loading, RequireHr, todayInCairo } fr
 import { ContractForm } from '../../contract-form';
 import { loadAllowanceTypes, loadContractSettings, loadContracts } from '../../data';
 import { changeOf, editHref, stageOf, versionBefore, versionPay } from '../../raise';
+import { CONVERSION_PROBATION_HINT, CONVERSION_START_HINT } from '../../training';
 
 // Changing a draft of the current employment's contract, before it is signed. A signed version changes only in its
 // filing dates and note, with the contract on the Employment tab. A renewal asks whether its pay changes (owner's
 // decisions, 16 October 2026): with new pay it counts as a raise, which can't change while it is with the CEO, and an
 // approved one changed goes back to HR, to send to the CEO again. A raise (an amendment, or a new contract within the
-// term) is changed on its own page.
+// term) is changed on its own page. The full-time contract a trainee's or an intern's agreement converts to (19 October
+// 2026) is changed as a full-time contract, its start date and probation too: it isn't a renewal.
 
 async function EditContract({ params }: { params: Promise<{ id: string; contractId: string }> }) {
   const { contractId } = await params;
@@ -50,12 +53,20 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
       </Empty>
     );
   } else {
-    const renewal = contract.version > 1;
+    // a conversion to full-time isn't a renewal: its start date and probation are its own
+    const conversion = Boolean(contract.convertsTo);
+    const renewal = contract.version > 1 && !conversion;
     const raise = contract.raise;
     body = (
       <div className="max-w-3xl space-y-4">
         <p className="text-sm text-muted">
-          Draft of version {contract.version} ({contract.number}){renewal ? `, renewing version ${contract.version - 1}` : ''}.{' '}
+          Draft of version {contract.version} ({contract.number})
+          {conversion
+            ? `, the full-time contract the ${agreementName(e.employmentType)} (version ${contract.version - 1}) converts to; signing it makes the employment full-time`
+            : renewal
+              ? `, renewing version ${contract.version - 1}`
+              : ''}
+          .{' '}
           {raise
             ? 'It changes the pay: send it to the CEO on the Employment tab, and sign it there once the CEO approves it and the employee and the company have signed it.'
             : 'Sign it on the Employment tab once the employee and the company have signed it.'}
@@ -95,9 +106,13 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
           allowanceTypes={allowanceTypes}
           renewal={renewal ? { startDate: contract.startDate, after: `version ${contract.version - 1}` } : null}
           payChange={
-            renewal && previous ? { version: previous.version, pay: versionPay(previous), changes: Boolean(raise), reason: raise?.reason ?? null } : undefined
+            renewal && previous && e.employmentType !== 'intern'
+              ? { version: previous.version, pay: versionPay(previous), changes: Boolean(raise), reason: raise?.reason ?? null }
+              : undefined
           }
-          employmentType={e.employmentType}
+          probationHint={conversion ? CONVERSION_PROBATION_HINT : undefined}
+          startHint={conversion ? CONVERSION_START_HINT : undefined}
+          employmentType={conversion ? 'full_time' : e.employmentType}
           dateOfBirth={employee.dateOfBirth}
           today={today}
           lawYears={lawYears}

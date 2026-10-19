@@ -1,14 +1,17 @@
-import { PAY_CHANGE_LABELS, RAISE_REASON_LABELS, payDifference, type Role } from '@trendlix/shared';
+import { PAY_CHANGE_LABELS, RAISE_REASON_LABELS, payDifference, type LawRates, type Role } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '../../../lib/format';
 import type { PendingRaise } from '../../../lib/raise-types';
 import { hasRole } from '../../../lib/roles';
 import { formatEgp } from '../employees/[id]/contracts/salary';
 import { changeText, fromToText } from '../employees/[id]/salary-history/salary-history';
+import { figuresNote } from '../raise-requests/list';
+import type { FiguresFor } from '../raise-requests/request-forms';
 
 // Pay raises waiting for the CEO, on Approvals (owner's decisions, 16 October 2026: "HR, then the CEO"): a raise HR
 // entered and sent (an amendment or a new contract, effective the 1st of a month), or a renewal with new pay, which
 // counts as a raise. The CEO alone approves it, returns it to HR with a reason, or declines it with a reason; HR follows
-// them here until then. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// them here until then. Since 19 October 2026 the CEO decides each on Raise Requests too, with the same form
+// (decisionFigures). Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -71,6 +74,24 @@ export function pendingRaiseView(r: PendingRaise): PendingRaiseView {
     promotion: promotion || null,
     sentAt: r.raise?.sentAt ? formatDateTime(r.raise.sentAt) : null,
     confirmApprove: `Approve ${name}'s new pay, ${formatEgp(gross)} a month from ${formatDate(r.startDate)}? HR then has ${r.number} signed.`,
+  };
+}
+
+/**
+ * What the CEO's other raise is worked out from (17 October 2026), on Approvals and Raise Requests alike: the pay before
+ * it (its gross, rate, hours and allowances), with the raise's own allowances and hours after it, the year's rates and
+ * who sees the figures; null when the API sends no pay before it (one from before, or someone who doesn't see salaries).
+ */
+export function decisionFigures(r: PendingRaise, rates: readonly LawRates[]): FiguresFor | null {
+  const before = r.previous;
+  if (!before || before.grossSalary === null || !before.allowances) return null;
+  return {
+    pay: { payBasis: r.payBasis, grossSalary: before.grossSalary, hourlyRate: before.hourlyRate, hoursPerWeek: before.hoursPerWeek ?? r.hoursPerWeek, allowances: before.allowances },
+    allowancesAfter: r.allowances,
+    hoursAfter: r.hoursPerWeek,
+    rates,
+    year: Number(r.startDate.slice(0, 4)),
+    note: figuresNote(false),
   };
 }
 

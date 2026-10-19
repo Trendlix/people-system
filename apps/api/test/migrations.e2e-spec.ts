@@ -157,7 +157,9 @@ describe('Migrations (e2e)', () => {
       SELECT key, label, initiator, notice_amount AS "noticeAmount", notice_unit AS "noticeUnit", pay_in_lieu AS "payInLieu",
         end_reason AS "endReason", source, active, sort_order AS "sortOrder"
       FROM ending_rules ORDER BY sort_order`);
-    expect(rules).toEqual(ENDING_RULES.map((key, i) => ({ key, ...ENDING_RULE_DEFAULTS[key], active: true, sortOrder: i + 1 })));
+    // Training completed came with the trainees' and interns' agreements (20261019170000_trainees_and_interns)
+    const seeded = ENDING_RULES.filter((key) => key !== 'training_completed');
+    expect(rules).toEqual(seeded.map((key, i) => ({ key, ...ENDING_RULE_DEFAULTS[key], active: true, sortOrder: i + 1 })));
 
     // the law's caps hold in the database too
     await expect(db.query('UPDATE contract_settings SET probation_months = 4')).rejects.toThrow(/contract_settings_probation_months_check/);
@@ -329,6 +331,120 @@ describe('Migrations (e2e)', () => {
     await db.query("UPDATE departments SET head_id = '00000000-0000-4000-8000-0000000000e3'");
     await db.query("DELETE FROM employees WHERE id = '00000000-0000-4000-8000-0000000000e3'");
     expect((await db.query('SELECT head_id FROM departments')).rows).toEqual([{ head_id: null }]);
+  });
+
+  it('direct raise requests: every version with the CEO’s step gets its request, prepared directly by HR, with its steps (owner, 19 October 2026)', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_direct_raise_requests'))!;
+    await migratedUpTo(migration);
+    const id = (n: number) => `00000000-0000-4000-8000-0000000000${String(n).padStart(2, '0')}`;
+    // before: six employments, each with its version 1, and a version 2 with the CEO's step at each stage; one of them
+    // prepared from a request already
+    await db.query(`
+      INSERT INTO users (id, email, updated_at) VALUES ('${id(1)}', 'hr@x.test', now()), ('${id(2)}', 'ceo@x.test', now()), ('${id(3)}', 'hr2@x.test', now());
+      INSERT INTO employees (id, employee_code, full_name_en, full_name_ar, updated_at) VALUES
+        ('${id(10)}', 'EMP-0010', 'Amy', 'إيمي', now()), ('${id(11)}', 'EMP-0011', 'Ben', 'بن', now()), ('${id(12)}', 'EMP-0012', 'Cara', 'كارا', now()),
+        ('${id(13)}', 'EMP-0013', 'Dana', 'دانة', now()), ('${id(14)}', 'EMP-0014', 'Eli', 'إيلي', now()), ('${id(15)}', 'EMP-0015', 'Fadi', 'فادي', now());
+      INSERT INTO employments (id, employee_id, employment_type, join_date, updated_at) VALUES
+        ('${id(20)}', '${id(10)}', 'full_time', '2026-01-01', now()), ('${id(21)}', '${id(11)}', 'full_time', '2026-01-01', now()),
+        ('${id(22)}', '${id(12)}', 'full_time', '2026-01-01', now()), ('${id(23)}', '${id(13)}', 'full_time', '2026-01-01', now()),
+        ('${id(24)}', '${id(14)}', 'full_time', '2026-01-15', now()), ('${id(25)}', '${id(15)}', 'full_time', '2026-01-01', now());
+      INSERT INTO contracts (id, employment_id, number, version, start_date, end_date, duration_months, probation_months, gross_salary, insured_salary, status, updated_at) VALUES
+        ('${id(40)}', '${id(20)}', 'CON-2026-0001', 1, '2026-01-01', '2026-12-31', 12, 3, 10000, 10000, 'active', now()),
+        ('${id(41)}', '${id(21)}', 'CON-2026-0002', 1, '2026-01-01', '2026-12-31', 12, 3, 10000, 10000, 'active', now()),
+        ('${id(42)}', '${id(22)}', 'CON-2026-0003', 1, '2026-01-01', '2026-12-31', 12, 3, 10000, 10000, 'active', now()),
+        ('${id(43)}', '${id(23)}', 'CON-2026-0004', 1, '2026-01-01', '2026-12-31', 12, 3, 10000, 10000, 'active', now()),
+        ('${id(44)}', '${id(24)}', 'CON-2026-0005', 1, '2026-01-15', '2027-01-14', 12, 3, 10000, 10000, 'superseded', now()),
+        ('${id(45)}', '${id(25)}', 'CON-2026-0006', 1, '2026-01-01', '2026-12-31', 12, 3, 10000, 10000, 'active', now());
+      INSERT INTO contracts (id, employment_id, number, version, kind, start_date, end_date, duration_months, probation_months, gross_salary, insured_salary, status,
+          raise_reason, approval, sent_at, approved_by, approved_at, returned_reason, note, created_at, updated_at) VALUES
+        -- a draft HR entered, with a note
+        ('${id(31)}', '${id(20)}', 'CON-2026-0001-A1', 2, 'amendment', '2026-11-01', '2026-12-31', NULL, 0, 12500, 10000, 'draft', 'promotion', 'draft', NULL, NULL, NULL, NULL, ' Promoted after the audit ', '2026-10-18T10:00:00Z', now()),
+        -- returned by the CEO
+        ('${id(32)}', '${id(21)}', 'CON-2026-0002-A1', 2, 'amendment', '2026-11-01', '2026-12-31', NULL, 0, 11000, 10000, 'draft', 'annual', 'draft', '2026-10-18T11:00:00Z', NULL, NULL, 'Round it', NULL, '2026-10-18T10:30:00Z', now()),
+        -- with the CEO, nothing in the audit log
+        ('${id(33)}', '${id(22)}', 'CON-2026-0007', 2, 'contract', '2026-11-01', '2027-10-31', 12, 0, 12000, 10000, 'draft', 'performance', 'pending_ceo', '2026-10-18T13:00:00Z', NULL, NULL, NULL, NULL, '2026-10-18T12:30:00Z', now()),
+        -- approved with another raise, to sign
+        ('${id(34)}', '${id(23)}', 'CON-2026-0004-A1', 2, 'amendment', '2026-11-01', '2026-12-31', NULL, 0, 11200, 10000, 'draft', 'performance', 'approved', '2026-10-18T14:00:00Z', '${id(2)}', '2026-10-18T15:00:00Z', NULL, '', '2026-10-18T13:30:00Z', now()),
+        -- a renewal with new pay (a cut, from the 15th), signed
+        ('${id(35)}', '${id(24)}', 'CON-2027-0001', 2, 'contract', '2027-01-15', '2028-01-14', 12, 0, 9500, 9500, 'active', 'adjustment', 'approved', '2026-10-18T16:00:00Z', '${id(2)}', '2026-10-18T17:00:00Z', NULL, NULL, '2026-10-18T15:30:00Z', now()),
+        -- prepared from a request already
+        ('${id(36)}', '${id(25)}', 'CON-2026-0006-A1', 2, 'amendment', '2026-11-01', '2026-12-31', NULL, 0, 11000, 10000, 'draft', 'annual', 'pending_ceo', '2026-10-18T18:00:00Z', NULL, NULL, NULL, NULL, '2026-10-18T17:30:00Z', now());
+      INSERT INTO raise_requests (id, employee_id, employment_id, requester, raise_reason, comment, effective_from, status, contract_id, created_at, updated_at)
+        VALUES ('${id(50)}', '${id(15)}', '${id(25)}', 'self', 'annual', 'A good year', '2026-11-01', 'with_ceo', '${id(36)}', '2026-10-17T09:00:00Z', now());
+      INSERT INTO audit_log (user_id, action, entity_type, entity_id, diff, at) VALUES
+        ('${id(1)}', 'create', 'contract', '${id(31)}', '{}', '2026-10-18T10:00:00Z'),
+        ('${id(1)}', 'create', 'contract', '${id(32)}', '{}', '2026-10-18T10:30:00Z'),
+        ('${id(1)}', 'submit', 'contract', '${id(32)}', '{}', '2026-10-18T11:00:00Z'),
+        ('${id(2)}', 'return', 'contract', '${id(32)}', '{"reason":"Round it"}', '2026-10-18T12:00:00Z'),
+        ('${id(1)}', 'create', 'contract', '${id(34)}', '{}', '2026-10-18T13:30:00Z'),
+        ('${id(3)}', 'submit', 'contract', '${id(34)}', '{}', '2026-10-18T14:00:00Z'),
+        ('${id(2)}', 'approve', 'contract', '${id(34)}', '{"decision":"approve_other","comment":"Make it 12%"}', '2026-10-18T15:00:00Z'),
+        ('${id(1)}', 'create', 'contract', '${id(35)}', '{}', '2026-10-18T15:30:00Z'),
+        ('${id(3)}', 'sign', 'contract', '${id(35)}', '{}', '2026-10-19T09:00:00Z');
+    `);
+
+    await db.query(sql(migration));
+
+    const { rows: requests } = await db.query<Record<string, unknown>>(`
+      SELECT right(r.contract_id::text, 2) AS contract, r.origin, r.requester, r.status, r.raise_reason AS reason, r.comment, r.suggested_increase::text AS increase,
+        r.suggested_percent::text AS percent, r.suggested_gross::text AS gross, to_char(r.effective_from, 'YYYY-MM-DD') AS "from", u.email AS "by", r.done_at AS "doneAt"
+      FROM raise_requests r LEFT JOIN users u ON u.id = r.requested_by ORDER BY r.contract_id`);
+    const request = (contract: string, origin: string, requester: string, status: string, reason: string, comment: string, increase: string | null, gross: string | null, from: string, by: string | null) =>
+      expect.objectContaining({ contract, origin, requester, status, reason, comment, increase, percent: null, gross, from, by });
+    expect(requests).toEqual([
+      request('31', 'direct', 'hr', 'with_hr', 'promotion', 'Promoted after the audit', '2500.00', '12500.00', '2026-11-01', 'hr@x.test'),
+      request('32', 'direct', 'hr', 'with_hr', 'annual', 'Prepared directly by HR', '1000.00', '11000.00', '2026-11-01', 'hr@x.test'),
+      request('33', 'direct', 'hr', 'with_ceo', 'performance', 'Prepared directly by HR', '2000.00', '12000.00', '2026-11-01', null),
+      request('34', 'direct', 'hr', 'approved', 'performance', 'Prepared directly by HR', '1200.00', '11200.00', '2026-11-01', 'hr@x.test'),
+      // a cut: the gross alone; a reason kept from before, and a renewal's start that isn't a 1st
+      request('35', 'direct', 'hr', 'done', 'adjustment', 'Prepared directly by HR', null, '9500.00', '2027-01-15', 'hr@x.test'),
+      // the one asked for stays as it was
+      request('36', 'request', 'self', 'with_ceo', 'annual', 'A good year', null, null, '2026-11-01', null),
+    ]);
+    expect(requests.filter((r) => r.contract !== '35').every((r) => r.doneAt === null)).toBe(true);
+    expect((requests.find((r) => r.contract === '35')!.doneAt as Date).toISOString()).toBe('2026-10-19T09:00:00.000Z');
+
+    const { rows: steps } = await db.query<Record<string, unknown> & { at: Date }>(`
+      SELECT right(r.contract_id::text, 2) AS contract, s.kind, s.decision, s.comment, s.raise_reason AS reason, s.increase_amount::text AS amount,
+        s.increase_percent::text AS percent, s.gross::text AS gross, s.way, to_char(s.effective_date, 'YYYY-MM-DD') AS date, s.contract_number AS number, u.email AS "by", s.at
+      FROM raise_request_steps s JOIN raise_requests r ON r.id = s.request_id LEFT JOIN users u ON u.id = s.actor_id ORDER BY r.contract_id, s.id`);
+    const row = (s: (typeof steps)[number]) => [s.contract, s.kind, s.decision, s.comment, s.reason, s.amount, s.percent, s.gross, s.way, s.date, s.number, s.by];
+    expect(steps.map(row)).toEqual([
+      ['31', 'prepared', null, 'Promoted after the audit', 'promotion', '2500.00', '25.00', '12500.00', 'amendment', '2026-11-01', 'CON-2026-0001-A1', 'hr@x.test'],
+      ['32', 'prepared', null, 'Prepared directly by HR', 'annual', '1000.00', '10.00', '11000.00', 'amendment', '2026-11-01', 'CON-2026-0002-A1', 'hr@x.test'],
+      ['32', 'sent', null, null, null, null, null, '11000.00', null, null, 'CON-2026-0002-A1', 'hr@x.test'],
+      ['32', 'returned', null, 'Round it', null, null, null, null, null, null, 'CON-2026-0002-A1', 'ceo@x.test'],
+      ['33', 'prepared', null, 'Prepared directly by HR', 'performance', '2000.00', '20.00', '12000.00', 'contract', '2026-11-01', 'CON-2026-0007', null],
+      ['33', 'sent', null, null, null, null, null, '12000.00', null, null, 'CON-2026-0007', null],
+      ['34', 'prepared', null, 'Prepared directly by HR', 'performance', '1200.00', '12.00', '11200.00', 'amendment', '2026-11-01', 'CON-2026-0004-A1', 'hr@x.test'],
+      ['34', 'sent', null, null, null, null, null, '11200.00', null, null, 'CON-2026-0004-A1', 'hr2@x.test'],
+      ['34', 'ceo_decision', 'approve_other', 'Make it 12%', null, '1200.00', '12.00', '11200.00', null, null, 'CON-2026-0004-A1', 'ceo@x.test'],
+      ['35', 'prepared', null, 'Prepared directly by HR', 'adjustment', '-500.00', '-5.00', '9500.00', 'contract', '2027-01-15', 'CON-2027-0001', 'hr@x.test'],
+      ['35', 'sent', null, null, null, null, null, '9500.00', null, null, 'CON-2027-0001', null],
+      ['35', 'ceo_decision', 'approve', null, null, '-500.00', '-5.00', '9500.00', null, null, 'CON-2027-0001', 'ceo@x.test'],
+      ['35', 'signed', null, null, null, null, null, '9500.00', null, '2027-01-15', 'CON-2027-0001', 'hr2@x.test'],
+    ]);
+    // each when it happened: the version entered, sent, returned, approved, signed
+    const at = (contract: string) => steps.filter((s) => s.contract === contract).map((s) => s.at.toISOString());
+    expect(at('32')).toEqual(['2026-10-18T10:30:00.000Z', '2026-10-18T11:00:00.000Z', '2026-10-18T12:00:00.000Z']);
+    expect(at('35')).toEqual(['2026-10-18T15:30:00.000Z', '2026-10-18T16:00:00.000Z', '2026-10-18T17:00:00.000Z', '2026-10-19T09:00:00.000Z']);
+
+    // a direct one is by HR; adjustment and any day for a direct one only; the reason before only on the CEO's change
+    const ask = (origin: string, requester: string, reason: string, from: string) =>
+      db.query(
+        `INSERT INTO raise_requests (id, employee_id, employment_id, requester, origin, raise_reason, comment, effective_from, status, updated_at)
+         VALUES (gen_random_uuid(), '${id(15)}', '${id(25)}', $1, $2, $3, 'x', $4, 'with_hr', now())`,
+        [requester, origin, reason, from],
+      );
+    await expect(ask('direct', 'self', 'annual', '2026-11-01')).rejects.toThrow(/raise_requests_origin_check/);
+    await expect(ask('elsewhere', 'hr', 'annual', '2026-11-01')).rejects.toThrow(/raise_requests_origin_check/);
+    await expect(ask('request', 'hr', 'adjustment', '2026-11-01')).rejects.toThrow(/raise_requests_raise_reason_check/);
+    await expect(ask('request', 'hr', 'annual', '2026-11-15')).rejects.toThrow(/raise_requests_effective_from_check/);
+    const step = (kind: string, decision: string | null, reason: string | null, from: string) =>
+      db.query(`INSERT INTO raise_request_steps (request_id, kind, decision, raise_reason, raise_reason_from) VALUES ('${id(50)}', $1, $2, $3, $4)`, [kind, decision, reason, from]);
+    await expect(step('prepared', null, 'annual', 'performance')).rejects.toThrow(/raise_request_steps_raise_reason_from_check/);
+    await expect(step('ceo_decision', 'approve', null, 'performance')).rejects.toThrow(/raise_request_steps_raise_reason_from_check/);
+    await step('ceo_decision', 'approve', 'annual', 'performance');
   });
 
   describe('super admin: the role, given to the original admin account only (owner’s decision, 15 October 2026)', () => {

@@ -42,6 +42,15 @@ import {
   STATUS_BADGE,
   STATUS_FILTERS,
   withHrCount,
+  apiRaiseRequestsPath,
+  askedWord,
+  ceoDecidesHere,
+  ceoDoneMessage,
+  inStatus,
+  isDirect,
+  noneWithStatusText,
+  raiseRequestsDoneHref,
+  reasonChangeText,
 } from './list';
 
 const as = (...roles: Role[]) => ({ roles });
@@ -105,16 +114,30 @@ describe('who sees raise requests', () => {
 });
 
 describe('the status filter', () => {
-  it('offers All, then each status in order', () => {
-    expect(STATUS_FILTERS.map((f) => f.label)).toEqual(['All', 'With HR', 'With the CEO', 'Approved', 'Rejected', 'Done']);
-    expect(STATUS_FILTERS.map((f) => f.value)).toEqual(['', 'with_hr', 'with_ceo', 'approved', 'declined', 'done']);
+  it('offers All first, the open stages, then the history together and each of it (19 October 2026)', () => {
+    expect(STATUS_FILTERS.map((f) => f.label)).toEqual(['All', 'With HR', 'With the CEO', 'History: approved, done or rejected', 'Approved', 'Done', 'Rejected']);
+    expect(STATUS_FILTERS.map((f) => f.value)).toEqual(['', 'with_hr', 'with_ceo', 'history', 'approved', 'done', 'declined']);
   });
 
-  it('reads a known status from the address, else All', () => {
+  it('reads a known status from the address, History too, else All', () => {
     expect(readStatus({ status: 'with_ceo' })).toBe('with_ceo');
+    expect(readStatus({ status: 'history' })).toBe('history');
     expect(readStatus({ status: 'pending' })).toBe('');
     expect(readStatus({ status: ['with_hr', 'done'] })).toBe('');
     expect(readStatus({})).toBe('');
+  });
+
+  it('History: every request read, kept to those the CEO approved, done or rejected', () => {
+    expect(raiseRequestsHref('history')).toBe('/raise-requests?status=history');
+    expect(apiRaiseRequestsPath('history')).toBe('/raise-requests');
+    expect(apiRaiseRequestsPath('done')).toBe('/raise-requests?status=done');
+    expect(apiRaiseRequestsPath('')).toBe('/raise-requests');
+    const statuses = ['with_hr', 'with_ceo', 'approved', 'declined', 'done'] as const;
+    expect(statuses.filter((status) => inStatus({ status }, 'history'))).toEqual(['approved', 'declined', 'done']);
+    // the API filtered the others already
+    expect(statuses.every((status) => inStatus({ status }, 'with_hr'))).toBe(true);
+    expect(noneWithStatusText('history')).toBe('No raise requests approved, done or rejected yet.');
+    expect(noneWithStatusText('done')).toBe('No raise requests with this status.');
   });
 
   it('links to a status, and counts', () => {
@@ -132,6 +155,50 @@ describe('the status filter', () => {
       declined: 'bg-danger-soft text-danger',
       done: 'bg-ok-soft text-ok',
     });
+  });
+});
+
+describe('a raise HR prepared directly (owner, 19 October 2026: every raise on Raise Requests)', () => {
+  const direct = request({ origin: 'direct', requester: 'hr', requestedBy: { email: 'hr@trendlix.com' }, status: 'with_ceo', raise: prepared });
+
+  it('says so where the requester is shown, and that it was prepared, not asked', () => {
+    expect(isDirect(direct)).toBe(true);
+    expect(isDirect(request())).toBe(false);
+    // an API from before has asked ones only
+    expect(isDirect(request({ origin: undefined }))).toBe(false);
+    expect(requesterText(direct)).toEqual({ who: 'Prepared directly by HR', email: 'hr@trendlix.com' });
+    expect(askedWord(direct)).toBe('prepared');
+    expect(askedWord(request())).toBe('asked');
+    expect(progressText(direct).text).toBe('HR sent the raise to the CEO');
+  });
+
+  it('is carried on with by HR, never rejected; the CEO decides it here while it is with them', () => {
+    expect(requestActions(as('hr'), { ...direct, status: 'with_hr', raise: { ...prepared, stage: 'returned' } })).toEqual({
+      decide: false,
+      prepare: false,
+      continueRaise: true,
+      decline: false,
+    });
+    expect(ceoDecidesHere(as('ceo'), direct)).toBe(true);
+    expect(ceoDecidesHere(as('ceo'), request({ status: 'with_ceo', raise: prepared }))).toBe(true);
+    expect(ceoDecidesHere(as('hr', 'finance'), direct)).toBe(false);
+    expect(ceoDecidesHere(as('ceo'), { ...direct, status: 'approved', raise: { ...prepared, stage: 'approved' } })).toBe(false);
+    expect(ceoDecidesHere(as('ceo'), request({ status: 'with_ceo', raise: null }))).toBe(false);
+  });
+
+  it('a renewal with new pay says so; from its start, a day that may not be a 1st', () => {
+    expect(preparedRaiseText({ ...prepared, way: 'contract', change: 'renewal' })?.title).toBe('CON-2026-0001-A1 · Renewal');
+    expect(preparedRaiseText({ ...prepared, change: 'amendment' })?.title).toBe('CON-2026-0001-A1 · Amendment');
+    expect(effectiveFromText(request({ effectiveFrom: '2027-01-15' }))).toBe('15/01/2027');
+  });
+
+  it('back to the page once the CEO decides, saying what was done', () => {
+    expect(raiseRequestsDoneHref('with_ceo', 'raise-approved')).toBe('/raise-requests?status=with_ceo&done=raise-approved');
+    expect(raiseRequestsDoneHref('', 'raise-returned')).toBe('/raise-requests?done=raise-returned');
+    expect(ceoDoneMessage({ done: 'raise-approved-other' })).toMatch(/^Raise approved with your raise/);
+    expect(ceoDoneMessage({ done: 'raise-declined' })).toBe('Raise rejected: its request shows as rejected, with your comment.');
+    expect(ceoDoneMessage({ done: 'toString' })).toBeNull();
+    expect(ceoDoneMessage({})).toBeNull();
   });
 });
 
@@ -319,6 +386,32 @@ describe('the log', () => {
     expect(stepText(step({ kind: 'unsigned', contractNumber: 'CON-2026-0001-A1' }), 'self').title).toBe('Signing undone: the raise is to be signed again');
     expect(stepText(step({ kind: 'raise_deleted' }), 'self').title).toBe('The raise was deleted: the request is with HR again');
     expect(stepText(step({ kind: 'changed', gross: 11500 }), 'self')).toEqual({ title: 'HR changed the approved raise: it goes to the CEO again', detail: 'Gross EGP 11,500.00' });
+  });
+
+  it('a raise HR prepared directly: its prepared step says so, with the reason and the raise; a renewal as such (19 October 2026)', () => {
+    const made = step({ kind: 'prepared', raiseReason: 'annual', way: 'amendment', effectiveDate: '2026-11-01', contractNumber: 'CON-2026-0001-A1', increaseAmount: 2500, increasePercent: 25, gross: 12500 });
+    const direct = { origin: 'direct' as const, raise: { ...prepared, change: 'amendment' as const } };
+    expect(stepText(made, 'hr', direct)).toEqual({
+      title: 'Prepared directly by HR',
+      detail: 'Annual raise · CON-2026-0001-A1 · Amendment from 01/11/2026 · +EGP 2,500.00 (+25%) → EGP 12,500.00',
+    });
+    const renewal = { origin: 'direct' as const, raise: { ...prepared, way: 'contract' as const, change: 'renewal' as const } };
+    expect(stepText({ ...made, way: 'contract', effectiveDate: '2027-01-15' }, 'hr', renewal).detail).toMatch(/· Renewal from 15\/01\/2027 ·/);
+    // one prepared from an asked request stays as it was
+    expect(stepText(made, 'hr', { origin: 'request', raise: prepared }).title).toBe('HR prepared the raise');
+  });
+
+  it('the CEO’s other reason on their decision (19 October 2026: "i might want to ammend the raise reason")', () => {
+    expect(reasonChangeText({ raiseReason: 'annual', raiseReasonFrom: 'performance' })).toBe('Reason changed from Performance raise to Annual raise');
+    expect(reasonChangeText({ raiseReason: null, raiseReasonFrom: null })).toBeNull();
+    expect(reasonChangeText({ raiseReason: 'annual' })).toBeNull();
+    expect(stepText(step({ kind: 'ceo_decision', decision: 'approve', raiseReason: 'annual', raiseReasonFrom: 'performance' }), 'manager')).toEqual({
+      title: 'The CEO approved it',
+      detail: 'Reason changed from Performance raise to Annual raise',
+    });
+    expect(
+      stepText(step({ kind: 'ceo_decision', decision: 'approve_other', figure: 'percent', increaseAmount: 900, increasePercent: 10, gross: 9900, raiseReason: 'counter_offer', raiseReasonFrom: 'performance' }), 'hr').detail,
+    ).toBe('+10% (+EGP 900.00) → EGP 9,900.00 · Reason changed from Performance raise to Counter-offer raise');
   });
 
   it('marks the decisions, the signing and the setbacks', () => {

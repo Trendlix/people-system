@@ -1,3 +1,4 @@
+import { isTrainingType } from '@trendlix/shared';
 import { daysBetween } from '../employees/[id]/contracts/dates';
 import { isOpenRaise } from '../my-requests/requests';
 import type { RaiseRequest } from '../../../lib/raise-types';
@@ -18,13 +19,14 @@ export const RAISE_NEWS_DAYS = 30;
 /**
  * A report's probation while they are on it: when it ends, how many days from today (negative once passed), and whether
  * that is soon (within PROBATION_SOON_DAYS, or passed while they are still on probation). Null when they aren't on
- * probation, or it has no end date.
+ * probation, or it has no end date; and for a trainee or an intern, whose agreement has none (19 October 2026), even with
+ * a Probation from before then.
  */
 export function probationOf(
-  e: Pick<Employment, 'status' | 'probationEnd'> | null | undefined,
+  e: (Pick<Employment, 'status' | 'probationEnd'> & { employmentType?: Employment['employmentType'] }) | null | undefined,
   today: string,
 ): { end: string; days: number; soon: boolean } | null {
-  if (!e || e.status !== 'probation' || !e.probationEnd) return null;
+  if (!e || e.status !== 'probation' || !e.probationEnd || isTrainingType(e.employmentType)) return null;
   const days = daysBetween(today, e.probationEnd.slice(0, 10));
   if (Number.isNaN(days)) return null;
   return { end: e.probationEnd.slice(0, 10), days, soon: days <= PROBATION_SOON_DAYS };

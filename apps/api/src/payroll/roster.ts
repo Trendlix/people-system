@@ -8,6 +8,7 @@ import {
   shiftExpectedHours,
   shiftWorkHours,
   traineeStagePeriods,
+  underLabourLaw,
   type EmploymentType,
   type LawRates,
   type PayBasis,
@@ -289,8 +290,10 @@ export function roster(
         // the days employed under a contract: the divisor for a whole month (paidDaysOf)
         paidDays: paidDays.reduce((sum, n) => sum + n, 0),
         segments,
-        // freelancers: no social insurance, no tax, no Martyrs' Fund
-        statutory: e.employmentType !== 'freelance',
+        // outside the labour law, no social insurance, no tax, no Martyrs' Fund: freelancers, and unpaid interns (owner,
+        // 19 October 2026: "in case of trainee, we are not paying them salary, its just transportation allowance"), whose
+        // internship agreement pays no wage (the gross 0), so the line pays its allowances alone
+        statutory: underLabourLaw(e.employmentType),
         insured: p.socialInsured,
         // as the Social Insurance tab shows it, for the run's year (its rates set by law)
         insuredWage: insuredWageOfEmployee(p.insuranceComprehensiveWage, contractTotal, law)!.amount,

@@ -3,7 +3,17 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { EMPLOYMENT_TYPES, LABELS, PROBATION_MONTHS, WORK_ARRANGEMENTS, WORK_NATURE_LABELS, WORK_NATURES, type WorkNature } from '@trendlix/shared';
+import {
+  agreementName,
+  EMPLOYMENT_TYPES,
+  isTrainingType,
+  LABELS,
+  PROBATION_MONTHS,
+  WORK_ARRANGEMENTS,
+  WORK_NATURE_LABELS,
+  WORK_NATURES,
+  type WorkNature,
+} from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
@@ -24,7 +34,8 @@ import { HazardousWorkField } from './leave-fields';
 // Law Art. 1(6–8)), casual work warned past its 6 months. Adding an employment, choosing its department or team fills in
 // the Direct manager with its lead (owner, 19 October 2026: "i want to add department lead person, the person in
 // charge"): the team lead, else the department's head, while the manager is still empty or still that suggestion; one
-// HR picked is never changed.
+// HR picked is never changed. A trainee's or an intern's employment has no probation (19 October 2026: "interns to be
+// labeled trainees instead of probation"), which the status and the join date say.
 
 export type EmploymentPickers = {
   departments: Department[];
@@ -47,8 +58,8 @@ const OFFICE_DAYS = [
   [4, 'Thu'],
 ] as const;
 
-/** Only people with a current employment can be picked as a new manager. */
-const EMPLOYED: readonly string[] = ['active', 'probation', 'on_leave', 'notice_period'];
+/** Only people with a current employment can be picked as a new manager. A current trainee or intern too (19 October 2026). */
+const EMPLOYED: readonly string[] = ['active', 'probation', 'trainee', 'intern', 'on_leave', 'notice_period'];
 
 /** The office days ticked before a failed save, else the saved ones. */
 function officeDaysOf(state: FormState, saved: number[]): Set<number> {
@@ -102,10 +113,10 @@ export function EmploymentFields({
   employment?: Employment;
 }) {
   const router = useRouter();
-  const status = statusField(employment);
   // Kept in state: office days show only for Hybrid, and the job titles listed are the chosen department's or team's.
   const [arrangement, setArrangement] = useState(() => valueOf(state, 'workArrangement', employment?.workArrangement ?? 'office'));
   const [type, setType] = useState(() => valueOf(state, 'employmentType', employment?.employmentType));
+  const status = statusField(employment, type);
   const [nature, setNature] = useState(() => valueOf(state, 'workNature', employment?.workNature ?? 'regular'));
   const [jobTitleId, setJobTitleId] = useState(() => valueOf(state, 'jobTitleId', employment?.jobTitleId));
   // A job title without a department on the employment brings its own department or team, so it stays selected.
@@ -366,9 +377,11 @@ export function EmploymentFields({
           />
           {/* the probation end is worked out, never typed (owner, 15 October 2026) */}
           <p id={fid('joinDate-hint')} className="hint">
-            {contractBelow
-              ? "The contract starts on it, and its probation, set below, runs from it: at most 3 months, and none for someone who worked here before (Labour Law Art. 90)."
-              : `Probation is worked out from it: ${PROBATION_MONTHS} months, or none for someone who worked here before (Labour Law Art. 90). Once the first contract is drafted, its probation applies.`}
+            {isTrainingType(type)
+              ? `The ${agreementName(type)} starts on it, with no probation.`
+              : contractBelow
+                ? "The contract starts on it, and its probation, set below, runs from it: at most 3 months, and none for someone who worked here before (Labour Law Art. 90)."
+                : `Probation is worked out from it: ${PROBATION_MONTHS} months, or none for someone who worked here before (Labour Law Art. 90). Once the first contract is drafted, its probation applies.`}
             {employment?.probationEnd && ` Probation ends ${formatDate(employment.probationEnd)}.`}
           </p>
         </div>

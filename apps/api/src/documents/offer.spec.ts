@@ -43,16 +43,37 @@ describe('which documents the Employment tab offers', () => {
     expect(offered('clearance_dues', s)).toBe(false);
   });
 
-  it('a trainee gets the training agreement, offer and certificate (the internship slots, 18 October 2026); payslips never', () => {
+  it('a trainee gets the training agreement and offer of their own (19 October 2026), and the certificate; payslips never', () => {
     const s = { employmentType: 'trainee', ending: null, ended: false } as const;
-    expect(offeredSlots(s)).toMatchObject({
-      contract: ['contract_internship', 'contract_amendment'],
-      hiring: ['offer_internship', 'nda'],
+    expect(offeredSlots(s)).toEqual({
+      contract: ['contract_trainee', 'contract_amendment'],
+      hiring: ['offer_trainee', 'nda'],
+      insurance: [],
       letters: ['bank_letter', 'hr_letter_ar', 'hr_letter_en', 'cert_experience', 'cert_internship'],
+      leaving: [],
     });
     expect(offered('payslip_ar', s)).toBe(false);
     expect(offered('offer_full_time', s)).toBe(false);
+    // the internship slots are the unpaid interns'
+    expect(offered('contract_internship', s)).toBe(false);
+    expect(offered('offer_internship', s)).toBe(false);
     expect(offered('no_such_slot', s)).toBe(false);
+  });
+
+  it('an unpaid intern gets the owner’s internship agreement and offer, and the certificate; no social insurance forms (19 October 2026)', () => {
+    const s = { employmentType: 'intern', ending: null, ended: false } as const;
+    expect(offeredSlots(s)).toEqual({
+      contract: ['contract_internship', 'contract_amendment'],
+      hiring: ['offer_internship', 'nda'],
+      insurance: [],
+      letters: ['bank_letter', 'hr_letter_ar', 'hr_letter_en', 'cert_experience', 'cert_internship'],
+      leaving: [],
+    });
+    expect(offered('contract_trainee', s)).toBe(false);
+    expect(offered('offer_trainee', s)).toBe(false);
+    expect(offered('insurance_form_1', s)).toBe(false);
+    // an ending: the clearance, and Form 6 never (no company social insurance)
+    expect(offeredSlots({ ...s, ending: { initiator: 'company' } })).toMatchObject({ insurance: [], leaving: ['clearance_dues'] });
   });
 
   it('a freelancer’s contract is the freelance agreement', () => {

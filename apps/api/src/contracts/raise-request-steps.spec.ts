@@ -1,5 +1,5 @@
 import { Prisma } from '../generated/prisma/client.js';
-import { raiseRequestView, suggestionView, type RequestRow } from './raise-requests.service.js';
+import { raiseChangeOf, raiseRequestView, suggestionView, type RequestRow } from './raise-requests.service.js';
 import { stepFigures, stepView, typedFigure, type StepRow } from './raise-request-steps.js';
 
 // The log of a raise request and what each viewer sees of it (owner, 17 October 2026: "all the request steps to be
@@ -17,6 +17,7 @@ function step(id: number, kind: string, over: Partial<StepRow> = {}): StepRow {
     kind,
     decision: null,
     raiseReason: null,
+    raiseReasonFrom: null,
     comment: null,
     figure: null,
     increaseAmount: null,
@@ -142,6 +143,7 @@ function request(over: Partial<RequestRow> = {}): RequestRow {
     employmentId: 'm1',
     requestedById: 'ben',
     requester: 'self',
+    origin: 'request',
     raiseReason: 'performance',
     comment: 'Led the audit',
     suggestedIncrease: d(1500),
@@ -195,7 +197,7 @@ function request(over: Partial<RequestRow> = {}): RequestRow {
 
 describe('a request as each viewer sees it', () => {
   it('keeps what it answered before 17 October 2026: the comment as `reason`, the statuses, the raise and the decision', () => {
-    const v = raiseRequestView(request(), 'full', 'hr', 10000);
+    const v = raiseRequestView(request(), 'full', 'hr', { grossSalary: 10000, endDate: '2027-06-30' });
     expect(v).toMatchObject({
       reason: 'Led the audit',
       comment: 'Led the audit',
@@ -203,7 +205,8 @@ describe('a request as each viewer sees it', () => {
       status: 'done',
       suggestedGross: 11500,
       suggestion: { kind: 'amount', amount: 1500, percent: null, gross: 11500 },
-      raise: { number: 'CON-2026-0001-A1', way: 'amendment', stage: 'signed', effectiveDate: '2026-11-01', previousGross: 10000, newGross: 11200 },
+      origin: 'request',
+      raise: { number: 'CON-2026-0001-A1', way: 'amendment', change: 'amendment', stage: 'signed', effectiveDate: '2026-11-01', previousGross: 10000, newGross: 11200 },
       decision: null,
       inForce: {
         number: 'CON-2026-0001-A1',
@@ -259,5 +262,32 @@ describe('a request as each viewer sees it', () => {
     expect(suggestionView(percent, 'manager', true)).toEqual({ kind: 'percent', amount: null, percent: 8, gross: null });
     expect(suggestionView(percent, 'manager', false)).toBeNull();
     expect(suggestionView({ suggestedIncrease: null, suggestedPercent: null, suggestedGross: null }, 'full', true)).toBeNull();
+  });
+});
+
+describe('the CEO’s other reason, on the log (owner, 19 October 2026: "i might want to ammend the raise reason, not only the money")', () => {
+  const decided = step(6, 'ceo_decision', { decision: 'approve', comment: 'Fine', raiseReason: 'annual', raiseReasonFrom: 'performance' });
+
+  it('from and to, for everyone who sees the request: a reason, not a figure', () => {
+    for (const viewer of ['full', 'self', 'manager'] as const) {
+      expect(stepView(decided, viewer, { mine: true, done: false })).toMatchObject({ raiseReason: 'annual', raiseReasonFrom: 'performance' });
+    }
+    expect(stepView(step(6, 'ceo_decision', { decision: 'approve' }), 'full', { mine: false, done: false })).toMatchObject({ raiseReason: null, raiseReasonFrom: null });
+  });
+});
+
+describe('a request prepared directly by HR (owner, 19 October 2026: every raise on Raise Requests)', () => {
+  const contract = (kind: string, startDate: string) => ({ kind, startDate: new Date(`${startDate}T00:00:00Z`) });
+
+  it('says where it came from, and what its raise is to the version before: an amendment, a new contract or a renewal', () => {
+    expect(raiseRequestView(request({ origin: 'direct', requester: 'hr' }), 'full', 'hr').origin).toBe('direct');
+    expect(raiseChangeOf(contract('amendment', '2026-11-01'), { endDate: '2027-06-30' })).toBe('amendment');
+    expect(raiseChangeOf(contract('contract', '2026-11-01'), { endDate: '2027-06-30' })).toBe('new_contract');
+    expect(raiseChangeOf(contract('contract', '2027-07-01'), { endDate: '2027-06-30' })).toBe('renewal');
+    // an open-ended one has no end: a contract after it is within its term
+    expect(raiseChangeOf(contract('contract', '2027-07-01'), { endDate: null })).toBe('new_contract');
+    expect(raiseChangeOf(contract('contract', '2027-07-01'), null)).toBe('new_contract');
+    const renewal = request({ origin: 'direct', contract: { ...request().contract!, kind: 'contract', startDate: new Date('2027-07-01T00:00:00Z') } });
+    expect(raiseRequestView(renewal, 'manager', 'mona', { grossSalary: 10000, endDate: '2027-06-30' }).raise).toMatchObject({ change: 'renewal', previousGross: null });
   });
 });

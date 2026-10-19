@@ -5,6 +5,9 @@ import { useState } from 'react';
 import {
   CONTRACT_FORM_LABELS,
   CONTRACT_FORMS,
+  INTERN_DEFAULT_MONTHS,
+  INTERN_MAX_MONTHS,
+  isTrainingType,
   lawRatesFor,
   RAISE_REASON_LABELS,
   raiseReasonOptions,
@@ -25,6 +28,7 @@ import { choice, PayFields, typedPayOf, usePay, type PayDefaults } from './pay-f
 import { payChangeWarning } from './raise';
 import { stageRows, stagesOf, type SavedStage, type StageRow } from './trainee-stages';
 import { TraineeStagesEditor } from './trainee-stages-editor';
+import { hireTooSoonText, noProbationHint } from './training';
 
 // The form of the New contract, Renew and Edit draft pages. While HR types, it shows when the contract ends, when
 // probation ends, and the pay (pay-fields.tsx): the basic and variable parts of the gross, for a full-time contract the
@@ -43,6 +47,16 @@ import { TraineeStagesEditor } from './trainee-stages-editor';
 // A renewal asks whether its pay changes (owner's decisions, 16 October 2026: a renewal whose pay changes counts as a
 // raise): with the same pay it starts from the version renewed and needs no approval, as before; when the pay changes,
 // why (required), and the CEO approves it before it is signed.
+//
+// Trainees and interns (owner, 19 October 2026: "interns to be labeled trainees instead of probation and their contracts
+// are never renewed", then "or can be only renewed 1 time, after that it should be converted to a full time contract";
+// and "in case of trainee, we are not paying them salary, its just transportation allowance"): a trainee's training
+// agreement and an intern's internship agreement have no probation (shown as 0, sent as 0, not editable). An intern's
+// is the unpaid internship's: fixed-term only, 3 months unless HR chooses another (12 at most), a monthly pay basis with
+// no gross (No wage), the allowances paid on top, and no training stages. Hiring one in one form, HR is warned when the
+// join date is less than 6 months after their last agreement ended ("a new trainee contract can be issued after 6 months
+// of the expiration of the last trainee contract"), which the API refuses. Converting an agreement to a full-time
+// contract uses this form as a full-time one, with its own start date hint (`startHint`).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -84,6 +98,8 @@ export function ContractForm({
   renewal,
   payChange,
   probationHint,
+  startHint,
+  trainingAgain,
   employmentType: employmentTypeProp,
   dateOfBirth,
   today,
@@ -105,6 +121,13 @@ export function ContractForm({
   payChange?: { version: number; pay: VersionPay; changes: boolean; reason: RaiseReason | null };
   /** Why the probation starts as it does, e.g. someone who already had probation with the company. */
   probationHint?: string;
+  /** What the start date's hint says instead of the first contract's, e.g. converting an agreement to full-time. */
+  startHint?: string;
+  /**
+   * Hiring in one form: the person's name and their last training or internship agreement (the profile's nextTraining),
+   * to warn when a trainee's or an intern's join date is before the 6 months are up; none when they never had one.
+   */
+  trainingAgain?: { name: string; lastEnded: string; from: string } | null;
   /**
    * The employment's type: a full-time contract has a social insurance copy, whose salary is the insured salary; a
    * trainee's is the training agreement, with its stages. Hiring in one form, the type chosen with the job instead.
@@ -153,8 +176,12 @@ export function ContractForm({
   const type = job ? typed.employmentType : employmentTypeProp;
   const fullTime = type === 'full_time';
   const trainee = type === 'trainee';
-  // a training agreement runs for its stages, one after the other: a fixed term of their months
-  const length = trainee ? 'fixed' : lengthOf(typed.form);
+  // the unpaid internship (19 October 2026): a short fixed term, no wage
+  const intern = type === 'intern';
+  // a trainee's or an intern's agreement has no probation
+  const training = isTrainingType(type);
+  // a training agreement runs for its stages, one after the other: a fixed term of their months; an internship a fixed term
+  const length = trainee || intern ? 'fixed' : lengthOf(typed.form);
   const trainingMonths = traineeMonths(stagesOf(stages));
   const months = trainee ? trainingMonths : Number(typed.durationMonths);
   const end =
@@ -165,7 +192,7 @@ export function ContractForm({
       : length === 'specific_job'
         ? parseDate(typed.endDate) || null
         : null;
-  const probation = renewal ? 0 : Number(typed.probationMonths);
+  const probation = renewal || training ? 0 : Number(typed.probationMonths);
   const probationEnds = start && Number.isInteger(probation) && probation > 0 && probation <= 3 ? probationEnd(start, probation) : null;
   // the salary, with the rates set by law of the year the contract starts (this year while there is no start date)
   const year = Number((start ?? today).slice(0, 4));
@@ -173,6 +200,9 @@ export function ContractForm({
   const pay = usePay(state, defaults, allowanceTypes, rates, trainee ? (stages[0]?.pay ?? '') : null);
   const answer = answerOf(typed.payChange);
   const payWarning = payChange && payChangeWarning(answer, typedPayOf(pay), payChange.pay, payChange.version);
+  // hiring a trainee or an intern again: 6 months after the last agreement ended at the earliest (the API refuses sooner)
+  const tooSoon =
+    job && trainingAgain ? hireTooSoonText({ type, joinDate: start, today, name: trainingAgain.name, nextTraining: trainingAgain }) : null;
 
   function track(e: React.FormEvent<HTMLFormElement>) {
     const t = e.target;
@@ -181,6 +211,20 @@ export function ContractForm({
     // the allowance rows and the training stages report their changes through onChange
     if (name === 'allowanceTypeId' || name === 'allowanceAmount' || name.startsWith('traineeStage')) return;
     if (pay.track(name, value)) return;
+    if (name === 'employmentType') {
+      // hiring in one form: an internship runs 3 months to start with, the others the settings' months
+      setTyped((v) => ({
+        ...v,
+        employmentType: value,
+        durationMonths:
+          value === 'intern' && v.employmentType !== 'intern'
+            ? String(INTERN_DEFAULT_MONTHS)
+            : value !== 'intern' && v.employmentType === 'intern'
+              ? String(defaults.durationMonths)
+              : v.durationMonths,
+      }));
+      return;
+    }
     setTyped((v) => ({ ...v, [name]: value }));
   }
 
@@ -192,6 +236,7 @@ export function ContractForm({
         <>
           <h2 className="font-semibold">Job</h2>
           {job(state, fid)}
+          <div role="status">{tooSoon && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{tooSoon}</p>}</div>
           <h2 className="border-t border-line pt-6 font-semibold">Contract</h2>
         </>
       )}
@@ -223,7 +268,7 @@ export function ContractForm({
               ? `A renewal starts the day after ${renewal.after} ends.`
               : job
                 ? 'The first contract starts on the join date.'
-                : 'The join date, unless the contract starts later. Leave empty for the join date.'}
+                : (startHint ?? 'The join date, unless the contract starts later. Leave empty for the join date.')}
           </p>
         </div>
 
@@ -234,6 +279,12 @@ export function ContractForm({
           {renewal ? (
             // not sent: no probation on a renewal
             <input id={fid('probationMonths')} value="0" readOnly aria-describedby={fid('probationMonths-hint')} className="input bg-canvas text-muted" />
+          ) : training ? (
+            // a trainee's or an intern's agreement: none, sent as 0 (the API refuses more)
+            <>
+              <input id={fid('probationMonths')} value="0" readOnly aria-describedby={fid('probationMonths-hint')} className="input bg-canvas text-muted" />
+              <input type="hidden" name="probationMonths" value="0" />
+            </>
           ) : (
             <input
               id={fid('probationMonths')}
@@ -249,9 +300,11 @@ export function ContractForm({
             />
           )}
           <p id={fid('probationMonths-hint')} className="hint">
-            {renewal
-              ? 'No probation on a renewal: probation comes once with an employer (Labour Law Art. 90).'
-              : `${probationHint ?? 'At most 3 months, and only once with the company (Labour Law Art. 90). 0 for none.'}${probationEnds ? ` Probation ends on ${formatDate(probationEnds)}.` : ''}`}
+            {training
+              ? noProbationHint(type)
+              : renewal
+                ? 'No probation on a renewal: probation comes once with an employer (Labour Law Art. 90).'
+                : `${probationHint ?? 'At most 3 months, and only once with the company (Labour Law Art. 90). 0 for none.'}${probationEnds ? ` Probation ends on ${formatDate(probationEnds)}.` : ''}`}
           </p>
         </div>
       </div>
@@ -270,6 +323,32 @@ export function ContractForm({
             onChange={setStages}
           />
           {end && <p className="text-sm">The training agreement ends on {formatDate(end)}, after its last stage.</p>}
+        </div>
+      ) : intern ? (
+        // the internship agreement: a fixed term, short, of its months
+        <div className="sm:max-w-[calc(50%-0.625rem)]">
+          <input type="hidden" name="form" value="fixed" />
+          <label htmlFor={fid('durationMonths')} className="label">
+            Length in months
+          </label>
+          <input
+            key="intern"
+            id={fid('durationMonths')}
+            name="durationMonths"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={INTERN_MAX_MONTHS}
+            step={1}
+            required
+            aria-describedby={fid('durationMonths-hint')}
+            defaultValue={typed.durationMonths}
+            className="input tabular-nums"
+          />
+          <p id={fid('durationMonths-hint')} className="hint">
+            An internship agreement is short: 1 to {INTERN_MAX_MONTHS} months, {INTERN_DEFAULT_MONTHS} unless you choose another.{' '}
+            {end ? `Ends on ${formatDate(end)}.` : start ? 'Enter the length to see when it ends.' : 'Enter the start date to see when it ends.'}
+          </p>
         </div>
       ) : (
         <fieldset className="space-y-4" aria-describedby={fid('form-hint')}>
@@ -291,6 +370,7 @@ export function ContractForm({
                 Length in months
               </label>
               <input
+                key="contract"
                 id={fid('durationMonths')}
                 name="durationMonths"
                 type="number"
@@ -348,6 +428,7 @@ export function ContractForm({
         fid={fid}
         allowanceTypes={allowanceTypes}
         fullTime={fullTime}
+        noWage={intern}
         year={year}
         yearIs="the year the contract starts"
         lead={

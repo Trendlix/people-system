@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { LABELS, OFFER_VALID_DAYS, PAY_BASIS_LABELS } from '@trendlix/shared';
+import { INTERN_NO_WAGE_TEXT, LABELS, OFFER_VALID_DAYS, PAY_BASIS_LABELS } from '@trendlix/shared';
 import { DocumentViewer } from '@/components/document-viewer';
 import { getBrand } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -11,7 +11,7 @@ import type { OfferView } from '@/lib/types';
 import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
 import { addDays } from '../../employees/[id]/contracts/dates';
 import { formatEgp, hourlyNetTerms } from '../../employees/[id]/contracts/salary';
-import { FREELANCE_SHORT, workNatureLabel, workPatternNote } from '../../employees/employment-law';
+import { outsideLawShort, workNatureLabel, workPatternNote } from '../../employees/employment-law';
 import { arrangementLabel, FieldGrid, todayInCairo, type GridField } from '../../employees/ui';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { answerOffer, deleteOffer, emailOffer, extendOffer, hireFromOffer, linkOffer, withdrawOffer } from '../actions';
@@ -99,7 +99,8 @@ function positionFields(o: OfferView): GridField[] {
       label: 'Employment type',
       value: LABELS.employmentType[o.employmentType] ?? o.employmentType,
       // by the labour law (18 October 2026): Sales became Full-time paid by commission
-      note: o.paidByCommission ? 'Paid by commission' : o.employmentType === 'freelance' ? FREELANCE_SHORT : undefined,
+      // outside the labour law: freelance, and the unpaid internship (19 October 2026)
+      note: o.paidByCommission ? 'Paid by commission' : outsideLawShort(o.employmentType),
     },
     { key: 'offer-place', label: 'Department or team', value: placeName(o.department) },
     {
@@ -121,9 +122,33 @@ function positionFields(o: OfferView): GridField[] {
   ];
 }
 
+/** The offer's terms; an intern's (the unpaid internship, 19 October 2026) shows No wage and its allowances, with no net or insured wage. */
 function termsFields(o: OfferView): GridField[] {
+  const unpaid = o.employmentType === 'intern';
   const fields: GridField[] = [{ key: 'offer-pay-basis', label: 'Pay basis', value: PAY_BASIS_LABELS[o.payBasis] ?? o.payBasis }];
-  if (!o.salaryHidden) {
+  if (!o.salaryHidden && unpaid) {
+    fields.push(
+      { key: 'offer-gross', label: 'Gross salary', value: INTERN_NO_WAGE_TEXT, protected: true, note: 'The allowances are what the intern is paid' },
+      {
+        key: 'offer-allowances',
+        label: 'Allowances',
+        value:
+          o.allowances && o.allowances.length > 0 ? (
+            <ul>
+              {o.allowances.map((a) => (
+                <li key={a.allowanceTypeId}>
+                  {a.nameEn}: {formatEgp(a.amount)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-muted">None</span>
+          ),
+        protected: true,
+        note: o.totalSalary !== null && `${formatEgp(o.totalSalary)} a month in total`,
+      },
+    );
+  } else if (!o.salaryHidden) {
     if (o.payBasis === 'hourly') {
       fields.push({
         key: 'offer-hourly',
@@ -177,7 +202,12 @@ function termsFields(o: OfferView): GridField[] {
   fields.push(
     { key: 'offer-days', label: 'Working days a week', value: o.daysPerWeek !== null && String(o.daysPerWeek) },
     { key: 'offer-probation', label: 'Probation', value: o.probationMonths > 0 ? `${o.probationMonths} months` : 'None' },
-    { key: 'offer-duration', label: 'Contract length', value: `${o.durationMonths} months`, note: 'Fixed term, from the join date' },
+    {
+      key: 'offer-duration',
+      label: unpaid ? 'Internship length' : 'Contract length',
+      value: `${o.durationMonths} months`,
+      note: unpaid ? 'The internship agreement, from the join date' : 'Fixed term, from the join date',
+    },
   );
   return fields;
 }

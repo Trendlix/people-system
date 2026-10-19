@@ -10,8 +10,9 @@ import type { EndingSummary, ExpiringContract, LawWarningItem, ProbationEnding, 
 import type { Session } from '@/lib/view-as';
 import { decidesEndings, followsEndings, getOrNull, PENDING_ENDINGS } from './approvals/data';
 import { PENDING_RAISES } from './approvals/raises';
+import { draftedBadges, expiringLine } from './contracts/expiring';
 import { Dashboard } from './dashboard/cards';
-import { BECAME_OPEN_ENDED, CASUAL_TOO_LONG } from './employees/employment-law';
+import { BECAME_OPEN_ENDED, CASUAL_TOO_LONG, TRAINING_ENDED } from './employees/employment-law';
 import { LawWarningBadges } from './employees/law-badges';
 import { Loading, profileHref, todayInCairo } from './employees/ui';
 import { dueNote } from './organization/contracts/labels';
@@ -124,16 +125,20 @@ function WaitingForYou({ count }: { count: number | null }) {
 
 // ---------- the labour law's warnings (HR and the CEO) ----------
 
-/** GET /contracts/law-warnings: fixed terms become open-ended, casual work past its 6 months. */
+/**
+ * GET /contracts/law-warnings: fixed terms become open-ended, casual work past its 6 months; a trainee's or an intern's
+ * agreement past its end with nothing signed after it (19 October 2026).
+ */
 const LAW_WARNINGS = '/contracts/law-warnings';
 
-const WARNING_OF = { became_open_ended: BECAME_OPEN_ENDED, casual_too_long: CASUAL_TOO_LONG } as const;
+const WARNING_OF = { became_open_ended: BECAME_OPEN_ENDED, casual_too_long: CASUAL_TOO_LONG, training_ended: TRAINING_ENDED } as const;
 
 /**
  * What the labour law warns HR of (owner, 18 October 2026: "can we update the employment types based on the labour
  * law?"): a signed fixed-term contract past its end while the work goes on without a signed renewal, which the law
- * counts as open-ended (Labour Law 14/2025 Art. 88(3)), and casual work past its 6 months (Art. 1(7)). Each opens the
- * employee's Employment tab, where it is put right.
+ * counts as open-ended (Labour Law 14/2025 Art. 88(3)), and casual work past its 6 months (Art. 1(7)); since 19 October
+ * 2026 a trainee's or an intern's agreement past its end with nothing signed after it (Training ended: renewed once,
+ * converted to full-time or ended, never open-ended). Each opens the employee's Employment tab, where it is put right.
  */
 function LawWarnings({ rows }: { rows: LawWarningItem[] }) {
   return (
@@ -190,25 +195,39 @@ async function ContractAlerts() {
           empty={`No contracts end in the next ${CONTRACTS_WITHIN} days.`}
         >
           {(rows) =>
-            rows.map((c) => (
-              <li key={c.id} className="space-y-1 py-2.5 text-sm">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <Person employee={c.employee} />
-                  <span>
-                    Ends <Due date={c.endDate} today={today} />
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted">
-                  <span>
-                    Non-renewal notice by <Due date={c.nonRenewalNoticeBy} today={today} />
-                  </span>
-                  <span className="flex flex-wrap gap-1.5">
-                    {c.renewalDraft && <span className="badge">Renewal drafted</span>}
-                    <LawWarningBadges of={c} />
-                  </span>
-                </div>
-              </li>
-            ))
+            rows.map((c) => {
+              // a trainee's or an intern's agreement has no non-renewal notice: what follows it instead (19 October 2026)
+              const below = expiringLine(c, today);
+              return (
+                <li key={c.id} className="space-y-1 py-2.5 text-sm">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <Person employee={c.employee} />
+                    <span>
+                      Ends <Due date={c.endDate} today={today} />
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted">
+                    <span>
+                      {below.kind === 'notice' ? (
+                        <>
+                          Non-renewal notice by <Due date={below.by} today={today} />
+                        </>
+                      ) : below.kind === 'training' ? (
+                        below.text
+                      ) : null}
+                    </span>
+                    <span className="flex flex-wrap gap-1.5">
+                      {draftedBadges(c).map((b) => (
+                        <span key={b} className="badge">
+                          {b}
+                        </span>
+                      ))}
+                      <LawWarningBadges of={c} />
+                    </span>
+                  </div>
+                </li>
+              );
+            })
           }
         </AlertCard>
         <AlertCard

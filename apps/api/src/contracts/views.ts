@@ -3,9 +3,11 @@ import {
   casualTooLong,
   ENDING_RULE_DEFAULTS,
   insuredWageDate,
+  isTrainingType,
   payStage,
   traineeMonths,
   traineeStageOn,
+  trainingNext,
   workPatternOf,
   type ContractForm,
   type ContractKind,
@@ -14,6 +16,7 @@ import {
   type PayBasis,
   type RaiseApproval,
   type RaiseReason,
+  type RaiseRequestOrigin,
   type TraineeStage,
   type WorkNature,
 } from '@trendlix/shared';
@@ -43,6 +46,31 @@ export interface ContractContext {
   employmentEndDate?: Date | null;
   /** The employment's casual work past six months (Art. 1(7)), shown with its contracts; false when not given. */
   casualTooLong?: boolean;
+  /**
+   * A trainee's or an intern's employment: the versions that are its agreements (agreementVersions), to tell the first
+   * from its renewal; null or not given for another employment type.
+   */
+  agreements?: readonly number[] | null;
+}
+
+/**
+ * An employment's agreements, by version (owner, 19 October 2026: a trainee's training agreement or an intern's
+ * internship agreement, "renewed 1 time, after that it should be converted to a full time contract"): its whole
+ * contracts (not salary amendments) other than a conversion to full-time, for a trainee's or an intern's employment;
+ * null for another type. The first is agreement 1, its renewal agreement 2.
+ */
+export function agreementVersions(employmentType: string, contracts: readonly { version: number; kind: string; convertsTo: string | null }[]): number[] | null {
+  if (!isTrainingType(employmentType)) return null;
+  return contracts
+    .filter((c) => c.kind === 'contract' && c.convertsTo === null)
+    .map((c) => c.version)
+    .sort((a, b) => a - b);
+}
+
+/** Which of its employment's agreements a version is (1: the first, 2: its renewal), 0 for one that isn't. */
+export function agreementNumber(c: Pick<Contract, 'version' | 'kind' | 'convertsTo'>, agreements: readonly number[] | null | undefined): number {
+  if (!agreements || c.kind !== 'contract' || c.convertsTo !== null) return 0;
+  return agreements.filter((v) => v <= c.version).length;
 }
 
 /** An amount of money as a number, to the piastre. */
@@ -57,7 +85,8 @@ export const CONTRACT_INCLUDE = {
   approvedBy: { select: { email: true } },
   newJobTitle: { select: { id: true, titleEn: true, titleAr: true } },
   newGrade: { select: { id: true, code: true } },
-  raiseRequest: { select: { id: true, status: true } },
+  // and where it came from: asked for, or prepared directly by HR (19 October 2026)
+  raiseRequest: { select: { id: true, status: true, origin: true } },
 } satisfies Prisma.ContractInclude;
 
 /** A contract with its allowances. */
@@ -154,6 +183,10 @@ export function contractView(c: ContractRow, ctx: ContractContext) {
   const stages = traineeStagesOf(c);
   const today = todayInCairo();
   const inForce = stages && traineeStageOn(stages, fromDateOnly(c.startDate), today < fromDateOnly(c.startDate) ? fromDateOnly(c.startDate) : today);
+  // a trainee's or an intern's agreement (owner, 19 October 2026): which one it is and what follows its end (renewed
+  // once, then converted to full-time or ended), never due for renewal as a fixed term is: no non-renewal notice, and no
+  // Art. 88 warning (an employment contract's)
+  const agreement = agreementNumber(c, ctx.agreements);
   return {
     id: c.id,
     number: c.number,
@@ -184,10 +217,13 @@ export function contractView(c: ContractRow, ctx: ContractContext) {
     insuranceFiledOn: fromDateOnly(c.insuranceFiledOn),
     labourOfficeFiledOn: fromDateOnly(c.labourOfficeFiledOn),
     note: c.note,
-    nonRenewalNoticeBy: nonRenewalNoticeBy(c, ctx),
+    nonRenewalNoticeBy: agreement ? null : nonRenewalNoticeBy(c, ctx),
     // a fixed term past its end with the employment going on and no signed renewal (Art. 88(3)); the employment's
     // casual work past six months (Art. 1(7))
-    becameOpenEnded: contractBecameOpenEnded(c, ctx.employmentEndDate, today),
+    becameOpenEnded: agreement ? false : contractBecameOpenEnded(c, ctx.employmentEndDate, today),
+    // a trainee's or an intern's agreement converted to a full-time contract by this version (19 October 2026)
+    convertsTo: c.convertsTo,
+    training: agreement ? { agreement, next: trainingNext(agreement) } : null,
     casualTooLong: ctx.casualTooLong ?? false,
     salaryHidden: !ctx.seesSalary,
     kind: c.kind as ContractKind,
@@ -219,6 +255,8 @@ export function raiseView(c: ContractRow, seesSalary: boolean) {
     form2From,
     insuredWageFrom: insuredWageDate(startDate, form2From),
     requestId: c.raiseRequest?.id ?? null,
+    // asked for, or prepared directly by HR (owner, 19 October 2026: every raise has its request on Raise Requests)
+    requestOrigin: (c.raiseRequest?.origin as RaiseRequestOrigin | undefined) ?? null,
   };
 }
 
@@ -247,6 +285,8 @@ export const CONTRACT_LIST_INCLUDE = {
       jobTitle: { select: { titleEn: true } },
       department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
       shift: { select: { workingDays: true } },
+      // its versions, to tell a trainee's or an intern's agreements apart (agreementVersions)
+      contracts: { select: { version: true, kind: true, convertsTo: true } },
     },
   },
 } satisfies Prisma.ContractInclude;
@@ -261,7 +301,7 @@ export type ContractListRow = Prisma.ContractGetPayload<{ include: typeof CONTRA
 export function contractListView(c: ContractListRow, ctx: ContractContext) {
   const e = c.employment;
   const law = lawFieldsOf(e);
-  const v = contractView(c, { ...ctx, employmentEndDate: e.endDate, casualTooLong: law.casualTooLong });
+  const v = contractView(c, { ...ctx, employmentEndDate: e.endDate, casualTooLong: law.casualTooLong, agreements: agreementVersions(e.employmentType, e.contracts) });
   const signed = c.status !== 'draft';
   return {
     id: v.id,
@@ -291,6 +331,8 @@ export function contractListView(c: ContractListRow, ctx: ContractContext) {
     salaryHidden: v.salaryHidden,
     kind: v.kind,
     stage: v.stage,
+    convertsTo: v.convertsTo,
+    training: v.training,
     employee: { id: e.employee.id, employeeCode: e.employee.employeeCode, fullNameEn: e.employee.fullNameEn, fullNameAr: e.employee.fullNameAr },
     employmentId: e.id,
     employmentType: e.employmentType,
@@ -313,6 +355,8 @@ export type ContractListView = ReturnType<typeof contractListView>;
 export const ENDING_EMPLOYMENT = {
   endDate: true,
   joinDate: true,
+  // a trainee's or an intern's: no Art. 154 note (19 October 2026)
+  employmentType: true,
   contracts: {
     where: { status: { in: ['active', 'ended'] } },
     orderBy: { version: 'desc' },
@@ -376,7 +420,8 @@ export function art154Estimate(e: Pick<EndingRow, 'lastWorkingDay'> & { employme
  */
 export function endingView(e: EndingRow, seesSalary = false) {
   const endDate = fromDateOnly(e.employment.endDate ?? e.lastWorkingDay);
-  const nonRenewal = e.ruleKey === 'non_renewal';
+  // not for a trainee's or an intern's agreement, which isn't an employment contract (owner, 19 October 2026)
+  const nonRenewal = e.ruleKey === 'non_renewal' && !isTrainingType(e.employment.employmentType);
   return {
     id: e.id,
     ruleKey: e.ruleKey,

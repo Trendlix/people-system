@@ -231,7 +231,15 @@ class ContractTermsDto extends PayTermsDto {
   raiseReason?: RaiseReason;
 }
 
-export class CreateContractDto extends ContractTermsDto {}
+export class CreateContractDto extends ContractTermsDto {
+  /**
+   * A trainee's or an intern's agreement converted to a full-time contract (owner, 19 October 2026: "or can be only
+   * renewed 1 time, after that it should be converted to a full time contract"): this version is the full-time contract,
+   * after the agreement; signing it makes the employment full-time (the same employment, so the service counts on).
+   */
+  @Sent() @IsIn(['full_time'], { message: 'A training or internship agreement is converted to full_time: send convertsTo as full_time, or leave it out.' })
+  convertsTo?: 'full_time';
+}
 
 /**
  * A draft takes any of its terms; a signed contract only the dates it was signed and filed, and its note (checked by

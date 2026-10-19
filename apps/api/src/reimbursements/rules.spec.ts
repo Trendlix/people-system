@@ -21,6 +21,16 @@ describe('who may claim a type', () => {
     expect(mayClaimType(rules({ employmentTypes: ['part_time'] }), place)).toBe(false);
     expect(mayClaimType(rules(), { departmentId: null, parentDepartmentId: null, gradeId: null, employmentType: null })).toBe(true);
   });
+
+  it('takes an unpaid intern for a type chosen for interns, or for every type (19 October 2026)', () => {
+    const intern = { ...place, employmentType: 'intern' };
+    expect(mayClaimType(rules({ employmentTypes: ['intern'] }), intern)).toBe(true);
+    expect(mayClaimType(rules({ employmentTypes: ['trainee', 'intern'] }), intern)).toBe(true);
+    expect(mayClaimType(rules(), intern)).toBe(true);
+    // a paid trainee's type isn't an intern's, nor the other way round
+    expect(mayClaimType(rules({ employmentTypes: ['trainee'] }), intern)).toBe(false);
+    expect(mayClaimType(rules({ employmentTypes: ['intern'] }), { ...place, employmentType: 'trainee' })).toBe(false);
+  });
 });
 
 describe('what the claims of a type take of its caps', () => {

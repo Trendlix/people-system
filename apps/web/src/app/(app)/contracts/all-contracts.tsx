@@ -146,7 +146,11 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
       </td>
       <td className="whitespace-nowrap">
         <span className="tabular-nums">{c.number}</span>
-        <div className="text-xs text-muted">Version {c.version}</div>
+        <div className="text-xs text-muted">
+          Version {c.version}
+          {/* a trainee's or an intern's agreement converted to full-time (19 October 2026) */}
+          {c.convertsTo && ' · Conversion to full-time'}
+        </div>
       </td>
       <td>
         <span className="whitespace-nowrap">{LABELS.employmentType[c.employmentType] ?? c.employmentType}</span>
@@ -173,7 +177,8 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
       <td className="whitespace-nowrap tabular-nums">{c.signedOn ? formatDate(c.signedOn) : dash}</td>
       {salary && (
         <td className="text-right whitespace-nowrap tabular-nums">
-          <Money amount={c.grossSalary} hidden={c.salaryHidden} />
+          {/* an intern's agreement pays no wage (19 October 2026): its allowances alone */}
+          {c.employmentType === 'intern' && !c.convertsTo && !c.salaryHidden ? <span className="text-muted">No wage</span> : <Money amount={c.grossSalary} hidden={c.salaryHidden} />}
           {!c.salaryHidden && <SalaryLines contract={c} />}
         </td>
       )}

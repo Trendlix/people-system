@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { underLabourLaw } from '@trendlix/shared';
 import { getCurrentUser } from '@/lib/session';
-import { FREELANCE_NO_LEAVE } from '../../employees/employment-law';
+import { FREELANCE_NO_LEAVE, noLeaveText } from '../../employees/employment-law';
 import { todayInCairo } from '../../employees/ui';
 import { loadOwnProfile } from '../../own-profile';
 import { BackLink, Empty, Loading } from '../../organization/ui';
@@ -53,12 +53,13 @@ async function NewLeave() {
       </>
     );
   }
-  // a freelancer works outside the labour law (owner, 18 October 2026; Art. 1(1)): there is no leave to ask for
+  // a freelancer works outside the labour law (owner, 18 October 2026; Art. 1(1)), and so does an intern (19 October
+  // 2026: the unpaid internship): there is no leave to ask for
   if (!underLabourLaw(profile.employment.employmentType)) {
     return (
       <>
         <Heading back={back} />
-        <Empty>{FREELANCE_NO_LEAVE}</Empty>
+        <Empty>{noLeaveText(profile.employment.employmentType) ?? FREELANCE_NO_LEAVE}</Empty>
       </>
     );
   }

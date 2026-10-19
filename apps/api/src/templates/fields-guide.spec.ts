@@ -105,6 +105,11 @@ describe('the Fields Guide', () => {
     expect(row('nda').slice(0, 5)).toEqual(['NDA', TEMPLATE_FOLDER_LABELS.nda, 'Chosen on upload', 'All employment types', 'The employee and the company']);
     expect(row('hr_letter_en').slice(2, 5)).toEqual(['English', 'All employment types', 'The company']);
     expect(row('payslip_ar').slice(4, 5)).toEqual(['Not signed']);
+    // the paid trainee's training agreement, the unpaid intern's internship agreement, one certificate for both (19 October 2026)
+    expect(row('contract_trainee').slice(0, 4)).toEqual(['Training Agreement · Trainee', 'Contracts', 'Chosen on upload', 'Trainee']);
+    expect(row('contract_internship').slice(0, 4)).toEqual(['Internship Agreement · Unpaid Internship', 'Contracts', 'Chosen on upload', 'Unpaid internship (outside the labour law)']);
+    expect(row('offer_trainee').slice(3, 4)).toEqual(['Trainee']);
+    expect(row('cert_internship').slice(3, 4)).toEqual(['Trainee, Unpaid internship (outside the labour law)']);
     // the social insurance copy's salary tags read the insured salary
     expect(row('contract_full_time_insurance')[1]).toBe(
       'On this template, {{gross_salary}} prints the value of {{insured_salary}}, {{gross_salary_words}} the value of {{insured_salary_words}} and {{gross_salary_words_en}} the value of {{insured_salary_words_en}}.',

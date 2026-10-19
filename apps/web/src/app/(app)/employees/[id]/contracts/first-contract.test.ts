@@ -32,6 +32,13 @@ describe('the first contract, as hiring in one form starts it', () => {
     expect(noProbationAgain('Omar Khaled')).toBe('0: Omar Khaled was employed here before, and probation comes only once with an employer (Labour Law Art. 90).');
   });
 
+  // owner, 19 October 2026: a trainee's or an intern's agreement has no probation; an intern's runs 3 months to start with
+  it('has no probation for a trainee or an intern, and 3 months for an intern', () => {
+    expect(firstContractDefaults(settings, '', false, 'trainee')).toMatchObject({ probationMonths: 0, durationMonths: 12 });
+    expect(firstContractDefaults(settings, '', false, 'intern')).toMatchObject({ probationMonths: 0, durationMonths: 3 });
+    expect(firstContractDefaults(settings, '', false, 'full_time')).toMatchObject({ probationMonths: 3, durationMonths: 12 });
+  });
+
   it('keeps 80% basic with an API from before the company’s default', () => {
     expect(firstContractDefaults({ probationMonths: 3, durationMonths: 12 }, '', false).basicPercent).toBe(80);
   });

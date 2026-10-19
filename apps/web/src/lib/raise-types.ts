@@ -7,8 +7,8 @@ import type {
   RaiseDecision,
   RaiseFigureKind,
   RaiseReason,
-  RaiseReasonChoice,
   RaiseRequester,
+  RaiseRequestOrigin,
   RaiseRequestStatus,
   RaiseRequestStepKind,
   RaiseWay,
@@ -39,8 +39,10 @@ export interface ContractRaise {
   form2From: string | null;
   /** The next 1 January from the effective date, or the Form 2 date. */
   insuredWageFrom: string;
-  /** The raise request it was prepared from, if any. */
+  /** Its raise request: the one it was prepared from, or since 19 October 2026 one prepared directly by HR. */
   requestId: string | null;
+  /** Asked for, or prepared directly by HR (19 October 2026; left out by an API from before). */
+  requestOrigin?: RaiseRequestOrigin | null;
 }
 
 /** GET /raises/pending (HR and the CEO): a change of pay waiting for the CEO, with its person and the pay it replaces. */
@@ -152,8 +154,10 @@ export interface RaiseRequestStep {
   kind: RaiseRequestStepKind;
   /** HR's and the CEO's decisions. */
   decision: RaiseDecision | null;
-  /** Submitted: the reason from the list. */
-  raiseReason: RaiseReasonChoice | null;
+  /** Submitted, prepared: the reason from the list; the CEO's decision: the reason the CEO changed it to (19 October 2026). */
+  raiseReason: RaiseReason | null;
+  /** The CEO's decision: the reason before the CEO changed it (19 October 2026; left out by an API from before). */
+  raiseReasonFrom?: RaiseReason | null;
   comment: string | null;
   /** Which figure was typed (null: worked out from the pay, or a gross typed before 17 October 2026). */
   figure: RaiseFigureKind | null;
@@ -193,11 +197,16 @@ export interface RaiseRequest {
   employee: { id: string; employeeCode: string; fullNameEn: string };
   employmentId: string;
   requester: RaiseRequester;
+  /**
+   * Asked for, or prepared directly by HR (owner, 19 October 2026: a raise HR prepares on the contract, or a renewal with
+   * new pay, has its request too); left out by an API from before, which had only asked ones.
+   */
+  origin?: RaiseRequestOrigin;
   requestedBy: { email: string } | null;
   /** The requester's comment (what the request was asked with, before 17 October 2026). */
   reason: string;
-  /** The reason from the list; null on a request from before 17 October 2026. */
-  raiseReason?: RaiseReasonChoice | null;
+  /** The reason from the list (one prepared directly by HR: its raise's); null on a request from before 17 October 2026. */
+  raiseReason?: RaiseReason | null;
   /** The requester's comment: the same as `reason`. */
   comment?: string;
   suggestion?: RaiseSuggestion | null;
@@ -219,6 +228,8 @@ export interface RaiseRequest {
     contractId: string;
     number: string;
     way: 'amendment' | 'contract';
+    /** An amendment, a new contract, or a renewal with new pay (19 October 2026; left out by an API from before). */
+    change?: Exclude<PayChange, 'hired'>;
     stage: PayStage;
     /** HR, Finance and the CEO; for the others once done. */
     effectiveDate: string | null;

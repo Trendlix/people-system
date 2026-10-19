@@ -7,13 +7,24 @@ import {
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { monthlyFromHourly, OFFER_VALID_DAYS, type OfferShownStatus } from '@trendlix/shared';
+import {
+  INTERN_DEFAULT_MONTHS,
+  INTERN_MAX_MONTHS,
+  INTERN_NO_WAGE_MESSAGE,
+  INTERN_TERM_MESSAGE,
+  isTrainingType,
+  monthlyFromHourly,
+  noProbationMessage,
+  OFFER_VALID_DAYS,
+  type OfferShownStatus,
+} from '@trendlix/shared';
 import { AllowancesService } from '../allowances/allowances.service.js';
 import { allowanceData, allowancesTotal, allowanceView, type AllowanceSnapshot } from '../allowances/rows.js';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
+import { assertTrainingGap } from '../contracts/training.js';
 import { seesSalary } from '../employees/access.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
@@ -640,22 +651,55 @@ export class OffersService {
       v.officeDays = v.workArrangement === 'hybrid' ? days : [];
     }
 
+    // an intern's offer pays no wage (owner, 19 October 2026: "we are not paying them salary, its just transportation
+    // allowance"): the gross 0, monthly, the allowances on top, a short fixed term (3 months unless sent, 12 at most)
+    const intern = v.employmentType === 'intern';
+    const becameIntern = intern && (creating || before.employmentType !== 'intern');
+    if (intern) {
+      if (dto.payBasis === 'hourly' || dto.hourlyRate != null || dto.hoursPerWeek != null) {
+        throw new BadRequestException('An intern is paid no wage, so not by the hour: leave the pay monthly, the gross at 0.');
+      }
+      if (dto.grossSalary !== undefined) throw new BadRequestException(INTERN_NO_WAGE_MESSAGE);
+      v.payBasis = 'monthly';
+      v.grossSalary = 0;
+      if (becameIntern && dto.durationMonths === undefined) v.durationMonths = INTERN_DEFAULT_MONTHS;
+      if (v.durationMonths > INTERN_MAX_MONTHS) throw new BadRequestException(INTERN_TERM_MESSAGE);
+    }
+
     // the pay: by the hour, the gross is the monthly estimate worked out from the rate and the hours
-    if (v.payBasis === 'hourly') {
+    if (intern) {
+      v.grossSalary = 0;
+      v.hourlyRate = null;
+      v.hoursPerWeek = null;
+    } else if (v.payBasis === 'hourly') {
       if (v.hourlyRate === null || v.hoursPerWeek === null) {
         throw new BadRequestException('Enter the hourly rate and the hours a week: by the hour, the gross salary is worked out from them.');
       }
       v.grossSalary = monthlyFromHourly(v.hourlyRate, v.hoursPerWeek);
     } else {
-      if (v.grossSalary === undefined) throw new BadRequestException('Enter the gross salary.');
+      // (an offer that was an intern's has 0: a salary is entered for any other type)
+      if (v.grossSalary === undefined || v.grossSalary <= 0) throw new BadRequestException('Enter the gross salary.');
       v.hourlyRate = null;
       v.hoursPerWeek = null;
     }
 
-    // probation once per employer (Art. 90): none for someone who already had an employment with the company
-    if (hadEmployment) {
+    // probation once per employer (Art. 90): none for someone who already had an employment with the company; none for
+    // a trainee or an intern (owner, 19 October 2026: "interns to be labeled trainees instead of probation"), whose
+    // agreement isn't an employment contract, and the settings' again for one that was a trainee's or an intern's
+    if (isTrainingType(v.employmentType)) {
+      if (dto.probationMonths) throw new BadRequestException(noProbationMessage(v.employmentType));
+      v.probationMonths = 0;
+    } else if (hadEmployment) {
       if (dto.probationMonths) throw new BadRequestException(`${personName} already had a probation with the company; the law allows it once (Art. 90).`);
       if (dto.probationMonths === undefined) v.probationMonths = 0;
+    } else if (before && isTrainingType(before.employmentType) && dto.probationMonths === undefined) {
+      v.probationMonths = settings.probationMonths;
+    }
+    // a new training or internship agreement for a former employee 6 months after their last one ended at the earliest
+    // (owner, 19 October 2026: "a new trainee contract can be issued after 6 months of the expiration of the last trainee
+    // contract")
+    if (v.employeeId && isTrainingType(v.employmentType) && (creating || dto.employeeId !== undefined || dto.joinDate !== undefined || dto.employmentType !== undefined)) {
+      await assertTrainingGap(this.prisma, { id: v.employeeId, fullNameEn: personName }, v.employmentType, v.joinDate);
     }
     const { endDate, probationEnd } = termDates(v.joinDate, v.durationMonths, v.probationMonths);
     if (probationEnd && probationEnd > endDate) throw new BadRequestException(PROBATION_AFTER_END(probationEnd));

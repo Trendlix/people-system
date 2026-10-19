@@ -58,11 +58,21 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
   } else if (!contracts || !settings || !pickers) {
     body = <Empty>Contracts are not available yet.</Empty>;
   } else if (e.employmentType === 'trainee') {
-    // paid by the training agreement's stages, which payroll follows (18 October 2026; Labour Law Art. 29)
+    // paid by the training agreement's stages, which payroll follows (18 October 2026; Labour Law Art. 29); renewed once
+    // at most, then converted to full-time (19 October 2026)
     body = (
       <Empty>
-        A trainee is paid by the stages of the training agreement, each stage&apos;s pay in its months (Labour Law Art. 29): to change the pay, add a new
-        training agreement with new stages (Renew, with the contract on the <Link href={back}>Employment tab</Link>).
+        A trainee is paid by the stages of the training agreement, each stage&apos;s pay in its months (Labour Law Art. 29): to change the pay, renew the
+        agreement once with new stages, or convert it to a full-time contract (Renew or Convert to full-time, with the contract on the{' '}
+        <Link href={back}>Employment tab</Link>).
+      </Empty>
+    );
+  } else if (e.employmentType === 'intern') {
+    // the unpaid internship (19 October 2026): no wage to raise
+    body = (
+      <Empty>
+        An intern is unpaid: the internship agreement pays no wage, only allowances. To pay a wage, convert it to a full-time contract (Convert to
+        full-time, with the contract on the <Link href={back}>Employment tab</Link>).
       </Empty>
     );
   } else if (draft) {

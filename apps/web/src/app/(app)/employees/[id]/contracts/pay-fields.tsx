@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { PAY_BASES, PAY_BASIS_LABELS, type LawRates, type PayBasis, type PayTerms as VersionPay } from '@trendlix/shared';
+import { INTERN_NO_WAGE_TEXT, PAY_BASES, PAY_BASIS_LABELS, type LawRates, type PayBasis, type PayTerms as VersionPay } from '@trendlix/shared';
 import { AllowanceRows } from '@/components/allowance-rows';
 import { valueOf } from '@/components/form';
 import { allowanceRows, allowanceTerms, sameAllowances, type AllowanceRow } from '@/lib/allowances';
 import type { AllowanceType, FormState } from '@/lib/types';
 import {
+  allowanceTotals,
   basisFrom,
   belowAllowancesText,
   breakdownRows,
@@ -58,6 +59,12 @@ import { SalaryBreakdownList } from './salary-breakdown';
 // A trainee's contract is the training agreement (owner, 18 October 2026: Internship became Trainee, Labour Law Art.
 // 29): its gross is the first training stage's pay, typed in the stages (`fixedGross`), so the gross shows read-only and
 // the pay is a monthly salary from it.
+//
+// An intern's internship agreement pays no wage (owner, 19 October 2026: "in case of trainee, we are not paying them
+// salary, its just transportation allowance. can i add the gross with 0?"; the owner chose the unpaid internship, outside
+// the labour law): `noWage` shows the gross as No wage (unpaid internship), sent as nothing (the API keeps it at 0), with
+// a monthly pay basis, no basic part and no breakdown; the allowances, such as transportation, are what the intern is
+// paid.
 
 /** The pay a form starts with: the draft being changed, the version renewed or raised, or the defaults. */
 export type PayDefaults = {
@@ -184,7 +191,8 @@ export function typedPayOf(pay: Pay): VersionPay | null {
 /**
  * The pay fields, from `usePay`. `fullTime`: a full-time version has a social insurance copy, whose salary is the
  * insured salary. `year` and `yearIs`: the year whose rates set by law are used, and what it is ("the year the contract
- * starts"). `lead`: a question above the pay basis, e.g. whether a renewal's pay changes.
+ * starts"). `lead`: a question above the pay basis, e.g. whether a renewal's pay changes. `noWage`: an intern's, with no
+ * gross, the allowances alone paid.
  */
 export function PayFields({
   pay,
@@ -195,6 +203,7 @@ export function PayFields({
   year,
   yearIs,
   lead,
+  noWage = false,
 }: {
   pay: Pay;
   state: FormState;
@@ -204,7 +213,9 @@ export function PayFields({
   year: number;
   yearIs: string;
   lead?: React.ReactNode;
+  noWage?: boolean;
 }) {
+  if (noWage) return <UnpaidFields pay={pay} state={state} fid={fid} allowanceTypes={allowanceTypes} lead={lead} />;
   const { typed, rows, setRows, terms, hourly, basis, rateBasis, fromNetRate, pay: hourlyPay, salary, calc, split, insured, savedNet, rates, defaults, fixedGross } = pay;
   const fixed = fixedGross !== null;
   const insuredText = fullTime && insured ? `Insured salary on the social insurance copy: ${formatMoney(insured.amount)}, ${insured.why}.` : null;
@@ -503,6 +514,76 @@ export function PayFields({
           the full gross, including the variable part, is paid{hourly && ', for the contracted hours every week'}. Uses {ratesYearText(year, rates)}, {yearIs}.
         </p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * An intern's pay: no wage, so the gross shows as No wage (unpaid internship) and isn't sent (`unpaid` tells the action
+ * so); a monthly basis; the working days; and the allowances, such as transportation, which are what the intern is paid.
+ */
+function UnpaidFields({
+  pay,
+  state,
+  fid,
+  allowanceTypes,
+  lead,
+}: {
+  pay: Pay;
+  state: FormState;
+  fid: (name: string) => string;
+  allowanceTypes: readonly AllowanceType[];
+  lead?: React.ReactNode;
+}) {
+  const { rows, setRows, terms, defaults } = pay;
+  const total = allowanceTotals(terms).total;
+  return (
+    <div className="space-y-5 border-t border-line pt-6">
+      {lead}
+      <input type="hidden" name="unpaid" value="1" />
+      <input type="hidden" name="payBasis" value="monthly" />
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div key="noWage">
+          <label htmlFor={fid('grossSalary')} className="label">
+            Gross salary
+          </label>
+          {/* not sent: an intern's gross is 0, kept by the API */}
+          <input id={fid('grossSalary')} value={INTERN_NO_WAGE_TEXT} readOnly aria-describedby={fid('grossSalary-hint')} className="input bg-canvas text-muted" />
+          <p id={fid('grossSalary-hint')} className="hint">
+            An unpaid internship pays no wage. The allowances below, such as transportation, are paid a month.
+          </p>
+        </div>
+        <div>
+          <label htmlFor={fid('daysPerWeek')} className="label">
+            Working days a week {optional}
+          </label>
+          <input
+            id={fid('daysPerWeek')}
+            name="daysPerWeek"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={6}
+            step={1}
+            aria-describedby={fid('daysPerWeek-hint')}
+            defaultValue={valueOf(state, 'daysPerWeek', amountText(defaults.daysPerWeek))}
+            className="input tabular-nums"
+          />
+          <p id={fid('daysPerWeek-hint')} className="hint">
+            E.g. 2 or 3; leave empty for the shift&apos;s week. Which days comes from the shift.
+          </p>
+        </div>
+      </div>
+
+      <AllowanceRows
+        types={allowanceTypes}
+        defaultRows={rows}
+        onChange={setRows}
+        hint="A month each, such as the transportation allowance: with no wage, they are what the intern is paid."
+      />
+      <p className="rounded-lg border border-dashed border-line px-4 py-3 text-sm text-muted">
+        {total > 0 ? `No wage: ${formatEgp(total)} a month in allowances.` : 'No wage, and no allowances yet.'}
+      </p>
     </div>
   );
 }

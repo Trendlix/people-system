@@ -66,7 +66,8 @@ export class SalaryRaisesService {
       }),
       // the one settings row, added by the payroll migration and the seed; its default if it is missing
       this.prisma.payrollSettings.findUnique({ where: { id: 1 }, select: { salaryReviewMonths: true } }),
-      this.prisma.raiseRequest.findMany({ where: { status: { in: [...OPEN_RAISE_REQUEST_STATUSES] } }, select: { id: true, employmentId: true, status: true } }),
+      // the requests asked for: one prepared directly by HR is its raise, open already (19 October 2026)
+      this.prisma.raiseRequest.findMany({ where: { origin: 'request', status: { in: [...OPEN_RAISE_REQUEST_STATUSES] } }, select: { id: true, employmentId: true, status: true } }),
     ]);
     const names = await approverNames(this.prisma, rows.flatMap((e) => e.contracts));
     const open = new Map(requests.map((r) => [r.employmentId, { id: r.id, status: r.status as RaiseRequestStatus }]));

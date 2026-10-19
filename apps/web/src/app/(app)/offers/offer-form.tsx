@@ -35,8 +35,23 @@ export type OfferPickers = EmploymentPickers & { allowanceTypes: AllowanceType[]
 const optional = <span className="font-normal text-muted">(optional)</span>;
 const amountText = (n: number | null) => (n === null ? '' : plainAmount(n));
 
-/** The fields the previews follow, by name (the allowance rows tell theirs through onChange). */
-const TRACKED = ['joinDate', 'payBasis', 'salaryBasis', 'grossSalary', 'wantedNet', 'rateBasis', 'hourlyRate', 'netRate', 'hoursPerWeek', 'basicPercent'] as const;
+/**
+ * The fields the previews follow, by name (the allowance rows tell theirs through onChange); the employment type for the
+ * terms a trainee's or an intern's offer has (19 October 2026: no probation; an intern no wage).
+ */
+const TRACKED = [
+  'joinDate',
+  'employmentType',
+  'payBasis',
+  'salaryBasis',
+  'grossSalary',
+  'wantedNet',
+  'rateBasis',
+  'hourlyRate',
+  'netRate',
+  'hoursPerWeek',
+  'basicPercent',
+] as const;
 type Tracked = Record<(typeof TRACKED)[number], string>;
 
 /** One part of the form, under its heading. */
@@ -76,6 +91,7 @@ export function OfferForm({
 
   const [typed, setTyped] = useState<Tracked>(() => ({
     joinDate: valueOf(state, 'joinDate', formatDate(defaults.joinDate)),
+    employmentType: valueOf(state, 'employmentType', defaults.employmentType),
     payBasis: valueOf(state, 'payBasis', defaults.payBasis),
     salaryBasis: valueOf(state, 'salaryBasis', 'gross'),
     grossSalary: valueOf(state, 'grossSalary', amountText(defaults.grossSalary)),
@@ -226,6 +242,7 @@ export function OfferForm({
           state={state}
           fid={fid}
           defaults={defaults}
+          employmentType={typed.employmentType}
           typed={termsTyped}
           basicPercent={typed.basicPercent}
           rows={rows}

@@ -3,8 +3,8 @@ import { groupByPlace, type DepartmentGroup } from '../../../lib/place-groups';
 import type { EmployeeSummary } from '../../../lib/types';
 
 // The Employees list grouped (owner's request, 16 October 2026: "group active and inactive, then department, then
-// team"): Active, everyone employed now (on probation, active, on notice or on leave), then Inactive, those not employed
-// yet and those who left; each by department, then by team. Pure code, tested.
+// team"): Active, everyone employed now (on probation, active, trainees and interns, on notice or on leave), then
+// Inactive, those not employed yet and those who left; each by department, then by team. Pure code, tested.
 
 export interface DirectorySection<T> {
   key: 'active' | 'inactive';
@@ -21,7 +21,7 @@ const placeNow = (e: Pick<EmployeeSummary, 'employment'>) => (e.employment?.depa
 /** The sections that have someone in them, Active first, each grouped by department and team. */
 export function directorySections<T extends Pick<EmployeeSummary, 'employment'>>(rows: readonly T[]): DirectorySection<T>[] {
   const sections = [
-    { key: 'active' as const, label: 'Active', note: 'Employed now: on probation, active, on notice or on leave', rows: rows.filter((e) => e.employment !== null) },
+    { key: 'active' as const, label: 'Active', note: 'Employed now: on probation, active, trainees and interns, on notice or on leave', rows: rows.filter((e) => e.employment !== null) },
     { key: 'inactive' as const, label: 'Inactive', note: 'Not employed yet, or left', rows: rows.filter((e) => e.employment === null) },
   ];
   return sections

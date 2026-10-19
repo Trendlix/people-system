@@ -39,15 +39,28 @@ import {
 // templates.ts (the slots and tags).
 
 describe('the employment types', () => {
-  it('are the four the owner chose, with their labels in English and Arabic', () => {
-    expect(EMPLOYMENT_TYPES).toEqual(['full_time', 'part_time', 'trainee', 'freelance']);
-    expect(LABELS.employmentType).toEqual({ full_time: 'Full-time', part_time: 'Part-time', trainee: 'Trainee', freelance: 'Freelance (outside the labour law)' });
-    expect(EMPLOYMENT_TYPE_LABELS_AR).toEqual({ full_time: 'دوام كامل', part_time: 'عمل بعض الوقت', trainee: 'متدرج', freelance: 'عمل حر (غير خاضع لقانون العمل)' });
+  it('are the four the owner chose and the unpaid internship (19 October 2026), with their labels in English and Arabic', () => {
+    expect(EMPLOYMENT_TYPES).toEqual(['full_time', 'part_time', 'trainee', 'intern', 'freelance']);
+    expect(LABELS.employmentType).toEqual({
+      full_time: 'Full-time',
+      part_time: 'Part-time',
+      trainee: 'Trainee',
+      intern: 'Unpaid internship (outside the labour law)',
+      freelance: 'Freelance (outside the labour law)',
+    });
+    expect(EMPLOYMENT_TYPE_LABELS_AR).toEqual({
+      full_time: 'دوام كامل',
+      part_time: 'عمل بعض الوقت',
+      trainee: 'متدرج',
+      intern: 'تدريب غير مدفوع (غير خاضع لقانون العمل)',
+      freelance: 'عمل حر (غير خاضع لقانون العمل)',
+    });
   });
 
-  it('are all under the labour law but freelance (Art. 1(1))', () => {
+  it('are all under the labour law but freelance (Art. 1(1)) and the unpaid internship', () => {
     expect(EMPLOYMENT_TYPES.filter(underLabourLaw)).toEqual(['full_time', 'part_time', 'trainee']);
     expect(underLabourLaw('freelance')).toBe(false);
+    expect(underLabourLaw('intern')).toBe(false);
   });
 
   it('keep the paperwork lists: full-time the full list, the others the national ID', () => {
@@ -199,9 +212,12 @@ describe('the template slots and tags', () => {
   const slot = (key: string) => TEMPLATE_SLOTS.find((s) => s.key === key)!;
 
   it('keep every slot key, relabelled for the new types', () => {
-    expect(slot('contract_internship')).toMatchObject({ name: 'Training agreement · Trainee', appliesTo: ['trainee'] });
-    expect(slot('offer_internship')).toMatchObject({ name: 'Job offer · Trainee', appliesTo: ['trainee'] });
-    expect(slot('cert_internship')).toMatchObject({ name: 'Training certificate', appliesTo: ['trainee'] });
+    // the owner's internship slots are the unpaid intern's again (19 October 2026); the paid trainee has slots of its own
+    expect(slot('contract_internship')).toMatchObject({ name: 'Internship agreement · Unpaid internship', appliesTo: ['intern'], triggers: ['on_hire', 'renewal'] });
+    expect(slot('contract_trainee')).toMatchObject({ name: 'Training agreement · Trainee', appliesTo: ['trainee'], triggers: ['on_hire', 'renewal'] });
+    expect(slot('offer_internship')).toMatchObject({ name: 'Job offer · Unpaid internship', appliesTo: ['intern'] });
+    expect(slot('offer_trainee')).toMatchObject({ name: 'Job offer · Trainee', appliesTo: ['trainee'] });
+    expect(slot('cert_internship')).toMatchObject({ name: 'Internship or training certificate', appliesTo: ['trainee', 'intern'] });
     expect(slot('agreement_freelance').name).toBe('Service agreement · Freelance (outside the labour law)');
     expect(slot('contract_sales')).toMatchObject({ appliesTo: ['full_time'], paidByCommission: true });
     expect(slot('offer_sales')).toMatchObject({ appliesTo: ['full_time'], paidByCommission: true });
@@ -227,12 +243,14 @@ describe('the template slots and tags', () => {
 
   it('give each type its job offer slot', () => {
     expect(offerSlotKey('full_time')).toBe('offer_full_time');
-    expect(offerSlotKey('trainee')).toBe('offer_internship');
+    expect(offerSlotKey('trainee')).toBe('offer_trainee');
+    expect(offerSlotKey('intern')).toBe('offer_internship');
     expect(offerSlotKey('full_time', true)).toBe('offer_sales');
     expect(offerSlotKey('part_time', true)).toBe('offer_part_time');
     expect(offerSlotFor('full_time', true, (k) => k === 'offer_sales')).toBe('offer_sales');
     expect(offerSlotFor('full_time', true, () => false)).toBe('offer_full_time');
-    expect(offerSlotFor('trainee', false, () => true)).toBe('offer_internship');
+    expect(offerSlotFor('trainee', false, () => true)).toBe('offer_trainee');
+    expect(offerSlotFor('intern', false, () => true)).toBe('offer_internship');
   });
 
   it('have the new tags', () => {

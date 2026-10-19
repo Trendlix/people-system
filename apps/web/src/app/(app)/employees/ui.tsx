@@ -1,10 +1,11 @@
 import Link from 'next/link';
-import { LABELS, STANDING_LABELS, type EmployeeStatus, type ShiftTimes, type Standing } from '@trendlix/shared';
+import { LABELS, STANDING_LABELS, type EmployeeStatus, type EmploymentType, type ShiftTimes, type Standing } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import { hasRole } from '@/lib/roles';
 import type { EmployeeProfile, SessionUser } from '@/lib/types';
 import { BackLink, DAY_NAMES, Empty, Loading } from '../organization/ui';
+import { reportStanding, STANDING_STYLE, standingOf, STATUS_STYLE, trainingStanding } from './standing';
 
 // Small building blocks shared by the Employees pages (the generic ones come from the Organization pages).
 
@@ -42,36 +43,23 @@ export function RequireHr({ profile, children }: { profile: Pick<EmployeeProfile
   return children;
 }
 
-const STATUS_STYLE: Record<EmployeeStatus, string> = {
-  active: 'bg-ok-soft text-ok',
-  probation: '', // the badge's own accent colours
-  on_leave: 'bg-warn-soft text-warn',
-  notice_period: 'bg-line-soft text-muted',
-  resigned: 'bg-line-soft text-muted',
-  terminated: 'bg-line-soft text-muted',
-};
+// the colours and the standing worked out, in standing.ts (pure, tested)
+export { reportStanding, standingOf };
 
-/** An employment's status. */
-export function StatusBadge({ status }: { status: EmployeeStatus }) {
+/**
+ * An employment's status. With the current employment's type (`employmentType`), a trainee's or an intern's Active (or
+ * an older Probation) shows as Trainee or Intern (owner, 19 October 2026: "interns to be labeled trainees instead of
+ * probation").
+ */
+export function StatusBadge({ status, employmentType }: { status: EmployeeStatus; employmentType?: EmploymentType | null }) {
+  const training = trainingStanding(status, employmentType);
+  if (training) return <StandingBadge standing={training} />;
   return <span className={`badge ${STATUS_STYLE[status]}`}>{LABELS.status[status]}</span>;
 }
 
-/** Former employee and Not employed yet: no current employment, so shown quietly. */
-const STANDING_STYLE: Record<Standing, string> = {
-  ...STATUS_STYLE,
-  former: 'bg-line-soft text-muted',
-  not_employed: 'border border-dashed border-line bg-white text-muted',
-};
-
-/** Where someone stands: their current employment's status, or Former employee / Not employed yet. */
+/** Where someone stands: their current employment's status (Trainee or Intern for one), or Former employee / Not employed yet. */
 export function StandingBadge({ standing }: { standing: Standing }) {
   return <span className={`badge ${STANDING_STYLE[standing]}`}>{STANDING_LABELS[standing]}</span>;
-}
-
-/** A profile's standing, worked out as GET /employees does: the current employment's status, else whether one ended. */
-export function standingOf(profile: Pick<EmployeeProfile, 'employment' | 'employments'>): Standing {
-  if (profile.employment) return profile.employment.status as Standing;
-  return profile.employments.length > 0 ? 'former' : 'not_employed';
 }
 
 /** "G4 · Senior": an employee's grade (each employment has its own, within the job title's range if it has one). */

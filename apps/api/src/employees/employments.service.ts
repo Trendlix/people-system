@@ -1,9 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { PROBATION_MONTHS } from '@trendlix/shared';
+import { isTrainingType, PROBATION_MONTHS } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
+import { assertTrainingGap } from '../contracts/training.js';
 import type { Employment, Prisma } from '../generated/prisma/client.js';
 import { clearLeads, defaultManagerId } from '../organisation/departments/leads.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
@@ -175,9 +176,17 @@ export class EmploymentsService {
     await this.recurring.stopForLeaving(employeeId, dto.endDate, user, db);
   }
 
-  /** Confirms someone on probation: the status becomes Active. */
+  /**
+   * Confirms someone on probation: the status becomes Active. Never a trainee or an intern (owner, 19 October 2026:
+   * "interns to be labeled trainees instead of probation"): their agreements have no probation.
+   */
   async confirmProbation(employeeId: string, employmentId: string, user: SessionUser) {
     const before = await this.row(employeeId, employmentId);
+    if (isTrainingType(before.employmentType)) {
+      const person = await this.person(employeeId);
+      const what = before.employmentType === 'intern' ? 'an intern: an internship agreement' : 'a trainee: a training agreement';
+      throw new ConflictException(`${person.fullNameEn} is ${what} has no probation, so there is nothing to confirm.`);
+    }
     if (before.endDate || before.status !== 'probation') {
       const person = await this.person(employeeId);
       throw new ConflictException(`${person.fullNameEn} is not on probation, so there is nothing to confirm.`);
@@ -224,6 +233,8 @@ export class EmploymentsService {
    */
   private async assertStatusChosen(employeeId: string, before: Employment) {
     if (before.status !== 'probation' && before.status !== 'notice_period') return;
+    // a trainee's or an intern's Probation from before 19 October 2026 is no probation: their agreements have none
+    if (before.status === 'probation' && isTrainingType(before.employmentType)) return;
     const person = await this.person(employeeId);
     throw new BadRequestException(
       before.status === 'probation'
@@ -266,7 +277,7 @@ export class EmploymentsService {
    * Returns the values to write as well.
    */
   private async checked(employeeId: string, before: Employment | null, dto: CreateEmploymentDto | UpdateEmploymentDto) {
-    const derived: { departmentId?: string | null; officeDays?: number[]; probationEnd?: string | null; paidByCommission?: boolean } = {};
+    const derived: { departmentId?: string | null; officeDays?: number[]; probationEnd?: string | null; paidByCommission?: boolean; status?: 'active' } = {};
     const current = before ? fields(before) : null;
 
     // paid by commission is a full-time employment's (owner, 18 October 2026: Sales became Full-time with the flag):
@@ -320,9 +331,19 @@ export class EmploymentsService {
       derived.officeDays = arrangement === 'hybrid' ? days : [];
     }
 
-    // the probation end is never typed (owner, 15 October 2026): worked out again at every save
+    // the probation end is never typed (owner, 15 October 2026): worked out again at every save; none for a trainee or an
+    // intern (owner, 19 October 2026: "interns to be labeled trainees instead of probation"), who is Active, not on
+    // Probation
     const joinDate = dto.joinDate ?? current!.joinDate!;
-    derived.probationEnd = await this.probationEnd(employeeId, before, joinDate);
+    derived.probationEnd = isTrainingType(type) ? null : await this.probationEnd(employeeId, before, joinDate);
+    if (isTrainingType(type) && before?.status === 'probation' && !('status' in dto && dto.status !== undefined)) derived.status = 'active';
+
+    // a new training or internship agreement for the same person 6 months after their last one ended at the earliest
+    // (owner, 19 October 2026: "a new trainee contract can be issued after 6 months of the expiration of the last trainee
+    // contract"); checked when the type or the join date is chosen
+    if (isTrainingType(type) && (!before || dto.employmentType !== undefined || dto.joinDate !== undefined)) {
+      await assertTrainingGap(this.prisma, await this.person(employeeId), type, joinDate, before?.id);
+    }
 
     return derived;
   }
@@ -330,12 +351,17 @@ export class EmploymentsService {
   /**
    * When probation ends (Labour Law Art. 90: at most 3 months, once per employer): the first contract's probation once
    * there is one, drafted or signed (a draft made from a job offer has the offer's, which the employment was given
-   * when it was made); before that the contract settings' months from the join date, to the day before (as the
-   * contract will have it); none for someone who already worked for the company.
+   * when it was made), or the signed full-time contract a trainee's or an intern's agreement was converted to (19
+   * October 2026); before that the contract settings' months from the join date, to the day before (as the contract
+   * will have it); none for someone who already worked for the company.
    */
   private async probationEnd(employeeId: string, before: Employment | null, joinDate: string): Promise<string | null> {
     if (before) {
-      const first = await this.prisma.contract.findFirst({ where: { employmentId: before.id, version: 1 }, select: { probationEnd: true } });
+      const first = await this.prisma.contract.findFirst({
+        where: { employmentId: before.id, OR: [{ version: 1 }, { convertsTo: { not: null }, status: { not: 'draft' } }] },
+        orderBy: { version: 'desc' },
+        select: { probationEnd: true },
+      });
       if (first) return fromDateOnly(first.probationEnd);
     }
     const earlier = await this.prisma.employment.count({ where: { employeeId, ...(before && { id: { not: before.id } }), joinDate: { lt: toDateOnly(joinDate) } } });

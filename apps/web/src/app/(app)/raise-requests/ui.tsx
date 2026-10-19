@@ -29,7 +29,8 @@ import { DeclineRequestForm, HrDecisionForm } from './request-forms';
 // approvals are: who asked, the reason from the list and the comment, the raise suggested and the raise prepared from
 // it (only what the API sends the caller), where it stands with the comment given, its log of every step as a
 // timeline, and HR's decision while it is with HR. Since 17 October 2026 also the month it is asked from ("Effective
-// from"), and the line saying a request was just sent, on the page the requester lands on.
+// from"), and the line saying a request was just sent, on the page the requester lands on. Since 19 October 2026 a raise
+// HR prepared directly says so where the requester is shown ("Prepared directly by HR"), and is carried on with only.
 
 const dash = <span className="text-muted">—</span>;
 
@@ -52,7 +53,7 @@ export function RaiseRequestStatusBadge({ status }: { status: RaiseRequestStatus
   return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{statusLabel(status)}</span>;
 }
 
-/** "The direct manager", and their email under it. */
+/** "The direct manager", and their email under it; "Prepared directly by HR" and who did (19 October 2026). */
 export function Requester({ request }: { request: RaiseRequest }) {
   const r = requesterText(request);
   return (
@@ -120,7 +121,7 @@ export function RequestLog({ request: r }: { request: RaiseRequest }) {
   return (
     <ol className="space-y-3 border-l-2 border-line-soft pl-4" aria-label={`Every step of the raise request, ${stepsLabel(steps.length)}`}>
       {steps.map((s) => {
-        const t = stepText(s, r.requester);
+        const t = stepText(s, r.requester, r);
         return (
           <li key={s.id} className="relative">
             <span aria-hidden="true" className={`absolute top-1.5 -left-[23px] size-3 rounded-full border-2 border-card ${DOT[stepTone(s) ?? 'none']}`} />

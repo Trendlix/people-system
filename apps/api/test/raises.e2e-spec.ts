@@ -13,9 +13,12 @@ import { createApp, createUser, signIn } from './helpers.js';
 // Pay raises during a contract (owner's decisions, 16 October 2026): both ways (an amendment, a new contract), HR then
 // the CEO (send, return, send again, approve, sign; decline), a renewal with new pay going the same way, the promotion,
 // payroll before and after with the insured wage until January or the Form 2 date, the documents, the salary history,
-// and the CEO's decisions with a comment (17 October 2026; raise requests are in raise-requests.e2e-spec.ts). Dates are counted from today in
-// Cairo: the amendment takes effect on this month's 1st. Everything made here is deleted at the end. Every name and
-// amount is invented.
+// and the CEO's decisions with a comment (17 October 2026; raise requests are in raise-requests.e2e-spec.ts). Since 19
+// October 2026 ("when a raise request was sent to the CEO, is showed in approvals not raise requests, and after
+// approved, it was not shown in the raise request history too") each of these raises has its request, prepared directly
+// by HR, following it at every step on Raise Requests; and the CEO may change a raise's reason when approving it ("i
+// might want to ammend the raise reason, not only the money"). Dates are counted from today in Cairo: the amendment
+// takes effect on this month's 1st. Everything made here is deleted at the end. Every name and amount is invented.
 
 const RUN = Date.now().toString(36).toLowerCase();
 const today = todayInCairo();
@@ -55,9 +58,29 @@ interface Contract {
     form2From: string | null;
     insuredWageFrom: string;
     requestId: string | null;
+    requestOrigin: string | null;
   } | null;
   [key: string]: unknown;
 }
+
+/** A raise request as HR, Finance and the CEO see it on Raise Requests. */
+interface RaiseRequest {
+  id: string;
+  origin: string;
+  requester: string;
+  status: string;
+  requestedBy: { email: string } | null;
+  raiseReason: string | null;
+  comment: string;
+  effectiveFrom: string | null;
+  suggestion: { kind: string; amount: number | null; percent: number | null; gross: number | null } | null;
+  raise: { contractId: string; number: string; way: string; change: string; stage: string; previousGross: number | null; newGross: number | null } | null;
+  decision: { stage: string; reason: string | null } | null;
+  steps: { kind: string; decision: string | null; raiseReason: string | null; raiseReasonFrom: string | null; comment: string | null; increaseAmount: number | null; increasePercent: number | null; gross: number | null; contractNumber: string | null; by: { email: string } | null }[];
+}
+
+/** A request's steps, a decision with it: "ceo_decision:approve". */
+const kinds = (q: RaiseRequest) => q.steps.map((s) => (s.decision ? `${s.kind}:${s.decision}` : s.kind));
 
 interface Person {
   id: string;
@@ -77,6 +100,7 @@ describe('Pay raises (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let hr: string;
+  let hrEmail: string;
   let ceo: string;
   let ceoEmail: string;
   let finance: string;
@@ -124,6 +148,11 @@ describe('Pay raises (e2e)', () => {
   const step = (id: string, action: 'send' | 'approve' | 'return' | 'decline', session: string, body: object = {}) => api().post(`/api/raises/${id}/${action}`).set('Cookie', session).send(body);
   const form2 = (id: string, form2From: string | null, session = hr) => api().patch(`/api/raises/${id}/form2`).set('Cookie', session).send({ form2From });
   const auditOf = (entityType: string, entityId: string) => prisma.auditLog.findMany({ where: { entityType, entityId }, orderBy: { id: 'asc' } });
+  /** Raise Requests, of a status unless all, as `session` sees it (HR unless said). */
+  const requests = async (status = '', session = hr) => (await api().get(`/api/raise-requests${status ? `?status=${status}` : ''}`).set('Cookie', session).expect(200)).body as RaiseRequest[];
+  const requestOf = async (id: string, session = hr) => (await requests('', session)).find((q) => q.id === id)!;
+  /** The request a raise has, from the raise. */
+  const requestFor = async (raise: Contract) => requestOf(raise.raise!.requestId!);
 
   async function signedContract(e: Person, body: object): Promise<Contract> {
     const draft = (await postContract(e, body).expect(201)).body as Contract;
@@ -141,7 +170,8 @@ describe('Pay raises (e2e)', () => {
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
-    hr = await signIn(app, await createUser(prisma, ['hr']));
+    hrEmail = await createUser(prisma, ['hr']);
+    hr = await signIn(app, hrEmail);
     ceoEmail = await createUser(prisma, ['ceo']);
     ceo = await signIn(app, ceoEmail);
     finance = await signIn(app, await createUser(prisma, ['finance']));
@@ -240,12 +270,38 @@ describe('Pay raises (e2e)', () => {
           newGrade: { id: grades.G5, code: 'G5' },
           form2From: null,
           insuredWageFrom: JANUARY,
-          requestId: null,
+          // its request, prepared directly by HR (19 October 2026)
+          requestId: expect.any(String),
+          requestOrigin: 'direct',
         },
       });
       // the salary only as changed in the audit log, as for contracts
       const [created] = await auditOf('contract', raise.id);
       expect(created.diff).toMatchObject({ way: 'amendment', replaces: amyV1.number, grossSalary: 'changed', allowances: 'changed', raiseReason: 'promotion', approval: 'draft' });
+    });
+
+    it('is on Raise Requests at once: prepared directly by HR, with HR, its reason, note, raise and date, logged as prepared', async () => {
+      const q = await requestFor(raise);
+      expect(q).toMatchObject({
+        origin: 'direct',
+        requester: 'hr',
+        requestedBy: { email: hrEmail },
+        status: 'with_hr',
+        raiseReason: 'promotion',
+        comment: 'Promoted after the audit season',
+        effectiveFrom: EFFECTIVE,
+        suggestion: { kind: 'amount', amount: 2500, percent: null, gross: 12500 },
+        raise: { contractId: raise.id, number: raise.number, way: 'amendment', change: 'amendment', stage: 'draft', previousGross: 10000, newGross: 12500 },
+      });
+      expect(kinds(q)).toEqual(['prepared']);
+      expect(q.steps[0]).toMatchObject({ raiseReason: 'promotion', comment: 'Promoted after the audit season', increaseAmount: 2500, increasePercent: 25, gross: 12500, contractNumber: raise.number, by: { email: hrEmail } });
+      expect((await requests('with_hr')).map((x) => x.id)).toContain(q.id);
+      // the request in the audit log, the amount only as set
+      expect((await auditOf('raise_request', q.id))[0]).toMatchObject({ action: 'create', diff: { origin: 'direct', contract: raise.number, status: 'with_hr', suggestedIncrease: 'set' } });
+      expect(JSON.stringify((await auditOf('raise_request', q.id))[0].diff)).not.toContain('2500');
+      // nobody asked for it: HR doesn't reject it, nor prepare another raise from it
+      expect((await api().post(`/api/raise-requests/${q.id}/decline`).set('Cookie', hr).send({ comment: 'No' }).expect(409)).body.message).toMatch(/prepared this raise directly/);
+      await api().post(`/api/raise-requests/${q.id}/approve`).set('Cookie', hr).send({ decision: 'approve', comment: 'x', way: 'amendment', effectiveDate: EFFECTIVE }).expect(409);
     });
 
     it('one at a time; not signed before the CEO approves; hidden from those who don’t see salaries until signed', async () => {
@@ -268,20 +324,35 @@ describe('Pay raises (e2e)', () => {
       const pending = (await api().get('/api/raises/pending').set('Cookie', ceo).expect(200)).body as { id: string; change: string; previous: { grossSalary: number } }[];
       expect(pending.find((x) => x.id === raise.id)).toMatchObject({ change: 'amendment', previous: { grossSalary: 10000 } });
       await api().get('/api/raises/pending').set('Cookie', finance).expect(403);
+      // and on Raise Requests, with the CEO: the one place for every raise
+      const q = await requestFor(raise);
+      expect(q).toMatchObject({ status: 'with_ceo', raise: { stage: 'pending_ceo' } });
+      expect(kinds(q)).toEqual(['prepared', 'sent']);
+      expect((await requests('with_ceo', ceo)).map((x) => x.id)).toContain(q.id);
     });
 
     it('the CEO returns it with a reason; HR changes it and sends it again; the CEO approves it', async () => {
       await step(raise.id, 'return', ceo, {}).expect(400);
       const returned = (await step(raise.id, 'return', ceo, { reason: 'Keep it within the band' }).expect(200)).body as Contract;
       expect(returned).toMatchObject({ stage: 'returned', raise: { approval: 'draft', returnedReason: 'Keep it within the band' } });
+      expect(await requestFor(raise)).toMatchObject({ status: 'with_hr', raise: { stage: 'returned' } });
       const changed = (await patchRaise(raise.id, { grossSalary: 12000 }).expect(200)).body as Contract;
       expect(changed).toMatchObject({ grossSalary: 12000, stage: 'returned', number: raise.number });
+      // its request follows what HR changed
+      expect((await requestFor(raise)).suggestion).toEqual({ kind: 'amount', amount: 2000, percent: null, gross: 12000 });
       await step(raise.id, 'send', hr).expect(200);
       // always with a comment (owner, 17 October 2026)
       await step(raise.id, 'approve', ceo).expect(400);
       const approved = (await step(raise.id, 'approve', ceo, { comment: 'Agreed' }).expect(200)).body as Contract;
       expect(approved).toMatchObject({ stage: 'approved', raise: { approval: 'approved', returnedReason: null, approvedBy: { email: ceoEmail } } });
       expect((await auditOf('contract', raise.id)).map((a) => a.action)).toEqual(['create', 'submit', 'return', 'update', 'submit', 'approve']);
+      // approved: in the history on Raise Requests, every step logged
+      const q = await requestFor(raise);
+      expect(q).toMatchObject({ status: 'approved', raise: { stage: 'approved' } });
+      expect(kinds(q)).toEqual(['prepared', 'sent', 'returned', 'sent', 'ceo_decision:approve']);
+      expect(q.steps[2]).toMatchObject({ comment: 'Keep it within the band', by: { email: ceoEmail } });
+      expect(q.steps[4]).toMatchObject({ comment: 'Agreed', raiseReason: null, raiseReasonFrom: null, increaseAmount: 2000, gross: 12000, by: { email: ceoEmail } });
+      expect((await requests('approved')).map((x) => x.id)).toContain(q.id);
     });
 
     it('its salary amendment letter and Form 2 are listed once approved; the letter is generated from its template', async () => {
@@ -320,6 +391,11 @@ describe('Pay raises (e2e)', () => {
       ]);
       const profile = (await api().get(`/api/employees/${amy.id}`).set('Cookie', hr).expect(200)).body as { employment: { jobTitleId: string; gradeId: string } };
       expect(profile.employment).toMatchObject({ jobTitleId: senior, gradeId: grades.G5 });
+      // done, in the history
+      const q = await requestFor(raise);
+      expect(q).toMatchObject({ status: 'done', raise: { stage: 'signed', newGross: 12000 } });
+      expect(kinds(q).at(-1)).toBe('signed');
+      expect((await requests('done')).map((x) => x.id)).toContain(q.id);
       const employmentAudit = await prisma.auditLog.findFirst({ where: { entityType: 'employment', entityId: amy.employmentId, action: 'update' }, orderBy: { id: 'desc' } });
       expect(employmentAudit!.diff).toMatchObject({ contract: raise.number, jobTitleId: { from: accountant, to: senior }, gradeId: { from: grades.G3, to: grades.G5 } });
     });
@@ -409,12 +485,14 @@ describe('Pay raises (e2e)', () => {
     it('a signing undone by mistake (a Super Admin): the version before is in force again and the promotion is undone', async () => {
       const draft = (await api().post(`/api/contracts/${raise.id}/unsign`).set('Cookie', superAdmin).expect(200)).body as Contract;
       expect(draft).toMatchObject({ status: 'draft', stage: 'approved', raise: { approval: 'approved' } });
+      expect((await requestFor(raise)).status).toBe('approved');
       const back = (await api().get(`/api/employees/${amy.id}`).set('Cookie', hr).expect(200)).body as { employment: { jobTitleId: string; gradeId: string; contract: { id: string } } };
       expect(back.employment).toMatchObject({ jobTitleId: accountant, gradeId: grades.G3, contract: { id: amyV1.id } });
       // still approved: signed again as it was
       await sign(raise.id).expect(200);
       const again = (await api().get(`/api/employees/${amy.id}`).set('Cookie', hr).expect(200)).body as { employment: { jobTitleId: string; gradeId: string } };
       expect(again.employment).toMatchObject({ jobTitleId: senior, gradeId: grades.G5 });
+      expect(kinds(await requestFor(raise)).slice(-3)).toEqual(['signed', 'unsigned', 'signed']);
     });
   });
 
@@ -429,29 +507,54 @@ describe('Pay raises (e2e)', () => {
         endDate: addDays(addMonths(NEXT_EFFECTIVE, 12), -1),
         durationMonths: 12,
         probationMonths: 0,
-        raise: { requestId: null, approval: 'draft', reason: 'market_adjustment' },
+        raise: { requestId: expect.any(String), requestOrigin: 'direct', approval: 'draft', reason: 'market_adjustment' },
       });
-      // a raise not yet signed stays with those who see salaries
+      // a raise not yet signed stays with those who see salaries, and so does its request
       expect(((await contractsOf(benP, ben).expect(200)).body as Contract[]).map((c) => c.id)).not.toContain(raise.id);
+      const id = raise.raise!.requestId!;
+      for (const session of [ben, manager]) {
+        const seen = (await api().get(`/api/employees/${benP.id}/raise-requests`).set('Cookie', session).expect(200)).body as { requests: { id: string }[]; canRequest: boolean };
+        expect(seen.requests.map((q) => q.id)).not.toContain(id);
+        // nor is it the one open request a person has: they may still ask
+        expect(seen.canRequest).toBe(true);
+      }
+      expect((await api().get(`/api/employees/${benP.id}/raise-requests`).set('Cookie', hr).expect(200)).body.requests.map((q: { id: string }) => q.id)).toContain(id);
+      expect(await requestOf(id)).toMatchObject({ raise: { way: 'contract', change: 'new_contract' }, comment: 'Prepared directly by HR' });
       await step(raise.id, 'send', hr, { comment: 'For the new year' }).expect(200);
       await step(raise.id, 'decline', ceo, {}).expect(400);
       await step(raise.id, 'decline', ceo, { comment: 'Not this quarter' }).expect(204);
       expect(await prisma.contract.findUnique({ where: { id: raise.id } })).toBeNull();
       expect((await auditOf('contract', raise.id)).at(-1)).toMatchObject({ action: 'decline', diff: { reason: 'Not this quarter', grossSalary: 'changed' } });
+      // rejected: its request stays, in the history
+      const q = await requestOf(id);
+      expect(q).toMatchObject({ status: 'declined', raise: null, decision: { stage: 'ceo', reason: 'Not this quarter' } });
+      expect(kinds(q)).toEqual(['prepared', 'sent', 'ceo_decision:reject']);
+      expect((await requests('declined')).map((x) => x.id)).toContain(id);
     });
 
     it('the CEO approves another with another raise: its gross is the figure over the pay before it, the allowances as they are', async () => {
       const raise = (await postRaise(benP, { way: 'contract', effectiveDate: NEXT_EFFECTIVE, reason: 'performance', grossSalary: 9500, netSalary: 7000 }).expect(201)).body as Contract;
       await step(raise.id, 'send', hr).expect(200);
       await step(raise.id, 'approve', ceo, { comment: 'More', increaseAmount: 100, increasePercent: 10 }).expect(400);
-      // the pay before it is 9,000: +10% is 9,900
-      const approved = (await step(raise.id, 'approve', ceo, { comment: 'Make it 10%', increasePercent: 10 }).expect(200)).body as Contract & { netSalary: number; insuredSalary: number };
-      expect(approved).toMatchObject({ stage: 'approved', grossSalary: 9900, raise: { approval: 'approved', approvedBy: { email: ceoEmail } } });
+      // another reason, from the list (19 October 2026): adjustment is no longer offered, and only the list's are taken
+      expect((await step(raise.id, 'approve', ceo, { comment: 'Make it 10%', increasePercent: 10, raiseReason: 'adjustment' }).expect(400)).body.message).toMatch(/Choose the reason from the list/);
+      await step(raise.id, 'approve', ceo, { comment: 'Make it 10%', increasePercent: 10, raiseReason: 'bonus' }).expect(400);
+      // the pay before it is 9,000: +10% is 9,900; and the CEO changes the reason
+      const approved = (await step(raise.id, 'approve', ceo, { comment: 'Make it 10%', increasePercent: 10, raiseReason: 'counter_offer' }).expect(200)).body as Contract & { netSalary: number; insuredSalary: number };
+      expect(approved).toMatchObject({ stage: 'approved', grossSalary: 9900, raise: { approval: 'approved', approvedBy: { email: ceoEmail }, reason: 'counter_offer' } });
+      // the request's reason too, logged on the CEO's decision from → to
+      const q = await requestFor(raise);
+      expect(q).toMatchObject({ status: 'approved', raiseReason: 'counter_offer' });
+      expect(q.steps.at(-1)).toMatchObject({ kind: 'ceo_decision', decision: 'approve_other', comment: 'Make it 10%', raiseReason: 'counter_offer', raiseReasonFrom: 'performance', gross: 9900, increasePercent: 10 });
+      // and in the audit log, the version's and the request's
+      expect((await auditOf('contract', raise.id)).at(-1)!.diff).toMatchObject({ raiseReason: { from: 'performance', to: 'counter_offer' } });
+      expect((await auditOf('raise_request', q.id)).at(-1)).toMatchObject({ action: 'approve', diff: { raiseReason: { from: 'performance', to: 'counter_offer' }, status: { from: 'with_ceo', to: 'approved' } } });
       // the net and the insured salary worked out again for the new gross
       expect(approved.netSalary).not.toBe(7000);
       expect(approved.insuredSalary).toBe(insured(9900, NEXT_EFFECTIVE.slice(0, 7)));
       const audit = (await auditOf('contract', raise.id)).at(-1)!;
       expect(audit).toMatchObject({ action: 'approve', diff: { decision: 'approve_other', comment: 'Make it 10%', grossSalary: 'changed' } });
+      expect(JSON.stringify((await auditOf('raise_request', q.id)).map((a) => a.diff))).not.toContain('9900');
       expect(JSON.stringify(audit.diff)).not.toContain('9900');
       await sign(raise.id).expect(200);
       const versions = (await contractsOf(benP).expect(200)).body as Contract[];
@@ -469,22 +572,50 @@ describe('Pay raises (e2e)', () => {
         'The pay changes from version 1: choose why (annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other). The CEO approves a change of pay before it is signed.',
       );
       const renewal = (await postContract(cara, { grossSalary: 9000, raiseReason: 'annual' }).expect(201)).body as Contract;
-      expect(renewal).toMatchObject({ kind: 'contract', startDate: addDays(v1.endDate!, 1), stage: 'draft', raise: { reason: 'annual', approval: 'draft' } });
+      expect(renewal).toMatchObject({ kind: 'contract', startDate: addDays(v1.endDate!, 1), stage: 'draft', raise: { reason: 'annual', approval: 'draft', requestOrigin: 'direct' } });
+      // its request, prepared directly by HR (19 October 2026): a renewal, from its start
+      const first = await requestFor(renewal);
+      expect(first).toMatchObject({ origin: 'direct', status: 'with_hr', raiseReason: 'annual', effectiveFrom: renewal.startDate, suggestion: { amount: 1000, gross: 9000 }, raise: { change: 'renewal', previousGross: 8000 } });
       expect((await sign(renewal.id).expect(409)).body.message).toMatch(/changes the pay: send it to the CEO/);
-      // changed back to the same pay, it needs no approval
+      // changed back to the same pay, it needs no approval, and its request goes
       const same = (await api().patch(`/api/contracts/${renewal.id}`).set('Cookie', hr).send({ grossSalary: 8000 }).expect(200)).body as Contract;
       expect(same.raise).toBeNull();
+      expect(await prisma.raiseRequest.findUnique({ where: { id: first.id } })).toBeNull();
+      expect((await auditOf('raise_request', first.id)).at(-1)).toMatchObject({ action: 'delete', diff: { origin: 'direct', why: 'no_pay_change' } });
       expect((await step(renewal.id, 'send', hr).expect(400)).body.message).toMatch(/doesn't change the pay/);
-      // new pay again: HR sends it, the CEO approves, HR signs
-      await api().patch(`/api/contracts/${renewal.id}`).set('Cookie', hr).send({ grossSalary: 9500, raiseReason: 'adjustment' }).expect(200);
+      // new pay again: a request again (a reason kept from before, adjustment, too); HR sends it, the CEO approves, HR signs
+      const again = (await api().patch(`/api/contracts/${renewal.id}`).set('Cookie', hr).send({ grossSalary: 9500, raiseReason: 'adjustment' }).expect(200)).body as Contract;
+      expect(await requestFor(again)).toMatchObject({ status: 'with_hr', raiseReason: 'adjustment', suggestion: { amount: 1500, gross: 9500 } });
       await step(renewal.id, 'send', hr).expect(200);
+      expect((await requestFor(again)).status).toBe('with_ceo');
       await api().patch(`/api/contracts/${renewal.id}`).set('Cookie', hr).send({ grossSalary: 9600 }).expect(409);
-      await step(renewal.id, 'approve', ceo, { comment: 'Fine' }).expect(200);
+      await step(renewal.id, 'approve', ceo, { comment: 'Fine', raiseReason: 'adjustment' }).expect(200);
+      expect((await requestFor(again)).status).toBe('approved');
       expect((await sign(renewal.id).expect(200)).body).toMatchObject({ status: 'active', stage: 'signed', raise: { approval: 'approved', reason: 'adjustment' } });
+      const done = await requestFor(again);
+      expect(done).toMatchObject({ status: 'done', raiseReason: 'adjustment' });
+      expect(kinds(done)).toEqual(['prepared', 'sent', 'ceo_decision:approve', 'signed']);
+      // the CEO kept the reason: nothing changed on the decision
+      expect(done.steps[2]).toMatchObject({ raiseReason: null, raiseReasonFrom: null });
       const history = (await api().get(`/api/employees/${cara.id}/salary-history`).set('Cookie', ceo).expect(200)).body as { employments: { events: { change: string; raise: boolean; samePay: boolean }[] }[] };
       expect(history.employments[0].events.map((e) => [e.change, e.raise, e.samePay])).toEqual([
         ['hired', false, false],
         ['renewal', true, false],
+      ]);
+    });
+
+    it('a raise draft deleted (a Super Admin): its request prepared directly by HR goes with it, nobody having asked', async () => {
+      // on the renewal now in force, from the 1st after it starts
+      const [inForce] = (await contractsOf(cara).expect(200)).body as Contract[];
+      const raise = (await postRaise(cara, { way: 'amendment', effectiveDate: nextFirstOfMonth(inForce.startDate), reason: 'annual', grossSalary: 10000 }).expect(201)).body as Contract;
+      const id = raise.raise!.requestId!;
+      expect((await requestOf(id)).status).toBe('with_hr');
+      await api().delete(`/api/contracts/${raise.id}`).set('Cookie', superAdmin).expect(204);
+      expect(await prisma.raiseRequest.findUnique({ where: { id } })).toBeNull();
+      expect((await requests()).map((q) => q.id)).not.toContain(id);
+      expect((await auditOf('raise_request', id)).map((a) => [a.action, (a.diff as { why?: string }).why ?? null])).toEqual([
+        ['create', null],
+        ['delete', 'raise_deleted'],
       ]);
     });
   });

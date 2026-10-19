@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { EmployeeProfile, SessionUser } from '@/lib/types';
 import { loadEmployeeRaiseRequests, type EmployeeRaiseRequestsLoad } from '../../../raise-requests/data';
-import { askedAt, handlesRaiseRequests, newRaiseRequestHref, requestPlace, showsRaiseRequests } from '../../../raise-requests/list';
+import { askedAt, handlesRaiseRequests, isDirect, newRaiseRequestHref, requestPlace, showsRaiseRequests } from '../../../raise-requests/list';
 import { EffectiveFrom, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestLog, RequestReason, Requester, Suggestion } from '../../../raise-requests/ui';
 import { ProfileSection } from '../../ui';
 
@@ -22,7 +22,8 @@ import { ProfileSection } from '../../ui';
 // raise requests tab"; the owner chose "Under Requests"): the form is under Requests → Raise Requests (Request a raise
 // opens it with the person chosen), and HR decides there; each request here links to its place there (the Raise
 // Requests page for HR, the CEO and Finance; My Requests for the employee's own and a manager's), with the month it is
-// asked from.
+// asked from. Since 19 October 2026 a raise HR prepared directly (on the contract, or a renewal with new pay) is listed
+// too, "Prepared directly by HR", for HR, Finance and the CEO only (the API sends it no one else).
 
 type Profile = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'isSelf' | 'employment'>;
 
@@ -98,7 +99,7 @@ export async function RaiseRequestsSection({
             <li key={r.id} className="card space-y-4 p-5">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <p className="text-sm">
-                  Asked <span className="font-medium">{askedAt(r)}</span>
+                  {isDirect(r) ? 'Prepared' : 'Asked'} <span className="font-medium">{askedAt(r)}</span>
                 </p>
                 <RaiseRequestStatusBadge status={r.status} />
               </div>
@@ -136,7 +137,7 @@ export async function RaiseRequestsSection({
               {place && (
                 <Link href={place.href} className="inline-block text-sm font-semibold">
                   {place.label}
-                  <span className="sr-only"> the raise request asked {askedAt(r)}</span>
+                  <span className="sr-only"> the raise request {isDirect(r) ? 'prepared' : 'asked'} {askedAt(r)}</span>
                 </Link>
               )}
             </li>

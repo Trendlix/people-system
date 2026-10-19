@@ -135,6 +135,34 @@ describe('the labour law’s tags', () => {
   });
 
   it('name the employment types in the law’s Arabic', () => {
-    expect(EMPLOYMENT_TYPES_AR).toEqual({ full_time: 'دوام كامل', part_time: 'عمل بعض الوقت', trainee: 'متدرج', freelance: 'عمل حر (غير خاضع لقانون العمل)' });
+    expect(EMPLOYMENT_TYPES_AR).toEqual({
+      full_time: 'دوام كامل',
+      part_time: 'عمل بعض الوقت',
+      trainee: 'متدرج',
+      intern: 'تدريب غير مدفوع (غير خاضع لقانون العمل)',
+      freelance: 'عمل حر (غير خاضع لقانون العمل)',
+    });
+  });
+
+  it('print an unpaid intern’s type, and the gross as 0 with the allowances on top (19 October 2026)', () => {
+    const transport = { nameEn: 'Transportation', nameAr: 'بدل انتقال', amount: new Prisma.Decimal(1500) };
+    const contract = { form: 'fixed', jobToDo: null, grossSalary: new Prisma.Decimal(0), insuredSalary: new Prisma.Decimal(0), allowances: [transport] };
+    const intern = sources({ employment: { employmentType: 'intern', paidByCommission: false }, contract });
+    const tags = ['employment_type', 'employment_type_en', 'gross_salary', 'gross_salary_words', 'gross_salary_words_en', 'basic_salary', 'allowances', 'allowances_total', 'total_salary'];
+    const values = resolveValues(intern, tags);
+    expect(values).toEqual({
+      employment_type: 'تدريب غير مدفوع (غير خاضع لقانون العمل)',
+      employment_type_en: 'Unpaid internship (outside the labour law)',
+      gross_salary: '0',
+      gross_salary_words: 'صفر جنيه مصري فقط لا غير',
+      gross_salary_words_en: 'Zero Egyptian pounds only',
+      basic_salary: '0',
+      allowances: 'بدل انتقال: 1,500',
+      allowances_total: '1,500',
+      total_salary: '1,500',
+    });
+    // a gross of 0 is a value: nothing is missing
+    expect(missingTags(values, tags)).toEqual([]);
+    expect(resolveValues(sources({ employment: { employmentType: 'trainee' } }, 'en'), ['employment_type'])).toEqual({ employment_type: 'Trainee' });
   });
 });

@@ -65,8 +65,21 @@ function daysFrom(fd: FormData, errors: string[]): number | null {
  * from the net per hour (rateBasis 'net'), the rate is the gross rate the form worked out from it, so a missing one
  * asks for the net per hour. `draft`: changing a draft, where an emptied net or number of working days is cleared
  * (null); a new one just leaves them out.
+ *
+ * An intern's internship agreement pays no wage (owner, 19 October 2026: "we are not paying them salary, its just
+ * transportation allowance"): the form says so (`unpaid`), and no gross is sent, not even 0, nor a net or a basic part:
+ * the API keeps the gross at 0. A monthly salary, with the working days and the allowances, paid on top.
  */
 export function payBody(fd: FormData, errors: string[], draft: boolean) {
+  if (text(fd, 'unpaid') === '1') {
+    const daysPerWeek = daysFrom(fd, errors);
+    return {
+      payBasis: 'monthly' as PayBasis,
+      ...(daysPerWeek !== null ? { daysPerWeek } : draft ? { daysPerWeek: null } : {}),
+      ...(draft && { netSalary: null }),
+      allowances: allowancesFrom(fd, errors),
+    };
+  }
   const payBasis: PayBasis = text(fd, 'payBasis') === 'hourly' ? 'hourly' : 'monthly';
   const netRate = text(fd, 'rateBasis') === 'net';
   const pay =
@@ -140,6 +153,7 @@ export function lengthBody(fd: FormData, errors: string[], draft: boolean) {
 export function contractBody(fd: FormData, errors: string[], renewal: boolean, draft: boolean) {
   const startDate = renewal ? '' : dateFrom(fd, 'startDate', 'start date', errors);
   const length = lengthBody(fd, errors, draft);
+  // a trainee's or an intern's agreement has no probation (19 October 2026): its form sends 0
   const probationMonths = renewal ? undefined : monthsFrom(fd, 'probationMonths', 'probation', 3, errors);
   const pay = payBody(fd, errors, draft);
   const raiseReason = text(fd, 'payChange') === 'changes' ? raiseReasonFrom(fd, 'raiseReason', errors) : undefined;
@@ -151,4 +165,15 @@ export function contractBody(fd: FormData, errors: string[], renewal: boolean, d
     ...(raiseReason && { raiseReason }),
     note: text(fd, 'note'),
   };
+}
+
+/**
+ * Converting a trainee's or an intern's agreement to a full-time contract (owner, 19 October 2026: "or can be only
+ * renewed 1 time, after that it should be converted to a full time contract"), as POST …/contracts takes it: the
+ * full-time contract form's fields (contractBody, not a renewal: its start date and probation are sent, the agreement
+ * having had none), with convertsTo. Signing it makes the employment full-time. No reason for a change of pay: it isn't a
+ * raise.
+ */
+export function conversionBody(fd: FormData, errors: string[]) {
+  return { ...contractBody(fd, errors, false, false), convertsTo: 'full_time' as const };
 }

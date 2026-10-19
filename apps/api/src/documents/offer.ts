@@ -10,9 +10,20 @@ export type SectionKey = (typeof SECTION_KEYS)[number];
 /** Each section's slots, in the order the tab lists them. Payslips are in none: there is no payroll yet. */
 export const SECTION_SLOTS: Record<SectionKey, readonly string[]> = {
   // one item per copy for each contract version
-  // a salary amendment's own letter instead (owner's decisions, 16 October 2026)
-  contract: ['contract_full_time', 'contract_full_time_insurance', 'contract_part_time', 'contract_internship', 'contract_sales', 'agreement_freelance', 'contract_amendment'],
-  hiring: ['offer_full_time', 'offer_part_time', 'offer_internship', 'offer_freelance', 'offer_sales', 'nda'],
+  // a salary amendment's own letter instead (owner's decisions, 16 October 2026); a paid trainee's training agreement
+  // and offer, and an unpaid intern's internship agreement and offer, each their own (owner, 19 October 2026: the
+  // internship slots are the unpaid interns' again)
+  contract: [
+    'contract_full_time',
+    'contract_full_time_insurance',
+    'contract_part_time',
+    'contract_trainee',
+    'contract_internship',
+    'contract_sales',
+    'agreement_freelance',
+    'contract_amendment',
+  ],
+  hiring: ['offer_full_time', 'offer_part_time', 'offer_trainee', 'offer_internship', 'offer_freelance', 'offer_sales', 'nda'],
   // Form 2 for each approved raise (owner's decision, 16 October 2026: "From the next January unless amended in Form 2")
   insurance: ['insurance_form_1', 'insurance_form_2', 'insurance_form_6'],
   letters: ['bank_letter', 'hr_letter_ar', 'hr_letter_en', 'cert_experience', 'cert_internship'],
@@ -66,8 +77,8 @@ export interface Situation {
 /**
  * When each trigger's moment has come. Every document of the hire is offered for as long as the employment is there
  * (HR prints them again on request). The experience certificate (end of service, or on request) is therefore always
- * offered, and so is the training certificate to a trainee (an intern before 18 October 2026): a trainee asks for it
- * before the last day as well (decisions, 15 October 2026). Form 6 once the employment is ending or has ended. The resignation request only when
+ * offered, and so is the internship or training certificate to an intern or a trainee (19 October 2026): they ask for
+ * it before the last day as well (decisions, 15 October 2026). Form 6 once the employment is ending or has ended. The resignation request only when
  * the employee started the ending (a resignation, family reasons, or ending their own probation), and the clearance
  * whenever there is an ending. Payslips never: there is no payroll yet.
  */

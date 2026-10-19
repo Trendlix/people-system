@@ -501,7 +501,7 @@ describe('Employees (e2e)', () => {
       await changeEmployment(boss.id, boss.employment.id, { managerId: boss.id }).expect(400);
 
       expect((await profileOf(boss.id)).reports).toEqual([
-        { id: lead.id, employeeCode: lead.employeeCode, fullNameEn: `Lead ${RUN}`, status: 'active', jobTitle: null },
+        { id: lead.id, employeeCode: lead.employeeCode, fullNameEn: `Lead ${RUN}`, status: 'active', standing: 'active', jobTitle: null },
       ]);
 
       const res = await api().delete(`/api/employees/${lead.id}`).set('Cookie', superAdmin).expect(409);

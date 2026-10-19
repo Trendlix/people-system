@@ -5,7 +5,7 @@ import { DocumentViewer, type ViewerFile } from '@/components/document-viewer';
 import { ApiError, apiGet } from '@/lib/api';
 import { formatDate, titleCase } from '@/lib/format';
 import type { EmployeeProfile, PaperworkItem } from '@/lib/types';
-import { typeWord } from '../employment-law';
+import { aTypeWord, typeWord } from '../employment-law';
 import { describePaperwork } from '../paper-details-actions';
 import { formatSize, idScanTitle, OCR_LABEL, paperworkHref } from '../paperwork';
 import { deletePaperwork, deletePaperworkItems, rereadPaperwork, uploadPaperwork } from '../paperwork-actions';
@@ -255,7 +255,7 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
       </Title>
       <p className="text-sm text-muted">
         {current
-          ? `The papers a ${typeWord(current)} employee's file needs.`
+          ? `The papers ${aTypeWord(current)} employee's file needs.`
           : type
             ? `No current employment: the papers of their last employment (${typeWord(type)}).`
             : 'Not employed yet: the papers a full-time hire needs, collected before the start date. Once hired, the checklist follows the employment type.'}

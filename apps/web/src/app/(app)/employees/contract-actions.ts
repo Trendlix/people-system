@@ -11,7 +11,7 @@ import { ApiError, apiSend } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
-import { contractBody } from './contract-body';
+import { contractBody, conversionBody } from './contract-body';
 import { contractHref, profileHref } from './ui';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
@@ -79,6 +79,17 @@ function requiredDate(fd: FormData, key: string, label: string, errors: string[]
 export async function createContract(employeeId: string, employmentId: string, renewal: boolean, _prev: FormState, fd: FormData): Promise<FormState> {
   const errors: string[] = [];
   const body = contractBody(fd, errors, renewal, false);
+  return save(employeeId, fd, errors, () => apiSend('POST', `/employees/${employeeId}/employments/${employmentId}/contracts`, body), contractHref(employeeId));
+}
+
+/**
+ * Drafts the full-time contract a trainee's or an intern's agreement converts to (owner, 19 October 2026: "after that it
+ * should be converted to a full time contract"), as the employment's next version; signing it makes the employment
+ * full-time.
+ */
+export async function convertToFullTime(employeeId: string, employmentId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const errors: string[] = [];
+  const body = conversionBody(fd, errors);
   return save(employeeId, fd, errors, () => apiSend('POST', `/employees/${employeeId}/employments/${employmentId}/contracts`, body), contractHref(employeeId));
 }
 

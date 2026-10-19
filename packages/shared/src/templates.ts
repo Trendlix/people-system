@@ -58,7 +58,7 @@ export type TemplateLanguage = (typeof TEMPLATE_LANGUAGES)[number];
 export const TEMPLATE_SIGNERS = ['both', 'employee', 'company', 'none'] as const;
 export type TemplateSigners = (typeof TEMPLATE_SIGNERS)[number];
 
-const ALL: readonly EmploymentType[] = ['full_time', 'part_time', 'trainee', 'freelance'];
+const ALL: readonly EmploymentType[] = ['full_time', 'part_time', 'trainee', 'intern', 'freelance'];
 
 export interface TemplateSlot {
   key: string;
@@ -99,8 +99,20 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   // employment types by the labour law (owner, 18 October 2026): every slot keeps its key, so the templates uploaded
   // keep working. Internship became Trainee, whose contract is the training agreement (Labour Law 14/2025 Art. 29: "يجب
   // أن يكون اتفاق التدرج مكتوبا"); Sales became Full-time paid by commission, its slots chosen for one (paidByCommission);
-  // a freelancer, outside the labour law, signs a service agreement rather than an employment contract
-  { key: 'contract_internship', name: 'Training agreement · Trainee', folder: 'contracts', language: null, appliesTo: ['trainee'], triggers: ['on_hire'], signers: 'both' },
+  // a freelancer, outside the labour law, signs a service agreement rather than an employment contract. The unpaid
+  // internship (owner, 19 October 2026: an intern is paid no wage, only the transportation allowance): the owner's
+  // internship slots were written for these interns, so they are the intern's again, and the paid trainee's training
+  // agreement and offer have slots of their own; an agreement renewed once has its document again
+  {
+    key: 'contract_internship',
+    name: 'Internship agreement · Unpaid internship',
+    folder: 'contracts',
+    language: null,
+    appliesTo: ['intern'],
+    triggers: ['on_hire', 'renewal'],
+    signers: 'both',
+  },
+  { key: 'contract_trainee', name: 'Training agreement · Trainee', folder: 'contracts', language: null, appliesTo: ['trainee'], triggers: ['on_hire', 'renewal'], signers: 'both' },
   {
     key: 'contract_sales',
     name: 'Contract · Full-time, paid by commission',
@@ -118,7 +130,8 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   { key: 'offer_full_time', name: 'Job offer · Full-time', folder: 'job_offers', language: null, appliesTo: ['full_time'], triggers: ['offer_stage'], signers: 'both' },
   { key: 'offer_part_time', name: 'Job offer · Part-time', folder: 'job_offers', language: null, appliesTo: ['part_time'], triggers: ['offer_stage'], signers: 'both' },
   { key: 'offer_freelance', name: 'Job offer · Freelance', folder: 'job_offers', language: null, appliesTo: ['freelance'], triggers: ['offer_stage'], signers: 'both' },
-  { key: 'offer_internship', name: 'Job offer · Trainee', folder: 'job_offers', language: null, appliesTo: ['trainee'], triggers: ['offer_stage'], signers: 'both' },
+  { key: 'offer_internship', name: 'Job offer · Unpaid internship', folder: 'job_offers', language: null, appliesTo: ['intern'], triggers: ['offer_stage'], signers: 'both' },
+  { key: 'offer_trainee', name: 'Job offer · Trainee', folder: 'job_offers', language: null, appliesTo: ['trainee'], triggers: ['offer_stage'], signers: 'both' },
   {
     key: 'offer_sales',
     name: 'Job offer · Full-time, paid by commission',
@@ -131,7 +144,7 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   },
   { key: 'nda', name: 'NDA', folder: 'nda', language: null, appliesTo: ALL, triggers: ['on_hire'], signers: 'both' },
   { key: 'cert_experience', name: 'Experience certificate', folder: 'certificates', language: null, appliesTo: ALL, triggers: ['end_of_service', 'on_request'], signers: 'company' },
-  { key: 'cert_internship', name: 'Training certificate', folder: 'certificates', language: null, appliesTo: ['trainee'], triggers: ['end_of_internship'], signers: 'company' },
+  { key: 'cert_internship', name: 'Internship or training certificate', folder: 'certificates', language: null, appliesTo: ['trainee', 'intern'], triggers: ['end_of_internship'], signers: 'company' },
   { key: 'hr_letter_en', name: 'HR letter · English', folder: 'letters', language: 'en', appliesTo: ALL, triggers: ['on_request'], signers: 'company' },
   { key: 'hr_letter_ar', name: 'HR letter · Arabic', folder: 'letters', language: 'ar', appliesTo: ALL, triggers: ['on_request'], signers: 'company' },
   { key: 'bank_letter', name: 'Bank account letter', folder: 'letters', language: null, appliesTo: ALL, triggers: ['on_hire', 'on_request'], signers: 'company' },

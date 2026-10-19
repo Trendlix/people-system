@@ -1,8 +1,9 @@
 import { ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { TEMPLATE_SLOTS } from '@trendlix/shared';
+import { isTrainingType, TEMPLATE_SLOTS } from '@trendlix/shared';
 import { allowanceData } from '../allowances/rows.js';
 import { AuditService } from '../audit/audit.service.js';
 import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
+import { assertTrainingGap } from '../contracts/training.js';
 import { restrictedTags } from '../documents/values.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
@@ -105,11 +106,16 @@ export class OfferHiringService {
           person = { ...e, created: true };
         }
 
+        // a trainee's or an intern's agreement (owner, 19 October 2026): none for the same person until 6 months after
+        // their last one ended, and no probation (an offer from before then may still have some)
+        await assertTrainingGap(tx, person, o.employmentType, joinDate);
+        const probationMonths = isTrainingType(o.employmentType) ? 0 : o.probationMonths;
+
         // the employment: on probation while the offer's probation runs (it ends as the contract's does), else active;
         // reporting to the offer's manager, or with none on the offer to the person in charge of its department or team
         // (owner, 19 October 2026: "i want to add department lead person, the person in charge"): its team lead, else
         // its department's head
-        const { endDate, probationEnd } = termDates(joinDate, o.durationMonths, o.probationMonths);
+        const { endDate, probationEnd } = termDates(joinDate, o.durationMonths, probationMonths);
         const managerId = o.managerId ?? (await defaultManagerId(tx, o.departmentId, person.id));
         const employmentValues = {
           employmentType: o.employmentType,
@@ -141,9 +147,10 @@ export class OfferHiringService {
           startDate: joinDate,
           durationMonths: o.durationMonths,
           endDate,
-          probationMonths: o.probationMonths,
+          probationMonths,
           probationEnd,
-          grossSalary: o.grossSalary.toNumber(),
+          // an intern's pays no wage (the unpaid internship, 19 October 2026)
+          grossSalary: o.employmentType === 'intern' ? 0 : o.grossSalary.toNumber(),
           basicPercent: o.basicPercent,
           netSalary: o.netSalary?.toNumber() ?? null,
           insuredSalary: pay.insuredSalary,

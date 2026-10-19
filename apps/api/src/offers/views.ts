@@ -64,7 +64,7 @@ export interface OfferContext {
  * The money an offer's terms come to: its allowances, their total, the total a month, and the insured wage, within the
  * insurable limits of the join date's year (`lawYears`: the rates set by law, every year kept).
  */
-export function offerPay(o: Pick<OfferRow, 'grossSalary' | 'joinDate' | 'allowances'>, lawYears: readonly LawRates[]) {
+export function offerPay(o: Pick<OfferRow, 'grossSalary' | 'joinDate' | 'allowances'> & { employmentType?: string }, lawYears: readonly LawRates[]) {
   const allowances = o.allowances.map(allowanceView);
   const gross = o.grossSalary.toNumber();
   const total = allowancesTotal(allowances);
@@ -72,7 +72,8 @@ export function offerPay(o: Pick<OfferRow, 'grossSalary' | 'joinDate' | 'allowan
     allowances,
     allowancesTotal: total,
     totalSalary: Math.round((gross + total) * 100) / 100,
-    insuredSalary: insuredWageOf(gross, allowances, lawRatesFor(Number(fromDateOnly(o.joinDate).slice(0, 4)), lawYears)),
+    // nothing insured for an intern, who has no company social insurance (the unpaid internship, 19 October 2026)
+    insuredSalary: o.employmentType === 'intern' ? 0 : insuredWageOf(gross, allowances, lawRatesFor(Number(fromDateOnly(o.joinDate).slice(0, 4)), lawYears)),
   };
 }
 

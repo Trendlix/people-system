@@ -7,6 +7,7 @@ import { LawWarningBadges } from '../employees/law-badges';
 import { profileHref, todayInCairo } from '../employees/ui';
 import { dueNote } from '../organization/contracts/labels';
 import { loadContractList } from './data';
+import { draftedBadges, expiringLine } from './expiring';
 import {
   APPROVED_ENDINGS,
   byDate,
@@ -19,7 +20,7 @@ import {
 } from './list';
 
 // What needs doing about contracts, in compact panels: contracts ending soon (with the day the non-renewal notice is
-// due), drafts waiting to be signed, probations ending, and endings in progress. HR and the CEO see them all; Finance,
+// due, or for a trainee's or an intern's agreement what follows it: 19 October 2026), drafts waiting to be signed, probations ending, and endings in progress. HR and the CEO see them all; Finance,
 // which doesn't get the alert and ending lists, only the drafts. Each row opens the employee's Employment tab. Like the
 // home page's cards (whose parts aren't exported), each panel shows a quiet line when it can't load.
 
@@ -91,26 +92,39 @@ function EndingSoon({ rows, today }: { rows: Rows<ExpiringContract>; today: stri
   return (
     <Panel title="Ending Soon" note={`Next ${CONTRACTS_WITHIN} days`} rows={rows} empty={`No contracts end in the next ${CONTRACTS_WITHIN} days.`}>
       {(rows) =>
-        rows.map((c) => (
-          <li key={c.id} className="space-y-1 py-2.5 text-sm">
-            <div className={line}>
-              <Person employee={c.employee} />
-              <span>
-                Ends <Due date={c.endDate} today={today} />
-              </span>
-            </div>
-            <div className={subline}>
-              <span>
-                Non-renewal notice by <Due date={c.nonRenewalNoticeBy} today={today} />
-              </span>
-              <span className="flex flex-wrap gap-1.5">
-                {c.renewalDraft && <span className="badge">Renewal drafted</span>}
-                {/* past its end without a signed renewal: open-ended by the law (Art. 88), 18 October 2026 */}
-                <LawWarningBadges of={c} />
-              </span>
-            </div>
-          </li>
-        ))
+        rows.map((c) => {
+          const below = expiringLine(c, today);
+          return (
+            <li key={c.id} className="space-y-1 py-2.5 text-sm">
+              <div className={line}>
+                <Person employee={c.employee} />
+                <span>
+                  Ends <Due date={c.endDate} today={today} />
+                </span>
+              </div>
+              <div className={subline}>
+                <span>
+                  {below.kind === 'notice' ? (
+                    <>
+                      Non-renewal notice by <Due date={below.by} today={today} />
+                    </>
+                  ) : below.kind === 'training' ? (
+                    below.text
+                  ) : null}
+                </span>
+                <span className="flex flex-wrap gap-1.5">
+                  {draftedBadges(c).map((b) => (
+                    <span key={b} className="badge">
+                      {b}
+                    </span>
+                  ))}
+                  {/* past its end without a signed renewal: open-ended by the law (Art. 88), 18 October 2026 */}
+                  <LawWarningBadges of={c} />
+                </span>
+              </div>
+            </li>
+          );
+        })
       }
     </Panel>
   );

@@ -1,6 +1,8 @@
 import { Prisma } from '../generated/prisma/client.js';
 import { employmentView } from '../employees/employees.service.js';
 import {
+  agreementNumber,
+  agreementVersions,
   ART_154_NOTE,
   art154Estimate,
   contractBecameOpenEnded,
@@ -68,6 +70,7 @@ function contract(over: Partial<ContractRow> = {}): ContractRow {
     newGrade: null,
     form2From: null,
     raiseRequest: null,
+    convertsTo: null,
     ...over,
   } as ContractRow;
 }
@@ -189,6 +192,7 @@ describe('a fixed term the company doesn’t renew (Art. 154)', () => {
       updatedAt: new Date(),
       rule: { label: 'Fixed term not renewed', endReason: 'contract_ended' },
       employment: {
+        employmentType: 'full_time',
         endDate: null,
         joinDate: day('2024-01-01'),
         contracts: [{ grossSalary: new Prisma.Decimal(12000), allowances: [{ amount: new Prisma.Decimal(1000) }] }],
@@ -213,5 +217,52 @@ describe('a fixed term the company doesn’t renew (Art. 154)', () => {
 
   it('is only for the non-renewal ending', () => {
     expect(endingView(ending({ ruleKey: 'resignation' }), true)).toMatchObject({ art154Note: null, art154Estimate: null });
+  });
+
+  it('is never a trainee’s or an intern’s, whose agreement isn’t an employment contract (19 October 2026)', () => {
+    for (const employmentType of ['trainee', 'intern'] as const) {
+      const e = ending();
+      expect(endingView({ ...e, employment: { ...e.employment, employmentType } }, true)).toMatchObject({ art154Note: null, art154Estimate: null });
+    }
+  });
+});
+
+// Trainees and interns (owner, 19 October 2026: "or can be only renewed 1 time, after that it should be converted to a
+// full time contract"): which versions are an employment's agreements, and how one is shown.
+describe('a trainee’s or an intern’s agreement in the views', () => {
+  const versions = [
+    { version: 1, kind: 'contract', convertsTo: null },
+    { version: 2, kind: 'contract', convertsTo: null },
+    { version: 3, kind: 'contract', convertsTo: 'full_time' },
+  ];
+
+  it('is a whole contract of a trainee’s or an intern’s employment, a conversion to full-time and salary amendments left out', () => {
+    expect(agreementVersions('trainee', versions)).toEqual([1, 2]);
+    expect(agreementVersions('intern', [...versions, { version: 4, kind: 'amendment', convertsTo: null }].reverse())).toEqual([1, 2]);
+    expect(agreementVersions('full_time', versions)).toBeNull();
+    expect(agreementVersions('freelance', versions)).toBeNull();
+    expect(agreementNumber({ version: 1, kind: 'contract', convertsTo: null }, [1, 2])).toBe(1);
+    expect(agreementNumber({ version: 2, kind: 'contract', convertsTo: null }, [1, 2])).toBe(2);
+    expect(agreementNumber({ version: 3, kind: 'contract', convertsTo: 'full_time' }, [1, 2])).toBe(0);
+    expect(agreementNumber({ version: 1, kind: 'contract', convertsTo: null }, null)).toBe(0);
+  });
+
+  it('says which agreement it is and what follows it, with no non-renewal notice and no Art. 88 warning', () => {
+    const past = contract({ traineeStages: [{ name: 'Basics', months: 12, pay: 10000 }] as unknown as Prisma.JsonValue });
+    const first = contractView(past, { ...CTX, agreements: [1] });
+    expect(first).toMatchObject({ training: { agreement: 1, next: 'renew_or_convert' }, nonRenewalNoticeBy: null, becameOpenEnded: false, convertsTo: null });
+    const renewal = contractView(contract({ version: 2 }), { ...CTX, agreements: [1, 2] });
+    expect(renewal.training).toEqual({ agreement: 2, next: 'convert_or_end' });
+    // the same contract as a full-time employment's: the fixed term's reminders as before
+    const fullTime = contractView(past, CTX);
+    expect(fullTime.training).toBeNull();
+    expect(fullTime.nonRenewalNoticeBy).not.toBeNull();
+    expect(fullTime.becameOpenEnded).toBe(true);
+  });
+
+  it('shows a conversion to full-time as such, not as an agreement', () => {
+    const conversion = contractView(contract({ version: 3, convertsTo: 'full_time', probationMonths: 3, probationEnd: day('2025-03-31') }), { ...CTX, agreements: [1, 2] });
+    expect(conversion).toMatchObject({ convertsTo: 'full_time', training: null, probationMonths: 3, probationEnd: '2025-03-31' });
+    expect(conversion.nonRenewalNoticeBy).not.toBeNull();
   });
 });

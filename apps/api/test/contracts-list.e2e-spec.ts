@@ -314,6 +314,9 @@ describe('Contracts list (e2e)', () => {
       // a whole contract, signed (owner's decisions, 16 October 2026: raises are amendments or contracts)
       kind: 'contract',
       stage: 'signed',
+      // not a trainee's or an intern's agreement, nor a conversion of one (19 October 2026)
+      convertsTo: null,
+      training: null,
       employee: { id: moved.id, employeeCode: moved.employeeCode, fullNameEn: moved.fullNameEn, fullNameAr: moved.fullNameAr },
       employmentId: moved.employmentId,
       employmentType: 'full_time',
@@ -372,9 +375,9 @@ describe('Contracts list (e2e)', () => {
     const bad = async (query: Record<string, string>) => (await api().get('/api/contracts').query(query).set('Cookie', hr).expect(400)).body.message as string[];
     expect(await bad({ status: 'signed' })).toEqual(['Choose a status: draft, active, ended or superseded.']);
     expect(await bad({ form: 'temporary' })).toEqual(['Choose the contract’s length: fixed (fixed-term), open_ended or specific_job.']);
-    expect(await bad({ type: 'contractor' })).toEqual(['Choose an employment type: full_time, part_time, trainee or freelance (outside the labour law).']);
+    expect(await bad({ type: 'contractor' })).toEqual(['Choose an employment type: full_time, part_time, trainee, intern (an unpaid internship, outside the labour law) or freelance (outside the labour law).']);
     // the types before 18 October 2026 are gone
-    expect(await bad({ type: 'sales' })).toEqual(['Choose an employment type: full_time, part_time, trainee or freelance (outside the labour law).']);
+    expect(await bad({ type: 'sales' })).toEqual(['Choose an employment type: full_time, part_time, trainee, intern (an unpaid internship, outside the labour law) or freelance (outside the labour law).']);
     for (const endingWithin of ['soon', '1.5', '-1', '1831']) {
       expect(await bad({ endingWithin })).toEqual(['Enter endingWithin as a whole number of days, 0 to 1830 (e.g. 30).']);
     }

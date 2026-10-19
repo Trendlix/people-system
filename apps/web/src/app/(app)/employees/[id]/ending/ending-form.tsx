@@ -9,12 +9,15 @@ import { formatDate, parseDate } from '@/lib/format';
 import type { EndingRule, FormState } from '@/lib/types';
 import { ART_154_NOTE, art154Estimate, art154Text } from '../../employment-law';
 import { addDays, noticeLabel, noticeLastDay } from '../contracts/dates';
+import { trainingLastDay } from './rules';
 
 // The End employment form: how the employment ends (one of the ending rules), who started it, when notice was given,
 // pay in lieu, and for a resignation its certification at the labour office. While HR types, it shows the rule's
 // notice and the last working day, and for a fixed term the company doesn't renew, Art. 154's note and estimate (owner,
 // 18 October 2026: "فإذا كان الإنهاء من جانب صاحب العمل استحق العامل مكافأة تعادل أجر شهر عن كل سنة من سنوات الخدمة"),
-// information only. HR saving it counts as HR's approval; it then goes to the CEO.
+// information only. HR saving it counts as HR's approval; it then goes to the CEO. A trainee's or an intern's agreement
+// (19 October 2026) ends with Training completed: no notice, the last working day the agreement's last day (or the day
+// recorded, after it).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -26,6 +29,12 @@ const optional = <span className="font-normal text-muted">(optional)</span>;
 /** The notice date's label and hint, by who gives the notice (and whether there is any). */
 function noticeWording(rule: EndingRule | undefined, initiator: string, noticeBy: string | null): { label: string; hint: string } {
   if (!rule) return { label: 'Notice date', hint: 'Choose how the employment ends first.' };
+  if (rule.key === 'training_completed') {
+    return {
+      label: 'Recorded on',
+      hint: 'The day the ending is recorded. No notice: the training ends with the agreement’s last day, or this day when it is after it.',
+    };
+  }
   if (rule.key === 'non_renewal') {
     return {
       label: 'Notice given on',
@@ -46,6 +55,7 @@ function Preview({
   given,
   payInLieu,
   contract,
+  training,
   probationEnd,
   art154,
 }: {
@@ -54,6 +64,7 @@ function Preview({
   given: string | null;
   payInLieu: boolean;
   contract: { endDate: string; nonRenewalNoticeBy: string | null } | null;
+  training: { endDate: string } | null;
   probationEnd: string | null;
   art154: Art154Basis | null;
 }) {
@@ -62,6 +73,17 @@ function Preview({
   const lines: React.ReactNode[] = [rule.noticeAmount > 0 ? `Notice: ${noticeLabel(rule.noticeAmount, rule.noticeUnit)}${source}.` : `No notice${source}.`];
   if (given && payInLieu) {
     lines.push(<>Last working day: {formatDate(given)}. The notice is paid instead of worked.</>);
+  } else if (rule.key === 'training_completed' && training) {
+    const last = trainingLastDay(training.endDate, given);
+    lines.push(
+      last === training.endDate ? (
+        <>Last working day: {formatDate(last)}, the agreement&apos;s end date.</>
+      ) : (
+        <>
+          Last working day: {formatDate(last)}, the day recorded: the agreement ended on {formatDate(training.endDate)} and the work went on.
+        </>
+      ),
+    );
   } else if (rule.key === 'non_renewal' && contract) {
     lines.push(<>Last working day: {formatDate(contract.endDate)}, the contract&apos;s end date.</>);
     const by = contract.nonRenewalNoticeBy;
@@ -126,17 +148,20 @@ export function EndingForm({
   rules,
   initialRule,
   contract,
+  training = null,
   probationEnd,
   art154 = null,
   today,
   cancelHref,
 }: {
   action: Action;
-  /** The rules that can be chosen now (active; probation only while on probation; non-renewal only with a fixed term). */
+  /** The rules that can be chosen now (rules.ts: active; probation only while on probation; non-renewal only with a fixed term). */
   rules: EndingRule[];
   initialRule?: string;
   /** The signed fixed-term contract, for a non-renewal: it ends on its end date, with notice by 45 working days before. */
   contract: { endDate: string; nonRenewalNoticeBy: string | null } | null;
+  /** A trainee's or an intern's agreement, for Training completed: it ends on its end date (19 October 2026). */
+  training?: { endDate: string } | null;
   /** While on probation: its end date, by which notice during probation must be given. */
   probationEnd: string | null;
   /** For a non-renewal, Art. 154's estimate: the join date and the last monthly wage (the contract's gross and allowances). */
@@ -333,7 +358,7 @@ export function EndingForm({
         </div>
       </div>
 
-      <Preview rule={rule} given={given} payInLieu={payInLieu} contract={contract} probationEnd={probationEnd} art154={art154} />
+      <Preview rule={rule} given={given} payInLieu={payInLieu} contract={contract} training={training} probationEnd={probationEnd} art154={art154} />
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line pt-6">
         <SubmitButton busy={pending} pendingText="Sending…">

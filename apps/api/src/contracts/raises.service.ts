@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import {
   form2Problem,
   grossToNet,
+  RAISE_REASON_CHOICES,
   hrDecisionOf,
   insuredWageOf,
   payChangeOf,
@@ -12,11 +13,12 @@ import {
   type PayBasis,
   type RaiseDecision,
   type RaiseFigure,
+  type RaiseReason,
   type RaiseWay,
 } from '@trendlix/shared';
 import { AllowancesService } from '../allowances/allowances.service.js';
 import { allowanceData, allowancesTotal, allowanceView, type AllowanceSnapshot } from '../allowances/rows.js';
-import { AuditService, changes } from '../audit/audit.service.js';
+import { AuditService, changes, type AuditEntry } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { seesSalary } from '../employees/access.js';
@@ -25,6 +27,7 @@ import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { assertCurrent, comparable, ContractsService, fields, payTermsOf, salaryMasked, toData, type EmploymentRow } from './contracts.service.js';
 import { MAX_MONEY } from './contracts.dto.js';
+import { openDirectRequest, syncDirectRequest } from './direct-requests.js';
 import { checkedPromotion, type Promotion } from './promotion.js';
 import { payOf, recordStep, stepFigures, typedFigure, type StepInput } from './raise-request-steps.js';
 import {
@@ -49,6 +52,19 @@ const REQUEST = 'raise_request';
 export function amendmentNumber(replaced: string): string {
   const m = /^(.*)-A(\d+)$/.exec(replaced);
   return m ? `${m[1]}-A${Number(m[2]) + 1}` : `${replaced}-A1`;
+}
+
+/**
+ * The CEO's other reason for a raise when approving it (owner, 19 October 2026: "when approving a raise as a ceo, i might
+ * want to ammend the raise reason, not only the money"): from → to, or null when none is sent or it is the same. Another
+ * reason is one of those the forms offer (RAISE_REASON_CHOICES): adjustment stays only on a version that has it.
+ */
+export function ceoReasonChange(current: string | null, sent: RaiseReason | undefined): { from: string | null; to: RaiseReason } | null {
+  if (!sent || sent === current) return null;
+  if (!(RAISE_REASON_CHOICES as readonly string[]).includes(sent)) {
+    throw new BadRequestException('Choose the reason from the list: annual, performance, counter_offer, promotion, market_adjustment, cost_of_living or other.');
+  }
+  return { from: current, to: sent };
 }
 
 /** What a raise is worked out from: its way and date, and its pay as sent or as the draft has it. */
@@ -103,7 +119,11 @@ const PENDING_INCLUDE = {
 // and sends it again). Only an approved one is signed (ContractsService.sign), which replaces the version in force from
 // the effective date and applies the promotion. A renewal with new pay takes the same steps (sent, decided, returned
 // here). HR records the Form 2 filed for an approved raise. Each step of a request is logged on it, in the transaction
-// it is taken in (raise-request-steps.ts); every step is in the audit log, the salary only as changed.
+// it is taken in (raise-request-steps.ts); every step is in the audit log, the salary only as changed. Since 19 October
+// 2026 ("when a raise request was sent to the CEO, is showed in approvals not raise requests, and after approved, it was
+// not shown in the raise request history too") a raise HR enters directly gets its request too, prepared directly by HR
+// (direct-requests.ts), so every raise follows its steps on Raise Requests; and the CEO may change its reason when
+// approving it ("when approving a raise as a ceo, i might want to ammend the raise reason, not only the money").
 @Injectable()
 export class RaisesService {
   constructor(
@@ -280,6 +300,10 @@ export class RaisesService {
         await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'with_hr' } });
         await recordStep(tx, before.raiseRequest.id, user.id, { kind: 'changed', gross: saved.grossSalary.toNumber(), contractNumber: saved.number });
       }
+      // a raise HR prepared directly: its request says what HR changed (the reason, the note, the figures, the date)
+      if (before.raiseRequest?.origin === 'direct') {
+        await syncDirectRequest(tx, before.raiseRequest.id, { ...saved, employeeId: employment.employeeId }, current.grossSalary.toNumber());
+      }
       return saved;
     });
     const diff = salaryMasked(changes(was, { ...values, ...(allowances && { allowances: comparable(allowances) }) }));
@@ -321,25 +345,35 @@ export class RaisesService {
    * The CEO approves it (the CEO only), with a comment (owner, 17 October 2026: "Approve - Approve with another raise
    * amount or percentge"): as it reached them, or with another raise, an amount or a percent over the pay before it,
    * which its pay is changed to (the gross, or by the hour the rate; the net and the insured salary worked out again; the
-   * allowances as they are) and approved in the same step. HR signs it then.
+   * allowances as they are) and approved in the same step. HR signs it then. With another reason if the CEO wants (owner,
+   * 19 October 2026: "when approving a raise as a ceo, i might want to ammend the raise reason, not only the money"):
+   * the version's and its request's, changed in the same step, logged on the CEO's decision from → to, and audited.
    */
   async approve(id: string, dto: ApproveRaiseDto, user: SessionUser) {
     const before = await this.raise(id);
     if (before.approval !== 'pending_ceo') throw this.wrongStep(before, 'approved');
     const figure = typedFigure(dto.increaseAmount, dto.increasePercent);
+    const reason = ceoReasonChange(before.raiseReason, dto.raiseReason);
     const previous = await this.replaced(before);
     const pay = figure ? await this.otherPay(before, previous, figure) : null;
     const decision: RaiseDecision = figure ? 'approve_other' : 'approve';
     const gross = pay?.grossSalary ?? before.grossSalary.toNumber();
     return this.step(
       before,
-      { approval: 'approved', approvedById: user.id, approvedAt: new Date(), returnedReason: null, ...pay },
+      { approval: 'approved', approvedById: user.id, approvedAt: new Date(), returnedReason: null, ...pay, ...(reason && { raiseReason: reason.to }) },
       'approve',
       'approved',
       user,
       undefined,
-      { decision, comment: dto.comment, ...(pay && { grossSalary: 'changed' }) },
-      { kind: 'ceo_decision', decision, comment: dto.comment, ...stepFigures(previous.grossSalary.toNumber(), gross, figure) },
+      { decision, comment: dto.comment, ...(pay && { grossSalary: 'changed' }), ...(reason && { raiseReason: reason }) },
+      {
+        kind: 'ceo_decision',
+        decision,
+        comment: dto.comment,
+        ...stepFigures(previous.grossSalary.toNumber(), gross, figure),
+        ...(reason && { raiseReason: reason.to, raiseReasonFrom: reason.from }),
+      },
+      reason ? { raiseReason: reason.to } : {},
     );
   }
 
@@ -523,8 +557,8 @@ export class RaisesService {
   }
 
   /**
-   * One of the CEO's steps (or HR's send): saved with the request it came from and logged on it (`logged`), and in the
-   * audit log.
+   * One of the CEO's steps (or HR's send): saved with the request it came from (its status, and `requestData`: the CEO's
+   * other reason) and logged on it (`logged`), and in the audit log.
    */
   private async step(
     before: ContractRow,
@@ -535,11 +569,12 @@ export class RaisesService {
     employment?: EmploymentRow,
     more: Record<string, unknown> = {},
     logged?: StepInput,
+    requestData: Prisma.RaiseRequestUncheckedUpdateInput = {},
   ) {
     const row = await this.prisma.$transaction(async (tx) => {
       const saved = await tx.contract.update({ where: { id: before.id }, data, include: CONTRACT_INCLUDE });
       if (before.raiseRequest) {
-        await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: requestStatus } });
+        await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { ...requestData, status: requestStatus } });
         if (logged) await recordStep(tx, before.raiseRequest.id, user.id, logged);
       }
       return saved;
@@ -551,7 +586,7 @@ export class RaisesService {
       entityId: before.id,
       diff: { employmentId: before.employmentId, number: before.number, version: before.version, approval: { from: before.approval, to: row.approval }, ...more },
     });
-    if (before.raiseRequest && before.raiseRequest.status !== requestStatus) {
+    if (before.raiseRequest && (before.raiseRequest.status !== requestStatus || Object.keys(requestData).length > 0)) {
       await this.audit.record({
         userId: user.id,
         action,
@@ -587,6 +622,12 @@ export class RaisesService {
     // يحصل عليها المتدرج فى كل مرحلة بصورة تصاعدية"), which payroll follows: not by a raise
     if (employment.employmentType === 'trainee') {
       throw new BadRequestException('A trainee is paid by the stages of the training agreement (Labour Law Art. 29): to change the pay, add a new training agreement with new stages.');
+    }
+    // an intern is paid no wage (owner, 19 October 2026: the unpaid internship, outside the labour law): nothing to raise
+    if (employment.employmentType === 'intern') {
+      throw new BadRequestException(
+        'An intern is paid no wage (an unpaid internship, outside the labour law): there is no pay to raise. To pay a salary, convert the internship agreement to a full-time contract.',
+      );
     }
     const versions = await this.prisma.contract.findMany({ where: { employmentId: employment.id }, orderBy: { version: 'desc' }, include: CONTRACT_INCLUDE });
     const draft = versions.find((v) => v.status === 'draft');
@@ -634,8 +675,9 @@ export class RaisesService {
   }
 
   /**
-   * Saves a raise: a draft for HR to send; or, from a raise request, HR's approval of it, sent to the CEO at once, with
-   * the request's steps logged in the same transaction (HR's decision, the raise prepared, sent to the CEO).
+   * Saves a raise: a draft for HR to send, with its request prepared directly by HR (19 October 2026); or, from a raise
+   * request, HR's approval of it, sent to the CEO at once, with the request's steps logged in the same transaction (HR's
+   * decision, the raise prepared, sent to the CEO).
    */
   private async insert(
     employment: EmploymentRow,
@@ -657,12 +699,16 @@ export class RaisesService {
       newGradeId: promotion.grade?.id ?? null,
       note: raise.note,
     };
-    const row = await this.prisma.$transaction(async (tx) => {
+    const { row, direct } = await this.prisma.$transaction(async (tx): Promise<{ row: ContractRow; direct: { id: string; audit: AuditEntry } | null }> => {
       const made = await tx.contract.create({
         data: { ...toData({ ...values, employmentId }), allowances: { create: allowanceData(allowances) } },
         include: CONTRACT_INCLUDE,
       });
-      if (!approval) return made;
+      if (!approval) {
+        // entered directly (owner, 19 October 2026): its request, prepared directly by HR, so it is on Raise Requests too
+        const opened = await openDirectRequest(tx, { ...made, employeeId: employment.employeeId }, current.grossSalary.toNumber(), user.id);
+        return { row: await tx.contract.findUniqueOrThrow({ where: { id: made.id }, include: CONTRACT_INCLUDE }), direct: opened };
+      }
       const { request } = approval;
       await tx.raiseRequest.update({ where: { id: request.id }, data: { contractId: made.id, status: 'with_ceo' } });
       // with the effective date HR chose (the request's Effective from unless HR set another, 17 October 2026)
@@ -675,7 +721,7 @@ export class RaisesService {
       });
       await recordStep(tx, request.id, user.id, { kind: 'prepared', way: raise.way, effectiveDate: terms.startDate, contractNumber: made.number });
       await recordStep(tx, request.id, user.id, { kind: 'sent', gross: terms.grossSalary });
-      return tx.contract.findUniqueOrThrow({ where: { id: made.id }, include: CONTRACT_INCLUDE });
+      return { row: await tx.contract.findUniqueOrThrow({ where: { id: made.id }, include: CONTRACT_INCLUDE }), direct: null };
     });
     await this.audit.record({
       userId: user.id,
@@ -690,8 +736,10 @@ export class RaisesService {
         ...values,
         allowances: comparable(allowances),
         ...(approval && { request: approval.request.id }),
+        ...(direct && { request: direct.id }),
       }),
     });
+    if (direct) await this.audit.record(direct.audit);
     if (approval) {
       const { request, figure } = approval;
       await this.audit.record({

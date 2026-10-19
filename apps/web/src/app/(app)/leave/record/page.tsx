@@ -4,6 +4,7 @@ import { LEAVE_PATH } from '@/components/nav';
 import { getCurrentUser } from '@/lib/session';
 import type { EmployeeProfile, EmployeeSummary } from '@/lib/types';
 import { getOrNull } from '../../approvals/data';
+import { noLeaveText } from '../../employees/employment-law';
 import { todayInCairo } from '../../employees/ui';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { notLoadedText } from '../../payroll/load';
@@ -58,7 +59,10 @@ async function Record({ searchParams }: { searchParams: PageProps<'/leave/record
     loadHolidaysOf(year),
   ]);
   let form: React.ReactNode;
+  // outside the labour law, a freelancer's or an intern's employment has no leave to record (18 and 19 October 2026)
+  const noLeave = profile?.employment ? noLeaveText(profile.employment.employmentType) : null;
   if (!profile) form = <Empty>Their profile couldn&apos;t be loaded. Please try again in a moment.</Empty>;
+  else if (noLeave) form = <Empty>{noLeave}</Empty>;
   else if (types.kind === 'unavailable') form = <Empty>Not available yet: the server does not have leave yet.</Empty>;
   else if (types.kind !== 'ok') form = <Empty>{notLoadedText(types, 'types of leave')}</Empty>;
   else {

@@ -2,18 +2,26 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { Select } from '@/components/select';
 import { loadLawRates } from '@/lib/law-rates';
-import type { RaiseRequest } from '@/lib/raise-types';
+import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import { getCurrentUser } from '@/lib/session';
+import { decideListedRaise } from '../approvals/actions';
+import { CeoRaiseDecision } from '../approvals/ceo-raise-decision';
+import { getOrNull } from '../approvals/data';
+import { PENDING_RAISES } from '../approvals/raises';
 import { employeeRaiseRequestsHref } from '../employees/ui';
 import { Empty, Loading } from '../organization/ui';
 import { loadRaiseRequests } from './data';
 import {
   askedAt,
+  askedWord,
   canSeeRaiseRequests,
+  ceoDecidesHere,
+  ceoDoneMessage,
   effectiveFromText,
   handlesRaiseRequests,
   justSent,
   newRaiseRequestHref,
+  noneWithStatusText,
   raiseRequestAnchor,
   raiseRequestsHref,
   readStatus,
@@ -32,7 +40,12 @@ import { FoldedRequestLog, HrRequestActions, PreparedRaise, Progress, RaiseReque
 // sends the amounts only to them. Requests are asked for here since 17 October 2026 ("i think raising a request should
 // be moved from the Employee tab to the raise requests tab"): New raise request opens the form (/raise-requests/new),
 // for HR anyone employed now, for the CEO and Finance themselves; once sent, it is listed first here. Each request says
-// the month it is asked from ("Effective from"), and HR's decision starts with it.
+// the month it is asked from ("Effective from"), and HR's decision starts with it. Since 19 October 2026 (owner: "when a
+// raise request was sent to the CEO, is showed in approvals not raise requests, and after approved, it was not shown in
+// the raise request history too") it is the one place for every raise: a raise HR prepares directly on a contract, or a
+// renewal with new pay, is listed too ("Prepared directly by HR"), at every stage; the CEO decides each raise with the
+// CEO on its row, with the form Approvals uses (Decide), which may change the reason too ("i might want to ammend the
+// raise reason, not only the money"); and the status filter keeps All first, with History (approved, done or rejected).
 
 const quiet = 'border-t border-line px-4 py-10 text-center text-sm text-muted';
 
@@ -67,14 +80,34 @@ function Filters({ status }: { status: StatusFilter }) {
   );
 }
 
+/**
+ * The CEO's decision on a row's raise, with the form Approvals uses, folded behind Decide (19 October 2026); back to
+ * this page once decided. Its raise as Approvals reads it (`pending`); when that couldn't be read, Approvals instead.
+ */
+function CeoDecision({ request: r, pending, rates, status }: { request: RaiseRequest; pending: PendingRaise | null; rates: Awaited<ReturnType<typeof loadLawRates>>; status: StatusFilter }) {
+  if (!pending) {
+    return (
+      <Link href="/approvals" className="text-sm font-semibold">
+        Decide in Approvals<span className="sr-only"> on the raise for {r.employee.fullNameEn}</span>
+      </Link>
+    );
+  }
+  return <CeoRaiseDecision raise={pending} request={r} rates={rates} action={decideListedRaise.bind(null, pending.id, status)} folded />;
+}
+
 async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requests'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!canSeeRaiseRequests(user)) return <Empty>Only HR, the CEO and Finance can see raise requests.</Empty>;
   const status = readStatus(query);
   const ceo = user.roles.includes('ceo');
   const hr = user.roles.includes('hr');
-  // the years' rates set by law, for the figures of HR's other raise
-  const [listing, rates] = await Promise.all([loadRaiseRequests(status), hr ? loadLawRates() : []]);
+  const listing = await loadRaiseRequests(status);
+  // the raises the CEO decides here, as Approvals reads them (the pay before each, for the figures of another raise)
+  const decides = ceo && listing.kind === 'ok' && listing.value.some((r) => ceoDecidesHere(user, r));
+  // the years' rates set by law, for the figures of HR's or the CEO's other raise
+  const [rates, pending] = await Promise.all([hr || decides ? loadLawRates() : [], decides ? getOrNull<PendingRaise[]>(PENDING_RAISES) : null]);
+  const pendingFor = (r: RaiseRequest) => pending?.find((p) => p.id === r.raise?.contractId) ?? null;
+  const actions = hr || ceo;
 
   return (
     <div className="card">
@@ -89,7 +122,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
         </p>
       ) : listing.value.length === 0 ? (
         <p className={quiet}>
-          {status ? 'No raise requests with this status.' : 'No raise requests yet. Ask for one with New raise request.'}{' '}
+          {status ? noneWithStatusText(status) : 'No raise requests yet. Ask for one with New raise request.'}{' '}
           {status && <Link href={raiseRequestsHref('')}>Show all</Link>}
         </p>
       ) : (
@@ -108,7 +141,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                   <th scope="col">Prepared Raise</th>
                   <th scope="col">Status</th>
                   <th scope="col">Decision</th>
-                  {hr && (
+                  {actions && (
                     <th scope="col">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -123,7 +156,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                         {r.employee.fullNameEn}
                       </Link>
                       <div className="text-xs text-muted">
-                        <span className="tabular-nums">{r.employee.employeeCode}</span> · asked {askedAt(r)}
+                        <span className="tabular-nums">{r.employee.employeeCode}</span> · {askedWord(r)} {askedAt(r)}
                       </div>
                     </td>
                     <td className="min-w-40 align-top">
@@ -145,15 +178,13 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                     <td className="min-w-64 align-top">
                       <Progress request={r} />
                       <FoldedRequestLog request={r} />
-                      {ceo && r.status === 'with_ceo' && (
-                        <Link href="/approvals" className="mt-1 block text-sm font-semibold">
-                          Decide in Approvals<span className="sr-only"> on the raise for {r.employee.fullNameEn}</span>
-                        </Link>
-                      )}
                     </td>
-                    {hr && (
+                    {actions && (
                       <td className="align-top">
-                        <HrRequestActions request={r} user={user} rates={rates} />
+                        <div className="flex flex-col items-start gap-3">
+                          {hr && <HrRequestActions request={r} user={user} rates={rates} />}
+                          {ceoDecidesHere(user, r) && <CeoDecision request={r} pending={pendingFor(r)} rates={rates} status={status} />}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -176,10 +207,19 @@ async function Asking({ searchParams }: { searchParams: PageProps<'/raise-reques
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   const asks = canSeeRaiseRequests(user) && (handlesRaiseRequests(user) || !!user.employeeId);
   const sent = justSent(query);
-  if (!asks && !sent) return null;
+  // what the CEO just decided on a row (19 October 2026)
+  const done = ceoDoneMessage(query);
+  if (!asks && !sent && !done) return null;
   return (
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0 flex-1">{sent && <RequestSent />}</div>
+      <div className="min-w-0 flex-1 space-y-2">
+        {sent && <RequestSent />}
+        {done && (
+          <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
+            {done}
+          </p>
+        )}
+      </div>
       {asks && (
         <Link href={newRaiseRequestHref()} className="btn btn-primary">
           New raise request
@@ -194,9 +234,10 @@ export default function RaiseRequestsPage({ searchParams }: PageProps<'/raise-re
     <div className="max-w-7xl">
       <h1 className="text-2xl font-semibold">Raise Requests</h1>
       <p className="mt-1 text-muted">
-        Raises asked for by employees for themselves, by their direct managers or by HR, each with a reason, a comment and the raise suggested.
-        HR approves a request, as suggested or with another raise, or rejects it; the CEO then decides the raise on{' '}
-        <Link href="/approvals">Approvals</Link>. Every step is logged on the request.
+        Every raise, at every stage: those asked for by employees for themselves, by their direct managers or by HR, each with a reason, a
+        comment and the raise suggested, and those HR prepares directly on a contract or a renewal. HR approves a request, as suggested or
+        with another raise, or rejects it; the CEO then decides the raise here or on <Link href="/approvals">Approvals</Link>. Every step is
+        logged on the request; History lists those approved, done or rejected.
       </p>
       <div className="mt-6">
         <Suspense fallback={null}>

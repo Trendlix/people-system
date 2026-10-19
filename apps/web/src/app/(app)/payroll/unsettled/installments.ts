@@ -76,13 +76,22 @@ export function planPreview(amountInput: string, countInput: string, first: stri
 }
 
 /**
+ * An intern's contract pays no wage (owner, 19 October 2026: the unpaid internship, "its just transportation
+ * allowance"), its gross 0: there is no pay to take installments from, as the API says it when it refuses them.
+ */
+export const NO_WAGE_INSTALLMENTS =
+  'The current contract pays no wage (an unpaid internship), so there is no pay to take installments of advances and loans from: record it without installments, to be paid back otherwise.';
+
+/**
  * Why a plan can't be recorded (owner, 18 October 2026, after reading the law: "Block above 10%"): the first month
  * whose installments, those already planned or applied for the employee and the plan's, would take more than the
- * limit of their current gross, with how many months would do, as the API says it. Null when it can be, or without the
- * figures (no current contract: nothing to check against; or not read yet: the API checks it).
+ * limit of their current gross, with how many months would do, as the API says it; with a gross of 0 (an unpaid
+ * internship), that there is no pay to take them from. Null when it can be, or without the figures (no current contract:
+ * nothing to check against; or not read yet: the API checks it).
  */
 export function planProblem(plan: readonly Installment[], limit: AdvanceLimitView | null): string | null {
   if (!limit || limit.gross === null) return null;
+  if (limit.gross === 0) return plan.length > 0 ? NO_WAGE_INSTALLMENTS : null;
   return planLimitProblem(plan, limit.byMonth, limit.gross, limit.percent ?? LAW_INSTALLMENT_PERCENT);
 }
 
@@ -90,6 +99,7 @@ export function planProblem(plan: readonly Installment[], limit: AdvanceLimitVie
 export function limitText(limit: AdvanceLimitView | null): string | null {
   if (!limit) return null;
   if (limit.gross === null) return 'No current contract, so the law’s limit on installments can’t be checked.';
+  if (limit.gross === 0) return NO_WAGE_INSTALLMENTS;
   const percent = limit.percent ?? LAW_INSTALLMENT_PERCENT;
   const most = installmentLimit(limit.gross, percent) ?? 0;
   const whose = percent >= LAW_INSTALLMENT_PERCENT ? 'the most the law allows (Labour Law Art. 113)' : `the limit set in Payroll Setup (the law’s is ${LAW_INSTALLMENT_PERCENT}%)`;

@@ -28,12 +28,21 @@ export const ROLE_LABELS: Record<Role, string> = {
  * agreement (Arts. 28–30); Freelance is kept, outside the labour law, whose worker works for an employer "تحت إدارته أو
  * إشرافه" (Art. 1(1)): a freelancer doesn't, so they get no leave, no company social insurance and a service agreement
  * rather than an employment contract. More of the law's dimensions: employment-types.ts.
+ *
+ * The unpaid internship (owner, 19 October 2026: "in case of trainee, we are not paying them salary, its just
+ * transportation allowance. can i add the gross with 0?"): the law's trainee is paid (Art. 1(2): "لقاء أجر", the last
+ * stage at least the minimum wage, Art. 29), so the owner chose a type of its own, outside the labour law like freelance:
+ * Intern, whose internship agreement pays no wage, only allowances (the transportation allowance), with no leave and no
+ * company social insurance. Trainee stays for paid trainees under the law.
  */
-export const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'trainee', 'freelance'] as const;
+export const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'trainee', 'intern', 'freelance'] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 
-/** Whether an employment type is under the labour law: all but freelance (Art. 1(1); see EMPLOYMENT_TYPES). */
-export const underLabourLaw = (type: EmploymentType | string): boolean => type !== 'freelance';
+/**
+ * Whether an employment type is under the labour law: all but freelance (Art. 1(1)) and the unpaid internship (owner,
+ * 19 October 2026: outside the law, since the law's trainee is paid); see EMPLOYMENT_TYPES.
+ */
+export const underLabourLaw = (type: EmploymentType | string): boolean => type !== 'freelance' && type !== 'intern';
 
 export const EMPLOYEE_STATUSES = ['active', 'probation', 'on_leave', 'notice_period', 'resigned', 'terminated'] as const;
 export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
@@ -75,7 +84,13 @@ export type Governorate = (typeof GOVERNORATES)[number];
 
 // What the screens show for each stored value.
 export const LABELS = {
-  employmentType: { full_time: 'Full-time', part_time: 'Part-time', trainee: 'Trainee', freelance: 'Freelance (outside the labour law)' },
+  employmentType: {
+    full_time: 'Full-time',
+    part_time: 'Part-time',
+    trainee: 'Trainee',
+    intern: 'Unpaid internship (outside the labour law)',
+    freelance: 'Freelance (outside the labour law)',
+  },
   status: {
     active: 'Active',
     probation: 'Probation',
@@ -127,6 +142,7 @@ export const EMPLOYMENT_TYPE_LABELS_AR: Record<EmploymentType, string> = {
   full_time: 'دوام كامل',
   part_time: 'عمل بعض الوقت',
   trainee: 'متدرج',
+  intern: 'تدريب غير مدفوع (غير خاضع لقانون العمل)',
   freelance: 'عمل حر (غير خاضع لقانون العمل)',
 };
 
@@ -204,14 +220,20 @@ export function paperworkType(current: EmploymentType | null | undefined, latest
 
 // ---------- employment history ----------
 
-/** Why an employment ended. Resigned gives the status Resigned; the others give Terminated. */
-export const END_REASONS = ['resigned', 'terminated', 'contract_ended', 'mutual_agreement', 'retired', 'deceased', 'disability', 'other'] as const;
+/**
+ * Why an employment ended. Resigned gives the status Resigned; the others give Terminated. Training completed (owner,
+ * 19 October 2026: "interns to be labeled trainees instead of probation and their contracts are never renewed"): a
+ * trainee's training agreement, or an intern's internship agreement, that ended with its term (Labour Law Arts. 28–30),
+ * in Arabic "انتهاء التدرج".
+ */
+export const END_REASONS = ['resigned', 'terminated', 'contract_ended', 'training_completed', 'mutual_agreement', 'retired', 'deceased', 'disability', 'other'] as const;
 export type EndReason = (typeof END_REASONS)[number];
 
 export const END_REASON_LABELS: Record<EndReason, string> = {
   resigned: 'Resigned',
   terminated: 'Terminated',
   contract_ended: 'Contract ended',
+  training_completed: 'Training completed',
   mutual_agreement: 'Mutual agreement',
   retired: 'Retired',
   deceased: 'Deceased',
@@ -219,18 +241,34 @@ export const END_REASON_LABELS: Record<EndReason, string> = {
   other: 'Other',
 };
 
-/** Where someone stands, for the directory: their current employment's status, or no current employment. */
-export const STANDINGS = ['active', 'probation', 'on_leave', 'notice_period', 'former', 'not_employed'] as const;
+/**
+ * Where someone stands, for the directory: their current employment's status, or no current employment. A trainee
+ * stands as Trainee and an intern as Intern rather than Probation or Active (owner, 19 October 2026: "interns to be
+ * labeled trainees instead of probation"): a training or internship agreement has no probation, the probation of Labour
+ * Law Art. 90 being an employment contract's. On leave and Notice period still show when they apply (employmentStanding).
+ */
+export const STANDINGS = ['active', 'probation', 'trainee', 'intern', 'on_leave', 'notice_period', 'former', 'not_employed'] as const;
 export type Standing = (typeof STANDINGS)[number];
 
 export const STANDING_LABELS: Record<Standing, string> = {
   active: 'Active',
   probation: 'Probation',
+  trainee: 'Trainee',
+  intern: 'Intern',
   on_leave: 'On leave',
   notice_period: 'Notice period',
   former: 'Former employee',
   not_employed: 'Not employed yet',
 };
+
+/**
+ * Where someone with a current employment stands: its status, except that a trainee's or an intern's Active (or a
+ * Probation from before 19 October 2026) is Trainee or Intern; On leave and Notice period show as they are.
+ */
+export function employmentStanding(e: { status: EmployeeStatus | string; employmentType: EmploymentType | string }): Standing {
+  if ((e.employmentType === 'trainee' || e.employmentType === 'intern') && (e.status === 'active' || e.status === 'probation')) return e.employmentType;
+  return e.status as Standing;
+}
 
 // ---------- phone numbers (as Prime ERP keeps them) ----------
 

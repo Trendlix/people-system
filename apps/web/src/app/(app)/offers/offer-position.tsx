@@ -34,8 +34,8 @@ const OFFICE_DAYS = [
   [4, 'Thu'],
 ] as const;
 
-/** Only people with a current employment can be picked as the manager. */
-const EMPLOYED: readonly string[] = ['active', 'probation', 'on_leave', 'notice_period'];
+/** Only people with a current employment can be picked as the manager. A current trainee or intern too (19 October 2026). */
+const EMPLOYED: readonly string[] = ['active', 'probation', 'trainee', 'intern', 'on_leave', 'notice_period'];
 
 /** The office days ticked before a refused save, else the saved ones. */
 function officeDaysOf(state: FormState, saved: number[]): Set<number> {

@@ -99,7 +99,8 @@ export function printedAddress(addressAr: string | null, city: string | null, go
 /**
  * The employment types in Arabic, for Arabic templates (the screens' English labels are LABELS.employmentType): the
  * law's words since 18 October 2026 (owner: "can we update the employment types based on the labour law?"), part-time
- * "عمل بعض الوقت" (Labour Law 14/2025 Art. 96(2)), the trainee "متدرج" (Art. 1(2)), shared with the web.
+ * "عمل بعض الوقت" (Labour Law 14/2025 Art. 96(2)), the trainee "متدرج" (Art. 1(2)), shared with the web; since 19
+ * October 2026 the unpaid internship "تدريب غير مدفوع (غير خاضع لقانون العمل)", outside the law as freelance is.
  */
 export const EMPLOYMENT_TYPES_AR: Record<EmploymentType, string> = EMPLOYMENT_TYPE_LABELS_AR;
 

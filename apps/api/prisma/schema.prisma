@@ -248,6 +248,7 @@ enum EmploymentType {
   full_time
   part_time
   trainee // the law's المتدرج: a written training agreement, its stages and rising pay (Arts. 28–30)
+  intern // the unpaid internship (owner, 19 October 2026): outside the labour law, no wage, allowances only
   freelance // outside the labour law: no leave, no company social insurance, a service agreement
 
   @@map("employment_type")
@@ -551,6 +552,10 @@ model Contract {
   // a trainee's training agreement (Art. 29): TraineeStage[], [{ name, months, pay }], each stage's pay more than the one
   // before, the last at least the minimum wage; the gross is the first stage's pay and payroll pays the stage in force
   traineeStages       Json?               @map("trainee_stages")
+  // a trainee's or an intern's agreement converted to a full-time contract (owner, 19 October 2026: "or can be only
+  // renewed 1 time, after that it should be converted to a full time contract"): this version is the full-time contract,
+  // and signing it makes the employment full_time, the same employment, so the service counts on; null for the others
+  convertsTo          EmploymentType?     @map("converts_to")
   startDate           DateTime            @map("start_date") @db.Date
   endDate             DateTime?           @map("end_date") @db.Date // start + duration − 1 day; none when open-ended; a specific job's optional, as expected
   durationMonths      Int?                @map("duration_months") // none when open-ended or for a specific job
@@ -631,12 +636,15 @@ model RaiseRequest {
   requestedById     String?            @map("requested_by") @db.Uuid
   requestedBy       User?              @relation("RaiseRequester", fields: [requestedById], references: [id], onDelete: SetNull)
   requester         String // RAISE_REQUESTERS: self, manager, hr
-  raiseReason       String?            @map("raise_reason") // RAISE_REASON_CHOICES; none on a request from before 17 October 2026
+  // RAISE_REQUEST_ORIGINS: request (asked for) or direct (owner, 19 October 2026: a raise HR prepared directly on the
+  // contract, or a renewal with new pay, given its request with the CEO's step, so Raise Requests has every raise)
+  origin            String             @default("request")
+  raiseReason       String?            @map("raise_reason") // RAISE_REASON_CHOICES (a direct one its raise's, adjustment too); none on a request from before 17 October 2026
   comment           String // the requester's comment; on a request from before 17 October 2026, the reason it was asked with
   suggestedIncrease Decimal?           @map("suggested_increase") @db.Decimal(12, 2) // RESTRICTED: EGP added to the gross; never a manager's
   suggestedPercent  Decimal?           @map("suggested_percent") @db.Decimal(5, 2) // a percent of the gross; one or the other
   suggestedGross    Decimal?           @map("suggested_gross") @db.Decimal(12, 2) // RESTRICTED: the gross the suggestion came to (typed before 17 October 2026)
-  effectiveFrom     DateTime?          @map("effective_from") @db.Date // the 1st of the month the raise is asked from; none on a request from before 17 October 2026
+  effectiveFrom     DateTime?          @map("effective_from") @db.Date // the 1st of the month the raise is asked from (a direct one: its raise's effective date); none on a request from before 17 October 2026
   status            String             @default("with_hr") // RAISE_REQUEST_STATUSES: with_hr, with_ceo, approved, declined, done
   contractId        String?            @unique @map("contract_id") @db.Uuid // the raise HR prepared from it
   contract          Contract?          @relation(fields: [contractId], references: [id], onDelete: SetNull)
@@ -666,7 +674,8 @@ model RaiseRequestStep {
   request         RaiseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   kind            String // RAISE_REQUEST_STEP_KINDS
   decision        String? // RAISE_DECISIONS, on hr_decision and ceo_decision only
-  raiseReason     String?      @map("raise_reason") // submitted: the reason from the list
+  raiseReason     String?      @map("raise_reason") // submitted, prepared: the reason from the list; ceo_decision: the reason the CEO changed it to
+  raiseReasonFrom String?      @map("raise_reason_from") // ceo_decision: the reason before the CEO changed it (19 October 2026)
   comment         String?
   figure          String? // RAISE_FIGURE_KINDS: which of the two was typed; null when worked out from the pay
   increaseAmount  Decimal?     @map("increase_amount") @db.Decimal(12, 2) // RESTRICTED: EGP a month on the gross before

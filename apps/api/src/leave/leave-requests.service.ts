@@ -26,7 +26,7 @@ import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { decidesStage, hrMayCancel, isHr, isRequestManager, isRequester, othersWhere, scopeWhere, seesRequest, waitingWhere, type Caller } from './access.js';
+import { decidesStage, hrMayCancel, isHr, isRequestManager, isRequester, noLeaveMessage, othersWhere, scopeWhere, seesRequest, waitingWhere, type Caller } from './access.js';
 import { checkedDocuments } from './documents.js';
 import { LeaveBalancesService, TAKING, type LeaveBalancesView, type LeaveEmployment } from './leave-balances.service.js';
 import type { CreateLeaveRequestDto, DecideLeaveDto, HrCancelLeaveDto, LeaveCalendarQueryDto, ListLeaveRequestsDto, RecordLeaveRequestDto } from './leave.dto.js';
@@ -352,15 +352,9 @@ export class LeaveRequestsService {
     const user = caller.user;
     const employeeId = employment.employeeId;
     const name = byHr ? employment.employee.fullNameEn : null;
-    // leave is the labour law's (Arts. 124–133); a freelancer works outside it (owner, 18 October 2026; Art. 1(1)), with
-    // no leave to ask for or record
-    if (!underLabourLaw(employment.employmentType)) {
-      throw new BadRequestException([
-        name
-          ? `${name} is a freelancer, outside the labour law: there is no leave to record for a freelance employment.`
-          : 'You work freelance, outside the labour law: there is no leave to ask for under a freelance employment.',
-      ]);
-    }
+    // leave is the labour law's (Arts. 124–133); a freelancer works outside it (owner, 18 October 2026; Art. 1(1)), and so
+    // does an unpaid intern (owner, 19 October 2026), with no leave to ask for or record
+    if (!underLabourLaw(employment.employmentType)) throw new BadRequestException([noLeaveMessage(employment.employmentType, name)]);
     const type = await this.prisma.leaveType.findUnique({ where: { id: dto.typeId } });
     if (!type) throw new BadRequestException(['Choose a leave type from the list.']);
     if (!type.active) throw new BadRequestException([`${type.nameEn} is turned off, so it can't be asked for. Choose another type.`]);

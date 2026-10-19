@@ -63,7 +63,8 @@ describe("a preview's values", () => {
 
   it('previews the job offer templates with job offers, every other template with employees', () => {
     const offers = TEMPLATE_SLOTS.filter(isOfferSlot).map((s) => s.key);
-    expect(offers.sort()).toEqual(['offer_freelance', 'offer_full_time', 'offer_internship', 'offer_part_time', 'offer_sales']);
+    // the trainee's own since 19 October 2026, the internship one the unpaid intern's
+    expect(offers.sort()).toEqual(['offer_freelance', 'offer_full_time', 'offer_internship', 'offer_part_time', 'offer_sales', 'offer_trainee']);
     expect(isOfferSlot({ key: 'contract_full_time', appliesTo: ['full_time'] })).toBe(false);
     // the key must be the type's own offer slot
     expect(isOfferSlot({ key: 'offer_full_time', appliesTo: ['part_time'] })).toBe(false);

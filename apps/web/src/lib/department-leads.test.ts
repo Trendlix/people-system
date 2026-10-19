@@ -92,6 +92,11 @@ describe('choosing a lead', () => {
     expect(leadChoiceLabel({ id: 'x', fullNameEn: 'Sara Ali', employeeCode: 'EMP-0012' })).toBe('Sara Ali · EMP-0012');
     expect(leadChoiceLabel({ id: 'x', fullNameEn: 'Sara Ali', employeeCode: '' })).toBe('Sara Ali');
   });
+
+  it('counts a current trainee or intern as a current employee (19 October 2026)', () => {
+    const people = [person('p-trainee', 'Tarek Nabil', 'trainee'), person('p-intern', 'Iman Fouad', 'intern'), person('p-gone', 'Gamal Fathy', 'former')];
+    expect(leadChoices(people, null).map((c) => c.fullNameEn)).toEqual(['Iman Fouad', 'Tarek Nabil']);
+  });
 });
 
 describe('the leads of where someone works', () => {

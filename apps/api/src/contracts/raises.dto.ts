@@ -105,11 +105,16 @@ export const commentOf = (dto: RaiseCommentDto): string => (dto.comment ?? dto.r
 
 /**
  * The CEO approves a raise (owner, 17 October 2026): as it reached them, or with another raise, an amount or a percent
- * over the pay before it, which its pay is changed to; always with a comment.
+ * over the pay before it, which its pay is changed to; always with a comment. With another reason if the CEO wants
+ * (owner, 19 October 2026: "when approving a raise as a ceo, i might want to ammend the raise reason, not only the
+ * money"): one from the list, or the one it has (the service checks).
  */
 export class ApproveRaiseDto extends RaiseFigureDto {
   @Trim() @IsString({ message: COMMENT_MESSAGE }) @MinLength(1, { message: COMMENT_MESSAGE }) @MaxLength(1000)
   comment: string;
+
+  @IsOptional() @IsIn(RAISE_REASONS, { message: RAISE_REASON_MESSAGE })
+  raiseReason?: RaiseReason;
 }
 
 /** HR sends a raise to the CEO: a comment if HR wants (e.g. on a raise the CEO returned). */

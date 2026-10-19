@@ -4,6 +4,7 @@ import {
   answerBody,
   emailSendBody,
   extendBody,
+  internMonthsOf,
   newOfferDefaults,
   offerBody,
   offerDefaults,
@@ -136,6 +137,43 @@ describe('a new offer', () => {
     expect(errors).toEqual([]);
     offerBody(form({ ...filled, workArrangement: 'hybrid' }), errors, { draft: false, allowances: [] });
     expect(errors).toEqual(['Pick at least one office day for a hybrid arrangement.']);
+  });
+});
+
+// owner, 19 October 2026: trainees and interns have no probation; an intern is unpaid, for a short term
+describe('a trainee’s or an intern’s offer', () => {
+  it('sends a trainee’s with no probation, the pay as typed', () => {
+    const errors: string[] = [];
+    expect(offerBody(form({ ...filled, employmentType: 'trainee', probationMonths: '3' }), errors, { draft: false, allowances })).toMatchObject({
+      employmentType: 'trainee',
+      probationMonths: 0,
+      grossSalary: 15000,
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it('sends an intern’s monthly, with no gross, net or basic part, no probation, and its allowances', () => {
+    const errors: string[] = [];
+    const intern = { ...filled, employmentType: 'intern', payBasis: 'hourly', grossSalary: '', netSalary: '', probationMonths: '0', durationMonths: '3' };
+    const body = offerBody(form(intern), errors, { draft: false, allowances });
+    expect(errors).toEqual([]);
+    expect(body).toMatchObject({ employmentType: 'intern', payBasis: 'monthly', probationMonths: 0, durationMonths: 3, allowances });
+    expect(body).not.toHaveProperty('grossSalary');
+    expect(body).not.toHaveProperty('basicPercent');
+    expect(JSON.parse(JSON.stringify(body))).not.toHaveProperty('netSalary');
+    // a draft clears the net
+    expect(offerBody(form(intern), errors, { draft: true, allowances })).toMatchObject({ netSalary: null, hourlyRate: null, hoursPerWeek: null });
+  });
+
+  it('keeps an intern’s agreement to 12 months', () => {
+    const errors: string[] = [];
+    offerBody(form({ ...filled, employmentType: 'intern', grossSalary: '', durationMonths: '13' }), errors, { draft: false, allowances: [] });
+    expect(errors).toEqual(['An internship agreement is short: 1 to 12 months (3 unless you choose another).']);
+  });
+
+  it('starts an internship at 3 months, or the draft’s own', () => {
+    expect(internMonthsOf({ employmentType: 'full_time', durationMonths: 12 })).toBe(3);
+    expect(internMonthsOf({ employmentType: 'intern', durationMonths: 6 })).toBe(6);
   });
 });
 

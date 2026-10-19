@@ -1,5 +1,17 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { accountLengthOk, accountLengthText, bankNamed, insurableWageLimits, underLabourLaw, workPatternOf, type PhotoCrop, type Standing } from '@trendlix/shared';
+import {
+  accountLengthOk,
+  accountLengthText,
+  bankNamed,
+  employmentStanding,
+  insurableWageLimits,
+  lastTrainingEnd,
+  trainingAgainFrom,
+  underLabourLaw,
+  workPatternOf,
+  type PhotoCrop,
+  type Standing,
+} from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -7,7 +19,9 @@ import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import { changeRequestView, CONFIRMATION_INCLUDE, confirmationView, REQUEST_INCLUDE } from '../confirmations/views.js';
 import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
+import { TRAINING_HISTORY, trainingHistoryOf } from '../contracts/training.js';
 import {
+  agreementVersions,
   CONTRACT_INCLUDE,
   contractBecameOpenEnded,
   contractView,
@@ -94,6 +108,9 @@ export function employmentView(e: EmploymentRow, { seesEndings, ...ctx }: Employ
   const { shift, joinDate, probationEnd, jdAcknowledgedAt, endDate, officeDays, contracts, endings, ...rest } = e;
   const [contract] = contracts;
   const [ending] = endings;
+  const contractShown = contract
+    ? contractView(contract, { ...ctx, workingDays: shift?.workingDays ?? null, employmentEndDate: endDate, casualTooLong: employmentCasualTooLong(e) })
+    : null;
   return {
     ...rest,
     joinDate: fromDateOnly(joinDate),
@@ -109,14 +126,15 @@ export function employmentView(e: EmploymentRow, { seesEndings, ...ctx }: Employ
       endTime: fromTimeOfDay(shift.endTime),
       hoursPerDay: shift.hoursPerDay?.toNumber() ?? null,
     },
-    contract: contract ? contractView(contract, { ...ctx, workingDays: shift?.workingDays ?? null, employmentEndDate: endDate, casualTooLong: employmentCasualTooLong(e) }) : null,
+    contract: contractShown,
     ending: ending && seesEndings ? endingView(ending, ctx.seesSalary) : null,
     // by the labour law (owner, 18 October 2026): under it or not (freelance isn't, Art. 1(1)), remote work (Art. 96(1)),
     // and the warnings: casual work past 6 months (Art. 1(7)), the fixed term become open-ended (Art. 88(3))
     underLabourLaw: underLabourLaw(e.employmentType),
     workPattern: workPatternOf(e.workArrangement),
     casualTooLong: employmentCasualTooLong(e),
-    becameOpenEnded: contract ? contractBecameOpenEnded(contract, endDate) : false,
+    // a trainee's or an intern's agreement never becomes open-ended: it isn't an employment contract (19 October 2026)
+    becameOpenEnded: contract && !contractShown?.training ? contractBecameOpenEnded(contract, endDate) : false,
   };
 }
 
@@ -290,7 +308,9 @@ export class EmployeesService {
         ...e,
         photoId: photos?.get(e.id)?.id ?? null,
         photoCrop: photos?.get(e.id)?.crop ?? null,
-        standing: (current?.status ?? (ended ? 'former' : 'not_employed')) as Standing,
+        // a trainee's or an intern's Active is Trainee or Intern (owner, 19 October 2026: "interns to be labeled trainees
+        // instead of probation")
+        standing: (current ? employmentStanding(current) : ended ? 'former' : 'not_employed') as Standing,
         employment: current && {
           id: current.id,
           status: current.status,
@@ -330,6 +350,7 @@ export class EmployeesService {
           where: { endDate: null },
           select: {
             status: true,
+            employmentType: true,
             employee: { select: { id: true, employeeCode: true, fullNameEn: true } },
             jobTitle: { select: { titleEn: true } },
           },
@@ -346,7 +367,15 @@ export class EmployeesService {
     const nonRenewal = employments.some((x) => x.contracts.some((c) => c.form === 'fixed'))
       ? await this.prisma.endingRule.findUnique({ where: { key: 'non_renewal' }, select: { noticeAmount: true, noticeUnit: true } })
       : null;
-    const history = employments.map((x) => employmentView(x, { seesSalary: seesSalary(user), seesEndings: seesEndings(user), nonRenewal }));
+    // a trainee's or an intern's agreements (19 October 2026): which one the contract in force is, and when the last one
+    // ended, a new one starting 6 months after it at the earliest
+    const training = await this.prisma.employment.findMany({ where: { employeeId: id }, select: TRAINING_HISTORY });
+    const agreementsOf = (employmentId: string) => {
+      const row = training.find((t) => t.id === employmentId);
+      return row ? agreementVersions(row.employmentType, row.contracts) : null;
+    };
+    const lastEnded = lastTrainingEnd(trainingHistoryOf(training));
+    const history = employments.map((x) => employmentView(x, { seesSalary: seesSalary(user), seesEndings: seesEndings(user), nonRenewal, agreements: agreementsOf(x.id) }));
     const current = history.find((x) => x.endDate === null) ?? null;
     const salary = seesSalary(user);
     // the top rank is only needed to know whether a graded employment needs a manager. The insured wage Form 1 prints
@@ -389,7 +418,8 @@ export class EmployeesService {
       // `leads` on the current employment; an ended one's is null
       employment: current && { ...current, leads },
       employments: history.map((x) => ({ ...x, leads: x === current ? leads : null })),
-      reports: managing.map((m) => ({ ...m.employee, status: m.status, jobTitle: m.jobTitle })),
+      // with where each stands, a trainee or an intern as such (19 October 2026)
+      reports: managing.map((m) => ({ ...m.employee, status: m.status, standing: employmentStanding(m), jobTitle: m.jobTitle })),
       ...(identity && { identity: maskedIdentity(idRow) }),
       ...(bank && { bank: maskedBank(bankRow) }),
       completeness: completeness({
@@ -403,6 +433,10 @@ export class EmployeesService {
       }),
       confirmation: confirmationView(confirmed ?? null, own),
       changeRequests,
+      // the end of the person's last training or internship agreement and the first day a new one may start (owner, 19
+      // October 2026: "a new trainee contract can be issued after 6 months of the expiration of the last trainee
+      // contract"); null when they never had one
+      nextTraining: lastEnded && { lastEnded, from: trainingAgainFrom(lastEnded) },
       access: { edit: editsEmployees(user), delete: deletesEmployees(user), identity, bank },
       isSelf: self,
     };

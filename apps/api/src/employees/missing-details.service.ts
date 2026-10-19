@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Standing } from '@trendlix/shared';
+import { employmentStanding, type Standing } from '@trendlix/shared';
 import { todayInCairo } from '../common/date-only.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CHECKED_EMPLOYMENT, completeness, papersOf, topGradeRank } from './completeness.js';
@@ -56,7 +56,8 @@ export class MissingDetailsService {
         employeeCode: employee.employeeCode,
         fullNameEn: employee.fullNameEn,
         fullNameAr: employee.fullNameAr,
-        standing: (current?.status ?? 'not_employed') as Standing,
+        // a trainee or an intern stands as such (19 October 2026), as in the directory
+        standing: (current ? employmentStanding(current) : 'not_employed') as Standing,
         department: current?.department ?? null,
         jobTitle: current?.jobTitle ?? null,
         percent,

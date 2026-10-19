@@ -2,7 +2,8 @@
 // the labour law?"). The types themselves are EMPLOYMENT_TYPES (index.ts) and a contract's length CONTRACT_FORMS
 // (contracts.ts); here the law's other dimensions the owner chose to record: the nature of the work (Art. 1(6–8)),
 // remote work (Art. 96(1)), the trainee's training agreement (Arts. 28–30), and the fixed-term contract that has become
-// open-ended (Art. 88(3)). Dates: YYYY-MM-DD. Pure: the web shows these live and the API checks the same.
+// open-ended (Art. 88(3)); and since 19 October 2026 the trainee's and the intern's agreements (no probation, renewed once,
+// then full-time) and the unpaid internship. Dates: YYYY-MM-DD. Pure: the web shows these live and the API checks the same.
 
 import type { WorkArrangement } from './index.js';
 
@@ -170,6 +171,138 @@ export function traineeStageOn(stages: readonly TraineeStage[], startDate: strin
   return { index: p.index, name: p.name, pay: p.pay };
 }
 
+// ---------- training and internship agreements: no probation, renewed once, then full-time (19 October 2026) ----------
+
+/**
+ * The employment types whose contract is an agreement to learn rather than an employment contract (owner, 19 October
+ * 2026: "interns to be labeled trainees instead of probation and their contracts are never renewed", then "or can be only
+ * renewed 1 time, after that it should be converted to a full time contract. a new trainee contract can be issued after
+ * 6 months of the expiration of the last trainee contract"): the trainee's training agreement (Labour Law Arts. 28–30)
+ * and the intern's internship agreement (the unpaid internship, outside the labour law). Neither has probation (Art.
+ * 90's is an employment contract's); each is renewed once at most, then converted to a full-time contract on the same
+ * employment (the service counting on), or ended; and a new one for the same person starts 6 months after the last one
+ * ended at the earliest.
+ */
+export const TRAINING_TYPES = ['trainee', 'intern'] as const;
+export type TrainingType = (typeof TRAINING_TYPES)[number];
+export const isTrainingType = (type: unknown): type is TrainingType => type === 'trainee' || type === 'intern';
+
+/** "training agreement" or "internship agreement", as a sentence names it. */
+export const agreementName = (type: string): string => (type === 'intern' ? 'internship agreement' : 'training agreement');
+
+/** How many times an agreement is renewed: once ("or can be only renewed 1 time"). */
+export const TRAINING_RENEWALS = 1;
+
+/** The months after the last agreement ended before a new one may start ("after 6 months of the expiration"). */
+export const TRAINING_AGAIN_AFTER_MONTHS = 6;
+
+/** What follows an agreement when it ends: renewed once or converted, or (the renewal ending) converted or ended. */
+export const TRAINING_NEXTS = ['renew_or_convert', 'convert_or_end'] as const;
+export type TrainingNext = (typeof TRAINING_NEXTS)[number];
+
+/** What follows an employment's `agreement`-th agreement (1: the first, 2: its renewal). */
+export const trainingNext = (agreement: number): TrainingNext => (agreement <= TRAINING_RENEWALS ? 'renew_or_convert' : 'convert_or_end');
+
+/**
+ * The reminder for an agreement's end, never "due for renewal": "Training ends on 31/03/2027: renew it once, or convert
+ * to full-time." for the first; "…: convert to full-time, or end the training." for the renewal; "ended" once past.
+ */
+export function trainingEndsText(endDate: string, next: TrainingNext, today: string): string {
+  const way = next === 'renew_or_convert' ? 'renew it once, or convert to full-time' : 'convert to full-time, or end the training';
+  return `Training ${endDate < today ? 'ended' : 'ends'} on ${shown(endDate)}: ${way}.`;
+}
+
+/** Why an agreement isn't renewed a second time (409). */
+export const renewedOnceMessage = (type: string): string =>
+  `${type === 'intern' ? 'An internship' : 'A training'} agreement is renewed once. Convert it to a full-time contract instead.`;
+
+/** Why a trainee's or an intern's agreement takes no probation (400). */
+export const noProbationMessage = (type: string): string =>
+  type === 'intern'
+    ? 'An intern has no probation: an internship agreement isn’t an employment contract, and probation (Labour Law Art. 90) is an employment contract’s. Leave the probation at 0.'
+    : 'A trainee has no probation: a training agreement isn’t an employment contract, and probation (Labour Law Art. 90) is an employment contract’s. Leave the probation at 0.';
+
+/** The first day a new agreement may start after the last one ended: 6 months after the day after (ended 31 October: 1 May). */
+export const trainingAgainFrom = (lastEnded: string): string => plusMonths(plusDays(lastEnded, 1), TRAINING_AGAIN_AFTER_MONTHS);
+
+/** Whether an agreement starting on `startDate` is too soon after the last one ended (`lastEnded`, null for none). */
+export const trainingTooSoon = (lastEnded: string | null, startDate: string): boolean => lastEnded !== null && isDate(lastEnded) && startDate < trainingAgainFrom(lastEnded);
+
+/**
+ * Why a new agreement can't start yet: "A new training agreement for Sara Ali can start from 01/05/2027, six months after
+ * their last one ended on 31/10/2026." (an internship agreement for an intern).
+ */
+export const trainingTooSoonMessage = (name: string, type: string, lastEnded: string): string =>
+  `A new ${agreementName(type)} for ${name} can start from ${shown(trainingAgainFrom(lastEnded))}, six months after their last one ended on ${shown(lastEnded)}.`;
+
+/** An employment and its contract versions, as lastTrainingEnd reads them. Dates: YYYY-MM-DD. */
+export interface TrainingHistory {
+  employmentType: string;
+  endDate: string | null;
+  contracts: readonly {
+    version: number;
+    kind: string;
+    status: string;
+    startDate: string;
+    endDate: string | null;
+    /** The type a version converted the employment to (a trainee's or intern's converted to full-time); null for others. */
+    convertsTo: string | null;
+    /** Whether it has training stages (a trainee's training agreement). */
+    hasStages: boolean;
+  }[];
+}
+
+/**
+ * The last day of the person's last training or internship agreement, from their employments: null when they never had
+ * one. An agreement is a signed whole contract (not a salary amendment) of a trainee's or an intern's employment, or of
+ * one converted to full-time before the conversion, or one with training stages. It ended on its end date, the day
+ * before the version that replaced it started, or the day the employment ended, whichever came first; a trainee's or
+ * intern's employment that ended without a signed agreement, on the day it ended.
+ */
+export function lastTrainingEnd(employments: readonly TrainingHistory[]): string | null {
+  let last: string | null = null;
+  const later = (d: string | null) => {
+    if (d && isDate(d) && (last === null || d > last)) last = d;
+  };
+  for (const e of employments) {
+    const signed = e.contracts.filter((c) => c.status !== 'draft' && c.kind === 'contract').sort((a, b) => a.version - b.version);
+    const conversion = signed.find((c) => c.convertsTo !== null);
+    const agreements = signed.filter((c) =>
+      c.convertsTo === null && (isTrainingType(e.employmentType) || (conversion ? c.version < conversion.version : c.hasStages)),
+    );
+    const agreement = agreements.at(-1);
+    if (!agreement) {
+      if (isTrainingType(e.employmentType)) later(e.endDate);
+      continue;
+    }
+    const next = signed.find((c) => c.version > agreement.version);
+    const ends = [agreement.endDate, next ? plusDays(next.startDate, -1) : null, e.endDate].filter((d): d is string => d !== null && isDate(d)).sort();
+    later(ends[0] ?? null);
+  }
+  return last;
+}
+
+// ---------- the unpaid internship (19 October 2026) ----------
+
+/**
+ * An intern's internship agreement (owner, 19 October 2026: "in case of trainee, we are not paying them salary, its just
+ * transportation allowance"): no wage (the gross is 0), allowances paid on top (the transportation allowance), a short
+ * fixed term, 3 months unless HR sets another and 12 at most, no probation and no training stages; outside the labour
+ * law, so no leave and no company social insurance.
+ */
+export const INTERN_DEFAULT_MONTHS = 3;
+export const INTERN_MAX_MONTHS = 12;
+
+/** What the screens show for an intern's gross. */
+export const INTERN_NO_WAGE_TEXT = 'No wage (unpaid internship)';
+
+/** Why an intern's agreement takes no gross (400). */
+export const INTERN_NO_WAGE_MESSAGE =
+  'An intern is unpaid (an unpaid internship, outside the labour law): leave the gross salary out, it is 0. Allowances, such as transportation, are paid on top.';
+
+/** Why an intern's agreement is no longer than 12 months (400). */
+export const INTERN_TERM_MESSAGE = `An internship agreement is short: 1 to ${INTERN_MAX_MONTHS} months (${INTERN_DEFAULT_MONTHS} unless you choose another).`;
+
 // ---------- the fixed-term contract that has become open-ended (Art. 88(3)) ----------
 
 /**
@@ -202,6 +335,8 @@ function fullYears(from: string, to: string): number {
   if (plusMonths(from, years * 12) > to) years--;
   return years;
 }
+/** A date as the screens and messages show it: DD/MM/YYYY. */
+const shown = (date: string) => (isDate(date) ? `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}` : date);
 const cents = (n: number) => Math.round(n * 100);
 /** An amount as messages show it: 7,000 EGP, 7,000.50 EGP. */
 const money = (n: number) => `${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} EGP`;

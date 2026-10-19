@@ -47,6 +47,7 @@ import type {
   TemplateSigners,
   TemplateTrigger,
   TemplateVersionStatus,
+  TrainingNext,
   WorkArrangement,
   WorkNature,
   WorkPattern,
@@ -376,7 +377,10 @@ export interface EmployeeSummary {
   photoId?: string | null;
   /** The square of that photo shown in the circle, as HR cropped it (fractions of the photo); null: the whole photo, centred. */
   photoCrop?: PhotoCrop | null;
-  /** The current employment's status, else Former employee (an employment ended) or Not employed yet. */
+  /**
+   * The current employment's status (a trainee's or an intern's Active is Trainee or Intern: employmentStanding), else
+   * Former employee (an employment ended) or Not employed yet.
+   */
   standing: Standing;
   /** The current employment; null for a former employee or someone not employed yet. */
   employment: {
@@ -506,8 +510,12 @@ export interface EmployeeProfile {
   employment: Employment | null;
   /** Every employment, newest first, the current one first. */
   employments: Employment[];
-  /** The people whose current employment reports to this person; `status` is their employment's. */
-  reports: { id: string; employeeCode: string; fullNameEn: string; status: EmployeeStatus; jobTitle: { titleEn: string } | null }[];
+  /**
+   * The people whose current employment reports to this person; `status` is their employment's, `standing` where they
+   * stand (employmentStanding: Trainee or Intern for a trainee's or an intern's Active; 19 October 2026), left out by an
+   * older API.
+   */
+  reports: { id: string; employeeCode: string; fullNameEn: string; status: EmployeeStatus; standing?: Standing; jobTitle: { titleEn: string } | null }[];
   /** HR and CEO only; null = nothing recorded. */
   identity?: {
     nationalIdMasked: string | null;
@@ -545,6 +553,12 @@ export interface EmployeeProfile {
   changeRequests?: ChangeRequest[];
   /** Whether the signed-in user is this employee (their sign-in email is the work email). Optional like `confirmation`. */
   isSelf?: boolean;
+  /**
+   * The person's last training or internship agreement (owner, 19 October 2026: "a new trainee contract can be issued
+   * after 6 months of the expiration of the last trainee contract"): the day it ended and the first day a new one may
+   * start (YYYY-MM-DD); null when they never had one. Left out by an older API.
+   */
+  nextTraining?: { lastEnded: string; from: string } | null;
 }
 
 // ---------- the employee's own check of their details, and their change requests ----------
@@ -812,12 +826,19 @@ export interface ExpiringContract {
   employee: ContractEmployeeRef;
   employmentId: string;
   endDate: string;
-  /** The last day to tell the employee it won't be renewed: 45 working days before the end. */
-  nonRenewalNoticeBy: string;
-  /** A renewal (the next contract version) is already drafted. */
+  /**
+   * The last day to tell the employee it won't be renewed: 45 working days before the end; null for a trainee's or an
+   * intern's agreement, which is renewed once, converted to full-time or ended, with no non-renewal notice.
+   */
+  nonRenewalNoticeBy: string | null;
+  /** A renewal (the next contract version, not a conversion to full-time) is already drafted. */
   renewalDraft: boolean;
   /** Past its end with the work going on and no signed renewal: open-ended by the law (Art. 88(3)). Left out by an older API. */
   becameOpenEnded?: boolean;
+  /** A trainee's or an intern's agreement: which one it is and what follows it (ContractTraining); null otherwise, left out by an older API. */
+  training?: ContractTraining | null;
+  /** Its conversion to a full-time contract is already drafted. Left out by an older API. */
+  conversionDraft?: boolean;
 }
 
 /**
@@ -825,9 +846,12 @@ export interface ExpiringContract {
  * on the labour law?"): a signed fixed-term contract past its end while the employment goes on without a signed renewal,
  * which the law counts as open-ended (Labour Law 14/2025 Art. 88(3)), by end date; then current casual work past its 6
  * months (Art. 1(7)), by join date. `since`: the fixed term's last day, or the day the 6 months were up (YYYY-MM-DD).
+ * Since 19 October 2026 also a trainee's or an intern's agreement past its end while the employment goes on with
+ * nothing signed after it (training_ended, `since` its end date): renewed once, converted to full-time or ended, never
+ * open-ended.
  */
 export interface LawWarningItem {
-  kind: 'became_open_ended' | 'casual_too_long';
+  kind: 'became_open_ended' | 'casual_too_long' | 'training_ended';
   employee: ContractEmployeeRef;
   employmentId: string;
   contractId: string | null;
@@ -893,6 +917,9 @@ export interface ContractListItem extends ContractPay, Omit<ContractLaw, 'traine
   labourOfficeFiledOn: string | null;
   /** A signed fixed contract's last day to tell the employee it won't be renewed: 45 working days before it ends. */
   nonRenewalNoticeBy: string | null;
+  /** A trainee's or an intern's agreement (ContractTraining), and a version converting one to full-time; left out by an older API. */
+  training?: ContractTraining | null;
+  convertsTo?: 'full_time' | null;
   /** In EGP: the gross (for pay by the hour, the monthly estimate), and the insured salary with the insured allowances. */
   grossSalary: number | null;
   insuredSalary: number | null;
@@ -913,6 +940,17 @@ export interface ContractListItem extends ContractPay, Omit<ContractLaw, 'traine
   /** As signed; a draft's are the employment's current ones. */
   jobTitleEn: string | null;
   departmentName: string | null;
+}
+
+/**
+ * A trainee's training agreement or an intern's internship agreement (owner, 19 October 2026: "interns to be labeled
+ * trainees instead of probation and their contracts are never renewed", then "or can be only renewed 1 time, after that
+ * it should be converted to a full time contract"): `agreement` 1 for the first, 2 for its one renewal; `next`, what
+ * follows it: renewed once or converted to full-time (renew_or_convert), or converted or ended (convert_or_end).
+ */
+export interface ContractTraining {
+  agreement: number;
+  next: TrainingNext;
 }
 
 /** A training stage as a contract shows it: its pay null, with the salary, for anyone but HR, Finance and the CEO. */
@@ -1010,8 +1048,18 @@ export interface Contract extends ContractPay, ContractLaw {
   insuranceFiledOn: string | null;
   labourOfficeFiledOn: string | null;
   note: string | null;
-  /** A fixed contract's last day to tell the employee it won't be renewed: 45 working days before it ends. */
+  /**
+   * A fixed contract's last day to tell the employee it won't be renewed: 45 working days before it ends; null for a
+   * trainee's or an intern's agreement (renewed once, then converted to full-time or ended).
+   */
   nonRenewalNoticeBy: string | null;
+  /** A trainee's or an intern's agreement: which one it is and what follows it; null for any other contract. Left out by an older API. */
+  training?: ContractTraining | null;
+  /**
+   * A version converting a trainee's or an intern's agreement to a full-time contract on the same employment (signing it
+   * makes the employment full-time); null for any other. Left out by an older API.
+   */
+  convertsTo?: 'full_time' | null;
   salaryHidden?: boolean;
   /** A whole contract, or a salary amendment (owner's decisions, 16 October 2026); missing from an older API. */
   kind?: ContractKind;

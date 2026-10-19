@@ -1,16 +1,28 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  agreementName,
   CASUAL_MAX_MONTHS,
+  INTERN_DEFAULT_MONTHS,
+  INTERN_MAX_MONTHS,
+  INTERN_NO_WAGE_MESSAGE,
+  INTERN_TERM_MESSAGE,
   insuredWageOf,
+  isTrainingType,
   monthlyFromHourly,
+  noProbationMessage,
+  renewedOnceMessage,
   samePay,
   traineeMonths,
   traineeProblems,
+  TRAINING_RENEWALS,
+  trainingEndsText,
+  trainingNext,
   type ContractForm,
   type ContractStatus,
   type PayBasis,
   type PayTerms,
   type RaiseReason,
+  type EmploymentType,
   type TraineeStage,
 } from '@trendlix/shared';
 import { AllowancesService } from '../allowances/allowances.service.js';
@@ -25,6 +37,7 @@ import { Prisma, type EmployeeStatus } from '../generated/prisma/client.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ContractSettingsService } from './contract-settings.service.js';
+import { dropDirectRequest, openDirectRequest, syncDirectRequest } from './direct-requests.js';
 import { checkedPromotion } from './promotion.js';
 import { recordStep } from './raise-request-steps.js';
 import {
@@ -36,6 +49,8 @@ import {
   type UpdateContractDto,
 } from './contracts.dto.js';
 import {
+  agreementNumber,
+  agreementVersions,
   CONTRACT_INCLUDE,
   CONTRACT_LIST_INCLUDE,
   contractBecameOpenEnded,
@@ -108,6 +123,9 @@ const EMPLOYMENT = {
 
 export type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
 
+/** Adding a version takes a dozen queries or more, in one transaction: more than the default 5 seconds on a busy server. */
+const TX_TIMEOUT_MS = 20_000;
+
 /** At most this many contracts in the company-wide list. */
 const LIST_CAP = 500;
 
@@ -130,6 +148,11 @@ export interface TermsInput {
   endDate?: string | null;
   /** A trainee's training agreement: its stages (required then). */
   traineeStages?: readonly TraineeStage[] | null;
+  /**
+   * A trainee's or an intern's agreement converted to a full-time contract by this version (19 October 2026): its terms
+   * are that type's, and it takes an employment contract's probation; null or left out for the others.
+   */
+  convertsTo?: EmploymentType | null;
   startDate?: string;
   durationMonths?: number | null;
   probationMonths?: number;
@@ -184,6 +207,7 @@ export function fields(c: ContractRow) {
     newJobTitleId: c.newJobTitleId,
     newGradeId: c.newGradeId,
     form2From: fromDateOnly(c.form2From),
+    convertsTo: c.convertsTo,
     sentAt: c.sentAt?.toISOString() ?? null,
     approvedById: c.approvedById,
     approvedAt: c.approvedAt?.toISOString() ?? null,
@@ -278,6 +302,13 @@ function assertNotFuture(date: string | null | undefined, what: string) {
 // and insured or not (owner's requests, 15 October 2026). The insured salary is the gross and the insured allowances,
 // capped at the start year's maximum insurable wage. HR adds, changes and signs contracts; anyone who may see the
 // employment reads them, the salary only HR, Finance and the CEO.
+// A trainee's training agreement and an intern's internship agreement (owner, 19 October 2026: "interns to be labeled
+// trainees instead of probation and their contracts are never renewed", then "or can be only renewed 1 time, after that
+// it should be converted to a full time contract"): no probation; renewed once at most; then converted to a full-time
+// contract, the employment's next version (convertsTo), whose signing makes the employment full-time with a first
+// contract's probation, or ended (Training completed). An intern's ("we are not paying them salary, its just
+// transportation allowance") pays no wage: the gross is 0, the allowances on top, a short fixed term (3 months, 12 at
+// most), nothing insured.
 @Injectable()
 export class ContractsService {
   constructor(
@@ -293,7 +324,7 @@ export class ContractsService {
   async list(employeeId: string, employmentId: string, user: SessionUser) {
     const employment = await this.employment(employeeId, employmentId, user);
     const rows = await this.prisma.contract.findMany({ where: { employmentId }, orderBy: { version: 'desc' }, include: CONTRACT_INCLUDE });
-    const ctx = await this.context(user, employment);
+    const ctx = await this.context(user, employment, rows);
     // a change of pay not signed yet stays with those who see salaries until it is (as an ending waiting for the CEO
     // never reaches the employee first)
     return rows.filter((c) => ctx.seesSalary || c.status !== 'draft' || c.approval === null).map((c) => contractView(c, ctx));
@@ -339,15 +370,19 @@ export class ContractsService {
    * version before's allowances as they are unless others are sent; its pay is sent afresh.
    */
   async create(employeeId: string, employmentId: string, dto: CreateContractDto, user: SessionUser) {
-    const { row, employment, audit } = await this.draft(employeeId, employmentId, dto, user);
+    // in one transaction: a renewal with new pay gets its raise request with it (19 October 2026)
+    const { row, employment, audit, requestAudit } = await this.prisma.$transaction((tx) => this.draft(employeeId, employmentId, dto, user, tx), { timeout: TX_TIMEOUT_MS });
     await this.audit.record(audit);
+    if (requestAudit) await this.audit.record(requestAudit);
     return contractView(row, await this.context(user, employment));
   }
 
   /**
    * What adding a version writes, in `db`: a transaction when hiring drafts the first contract with the employment, all
-   * or nothing (HiringService: hiring in one form, owner's decision, 16 October 2026). Answers the new row, its
-   * employment and the audit entry, which the caller records once the row is saved.
+   * or nothing (HiringService: hiring in one form, owner's decision, 16 October 2026), or a renewal (create). Answers the
+   * new row, its employment and the audit entries, which the caller records once the row is saved: the version's, and
+   * for a renewal with new pay its raise request's, prepared directly by HR (owner, 19 October 2026: every raise on Raise
+   * Requests), made in `db` with it.
    */
   async draft(employeeId: string, employmentId: string, dto: CreateContractDto, user: SessionUser, db: Db = this.prisma) {
     const employment = await this.employment(employeeId, employmentId, user, db);
@@ -362,6 +397,18 @@ export class ContractsService {
     if (previous?.form === 'open_ended') {
       throw new ConflictException(`${previous.number} is open-ended: it isn't renewed, it runs until it is ended by notice (Labour Law Art. 156). To change its pay, add a raise.`);
     }
+    // a trainee's training agreement or an intern's internship agreement (owner, 19 October 2026: "or can be only renewed
+    // 1 time, after that it should be converted to a full time contract"): renewed once at most; then converted to a
+    // full-time contract, this employment's next version (the service counting on), or ended
+    const converting = dto.convertsTo ?? null;
+    if (converting) {
+      if (!isTrainingType(employment.employmentType)) {
+        throw new BadRequestException('Only a trainee’s training agreement or an intern’s internship agreement is converted to a full-time contract.');
+      }
+      if (!previous) throw new ConflictException(`Sign the ${agreementName(employment.employmentType)} first: the full-time contract follows it.`);
+    } else if (previous && (agreementVersions(employment.employmentType, versions)?.length ?? 0) > TRAINING_RENEWALS) {
+      throw new ConflictException(renewedOnceMessage(employment.employmentType));
+    }
 
     // a kind made inactive since stays allowed on the renewal of a version that has it
     const previousAllowances = previous?.allowances.map(allowanceView) ?? [];
@@ -375,6 +422,7 @@ export class ContractsService {
       jobToDo: dto.jobToDo ?? (dto.form === undefined && previous?.form === 'specific_job' ? previous.jobToDo : null),
       endDate: dto.endDate,
       traineeStages: dto.traineeStages,
+      convertsTo: converting,
       startDate: dto.startDate,
       durationMonths: dto.durationMonths,
       probationMonths: dto.probationMonths,
@@ -387,21 +435,36 @@ export class ContractsService {
       daysPerWeek: dto.daysPerWeek,
       allowances,
     });
-    // a version with new pay (a renewal with a raise) goes to the CEO first (owner's decisions, 16 October 2026)
-    const step = previous ? payChangeStep(previous, payTermsOf({ ...terms, allowances: rows }), dto.raiseReason) : NO_PAY_CHANGE;
-    const values = { ...terms, ...step, number: await this.nextNumber(terms.startDate, db), version: (previous?.version ?? 0) + 1, note: dto.note ?? null };
-    const row = await db.contract.create({
+    // a version with new pay (a renewal with a raise) goes to the CEO first (owner's decisions, 16 October 2026); a
+    // conversion to full-time is the new employment contract a hire would sign, with no CEO step (19 October 2026)
+    const step = previous && !converting ? payChangeStep(previous, payTermsOf({ ...terms, allowances: rows }), dto.raiseReason) : NO_PAY_CHANGE;
+    const values = {
+      ...terms,
+      ...step,
+      ...(converting && { convertsTo: converting }),
+      number: await this.nextNumber(terms.startDate, db),
+      version: (previous?.version ?? 0) + 1,
+      note: dto.note ?? null,
+    };
+    let row = await db.contract.create({
       data: { ...toData({ ...values, employmentId }), allowances: { create: allowanceData(rows) } },
       include: CONTRACT_INCLUDE,
     });
+    // a renewal with new pay: its raise request, prepared directly by HR, so it is on Raise Requests with the raises
+    let requestAudit: AuditEntry | null = null;
+    if (previous && row.approval !== null) {
+      const direct = await openDirectRequest(db, { ...row, employeeId }, previous.grossSalary.toNumber(), user.id);
+      requestAudit = direct.audit;
+      row = await db.contract.findUniqueOrThrow({ where: { id: row.id }, include: CONTRACT_INCLUDE });
+    }
     const audit: AuditEntry = {
       userId: user.id,
       action: 'create',
       entityType: ENTITY,
       entityId: row.id,
-      diff: salaryMasked({ employeeId, employmentId, ...values, allowances: comparable(rows) }),
+      diff: salaryMasked({ employeeId, employmentId, ...values, allowances: comparable(rows), ...(requestAudit && { request: requestAudit.entityId }) }),
     };
-    return { row, employment, audit };
+    return { row, employment, audit, requestAudit };
   }
 
   /**
@@ -415,6 +478,8 @@ export class ContractsService {
     let values: Record<string, unknown>;
     /** The draft's new set of allowances, when sent. */
     let allowances: AllowanceSnapshot[] | undefined;
+    /** A draft's version before it, which a change of pay is weighed against. */
+    let previous: ContractRow | null = null;
 
     if (before.status === 'draft') {
       if (dto.signedOn !== undefined || dto.insuranceFiledOn !== undefined || dto.labourOfficeFiledOn !== undefined) {
@@ -423,7 +488,7 @@ export class ContractsService {
       if (before.kind === 'amendment') throw new BadRequestException(`${before.number} is a salary amendment: change it as a raise (Edit raise).`);
       if (before.approval === 'pending_ceo') throw new ConflictException(`${before.number} is with the CEO: it can't be changed unless the CEO returns it.`);
       assertCurrent(employment);
-      const previous = await this.prisma.contract.findFirst({
+      previous = await this.prisma.contract.findFirst({
         where: { employmentId: before.employmentId, version: { lt: before.version } },
         orderBy: { version: 'desc' },
         include: CONTRACT_INCLUDE,
@@ -444,6 +509,7 @@ export class ContractsService {
         jobToDo: dto.jobToDo !== undefined ? dto.jobToDo : sameForm ? was.jobToDo : null,
         endDate: dto.endDate !== undefined ? dto.endDate : sameForm && form === 'specific_job' ? was.endDate : null,
         traineeStages: dto.traineeStages !== undefined ? dto.traineeStages : was.traineeStages,
+        convertsTo: before.convertsTo,
         startDate: dto.startDate ?? was.startDate,
         durationMonths: dto.durationMonths ?? (sameForm ? was.durationMonths : undefined),
         probationMonths: dto.probationMonths ?? was.probationMonths,
@@ -459,7 +525,8 @@ export class ContractsService {
       // numbered by the start year: a draft moved to another year takes that year's next number
       const number = terms.startDate.slice(0, 4) === was.startDate.slice(0, 4) ? before.number : await this.nextNumber(terms.startDate);
       const pay = payTermsOf({ ...terms, allowances: allowances ?? before.allowances.map(allowanceView) });
-      const step = previous ? payChangeStep(previous, pay, dto.raiseReason ?? (before.raiseReason as RaiseReason | null)) : NO_PAY_CHANGE;
+      // a conversion to full-time takes no CEO step, as when it was drafted (19 October 2026)
+      const step = previous && !before.convertsTo ? payChangeStep(previous, pay, dto.raiseReason ?? (before.raiseReason as RaiseReason | null)) : NO_PAY_CHANGE;
       const termsChanged = Object.keys(changes(was, { ...terms, allowances: allowances && comparable(allowances), raiseReason: step.raiseReason })).length > 0;
       values = { ...terms, number, note: dto.note, ...approvalAfterChange(before, step, termsChanged) };
     } else {
@@ -472,8 +539,8 @@ export class ContractsService {
       values = { signedOn: dto.signedOn, insuranceFiledOn: dto.insuranceFiledOn, labourOfficeFiledOn: dto.labourOfficeFiledOn, note: dto.note };
     }
 
-    const row = await this.prisma.$transaction(async (tx) => {
-      const saved = await tx.contract.update({
+    const { row, requestAudit } = await this.prisma.$transaction(async (tx) => {
+      let saved = await tx.contract.update({
         where: { id },
         data: { ...toData(values), ...(allowances && { allowances: { deleteMany: {}, create: allowanceData(allowances) } }) },
         include: CONTRACT_INCLUDE,
@@ -483,36 +550,63 @@ export class ContractsService {
         await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'with_hr' } });
         await recordStep(tx, before.raiseRequest.id, user.id, { kind: 'changed', gross: saved.grossSalary.toNumber(), contractNumber: saved.number });
       }
-      return saved;
+      // a draft's change of pay and its request prepared directly by HR (owner, 19 October 2026): one comes with new pay
+      // (a renewal now changing the pay), follows the draft as HR changes it, and goes once the pay is the same again
+      let audit: AuditEntry | null = null;
+      const direct = { ...saved, employeeId: employment.employeeId };
+      if (previous && saved.status === 'draft') {
+        if (saved.approval !== null && !before.raiseRequest) {
+          audit = (await openDirectRequest(tx, direct, previous.grossSalary.toNumber(), user.id)).audit;
+          saved = await tx.contract.findUniqueOrThrow({ where: { id }, include: CONTRACT_INCLUDE });
+        } else if (before.raiseRequest?.origin === 'direct' && saved.approval === null) {
+          audit = await dropDirectRequest(tx, before.raiseRequest.id, direct, user.id, 'no_pay_change');
+          saved = await tx.contract.findUniqueOrThrow({ where: { id }, include: CONTRACT_INCLUDE });
+        } else if (before.raiseRequest?.origin === 'direct') {
+          await syncDirectRequest(tx, before.raiseRequest.id, direct, previous.grossSalary.toNumber());
+        }
+      }
+      return { row: saved, requestAudit: audit };
     });
     const diff = salaryMasked(changes(was, { ...values, ...(allowances && { allowances: comparable(allowances) }) }));
     if (Object.keys(diff).length) {
       await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: id, diff: { employmentId: before.employmentId, number: before.number, ...diff } });
     }
+    if (requestAudit) await this.audit.record(requestAudit);
     return contractView(row, await this.context(user, employment));
   }
 
-  /** Deletes a draft (a Super Admin only, owner's decision, 15 October 2026). A signed contract stays on record. */
+  /**
+   * Deletes a draft (a Super Admin only, owner's decision, 15 October 2026). A signed contract stays on record. A raise
+   * request it was prepared from is HR's again; one prepared directly by HR goes with it (19 October 2026: nobody asked
+   * for it, so nothing is left to decide).
+   */
   async remove(id: string, user: SessionUser) {
     assertDeletes(user);
     const c = await this.row(id);
     if (c.status !== 'draft') throw new ConflictException(`${c.number} is signed: only a draft can be deleted, and a signed contract stays on record.`);
-    await this.prisma.$transaction(async (tx) => {
+    const direct = c.raiseRequest?.origin === 'direct' ? c.raiseRequest : null;
+    const employeeId = direct ? (await this.employmentOf(c)).employeeId : null;
+    const requestAudit = await this.prisma.$transaction(async (tx) => {
+      const dropped = direct ? await dropDirectRequest(tx, direct.id, { employeeId: employeeId!, number: c.number }, user.id, 'raise_deleted') : null;
       await tx.contract.delete({ where: { id } });
       // the request it was prepared from is HR's again, to prepare anew or decline
-      if (c.raiseRequest) {
+      if (c.raiseRequest && !direct) {
         await tx.raiseRequest.update({ where: { id: c.raiseRequest.id }, data: { status: 'with_hr' } });
         await recordStep(tx, c.raiseRequest.id, user.id, { kind: 'raise_deleted', contractNumber: c.number });
       }
+      return dropped;
     });
     await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: id, diff: { employmentId: c.employmentId, number: c.number, version: c.version } });
+    if (requestAudit) await this.audit.record(requestAudit);
   }
 
   /**
    * Signs a draft: it becomes the employment's contract, with the job title, grade, department and shift copied from
    * the employment. Version 1 sets the employment's probation end, and its status: Probation while the probation runs,
-   * else Active (a contract signed for someone already past it does not put them back on probation). A later version
-   * supersedes the one before.
+   * else Active (a contract signed for someone already past it does not put them back on probation); a trainee's or an
+   * intern's has none, so Active. A later version supersedes the one before. A conversion of a trainee's or an intern's
+   * agreement to a full-time contract (19 October 2026) makes the employment full-time, with its probation as version 1
+   * would set it.
    */
   async sign(id: string, dto: SignContractDto, user: SessionUser) {
     const before = await this.row(id);
@@ -530,7 +624,7 @@ export class ContractsService {
     assertNotFuture(dto.signedOn, 'signing');
     // a trainee's training agreement is signed with its stages, checked again (the minimum wage may have been set since):
     // a written agreement setting them (Labour Law Art. 29)
-    if (employment.employmentType === 'trainee' && before.kind === 'contract') {
+    if (employment.employmentType === 'trainee' && before.kind === 'contract' && !before.convertsTo) {
       const startDate = fromDateOnly(before.startDate)!;
       const law = await this.lawRates.forYear(Number(startDate.slice(0, 4)));
       const problems = traineeProblems({
@@ -558,15 +652,19 @@ export class ContractsService {
       ...(promotion.jobTitle && { jobTitleId: promotion.jobTitle.id, departmentId: promotion.jobTitle.departmentId }),
       ...(promotion.grade && { gradeId: promotion.grade.id }),
     };
-    const employmentChange =
-      before.version === 1
-        ? {
-            probationEnd,
-            ...(followsProbation && { status: probationEnd && probationEnd >= todayInCairo() ? ('probation' as const) : ('active' as const) }),
-          }
-        : Object.keys(promoted).length
-          ? promoted
-          : null;
+    // the first contract, or the full-time contract a trainee's or an intern's agreement is converted to: the
+    // employment's probation (and type) follow it
+    const converting = before.convertsTo;
+    const setsProbation = before.version === 1 || converting !== null;
+    const employmentChange = setsProbation
+      ? {
+          probationEnd,
+          ...(followsProbation && { status: probationEnd && probationEnd >= todayInCairo() ? ('probation' as const) : ('active' as const) }),
+          ...(converting && { employmentType: converting }),
+        }
+      : Object.keys(promoted).length
+        ? promoted
+        : null;
     const superseded =
       before.version === 1
         ? []
@@ -575,10 +673,14 @@ export class ContractsService {
     const row = await this.prisma.$transaction(async (tx) => {
       const signed = await tx.contract.update({ where: { id }, data: { status: 'active', signedOn: toDateOnly(dto.signedOn), ...snapshot }, include: CONTRACT_INCLUDE });
       if (superseded.length) await tx.contract.updateMany({ where: { id: { in: superseded.map((s) => s.id) } }, data: { status: 'superseded' } });
-      if (before.version === 1 && employmentChange) {
+      if (setsProbation && employmentChange) {
         await tx.employment.update({
           where: { id: employment.id },
-          data: { probationEnd: probationEnd ? toDateOnly(probationEnd) : null, status: (employmentChange as { status?: EmployeeStatus }).status },
+          data: {
+            probationEnd: probationEnd ? toDateOnly(probationEnd) : null,
+            status: (employmentChange as { status?: EmployeeStatus }).status,
+            ...(converting && { employmentType: converting }),
+          },
         });
       } else if (employmentChange) {
         await tx.employment.update({ where: { id: employment.id }, data: promoted });
@@ -612,7 +714,14 @@ export class ContractsService {
       },
     });
     if (employmentChange) {
-      const was = { probationEnd: fromDateOnly(employment.probationEnd), status: employment.status, jobTitleId: employment.jobTitleId, departmentId: employment.departmentId, gradeId: employment.gradeId };
+      const was = {
+        probationEnd: fromDateOnly(employment.probationEnd),
+        status: employment.status,
+        jobTitleId: employment.jobTitleId,
+        departmentId: employment.departmentId,
+        gradeId: employment.gradeId,
+        employmentType: employment.employmentType,
+      };
       const diff = changes(was, employmentChange);
       if (Object.keys(diff).length) {
         await this.audit.record({ userId: user.id, action: 'update', entityType: 'employment', entityId: employment.id, diff: { employeeId: employment.employeeId, contract: before.number, ...diff } });
@@ -655,8 +764,10 @@ export class ContractsService {
       before.version > 1
         ? await this.prisma.contract.findFirst({ where: { employmentId: before.employmentId, version: before.version - 1, status: 'superseded' }, select: { id: true, number: true } })
         : null;
-    // version 1's probation and status, a raise's promotion: as before the signing
-    const employmentChange = before.version === 1 || before.newJobTitleId || before.newGradeId ? await this.beforeSigning(employment, before.number) : null;
+    // version 1's probation and status, a raise's promotion, a conversion's type (back to trainee or intern): as before
+    // the signing
+    const employmentChange =
+      before.version === 1 || before.newJobTitleId || before.newGradeId || before.convertsTo ? await this.beforeSigning(employment, before.number) : null;
 
     const row = await this.prisma.$transaction(async (tx) => {
       const draft = await tx.contract.update({
@@ -704,7 +815,14 @@ export class ContractsService {
       },
     });
     if (employmentChange) {
-      const was = { probationEnd: fromDateOnly(employment.probationEnd), status: employment.status, jobTitleId: employment.jobTitleId, departmentId: employment.departmentId, gradeId: employment.gradeId };
+      const was = {
+        probationEnd: fromDateOnly(employment.probationEnd),
+        status: employment.status,
+        jobTitleId: employment.jobTitleId,
+        departmentId: employment.departmentId,
+        gradeId: employment.gradeId,
+        employmentType: employment.employmentType,
+      };
       const diff = changes(was, employmentChange);
       await this.audit.record({ userId: user.id, action: 'update', entityType: 'employment', entityId: employment.id, diff: { employeeId: employment.employeeId, signingUndone: before.number, ...diff } });
     }
@@ -717,7 +835,10 @@ export class ContractsService {
   /**
    * Signed fixed-term contracts of current employments that end within `within` days, soonest first, with the last
    * day to give non-renewal notice and whether a renewal is drafted. Contracts already past their end, with the
-   * employment still current, are listed too: they need a renewal (or an ending) most of all.
+   * employment still current, are listed too: they need a renewal (or an ending) most of all. A trainee's or an
+   * intern's agreement (owner, 19 October 2026) is never due for renewal as a fixed term is: it comes with which
+   * agreement it is and what follows it (`training`: renewed once or converted to full-time, then converted or ended),
+   * no non-renewal notice and no Art. 88 warning, and whether its conversion to full-time is drafted.
    */
   async expiring(within: number) {
     const until = addDays(todayInCairo(), within);
@@ -726,24 +847,38 @@ export class ContractsService {
       orderBy: [{ endDate: 'asc' }, { number: 'asc' }],
       include: {
         employment: {
-          // a whole contract drafted after it (a renewal, or a raise's new contract), not a salary amendment, which keeps its end
-          select: { id: true, employee: EMPLOYEE_REF, shift: { select: { workingDays: true } }, contracts: { where: { status: 'draft', kind: 'contract' }, select: { id: true } } },
+          select: {
+            id: true,
+            employmentType: true,
+            employee: EMPLOYEE_REF,
+            shift: { select: { workingDays: true } },
+            contracts: { select: { version: true, kind: true, status: true, convertsTo: true } },
+          },
         },
       },
     });
     const nonRenewal = await this.nonRenewal();
-    return rows.map((c) => ({
-      id: c.id,
-      number: c.number,
-      employee: c.employment.employee,
-      employmentId: c.employment.id,
-      endDate: fromDateOnly(c.endDate),
-      nonRenewalNoticeBy: nonRenewalNoticeBy(c, { workingDays: c.employment.shift?.workingDays ?? null, nonRenewal }),
-      renewalDraft: c.employment.contracts.length > 0,
-      // past its end with the employment going on and no signed renewal: open-ended by the law (Art. 88(3)), a draft
-      // renewal or not (only a signed one is the written agreement)
-      becameOpenEnded: contractBecameOpenEnded(c, null),
-    }));
+    return rows.map((c) => {
+      const e = c.employment;
+      // a whole contract drafted after it (a renewal, a raise's new contract, a conversion), not a salary amendment, which keeps its end
+      const drafts = e.contracts.filter((v) => v.status === 'draft' && v.kind === 'contract');
+      const agreement = agreementNumber(c, agreementVersions(e.employmentType, e.contracts));
+      return {
+        id: c.id,
+        number: c.number,
+        employee: e.employee,
+        employmentId: e.id,
+        endDate: fromDateOnly(c.endDate),
+        nonRenewalNoticeBy: agreement ? null : nonRenewalNoticeBy(c, { workingDays: e.shift?.workingDays ?? null, nonRenewal }),
+        renewalDraft: drafts.some((v) => v.convertsTo === null),
+        conversionDraft: drafts.some((v) => v.convertsTo !== null),
+        // past its end with the employment going on and no signed renewal: open-ended by the law (Art. 88(3)), a draft
+        // renewal or not (only a signed one is the written agreement); not an agreement to learn, which isn't an
+        // employment contract
+        becameOpenEnded: agreement ? false : contractBecameOpenEnded(c, null),
+        training: agreement ? { agreement, next: trainingNext(agreement) } : null,
+      };
+    });
   }
 
   /**
@@ -755,11 +890,21 @@ export class ContractsService {
    */
   async lawWarnings() {
     const today = todayInCairo();
-    const [contracts, casual] = await Promise.all([
+    const [rows, casual] = await Promise.all([
       this.prisma.contract.findMany({
         where: { status: 'active', form: 'fixed', endDate: { lt: toDateOnly(today) }, employment: { endDate: null } },
         orderBy: [{ endDate: 'asc' }, { number: 'asc' }],
-        select: { id: true, number: true, form: true, status: true, endDate: true, employment: { select: { id: true, employee: EMPLOYEE_REF } } },
+        select: {
+          id: true,
+          number: true,
+          form: true,
+          status: true,
+          endDate: true,
+          version: true,
+          kind: true,
+          convertsTo: true,
+          employment: { select: { id: true, employmentType: true, employee: EMPLOYEE_REF, contracts: { select: { version: true, kind: true, convertsTo: true } } } },
+        },
       }),
       this.prisma.employment.findMany({
         where: { endDate: null, workNature: 'casual' },
@@ -767,6 +912,11 @@ export class ContractsService {
         select: { id: true, workNature: true, joinDate: true, endDate: true, employee: EMPLOYEE_REF },
       }),
     ]);
+    // a trainee's or an intern's agreement past its end isn't an employment contract become open-ended (19 October 2026):
+    // it is renewed once, converted to full-time, or ended
+    const withAgreement = rows.map((c) => ({ ...c, agreement: agreementNumber(c, agreementVersions(c.employment.employmentType, c.employment.contracts)) }));
+    const contracts = withAgreement.filter((c) => !c.agreement);
+    const agreements = withAgreement.filter((c) => c.agreement);
     return [
       ...contracts
         .filter((c) => contractBecameOpenEnded(c, null, today))
@@ -780,6 +930,15 @@ export class ContractsService {
           since: fromDateOnly(c.endDate),
           message: `${c.number} ended on ${shownDate(fromDateOnly(c.endDate)!)} and the work goes on without a signed renewal: by Labour Law Art. 88 it is now open-ended. Renew it in writing, or end the employment.`,
         })),
+      ...agreements.map((c) => ({
+        kind: 'training_ended' as const,
+        employee: c.employment.employee,
+        employmentId: c.employment.id,
+        contractId: c.id,
+        contractNumber: c.number,
+        since: fromDateOnly(c.endDate),
+        message: `${c.number}: ${trainingEndsText(fromDateOnly(c.endDate)!, trainingNext(c.agreement), today)}`,
+      })),
       ...casual
         .filter((e) => employmentCasualTooLong(e, today))
         .map((e) => ({
@@ -797,12 +956,13 @@ export class ContractsService {
 
   /**
    * Current employments on probation whose probation ends within `within` days, soonest first; those already past it
-   * (not confirmed yet) too.
+   * (not confirmed yet) too. Never a trainee or an intern (owner, 19 October 2026: "interns to be labeled trainees
+   * instead of probation"): their agreements have none.
    */
   async probationEnding(within: number) {
     const until = addDays(todayInCairo(), within);
     const rows = await this.prisma.employment.findMany({
-      where: { endDate: null, status: 'probation', probationEnd: { not: null, lte: toDateOnly(until) } },
+      where: { endDate: null, status: 'probation', probationEnd: { not: null, lte: toDateOnly(until) }, employmentType: { notIn: ['trainee', 'intern'] } },
       orderBy: [{ probationEnd: 'asc' }, { joinDate: 'asc' }],
       select: { id: true, probationEnd: true, employee: EMPLOYEE_REF },
     });
@@ -819,6 +979,8 @@ export class ContractsService {
   async terms(employment: EmploymentRow, previous: { version: number; startDate: Date; endDate: Date | null } | null, input: TermsInput) {
     const settings = await this.settings.get();
     const joinDate = fromDateOnly(employment.joinDate);
+    // the type the version is for: the employment's, or full-time for a trainee's or an intern's agreement converted
+    const type = input.convertsTo ?? employment.employmentType;
     let startDate: string;
     let probationMonths: number;
 
@@ -832,26 +994,45 @@ export class ContractsService {
       if (startDate <= previousStart) {
         throw new BadRequestException(`Version ${previous.version + 1} must start after version ${previous.version} started, on ${shownDate(previousStart)}.`);
       }
-      if (input.probationMonths) throw new BadRequestException('A renewal has no probation: the law allows it once per employer (Art. 90).');
-      probationMonths = 0;
+      if (input.convertsTo) {
+        // the full-time contract a trainee's or an intern's agreement is converted to (19 October 2026): the first
+        // employment contract, so its probation is a first contract's (the agreement before it had none)
+        probationMonths = await this.firstProbation(employment, input.probationMonths, settings.probationMonths);
+      } else {
+        if (input.probationMonths) throw new BadRequestException('A renewal has no probation: the law allows it once per employer (Art. 90).');
+        probationMonths = 0;
+      }
     } else {
       startDate = input.startDate ?? joinDate;
       if (startDate < joinDate) throw new BadRequestException(`The contract can't start before the join date, ${shownDate(joinDate)}.`);
-      const hadProbation = await this.hadProbation(employment);
-      if (hadProbation && input.probationMonths) {
-        throw new BadRequestException(`${employment.employee.fullNameEn} already had a probation with the company; the law allows it once (Art. 90).`);
+      if (isTrainingType(type)) {
+        // a training or internship agreement isn't an employment contract (owner, 19 October 2026: "interns to be labeled
+        // trainees instead of probation"): no probation
+        if (input.probationMonths) throw new BadRequestException(noProbationMessage(type));
+        probationMonths = 0;
+      } else {
+        probationMonths = await this.firstProbation(employment, input.probationMonths, settings.probationMonths);
       }
-      probationMonths = input.probationMonths ?? (hadProbation ? 0 : settings.probationMonths);
     }
     if (probationMonths > 3) throw new BadRequestException(PROBATION_CAP_MESSAGE); // the DTO refuses it first
 
     // its length: a fixed term (the settings' 12 months unless sent), open-ended or for a specific job (owner, 18
-    // October 2026); a trainee's training agreement for its stages' months, the gross the first stage's pay
-    const length = await this.length(employment, input, startDate, settings.durationMonths);
+    // October 2026); a trainee's training agreement for its stages' months, the gross the first stage's pay; an intern's
+    // internship agreement a short fixed term
+    const length = await this.length({ ...employment, employmentType: type }, input, startDate, settings.durationMonths);
     const { durationMonths, endDate } = length;
     if (length.traineeStages) {
       if (input.payBasis === 'hourly') throw new BadRequestException('A trainee is paid by the training stages, a month each: choose a monthly salary.');
       input = { ...input, grossSalary: length.traineeStages[0].pay };
+    }
+    if (type === 'intern') {
+      // no wage (owner, 19 October 2026: "we are not paying them salary, its just transportation allowance"): the gross
+      // is 0, the allowances paid on top
+      if (input.payBasis === 'hourly' || input.hourlyRate != null || input.hoursPerWeek != null) {
+        throw new BadRequestException('An intern is paid no wage, so not by the hour: leave the pay monthly, the gross at 0.');
+      }
+      if (input.grossSalary) throw new BadRequestException(INTERN_NO_WAGE_MESSAGE);
+      input = { ...input, grossSalary: 0 };
     }
     const probationEnd = probationMonths > 0 ? addDays(addMonths(startDate, probationMonths), -1) : null;
     if (probationEnd && endDate && probationEnd > endDate) {
@@ -877,8 +1058,9 @@ export class ContractsService {
       // the company's default share unless HR sets another (Payroll Setup, 16 October 2026)
       basicPercent: input.basicPercent ?? settings.basicPercentDefault,
       netSalary,
-      // within the insurable limits of the year the contract starts (its rates set by law)
-      insuredSalary: insuredWageOf(pay.grossSalary, allowances, await this.lawRates.forYear(Number(startDate.slice(0, 4)))),
+      // within the insurable limits of the year the contract starts (its rates set by law); nothing for an intern, who
+      // has no company social insurance (outside the labour law, 19 October 2026)
+      insuredSalary: type === 'intern' ? 0 : insuredWageOf(pay.grossSalary, allowances, await this.lawRates.forYear(Number(startDate.slice(0, 4)))),
       allowances,
     };
   }
@@ -918,6 +1100,13 @@ export class ContractsService {
       return { form, durationMonths, endDate: addDays(addMonths(startDate, durationMonths), -1), jobToDo: null, traineeStages: stages };
     }
     if (input.traineeStages?.length) throw new BadRequestException('Training stages are for a trainee’s training agreement only.');
+    if (employment.employmentType === 'intern') {
+      // an intern's internship agreement (owner, 19 October 2026): a short fixed term, 3 months unless sent, 12 at most
+      if (form !== 'fixed') throw new BadRequestException(`An intern’s internship agreement is a short fixed term: leave the contract fixed-term. ${INTERN_TERM_MESSAGE}`);
+      const durationMonths = input.durationMonths ?? INTERN_DEFAULT_MONTHS;
+      if (durationMonths > INTERN_MAX_MONTHS) throw new BadRequestException(INTERN_TERM_MESSAGE);
+      return { form, durationMonths, endDate: addDays(addMonths(startDate, durationMonths), -1), ...none };
+    }
     if (form === 'open_ended') {
       if (input.durationMonths != null) throw new BadRequestException('An open-ended contract has no duration or end date (Labour Law Art. 87): leave the months out.');
       return { form, durationMonths: null, endDate: null, ...none };
@@ -962,6 +1151,18 @@ export class ContractsService {
   }
 
   /**
+   * A first employment contract's probation: as sent, else the settings' months; none for someone who already had one
+   * with the company (Art. 90), refused if sent.
+   */
+  private async firstProbation(employment: EmploymentRow, sent: number | undefined, settingsMonths: number): Promise<number> {
+    const hadProbation = await this.hadProbation(employment);
+    if (hadProbation && sent) {
+      throw new BadRequestException(`${employment.employee.fullNameEn} already had a probation with the company; the law allows it once (Art. 90).`);
+    }
+    return sent ?? (hadProbation ? 0 : settingsMonths);
+  }
+
+  /**
    * Whether the person already had a probation with the company, which the law allows once per employer (Art. 90):
    * any earlier employment counts. (An earlier contract with probation always belongs to an earlier employment, since
    * a renewal has none.)
@@ -983,9 +1184,16 @@ export class ContractsService {
       select: { diff: true },
     });
     const diff = (entry?.diff ?? {}) as Record<string, { from: unknown; to: unknown } | undefined>;
-    const now: Record<string, unknown> = { probationEnd: fromDateOnly(e.probationEnd), status: e.status, jobTitleId: e.jobTitleId, departmentId: e.departmentId, gradeId: e.gradeId };
+    const now: Record<string, unknown> = {
+      probationEnd: fromDateOnly(e.probationEnd),
+      status: e.status,
+      jobTitleId: e.jobTitleId,
+      departmentId: e.departmentId,
+      gradeId: e.gradeId,
+      employmentType: e.employmentType,
+    };
     const out: Record<string, unknown> = {};
-    for (const key of ['probationEnd', 'status', 'jobTitleId', 'departmentId', 'gradeId'] as const) {
+    for (const key of ['probationEnd', 'status', 'jobTitleId', 'departmentId', 'gradeId', 'employmentType'] as const) {
       const change = diff[key];
       if (change && now[key] === change.to) out[key] = change.from as never;
     }
@@ -1000,14 +1208,24 @@ export class ContractsService {
     return `CON-${year}-${String((max ?? 0) + 1).padStart(4, '0')}`;
   }
 
-  /** How contracts are shown to this user: the salary or not, and the dates that follow from the employment's shift. */
-  async context(user: SessionUser, employment: EmploymentRow): Promise<ContractContext> {
+  /**
+   * How contracts are shown to this user: the salary or not, the dates that follow from the employment's shift, and for
+   * a trainee's or an intern's employment which versions are its agreements (`versions`: its contracts, when loaded).
+   */
+  async context(user: SessionUser, employment: EmploymentRow, versions?: readonly { version: number; kind: string; convertsTo: string | null }[]): Promise<ContractContext> {
+    const agreements = isTrainingType(employment.employmentType)
+      ? agreementVersions(
+          employment.employmentType,
+          versions ?? (await this.prisma.contract.findMany({ where: { employmentId: employment.id }, select: { version: true, kind: true, convertsTo: true } })),
+        )
+      : null;
     return {
       seesSalary: seesSalary(user),
       workingDays: employment.shift?.workingDays ?? null,
       nonRenewal: await this.nonRenewal(),
       employmentEndDate: employment.endDate,
       casualTooLong: employmentCasualTooLong(employment),
+      agreements,
     };
   }
 

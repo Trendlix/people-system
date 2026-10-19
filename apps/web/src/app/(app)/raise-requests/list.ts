@@ -1,14 +1,19 @@
 import {
   effectiveFromChoices,
+  isFirstOfMonth,
   nextFirstOfMonth,
+  PAY_CHANGE_LABELS,
   RAISE_DECISION_DONE_LABELS,
   RAISE_REASON_LABELS,
+  RAISE_REQUEST_HISTORY_STATUSES,
+  RAISE_REQUEST_ORIGIN_LABELS,
   RAISE_REQUEST_STATUS_LABELS,
   RAISE_REQUEST_STATUSES,
   RAISE_REQUEST_STEP_LABELS,
   RAISE_REQUESTER_LABELS,
   RAISE_WAY_LABELS,
   payDifference,
+  type RaiseReason,
   type RaiseRequester,
   type RaiseRequestStatus,
   type Role,
@@ -37,7 +42,13 @@ import { myRequestsHref } from '../my-requests/requests';
 // chose "Under Requests"): the form is its own page (/raise-requests/new), for HR, the CEO and Finance from the list,
 // for the employee from My Requests and for a manager from My Team, each picking only the people they may ask for; the
 // profile lists a person's requests and their logs, read only. A request also says the month the raise is asked from
-// (Effective from, 17 October 2026). Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// (Effective from, 17 October 2026). Since 19 October 2026 ("when a raise request was sent to the CEO, is showed in
+// approvals not raise requests, and after approved, it was not shown in the raise request history too") a raise HR
+// prepares directly (on the contract, or a renewal with new pay) is listed too, "Prepared directly by HR", for HR,
+// Finance and the CEO only; the CEO decides each raise here as on Approvals; and the history (approved, done, rejected)
+// has its own choice in the status filter. The CEO may change the reason when approving ("i might want to ammend the
+// raise reason, not only the money"), which the log says. Pure code, tested; relative imports, as vitest doesn't know
+// the @/ paths.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -51,6 +62,17 @@ export function canSeeRaiseRequests(user: WithRoles): boolean {
 /** HR declines a request, or prepares the raise from it. The API checks this again. */
 export function handlesRaiseRequests(user: WithRoles): boolean {
   return hasRole(user, 'hr');
+}
+
+/** Whether a request was prepared directly by HR, not asked for (19 October 2026); an API from before has asked ones only. */
+export const isDirect = (r: Pick<RaiseRequest, 'origin'>) => r.origin === 'direct';
+
+/**
+ * Whether the CEO decides a request's raise on its row (owner, 19 October 2026: Raise Requests the one place for every
+ * raise): the CEO, while its raise is with the CEO. The API checks it again.
+ */
+export function ceoDecidesHere(user: WithRoles, r: Pick<RaiseRequest, 'status' | 'raise'>): boolean {
+  return hasRole(user, 'ceo') && r.status === 'with_ceo' && r.raise?.stage === 'pending_ceo';
 }
 
 /**
@@ -71,12 +93,20 @@ export const WITH_HR_REQUESTS = '/raise-requests?status=with_hr';
 
 // ---------- the status filter ----------
 
-export type StatusFilter = RaiseRequestStatus | '';
+/** History (19 October 2026: "it was not shown in the raise request history"): approved, done or rejected. */
+export const HISTORY = 'history';
 
-/** All, then each status in the order a request goes through them. */
+export type StatusFilter = RaiseRequestStatus | typeof HISTORY | '';
+
+/**
+ * All (the default), the two open stages, then the history (owner, 19 October 2026): together as History, and each of
+ * approved, done and rejected.
+ */
 export const STATUS_FILTERS: readonly { value: StatusFilter; label: string }[] = [
   { value: '', label: 'All' },
-  ...RAISE_REQUEST_STATUSES.map((s) => ({ value: s, label: RAISE_REQUEST_STATUS_LABELS[s] })),
+  ...RAISE_REQUEST_STATUSES.filter((s) => !RAISE_REQUEST_HISTORY_STATUSES.includes(s)).map((s) => ({ value: s, label: RAISE_REQUEST_STATUS_LABELS[s] })),
+  { value: HISTORY, label: 'History: approved, done or rejected' },
+  ...RAISE_REQUEST_HISTORY_STATUSES.map((s) => ({ value: s, label: RAISE_REQUEST_STATUS_LABELS[s] })),
 ];
 
 type Query = Record<string, string | string[] | undefined>;
@@ -84,14 +114,24 @@ type Query = Record<string, string | string[] | undefined>;
 /** The status in the page's address; anything it doesn't know is All. */
 export function readStatus(query: Query): StatusFilter {
   const v = typeof query.status === 'string' ? query.status : '';
+  if (v === HISTORY) return HISTORY;
   return (RAISE_REQUEST_STATUSES as readonly string[]).includes(v) ? (v as RaiseRequestStatus) : '';
 }
 
 /**
  * The page's address for a status: "/raise-requests?status=with_hr", or "/raise-requests" for All. The API's list is at
- * the same path (under /api), with the same ?status=.
+ * the same path (under /api), with the same ?status= (but History: apiRaiseRequestsPath).
  */
 export const raiseRequestsHref = (status: StatusFilter) => (status ? `/raise-requests?status=${status}` : '/raise-requests');
+
+/** The API's list for a status: History is read as All and kept to approved, done and rejected here (inStatus). */
+export const apiRaiseRequestsPath = (status: StatusFilter) => raiseRequestsHref(status === HISTORY ? '' : status);
+
+/** Whether a request listed by the API is in the status chosen: for History, approved, done or rejected. */
+export const inStatus = (r: Pick<RaiseRequest, 'status'>, status: StatusFilter) => status !== HISTORY || RAISE_REQUEST_HISTORY_STATUSES.includes(r.status);
+
+/** What the page says when a status has none. */
+export const noneWithStatusText = (status: StatusFilter) => (status === HISTORY ? 'No raise requests approved, done or rejected yet.' : 'No raise requests with this status.');
 
 /** "1 request", "12 requests". */
 export const requestsLabel = (n: number) => `${n} ${n === 1 ? 'request' : 'requests'}`;
@@ -101,6 +141,29 @@ export const raiseRequestAnchor = (id: string) => `raise-request-${id}`;
 
 /** A request on the Raise Requests page: its status's list, at its row ("/raise-requests?status=with_hr#raise-request-q1"). */
 export const raiseRequestOnListHref = (r: Pick<RaiseRequest, 'id' | 'status'>) => `${raiseRequestsHref(r.status)}#${raiseRequestAnchor(r.id)}`;
+
+// ---------- the CEO's decision on the page ----------
+
+/** What the CEO did, as the page says it after (?done=): approved, approved with another raise, returned, rejected. */
+export const CEO_DONE_MESSAGES = {
+  'raise-approved': 'Raise approved. HR now has it signed; it is paid from its effective date.',
+  'raise-approved-other': 'Raise approved with your raise: its pay is changed to it. HR now has it signed; it is paid from its effective date.',
+  'raise-returned': 'Raise returned to HR with your comment.',
+  'raise-declined': 'Raise rejected: its request shows as rejected, with your comment.',
+} as const;
+export type CeoDone = keyof typeof CEO_DONE_MESSAGES;
+
+/** The page with the status it was showing, and what the CEO did: "/raise-requests?status=with_ceo&done=raise-approved". */
+export function raiseRequestsDoneHref(status: StatusFilter, done: CeoDone): string {
+  const place = raiseRequestsHref(status);
+  return `${place}${place.includes('?') ? '&' : '?'}done=${done}`;
+}
+
+/** The line saying what the CEO just did, from ?done=; null for anything else. */
+export function ceoDoneMessage(query: Query): string | null {
+  const done = typeof query.done === 'string' ? query.done : '';
+  return Object.hasOwn(CEO_DONE_MESSAGES, done) ? CEO_DONE_MESSAGES[done as CeoDone] : null;
+}
 
 // ---------- asking for a raise ----------
 
@@ -209,8 +272,12 @@ const MONTH = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric',
 /** A month by its 1st (or any day in it): "2026-11-01" → "November 2026". */
 export const monthText = (ymd: string) => MONTH.format(new Date(`${ymd.slice(0, 10)}T00:00:00.000Z`));
 
-/** The month a request is asked from (owner, 17 October 2026: "Effective from"): "November 2026"; "Not given" on one from before. */
-export const effectiveFromText = (r: Pick<RaiseRequest, 'effectiveFrom'>) => (r.effectiveFrom ? monthText(r.effectiveFrom) : 'Not given');
+/**
+ * The month a request is asked from (owner, 17 October 2026: "Effective from"): "November 2026"; "Not given" on one from
+ * before. One prepared directly by HR from a renewal may start on another day than the 1st: its date, "15/01/2027".
+ */
+export const effectiveFromText = (r: Pick<RaiseRequest, 'effectiveFrom'>) =>
+  r.effectiveFrom ? (isFirstOfMonth(r.effectiveFrom) ? monthText(r.effectiveFrom) : formatDate(r.effectiveFrom)) : 'Not given';
 
 /** The months the form offers, this month (today in Cairo) first, each as its 1st and its name. */
 export const effectiveFromOptions = (today: string) => effectiveFromChoices(today).map((value) => ({ value, label: monthText(value) }));
@@ -238,10 +305,17 @@ export const STATUS_BADGE: Record<RaiseRequestStatus, string> = {
 
 export const statusLabel = (status: RaiseRequestStatus) => RAISE_REQUEST_STATUS_LABELS[status] ?? status;
 
-/** Who asked: "The direct manager", with their sign-in email when the API sends it. */
-export function requesterText(r: Pick<RaiseRequest, 'requester' | 'requestedBy'>): { who: string; email: string | null } {
-  return { who: RAISE_REQUESTER_LABELS[r.requester] ?? r.requester, email: r.requestedBy?.email ?? null };
+/**
+ * Who asked: "The direct manager", with their sign-in email when the API sends it; a raise HR prepared directly
+ * (19 October 2026), "Prepared directly by HR" with who did.
+ */
+export function requesterText(r: Pick<RaiseRequest, 'requester' | 'requestedBy' | 'origin'>): { who: string; email: string | null } {
+  const who = isDirect(r) ? RAISE_REQUEST_ORIGIN_LABELS.direct : (RAISE_REQUESTER_LABELS[r.requester] ?? r.requester);
+  return { who, email: r.requestedBy?.email ?? null };
 }
+
+/** "asked" or, for a raise HR prepared directly, "prepared": the word before when it was. */
+export const askedWord = (r: Pick<RaiseRequest, 'origin'>) => (isDirect(r) ? 'prepared' : 'asked');
 
 /** Who asked, inside a sentence: "Asked for by the employee", "… by their direct manager", "… by HR". */
 export const REQUESTER_PHRASES: Record<RaiseRequest['requester'], string> = { self: 'the employee', manager: 'their direct manager', hr: 'HR' };
@@ -261,7 +335,9 @@ export function preparedRaiseText(raise: RaiseRequest['raise']): { title: string
   } else if (raise.newGross !== null) {
     parts.push(`New gross ${formatEgp(raise.newGross)}`);
   }
-  return { title: `${raise.number} · ${RAISE_WAY_LABELS[raise.way] ?? raise.way}`, detail: parts.length ? parts.join(' · ') : null };
+  // a renewal with new pay says so (19 October 2026); an API from before sends the way only
+  const kind = raise.change ? PAY_CHANGE_LABELS[raise.change] : RAISE_WAY_LABELS[raise.way];
+  return { title: `${raise.number} · ${kind ?? raise.way}`, detail: parts.length ? parts.join(' · ') : null };
 }
 
 /**
@@ -286,7 +362,7 @@ export function progressText(r: RaiseRequest): { text: string; reason: string | 
     case 'approved':
       return { text: `Approved by the CEO${at(r.raise?.approvedAt ?? null)}: the raise is to be signed`, reason: null };
     case 'with_ceo':
-      return { text: 'HR approved it and sent the raise to the CEO', reason: null };
+      return { text: isDirect(r) ? 'HR sent the raise to the CEO' : 'HR approved it and sent the raise to the CEO', reason: null };
     case 'with_hr':
     default:
       if (r.raise?.returnedReason) return { text: 'Returned by the CEO to HR', reason: r.raise.returnedReason };
@@ -306,14 +382,16 @@ export const prepareRaiseHref = (employeeId: string, requestId: string) =>
  * What HR may do with a request while it is with HR: decide it (approve it as suggested or with another raise, which
  * prepares the raise and sends it to the CEO, or reject it), or approve it in the whole raise form (`prepare`, for a
  * promotion or other allowances with it); once a raise is prepared from it (returned by the CEO, or prepared before 17
- * October 2026), carry on with that raise in the Contract section, or reject the request (the raise goes with it).
+ * October 2026), carry on with that raise in the Contract section, or reject the request (the raise goes with it). A
+ * raise HR prepared directly (19 October 2026) is carried on with only: nobody asked for it, so there is nothing to reject.
  */
 export function requestActions(
   user: WithRoles,
-  r: Pick<RaiseRequest, 'status' | 'raise'>,
+  r: Pick<RaiseRequest, 'status' | 'raise' | 'origin'>,
 ): { decide: boolean; prepare: boolean; continueRaise: boolean; decline: boolean } {
   const hr = handlesRaiseRequests(user) && r.status === 'with_hr';
-  return { decide: hr && !r.raise, prepare: hr && !r.raise, continueRaise: hr && !!r.raise, decline: hr && !!r.raise };
+  const asked = !isDirect(r);
+  return { decide: hr && asked && !r.raise, prepare: hr && asked && !r.raise, continueRaise: hr && !!r.raise, decline: hr && asked && !!r.raise };
 }
 
 /** How many are waiting for HR. */
@@ -360,16 +438,31 @@ export function suggestionText(s: RaiseSuggestion | null | undefined): string | 
 /** How the log says who asked: "Asked for by the employee", "… by their direct manager", "… by HR". */
 const ASKED_BY: Record<RaiseRequester, string> = { self: 'Asked for by the employee', manager: 'Asked for by their direct manager', hr: 'Asked for by HR' };
 
+/** "Performance raise": a reason as the log says it. */
+const reasonLabel = (r: RaiseReason) => RAISE_REASON_LABELS[r] ?? r;
+
+/**
+ * The CEO's other reason on their decision (owner, 19 October 2026: "when approving a raise as a ceo, i might want to
+ * ammend the raise reason, not only the money"): "Reason changed from Performance raise to Annual raise"; null without.
+ */
+export function reasonChangeText(s: Pick<RaiseRequestStep, 'raiseReason' | 'raiseReasonFrom'>): string | null {
+  if (!s.raiseReason || !s.raiseReasonFrom) return null;
+  return `Reason changed from ${reasonLabel(s.raiseReasonFrom)} to ${reasonLabel(s.raiseReason)}`;
+}
+
 /**
  * A step of a request as its log shows it: what happened ("HR approved it with another raise", "The CEO rejected it"),
  * and what goes with it as far as the caller is sent it (the reason, the month asked from and the raise suggested, the
- * figures and the date decided, the raise prepared and from when, the new pay once signed).
+ * figures and the date decided, the raise prepared and from when, the new pay once signed, the CEO's other reason).
+ * `request`: where it came from and its raise, for a raise HR prepared directly ("Prepared directly by HR", a renewal
+ * saying so; 19 October 2026).
  */
-export function stepText(s: RaiseRequestStep, requester: RaiseRequester): { title: string; detail: string | null } {
+export function stepText(s: RaiseRequestStep, requester: RaiseRequester, request?: Pick<RaiseRequest, 'origin' | 'raise'>): { title: string; detail: string | null } {
   const figures = figureText(s);
   // the month asked from (submitted) or HR chose (HR's approval), 17 October 2026
   const effective = s.effectiveDate ? `Effective from ${monthText(s.effectiveDate)}` : null;
   const join = (...parts: (string | null)[]) => parts.filter(Boolean).join(' · ') || null;
+  const direct = !!request && isDirect(request);
   switch (s.kind) {
     case 'submitted':
       return {
@@ -381,12 +474,16 @@ export function stepText(s: RaiseRequestStep, requester: RaiseRequester): { titl
       const who = s.kind === 'hr_decision' ? 'HR' : 'The CEO';
       const what =
         s.decision === 'approve' ? (s.kind === 'hr_decision' ? 'approved it as suggested' : 'approved it') : s.decision === 'approve_other' ? 'approved it with another raise' : 'rejected it';
-      // HR's approval: the date chosen too, once the caller is sent it (17 October 2026)
-      return { title: `${who} ${what}`, detail: s.decision === 'reject' ? null : join(figures, effective) };
+      // HR's approval: the date chosen too, once the caller is sent it (17 October 2026); the CEO's other reason
+      return { title: `${who} ${what}`, detail: s.decision === 'reject' ? null : join(figures, effective, reasonChangeText(s)) };
     }
     case 'prepared': {
-      const way = s.way ? RAISE_WAY_LABELS[s.way] : null;
-      return { title: 'HR prepared the raise', detail: join(s.contractNumber, way && (s.effectiveDate ? `${way} from ${formatDate(s.effectiveDate)}` : way)) };
+      const renewal = direct && s.way === 'contract' && request?.raise?.change === 'renewal';
+      const way = s.way ? (renewal ? PAY_CHANGE_LABELS.renewal : RAISE_WAY_LABELS[s.way]) : null;
+      const made = way && (s.effectiveDate ? `${way} from ${formatDate(s.effectiveDate)}` : way);
+      // prepared directly by HR: with its reason and the raise, as an asked one's submitted step has them
+      if (direct) return { title: RAISE_REQUEST_ORIGIN_LABELS.direct, detail: join(s.raiseReason ? reasonLabel(s.raiseReason) : null, s.contractNumber, made, figures) };
+      return { title: 'HR prepared the raise', detail: join(s.contractNumber, made) };
     }
     case 'sent':
       return { title: 'Sent to the CEO', detail: figures };

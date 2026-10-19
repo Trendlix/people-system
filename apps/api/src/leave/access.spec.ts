@@ -1,5 +1,5 @@
 import type { SessionUser } from '../auth/session-user.js';
-import { decidesStage, hrMayCancel, othersWhere, scopeWhere, seesRequest, waitingWhere, waitsFor, type Caller } from './access.js';
+import { decidesStage, hrMayCancel, noLeaveMessage, othersWhere, scopeWhere, seesRequest, waitingWhere, waitsFor, type Caller } from './access.js';
 
 // Who sees, decides and cancels a leave request (owner, 18 October 2026: the direct manager, then HR; no manager:
 // straight to HR; nobody decides their own).
@@ -44,5 +44,12 @@ describe('leave access', () => {
     expect(othersWhere(caller(['hr'], 'hana'))).toEqual({});
     expect(othersWhere(caller(['manager'], 'mona'))).toMatchObject({ employeeId: { not: 'mona' } });
     expect(scopeWhere(caller(['employee'], null))).toEqual({ id: { in: [] } });
+  });
+
+  it('says why there is no leave outside the labour law: a freelancer’s, and an unpaid intern’s (19 October 2026)', () => {
+    expect(noLeaveMessage('freelance', 'Farid Freelance')).toBe('Farid Freelance is a freelancer, outside the labour law: there is no leave to record for a freelance employment.');
+    expect(noLeaveMessage('freelance', null)).toBe('You work freelance, outside the labour law: there is no leave to ask for under a freelance employment.');
+    expect(noLeaveMessage('intern', 'Ilham Intern')).toBe('Ilham Intern is an unpaid intern, outside the labour law: there is no leave to record for an unpaid internship.');
+    expect(noLeaveMessage('intern', null)).toBe('You are an unpaid intern, outside the labour law: there is no leave to ask for under an unpaid internship.');
   });
 });

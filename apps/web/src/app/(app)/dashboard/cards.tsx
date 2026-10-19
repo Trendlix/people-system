@@ -11,7 +11,7 @@ import type { Session } from '@/lib/view-as';
 import { getOrNull } from '../approvals/data';
 import { ChangeRequestStatusBadge } from '../employees/[id]/change-request/request-parts';
 import { daysBetween, termLabel } from '../employees/[id]/contracts/dates';
-import { arrangementLabel, employeeRaiseRequestsHref, seesEveryone, StatusBadge, todayInCairo } from '../employees/ui';
+import { arrangementLabel, employeeRaiseRequestsHref, reportStanding, seesEveryone, StandingBadge, StatusBadge, todayInCairo } from '../employees/ui';
 import { myRequests, requestLabel } from '../my-requests/requests';
 import { loadTeam } from '../my-team/data';
 import { askedByText, probationOf, raiseNews } from '../my-team/team';
@@ -130,7 +130,7 @@ function YourJob({ profile: p, user, today }: { profile: EmployeeProfile; user: 
               {e.shift ? `${shiftTimesText(e.shift)}${days?.length ? ` · ${workingDaysText(days)}` : ''}` : dash}
             </Fact>
             <Fact label="Status">
-              <StatusBadge status={e.status} />
+              <StatusBadge status={e.status} employmentType={e.employmentType} />
             </Fact>
             {probation && (
               <Fact label="Probation ends">
@@ -515,7 +515,7 @@ async function MyTeamCard({ profile, user, today }: { profile: EmployeeProfile; 
                       </p>
                     )}
                   </div>
-                  <StatusBadge status={r.status} />
+                  <StandingBadge standing={reportStanding(r)} />
                 </li>
               );
             })}

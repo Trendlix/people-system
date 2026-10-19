@@ -34,6 +34,10 @@ describe('probationOf', () => {
   it('is nothing once off probation, without an end date, or without an employment', () => {
     expect(probationOf({ status: 'active', probationEnd: '2026-11-01' }, today)).toBeNull();
     expect(probationOf({ status: 'probation', probationEnd: null }, today)).toBeNull();
+    // a trainee or an intern has no probation (19 October 2026), even with an older Probation
+    expect(probationOf({ status: 'probation', probationEnd: '2026-11-01', employmentType: 'trainee' }, today)).toBeNull();
+    expect(probationOf({ status: 'probation', probationEnd: '2026-11-01', employmentType: 'intern' }, today)).toBeNull();
+    expect(probationOf({ status: 'probation', probationEnd: '2026-11-01', employmentType: 'full_time' }, today)).not.toBeNull();
     expect(probationOf(null, today)).toBeNull();
     expect(probationOf(undefined, today)).toBeNull();
   });

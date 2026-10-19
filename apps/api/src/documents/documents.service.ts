@@ -174,7 +174,9 @@ function notOffered(slot: TemplateSlot, s: Situation, name: string): string {
   }
   if (!slot.appliesTo.includes(s.employmentType)) {
     const type = typeText(s.employmentType);
-    return `${slot.name} is for ${slot.appliesTo.map(typeText).join(', ')} employments; ${name}’s is ${type}. Choose the document for a ${type} employment.`;
+    // "an unpaid internship (outside the labour law) employment" (19 October 2026)
+    const article = /^[aeiou]/.test(type) ? 'an' : 'a';
+    return `${slot.name} is for ${slot.appliesTo.map(typeText).join(', ')} employments; ${name}’s is ${type}. Choose the document for ${article} ${type} employment.`;
   }
   // the commission contract and the full-time one stand for each other (owner, 18 October 2026)
   if (COMMISSION_SLOTS[slot.key]) {

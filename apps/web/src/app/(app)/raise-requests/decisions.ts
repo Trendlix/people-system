@@ -3,12 +3,14 @@ import {
   RAISE_DECISIONS,
   RAISE_FIGURE_KINDS,
   RAISE_REASON_CHOICES,
+  RAISE_REASONS,
   RAISE_WAYS,
   raisedGross,
   raiseFigureProblem,
   type RaiseDecision,
   type RaiseFigure,
   type RaiseFigureKind,
+  type RaiseReason,
   type RaiseReasonChoice,
   type RaiseWay,
 } from '@trendlix/shared';
@@ -148,9 +150,14 @@ export type CeoChoice = RaiseDecision | 'return';
 /**
  * The CEO's decision on a raise: approve it as it reached them, approve it with another raise (the figure, over the pay
  * before it), reject it (`decision`), or return it to HR (the secondary button, `intent`); always with the comment.
+ * Approving, with the reason chosen (`raiseReason`, owner, 19 October 2026: "when approving a raise as a ceo, i might
+ * want to ammend the raise reason, not only the money"): the API changes it when it isn't the raise's already.
  * `path`: the API's step (approve, decline, return).
  */
-export function ceoDecisionBody(fd: FormData, errors: string[]): { choice: CeoChoice | null; path: 'approve' | 'decline' | 'return' | null; body: { comment: string; increaseAmount?: number; increasePercent?: number } } {
+export function ceoDecisionBody(
+  fd: FormData,
+  errors: string[],
+): { choice: CeoChoice | null; path: 'approve' | 'decline' | 'return' | null; body: { comment: string; increaseAmount?: number; increasePercent?: number; raiseReason?: RaiseReason } } {
   const typed = text(fd, 'intent') === 'return' ? 'return' : text(fd, 'decision');
   const choice: CeoChoice | null = typed === 'return' || isIn(RAISE_DECISIONS, typed) ? (typed as CeoChoice) : null;
   if (!choice) errors.push('Choose approve, approve with another raise, reject or return to HR.');
@@ -158,5 +165,11 @@ export function ceoDecisionBody(fd: FormData, errors: string[]): { choice: CeoCh
   if (!comment) errors.push(choice === 'return' ? 'Write what HR should change: it goes back to HR with your comment.' : 'Write your comment on the decision.');
   const figure = choice === 'approve_other' ? figureFrom(fd, errors, RAISE_FIGURE_KINDS, true) : null;
   const path = choice === 'reject' ? 'decline' : choice === 'return' ? 'return' : choice ? 'approve' : null;
-  return { choice, path, body: { comment, ...decided(figure) } };
+  const reason = text(fd, 'raiseReason');
+  const raiseReason = path === 'approve' && isIn(RAISE_REASONS, reason) ? reason : null;
+  return { choice, path, body: { comment, ...decided(figure), ...(raiseReason && { raiseReason }) } };
 }
+
+/** What the page says after the CEO's decision (?done=), by the choice made. */
+export const ceoDoneKey = (choice: CeoChoice): 'raise-approved' | 'raise-approved-other' | 'raise-returned' | 'raise-declined' =>
+  choice === 'approve' ? 'raise-approved' : choice === 'approve_other' ? 'raise-approved-other' : choice === 'return' ? 'raise-returned' : 'raise-declined';

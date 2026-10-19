@@ -1,4 +1,4 @@
-import { OFFER_VALID_DAYS, PROBATION_MONTHS, type PayBasis } from '@trendlix/shared';
+import { INTERN_DEFAULT_MONTHS, INTERN_MAX_MONTHS, INTERN_TERM_MESSAGE, isTrainingType, OFFER_VALID_DAYS, PROBATION_MONTHS, type PayBasis } from '@trendlix/shared';
 import { dateFrom } from '../../../lib/form-data';
 import type { ContractSettings, FormState, OfferView } from '../../../lib/types';
 import { addDays } from '../employees/[id]/contracts/dates';
@@ -78,6 +78,11 @@ export interface OfferAllowanceInput {
  * `allowances`: the rows, already read (allowancesFrom). By the hour, `grossSalary` is the monthly estimate the form
  * worked out, and typing the net per hour (rateBasis 'net'), `hourlyRate` is the gross rate worked out from it; typing
  * the net, `grossSalary` is the gross worked out from it; `netSalary` is the net worked out, either way.
+ *
+ * A trainee's or an intern's offer has no probation (owner, 19 October 2026: "interns to be labeled trainees instead of
+ * probation"): 0 is sent. An intern's (the unpaid internship: "we are not paying them salary, its just transportation
+ * allowance") is a monthly one with no gross, net or basic part sent (the API keeps the gross at 0), the allowances paid
+ * on top, for 1 to 12 months.
  */
 export function offerBody(fd: FormData, errors: string[], { draft, allowances }: { draft: boolean; allowances: OfferAllowanceInput[] }) {
   const cleared = draft ? null : undefined;
@@ -106,14 +111,19 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
   if (workArrangement === 'hybrid' && officeDays.length === 0) errors.push('Pick at least one office day for a hybrid arrangement.');
   const joinDate = requiredDate(fd, 'joinDate', 'join date', errors);
 
-  const payBasis: PayBasis = payBasisFrom(text(fd, 'payBasis'));
+  const training = isTrainingType(employmentType);
+  const intern = employmentType === 'intern';
+  const payBasis: PayBasis = intern ? 'monthly' : payBasisFrom(text(fd, 'payBasis'));
   const hourly = payBasis === 'hourly';
   const net = text(fd, 'salaryBasis') === 'net';
   const netRate = text(fd, 'rateBasis') === 'net';
   let hourlyRate: number | null | undefined = cleared;
   let hoursPerWeek: number | null | undefined = cleared;
   let grossSalary: number | null;
-  if (hourly) {
+  if (intern) {
+    // no wage: nothing sent, not even 0
+    grossSalary = null;
+  } else if (hourly) {
     hourlyRate = netRate
       ? amountFrom(fd, 'hourlyRate', 'hourly rate', errors, 'Enter the net per hour as an amount in EGP, e.g. 120.')
       : amountFrom(fd, 'hourlyRate', 'hourly rate', errors, 'Enter the hourly rate, e.g. 150.');
@@ -130,10 +140,14 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
       : amountFrom(fd, 'grossSalary', 'gross salary', errors, 'Enter the gross salary, e.g. 15,000.');
   }
   const daysPerWeek = wholeFrom(fd, 'daysPerWeek', 1, 6, 'Enter the working days a week as a whole number from 1 to 6, e.g. 3.', errors);
-  const basicPercent = wholeFrom(fd, 'basicPercent', 1, 100, 'Enter the basic part as a whole percent of the gross, from 1 to 100, e.g. 80.', errors);
-  const netSalary = amountFrom(fd, 'netSalary', 'net salary', errors);
-  const probationMonths = wholeFrom(fd, 'probationMonths', 0, 3, 'Enter the probation as a whole number of months, from 0 to 3.', errors);
-  const durationMonths = wholeFrom(fd, 'durationMonths', 1, 60, "Enter the contract's length as a whole number of months, from 1 to 60.", errors);
+  const basicPercent = intern
+    ? undefined
+    : wholeFrom(fd, 'basicPercent', 1, 100, 'Enter the basic part as a whole percent of the gross, from 1 to 100, e.g. 80.', errors);
+  const netSalary = intern ? null : amountFrom(fd, 'netSalary', 'net salary', errors);
+  const probationMonths = training ? 0 : wholeFrom(fd, 'probationMonths', 0, 3, 'Enter the probation as a whole number of months, from 0 to 3.', errors);
+  const durationMonths = intern
+    ? wholeFrom(fd, 'durationMonths', 1, INTERN_MAX_MONTHS, INTERN_TERM_MESSAGE, errors)
+    : wholeFrom(fd, 'durationMonths', 1, 60, "Enter the contract's length as a whole number of months, from 1 to 60.", errors);
   const expiresOn = dateFrom(fd, 'expiresOn', 'last day to accept', errors);
 
   return {
@@ -276,6 +290,14 @@ export function newOfferDefaults(settings: ContractSettings | null, today: strin
     message: '',
     note: '',
   };
+}
+
+/**
+ * The months an intern's offer shows when the internship is chosen: the draft's own when it is one already, else 3
+ * (owner, 19 October 2026: an internship agreement is short), not the contract settings' year.
+ */
+export function internMonthsOf(defaults: Pick<OfferDefaults, 'employmentType' | 'durationMonths'>): number {
+  return defaults.employmentType === 'intern' ? defaults.durationMonths : INTERN_DEFAULT_MONTHS;
 }
 
 /** A draft as it is, to change. */

@@ -2,14 +2,17 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import {
   effectiveFromProblem,
   OPEN_RAISE_REQUEST_STATUSES,
+  payChangeOf,
   payStage,
   RAISE_REQUEST_STATUS_LABELS,
   raisedPay,
   suggestionKindsFor,
   type PayBasis,
+  type PayChange,
   type RaiseFigureKind,
-  type RaiseReasonChoice,
+  type RaiseReason,
   type RaiseRequester,
+  type RaiseRequestOrigin,
   type RaiseRequestStatus,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
@@ -100,25 +103,45 @@ export function suggestionView(r: Pick<RequestRow, 'suggestedIncrease' | 'sugges
   return kind === 'percent' ? { kind, amount: null, percent, gross: null } : null;
 }
 
+/** The version a request's raise replaces: its gross (HR, Finance and the CEO only) and its end, to tell a renewal. */
+export interface PreviousVersion {
+  grossSalary: number;
+  endDate: string | null;
+}
+
 /**
- * A raise request as `viewer` may see it; `userId`: the caller, to know the requests they made; `previousGross`: the
- * gross of the version the raise replaces (HR, Finance, CEO). `reason` stays the requester's comment, as it was before
- * 17 October 2026, for the screens reading it; `raiseReason` is the reason from the list (none on a request from before).
+ * What a request's raise is to the version it replaces: an amendment, a new contract within its term, or a renewal
+ * after it (a renewal with new pay, prepared directly by HR, 19 October 2026). Without the version before, by its kind.
  */
-export function raiseRequestView(r: RequestRow, viewer: RequestViewer, userId: string | null, previousGross: number | null = null) {
+export function raiseChangeOf(c: { kind: string; startDate: Date }, previous: Pick<PreviousVersion, 'endDate'> | null): Exclude<PayChange, 'hired'> {
+  if (c.kind === 'amendment') return 'amendment';
+  if (!previous) return 'new_contract';
+  return payChangeOf({ kind: c.kind, startDate: fromDateOnly(c.startDate)! }, previous) === 'renewal' ? 'renewal' : 'new_contract';
+}
+
+/**
+ * A raise request as `viewer` may see it; `userId`: the caller, to know the requests they made; `previous`: the version
+ * the raise replaces (its gross for HR, Finance and the CEO). `reason` stays the requester's comment, as it was before
+ * 17 October 2026, for the screens reading it; `raiseReason` is the reason from the list (none on a request from before;
+ * the raise's own on one prepared directly by HR, 19 October 2026, which says so in `origin`).
+ */
+export function raiseRequestView(r: RequestRow, viewer: RequestViewer, userId: string | null, previous: PreviousVersion | null = null) {
   const full = viewer === 'full';
   const done = r.status === 'done';
   const mine = userId !== null && r.requestedById === userId;
   const c = r.contract;
   const inForce = r.employment.endDate === null ? (r.employment.contracts[0] ?? null) : null;
+  const previousGross = previous?.grossSalary ?? null;
   return {
     id: r.id,
     employee: r.employee,
     employmentId: r.employmentId,
     requester: r.requester as RaiseRequester,
+    // asked for, or prepared directly by HR (owner, 19 October 2026: every raise on Raise Requests)
+    origin: r.origin as RaiseRequestOrigin,
     requestedBy: r.requestedBy && { email: r.requestedBy.email },
     reason: r.comment,
-    raiseReason: r.raiseReason as RaiseReasonChoice | null,
+    raiseReason: r.raiseReason as RaiseReason | null,
     comment: r.comment,
     status: r.status as RaiseRequestStatus,
     createdAt: r.createdAt,
@@ -133,6 +156,8 @@ export function raiseRequestView(r: RequestRow, viewer: RequestViewer, userId: s
       contractId: c.id,
       number: c.number,
       way: c.kind === 'amendment' ? ('amendment' as const) : ('contract' as const),
+      // an amendment, a new contract, or a renewal with new pay (19 October 2026): not a figure
+      change: raiseChangeOf(c, previous),
       stage: payStage(c),
       // when it takes effect: once signed for the employee and the manager, before then for HR, Finance and the CEO
       effectiveDate: full || done ? fromDateOnly(c.startDate) : null,
@@ -169,7 +194,11 @@ export type RaiseRequestView = ReturnType<typeof raiseRequestView>;
 // the audit log too, an amount only as set. Since 17 October 2026 ("in the request their should be a tab called Effective
 // from") a request also says the month the raise is asked from (Effective from, its 1st: this month in Cairo or a later
 // one), required on a new one and logged with its submitted step; everyone who sees the request sees it, and HR's
-// approval takes it as the raise's effective date unless HR sets another (RaisesService.approveRequest).
+// approval takes it as the raise's effective date unless HR sets another (RaisesService.approveRequest). Since 19 October
+// 2026 ("when a raise request was sent to the CEO, is showed in approvals not raise requests, and after approved, it was
+// not shown in the raise request history too") a raise HR prepares directly has its request too, prepared directly by HR
+// (direct-requests.ts): listed with the others, following its raise, never rejected by HR (nobody asked for it), not the
+// person's one open request, and seen by HR, Finance and the CEO only, as its raise is kept from the others until signed.
 @Injectable()
 export class RaiseRequestsService {
   constructor(
@@ -186,6 +215,14 @@ export class RaiseRequestsService {
     const { employee, employment, requester, viewer } = await this.asker(employeeId, user);
     if (!requester || !viewer) throw new ForbiddenException('Only the employee themself, their direct manager or HR can ask for a raise for them.');
     if (!employment) throw new ConflictException(`${employee.fullNameEn} has no current employment: a raise is asked for under one.`);
+    // refused when asked, not only when HR would prepare it: a trainee's pay is the agreement's stages, an intern has none
+    // (owner, 19 October 2026: the unpaid internship, outside the labour law)
+    if (employment.employmentType === 'intern') {
+      throw new ConflictException(`${employee.fullNameEn} is an intern, paid no wage (an unpaid internship): there is no pay to raise. HR can convert the internship to a full-time contract instead.`);
+    }
+    if (employment.employmentType === 'trainee') {
+      throw new ConflictException(`${employee.fullNameEn} is a trainee, paid by the stages of the training agreement (Labour Law Art. 29): HR changes the pay with a new training agreement, not a raise.`);
+    }
     const effectiveProblem = effectiveFromProblem(dto.effectiveFrom, todayInCairo());
     if (effectiveProblem) throw new BadRequestException(effectiveProblem);
     const typed = typedFigure(dto.suggestedIncrease, dto.suggestedPercent);
@@ -200,7 +237,7 @@ export class RaiseRequestsService {
     const row = await this.prisma.$transaction(async (tx) => {
       // one open at a time, even when two are sent together: the employee's row is held until this one is saved
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;
-      const open = await tx.raiseRequest.findFirst({ where: { employeeId, status: { in: [...OPEN_RAISE_REQUEST_STATUSES] } }, select: { status: true } });
+      const open = await tx.raiseRequest.findFirst({ where: { employeeId, origin: 'request', status: { in: [...OPEN_RAISE_REQUEST_STATUSES] } }, select: { status: true } });
       if (open) {
         throw new ConflictException(
           requester === 'self'
@@ -254,14 +291,14 @@ export class RaiseRequestsService {
   /** Every request (HR, Finance and the CEO), newest first, of a status unless all. */
   async list(status: RaiseRequestStatus | undefined, user: SessionUser) {
     const rows = await this.prisma.raiseRequest.findMany({ where: status ? { status } : {}, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: REQUEST_INCLUDE });
-    const previous = await this.previousGross(rows);
+    const previous = await this.previousVersions(rows);
     return rows.map((r) => raiseRequestView(r, 'full', user.id, previous.get(r.id) ?? null));
   }
 
   /** One request, as HR, Finance and the CEO see it: what a step on it answers with. */
   async one(id: string, user: SessionUser) {
     const r = await this.row(id);
-    const previous = await this.previousGross([r]);
+    const previous = await this.previousVersions([r]);
     return raiseRequestView(r, 'full', user.id, previous.get(r.id) ?? null);
   }
 
@@ -270,18 +307,19 @@ export class RaiseRequestsService {
    * Finance and the CEO see all of them; the employee those they made; their direct manager all of them, without a
    * figure. Anyone else is refused. With what the caller may suggest, for HR the gross in force (to show what a
    * suggestion comes to), and the pay in force for the figures shown while asking (`pay`: HR, Finance, the CEO and the
-   * employee themself, 17 October 2026; null for a manager).
+   * employee themself, 17 October 2026; null for a manager). A request prepared directly by HR (19 October 2026) only for
+   * HR, Finance and the CEO.
    */
   async forEmployee(employeeId: string, user: SessionUser) {
     const { employee, employment, requester, viewer } = await this.asker(employeeId, user);
     if (!viewer) throw new ForbiddenException('Only the employee, their direct manager, HR, Finance and the CEO see raise requests.');
     const rows = await this.prisma.raiseRequest.findMany({
-      where: { employeeId, ...(viewer === 'self' && !seesSalary(user) && { requestedById: user.id }) },
+      where: { employeeId, ...(viewer === 'self' && !seesSalary(user) && { requestedById: user.id }), ...(viewer !== 'full' && { origin: 'request' }) },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: REQUEST_INCLUDE,
     });
-    const previous = viewer === 'full' ? await this.previousGross(rows) : new Map<string, number>();
-    const open = await this.prisma.raiseRequest.count({ where: { employeeId, status: { in: [...OPEN_RAISE_REQUEST_STATUSES] } } });
+    const previous = await this.previousVersions(rows);
+    const open = await this.prisma.raiseRequest.count({ where: { employeeId, origin: 'request', status: { in: [...OPEN_RAISE_REQUEST_STATUSES] } } });
     const why = !requester
       ? 'Only the employee themself, their direct manager or HR can ask for a raise for them.'
       : !employment
@@ -315,6 +353,11 @@ export class RaiseRequestsService {
   async decline(id: string, dto: RaiseCommentDto, user: SessionUser) {
     const comment = commentOf(dto);
     const before = await this.row(id);
+    if (before.origin === 'direct') {
+      throw new ConflictException(
+        'HR prepared this raise directly, so there is no request to reject: change the raise and send it to the CEO, or have a Super Admin delete the draft.',
+      );
+    }
     if (before.status !== 'with_hr') {
       throw new ConflictException(`This request is ${RAISE_REQUEST_STATUS_LABELS[before.status as RaiseRequestStatus].toLowerCase()}, so HR can't reject it now.`);
     }
@@ -356,7 +399,7 @@ export class RaiseRequestsService {
         workEmail: true,
         employments: {
           where: { endDate: null },
-          select: { id: true, managerId: true, contracts: { where: { status: 'active' }, orderBy: { version: 'desc' }, take: 1, select: IN_FORCE } },
+          select: { id: true, managerId: true, employmentType: true, contracts: { where: { status: 'active' }, orderBy: { version: 'desc' }, take: 1, select: IN_FORCE } },
           take: 1,
         },
       },
@@ -377,18 +420,18 @@ export class RaiseRequestsService {
     return r;
   }
 
-  /** The gross of the version each request's raise replaces, by request. */
-  private async previousGross(rows: readonly RequestRow[]): Promise<Map<string, number>> {
+  /** The version each request's raise replaces, by request: its gross and its end. */
+  private async previousVersions(rows: readonly RequestRow[]): Promise<Map<string, PreviousVersion>> {
     const raised = rows.filter((r) => r.contract);
     if (!raised.length) return new Map();
     const before = await this.prisma.contract.findMany({
       where: { OR: raised.map((r) => ({ employmentId: r.contract!.employmentId, version: r.contract!.version - 1 })) },
-      select: { employmentId: true, version: true, grossSalary: true },
+      select: { employmentId: true, version: true, grossSalary: true, endDate: true },
     });
-    const out = new Map<string, number>();
+    const out = new Map<string, PreviousVersion>();
     for (const r of raised) {
       const b = before.find((x) => x.employmentId === r.contract!.employmentId && x.version === r.contract!.version - 1);
-      if (b) out.set(r.id, b.grossSalary.toNumber());
+      if (b) out.set(r.id, { grossSalary: b.grossSalary.toNumber(), endDate: fromDateOnly(b.endDate) });
     }
     return out;
   }

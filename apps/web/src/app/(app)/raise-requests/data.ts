@@ -2,7 +2,7 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
 import type { EmployeeRaiseRequests, RaiseRequest } from '@/lib/raise-types';
-import { raiseRequestsHref, type StatusFilter } from './list';
+import { apiRaiseRequestsPath, inStatus, type StatusFilter } from './list';
 
 // Reading raise requests (owner's decisions, 16 October 2026): every request for the Raise Requests page, and one
 // employee's for their profile. They came with pay raises: an API from before them answers 404, which here means "not
@@ -35,9 +35,13 @@ async function load<T>(path: string): Promise<Load<T>> {
   }
 }
 
-/** GET /raise-requests (HR, the CEO and Finance): newest first, of a status unless All. */
-export function loadRaiseRequests(status: StatusFilter): Promise<Load<RaiseRequest[]>> {
-  return load<RaiseRequest[]>(raiseRequestsHref(status));
+/**
+ * GET /raise-requests (HR, the CEO and Finance): newest first, of a status unless All; History (19 October 2026) is
+ * every request read, kept to those approved, done or rejected.
+ */
+export async function loadRaiseRequests(status: StatusFilter): Promise<Load<RaiseRequest[]>> {
+  const read = await load<RaiseRequest[]>(apiRaiseRequestsPath(status));
+  return read.kind === 'ok' ? { kind: 'ok', value: read.value.filter((r) => inStatus(r, status)) } : read;
 }
 
 /** One employee's raise requests, as read for their profile. */

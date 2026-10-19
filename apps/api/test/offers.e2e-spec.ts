@@ -224,9 +224,9 @@ describe('Job offers (e2e)', () => {
     );
     await publish('offer_part_time', docx({ body: p(r('{{full_name_en}}: {{pay_basis_en}}, {{hourly_rate}} an hour, {{hours_per_week}} hours over {{days_per_week}} days ({{gross_salary}} a month)')) }), 'en');
     // drafts only: the commission offer (owner, 18 October 2026: Sales became Full-time paid by commission, its offer
-    // used once published) and the trainee's
+    // used once published) and the trainee's (its own slot since 19 October 2026, the internship's the unpaid intern's)
     await publish('offer_sales', docx({ body: p(r('{{full_name_en}}')) }), 'en', true);
-    await publish('offer_internship', docx({ body: p(r('{{full_name_en}}')) }), 'en', true);
+    await publish('offer_trainee', docx({ body: p(r('{{full_name_en}}')) }), 'en', true);
     await publish('nda', docx({ body: p(r('{{full_name_en}} accepted {{offer_number}}')) }), 'en');
   });
 
@@ -435,7 +435,7 @@ describe('Job offers (e2e)', () => {
       const res = await documentOf(freelance.id).expect(409);
       expect(JSON.parse((res.body as Buffer).toString('utf8')).message).toBe('Publish the Job offer · Freelance template first (Templates).');
       const trainee = await draft('Tara Trainee', { employmentType: 'trainee' });
-      expect(trainee.template).toMatchObject({ slotKey: 'offer_internship', status: 'draft', version: null });
+      expect(trainee.template).toMatchObject({ slotKey: 'offer_trainee', status: 'draft', version: null });
       const refused = await send(trainee.id, { via: 'link', origin: ORIGIN }).expect(409);
       expect(refused.body.message).toBe('Publish the Job offer · Trainee template first (Templates).');
       // paid by commission while the commission offer is a draft only: the full-time one (owner, 18 October 2026)
@@ -447,7 +447,7 @@ describe('Job offers (e2e)', () => {
     it('a draft is previewed with the newest draft of its template while none is published; sending still needs a published one', async () => {
       // owner's request, 15 October 2026: "Job offer preview should call data from the offer tab, even if not published yet"
       const o = await draft('Sami Trainee', { employmentType: 'trainee' });
-      expect(o.template).toEqual({ slotKey: 'offer_internship', name: 'Job offer · Trainee', status: 'draft', version: null, previewVersion: 1 });
+      expect(o.template).toEqual({ slotKey: 'offer_trainee', name: 'Job offer · Trainee', status: 'draft', version: null, previewVersion: 1 });
       expect(o.missing).toEqual([]);
       const res = await documentOf(o.id).expect(200);
       expect(res.headers['x-template-draft']).toBe('1');
@@ -456,7 +456,7 @@ describe('Job offers (e2e)', () => {
       expect(textOf(lastFilled())).toBe(`Sami Trainee ${RUN}`);
 
       // a newer draft is used: here one printing the salary, and a value the offer lacks until it is filled in
-      await publish('offer_internship', docx({ body: p(r('{{full_name_en}}: {{gross_salary}} over {{days_per_week}} days')) }), 'en', true);
+      await publish('offer_trainee', docx({ body: p(r('{{full_name_en}}: {{gross_salary}} over {{days_per_week}} days')) }), 'en', true);
       const now = await getOffer(o.id);
       expect(now.template).toMatchObject({ status: 'draft', version: null, previewVersion: 2 });
       const missing = [{ tag: 'days_per_week', label: expect.any(String), where: { tab: 'offer', key: 'daysPerWeek' } }];
@@ -531,8 +531,9 @@ describe('Job offers (e2e)', () => {
 
     it('prints the fields added on 15 October 2026, missing until the offer has them, each on its own field', async () => {
       // owner's request, "add the missing fields"; a bilingual template: the tags that depend on the language in Arabic
+      // (a freelancer's offer: a trainee's or an intern's has no probation since 19 October 2026, an intern's no hourly pay)
       await publish(
-        'offer_internship',
+        'offer_freelance',
         docx({
           body:
             p(r('{{personal_email}} | {{manager_name}} | {{manager_name_en}}')) +
@@ -545,8 +546,8 @@ describe('Job offers (e2e)', () => {
         'bilingual',
       );
       // by the hour, 100 for 24 hours a week (104 hours a month); no manager, shift or net yet
-      const o = await draft('Iman Intern', {
-        employmentType: 'trainee',
+      const o = await draft('Fayza Freelance', {
+        employmentType: 'freelance',
         shiftId: undefined,
         payBasis: 'hourly',
         hourlyRate: 100,

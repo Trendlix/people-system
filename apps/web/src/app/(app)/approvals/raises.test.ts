@@ -1,7 +1,7 @@
 import type { Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import type { PendingRaise } from '../../../lib/raise-types';
-import { decidesRaises, followsRaises, pendingRaiseView, raisesLabel } from './raises';
+import { decidesRaises, decisionFigures, followsRaises, pendingRaiseView, raisesLabel } from './raises';
 
 const as = (...roles: Role[]) => ({ roles });
 
@@ -129,5 +129,30 @@ describe('a pending raise', () => {
     expect(v.change).toBeNull();
     expect(raisesLabel(1)).toBe('1 raise');
     expect(raisesLabel(2)).toBe('2 raises');
+  });
+});
+
+describe('what the CEO’s other raise is worked out from, on Approvals and Raise Requests alike (19 October 2026)', () => {
+  const allowances = [{ amount: 500, taxable: true, insured: false }];
+
+  it('the pay before it with the raise’s own allowances and hours after it, the rates, the year it starts in', () => {
+    const p = pending({ allowances: [], previous: { ...pending().previous!, hoursPerWeek: null, allowances } });
+    expect(decisionFigures(p, [])).toEqual({
+      pay: { payBasis: 'monthly', grossSalary: 10_000, hourlyRate: null, hoursPerWeek: null, allowances },
+      allowancesAfter: [],
+      hoursAfter: null,
+      rates: [],
+      year: 2026,
+      note: expect.stringMatching(/^HR, Finance and the CEO see these figures/),
+    });
+    // by the hour: the raise's hours when the version before doesn't say
+    const hourly = pending({ payBasis: 'hourly', hourlyRate: 175, hoursPerWeek: 20, previous: { ...pending().previous!, payBasis: 'hourly', hourlyRate: 150, allowances } });
+    expect(decisionFigures(hourly, [])?.pay).toMatchObject({ hourlyRate: 150, hoursPerWeek: 20 });
+  });
+
+  it('none without the pay before it: an API from before, or no version before', () => {
+    expect(decisionFigures(pending(), [])).toBeNull(); // no allowances sent: from before 17 October 2026
+    expect(decisionFigures(pending({ previous: null }), [])).toBeNull();
+    expect(decisionFigures(pending({ previous: { ...pending().previous!, grossSalary: null, allowances } }), [])).toBeNull();
   });
 });

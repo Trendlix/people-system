@@ -5,6 +5,7 @@ import {
   monthlySalaryTax,
   postponeInstallment,
   RECOVERY_TYPE,
+  underLabourLaw,
   type AdvanceKind,
   type AdvanceSettleWay,
   type Installment,
@@ -30,7 +31,10 @@ import { ADJUSTMENT, ADVANCE, balanceOf, monthOfDate, recurringMonths, type Adva
  * (the recurring deduction forms, Art. 114).
  */
 export interface InstallmentLimit {
-  /** The current contract's monthly gross: the wage; null without one (nothing can be checked). */
+  /**
+   * The current contract's monthly gross: the wage; null without one (nothing can be checked); 0 for an unpaid intern's
+   * internship agreement (19 October 2026), which leaves no room for installments.
+   */
   gross: number | null;
   /** The most a month's installments may take, in percent of the wage: Payroll Setup's, at most the law's 10. */
   percent: number;
@@ -38,8 +42,8 @@ export interface InstallmentLimit {
   byMonth: Record<string, number>;
   /**
    * About what the gross comes to a month in income tax and the employee's social insurance (this year's rates set by
-   * law, the gross alone, as the raise figures do; no insurance for someone not registered with it, neither for a
-   * freelancer); null without a gross.
+   * law, the gross alone, as the raise figures do; no insurance for someone not registered with it, neither tax nor
+   * insurance for a freelancer or an unpaid intern, outside the labour law); null without a gross.
    */
   tax: number | null;
   insurance: number | null;
@@ -283,7 +287,7 @@ export class InstallmentsService {
       select: {
         id: true,
         socialInsured: true,
-        // the current employment's type: a freelancer pays no tax or insurance
+        // the current employment's type: a freelancer or an unpaid intern pays no tax or insurance
         employments: { where: { OR: [{ endDate: null }, { endDate: { gte: toDateOnly(todayInCairo()) } }] }, orderBy: { joinDate: 'desc' }, take: 1, select: { employmentType: true } },
       },
     });
@@ -301,7 +305,9 @@ export class InstallmentsService {
       }),
     ]);
     // Art. 114's base, about: the gross alone, with this year's rates, as the raise figures work out a net
-    const statutory = employee.employments[0]?.employmentType !== 'freelance';
+    // outside the labour law (a freelancer, and an unpaid intern since 19 October 2026): none, as payroll takes none
+    const type = employee.employments[0]?.employmentType;
+    const statutory = type === undefined || underLabourLaw(type);
     const insurance = gross === null || !statutory || !employee.socialInsured ? 0 : grossToNet(gross, rates).employeeInsurance;
     const tax = gross === null || !statutory ? 0 : monthlySalaryTax({ taxedPay: gross, employeeInsurance: insurance }, rates).monthlyTax;
     return {

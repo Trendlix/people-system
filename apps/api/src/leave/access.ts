@@ -97,3 +97,19 @@ export function othersWhere(caller: Caller): Prisma.LeaveRequestWhereInput {
 
 /** An open request, or one approved: what takes days and blocks the same days for another request. */
 export const takesDays = (status: string) => isOpenLeave(status) || status === 'approved';
+
+/**
+ * Why there is no leave to ask for or record for someone outside the labour law, whose leave (Arts. 124–133) isn't
+ * theirs: a freelancer (owner, 18 October 2026; Art. 1(1)), and an unpaid intern (owner, 19 October 2026: the unpaid
+ * internship, outside the labour law). `name`: the employee's when HR records it, null for the employee's own request.
+ */
+export function noLeaveMessage(employmentType: string, name: string | null): string {
+  if (employmentType === 'intern') {
+    return name
+      ? `${name} is an unpaid intern, outside the labour law: there is no leave to record for an unpaid internship.`
+      : 'You are an unpaid intern, outside the labour law: there is no leave to ask for under an unpaid internship.';
+  }
+  return name
+    ? `${name} is a freelancer, outside the labour law: there is no leave to record for a freelance employment.`
+    : 'You work freelance, outside the labour law: there is no leave to ask for under a freelance employment.';
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ceoDecisionBody, figureFrom, figureValue, hrDecisionBody, previewGross, requestBody } from './decisions';
+import { ceoDecisionBody, ceoDoneKey, figureFrom, figureValue, hrDecisionBody, previewGross, requestBody } from './decisions';
 
 // The forms of raise requests and their decisions, read as the API takes them (owner, 17 October 2026).
 
@@ -161,6 +161,29 @@ describe("the CEO's decision", () => {
     // Return to HR wins over the choice made
     expect(ceoDecisionBody(form({ decision: 'approve', intent: 'return', comment: 'Round it' }), errors)).toEqual({ choice: 'return', path: 'return', body: { comment: 'Round it' } });
     expect(errors).toEqual([]);
+  });
+
+  it('approving, with the reason chosen; not when rejecting or returning (19 October 2026: "i might want to ammend the raise reason")', () => {
+    const errors: string[] = [];
+    expect(ceoDecisionBody(form({ decision: 'approve', comment: 'Fine', raiseReason: 'annual' }), errors).body).toEqual({ comment: 'Fine', raiseReason: 'annual' });
+    expect(ceoDecisionBody(form({ decision: 'approve_other', comment: 'More', figureKind: 'percent', figureValue: '10', raiseReason: 'counter_offer' }), errors).body).toEqual({
+      comment: 'More',
+      increasePercent: 10,
+      raiseReason: 'counter_offer',
+    });
+    // one kept from before goes back as it is; anything else isn't sent
+    expect(ceoDecisionBody(form({ decision: 'approve', comment: 'Fine', raiseReason: 'adjustment' }), errors).body.raiseReason).toBe('adjustment');
+    expect(ceoDecisionBody(form({ decision: 'approve', comment: 'Fine', raiseReason: 'bonus' }), errors).body).toEqual({ comment: 'Fine' });
+    expect(ceoDecisionBody(form({ decision: 'reject', comment: 'No', raiseReason: 'annual' }), errors).body).toEqual({ comment: 'No' });
+    expect(ceoDecisionBody(form({ decision: 'approve', intent: 'return', comment: 'Round it', raiseReason: 'annual' }), errors).body).toEqual({ comment: 'Round it' });
+    expect(errors).toEqual([]);
+  });
+
+  it('says what was done, by the choice made', () => {
+    expect(ceoDoneKey('approve')).toBe('raise-approved');
+    expect(ceoDoneKey('approve_other')).toBe('raise-approved-other');
+    expect(ceoDoneKey('return')).toBe('raise-returned');
+    expect(ceoDoneKey('reject')).toBe('raise-declined');
   });
 
   it('refuses no choice, no comment, another raise without one', () => {

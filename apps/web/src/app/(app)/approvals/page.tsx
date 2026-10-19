@@ -1,4 +1,4 @@
-import { ENDING_STATUS_LABELS, PAY_STAGE_LABELS, type LawRates } from '@trendlix/shared';
+import { ENDING_STATUS_LABELS, PAY_STAGE_LABELS, PREPARED_DIRECTLY_COMMENT, type LawRates } from '@trendlix/shared';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
@@ -12,12 +12,12 @@ import { art154Text } from '../employees/employment-law';
 import { contractHref, profileHref } from '../employees/ui';
 import { INITIATOR_LABELS } from '../organization/contracts/labels';
 import { Empty, Loading } from '../organization/ui';
-import { figuresNote, raiseRequestsHref, REQUESTER_PHRASES } from '../raise-requests/list';
+import { isDirect, raiseRequestOnListHref, raiseRequestsHref, REQUESTER_PHRASES } from '../raise-requests/list';
 import { FoldedRequestLog, RequestReason, Suggestion } from '../raise-requests/ui';
 import { decideChangeRequest, decideEnding, decideRaise } from './actions';
+import { CeoRaiseDecision } from './ceo-raise-decision';
 import { decidesChangeRequests, decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
 import { DecisionForm } from './decision-form';
-import { RaiseDecisionForm } from './raise-decision-form';
 import { decidesRaises, followsRaises, PENDING_RAISES, pendingRaiseView, raisesLabel } from './raises';
 
 // What waits for a decision, in three sections:
@@ -27,7 +27,9 @@ import { decidesRaises, followsRaises, PENDING_RAISES, pendingRaiseView, raisesL
 //   then the CEO; 17 October 2026: "Approve - Approve with another raise amount or percentge - Reject, and add a
 //   comment"). The CEO approves each as it reached them or with another raise, or rejects it, always with a comment, or
 //   returns it to HR; HR follows them here. A raise prepared from a raise request says so, with the request's reason,
-//   comment, suggestion and log: the CEO's decision is the request's too.
+//   comment, suggestion and log: the CEO's decision is the request's too. Since 19 October 2026 every raise has its
+//   request (one HR prepared directly says so), each card links to it on Raise Requests, where the CEO may decide it
+//   too, and approving the CEO may change the reason ("i might want to ammend the raise reason, not only the money").
 // - Employees' requests to change their details (owner's decision of 15 October 2026), for HR and Admin to approve,
 //   which makes the change, or reject with a note. The CEO doesn't decide these.
 // The API checks every decision again.
@@ -40,7 +42,7 @@ const DONE: Record<string, string> = {
   'raise-approved': 'Pay raise approved. HR now has it signed; it is paid from its effective date.',
   'raise-approved-other': 'Pay raise approved with your raise: its pay is changed to it. HR now has it signed; it is paid from its effective date.',
   'raise-returned': 'Pay raise returned to HR with your comment.',
-  'raise-declined': 'Pay raise rejected. The raise request it came from, if any, is rejected too.',
+  'raise-declined': 'Pay raise rejected. Its raise request shows as rejected, with your comment.',
 };
 
 function Item({ label, children }: { label: string; children: React.ReactNode }) {
@@ -155,10 +157,20 @@ function FromRequest({ request: q }: { request: RaiseRequest }) {
   );
 }
 
+/** A raise HR prepared directly (19 October 2026): by whom and when, HR's note, and its log. */
+function DirectRequest({ request: q }: { request: RaiseRequest }) {
+  return (
+    <>
+      By {q.requestedBy?.email ?? 'HR'} on {formatDate(q.createdAt)}
+      {q.comment && q.comment !== PREPARED_DIRECTLY_COMMENT && <span className="mt-1 block whitespace-pre-line text-muted">{q.comment}</span>}
+      <FoldedRequestLog request={q} />
+    </>
+  );
+}
+
 function RaiseCard({ raise: r, request, decides, rates }: { raise: PendingRaise; request: RaiseRequest | null; decides: boolean; rates: readonly LawRates[] }) {
   const v = pendingRaiseView(r);
-  // the pay before it, for the figures of another raise (17 October 2026): over it, with the raise's own allowances and hours
-  const before = r.previous;
+  const direct = request ? isDirect(request) : r.raise?.requestOrigin === 'direct';
   return (
     <li className="card p-6">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -195,34 +207,18 @@ function RaiseCard({ raise: r, request, decides, rates }: { raise: PendingRaise;
         <Item label="Sent by HR">{v.sentAt ?? none}</Item>
         {r.raise?.requestId && (
           <div className="sm:col-span-2 lg:col-span-4">
-            <dt className="text-xs text-muted">From a raise request</dt>
+            <dt className="text-xs text-muted">{direct ? 'Prepared directly by HR' : 'From a raise request'}</dt>
             <dd className="mt-0.5">
-              {request ? <FromRequest request={request} /> : <Link href={raiseRequestsHref('with_ceo')}>See the raise requests with the CEO</Link>}
+              {request && (direct ? <DirectRequest request={request} /> : <FromRequest request={request} />)}
+              {/* its request on Raise Requests, the one place for every raise (19 October 2026) */}
+              <Link href={request ? raiseRequestOnListHref(request) : raiseRequestsHref('with_ceo')} className={`${request ? 'mt-2' : ''} inline-block font-semibold`}>
+                Open the request in Raise Requests<span className="sr-only"> for {r.employee.fullNameEn}</span>
+              </Link>
             </dd>
           </div>
         )}
       </dl>
-      {decides && (
-        <RaiseDecisionForm
-          action={decideRaise.bind(null, r.id)}
-          confirmApprove={v.confirmApprove}
-          name={r.employee.fullNameEn}
-          previousGross={r.previous?.grossSalary ?? null}
-          requester={request?.requester ?? null}
-          figures={
-            before && before.grossSalary !== null && before.allowances
-              ? {
-                  pay: { payBasis: r.payBasis, grossSalary: before.grossSalary, hourlyRate: before.hourlyRate, hoursPerWeek: before.hoursPerWeek ?? r.hoursPerWeek, allowances: before.allowances },
-                  allowancesAfter: r.allowances,
-                  hoursAfter: r.hoursPerWeek,
-                  rates,
-                  year: Number(r.startDate.slice(0, 4)),
-                  note: figuresNote(false),
-                }
-              : null
-          }
-        />
-      )}
+      {decides && <CeoRaiseDecision raise={r} request={request} rates={rates} action={decideRaise.bind(null, r.id)} />}
     </li>
   );
 }

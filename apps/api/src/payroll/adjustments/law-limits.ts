@@ -20,12 +20,23 @@ import { monthOfDate } from './views.js';
 // a recovery by hand on Additions / Deductions (adjustments.service.ts) are refused when they take a month over it; a
 // month already over it (planned before, or the pay changed) may still be lowered or moved, as long as no month rises
 // over it. The wage is the employee's current signed contract's monthly gross: without one there is no wage to check,
-// and nothing is refused. The rules are packages/shared installments.ts.
+// and nothing is refused. An unpaid intern's internship agreement (owner, 19 October 2026: "we are not paying them
+// salary, its just transportation allowance") pays no wage, the gross 0, so there is no pay to take installments from:
+// none are allowed, said plainly rather than as a percent of nothing. The rules are packages/shared installments.ts.
 
 /** The deduction types that recover an advance or loan: their installments. */
 export const INSTALLMENT_TYPES: readonly string[] = Object.values(RECOVERY_TYPE);
 
-/** The wage the law's limits are worked out on: the current signed contract's monthly gross; null without one. */
+/** Why someone whose current contract pays no wage (an unpaid intern's) has no installments. */
+const NO_WAGE = 'The current contract pays no wage (an unpaid internship), so there is no pay to take installments of advances and loans from';
+/** A plan refused for no wage, and a change or a recovery by hand. */
+export const NO_WAGE_PLAN = `${NO_WAGE}: record it without installments, to be paid back otherwise.`;
+export const NO_WAGE_CHANGE = `${NO_WAGE}: settle the advance or loan as paid back otherwise.`;
+
+/**
+ * The wage the law's limits are worked out on: the current signed contract's monthly gross, 0 for one that pays no wage
+ * (an unpaid intern's); null without one.
+ */
 export async function currentGross(db: Prisma.TransactionClient, employeeId: string): Promise<number | null> {
   const today = toDateOnly(todayInCairo());
   // the signed contract of the employment that is current (or ends from today on)
@@ -35,7 +46,7 @@ export async function currentGross(db: Prisma.TransactionClient, employeeId: str
     select: { grossSalary: true },
   });
   const gross = contract?.grossSalary.toNumber() ?? null;
-  return gross !== null && gross > 0 ? gross : null;
+  return gross !== null && gross >= 0 ? gross : null;
 }
 
 /** Payroll Setup's limit on a month's installments, in percent of the wage: at most the law's 10%. */
@@ -66,6 +77,8 @@ export async function assertPlanWithinLimit(db: Prisma.TransactionClient, employ
   if (!plan.length) return;
   const [gross, percent, others] = await Promise.all([currentGross(db, employeeId), installmentLimitPercent(db), installmentsByMonth(db, employeeId)]);
   if (gross === null) return;
+  // no wage, no installments (an unpaid intern's internship agreement, 19 October 2026)
+  if (gross === 0) throw new BadRequestException(NO_WAGE_PLAN);
   const problem = planLimitProblem(plan, others, gross, percent);
   if (problem) throw new BadRequestException(problem);
 }
@@ -88,5 +101,6 @@ export async function assertInstallmentLimit(
   const before = byMonth(rows);
   const after = addByMonth(byMonth(rows.filter((r) => !out.has(r.id))), planned);
   const over = monthOverInstallmentLimit(before, after, gross, percent);
-  if (over) throw new BadRequestException(installmentLimitProblem(over.month, over.installments, gross, percent, instead));
+  // with no wage the limit is 0: any month that rises is over it, said plainly
+  if (over) throw new BadRequestException(gross === 0 ? NO_WAGE_CHANGE : installmentLimitProblem(over.month, over.installments, gross, percent, instead));
 }

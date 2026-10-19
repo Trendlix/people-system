@@ -12,6 +12,7 @@ import {
   limitText,
   monthsText,
   nextText,
+  NO_WAGE_INSTALLMENTS,
   parseCount,
   planPreview,
   planProblem,
@@ -95,6 +96,9 @@ describe('the record form', () => {
     // no figures (not read yet) or no current contract: nothing to check against, the API checks it
     expect(planProblem(plan, null)).toBeNull();
     expect(planProblem(plan, { gross: null, percent: 10, byMonth: {} })).toBeNull();
+    // an unpaid internship: any installment is refused, with the plain reason
+    expect(planProblem(plan, { gross: 0, percent: 10, byMonth: {} })).toBe(NO_WAGE_INSTALLMENTS);
+    expect(planProblem([], { gross: 0, percent: 10, byMonth: {} })).toBeNull();
   });
 
   it('says what the law’s limit is worked out with', () => {
@@ -105,6 +109,9 @@ describe('the record form', () => {
       'The current gross is EGP 20,000.00 a month: a month’s installments of all their advances and loans may take at most 7.5% of it (EGP 1,500.00), the limit set in Payroll Setup (the law’s is 10%).',
     );
     expect(limitText({ gross: null, percent: 10, byMonth: {} })).toBe('No current contract, so the law’s limit on installments can’t be checked.');
+    // an unpaid internship (19 October 2026): no pay to take installments from, not the 10% of EGP 0.00
+    expect(limitText({ gross: 0, percent: 10, byMonth: {} })).toBe(NO_WAGE_INSTALLMENTS);
+    expect(NO_WAGE_INSTALLMENTS).toMatch(/^The current contract pays no wage \(an unpaid internship\), so there is no pay to take installments/);
     expect(limitText(null)).toBeNull();
     expect(limitHref('e1')).toBe('/payroll/unsettled/installments-limit?employeeId=e1');
   });
