@@ -8,6 +8,7 @@ import { OfferDocumentsService } from '../offers/offer-documents.service.js';
 import { shownStatus } from '../offers/rules.js';
 import { OFFER_INCLUDE, WITHOUT_FILES, type OfferRow } from '../offers/views.js';
 import { PdfService } from '../pdf/pdf.service.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { DocumentsService } from './documents.service.js';
 import { filledFileName } from './fill-version.js';
@@ -107,6 +108,7 @@ export class TemplatePreviewService {
     private readonly offerDocuments: OfferDocumentsService,
     private readonly pdf: PdfService,
     private readonly audit: AuditService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /**
@@ -142,6 +144,7 @@ export class TemplatePreviewService {
     let filled: { data: Buffer | null; shown: string[] };
     let whose: string;
     if (used.kind === 'offer') {
+      await this.confidential.assertOfferVisible(user, used.id);
       const o = await this.offer(used.id);
       filled = await this.offerDocuments.previewFill(o, slot, template, rights(user));
       whose = `${o.number} - ${o.fullNameEn}`;
@@ -184,7 +187,8 @@ export class TemplatePreviewService {
   /** Everyone whose current employment (else latest) is of a type the template is for, best first, at most 50. */
   private async ranked(version: VersionRow, slot: TemplateSlot, user: SessionUser): Promise<PreviewPerson[]> {
     const employees = await this.prisma.employee.findMany({
-      where: { employments: { some: {} } },
+      // never a C-level person's data for anyone but the CEO and a Super Admin (owner, 19 October 2026)
+      where: { employments: { some: {} }, ...(await this.confidential.employeeWhere(user)) },
       select: { id: true, employeeCode: true, fullNameEn: true, employments: { select: { employmentType: true, paidByCommission: true }, orderBy: NEWEST_FIRST, take: 1 } },
     });
     // a commission slot's previews are those paid by commission (owner, 18 October 2026)
@@ -209,7 +213,8 @@ export class TemplatePreviewService {
   /** The newest 50 offers of the employment type the job offer template is for, the most of its tags filled in first. */
   private async rankedOffers(version: VersionRow, slot: TemplateSlot, user: SessionUser): Promise<PreviewOffer[]> {
     const offers = await this.prisma.jobOffer.findMany({
-      where: { employmentType: { in: [...slot.appliesTo] }, ...(slot.paidByCommission && { paidByCommission: true }) },
+      // not a C-level offer for anyone but the CEO and a Super Admin (owner, 19 October 2026)
+      where: { AND: [{ employmentType: { in: [...slot.appliesTo] }, ...(slot.paidByCommission && { paidByCommission: true }) }, await this.confidential.offerWhere(user)] },
       include: OFFER_INCLUDE,
       omit: WITHOUT_FILES,
       orderBy: [{ createdAt: 'desc' }, { number: 'desc' }],

@@ -1,21 +1,25 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, SetMetadata } from '@nestjs/common';
 import { CurrentUser, DeletesRecords, FORBIDDEN_MESSAGE, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { CreateContractDto, ListContractsDto, SignContractDto, UpdateContractDto, WithinDto } from './contracts.dto.js';
 import { ContractsService, ONLY_SUPER_ADMIN_UNSIGNS } from './contracts.service.js';
 
 // Contracts under each employment, the company-wide list, and the alerts for HR and the CEO (contracts ending,
 // probations ending). HR adds, changes and signs contracts; anyone who may see the employment reads them, the salary
-// only HR, Finance and the CEO.
+// only HR, Finance and the CEO. A C-level person's (owner, 19 October 2026: "make C level Employees details not visible
+// to HR") only for the CEO and a Super Admin: 404 for anyone else, and left out of the lists and alerts.
 @Controller()
 export class ContractsController {
   constructor(private readonly contracts: ContractsService) {}
 
+  @ConfidentialOf('employee')
   @Get('employees/:id/employments/:employmentId/contracts')
   list(@Param('id', ParseUUIDPipe) id: string, @Param('employmentId', ParseUUIDPipe) employmentId: string, @CurrentUser() user: SessionUser) {
     return this.contracts.list(id, employmentId, user);
   }
 
+  @ConfidentialOf('employee')
   @Roles('hr')
   @Post('employees/:id/employments/:employmentId/contracts')
   create(
@@ -40,8 +44,8 @@ export class ContractsController {
   /** Signed fixed-term contracts ending within `within` days (60 unless sent). */
   @Roles('hr', 'ceo')
   @Get('contracts/expiring')
-  expiring(@Query() query: WithinDto) {
-    return this.contracts.expiring(query.within ?? 60);
+  expiring(@Query() query: WithinDto, @CurrentUser() user: SessionUser) {
+    return this.contracts.expiring(query.within ?? 60, user);
   }
 
   /**
@@ -50,16 +54,18 @@ export class ContractsController {
    */
   @Roles('hr', 'ceo')
   @Get('contracts/law-warnings')
-  lawWarnings() {
-    return this.contracts.lawWarnings();
+  lawWarnings(@CurrentUser() user: SessionUser) {
+    return this.contracts.lawWarnings(user);
   }
 
+  @ConfidentialOf('contract')
   @Roles('hr')
   @Patch('contracts/:id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateContractDto, @CurrentUser() user: SessionUser) {
     return this.contracts.update(id, dto, user);
   }
 
+  @ConfidentialOf('contract')
   @DeletesRecords()
   @Delete('contracts/:id')
   @HttpCode(204)
@@ -67,6 +73,7 @@ export class ContractsController {
     return this.contracts.remove(id, user);
   }
 
+  @ConfidentialOf('contract')
   @Roles('hr')
   @Post('contracts/:id/sign')
   @HttpCode(200)
@@ -75,6 +82,7 @@ export class ContractsController {
   }
 
   /** Undoes a signing recorded by mistake: the contract is a draft again. A Super Admin only. */
+  @ConfidentialOf('contract')
   @Roles('super_admin')
   @SetMetadata(FORBIDDEN_MESSAGE, ONLY_SUPER_ADMIN_UNSIGNS)
   @Post('contracts/:id/unsign')
@@ -86,7 +94,7 @@ export class ContractsController {
   /** Current employments whose probation ends within `within` days (30 unless sent). */
   @Roles('hr', 'ceo')
   @Get('employments/probation-ending')
-  probationEnding(@Query() query: WithinDto) {
-    return this.contracts.probationEnding(query.within ?? 30);
+  probationEnding(@Query() query: WithinDto, @CurrentUser() user: SessionUser) {
+    return this.contracts.probationEnding(query.within ?? 30, user);
   }
 }

@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
+import { marksConfidentialGrade } from '@trendlix/shared';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { DeleteForm } from '@/components/form';
 import { apiGet } from '@/lib/api';
 import { canDelete } from '@/lib/roles';
@@ -8,7 +10,7 @@ import type { Grade } from '@/lib/types';
 import { deleteGrade, updateGrade } from '../../actions';
 import { BackLink, Loading, RequireEditor, UUID } from '../../ui';
 import { GradeForm } from '../grade-form';
-import { gradeLabel } from '../label';
+import { CONFIDENTIAL_GRADE_HINT, gradeLabel } from '../label';
 
 async function EditGrade({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,9 +25,13 @@ async function EditGrade({ params }: { params: Promise<{ id: string }> }) {
   ].filter(Boolean);
   return (
     <RequireEditor>
-      <h2 className="text-lg font-semibold">Grade {gradeLabel(grade)}</h2>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h2 className="text-lg font-semibold">Grade {gradeLabel(grade)}</h2>
+        {grade.confidential && <CLevelBadge title={CONFIDENTIAL_GRADE_HINT} />}
+      </div>
       <div className="mt-4 space-y-8">
-        <GradeForm action={updateGrade.bind(null, id)} grade={grade} />
+        {/* the C-level tick, a Super Admin's only (owner, 19 October 2026) */}
+        <GradeForm action={updateGrade.bind(null, id)} grade={grade} marksConfidential={marksConfidentialGrade(user)} />
         {/* only a Super Admin deletes (owner's decision, 15 October 2026) */}
         {canDelete(user) && (
           <section className="max-w-xl space-y-2">

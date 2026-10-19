@@ -66,3 +66,41 @@ describe('the claims waiting for the caller', () => {
     expect(waitingWhere(as(['super_admin']))).toEqual({ id: { in: [] } });
   });
 });
+
+// A C-level person's claim (owner, 19 October 2026: "make C level Employees details not visible to HR"; their HR stages
+// go to the CEO): HR's and Finance's stages are the CEO's; HR and Finance neither see nor count it.
+describe('a C-level person’s claim', () => {
+  const view = (sees: boolean, self: string | null = null) => ({ sees, all: new Set(['ben']), hidden: new Set(sees || self === 'ben' ? [] : ['ben']) });
+  const asC = (roles: Role[], employeeId: string | null = null): Caller => ({ ...as(roles, employeeId), confidential: view(roles.includes('ceo') || roles.includes('super_admin'), employeeId) });
+
+  it('is seen by its employee, the manager it was sent to and the CEO; not by HR nor Finance', () => {
+    expect(seesClaim(CLAIM, asC(['employee'], 'ben'))).toBe(true);
+    expect(seesClaim(CLAIM, asC(['manager'], 'mona'))).toBe(true);
+    expect(seesClaim(CLAIM, asC(['ceo']))).toBe(true);
+    expect(seesClaim(CLAIM, asC(['hr']))).toBe(false);
+    expect(seesClaim(CLAIM, asC(['finance']))).toBe(false);
+    expect(seesClaim(CLAIM, asC(['hr', 'super_admin']))).toBe(true);
+  });
+
+  it('has its HR and Finance stages decided by the CEO, or HR and Finance with Super Admin; the manager stage as before', () => {
+    expect(decidesStage('manager', CLAIM, asC(['manager'], 'mona'))).toBe(true);
+    expect(decidesStage('hr', CLAIM, asC(['ceo']))).toBe(true);
+    expect(decidesStage('finance', CLAIM, asC(['ceo']))).toBe(true);
+    expect(decidesStage('hr', CLAIM, asC(['hr']))).toBe(false);
+    expect(decidesStage('finance', CLAIM, asC(['finance']))).toBe(false);
+    expect(decidesStage('hr', CLAIM, asC(['hr', 'super_admin']))).toBe(true);
+    expect(decidesStage('finance', CLAIM, asC(['hr', 'super_admin']))).toBe(false);
+    // never the claimant's own, the CEO's neither
+    expect(decidesStage('hr', CLAIM, asC(['ceo'], 'ben'))).toBe(false);
+  });
+
+  it('waits for the CEO at HR’s and Finance’s stages, and is left out of HR’s and Finance’s', () => {
+    expect(waitsFor({ ...CLAIM, status: 'with_hr' }, asC(['ceo']))).toBe(true);
+    expect(waitsFor({ ...CLAIM, status: 'with_finance' }, asC(['ceo']))).toBe(true);
+    expect(waitsFor({ ...CLAIM, status: 'with_hr' }, asC(['hr']))).toBe(false);
+    expect(waitingWhere(asC(['ceo']))).toEqual({ OR: [{ status: 'with_hr', employeeId: { in: ['ben'] } }, { status: 'with_finance', employeeId: { in: ['ben'] } }] });
+    expect(waitingWhere(asC(['hr', 'finance']))).toEqual({ OR: [{ status: 'with_hr', employeeId: { notIn: ['ben'] } }, { status: 'with_finance', employeeId: { notIn: ['ben'] } }] });
+    expect(waitingWhere(asC(['hr', 'super_admin']))).toEqual({ OR: [{ status: 'with_hr' }] });
+    expect(waitingWhere(asC(['ceo', 'hr']))).toEqual({ OR: [{ status: 'with_hr' }, { status: 'with_finance', employeeId: { in: ['ben'] } }] });
+  });
+});

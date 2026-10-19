@@ -20,6 +20,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { LEAVE_DOCUMENTS_MAX } from '@trendlix/shared';
 import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { contentDisposition } from '../paperwork/paperwork-file.js';
 import { DOCUMENT_UPLOAD, DocumentUploadFilter } from './documents.js';
 import { LeaveBalancesService } from './leave-balances.service.js';
@@ -47,7 +48,9 @@ import { YearClosingService } from './year-closing.service.js';
 // documents, and cancelling one. Deciding and seeing them: the request's direct manager and HR in turn, the CEO reading
 // (checked by the service, which tells anyone else a request isn't there); HR records leave on an employee's behalf and
 // cancels approved leave. An employee's leave: HR, the CEO, Finance, the employee and their manager; HR adjusts it. The
-// calendar: each sees as far as they see requests. Year Closing: HR and the CEO see it, HR closes and reopens it.
+// calendar: each sees as far as they see requests. Year Closing: HR and the CEO see it, HR closes and reopens it. A
+// C-level person's leave (owner, 19 October 2026: "make C level Employees details not visible to HR"): HR's stage is the
+// CEO's, and HR and their manager now don't see it nor their balances (checked by the services; 404 below).
 
 @Controller('leave/types')
 export class LeaveTypesController {
@@ -198,8 +201,8 @@ export class YearClosingController {
 
   @Roles('hr', 'ceo')
   @Get(':year')
-  view(@Param('year', ParseIntPipe) year: number) {
-    return this.closing.view(year);
+  view(@Param('year', ParseIntPipe) year: number, @CurrentUser() user: SessionUser) {
+    return this.closing.view(year, user);
   }
 
   /** { rows: { employeeId, carry, pay }[] }: every employee employed at the year's end. */
@@ -226,12 +229,14 @@ export class EmployeeLeaveController {
   ) {}
 
   /** ?year=: the balances as the employee's own, with their requests that touch the year. */
+  @ConfidentialOf('employee')
   @Get()
   get(@Param('id', ParseUUIDPipe) id: string, @Query() query: LeaveYearQueryDto, @CurrentUser() user: SessionUser) {
     return this.requests.employeeLeave(id, query.year, user);
   }
 
   /** { year, days, reason }: answers the employee's leave for that year. */
+  @ConfidentialOf('employee')
   @Roles('hr')
   @Post('adjustments')
   async adjust(@Param('id', ParseUUIDPipe) id: string, @Body() dto: LeaveAdjustmentDto, @CurrentUser() user: SessionUser) {

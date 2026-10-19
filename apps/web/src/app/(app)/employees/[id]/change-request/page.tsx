@@ -26,7 +26,7 @@ function RequestCard({ request: r, employeeId }: { request: ChangeRequest; emplo
         <p className="text-sm">
           Sent <span className="font-medium">{formatDateTime(r.requestedAt)}</span>
         </p>
-        <ChangeRequestStatusBadge status={r.status} />
+        <ChangeRequestStatusBadge status={r.status} confidential={r.confidential} />
       </div>
       <ChangesTable changes={r.changes} fromLabel="Was" toLabel="Asked for" caption={`What you asked for on ${formatDate(r.requestedAt)}`} />
       <dl className="grid gap-3 text-sm">

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { Select } from '@/components/select';
 import { loadLawRates } from '@/lib/law-rates';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
@@ -25,6 +26,7 @@ import {
   raiseRequestAnchor,
   raiseRequestsHref,
   readStatus,
+  requestActions,
   requestsLabel,
   STATUS_FILTERS,
   type StatusFilter,
@@ -46,6 +48,10 @@ import { FoldedRequestLog, HrRequestActions, PreparedRaise, Progress, RaiseReque
 // renewal with new pay, is listed too ("Prepared directly by HR"), at every stage; the CEO decides each raise with the
 // CEO on its row, with the form Approvals uses (Decide), which may change the reason too ("i might want to ammend the
 // raise reason, not only the money"); and the status filter keeps All first, with History (approved, done or rejected).
+// A C-level person's request (owner, 19 October 2026: "make C level Employees details not visible to HR") isn't listed
+// to HR without Super Admin; the CEO takes its HR step, so while it waits for that step it says "With the CEO" and the
+// CEO has HR's Decide and Reject on its row (the raise itself is still prepared in the Contract section, HR's); it is
+// marked C-level for those who see it.
 
 const quiet = 'border-t border-line px-4 py-10 text-center text-sm text-muted';
 
@@ -104,8 +110,10 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
   const listing = await loadRaiseRequests(status);
   // the raises the CEO decides here, as Approvals reads them (the pay before each, for the figures of another raise)
   const decides = ceo && listing.kind === 'ok' && listing.value.some((r) => ceoDecidesHere(user, r));
+  // HR's step, taken by HR, or by the CEO on a C-level person's request (19 October 2026)
+  const hrStep = listing.kind === 'ok' && listing.value.some((r) => Object.values(requestActions(user, r)).some(Boolean));
   // the years' rates set by law, for the figures of HR's or the CEO's other raise
-  const [rates, pending] = await Promise.all([hr || decides ? loadLawRates() : [], decides ? getOrNull<PendingRaise[]>(PENDING_RAISES) : null]);
+  const [rates, pending] = await Promise.all([hr || hrStep || decides ? loadLawRates() : [], decides ? getOrNull<PendingRaise[]>(PENDING_RAISES) : null]);
   const pendingFor = (r: RaiseRequest) => pending?.find((p) => p.id === r.raise?.contractId) ?? null;
   const actions = hr || ceo;
 
@@ -155,6 +163,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                       <Link href={requestHref(r)} className="font-semibold">
                         {r.employee.fullNameEn}
                       </Link>
+                      {r.confidential && <CLevelBadge className="ml-1.5" title="The CEO takes HR’s step on a C-level person’s raise request." />}
                       <div className="text-xs text-muted">
                         <span className="tabular-nums">{r.employee.employeeCode}</span> · {askedWord(r)} {askedAt(r)}
                       </div>
@@ -173,7 +182,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                       <PreparedRaise request={r} />
                     </td>
                     <td className="align-top">
-                      <RaiseRequestStatusBadge status={r.status} />
+                      <RaiseRequestStatusBadge status={r.status} confidential={r.confidential} />
                     </td>
                     <td className="min-w-64 align-top">
                       <Progress request={r} />
@@ -182,7 +191,8 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                     {actions && (
                       <td className="align-top">
                         <div className="flex flex-col items-start gap-3">
-                          {hr && <HrRequestActions request={r} user={user} rates={rates} />}
+                          {/* HR's step: HR's, or the CEO's on a C-level person's request (nothing when it isn't the user's) */}
+                          <HrRequestActions request={r} user={user} rates={rates} />
                           {ceoDecidesHere(user, r) && <CeoDecision request={r} pending={pendingFor(r)} rates={rates} status={status} />}
                         </div>
                       </td>
@@ -236,8 +246,8 @@ export default function RaiseRequestsPage({ searchParams }: PageProps<'/raise-re
       <p className="mt-1 text-muted">
         Every raise, at every stage: those asked for by employees for themselves, by their direct managers or by HR, each with a reason, a
         comment and the raise suggested, and those HR prepares directly on a contract or a renewal. HR approves a request, as suggested or
-        with another raise, or rejects it; the CEO then decides the raise here or on <Link href="/approvals">Approvals</Link>. Every step is
-        logged on the request; History lists those approved, done or rejected.
+        with another raise, or rejects it (a C-level person&apos;s, the CEO); the CEO then decides the raise here or on{' '}
+        <Link href="/approvals">Approvals</Link>. Every step is logged on the request; History lists those approved, done or rejected.
       </p>
       <div className="mt-6">
         <Suspense fallback={null}>

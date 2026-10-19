@@ -1,12 +1,15 @@
-import { CHANGE_REQUEST_STATUS_LABELS, type ChangeRequestStatus } from '@trendlix/shared';
+import type { ChangeRequestStatus } from '@trendlix/shared';
 import Link from 'next/link';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { formatDateTime } from '@/lib/format';
 import type { ChangeRequest, ChangeRequestChange } from '@/lib/types';
+import { changeStatusLabel } from '../../../requests/details-changes/list';
 import { changeShown } from '../../confirmation';
 import { profileHref } from '../../tab-list';
 
 // Parts of a change request shown both to the employee (their requests) and to HR and Admin (Approvals, and Details
-// Changes under Requests).
+// Changes under Requests). A C-level person's (owner, 19 October 2026: "make C level Employees details not visible to
+// HR"), which the CEO or a Super Admin decides, says "Waiting for the CEO" while it waits, and is marked C-level.
 
 const STATUS_STYLE: Record<ChangeRequestStatus, string> = {
   pending: 'bg-warn-soft text-warn',
@@ -15,9 +18,9 @@ const STATUS_STYLE: Record<ChangeRequestStatus, string> = {
   cancelled: 'bg-line-soft text-muted',
 };
 
-/** Waiting for HR, Approved, Rejected or Cancelled. */
-export function ChangeRequestStatusBadge({ status }: { status: ChangeRequestStatus }) {
-  return <span className={`badge ${STATUS_STYLE[status] ?? 'bg-line-soft text-muted'}`}>{CHANGE_REQUEST_STATUS_LABELS[status] ?? status}</span>;
+/** Waiting for HR, Approved, Rejected or Cancelled; Waiting for the CEO for a C-level person's (`confidential`). */
+export function ChangeRequestStatusBadge({ status, confidential }: { status: ChangeRequestStatus; confidential?: boolean }) {
+  return <span className={`badge ${STATUS_STYLE[status] ?? 'bg-line-soft text-muted'}`}>{changeStatusLabel(status, confidential)}</span>;
 }
 
 function Value({ text, ar }: { text: string; ar: boolean }) {
@@ -78,13 +81,14 @@ export function ChangeRequestCard({ request: r, fromLabel = 'Current', children 
           <h3 className="font-semibold">
             <Link href={profileHref(r.employee.id)}>{name}</Link>
             <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>
+            {r.confidential && <CLevelBadge className="ml-2 align-middle" title="The CEO or a Super Admin decides a C-level person’s change request, not HR." />}
           </h3>
           <p className="mt-0.5 text-sm text-muted">
             Asked {formatDateTime(r.requestedAt)}
             {r.requestedBy?.email && <> by {r.requestedBy.email}</>}
           </p>
         </div>
-        <ChangeRequestStatusBadge status={r.status} />
+        <ChangeRequestStatusBadge status={r.status} confidential={r.confidential} />
       </div>
       {r.note && (
         <div className="mt-4 text-sm">

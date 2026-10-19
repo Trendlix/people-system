@@ -1,22 +1,24 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import type { ChangeRequest } from '@/lib/types';
+import { decidesChangeOfDetails } from '@/lib/confidential';
+import type { ChangeRequest, SessionUser } from '@/lib/types';
 import { getCurrentUser } from '@/lib/session';
 import { decideListedChangeRequest } from '../../approvals/actions';
-import { decidesChangeRequests } from '../../approvals/data';
 import { DecisionForm } from '../../approvals/decision-form';
 import { ChangeRequestCard } from '../../employees/[id]/change-request/request-parts';
 import { Empty, Loading } from '../../organization/ui';
 import { loadJson } from '../../payroll/load';
 import { StaffOnly } from '../../staff-only';
 import {
+  changeDeciders,
   changeRequestsPath,
   decisionView,
   detailsChangesHref,
   emptyText,
   fromLabel,
   readDone,
+  readsChangeRequests,
   readStatus,
   requestsLabel,
   STATUS_FILTERS,
@@ -27,7 +29,11 @@ import {
 // later, Leave): every employee's request to change their details (owner's decision, 15 October 2026), newest first,
 // filtered by status in the address, each with whose profile it is, what they asked to change and when, and the
 // decision: who, when and why. HR and Admin (a Super Admin too) decide the ones waiting right here, as on Approvals,
-// which stays the inbox of what waits for them. The API checks every request again.
+// which stays the inbox of what waits for them. The API checks every request again. A C-level person's request (owner,
+// 19 October 2026: "make C level Employees details not visible to HR") the CEO decides, or a Super Admin: the CEO reads
+// the page for them (the API sends the CEO only C-level people's), each marked C-level and "Waiting for the CEO" while it
+// waits; HR without Super Admin doesn't get them. The decide buttons show only to who decides each
+// (decidesChangeOfDetails).
 
 export const metadata: Metadata = { title: 'Details Changes · People System' };
 
@@ -54,9 +60,15 @@ function Filters({ status }: { status: StatusFilter }) {
   );
 }
 
-/** Who decided a request and when, and the note given with it; the form to decide it while it waits. */
-function Decision({ request: r, status }: { request: ChangeRequest; status: StatusFilter }) {
+/**
+ * Who decided a request and when, and the note given with it; the form to decide it while it waits, for who decides it
+ * (a C-level person's: the CEO or a Super Admin), else who it waits for.
+ */
+function Decision({ request: r, status, user }: { request: ChangeRequest; status: StatusFilter; user: SessionUser }) {
   const d = decisionView(r);
+  if (!d && !decidesChangeOfDetails(user, r.confidential)) {
+    return <p className="mt-4 border-t border-line-soft pt-4 text-sm text-muted">Waiting for {changeDeciders(r.confidential)} to decide it.</p>;
+  }
   if (!d) {
     return (
       <DecisionForm
@@ -88,7 +100,7 @@ function Decision({ request: r, status }: { request: ChangeRequest; status: Stat
 
 async function Requests({ searchParams }: { searchParams: PageProps<'/requests/details-changes'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (!decidesChangeRequests(user)) return <Empty>Only HR and Admin can see the employees&apos; change requests.</Empty>;
+  if (!readsChangeRequests(user)) return <Empty>Only HR, Admin and the CEO can see the employees&apos; change requests.</Empty>;
   const status = readStatus(query);
   const done = readDone(query);
   const listing = await loadJson<ChangeRequest[]>(changeRequestsPath(status));
@@ -102,7 +114,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/requests/d
       )}
       <Filters status={status} />
       {listing.kind === 'forbidden' ? (
-        <Empty>Only HR and Admin can see the employees&apos; change requests.</Empty>
+        <Empty>Only HR, Admin and the CEO can see the employees&apos; change requests.</Empty>
       ) : listing.kind !== 'ok' ? (
         <Empty>
           Couldn&apos;t load the change requests.
@@ -121,7 +133,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/requests/d
           <ul className="space-y-4">
             {listing.value.map((r) => (
               <ChangeRequestCard key={r.id} request={r} fromLabel={fromLabel(r.status)}>
-                <Decision request={r} status={status} />
+                <Decision request={r} status={status} user={user} />
               </ChangeRequestCard>
             ))}
           </ul>
@@ -138,8 +150,8 @@ export default function DetailsChangesPage({ searchParams }: PageProps<'/request
         <h1 className="text-2xl font-semibold">Details Changes</h1>
         <p className="mt-1 text-muted">
           Employees&apos; requests to change their details, asked for when they check them on their profile. HR or an Admin approves a request,
-          which makes the change, or rejects it with a note the employee sees. The ones waiting are on <Link href="/approvals">Approvals</Link>{' '}
-          too.
+          which makes the change, or rejects it with a note the employee sees; a C-level person&apos;s, the CEO or a Super Admin. The ones
+          waiting are on <Link href="/approvals">Approvals</Link> too.
         </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

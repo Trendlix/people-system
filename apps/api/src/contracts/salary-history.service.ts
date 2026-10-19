@@ -6,6 +6,7 @@ import { fromDateOnly, todayInCairo } from '../common/date-only.js';
 import { seesEmployeeFile } from '../employees/access.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { monthOf } from '../payroll/views.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 /** Newest first, the current employment (no end date) before all ended ones. */
@@ -94,11 +95,15 @@ export function payVersion(c: PayVersionRow, names: ReadonlyMap<string, string>)
 // salarySummary over the versions (salary-raises.service.ts reads them with PAY_VERSIONS and payVersion).
 @Injectable()
 export class SalaryHistoryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly confidential: ConfidentialService,
+  ) {}
 
   async history(employeeId: string, user: SessionUser) {
     const employee = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true } });
-    if (!employee) throw new NotFoundException('Employee not found.');
+    // a C-level person's only for the CEO, a Super Admin and themself (owner, 19 October 2026)
+    if (!employee || (await this.confidential.isHidden(user, employeeId))) throw new NotFoundException('Employee not found.');
     const employments = await this.prisma.employment.findMany({ where: { employeeId }, orderBy: NEWEST_FIRST, select: EMPLOYMENT });
     const [names, documents] = await Promise.all([
       approverNames(this.prisma, employments.flatMap((e) => e.contracts)),

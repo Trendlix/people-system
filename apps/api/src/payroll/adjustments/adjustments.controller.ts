@@ -2,6 +2,8 @@ import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser, Roles } from '../../auth/decorators.js';
 import type { SessionUser } from '../../auth/session-user.js';
+import { ConfidentialService } from '../../employees/confidential.service.js';
+import { ConfidentialOf } from '../../employees/confidential.guard.js';
 import { FileTooLargeFilter } from '../../paperwork/file-too-large.filter.js';
 import { PAPERWORK_MAX_BYTES } from '../../paperwork/paperwork-file.js';
 import {
@@ -31,37 +33,45 @@ import { RecurringDeductionsService } from './recurring.service.js';
 
 // Additions / Deductions (owner, 17 October 2026): salary data, so HR, Finance and the CEO see them, like the payroll
 // lines (an Admin or Super Admin only with one of those roles too); HR enters, changes and cancels them. Each answer is
-// the addition or deduction, or the list.
+// the addition or deduction, or the list. A C-level person's (owner, 19 October 2026: "make C level Employees details not
+// visible to HR") only for the CEO and a Super Admin, here and on advances, loans and recurring deductions: left out of the
+// lists and the form's people, 404 for anyone else.
 @Controller('payroll/adjustments')
 export class AdjustmentsController {
-  constructor(private readonly adjustments: AdjustmentsService) {}
+  constructor(
+    private readonly adjustments: AdjustmentsService,
+    private readonly confidential: ConfidentialService,
+  ) {}
 
   /** ?month=YYYY-MM&employeeId=&kind=addition|deduction&type=&status=pending|applied|cancelled, each optional. */
   @Roles('hr', 'finance', 'ceo')
   @Get()
-  list(@Query() query: AdjustmentsQueryDto) {
-    return this.adjustments.list(query);
+  async list(@Query() query: AdjustmentsQueryDto, @CurrentUser() user: SessionUser) {
+    return this.adjustments.list(query, await this.confidential.hiddenFrom(user));
   }
 
   /** ?month=YYYY-MM: the month's run and whether it is locked, who is employed in it, their open advances and loans. */
   @Roles('hr', 'finance', 'ceo')
   @Get('choices')
-  choices(@Query() query: AdjustmentChoicesQueryDto) {
-    return this.adjustments.choices(query);
+  async choices(@Query() query: AdjustmentChoicesQueryDto, @CurrentUser() user: SessionUser) {
+    return this.adjustments.choices(query, await this.confidential.hiddenFrom(user));
   }
 
+  @ConfidentialOf('adjustment')
   @Roles('hr', 'finance', 'ceo')
   @Get(':id')
   get(@Param('id', ParseUUIDPipe) id: string) {
     return this.adjustments.get(id);
   }
 
+  @ConfidentialOf('employee', { body: 'employeeId' })
   @Roles('hr')
   @Post()
   create(@Body() dto: CreateAdjustmentDto, @CurrentUser() user: SessionUser) {
     return this.adjustments.create(dto, user);
   }
 
+  @ConfidentialOf('adjustment')
   @Roles('hr')
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAdjustmentDto, @CurrentUser() user: SessionUser) {
@@ -69,6 +79,7 @@ export class AdjustmentsController {
   }
 
   /** { ids, month }: pending ones moved to another month, those left on a month approved without them to a later one. */
+  @ConfidentialOf('adjustment', { body: 'ids' })
   @Roles('hr')
   @Post('move')
   @HttpCode(200)
@@ -76,6 +87,7 @@ export class AdjustmentsController {
     return this.adjustments.move(dto, user);
   }
 
+  @ConfidentialOf('adjustment')
   @Roles('hr')
   @Post(':id/cancel')
   @HttpCode(200)
@@ -95,28 +107,32 @@ export class AdvancesController {
   constructor(
     private readonly advances: AdvancesService,
     private readonly installments: InstallmentsService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /** ?employeeId=&status=open|settled, each optional: the open ones first. */
   @Roles('hr', 'finance', 'ceo')
   @Get()
-  list(@Query() query: AdvancesQueryDto) {
-    return this.advances.list(query);
+  async list(@Query() query: AdvancesQueryDto, @CurrentUser() user: SessionUser) {
+    return this.advances.list(query, await this.confidential.hiddenFrom(user));
   }
 
   /** ?employeeId=: { gross, percent, byMonth, tax, insurance, recurring }, for the forms' checks of the law's limits. Before :id. */
+  @ConfidentialOf('employee', { query: 'employeeId' })
   @Roles('hr', 'finance', 'ceo')
   @Get('limit')
   limit(@Query() query: InstallmentLimitQueryDto) {
     return this.installments.limit(query.employeeId);
   }
 
+  @ConfidentialOf('advance')
   @Roles('hr', 'finance', 'ceo')
   @Get(':id')
   get(@Param('id', ParseUUIDPipe) id: string) {
     return this.advances.get(id);
   }
 
+  @ConfidentialOf('employee', { body: 'employeeId' })
   @Roles('hr')
   @Post()
   create(@Body() dto: CreateAdvanceDto, @CurrentUser() user: SessionUser) {
@@ -124,6 +140,7 @@ export class AdvancesController {
   }
 
   /** { month }: that installment and every later pending one move a month on. */
+  @ConfidentialOf('advance')
   @Roles('hr')
   @Post(':id/installments/postpone')
   @HttpCode(200)
@@ -132,6 +149,7 @@ export class AdvancesController {
   }
 
   /** { month, amount }: that installment's amount; the later pending ones share what is left. */
+  @ConfidentialOf('advance')
   @Roles('hr')
   @Post(':id/installments/change')
   @HttpCode(200)
@@ -139,6 +157,7 @@ export class AdvancesController {
     return this.installments.change(id, dto, user);
   }
 
+  @ConfidentialOf('advance')
   @Roles('hr')
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAdvanceDto, @CurrentUser() user: SessionUser) {
@@ -146,6 +165,7 @@ export class AdvancesController {
   }
 
   /** { how?: final_settlement | waived | paid_back (the default), note }: a note required but deducted from the final settlement. */
+  @ConfidentialOf('advance')
   @Roles('hr')
   @Post(':id/settle')
   @HttpCode(200)
@@ -167,15 +187,19 @@ const CONSENT_FILE = FileInterceptor('consentFile', { limits: { fileSize: PAPERW
 // later (consent). Each answer is the recurring deduction, or the list.
 @Controller('payroll/recurring-deductions')
 export class RecurringDeductionsController {
-  constructor(private readonly recurring: RecurringDeductionsService) {}
+  constructor(
+    private readonly recurring: RecurringDeductionsService,
+    private readonly confidential: ConfidentialService,
+  ) {}
 
   /** ?employeeId=&status=running|ended, each optional: running lists those still to come too. */
   @Roles('hr', 'finance', 'ceo')
   @Get()
-  list(@Query() query: RecurringDeductionsQueryDto) {
-    return this.recurring.list(query);
+  async list(@Query() query: RecurringDeductionsQueryDto, @CurrentUser() user: SessionUser) {
+    return this.recurring.list(query, await this.confidential.hiddenFrom(user));
   }
 
+  @ConfidentialOf('recurringDeduction')
   @Roles('hr', 'finance', 'ceo')
   @Get(':id')
   get(@Param('id', ParseUUIDPipe) id: string) {
@@ -192,6 +216,7 @@ export class RecurringDeductionsController {
   }
 
   /** A form with the signed consent as `consentFile` (optional): records the consent is on file, and attaches it. */
+  @ConfidentialOf('recurringDeduction')
   @Roles('hr')
   @Post(':id/consent')
   @HttpCode(200)
@@ -202,6 +227,7 @@ export class RecurringDeductionsController {
   }
 
   /** { amount, fromMonth }: this one stops then, a new one starts then; answers the new one. */
+  @ConfidentialOf('recurringDeduction')
   @Roles('hr')
   @Post(':id/change')
   @HttpCode(200)
@@ -210,6 +236,7 @@ export class RecurringDeductionsController {
   }
 
   /** { fromMonth, note? }: the first month no longer deducted. */
+  @ConfidentialOf('recurringDeduction')
   @Roles('hr')
   @Post(':id/stop')
   @HttpCode(200)
@@ -218,6 +245,7 @@ export class RecurringDeductionsController {
   }
 
   /** { name?, endMonth? }. */
+  @ConfidentialOf('recurringDeduction')
   @Roles('hr')
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateRecurringDeductionDto, @CurrentUser() user: SessionUser) {
@@ -231,6 +259,7 @@ export class RecurringDeductionsController {
 export class DeductionPlansController {
   constructor(private readonly plans: DeductionPlansService) {}
 
+  @ConfidentialOf('employee')
   @Get(':id/deduction-plans')
   @Header('Cache-Control', 'private, no-store')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {

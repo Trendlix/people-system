@@ -53,3 +53,40 @@ describe('leave access', () => {
     expect(noLeaveMessage('intern', null)).toBe('You are an unpaid intern, outside the labour law: there is no leave to ask for under an unpaid internship.');
   });
 });
+
+// A C-level person's leave (owner, 19 October 2026: "make C level Employees details not visible to HR"; their HR stages
+// go to the CEO): HR's stage is the CEO's; HR and their manager now don't see it, the manager it was sent to does.
+describe('a C-level person’s leave', () => {
+  const asC = (roles: SessionUser['roles'], employeeId: string | null): Caller => {
+    const sees = roles.includes('ceo') || roles.includes('super_admin');
+    return { ...caller(roles, employeeId), confidential: { sees, all: new Set(['ben']), hidden: new Set(sees || employeeId === 'ben' ? [] : ['ben']) } };
+  };
+
+  it('is seen by its employee, the manager it was sent to and the CEO; not HR, nor their manager now', () => {
+    expect(seesRequest(request, asC(['employee'], 'ben'))).toBe(true);
+    expect(seesRequest(request, asC(['manager'], 'mona'))).toBe(true);
+    expect(seesRequest(request, asC(['ceo'], null))).toBe(true);
+    expect(seesRequest(request, asC(['hr'], null))).toBe(false);
+    expect(seesRequest({ ...request, currentManagerId: 'omar' }, asC(['manager'], 'omar'))).toBe(false);
+    expect(seesRequest(request, asC(['hr', 'super_admin'], null))).toBe(true);
+  });
+
+  it('has HR’s stage decided by the CEO or HR with Super Admin, never their own; HR cancels it only with Super Admin', () => {
+    expect(decidesStage('hr', request, asC(['ceo'], null))).toBe(true);
+    expect(decidesStage('hr', request, asC(['hr'], null))).toBe(false);
+    expect(decidesStage('hr', request, asC(['hr', 'super_admin'], null))).toBe(true);
+    expect(decidesStage('hr', request, asC(['ceo'], 'ben'))).toBe(false);
+    expect(decidesStage('manager', request, asC(['manager'], 'mona'))).toBe(true);
+    expect(hrMayCancel({ ...request, status: 'approved' }, asC(['hr'], 'hana'))).toBe(false);
+    expect(hrMayCancel({ ...request, status: 'approved' }, asC(['hr', 'super_admin'], 'hana'))).toBe(true);
+  });
+
+  it('waits for the CEO at HR’s stage, and is left out of HR’s queue and lists', () => {
+    expect(waitsFor({ ...request, status: 'with_hr' }, asC(['ceo'], null))).toBe(true);
+    expect(waitingWhere(asC(['ceo'], null))).toEqual({ OR: [{ status: 'with_hr', employeeId: { in: ['ben'] } }] });
+    expect(waitingWhere(asC(['hr'], null))).toEqual({ OR: [{ status: 'with_hr', employeeId: { notIn: ['ben'] } }] });
+    expect(scopeWhere(asC(['hr'], null))).toEqual({ employeeId: { notIn: ['ben'] } });
+    expect(scopeWhere(asC(['hr'], 'hana'))).toEqual({ OR: [{ employeeId: { notIn: ['ben'] } }, { managerId: 'hana' }] });
+    expect(othersWhere(asC(['ceo'], null))).toEqual({});
+  });
+});

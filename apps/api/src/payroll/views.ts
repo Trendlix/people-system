@@ -1,5 +1,6 @@
 import {
   damageLimitWarning,
+  hiddenLinesLabel,
   deductionLimitWarning,
   EMPTY_PAYROLL_INPUTS,
   installmentLimitWarning,
@@ -74,6 +75,10 @@ export interface PayrollLineView {
   bank: LineBank;
   /** Which of the line's payslips are drawn and kept (owner's decisions, 16 October 2026). */
   payslips: { en: boolean; ar: boolean };
+  /** A C-level person's (owner, 19 October 2026: "make C level Employees details not visible to HR"): the CEO fills it. */
+  confidential: boolean;
+  /** Whether the caller changes its inputs, hold and comments now: a draft's, HR's, a C-level person's the CEO's. */
+  editable: boolean;
 }
 
 export interface PayrollRunView {
@@ -100,13 +105,21 @@ export interface PayrollRunView {
    * them, so HR puts the person on the run or moves them to a later month. By person.
    */
   adjustmentsNotOnRun: { employeeId: string; employeeCode: string; name: string; count: number }[];
+  /**
+   * The C-level people's lines left out for the caller (owner, 19 October 2026: "make C level Employees details not
+   * visible to HR"): one row, "C-level (N people) — hidden", with no figures; the totals, the bank check and the files are
+   * without them. Null when nothing is hidden from the caller (the CEO and a Super Admin see the whole run).
+   */
+  hidden: { count: number; label: string } | null;
 }
 
 export interface PayrollRunSummary {
   id: string;
   month: string;
   status: PayrollStatus;
+  /** Without the C-level people's lines hidden from the caller (`hidden` of them). */
   totals: PayrollTotals;
+  hidden: number;
   createdAt: Date;
   approvedAt: Date | null;
   paidOn: string | null;
@@ -201,8 +214,17 @@ export function lawWarnings(line: { terms: PayrollTerms; result: PayrollResult }
   return [installmentWarning(line, limits.installmentPercent), recurringWarning(line), damageWarning(line, limits.dayDivisor)].filter((w): w is string => w !== null);
 }
 
-/** A line as the API sends it; `limits`: what its warnings by the Labour Law are worked out with (18 October 2026). */
-export function lineView(line: LineRow, bank: LineBank, limits: LineLimits | null = null): PayrollLineView {
+/** Whose a line is and who changes it: a C-level person's, and whether the caller changes it now (`editable`). */
+export interface LineAccess {
+  confidential: boolean;
+  editable: boolean;
+}
+
+/**
+ * A line as the API sends it; `limits`: what its warnings by the Labour Law are worked out with (18 October 2026);
+ * `access`: a C-level person's, and whether the caller changes it (19 October 2026).
+ */
+export function lineView(line: LineRow, bank: LineBank, limits: LineLimits | null = null, access: LineAccess = { confidential: false, editable: false }): PayrollLineView {
   const terms = line.terms as unknown as PayrollTerms;
   const result = line.result as unknown as PayrollResult;
   const warnings = lawWarnings({ terms, result }, limits);
@@ -224,6 +246,8 @@ export function lineView(line: LineRow, bank: LineBank, limits: LineLimits | nul
     result: warnings.length ? { ...result, warnings: [...result.warnings, ...warnings] } : result,
     bank,
     payslips: { en: line.payslips.some((p) => p.language === 'en'), ar: line.payslips.some((p) => p.language === 'ar') },
+    confidential: access.confidential,
+    editable: access.editable,
   };
 }
 
@@ -238,12 +262,24 @@ export function runView(
     adjustmentsNotOnRun: PayrollRunView['adjustmentsNotOnRun'];
     /** Payroll Setup's limit on a month's installments (18 October 2026): its lines warn past it. */
     installmentLimitPercent?: number | null;
+    /**
+     * The C-level people (owner, 19 October 2026): `all` of them, those `hidden` from the caller (their lines left out,
+     * as one row), and whether the caller changes a line, a C-level person's or not (packages/shared changesPayrollLine).
+     */
+    confidential?: { all: ReadonlySet<string>; hidden: ReadonlySet<string>; changes: (confidentialLine: boolean) => boolean };
   },
 ): PayrollRunView {
   const approved = isApproved(run.status);
+  const draft = run.status === 'draft';
+  const c = ctx.confidential;
+  const shown = c ? run.lines.filter((l) => !c.hidden.has(l.employeeId)) : run.lines;
+  const hidden = run.lines.length - shown.length;
   // the run's own days in a month, as it was worked out with
   const limits: LineLimits = { installmentPercent: ctx.installmentLimitPercent ?? null, dayDivisor: (run.rules as unknown as PayrollRules | null)?.dayDivisor ?? null };
-  const lines = run.lines.map((l) => lineView(l, lineBank(bankDetailsOf(l, ctx.banks.get(l.employeeId), approved)), limits));
+  const lines = shown.map((l) => {
+    const confidential = c?.all.has(l.employeeId) ?? false;
+    return lineView(l, lineBank(bankDetailsOf(l, ctx.banks.get(l.employeeId), approved)), limits, { confidential, editable: draft && (c?.changes(confidential) ?? false) });
+  });
   return {
     id: run.id,
     month: monthOf(run),
@@ -258,9 +294,11 @@ export function runView(
     paidOn: fromDateOnly(run.paidOn),
     totals: totalsOf(lines.map((l) => l.result)),
     lines,
-    exclusions: run.exclusions as unknown as Exclusion[],
+    // those left out of the run, but a C-level person hidden from the caller
+    exclusions: (run.exclusions as unknown as Exclusion[]).filter((x) => !c?.hidden.has(x.employeeId)),
     bankCheck: bankCheck(lines.map((l) => ({ onHold: l.onHold, transfer: l.result.transfer, bank: l.bank }))),
     payslips: lines.filter((l) => l.payslips.en).length,
-    adjustmentsNotOnRun: ctx.adjustmentsNotOnRun,
+    adjustmentsNotOnRun: ctx.adjustmentsNotOnRun.filter((a) => !c?.hidden.has(a.employeeId)),
+    hidden: hidden ? { count: hidden, label: hiddenLinesLabel(hidden) } : null,
   };
 }

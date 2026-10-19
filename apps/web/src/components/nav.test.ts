@@ -96,10 +96,15 @@ describe('the sidebar', () => {
     expect(requests.roles).toBeUndefined();
     expect(requests.items?.map((i) => i.roles)).toEqual([
       ['hr', 'ceo', 'finance'],
-      ['hr', 'admin'],
+      ['hr', 'admin', 'ceo'],
       ['hr', 'finance', 'ceo'],
       ['hr', 'ceo'],
     ]);
+    // details changes: HR and Admin decide them, and the CEO a C-level person's (owner, 19 October 2026: "make C level
+    // Employees details not visible to HR"); Finance doesn't
+    const details = requests.items![1];
+    for (const role of ['hr', 'admin', 'super_admin', 'ceo'] as const) expect(hasRole(as(role), ...(details.roles ?? []))).toBe(true);
+    expect(hasRole(as('employee', 'manager', 'finance'), ...(details.roles ?? []))).toBe(false);
     // the employee and the manager ask for raises on the profile; an Admin as such doesn't see salaries
     const raise = requests.items![0];
     for (const role of ['hr', 'ceo', 'finance'] as const) expect(hasRole(as(role), ...(raise.roles ?? []))).toBe(true);
@@ -289,9 +294,9 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       expect(requestsFor('hr')?.href).toBe('/raise-requests');
     });
 
-    it('has Raise Requests and Reimbursements for Finance, and Leave Requests too for the CEO, who don’t decide details changes', () => {
+    it('has Raise Requests and Reimbursements for Finance, who doesn’t decide details changes, and all four for the CEO, who decides C-level people’s (19 October 2026)', () => {
       expect(pages('finance')).toEqual(['Raise Requests', 'Reimbursements']);
-      expect(pages('ceo')).toEqual(['Raise Requests', 'Reimbursements', 'Leave Requests']);
+      expect(pages('ceo')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests']);
       expect(requestsFor('finance')?.href).toBe('/raise-requests');
       expect(requestsFor('ceo')?.href).toBe('/raise-requests');
     });

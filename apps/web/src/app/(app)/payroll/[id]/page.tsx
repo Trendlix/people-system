@@ -18,6 +18,7 @@ import { bankFilesReady, bankLeftOut, fileHref } from '../files';
 import { canSeePayroll, employeesLabel, preparesPayroll, rulesSummary, runActions, runTitle } from '../list';
 import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslips';
 import { PayrollStatusBadge, PayrollStepper } from '../ui';
+import { anyEditable, employeesNote, figuresNote, filesNote, hiddenCount, hiddenRowLabel, hiddenTotalsNote, lineEditable } from './access';
 import { RunAdjustments } from './adjustments-section';
 import { CibFileForm } from './downloads';
 import { contractsNote, lineItems } from './grid';
@@ -35,7 +36,11 @@ import { MarkPaid, ReturnRun } from './run-actions';
 // Deductions (owner, 17 October 2026: "instead of there, i think earnings and deductions will be enough"). While the
 // run is with the CEO, the CEO may waive a line's attendance deduction in its row of the pay (owner, 17 October 2026:
 // "if there is an attendance deduction, allow the CEO to wave the deduction by ticking a box"). Salary data: HR,
-// Finance and the CEO only; the API checks every request again.
+// Finance and the CEO only; the API checks every request again. The C-level people (owner, 19 October 2026: "make C
+// level Employees details not visible to HR"): their lines are hidden from HR and Finance, as one row "C-level (2
+// people) — hidden" on the figures and the pay, the totals, the bank files, the register and the payslips without them,
+// and the page says so; the CEO and the Super Admin see the whole run, those lines marked C-level, and on a draft the
+// CEO fills their figures, HR the rest (each line's `editable`, from the API; access.ts).
 
 const LINK = 'font-medium text-accent hover:underline';
 
@@ -53,8 +58,10 @@ function history(run: PayrollRunView): string {
 
 function SummaryCards({ run }: { run: PayrollRunView }) {
   const t = run.totals;
+  // the C-level people's lines hidden from the caller are not in the totals (19 October 2026)
+  const hidden = hiddenTotalsNote(hiddenCount(run));
   const cards: { label: string; value: string; note?: string }[] = [
-    { label: 'Employees', value: String(t.employees), note: run.exclusions.length ? `${run.exclusions.length} left out` : undefined },
+    { label: 'Employees', value: String(t.employees), note: employeesNote(run.exclusions.length, hiddenCount(run)) },
     { label: 'Earned', value: formatEgp(t.earned), note: t.allowances ? `Allowances ${formatEgp(t.allowances)}` : undefined },
     { label: 'Social insurance', value: formatEgp(t.employeeInsurance), note: `Company's share ${formatEgp(t.employerInsurance)}` },
     { label: 'Income tax', value: formatEgp(t.monthlyTax) },
@@ -64,15 +71,18 @@ function SummaryCards({ run }: { run: PayrollRunView }) {
     { label: 'Company cost', value: formatEgp(t.companyCost) },
   ];
   return (
-    <dl className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3">
-      {cards.map((c) => (
-        <div key={c.label} className="card px-4 py-3">
-          <dt className="text-[11px] font-medium tracking-wide text-muted uppercase">{c.label}</dt>
-          <dd className="mt-1 text-lg font-semibold tabular-nums">{c.value}</dd>
-          {c.note && <dd className="text-xs text-muted">{c.note}</dd>}
-        </div>
-      ))}
-    </dl>
+    <div className="space-y-2">
+      <dl className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3">
+        {cards.map((c) => (
+          <div key={c.label} className="card px-4 py-3">
+            <dt className="text-[11px] font-medium tracking-wide text-muted uppercase">{c.label}</dt>
+            <dd className="mt-1 text-lg font-semibold tabular-nums">{c.value}</dd>
+            {c.note && <dd className="text-xs text-muted">{c.note}</dd>}
+          </div>
+        ))}
+      </dl>
+      {hidden && <p className="text-sm text-muted">{hidden}</p>}
+    </div>
   );
 }
 
@@ -80,6 +90,8 @@ function Actions({ run, user, title, payday }: { run: PayrollRunView; user: Sess
   const can = runActions(user, run.status);
   const today = todayInCairo();
   const problems = run.bankCheck.problems;
+  // the register and the payslips leave out the C-level people hidden from the caller (19 October 2026)
+  const excluded = filesNote(run);
   return (
     <div className="flex flex-wrap items-start gap-3">
       {can.refresh && (
@@ -129,21 +141,19 @@ function Actions({ run, user, title, payday }: { run: PayrollRunView; user: Sess
           Delete draft
         </ActionButton>
       )}
+      {excluded && <p className="w-full text-sm text-muted">{excluded}</p>}
     </div>
   );
 }
 
-/** Why the grid can't be changed, when it can't. */
-function lockedNote(run: PayrollRunView, user: SessionUser): string | null {
-  if (run.status === 'draft') return preparesPayroll(user) ? null : 'Only HR types the month’s figures.';
-  if (run.status === 'pending_ceo') return 'With the CEO: the figures can’t be changed unless the CEO returns it.';
-  return 'Approved: the figures are locked.';
-}
-
-function gridRows(lines: PayrollLineView[], month: string, today: string): GridRow[] {
+/** `runLevel`: the run's rule (HR, on a draft), for each line's `editable` when an older API leaves it out. */
+function gridRows(lines: PayrollLineView[], month: string, today: string, runLevel: boolean): GridRow[] {
   return lines.map((l) => ({
     id: l.id,
     name: l.name,
+    // the CEO fills the C-level people's lines, HR the rest (owner, 19 October 2026)
+    confidential: l.confidential === true,
+    editable: lineEditable(l, runLevel),
     // lines saved before an input existed (the leave days, 17 October 2026) have none: not given
     inputs: { ...EMPTY_PAYROLL_INPUTS, ...l.inputs },
     onHold: l.onHold,
@@ -184,6 +194,8 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
   const { problems, held, nothingToPay } = bankLeftOut(run.lines);
   const ready = bankFilesReady(run.status);
   const hr = preparesPayroll(user);
+  // the bank files leave out the C-level people hidden from the caller (19 October 2026)
+  const excluded = filesNote(run);
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">Bank Files</h2>
@@ -207,6 +219,7 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
             ? 'From each employee’s bank details on their profile, copied onto the run when the CEO approved it: later changes to a profile don’t change these files.'
             : 'From each employee’s bank details on their profile: there is nothing to enter here. They are copied onto the run when the CEO approves it, so later changes to a profile don’t change its files.'}
         </p>
+        {excluded && <p className="text-sm text-muted">{excluded}</p>}
 
         {problems.length > 0 && (
           <div className="space-y-2">
@@ -280,7 +293,9 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
 
   const title = runTitle(run.month);
   const can = runActions(user, run.status);
-  const locked = lockedNote(run, user);
+  // the figures each line takes from the caller: HR's lines, and the CEO the C-level people's (19 October 2026)
+  const editable = anyEditable(run.lines, can.editInputs);
+  const hidden = hiddenRowLabel(run);
   const paid = payslipsIssued(run.status);
   // the payday, for Mark as paid to start from; only read when the run can be marked paid
   const settings = can.markPaid ? await loadPayrollSettings() : null;
@@ -312,25 +327,26 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
       <section className="space-y-3">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h2 className="text-lg font-semibold">Monthly Figures</h2>
-          <span className="text-sm text-muted">{locked ?? 'Typed by HR until attendance fills them.'}</span>
+          <span className="text-sm text-muted">{figuresNote(run.status, run.lines, can.editInputs, hiddenCount(run))}</span>
         </div>
-        {run.lines.length === 0 ? (
+        {run.lines.length === 0 && !hidden ? (
           <Empty>No one is on this run.{can.refresh ? ' Refresh it once the contracts are signed.' : ''}</Empty>
         ) : (
           <InputsGrid
             key={run.status}
-            rows={gridRows(run.lines, run.month, todayInCairo())}
+            rows={gridRows(run.lines, run.month, todayInCairo(), can.editInputs)}
             noShowDayMultiplier={run.rules.noShowDayMultiplier}
-            editable={can.editInputs}
-            save={can.editInputs ? saveRunLines.bind(null, run.id) : null}
+            editable={editable}
+            save={editable ? saveRunLines.bind(null, run.id) : null}
             places={places}
+            hidden={hidden}
           />
         )}
       </section>
 
       <RunAdjustments run={run} today={todayInCairo()} />
 
-      {run.lines.length > 0 && (
+      {(run.lines.length > 0 || hidden) && (
         <section className="space-y-3">
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <h2 className="text-lg font-semibold">Pay</h2>
@@ -349,6 +365,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
             payslips={paid}
             waive={can.waiveAttendance ? setAttendanceWaiver.bind(null, run.id) : null}
             places={places}
+            hidden={hidden}
           />
         </section>
       )}

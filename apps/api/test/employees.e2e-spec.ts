@@ -60,6 +60,7 @@ describe('Employees (e2e)', () => {
   let finance: string;
   let admin: string;
   let superAdmin: string; // the only role that deletes (owner's decision, 15 October 2026)
+  let hrSuper: string; // HR and Super Admin: the HR who sees and gives C-level grades (owner, 19 October 2026)
   let webId: string;
   let departmentId: string;
   let otherDepartmentId: string;
@@ -96,15 +97,15 @@ describe('Employees (e2e)', () => {
     api().delete(`/api/employees/${employeeId}/employments/${employmentId}`).set('Cookie', session);
 
   /** Hires someone whose profile exists; answers the updated profile. */
-  async function hire(employeeId: string, extra: Record<string, unknown> = {}): Promise<Hired> {
-    const res = await startEmployment(employeeId, job(extra)).expect(201);
+  async function hire(employeeId: string, extra: Record<string, unknown> = {}, session = hr): Promise<Hired> {
+    const res = await startEmployment(employeeId, job(extra), session).expect(201);
     return res.body as Hired;
   }
 
-  /** A new profile, hired straight away. */
-  async function addHired(name: string, employment: Record<string, unknown> = {}, profile: Record<string, unknown> = {}): Promise<Hired> {
+  /** A new profile, hired straight away (`session`: HR, unless a C-level grade needs HR with Super Admin). */
+  async function addHired(name: string, employment: Record<string, unknown> = {}, profile: Record<string, unknown> = {}, session = hr): Promise<Hired> {
     const e = await addEmployee(name, profile);
-    return hire(e.id, employment);
+    return hire(e.id, employment, session);
   }
 
   async function profileOf(id: string, session = hr): Promise<Profile> {
@@ -123,6 +124,7 @@ describe('Employees (e2e)', () => {
     finance = await signIn(app, await createUser(prisma, ['finance']));
     admin = await signIn(app, await createUser(prisma, ['admin']));
     superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
+    hrSuper = await signIn(app, await createUser(prisma, ['hr', 'super_admin']));
     const dept = await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Web ${RUN}` }).expect(201);
     webId = dept.body.id;
     // the Frontend Developer belongs to the Frontend team of Web, so that team is where the employment places someone
@@ -168,6 +170,9 @@ describe('Employees (e2e)', () => {
         photoId: null, // no personal photo in the employee file
         photoCrop: null,
         standing: 'not_employed',
+        // C-level or not, and whether only the directory card is sent (owner, 19 October 2026)
+        confidential: false,
+        restricted: false,
         employment: null,
         lastEnded: null,
       });
@@ -307,6 +312,8 @@ describe('Employees (e2e)', () => {
         photoId: null,
         photoCrop: null,
         standing: 'active',
+        confidential: false,
+        restricted: false,
         employment: {
           id: hired.employment.id,
           status: 'active',
@@ -722,15 +729,15 @@ describe('Employees (e2e)', () => {
       expect(notAnId.body.message).toEqual(['Choose a grade.']);
       expect(await prisma.employment.count({ where: { employeeId: e.id } })).toBe(0);
 
-      // the open ends take any grade on their side
-      expect((await hire(e.id, { jobTitleId: fromG3, gradeId: grade('G9') })).employment).toMatchObject({ grade: { code: 'G9' } });
+      // the open ends take any grade on their side (G8: G9 is C-level, which HR alone doesn't give, 19 October 2026)
+      expect((await hire(e.id, { jobTitleId: fromG3, gradeId: grade('G8') })).employment).toMatchObject({ grade: { code: 'G8' } });
       const other = await addHired('Assistant', { jobTitleId: upToG6, gradeId: grade('G1') });
       expect(other.employment).toMatchObject({ grade: { code: 'G1' } });
     });
 
     it('takes any grade under a job title with no range, or with no job title', async () => {
-      const any = await addHired('Any Grade', { jobTitleId, gradeId: grade('G9') }); // Frontend Developer: no range
-      expect(any.employment).toMatchObject({ jobTitleId, grade: { code: 'G9' } });
+      const any = await addHired('Any Grade', { jobTitleId, gradeId: grade('G8') }); // Frontend Developer: no range
+      expect(any.employment).toMatchObject({ jobTitleId, grade: { code: 'G8' } });
       const none = await addHired('No Title', { gradeId: grade('G1') });
       expect(none.employment).toMatchObject({ jobTitleId: null, gradeId: grade('G1'), grade: { code: 'G1' } });
     });
@@ -1112,7 +1119,7 @@ describe('Employees (e2e)', () => {
     const missing = (p: Profile) => p.completeness.missing.map((m) => m.key);
     const onTab = (p: Profile, tab: string) => p.completeness.missing.filter((m) => m.tab === tab);
     const change = async (id: string, body: object) => (await api().patch(`/api/employees/${id}`).set('Cookie', hr).send(body).expect(200)).body as Profile;
-    const changed = async (p: Hired, body: object) => (await changeEmployment(p.id, p.employment.id, body).expect(200)).body as Hired;
+    const changed = async (p: Hired, body: object, session = hr) => (await changeEmployment(p.id, p.employment.id, body, session).expect(200)).body as Hired;
     const addPaper = (id: string, kind: string) =>
       api().post(`/api/employees/${id}/paperwork`).set('Cookie', hr).field('kind', kind).attach('file', PNG, `${kind}.png`).expect(201);
 
@@ -1325,11 +1332,12 @@ describe('Employees (e2e)', () => {
         governorate: 'Cairo',
         addressAr: '١ شارع التحرير',
       };
-      const ceo = await addHired('Chief', { gradeId: top.id }, basics);
+      // the top grade is C-level (owner, 19 October 2026): given and changed by HR with Super Admin, who sees C-level people
+      const ceo = await addHired('Chief', { gradeId: top.id }, basics, hrSuper);
       expect(ceo.completeness.percent).toBe(32); // 13 of 41
       expect(onTab(ceo, 'employment').map((m) => m.key)).toEqual(['team', 'jobTitle', 'shift']);
 
-      const lower = await changed(ceo, { gradeId: grade('G1') });
+      const lower = await changed(ceo, { gradeId: grade('G1') }, hrSuper);
       expect(lower.completeness.percent).toBe(31); // 13 of 42
       expect(onTab(lower, 'employment').map((m) => m.key)).toEqual(['team', 'jobTitle', 'shift', 'manager']);
 

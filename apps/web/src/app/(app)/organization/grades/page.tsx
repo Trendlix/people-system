@@ -1,14 +1,17 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { apiGet } from '@/lib/api';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Grade, JobTitleSummary } from '@/lib/types';
 import { Empty, Loading } from '../ui';
-import { inGradeRange } from './label';
+import { CONFIDENTIAL_GRADE_HINT, inGradeRange } from './label';
 
 // The grading system (owner's table: G1 Entry Level … G9 Executive). The rank is the level in the hierarchy; the API
 // lists the grades lowest rank first. A job title may limit the grades people with it can have to a range (Account
-// Manager: G3 to G6); each employment has the person's own grade.
+// Manager: G3 to G6); each employment has the person's own grade. A grade ticked confidential makes those holding it
+// C-level (owner, 19 October 2026: "make C level Employees details not visible to HR"): marked so for everyone here; a
+// Super Admin ticks it on the grade's form.
 
 const dash = <span className="text-muted">—</span>;
 
@@ -27,6 +30,7 @@ async function GradesList() {
             {grades.length} {grades.length === 1 ? 'grade' : 'grades'}, lowest level first
           </p>
           <p>Each employee has their own grade. A job title can limit it to a range, e.g. G3 to G6 for Account Manager.</p>
+          {grades.some((g) => g.confidential) && <p>People holding a C-level grade are hidden from HR: only the CEO and the Super Admin see their details.</p>}
         </div>
         {canEdit && (
           <Link href="/organization/grades/new" className="btn btn-primary">
@@ -58,7 +62,10 @@ async function GradesList() {
             <tbody>
               {grades.map((g) => (
                 <tr key={g.id}>
-                  <td className="font-medium whitespace-nowrap">{g.code}</td>
+                  <td className="font-medium whitespace-nowrap">
+                    {g.code}
+                    {g.confidential && <CLevelBadge title={CONFIDENTIAL_GRADE_HINT} className="ml-2" />}
+                  </td>
                   <td>{g.levelEn}</td>
                   <td lang="ar" dir="rtl" className="text-right">
                     {g.levelAr ?? dash}

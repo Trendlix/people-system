@@ -415,7 +415,8 @@ export function HrDecisionForm({
   inForce: { startDate: string; endDate: string | null } | null;
   /** YYYY-MM-DD: the date it starts with, the request's Effective from (else the next 1st of a month it may take effect on). */
   defaultEffective: string;
-  fullFormHref: string;
+  /** The whole raise form, HR's (the Contract section); null for the CEO taking HR's step on a C-level person's (19 October 2026). */
+  fullFormHref: string | null;
   /** The pay in force, for the figures of another raise. */
   pay?: PayBefore | null;
   rates?: readonly LawRates[];
@@ -563,11 +564,16 @@ export function HrDecisionForm({
 
       {approving && (
         <p className="hint">
-          The raise is prepared from the pay in force, the allowances as they are, and sent to the CEO.{' '}
-          <Link href={fullFormHref} prefetch={false}>
-            Approve it in the whole raise form
-          </Link>{' '}
-          for a promotion or other allowances with it.
+          The raise is prepared from the pay in force, the allowances as they are, and sent to the CEO.
+          {fullFormHref && (
+            <>
+              {' '}
+              <Link href={fullFormHref} prefetch={false}>
+                Approve it in the whole raise form
+              </Link>{' '}
+              for a promotion or other allowances with it.
+            </>
+          )}
         </p>
       )}
       <div className="flex flex-wrap gap-3">

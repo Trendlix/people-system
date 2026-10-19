@@ -32,7 +32,9 @@ export class PayrollSettingsController {
 
 // Monthly payroll runs (owner's decisions, 16 October 2026): HR, Finance and the CEO see them (salary data, like the
 // contracts' salaries; an Admin or Super Admin only with one of those roles too). HR prepares a run and marks it paid;
-// the CEO alone approves it or returns it. Each answer is the run, except the files and a deletion.
+// the CEO alone approves it or returns it. Each answer is the run, except the files and a deletion. The C-level people's
+// lines (owner, 19 October 2026: "make C level Employees details not visible to HR") only for the CEO and a Super Admin,
+// left out of the run and its files for anyone else; the CEO fills their inputs.
 @Controller('payroll/runs')
 export class PayrollController {
   constructor(private readonly payroll: PayrollService) {}
@@ -40,8 +42,8 @@ export class PayrollController {
   /** Every run, newest month first. */
   @Roles('hr', 'finance', 'ceo')
   @Get()
-  list() {
-    return this.payroll.list();
+  list(@CurrentUser() user: SessionUser) {
+    return this.payroll.list(user);
   }
 
   /** A month's run: { month: 'YYYY-MM' }, from 12 months back to next month. */
@@ -53,8 +55,8 @@ export class PayrollController {
 
   @Roles('hr', 'finance', 'ceo')
   @Get(':id')
-  get(@Param('id', ParseUUIDPipe) id: string) {
-    return this.payroll.get(id);
+  get(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.payroll.get(id, user);
   }
 
   /** A draft's people, contracts, insured wages and rules taken again; the inputs stay. */
@@ -65,8 +67,11 @@ export class PayrollController {
     return this.payroll.refresh(id, user);
   }
 
-  /** A draft's changed lines: { lines: [{ id, inputs?, onHold?, comments? }] }. */
-  @Roles('hr')
+  /**
+   * A draft's changed lines: { lines: [{ id, inputs?, onHold?, comments? }] }. HR's, and the CEO's for the C-level people's
+   * lines (owner, 19 October 2026: "the CEO fills their inputs"; checked by the service, line by line).
+   */
+  @Roles('hr', 'ceo')
   @Patch(':id/lines')
   updateLines(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePayrollLinesDto, @CurrentUser() user: SessionUser) {
     return this.payroll.updateLines(id, dto, user);
@@ -127,8 +132,8 @@ export class PayrollController {
   @Roles('hr', 'finance', 'ceo')
   @Get(':id/files/register')
   @Header('Cache-Control', 'private, no-store')
-  async register(@Param('id', ParseUUIDPipe) id: string): Promise<StreamableFile> {
-    return xlsx(await this.payroll.register(id));
+  async register(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
+    return xlsx(await this.payroll.register(id, user));
   }
 
   /** CIB's payroll system file, once approved; ?valueDate=YYYY-MM-DD, today unless sent. */

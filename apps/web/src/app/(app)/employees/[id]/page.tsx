@@ -1,12 +1,13 @@
 import { Suspense } from 'react';
 import { profileBack } from '@/components/nav';
+import { decidesChangeOfDetails, isRestricted } from '@/lib/confidential';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
-import { decidesChangeRequests } from '../../approvals/data';
-import { loadEmployee } from '../data';
+import { loadProfileOrCard } from '../data';
 import { askedTab, BackLink, Loading, PROFILE_TABS, profileHref, seesEveryone, todayInCairo, type ProfileTabKey } from '../ui';
 import { BasicTab, EducationTab } from './details-tabs';
+import { EmployeeCardView } from './employee-card';
 import { EmployeeFile, EmployeeFileLoading } from './employee-file';
 import { EmploymentTab } from './employment-tab';
 import { InsuranceTab } from './insurance/insurance-tab';
@@ -21,14 +22,26 @@ import { ProfileTabs } from './profile-tabs';
 // work (16 October 2026); Documents, the papers the employee brings. The open tab is in the address (?tab=, and &sub=
 // for a sub-tab), so it survives a reload, and only it is rendered; an old ?tab=contracts address opens Employment,
 // and a link naming only an anchor (#payslips) is moved to the sub-tab holding it. The profile and the employment are
-// separate records: someone who leaves keeps their profile.
+// separate records: someone who leaves keeps their profile. A C-level person (owner, 19 October 2026: "make C level
+// Employees details not visible to HR") is their directory card alone for those who may not see them, with no tabs and
+// no actions; the CEO, the Super Admin and the person themself get the profile, marked C-level, and the CEO or a Super
+// Admin (not HR) decides their change requests.
 
 type Query = Record<string, string | string[] | undefined>;
 
 const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '');
 
 async function Profile({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Query> }) {
-  const [user, p, query] = await Promise.all([getCurrentUser(), loadEmployee(params), searchParams]);
+  const [user, p, query] = await Promise.all([getCurrentUser(), loadProfileOrCard(params), searchParams]);
+  if (isRestricted(p)) {
+    const back = profileBack(user, p);
+    return (
+      <div className="space-y-4">
+        {back && <BackLink href={back.href}>{back.label}</BackLink>}
+        <EmployeeCardView card={p} />
+      </div>
+    );
+  }
   const today = todayInCairo();
   // The employee file is HR's and the CEO's, exactly those who may see the national ID. Social Insurance is HR's and
   // Admin's (owner, 17 October 2026: "Social Insurance tab to be by HR - Admin users"; a Super Admin counts as an Admin);
@@ -47,7 +60,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
     <div className="space-y-4">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
       <div className="space-y-6">
-        <ProfileHeader profile={p} tabs={visible} linkPeople={linkPeople} decidesRequests={decidesChangeRequests(user)} />
+        <ProfileHeader profile={p} tabs={visible} linkPeople={linkPeople} decidesRequests={decidesChangeOfDetails(user, p.confidential)} />
 
         <ProfileTabs tabs={tabs.map((t) => ({ key: t.key, label: t.label, href: profileHref(p.id, t.key) }))} active={tab} label={`Profile of ${p.fullNameEn}`}>
           {tab === 'employment' ? (

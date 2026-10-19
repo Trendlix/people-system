@@ -2,7 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { DETAILS_CHANGES_PATH } from '../../../../components/nav';
 import { formatDateTime } from '../../../../lib/format';
 import type { ChangeRequest } from '../../../../lib/types';
-import { changeRequestsPath, decisionView, detailsChangesHref, emptyText, fromLabel, readDone, readStatus, requestsLabel, STATUS_FILTERS } from './list';
+import {
+  changeDeciders,
+  changeRequestsPath,
+  changeStatusLabel,
+  decisionView,
+  detailsChangesHref,
+  emptyText,
+  fromLabel,
+  readDone,
+  readsChangeRequests,
+  readStatus,
+  requestsLabel,
+  STATUS_FILTERS,
+  waitingForYou,
+} from './list';
 
 const AT = '2026-10-16T14:42:00.000Z';
 const decided = (over: Partial<ChangeRequest>): Pick<ChangeRequest, 'status' | 'decidedBy' | 'decidedAt' | 'decisionNote'> => ({
@@ -105,5 +119,31 @@ describe('a change request on Details Changes', () => {
     expect(emptyText('approved')).toBe('No approved change requests.');
     expect(emptyText('rejected')).toBe('No rejected change requests.');
     expect(emptyText('cancelled')).toBe('No cancelled change requests.');
+  });
+});
+
+describe('a C-level person’s change request (owner, 19 October 2026: "make C level Employees details not visible to HR")', () => {
+  const waiting = (id: string, confidential?: boolean) => ({ id, status: 'pending' as const, confidential });
+
+  it('is read by HR, Admin and the CEO, who decides a C-level person’s', () => {
+    expect(readsChangeRequests({ roles: ['hr'] })).toBe(true);
+    expect(readsChangeRequests({ roles: ['admin'] })).toBe(true);
+    expect(readsChangeRequests({ roles: ['super_admin'] })).toBe(true);
+    expect(readsChangeRequests({ roles: ['ceo'] })).toBe(true);
+    expect(readsChangeRequests({ roles: ['finance'] })).toBe(false);
+    expect(readsChangeRequests({ roles: ['employee', 'manager'] })).toBe(false);
+  });
+
+  it('waits for the CEO or a Super Admin, not HR: each counts for who decides it', () => {
+    const list = [waiting('a'), waiting('b', true), { id: 'c', status: 'approved' as const, confidential: true }];
+    expect(waitingForYou({ roles: ['hr'] }, list).map((r) => r.id)).toEqual(['a']);
+    expect(waitingForYou({ roles: ['ceo'] }, list).map((r) => r.id)).toEqual(['b']);
+    expect(waitingForYou({ roles: ['super_admin'] }, list).map((r) => r.id)).toEqual(['a', 'b']);
+    expect(waitingForYou({ roles: ['admin'] }, list).map((r) => r.id)).toEqual(['a']);
+    expect(changeStatusLabel('pending', true)).toBe('Waiting for the CEO');
+    expect(changeStatusLabel('pending')).toBe('Waiting for HR');
+    expect(changeStatusLabel('approved', true)).toBe('Approved');
+    expect(changeDeciders(true)).toBe('the CEO or a Super Admin');
+    expect(changeDeciders(false)).toBe('HR or an Admin');
   });
 });

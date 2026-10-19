@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Fragment, Suspense } from 'react';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { GroupHeading } from '@/components/group-heading';
 import { LEAVE_PATH } from '@/components/nav';
 import { departmentOptions } from '@/lib/departments';
@@ -45,7 +46,9 @@ import { LeaveProgress, LeaveStatusBadge } from './ui';
 // the decision form. The Calendar shows a month of who is off (?view=calendar&month=2026-10&department=<id>), with the
 // official holidays. HR records leave on an employee's behalf with Record leave, approved at once (e.g. sick leave
 // reported afterwards); someone with an employee profile asks for their own with New leave. The API checks every request
-// again.
+// again. A C-level person's request (owner, 19 October 2026: "make C level Employees details not visible to HR") isn't
+// listed to HR without Super Admin; the CEO decides its HR stage, so it says "With the CEO", is marked C-level for those
+// who see it, and has Decide for the CEO when it waits for them (`waitingForYou`).
 
 export const metadata: Metadata = { title: 'Leave Requests · People System' };
 
@@ -126,6 +129,7 @@ function RequestsTable({ requests }: { requests: LeaveRequestView[] }) {
                   <tr key={r.id} className={`align-top ${r.status === 'cancelled' ? 'text-muted' : ''}`}>
                     <td className="min-w-44">
                       <span className="font-semibold">{r.employee.fullNameEn}</span>
+                      {r.confidential && <CLevelBadge className="ml-1.5" title="The CEO decides HR’s stage of a C-level person’s leave." />}
                       <div className="text-xs text-muted">
                         {r.recordedByHr ? 'Recorded by HR' : 'Sent'} {formatDateTime(r.createdAt)}
                       </div>
@@ -142,7 +146,7 @@ function RequestsTable({ requests }: { requests: LeaveRequestView[] }) {
                       <span className="block text-xs text-muted tabular-nums">{daysText(r.days)}</span>
                     </td>
                     <td>
-                      <LeaveStatusBadge status={r.status} />
+                      <LeaveStatusBadge status={r.status} confidential={r.confidential} />
                     </td>
                     <td className="min-w-56 text-sm">
                       <LeaveProgress request={r} />
@@ -264,7 +268,7 @@ export default function LeaveRequestsPage({ searchParams }: PageProps<'/leave'>)
       <p className="mt-1 text-muted">
         Leave as the Labour Law gives it, of the types set up on <Link href="/organization/leave">Organization → Leave</Link>. The direct manager
         decides a request first (for someone without one, their team lead, else their department&apos;s head), then HR: each approves it or rejects
-        it with a comment, and every step is logged on the request. HR records leave on
+        it with a comment, and every step is logged on the request; a C-level person&apos;s goes to the CEO instead of HR. HR records leave on
         an employee&apos;s behalf, approved at once. The calendar shows who is off each day of a month.
       </p>
       <div className="mt-6">

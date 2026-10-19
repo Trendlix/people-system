@@ -16,7 +16,7 @@ import {
 import { fromDateOnly } from '../common/date-only.js';
 import type { LeaveSettings, LeaveType, Prisma } from '../generated/prisma/client.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
-import { hrMayCancel, isRequester, waitsFor, type Caller } from './access.js';
+import { hrMayCancel, isConfidentialRequest, isRequester, waitsFor, type Caller } from './access.js';
 
 // Leave types, the Leave Setup and requests as the API sends them (owner, 18 October 2026): dates YYYY-MM-DD, moments as
 // ISO strings, days as numbers (half days allowed).
@@ -136,6 +136,8 @@ export function requestView(r: RequestRow, caller: Caller, names: ReadonlyMap<st
     status,
     stage: leaveStage(status),
     waitingForYou: waitsFor({ ...parties, status }, caller),
+    // a C-level person's (owner, 19 October 2026): its HR stage is the CEO's
+    confidential: isConfidentialRequest(parties, caller),
     canCancel: isRequester(parties, caller) && employeeMayCancelLeave({ status, startDate }, today),
     hrCanCancel: hrMayCancel({ ...parties, status }, caller),
     // who decides (or decided) the manager stage, and as what (owner, 19 October 2026: "the person in charge"):

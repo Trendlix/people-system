@@ -22,6 +22,7 @@ import { AuditService, changes, type AuditEntry } from '../audit/audit.service.j
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { seesSalary } from '../employees/access.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -132,6 +133,7 @@ export class RaisesService {
     private readonly contracts: ContractsService,
     private readonly allowances: AllowancesService,
     private readonly lawRates: LawRatesService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /**
@@ -164,6 +166,8 @@ export class RaisesService {
       daysPerWeek: dto.daysPerWeek !== undefined ? dto.daysPerWeek : current.daysPerWeek,
       allowances,
     });
+    // a promotion to a C-level grade only from those who see C-level people (owner, 19 October 2026)
+    await this.confidential.assertMayGiveGrade(user, dto.newGradeId);
     const promotion = await checkedPromotion(this.prisma, employment, { newJobTitleId: dto.newJobTitleId ?? null, newGradeId: dto.newGradeId ?? null });
     // approved as suggested: the figure suggested is the one decided
     const suggested = request && this.suggested(request, current);
@@ -268,6 +272,8 @@ export class RaisesService {
       daysPerWeek: dto.daysPerWeek !== undefined ? dto.daysPerWeek : was.daysPerWeek,
       allowances: allowances ?? before.allowances.map(allowanceView),
     });
+    // a promotion to a C-level grade only from those who see C-level people (owner, 19 October 2026)
+    if (dto.newGradeId !== undefined && dto.newGradeId !== before.newGradeId) await this.confidential.assertMayGiveGrade(user, dto.newGradeId);
     const promotion = await checkedPromotion(this.prisma, employment, {
       newJobTitleId: dto.newJobTitleId !== undefined ? dto.newJobTitleId : before.newJobTitleId,
       newGradeId: dto.newGradeId !== undefined ? dto.newGradeId : before.newGradeId,
@@ -435,10 +441,17 @@ export class RaisesService {
 
   /**
    * The changes of pay waiting for the CEO (raises and renewals with new pay), oldest sent first, each with its person
-   * and the pay of the version it replaces: for Approvals (HR follows them, the CEO decides).
+   * and the pay of the version it replaces: for Approvals (HR follows them, the CEO decides); without a C-level
+   * person's for HR.
    */
   async pending(user: SessionUser) {
-    const rows = await this.prisma.contract.findMany({ where: { approval: 'pending_ceo', status: 'draft' }, orderBy: [{ sentAt: 'asc' }, { number: 'asc' }], include: PENDING_INCLUDE });
+    // a C-level person's only for the CEO and a Super Admin (owner, 19 October 2026: "make C level Employees details not
+    // visible to HR")
+    const rows = await this.prisma.contract.findMany({
+      where: { approval: 'pending_ceo', status: 'draft', employment: await this.confidential.ownedWhere(user) },
+      orderBy: [{ sentAt: 'asc' }, { number: 'asc' }],
+      include: PENDING_INCLUDE,
+    });
     const previous = rows.length
       ? await this.prisma.contract.findMany({ where: { OR: rows.map((r) => ({ employmentId: r.employmentId, version: r.version - 1 })) }, include: CONTRACT_INCLUDE })
       : [];

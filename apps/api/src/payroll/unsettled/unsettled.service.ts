@@ -4,6 +4,7 @@ import { AuditService } from '../../audit/audit.service.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../../common/date-only.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { ConfidentialService } from '../../employees/confidential.service.js';
 import { LeaveSettlementService, type UnusedLeaveView } from '../../leave/leave-settlement.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AdvancesService } from '../adjustments/advances.service.js';
@@ -103,6 +104,8 @@ export interface UnsettledView {
   held: { count: number; amount: number; rows: HeldLine[] };
   settlements: { count: number; rows: FinalSettlementView[]; recentlySettled: FinalSettlementView[] };
   advances: { count: number; amount: number; outstanding: number; rows: AdvanceView[] };
+  /** The C-level people left out for the caller (owner, 19 October 2026): their lines, settlements and advances, sums too. */
+  confidentialExcluded: number;
 }
 
 /** What a final settlement is shown with. */
@@ -136,6 +139,8 @@ type SettlementRow = Prisma.EmploymentGetPayload<{ select: typeof SETTLEMENT_SEL
 // records payouts. Every change is in the audit log, the amounts only as set, as for a salary. A final settlement lists
 // what is still outstanding of the employee's advances and loans (owner, 18 October 2026: "taken from the final
 // settlement, unless waived"), which HR settles as deducted from it or waives (POST /payroll/advances/:id/settle).
+// Without the C-level people (owner, 19 October 2026: "make C level Employees details not visible to HR") for anyone but
+// the CEO and a Super Admin: their held lines, final settlements and advances, and their lines in the runs' sums.
 @Injectable()
 export class UnsettledService {
   constructor(
@@ -143,16 +148,19 @@ export class UnsettledService {
     private readonly audit: AuditService,
     private readonly advances: AdvancesService,
     private readonly leave: LeaveSettlementService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
-  async unsettled(): Promise<UnsettledView> {
+  async unsettled(user: SessionUser): Promise<UnsettledView> {
     const today = todayInCairo();
-    const [runs, held, settlements, recentlySettled, advances] = await Promise.all([
-      this.runsNotPaid(),
-      this.heldLines(),
-      this.openSettlements(today),
-      this.recentlySettled(today),
-      this.advances.list({ status: 'open' }),
+    const hidden = await this.confidential.hiddenFrom(user);
+    const [runs, held, settlements, recentlySettled, advances, excluded] = await Promise.all([
+      this.runsNotPaid(hidden),
+      this.heldLines(hidden),
+      this.openSettlements(today, hidden),
+      this.recentlySettled(today, hidden),
+      this.advances.list({ status: 'open' }, hidden),
+      this.excluded(hidden),
     ]);
     return {
       generatedAt: new Date().toISOString(),
@@ -166,17 +174,38 @@ export class UnsettledService {
         outstanding: sumAmounts(advances.map((a) => a.outstanding)),
         rows: advances,
       },
+      confidentialExcluded: excluded,
     };
   }
 
+  /** How many of `hidden` are on a run not paid, or have something unsettled: those the lists leave out. */
+  private async excluded(hidden: readonly string[]): Promise<number> {
+    if (!hidden.length) return 0;
+    const ids = [...hidden];
+    const rows = await this.prisma.employee.findMany({
+      where: {
+        id: { in: ids },
+        OR: [
+          { payrollLines: { some: { run: { status: { not: 'paid' } } } } },
+          { payrollLines: { some: { onHold: true, transfer: { gt: 0 }, holdRelease: { is: null }, run: { status: { in: ['approved', 'paid'] } } } } },
+          { employments: { some: { endDate: { not: null }, OR: [{ finalSettlement: { is: null } }, { finalSettlement: { is: { status: 'open' } } }] } } },
+          { payrollAdvances: { some: { status: 'open' } } },
+        ],
+      },
+      select: { id: true },
+    });
+    return rows.length;
+  }
+
   /** The runs not marked paid, oldest month first, with their sums over their lines. */
-  async runsNotPaid(): Promise<RunNotPaid[]> {
+  async runsNotPaid(hidden: readonly string[] = []): Promise<RunNotPaid[]> {
     const runs = await this.prisma.payrollRun.findMany({ where: { status: { not: 'paid' } }, orderBy: { month: 'asc' } });
     if (!runs.length) return [];
     const ids = runs.map((r) => r.id);
+    const shown = hidden.length ? { employeeId: { notIn: [...hidden] } } : {};
     const [sums, holds] = await Promise.all([
-      this.prisma.payrollLine.groupBy({ by: ['runId'], where: { runId: { in: ids } }, _count: { _all: true }, _sum: { transfer: true, net: true, companyCost: true } }),
-      this.prisma.payrollLine.groupBy({ by: ['runId'], where: { runId: { in: ids }, onHold: true }, _count: { _all: true } }),
+      this.prisma.payrollLine.groupBy({ by: ['runId'], where: { runId: { in: ids }, ...shown }, _count: { _all: true }, _sum: { transfer: true, net: true, companyCost: true } }),
+      this.prisma.payrollLine.groupBy({ by: ['runId'], where: { runId: { in: ids }, onHold: true, ...shown }, _count: { _all: true } }),
     ]);
     const byRun = new Map(sums.map((s) => [s.runId, s]));
     const heldBy = new Map(holds.map((h) => [h.runId, h._count._all]));
@@ -199,9 +228,9 @@ export class UnsettledService {
   }
 
   /** Lines held on an approved or paid run with something to transfer, not recorded as paid out: oldest month first. */
-  async heldLines(): Promise<HeldLine[]> {
+  async heldLines(hidden: readonly string[] = []): Promise<HeldLine[]> {
     const lines = await this.prisma.payrollLine.findMany({
-      where: { onHold: true, transfer: { gt: 0 }, holdRelease: { is: null }, run: { status: { in: ['approved', 'paid'] } } },
+      where: { onHold: true, transfer: { gt: 0 }, holdRelease: { is: null }, run: { status: { in: ['approved', 'paid'] } }, ...(hidden.length && { employeeId: { notIn: [...hidden] } }) },
       orderBy: [{ run: { month: 'asc' } }, { nameEn: 'asc' }],
       select: {
         id: true,
@@ -228,9 +257,13 @@ export class UnsettledService {
   }
 
   /** The ended employments whose final settlement is open, the longest open first. */
-  async openSettlements(today = todayInCairo()): Promise<FinalSettlementView[]> {
+  async openSettlements(today = todayInCairo(), hidden: readonly string[] = []): Promise<FinalSettlementView[]> {
     const rows = await this.prisma.employment.findMany({
-      where: { endDate: { not: null, lte: toDateOnly(today) }, OR: [{ finalSettlement: { is: null } }, { finalSettlement: { is: { status: 'open' } } }] },
+      where: {
+        endDate: { not: null, lte: toDateOnly(today) },
+        OR: [{ finalSettlement: { is: null } }, { finalSettlement: { is: { status: 'open' } } }],
+        ...(hidden.length && { employeeId: { notIn: [...hidden] } }),
+      },
       orderBy: [{ endDate: 'asc' }, { employee: { fullNameEn: 'asc' } }],
       select: SETTLEMENT_SELECT,
     });
@@ -238,9 +271,12 @@ export class UnsettledService {
   }
 
   /** Those marked settled in the last RECENTLY_SETTLED_DAYS days, the latest first: HR can reopen one. */
-  async recentlySettled(today = todayInCairo()): Promise<FinalSettlementView[]> {
+  async recentlySettled(today = todayInCairo(), hidden: readonly string[] = []): Promise<FinalSettlementView[]> {
     const rows = await this.prisma.employment.findMany({
-      where: { finalSettlement: { is: { status: 'settled', settledOn: { gte: toDateOnly(addDays(today, -RECENTLY_SETTLED_DAYS)) } } } },
+      where: {
+        finalSettlement: { is: { status: 'settled', settledOn: { gte: toDateOnly(addDays(today, -RECENTLY_SETTLED_DAYS)) } } },
+        ...(hidden.length && { employeeId: { notIn: [...hidden] } }),
+      },
       orderBy: [{ finalSettlement: { settledOn: 'desc' } }, { employee: { fullNameEn: 'asc' } }],
       select: SETTLEMENT_SELECT,
     });

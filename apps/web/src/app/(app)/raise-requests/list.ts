@@ -18,6 +18,7 @@ import {
   type RaiseRequestStatus,
   type Role,
 } from '@trendlix/shared';
+import { decidesHrStage, requestStatusLabel } from '../../../lib/confidential';
 import { formatDate, formatDateTime } from '../../../lib/format';
 import type { RaiseRequest, RaiseRequestStep, RaiseSuggestion } from '../../../lib/raise-types';
 import { hasRole } from '../../../lib/roles';
@@ -47,8 +48,12 @@ import { myRequestsHref } from '../my-requests/requests';
 // prepares directly (on the contract, or a renewal with new pay) is listed too, "Prepared directly by HR", for HR,
 // Finance and the CEO only; the CEO decides each raise here as on Approvals; and the history (approved, done, rejected)
 // has its own choice in the status filter. The CEO may change the reason when approving ("i might want to ammend the
-// raise reason, not only the money"), which the log says. Pure code, tested; relative imports, as vitest doesn't know
-// the @/ paths.
+// raise reason, not only the money"), which the log says. A C-level person's request (owner, 19 October 2026: "make C
+// level Employees details not visible to HR"; `confidential`, from the API) has HR's step taken by the CEO, or HR with
+// Super Admin, and HR without it doesn't get the request at all: it says "With the CEO" while it waits for that step,
+// the CEO gets HR's decision on it (approve as suggested, with another raise, or reject) and counts it beside Raise
+// Requests; the raise itself is still prepared in the Contract section, which is HR's. Pure code, tested; relative
+// imports, as vitest doesn't know the @/ paths.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -90,6 +95,24 @@ export function showsRaiseRequests(
 
 /** The requests waiting for HR, for the count beside Raise Requests in the sidebar. */
 export const WITH_HR_REQUESTS = '/raise-requests?status=with_hr';
+
+/**
+ * Who reads the requests with HR for the count beside Raise Requests: HR, and the CEO, who takes HR's step on a C-level
+ * person's (owner, 19 October 2026).
+ */
+export const countsRaiseRequests = (user: WithRoles) => hasRole(user, 'hr', 'ceo');
+
+/**
+ * How many requests wait for the caller, beside Raise Requests in the sidebar (`requests`: those with HR): for HR every
+ * one with HR, as before, a C-level person's only with Super Admin (the API sends HR no others); for the CEO, the
+ * C-level people's waiting for HR's step, which the CEO takes (19 October 2026), not one returned to HR to rework.
+ */
+export function waitingForYouCount(user: WithRoles, requests: readonly Pick<RaiseRequest, 'status' | 'raise' | 'origin' | 'confidential'>[]): number {
+  return requests.filter((r) => {
+    if (r.status !== 'with_hr' || !decidesHrStage(user, r.confidential)) return false;
+    return handlesRaiseRequests(user) || requestActions(user, r).decide;
+  }).length;
+}
 
 // ---------- the status filter ----------
 
@@ -303,7 +326,12 @@ export const STATUS_BADGE: Record<RaiseRequestStatus, string> = {
   done: 'bg-ok-soft text-ok',
 };
 
-export const statusLabel = (status: RaiseRequestStatus) => RAISE_REQUEST_STATUS_LABELS[status] ?? status;
+/** "With HR", "With the CEO", …; "With the CEO" too for a C-level person's with HR, whose HR step the CEO takes (19 October 2026). */
+export const statusLabel = (status: RaiseRequestStatus, confidential?: boolean | null) =>
+  requestStatusLabel(status, RAISE_REQUEST_STATUS_LABELS[status] ?? status, confidential);
+
+/** A C-level person's HR step, which the CEO (or HR with Super Admin) takes: "at HR's step". */
+const AT_HR_STEP = 'at HR’s step';
 
 /**
  * Who asked: "The direct manager", with their sign-in email when the API sends it; a raise HR prepared directly
@@ -342,15 +370,17 @@ export function preparedRaiseText(raise: RaiseRequest['raise']): { title: string
 
 /**
  * Where a request stands, for its Decision column and card: what happened last, and the comment given with it (HR's or
- * the CEO's rejection, the CEO's return to HR, which only HR, Finance and the CEO are sent).
+ * the CEO's rejection, the CEO's return to HR, which only HR, Finance and the CEO are sent). A C-level person's HR step
+ * (`confidential`) by the step: the CEO takes it (19 October 2026).
  */
 export function progressText(r: RaiseRequest): { text: string; reason: string | null } {
   const at = (iso: string | null) => (iso ? ` on ${formatDate(iso)}` : '');
+  const clevel = r.confidential === true;
   switch (r.status) {
     case 'declined': {
       const d = r.decision;
-      const by = d?.stage === 'ceo' ? 'the CEO' : 'HR';
-      return { text: `Rejected by ${by}${at(d?.at ?? null)}`, reason: d?.reason ?? null };
+      const by = d?.stage === 'ceo' ? 'by the CEO' : clevel ? AT_HR_STEP : 'by HR';
+      return { text: `Rejected ${by}${at(d?.at ?? null)}`, reason: d?.reason ?? null };
     }
     case 'done': {
       // the new gross for HR, Finance, the CEO and the employee themself; never for the manager (the API leaves it out)
@@ -362,12 +392,14 @@ export function progressText(r: RaiseRequest): { text: string; reason: string | 
     case 'approved':
       return { text: `Approved by the CEO${at(r.raise?.approvedAt ?? null)}: the raise is to be signed`, reason: null };
     case 'with_ceo':
-      return { text: isDirect(r) ? 'HR sent the raise to the CEO' : 'HR approved it and sent the raise to the CEO', reason: null };
+      if (isDirect(r)) return { text: 'HR sent the raise to the CEO', reason: null };
+      return { text: clevel ? `Approved ${AT_HR_STEP}: the raise is with the CEO` : 'HR approved it and sent the raise to the CEO', reason: null };
     case 'with_hr':
     default:
       if (r.raise?.returnedReason) return { text: 'Returned by the CEO to HR', reason: r.raise.returnedReason };
       if (r.raise) return { text: 'HR is preparing the raise', reason: null };
-      return { text: 'Waiting for HR', reason: null };
+      // a C-level person's: the CEO takes HR's step
+      return { text: clevel ? `Waiting for the CEO, ${AT_HR_STEP}` : 'Waiting for HR', reason: null };
   }
 }
 
@@ -384,14 +416,18 @@ export const prepareRaiseHref = (employeeId: string, requestId: string) =>
  * promotion or other allowances with it); once a raise is prepared from it (returned by the CEO, or prepared before 17
  * October 2026), carry on with that raise in the Contract section, or reject the request (the raise goes with it). A
  * raise HR prepared directly (19 October 2026) is carried on with only: nobody asked for it, so there is nothing to reject.
+ * A C-level person's request (`confidential`, 19 October 2026): HR's step is the CEO's, or HR's with Super Admin
+ * (decidesHrStage): the CEO decides it and rejects it; the whole raise form and the raise itself stay HR's (the Contract
+ * section), with Super Admin.
  */
 export function requestActions(
   user: WithRoles,
-  r: Pick<RaiseRequest, 'status' | 'raise' | 'origin'>,
+  r: Pick<RaiseRequest, 'status' | 'raise' | 'origin' | 'confidential'>,
 ): { decide: boolean; prepare: boolean; continueRaise: boolean; decline: boolean } {
-  const hr = handlesRaiseRequests(user) && r.status === 'with_hr';
+  const step = r.status === 'with_hr' && decidesHrStage(user, r.confidential);
+  const hr = step && handlesRaiseRequests(user);
   const asked = !isDirect(r);
-  return { decide: hr && asked && !r.raise, prepare: hr && asked && !r.raise, continueRaise: hr && !!r.raise, decline: hr && asked && !!r.raise };
+  return { decide: step && asked && !r.raise, prepare: hr && asked && !r.raise, continueRaise: hr && !!r.raise, decline: step && asked && !!r.raise };
 }
 
 /** How many are waiting for HR. */
@@ -457,7 +493,7 @@ export function reasonChangeText(s: Pick<RaiseRequestStep, 'raiseReason' | 'rais
  * `request`: where it came from and its raise, for a raise HR prepared directly ("Prepared directly by HR", a renewal
  * saying so; 19 October 2026).
  */
-export function stepText(s: RaiseRequestStep, requester: RaiseRequester, request?: Pick<RaiseRequest, 'origin' | 'raise'>): { title: string; detail: string | null } {
+export function stepText(s: RaiseRequestStep, requester: RaiseRequester, request?: Pick<RaiseRequest, 'origin' | 'raise' | 'confidential'>): { title: string; detail: string | null } {
   const figures = figureText(s);
   // the month asked from (submitted) or HR chose (HR's approval), 17 October 2026
   const effective = s.effectiveDate ? `Effective from ${monthText(s.effectiveDate)}` : null;
@@ -474,8 +510,13 @@ export function stepText(s: RaiseRequestStep, requester: RaiseRequester, request
       const who = s.kind === 'hr_decision' ? 'HR' : 'The CEO';
       const what =
         s.decision === 'approve' ? (s.kind === 'hr_decision' ? 'approved it as suggested' : 'approved it') : s.decision === 'approve_other' ? 'approved it with another raise' : 'rejected it';
+      // a C-level person's HR step by the step, which the CEO takes (19 October 2026): the log says who
+      const clevelHr = s.kind === 'hr_decision' && request?.confidential === true;
+      const title = clevelHr
+        ? `${s.decision === 'approve' ? 'Approved as suggested' : s.decision === 'approve_other' ? 'Approved with another raise' : 'Rejected'} ${AT_HR_STEP}`
+        : `${who} ${what}`;
       // HR's approval: the date chosen too, once the caller is sent it (17 October 2026); the CEO's other reason
-      return { title: `${who} ${what}`, detail: s.decision === 'reject' ? null : join(figures, effective, reasonChangeText(s)) };
+      return { title, detail: s.decision === 'reject' ? null : join(figures, effective, reasonChangeText(s)) };
     }
     case 'prepared': {
       const renewal = direct && s.way === 'contract' && request?.raise?.change === 'renewal';

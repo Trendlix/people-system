@@ -6,6 +6,7 @@ import {
   REIMBURSEMENT_STAGES,
   REIMBURSEMENT_STATUS_LABELS,
   REIMBURSEMENT_STATUSES,
+  seesConfidential,
   statusAfterApproval,
   type ReimbursementDecision,
   type ReimbursementStage,
@@ -13,6 +14,7 @@ import {
   type Role,
 } from '@trendlix/shared';
 import { REIMBURSEMENTS_PATH } from '../../../components/nav';
+import { requestStatusLabel } from '../../../lib/confidential';
 import { approverPhrase, approverSubject, withApproverText, yourApprover } from '../../../lib/department-leads';
 import { hasRole } from '../../../lib/roles';
 import type { ReimbursementClaimStep, ReimbursementClaimView, RequestApprover } from '../../../lib/types';
@@ -28,8 +30,12 @@ import { monthName, monthOf } from '../payroll/list';
 // which the CEO may view; a direct manager from My Team. The rules are @trendlix/shared's (reimbursements.ts), which the
 // API enforces; these helpers only word what it sent, and read the decision form. Someone without a direct manager has
 // their claim decided first by their team lead, else their department's head (owner, 19 October 2026: "i want to add
-// department lead person, the person in charge"): the manager stage says which, by the claim's `manager.role`. Pure
-// code, tested; relative imports, as vitest doesn't know the @/ paths.
+// department lead person, the person in charge"): the manager stage says which, by the claim's `manager.role`. A C-level
+// person's claim (owner, 19 October 2026: "make C level Employees details not visible to HR"; `confidential`, from the
+// API) has HR's and Finance's stages decided by the CEO (or HR, or Finance, with Super Admin), and isn't listed to HR or
+// Finance without it: what is still to come names the CEO ("With the CEO", "Approve and send to the CEO"), and what was
+// done names the stage ("Approved at Finance's stage"), as HR or Finance may have decided it before then and the log
+// says who. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -159,7 +165,9 @@ export const STATUS_BADGE: Record<ReimbursementStatus, string> = {
   cancelled: 'bg-line-soft text-muted',
 };
 
-export const statusLabel = (status: ReimbursementStatus) => REIMBURSEMENT_STATUS_LABELS[status] ?? status;
+/** "With HR", "With Finance", …; "With the CEO" for a C-level person's claim at either (19 October 2026). */
+export const statusLabel = (status: ReimbursementStatus, confidential?: boolean | null) =>
+  requestStatusLabel(status, REIMBURSEMENT_STATUS_LABELS[status] ?? status, confidential);
 
 type Approver = Pick<RequestApprover, 'role'> | null | undefined;
 
@@ -168,6 +176,34 @@ const stagePhrase = (stage: ReimbursementStage, manager?: Approver) => (stage ==
 
 /** Each stage starting a sentence: "The direct manager" (or "The team lead", …), "HR", "Finance". */
 const stageSubject = (stage: ReimbursementStage, manager?: Approver) => (stage === 'manager' ? approverSubject(manager) : stage === 'hr' ? 'HR' : 'Finance');
+
+// ---------- a C-level person's claim (owner, 19 October 2026: their HR and Finance stages are the CEO's) ----------
+
+/** Whether the stage is one the CEO decides for a C-level person: HR's or Finance's. */
+const isStaffStage = (stage: ReimbursementStage | null | undefined): stage is 'hr' | 'finance' => stage === 'hr' || stage === 'finance';
+
+/** "HR’s stage", "Finance’s stage": a C-level person's staff stage by its name, which the CEO decides. */
+const stageOf = (stage: 'hr' | 'finance') => `${REIMBURSEMENT_STAGE_LABELS[stage]}’s stage`;
+
+/**
+ * Who decides the next stage, inside a sentence: "HR", "Finance"; a C-level person's (`confidential`), "the CEO" for
+ * HR's stage and "Finance’s stage" for Finance's (the CEO decides both, one after the other).
+ */
+function nextStageName(next: ReimbursementStatus, confidential?: boolean | null): string {
+  if (confidential !== true) return REIMBURSEMENT_STAGE_LABELS[next === 'with_hr' ? 'hr' : 'finance'];
+  return next === 'with_hr' ? 'the CEO' : stageOf('finance');
+}
+
+/**
+ * Who the user decides the stage as, in the decision section's heading ("Your Decision as …"): the direct manager (or
+ * the team lead, the head of department: `managerTitle`), HR or Finance; HR's or Finance's stage of a C-level person's
+ * claim (`confidential`), the CEO's, "the CEO, at HR's Stage", unless the user holds the stage's role with Super Admin.
+ */
+export function decidingAsTitle(user: WithRoles, stage: ReimbursementStage, managerTitle: string, confidential?: boolean | null): string {
+  if (stage === 'manager') return managerTitle;
+  if (confidential !== true || (hasRole(user, stage) && seesConfidential(user))) return REIMBURSEMENT_STAGE_LABELS[stage];
+  return `the CEO, at ${REIMBURSEMENT_STAGE_LABELS[stage]}’s Stage`;
+}
 
 /** A payroll month (its first day, or "YYYY-MM") by name: "November 2026". */
 export const payMonthText = (month: string) => monthName(monthOf(month));
@@ -183,20 +219,25 @@ export const currentAmount = (c: Pick<ReimbursementClaimView, 'amount' | 'approv
  * Where a claim stands, for its list row and its page: who has it now, or how it ended, and the comment given with a
  * rejection. Once approved, the payroll it is paid with: to be paid with it, paid with it, or its addition cancelled.
  */
-export function progressText(c: Pick<ReimbursementClaimView, 'status' | 'manager' | 'rejectedStage' | 'rejectReason' | 'payMonth' | 'payroll'>): {
+export function progressText(c: Pick<ReimbursementClaimView, 'status' | 'manager' | 'rejectedStage' | 'rejectReason' | 'payMonth' | 'payroll' | 'confidential'>): {
   text: string;
   reason: string | null;
 } {
+  const clevel = c.confidential === true;
   switch (c.status) {
     case 'with_manager':
       // "With the team lead (Sara Ali)": who decides it now
       return { text: withApproverText(c.manager), reason: null };
+    // a C-level person's: the CEO decides HR's stage, then Finance's (19 October 2026)
     case 'with_hr':
-      return { text: 'Waiting for HR', reason: null };
+      return { text: clevel ? `Waiting for the CEO, at ${stageOf('hr')}` : 'Waiting for HR', reason: null };
     case 'with_finance':
-      return { text: 'Waiting for Finance', reason: null };
-    case 'rejected':
-      return { text: c.rejectedStage ? `Rejected by ${stagePhrase(c.rejectedStage, c.manager)}` : 'Rejected', reason: c.rejectReason?.trim() || null };
+      return { text: clevel ? `Waiting for the CEO, at ${stageOf('finance')}` : 'Waiting for Finance', reason: null };
+    case 'rejected': {
+      const reason = c.rejectReason?.trim() || null;
+      if (clevel && isStaffStage(c.rejectedStage)) return { text: `Rejected at ${stageOf(c.rejectedStage)}`, reason };
+      return { text: c.rejectedStage ? `Rejected by ${stagePhrase(c.rejectedStage, c.manager)}` : 'Rejected', reason };
+    }
     case 'cancelled':
       return { text: 'Cancelled by the employee', reason: null };
     case 'approved':
@@ -219,27 +260,29 @@ export const payMonthOf = (c: Pick<ReimbursementClaimView, 'payMonth' | 'payroll
 
 /**
  * What the page says once a claim is sent: where it goes, by where it starts (with the manager, or straight to HR);
- * `manager`, who decides it first: the direct manager, or the team lead or head of department of someone without one.
+ * `manager`, who decides it first: the direct manager, or the team lead or head of department of someone without one;
+ * a C-level person's (`confidential`) goes to the CEO, who decides HR's and Finance's stages (19 October 2026).
  */
-export function sentText(status: ReimbursementStatus, manager?: Approver): string {
-  return status === 'with_manager'
-    ? `Claim sent. It goes to ${yourApprover(manager)}, then HR, then Finance; each step shows on the claim. Once approved, it is paid with the next payroll.`
-    : 'Claim sent. It goes to HR, then Finance; each step shows on the claim. Once approved, it is paid with the next payroll.';
+export function sentText(status: ReimbursementStatus, manager?: Approver, confidential?: boolean | null): string {
+  const then = confidential === true ? 'the CEO, for HR’s and Finance’s stages' : 'HR, then Finance';
+  const paid = 'each step shows on the claim. Once approved, it is paid with the next payroll.';
+  return status === 'with_manager' ? `Claim sent. It goes to ${yourApprover(manager)}, then ${then}; ${paid}` : `Claim sent. It goes to ${then}; ${paid}`;
 }
 
 /**
  * What the claim's page says after `?done=`, and in which tone (a decision refused as the claim had moved on: a
- * warning); null for anything else. `status`: the claim's now, for where a sent one goes, and `manager` to whom.
+ * warning); null for anything else. `status`: the claim's now, for where a sent one goes, and `manager` to whom;
+ * `confidential`: a C-level person's, whose HR and Finance stages are the CEO's.
  */
-export function doneText(query: Query, status: ReimbursementStatus, manager?: Approver): { text: string; tone: 'ok' | 'warn' } | null {
+export function doneText(query: Query, status: ReimbursementStatus, manager?: Approver, confidential?: boolean | null): { text: string; tone: 'ok' | 'warn' } | null {
   const done = typeof query.done === 'string' ? query.done : '';
-  if (done === 'sent') return { text: sentText(status, manager), tone: 'ok' };
+  if (done === 'sent') return { text: sentText(status, manager, confidential), tone: 'ok' };
   if (done === 'cancelled') return { text: 'Claim cancelled. It stays on your list, cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: MOVED_ON, tone: 'warn' };
   const [stage, ...rest] = done.split('_');
   const decision = rest.join('_');
   if (!(REIMBURSEMENT_STAGES as readonly string[]).includes(stage) || !(REIMBURSEMENT_DECISIONS as readonly string[]).includes(decision)) return null;
-  return { text: decidedText(decision as ReimbursementDecision, stage as ReimbursementStage), tone: 'ok' };
+  return { text: decidedText(decision as ReimbursementDecision, stage as ReimbursementStage, confidential), tone: 'ok' };
 }
 
 /** Said when a decision is refused as the claim moved on since the page was opened (the API's 409). */
@@ -250,9 +293,10 @@ export const MOVED_ON = 'This claim has moved on since you opened it: someone el
 /**
  * A step of a claim as its timeline shows it: what happened ("HR approved a lower amount", "The team lead approved it":
  * the manager stage by who decides it, the claim's `manager`), and what goes with it (the amount claimed or approved,
- * the payroll it was added to).
+ * the payroll it was added to). A C-level person's (`confidential`) HR and Finance stages by the stage ("Approved at
+ * Finance's stage"): the CEO decides them since 19 October 2026, and the step says who.
  */
-export function stepText(s: ReimbursementClaimStep, manager?: Approver): { title: string; detail: string | null } {
+export function stepText(s: ReimbursementClaimStep, manager?: Approver, confidential?: boolean | null): { title: string; detail: string | null } {
   const amount = s.amount !== null ? formatEgp(s.amount) : null;
   switch (s.kind) {
     case 'submitted':
@@ -263,7 +307,14 @@ export function stepText(s: ReimbursementClaimStep, manager?: Approver): { title
     case 'manager_decision':
     case 'hr_decision':
     case 'finance_decision': {
-      const who = stageSubject(s.kind.replace('_decision', '') as ReimbursementStage, manager);
+      const stage = s.kind.replace('_decision', '') as ReimbursementStage;
+      if (confidential === true && isStaffStage(stage)) {
+        const at = `at ${stageOf(stage)}`;
+        if (s.decision === 'reject') return { title: `Rejected ${at}`, detail: null };
+        if (s.decision === 'approve_other') return { title: `A lower amount approved ${at}`, detail: amount };
+        return { title: `Approved ${at}`, detail: amount };
+      }
+      const who = stageSubject(stage, manager);
       if (s.decision === 'reject') return { title: `${who} rejected it`, detail: null };
       if (s.decision === 'approve_other') return { title: `${who} approved a lower amount`, detail: amount };
       return { title: `${who} approved it`, detail: amount };
@@ -338,21 +389,32 @@ export function decisionBody(fd: FormData, current: number): { body: DecisionBod
   return { body: errors.length ? null : body, errors };
 }
 
-/** The decision form's button, by the decision and the stage: where an approved claim goes next. */
-export function decisionButton(decision: ReimbursementDecision | '', stage: ReimbursementStage): { label: string; busy: string } {
+/**
+ * The decision form's button, by the decision and the stage: where an approved claim goes next (a C-level person's,
+ * `confidential`: to the CEO, then on to Finance's stage, which the CEO decides too).
+ */
+export function decisionButton(decision: ReimbursementDecision | '', stage: ReimbursementStage, confidential?: boolean | null): { label: string; busy: string } {
   if (decision === 'reject') return { label: 'Reject the claim', busy: 'Rejecting…' };
   const next = statusAfterApproval(stage);
-  const label = next === 'with_hr' ? 'Approve and send to HR' : next === 'with_finance' ? 'Approve and send to Finance' : 'Approve and add to payroll';
+  const label = next === 'approved' ? 'Approve and add to payroll' : `Approve and send to ${nextStageName(next, confidential)}`;
   return { label: decision === '' ? 'Save the decision' : label, busy: 'Approving…' };
 }
 
-/** What the page says once a decision went through. */
-export function decidedText(decision: ReimbursementDecision, stage: ReimbursementStage): string {
+/** What the page says once a decision went through; a C-level person's claim (`confidential`) goes on to the CEO's stages. */
+export function decidedText(decision: ReimbursementDecision, stage: ReimbursementStage, confidential?: boolean | null): string {
   if (decision === 'reject') return 'Claim rejected. The employee sees your comment.';
   const next = statusAfterApproval(stage);
   if (next === 'approved') return 'Approved: it is added, untaxed, to the next payroll not yet approved.';
-  return `Approved: the claim goes to ${REIMBURSEMENT_STAGE_LABELS[next === 'with_hr' ? 'hr' : 'finance']}.`;
+  if (confidential === true && next === 'with_finance') return `Approved: the claim goes on to ${stageOf('finance')}, which the CEO decides too.`;
+  return `Approved: the claim goes to ${nextStageName(next, confidential)}.`;
 }
 
 /** Who reads the decision's comment, for the hint under its box. */
 export const COMMENT_READERS = 'The employee sees your comment, and so do the direct manager, HR, Finance and the CEO.';
+
+/**
+ * Who reads the decision's comment: COMMENT_READERS; a C-level person's claim (`confidential`) HR and Finance don't
+ * see, only the CEO and the Super Admin (19 October 2026).
+ */
+export const commentReaders = (confidential?: boolean | null) =>
+  confidential === true ? 'The employee sees your comment, and so do the direct manager, the CEO and the Super Admin.' : COMMENT_READERS;

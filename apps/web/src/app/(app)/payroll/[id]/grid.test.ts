@@ -275,6 +275,19 @@ describe('what changed', () => {
     expect(unsavedCount(lines, edits)).toEqual({ cells: 3, rows: 2 });
   });
 
+  it('sends only the rows the caller fills: the CEO the C-level people’s, HR the rest (owner, 19 October 2026)', () => {
+    // the CEO's view: Mona's line is HR's, Karim's (C-level) the CEO's
+    const ceo: GridLine[] = [
+      { ...lines[0], editable: false },
+      { ...lines[1], editable: true },
+    ];
+    const edits = { [A]: { inputs: { workedHours: '100', noShowDays: 'x' }, onHold: true }, [B]: { inputs: { noShowDays: '2' } } };
+    expect(linePatches(ceo, edits)).toEqual({ patches: [{ id: B, inputs: { noShowDays: 2 } }], errors: [] });
+    expect(unsavedCount(ceo, edits)).toEqual({ cells: 1, rows: 1 });
+    // lines that don't say take edits, as before
+    expect(linePatches(lines, { [A]: { inputs: { noShowDays: '1' } } }).patches).toEqual([{ id: A, inputs: { noShowDays: 1 } }]);
+  });
+
   it('says how many changes are not saved', () => {
     expect(unsavedText({ cells: 1, rows: 1 })).toBe('1 unsaved change');
     expect(unsavedText({ cells: 3, rows: 1 })).toBe('3 unsaved changes');

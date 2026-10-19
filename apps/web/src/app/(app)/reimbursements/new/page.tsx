@@ -24,7 +24,7 @@ function Heading({ back }: { back: { href: string; label: string } | null }) {
       <h1 className="text-2xl font-semibold">New Reimbursement</h1>
       <p className="text-muted">
         Claim back an expense you paid for the company: the type, the date, the amount and what it was for, with the receipts. Your direct manager
-        decides it first (without one, your team lead, else the head of your department), then HR, then Finance; once approved, it is paid with the next payroll, untaxed.
+        decides it first (without one, your team lead, else the head of your department), then HR, then Finance (the CEO for a C-level person, both stages); once approved, it is paid with the next payroll, untaxed.
       </p>
     </div>
   );

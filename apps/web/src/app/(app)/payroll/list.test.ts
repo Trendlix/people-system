@@ -4,6 +4,7 @@ import {
   addMonths,
   canSeePayroll,
   employeesLabel,
+  hiddenTotalsText,
   isMonth,
   monthName,
   payrollSteps,
@@ -138,5 +139,15 @@ describe('the rules in words', () => {
     expect(employeesLabel(1)).toBe('1 employee');
     expect(employeesLabel(0)).toBe('0 employees');
     expect(employeesLabel(12)).toBe('12 employees');
+  });
+});
+
+describe('a run’s totals in the lists, without the C-level people hidden from the caller (owner, 19 October 2026)', () => {
+  it('say how many they leave out, and nothing when none', () => {
+    expect(hiddenTotalsText(2)).toBe('Totals leave out C-level (2 people)');
+    expect(hiddenTotalsText(1)).toBe('Totals leave out C-level (1 person)');
+    expect(hiddenTotalsText(0)).toBeNull();
+    // an API from before it
+    expect(hiddenTotalsText(undefined)).toBeNull();
   });
 });

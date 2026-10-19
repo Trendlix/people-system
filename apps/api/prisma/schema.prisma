@@ -212,19 +212,23 @@ model JobTitle {
 // (1 = entry level). Job title and grade apart (owner's decision, 15 October 2026): a job title takes a range of grades,
 // and an employee's grade is their employment's own, within the range of their job title.
 model Grade {
-  id          String       @id @default(uuid()) @db.Uuid
-  code        String       @unique // G1 … G9
-  rank        Int          @unique // 1 = lowest level
-  levelEn     String       @map("level_en") // Entry Level, Junior, … Executive
-  levelAr     String?      @map("level_ar")
-  description String? // e.g. example job titles
-  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz
-  lowestOf    JobTitle[]   @relation("JobTitleMinGrade") // job titles whose range starts at this grade
-  highestOf   JobTitle[]   @relation("JobTitleMaxGrade") // job titles whose range ends at this grade
-  employments Employment[]
-  offers      JobOffer[]
-  promotions  Contract[]   @relation("RaiseGrade") // raises that promote to this grade
+  id           String       @id @default(uuid()) @db.Uuid
+  code         String       @unique // G1 … G9
+  rank         Int          @unique // 1 = lowest level
+  levelEn      String       @map("level_en") // Entry Level, Junior, … Executive
+  levelAr      String?      @map("level_ar")
+  description  String? // e.g. example job titles
+  // C-level (owner, 19 October 2026: "make C level Employees details not visible to HR"): those whose current employment
+  // has this grade show HR, Finance, Admin and managers only their directory card; the CEO and the Super Admin see and
+  // manage them. G9 · Executive is marked; a Super Admin ticks it on the grades page (packages/shared confidential.ts)
+  confidential Boolean      @default(false)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  lowestOf     JobTitle[]   @relation("JobTitleMinGrade") // job titles whose range starts at this grade
+  highestOf    JobTitle[]   @relation("JobTitleMaxGrade") // job titles whose range ends at this grade
+  employments  Employment[]
+  offers       JobOffer[]
+  promotions   Contract[]   @relation("RaiseGrade") // raises that promote to this grade
 
   @@map("grades")
 }

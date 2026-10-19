@@ -6,7 +6,9 @@ import { ConfirmationsService } from './confirmations.service.js';
 
 // The employee's own check of their details (owner's decision, 15 October 2026): the employee confirms them or asks
 // for a change (checked by the service: only the employee themself); HR or an Admin approves or rejects the change;
-// the employee may cancel it while it waits. Each change request answer is the request.
+// the employee may cancel it while it waits. Each change request answer is the request. A C-level person's request (owner,
+// 19 October 2026: "make C level Employees details not visible to HR") is the CEO's or a Super Admin's to decide, so the
+// CEO reads the queue and decides too: theirs only (checked by the service).
 @Controller()
 export class ConfirmationsController {
   constructor(private readonly confirmations: ConfirmationsService) {}
@@ -23,20 +25,20 @@ export class ConfirmationsController {
   }
 
   /** HR's queue is the default: the requests waiting (status pending); `?status=all` lists every request. */
-  @Roles('hr', 'admin')
+  @Roles('hr', 'admin', 'ceo')
   @Get('change-requests')
-  list(@Query() query: ListChangeRequestsDto) {
-    return this.confirmations.list(query.status);
+  list(@Query() query: ListChangeRequestsDto, @CurrentUser() user: SessionUser) {
+    return this.confirmations.list(query.status, user);
   }
 
-  @Roles('hr', 'admin')
+  @Roles('hr', 'admin', 'ceo')
   @Post('change-requests/:id/approve')
   @HttpCode(200)
   approve(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecisionNoteDto, @CurrentUser() user: SessionUser) {
     return this.confirmations.approve(id, dto, user);
   }
 
-  @Roles('hr', 'admin')
+  @Roles('hr', 'admin', 'ceo')
   @Post('change-requests/:id/reject')
   @HttpCode(200)
   reject(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecisionNoteDto, @CurrentUser() user: SessionUser) {

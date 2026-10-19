@@ -13,6 +13,7 @@ import {
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { PLACE } from '../employees/employees.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -42,25 +43,30 @@ const EMPLOYMENT = {
 // Cairo unless asked, every signed pay change that took effect in it, the totals, by department, and who is due for a
 // salary review after the payroll settings' "Salary review due after" months. Each employment's versions are read as
 // the Salary History reads them (PAY_VERSIONS, payVersion, payEvents), so its figures are each person's. Salary data:
-// HR, Finance and the CEO. Every workbook downloaded is in the audit log, with its period and whose raises it has.
+// HR, Finance and the CEO. Every workbook downloaded is in the audit log, with its period and whose raises it has. The
+// C-level people (owner, 19 October 2026: "make C level Employees details not visible to HR") only for the CEO and a
+// Super Admin: left out for anyone else, totals and departments too, `confidentialExcluded` saying how many.
 @Injectable()
 export class SalaryRaisesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
-  async report(query: SalaryRaisesQueryDto) {
+  async report(query: SalaryRaisesQueryDto, user: SessionUser) {
     const today = todayInCairo();
     const period = requestedPeriod(query, today);
     const problem = periodProblem(period);
     if (problem) throw new BadRequestException(problem);
     const { start, end } = periodDays(period);
 
+    const hidden = await this.confidential.hiddenFrom(user);
+    const inReport: Prisma.EmploymentWhereInput = { OR: [{ endDate: null }, { contracts: { some: { approval: { not: null }, startDate: { gte: toDateOnly(start), lte: toDateOnly(end) } } } }] };
     // the current employments (who may be due for review), and the ended ones with a change of pay in the period
-    const [rows, settings, requests] = await Promise.all([
+    const [rows, settings, requests, excluded] = await Promise.all([
       this.prisma.employment.findMany({
-        where: { OR: [{ endDate: null }, { contracts: { some: { approval: { not: null }, startDate: { gte: toDateOnly(start), lte: toDateOnly(end) } } } }] },
+        where: { ...inReport, ...(hidden.length && { employeeId: { notIn: hidden } }) },
         orderBy: [{ employee: { employeeCode: 'asc' } }, { joinDate: 'asc' }],
         select: EMPLOYMENT,
       }),
@@ -68,6 +74,8 @@ export class SalaryRaisesService {
       this.prisma.payrollSettings.findUnique({ where: { id: 1 }, select: { salaryReviewMonths: true } }),
       // the requests asked for: one prepared directly by HR is its raise, open already (19 October 2026)
       this.prisma.raiseRequest.findMany({ where: { origin: 'request', status: { in: [...OPEN_RAISE_REQUEST_STATUSES] } }, select: { id: true, employmentId: true, status: true } }),
+      // the C-level people the report would have, left out for the caller
+      hidden.length ? this.prisma.employment.findMany({ where: { ...inReport, employeeId: { in: hidden } }, select: { employeeId: true }, distinct: ['employeeId'] }) : [],
     ]);
     const names = await approverNames(this.prisma, rows.flatMap((e) => e.contracts));
     const open = new Map(requests.map((r) => [r.employmentId, { id: r.id, status: r.status as RaiseRequestStatus }]));
@@ -87,12 +95,13 @@ export class SalaryRaisesService {
     return {
       generatedAt: new Date().toISOString(),
       ...salaryRaisesReport(employments, period, today, settings?.salaryReviewMonths ?? SALARY_REVIEW_MONTHS_DEFAULT),
+      confidentialExcluded: excluded.length,
     };
   }
 
-  /** The report as an Excel workbook, named with its period; the download is in the audit log. */
+  /** The report as an Excel workbook, named with its period; the download is in the audit log. Without the C-level people, as the report. */
   async workbook(query: SalaryRaisesQueryDto, user: SessionUser): Promise<{ fileName: string; data: Buffer }> {
-    const report = await this.report(query);
+    const report = await this.report(query, user);
     const data = await salaryRaisesWorkbook(report);
     await this.audit.record({
       userId: user.id,

@@ -356,3 +356,8 @@ export * from './leaves.js';
 // department heads and team leads (owner, 19 October 2026: "i want to add department lead person, the person in
 // charge"): what they are called, the default direct manager when hiring, and who approves when there is no manager
 export * from './department-leads.js';
+
+// C-level people kept from HR (owner, 19 October 2026: "make C level Employees details not visible to HR"): who sees
+// them (the CEO, the Super Admin, the person themself), who decides their requests' HR stages and fills their payroll
+// lines (the CEO), and what the screens say of those left out
+export * from './confidential.js';

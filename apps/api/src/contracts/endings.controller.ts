@@ -1,15 +1,18 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { CreateEndingDto, EndingNoteDto, ListEndingsDto, RejectEndingDto } from './contracts.dto.js';
 import { EndingsService } from './endings.service.js';
 
 // How an employment ends: HR records (and so approves) it, the CEO approves or rejects it, HR withdraws or completes
-// it. Each answer is the ending.
+// it. Each answer is the ending. A C-level person's (owner, 19 October 2026) only for the CEO and a Super Admin: 404 for
+// anyone else, and left out of the list.
 @Controller()
 export class EndingsController {
   constructor(private readonly endings: EndingsService) {}
 
+  @ConfidentialOf('employee')
   @Roles('hr')
   @Post('employees/:id/employments/:employmentId/endings')
   create(
@@ -29,6 +32,7 @@ export class EndingsController {
   }
 
   /** The CEO only: HR's approval is recording the ending. */
+  @ConfidentialOf('ending')
   @Roles('ceo')
   @Post('endings/:id/approve')
   @HttpCode(200)
@@ -36,6 +40,7 @@ export class EndingsController {
     return this.endings.approve(id, dto, user);
   }
 
+  @ConfidentialOf('ending')
   @Roles('ceo')
   @Post('endings/:id/reject')
   @HttpCode(200)
@@ -43,6 +48,7 @@ export class EndingsController {
     return this.endings.reject(id, dto, user);
   }
 
+  @ConfidentialOf('ending')
   @Roles('hr')
   @Post('endings/:id/withdraw')
   @HttpCode(200)
@@ -50,6 +56,7 @@ export class EndingsController {
     return this.endings.withdraw(id, dto, user);
   }
 
+  @ConfidentialOf('ending')
   @Roles('hr')
   @Post('endings/:id/complete')
   @HttpCode(200)

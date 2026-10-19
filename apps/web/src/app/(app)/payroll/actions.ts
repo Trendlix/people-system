@@ -58,7 +58,10 @@ export async function refreshRun(id: string): Promise<FormState> {
   return act(() => apiSend('POST', `/payroll/runs/${id}/refresh`), 'Refreshed.');
 }
 
-/** Saves the rows of the inputs grid that changed, in one request (HR, a draft). */
+/**
+ * Saves the rows of the inputs grid that changed, in one request (a draft: HR's lines, and the C-level people's the
+ * CEO's, owner, 19 October 2026: "the CEO fills their inputs"; the API refuses a line that isn't the caller's).
+ */
 export async function saveRunLines(id: string, lines: LinePatch[]): Promise<FormState> {
   if (!UUID.test(id)) return NOT_FOUND;
   if (!Array.isArray(lines) || lines.length === 0) return { errors: ['Nothing has changed.'] };

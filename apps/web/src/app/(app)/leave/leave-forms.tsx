@@ -23,7 +23,7 @@ import { choice } from '../employees/[id]/contracts/pay-fields';
 import { shrinkPhoto } from '../employees/shrink-photo';
 import { sizeText } from '../reimbursements/claim';
 import { leaveYearData } from './actions';
-import { daysNumber, daysText, LEAVE_COMMENT_READERS, leaveDecisionButton } from './list';
+import { daysNumber, daysText, hrStageName, LEAVE_COMMENT_READERS, leaveCommentReaders, leaveDecisionButton } from './list';
 import { balanceAfter, countLeaveDays, countText, DOCUMENT_ACCEPT, leaveFormProblems, REASON_MAX, requestYear, rulesOf, type TypedLeave } from './request';
 
 // The forms of a leave request (owner, 18 October 2026: "can you apply the leaves according to the law?"): the new
@@ -229,6 +229,7 @@ export function NewLeaveForm({
   person,
   initial,
   cancelHref,
+  toCeo = false,
 }: {
   action: Action;
   types: LeaveTypeView[];
@@ -236,6 +237,8 @@ export function NewLeaveForm({
   person: LeavePerson;
   initial: YearData;
   cancelHref: string;
+  /** The employee is C-level (19 October 2026): after their manager it goes to the CEO, not HR. */
+  toCeo?: boolean;
 }) {
   const [state, formAction, sending] = useActionState(action, {});
   const fid = useFieldIds();
@@ -443,7 +446,7 @@ export function NewLeaveForm({
         ) : (
           <p className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
             Ready to {byHr ? 'record' : 'send'}: {daysText(days)} of {type?.nameEn.toLowerCase()}
-            {byHr ? ` for ${person.name}, approved at once.` : ', to your direct manager (without one, your lead), then HR.'}
+            {byHr ? ` for ${person.name}, approved at once.` : `, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}.`}
           </p>
         )}
       </div>
@@ -462,8 +465,12 @@ export function NewLeaveForm({
 
 // ---------- deciding a request ----------
 
-/** An approver's decision on a request waiting for them: Approve (a comment optional), or Reject with a comment. Rejecting asks first. */
-export function LeaveDecisionForm({ action, stage, name }: { action: Action; stage: LeaveStage; name: string }) {
+/**
+ * An approver's decision on a request waiting for them: Approve (a comment optional), or Reject with a comment. Rejecting
+ * asks first. `confidential`: a C-level person's request, which goes on to the CEO, not HR, and HR doesn't read (19
+ * October 2026).
+ */
+export function LeaveDecisionForm({ action, stage, name, confidential = false }: { action: Action; stage: LeaveStage; name: string; confidential?: boolean }) {
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   const [decision, setDecision] = useState<LeaveDecision | ''>(() => {
@@ -473,7 +480,7 @@ export function LeaveDecisionForm({ action, stage, name }: { action: Action; sta
   const [comment, setComment] = useState(() => valueOf(state, 'comment'));
   const needsComment = decision !== '' && leaveDecisionNeedsComment(decision);
   const ready = decision !== '' && (!needsComment || comment.trim() !== '');
-  const button = leaveDecisionButton(decision, stage);
+  const button = leaveDecisionButton(decision, stage, confidential);
 
   return (
     <form
@@ -513,7 +520,7 @@ export function LeaveDecisionForm({ action, stage, name }: { action: Action; sta
         />
         <p id={fid('comment-hint')} className="hint">
           {decision === 'reject' ? 'Why it is rejected. ' : ''}
-          {LEAVE_COMMENT_READERS}
+          {leaveCommentReaders(confidential)}
         </p>
       </div>
       <button

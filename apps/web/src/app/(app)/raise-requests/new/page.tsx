@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { actionablePeople } from '@/lib/confidential';
 import { loadLawRates } from '@/lib/law-rates';
 import { getCurrentUser } from '@/lib/session';
 import type { EmployeeSummary } from '@/lib/types';
@@ -22,7 +23,8 @@ import { EmployeePicker } from './employee-picker';
 // Finance, the CEO and the employee for their own pay. HR, the CEO and Finance come from the Raise Requests list; the
 // employee from My Requests and the dashboard; a manager from My Team. The list itself stays theirs: the employee and
 // the manager reach only this page, and once sent land on their own My Requests, where the request shows. The API
-// checks who may ask again.
+// checks who may ask again. A C-level person the user sees only the card of isn't offered (owner, 19 October 2026:
+// "make C level Employees details not visible to HR"): the API refuses a raise request for them.
 
 export const metadata: Metadata = { title: 'New Raise Request · People System' };
 
@@ -48,7 +50,7 @@ async function NewRequest({ searchParams }: { searchParams: PageProps<'/raise-re
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   const people = await getOrNull<EmployeeSummary[]>('/employees');
   const listBack = canSeeRaiseRequests(user) ? requestBackHref(user, false) : null;
-  const choices = people ? requestablePeople(user, people) : [];
+  const choices = people ? requestablePeople(user, actionablePeople(people)) : [];
   if (people === null || choices.length === 0) {
     return (
       <>

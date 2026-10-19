@@ -5,6 +5,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, todayInCairo } from '../common/date-only.js';
 import { detectLogoType } from '../company/logo-type.js';
 import { departmentName } from '../contracts/views.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { cairoDate } from '../offers/rules.js';
 import { protectPdf } from '../pdf/pdf.service.js';
@@ -21,7 +22,8 @@ import { monthOf, runLawRates } from './views.js';
 // everyone paid (not on hold); a missing one, and the Arabic one, are drawn the first time they are asked for. A kept
 // payslip is never drawn again: the run is locked from the CEO's approval on. HR, Finance and the CEO download one, or
 // all of a run's as a ZIP; every payslip drawn and every download is in the audit log, without amounts (the line is
-// restricted data). Emailing them comes later.
+// restricted data). Emailing them comes later. A C-level person's payslips (owner, 19 October 2026: "make C level
+// Employees details not visible to HR") only for the CEO and a Super Admin: 404 for anyone else, and left out of the ZIP.
 
 const LINE = 'payroll_line';
 const RUN = 'payroll_run';
@@ -97,6 +99,7 @@ export class PayslipsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /**
@@ -129,7 +132,7 @@ export class PayslipsService {
   /** A line's payslip in a language: the kept one, or drawn and kept the first time it is asked for. */
   async lineFile(lineId: string, language: PayslipLanguage, user: SessionUser): Promise<PayslipFile> {
     const line = await this.prisma.payrollLine.findUnique({ where: { id: lineId }, select: SOURCE_SELECT });
-    if (!line) throw new NotFoundException('Payroll line not found.');
+    if (!line || (await this.confidential.isHidden(user, line.employeeId))) throw new NotFoundException('Payroll line not found.');
     this.assertPaid(line.run);
     if (line.onHold) throw new ConflictException(ON_HOLD);
     const file = (await this.kept(line.id, language)) ?? (await this.draw(line, (await this.sources([line])).get(line.id)!, language, user));
@@ -150,7 +153,8 @@ export class PayslipsService {
     this.assertPaid(run);
     const month = monthOf(run);
     const lines = await this.prisma.payrollLine.findMany({
-      where: { runId, onHold: false },
+      // without the C-level people's for anyone but the CEO and a Super Admin, who download the ZIP complete
+      where: { runId, onHold: false, ...(await this.confidential.ownedWhere(user)) },
       select: { id: true, employeeCode: true, payslips: { where: { language: 'en' }, select: { fileName: true, data: true } } },
       orderBy: { employeeCode: 'asc' },
     });
@@ -179,9 +183,9 @@ export class PayslipsService {
   }
 
   /** The employee's months paid (runs marked paid), newest first, with which payslips are drawn. */
-  async employeePayslips(employeeId: string): Promise<EmployeePayslip[]> {
+  async employeePayslips(employeeId: string, user: SessionUser): Promise<EmployeePayslip[]> {
     const employee = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true } });
-    if (!employee) throw new NotFoundException('Employee not found.');
+    if (!employee || (await this.confidential.isHidden(user, employeeId))) throw new NotFoundException('Employee not found.');
     const lines = await this.prisma.payrollLine.findMany({
       where: { employeeId, run: { status: 'paid' } },
       select: {

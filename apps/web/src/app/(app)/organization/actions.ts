@@ -117,6 +117,9 @@ export async function deleteJobTitle(id: string, departmentId: string, _prev: Fo
 // ---------- grades ----------
 
 // The grading system (G1 Entry Level … G9 Executive): `rank` is the level in the hierarchy, 1 the lowest.
+// `confidential`: those holding it are C-level (owner, 19 October 2026: "make C level Employees details not visible to
+// HR"), a Super Admin's tick only: sent only when the form had it (`confidentialShown`), so nobody else's save touches
+// it; the API refuses anyone else's change with 403 anyway.
 const gradeBody = (fd: FormData) => {
   const rank = text(fd, 'rank').trim();
   return {
@@ -125,6 +128,7 @@ const gradeBody = (fd: FormData) => {
     levelEn: text(fd, 'levelEn'),
     levelAr: text(fd, 'levelAr'),
     description: text(fd, 'description'),
+    ...(fd.has('confidentialShown') && { confidential: fd.get('confidential') === 'on' }),
   };
 };
 

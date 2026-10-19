@@ -22,7 +22,7 @@ import { firstPick, pickAfterPlace, suggestionHint, suggestManager, type Manager
 import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
-import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
+import { CONFIDENTIAL_GRADES_LEFT_OUT, gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
 import { COMMISSION_HINT, employmentTypeHint, WORK_NATURE_HINTS, workPatternNote } from './employment-law';
 import { statusField } from './employment-status';
 import { HazardousWorkField } from './leave-fields';
@@ -41,8 +41,10 @@ export type EmploymentPickers = {
   departments: Department[];
   /** Each with the grades it allows (`minGrade`, `maxGrade`), for the Grade picker. */
   jobTitles: JobTitleSummary[];
-  /** GET /grades, lowest first. */
+  /** GET /grades, lowest first: without the C-level ones for those who may not set them (pickableGrades). */
   grades: Grade[];
+  /** The C-level grades were left out (owner, 19 October 2026): the Grade picker says who sets them. */
+  confidentialGradesLeftOut?: boolean;
   shifts: Shift[];
   /** Who can be picked as direct manager (GET /employees), without the employee themself. */
   managers: EmployeeSummary[];
@@ -329,6 +331,8 @@ export function EmploymentFields({
               {outOfRange ? `${range} ${gradeLabel(grade)} was set before that, and can stay as it is.` : range}
             </p>
           )}
+          {/* only the CEO and the Super Admin set a C-level grade (owner, 19 October 2026) */}
+          {pickers.confidentialGradesLeftOut && <p className="hint">{CONFIDENTIAL_GRADES_LEFT_OUT}</p>}
           <div role="status">
             {clearedGrade && (
               <p className="hint text-warn">

@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Fragment, Suspense } from 'react';
 import { END_REASON_LABELS, STANDING_LABELS, STANDINGS, type Standing } from '@trendlix/shared';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { DepartmentOptions } from '@/components/department-options';
 import { GroupHeading } from '@/components/group-heading';
 import { Select } from '@/components/select';
 import { apiGet } from '@/lib/api';
+import { cLevelTitle } from '@/lib/confidential';
 import { withTeams } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import { placeOrder, showsDepartment } from '@/lib/place-groups';
@@ -22,7 +24,10 @@ import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, g
 // The directory filters on this server from the one GET /employees call (the API already limits it to the people
 // the caller may see), so the counts always match the list. Everyone keeps a profile: someone whose employment ended is
 // a former employee, and someone added before being hired is not employed yet (their standing). The team, job title,
-// grade and manager are the current employment's, and so are the department and grade filters.
+// grade and manager are the current employment's, and so are the department and grade filters. A C-level person (owner,
+// 19 October 2026: "make C level Employees details not visible to HR") is marked so; for those who see only their card
+// (`restricted`), the row has its name, photo, work email, code, job title, department or team and standing, the grade and
+// the manager a dash, and the name opens the card.
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -81,7 +86,7 @@ const dash = <span className="text-muted">—</span>;
 
 /**
  * The team, job title, grade and manager columns: the current employment's. For a former employee, when and why they
- * left, across the four columns.
+ * left, across the four columns. A C-level person's card has no grade nor manager (left out by the API): a dash.
  */
 function Placement({ employee: e }: { employee: EmployeeSummary }) {
   const job = e.employment;
@@ -241,6 +246,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                                   <Link href={`/employees/${e.id}`} className="font-semibold">
                                     {e.fullNameEn}
                                   </Link>
+                                  {e.confidential && <CLevelBadge title={cLevelTitle(e.restricted)} className="ml-2" />}
                                   {e.workEmail && <div className="text-xs text-muted">{e.workEmail}</div>}
                                 </div>
                               </div>

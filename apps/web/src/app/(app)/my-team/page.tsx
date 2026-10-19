@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { CLevelBadge } from '@/components/c-level-badge';
+import { cLevelTitle } from '@/lib/confidential';
 import { formatDate } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { NoProfile } from '../dashboard/cards';
@@ -34,7 +36,9 @@ import { askedByText, latestRaise, probationOf } from './team';
 // you apply the leaves according to the law?"): the leave requests waiting for the manager, who decides them first, then
 // HR; and the team's calendar, a month of who is off (?month=2026-10), with the official holidays. A department's head
 // or a team's lead (owner, 19 October 2026: "i want to add department lead person, the person in charge") decides
-// first the leave and claims of its people without a direct manager: theirs wait here too, each saying why.
+// first the leave and claims of its people without a direct manager: theirs wait here too, each saying why. A C-level
+// report (owner, 19 October 2026: "make C level Employees details not visible to HR") is their card alone: the name
+// (opening the card), the job title and where they stand, nothing of their probation or raises.
 
 export const metadata: Metadata = { title: 'My Team · People System' };
 
@@ -61,7 +65,7 @@ async function Team() {
           </tr>
         </thead>
         <tbody>
-          {team.map(({ report: r, profile: theirs, raises }) => {
+          {team.map(({ report: r, profile: theirs, restricted, raises }) => {
             const probation = probationOf(theirs?.employment, today);
             const latest = raises.kind === 'ok' ? latestRaise(raises.value.requests) : null;
             return (
@@ -70,6 +74,7 @@ async function Team() {
                   <Link href={`/employees/${r.id}`} className="font-semibold">
                     {r.fullNameEn}
                   </Link>
+                  {restricted && <CLevelBadge title={cLevelTitle(true)} className="ml-2" />}
                   <div className="text-xs text-muted tabular-nums">{r.employeeCode}</div>
                 </td>
                 <td>{r.jobTitle?.titleEn ?? dash}</td>
@@ -88,7 +93,9 @@ async function Team() {
                   )}
                 </td>
                 <td className="min-w-64">
-                  {raises.kind === 'failed' ? (
+                  {restricted ? (
+                    dash
+                  ) : raises.kind === 'failed' ? (
                     <span className="text-sm text-muted">Couldn&apos;t load.</span>
                   ) : latest ? (
                     <div className="space-y-1 text-sm">

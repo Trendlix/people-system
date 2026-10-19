@@ -32,6 +32,7 @@ import { assertDeletes, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { seesSalary } from '../employees/access.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import { Prisma, type EmployeeStatus } from '../generated/prisma/client.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
@@ -318,6 +319,7 @@ export class ContractsService {
     private readonly settings: ContractSettingsService,
     private readonly allowances: AllowancesService,
     private readonly lawRates: LawRatesService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /** An employment's contract versions, newest first. */
@@ -341,6 +343,8 @@ export class ContractsService {
     const statuses = query.endingWithin === undefined ? wanted : wanted.filter((s) => s === 'active');
     const text = query.q ? { contains: query.q, mode: 'insensitive' as const } : null;
     const where: Prisma.ContractWhereInput = {
+      // not a C-level person's, for anyone but the CEO and a Super Admin (owner, 19 October 2026)
+      AND: [{ employment: await this.confidential.ownedWhere(user) }],
       ...(query.form && { form: query.form }),
       ...(query.type && { employment: { employmentType: query.type } }),
       ...(query.endingWithin !== undefined && { endDate: { lte: toDateOnly(addDays(todayInCairo(), query.endingWithin)) } }),
@@ -840,10 +844,10 @@ export class ContractsService {
    * agreement it is and what follows it (`training`: renewed once or converted to full-time, then converted or ended),
    * no non-renewal notice and no Art. 88 warning, and whether its conversion to full-time is drafted.
    */
-  async expiring(within: number) {
+  async expiring(within: number, user: SessionUser) {
     const until = addDays(todayInCairo(), within);
     const rows = await this.prisma.contract.findMany({
-      where: { status: 'active', form: 'fixed', endDate: { lte: toDateOnly(until) }, employment: { endDate: null } },
+      where: { status: 'active', form: 'fixed', endDate: { lte: toDateOnly(until) }, employment: { endDate: null, ...(await this.confidential.ownedWhere(user)) } },
       orderBy: [{ endDate: 'asc' }, { number: 'asc' }],
       include: {
         employment: {
@@ -888,11 +892,13 @@ export class ContractsService {
    * تنفيذه بعد انتهاء هذه المدة دون اتفاق مكتوب بينهما"), and current casual work past six months (Art. 1(7): casual
    * work "لا يستغرق إنجازه أكثر من ستة أشهر"). The contracts by end date, then the casual work by join date.
    */
-  async lawWarnings() {
+  async lawWarnings(user: SessionUser) {
     const today = todayInCairo();
+    // not a C-level person's, for anyone but the CEO and a Super Admin (owner, 19 October 2026)
+    const owned = await this.confidential.ownedWhere(user);
     const [rows, casual] = await Promise.all([
       this.prisma.contract.findMany({
-        where: { status: 'active', form: 'fixed', endDate: { lt: toDateOnly(today) }, employment: { endDate: null } },
+        where: { status: 'active', form: 'fixed', endDate: { lt: toDateOnly(today) }, employment: { endDate: null, ...owned } },
         orderBy: [{ endDate: 'asc' }, { number: 'asc' }],
         select: {
           id: true,
@@ -907,7 +913,7 @@ export class ContractsService {
         },
       }),
       this.prisma.employment.findMany({
-        where: { endDate: null, workNature: 'casual' },
+        where: { endDate: null, workNature: 'casual', ...owned },
         orderBy: [{ joinDate: 'asc' }],
         select: { id: true, workNature: true, joinDate: true, endDate: true, employee: EMPLOYEE_REF },
       }),
@@ -959,10 +965,17 @@ export class ContractsService {
    * (not confirmed yet) too. Never a trainee or an intern (owner, 19 October 2026: "interns to be labeled trainees
    * instead of probation"): their agreements have none.
    */
-  async probationEnding(within: number) {
+  async probationEnding(within: number, user: SessionUser) {
     const until = addDays(todayInCairo(), within);
     const rows = await this.prisma.employment.findMany({
-      where: { endDate: null, status: 'probation', probationEnd: { not: null, lte: toDateOnly(until) }, employmentType: { notIn: ['trainee', 'intern'] } },
+      where: {
+        endDate: null,
+        status: 'probation',
+        probationEnd: { not: null, lte: toDateOnly(until) },
+        employmentType: { notIn: ['trainee', 'intern'] },
+        // not a C-level person's, for anyone but the CEO and a Super Admin (owner, 19 October 2026)
+        ...(await this.confidential.ownedWhere(user)),
+      },
       orderBy: [{ probationEnd: 'asc' }, { joinDate: 'asc' }],
       select: { id: true, probationEnd: true, employee: EMPLOYEE_REF },
     });
@@ -1233,10 +1246,13 @@ export class ContractsService {
     return this.prisma.endingRule.findUnique({ where: { key: 'non_renewal' }, select: { noticeAmount: true, noticeUnit: true } });
   }
 
-  /** An employment of this employee that the user may see (see EmployeesService.visibleTo). */
+  /**
+   * An employment of this employee that the user may see (see EmployeesService.visibleTo), and not a C-level person's
+   * hidden from them (owner, 19 October 2026: "make C level Employees details not visible to HR").
+   */
   async employment(employeeId: string, employmentId: string, user: SessionUser, db: Db = this.prisma): Promise<EmploymentRow> {
     const e = await db.employment.findFirst({
-      where: { id: employmentId, employeeId, employee: await this.employees.visibleTo(user) },
+      where: { id: employmentId, employeeId, employee: { AND: [await this.employees.visibleTo(user), await this.confidential.employeeWhere(user)] } },
       select: EMPLOYMENT,
     });
     if (!e) throw new NotFoundException('Employment not found.');

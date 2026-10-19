@@ -1,4 +1,4 @@
-import { PAYROLL_STATUS_LABELS, PAYROLL_STATUSES, paysOvertime, type PayrollRules, type PayrollStatus, type Role } from '@trendlix/shared';
+import { confidentialPeople, PAYROLL_STATUS_LABELS, PAYROLL_STATUSES, paysOvertime, type PayrollRules, type PayrollStatus, type Role } from '@trendlix/shared';
 import { hasRole, isSuperAdmin } from '../../../lib/roles';
 
 // Plain helpers for the Payroll pages (no server-only, so they are unit tested): who sees payroll and who does what on a
@@ -110,7 +110,11 @@ export function payrollSteps(status: PayrollStatus): Step[] {
 
 /** What a user may do on a run, by their roles and its status. The register can always be downloaded. */
 export interface RunActions {
-  /** HR, on a draft: type the month's figures, refresh it, send it to the CEO. */
+  /**
+   * HR, on a draft: type the month's figures, refresh it, send it to the CEO. The figures by line, once the API says
+   * whose each line is (owner, 19 October 2026: the CEO fills the C-level people's; [id]/access.ts lineEditable): this
+   * is the rule for an API that doesn't.
+   */
   editInputs: boolean;
   refresh: boolean;
   submit: boolean;
@@ -163,3 +167,11 @@ export function rulesSummary(r: PayrollRules): string[] {
 
 /** "1 employee", "12 employees". */
 export const employeesLabel = (n: number) => `${n} ${n === 1 ? 'employee' : 'employees'}`;
+
+/**
+ * Under a run's figures in the lists, when the C-level people's lines are hidden from the caller (owner, 19 October
+ * 2026: "make C level Employees details not visible to HR"): "Totals leave out C-level (2 people)"; null for none.
+ */
+export function hiddenTotalsText(hidden: number | null | undefined): string | null {
+  return typeof hidden === 'number' && hidden > 0 ? `Totals leave out ${confidentialPeople(hidden)}` : null;
+}

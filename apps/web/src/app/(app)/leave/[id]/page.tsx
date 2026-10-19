@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { LEAVE_PAY_LABELS } from '@trendlix/shared';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { DocumentViewer } from '@/components/document-viewer';
 import { formatDateTime, titleCase } from '@/lib/format';
 import { approverLabel } from '@/lib/department-leads';
@@ -13,7 +14,7 @@ import { notLoadedText } from '../../payroll/load';
 import { cancelLeaveByHr, cancelMyLeave, decideLeave } from '../actions';
 import { CancelLeaveForm, HrCancelLeaveForm, LeaveDecisionForm } from '../leave-forms';
 import { loadLeaveRequest } from '../data';
-import { daysNumber, daysText, leaveBack, leaveDocumentHref, leaveDoneText, periodText, placeOfEmployee, recordsLeave, stageTitle } from '../list';
+import { daysNumber, daysText, decidingAsTitle, hrStageName, leaveBack, leaveDocumentHref, leaveDoneText, periodText, placeOfEmployee, recordsLeave } from '../list';
 import { LeaveProgress, LeaveStatusBadge, LeaveTimeline } from '../ui';
 
 // A leave request (owner, 18 October 2026: "can you apply the leaves according to the law?"), for the employee, their
@@ -24,7 +25,9 @@ import { LeaveProgress, LeaveStatusBadge, LeaveTimeline } from '../ui';
 // being decided or before it starts; HR's Cancel of an approved one, with a comment, its days given back. What was just
 // done on it shows at the top (?done=). Someone without a direct manager has it decided first by their team lead, else
 // their department's head (owner, 19 October 2026: "i want to add department lead person, the person in charge"): the
-// page says which.
+// page says which. A C-level person's request (owner, 19 October 2026: "make C level Employees details not visible to
+// HR") has HR's stage decided by the CEO (or HR with Super Admin): it says so ("With the CEO"), and the CEO gets the
+// decision form when it waits for them (`waitingForYou`, the API's).
 
 export const metadata: Metadata = { title: 'Leave Request · People System' };
 
@@ -80,7 +83,7 @@ async function LeaveRequest({ params, searchParams }: { params: PageProps<'/leav
   if (loaded.kind === 'failed') return <Empty>{notLoadedText(loaded, 'leave request')}</Empty>;
   const r = loaded.value;
   const back = leaveBack(user, r);
-  const done = leaveDoneText(query, r.status, r.manager);
+  const done = leaveDoneText(query, r.status, r.manager, r.confidential);
   const place = placeOfEmployee(r.employee);
   const what = `${r.type.nameEn.toLowerCase()} (${periodText(r)})`;
 
@@ -90,7 +93,8 @@ async function LeaveRequest({ params, searchParams }: { params: PageProps<'/leav
         <BackLink href={back.href}>{back.label}</BackLink>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{titleCase(r.type.nameEn)}</h1>
-          <LeaveStatusBadge status={r.status} />
+          <LeaveStatusBadge status={r.status} confidential={r.confidential} />
+          {r.confidential && <CLevelBadge title="A C-level person: the CEO decides HR’s stage, and HR doesn’t see the request." />}
         </div>
         <p className="text-muted">
           {r.employee.fullNameEn}
@@ -140,7 +144,7 @@ async function LeaveRequest({ params, searchParams }: { params: PageProps<'/leav
                 ) : r.manager ? (
                   r.manager.fullNameEn
                 ) : (
-                  <span className="text-muted">None: sent straight to HR</span>
+                  <span className="text-muted">None: sent straight to {hrStageName(r.confidential)}</span>
                 )}
               </Fact>
             </dl>
@@ -151,8 +155,8 @@ async function LeaveRequest({ params, searchParams }: { params: PageProps<'/leav
           </Section>
 
           {r.waitingForYou && r.stage && (
-            <Section title={`Your Decision as ${stageTitle(r.stage, r.manager)}`}>
-              <LeaveDecisionForm action={decideLeave.bind(null, r.id, r.stage)} stage={r.stage} name={r.employee.fullNameEn} />
+            <Section title={`Your Decision as ${decidingAsTitle(user, r.stage, r.manager, r.confidential)}`}>
+              <LeaveDecisionForm action={decideLeave.bind(null, r.id, r.stage)} stage={r.stage} name={r.employee.fullNameEn} confidential={r.confidential} />
             </Section>
           )}
 

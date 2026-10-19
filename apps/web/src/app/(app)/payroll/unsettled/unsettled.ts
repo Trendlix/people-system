@@ -103,6 +103,12 @@ export interface UnsettledView {
   held: { count: number; amount: number; rows: HeldLine[] };
   settlements: { count: number; rows: FinalSettlement[]; recentlySettled: FinalSettlement[] };
   advances: { count: number; amount: number; outstanding: number; rows: AdvanceRow[] };
+  /**
+   * How many C-level people it leaves out for the caller (owner, 19 October 2026: "make C level Employees details not
+   * visible to HR"): their held pay, final settlements and advances; 0 for the CEO and the Super Admin, left out by an
+   * older API.
+   */
+  confidentialExcluded?: number;
 }
 
 /** Who sees the page: HR, Finance and the CEO, as the payroll lines. */

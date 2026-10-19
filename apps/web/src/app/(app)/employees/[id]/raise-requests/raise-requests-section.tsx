@@ -23,7 +23,9 @@ import { ProfileSection } from '../../ui';
 // opens it with the person chosen), and HR decides there; each request here links to its place there (the Raise
 // Requests page for HR, the CEO and Finance; My Requests for the employee's own and a manager's), with the month it is
 // asked from. Since 19 October 2026 a raise HR prepared directly (on the contract, or a renewal with new pay) is listed
-// too, "Prepared directly by HR", for HR, Finance and the CEO only (the API sends it no one else).
+// too, "Prepared directly by HR", for HR, Finance and the CEO only (the API sends it no one else). A C-level person's
+// request (owner, 19 October 2026: "make C level Employees details not visible to HR") says "With the CEO" while it waits
+// for HR's step, which the CEO takes on Raise Requests.
 
 type Profile = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'isSelf' | 'employment'>;
 
@@ -101,7 +103,7 @@ export async function RaiseRequestsSection({
                 <p className="text-sm">
                   {isDirect(r) ? 'Prepared' : 'Asked'} <span className="font-medium">{askedAt(r)}</span>
                 </p>
-                <RaiseRequestStatusBadge status={r.status} />
+                <RaiseRequestStatusBadge status={r.status} confidential={r.confidential} />
               </div>
               <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                 <Item label="Asked by">

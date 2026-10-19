@@ -1,13 +1,31 @@
 'use client';
 
 import Link from 'next/link';
+import { CONFIDENTIAL_LABEL } from '@trendlix/shared';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { FormState, Grade } from '@/lib/types';
 
-/** A step of the grading system, e.g. G4 Senior with rank 4 (1 is the lowest level). Code and rank are each unique. */
-export function GradeForm({ action, grade }: { action: (prev: FormState, fd: FormData) => Promise<FormState>; grade?: Grade }) {
+const choice =
+  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+
+/**
+ * A step of the grading system, e.g. G4 Senior with rank 4 (1 is the lowest level). Code and rank are each unique.
+ * `marksConfidential`: the signed-in user is a Super Admin, the only one who ticks a grade C-level (owner, 19 October
+ * 2026: "make C level Employees details not visible to HR"); for anyone else the tick isn't shown, nor sent.
+ */
+export function GradeForm({
+  action,
+  grade,
+  marksConfidential = false,
+}: {
+  action: (prev: FormState, fd: FormData) => Promise<FormState>;
+  grade?: Grade;
+  marksConfidential?: boolean;
+}) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
+  // A checkbox is sent only when ticked: after a refused save, ticked if it was sent; otherwise as saved.
+  const confidential = state.values ? 'confidential' in state.values : grade?.confidential === true;
 
   return (
     <form {...form} className="card max-w-xl space-y-5 p-6">
@@ -80,6 +98,26 @@ export function GradeForm({ action, grade }: { action: (prev: FormState, fd: For
           The roles at this level, as a guide when choosing an employee&apos;s grade or the grades a job title allows.
         </p>
       </div>
+      {marksConfidential && (
+        <div>
+          {/* tells the action the tick was on the form, so an unticked box clears the flag rather than leaving it */}
+          <input type="hidden" name="confidentialShown" value="1" />
+          <label className={choice}>
+            <input
+              type="checkbox"
+              name="confidential"
+              defaultChecked={confidential}
+              aria-describedby={fid('confidential-hint')}
+              className="size-4 accent-accent"
+            />
+            Confidential ({CONFIDENTIAL_LABEL})
+          </label>
+          <p id={fid('confidential-hint')} className="hint">
+            People holding it are hidden from HR: only the CEO and the Super Admin see their details. Everyone else sees
+            their directory card only: name, photo, job title, department or team, work email and employee code.
+          </p>
+        </div>
+      )}
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending}>{grade ? 'Save changes' : 'Create grade'}</SubmitButton>
         <Link href="/organization/grades" className="btn btn-secondary">

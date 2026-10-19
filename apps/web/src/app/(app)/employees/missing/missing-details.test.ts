@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bySection,
+  confidentialExcludedText,
   documentGaps,
   gapHref,
   inView,
@@ -119,5 +120,18 @@ describe('what the page says', () => {
     expect(gapHref('emp-1', FACULTY)).toBe('/employees/emp-1#field-faculty');
     expect(gapHref('emp-1', SHIFT)).toBe('/employees/emp-1?tab=employment#field-shift');
     expect(gapHref('emp-1', PHOTO)).toBe('/employees/emp-1?tab=documents#paper-personal_photo');
+  });
+});
+
+describe('the C-level people left out (owner, 19 October 2026: "make C level Employees details not visible to HR")', () => {
+  it('are said to be left out, their details only the CEO’s and the Super Admin’s', () => {
+    expect(confidentialExcludedText(2)).toBe('C-level (2 people) are left out: only the CEO and the Super Admin see their details.');
+    expect(confidentialExcludedText(1)).toBe('C-level (1 person) is left out: only the CEO and the Super Admin see their details.');
+  });
+
+  it('say nothing when none are, or an older API doesn’t say', () => {
+    expect(confidentialExcludedText(0)).toBeNull();
+    expect(confidentialExcludedText(undefined)).toBeNull();
+    expect(confidentialExcludedText(null)).toBeNull();
   });
 });

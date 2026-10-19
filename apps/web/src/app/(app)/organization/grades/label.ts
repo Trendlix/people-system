@@ -34,3 +34,24 @@ export function gradeRangeSentence(titleEn: string, { minGrade: min, maxGrade: m
 export function inGradeRange(grade: { rank: number }, { minGrade: min, maxGrade: max }: GradeRange): boolean {
   return (!min || grade.rank >= min.rank) && (!max || grade.rank <= max.rank);
 }
+
+/**
+ * What a C-level grade means, beside its mark (owner, 19 October 2026: "make C level Employees details not visible to
+ * HR"): those holding it are hidden from HR.
+ */
+export const CONFIDENTIAL_GRADE_HINT = 'People holding it are hidden from HR: only the CEO and the Super Admin see their details.';
+
+/** What a grade picker says when it leaves the C-level grades out (pickableGrades). */
+export const CONFIDENTIAL_GRADES_LEFT_OUT = 'C-level grades are set by the CEO or the Super Admin.';
+
+/**
+ * The grades a picker offers (an employment, a job offer, a raise's promotion): every one for someone who may set a
+ * C-level grade (`setsConfidential`: the CEO or a Super Admin, setsConfidentialGrade), else all but those marked
+ * confidential, which the API refuses them with 403 (owner, 19 October 2026: else HR could hide or unhide someone by
+ * their grade); `leftOut` when any was, for the picker to say so.
+ */
+export function pickableGrades<G extends { id: string; confidential?: boolean }>(grades: readonly G[], setsConfidential: boolean): { grades: G[]; leftOut: boolean } {
+  if (setsConfidential) return { grades: [...grades], leftOut: false };
+  const offered = grades.filter((g) => g.confidential !== true);
+  return { grades: offered, leftOut: offered.length < grades.length };
+}

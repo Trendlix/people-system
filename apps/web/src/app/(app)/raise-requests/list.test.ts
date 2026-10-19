@@ -51,6 +51,9 @@ import {
   noneWithStatusText,
   raiseRequestsDoneHref,
   reasonChangeText,
+  countsRaiseRequests,
+  statusLabel,
+  waitingForYouCount,
 } from './list';
 
 const as = (...roles: Role[]) => ({ roles });
@@ -550,5 +553,74 @@ describe('who reads a comment', () => {
     expect(commentReaders('decision', null)).toBe('HR, Finance and the CEO see this comment, with the raise.');
     expect(commentReaders('return', 'self')).toMatch(/^HR sees this comment/);
     expect(commentReaders('send', 'self')).toMatch(/^The CEO sees this note/);
+  });
+});
+
+describe('a C-level person’s request (owner, 19 October 2026: "make C level Employees details not visible to HR")', () => {
+  const clevel = (over: Partial<RaiseRequest> = {}) => request({ confidential: true, ...over });
+  const step = (over: Partial<RaiseRequestStep>): RaiseRequestStep => ({
+    id: '1',
+    kind: 'hr_decision',
+    decision: 'approve',
+    raiseReason: null,
+    comment: 'Agreed',
+    figure: null,
+    increaseAmount: null,
+    increasePercent: null,
+    gross: null,
+    way: null,
+    effectiveDate: null,
+    contractNumber: null,
+    by: { email: 'ceo@trendlix.com' },
+    at: '2026-10-19T08:00:00.000Z',
+    figuresHidden: false,
+    ...over,
+  });
+
+  it('has HR’s step taken by the CEO: Decide and Reject, not the whole raise form or the raise, which are HR’s', () => {
+    expect(requestActions(as('ceo'), clevel())).toEqual({ decide: true, prepare: false, continueRaise: false, decline: false });
+    expect(requestActions(as('ceo'), clevel({ raise: { ...prepared, stage: 'returned' } }))).toEqual({ decide: false, prepare: false, continueRaise: false, decline: true });
+    // nothing once it left HR, nor on a raise HR prepared directly
+    expect(requestActions(as('ceo'), clevel({ status: 'with_ceo', raise: prepared }))).toEqual({ decide: false, prepare: false, continueRaise: false, decline: false });
+    expect(requestActions(as('ceo'), clevel({ origin: 'direct', raise: { ...prepared, stage: 'draft' } }))).toEqual({ decide: false, prepare: false, continueRaise: false, decline: false });
+    // HR with Super Admin takes it too, and carries on with its raise; HR without it doesn't (the API sends HR none)
+    expect(requestActions(as('hr', 'super_admin'), clevel())).toEqual({ decide: true, prepare: true, continueRaise: false, decline: false });
+    expect(requestActions(as('hr'), clevel())).toEqual({ decide: false, prepare: false, continueRaise: false, decline: false });
+    // the CEO still only follows anyone else’s
+    expect(requestActions(as('ceo'), request())).toEqual({ decide: false, prepare: false, continueRaise: false, decline: false });
+    expect(requestActions(as('ceo'), request({ confidential: false }))).toEqual({ decide: false, prepare: false, continueRaise: false, decline: false });
+  });
+
+  it('counts beside Raise Requests what waits for the user: every one with HR for HR, the C-level ones at HR’s step for the CEO', () => {
+    expect(countsRaiseRequests(as('hr'))).toBe(true);
+    expect(countsRaiseRequests(as('ceo'))).toBe(true);
+    expect(countsRaiseRequests(as('finance'))).toBe(false);
+    const withHr = [request(), request({ raise: { ...prepared, stage: 'returned' } }), clevel(), clevel({ raise: { ...prepared, stage: 'returned' } }), clevel({ status: 'with_ceo' })];
+    expect(waitingForYouCount(as('hr'), withHr)).toBe(2);
+    expect(waitingForYouCount(as('hr', 'super_admin'), withHr)).toBe(4);
+    expect(waitingForYouCount(as('ceo'), withHr)).toBe(1);
+    expect(waitingForYouCount(as('finance'), withHr)).toBe(0);
+  });
+
+  it('says it is with the CEO while it waits for HR’s step', () => {
+    expect(statusLabel('with_hr', true)).toBe('With the CEO');
+    expect(statusLabel('with_hr')).toBe('With HR');
+    expect(statusLabel('approved', true)).toBe('Approved');
+    expect(progressText(clevel()).text).toBe('Waiting for the CEO, at HR’s step');
+    expect(progressText(request()).text).toBe('Waiting for HR');
+    expect(progressText(clevel({ status: 'with_ceo', raise: prepared })).text).toBe('Approved at HR’s step: the raise is with the CEO');
+    expect(progressText(clevel({ status: 'declined', decision: { stage: 'hr', reason: 'Not this year', at: '2026-10-19T08:00:00.000Z', by: null } }))).toEqual({
+      text: 'Rejected at HR’s step on 19/10/2026',
+      reason: 'Not this year',
+    });
+    expect(progressText(clevel({ status: 'declined', decision: { stage: 'ceo', reason: 'No', at: null, by: null } })).text).toBe('Rejected by the CEO');
+  });
+
+  it('logs HR’s step by the step, not by who took it: the log says who', () => {
+    expect(stepText(step({}), 'self', clevel()).title).toBe('Approved as suggested at HR’s step');
+    expect(stepText(step({ decision: 'approve_other' }), 'self', clevel()).title).toBe('Approved with another raise at HR’s step');
+    expect(stepText(step({ decision: 'reject' }), 'self', clevel())).toEqual({ title: 'Rejected at HR’s step', detail: null });
+    expect(stepText(step({}), 'self', request()).title).toBe('HR approved it as suggested');
+    expect(stepText(step({ kind: 'ceo_decision' }), 'self', clevel()).title).toBe('The CEO approved it');
   });
 });

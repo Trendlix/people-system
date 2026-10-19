@@ -1,4 +1,4 @@
-import type { Standing } from '@trendlix/shared';
+import { confidentialPeople, type Standing } from '@trendlix/shared';
 import type { EmploymentPlace, ProfileGap } from '../../../../lib/types';
 import { profileHref } from '../tab-list';
 
@@ -26,6 +26,21 @@ export interface MissingDetailsRow {
 export interface MissingDetailsReport {
   generatedAt: string;
   rows: MissingDetailsRow[];
+  /**
+   * How many C-level people the rows leave out for the caller (owner, 19 October 2026: "make C level Employees details
+   * not visible to HR"); 0 for the CEO and the Super Admin, left out by an older API.
+   */
+  confidentialExcluded?: number;
+}
+
+/**
+ * What the report says when C-level people are left out for the caller (owner, 19 October 2026): their details, not
+ * amounts, as the payroll reports say: "C-level (2 people) are left out: only the CEO and the Super Admin see their
+ * details."; null for none.
+ */
+export function confidentialExcludedText(count: number | null | undefined): string | null {
+  if (typeof count !== 'number' || !(count > 0)) return null;
+  return `${confidentialPeople(count)} ${count === 1 ? 'is' : 'are'} left out: only the CEO and the Super Admin see their details.`;
 }
 
 /** Where the browser downloads the report as an Excel workbook (a plain link, never prefetched). */

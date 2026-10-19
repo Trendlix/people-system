@@ -3,6 +3,7 @@ import {
   accountLengthOk,
   accountLengthText,
   bankNamed,
+  CONFIDENTIAL_NOTE,
   employmentStanding,
   insurableWageLimits,
   lastTrainingEnd,
@@ -49,6 +50,7 @@ import {
 } from './access.js';
 import { birthDateFromNationalId, maskTail } from './checks.js';
 import { completeness, papersOf, topGradeRank } from './completeness.js';
+import { ConfidentialService } from './confidential.service.js';
 import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
 import { INSURED_VERSION, insuredContractPay, insuredVersionOf, insuredWageOfEmployee } from './insured-wage.js';
 import { withOccupation } from './occupation-view.js';
@@ -262,16 +264,30 @@ function identityData(dto: UpdateIdentityDto) {
   };
 }
 
+/** The directory card's place: the current employment's job title and department or team, and its status. */
+const CARD_EMPLOYMENT = {
+  where: { endDate: null },
+  take: 1,
+  select: { id: true, status: true, employmentType: true, department: PLACE.department, jobTitle: { select: { id: true, titleEn: true, titleAr: true } } },
+} as const;
+
 @Injectable()
 export class EmployeesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly lawRates: LawRatesService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
-  /** The people this user may see, each with their current employment, or how their last one ended. */
+  /**
+   * The people this user may see, each with their current employment, or how their last one ended. A C-level person
+   * hidden from the caller (owner, 19 October 2026: "make C level Employees details not visible to HR") is their
+   * directory card only (`restricted`): name, photo, job title, department or team, work email, code and where they
+   * stand. `confidential`: C-level, for everyone.
+   */
   async list(user: SessionUser) {
+    const confidential = await this.confidential.view(user);
     const rows = await this.prisma.employee.findMany({
       where: await this.visibleTo(user),
       select: {
@@ -304,13 +320,27 @@ export class EmployeesService {
     return rows.map(({ employments: [latest], ...e }) => {
       const current = latest && !latest.endDate ? latest : null;
       const ended = latest?.endDate ? latest : null;
-      return {
+      const card = {
         ...e,
         photoId: photos?.get(e.id)?.id ?? null,
         photoCrop: photos?.get(e.id)?.crop ?? null,
         // a trainee's or an intern's Active is Trainee or Intern (owner, 19 October 2026: "interns to be labeled trainees
         // instead of probation")
         standing: (current ? employmentStanding(current) : ended ? 'former' : 'not_employed') as Standing,
+        confidential: confidential.all.has(e.id),
+      };
+      if (confidential.hidden.has(e.id)) {
+        // the directory card: the job title and the department or team, nothing of the employment's terms
+        return {
+          ...card,
+          restricted: true as const,
+          employment: current && { id: current.id, status: current.status, department: current.department, jobTitle: current.jobTitle },
+          lastEnded: null,
+        };
+      }
+      return {
+        ...card,
+        restricted: false as const,
         employment: current && {
           id: current.id,
           status: current.status,
@@ -340,6 +370,8 @@ export class EmployeesService {
   async get(id: string, user: SessionUser) {
     const identity = seesIdentity(user);
     const bank = seesBank(user);
+    // a C-level person hidden from the caller: their directory card, with the note (owner, 19 October 2026)
+    if (await this.confidential.isHidden(user, id)) return this.card(id, user);
     const e = await this.prisma.employee.findFirst({
       where: { AND: [{ id }, await this.visibleTo(user)] },
       include: {
@@ -439,6 +471,45 @@ export class EmployeesService {
       nextTraining: lastEnded && { lastEnded, from: trainingAgainFrom(lastEnded) },
       access: { edit: editsEmployees(user), delete: deletesEmployees(user), identity, bank },
       isSelf: self,
+      // C-level (owner, 19 October 2026): seen in full here by the CEO, a Super Admin or the person themself
+      confidential: await this.confidential.isConfidential(id),
+      restricted: false as const,
+    };
+  }
+
+  /**
+   * A C-level person as those who may not see them get them (owner, 19 October 2026: "make C level Employees details
+   * not visible to HR"): the directory card (name, photo, job title, department or team, work email, code and where
+   * they stand) and the note that only the CEO and the Super Admin see the rest. Nothing to change, nothing to open.
+   */
+  private async card(id: string, user: SessionUser) {
+    const e = await this.prisma.employee.findFirst({
+      where: { AND: [{ id }, await this.visibleTo(user)] },
+      select: {
+        id: true,
+        employeeCode: true,
+        fullNameEn: true,
+        fullNameAr: true,
+        displayName: true,
+        workEmail: true,
+        employments: CARD_EMPLOYMENT,
+        _count: { select: { employments: true } },
+      },
+    });
+    if (!e) throw new NotFoundException('Employee not found.');
+    const { employments: [current], _count, ...own } = e;
+    const photos = seesEmployeeFile(user) ? await this.photos([id]) : null;
+    return {
+      ...own,
+      photoId: photos?.get(id)?.id ?? null,
+      photoCrop: photos?.get(id)?.crop ?? null,
+      standing: (current ? employmentStanding(current) : _count.employments ? 'former' : 'not_employed') as Standing,
+      employment: current ? { id: current.id, status: current.status, department: current.department, jobTitle: current.jobTitle } : null,
+      confidential: true as const,
+      restricted: true as const,
+      note: CONFIDENTIAL_NOTE,
+      access: { edit: false, delete: false, identity: false, bank: false },
+      isSelf: false,
     };
   }
 

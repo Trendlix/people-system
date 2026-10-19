@@ -21,13 +21,15 @@ export const PENDING_ENDINGS = '/endings?status=pending_ceo';
 
 /**
  * HR and Admin (a Super Admin too) approve or reject employees' requests to change their details (owner's decision, 15
- * October 2026); the CEO doesn't. The API checks this again.
+ * October 2026). The CEO decides only a C-level person's (owner, 19 October 2026: "make C level Employees details not
+ * visible to HR"), and reads them on Approvals and Details Changes (readsChangeRequests, decidesChangeOfDetails), not
+ * by this. The API checks this again.
  */
 export function decidesChangeRequests(user: Pick<SessionUser, 'roles'>): boolean {
   return hasRole(user, 'hr', 'admin');
 }
 
-/** The employees' change requests waiting for HR or an Admin, newest first. */
+/** The employees' change requests waiting for HR or an Admin (a C-level person's, for the CEO), newest first. */
 export const PENDING_CHANGE_REQUESTS = '/change-requests?status=pending';
 
 /**

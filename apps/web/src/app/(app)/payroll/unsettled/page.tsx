@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Fragment, Suspense } from 'react';
+import { confidentialExcludedNote } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
@@ -52,7 +53,9 @@ import {
 // unless waived": a final settlement lists what is outstanding, HR recording each deducted there or waived with a note.
 // Leave (owner, 18 October 2026: "can you apply the leaves according to the law?"; Labour Law Art. 125): it lists the
 // annual leave unused on the last working day as Unused leave to pay, its days, day rate and amount, which HR records
-// paid, an Unused leave paid addition on the final month's payroll.
+// paid, an Unused leave paid addition on the final month's payroll. The C-level people are left out for anyone but the
+// CEO and the Super Admin (owner, 19 October 2026: "make C level Employees details not visible to HR"), and the page
+// says so.
 
 export const metadata: Metadata = { title: 'Unsettled · People System' };
 
@@ -564,6 +567,8 @@ async function Unsettled() {
   if (loaded.kind !== 'ok') return <Empty>{notLoadedText(loaded, 'unsettled payroll')}</Empty>;
   const u = loaded.value;
   const people = choices?.kind === 'ok' ? choices.value.people : [];
+  // the C-level people left out for anyone but the CEO and the Super Admin (19 October 2026)
+  const excluded = confidentialExcludedNote(u.confidentialExcluded ?? 0);
 
   return (
     <div className="space-y-8">
@@ -582,6 +587,7 @@ async function Unsettled() {
           ))}
         </dl>
         <p className="text-xs text-muted">As of {formatDateTime(u.generatedAt)}</p>
+        {excluded && <p className="text-sm text-muted">{excluded}</p>}
       </div>
       <RunsNotPaid u={u} />
       <LinesOnHold u={u} hr={hr} today={today} />

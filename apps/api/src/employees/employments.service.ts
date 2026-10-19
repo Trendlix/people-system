@@ -10,6 +10,7 @@ import { clearLeads, defaultManagerId } from '../organisation/departments/leads.
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { RecurringDeductionsService } from '../payroll/adjustments/recurring.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { ConfidentialService } from './confidential.service.js';
 import type { CreateEmploymentDto, EndEmploymentDto, UpdateEmploymentDto } from './employment.dto.js';
 import { EmployeesService } from './employees.service.js';
 
@@ -48,6 +49,7 @@ export class EmploymentsService {
     private readonly audit: AuditService,
     private readonly employees: EmployeesService,
     private readonly recurring: RecurringDeductionsService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /**
@@ -56,6 +58,8 @@ export class EmploymentsService {
    * Active (a rehire, no probation in the contract settings, a hire back-dated past its probation).
    */
   async create(employeeId: string, dto: CreateEmploymentDto, user: SessionUser) {
+    // a C-level grade only from those who see C-level people (owner, 19 October 2026)
+    await this.confidential.assertMayGiveGrade(user, dto.gradeId);
     const { id, created } = await this.add(employeeId, dto);
     await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, entityId: id, diff: created });
     return this.employees.get(employeeId, user);
@@ -102,6 +106,9 @@ export class EmploymentsService {
    */
   async update(employeeId: string, employmentId: string, dto: UpdateEmploymentDto, user: SessionUser) {
     const before = await this.row(employeeId, employmentId);
+    // a C-level grade only from those who see C-level people (owner, 19 October 2026: else HR could hide or unhide
+    // someone by their grade); a C-level person's employment is refused before this for anyone else (ConfidentialOf)
+    if (dto.gradeId !== undefined && dto.gradeId !== before.gradeId) await this.confidential.assertMayGiveGrade(user, dto.gradeId);
     const ending = dto.endDate !== undefined || dto.endReason !== undefined || dto.endNote !== undefined;
     if (!before.endDate && ending) throw new BadRequestException('This employment is current: end it with End employment.');
     if (before.endDate && dto.status !== undefined) {

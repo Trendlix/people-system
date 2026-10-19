@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { Fragment } from 'react';
 import { END_REASON_LABELS, LABELS } from '@trendlix/shared';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { DocumentViewer } from '@/components/document-viewer';
+import { cLevelTitle } from '@/lib/confidential';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, ProfileGap } from '@/lib/types';
@@ -11,7 +13,9 @@ import { ConfirmedNotice } from './confirm/confirm-notices';
 import { PhotoCropButton } from './photo-crop';
 
 // Above the profile's tabs: who it is, where they stand, their current job, whether the employee confirmed their
-// details, and how complete the profile is.
+// details, and how complete the profile is. A C-level person's (owner, 19 October 2026: "make C level Employees details
+// not visible to HR"), which only the CEO, the Super Admin and they themself open, is marked C-level, and their change
+// requests wait for the CEO rather than HR.
 
 /** Where a missing item is filled in: the field's cell on Basic Data (Education is there too) or Employment, or the paper's row on Documents. */
 function gapHref(id: string, gap: ProfileGap): string {
@@ -86,6 +90,8 @@ function Confirmation({ profile: p, decidesRequests }: { profile: EmployeeProfil
   if (!status) return null;
   const upToDate = p.confirmation?.upToDate;
   const pending = pendingRequest(p.changeRequests);
+  // a C-level person's change requests are the CEO's (or a Super Admin's) to decide, not HR's (19 October 2026)
+  const decider = p.confidential ? 'the CEO' : 'HR';
   // HR (who edit the profile) see a profile never confirmed in the warning colour: it is theirs to follow up
   const tone = status.tone === 'none' && p.access.edit ? 'text-warn' : STATUS_TONE[status.tone];
   const waiting = 'badge bg-warn-soft text-warn no-underline';
@@ -104,7 +110,7 @@ function Confirmation({ profile: p, decidesRequests }: { profile: EmployeeProfil
             )}
             {pending ? (
               <Link href={`/employees/${p.id}/change-request`} className={waiting}>
-                Your change request is waiting for HR
+                Your change request is waiting for {decider}
               </Link>
             ) : (
               upToDate && <Link href={`/employees/${p.id}/change-request`}>Request a change</Link>
@@ -112,13 +118,14 @@ function Confirmation({ profile: p, decidesRequests }: { profile: EmployeeProfil
           </>
         ) : (
           pending &&
-          // HR and Admin decide on Approvals; the CEO sees the requests but doesn't decide them
+          // HR and Admin decide on Approvals, a C-level person's the CEO or a Super Admin (19 October 2026); anyone else
+          // sees it waiting
           (decidesRequests ? (
             <Link href="/approvals" className={waiting}>
               Change request waiting
             </Link>
           ) : (
-            <span className={waiting}>Change request waiting for HR</span>
+            <span className={waiting}>Change request waiting for {decider}</span>
           ))
         )}
       </div>
@@ -137,7 +144,7 @@ export function ProfileHeader({
   tabs: ReadonlySet<ProfileTabKey>;
   /** Only people who can open every profile get links to others (e.g. the manager). */
   linkPeople: boolean;
-  /** HR and Admin decide employees' change requests, on Approvals. */
+  /** HR and Admin decide employees' change requests, on Approvals; a C-level person's, the CEO or a Super Admin. */
   decidesRequests: boolean;
 }) {
   const e = p.employment;
@@ -176,6 +183,7 @@ export function ProfileHeader({
             </span>
             <StandingBadge standing={standing} />
             {e && <span className="badge bg-line-soft text-ink">{LABELS.employmentType[e.employmentType]}</span>}
+            {p.confidential && <CLevelBadge title={cLevelTitle(false)} />}
           </div>
           <p className="text-muted">
             {e

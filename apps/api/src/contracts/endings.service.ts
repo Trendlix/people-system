@@ -5,6 +5,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { EmploymentsService } from '../employees/employments.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateEndingDto, EndingNoteDto, RejectEndingDto } from './contracts.dto.js';
 import { EndingRulesService } from './ending-rules.service.js';
@@ -40,6 +41,7 @@ export class EndingsService {
     private readonly audit: AuditService,
     private readonly employments: EmploymentsService,
     private readonly rules: EndingRulesService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /** Records an ending of a current employment, approved by HR (the creator), for the CEO to decide. */
@@ -181,7 +183,8 @@ export class EndingsService {
   /** Endings with their employee, newest first; `status` narrows them (the CEO's queue: pending_ceo). */
   async list(status: EndingStatus | undefined, user: SessionUser) {
     const rows = await this.prisma.employmentEnding.findMany({
-      where: status ? { status } : {},
+      // not a C-level person's for anyone but the CEO and a Super Admin (owner, 19 October 2026)
+      where: { ...(status && { status }), employment: await this.confidential.ownedWhere(user) },
       orderBy: { createdAt: 'desc' },
       include: {
         ...ENDING_INCLUDE,

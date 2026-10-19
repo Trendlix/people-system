@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { Trim, TrimOrNull } from '../../common/transforms.js';
 
 const Code = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value));
@@ -30,6 +30,14 @@ export class CreateGradeDto {
 
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(300)
   description?: string | null;
+
+  /**
+   * C-level (owner, 19 October 2026: "make C level Employees details not visible to HR"): those holding it show HR,
+   * Finance, Admin and managers only their directory card. A Super Admin only changes it (GradesService).
+   */
+  @IsOptional()
+  @IsBoolean({ message: 'Confidential (C-level) is yes or no.' })
+  confidential?: boolean;
 }
 
 export class UpdateGradeDto {
@@ -56,4 +64,12 @@ export class UpdateGradeDto {
 
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(300)
   description?: string | null;
+
+  /**
+   * C-level (owner, 19 October 2026: "make C level Employees details not visible to HR"): those holding it show HR,
+   * Finance, Admin and managers only their directory card. A Super Admin only changes it (GradesService).
+   */
+  @IsOptional()
+  @IsBoolean({ message: 'Confidential (C-level) is yes or no.' })
+  confidential?: boolean;
 }

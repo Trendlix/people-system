@@ -2,21 +2,23 @@ import { ENDING_STATUS_LABELS, PAY_STAGE_LABELS, PREPARED_DIRECTLY_COMMENT, type
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
+import { decidesChangeOfDetails } from '@/lib/confidential';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { loadLawRates } from '@/lib/law-rates';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import { getCurrentUser } from '@/lib/session';
-import type { ChangeRequest, EndingSummary } from '@/lib/types';
+import type { ChangeRequest, EndingSummary, SessionUser } from '@/lib/types';
 import { ChangeRequestCard } from '../employees/[id]/change-request/request-parts';
 import { art154Text } from '../employees/employment-law';
 import { contractHref, profileHref } from '../employees/ui';
 import { INITIATOR_LABELS } from '../organization/contracts/labels';
 import { Empty, Loading } from '../organization/ui';
-import { isDirect, raiseRequestOnListHref, raiseRequestsHref, REQUESTER_PHRASES } from '../raise-requests/list';
+import { countsRaiseRequests, handlesRaiseRequests, isDirect, raiseRequestOnListHref, raiseRequestsHref, REQUESTER_PHRASES, waitingForYouCount, WITH_HR_REQUESTS } from '../raise-requests/list';
 import { FoldedRequestLog, RequestReason, Suggestion } from '../raise-requests/ui';
+import { changeDeciders, readsChangeRequests } from '../requests/details-changes/list';
 import { decideChangeRequest, decideEnding, decideRaise } from './actions';
 import { CeoRaiseDecision } from './ceo-raise-decision';
-import { decidesChangeRequests, decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
+import { decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
 import { DecisionForm } from './decision-form';
 import { decidesRaises, followsRaises, PENDING_RAISES, pendingRaiseView, raisesLabel } from './raises';
 
@@ -31,8 +33,11 @@ import { decidesRaises, followsRaises, PENDING_RAISES, pendingRaiseView, raisesL
 //   request (one HR prepared directly says so), each card links to it on Raise Requests, where the CEO may decide it
 //   too, and approving the CEO may change the reason ("i might want to ammend the raise reason, not only the money").
 // - Employees' requests to change their details (owner's decision of 15 October 2026), for HR and Admin to approve,
-//   which makes the change, or reject with a note. The CEO doesn't decide these.
-// The API checks every decision again.
+//   which makes the change, or reject with a note. A C-level person's (owner, 19 October 2026: "make C level Employees
+//   details not visible to HR") the CEO decides, or a Super Admin, not HR: the CEO gets those (the API sends the CEO
+//   only C-level people's), and the decide buttons show only to who decides each.
+// The CEO also takes HR's step on a C-level person's raise request, on Raise Requests: the Pay Raises section says how
+// many wait there. The API checks every decision again.
 
 const DONE: Record<string, string> = {
   approved: 'Ending approved.',
@@ -223,6 +228,25 @@ function RaiseCard({ raise: r, request, decides, rates }: { raise: PendingRaise;
   );
 }
 
+/**
+ * For the CEO, who takes HR's step on a C-level person's raise request (19 October 2026) on Raise Requests: how many
+ * wait there, linked; nothing when none does, or they can't be read.
+ */
+async function HrStepRequests({ user }: { user: SessionUser }) {
+  if (handlesRaiseRequests(user) || !countsRaiseRequests(user)) return null;
+  const requests = await getOrNull<RaiseRequest[]>(WITH_HR_REQUESTS);
+  const n = requests ? waitingForYouCount(user, requests) : 0;
+  if (!n) return null;
+  return (
+    <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+      Also waiting for you: {n === 1 ? '1 raise request' : `${n} raise requests`} of C-level people at HR&apos;s step, which you take.{' '}
+      <Link href={raiseRequestsHref('with_hr')} className="font-semibold">
+        Decide on Raise Requests
+      </Link>
+    </p>
+  );
+}
+
 async function PendingRaises({ decides }: { decides: boolean }) {
   // Read quietly, like the change requests: an API from before raises must not take the endings down with it.
   const raises = await getOrNull<PendingRaise[]>(PENDING_RAISES);
@@ -251,19 +275,24 @@ async function PendingRaises({ decides }: { decides: boolean }) {
 
 // ---------- profile change requests ----------
 
-function PendingChangeRequestCard({ request: r }: { request: ChangeRequest }) {
+/** A change request waiting, with the decide buttons for who decides it (a C-level person's: the CEO or a Super Admin). */
+function PendingChangeRequestCard({ request: r, decides }: { request: ChangeRequest; decides: boolean }) {
   return (
     <ChangeRequestCard request={r}>
-      <DecisionForm
-        action={decideChangeRequest.bind(null, r.id)}
-        confirmApprove={`Approve the change to ${r.employee.fullNameEn}'s details? Their profile is updated with what they asked for.`}
-        noteMax={1000}
-      />
+      {decides ? (
+        <DecisionForm
+          action={decideChangeRequest.bind(null, r.id)}
+          confirmApprove={`Approve the change to ${r.employee.fullNameEn}'s details? Their profile is updated with what they asked for.`}
+          noteMax={1000}
+        />
+      ) : (
+        <p className="mt-4 border-t border-line-soft pt-4 text-sm text-muted">Waiting for {changeDeciders(r.confidential)} to decide it.</p>
+      )}
     </ChangeRequestCard>
   );
 }
 
-async function PendingChangeRequests() {
+async function PendingChangeRequests({ user }: { user: SessionUser }) {
   // Like the sidebar's count: read quietly, so this section can't take the endings down with it.
   const requests = await getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS);
   if (requests === null) return <Empty>Change requests couldn&apos;t load.</Empty>;
@@ -275,7 +304,7 @@ async function PendingChangeRequests() {
       </p>
       <ul className="space-y-4">
         {requests.map((r) => (
-          <PendingChangeRequestCard key={r.id} request={r} />
+          <PendingChangeRequestCard key={r.id} request={r} decides={decidesChangeOfDetails(user, r.confidential)} />
         ))}
       </ul>
     </div>
@@ -298,7 +327,8 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   const endings = followsEndings(user);
   const raises = followsRaises(user);
-  const changes = decidesChangeRequests(user);
+  // HR and Admin, and the CEO for C-level people's (19 October 2026)
+  const changes = readsChangeRequests(user);
   if (!endings && !raises && !changes) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
 
@@ -316,12 +346,13 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
       )}
       {raises && (
         <Section title="Pay Raises">
+          <HrStepRequests user={user} />
           <PendingRaises decides={decidesRaises(user)} />
         </Section>
       )}
       {changes && (
         <Section title="Profile Change Requests">
-          <PendingChangeRequests />
+          <PendingChangeRequests user={user} />
         </Section>
       )}
     </div>

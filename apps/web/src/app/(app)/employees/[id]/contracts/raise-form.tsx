@@ -21,7 +21,7 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import { Select } from '@/components/select';
 import { formatDate, parseDate } from '@/lib/format';
 import type { AllowanceType, FormState, Grade, GradeRef, JobTitleSummary } from '@/lib/types';
-import { gradeLabel, gradeRangeSentence, inGradeRange } from '../../../organization/grades/label';
+import { CONFIDENTIAL_GRADES_LEFT_OUT, gradeLabel, gradeRangeSentence, inGradeRange } from '../../../organization/grades/label';
 import { contractEnd } from './dates';
 import { choice, PayFields, typedPayOf, usePay, type PayDefaults } from './pay-fields';
 import { commentReaders } from '../../../raise-requests/list';
@@ -84,8 +84,18 @@ export function RaiseForm({
   /** YYYY-MM-DD, for the salary's year while there is no effective date. */
   today: string;
   lawYears: readonly LawRates[];
-  /** The job titles (each with its grades) and grades to choose from, and the employment's own as they are. */
-  promotion: { jobTitles: readonly JobTitleSummary[]; grades: readonly Grade[]; jobTitle: { id: string; titleEn: string } | null; grade: GradeRef | null };
+  /**
+   * The job titles (each with its grades) and grades to choose from, and the employment's own as they are;
+   * `confidentialGradesLeftOut`: the C-level grades were left out, which only the CEO and the Super Admin promote to
+   * (owner, 19 October 2026).
+   */
+  promotion: {
+    jobTitles: readonly JobTitleSummary[];
+    grades: readonly Grade[];
+    confidentialGradesLeftOut?: boolean;
+    jobTitle: { id: string; titleEn: string } | null;
+    grade: GradeRef | null;
+  };
   /**
    * The raise request it is prepared from, sent along with a new raise: saving it is HR's approval of the request, with
    * HR's comment, and sends it to the CEO (owner, 17 October 2026). `requester`: who asked, to say who reads the comment.
@@ -380,6 +390,7 @@ export function RaiseForm({
                 {outOfRange ?? range}
               </p>
             )}
+            {promotion.confidentialGradesLeftOut && <p className="hint">{CONFIDENTIAL_GRADES_LEFT_OUT}</p>}
             <div role="status">
               {clearedGrade && (
                 <p className="hint text-warn">

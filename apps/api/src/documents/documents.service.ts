@@ -18,6 +18,7 @@ import { insuredContractPay, insuredVersionOf } from '../employees/insured-wage.
 import type { Prisma } from '../generated/prisma/client.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { detectPaperworkType, extensionOf, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from '../paperwork/paperwork-file.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { isPdf } from '../pdf/pdf-file.js';
 import { DOCX_MIME } from '../templates/docx-tags.js';
@@ -221,6 +222,7 @@ export class DocumentsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly lawRates: LawRatesService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /** The Employment tab: the documents offered for the current employment (else the latest), in sections. */
@@ -519,6 +521,8 @@ export class DocumentsService {
   ): Promise<{ employee: { id: string; employeeCode: string; fullNameEn: string }; filled: number; total: number; shown: string[]; data: Buffer | null }> {
     const slot = SLOTS.get(slotKey);
     if (!slot) throw new NotFoundException('Template not found.');
+    // never a C-level person's data in a preview for anyone but the CEO and a Super Admin (owner, 19 October 2026)
+    await this.confidential.assertVisible(user, employeeId);
     // context() refuses a document the tab doesn't offer them (a resignation request before any ending) and a contract
     // copy without its version. What it reads doesn't depend on the document but for the contract, which here is the one
     // other documents print (the signed one, else the newest draft); so it is read through the document itself when the

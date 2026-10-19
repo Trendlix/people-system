@@ -15,6 +15,7 @@ import {
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { RunAdjustmentsService } from '../payroll/adjustments/run-adjustments.service.js';
 import { ADJUSTMENT } from '../payroll/adjustments/views.js';
@@ -51,7 +52,15 @@ export interface YearClosingView {
   closed: boolean;
   closedAt: string | null;
   rows: YearClosingRow[];
+  /**
+   * The C-level people left out for the caller (owner, 19 October 2026: "make C level Employees details not visible to
+   * HR"): HR closing the year gives them the default decision (what must be settled paid, the rest carried).
+   */
+  confidentialExcluded: number;
 }
+
+/** Why a C-level person's year isn't closed by HR's default: their figures need a decision HR can't see to make. */
+const DEFAULT_REFUSED = "A C-level person's year can't be closed with the default decision (what must be settled paid, the rest carried). Ask a user with HR and Super Admin to close it.";
 
 const tenth = (n: number) => Math.round(n * 10) / 10 + 0;
 
@@ -65,7 +74,9 @@ const tenth = (n: number) => Math.round(n * 10) / 10 + 0;
 // gross, in January of the next year or the first month after it whose run isn't approved or paid. Not while requests
 // from the annual balance of the year are still being decided; a closed year takes no more leave from it. HR may reopen
 // it until its payouts are applied to a payroll (the pending ones are cancelled). Those who left during the year are paid
-// with their final settlement (UnsettledService). HR closes and reopens; HR and the CEO see it.
+// with their final settlement (UnsettledService). HR closes and reopens; HR and the CEO see it. The C-level people's rows
+// (owner, 19 October 2026: "make C level Employees details not visible to HR") only for the CEO and a Super Admin: HR
+// closing the year gives them the default decision, the days that must be settled paid and the rest carried.
 @Injectable()
 export class YearClosingService {
   constructor(
@@ -73,12 +84,14 @@ export class YearClosingService {
     private readonly audit: AuditService,
     private readonly balances: LeaveBalancesService,
     private readonly runs: RunAdjustmentsService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
-  async view(year: number): Promise<YearClosingView> {
+  async view(year: number, user: SessionUser): Promise<YearClosingView> {
     const closing = await this.prisma.leaveYearClosing.findUnique({ where: { year } });
-    const rows = await this.rows(year);
-    return { year, closed: !!closing, closedAt: closing?.closedAt.toISOString() ?? null, rows };
+    const [all, hidden] = await Promise.all([this.rows(year), this.confidential.hiddenFrom(user)]);
+    const rows = all.filter((r) => !hidden.includes(r.employee.id));
+    return { year, closed: !!closing, closedAt: closing?.closedAt.toISOString() ?? null, rows, confidentialExcluded: all.length - rows.length };
   }
 
   /** HR closes the year with every employee's decision. */
@@ -91,8 +104,11 @@ export class YearClosingService {
     if (pending) {
       throw new ConflictException(`${pending} request${pending === 1 ? ' is' : 's are'} for leave from ${year}'s annual balance still being decided: decide ${pending === 1 ? 'it' : 'them'} first.`);
     }
+    const hidden = await this.confidential.hiddenFrom(user);
     const rows = await this.rows(year);
-    const byEmployee = new Map(rows.map((r) => [r.employee.id, r]));
+    // the rows the caller decides: a C-level person's is the CEO's and a Super Admin's to see (19 October 2026)
+    const decided = rows.filter((r) => !hidden.includes(r.employee.id));
+    const byEmployee = new Map(decided.map((r) => [r.employee.id, r]));
     const sent = new Map<string, { carry: number; pay: number }>();
     const problems: string[] = [];
     for (const r of dto.rows) {
@@ -100,10 +116,16 @@ export class YearClosingService {
       else if (sent.has(r.employeeId)) problems.push(`${byEmployee.get(r.employeeId)!.employee.fullNameEn} is sent twice: send each employee once.`);
       sent.set(r.employeeId, { carry: r.carry, pay: r.pay });
     }
-    const missing = rows.filter((r) => !sent.has(r.employee.id)).map((r) => r.employee.fullNameEn);
+    const missing = decided.filter((r) => !sent.has(r.employee.id)).map((r) => r.employee.fullNameEn);
     if (missing.length) problems.push(`Decide every employee: ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} missing.`);
     if (problems.length) throw new BadRequestException([...new Set(problems)]);
+    // the C-level people hidden from the caller: the default decision, what must be settled paid and the rest carried
     for (const r of rows) {
+      if (byEmployee.has(r.employee.id)) continue;
+      if (yearClosingProblems(r.unused, r.carry, r.pay, r.mustSettle).length || (r.pay > 0 && !(r.dayRate > 0))) throw new ConflictException(DEFAULT_REFUSED);
+      sent.set(r.employee.id, { carry: r.carry, pay: r.pay });
+    }
+    for (const r of decided) {
       const d = sent.get(r.employee.id)!;
       for (const p of yearClosingProblems(r.unused, d.carry, d.pay, r.mustSettle)) problems.push(`${r.employee.fullNameEn}: ${p}`);
       if (d.pay > 0 && !(r.dayRate > 0)) problems.push(`${r.employee.fullNameEn}: there is no signed contract to work a day's pay out from, so the days can't be paid. Carry them instead.`);
@@ -176,7 +198,7 @@ export class YearClosingService {
       });
     }
     if (paid.length) await this.runs.syncDrafts([payMonth.slice(0, 7)], paid.map((p) => p.employeeId), user);
-    return this.view(year);
+    return this.view(year, user);
   }
 
   /** HR reopens a closed year until its payouts are applied: the pending ones cancelled, the next year's carried in undone. */
@@ -211,7 +233,7 @@ export class YearClosingService {
       await this.audit.record({ userId: user.id, action: 'cancel', entityType: ADJUSTMENT, entityId: p.id, diff: { month: fromDateOnly(p.month).slice(0, 7), status: { from: 'pending', to: 'cancelled' }, leaveYear: year } });
     }
     if (pending.length) await this.runs.syncDrafts([...new Set(pending.map((p) => fromDateOnly(p.month).slice(0, 7)))], pending.map((p) => p.employeeId), user);
-    return this.view(year);
+    return this.view(year, user);
   }
 
   // ---------- helpers ----------

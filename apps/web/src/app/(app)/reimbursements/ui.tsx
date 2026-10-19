@@ -13,9 +13,12 @@ import { claimHref, lowerApproved, payMonthOf, progressText, STATUS_BADGE, statu
 
 const dash = <span className="text-muted">—</span>;
 
-/** With the manager, With HR, With Finance, Approved, Rejected or Cancelled. */
-export function ClaimStatusBadge({ status }: { status: ReimbursementStatus }) {
-  return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{statusLabel(status)}</span>;
+/**
+ * With the manager, With HR, With Finance, Approved, Rejected or Cancelled; With the CEO for a C-level person's with HR
+ * or Finance (`confidential`, 19 October 2026).
+ */
+export function ClaimStatusBadge({ status, confidential }: { status: ReimbursementStatus; confidential?: boolean }) {
+  return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{statusLabel(status, confidential)}</span>;
 }
 
 /** The amount claimed, and under it the lower amount approved, when one was. */
@@ -43,14 +46,17 @@ export function ClaimProgress({ claim }: { claim: ReimbursementClaimView }) {
 
 const DOT: Record<'ok' | 'danger' | 'warn' | 'none', string> = { ok: 'bg-ok', danger: 'bg-danger', warn: 'bg-warn', none: 'bg-line' };
 
-/** The claim's log: every step in order, what happened and the amount with it, the comment, who and when. */
-export function ClaimTimeline({ claim }: { claim: Pick<ReimbursementClaimView, 'steps' | 'manager'> }) {
+/**
+ * The claim's log: every step in order, what happened and the amount with it, the comment, who and when (a C-level
+ * person's HR and Finance stages by the stage, which the CEO decides).
+ */
+export function ClaimTimeline({ claim }: { claim: Pick<ReimbursementClaimView, 'steps' | 'manager' | 'confidential'> }) {
   const steps = claim.steps ?? [];
   if (!steps.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
   return (
     <ol className="space-y-3 border-l-2 border-line-soft pl-4" aria-label={`Every step of the claim, ${stepsLabel(steps.length)}`}>
       {steps.map((s) => {
-        const t = stepText(s, claim.manager);
+        const t = stepText(s, claim.manager, claim.confidential);
         return (
           <li key={s.id} className="relative">
             <span aria-hidden="true" className={`absolute top-1.5 -left-[23px] size-3 rounded-full border-2 border-card ${DOT[stepTone(s) ?? 'none']}`} />
@@ -117,7 +123,7 @@ export function MyClaimsTable({ claims }: { claims: ReimbursementClaimView[] }) 
                 <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(c.amount)}</td>
                 <td className="text-right whitespace-nowrap tabular-nums">{c.approvedAmount !== null && c.status !== 'rejected' ? formatEgp(c.approvedAmount) : dash}</td>
                 <td className="min-w-48">
-                  <ClaimStatusBadge status={c.status} />
+                  <ClaimStatusBadge status={c.status} confidential={c.confidential} />
                   <p className="mt-1 text-xs text-muted">
                     <ClaimProgress claim={c} />
                   </p>

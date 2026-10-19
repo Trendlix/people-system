@@ -33,8 +33,12 @@ import { newRaiseRequestHref, raiseRequestOnListHref } from '../../../raise-requ
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
 
-/** GET /reports/salary-raises: the report, as of when it was made. */
-export type SalaryRaisesView = SalaryRaisesReport & { generatedAt: string };
+/**
+ * GET /reports/salary-raises: the report, as of when it was made. `confidentialExcluded`: how many C-level people it
+ * leaves out for the caller (owner, 19 October 2026: "make C level Employees details not visible to HR"); 0 for the
+ * CEO and the Super Admin, left out by an older API.
+ */
+export type SalaryRaisesView = SalaryRaisesReport & { generatedAt: string; confidentialExcluded?: number };
 
 /** Who sees the report (Payroll → Reports and the Employees page show them the link): HR, Finance and the CEO, who see salaries. */
 export const SALARY_RAISES_ROLES: readonly Role[] = ['hr', 'finance', 'ceo'];

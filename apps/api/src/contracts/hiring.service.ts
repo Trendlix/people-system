@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import { EmploymentsService } from '../employees/employments.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -38,10 +39,13 @@ export class HiringService {
     private readonly employees: EmployeesService,
     private readonly employments: EmploymentsService,
     private readonly contracts: ContractsService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /** Hires someone whose profile exists: the employment and its first contract, drafted. Answers the updated profile. */
   async hire(employeeId: string, dto: HireDto, user: SessionUser) {
+    // a C-level grade only from those who see C-level people (owner, 19 October 2026)
+    await this.confidential.assertMayGiveGrade(user, dto.employment.gradeId);
     const joinDate = dto.employment.joinDate;
     if (dto.contract.startDate !== undefined && dto.contract.startDate !== joinDate) throw new BadRequestException(START_ON_JOIN_DATE);
     // the first contract starts on the join date

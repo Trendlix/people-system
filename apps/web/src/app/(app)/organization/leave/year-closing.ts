@@ -1,5 +1,6 @@
-import { isLeaveDays, leavePayAmount, yearClosingProblems } from '@trendlix/shared';
+import { confidentialPeople, isLeaveDays, leavePayAmount, yearClosingProblems } from '@trendlix/shared';
 import type { YearClosingRow } from '../../../../lib/types';
+import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { monthName } from '../../payroll/list';
 
 // Organization → Leave → Year Closing (owner, 18 October 2026: "make it with decision with the year closing"): for each
@@ -7,9 +8,12 @@ import { monthName } from '../../payroll/list';
 // forbids losing leave (Labour Law 14/2025, Art. 125: "لا يجوز للعامل النزول عن إجازته … ويلتزم صاحب العمل بتسوية رصيد
 // الإجازات، أو الأجر المقابل له كل ثلاث سنوات على الأكثر"), so what is carried and what is paid add up to what is unused,
 // and the days carried for three years must be paid now (highlighted). The pay is the days × the day rate (the gross ÷
-// the payroll's day divisor), added to the January payroll (or the next one open) as Unused leave paid. Pure code,
-// tested: the inputs read, each row's problems and amount, the totals, and the form as the API takes it. Relative
-// imports: the tests run without the "@/" alias.
+// the payroll's day divisor), added to the January payroll (or the next one open) as Unused leave paid. The C-level
+// people are left out for anyone but the CEO and the Super Admin (owner, 19 October 2026: "make C level Employees
+// details not visible to HR"); HR closing the year settles theirs by default, the days that must be paid now paid and
+// the rest carried, and the page says so. Pure code, tested: the inputs read, each row's problems and amount, the
+// totals, the form as the API takes it, and what is said of the C-level people. Relative imports: the tests run without
+// the "@/" alias.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -108,12 +112,20 @@ export interface ClosingBody {
 }
 
 /**
+ * The form's field saying the year closes with C-level people left out for the caller (19 October 2026), so a form with
+ * no rows of its own still closes the year: theirs by default.
+ */
+export const CLOSES_CONFIDENTIAL = 'closesConfidential';
+
+/**
  * The closing as the API takes it: a row for each employee the form lists (`employeeId`, repeated), with their days
  * carried and paid; or what is wrong (a cell that isn't days). The rules (the two adding up, the days to settle) are
  * checked live on the page and again by the API.
  */
 export function closingBody(fd: FormData): { body: ClosingBody | null; errors: string[] } {
   const ids = [...new Set(fd.getAll('employeeId').map(String).filter(Boolean))];
+  // only C-level people left out for the caller (owner, 19 October 2026): the API closes theirs by default
+  if (!ids.length && fd.get(CLOSES_CONFIDENTIAL) === '1') return { body: { rows: [] }, errors: [] };
   if (!ids.length) return { body: null, errors: ['There is no one to close the year for.'] };
   const rows: ClosingBody['rows'] = [];
   const errors: string[] = [];
@@ -142,6 +154,27 @@ export function payoutText(p: YearClosingRow['payout']): string | null {
   if (p.status === 'applied') return `Paid with the ${month} payroll`;
   if (p.status === 'cancelled') return `Cancelled on the ${month} payroll`;
   return `To be paid with the ${month} payroll`;
+}
+
+/** How the C-level people left out are closed (19 October 2026): carryRest's, the days that must be paid now paid. */
+const byDefault = (year: number) => `the days that must be paid now are paid, the rest carried into ${year + 1}`;
+
+/**
+ * What the page says when C-level people are left out for the caller (owner, 19 October 2026: "make C level Employees
+ * details not visible to HR"): that only the CEO and the Super Admin see their leave, and, while the year is open, that
+ * closing it settles theirs by default; null for none.
+ */
+export function closingExcludedText(count: number | null | undefined, year: number, closed: boolean): string | null {
+  if (typeof count !== 'number' || !(count > 0)) return null;
+  const left = `${confidentialPeople(count)} ${count === 1 ? 'is' : 'are'} left out: only the CEO and the Super Admin see their leave.`;
+  return closed ? left : `${left} Closing the year settles theirs by default: ${byDefault(year)}.`;
+}
+
+/** What Close the year asks first: the days carried and paid, and how the C-level people left out (`excluded`) are closed. */
+export function closingConfirmText(year: number, totals: { carry: number; pay: number; amount: number }, excluded = 0): string {
+  const text = `Close ${year}? ${totals.carry} days are carried into ${year + 1}, and ${totals.pay} days are paid (${formatEgp(totals.amount)}) with the payroll of January ${year + 1}, or the next one open.`;
+  if (!(excluded > 0)) return text;
+  return `${text} ${confidentialPeople(excluded)}, left out here, ${excluded === 1 ? 'is' : 'are'} closed by default: ${byDefault(year)}.`;
 }
 
 /** What the page says after `?done=`: closed, or opened again. */

@@ -26,6 +26,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { assertTrainingGap } from '../contracts/training.js';
 import { seesSalary } from '../employees/access.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { MailService } from '../mail/mail.service.js';
@@ -130,6 +131,7 @@ export class OffersService {
     private readonly hiring: OfferHiringService,
     private readonly mail: MailService,
     private readonly lawRates: LawRatesService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /**
@@ -149,6 +151,8 @@ export class OffersService {
       AND: [
         query.status ? (byStatus[query.status] ?? { status: query.status }) : {},
         text ? { OR: [{ fullNameEn: text }, { fullNameAr: text }, { email: text }, { number: text }] } : {},
+        // not a C-level one for anyone but the CEO and a Super Admin (owner, 19 October 2026)
+        await this.confidential.offerWhere(user),
       ],
     };
     const rows = await this.prisma.jobOffer.findMany({ where, select: OFFER_LIST_SELECT, orderBy: [{ createdAt: 'desc' }, { number: 'desc' }], take: LIST_CAP });
@@ -157,11 +161,13 @@ export class OffersService {
   }
 
   async get(id: string, user: SessionUser): Promise<OfferView> {
-    return this.view(await this.row(id), user);
+    return this.view(await this.row(id, user), user);
   }
 
   /** A new draft, numbered OFF-<year>-<4 digits> by the year it is drafted. */
   async create(dto: CreateOfferDto, user: SessionUser) {
+    // a C-level grade only from those who see C-level people (owner, 19 October 2026)
+    await this.confidential.assertMayGiveGrade(user, dto.gradeId);
     const { values, allowances } = await this.checked(null, dto);
     const rows = allowances ?? [];
     const created = await this.prisma.$transaction(async (tx) => {
@@ -187,7 +193,8 @@ export class OffersService {
    * only its last day (a later one opens an expired offer again) and the note; anything else is a new offer.
    */
   async update(id: string, dto: UpdateOfferDto, user: SessionUser) {
-    const before = await this.row(id);
+    const before = await this.row(id, user);
+    if (dto.gradeId !== undefined && dto.gradeId !== before.gradeId) await this.confidential.assertMayGiveGrade(user, dto.gradeId);
     const was = fields(before);
     let diff: Record<string, unknown>;
 
@@ -225,7 +232,7 @@ export class OffersService {
   /** Deletes an offer (a Super Admin only). An accepted one stays on record with the profile made from it. */
   async remove(id: string, user: SessionUser) {
     assertDeletes(user);
-    const o = await this.row(id);
+    const o = await this.row(id, user);
     if (o.status === 'accepted') throw new ConflictException(`${o.number} was accepted, so it stays on record with the profile made from it.`);
     await this.prisma.jobOffer.delete({ where: { id } });
     await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: id, diff: { number: o.number, status: o.status, fullNameEn: o.fullNameEn } });
@@ -241,7 +248,7 @@ export class OffersService {
    * header); sending still needs a published one.
    */
   async document(id: string, user: SessionUser): Promise<{ data: Buffer; fileName: string; templateDraft: number | null }> {
-    const o = await this.row(id);
+    const o = await this.row(id, user);
     let fileName: string;
     let pdf: Buffer;
     let restricted: string[];
@@ -277,7 +284,7 @@ export class OffersService {
    * as it was. Refused once the last day has passed (set a later one first), and for an answered or withdrawn offer.
    */
   async send(id: string, dto: SendOfferDto, user: SessionUser): Promise<{ offer: OfferView; link: string }> {
-    const o = await this.row(id);
+    const o = await this.row(id, user);
     if (o.status !== 'draft' && o.status !== 'sent') throw new ConflictException(`${o.number} ${STANDING[shownStatus(o)]}, so it can't be sent.`);
     if (pastLastDay(o)) {
       throw new ConflictException(`The offer's last day, ${shownDate(fromDateOnly(o.expiresOn))}, has passed. Set a later last day, then send it again.`);
@@ -351,7 +358,7 @@ export class OffersService {
 
   /** A draft or sent offer withdrawn: its link stops working. */
   async withdraw(id: string, dto: WithdrawOfferDto, user: SessionUser) {
-    const o = await this.row(id);
+    const o = await this.row(id, user);
     if (o.status !== 'draft' && o.status !== 'sent') throw new ConflictException(`${o.number} ${STANDING[shownStatus(o)]}, so it can't be withdrawn.`);
     const reason = dto.reason ?? null;
     const { count } = await this.prisma.jobOffer.updateMany({
@@ -369,7 +376,7 @@ export class OffersService {
    * (see OfferHiringService); if that fails, the acceptance stays and `hireError` says why.
    */
   async answer(id: string, dto: AnswerOfferDto, user: SessionUser): Promise<OfferView & { hireError: string | null }> {
-    const o = await this.row(id);
+    const o = await this.row(id, user);
     if (o.status !== 'draft' && o.status !== 'sent') throw new ConflictException(`${o.number} ${STANDING[shownStatus(o)]}, so its answer can't be recorded.`);
     if (pastLastDay(o)) {
       throw new ConflictException(`The offer's last day, ${shownDate(fromDateOnly(o.expiresOn))}, has passed. If the candidate answered in time, set a later last day first.`);
@@ -413,7 +420,7 @@ export class OffersService {
 
   /** Makes the profile from an accepted offer whose profile wasn't made (e.g. after a failure), with the error if it fails again. */
   async hire(id: string, user: SessionUser) {
-    const o = await this.row(id);
+    const o = await this.row(id, user);
     if (o.status !== 'accepted') throw new ConflictException(`${o.number} isn't accepted, so there is no profile to make from it.`);
     if (o.hiredAt) throw new ConflictException(`The profile was already made from ${o.number}.`);
     await this.hiring.hire(id, user.id);
@@ -422,8 +429,9 @@ export class OffersService {
 
   // ---------- helpers ----------
 
-  private async row(id: string): Promise<OfferRow> {
-    const o = await this.prisma.jobOffer.findUnique({ where: { id }, include: OFFER_INCLUDE, omit: WITHOUT_FILES });
+  /** An offer the caller may see: a C-level one (its grade or its person) only for the CEO and a Super Admin, else 404. */
+  private async row(id: string, user: SessionUser): Promise<OfferRow> {
+    const o = await this.prisma.jobOffer.findFirst({ where: { AND: [{ id }, await this.confidential.offerWhere(user)] }, include: OFFER_INCLUDE, omit: WITHOUT_FILES });
     if (!o) throw new NotFoundException('Job offer not found.');
     return o;
   }
@@ -507,7 +515,7 @@ export class OffersService {
 
   /** The 409 when another request changed the offer between reading and writing it. */
   private async changedMeanwhile(id: string): Promise<ConflictException> {
-    const now = await this.row(id);
+    const now = await this.prisma.jobOffer.findUniqueOrThrow({ where: { id }, include: OFFER_INCLUDE, omit: WITHOUT_FILES });
     return new ConflictException(`${now.number} ${STANDING[shownStatus(now)]} in the meantime. Reload it to see where it stands.`);
   }
 

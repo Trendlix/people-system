@@ -12,9 +12,9 @@ import { daysText, leaveHref, leaveProgressText, leaveStatusLabel, leaveStepText
 // of every step as a timeline, the tables of the employee's own requests and of those waiting for a direct manager, and
 // the balance card: the annual balance and what is left of the other types.
 
-/** With the manager, With HR, Approved, Rejected or Cancelled. */
-export function LeaveStatusBadge({ status }: { status: LeaveStatus }) {
-  return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{leaveStatusLabel(status)}</span>;
+/** With the manager, With HR, Approved, Rejected or Cancelled; With the CEO for a C-level person's with HR (`confidential`). */
+export function LeaveStatusBadge({ status, confidential }: { status: LeaveStatus; confidential?: boolean }) {
+  return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{leaveStatusLabel(status, confidential)}</span>;
 }
 
 /** Where it stands, with the comment of a rejection or a cancellation. */
@@ -30,8 +30,11 @@ export function LeaveProgress({ request }: { request: LeaveRequestView }) {
 
 const DOT: Record<'ok' | 'danger' | 'none', string> = { ok: 'bg-ok', danger: 'bg-danger', none: 'bg-line' };
 
-/** The request's log: every step in order, what happened, the comment, who and when (the manager stage by who decides it). */
-export function LeaveTimeline({ request }: { request: Pick<LeaveRequestView, 'steps' | 'manager'> }) {
+/**
+ * The request's log: every step in order, what happened, the comment, who and when (the manager stage by who decides it;
+ * a C-level person's HR stage by the stage, which the CEO decides).
+ */
+export function LeaveTimeline({ request }: { request: Pick<LeaveRequestView, 'steps' | 'manager' | 'confidential'> }) {
   const steps = request.steps ?? [];
   if (!steps.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
   return (
@@ -39,7 +42,7 @@ export function LeaveTimeline({ request }: { request: Pick<LeaveRequestView, 'st
       {steps.map((s) => (
         <li key={s.id} className="relative">
           <span aria-hidden="true" className={`absolute top-1.5 -left-[23px] size-3 rounded-full border-2 border-card ${DOT[leaveStepTone(s) ?? 'none']}`} />
-          <p className="text-sm font-medium">{leaveStepText(s, request.manager)}</p>
+          <p className="text-sm font-medium">{leaveStepText(s, request.manager, request.confidential)}</p>
           {s.comment && <p className="mt-0.5 text-sm whitespace-pre-line">“{s.comment}”</p>}
           <p className="text-xs text-muted">
             {s.actor && <span className="break-words">{s.actor} · </span>}
@@ -100,7 +103,7 @@ export function MyLeaveTable({ requests }: { requests: LeaveRequestView[] }) {
                 <When request={r} />
               </td>
               <td className="min-w-48">
-                <LeaveStatusBadge status={r.status} />
+                <LeaveStatusBadge status={r.status} confidential={r.confidential} />
                 <p className="mt-1 text-xs text-muted">
                   <LeaveProgress request={r} />
                 </p>

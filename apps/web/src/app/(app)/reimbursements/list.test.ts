@@ -10,10 +10,13 @@ import {
   claimHref,
   claimsLabel,
   claimsPath,
+  COMMENT_READERS,
+  commentReaders,
   currentAmount,
   decidedText,
   decisionBody,
   decisionButton,
+  decidingAsTitle,
   defaultFilter,
   doneText,
   emptyText,
@@ -26,6 +29,8 @@ import {
   readFilter,
   receiptHref,
   reimbursementsHref,
+  sentText,
+  statusLabel,
   stepsLabel,
   stepText,
   stepTone,
@@ -276,5 +281,57 @@ describe('deciding a claim', () => {
     expect(doneText({ done: 'ceo_approve' }, 'approved')).toBeNull();
     expect(doneText({ done: 'hr_maybe' }, 'with_hr')).toBeNull();
     expect(doneText({}, 'with_hr')).toBeNull();
+  });
+});
+
+describe('a C-level person’s claim (owner, 19 October 2026: "make C level Employees details not visible to HR")', () => {
+  const clevel = (over: Partial<ReimbursementClaimView> = {}) => claim({ confidential: true, ...over });
+
+  it('is with the CEO at HR’s and at Finance’s stage', () => {
+    expect(statusLabel('with_hr', true)).toBe('With the CEO');
+    expect(statusLabel('with_finance', true)).toBe('With the CEO');
+    expect(statusLabel('with_finance')).toBe('With Finance');
+    expect(statusLabel('with_manager', true)).toBe('With the manager');
+    expect(progressText(clevel({ status: 'with_hr', stage: 'hr' })).text).toBe('Waiting for the CEO, at HR’s stage');
+    expect(progressText(clevel({ status: 'with_finance', stage: 'finance' })).text).toBe('Waiting for the CEO, at Finance’s stage');
+    expect(progressText(claim({ status: 'with_finance', stage: 'finance' })).text).toBe('Waiting for Finance');
+  });
+
+  it('goes on to the CEO, then to Finance’s stage, which the CEO decides too', () => {
+    expect(decisionButton('approve', 'manager', true).label).toBe('Approve and send to the CEO');
+    expect(decisionButton('approve', 'hr', true).label).toBe('Approve and send to Finance’s stage');
+    expect(decisionButton('approve', 'finance', true).label).toBe('Approve and add to payroll');
+    expect(decisionButton('approve', 'manager').label).toBe('Approve and send to HR');
+    expect(decisionButton('approve', 'hr').label).toBe('Approve and send to Finance');
+    expect(decidedText('approve', 'manager', true)).toBe('Approved: the claim goes to the CEO.');
+    expect(decidedText('approve', 'hr', true)).toBe('Approved: the claim goes on to Finance’s stage, which the CEO decides too.');
+    expect(decidedText('approve', 'hr')).toBe('Approved: the claim goes to Finance.');
+    expect(doneText({ done: 'hr_approve_other' }, 'with_finance', null, true)?.text).toBe('Approved: the claim goes on to Finance’s stage, which the CEO decides too.');
+    expect(sentText('with_manager', null, true)).toBe(
+      'Claim sent. It goes to your direct manager, then the CEO, for HR’s and Finance’s stages; each step shows on the claim. Once approved, it is paid with the next payroll.',
+    );
+  });
+
+  it('names the stage once decided, not who decided it: the log says who', () => {
+    expect(stepText(step({ kind: 'hr_decision', decision: 'approve', amount: 250 }), null, true).title).toBe('Approved at HR’s stage');
+    expect(stepText(step({ kind: 'finance_decision', decision: 'approve_other', amount: 200 }), null, true)).toEqual({ title: 'A lower amount approved at Finance’s stage', detail: 'EGP 200.00' });
+    expect(stepText(step({ kind: 'finance_decision', decision: 'reject' }), null, true).title).toBe('Rejected at Finance’s stage');
+    expect(stepText(step({ kind: 'finance_decision', decision: 'reject' }), null).title).toBe('Finance rejected it');
+    expect(stepText(step({ kind: 'manager_decision', decision: 'approve', amount: 250 }), null, true).title).toBe('The direct manager approved it');
+    expect(progressText(clevel({ status: 'rejected', stage: null, rejectedStage: 'finance', rejectReason: 'Over the cap' }))).toEqual({ text: 'Rejected at Finance’s stage', reason: 'Over the cap' });
+    expect(progressText(clevel({ status: 'rejected', stage: null, rejectedStage: 'manager', rejectReason: 'No' })).text).toBe('Rejected by the direct manager');
+  });
+
+  it('is decided as the CEO by the CEO, and as HR or Finance by them with Super Admin', () => {
+    expect(decidingAsTitle(as('ceo'), 'hr', 'the Direct Manager', true)).toBe('the CEO, at HR’s Stage');
+    expect(decidingAsTitle(as('ceo'), 'finance', 'the Direct Manager', true)).toBe('the CEO, at Finance’s Stage');
+    expect(decidingAsTitle(as('finance', 'super_admin'), 'finance', 'the Direct Manager', true)).toBe('Finance');
+    expect(decidingAsTitle(as('finance'), 'finance', 'the Direct Manager', false)).toBe('Finance');
+    expect(decidingAsTitle(as('ceo'), 'manager', 'the Team Lead', true)).toBe('the Team Lead');
+  });
+
+  it('tells the approver HR and Finance don’t read the comment', () => {
+    expect(commentReaders(true)).toBe('The employee sees your comment, and so do the direct manager, the CEO and the Super Admin.');
+    expect(commentReaders(undefined)).toBe(COMMENT_READERS);
   });
 });

@@ -1,8 +1,9 @@
 'use server';
 
 // The CEO's decision on an ending HR recorded and approved, and on a pay raise HR sent; and HR's or an Admin's on an
-// employee's change request, on Approvals or on Details Changes. Each forwards to the API, which lets only the CEO
-// decide endings and raises, and only HR and Admin change requests, so calling these directly can't bypass that.
+// employee's change request, on Approvals or on Details Changes (a C-level person's, the CEO's or a Super Admin's: owner,
+// 19 October 2026). Each forwards to the API, which lets only the CEO decide endings and raises, and only HR and Admin
+// change requests (a C-level person's, only the CEO and a Super Admin), so calling these directly can't bypass that.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';

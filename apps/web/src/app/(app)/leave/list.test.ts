@@ -3,12 +3,16 @@ import type { LeaveRequestView } from '../../../lib/types';
 import {
   canSeeLeaveRequests,
   daysText,
+  decidingAsTitle,
   defaultLeaveFilter,
   emptyLeaveText,
   hrCancelBody,
+  hrStageName,
+  LEAVE_COMMENT_READERS,
   LEAVE_FILTERS,
   leaveBack,
   leaveCalendarHref,
+  leaveCommentReaders,
   leaveDecidedText,
   leaveDecisionBody,
   leaveDecisionButton,
@@ -16,6 +20,8 @@ import {
   leaveDoneText,
   leaveProgressText,
   leaveRequestsPath,
+  leaveSentText,
+  leaveStatusLabel,
   leaveStepText,
   leaveStepTone,
   leaveWhenText,
@@ -241,5 +247,57 @@ describe('the employee’s leave coming up, on their dashboard', () => {
     expect(leaveWhenText({ startDate: '2026-10-23', endDate: '2026-10-25' }, '2026-10-18')).toBe('In 5 days');
     expect(leaveWhenText({ startDate: '2026-10-17', endDate: '2026-10-19' }, '2026-10-18')).toBe('Under way, until 19/10/2026');
     expect(leaveWhenText({ startDate: '2026-10-17', endDate: '2026-10-18' }, '2026-10-18')).toBe('Ends today');
+  });
+});
+
+describe('a C-level person’s request (owner, 19 October 2026: "make C level Employees details not visible to HR")', () => {
+  const clevel = (r: Partial<LeaveRequestView> = {}) => request({ confidential: true, ...r });
+
+  it('is with the CEO, not HR, while HR’s stage waits', () => {
+    expect(leaveStatusLabel('with_hr', true)).toBe('With the CEO');
+    expect(leaveStatusLabel('with_hr', false)).toBe('With HR');
+    expect(leaveStatusLabel('with_hr')).toBe('With HR');
+    expect(leaveStatusLabel('with_manager', true)).toBe('With the manager');
+    expect(leaveStatusLabel('approved', true)).toBe('Approved');
+    expect(leaveProgressText(clevel({ status: 'with_hr', stage: 'hr' })).text).toBe('Waiting for the CEO');
+    expect(leaveProgressText(request({ status: 'with_hr', stage: 'hr' })).text).toBe('Waiting for HR');
+    expect(hrStageName(true)).toBe('the CEO');
+    expect(hrStageName(undefined)).toBe('HR');
+  });
+
+  it('goes on to the CEO once the manager approves it', () => {
+    expect(leaveDecisionButton('approve', 'manager', true).label).toBe('Approve and send to the CEO');
+    expect(leaveDecisionButton('approve', 'manager').label).toBe('Approve and send to HR');
+    expect(leaveDecisionButton('approve', 'hr', true).label).toBe('Approve the leave');
+    expect(leaveDecidedText('approve', 'manager', true)).toBe('Approved: the request goes to the CEO.');
+    expect(leaveDoneText({ done: 'manager_approve' }, 'with_hr', null, true)?.text).toBe('Approved: the request goes to the CEO.');
+    expect(leaveSentText('with_manager', null, true)).toBe('Request sent. It goes to your direct manager, then the CEO; each step shows on the request.');
+    expect(leaveSentText('with_hr', null, true)).toBe('Request sent. It goes to the CEO; each step shows on the request.');
+    expect(leaveDoneText({ done: 'sent' }, 'with_hr', null, true)?.text).toBe('Request sent. It goes to the CEO; each step shows on the request.');
+  });
+
+  it('names HR’s stage, not who decided it, once decided: the log says who', () => {
+    expect(leaveStepText({ kind: 'hr_decision', decision: 'approve', comment: null }, null, true)).toBe('Approved at HR’s stage');
+    expect(leaveStepText({ kind: 'hr_decision', decision: 'reject', comment: 'No' }, null, true)).toBe('Rejected at HR’s stage');
+    expect(leaveStepText({ kind: 'hr_decision', decision: 'approve', comment: null }, null)).toBe('HR approved it');
+    // the manager stage as before
+    expect(leaveStepText({ kind: 'manager_decision', decision: 'approve', comment: null }, null, true)).toBe('The direct manager approved it');
+    expect(leaveProgressText(clevel({ status: 'rejected', stage: null, rejectedStage: 'hr', rejectReason: 'Overlaps the board meeting' }))).toEqual({
+      text: 'Rejected at HR’s stage',
+      reason: 'Overlaps the board meeting',
+    });
+    expect(leaveProgressText(clevel({ status: 'rejected', stage: null, rejectedStage: 'manager', rejectReason: 'No' })).text).toBe('Rejected by the direct manager');
+  });
+
+  it('is decided as the CEO by the CEO, and as HR by HR with Super Admin', () => {
+    expect(decidingAsTitle({ roles: ['ceo'] }, 'hr', null, true)).toBe('the CEO, at HR’s Stage');
+    expect(decidingAsTitle({ roles: ['hr', 'super_admin'] }, 'hr', null, true)).toBe('HR');
+    expect(decidingAsTitle({ roles: ['hr'] }, 'hr', null, false)).toBe('HR');
+    expect(decidingAsTitle({ roles: ['ceo'] }, 'manager', { role: 'team_lead' }, true)).toBe('the Team Lead');
+  });
+
+  it('tells the approver HR doesn’t read the comment', () => {
+    expect(leaveCommentReaders(true)).toBe('The employee sees your comment, and so do the direct manager, the CEO and the Super Admin.');
+    expect(leaveCommentReaders(false)).toBe(LEAVE_COMMENT_READERS);
   });
 });

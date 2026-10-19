@@ -1,4 +1,5 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { marksConfidentialGrade } from '@trendlix/shared';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import { assertDeletes } from '../../auth/roles.js';
 import type { SessionUser } from '../../auth/session-user.js';
@@ -8,11 +9,16 @@ import type { CreateGradeDto, UpdateGradeDto } from './grade.dto.js';
 
 const ENTITY = 'grade';
 
+/** Why a grade's C-level flag isn't changed: a Super Admin's (owner, 19 October 2026). */
+export const ONLY_SUPER_ADMIN_MARKS = 'Only a Super Admin marks a grade C-level, or unmarks it.';
+
 /** "1 employment", "5 employments". */
 const howMany = (n: number, thing: string) => `${n} ${thing}${n === 1 ? '' : 's'}`;
 
 // The grading system: G1 Entry Level … G9 Executive, lowest rank first. A job title takes a range of grades and each
-// employment has one (owner's decision, 15 October 2026).
+// employment has one (owner's decision, 15 October 2026). A grade may be C-level (owner, 19 October 2026: "make C level
+// Employees details not visible to HR"; G9 · Executive is): those holding it show HR, Finance, Admin and managers only
+// their directory card. Only a Super Admin marks a grade C-level or unmarks it, which hides or unhides its people.
 @Injectable()
 export class GradesService {
   constructor(
@@ -31,23 +37,26 @@ export class GradesService {
     return this.withCounts(grade);
   }
 
-  async create(dto: CreateGradeDto, userId: string) {
+  async create(dto: CreateGradeDto, user: SessionUser) {
+    if (dto.confidential) assertMarks(user);
     await this.assertFree(dto.code, dto.rank);
     const grade = await this.prisma.grade.create({
-      data: { code: dto.code, rank: dto.rank, levelEn: dto.levelEn, levelAr: dto.levelAr ?? null, description: dto.description ?? null },
+      data: { code: dto.code, rank: dto.rank, levelEn: dto.levelEn, levelAr: dto.levelAr ?? null, description: dto.description ?? null, confidential: dto.confidential ?? false },
     });
-    const { code, rank, levelEn, levelAr, description } = grade;
-    await this.audit.record({ userId, action: 'create', entityType: ENTITY, entityId: grade.id, diff: { code, rank, levelEn, levelAr, description } });
+    const { code, rank, levelEn, levelAr, description, confidential } = grade;
+    await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, entityId: grade.id, diff: { code, rank, levelEn, levelAr, description, confidential } });
     return this.get(grade.id);
   }
 
-  async update(id: string, dto: UpdateGradeDto, userId: string) {
+  async update(id: string, dto: UpdateGradeDto, user: SessionUser) {
     const before = await this.get(id);
+    // sent as it is: no change, whoever sends it (a form sends every field)
+    if (dto.confidential !== undefined && dto.confidential !== before.confidential) assertMarks(user);
     await this.assertFree(dto.code !== before.code ? dto.code : undefined, dto.rank !== before.rank ? dto.rank : undefined);
-    const fields = { code: dto.code, rank: dto.rank, levelEn: dto.levelEn, levelAr: dto.levelAr, description: dto.description };
+    const fields = { code: dto.code, rank: dto.rank, levelEn: dto.levelEn, levelAr: dto.levelAr, description: dto.description, confidential: dto.confidential };
     await this.prisma.grade.update({ where: { id }, data: fields });
     const diff = changes(before, fields);
-    if (Object.keys(diff).length) await this.audit.record({ userId, action: 'update', entityType: ENTITY, entityId: id, diff });
+    if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: id, diff });
     return this.get(id);
   }
 
@@ -85,4 +94,9 @@ export class GradesService {
       if (taken) throw new ConflictException(`Rank ${rank} is already ${taken.code}. Each grade has its own rank.`);
     }
   }
+}
+
+/** A grade's C-level flag is changed by a Super Admin only (owner, 19 October 2026): 403 for anyone else. */
+function assertMarks(user: SessionUser): void {
+  if (!marksConfidentialGrade(user)) throw new ForbiddenException(ONLY_SUPER_ADMIN_MARKS);
 }

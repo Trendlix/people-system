@@ -35,9 +35,10 @@ import { formatEgp } from '../../employees/[id]/contracts/salary';
 // deductions as the line has them (the taxed and untaxed additions together, marked when some aren't taxed; the
 // deductions after tax), each opening that person's month on Additions / Deductions, the one place to enter them. A
 // draft's line is worked out again whenever one of them changes, so the totals follow. Released (it changes the bank
-// transfer, not the pay), Hold and Comments stay. Pure code, tested: the columns, how each cell is read and shown,
-// which rows changed (only those are sent, in one PATCH /payroll/runs/:id/lines), and the API's refusals put by the
-// cell they are about.
+// transfer, not the pay), Hold and Comments stay. The CEO fills the C-level people's lines, HR the rest (owner, 19
+// October 2026: "the CEO fills their inputs"): a row the caller doesn't fill is read only, and never sent. Pure code,
+// tested: the columns, how each cell is read and shown, which rows changed (only those are sent, in one PATCH
+// /payroll/runs/:id/lines), and the API's refusals put by the cell they are about.
 
 /** The inputs HR types on the grid: not the CEO's attendance waiver (17 October 2026), which the results table has. */
 export type InputField = Exclude<keyof PayrollInputs, 'attendanceWaived'>;
@@ -259,6 +260,12 @@ export interface GridLine {
   inputs: PayrollInputs;
   onHold: boolean;
   comments: string | null;
+  /**
+   * False when the line isn't the caller's to change (owner, 19 October 2026: the CEO fills the C-level people's lines,
+   * HR the rest; access.ts lineEditable): its row is read only, and anything typed in it is never sent nor counted.
+   * Left out: the line takes edits whenever the grid does.
+   */
+  editable?: boolean;
 }
 
 /** What was typed in a row and not saved yet: cells as typed, the hold and the comments. */
@@ -291,7 +298,8 @@ const commentsOf = (text: string) => text.trim() || null;
 
 /** One row's changes against what is saved: the patch (null when nothing changed) and the cells that can't be read. */
 function rowChanges(line: GridLine, edits: RowEdits | undefined): { patch: LinePatch | null; errors: CellError[]; count: number } {
-  if (!edits) return { patch: null, errors: [], count: 0 };
+  // a line locked to the caller (another's to fill, 19 October 2026) is never sent
+  if (!edits || line.editable === false) return { patch: null, errors: [], count: 0 };
   const errors: CellError[] = [];
   const inputs: Partial<PayrollInputs> = {};
   let count = 0;

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { LEAVE_PATH } from '@/components/nav';
+import { actionablePeople } from '@/lib/confidential';
 import { getCurrentUser } from '@/lib/session';
 import type { EmployeeProfile, EmployeeSummary } from '@/lib/types';
 import { getOrNull } from '../../approvals/data';
@@ -20,7 +21,8 @@ import { LeaveEmployeePicker } from './employee-picker';
 // sick leave reported afterwards): HR only. First who it is for, among everyone employed now (?employee=<id>, also from
 // a profile), then the leave form as the employee has it, with their shift, balance and the holidays; it is recorded
 // approved at once and logged as recorded by HR, with no notice needed. The API checks the type's rules, the balance and
-// an overlap again.
+// an overlap again. A C-level person HR sees only the card of isn't offered (owner, 19 October 2026: "make C level
+// Employees details not visible to HR"): the API refuses their leave to HR; the CEO decides theirs.
 
 export const metadata: Metadata = { title: 'Record Leave · People System' };
 
@@ -42,7 +44,7 @@ async function Record({ searchParams }: { searchParams: PageProps<'/leave/record
   if (!recordsLeave(user)) return <Empty>Only HR records leave on an employee&apos;s behalf.</Empty>;
   const people = await getOrNull<EmployeeSummary[]>('/employees');
   if (!people) return <Empty>The employees couldn&apos;t be loaded. Please try again in a moment.</Empty>;
-  const employed = people
+  const employed = actionablePeople(people)
     .filter((p) => p.employment)
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn, 'en'))
     .map((p) => ({ id: p.id, label: `${p.fullNameEn} · ${p.employeeCode}` }));

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Fragment, Suspense } from 'react';
-import type { PayrollFigures, ReportPeriod } from '@trendlix/shared';
+import { confidentialExcludedNote, type PayrollFigures, type ReportPeriod } from '@trendlix/shared';
 import { Select } from '@/components/select';
 import { formatDateTime, titleCase } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
@@ -33,7 +33,9 @@ import {
 // can be shared (this calendar year unless asked), what the runs the CEO approved paid and cost: the totals, the company
 // cost's trend, month by month (headcount, gross, net, transfer, salary tax, both social insurance shares, the Martyrs'
 // Fund, company cost), by department and team, and this year to date; with the Excel workbook, and the Salary Raises
-// report linked. One GET /payroll/statistics call. HR, Finance and the CEO, as salaries; the API checks it again.
+// report linked. One GET /payroll/statistics call. HR, Finance and the CEO, as salaries; the API checks it again. The
+// C-level people are left out for anyone but the CEO and the Super Admin (owner, 19 October 2026: "make C level
+// Employees details not visible to HR"), the workbook too, and the page says so.
 
 export const metadata: Metadata = { title: 'Payroll Reports · People System' };
 
@@ -281,11 +283,13 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
 
   const s = loaded.value;
   const chart = costChart(s.months, s.period);
+  const excluded = confidentialExcludedNote(s.confidentialExcluded ?? 0);
   return (
     <div className="space-y-8">
       {header}
       <section aria-labelledby="statistics-summary" className="space-y-3">
         <SectionTitle id="statistics-summary" title={titleCase(`Payroll in ${periodTitle(s.period)}`)} note={`As of ${formatDateTime(s.generatedAt)}`} />
+        {excluded && <p className="text-sm text-muted">{excluded}</p>}
         <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {summaryTiles(s).map((t) => (
             <div key={t.key} className="card px-4 py-3">

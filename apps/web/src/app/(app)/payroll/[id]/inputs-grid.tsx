@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import { Fragment, memo, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { formatHours, type PayBasis, type PayrollLeaveDays } from '@trendlix/shared';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { GroupHeading } from '@/components/group-heading';
 import { titleCase } from '@/lib/format';
 import { groupByPlace, placeOrder, showsDepartment, type PlaceRef } from '@/lib/place-groups';
 import type { FormState } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { profileHref } from '../../employees/tab-list';
+import { CONFIDENTIAL_LINE_TITLE, HIDDEN_INPUTS_NOTE, typist } from './access';
 import { cutText } from './breakdown';
 import {
   attendancePercent,
@@ -39,26 +41,32 @@ import {
 } from './grid';
 
 // The run's inputs grid (owner's decisions, 16 October 2026): the month's figures for each employee, laid out like the
-// owner's payroll sheet, typed by HR on a draft until attendance fills them. A wide table, the employee's column kept in
-// view while it scrolls sideways. Hours are typed as attendance shows them (270:00) or as a number (270.5); a cell is
-// tidied as it is left (270.5 → 270:30). Nothing is saved until Save changes, which sends only the rows that changed in
-// one request; a cell that can't be read, or that the API refuses, is marked with the reason. Read only once the run is
-// with the CEO, or for anyone but HR. The expected hours are filled in from the shift (owner, 17 October 2026: "prefill
-// the expected hours, and dont count abcent days or leave days, as they already have their own deduction and fields"):
-// the shift's hours for the month less a day of it for each no-show and leave day typed in the row, shown as the cell's
-// figure (marked "from the shift") and changing as those days are typed; only shown, never sent. What HR types over
-// them is marked "typed by HR" and taken as already without those days; clearing it brings the shift's back. The
-// Attendance % is the worked hours over those expected hours, as the pay counts it, so a day off is charged once
-// (owner's decisions, 16 October 2026). A month under two contracts says so under the employee's name (owner,
-// 17 October 2026: "take into consideration the start and end date of the contract if it is in the middle of the
-// billing period"). Earnings and Deductions, read only, in place of the Penalty days, Bonus days, Commission and
-// Settlements columns (owner, 17 October 2026: "instead of there, i think earnings and deductions will be enough"): the
-// month's totals of the person's additions and deductions as the line has them, each a link to that person's month on
-// Additions / Deductions, where they are entered. The Leave days and the Unpaid leave days are filled in from the leave
-// approved for the month (owner, 18 October 2026: "can you apply the leaves according to the law?"), marked "from
-// leave" and only shown, as the expected hours are; what HR types instead is marked "typed by HR" and wins.
+// owner's payroll sheet, typed by HR on a draft until attendance fills them. A wide table, the employee's column kept
+// in view while it scrolls sideways. Hours are typed as attendance shows them (270:00) or as a number (270.5); a cell
+// is tidied as it is left (270.5 → 270:30). Nothing is saved until Save changes, which sends only the rows that changed
+// in one request; a cell that can't be read, or that the API refuses, is marked with the reason. Read only once the run
+// is with the CEO, or for anyone but HR (and the CEO, on the C-level people's lines). The expected hours are filled in
+// from the shift (owner, 17 October 2026: "prefill the expected hours, and dont count abcent days or leave days, as
+// they already have their own deduction and fields"): the shift's hours for the month less a day of it for each no-show
+// and leave day typed in the row, shown as the cell's figure (marked "from the shift") and changing as those days are
+// typed; only shown, never sent. What HR types over them is marked "typed by HR" and taken as already without those
+// days; clearing it brings the shift's back. The Attendance % is the worked hours over those expected hours, as the pay
+// counts it, so a day off is charged once (owner's decisions, 16 October 2026). A month under two contracts says so
+// under the employee's name (owner, 17 October 2026: "take into consideration the start and end date of the contract if
+// it is in the middle of the billing period"). Earnings and Deductions, read only, in place of the Penalty days, Bonus
+// days, Commission and Settlements columns (owner, 17 October 2026: "instead of there, i think earnings and deductions
+// will be enough"): the month's totals of the person's additions and deductions as the line has them, each a link to
+// that person's month on Additions / Deductions, where they are entered. The Leave days and the Unpaid leave days are
+// filled in from the leave approved for the month (owner, 18 October 2026: "can you apply the leaves according to the
+// law?"), marked "from leave" and only shown, as the expected hours are; what HR types instead is marked "typed by HR"
+// and wins. The C-level people's lines (owner, 19 October 2026: "make C level Employees details not visible to HR") are
+// the CEO's to fill on a draft, HR the rest: each row takes edits only when its line is the caller's (`editable`), the
+// others read only, and the CEO and the Super Admin see those lines marked C-level (what is typed in one marked "typed
+// by the CEO"). For those they are hidden from, one row at the end stands for them, with no figures.
 
 export interface GridRow extends GridLine {
+  /** A C-level person's line (19 October 2026), for those who see it: marked so, the CEO's to fill. */
+  confidential: boolean;
   employeeId: string;
   employeeCode: string;
   department: string | null;
@@ -102,10 +110,13 @@ const ATTENDANCE_AFTER: InputField = 'expectedHours';
 
 const percentFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
-/** What an Expected hours figure is: filled in from the shift, or typed by HR over it (owner, 17 October 2026). */
-function expectedTitle(own: boolean, editable: boolean): string {
+/**
+ * What an Expected hours figure is: filled in from the shift, or typed over it (owner, 17 October 2026) by HR, or on a
+ * C-level person's line by the CEO (`who`, 19 October 2026).
+ */
+function expectedTitle(own: boolean, editable: boolean, who: string): string {
   return own
-    ? `Typed by HR: taken as the expected hours already without the no-show and leave days.${editable ? " Clear it to use the shift's hours." : ''}`
+    ? `Typed by ${who}: taken as the expected hours already without the no-show and leave days.${editable ? " Clear it to use the shift's hours." : ''}`
     : `From the shift: its working days this month less the holidays, the no-show and leave days, at its hours to work a day.${editable ? ' Type other hours to replace them.' : ''}`;
 }
 
@@ -158,10 +169,10 @@ function typedCells(row: GridRow, edits: RowEdits | undefined) {
   };
 }
 
-/** What a leave cell's figure is: filled in from the leave approved for the month, or typed by HR over it (18 October 2026). */
-function leaveTitle(own: boolean, editable: boolean): string {
+/** What a leave cell's figure is: filled in from the leave approved for the month, or typed over it (18 October 2026). */
+function leaveTitle(own: boolean, editable: boolean, who: string): string {
   return own
-    ? `Typed by HR: taken instead of the leave approved this month.${editable ? ' Clear it to use the approved leave.' : ''}`
+    ? `Typed by ${who}: taken instead of the leave approved this month.${editable ? ' Clear it to use the approved leave.' : ''}`
     : `From the leave approved this month (Requests → Leave Requests).${editable ? ' Type other days to replace them.' : ''}`;
 }
 
@@ -194,12 +205,15 @@ const Row = memo(function Row({
   // HR's expected hours, else the shift's less the no-show and leave days as typed now (owner, 17 October 2026)
   const expected = expectedCell(row, cells);
   const attendance = attendancePercent(cells.workedHours, expected.hours);
+  // who a figure typed on the line is marked as typed by: the CEO on a C-level person's (19 October 2026)
+  const who = typist(row.confidential);
   return (
     <tr className={rowError ? 'bg-danger-soft/40' : undefined}>
       <td className={`${stickyCell} min-w-52`}>
         <Link href={profileHref(row.employeeId)} className="font-semibold">
           {row.name}
         </Link>
+        {row.confidential && <CLevelBadge title={CONFIDENTIAL_LINE_TITLE} className="ml-2 align-middle" />}
         <div className="text-xs text-muted">
           <span className="tabular-nums">{row.employeeCode}</span>
           {row.jobTitle && ` · ${row.jobTitle}`}
@@ -253,18 +267,18 @@ const Row = memo(function Row({
                   aria-label={`${c.label} for ${row.name}`}
                   aria-describedby={marked ? markId : undefined}
                   aria-invalid={error ? true : undefined}
-                  title={error ?? (marked ? title(own, true) : undefined)}
+                  title={error ?? (marked ? title(own, true, who) : undefined)}
                   placeholder={marked ? filled : c.kind === 'hours' ? '0:00' : undefined}
                   className={`${cellInput} ${WIDTH[c.kind]} ${filled ? 'text-muted italic' : ''} ${error ? invalid : ''}`}
                 />
               ) : (
-                <span className="block text-right whitespace-nowrap tabular-nums" title={marked ? title(own, false) : undefined}>
+                <span className="block text-right whitespace-nowrap tabular-nums" title={marked ? title(own, false, who) : undefined}>
                   {own ? text : filled ? <span className="text-muted italic">{filled}</span> : <span className="text-muted">—</span>}
                 </span>
               )}
               {marked && (
                 <span id={markId} className={`mt-0.5 block text-right text-[11px] whitespace-nowrap ${own ? 'text-accent' : 'text-muted'}`}>
-                  {own ? 'typed by HR' : shift ? 'from the shift' : 'from leave'}
+                  {own ? `typed by ${who}` : shift ? 'from the shift' : 'from leave'}
                 </span>
               )}
             </td>
@@ -326,15 +340,19 @@ export function InputsGrid({
   editable,
   save,
   places = [],
+  hidden = null,
 }: {
   rows: GridRow[];
   /** The departments and teams in Organization's order, for the groups to follow it (owner, 19 October 2026). */
   places?: PlaceRef[];
   /** The run's rule: what a no-show day costs, in days' pay. */
   noShowDayMultiplier: number;
+  /** Whether any row takes edits; a row whose line isn't the caller's (`editable: false`) stays read only (19 October 2026). */
   editable: boolean;
   /** Saves the changed rows (PATCH /payroll/runs/:id/lines); null when the grid is read only. */
   save: ((lines: LinePatch[]) => Promise<FormState>) | null;
+  /** The row standing for the C-level people's lines hidden from the caller ("C-level (2 people) — hidden"); null for none. */
+  hidden?: string | null;
 }) {
   const [edits, setEdits] = useState<GridEdits>({});
   // the cells left (or saved) with something that can't be read: marked from then on, until put right
@@ -537,9 +555,10 @@ export function InputsGrid({
                     <Row
                       key={row.id}
                       row={row}
-                      edits={canEdit ? edits[row.id] : undefined}
+                      edits={canEdit && row.editable !== false ? edits[row.id] : undefined}
                       errors={errorsByLine.get(row.id)}
-                      editable={canEdit}
+                      // a line another fills is read only: HR's for the CEO, the C-level people's for HR (19 October 2026)
+                      editable={canEdit && row.editable !== false}
                       onCell={onCell}
                       onLeave={onLeave}
                       onHold={onHold}
@@ -550,6 +569,19 @@ export function InputsGrid({
               ))}
             </tbody>
           ))}
+          {/* the C-level people's lines, hidden from the caller (owner, 19 October 2026): one row, no figures */}
+          {hidden && (
+            <tbody>
+              <tr>
+                <th scope="row" className={`${stickyCell} min-w-52 text-sm font-semibold tracking-normal text-ink normal-case`}>
+                  {hidden}
+                </th>
+                <td colSpan={COLUMN_COUNT - 1} className="text-sm text-muted">
+                  {HIDDEN_INPUTS_NOTE}
+                </td>
+              </tr>
+            </tbody>
+          )}
         </table>
       </div>
 

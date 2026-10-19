@@ -50,10 +50,13 @@ export class AdvancesService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Every advance and loan, the open ones first, then the latest given first. */
-  async list(query: AdvancesQueryDto): Promise<AdvanceView[]> {
+  /**
+   * Every advance and loan, the open ones first, then the latest given first; without those of `hidden`, the C-level
+   * people hidden from the caller (owner, 19 October 2026: "make C level Employees details not visible to HR").
+   */
+  async list(query: AdvancesQueryDto, hidden: readonly string[] = []): Promise<AdvanceView[]> {
     const rows = await this.prisma.payrollAdvance.findMany({
-      where: { employeeId: query.employeeId, status: query.status },
+      where: { AND: [{ employeeId: query.employeeId, status: query.status }, hidden.length ? { employeeId: { notIn: [...hidden] } } : {}] },
       orderBy: [{ status: 'asc' }, { givenOn: 'desc' }, { createdAt: 'desc' }],
       include: ADVANCE_INCLUDE,
     });

@@ -16,8 +16,12 @@ import { REPORTS_PATH } from '../sections';
 
 type WithRoles = { roles: readonly Role[] };
 
-/** GET /payroll/statistics: the statistics, as of when they were worked out. */
-export type StatisticsView = PayrollStatistics & { generatedAt: string };
+/**
+ * GET /payroll/statistics: the statistics, as of when they were worked out. `confidentialExcluded`: how many C-level
+ * people the figures leave out for the caller (owner, 19 October 2026: "make C level Employees details not visible to
+ * HR"); 0 for the CEO and the Super Admin, left out by an older API.
+ */
+export type StatisticsView = PayrollStatistics & { generatedAt: string; confidentialExcluded?: number };
 
 export const canSeeReports = (user: WithRoles) => hasRole(user, 'hr', 'finance', 'ceo');
 

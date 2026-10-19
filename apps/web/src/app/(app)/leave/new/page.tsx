@@ -80,6 +80,8 @@ async function NewLeave() {
         person={{ employeeId: null, ...facts }}
         initial={{ year, balances: balances.kind === 'ok' ? balances.value : null, holidays: holidays.kind === 'ok' ? holidays.value : [] }}
         cancelHref={back.href}
+        // a C-level person's goes to the CEO, not HR (owner, 19 October 2026: "make C level Employees details not visible to HR")
+        toCeo={profile.confidential === true}
       />
     ) : (
       <Empty>No type of leave is on yet. HR sets them up: ask HR.</Empty>

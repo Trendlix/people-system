@@ -105,13 +105,16 @@ export class AdjustmentsService {
     private readonly runs: RunAdjustmentsService,
   ) {}
 
-  /** The additions and deductions asked for, by month (newest first), then by employee code, then as entered. */
-  async list(query: AdjustmentsQueryDto): Promise<AdjustmentView[]> {
+  /**
+   * The additions and deductions asked for, by month (newest first), then by employee code, then as entered; not the
+   * C-level people's (`hidden`) for anyone but the CEO and a Super Admin (owner, 19 October 2026).
+   */
+  async list(query: AdjustmentsQueryDto, hidden: readonly string[] = []): Promise<AdjustmentView[]> {
     if (query.type && query.kind && !isAdjustmentType(query.kind, query.type)) throw new BadRequestException(this.typeMessage(query.kind));
     const rows = await this.prisma.payrollAdjustment.findMany({
       where: {
+        AND: [{ employeeId: query.employeeId }, hidden.length ? { employeeId: { notIn: [...hidden] } } : {}],
         month: query.month ? toDateOnly(firstDay(query.month)) : undefined,
-        employeeId: query.employeeId,
         kind: query.kind,
         type: query.type,
         status: query.status,
@@ -126,13 +129,17 @@ export class AdjustmentsService {
     return (await this.views([await this.row(id)]))[0];
   }
 
-  /** The month's form: its run and whether it is locked, the people employed in it, and their open advances and loans. */
-  async choices(query: AdjustmentChoicesQueryDto): Promise<AdjustmentChoices> {
+  /**
+   * The month's form: its run and whether it is locked, the people employed in it, and their open advances and loans;
+   * without the C-level people (`hidden`) for anyone but the CEO and a Super Admin (owner, 19 October 2026).
+   */
+  async choices(query: AdjustmentChoicesQueryDto, hidden: readonly string[] = []): Promise<AdjustmentChoices> {
     const month = query.month;
+    const shown = hidden.length ? { employeeId: { notIn: [...hidden] } } : {};
     const [run, employments] = await Promise.all([
       this.prisma.payrollRun.findUnique({ where: { month: toDateOnly(firstDay(month)) }, select: { id: true, status: true, rules: true } }),
       this.prisma.employment.findMany({
-        where: employedIn(month),
+        where: { ...employedIn(month), ...shown },
         orderBy: [{ employee: { fullNameEn: 'asc' } }, { joinDate: 'desc' }],
         select: { employee: { select: { id: true, employeeCode: true, fullNameEn: true } }, department: { select: { nameEn: true, parent: { select: { nameEn: true } } } } },
       }),
@@ -141,12 +148,12 @@ export class AdjustmentsService {
     const people = new Map<string, PersonRef & { department: string | null }>();
     for (const e of employments) if (!people.has(e.employee.id)) people.set(e.employee.id, { ...personOf(e.employee), department: placeName(e.department) });
     const [advances, notOnRun, leftBehind, warnings] = await Promise.all([
-      this.advances.list({ status: 'open' }),
+      this.advances.list({ status: 'open' }, hidden),
       run
-        ? this.prisma.payrollAdjustment.count({ where: { month: toDateOnly(firstDay(month)), status: 'pending', employee: { payrollLines: { none: { runId: run.id } } } } })
+        ? this.prisma.payrollAdjustment.count({ where: { month: toDateOnly(firstDay(month)), status: 'pending', employee: { payrollLines: { none: { runId: run.id } } }, ...shown } })
         : 0,
-      this.leftBehind(),
-      this.damageWarnings(month, (run?.rules as PayrollRules | null | undefined)?.dayDivisor ?? null),
+      this.leftBehind(hidden),
+      this.damageWarnings(month, (run?.rules as PayrollRules | null | undefined)?.dayDivisor ?? null, hidden),
     ]);
     return {
       month,
@@ -165,11 +172,11 @@ export class AdjustmentsService {
    * 151; owner, 18 October 2026: a warning only): the monthly gross of their signed contract in force in the month ÷ the
    * payroll's days in a month (the month's run's, `runDivisor`, else Payroll Setup's) × 5.
    */
-  private async damageWarnings(month: string, runDivisor: number | null): Promise<{ employeeId: string; text: string }[]> {
+  private async damageWarnings(month: string, runDivisor: number | null, hidden: readonly string[] = []): Promise<{ employeeId: string; text: string }[]> {
     const [first, last] = [toDateOnly(firstDay(month)), toDateOnly(lastDay(month))];
     const damage = await this.prisma.payrollAdjustment.groupBy({
       by: ['employeeId'],
-      where: { month: first, kind: 'deduction', type: 'damage_loss', status: { in: ['pending', 'applied'] } },
+      where: { month: first, kind: 'deduction', type: 'damage_loss', status: { in: ['pending', 'applied'] }, ...(hidden.length && { employeeId: { notIn: [...hidden] } }) },
       _sum: { amount: true },
     });
     if (!damage.length) return [];
@@ -192,8 +199,12 @@ export class AdjustmentsService {
   }
 
   /** The months approved (or paid) with pending additions or deductions left on them, oldest first, with how many. */
-  async leftBehind(): Promise<{ month: string; count: number }[]> {
-    const groups = await this.prisma.payrollAdjustment.groupBy({ by: ['month'], where: { status: 'pending' }, _count: { _all: true } });
+  async leftBehind(hidden: readonly string[] = []): Promise<{ month: string; count: number }[]> {
+    const groups = await this.prisma.payrollAdjustment.groupBy({
+      by: ['month'],
+      where: { status: 'pending', ...(hidden.length && { employeeId: { notIn: [...hidden] } }) },
+      _count: { _all: true },
+    });
     if (!groups.length) return [];
     const runs = await this.prisma.payrollRun.findMany({ where: { month: { in: groups.map((g) => g.month) }, status: { in: ['approved', 'paid'] } }, select: { month: true } });
     const approved = new Set(runs.map((r) => fromDateOnly(r.month)));

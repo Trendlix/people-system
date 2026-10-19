@@ -25,7 +25,7 @@ import { shrinkPhoto } from '../employees/shrink-photo';
 import { monthName } from '../payroll/list';
 import { typesForDate } from './actions';
 import { capsMonth, claimProblems, DESCRIPTION_MAX, leftText, RECEIPT_ACCEPT, sizeText } from './claim';
-import { amountTyped, COMMENT_READERS, decisionButton } from './list';
+import { amountTyped, commentReaders, decisionButton } from './list';
 
 // The forms of a reimbursement claim (owner, 18 October 2026: "allow the employee to add reimbursement request … for
 // specific preset up conditions"): the new claim, with the type's conditions and what is left of its caps beside it
@@ -418,7 +418,20 @@ export function NewClaimForm({ action, types, today, cancelHref }: { action: Act
  * a comment saying why. The lower amount is checked as it is typed (lowerAmountProblem). Rejecting asks first. Once
  * decided, the page says so; a refusal shows here.
  */
-export function DecisionForm({ action, stage, current, name }: { action: Action; stage: ReimbursementStage; current: number; name: string }) {
+export function DecisionForm({
+  action,
+  stage,
+  current,
+  name,
+  confidential = false,
+}: {
+  action: Action;
+  stage: ReimbursementStage;
+  current: number;
+  name: string;
+  /** A C-level person's claim (19 October 2026): it goes on to the CEO, not HR or Finance, who don't read the comment. */
+  confidential?: boolean;
+}) {
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   const [decision, setDecision] = useState<ReimbursementDecision | ''>(() => {
@@ -431,7 +444,7 @@ export function DecisionForm({ action, stage, current, name }: { action: Action;
   const amountProblem = lower && amount.trim() ? lowerAmountProblem(amountTyped(amount) ?? NaN, current) : null;
   const needsComment = decision !== '' && decisionNeedsComment(decision);
   const ready = decision !== '' && (!lower || (amount.trim() !== '' && !amountProblem)) && (!needsComment || comment.trim() !== '');
-  const button = decisionButton(decision, stage);
+  const button = decisionButton(decision, stage, confidential);
 
   return (
     <form
@@ -504,7 +517,7 @@ export function DecisionForm({ action, stage, current, name }: { action: Action;
         />
         <p id={fid('comment-hint')} className="hint">
           {decision === 'reject' ? 'Why it is rejected. ' : lower ? 'Why a lower amount is approved. ' : ''}
-          {COMMENT_READERS}
+          {commentReaders(confidential)}
         </p>
       </div>
 

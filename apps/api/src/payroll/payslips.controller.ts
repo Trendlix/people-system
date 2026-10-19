@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Get, Header, Param, ParseUUIDPipe, Query, StreamableFile } from '@nestjs/common';
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { pdfFile, wantsDownload } from '../pdf/pdf-file.js';
 import { attachment } from '../templates/template-file.js';
 import { isPayslipLanguage } from './payslip-content.js';
@@ -24,6 +25,7 @@ export class PayslipsController {
   }
 
   /** A line's payslip, en or ar, as a protected PDF shown in the browser (saved with ?download=1). */
+  @ConfidentialOf('payrollLine', 'lineId')
   @Roles('hr', 'finance', 'ceo')
   @Get('payroll/lines/:lineId/payslip/:language')
   @Header('Cache-Control', 'private, no-store')
@@ -40,9 +42,10 @@ export class PayslipsController {
   }
 
   /** The employee's months paid, newest first, with which payslips are drawn. */
+  @ConfidentialOf('employee')
   @Roles('hr', 'finance', 'ceo')
   @Get('employees/:id/payslips')
-  employee(@Param('id', ParseUUIDPipe) id: string) {
-    return this.payslips.employeePayslips(id);
+  employee(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.payslips.employeePayslips(id, user);
   }
 }

@@ -7,6 +7,7 @@ import { CompanyModule } from './company/company.module.js';
 import { ConfirmationsModule } from './confirmations/confirmations.module.js';
 import { ContractsModule } from './contracts/contracts.module.js';
 import { DocumentsModule } from './documents/documents.module.js';
+import { ConfidentialModule } from './employees/confidential.module.js';
 import { EmployeesModule } from './employees/employees.module.js';
 import { HealthController } from './health/health.controller.js';
 import { LeaveModule } from './leave/leave.module.js';
@@ -31,6 +32,7 @@ import { UsersModule } from './users/users.module.js';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuditModule,
+    ConfidentialModule,
     MailModule,
     PdfModule,
     AuthModule,

@@ -215,6 +215,8 @@ describe('Profile confirmation and change requests (e2e)', () => {
         decidedBy: null,
         decidedAt: null,
         decisionNote: null,
+        // not a C-level person's, whose the CEO decides (owner, 19 October 2026)
+        confidential: false,
       });
       // nothing changes until HR approves
       expect((await profileOf(s.id)).mobile).toBe('+201012345678');
@@ -337,7 +339,7 @@ describe('Profile confirmation and change requests (e2e)', () => {
       expect(again.body.message).toBe('Only a change request waiting for HR can be rejected. This one is rejected.');
     });
 
-    it('lists requests for HR and Admin, newest first, waiting ones unless a status is chosen', async () => {
+    it('lists requests for HR and Admin, newest first, waiting ones unless a status is chosen; the CEO only the C-level people’s', async () => {
       const a = await newStaff('Listed First');
       const b = await newStaff('Listed Second');
       const first = await asked(a, { nationality: 'Egyptian' });
@@ -357,11 +359,15 @@ describe('Profile confirmation and change requests (e2e)', () => {
       expect(((await api().get('/api/change-requests?status=pending').set('Cookie', hr).expect(200)).body as ChangeRequest[]).some((x) => x.id === first.id)).toBe(false);
 
       await api().get('/api/change-requests').set('Cookie', a.session).expect(403);
-      await api().get('/api/change-requests').set('Cookie', ceo).expect(403);
+      // the CEO's queue is the C-level people's only (owner, 19 October 2026: theirs are the CEO's to decide)
+      const ceoQueue = (await api().get('/api/change-requests').set('Cookie', ceo).expect(200)).body as (ChangeRequest & { confidential: boolean })[];
+      expect(ceoQueue.some((x) => x.id === first.id || x.id === second.id)).toBe(false);
+      expect(ceoQueue.every((x) => x.confidential)).toBe(true);
+      await act(second.id, 'approve', ceo).expect(403);
       await api().get('/api/change-requests?status=sometime').set('Cookie', hr).expect(400);
     });
 
-    it('lists every request whatever its status with ?status=all, newest first, for HR and Admin only (the Details Changes page)', async () => {
+    it('lists every request whatever its status with ?status=all, newest first, for HR and Admin, the CEO the C-level people’s only (the Details Changes page)', async () => {
       const a = await newStaff('All Approved');
       const b = await newStaff('All Rejected');
       const c = await newStaff('All Cancelled');
@@ -403,8 +409,11 @@ describe('Profile confirmation and change requests (e2e)', () => {
       expect(cancelledOnes.every((x) => x.status === 'cancelled')).toBe(true);
       expect(((await api().get('/api/change-requests').set('Cookie', hr).expect(200)).body as ChangeRequest[]).every((x) => x.status === 'pending')).toBe(true);
 
-      // not for the employee, the CEO or Finance
-      for (const session of [d.session, ceo, finance]) await api().get('/api/change-requests?status=all').set('Cookie', session).expect(403);
+      // not for the employee or Finance; the CEO only the C-level people's (owner, 19 October 2026), none of these
+      for (const session of [d.session, finance]) await api().get('/api/change-requests?status=all').set('Cookie', session).expect(403);
+      const ceoAll = (await api().get('/api/change-requests?status=all').set('Cookie', ceo).expect(200)).body as (ChangeRequest & { confidential: boolean })[];
+      expect(ceoAll.some((x) => [approved.id, rejected.id, cancelled.id].includes(x.id))).toBe(false);
+      expect(ceoAll.every((x) => x.confidential)).toBe(true);
       const unknown = await api().get('/api/change-requests?status=everything').set('Cookie', hr).expect(400);
       expect(unknown.body.message).toEqual(['Choose a status: pending, approved, rejected, cancelled or all.']);
     });

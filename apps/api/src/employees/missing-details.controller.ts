@@ -1,5 +1,6 @@
 import { Controller, Get, Header, StreamableFile } from '@nestjs/common';
-import { Roles } from '../auth/decorators.js';
+import { CurrentUser, Roles } from '../auth/decorators.js';
+import type { SessionUser } from '../auth/session-user.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
 import { MissingDetailsService } from './missing-details.service.js';
@@ -10,19 +11,19 @@ import { MissingDetailsService } from './missing-details.service.js';
 export class MissingDetailsController {
   constructor(private readonly missingDetails: MissingDetailsService) {}
 
-  /** { generatedAt, rows: [{ id, employeeCode, fullNameEn, fullNameAr, standing, department, jobTitle, percent, missing }] } */
+  /** { generatedAt, rows: [{ id, employeeCode, fullNameEn, fullNameAr, standing, department, jobTitle, percent, missing }], confidentialExcluded } */
   @Roles('hr', 'ceo')
   @Get('missing')
-  report() {
-    return this.missingDetails.report();
+  report(@CurrentUser() user: SessionUser) {
+    return this.missingDetails.report(user);
   }
 
   /** The same report as an Excel workbook: "Missing details YYYY-MM-DD.xlsx". */
   @Roles('hr', 'ceo')
   @Get('missing.xlsx')
   @Header('Cache-Control', 'private, no-store')
-  async workbook(): Promise<StreamableFile> {
-    const file = await this.missingDetails.workbook();
+  async workbook(@CurrentUser() user: SessionUser): Promise<StreamableFile> {
+    const file = await this.missingDetails.workbook(user);
     return new StreamableFile(file.data, { type: XLSX_TYPE, length: file.data.length, disposition: attachment(file.fileName) });
   }
 }

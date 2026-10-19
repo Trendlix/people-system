@@ -13,12 +13,12 @@ import { SalaryRaisesService } from './salary-raises.service.js';
 export class SalaryRaisesController {
   constructor(private readonly salaryRaises: SalaryRaisesService) {}
 
-  /** { generatedAt, period, reviewMonths, raises, totals, byDepartment, dueForReview } (packages/shared salary-raises.ts). */
+  /** { generatedAt, period, reviewMonths, raises, totals, byDepartment, dueForReview, confidentialExcluded } (packages/shared salary-raises.ts). */
   @Roles('hr', 'finance', 'ceo')
   @Get('salary-raises')
   @Header('Cache-Control', 'private, no-store')
-  report(@Query() query: SalaryRaisesQueryDto) {
-    return this.salaryRaises.report(query);
+  report(@Query() query: SalaryRaisesQueryDto, @CurrentUser() user: SessionUser) {
+    return this.salaryRaises.report(query, user);
   }
 
   /** The same as an Excel workbook: "Salary raises 2026-01 to 2026-12.xlsx". */

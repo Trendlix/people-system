@@ -248,7 +248,7 @@ async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
                   </Link>
                   <p className="text-xs text-muted">Sent {formatDateTime(c.createdAt)}</p>
                 </div>
-                <ClaimStatusBadge status={c.status} />
+                <ClaimStatusBadge status={c.status} confidential={c.confidential} />
               </div>
               <p className="text-xs text-muted">
                 <ClaimAmount claim={c} /> · {claimProgressText(c).text}
@@ -262,7 +262,12 @@ async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
                   <p className="font-medium">{requestLabel(r)}</p>
                   <p className="text-xs text-muted">Sent {formatDateTime(r.at)}</p>
                 </div>
-                {r.kind === 'details' ? <ChangeRequestStatusBadge status={r.request.status} /> : <RaiseRequestStatusBadge status={r.request.status} />}
+                {/* a C-level person's waiting for HR's stage says "With the CEO" (19 October 2026) */}
+                {r.kind === 'details' ? (
+                  <ChangeRequestStatusBadge status={r.request.status} confidential={r.request.confidential} />
+                ) : (
+                  <RaiseRequestStatusBadge status={r.request.status} confidential={r.request.confidential} />
+                )}
               </div>
               {/* a raise: the reason from the list and the comment, the raise suggested, and its log (17 October 2026) */}
               {r.kind !== 'details' && (
@@ -386,7 +391,7 @@ async function MyLeaveCard({ profile: p, today }: { profile: EmployeeProfile; to
                 </p>
               </div>
               <div className="text-right">
-                <LeaveStatusBadge status={r.status} />
+                <LeaveStatusBadge status={r.status} confidential={r.confidential} />
                 <p className="mt-1 text-xs text-muted">{leaveWhenText(r, today)}</p>
               </div>
             </li>
@@ -532,7 +537,7 @@ async function MyTeamCard({ profile, user, today }: { profile: EmployeeProfile; 
                       <Link href={employeeRaiseRequestsHref(r.employee.id)} className="font-medium">
                         {r.employee.fullNameEn}
                       </Link>
-                      <RaiseRequestStatusBadge status={r.status} />
+                      <RaiseRequestStatusBadge status={r.status} confidential={r.confidential} />
                     </div>
                     <p className="text-xs text-muted">
                       Asked by {askedByText(r, user.email)} on <span className="tabular-nums">{formatDate(r.createdAt)}</span> · {progressText(r).text}

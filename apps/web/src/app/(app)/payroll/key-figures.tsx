@@ -3,7 +3,7 @@ import { formatDate, titleCase } from '@/lib/format';
 import { canEditOrganisation } from '@/lib/session';
 import type { PayrollRunSummary, PayrollSettingsView, SessionUser } from '@/lib/types';
 import { createRun } from './actions';
-import { monthName, preparesPayroll, runHref, runMonths } from './list';
+import { hiddenTotalsText, monthName, preparesPayroll, runHref, runMonths } from './list';
 import { loadJson } from './load';
 import { MakeRunButton } from './make-run-button';
 import { currentRunMonth, daysUntil, lastPaidRun, nextPayday, paidFigures } from './overview';
@@ -13,7 +13,8 @@ import { summaryTiles, unsettledCount, type UnsettledView } from './unsettled/un
 
 // The Payroll Overview's key figures (owner, 17 October 2026: "Overview" first under Payroll): the run being paid next
 // and where it stands (or, not made yet, a button for HR to make it), the last paid run's totals, the next payday from
-// Payroll Setup, and what is unsettled; with Payroll setup for HR and Admin. The runs follow, as before.
+// Payroll Setup, and what is unsettled; with Payroll setup for HR and Admin. The runs follow, as before. The figures
+// leave out the C-level people's lines hidden from the caller (owner, 19 October 2026), and say so.
 
 function Tile({ title, children, footer }: { title: string; children: React.ReactNode; footer?: React.ReactNode }) {
   return (
@@ -46,6 +47,7 @@ export async function KeyFigures({ user, runs, today }: { user: SessionUser; run
               <p className="text-sm text-muted">
                 {current.totals.employees} {current.totals.employees === 1 ? 'employee' : 'employees'} · <Link href={runHref(current.id)}>Open the run</Link>
               </p>
+              {hiddenTotalsText(current.hidden) && <p className="text-xs text-muted">{hiddenTotalsText(current.hidden)}</p>}
             </>
           ) : (
             <>
@@ -69,6 +71,7 @@ export async function KeyFigures({ user, runs, today }: { user: SessionUser; run
                   </div>
                 ))}
               </dl>
+              {hiddenTotalsText(paid.hidden) && <p className="text-xs text-muted">{hiddenTotalsText(paid.hidden)}</p>}
             </>
           ) : (
             <p className="text-sm text-muted">No run marked paid yet.</p>

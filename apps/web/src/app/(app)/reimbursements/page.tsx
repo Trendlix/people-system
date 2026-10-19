@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Fragment, Suspense } from 'react';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { GroupHeading } from '@/components/group-heading';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { groupByPlace, showsDepartment } from '@/lib/place-groups';
@@ -30,6 +31,9 @@ import { ClaimAmount, ClaimProgress, ClaimStatusBadge } from './ui';
 // direct manager, and All for the CEO, who views them. Grouped by department, then team, as the other lists of people
 // are. Each opens its page, with the receipts, the log of every step and, while it waits for the user, the decision
 // form. Someone with an employee profile claims for themself with New reimbursement. The API checks every request again.
+// A C-level person's claim (owner, 19 October 2026: "make C level Employees details not visible to HR") isn't listed to
+// HR or Finance without Super Admin; the CEO decides its HR and Finance stages, so it says "With the CEO", is marked
+// C-level for those who see it, and has Decide for the CEO when it waits for them (`waitingForYou`).
 
 export const metadata: Metadata = { title: 'Reimbursements · People System' };
 
@@ -88,6 +92,7 @@ function ClaimsTable({ claims }: { claims: ReimbursementClaimView[] }) {
                   <tr key={c.id} className={`align-top ${c.status === 'cancelled' ? 'text-muted' : ''}`}>
                     <td className="min-w-44">
                       <span className="font-semibold">{c.employee.fullNameEn}</span>
+                      {c.confidential && <CLevelBadge className="ml-1.5" title="The CEO decides HR’s and Finance’s stages of a C-level person’s claim." />}
                       <div className="text-xs text-muted">Sent {formatDateTime(c.createdAt)}</div>
                     </td>
                     <td className="max-w-72 min-w-48">
@@ -102,7 +107,7 @@ function ClaimsTable({ claims }: { claims: ReimbursementClaimView[] }) {
                       <ClaimAmount claim={c} />
                     </td>
                     <td>
-                      <ClaimStatusBadge status={c.status} />
+                      <ClaimStatusBadge status={c.status} confidential={c.confidential} />
                     </td>
                     <td className="min-w-56 text-sm">
                       <ClaimProgress claim={c} />
@@ -176,7 +181,8 @@ export default function ReimbursementsPage({ searchParams }: PageProps<'/reimbur
         Expenses employees claim back, each of a type set up in{' '}
         <Link href="/organization/payroll#reimbursement-types">Payroll Setup</Link> with its caps and conditions. The direct manager decides a claim
         first (for someone without one, their team lead, else their department&apos;s head), then HR, then Finance: each approves it, approves a lower amount or rejects it, with a comment. Finance&apos;s approval adds it,
-        untaxed, to the next payroll. Every step is logged on the claim.
+        untaxed, to the next payroll. Every step is logged on the claim. A C-level person&apos;s claim goes to the CEO for HR&apos;s and
+        Finance&apos;s stages.
       </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

@@ -5,6 +5,7 @@ import type { SessionUser } from '../../auth/session-user.js';
 import { todayInCairo, toDateOnly } from '../../common/date-only.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PaperworkService } from '../../paperwork/paperwork.service.js';
+import { ConfidentialService } from '../../employees/confidential.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { firstDay, monthName } from '../months.js';
 import {
@@ -53,12 +54,14 @@ export class RecurringDeductionsService {
     private readonly audit: AuditService,
     private readonly runs: RunAdjustmentsService,
     private readonly paperwork: PaperworkService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /** Every one asked for, by employee name, then the earliest first; `running` lists those still to come too. */
-  async list(query: RecurringDeductionsQueryDto): Promise<RecurringDeductionView[]> {
+  async list(query: RecurringDeductionsQueryDto, hidden: readonly string[] = []): Promise<RecurringDeductionView[]> {
     const rows = await this.prisma.recurringDeduction.findMany({
-      where: { employeeId: query.employeeId },
+      // not the C-level people's (`hidden`) for anyone but the CEO and a Super Admin (owner, 19 October 2026)
+      where: { AND: [{ employeeId: query.employeeId }, hidden.length ? { employeeId: { notIn: [...hidden] } } : {}] },
       orderBy: [{ employee: { fullNameEn: 'asc' } }, { startMonth: 'asc' }, { createdAt: 'asc' }],
       include: RECURRING_INCLUDE,
     });
@@ -85,7 +88,9 @@ export class RecurringDeductionsService {
    */
   async create(dto: CreateRecurringDeductionDto, file: Express.Multer.File | undefined, user: SessionUser): Promise<RecurringDeductionView> {
     const employee = await this.prisma.employee.findUnique({ where: { id: dto.employeeId }, select: { id: true, employeeCode: true, fullNameEn: true } });
-    if (!employee) throw new NotFoundException('Employee not found.');
+    // a form with a file is read after the guards: a C-level person hidden from the caller is checked here (owner, 19
+    // October 2026)
+    if (!employee || (await this.confidential.isHidden(user, employee.id))) throw new NotFoundException('Employee not found.');
     const endMonth = dto.endMonth ?? null;
     this.assertNoProblems(dto.amount, dto.startMonth, endMonth);
     const employed = await this.prisma.employment.count({

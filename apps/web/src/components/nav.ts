@@ -87,8 +87,9 @@ export const NAV: NavItem[] = [
       // 2026); Finance may view them
       { href: RAISE_REQUESTS_PATH, label: 'Raise Requests', section: RAISE_REQUESTS_PATH, roles: ['hr', 'ceo', 'finance'] },
       // the employees' requests to change their details, which HR and Admin (a Super Admin too) decide (owner's decision,
-      // 15 October 2026)
-      { href: DETAILS_CHANGES_PATH, label: 'Details Changes', section: DETAILS_CHANGES_PATH, roles: ['hr', 'admin'] },
+      // 15 October 2026); a C-level person's the CEO decides (owner, 19 October 2026: "make C level Employees details not
+      // visible to HR"), so the CEO has it too, with those alone
+      { href: DETAILS_CHANGES_PATH, label: 'Details Changes', section: DETAILS_CHANGES_PATH, roles: ['hr', 'admin', 'ceo'] },
       // the employees' reimbursement claims, through their direct manager, HR and Finance (owner, 18 October 2026: "allow
       // the employee to add reimbursement request … for specific preset up conditions"); the CEO may view them
       { href: REIMBURSEMENTS_PATH, label: 'Reimbursements', section: REIMBURSEMENTS_PATH, roles: ['hr', 'finance', 'ceo'] },

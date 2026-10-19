@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import type { DueForReviewRow, ReportPeriod, SalaryRaiseRow } from '@trendlix/shared';
+import { confidentialExcludedNote, type DueForReviewRow, type ReportPeriod, type SalaryRaiseRow } from '@trendlix/shared';
 import { Select } from '@/components/select';
 import { departmentName } from '@/lib/departments';
 import { formatDateTime, titleCase } from '@/lib/format';
@@ -45,7 +45,8 @@ import {
 // for a salary review now, after the months set in Payroll Setup → Your Rules, with a way for HR to prepare or ask for
 // their raise. One GET /reports/salary-raises call, from the same pay events as each Salary History, so the figures
 // agree. HR, Finance and the CEO, as salaries; the API checks it again. The Excel workbook is the API's, passed on
-// under the web domain (excel/route.ts).
+// under the web domain (excel/route.ts). The C-level people are left out for anyone but the CEO and the Super Admin
+// (owner, 19 October 2026: "make C level Employees details not visible to HR"), and the page says so.
 
 export const metadata: Metadata = { title: 'Salary Raises · People System' };
 
@@ -383,11 +384,13 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
   }
 
   const report = loaded.report;
+  const excluded = confidentialExcludedNote(report.confidentialExcluded ?? 0);
   return (
     <div className="space-y-6">
       {header}
       <section aria-labelledby="raises-summary" className="space-y-3">
         <SectionTitle id="raises-summary" title={titleCase(`Raises in ${periodTitle(report.period)}`)} note={`As of ${formatDateTime(report.generatedAt)}`} />
+        {excluded && <p className="text-sm text-muted">{excluded}</p>}
         <Summary report={report} />
       </section>
       {report.byDepartment.length > 0 && <ByDepartment report={report} />}

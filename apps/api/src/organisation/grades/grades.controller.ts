@@ -21,13 +21,13 @@ export class GradesController {
   @Roles('hr', 'admin')
   @Post()
   create(@Body() dto: CreateGradeDto, @CurrentUser() user: SessionUser) {
-    return this.grades.create(dto, user.id);
+    return this.grades.create(dto, user);
   }
 
   @Roles('hr', 'admin')
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateGradeDto, @CurrentUser() user: SessionUser) {
-    return this.grades.update(id, dto, user.id);
+    return this.grades.update(id, dto, user);
   }
 
   @DeletesRecords()

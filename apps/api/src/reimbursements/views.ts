@@ -13,7 +13,7 @@ import {
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma, ReimbursementType } from '../generated/prisma/client.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
-import { isClaimant, waitsFor, type Caller } from './access.js';
+import { isClaimant, isConfidentialClaim, waitsFor, type Caller } from './access.js';
 
 // Reimbursement types and claims as the API sends them (owner, 18 October 2026): dates YYYY-MM-DD, the moments as ISO
 // strings, money as numbers to the piaster.
@@ -118,6 +118,8 @@ export function claimView(r: ClaimRow, caller: Caller, names: ReadonlyMap<string
     stage: reimbursementStage(status),
     waitingForYou: waitsFor(r, caller),
     canCancel: isClaimant(r, caller) && isOpenReimbursement(status),
+    // a C-level person's (owner, 19 October 2026): its HR and Finance stages are the CEO's
+    confidential: isConfidentialClaim(r, caller),
     // who decides (or decided) the manager stage, and as what (owner, 19 October 2026: "the person in charge"):
     // APPROVER_ROLES, the direct manager, or for someone without one their team lead, else their department's head
     manager: r.manager && { id: r.manager.id, fullNameEn: r.manager.fullNameEn, role: (r.approverRole as ApproverRole | null) ?? 'direct_manager' },

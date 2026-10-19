@@ -1,16 +1,33 @@
-import { isOpenLeave, leaveStage, type LeaveStage } from '@trendlix/shared';
+import { decidesConfidentialStage, isOpenLeave, leaveStage, type LeaveStage } from '@trendlix/shared';
 import { actsAs } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
+import type { ConfidentialView } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 
 // Who may see, decide and cancel a leave request (owner, 18 October 2026: the direct manager, then HR; no manager:
-// straight to HR). Pure code: the rules themselves are packages/shared leaves.ts.
+// straight to HR). Pure code: the rules themselves are packages/shared leaves.ts. A C-level person's request (owner, 19
+// October 2026: "make C level Employees details not visible to HR"; their HR stages go to the CEO): HR's stage is the
+// CEO's (or HR's with Super Admin: packages/shared decidesConfidentialStage); HR and their manager now don't see it, the
+// manager it was sent to still decides the manager stage, as the request is theirs to decide.
 
-/** The caller, and their own employee profile (the one whose work email they sign in with), if any. */
+/**
+ * The caller, their own employee profile (the one whose work email they sign in with), if any, and the C-level people,
+ * those hidden from the caller among them (none left out: nobody is C-level).
+ */
 export interface Caller {
   user: SessionUser;
   employeeId: string | null;
+  confidential?: ConfidentialView;
 }
+
+/** Whether the request is a C-level person's (its HR stage the CEO's). */
+export const isConfidentialRequest = (r: Pick<RequestParties, 'employeeId'>, caller: Caller) => caller.confidential?.all.has(r.employeeId) ?? false;
+
+/** Whether the request's person is hidden from the caller: C-level, and not the caller themself. */
+export const hiddenRequest = (r: Pick<RequestParties, 'employeeId'>, caller: Caller) => caller.confidential?.hidden.has(r.employeeId) ?? false;
+
+/** The hidden people, for the lists' filters. */
+const hiddenIds = (caller: Caller) => [...(caller.confidential?.hidden ?? [])];
 
 /**
  * What a request's access is worked out from: whose it is, the direct manager it was sent to (who decides its first
@@ -37,17 +54,21 @@ export const isRequestManager = (r: RequestParties, caller: Caller) => caller.em
 /** The employee's direct manager now. */
 export const isTeamManager = (r: RequestParties, caller: Caller) => caller.employeeId !== null && !!r.currentManagerId && r.currentManagerId === caller.employeeId;
 
-/** Who sees a request: its employee, the manager it was sent to, their manager now, HR and the CEO. */
+/**
+ * Who sees a request: its employee, the manager it was sent to, their manager now, HR and the CEO; a C-level person's,
+ * not HR nor their manager now (owner, 19 October 2026), but the manager it was sent to.
+ */
 export const seesRequest = (r: RequestParties, caller: Caller) =>
-  seesEveryRequest(caller.user) || isRequester(r, caller) || isRequestManager(r, caller) || isTeamManager(r, caller);
+  isRequester(r, caller) || isRequestManager(r, caller) || (!hiddenRequest(r, caller) && (seesEveryRequest(caller.user) || isTeamManager(r, caller)));
 
 /**
  * Whether the caller decides a stage of the request: the manager stage the direct manager it was sent to, HR's stage
- * HR; nobody their own request.
+ * HR; a C-level person's HR stage the CEO (or HR with Super Admin); nobody their own request.
  */
 export function decidesStage(stage: LeaveStage, r: RequestParties, caller: Caller): boolean {
   if (isRequester(r, caller)) return false;
   if (stage === 'manager') return isRequestManager(r, caller);
+  if (isConfidentialRequest(r, caller)) return decidesConfidentialStage(caller.user, ['hr']);
   return isHr(caller.user);
 }
 
@@ -57,14 +78,26 @@ export function waitsFor(r: RequestParties & { status: string }, caller: Caller)
   return stage !== null && decidesStage(stage, r, caller);
 }
 
-/** Whether HR may cancel it (an approved one, restoring the balance): HR, never their own. */
-export const hrMayCancel = (r: RequestParties & { status: string }, caller: Caller) => r.status === 'approved' && isHr(caller.user) && !isRequester(r, caller);
+/**
+ * Whether HR may cancel it (an approved one, restoring the balance): HR, never their own; a C-level person's only HR who
+ * sees them (with Super Admin).
+ */
+export const hrMayCancel = (r: RequestParties & { status: string }, caller: Caller) =>
+  r.status === 'approved' && isHr(caller.user) && !isRequester(r, caller) && !hiddenRequest(r, caller);
 
-/** The requests waiting for the caller's decision: those with them as the direct manager, those with HR for HR; never their own. */
+/**
+ * The requests waiting for the caller's decision: those with them as the direct manager, those with HR for HR, a C-level
+ * person's with HR for the CEO (and HR with Super Admin), not for HR; never their own.
+ */
 export function waitingWhere(caller: Caller): Prisma.LeaveRequestWhereInput {
   const or: Prisma.LeaveRequestWhereInput[] = [];
+  const confidential = [...(caller.confidential?.all ?? [])];
   if (caller.employeeId) or.push({ status: 'with_manager', managerId: caller.employeeId });
-  if (isHr(caller.user)) or.push({ status: 'with_hr' });
+  const ordinary = isHr(caller.user);
+  const theirs = confidential.length > 0 && decidesConfidentialStage(caller.user, ['hr']);
+  if (ordinary && (theirs || !confidential.length)) or.push({ status: 'with_hr' });
+  else if (ordinary) or.push({ status: 'with_hr', employeeId: { notIn: confidential } });
+  else if (theirs) or.push({ status: 'with_hr', employeeId: { in: confidential } });
   if (!or.length) return { id: { in: [] } };
   return { OR: or, ...(caller.employeeId && { employeeId: { not: caller.employeeId } }) };
 }
@@ -74,24 +107,35 @@ export function waitingWhere(caller: Caller): Prisma.LeaveRequestWhereInput {
  * and their team's now (and their own); anyone else's, their own.
  */
 export function scopeWhere(caller: Caller): Prisma.LeaveRequestWhereInput {
-  if (seesEveryRequest(caller.user)) return {};
+  const hidden = hiddenIds(caller);
+  const shown = hidden.length ? { employeeId: { notIn: hidden } } : {};
+  if (seesEveryRequest(caller.user)) {
+    // a C-level person's only for the CEO and a Super Admin, and the manager it was sent to (owner, 19 October 2026)
+    if (!hidden.length) return {};
+    return caller.employeeId ? { OR: [shown, { managerId: caller.employeeId }] } : shown;
+  }
   if (!caller.employeeId) return { id: { in: [] } };
   return {
     OR: [
       { employeeId: caller.employeeId },
       { managerId: caller.employeeId },
-      { employee: { employments: { some: { endDate: null, managerId: caller.employeeId } } } },
+      { employee: { employments: { some: { endDate: null, managerId: caller.employeeId } } }, ...shown },
     ],
   };
 }
 
 /** The requests of the others the caller sees in Leave Requests: as scopeWhere, without their own unless HR or the CEO. */
 export function othersWhere(caller: Caller): Prisma.LeaveRequestWhereInput {
-  if (seesEveryRequest(caller.user)) return {};
+  const hidden = hiddenIds(caller);
+  const shown = hidden.length ? { employeeId: { notIn: hidden } } : {};
+  if (seesEveryRequest(caller.user)) {
+    if (!hidden.length) return {};
+    return caller.employeeId ? { OR: [shown, { managerId: caller.employeeId }] } : shown;
+  }
   if (!caller.employeeId) return { id: { in: [] } };
   return {
     employeeId: { not: caller.employeeId },
-    OR: [{ managerId: caller.employeeId }, { employee: { employments: { some: { endDate: null, managerId: caller.employeeId } } } }],
+    OR: [{ managerId: caller.employeeId }, { employee: { employments: { some: { endDate: null, managerId: caller.employeeId } } }, ...shown }],
   };
 }
 

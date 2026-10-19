@@ -5,6 +5,7 @@ import { fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { NORMALIZE_FROM, NORMALIZE_TO, normalizeArabic, snippet } from './arabic-text.js';
 import { readIdCardWithNotes, withoutReligion, type CardLine, type IdCardSuggestions } from './egyptian-id.js';
@@ -193,6 +194,7 @@ export class PaperworkService {
     private readonly audit: AuditService,
     private readonly ocr: OcrClient,
     private readonly corrections: CorrectionsService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /** The employee file, newest first. */
@@ -347,14 +349,18 @@ export class PaperworkService {
    * digits make no difference. National ID scans are left out: what they say is already in the national ID fields,
    * and showing their text would be a restricted view (owner's decision, 14 October 2026).
    */
-  async search(q: string) {
+  async search(q: string, user: SessionUser) {
     const needle = normalizeArabic(q);
     if (Array.from(needle).length < 2) throw new BadRequestException('Type at least 2 characters to search.');
     const pattern = `%${needle.replace(/[\\%_]/g, '\\$&')}%`;
+    // never a C-level person's papers for anyone but the CEO and a Super Admin (owner, 19 October 2026), left out before
+    // the limit so the hits are the caller's
+    const hidden = await this.confidential.hiddenFrom(user);
     const hits = await this.prisma.$queryRaw<{ id: string }[]>`
       SELECT id FROM paperwork_items
       WHERE ocr_text IS NOT NULL
         AND kind <> ALL(${[...RESTRICTED_PAPERWORK]}::text[])
+        AND employee_id <> ALL(${hidden}::uuid[])
         AND regexp_replace(translate(ocr_text, ${NORMALIZE_FROM}, ${NORMALIZE_TO}), '[[:space:]]+', ' ', 'g') ILIKE ${pattern}
       ORDER BY uploaded_at DESC, id
       LIMIT ${SEARCH_LIMIT}`;

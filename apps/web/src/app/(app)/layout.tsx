@@ -11,14 +11,15 @@ import { isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import type { ChangeRequest, EndingSummary, LeaveCounts, ReimbursementCounts, SessionUser } from '@/lib/types';
-import { decidesChangeRequests, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './approvals/data';
+import { followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './approvals/data';
 import { followsRaises, PENDING_RAISES } from './approvals/raises';
 import { ReviewNowLink } from './employees/[id]/confirm/confirm-notices';
 import { bannerMessage } from './employees/confirmation';
 import { loadOwnProfile } from './own-profile';
-import { handlesRaiseRequests, WITH_HR_REQUESTS } from './raise-requests/list';
+import { countsRaiseRequests, waitingForYouCount, WITH_HR_REQUESTS } from './raise-requests/list';
 import { canSeeLeaveRequests, LEAVE_COUNTS } from './leave/list';
 import { canSeeReimbursements, CLAIM_COUNTS } from './reimbursements/list';
+import { readsChangeRequests, waitingForYou } from './requests/details-changes/list';
 
 /**
  * The sidebar links for the signed-in user: an employee's or a manager's own (Dashboard, My Profile, My Requests, and
@@ -41,20 +42,26 @@ async function MainNav() {
   // for HR and the CEO, the leave requests waiting for them, and those waiting for a direct manager added to My Team's
   // (18 October 2026). A department's head or a team's lead, who decides the claims and leave of its people without a
   // direct manager, gets My Team's as a direct manager does (19 October 2026). Each is left out when it can't be read.
+  // A C-level person's requests (owner, 19 October 2026: "make C level Employees details not visible to HR"): the CEO
+  // takes their HR (and Finance) stages, so the CEO's counts have them: beside Raise Requests, the C-level people's
+  // requests at HR's step; beside Details Changes and Approvals, their change requests, which the CEO decides; beside
+  // Reimbursements and Leave Requests, what the API counts as waiting for the CEO. Each count is what the user decides.
   const self = isSelfService({ roles });
   const manager = self && decidesForTeam({ roles, leads: user?.leads });
-  const [endings, changes, raises, requests, claims, leave] = await Promise.all([
+  const [endings, pendingChanges, raises, requests, claims, leave] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS) : null,
-    decidesChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS) : null,
+    readsChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS) : null,
     followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES) : null,
-    handlesRaiseRequests({ roles }) ? getOrNull<RaiseRequest[]>(WITH_HR_REQUESTS) : null,
+    countsRaiseRequests({ roles }) ? getOrNull<RaiseRequest[]>(WITH_HR_REQUESTS) : null,
     canSeeReimbursements({ roles }) || manager ? getOrNull<ReimbursementCounts>(CLAIM_COUNTS) : null,
     canSeeLeaveRequests({ roles }) || manager ? getOrNull<LeaveCounts>(LEAVE_COUNTS) : null,
   ]);
+  const changes = pendingChanges && waitingForYou({ roles }, pendingChanges);
+  const raiseRequests = requests ? waitingForYouCount({ roles }, requests) : 0;
   const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0);
   const counts: Record<string, number> = {};
   if (waiting) counts['/approvals'] = waiting;
-  if (requests?.length) counts[RAISE_REQUESTS_PATH] = requests.length;
+  if (raiseRequests) counts[RAISE_REQUESTS_PATH] = raiseRequests;
   if (changes?.length) counts[DETAILS_CHANGES_PATH] = changes.length;
   if (self) {
     const team = (claims?.waiting ?? 0) + (leave?.waiting ?? 0);

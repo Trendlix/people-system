@@ -20,6 +20,7 @@ import {
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { FileTooLargeFilter } from './file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from './paperwork-file.js';
 import { SearchPaperworkDto, SetPhotoCropDto, UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
@@ -27,7 +28,9 @@ import { PaperworkService, type IdCardFiles } from './paperwork.service.js';
 
 // The employee file is HR and CEO only: both read it, only HR adds, adjusts and re-reads. Only a Super Admin deletes a
 // paper (owner's decision, 15 October 2026). National ID scans are restricted data on top of that: every view is
-// written to the audit log (see PaperworkService).
+// written to the audit log (see PaperworkService). A C-level person's file (owner, 19 October 2026: "make C level
+// Employees details not visible to HR") only for the CEO and a Super Admin: 404 for anyone else, and left out of the
+// search; their personal photo stays, as their directory card shows it.
 
 // File names are read as UTF-8, so Arabic names arrive intact.
 const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 }, defParamCharset: 'utf8' };
@@ -45,12 +48,14 @@ export const ID_CARD_SIDES = FileFieldsInterceptor(
 export class EmployeePaperworkController {
   constructor(private readonly paperwork: PaperworkService) {}
 
+  @ConfidentialOf('employee', 'id')
   @Roles('hr', 'ceo')
   @Get(':id/paperwork')
   list(@Param('id', ParseUUIDPipe) id: string) {
     return this.paperwork.list(id);
   }
 
+  @ConfidentialOf('employee', 'id')
   @Roles('hr')
   @Post(':id/paperwork')
   @UseFilters(FileTooLargeFilter)
@@ -78,6 +83,7 @@ export class EmployeePaperworkController {
   }
 
   /** Photos of the national ID card (front required, back optional) → suggestions for the identity form. */
+  @ConfidentialOf('employee', 'id')
   @Roles('hr')
   @Post(':id/identity/scan')
   @HttpCode(200)
@@ -94,8 +100,8 @@ export class PaperworkController {
 
   @Roles('hr', 'ceo')
   @Get('search')
-  search(@Query() dto: SearchPaperworkDto) {
-    return this.paperwork.search(dto.q);
+  search(@Query() dto: SearchPaperworkDto, @CurrentUser() user: SessionUser) {
+    return this.paperwork.search(dto.q, user);
   }
 
   /**
@@ -111,6 +117,7 @@ export class PaperworkController {
     return this.paperwork.preparePages(file);
   }
 
+  @ConfidentialOf('paperwork', 'itemId')
   @Roles('hr', 'ceo')
   @Get(':itemId/file')
   @Header('Cache-Control', 'private, no-store')
@@ -140,12 +147,14 @@ export class PaperworkController {
    * photo as shown, or { crop: null } for the whole photo (owner's request, 16 October 2026). The file is never changed.
    * Only HR, who change the employee file.
    */
+  @ConfidentialOf('paperwork', 'itemId')
   @Roles('hr')
   @Put(':itemId/photo-crop')
   cropPhoto(@Param('itemId', ParseUUIDPipe) itemId: string, @Body() dto: SetPhotoCropDto, @CurrentUser() user: SessionUser) {
     return this.paperwork.cropPhoto(itemId, dto.crop, user, dto.size);
   }
 
+  @ConfidentialOf('paperwork', 'itemId')
   @Roles('hr', 'ceo')
   @Get(':itemId/text')
   @Header('Cache-Control', 'private, no-store')
@@ -154,6 +163,7 @@ export class PaperworkController {
   }
 
   /** A stored paper's file replaced by an adjusted one; its kind, number and expiry stay. Answers the paper as listed. */
+  @ConfidentialOf('paperwork', 'itemId')
   @Roles('hr')
   @Put(':itemId/file')
   @UseFilters(FileTooLargeFilter)
@@ -166,6 +176,7 @@ export class PaperworkController {
     return this.paperwork.replaceFile(itemId, file, user);
   }
 
+  @ConfidentialOf('paperwork', 'itemId')
   @Roles('hr')
   @Post(':itemId/ocr')
   @HttpCode(200)
@@ -174,12 +185,14 @@ export class PaperworkController {
   }
 
   /** The number printed on a paper and when it expires. */
+  @ConfidentialOf('paperwork', 'itemId')
   @Roles('hr')
   @Patch(':itemId')
   describe(@Param('itemId', ParseUUIDPipe) itemId: string, @Body() dto: UpdatePaperworkDto, @CurrentUser() user: SessionUser) {
     return this.paperwork.describe(itemId, dto, user);
   }
 
+  @ConfidentialOf('paperwork', 'itemId')
   @DeletesRecords()
   @Delete(':itemId')
   @HttpCode(204)

@@ -14,7 +14,7 @@ import { shiftTimesText } from '@/lib/shifts';
 import type { FormState, Grade } from '@/lib/types';
 import { CommissionField, type EmploymentPickers } from '../employees/employment-fields';
 import { employmentTypeHint, WORK_NATURE_HINTS, workPatternNote } from '../employees/employment-law';
-import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
+import { CONFIDENTIAL_GRADES_LEFT_OUT, gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
 import type { OfferDefaults } from './form-body';
 
 // The Position part of the offer form: the employment the candidate is offered, as the employment form picks it
@@ -233,6 +233,8 @@ export function OfferPositionFields({
               {outOfRange ? `${range} ${gradeLabel(grade)} was set before that.` : range}
             </p>
           )}
+          {/* only the CEO and the Super Admin offer a C-level grade (owner, 19 October 2026) */}
+          {pickers.confidentialGradesLeftOut && <p className="hint">{CONFIDENTIAL_GRADES_LEFT_OUT}</p>}
           <div role="status">
             {clearedGrade && (
               <p className="hint text-warn">

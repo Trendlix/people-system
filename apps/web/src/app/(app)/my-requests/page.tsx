@@ -85,7 +85,8 @@ function DetailsCard({ item, employeeId }: { item: Extract<MyRequest, { kind: 'd
           <h3 className="font-semibold">{requestTitle(item)}</h3>
           <p className="text-sm text-muted">Sent {formatDateTime(r.requestedAt)}</p>
         </div>
-        <ChangeRequestStatusBadge status={r.status} />
+        {/* a C-level person's waits for the CEO, not HR (19 October 2026) */}
+        <ChangeRequestStatusBadge status={r.status} confidential={r.confidential} />
       </div>
       <ChangesTable changes={r.changes} fromLabel="Was" toLabel="Asked for" caption={`What you asked for on ${formatDate(r.requestedAt)}`} />
       {(r.note || r.decidedAt || r.decisionNote) && (
@@ -96,13 +97,13 @@ function DetailsCard({ item, employeeId }: { item: Extract<MyRequest, { kind: 'd
             </Item>
           )}
           {r.decidedAt && (
-            <Item label={r.status === 'cancelled' ? 'Cancelled' : 'Decided by HR'}>
+            <Item label={r.status === 'cancelled' ? 'Cancelled' : r.confidential ? 'Decided' : 'Decided by HR'}>
               {r.status !== 'cancelled' && r.decidedBy?.email && <>{r.decidedBy.email} · </>}
               {formatDateTime(r.decidedAt)}
             </Item>
           )}
           {r.decisionNote && (
-            <Item label="HR's note">
+            <Item label={r.confidential ? 'Note on the decision' : "HR's note"}>
               <span className="whitespace-pre-line">{r.decisionNote}</span>
             </Item>
           )}
@@ -131,7 +132,7 @@ function RaiseCard({ item }: { item: Extract<MyRequest, { kind: 'raise' | 'team'
           <h3 className="font-semibold">{requestTitle(item)}</h3>
           <p className="text-sm text-muted">Asked {askedAt(r)}</p>
         </div>
-        <RaiseRequestStatusBadge status={r.status} />
+        <RaiseRequestStatusBadge status={r.status} confidential={r.confidential} />
       </div>
       <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
         <Item label="Asked by">

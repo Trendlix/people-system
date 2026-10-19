@@ -17,6 +17,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
 import { pdfFile, pdfOnly, wantsDownload } from '../pdf/pdf-file.js';
@@ -27,7 +28,9 @@ import { DocumentsService } from './documents.service.js';
 // The profile's Employment tab: documents generated from the published templates (owner's request, 15 October 2026).
 // HR and the CEO view the tab and download the files, like the employee file; only HR generates a document and moves
 // it on (printed, signed copy uploaded, verified); only a Super Admin deletes one. A generated document is given out
-// only as a protected PDF (owner's request, 15 October 2026), never as the Word file it is kept as.
+// only as a protected PDF (owner's request, 15 October 2026), never as the Word file it is kept as. A C-level person's
+// documents (owner, 19 October 2026: "make C level Employees details not visible to HR") only for the CEO and a Super
+// Admin: 404 for anyone else.
 
 // One scan of up to 10 MB, as paperwork's; its name read as UTF-8, so Arabic names arrive intact.
 const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 }, defParamCharset: 'utf8' };
@@ -37,6 +40,7 @@ export class EmployeeDocumentsController {
   constructor(private readonly documents: DocumentsService) {}
 
   /** The Employment tab: the documents offered, in sections, each with its generated copies (newest first). */
+  @ConfidentialOf('employee')
   @Roles('hr', 'ceo')
   @Get(':id/documents')
   tab(@Param('id', ParseUUIDPipe) id: string) {
@@ -44,12 +48,14 @@ export class EmployeeDocumentsController {
   }
 
   /** What a document's published template prints that has no value yet (?slotKey=&contractId=). */
+  @ConfidentialOf('employee')
   @Roles('hr')
   @Get(':id/documents/check')
   check(@Param('id', ParseUUIDPipe) id: string, @Query() query: CheckDocumentDto) {
     return this.documents.check(id, query);
   }
 
+  @ConfidentialOf('employee')
   @Roles('hr')
   @Post(':id/documents')
   generate(@Param('id', ParseUUIDPipe) id: string, @Body() dto: GenerateDocumentDto, @CurrentUser() user: SessionUser) {
@@ -68,6 +74,7 @@ export class DocumentsController {
    * The filled document as a protected PDF (owner's request, 15 October 2026: "No doc file export, just a protected
    * PDF"), shown in the browser, or saved with ?download=1. ?format=docx is refused (400); 409 without a PDF converter.
    */
+  @ConfidentialOf('document')
   @Roles('hr', 'ceo')
   @Get(':id/file')
   @Header('Cache-Control', 'private, no-store')
@@ -88,6 +95,7 @@ export class DocumentsController {
    * The document as an UNPROTECTED PDF, saved, for HR to upload to an e-signature service (Adobe Sign, DocuSign), which
    * refuses protected PDFs. HR only, and every download is recorded.
    */
+  @ConfidentialOf('document')
   @Roles('hr')
   @Get(':id/esign-file')
   @Header('Cache-Control', 'private, no-store')
@@ -98,6 +106,7 @@ export class DocumentsController {
     return pdfFile(await this.pdf.forESignature(file), true);
   }
 
+  @ConfidentialOf('document')
   @Roles('hr')
   @Post(':id/printed')
   @HttpCode(200)
@@ -106,6 +115,7 @@ export class DocumentsController {
   }
 
   /** The scan of the signed copy (`file`: a photo or a PDF). */
+  @ConfidentialOf('document')
   @Roles('hr')
   @Post(':id/signed')
   @HttpCode(200)
@@ -116,6 +126,7 @@ export class DocumentsController {
   }
 
   /** The scan of the signed copy, shown in the browser (a photo or a PDF). */
+  @ConfidentialOf('document')
   @Roles('hr', 'ceo')
   @Get(':id/signed-file')
   @Header('Cache-Control', 'private, no-store')
@@ -126,6 +137,7 @@ export class DocumentsController {
     return new StreamableFile(data, { type, length: data.length, disposition: contentDisposition(fileName) });
   }
 
+  @ConfidentialOf('document')
   @Roles('hr')
   @Post(':id/verify')
   @HttpCode(200)
@@ -133,6 +145,7 @@ export class DocumentsController {
     return this.documents.verify(id, user);
   }
 
+  @ConfidentialOf('document')
   @DeletesRecords()
   @Delete(':id')
   @HttpCode(204)

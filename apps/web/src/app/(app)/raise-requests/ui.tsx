@@ -30,7 +30,10 @@ import { DeclineRequestForm, HrDecisionForm } from './request-forms';
 // it (only what the API sends the caller), where it stands with the comment given, its log of every step as a
 // timeline, and HR's decision while it is with HR. Since 17 October 2026 also the month it is asked from ("Effective
 // from"), and the line saying a request was just sent, on the page the requester lands on. Since 19 October 2026 a raise
-// HR prepared directly says so where the requester is shown ("Prepared directly by HR"), and is carried on with only.
+// HR prepared directly says so where the requester is shown ("Prepared directly by HR"), and is carried on with only. A
+// C-level person's request (owner, 19 October 2026: "make C level Employees details not visible to HR") says "With the
+// CEO" while it waits for HR's step, which the CEO takes: the CEO gets HR's decision on it, without the whole raise form
+// (the Contract section is HR's).
 
 const dash = <span className="text-muted">—</span>;
 
@@ -48,9 +51,9 @@ export function EffectiveFrom({ request }: { request: Pick<RaiseRequest, 'effect
   return <span className={request.effectiveFrom ? 'tabular-nums' : 'text-muted'}>{effectiveFromText(request)}</span>;
 }
 
-/** With HR, With the CEO, Approved, Rejected or Done. */
-export function RaiseRequestStatusBadge({ status }: { status: RaiseRequestStatus }) {
-  return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{statusLabel(status)}</span>;
+/** With HR, With the CEO, Approved, Rejected or Done; With the CEO for a C-level person's with HR (`confidential`). */
+export function RaiseRequestStatusBadge({ status, confidential }: { status: RaiseRequestStatus; confidential?: boolean }) {
+  return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{statusLabel(status, confidential)}</span>;
 }
 
 /** "The direct manager", and their email under it; "Prepared directly by HR" and who did (19 October 2026). */
@@ -161,7 +164,8 @@ export function FoldedRequestLog({ request }: { request: RaiseRequest }) {
  * sends it to the CEO, or reject it), with the whole raise form a link away; or, once a raise is prepared from it, where
  * to carry on with it (the Contract section, where HR changes it and sends it to the CEO) and Reject. Nothing for anyone
  * else, or once it has left HR. The decision starts from the month the request is asked from, and another raise shows
- * what it comes to (the pay in force with `rates`, 17 October 2026).
+ * what it comes to (the pay in force with `rates`, 17 October 2026). The CEO takes HR's step on a C-level person's
+ * (19 October 2026): Decide and Reject, without the whole raise form, which is HR's.
  */
 export function HrRequestActions({ request: r, user, rates = [] }: { request: RaiseRequest; user: { roles: readonly Role[] }; rates?: readonly LawRates[] }) {
   const can = requestActions(user, r);
@@ -180,7 +184,7 @@ export function HrRequestActions({ request: r, user, rates = [] }: { request: Ra
           gross={inForce?.grossSalary ?? null}
           inForce={inForce}
           defaultEffective={decisionEffectiveDate(r, today)}
-          fullFormHref={prepareRaiseHref(r.employee.id, r.id)}
+          fullFormHref={can.prepare ? prepareRaiseHref(r.employee.id, r.id) : null}
           pay={inForce}
           rates={rates}
         />

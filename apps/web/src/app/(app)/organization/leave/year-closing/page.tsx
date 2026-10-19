@@ -10,7 +10,7 @@ import { loadJson, notLoadedText } from '../../../payroll/load';
 import { BackLink, Empty, Loading } from '../../ui';
 import { closeLeaveYear, reopenLeaveYear } from '../actions';
 import { editsLeaveSetup, LEAVE_SETUP_HREF, seesYearClosing, yearClosingHref } from '../setup';
-import { CLOSING_YEARS, closingDoneText, closingYear } from '../year-closing';
+import { CLOSING_YEARS, closingDoneText, closingExcludedText, closingYear } from '../year-closing';
 import { YearClosingForm } from '../year-closing-form';
 
 // Organization → Leave → Year Closing (owner, 18 October 2026: "make it with decision with the year closing"): a year at
@@ -19,7 +19,9 @@ import { YearClosingForm } from '../year-closing-form';
 // "لا يجوز للعامل النزول عن إجازته"), the days carried for three years highlighted to be paid now; the pay comes to the
 // days × the day rate and is added to the January payroll (or the next one open) as Unused leave paid. Close the year
 // saves it: the days carried are the next year's carried in. A closed year shows as decided; HR may open it again until
-// its payouts are paid with a payroll.
+// its payouts are paid with a payroll. The C-level people are left out for anyone but the CEO and the Super Admin (owner,
+// 19 October 2026: "make C level Employees details not visible to HR"): the page says so, and that HR closing the year
+// settles theirs by default (the days that must be paid now paid, the rest carried).
 
 export const metadata: Metadata = { title: 'Year Closing · People System' };
 
@@ -58,6 +60,7 @@ async function Closing({ searchParams }: { searchParams: PageProps<'/organizatio
   else {
     const v = loaded.value;
     const yearRunning = year >= Number(today.slice(0, 4));
+    const excluded = closingExcludedText(v.confidentialExcluded, year, v.closed);
     body = (
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -70,10 +73,17 @@ async function Closing({ searchParams }: { searchParams: PageProps<'/organizatio
                 : `What each employee had unused at the end of ${year}, with the days carried and paid proposed.`}
           </p>
         </div>
-        {v.rows.length === 0 ? (
+        {excluded && <p className="max-w-3xl text-sm text-muted">{excluded}</p>}
+        {v.rows.length === 0 && !(hr && !v.closed && (v.confidentialExcluded ?? 0) > 0) ? (
           <Empty>No one has unused annual days in {year}.</Empty>
         ) : (
-          <YearClosingForm action={hr && !v.closed ? closeLeaveYear.bind(null, year) : null} year={year} rows={v.rows} closed={v.closed} />
+          <YearClosingForm
+            action={hr && !v.closed ? closeLeaveYear.bind(null, year) : null}
+            year={year}
+            rows={v.rows}
+            closed={v.closed}
+            confidentialExcluded={v.confidentialExcluded ?? 0}
+          />
         )}
         {/* until its payouts are paid with a payroll (the API's rule) */}
         {hr && v.closed && !v.rows.some((r) => r.payout?.status === 'applied') && (

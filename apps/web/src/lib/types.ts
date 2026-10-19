@@ -132,6 +132,12 @@ export interface GradeRef {
   rank: number;
   levelEn: string;
   levelAr: string | null;
+  /**
+   * Those holding it are C-level (owner, 19 October 2026: "make C level Employees details not visible to HR"): G9 ·
+   * Executive, by a migration; a Super Admin ticks it on the grades page. GET /grades sends it; left out by an API from
+   * before it (none then), and where an employment names its grade.
+   */
+  confidential?: boolean;
 }
 
 /** GET /grades, lowest rank first. */
@@ -366,8 +372,34 @@ export interface Employment {
   leads?: { teamLead: LeadPerson | null; departmentHead: LeadPerson | null } | null;
 }
 
-/** One row of GET /employees, already limited to the people the caller may see. */
-export interface EmployeeSummary {
+/** The current employment as a row of GET /employees gives it. */
+export interface EmployeeSummaryEmployment {
+  id: string;
+  status: EmployeeStatus;
+  employmentType: EmploymentType;
+  joinDate: string;
+  /** May be a team: then `parent` is its department. */
+  department: EmploymentPlace | null;
+  jobTitle: { id: string; titleEn: string } | null;
+  /** The person's own grade in this employment. */
+  gradeId: string | null;
+  grade: GradeRef | null;
+  manager: { id: string; fullNameEn: string } | null;
+}
+
+/** What the directory card keeps of the current employment. */
+type CardEmploymentField = 'id' | 'status' | 'department' | 'jobTitle';
+
+/**
+ * A C-level person's current employment as those who may not see them get it (owner, 19 October 2026: "make C level
+ * Employees details not visible to HR"): the directory card's, where they work and as what; the rest is never sent, so
+ * it reads as undefined (a consumer that needs it has to tell the rows apart: isRestricted in lib/confidential.ts).
+ */
+export type CardEmployment = Pick<EmployeeSummaryEmployment, CardEmploymentField> &
+  Partial<Record<Exclude<keyof EmployeeSummaryEmployment, CardEmploymentField>, undefined>>;
+
+/** What every row of GET /employees has, a C-level person's card too. */
+interface EmployeeSummaryBase {
   id: string;
   employeeCode: string;
   fullNameEn: string;
@@ -382,23 +414,33 @@ export interface EmployeeSummary {
    * Former employee (an employment ended) or Not employed yet.
    */
   standing: Standing;
+}
+
+/** A row the caller sees in full. `confidential`: the person is C-level (the caller is the CEO, a Super Admin or them). */
+export interface FullEmployeeSummary extends EmployeeSummaryBase {
+  /** Left out by an API from before C-level people (19 October 2026). */
+  confidential?: boolean;
+  restricted?: false;
   /** The current employment; null for a former employee or someone not employed yet. */
-  employment: {
-    id: string;
-    status: EmployeeStatus;
-    employmentType: EmploymentType;
-    joinDate: string;
-    /** May be a team: then `parent` is its department. */
-    department: EmploymentPlace | null;
-    jobTitle: { id: string; titleEn: string } | null;
-    /** The person's own grade in this employment. */
-    gradeId: string | null;
-    grade: GradeRef | null;
-    manager: { id: string; fullNameEn: string } | null;
-  } | null;
+  employment: EmployeeSummaryEmployment | null;
   /** How the last employment ended, when there is no current one. */
   lastEnded: { endDate: string; endReason: EndReason } | null;
 }
+
+/**
+ * A C-level person's row for those who may not see them (HR, Finance, Admin, managers; owner, 19 October 2026): only
+ * the directory card, name, photo, job title, department or team, work email, employee code and standing. Any action
+ * on them is refused by the API (404), so the pickers of HR's actions leave these rows out (actionablePeople).
+ */
+export interface RestrictedEmployeeSummary extends EmployeeSummaryBase {
+  confidential: true;
+  restricted: true;
+  employment: CardEmployment | null;
+  lastEnded: null;
+}
+
+/** One row of GET /employees, already limited to the people the caller may see: in full, or a C-level person's card. */
+export type EmployeeSummary = FullEmployeeSummary | RestrictedEmployeeSummary;
 
 /**
  * One thing a profile still lacks, and the profile tab where it is filled in: `key` is the field's cell there
@@ -559,6 +601,37 @@ export interface EmployeeProfile {
    * start (YYYY-MM-DD); null when they never had one. Left out by an older API.
    */
   nextTraining?: { lastEnded: string; from: string } | null;
+  /**
+   * The person is C-level (owner, 19 October 2026: "make C level Employees details not visible to HR"): only the CEO,
+   * the Super Admin and the person themself get their full profile; anyone else gets their card (EmployeeCard). Left
+   * out by an API from before it.
+   */
+  confidential?: boolean;
+  restricted?: false;
+}
+
+/**
+ * GET /employees/:id of a C-level person for someone who may not see them (owner, 19 October 2026): their directory
+ * card, not a profile, with the note that says why (CONFIDENTIAL_NOTE). No tabs, no actions: every other record of
+ * theirs answers 404.
+ */
+export interface EmployeeCard {
+  id: string;
+  employeeCode: string;
+  fullNameEn: string;
+  fullNameAr: string;
+  displayName: string | null;
+  workEmail: string | null;
+  photoId?: string | null;
+  photoCrop?: PhotoCrop | null;
+  standing: Standing;
+  /** May be a team: then `parent` is its department. */
+  employment: { id: string; status: EmployeeStatus; department: EmploymentPlace | null; jobTitle: { id: string; titleEn: string; titleAr?: string | null } | null } | null;
+  confidential: true;
+  restricted: true;
+  note: string;
+  access: { edit: false; delete: false; identity: false; bank: false };
+  isSelf: false;
 }
 
 // ---------- the employee's own check of their details, and their change requests ----------
@@ -602,6 +675,11 @@ export interface ChangeRequest {
   decidedAt: string | null;
   /** HR's note: optional on approval, required on rejection. */
   decisionNote: string | null;
+  /**
+   * The employee is C-level (owner, 19 October 2026): the CEO decides it, or a Super Admin (as Admin), not HR. Left out
+   * by an API from before it.
+   */
+  confidential?: boolean;
 }
 
 /** GET /employees/:id/identity: the full national ID details (each call is audited). */
@@ -1560,6 +1638,17 @@ export interface PayrollLineView {
    * (October 2026), hence optional.
    */
   payslips?: { en: boolean; ar: boolean };
+  /**
+   * A C-level person's line (owner, 19 October 2026: "make C level Employees details not visible to HR"): only the CEO
+   * and the Super Admin get it, and the CEO fills its inputs. Left out by an API from before it.
+   */
+  confidential?: boolean;
+  /**
+   * Whether the caller may change the line's inputs, hold and comments now: the run is a draft and the line is theirs to
+   * fill (HR's, a C-level one the CEO's: changesPayrollLine in @trendlix/shared). Left out by an API from before it,
+   * when HR changed every line of a draft.
+   */
+  editable?: boolean;
 }
 
 /** Someone employed in the month but not on the run, and why ("No signed contract for this month"). */
@@ -1601,6 +1690,12 @@ export interface PayrollRunView {
    * Deductions), by person: no line takes them. Left out by an API from before them.
    */
   adjustmentsNotOnRun?: { employeeId: string; employeeCode: string; name: string; count: number }[];
+  /**
+   * The C-level people's lines kept from the caller (owner, 19 October 2026): how many, and the row that stands for them
+   * ("C-level (2 people) — hidden"); null when the caller sees every line or there are none. The totals, the bank check,
+   * the payslips, the exclusions and the additions not on the run already leave them out. Left out by an older API.
+   */
+  hidden?: { count: number; label: string } | null;
 }
 
 /**
@@ -1630,6 +1725,8 @@ export interface PayrollRunSummary {
   createdAt: string;
   approvedAt: string | null;
   paidOn: string | null;
+  /** How many C-level people's lines the totals leave out for the caller (19 October 2026); 0 or left out: none. */
+  hidden?: number;
 }
 
 /** GET /payroll/settings: the rules new runs are worked out with, and what the bank files need. */
@@ -1803,6 +1900,11 @@ export interface ReimbursementClaimView {
   receipts: { id: string; fileName: string; mimeType: string; sizeBytes: number }[];
   steps: ReimbursementClaimStep[];
   createdAt: string;
+  /**
+   * The claimant is C-level (owner, 19 October 2026): HR's and Finance's stages are the CEO's (or a Super Admin's with
+   * the role). Left out by an API from before it.
+   */
+  confidential?: boolean;
 }
 
 /** GET /reimbursements/counts: how many claims wait for the caller, for the sidebar. */
@@ -1995,6 +2097,11 @@ export interface LeaveRequestView {
   steps: LeaveRequestStep[];
   balanceAfter: number | null;
   createdAt: string;
+  /**
+   * The employee is C-level (owner, 19 October 2026): HR's stage is the CEO's (or HR with Super Admin); `waitingForYou`
+   * says whether it waits for the caller. Left out by an API from before it.
+   */
+  confidential?: boolean;
 }
 
 /**
@@ -2095,4 +2202,9 @@ export interface YearClosingView {
   closed: boolean;
   closedAt?: string | null;
   rows: YearClosingRow[];
+  /**
+   * How many C-level people the rows leave out for the caller (owner, 19 October 2026); 0 for the CEO and the Super
+   * Admin. Left out by an older API.
+   */
+  confidentialExcluded?: number;
 }

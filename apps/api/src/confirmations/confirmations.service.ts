@@ -1,9 +1,19 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { CHANGE_REQUEST_STATUS_LABELS, CONFIRM_FIELD_KEYS, PROFILE_DISCLAIMER, REQUESTABLE_FIELD_KEYS, type ChangeRequestStatus, type ConfirmField } from '@trendlix/shared';
+import {
+  CHANGE_REQUEST_STATUS_LABELS,
+  CONFIRM_FIELD_KEYS,
+  decidesConfidentialStage,
+  PROFILE_DISCLAIMER,
+  REQUESTABLE_FIELD_KEYS,
+  type ChangeRequestStatus,
+  type ConfirmField,
+} from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
+import { actsAs } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { validated } from '../common/validation.js';
 import { isSelf } from '../employees/access.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { UpdateEmployeeDto } from '../employees/employee.dto.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import type { Employee, Prisma } from '../generated/prisma/client.js';
@@ -34,6 +44,9 @@ const statusText = (status: string) => (CHANGE_REQUEST_STATUS_LABELS[status as C
 
 const requestable = (field: string): field is ConfirmField => (REQUESTABLE_FIELD_KEYS as readonly string[]).includes(field);
 
+/** HR and Admin (a Super Admin counts as an Admin) decide change requests. */
+const DECIDERS = ['hr', 'admin'] as const;
+
 /** A change request's changes as a profile edit: { field: the value asked for }. */
 const editOf = (changes: Change[]) => Object.fromEntries(changes.map((c) => [c.field, c.to]));
 
@@ -43,12 +56,16 @@ const editOf = (changes: Change[]) => Object.fromEntries(changes.map((c) => [c.f
 // The employee is the user whose sign-in account is the profile's work email; only they confirm their details or ask
 // for a change, not HR on their behalf. An approved change is made as HR's edit of the profile (EmployeesService.edit,
 // the code path of an HR edit), so it is checked and audited the same way, and the employee then confirms again.
+// A C-level person's request (owner, 19 October 2026: "make C level Employees details not visible to HR") is decided by
+// the CEO or a Super Admin instead (packages/shared decidesConfidentialStage), and hidden from HR and Admin: their
+// queue leaves it out, and it isn't there for them (404).
 @Injectable()
 export class ConfirmationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly employees: EmployeesService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /** The employee confirms their details as they are now, accepting the statement. Answers where the confirmation stands. */
@@ -104,21 +121,27 @@ export class ConfirmationsService {
       });
     });
     await this.audit.record({ userId: user.id, action: 'create', entityType: REQUEST, entityId: row.id, diff: { employeeId, changes, note: row.note, status: 'pending' } });
-    return changeRequestView(row);
+    return { ...changeRequestView(row), confidential: await this.confidential.isConfidential(employeeId) };
   }
 
   /**
    * Change requests with their employee, newest first: those waiting for HR unless `status` says otherwise; `all`, every
    * request whatever its status (the Details Changes page, under Requests: owner's decision, 17 October 2026).
    */
-  async list(status: ChangeRequestStatus | typeof ALL_CHANGE_REQUESTS = 'pending') {
+  async list(status: ChangeRequestStatus | typeof ALL_CHANGE_REQUESTS = 'pending', user: SessionUser) {
+    const confidential = await this.confidential.view(user);
+    // the CEO without HR or Admin decides C-level people's only (owner, 19 October 2026); HR and Admin never see theirs
+    const ceoOnly = !actsAs(user.roles, [...DECIDERS]);
     const rows = await this.prisma.profileChangeRequest.findMany({
-      where: status === ALL_CHANGE_REQUESTS ? {} : { status },
+      where: {
+        ...(status !== ALL_CHANGE_REQUESTS && { status }),
+        ...(ceoOnly ? { employeeId: { in: [...confidential.all] } } : confidential.hidden.size ? { employeeId: { notIn: [...confidential.hidden] } } : {}),
+      },
       // the same moment: the later id first, so the order is the same on every read
       orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
       include: REQUEST_INCLUDE,
     });
-    return rows.map(changeRequestView);
+    return rows.map((r) => ({ ...changeRequestView(r), confidential: confidential.all.has(r.employeeId) }));
   }
 
   /**
@@ -128,6 +151,7 @@ export class ConfirmationsService {
    */
   async approve(id: string, dto: DecisionNoteDto, user: SessionUser) {
     const before = await this.row(id);
+    await this.assertDecides(before, user);
     this.assertWaiting(before, 'approved');
     const edit = await validated(UpdateEmployeeDto, editOf(before.changes as unknown as Change[]));
     await this.employees.edit(before.employeeId, edit, user);
@@ -138,6 +162,7 @@ export class ConfirmationsService {
   async reject(id: string, dto: DecisionNoteDto, user: SessionUser) {
     if (!dto.note) throw new BadRequestException('Say why the change is rejected.');
     const before = await this.row(id);
+    await this.assertDecides(before, user);
     this.assertWaiting(before, 'rejected');
     return this.decide(before, 'rejected', user, dto.note);
   }
@@ -158,6 +183,20 @@ export class ConfirmationsService {
     if (!e) throw new NotFoundException('Employee not found.');
     if (!isSelf(user, e)) throw new ForbiddenException(message);
     return e;
+  }
+
+  /**
+   * Who decides a change request: HR or an Admin; a C-level person's the CEO or a Super Admin (owner, 19 October 2026),
+   * never their own, and 404 for those it is hidden from.
+   */
+  private async assertDecides(r: RequestRow, user: SessionUser): Promise<void> {
+    await this.confidential.assertVisible(user, r.employeeId, 'Change request not found.');
+    if (await this.confidential.isConfidential(r.employeeId)) {
+      if (!decidesConfidentialStage(user, [...DECIDERS])) throw new ForbiddenException("A C-level person's change request is decided by the CEO or a Super Admin.");
+      if ((await this.confidential.selfId(user)) === r.employeeId) throw new ForbiddenException('Someone else has to decide a change to your own details.');
+      return;
+    }
+    if (!actsAs(user.roles, [...DECIDERS])) throw new ForbiddenException("HR or an Admin decides this change request: the CEO decides only a C-level person's.");
   }
 
   private async row(id: string): Promise<RequestRow> {
@@ -195,6 +234,6 @@ export class ConfirmationsService {
       entityId: before.id,
       diff: { employeeId: before.employeeId, status: { from: 'pending', to: status }, ...(note !== null && { decisionNote: note }) },
     });
-    return changeRequestView(await this.row(before.id));
+    return { ...changeRequestView(await this.row(before.id)), confidential: await this.confidential.isConfidential(before.employeeId) };
   }
 }

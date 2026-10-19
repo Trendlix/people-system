@@ -11,6 +11,7 @@ import { StaffOnly } from '../../staff-only';
 import { BackLink, canSeeEmployeeFiles, Empty, Loading, profileHref, StandingBadge } from '../ui';
 import {
   bySection,
+  confidentialExcludedText,
   documentGaps,
   EXCEL_HREF,
   gapHref,
@@ -32,7 +33,9 @@ import {
 // /employees/missing call, with the same checklist as each profile's header; filtered here from the address (a search,
 // the department with its teams, what is missing, and whether people not employed yet are listed), so a view can be
 // shared. Former employees are never on it. Each missing item links to where it is filled in on the profile. The Excel
-// workbook is the API's, passed on under the web domain (excel/route.ts).
+// workbook is the API's, passed on under the web domain (excel/route.ts). The C-level people are left out for anyone but
+// the CEO and the Super Admin (owner, 19 October 2026: "make C level Employees details not visible to HR"), the workbook
+// too, and the page says so.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -177,6 +180,7 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
   const people = inView(report.rows, f, f.departmentId ? withTeams(departments, f.departmentId) : null);
   const rows = listed(people, f.what);
   const summary = summaryText(people);
+  const excluded = confidentialExcludedText(report.confidentialExcluded);
 
   return (
     <div className="space-y-4">
@@ -184,6 +188,7 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
         <div>
           <p className="font-medium">{summary || 'No one to show.'}</p>
           <p className="mt-0.5 text-xs text-muted">As of {formatDateTime(report.generatedAt)}</p>
+          {excluded && <p className="mt-0.5 text-sm text-muted">{excluded}</p>}
         </div>
         <div className="text-right">
           {/* a plain link, never prefetched: the API makes the workbook on each download */}

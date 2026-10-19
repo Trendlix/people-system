@@ -27,7 +27,9 @@ const GRADES = [
   { code: 'G6', rank: 6, levelEn: 'Manager', description: 'e.g. Creative Manager' },
   { code: 'G7', rank: 7, levelEn: 'Head of Department', description: 'e.g. Head of Creative' },
   { code: 'G8', rank: 8, levelEn: 'Director', description: 'e.g. Operations Director' },
-  { code: 'G9', rank: 9, levelEn: 'Executive', description: 'e.g. CEO / Managing Director' },
+  // C-level (owner, 19 October 2026: "make C level Employees details not visible to HR"): only the CEO and the Super
+  // Admin see the details of those holding it; the C-level migration marks it on existing databases
+  { code: 'G9', rank: 9, levelEn: 'Executive', description: 'e.g. CEO / Managing Director', confidential: true },
 ];
 
 // Company details as printed on TrendLIX's current contract template. HR can edit them in the app.

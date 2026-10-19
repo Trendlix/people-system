@@ -8,7 +8,7 @@ import { todayInCairo } from '../employees/ui';
 import { Empty, Loading } from '../organization/ui';
 import { createRun } from './actions';
 import { loadRuns } from './data';
-import { canSeePayroll, monthName, preparesPayroll, runHref, runMonths, suggestedMonth } from './list';
+import { canSeePayroll, hiddenTotalsText, monthName, preparesPayroll, runHref, runMonths, suggestedMonth } from './list';
 import { NewRunForm } from './new-run-form';
 import { KeyFigures } from './key-figures';
 import { PayrollStatusBadge } from './ui';
@@ -18,7 +18,8 @@ import { PayrollStatusBadge } from './ui';
 // paid it. Salary data: HR, Finance and the CEO see it; the API checks every request again.
 // The Overview (owner, 17 October 2026: "make the Payroll in the side tab a main title below it - Overview - Unsettled -
 // Additions / Deductions - Reports (Statistics)"): the runs as before, with key figures at the top (overview.tsx) and the
-// Payroll pages as tabs.
+// Payroll pages as tabs. A run's totals leave out the C-level people's lines hidden from the caller (owner, 19 October
+// 2026: "make C level Employees details not visible to HR"), and its row says so.
 
 const quiet = 'px-4 py-10 text-center text-sm text-muted';
 
@@ -55,7 +56,10 @@ function RunsTable({ runs }: { runs: PayrollRunSummary[] }) {
                 <PayrollStatusBadge status={r.status} />
                 {when(r) && <div className="mt-0.5 text-xs text-muted">{when(r)}</div>}
               </td>
-              <td className="text-right tabular-nums">{r.totals.employees}</td>
+              <td className="text-right tabular-nums">
+                {r.totals.employees}
+                {hiddenTotalsText(r.hidden) && <div className="text-xs whitespace-nowrap text-muted">{hiddenTotalsText(r.hidden)}</div>}
+              </td>
               <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(r.totals.net)}</td>
               <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(r.totals.transfer)}</td>
               <td className="text-right whitespace-nowrap tabular-nums">{formatEgp(r.totals.companyCost)}</td>

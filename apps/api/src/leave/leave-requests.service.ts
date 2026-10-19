@@ -20,13 +20,28 @@ import {
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { fromDateOnly, shownDate, todayInCairo, toDateOnly } from '../common/date-only.js';
 import type { LeaveType } from '../generated/prisma/client.js';
 import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { decidesStage, hrMayCancel, isHr, isRequestManager, isRequester, noLeaveMessage, othersWhere, scopeWhere, seesRequest, waitingWhere, type Caller } from './access.js';
+import {
+  decidesStage,
+  hiddenRequest,
+  hrMayCancel,
+  isConfidentialRequest,
+  isHr,
+  isRequestManager,
+  isRequester,
+  noLeaveMessage,
+  othersWhere,
+  scopeWhere,
+  seesRequest,
+  waitingWhere,
+  type Caller,
+} from './access.js';
 import { checkedDocuments } from './documents.js';
 import { LeaveBalancesService, TAKING, type LeaveBalancesView, type LeaveEmployment } from './leave-balances.service.js';
 import type { CreateLeaveRequestDto, DecideLeaveDto, HrCancelLeaveDto, LeaveCalendarQueryDto, ListLeaveRequestsDto, RecordLeaveRequestDto } from './leave.dto.js';
@@ -67,7 +82,8 @@ export interface LeaveCalendarItem {
 // with a comment, its days back in the balance. Approved or cancelled leave works the month's draft payroll lines out
 // again (leave-payroll.service.ts). Each step is logged on the request (steps.ts) and in the audit log, every view of a
 // document too. Those who may not see a request (its employee, the manager it was sent to, their manager now, HR, the
-// CEO) are told it isn't there.
+// CEO) are told it isn't there. A C-level person's (owner, 19 October 2026: "make C level Employees details not visible
+// to HR"): its HR stage is the CEO's, HR and their manager now don't see it, nor their balances (access.ts).
 @Injectable()
 export class LeaveRequestsService {
   constructor(
@@ -75,6 +91,7 @@ export class LeaveRequestsService {
     private readonly audit: AuditService,
     private readonly balances: LeaveBalancesService,
     private readonly payroll: LeavePayrollService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -140,7 +157,8 @@ export class LeaveRequestsService {
     if (!isHr(user)) throw new ForbiddenException('Only HR records leave on an employee’s behalf.');
     if (caller.employeeId === dto.employeeId) throw new ForbiddenException('Someone else in HR has to record your own leave, or send it from My Requests.');
     const person = await this.prisma.employee.findUnique({ where: { id: dto.employeeId }, select: { fullNameEn: true } });
-    if (!person) throw new NotFoundException('Employee not found.');
+    // a form with files is read after the guards: a C-level person hidden from HR is checked here (owner, 19 October 2026)
+    if (!person || caller.confidential?.hidden.has(dto.employeeId)) throw new NotFoundException('Employee not found.');
     const covering = await this.prisma.employment.findFirst({
       where: { employeeId: dto.employeeId, joinDate: { lte: toDateOnly(dto.startDate) }, OR: [{ endDate: null }, { endDate: { gte: toDateOnly(dto.endDate) } }] },
       orderBy: { joinDate: 'desc' },
@@ -217,10 +235,14 @@ export class LeaveRequestsService {
     if (isRequester(parties, caller)) throw new ForbiddenException('Someone else has to decide your own leave request.');
     if (!decidesStage(stage, parties, caller)) {
       // one of its deciders, on a page left open while it moved on (or not with them yet)
-      if (isRequestManager(parties, caller) || isHr(user)) {
+      if (isRequestManager(parties, caller) || decidesStage('hr', parties, caller)) {
         throw new ConflictException(`This request is ${statusWords(before.status)} now, so it isn't waiting for your decision. Reload the page to see where it is.`);
       }
-      throw new ForbiddenException("Only the request's direct manager and HR decide a leave request.");
+      throw new ForbiddenException(
+        isConfidentialRequest(parties, caller)
+          ? "A C-level person's leave request is decided by its direct manager, then the CEO."
+          : "Only the request's direct manager and HR decide a leave request.",
+      );
     }
     const comment = dto.comment ?? null;
     if (leaveDecisionNeedsComment(dto.decision) && !comment) throw new BadRequestException('Write a comment: why the leave is rejected.');
@@ -340,8 +362,12 @@ export class LeaveRequestsService {
 
   /** The caller, with their own employee profile: the one whose work email they sign in with. */
   async caller(user: SessionUser): Promise<Caller> {
-    const me = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } });
-    return { user, employeeId: me?.id ?? null };
+    const [me, confidential] = await Promise.all([
+      this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } }),
+      // the C-level people, and those hidden from the caller (owner, 19 October 2026)
+      this.confidential.view(user),
+    ]);
+    return { user, employeeId: me?.id ?? null, confidential };
   }
 
   /**
@@ -499,6 +525,7 @@ export class LeaveRequestsService {
       const f = figures.get(`${r.employmentId}:${r.startDate.getUTCFullYear()}`);
       return f ? annualAvailable(f) : null;
     };
-    return rows.map((r) => requestView(r, caller, names, counted.includes(r) ? available(r) : null, today));
+    // never a C-level person's balance to the manager a request was sent to, who sees their card only (19 October 2026)
+    return rows.map((r) => requestView(r, caller, names, counted.includes(r) && !hiddenRequest(r, caller) ? available(r) : null, today));
   }
 }

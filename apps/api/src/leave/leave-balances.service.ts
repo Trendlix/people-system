@@ -287,7 +287,11 @@ export class LeaveBalancesService {
 
   /** Whether the caller may see a person's leave: HR, the CEO, Finance, the person, and their direct manager now. */
   async assertSees(employeeId: string, caller: Caller): Promise<void> {
-    if (seesEveryone(caller.user) || caller.employeeId === employeeId) return;
+    if (caller.employeeId === employeeId) return;
+    // a C-level person's balances only for the CEO and a Super Admin (owner, 19 October 2026: "make C level Employees
+    // details not visible to HR"): their manager now neither
+    if (caller.confidential?.hidden.has(employeeId)) throw new NotFoundException('Employee not found.');
+    if (seesEveryone(caller.user)) return;
     if (caller.employeeId) {
       const managed = await this.prisma.employment.count({ where: { employeeId, endDate: null, managerId: caller.employeeId } });
       if (managed) return;
@@ -302,6 +306,7 @@ export class LeaveBalancesService {
   async adjust(employeeId: string, dto: LeaveAdjustmentDto, caller: Caller): Promise<void> {
     if (!isHr(caller.user)) throw new ForbiddenException('Only HR adjusts a leave balance.');
     if (caller.employeeId === employeeId) throw new ForbiddenException('Someone else in HR has to adjust your own leave balance.');
+    if (caller.confidential?.hidden.has(employeeId)) throw new NotFoundException('Employee not found.');
     if (!isLeaveDays(dto.days) || dto.days === 0) throw new BadRequestException(['Enter the days to add or take off, e.g. 2 or -1.5: whole or half days, not 0.']);
     const employment = await this.employmentOf(employeeId);
     if (!employment) throw new ConflictException('There is no employment yet, so there is no leave balance to adjust.');

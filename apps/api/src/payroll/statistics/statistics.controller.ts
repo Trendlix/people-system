@@ -13,12 +13,12 @@ import { PayrollStatisticsService } from './statistics.service.js';
 export class PayrollStatisticsController {
   constructor(private readonly statistics: PayrollStatisticsService) {}
 
-  /** { generatedAt, period, months, without, totals, byDepartment, yearToDate } (packages/shared payroll-statistics.ts). */
+  /** { generatedAt, period, months, without, totals, byDepartment, yearToDate, confidentialExcluded } (packages/shared payroll-statistics.ts). */
   @Roles('hr', 'finance', 'ceo')
   @Get()
   @Header('Cache-Control', 'private, no-store')
-  report(@Query() query: StatisticsQueryDto) {
-    return this.statistics.report(query);
+  report(@Query() query: StatisticsQueryDto, @CurrentUser() user: SessionUser) {
+    return this.statistics.report(query, user);
   }
 
   /** The same as an Excel workbook: "Payroll statistics 2026-01 to 2026-12.xlsx". */

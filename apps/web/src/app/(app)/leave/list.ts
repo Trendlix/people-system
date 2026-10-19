@@ -5,12 +5,14 @@ import {
   LEAVE_STATUSES,
   leaveDecisionNeedsComment,
   leaveStatusAfterApproval,
+  seesConfidential,
   type LeaveDecision,
   type LeaveStage,
   type LeaveStatus,
   type Role,
 } from '@trendlix/shared';
 import { LEAVE_PATH, MY_TEAM } from '../../../components/nav';
+import { requestStatusLabel } from '../../../lib/confidential';
 import { approverLabel, approverPhrase, approverSubject, withApproverText, yourApprover } from '../../../lib/department-leads';
 import { formatDate, titleCase } from '../../../lib/format';
 import { hasRole } from '../../../lib/roles';
@@ -27,7 +29,11 @@ import { myRequestsHref } from '../my-requests/requests';
 // @trendlix/shared's (leaves.ts), which the API enforces; these helpers only word what it sent, and read the decision
 // form. Someone without a direct manager has their request decided first by their team lead, else their department's
 // head (owner, 19 October 2026: "i want to add department lead person, the person in charge"): the manager stage says
-// which, by the request's `manager.role`. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// which, by the request's `manager.role`. A C-level person's request (owner, 19 October 2026: "make C level Employees
+// details not visible to HR"; `confidential`, from the API) has HR's stage decided by the CEO, or HR with Super Admin:
+// HR without it doesn't get the request at all; what is still to come names the CEO ("With the CEO", "Approve and send
+// to the CEO"), and what was done names the stage ("Approved at HR's stage"), as HR may have decided it before then and
+// the log says who. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -180,7 +186,14 @@ export const STATUS_BADGE: Record<LeaveStatus, string> = {
   cancelled: 'bg-line-soft text-muted',
 };
 
-export const leaveStatusLabel = (status: LeaveStatus) => LEAVE_STATUS_LABELS[status] ?? status;
+/** "With HR", …; "With the CEO" for a C-level person's request with HR (19 October 2026: the CEO decides HR's stage). */
+export const leaveStatusLabel = (status: LeaveStatus, confidential?: boolean | null) => requestStatusLabel(status, LEAVE_STATUS_LABELS[status] ?? status, confidential);
+
+/** Who decides HR's stage, inside a sentence: HR, or the CEO for a C-level person's request (19 October 2026). */
+export const hrStageName = (confidential?: boolean | null) => (confidential === true ? 'the CEO' : 'HR');
+
+/** A C-level person's HR stage once decided, which the CEO (or HR with Super Admin) decides: "at HR's stage". */
+const AT_HR_STAGE = 'at HR’s stage';
 
 const daysFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 
@@ -214,10 +227,22 @@ export const stageTitle = (stage: LeaveStage, manager?: Pick<RequestApprover, 'r
   stage === 'manager' ? `the ${titleCase(approverLabel(manager))}` : 'HR';
 
 /**
+ * Who the user decides the stage as, in the decision section's heading ("Your Decision as …"): stageTitle; the HR stage
+ * of a C-level person's request (`confidential`), the CEO's (19 October 2026), "the CEO, at HR's Stage", unless the user
+ * is HR with Super Admin, who decides it as HR.
+ */
+export function decidingAsTitle(user: WithRoles, stage: LeaveStage, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
+  if (stage !== 'hr' || confidential !== true || (hasRole(user, 'hr') && seesConfidential(user))) return stageTitle(stage, manager);
+  return 'the CEO, at HR’s Stage';
+}
+
+/**
  * Where a request stands, for its list row and its page: who has it now, or how it ended (recorded by HR, cancelled), and
  * the comment given with a rejection.
  */
-export function leaveProgressText(r: Pick<LeaveRequestView, 'status' | 'manager' | 'rejectedStage' | 'rejectReason' | 'recordedByHr'> & { steps?: LeaveRequestView['steps'] }): {
+export function leaveProgressText(
+  r: Pick<LeaveRequestView, 'status' | 'manager' | 'rejectedStage' | 'rejectReason' | 'recordedByHr' | 'confidential'> & { steps?: LeaveRequestView['steps'] },
+): {
   text: string;
   reason: string | null;
 } {
@@ -226,9 +251,13 @@ export function leaveProgressText(r: Pick<LeaveRequestView, 'status' | 'manager'
       // "With the team lead (Sara Ali)": who decides it now
       return { text: withApproverText(r.manager), reason: null };
     case 'with_hr':
-      return { text: 'Waiting for HR', reason: null };
-    case 'rejected':
-      return { text: r.rejectedStage ? `Rejected by ${stagePhrase(r.rejectedStage, r.manager)}` : 'Rejected', reason: r.rejectReason?.trim() || null };
+      // a C-level person's: the CEO decides HR's stage (19 October 2026)
+      return { text: `Waiting for ${hrStageName(r.confidential)}`, reason: null };
+    case 'rejected': {
+      const reason = r.rejectReason?.trim() || null;
+      if (r.rejectedStage === 'hr' && r.confidential === true) return { text: `Rejected ${AT_HR_STAGE}`, reason };
+      return { text: r.rejectedStage ? `Rejected by ${stagePhrase(r.rejectedStage, r.manager)}` : 'Rejected', reason };
+    }
     case 'cancelled': {
       // by the employee, or by HR once approved, with the comment HR gives
       const step = [...(r.steps ?? [])].reverse().find((s) => s.kind === 'cancelled');
@@ -242,55 +271,67 @@ export function leaveProgressText(r: Pick<LeaveRequestView, 'status' | 'manager'
 
 /**
  * What the page says once a request is sent: where it goes, by where it starts (with the manager, or straight to HR);
- * `manager`, who decides it first: the direct manager, or the team lead or head of department of someone without one.
+ * `manager`, who decides it first: the direct manager, or the team lead or head of department of someone without one;
+ * a C-level person's (`confidential`) goes to the CEO instead of HR (19 October 2026).
  */
-export function leaveSentText(status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null): string {
+export function leaveSentText(status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
   if (status === 'approved') return 'Leave recorded, approved at once. It counts in the balance and in the month’s payroll.';
+  const hr = hrStageName(confidential);
   return status === 'with_manager'
-    ? `Request sent. It goes to ${yourApprover(manager)}, then HR; each step shows on the request.`
-    : 'Request sent. It goes to HR; each step shows on the request.';
+    ? `Request sent. It goes to ${yourApprover(manager)}, then ${hr}; each step shows on the request.`
+    : `Request sent. It goes to ${hr}; each step shows on the request.`;
 }
 
 /** Said when a decision is refused as the request moved on since the page was opened (the API's 409). */
 export const LEAVE_MOVED_ON = 'This request has moved on since you opened it: someone else decided it, or it was cancelled. It shows where it stands now.';
 
-/** What the page says once a decision went through. */
-export function leaveDecidedText(decision: LeaveDecision, stage: LeaveStage): string {
+/** What the page says once a decision went through; a C-level person's request goes on to the CEO, not HR (`confidential`). */
+export function leaveDecidedText(decision: LeaveDecision, stage: LeaveStage, confidential?: boolean | null): string {
   if (decision === 'reject') return 'Request rejected. The employee sees your comment.';
-  return leaveStatusAfterApproval(stage) === 'with_hr' ? 'Approved: the request goes to HR.' : 'Approved: the leave counts in the balance and in the month’s payroll.';
+  return leaveStatusAfterApproval(stage) === 'with_hr'
+    ? `Approved: the request goes to ${hrStageName(confidential)}.`
+    : 'Approved: the leave counts in the balance and in the month’s payroll.';
 }
 
 /**
  * What the request's page says after `?done=`, and in which tone (a decision refused as the request had moved on: a
- * warning); null for anything else. `status`: the request's now, for where a sent one goes, and `manager` to whom.
+ * warning); null for anything else. `status`: the request's now, for where a sent one goes, and `manager` to whom;
+ * `confidential`: a C-level person's, which goes to the CEO instead of HR.
  */
-export function leaveDoneText(query: Query, status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null): { text: string; tone: 'ok' | 'warn' } | null {
+export function leaveDoneText(
+  query: Query,
+  status: LeaveStatus,
+  manager?: Pick<RequestApprover, 'role'> | null,
+  confidential?: boolean | null,
+): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
-  if (done === 'sent' || done === 'recorded') return { text: leaveSentText(status, manager), tone: 'ok' };
+  if (done === 'sent' || done === 'recorded') return { text: leaveSentText(status, manager, confidential), tone: 'ok' };
   if (done === 'cancelled') return { text: 'Leave cancelled. Its days are back in the balance; it stays on the list, cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: LEAVE_MOVED_ON, tone: 'warn' };
   const [stage, decision] = done.split('_');
   if (!(LEAVE_STAGES as readonly string[]).includes(stage) || !(LEAVE_DECISIONS as readonly string[]).includes(decision)) return null;
-  return { text: leaveDecidedText(decision as LeaveDecision, stage as LeaveStage), tone: 'ok' };
+  return { text: leaveDecidedText(decision as LeaveDecision, stage as LeaveStage, confidential), tone: 'ok' };
 }
 
 // ---------- the log ----------
 
 /**
  * A step of a request as its timeline shows it: what happened ("HR approved it", "The team lead approved it": the
- * manager stage by who decides it, the request's `manager`).
+ * manager stage by who decides it, the request's `manager`). A C-level person's (`confidential`) HR stage by the stage
+ * ("Approved at HR's stage"): the CEO decides it since 19 October 2026, and the step says who.
  */
-export function leaveStepText(s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null): string {
+export function leaveStepText(s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
   switch (s.kind) {
     case 'submitted':
       return 'Asked for by the employee';
     case 'no_manager':
       // nobody in charge: no direct manager, and no team lead or head of department other than the employee
-      return 'No direct manager or lead: sent straight to HR';
+      return confidential === true ? 'No direct manager or lead: sent straight to HR’s stage' : 'No direct manager or lead: sent straight to HR';
     case 'recorded_by_hr':
       return 'Recorded by HR, approved at once';
     case 'manager_decision':
     case 'hr_decision': {
+      if (s.kind === 'hr_decision' && confidential === true) return s.decision === 'reject' ? `Rejected ${AT_HR_STAGE}` : `Approved ${AT_HR_STAGE}`;
       const who = stageSubject(s.kind === 'manager_decision' ? 'manager' : 'hr', manager);
       return s.decision === 'reject' ? `${who} rejected it` : `${who} approved it`;
     }
@@ -329,15 +370,25 @@ export function leaveDecisionBody(fd: FormData): { body: LeaveDecisionBody | nul
   return { body, errors: [] };
 }
 
-/** The decision form's button, by the decision and the stage: where an approved request goes next. */
-export function leaveDecisionButton(decision: LeaveDecision | '', stage: LeaveStage): { label: string; busy: string } {
+/**
+ * The decision form's button, by the decision and the stage: where an approved request goes next (a C-level person's,
+ * `confidential`: to the CEO, not HR).
+ */
+export function leaveDecisionButton(decision: LeaveDecision | '', stage: LeaveStage, confidential?: boolean | null): { label: string; busy: string } {
   if (decision === 'reject') return { label: 'Reject the request', busy: 'Rejecting…' };
   if (decision === '') return { label: 'Save the decision', busy: 'Saving…' };
-  return { label: leaveStatusAfterApproval(stage) === 'with_hr' ? 'Approve and send to HR' : 'Approve the leave', busy: 'Approving…' };
+  return { label: leaveStatusAfterApproval(stage) === 'with_hr' ? `Approve and send to ${hrStageName(confidential)}` : 'Approve the leave', busy: 'Approving…' };
 }
 
 /** Who reads the decision's comment, for the hint under its box. */
 export const LEAVE_COMMENT_READERS = 'The employee sees your comment, and so do the direct manager, HR and the CEO.';
+
+/**
+ * Who reads the decision's comment: LEAVE_COMMENT_READERS; a C-level person's request (`confidential`) HR doesn't see,
+ * only the CEO and the Super Admin (19 October 2026).
+ */
+export const leaveCommentReaders = (confidential?: boolean | null) =>
+  confidential === true ? 'The employee sees your comment, and so do the direct manager, the CEO and the Super Admin.' : LEAVE_COMMENT_READERS;
 
 /** HR cancelling an approved request: the comment is required (POST /leave/requests/:id/cancel). */
 export function hrCancelBody(fd: FormData): { body: { comment: string } | null; errors: string[] } {

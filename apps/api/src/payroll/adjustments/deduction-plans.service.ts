@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import type { AdvanceKind, AdvanceStatus } from '@trendlix/shared';
 import type { SessionUser } from '../../auth/session-user.js';
 import { isSelf, seesSalary } from '../../employees/access.js';
+import { ConfidentialService } from '../../employees/confidential.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AdvancesService } from './advances.service.js';
 import type { RecurringStatus } from './plans.js';
@@ -35,11 +36,13 @@ export class DeductionPlansService {
     private readonly prisma: PrismaService,
     private readonly advances: AdvancesService,
     private readonly recurring: RecurringDeductionsService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   async forEmployee(employeeId: string, user: SessionUser): Promise<DeductionPlans> {
     const employee = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, workEmail: true } });
-    if (!employee) throw new NotFoundException('Employee not found.');
+    // a C-level person's only for the CEO, a Super Admin and themself (owner, 19 October 2026)
+    if (!employee || (await this.confidential.isHidden(user, employeeId))) throw new NotFoundException('Employee not found.');
     if (!seesSalary(user) && !isSelf(user, employee)) {
       throw new ForbiddenException('Only the employee themself, HR, Finance and the CEO see their loans and deductions.');
     }

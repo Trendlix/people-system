@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
-import { REIMBURSEMENT_STAGE_LABELS } from '@trendlix/shared';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { DocumentViewer } from '@/components/document-viewer';
 import { approverLabel } from '@/lib/department-leads';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
@@ -14,7 +14,7 @@ import { cancelClaim, decideClaim } from '../actions';
 import { CancelClaimForm, DecisionForm } from '../claim-forms';
 import { sizeText } from '../claim';
 import { loadClaim } from '../data';
-import { claimBack, currentAmount, doneText, lowerApproved, payMonthOf, placeOfClaim, receiptHref } from '../list';
+import { claimBack, currentAmount, decidingAsTitle, doneText, lowerApproved, payMonthOf, placeOfClaim, receiptHref } from '../list';
 import { ClaimProgress, ClaimStatusBadge, ClaimTimeline } from '../ui';
 
 // A reimbursement claim (owner, 18 October 2026: "allow the employee to add reimbursement request … for specific preset
@@ -24,7 +24,9 @@ import { ClaimProgress, ClaimStatusBadge, ClaimTimeline } from '../ui';
 // (Approve, Approve a lower amount, Reject, with a comment for the last two); while it is being decided, the employee's
 // Cancel. What was just done on it shows at the top (?done=). Someone without a direct manager has it decided first by
 // their team lead, else their department's head (owner, 19 October 2026: "i want to add department lead person, the
-// person in charge"): the page says which.
+// person in charge"): the page says which. A C-level person's claim (owner, 19 October 2026: "make C level Employees
+// details not visible to HR") has HR's and Finance's stages decided by the CEO (or HR, or Finance, with Super Admin): it
+// says so ("With the CEO"), and the CEO gets the decision form at each when it waits for them (`waitingForYou`).
 
 export const metadata: Metadata = { title: 'Reimbursement Claim · People System' };
 
@@ -82,7 +84,7 @@ async function Claim({ params, searchParams }: { params: PageProps<'/reimburseme
   if (loaded.kind === 'failed') return <Empty>{notLoadedText(loaded, 'claim')}</Empty>;
   const c = loaded.value;
   const back = claimBack(user, c);
-  const done = doneText(query, c.status, c.manager);
+  const done = doneText(query, c.status, c.manager, c.confidential);
   const place = placeOfClaim(c.employee);
   const lower = lowerApproved(c);
   const month = payMonthOf(c);
@@ -93,7 +95,8 @@ async function Claim({ params, searchParams }: { params: PageProps<'/reimburseme
         <BackLink href={back.href}>{back.label}</BackLink>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{titleCase(`${c.type.nameEn} claim`)}</h1>
-          <ClaimStatusBadge status={c.status} />
+          <ClaimStatusBadge status={c.status} confidential={c.confidential} />
+          {c.confidential && <CLevelBadge title="A C-level person: the CEO decides HR’s and Finance’s stages, and neither sees the claim." />}
         </div>
         <p className="text-muted">
           {c.employee.fullNameEn}
@@ -135,7 +138,7 @@ async function Claim({ params, searchParams }: { params: PageProps<'/reimburseme
                 <ClaimProgress claim={c} />
               </Fact>
               <Fact label={c.manager ? approverLabel(c.manager) : 'Direct manager'}>
-                {c.manager ? c.manager.fullNameEn : <span className="text-muted">None: sent straight to HR</span>}
+                {c.manager ? c.manager.fullNameEn : <span className="text-muted">None: sent straight to {c.confidential ? 'the CEO' : 'HR'}</span>}
               </Fact>
               {month && <Fact label="Paid with">{`The ${month} payroll, untaxed`}</Fact>}
             </dl>
@@ -146,8 +149,14 @@ async function Claim({ params, searchParams }: { params: PageProps<'/reimburseme
           </Section>
 
           {c.waitingForYou && c.stage && (
-            <Section title={`Your Decision as ${c.stage === 'manager' ? `the ${titleCase(approverLabel(c.manager))}` : REIMBURSEMENT_STAGE_LABELS[c.stage]}`}>
-              <DecisionForm action={decideClaim.bind(null, c.id, currentAmount(c), c.stage)} stage={c.stage} current={currentAmount(c)} name={c.employee.fullNameEn} />
+            <Section title={`Your Decision as ${decidingAsTitle(user, c.stage, `the ${titleCase(approverLabel(c.manager))}`, c.confidential)}`}>
+              <DecisionForm
+                action={decideClaim.bind(null, c.id, currentAmount(c), c.stage)}
+                stage={c.stage}
+                current={currentAmount(c)}
+                name={c.employee.fullNameEn}
+                confidential={c.confidential}
+              />
             </Section>
           )}
 

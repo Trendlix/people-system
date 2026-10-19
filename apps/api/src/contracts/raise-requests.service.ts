@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  decidesConfidentialStage,
   effectiveFromProblem,
   OPEN_RAISE_REQUEST_STATUSES,
   payChangeOf,
@@ -16,9 +17,11 @@ import {
   type RaiseRequestStatus,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
+import { actsAs } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { editsEmployees, isSelf, seesSalary } from '../employees/access.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -125,7 +128,7 @@ export function raiseChangeOf(c: { kind: string; startDate: Date }, previous: Pi
  * 17 October 2026, for the screens reading it; `raiseReason` is the reason from the list (none on a request from before;
  * the raise's own on one prepared directly by HR, 19 October 2026, which says so in `origin`).
  */
-export function raiseRequestView(r: RequestRow, viewer: RequestViewer, userId: string | null, previous: PreviousVersion | null = null) {
+export function raiseRequestView(r: RequestRow, viewer: RequestViewer, userId: string | null, previous: PreviousVersion | null = null, confidential = false) {
   const full = viewer === 'full';
   const done = r.status === 'done';
   const mine = userId !== null && r.requestedById === userId;
@@ -174,6 +177,9 @@ export function raiseRequestView(r: RequestRow, viewer: RequestViewer, userId: s
     inForce: full && inForce ? payView(inForce) : null,
     steps: r.steps.map((s) => stepView(s, viewer, { mine, done })),
     amountsHidden: !full,
+    // a C-level person's (owner, 19 October 2026: "make C level Employees details not visible to HR"): HR's step is the
+    // CEO's, or HR's with Super Admin
+    confidential,
   };
 }
 
@@ -205,6 +211,7 @@ export class RaiseRequestsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly employees: EmployeesService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
   /**
@@ -285,21 +292,47 @@ export class RaiseRequestsService {
         ...(typed && { [typed.kind === 'amount' ? 'suggestedIncrease' : 'suggestedPercent']: 'set' }),
       },
     });
-    return raiseRequestView(row, viewer, user.id);
+    return raiseRequestView(row, viewer, user.id, null, await this.confidential.isConfidential(employeeId));
   }
 
-  /** Every request (HR, Finance and the CEO), newest first, of a status unless all. */
+  /**
+   * Every request (HR, Finance and the CEO), newest first, of a status unless all; a C-level person's only for the CEO
+   * and a Super Admin (owner, 19 October 2026: "make C level Employees details not visible to HR").
+   */
   async list(status: RaiseRequestStatus | undefined, user: SessionUser) {
-    const rows = await this.prisma.raiseRequest.findMany({ where: status ? { status } : {}, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: REQUEST_INCLUDE });
+    const confidential = await this.confidential.view(user);
+    const rows = await this.prisma.raiseRequest.findMany({
+      where: { ...(status && { status }), ...(confidential.hidden.size && { employeeId: { notIn: [...confidential.hidden] } }) },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: REQUEST_INCLUDE,
+    });
     const previous = await this.previousVersions(rows);
-    return rows.map((r) => raiseRequestView(r, 'full', user.id, previous.get(r.id) ?? null));
+    return rows.map((r) => raiseRequestView(r, 'full', user.id, previous.get(r.id) ?? null, confidential.all.has(r.employeeId)));
   }
 
-  /** One request, as HR, Finance and the CEO see it: what a step on it answers with. */
+  /** One request, as HR, Finance and the CEO see it: what a step on it answers with. Not a C-level person's hidden from the caller. */
   async one(id: string, user: SessionUser) {
     const r = await this.row(id);
+    await this.confidential.assertVisible(user, r.employeeId, 'Raise request not found.');
     const previous = await this.previousVersions([r]);
-    return raiseRequestView(r, 'full', user.id, previous.get(r.id) ?? null);
+    return raiseRequestView(r, 'full', user.id, previous.get(r.id) ?? null, await this.confidential.isConfidential(r.employeeId));
+  }
+
+  /**
+   * Whether the caller takes HR's step on this request (approve or reject it while it is with HR): HR; a C-level person's
+   * the CEO (owner, 19 October 2026: their HR stages go to the CEO), or HR with Super Admin, never for themself. 403 for
+   * anyone else; 404 for a request hidden from them.
+   */
+  async assertDecidesHrStep(id: string, user: SessionUser): Promise<void> {
+    const r = await this.prisma.raiseRequest.findUnique({ where: { id }, select: { employeeId: true } });
+    if (!r) throw new NotFoundException('Raise request not found.');
+    await this.confidential.assertVisible(user, r.employeeId, 'Raise request not found.');
+    if (await this.confidential.isConfidential(r.employeeId)) {
+      if (!decidesConfidentialStage(user, ['hr'])) throw new ForbiddenException("A C-level person's raise request is decided by the CEO, not HR.");
+      if ((await this.confidential.selfId(user)) === r.employeeId) throw new ForbiddenException('Someone else has to decide a raise request for you.');
+      return;
+    }
+    if (!actsAs(user.roles, ['hr'])) throw new ForbiddenException("HR decides this raise request: the CEO takes HR's step only on a C-level person's.");
   }
 
   /**
@@ -313,6 +346,7 @@ export class RaiseRequestsService {
   async forEmployee(employeeId: string, user: SessionUser) {
     const { employee, employment, requester, viewer } = await this.asker(employeeId, user);
     if (!viewer) throw new ForbiddenException('Only the employee, their direct manager, HR, Finance and the CEO see raise requests.');
+    const confidential = await this.confidential.isConfidential(employeeId);
     const rows = await this.prisma.raiseRequest.findMany({
       where: { employeeId, ...(viewer === 'self' && !seesSalary(user) && { requestedById: user.id }), ...(viewer !== 'full' && { origin: 'request' }) },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -334,7 +368,7 @@ export class RaiseRequestsService {
     // their own (17 October 2026: "allow the requestor raiser to see figures too"); a manager never ("No, only percent")
     const seesPay = viewer === 'full' || (viewer === 'self' && requester === 'self');
     return {
-      requests: rows.map((r) => raiseRequestView(r, viewer, user.id, previous.get(r.id) ?? null)),
+      requests: rows.map((r) => raiseRequestView(r, viewer, user.id, previous.get(r.id) ?? null, confidential)),
       canRequest: why === null,
       cannotRequestBecause: why,
       // the employee and HR may suggest an amount; a manager never states one (a percent only)
@@ -352,6 +386,7 @@ export class RaiseRequestsService {
    */
   async decline(id: string, dto: RaiseCommentDto, user: SessionUser) {
     const comment = commentOf(dto);
+    await this.assertDecidesHrStep(id, user);
     const before = await this.row(id);
     if (before.origin === 'direct') {
       throw new ConflictException(
@@ -392,7 +427,8 @@ export class RaiseRequestsService {
    */
   private async asker(employeeId: string, user: SessionUser) {
     const employee = await this.prisma.employee.findFirst({
-      where: { AND: [{ id: employeeId }, await this.employees.visibleTo(user)] },
+      // not a C-level person hidden from the caller (owner, 19 October 2026), the employee themself excepted
+      where: { AND: [{ id: employeeId }, await this.employees.visibleTo(user), await this.confidential.employeeWhere(user)] },
       select: {
         id: true,
         fullNameEn: true,

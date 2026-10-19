@@ -7,7 +7,8 @@
 // anyone: a reason from the list, a comment, and a raise suggested as an amount or, from a manager, a percent only), and
 // HR's decision on one: approve it as suggested or with another raise, which prepares the raise and sends it to the CEO,
 // or reject it, always with a comment. Each forwards to the API, which checks who may ask (and that a manager suggests
-// no amount) and that only HR decides, so calling these directly can't bypass that. The whole raise form is the
+// no amount) and that only HR decides (a C-level person's: the CEO, or HR with Super Admin; owner, 19 October 2026), so
+// calling these directly can't bypass that. The whole raise form is the
 // Contract section's; the CEO's decision on the raise is on Approvals (approvals/actions.ts). Asked for on its own page
 // under Requests → Raise Requests since 17 October 2026 ("i think raising a request should be moved from the Employee
 // tab to the raise requests tab"), with the month it is asked from ("Effective from"); once sent, the requester lands
@@ -59,7 +60,8 @@ export async function requestRaise(employeeId: string, suggestsAmount: boolean, 
 /**
  * HR's decision on a request with HR, by the choice made (`decision`): approve it as suggested or with another raise
  * (the raise is prepared from it, from the effective date and the way chosen, and sent to the CEO), or reject it; the
- * comment is required. `suggested`: whether the request suggests a raise to approve as it is.
+ * comment is required. `suggested`: whether the request suggests a raise to approve as it is. The CEO takes this step
+ * on a C-level person's request (19 October 2026).
  */
 export async function decideRaiseRequest(requestId: string, suggested: boolean, _prev: FormState, fd: FormData): Promise<FormState> {
   const values = typed(fd, ['decision', 'comment', 'figureKind', 'figureValue', 'way', 'effectiveDate', 'durationMonths']);

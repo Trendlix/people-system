@@ -242,6 +242,11 @@ export interface RaiseRequest {
   decision: { stage: 'hr' | 'ceo'; reason: string | null; at: string | null; by: { email: string } | null } | null;
   doneAt: string | null;
   amountsHidden: boolean;
+  /**
+   * The employee is C-level (owner, 19 October 2026): HR's step is the CEO's (or HR with Super Admin), and HR without
+   * Super Admin doesn't get the request at all. Left out by an API from before it.
+   */
+  confidential?: boolean;
 }
 
 /** GET /employees/:id/raise-requests: the requests the caller may see, and whether they may ask for one now. */

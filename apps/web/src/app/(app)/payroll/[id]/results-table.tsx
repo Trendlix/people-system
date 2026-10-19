@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import { Fragment, useOptimistic, useState, useTransition } from 'react';
 import type { LawRates, PayrollRules } from '@trendlix/shared';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { GroupHeading } from '@/components/group-heading';
 import { groupByPlace, placeOrder, showsDepartment, type PlaceRef } from '@/lib/place-groups';
 import type { FormState, PayrollLineView, PayrollTotals } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { contractHref } from '../../employees/tab-list';
 import { payslipHref } from '../payslips';
+import { CONFIDENTIAL_LINE_TITLE, HIDDEN_PAY_NOTE } from './access';
 import { breakdown, cutText, waivedByCeo, waiverOf, type BreakdownRow } from './breakdown';
 
 // The run's results (owner's decisions, 16 October 2026): what each employee earned, what is deducted, the net and what
@@ -18,7 +20,9 @@ import { breakdown, cutText, waivedByCeo, waiverOf, type BreakdownRow } from './
 // paid, so has none. While the run is with the CEO, the CEO sees a box on each line with an attendance deduction to
 // waive it, with the amount, saved as it is ticked (owner, 17 October 2026: "if there is an attendance deduction,
 // allow the CEO to wave the deduction by ticking a box"); unticking takes it again. HR and Finance, and everyone once
-// it is approved, see "Waived by the CEO" on such a line.
+// it is approved, see "Waived by the CEO" on such a line. The C-level people's lines (owner, 19 October 2026: "make C
+// level Employees details not visible to HR") are marked C-level for the CEO and the Super Admin; for those they are
+// hidden from, one row before the totals stands for them, with no figures, and the totals leave them out.
 
 /** The CEO's waiver of a line's attendance deduction: saves it as it is ticked or unticked (POST …/attendance-waiver). */
 type Waive = (lineId: string, waived: boolean) => Promise<FormState>;
@@ -126,6 +130,7 @@ export function ResultsTable({
   payslips,
   waive = null,
   places = [],
+  hidden = null,
 }: {
   lines: PayrollLineView[];
   /** The departments and teams in Organization's order, for the groups to follow it (owner, 19 October 2026). */
@@ -138,6 +143,8 @@ export function ResultsTable({
   payslips: boolean;
   /** The CEO, while the run is with the CEO: waives a line's attendance deduction (17 October 2026); null otherwise. */
   waive?: Waive | null;
+  /** The row standing for the C-level people's lines hidden from the caller ("C-level (2 people) — hidden"); null for none. */
+  hidden?: string | null;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = (id: string) =>
@@ -153,11 +160,14 @@ export function ResultsTable({
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
-        <button type="button" onClick={() => setOpen(allOpen ? new Set() : new Set(lines.map((l) => l.id)))} className="text-sm font-semibold text-accent hover:underline">
-          {allOpen ? 'Close every breakdown' : 'Open every breakdown'}
-        </button>
-      </div>
+      {/* none to open when every line is hidden from the caller (19 October 2026) */}
+      {lines.length > 0 && (
+        <div className="flex justify-end">
+          <button type="button" onClick={() => setOpen(allOpen ? new Set() : new Set(lines.map((l) => l.id)))} className="text-sm font-semibold text-accent hover:underline">
+            {allOpen ? 'Close every breakdown' : 'Open every breakdown'}
+          </button>
+        </div>
+      )}
       <div className="card overflow-x-auto">
         <table className="table">
           <thead>
@@ -203,6 +213,7 @@ export function ResultsTable({
                               </span>
                             </button>
                             <div className="mt-1 flex flex-wrap gap-1 pl-5">
+                              {l.confidential && <CLevelBadge title={CONFIDENTIAL_LINE_TITLE} />}
                               {l.onHold && <span className="badge bg-warn-soft text-warn">On hold</span>}
                               {!waive && waivedByCeo(l) && <span className="badge bg-ok-soft text-ok">Waived by the CEO</span>}
                               {l.result.warnings.length > 0 && (
@@ -241,6 +252,19 @@ export function ResultsTable({
               ))}
             </tbody>
           ))}
+          {/* the C-level people's lines, hidden from the caller (owner, 19 October 2026): one row, no figures */}
+          {hidden && (
+            <tbody>
+              <tr>
+                <th scope="row" className="text-sm font-semibold tracking-normal text-ink normal-case">
+                  {hidden}
+                </th>
+                <td colSpan={span - 1} className="text-sm text-muted">
+                  {HIDDEN_PAY_NOTE}
+                </td>
+              </tr>
+            </tbody>
+          )}
           <tfoot>
             <tr className="font-semibold">
               <td className="border-t border-line">

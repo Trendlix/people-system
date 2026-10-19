@@ -1,12 +1,36 @@
-import { CHANGE_REQUEST_STATUS_LABELS, CHANGE_REQUEST_STATUSES, type ChangeRequestStatus } from '@trendlix/shared';
+import { CHANGE_REQUEST_STATUS_LABELS, CHANGE_REQUEST_STATUSES, type ChangeRequestStatus, type Role } from '@trendlix/shared';
 import { DETAILS_CHANGES_PATH } from '../../../../components/nav';
+import { decidesChangeOfDetails } from '../../../../lib/confidential';
 import { formatDateTime } from '../../../../lib/format';
+import { hasRole } from '../../../../lib/roles';
 import type { ChangeRequest } from '../../../../lib/types';
 
 // Details Changes, under Requests in the sidebar (owner, 17 October 2026: "A Requests heading"): every employee's
 // request to change their details, newest first, filtered by status in the address (so a link keeps it), each with its
-// decision: who, when and why. HR and Admin decide the ones waiting there, as on Approvals. Pure code, tested; relative
-// imports, as vitest doesn't know the @/ paths.
+// decision: who, when and why. HR and Admin decide the ones waiting there, as on Approvals. A C-level person's (owner, 19
+// October 2026: "make C level Employees details not visible to HR"; `confidential`, from the API) the CEO decides, or a
+// Super Admin (as Admin), not HR: the CEO reads them (the API sends the CEO only those), and HR without Super Admin
+// doesn't get them. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+
+type WithRoles = { roles: readonly Role[] };
+
+/**
+ * Who reads the employees' change requests (Details Changes, Approvals and the counts beside them): HR and Admin (a Super
+ * Admin too), who decide them, and the CEO, who decides a C-level person's (19 October 2026).
+ */
+export const readsChangeRequests = (user: WithRoles) => hasRole(user, 'hr', 'admin', 'ceo');
+
+/** The ones waiting that the user decides (decidesChangeOfDetails): the count beside Approvals and Details Changes. */
+export function waitingForYou<R extends Pick<ChangeRequest, 'status' | 'confidential'>>(user: WithRoles, requests: readonly R[]): R[] {
+  return requests.filter((r) => r.status === 'pending' && decidesChangeOfDetails(user, r.confidential));
+}
+
+/** "Waiting for HR", …; a C-level person's waiting, "Waiting for the CEO" (19 October 2026). */
+export const changeStatusLabel = (status: ChangeRequestStatus, confidential?: boolean | null) =>
+  status === 'pending' && confidential === true ? 'Waiting for the CEO' : (CHANGE_REQUEST_STATUS_LABELS[status] ?? status);
+
+/** Who decides a request, for one waiting that the user doesn't: "HR or an Admin"; a C-level person's, "the CEO or a Super Admin". */
+export const changeDeciders = (confidential?: boolean | null) => (confidential === true ? 'the CEO or a Super Admin' : 'HR or an Admin');
 
 /** All, or one of the module's statuses: waiting for HR, approved, rejected, cancelled by the employee. */
 export type StatusFilter = ChangeRequestStatus | '';

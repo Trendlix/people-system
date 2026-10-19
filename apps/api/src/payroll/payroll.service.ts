@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   bankNamed,
+  changesPayrollLine,
   EMPTY_PAYROLL_INPUTS,
   insuredWageDate,
   leaveDaysOf,
@@ -20,6 +21,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import { traineeStagesOf } from '../contracts/views.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GridInputsService } from './adjustments/grid-inputs.service.js';
@@ -191,6 +193,11 @@ const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto
 // advances and loans past 10% of the pay (or Payroll Setup's lower limit), refused when planned but the month's pay can
 // be less; its recurring deductions past 25% of the pay after tax, insurance and installments; its damage or loss past
 // 5 days' wage. Warnings, never blocks (views.ts lawWarnings).
+// C-level people (owner, 19 October 2026: "make C level Employees details not visible to HR"): their lines are hidden
+// from anyone but the CEO and a Super Admin, as one row "C-level (N people) — hidden" with no figures, the totals, the
+// register, the bank files and the payslips without them; the CEO fills their inputs while the run is a draft (HR with
+// Super Admin too; packages/shared changesPayrollLine), and approves the run as now. HR still makes, refreshes and sends
+// the whole run.
 @Injectable()
 export class PayrollService {
   constructor(
@@ -203,30 +210,45 @@ export class PayrollService {
     private readonly adjustments: RunAdjustmentsService,
     private readonly gridInputs: GridInputsService,
     private readonly recurring: RecurringDeductionsService,
+    private readonly confidential: ConfidentialService,
   ) {}
 
-  /** Every run, newest month first, with its totals. */
-  async list(): Promise<PayrollRunSummary[]> {
-    const [runs, sums] = await Promise.all([
+  /** Every run, newest month first, with its totals: without the C-level people's lines hidden from the caller. */
+  async list(user: SessionUser): Promise<PayrollRunSummary[]> {
+    const hidden = await this.confidential.hiddenFrom(user);
+    const [runs, sums, hiddenSums] = await Promise.all([
       this.prisma.payrollRun.findMany({ orderBy: { month: 'desc' } }),
       this.prisma.payrollLine.groupBy({
         by: ['runId'],
+        ...(hidden.length && { where: { employeeId: { notIn: hidden } } }),
         _count: { _all: true },
         _sum: Object.fromEntries(TOTAL_KEYS.map((k) => [k, true])) as Record<(typeof TOTAL_KEYS)[number], true>,
       }),
+      hidden.length ? this.prisma.payrollLine.groupBy({ by: ['runId'], where: { employeeId: { in: hidden } }, _count: { _all: true } }) : [],
     ]);
     const byRun = new Map(sums.map((s) => [s.runId, s]));
+    const hiddenBy = new Map(hiddenSums.map((s) => [s.runId, s._count._all]));
     return runs.map((r) => {
       const s = byRun.get(r.id);
       const totals = totalsOf([]);
       totals.employees = s?._count._all ?? 0;
       for (const k of TOTAL_KEYS) totals[k] = s?._sum[k]?.toNumber() ?? 0;
-      return { id: r.id, month: monthOf(r), status: r.status as PayrollStatus, totals, createdAt: r.createdAt, approvedAt: r.approvedAt, paidOn: fromDateOnly(r.paidOn) };
+      return {
+        id: r.id,
+        month: monthOf(r),
+        status: r.status as PayrollStatus,
+        totals,
+        hidden: hiddenBy.get(r.id) ?? 0,
+        createdAt: r.createdAt,
+        approvedAt: r.approvedAt,
+        paidOn: fromDateOnly(r.paidOn),
+      };
     });
   }
 
-  async get(id: string): Promise<PayrollRunView> {
-    return this.view(await this.row(id));
+  /** A run as the caller sees it: a C-level person's line only for the CEO and a Super Admin (one hidden row for others). */
+  async get(id: string, user: SessionUser): Promise<PayrollRunView> {
+    return this.view(await this.row(id), user);
   }
 
   /**
@@ -277,7 +299,7 @@ export class PayrollService {
         ...(countOn(lines, pending) && { adjustments: countOn(lines, pending) }),
       },
     });
-    return this.get(run.id);
+    return this.get(run.id, user);
   }
 
   /**
@@ -331,7 +353,7 @@ export class PayrollService {
         ...(Object.keys(lawChanges).length && { lawRates: lawChanges }),
       },
     });
-    return this.get(id);
+    return this.get(id, user);
   }
 
   /**
@@ -345,8 +367,20 @@ export class PayrollService {
     this.assertStatus(run, 'draft', 'changed');
     const ids = dto.lines.map((l) => l.id);
     if (new Set(ids).size !== ids.length) throw new BadRequestException('Send each line once.');
-    const lines = new Map(run.lines.map((l) => [l.id, l]));
+    // a C-level person's line isn't there for those it is hidden from (owner, 19 October 2026)
+    const confidential = await this.confidential.view(user);
+    const lines = new Map(run.lines.filter((l) => !confidential.hidden.has(l.employeeId)).map((l) => [l.id, l]));
     if (ids.some((x) => !lines.has(x))) throw new BadRequestException('Some of these lines are not on this payroll. Reload it and try again.');
+    // HR changes the lines; a C-level person's the CEO fills (owner, 19 October 2026: "the CEO fills their inputs"), or HR
+    // with Super Admin
+    const refused = ids.map((x) => lines.get(x)!).filter((l) => !changesPayrollLine(user, confidential.all.has(l.employeeId)));
+    if (refused.length) {
+      throw new ForbiddenException(
+        confidential.all.has(refused[0].employeeId)
+          ? `${refused[0].nameEn} is C-level: the CEO fills their line.`
+          : `HR fills ${refused[0].nameEn}'s line: the CEO fills only the C-level people's.`,
+      );
+    }
     const rules = run.rules as unknown as PayrollRules;
     const law = runLawRates(run);
 
@@ -382,7 +416,7 @@ export class PayrollService {
     for (const u of updates) {
       await this.audit.record({ userId: user.id, action: 'update', entityType: LINE, entityId: u.line.id, diff: { runId: id, month, employeeCode: u.line.employeeCode, ...u.diff } });
     }
-    return this.get(id);
+    return this.get(id, user);
   }
 
   /** HR sends a draft to the CEO. */
@@ -392,7 +426,7 @@ export class PayrollService {
     if (!run.lines.length) throw new ConflictException(`Nobody is on the ${monthName(monthOf(run))} payroll. Refresh it once the contracts are signed.`);
     await this.prisma.payrollRun.update({ where: { id }, data: { status: 'pending_ceo', submittedAt: new Date(), returnedReason: null } });
     await this.statusChanged(run, 'pending_ceo', 'submit', user);
-    return this.get(id);
+    return this.get(id, user);
   }
 
   /** The CEO sends it back to HR, saying why; HR changes it and sends it again. */
@@ -404,7 +438,7 @@ export class PayrollService {
     // a draft again: any bonus or penalty days, commission or settlements still typed on its grid (sent before they
     // moved, 17 October 2026) become additions and deductions
     await this.gridInputs.convert(id);
-    return this.get(id);
+    return this.get(id, user);
   }
 
   /**
@@ -428,7 +462,7 @@ export class PayrollService {
     // the inputs as saved, those of a line sent before 17 October 2026 included, so it is worked out as it was
     const saved = { ...EMPTY_PAYROLL_INPUTS, ...(line.inputs as object) } as PayrollInputs;
     const was = saved.attendanceWaived === true;
-    if (dto.waived === was) return this.get(id);
+    if (dto.waived === was) return this.get(id, user);
     if (dto.waived && !(payrollLine(terms, { ...saved, attendanceWaived: false }, rules, law).attendanceCut > 0)) {
       throw new ConflictException(`${line.nameEn} has no attendance deduction to waive this month.`);
     }
@@ -442,7 +476,7 @@ export class PayrollService {
       // the amount only as changed, as for a salary
       diff: { runId: id, month, employeeCode: line.employeeCode, attendanceWaived: { from: was, to: dto.waived }, attendanceCut: 'changed' },
     });
-    return this.get(id);
+    return this.get(id, user);
   }
 
   /**
@@ -468,7 +502,7 @@ export class PayrollService {
     });
     await this.statusChanged(run, 'approved', 'approve', user, applied.length ? { adjustmentsApplied: applied.length, ...(settled.length && { advancesSettled: settled }) } : {});
     await this.adjustments.recordApplied(id, monthOf(run), applied, user);
-    return this.get(id);
+    return this.get(id, user);
   }
 
   /**
@@ -485,7 +519,7 @@ export class PayrollService {
     await this.prisma.payrollRun.update({ where: { id }, data: { status: 'paid', paidOn: toDateOnly(dto.paidOn) } });
     await this.statusChanged(run, 'paid', 'paid', user, { paidOn: dto.paidOn });
     await this.payslips.issueRun(id, user);
-    return this.get(id);
+    return this.get(id, user);
   }
 
   /** Deletes a draft made by mistake (a Super Admin only, like every deletion: owner's decision, 15 October 2026). */
@@ -500,9 +534,9 @@ export class PayrollService {
 
   // ---------- files ----------
 
-  /** The payroll register, whatever the status. */
-  async register(id: string): Promise<{ fileName: string; data: Buffer }> {
-    const view = await this.get(id);
+  /** The payroll register, whatever the status: without the C-level people's lines hidden from the caller, as the run. */
+  async register(id: string, user: SessionUser): Promise<{ fileName: string; data: Buffer }> {
+    const view = await this.get(id, user);
     const data = await registerWorkbook({
       month: view.month,
       status: view.status,
@@ -535,7 +569,11 @@ export class PayrollService {
     if (!isApproved(run.status)) {
       throw new ConflictException(`The ${monthName(month)} payroll ${STATUS_TEXT[run.status as PayrollStatus]}: the bank files are made once the CEO approves it.`);
     }
+    // without the C-level people's lines for anyone but the CEO and a Super Admin (owner, 19 October 2026), who download
+    // the files complete
+    const hidden = new Set(await this.confidential.hiddenFrom(user));
     const lines = run.lines
+      .filter((l) => !hidden.has(l.employeeId))
       .map((l) => ({ line: l, details: bankDetailsOf(l, undefined, true), transfer: l.transfer.toNumber() }))
       .filter((x) => inFile({ onHold: x.line.onHold, transfer: x.transfer, bank: lineBank(x.details) }, kind));
     if (!lines.length) {
@@ -611,8 +649,8 @@ export class PayrollService {
     return new Map(rows.map((b) => [b.employeeId, cleanBankDetails({ bank: b.bankName, accountNo: b.accountNo, iban: b.iban, holderName: b.holderName })]));
   }
 
-  private async view(run: RunRow): Promise<PayrollRunView> {
-    const [banks, approver, notOnRun, settings] = await Promise.all([
+  private async view(run: RunRow, user: SessionUser): Promise<PayrollRunView> {
+    const [banks, approver, notOnRun, settings, confidential] = await Promise.all([
       isApproved(run.status) ? new Map<string, BankDetails>() : this.banks(run.lines.map((l) => l.employeeId)),
       run.approvedBy ? this.prisma.employee.findUnique({ where: { workEmail: run.approvedBy.email.toLowerCase() }, select: { fullNameEn: true } }) : null,
       // the month's pending additions and deductions no line takes (owner, 17 October 2026)
@@ -623,6 +661,8 @@ export class PayrollService {
       }),
       // the limit on a month's installments the lines warn past (18 October 2026)
       this.settings.row(),
+      // the C-level people, and those hidden from the caller (19 October 2026)
+      this.confidential.view(user),
     ]);
     const people = notOnRun.length
       ? await this.prisma.employee.findMany({ where: { id: { in: notOnRun.map((g) => g.employeeId) } }, select: { id: true, employeeCode: true, fullNameEn: true } })
@@ -631,7 +671,13 @@ export class PayrollService {
     const adjustmentsNotOnRun = people
       .map((p) => ({ employeeId: p.id, employeeCode: p.employeeCode, name: p.fullNameEn, count: counts.get(p.id) ?? 0 }))
       .sort((a, b) => a.name.localeCompare(b.name));
-    return runView(run, { banks, approvedByName: approver?.fullNameEn ?? null, adjustmentsNotOnRun, installmentLimitPercent: settings.installmentLimitPercent.toNumber() });
+    return runView(run, {
+      banks,
+      approvedByName: approver?.fullNameEn ?? null,
+      adjustmentsNotOnRun,
+      installmentLimitPercent: settings.installmentLimitPercent.toNumber(),
+      confidential: { all: confidential.all, hidden: confidential.hidden, changes: (line) => changesPayrollLine(user, line) },
+    });
   }
 
   private assertStatus(run: RunRow, wanted: PayrollStatus, doing: string) {
