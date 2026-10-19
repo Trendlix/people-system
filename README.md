@@ -15,7 +15,7 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 | Employee file: scanned paperwork per employment type, text read by OCR and searchable, "Fill from ID card photos", scanning from network scanners (`tools/scan-helper`), crop and adjust | Done. HR and CEO |
 | 3 · Contracts: versions per employment (fixed term only, 3-month probation once per employer), monthly or hourly pay, days a week, allowances, ending rules, endings approved by HR then the CEO (Labour Law 14/2025), undo signing (Super Admin), salary calculator | Done |
 | Job offers: drafted by HR, filled in from the offer template, sent by email (SMTP) or as a link, accepted or declined by the candidate on a public page; accepting makes the profile, employment and draft contract | Done. HR; CEO views. Email needs the SMTP settings (DEPLOY.md) |
-| Templates: the document library (23 slots), Word templates in Arabic, English or both, their {{tags}} checked against the tag list, published versions, tag reference; documents filled in for each employee | Done (HR, Admin; CEO views) |
+| Templates: the document library (23 slots), Word templates in Arabic, English or both, their {{tags}} checked against the tag list, published versions, tag reference; documents filled in for each employee | Done (Super Admin only: uploads, edits, publishes) |
 
 ## Layout
 

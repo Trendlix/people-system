@@ -80,10 +80,11 @@ describe('Employment types by the labour law (e2e)', () => {
   const sign = async (c: Contract) => (await api().post(`/api/contracts/${c.id}/sign`).set('Cookie', hr).send({ signedOn: c.startDate <= today ? c.startDate : today }).expect(200)).body as Contract;
   const messageOf = (res: request.Response) => res.body.message as string | string[];
 
+  /** A template uploaded and published by a Super Admin, who alone edits templates (owner, 19 October 2026). */
   async function publish(slot: string) {
-    const upload = await api().post(`/api/templates/${slot}/versions`).set('Cookie', hr).attach('file', docx({ body: p(r('{{full_name_en}}')) }), `${slot}.docx`).field('language', 'en').expect(201);
+    const upload = await api().post(`/api/templates/${slot}/versions`).set('Cookie', superAdmin).attach('file', docx({ body: p(r('{{full_name_en}}')) }), `${slot}.docx`).field('language', 'en').expect(201);
     versions.push(upload.body.id);
-    await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', hr).expect(200);
+    await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', superAdmin).expect(200);
   }
 
   beforeAll(async () => {

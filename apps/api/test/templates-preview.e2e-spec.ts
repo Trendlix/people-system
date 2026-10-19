@@ -66,6 +66,7 @@ describe('Template preview with data (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let hr: string;
+  let superAdmin: string;
   let admin: string;
   let adminId: string;
   let ceo: string;
@@ -120,8 +121,9 @@ describe('Template preview with data (e2e)', () => {
   };
   const viewsOf = (versionId: string) => prisma.auditLog.findMany({ where: { entityType: 'template_version', entityId: versionId, action: 'view_restricted' }, orderBy: { id: 'asc' } });
 
+  /** A draft uploaded by a Super Admin, who alone edits templates (owner, 19 October 2026). */
   async function draft(slot: string, file: Buffer, language?: 'ar' | 'en') {
-    const upload = api().post(`/api/templates/${slot}/versions`).set('Cookie', hr).attach('file', file, `${slot}.docx`);
+    const upload = api().post(`/api/templates/${slot}/versions`).set('Cookie', superAdmin).attach('file', file, `${slot}.docx`);
     const res = await (language ? upload.field('language', language) : upload).expect(201);
     return { id: res.body.id as string, version: res.body.version as number };
   }
@@ -165,6 +167,7 @@ describe('Template preview with data (e2e)', () => {
     const converted = await convertedPdf();
     convert = vi.spyOn(app.get(PdfService), 'fromDocx').mockImplementation(async () => converted);
     hr = await signIn(app, await createUser(prisma, ['hr']));
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     const adminEmail = await createUser(prisma, ['admin']);
     admin = await signIn(app, adminEmail);
     adminId = (await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } })).id;

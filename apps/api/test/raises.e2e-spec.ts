@@ -367,8 +367,9 @@ describe('Pay raises (e2e)', () => {
       expect(missing.body.message).toBe('There is no published template for Salary amendment (ملحق عقد). Upload it in Templates first.');
 
       const file = docx({ body: p(r('{{amended_contract_number}} / {{contract_number}}: {{previous_gross_salary}} → {{gross_salary}} من {{raise_effective_date}} ({{raise_reason_en}}) {{new_job_title_en}} {{new_grade}}')) });
-      const upload = await api().post('/api/templates/contract_amendment/versions').set('Cookie', hr).field('language', 'ar').attach('file', file, 'amendment.docx').expect(201);
-      await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', hr).expect(200);
+      // by a Super Admin, who alone edits templates (owner, 19 October 2026)
+      const upload = await api().post('/api/templates/contract_amendment/versions').set('Cookie', superAdmin).field('language', 'ar').attach('file', file, 'amendment.docx').expect(201);
+      await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', superAdmin).expect(200);
       // a whole contract's version takes its contract copies, not the letter
       expect((await api().post(`/api/employees/${amy.id}/documents`).set('Cookie', hr).send({ slotKey: 'contract_amendment', contractId: amyV1.id }).expect(400)).body.message).toMatch(
         /is a whole contract/,

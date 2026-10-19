@@ -10,6 +10,7 @@ import { createApp, createUser, signIn } from './helpers.js';
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const SAVE_AS = 'Save it as a Word document (.docx) and upload again.';
 const ONLY_SUPER_ADMIN = 'Only a Super Admin can delete records.';
+const ONLY_SUPER_ADMIN_EDITS = 'Only a Super Admin uploads, edits or publishes templates.';
 
 /** Reads a response body as bytes, whatever its type. */
 const bytes = (res: request.Response, done: (err: Error | null, body: Buffer) => void) => {
@@ -37,11 +38,13 @@ describe('Templates (e2e)', () => {
   let ceo: string;
   let employee: string;
   let hrEmail: string;
+  let superAdminEmail: string;
   const api = () => request(app.getHttpServer());
 
-  const upload = (slot: string, file: Buffer, fileName: string, cookie = hr) =>
+  // only a Super Admin uploads, edits or publishes (owner, 19 October 2026); HR, Admin and the CEO read
+  const upload = (slot: string, file: Buffer, fileName: string, cookie = superAdmin) =>
     api().post(`/api/templates/${slot}/versions`).set('Cookie', cookie).attach('file', file, fileName);
-  const publish = (id: string, cookie = hr) => api().post(`/api/templates/versions/${id}/publish`).set('Cookie', cookie);
+  const publish = (id: string, cookie = superAdmin) => api().post(`/api/templates/versions/${id}/publish`).set('Cookie', cookie);
   const slots = async (cookie = hr): Promise<Slot[]> => (await api().get('/api/templates').set('Cookie', cookie).expect(200)).body;
   const slotOf = async (key: string) => (await slots()).find((s) => s.key === key)!;
   const auditOf = (id: string) => prisma.auditLog.findMany({ where: { entityType: 'template_version', entityId: id }, orderBy: { id: 'asc' } });
@@ -52,7 +55,8 @@ describe('Templates (e2e)', () => {
     hrEmail = await createUser(prisma, ['hr']);
     hr = await signIn(app, hrEmail);
     admin = await signIn(app, await createUser(prisma, ['admin']));
-    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
+    superAdminEmail = await createUser(prisma, ['super_admin']);
+    superAdmin = await signIn(app, superAdminEmail);
     ceo = await signIn(app, await createUser(prisma, ['ceo']));
     employee = await signIn(app, await createUser(prisma, ['employee']));
   });
@@ -85,7 +89,7 @@ describe('Templates (e2e)', () => {
     expect([copy.copyOf, copy.overrides]).toEqual([null, { gross_salary: 'insured_salary', gross_salary_words: 'insured_salary_words', gross_salary_words_en: 'insured_salary_words_en' }]);
   });
 
-  it('HR uploads a draft: the tags are read, and it is version 1', async () => {
+  it('a Super Admin uploads a draft: the tags are read, and it is version 1', async () => {
     const file = realTemplate('Contract');
     const res = await upload('contract_full_time', file, 'عقد العمل.docx').field('note', 'As used today').expect(201);
     expect(res.body).toEqual({
@@ -102,7 +106,7 @@ describe('Templates (e2e)', () => {
       broken: [],
       status: 'draft',
       note: 'As used today',
-      uploadedBy: { email: hrEmail },
+      uploadedBy: { email: superAdminEmail },
       uploadedAt: expect.any(String),
       publishedBy: null,
       publishedAt: null,
@@ -133,7 +137,7 @@ describe('Templates (e2e)', () => {
     const none = await upload('nda', file, 'NDA.docx').expect(400);
     expect(none.body.message).toBe('Choose the language of the template: Arabic or English.');
     await upload('nda', file, 'NDA.docx').field('language', 'fr').expect(400);
-    const nda = await upload('nda', file, 'NDA.docx', admin).field('language', 'en').expect(201);
+    const nda = await upload('nda', file, 'NDA.docx').field('language', 'en').expect(201);
     expect([nda.body.language, nda.body.tags, nda.body.uploadedBy]).toEqual(['en', ['full_name_en', 'date'], { email: expect.any(String) }]);
     // Arabic and English side by side (the owner's NDA): the tags that name their language print in it
     const both = await upload('nda', docx({ body: p(r('{{job_title_ar}} / {{job_title_en}}')) }), 'NDA both.docx').field('language', 'bilingual').expect(201);
@@ -154,7 +158,7 @@ describe('Templates (e2e)', () => {
       /^This is an old Word document \(\.doc\)/,
     );
     expect(await say(docx({ body: p(r('{{date}}')), mainType: TEMPLATE_TYPE }), 'contract.dotx')).toBe(`This is a Word template (.dotx). ${SAVE_AS}`);
-    const empty = await api().post('/api/templates/resignation_request/versions').set('Cookie', hr).field('note', 'x').expect(400);
+    const empty = await api().post('/api/templates/resignation_request/versions').set('Cookie', superAdmin).field('note', 'x').expect(400);
     expect(empty.body.message).toBe('Choose the file to upload: a Word document (.docx) or a PDF form.');
     const big = await upload('resignation_request', Buffer.alloc(10 * 1024 * 1024 + 1), 'big.docx').expect(413);
     expect(big.body.message).toBe('Each file must be 10 MB or smaller.');
@@ -187,7 +191,7 @@ describe('Templates (e2e)', () => {
   it('publishing retires the version in use; only drafts are published', async () => {
     const { latestDraft } = await slotOf('contract_full_time');
     const first = await publish(latestDraft!.id).expect(200);
-    expect(first.body).toMatchObject({ version: 1, status: 'published', publishedBy: { email: hrEmail }, publishedAt: expect.any(String) });
+    expect(first.body).toMatchObject({ version: 1, status: 'published', publishedBy: { email: superAdminEmail }, publishedAt: expect.any(String) });
     expect((await publish(latestDraft!.id).expect(409)).body.message).toBe('Version 1 is already in use.');
 
     const second = await upload('contract_full_time', realTemplate('Contract'), 'عقد العمل.docx').field('note', 'Second wording').expect(201);
@@ -195,7 +199,9 @@ describe('Templates (e2e)', () => {
     let slot = await slotOf('contract_full_time');
     expect(slot).toMatchObject({ status: 'published', published: { id: first.body.id, version: 1 }, latestDraft: { id: second.body.id, version: 2 }, versionCount: 2 });
 
-    await publish(second.body.id, superAdmin).expect(200); // a Super Admin can do what an Admin can
+    // an Admin no longer publishes (owner, 19 October 2026: "Templates: only a Super Admin edits them")
+    expect((await publish(second.body.id, admin).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN_EDITS);
+    await publish(second.body.id).expect(200);
     slot = await slotOf('contract_full_time');
     expect(slot).toMatchObject({ status: 'published', published: { id: second.body.id, version: 2 }, latestDraft: null });
 
@@ -204,7 +210,7 @@ describe('Templates (e2e)', () => {
       [2, 'published', 'Second wording'],
       [1, 'retired', 'As used today'],
     ]);
-    expect(detail.body.versions[1]).toMatchObject({ publishedBy: { email: hrEmail }, tags: CONTRACT_TAGS, sizeBytes: realTemplate('Contract').length });
+    expect(detail.body.versions[1]).toMatchObject({ publishedBy: { email: superAdminEmail }, tags: CONTRACT_TAGS, sizeBytes: realTemplate('Contract').length });
     expect(await prisma.templateVersion.count({ where: { slotKey: 'contract_full_time', status: 'published' } })).toBe(1);
 
     const retired = await publish(first.body.id).expect(409);
@@ -272,12 +278,12 @@ describe('Templates (e2e)', () => {
     await api().get(`/api/templates/versions/${published!.id}/file?format=odt`).set('Cookie', ceo).expect(400);
   });
 
-  it('HR or Admin renames a version’s file: cleaned like an upload, .docx kept, recorded; nobody else may', async () => {
+  it('a Super Admin renames a version’s file: cleaned like an upload, .docx kept, recorded; HR, Admin and the CEO may not', async () => {
     const { published } = await slotOf('contract_full_time');
-    const rename = (fileName: string, session = hr) => api().patch(`/api/templates/versions/${published!.id}`).set('Cookie', session).send({ fileName });
+    const rename = (fileName: string, session = superAdmin) => api().patch(`/api/templates/versions/${published!.id}`).set('Cookie', session).send({ fileName });
     expect((await rename('NDA Bilingual').expect(200)).body.fileName).toBe('NDA Bilingual.docx');
-    expect((await rename('  Contract: official copy.doc ', admin).expect(200)).body.fileName).toBe('Contract_ official copy.docx');
-    await rename('X', ceo).expect(403);
+    expect((await rename('  Contract: official copy.doc ').expect(200)).body.fileName).toBe('Contract_ official copy.docx');
+    for (const session of [hr, admin, ceo]) expect((await rename('X', session).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN_EDITS);
     expect((await rename('').expect(400)).body.message).toEqual(['Enter the file name.']);
     const audit = await auditOf(published!.id);
     expect(audit.at(-1)).toMatchObject({ action: 'update', diff: { fileName: { from: 'NDA Bilingual.docx', to: 'Contract_ official copy.docx' } } });
@@ -310,11 +316,40 @@ describe('Templates (e2e)', () => {
   it('the CEO views and downloads, but does not upload or publish', async () => {
     expect((await slots(ceo)).length).toBe(TEMPLATE_SLOTS.length);
     await api().get('/api/templates/nda').set('Cookie', ceo).expect(200);
-    await upload('payslip_en', docx({ body: p(r('{{pay_month}}')) }), 'payslip.docx', ceo).expect(403);
+    expect((await upload('payslip_en', docx({ body: p(r('{{pay_month}}')) }), 'payslip.docx', ceo).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN_EDITS);
     const draft = await upload('payslip_en', docx({ body: p(r('{{pay_month}}')) }), 'payslip.docx').expect(201);
-    await publish(draft.body.id, ceo).expect(403);
+    expect((await publish(draft.body.id, ceo).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN_EDITS);
     await api().get(`/api/templates/versions/${draft.body.id}/file`).set('Cookie', ceo).expect(200);
     await api().delete(`/api/templates/versions/${draft.body.id}`).set('Cookie', ceo).expect(403);
+  });
+
+  it('only a Super Admin uploads, renames, places fields or publishes (owner, 19 October 2026); HR, Admin and the CEO only read', async () => {
+    const draft = await upload('payslip_en', docx({ body: p(r('{{pay_month}}')) }), 'payslip.docx').expect(201);
+    const before = await prisma.templateVersion.count();
+    const writes = {
+      upload: (cookie: string) => upload('payslip_en', docx({ body: p(r('{{pay_month}}')) }), 'payslip.docx', cookie),
+      rename: (cookie: string) => api().patch(`/api/templates/versions/${draft.body.id}`).set('Cookie', cookie).send({ fileName: 'Renamed' }),
+      fields: (cookie: string) => api().put(`/api/templates/versions/${draft.body.id}/fields`).set('Cookie', cookie).send({ fields: [] }),
+      standard: (cookie: string) => api().post(`/api/templates/versions/${draft.body.id}/fields/standard`).set('Cookie', cookie),
+      publish: (cookie: string) => publish(draft.body.id, cookie),
+    };
+    for (const [role, cookie] of Object.entries({ hr, admin, ceo })) {
+      for (const [name, write] of Object.entries(writes)) {
+        const res = await write(cookie);
+        expect([res.status, res.body.message], `${role} ${name}`).toEqual([403, ONLY_SUPER_ADMIN_EDITS]);
+      }
+      // they still read the library and the version
+      await api().get('/api/templates/payslip_en').set('Cookie', cookie).expect(200);
+      await api().get(`/api/templates/versions/${draft.body.id}/file`).set('Cookie', cookie).expect(200);
+    }
+    expect(await prisma.templateVersion.count()).toBe(before);
+    expect(await prisma.templateVersion.findUniqueOrThrow({ where: { id: draft.body.id }, select: { fileName: true, status: true } })).toEqual({
+      fileName: 'payslip.docx',
+      status: 'draft',
+    });
+    // the Super Admin's own: a Word version has no fields to place (409), and it is published
+    await writes.fields(superAdmin).expect(409);
+    expect((await writes.publish(superAdmin).expect(200)).body.status).toBe('published');
   });
 
   it('an employee sees none of it, but may read the tag dictionary', async () => {

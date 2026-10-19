@@ -11,6 +11,7 @@ import {
   Post,
   Put,
   Query,
+  SetMetadata,
   StreamableFile,
   UploadedFile,
   UseFilters,
@@ -18,20 +19,22 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { TEMPLATE_TAGS } from '@trendlix/shared';
-import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, FORBIDDEN_MESSAGE, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
 import { PdfService } from '../pdf/pdf.service.js';
 import { attachment, fileFormat } from './template-file.js';
 import { PdfFieldsDto, RenameTemplateVersionDto, UploadTemplateDto } from './templates.dto.js';
-import { TemplatesService } from './templates.service.js';
+import { ONLY_SUPER_ADMIN_EDITS_TEMPLATES, TemplatesService } from './templates.service.js';
 
 // The template library (spec §8; owner's request, 15 October 2026: "Start working on the templates tab; I need to
-// upload the templates"). HR, Admin and Super Admin manage it; the CEO views it and downloads the files; nobody else
-// sees it. Only a Super Admin deletes, and only a draft (owner's decision, 15 October 2026). The tag dictionary, and
-// the Fields Guide made from it, are for everyone signed in. A version is a Word template or a PDF form (owner's
-// decision, 15 October 2026), on which HR and Admin place the fields; the CEO sees where they are.
+// upload the templates"). Only a Super Admin uploads, renames, places the fields and publishes (owner, 19 October 2026:
+// "Templates: only a Super Admin edits them"; the web shows the Templates page to a Super Admin only), and only a
+// Super Admin deletes (owner's decision, 15 October 2026). HR, Admin and the CEO may still read the library, its
+// files, fields and previews; nobody else sees it. The tag dictionary, and the Fields Guide made from it, are for
+// everyone signed in. A version is a Word template or a PDF form (owner's decision, 15 October 2026), on which the
+// Super Admin places the fields.
 
 // One Word file or PDF of up to 10 MB, as paperwork's; its name read as UTF-8, so Arabic names arrive intact.
 const ONE_FILE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 }, defParamCharset: 'utf8' };
@@ -81,7 +84,8 @@ export class TemplatesController {
   }
 
   /** A new draft version: the .docx or the PDF form (`file`), its language when the slot has none, and a note. */
-  @Roles('hr', 'admin')
+  @Roles('super_admin')
+  @SetMetadata(FORBIDDEN_MESSAGE, ONLY_SUPER_ADMIN_EDITS_TEMPLATES)
   @Post(':slot/versions')
   @UseFilters(FileTooLargeFilter)
   @UseInterceptors(FileInterceptor('file', ONE_FILE))
@@ -95,7 +99,8 @@ export class TemplatesController {
   }
 
   /** A version's file name, as the library shows it; ".docx" or ".pdf" is kept. Nothing else about the version changes. */
-  @Roles('hr', 'admin')
+  @Roles('super_admin')
+  @SetMetadata(FORBIDDEN_MESSAGE, ONLY_SUPER_ADMIN_EDITS_TEMPLATES)
   @Patch('versions/:id')
   rename(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RenameTemplateVersionDto, @CurrentUser() user: SessionUser) {
     return this.templates.rename(id, dto.fileName, user);
@@ -109,7 +114,8 @@ export class TemplatesController {
   }
 
   /** Saves all the fields of a PDF version (a draft or the one in use), as fields() answers them. */
-  @Roles('hr', 'admin')
+  @Roles('super_admin')
+  @SetMetadata(FORBIDDEN_MESSAGE, ONLY_SUPER_ADMIN_EDITS_TEMPLATES)
   @Put('versions/:id/fields')
   saveFields(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PdfFieldsDto, @CurrentUser() user: SessionUser) {
     return this.templates.saveFields(id, dto.fields, user);
@@ -119,7 +125,8 @@ export class TemplatesController {
    * Use the standard layout (owner, 16 October 2026): the version's fields replaced with the layout the system places
    * when its form is uploaded, answered as fields() is. 409 when there is none for this form, or the version was replaced.
    */
-  @Roles('hr', 'admin')
+  @Roles('super_admin')
+  @SetMetadata(FORBIDDEN_MESSAGE, ONLY_SUPER_ADMIN_EDITS_TEMPLATES)
   @Post('versions/:id/fields/standard')
   @HttpCode(200)
   standardLayout(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
@@ -141,7 +148,8 @@ export class TemplatesController {
     return new StreamableFile(data, { type: 'application/pdf', length: data.length, disposition: contentDisposition(fileName) });
   }
 
-  @Roles('hr', 'admin')
+  @Roles('super_admin')
+  @SetMetadata(FORBIDDEN_MESSAGE, ONLY_SUPER_ADMIN_EDITS_TEMPLATES)
   @Post('versions/:id/publish')
   @HttpCode(200)
   publish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {

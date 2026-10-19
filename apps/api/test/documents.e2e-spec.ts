@@ -118,10 +118,11 @@ describe('Documents (e2e)', () => {
   const docxOf = async (docId: string) => Buffer.from((await prisma.generatedDocument.findUniqueOrThrow({ where: { id: docId }, select: { data: true } })).data);
   const auditOf = (id: string) => prisma.auditLog.findMany({ where: { entityType: 'generated_document', entityId: id }, orderBy: { id: 'asc' }, include: { user: { select: { email: true } } } });
 
+  /** A template uploaded, and published unless draftOnly, by a Super Admin, who alone edits templates (owner, 19 October 2026). */
   async function publish(slot: string, file: Buffer, language?: 'ar' | 'en', draftOnly = false) {
-    const upload = api().post(`/api/templates/${slot}/versions`).set('Cookie', hr).attach('file', file, `${slot}.docx`);
+    const upload = api().post(`/api/templates/${slot}/versions`).set('Cookie', superAdmin).attach('file', file, `${slot}.docx`);
     const res = await (language ? upload.field('language', language) : upload).expect(201);
-    if (!draftOnly) await api().post(`/api/templates/versions/${res.body.id}/publish`).set('Cookie', hr).expect(200);
+    if (!draftOnly) await api().post(`/api/templates/versions/${res.body.id}/publish`).set('Cookie', superAdmin).expect(200);
   }
 
   async function hire(name: string, employmentType: string, profile: Record<string, unknown> = {}) {

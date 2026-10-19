@@ -53,6 +53,7 @@ describe('Unpaid interns (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let hr: string;
+  let superAdmin: string;
   let internSession: string;
   let transportId: string;
   let intern: Person; // with a sign-in, flagged as registered with social insurance
@@ -99,15 +100,17 @@ describe('Unpaid interns (e2e)', () => {
     return { id: person.body.id, name: fullNameEn, employmentId: employment.id, contractId: contract.id };
   }
 
+  /** A template uploaded and published by a Super Admin, who alone edits templates (owner, 19 October 2026). */
   async function publish(slot: string, body: string) {
-    const upload = await api().post(`/api/templates/${slot}/versions`).set('Cookie', hr).attach('file', docx({ body }), `${slot}.docx`).field('language', 'en').expect(201);
+    const upload = await api().post(`/api/templates/${slot}/versions`).set('Cookie', superAdmin).attach('file', docx({ body }), `${slot}.docx`).field('language', 'en').expect(201);
     versions.push(upload.body.id);
-    await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', hr).expect(200);
+    await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', superAdmin).expect(200);
   }
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
     hr = await signIn(app, await createUser(prisma, ['hr']));
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     const internEmail = await createUser(prisma, ['employee']);
     internSession = await signIn(app, internEmail);
     await prisma.payrollRun.deleteMany();

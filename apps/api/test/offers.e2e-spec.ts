@@ -145,10 +145,11 @@ describe('Job offers (e2e)', () => {
     return { offer: res.body.offer as Offer, secret: secretOf(res.body.link as string) };
   }
 
+  /** A template uploaded, and published unless draftOnly, by a Super Admin, who alone edits templates (owner, 19 October 2026). */
   async function publish(slot: string, file: Buffer, language?: 'ar' | 'en' | 'bilingual', draftOnly = false) {
-    const upload = api().post(`/api/templates/${slot}/versions`).set('Cookie', hr).attach('file', file, `${slot}.docx`);
+    const upload = api().post(`/api/templates/${slot}/versions`).set('Cookie', superAdmin).attach('file', file, `${slot}.docx`);
     const res = await (language ? upload.field('language', language) : upload).expect(201);
-    if (!draftOnly) await api().post(`/api/templates/versions/${res.body.id}/publish`).set('Cookie', hr).expect(200);
+    if (!draftOnly) await api().post(`/api/templates/versions/${res.body.id}/publish`).set('Cookie', superAdmin).expect(200);
   }
 
   async function employee(name: string, joinDate: string, end?: string) {

@@ -47,6 +47,8 @@ describe('Social insurance details (e2e)', () => {
   let prisma: PrismaService;
   let hr: string;
   let hrId: string;
+  // templates are uploaded, given their fields and published by a Super Admin only (owner, 19 October 2026)
+  let superAdmin: string;
   let staff: string;
   let finance: string;
   let ceo: string;
@@ -76,6 +78,7 @@ describe('Social insurance details (e2e)', () => {
     const hrEmail = await createUser(prisma, ['hr']);
     hr = await signIn(app, hrEmail);
     hrId = (await prisma.user.findUniqueOrThrow({ where: { email: hrEmail } })).id;
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     staff = await signIn(app, await createUser(prisma, ['employee']));
     finance = await signIn(app, await createUser(prisma, ['finance']));
     ceo = await signIn(app, await createUser(prisma, ['ceo']));
@@ -413,7 +416,7 @@ describe('Social insurance details (e2e)', () => {
     let versionId: string;
     const generate = () => api().post(`/api/employees/${employeeId}/documents`).set('Cookie', hr).send({ slotKey: 'insurance_form_1' });
     const check = () => api().get(`/api/employees/${employeeId}/documents/check?slotKey=insurance_form_1`).set('Cookie', hr);
-    const saveFields = (fields: PdfField[]) => api().put(`/api/templates/versions/${versionId}/fields`).set('Cookie', hr).send({ fields });
+    const saveFields = (fields: PdfField[]) => api().put(`/api/templates/versions/${versionId}/fields`).set('Cookie', superAdmin).send({ fields });
     const printed = async (id: string) => shownLines(await shownGlyphs((await prisma.generatedDocument.findUniqueOrThrow({ where: { id }, select: { data: true } })).data));
     const NEEDED = [
       { tag: 'occupation_code', label: 'Occupation code (social insurance)', where: { tab: 'insurance', key: 'occupationCode' } },
@@ -429,14 +432,14 @@ describe('Social insurance details (e2e)', () => {
         .set('Cookie', hr)
         .send({ employmentType: 'full_time', joinDate: '2026-01-15', departmentId, jobTitleId, gradeId, shiftId })
         .expect(201);
-      const upload = await api().post('/api/templates/insurance_form_1/versions').set('Cookie', hr).attach('file', await formPdf([PAGE]), 'Form 1.pdf').expect(201);
+      const upload = await api().post('/api/templates/insurance_form_1/versions').set('Cookie', superAdmin).attach('file', await formPdf([PAGE]), 'Form 1.pdf').expect(201);
       versionId = upload.body.id;
       const saved = await saveFields(FORM).expect(200);
       // optional is kept with each field
       expect(saved.body.fields).toEqual(FORM);
       expect(saved.body.version.tags).toEqual(['full_name_en', 'occupation_code', 'insurance_office', 'building_no', 'insurance_sector_code']);
       expect((await prisma.templateVersion.findUniqueOrThrow({ where: { id: versionId } })).pdfFields).toEqual(FORM);
-      await api().post(`/api/templates/versions/${versionId}/publish`).set('Cookie', hr).expect(200);
+      await api().post(`/api/templates/versions/${versionId}/publish`).set('Cookie', superAdmin).expect(200);
     });
 
     it('refuses optional on a check box or a fixed text', async () => {
@@ -524,9 +527,9 @@ describe('Social insurance details (e2e)', () => {
         .set('Cookie', hr)
         .send({ employmentType: 'full_time', joinDate: '2026-01-15', departmentId, jobTitleId: job.id, gradeId, shiftId })
         .expect(201);
-      const upload = await api().post('/api/templates/insurance_form_1/versions').set('Cookie', hr).attach('file', await formPdf([PAGE]), 'Form 1.pdf').expect(201);
-      await api().put(`/api/templates/versions/${upload.body.id}/fields`).set('Cookie', hr).send({ fields: FIELDS }).expect(200);
-      await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', hr).expect(200);
+      const upload = await api().post('/api/templates/insurance_form_1/versions').set('Cookie', superAdmin).attach('file', await formPdf([PAGE]), 'Form 1.pdf').expect(201);
+      await api().put(`/api/templates/versions/${upload.body.id}/fields`).set('Cookie', superAdmin).send({ fields: FIELDS }).expect(200);
+      await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', superAdmin).expect(200);
     });
 
     it('without a contract or the employee’s own, the insured and comprehensive wages are missing, set on the Social Insurance tab', async () => {
@@ -597,8 +600,8 @@ describe('Social insurance details (e2e)', () => {
       without = (await newJobTitle(`Offered clerk ${RUN}`)).id;
       await company({ insuranceOffice: 'مكتب الدقي', insuranceSectorCode: null }).expect(200);
       const body = p(r('{{full_name_en}} {{occupation_code}} {{occupation_name}} {{insurance_office}} {{insurance_sector_code}} {{city}}'));
-      const upload = await api().post('/api/templates/offer_full_time/versions').set('Cookie', hr).attach('file', docx({ body }), 'Offer.docx').field('language', 'ar').expect(201);
-      await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', hr).expect(200);
+      const upload = await api().post('/api/templates/offer_full_time/versions').set('Cookie', superAdmin).attach('file', docx({ body }), 'Offer.docx').field('language', 'ar').expect(201);
+      await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', superAdmin).expect(200);
     });
 
     it('prints the company’s insurance details; never an occupation, which is the employee’s own', async () => {
@@ -643,9 +646,9 @@ describe('Social insurance details (e2e)', () => {
         { id: 'building', kind: 'text', tag: 'building_no', page: 1, x: 100, y: 150, width: 100, height: 16, fontSize: 12, optional: true },
         { id: 'city', kind: 'text', tag: 'city', page: 1, x: 100, y: 200, width: 100, height: 16, fontSize: 12, optional: true },
       ];
-      const upload = await api().post('/api/templates/offer_full_time/versions').set('Cookie', hr).attach('file', await formPdf([PAGE]), 'Offer.pdf').field('language', 'en').expect(201);
-      await api().put(`/api/templates/versions/${upload.body.id}/fields`).set('Cookie', hr).send({ fields }).expect(200);
-      await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', hr).expect(200);
+      const upload = await api().post('/api/templates/offer_full_time/versions').set('Cookie', superAdmin).attach('file', await formPdf([PAGE]), 'Offer.pdf').field('language', 'en').expect(201);
+      await api().put(`/api/templates/versions/${upload.body.id}/fields`).set('Cookie', superAdmin).send({ fields }).expect(200);
+      await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', superAdmin).expect(200);
 
       const o = await draft('Offered On A Form', without);
       expect(await missingOf(o.id)).toEqual([]);
@@ -655,7 +658,7 @@ describe('Social insurance details (e2e)', () => {
       // the city printed again, not optional: the offer never has it, so the template is what needs changing
       await api()
         .put(`/api/templates/versions/${upload.body.id}/fields`)
-        .set('Cookie', hr)
+        .set('Cookie', superAdmin)
         .send({ fields: [...fields, { ...fields[2], id: 'city-again', y: 250, optional: false }] })
         .expect(200);
       expect(await missingOf(o.id)).toEqual([{ tag: 'city', label: 'City or district (Arabic)', where: { tab: 'offer', key: 'template' } }]);

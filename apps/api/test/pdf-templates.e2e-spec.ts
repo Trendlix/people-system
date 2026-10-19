@@ -16,7 +16,8 @@ import { formPdf, shownGlyphs, shownLines } from './fixtures/pdf-form.js';
 import { createUser, signIn } from './helpers.js';
 
 // PDF templates (owner's decision, 15 October 2026): the social insurance forms uploaded as the PDFs they are issued
-// as, HR placing each field on them once, and every document the original PDF with the values printed where the fields
+// as, a Super Admin placing each field on them once (only a Super Admin edits templates: owner, 19 October 2026), and
+// every document the original PDF with the values printed where the fields
 // were placed, given out as a protected PDF like any other. No PDF converter is set up here, and none is needed. A
 // version already uploaded takes the standard layout of its form on request (owner, 16 October 2026).
 
@@ -24,6 +25,7 @@ const RUN = Date.now().toString(36);
 const DIGITS = String(Date.now() % 10_000_000).padStart(7, '0');
 const NATIONAL_ID = `2960514${DIGITS}`; // born 14 May 1996
 const PAGE = { width: 612, height: 1008 };
+const ONLY_SUPER_ADMIN_EDITS = 'Only a Super Admin uploads, edits or publishes templates.';
 
 /** Reads a response body as bytes, whatever its type. */
 const bytes = (res: request.Response, done: (err: Error | null, body: Buffer) => void) => {
@@ -49,6 +51,7 @@ describe('PDF templates (e2e)', () => {
   let prisma: PrismaService;
   let hr: string;
   let admin: string;
+  let superAdmin: string;
   let ceo: string;
   let staff: string;
   let form: Buffer;
@@ -59,13 +62,14 @@ describe('PDF templates (e2e)', () => {
   let employeeCode: string;
   const api = () => request(app.getHttpServer());
 
-  const upload = (slot: string, file: Buffer, fileName: string, cookie = hr) => api().post(`/api/templates/${slot}/versions`).set('Cookie', cookie).attach('file', file, fileName);
+  // uploading, placing fields and publishing are a Super Admin's; HR, Admin and the CEO read
+  const upload = (slot: string, file: Buffer, fileName: string, cookie = superAdmin) => api().post(`/api/templates/${slot}/versions`).set('Cookie', cookie).attach('file', file, fileName);
   const fieldsOf = (id: string, cookie = hr) => api().get(`/api/templates/versions/${id}/fields`).set('Cookie', cookie);
-  const save = (id: string, fields: unknown, cookie = hr) => api().put(`/api/templates/versions/${id}/fields`).set('Cookie', cookie).send({ fields });
+  const save = (id: string, fields: unknown, cookie = superAdmin) => api().put(`/api/templates/versions/${id}/fields`).set('Cookie', cookie).send({ fields });
   const sample = (id: string, fields: unknown, cookie = hr) =>
     api().post(`/api/templates/versions/${id}/fields/sample`).set('Cookie', cookie).send({ fields }).buffer(true).parse(bytes);
-  const publish = (id: string) => api().post(`/api/templates/versions/${id}/publish`).set('Cookie', hr);
-  const standard = (id: string, cookie = hr) => api().post(`/api/templates/versions/${id}/fields/standard`).set('Cookie', cookie);
+  const publish = (id: string) => api().post(`/api/templates/versions/${id}/publish`).set('Cookie', superAdmin);
+  const standard = (id: string, cookie = superAdmin) => api().post(`/api/templates/versions/${id}/fields/standard`).set('Cookie', cookie);
   /** The message of a refusal read as bytes. */
   const messageOf = (res: request.Response) => (JSON.parse((res.body as Buffer).toString('utf8')) as { message: string }).message;
   const auditOf = (id: string) => prisma.auditLog.findMany({ where: { entityType: 'template_version', entityId: id }, orderBy: { id: 'asc' } });
@@ -107,6 +111,7 @@ describe('PDF templates (e2e)', () => {
     await prisma.templateVersion.deleteMany();
     hr = await signIn(app, await createUser(prisma, ['hr']));
     admin = await signIn(app, await createUser(prisma, ['admin']));
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     ceo = await signIn(app, await createUser(prisma, ['ceo']));
     staff = await signIn(app, await createUser(prisma, ['employee']));
 
@@ -135,7 +140,7 @@ describe('PDF templates (e2e)', () => {
     await app.close();
   });
 
-  it('HR uploads a PDF form: a draft with its pages as shown, no fields yet, its name ending in .pdf', async () => {
+  it('a Super Admin uploads a PDF form: a draft with its pages as shown, no fields yet, its name ending in .pdf', async () => {
     const res = await upload('insurance_form_1', form, 'نموذج 1.pdf').field('note', 'As issued').expect(201);
     form1 = res.body;
     expect(res.body).toEqual({
@@ -205,13 +210,14 @@ describe('PDF templates (e2e)', () => {
     expect(await say([{ ...FORM_1[1], x: undefined }])).toEqual(['Each field must have its kind, page, position, size and text size.']);
     expect(await say([{ ...FORM_1[1], colour: 'red' }])).toEqual(['property colour should not exist']);
     expect(await say('all of them')).toEqual(expect.arrayContaining(['Send the fields as a list, e.g. [] for none.']));
-    await save(form1.id, FORM_1, ceo).expect(403);
+    // only a Super Admin places them (owner, 19 October 2026)
+    for (const session of [hr, admin, ceo]) expect((await save(form1.id, FORM_1, session).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN_EDITS);
     await save(form1.id, FORM_1, staff).expect(403);
     expect((await fieldsOf(form1.id).expect(200)).body.fields).toEqual([]);
   });
 
   it('saves the fields: the tags worked out from them down the page, recorded with counts', async () => {
-    const res = await save(form1.id, FORM_1, admin).expect(200);
+    const res = await save(form1.id, FORM_1).expect(200);
     expect(res.body.fields).toEqual(FORM_1);
     expect(res.body.version).toMatchObject({ fieldCount: 6, tags: ['insurance_no', 'national_id', 'full_name_ar', 'join_date'] });
     expect(res.body.editable).toBe(true);
@@ -231,7 +237,7 @@ describe('PDF templates (e2e)', () => {
     expect((await save(form1.id, [{ ...qualification, lines: 5 }]).expect(400)).body.message).toMatch(/: choose 1 to 4 lines\.$/);
     expect((await save(form1.id, [{ ...FORM_1[0], lines: 2 }]).expect(400)).body.message).toMatch(/can't take more than one line: only a text field or fixed text wraps\.$/);
     // as it was, for the tests after this one
-    await save(form1.id, FORM_1, admin).expect(200);
+    await save(form1.id, FORM_1).expect(200);
   });
 
   it('fills a sample in with made-up values where the fields sent place them, unprotected, shown in the browser', async () => {
@@ -278,7 +284,7 @@ describe('PDF templates (e2e)', () => {
   });
 
   it('renames a PDF version keeping .pdf', async () => {
-    const rename = (fileName: string) => api().patch(`/api/templates/versions/${form1.id}`).set('Cookie', hr).send({ fileName });
+    const rename = (fileName: string) => api().patch(`/api/templates/versions/${form1.id}`).set('Cookie', superAdmin).send({ fileName });
     expect((await rename('Form one').expect(200)).body.fileName).toBe('Form one.pdf');
     expect((await rename('Form 1.docx').expect(200)).body.fileName).toBe('Form 1.pdf');
     expect((await rename('نموذج 1').expect(200)).body.fileName).toBe('نموذج 1.pdf');
@@ -381,7 +387,7 @@ describe('PDF templates (e2e)', () => {
 
     it('replaces the fields placed with it, the tags worked out again, answered as the fields are; logged with its name', async () => {
       const v = await upload('insurance_form_6', starterForm, 'Form 6.pdf').expect(201);
-      // HR moved one field and removed the other
+      // one field moved and the other removed
       await save(v.body.id, [{ ...FORM_1[1], id: 'moved', x: 100 }]).expect(200);
       const res = await standard(v.body.id).expect(200);
       expect(res.body).toEqual({
@@ -397,9 +403,8 @@ describe('PDF templates (e2e)', () => {
         action: 'update',
         diff: { slot: 'insurance_form_6', status: 'draft', fields: { from: 1, to: 2 }, tags: { from: 1, to: 2 }, standardLayout: 'Form 6 (test)' },
       });
-      // HR and Admin only
-      await standard(v.body.id, admin).expect(200);
-      await standard(v.body.id, ceo).expect(403);
+      // a Super Admin only (owner, 19 October 2026)
+      for (const session of [hr, admin, ceo]) expect((await standard(v.body.id, session).expect(403)).body.message).toBe(ONLY_SUPER_ADMIN_EDITS);
       await standard(v.body.id, staff).expect(403);
       await standard('00000000-0000-4000-8000-000000000000').expect(404);
     });

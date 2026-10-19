@@ -1,7 +1,7 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TEMPLATE_SLOTS, withSlotDigits, type PdfField, type PdfPageSize, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
-import { assertDeletes } from '../auth/roles.js';
+import { assertDeletes, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { shownDate, todayInCairo } from '../common/date-only.js';
 import { fillPdfTemplate, PdfTemplateError, readPdfTemplate } from '../documents/pdf-engine/index.js';
@@ -29,6 +29,13 @@ const PDF_MIME = 'application/pdf';
 export const PLACE_FIELDS_FIRST = 'Place the fields on the form before publishing it.';
 /** The 409 for Use the standard layout on a version whose form the system has no layout for. */
 export const NO_STANDARD_LAYOUT = 'There is no standard layout for this form.';
+/** Uploading, renaming, placing fields on and publishing a template are for a Super Admin only (owner, 19 October 2026). */
+export const ONLY_SUPER_ADMIN_EDITS_TEMPLATES = 'Only a Super Admin uploads, edits or publishes templates.';
+
+/** Called by every service method that changes a template, whichever route reaches it (the guard checks first). */
+function assertEditsTemplates(user: SessionUser): void {
+  if (!isSuperAdmin(user)) throw new ForbiddenException(ONLY_SUPER_ADMIN_EDITS_TEMPLATES);
+}
 
 /** The 409 for placing fields on a Word version: its fields are the tags typed in it. */
 const wordVersion = (version: number) =>
@@ -55,8 +62,9 @@ export function publishProblem(v: Pick<TagReading, 'unknownTags' | 'broken'>): s
   return `${parts.join(' ')} Fix them in Word and upload it again.`;
 }
 
-// The template library (spec §8; owner's request, 15 October 2026). HR and Admin upload and publish; the CEO views
-// and downloads (the controller says who); only a Super Admin deletes, and only a draft. Filling a template in for an
+// The template library (spec §8; owner's request, 15 October 2026). Only a Super Admin uploads, renames, places the
+// fields and publishes (owner, 19 October 2026: "Templates: only a Super Admin edits them"); HR, Admin and the CEO view
+// and download (the controller says who); only a Super Admin deletes. Filling a template in for an
 // employee comes next: it takes the published version's file, tags and language.
 @Injectable()
 export class TemplatesService {
@@ -83,6 +91,7 @@ export class TemplatesService {
 
   /** A new draft version of the slot, with the tags read from the file. */
   async upload(key: string, dto: UploadTemplateDto, file: Express.Multer.File | undefined, user: SessionUser) {
+    assertEditsTemplates(user);
     const slot = this.slotOf(key);
     if (slot.copyOf) throw new BadRequestException(`This copy is printed from ${this.slotOf(slot.copyOf).name}'s file. Upload there.`);
     const language = this.languageOf(slot, dto.language ?? null);
@@ -169,6 +178,7 @@ export class TemplatesService {
    * keeps at least one field.
    */
   async saveFields(id: string, sent: readonly PdfField[], user: SessionUser) {
+    assertEditsTemplates(user);
     return this.writeFields(id, sent, user);
   }
 
@@ -180,6 +190,7 @@ export class TemplatesService {
    * has no standard layout for this form.
    */
   async standardLayout(id: string, user: SessionUser) {
+    assertEditsTemplates(user);
     const v = await this.row(id);
     if (formatOf(v.format) !== 'pdf') throw wordVersion(v.version);
     if (v.status === 'retired') throw replacedVersion(v.version);
@@ -247,6 +258,7 @@ export class TemplatesService {
    */
   /** Renames a version's file (as uploaded names often aren't telling); cleaned as an upload's name is, ".docx" or ".pdf" kept. */
   async rename(id: string, name: string, user: SessionUser) {
+    assertEditsTemplates(user);
     const before = await this.row(id);
     const fileName = templateFileName(name, formatOf(before.format));
     if (fileName === before.fileName) return versionView(before);
@@ -262,6 +274,7 @@ export class TemplatesService {
   }
 
   async publish(id: string, user: SessionUser) {
+    assertEditsTemplates(user);
     const { slotKey } = await this.row(id);
     const { row, retired } = await this.prisma.$transaction(async (tx) => {
       await lockSlot(tx, slotKey);
