@@ -4,6 +4,7 @@ import {
   changesPayrollLine,
   confidentialPeople,
   EMPTY_PAYROLL_INPUTS,
+  figuresBefore,
   matchPerson,
   OFFICE_ADDRESS_DEFAULTS,
   PERMISSION_RULE_DEFAULTS,
@@ -15,6 +16,7 @@ import {
   type MatchKind,
   type PayrollInputs,
   type PayrollRules,
+  type PayrollStatus,
   type PayrollTerms,
 } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
@@ -22,7 +24,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import { ConfidentialService, type ConfidentialView } from '../employees/confidential.service.js';
-import type { Prisma } from '../generated/prisma/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { employedIn, userNames } from '../payroll/adjustments/people.js';
 import { json, savedInputs, worked } from '../payroll/line-work.js';
 import { firstDay, lastDay, monthName } from '../payroll/months.js';
@@ -48,6 +50,8 @@ interface StoredPerson {
   skipped: boolean;
   /** When their line was filled from it last, and by whom (a user id). */
   applied: { at: string; by: string } | null;
+  /** When it was undone on their line (Undo this import, owner, 19 October 2026), and by whom; left out until then. */
+  undone?: { at: string; by: string } | null;
 }
 
 /** A file as the import keeps it: its name, the sheet read, its rows and people, the months its days are in. */
@@ -89,6 +93,8 @@ export interface AttendancePersonView {
   /** Their month by the system's rules, once matched: the days, the hours counted, the absent days, the permission. */
   month: AttendanceMonthResult | null;
   applied: { at: string; by: string | null } | null;
+  /** Undone on their line since it was applied (owner, 19 October 2026), and by whom. */
+  undone: { at: string; by: string | null } | null;
 }
 
 export interface AttendanceImportView {
@@ -106,6 +112,29 @@ export interface AttendanceImportView {
   counts: { matched: number; toConfirm: number; notFound: number; skipped: number; notOnRun: number };
   /** Whether the caller may apply it now: a draft run, and someone whose line they fill matched. */
   canApply: boolean;
+  /**
+   * The run's lines filled from it that the caller fills (HR, a C-level person's the CEO), still marked from it: what
+   * Undo this import puts back (owner, 19 October 2026: "imported data shouldn't be editable"); 0 on a run that isn't a
+   * draft.
+   */
+  undoable: number;
+}
+
+/** An import as the Attendance section's Imports lists it. */
+export interface AttendanceImportHistoryRow {
+  id: string;
+  runId: string;
+  month: string;
+  runStatus: PayrollStatus;
+  createdAt: string;
+  createdBy: string | null;
+  files: { name: string; rows: number; people: number }[];
+  people: number;
+  counts: { matched: number; toConfirm: number; notFound: number; skipped: number };
+  appliedAt: string | null;
+  appliedBy: string | null;
+  /** Undone (Undo this import) and not applied since: when, last. */
+  undoneAt: string | null;
 }
 
 /** Whether a match names the employee: by Zoho's id, by name, or by HR's choice. */
@@ -216,6 +245,75 @@ export class AttendanceImportsService {
     }));
   }
 
+  /**
+   * Every import across the runs, the latest first (owner's brief, 19 October 2026: the Attendance section's Imports),
+   * of one month or all: its month and run (with where the run stands), its files, how many people of them are matched
+   * (the C-level ones with them, without saying who), to confirm, not found and skipped, as the review counts them now,
+   * and whether it is applied, by whom and when, or undone. HR, the CEO and Finance.
+   */
+  async history(month: string | null | undefined): Promise<AttendanceImportHistoryRow[]> {
+    const rows = await this.prisma.attendanceImport.findMany({
+      where: month ? { month: toDateOnly(firstDay(month)) } : {},
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        runId: true,
+        month: true,
+        files: true,
+        people: true,
+        createdAt: true,
+        appliedAt: true,
+        run: { select: { status: true } },
+        createdBy: { select: { id: true, email: true } },
+        appliedBy: { select: { id: true, email: true } },
+      },
+    });
+    const names = await userNames(this.prisma, rows.flatMap((r) => [r.createdBy, r.appliedBy]));
+    // the employees a person of the files may be, by month, as the review takes them
+    const candidates = new Map<string, { id: string; fullNameEn: string; zohoPeopleId: string | null }[]>();
+    for (const m of new Set(rows.map((r) => fromDateOnly(r.month).slice(0, 7)))) {
+      const people = rows.filter((r) => fromDateOnly(r.month).startsWith(m)).flatMap((r) => r.people as unknown as StoredPerson[]);
+      const zohoIds = [...new Set(people.map((p) => p.zohoId).filter((id): id is string => !!id))];
+      candidates.set(
+        m,
+        await this.prisma.employee.findMany({
+          where: { OR: [{ employments: { some: employedIn(m) } }, ...(zohoIds.length ? [{ zohoPeopleId: { in: zohoIds } }] : [])] },
+          select: { id: true, fullNameEn: true, zohoPeopleId: true },
+        }),
+      );
+    }
+    return rows.map((r) => {
+      const m = fromDateOnly(r.month).slice(0, 7);
+      const people = r.people as unknown as StoredPerson[];
+      const counts = { matched: 0, toConfirm: 0, notFound: 0, skipped: 0 };
+      for (const p of people) {
+        if (p.skipped) counts.skipped++;
+        else if (p.pick) counts.matched++;
+        else {
+          const kind = matchPerson({ zohoId: p.zohoId, name: p.zohoName }, candidates.get(m) ?? []).kind;
+          if (kind === 'close') counts.toConfirm++;
+          else if (kind === 'none') counts.notFound++;
+          else counts.matched++;
+        }
+      }
+      const undone = people.map((p) => p.undone).filter((u): u is { at: string; by: string } => !!u);
+      return {
+        id: r.id,
+        runId: r.runId,
+        month: m,
+        runStatus: r.run.status as PayrollStatus,
+        createdAt: r.createdAt.toISOString(),
+        createdBy: r.createdBy ? (names.get(r.createdBy.id)?.name ?? r.createdBy.email) : null,
+        files: (r.files as unknown as StoredFile[]).map((f) => ({ name: f.name, rows: f.rows, people: f.people })),
+        people: people.length,
+        counts,
+        appliedAt: r.appliedAt?.toISOString() ?? null,
+        appliedBy: r.appliedBy ? (names.get(r.appliedBy.id)?.name ?? r.appliedBy.email) : null,
+        undoneAt: !r.appliedAt && undone.length ? undone.map((u) => u.at).sort().at(-1)! : null,
+      };
+    });
+  }
+
   /** The review: each person matched, to confirm or not found, with their month by the system's rules once matched. */
   async view(runId: string, importId: string, user: SessionUser): Promise<AttendanceImportView> {
     const { view } = await this.review(runId, importId, user);
@@ -283,7 +381,9 @@ export class AttendanceImportsService {
           : { workedHours: hoursToMinutes(m.hoursCounted), noShowDays: m.absentDays, permissionHours: m.permissionHours };
         const inputs: PayrollInputs = { ...EMPTY_PAYROLL_INPUTS, ...was, ...filled };
         const fields = Object.keys(filled) as ImportedInput[];
-        const mark: AttendanceImportMark = { source: 'zoho', importId, at: at.toISOString(), fields };
+        // what they were before, for Undo this import (owner, 19 October 2026): HR's figures, not an earlier import's
+        const earlier = line.attendanceImport as unknown as AttendanceImportMark | null;
+        const mark: AttendanceImportMark = { source: 'zoho', importId, at: at.toISOString(), fields, before: figuresBefore(fields, was, earlier) };
         await tx.payrollLine.update({
           where: { id: line.id },
           data: { inputs: json(inputs), attendanceImport: json(mark), ...worked(line.terms as unknown as PayrollTerms, inputs, rules, law) },
@@ -304,6 +404,7 @@ export class AttendanceImportsService {
           if (!holder && !own?.zohoPeopleId) await tx.employee.update({ where: { id: p.employee!.id }, data: { zohoPeopleId: stored.zohoId } });
         }
         stored.applied = { at: at.toISOString(), by: user.id };
+        stored.undone = null;
       }
       await tx.attendanceImport.update({ where: { id: imp.id }, data: { people: json(people), appliedAt: at, appliedById: user.id } });
     });
@@ -311,6 +412,64 @@ export class AttendanceImportsService {
       await this.audit.record({ userId: user.id, action: 'update', entityType: LINE, entityId: a.lineId, diff: { runId, month, employeeCode: a.employeeCode, ...a.diff } });
     }
     await this.audit.record({ userId: user.id, action: 'apply', entityType: IMPORT, entityId: importId, diff: { runId, month, lines: due.length } });
+    return this.view(runId, importId, user);
+  }
+
+
+  /**
+   * Undo this import (owner, 19 October 2026: "imported data shouldn't be editable": to change what it filled, HR imports
+   * the month again or undoes it): the run's lines filled from it that the caller fills (HR, a C-level person's the CEO)
+   * get back what they had before it was applied (HR's figures; those of an earlier import, and from a mark without them,
+   * empty), no longer marked; the days it kept for those people go; the people are no longer applied, nor the import
+   * once no line is filled from it. A draft run only; every line and the import in the audit log.
+   */
+  async undo(runId: string, importId: string, user: SessionUser): Promise<AttendanceImportView> {
+    const run = await this.draftRun(runId, "its attendance import can't be undone");
+    const imp = await this.row(runId, importId);
+    const confidential = await this.confidential.view(user);
+    const due = undoableLines(run.lines, importId, user, confidential);
+    if (!due.length) throw new ConflictException('Nothing on this payroll is filled from this import for you to undo.');
+    const month = fromDateOnly(run.month).slice(0, 7);
+    const rules = run.rules as unknown as PayrollRules;
+    const law = runLawRates(run);
+    const at = new Date();
+    const people = imp.people as unknown as StoredPerson[];
+    const employees = new Set(due.map((l) => l.employeeId));
+    const audits: { lineId: string; employeeCode: string; diff: Record<string, unknown> }[] = [];
+    let days = 0;
+    // the people of the files whose lines are put back: no longer applied
+    const { view } = await this.review(runId, importId, user);
+    const undoneKeys = new Set(view.people.filter((p) => p.employee && employees.has(p.employee.id)).map((p) => p.key));
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const line of due) {
+        const mark = line.attendanceImport as unknown as AttendanceImportMark;
+        const was = savedInputs(line.inputs);
+        const back = Object.fromEntries(mark.fields.map((f) => [f, mark.before?.[f] ?? null])) as Partial<PayrollInputs>;
+        const inputs: PayrollInputs = { ...EMPTY_PAYROLL_INPUTS, ...was, ...back };
+        await tx.payrollLine.update({
+          where: { id: line.id },
+          data: { inputs: json(inputs), attendanceImport: Prisma.DbNull, ...worked(line.terms as unknown as PayrollTerms, inputs, rules, law) },
+        });
+        audits.push({ lineId: line.id, employeeCode: line.employeeCode, diff: { ...changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>), source: 'zoho', importId, undone: true } });
+      }
+      days = (await tx.attendanceDay.deleteMany({ where: { importId, employeeId: { in: [...employees] } } })).count;
+      for (const p of people) {
+        if (!undoneKeys.has(p.key) || !p.applied) continue;
+        p.applied = null;
+        p.undone = { at: at.toISOString(), by: user.id };
+      }
+      // applied while any line of the run (anyone's) is still filled from it
+      const stillApplied = run.lines.some((l) => (l.attendanceImport as unknown as AttendanceImportMark | null)?.importId === importId && !due.includes(l));
+      await tx.attendanceImport.update({
+        where: { id: imp.id },
+        data: { people: json(people), ...(!stillApplied && { appliedAt: null, appliedById: null }) },
+      });
+    });
+    for (const a of audits) {
+      await this.audit.record({ userId: user.id, action: 'update', entityType: LINE, entityId: a.lineId, diff: { runId, month, employeeCode: a.employeeCode, ...a.diff } });
+    }
+    await this.audit.record({ userId: user.id, action: 'undo', entityType: IMPORT, entityId: importId, diff: { runId, month, lines: due.length, days } });
     return this.view(runId, importId, user);
   }
 
@@ -326,7 +485,7 @@ export class AttendanceImportsService {
         status: true,
         rules: true,
         lawRates: true,
-        lines: { select: { id: true, employeeId: true, employmentId: true, employeeCode: true, nameEn: true, payBasis: true, terms: true, inputs: true } },
+        lines: { select: { id: true, employeeId: true, employmentId: true, employeeCode: true, nameEn: true, payBasis: true, terms: true, inputs: true, attendanceImport: true } },
       },
     });
     if (!run) throw new NotFoundException('Payroll not found.');
@@ -345,7 +504,7 @@ export class AttendanceImportsService {
     const imp = await this.row(runId, importId);
     const run = await this.prisma.payrollRun.findUnique({
       where: { id: runId },
-      select: { id: true, month: true, status: true, lines: { select: { id: true, employeeId: true, employmentId: true } } },
+      select: { id: true, month: true, status: true, lines: { select: { id: true, employeeId: true, employmentId: true, attendanceImport: true } } },
     });
     if (!run) throw new NotFoundException('Payroll not found.');
     const month = fromDateOnly(run.month).slice(0, 7);
@@ -381,7 +540,10 @@ export class AttendanceImportsService {
     );
     const appliedBy = await userNames(
       this.prisma,
-      (await this.prisma.user.findMany({ where: { id: { in: people.map((p) => p.applied?.by).filter((id): id is string => !!id) } }, select: { id: true, email: true } })),
+      await this.prisma.user.findMany({
+        where: { id: { in: people.flatMap((p) => [p.applied?.by, p.undone?.by]).filter((id): id is string => !!id) } },
+        select: { id: true, email: true },
+      }),
     );
 
     let hidden = 0;
@@ -408,6 +570,7 @@ export class AttendanceImportsService {
         rows: r.p.days.length,
         month: employeeId ? (months.get(employeeId) ?? null) : null,
         applied: r.p.applied ? { at: r.p.applied.at, by: appliedBy.get(r.p.applied.by)?.name ?? null } : null,
+        undone: r.p.undone ? { at: r.p.undone.at, by: appliedBy.get(r.p.undone.by)?.name ?? null } : null,
       });
     }
     // the outside rows said with each person's month
@@ -439,6 +602,7 @@ export class AttendanceImportsService {
         notOnRun: shown.filter((p) => isMatched(p.match) && !p.lineId).length,
       },
       canApply: run.status === 'draft' && shown.some((p) => isMatched(p.match) && !p.duplicate && p.lineId && p.editable),
+      undoable: run.status === 'draft' ? undoableLines(run.lines, importId, user, confidential).length : 0,
     };
     return { view, imp, people };
   }
@@ -457,7 +621,7 @@ export class AttendanceImportsService {
       this.prisma.employment.findMany({
         where: { employeeId: { in: ids }, ...employedIn(month) },
         orderBy: { joinDate: 'desc' },
-        select: { id: true, employeeId: true, joinDate: true, endDate: true, shift: { select: { startTime: true, endTime: true, hoursPerDay: true, workingDays: true } } },
+        select: { id: true, employeeId: true, joinDate: true, endDate: true, shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, workingDays: true } } },
       }),
       this.prisma.holiday.findMany({ where: { date: { gte: toDateOnly(first), lte: toDateOnly(last) } }, select: { date: true } }),
       this.prisma.leaveRequest.findMany({
@@ -486,7 +650,11 @@ export class AttendanceImportsService {
         attendanceMonth({
           month,
           days: w.days,
-          shift: s ? { startTime: fromTimeOfDay(s.startTime), endTime: fromTimeOfDay(s.endTime), hoursPerDay: s.hoursPerDay?.toNumber() ?? null, workingDays: s.workingDays } : null,
+          // the window's end moved by the shift's grace minutes (owner, 19 October 2026: "if the employee checked in
+          // 10:15 he can check out till 7:15 and the 9 hours are counted")
+          shift: s
+            ? { startTime: fromTimeOfDay(s.startTime), endTime: fromTimeOfDay(s.endTime), hoursPerDay: s.hoursPerDay?.toNumber() ?? null, graceMinutes: s.graceMinutes, workingDays: s.workingDays }
+            : null,
           holidays: holidayDays,
           leaveDays,
           employedFrom: fromDateOnly(employment.joinDate),
@@ -517,4 +685,15 @@ function dayRow(employeeId: string, d: AttendanceDayResult, importId: string, us
     importedById: userId,
     importedAt: at,
   };
+}
+
+/**
+ * The run's lines filled from an import, still marked from it, that the caller fills (HR, a C-level person's the CEO, or
+ * HR with Super Admin: changesPayrollLine); none hidden from them.
+ */
+function undoableLines<L extends { employeeId: string; attendanceImport: Prisma.JsonValue | null }>(lines: readonly L[], importId: string, user: SessionUser, confidential: ConfidentialView): L[] {
+  return lines.filter((l) => {
+    const mark = l.attendanceImport as unknown as AttendanceImportMark | null;
+    return mark?.importId === importId && !confidential.hidden.has(l.employeeId) && changesPayrollLine(user, confidential.all.has(l.employeeId));
+  });
 }

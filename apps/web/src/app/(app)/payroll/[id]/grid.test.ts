@@ -497,20 +497,30 @@ describe('the permission hours (owner, 19 October 2026: "this is an option given
   });
 });
 
-describe('the figures filled from Zoho People (owner, 19 October 2026: "HR\'s typed values replaced, marked \'from Zoho\'")', () => {
+describe('the figures filled from Zoho People (owner, 19 October 2026: "HR\'s typed values replaced, marked \'from Zoho\'", then "imported data shouldn\'t be editable")', () => {
   const mark = { fields: ['workedHours', 'noShowDays', 'permissionHours'], at: '2026-10-19T09:30:00.000Z' };
 
-  it('marks a cell the import filled until it is typed over, and none it left empty', () => {
-    expect(fromImport(mark, 'workedHours', false, 170.5)).toBe(true);
-    expect(fromImport(mark, 'workedHours', true, 170.5)).toBe(false);
-    // the permission hours were the system's requests': the import left the cell empty
-    expect(fromImport(mark, 'permissionHours', false, null)).toBe(false);
-    expect(fromImport(mark, 'expectedHours', false, 180)).toBe(false);
-    expect(fromImport(null, 'workedHours', false, 170.5)).toBe(false);
+  it('marks every cell the import filled, read only, whatever its value, and no other', () => {
+    expect(fromImport(mark, 'workedHours')).toBe(true);
+    expect(fromImport(mark, 'noShowDays')).toBe(true);
+    // the permission hours were the system's requests': still the import's
+    expect(fromImport(mark, 'permissionHours')).toBe(true);
+    expect(fromImport(mark, 'expectedHours')).toBe(false);
+    expect(fromImport(mark, 'leaveDays')).toBe(false);
+    expect(fromImport(null, 'workedHours')).toBe(false);
   });
 
-  it('says when it was filled, and how to replace it', () => {
-    expect(importTitle(mark.at, true)).toBe("Filled from Zoho People's attendance, applied on 19/10/2026. Type another figure to replace it.");
-    expect(importTitle(mark.at, false)).toBe("Filled from Zoho People's attendance, applied on 19/10/2026.");
+  it('says when it was filled, and how to change it', () => {
+    expect(importTitle(mark.at)).toBe("Filled from Zoho People's attendance, applied on 19/10/2026. To change it, import the month again, or undo that import on its review.");
+  });
+
+  it('never sends what is typed in a cell the import filled, but the others', () => {
+    const line = { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 170.5, noShowDays: 0 }, onHold: false, comments: null, attendanceImport: mark };
+    const edits = { [A]: { inputs: { workedHours: '150:00', noShowDays: '2', expectedHours: '180:00' } } };
+    expect(linePatches([line], edits).patches).toEqual([{ id: A, inputs: { expectedHours: 180 } }]);
+    expect(unsavedCount([line], edits)).toEqual({ cells: 1, rows: 1 });
+    // undone, the mark gone: they are HR's again
+    expect(linePatches([{ ...line, attendanceImport: null }], edits).patches).toEqual([{ id: A, inputs: { workedHours: 150, noShowDays: 2, expectedHours: 180 } }]);
   });
 });
+

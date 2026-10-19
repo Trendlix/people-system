@@ -22,6 +22,7 @@ import { RaiseRequestStatusBadge } from '../raise-requests/ui';
 import { loadWaitingClaims } from '../reimbursements/data';
 import { claimsLabel } from '../reimbursements/list';
 import { WaitingClaimsTable } from '../reimbursements/ui';
+import { TEAM_ATTENDANCE_PATH } from '../attendance/attendance';
 import { loadTeam } from './data';
 import { askedByText, latestRaise, probationOf } from './team';
 
@@ -41,7 +42,9 @@ import { askedByText, latestRaise, probationOf } from './team';
 // report (owner, 19 October 2026: "make C level Employees details not visible to HR") is their card alone: the name
 // (opening the card), the job title and where they stand, nothing of their probation or raises. Permission requests
 // (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day", asked "In the system, like leave") wait
-// in Leave to Approve with the leave, decided the same way, and show on the team's calendar as hours.
+// in Leave to Approve with the leave, decided the same way, and show on the team's calendar as hours. Team Attendance
+// (owner, 19 October 2026: "the attendance is not active in the side menu"): the team's month of attendance from Zoho
+// People's imports, on a page of its own (my-team/attendance).
 
 export const metadata: Metadata = { title: 'My Team · People System' };
 
@@ -238,13 +241,33 @@ async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-tea
   );
 }
 
+/** The way to the team's attendance (owner, 19 October 2026: "the attendance is not active in the side menu"). */
+function TeamAttendance() {
+  return (
+    <section aria-labelledby="team-attendance-heading" className="space-y-3">
+      <div>
+        <h2 id="team-attendance-heading" className="text-lg font-semibold">
+          Team Attendance
+        </h2>
+        <p className="text-sm text-muted">
+          Your team&apos;s check-ins and check-outs month by month, as imported from Zoho People: the hours counted, absent days, short hours,
+          permission and leave, each day of them.
+        </p>
+      </div>
+      <Link href={TEAM_ATTENDANCE_PATH} className="btn btn-secondary no-underline">
+        Open Team Attendance
+      </Link>
+    </section>
+  );
+}
+
 export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
   return (
     <div className="max-w-5xl">
       <h1 className="text-2xl font-semibold">My Team</h1>
       <p className="mt-1 text-muted">
-        The people who report to you now, their leave and permission requests and reimbursement claims waiting for you, and who is off this month.
-        Open a profile to see their details and their raise requests.
+        The people who report to you now, their leave and permission requests and reimbursement claims waiting for you, their attendance, and who
+        is off this month. Open a profile to see their details and their raise requests.
       </p>
       <div className="mt-6 space-y-8">
         <Suspense fallback={null}>
@@ -256,6 +279,7 @@ export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
         <Suspense fallback={<Loading />}>
           <Team />
         </Suspense>
+        <TeamAttendance />
         <Suspense fallback={<Loading />}>
           <TeamCalendar searchParams={searchParams} />
         </Suspense>

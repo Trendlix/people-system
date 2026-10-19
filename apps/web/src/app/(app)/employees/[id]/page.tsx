@@ -1,9 +1,11 @@
+import Link from 'next/link';
 import { Suspense } from 'react';
 import { profileBack } from '@/components/nav';
 import { decidesChangeOfDetails, isRestricted } from '@/lib/confidential';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
+import { canSeeAuditLog, historyHref } from '../../audit/audit';
 import { loadProfileOrCard } from '../data';
 import { askedTab, BackLink, Loading, PROFILE_TABS, profileHref, seesEveryone, todayInCairo, type ProfileTabKey } from '../ui';
 import { BasicTab, EducationTab } from './details-tabs';
@@ -55,10 +57,22 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
   // back to the Employees list; an employee's own profile is in their sidebar (My Profile), and a manager's direct
   // report's goes back to My Team (owner's decisions, 17 October 2026)
   const back = profileBack(user, p);
+  // everything changed about them, in the Audit Log: the Super Admin's and the CEO's (owner, 19 October 2026: "an Audit
+  // Log page showing who changed what and when")
+  const history = canSeeAuditLog(user) ? historyHref(p.id) : null;
 
   return (
     <div className="space-y-4">
-      {back && <BackLink href={back.href}>{back.label}</BackLink>}
+      {(back || history) && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {back ? <BackLink href={back.href}>{back.label}</BackLink> : <span />}
+          {history && (
+            <Link href={history} prefetch={false} title={`Everything changed about ${p.fullNameEn}, in the Audit Log`} className="text-sm font-semibold">
+              History
+            </Link>
+          )}
+        </div>
+      )}
       <div className="space-y-6">
         <ProfileHeader profile={p} tabs={visible} linkPeople={linkPeople} decidesRequests={decidesChangeOfDetails(user, p.confidential)} />
 

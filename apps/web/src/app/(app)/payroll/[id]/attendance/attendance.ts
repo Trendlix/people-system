@@ -96,6 +96,12 @@ export function applyConfirmText(view: Pick<AttendanceImportView, 'people'>): st
   return `Fill the worked hours, no-show days and permission hours of ${n} ${n === 1 ? 'line' : 'lines'} from Zoho People? What was typed on ${n === 1 ? 'that line' : 'those lines'} is replaced.`;
 }
 
+/** The confirmation Undo this import asks first. */
+export function undoConfirmText(view: Pick<AttendanceImportView, 'undoable'>): string {
+  const n = view.undoable ?? 0;
+  return `Undo this import on ${n} ${n === 1 ? 'line' : 'lines'}? The worked hours, no-show days and permission hours go back to what was typed before it was applied (empty if nothing was), and the days it kept are removed.`;
+}
+
 /** Why someone matched isn't filled by Apply, when they aren't: null when they are. */
 export function notAppliedReason(p: AttendancePersonView, hr: boolean): string | null {
   if (!isMatched(p.match)) return null;

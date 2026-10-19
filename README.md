@@ -7,7 +7,7 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 
 | Module | Status |
 |---|---|
-| Sign-in, roles (Employee, Manager, HR, Finance, CEO, Admin, Super Admin), audit log | Done. **Only a Super Admin deletes records**; Super Admin has Admin's rights plus deleting, and only a Super Admin grants the role |
+| Sign-in, roles (Employee, Manager, HR, Finance, CEO, Admin, Super Admin), audit log; the **Audit Log** page: who changed what and when, filtered by days, who, action, record and person (an employee's History, from their profile), exported to Excel | Done. **Only a Super Admin deletes records**; Super Admin has Admin's rights plus deleting, and only a Super Admin grants the role. The Audit Log is the Super Admin's and the CEO's; restricted values stay masked |
 | 1 · Organization: company profile and logo, departments and their teams, job titles (on a department or a team) with grade ranges and rich-text job descriptions, grades, shifts, allowance kinds (taxed / insured or not), org chart (PDF A4/A3, PNG, SVG) | Done. HR and Admin edit, everyone else views |
 | Users: sign-in accounts, roles, temporary passwords; everyone can change their own password | Done. Admin and Super Admin |
 | 2 · Employees: directory, profile (personal, contact, education, employment with grade), national ID and bank (restricted, every view audited), completeness of all data and papers | Done. HR edits; HR, CEO and Finance see everyone, a manager their team, an employee themself. **C-level** (a grade marked confidential, G9 · Executive): only the CEO, the Super Admin and the person themself see their details and pay; everyone else gets their directory card, their payroll lines are one hidden row, and HR's stages of their requests go to the CEO |

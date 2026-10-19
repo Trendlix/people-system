@@ -5,8 +5,9 @@ import {
   EMPTY_PAYROLL_INPUTS,
   insuredWageDate,
   formatHours,
+  importedInputRefusal,
+  importedInputsChanged,
   leaveDaysOf,
-  markAfterTyping,
   payrollLine,
   PERMISSION_RULE_DEFAULTS,
   permissionHoursText,
@@ -367,7 +368,8 @@ export class PayrollService {
 
   /**
    * Changes a draft's lines: their inputs (null clears one), holds and comments; a line's leave days no more than its
-   * days paid, its permission hours no more than the Leave Setup's hours a month (19 October 2026). Each changed line is worked out again with the run's rules and rates set by law; the audit log has what
+   * days paid, its permission hours no more than the Leave Setup's hours a month (19 October 2026); never an input an
+   * attendance import filled (409: owner, 19 October 2026, "imported data shouldn't be editable"). Each changed line is worked out again with the run's rules and rates set by law; the audit log has what
    * changed (the leave days too), the money inputs only as changed.
    */
   async updateLines(id: string, dto: UpdatePayrollLinesDto, user: SessionUser): Promise<PayrollRunView> {
@@ -421,9 +423,12 @@ export class PayrollService {
         );
       }
       const diff: Record<string, unknown> = changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>);
-      // what HR types is no longer from an attendance import (19 October 2026)
+      // what an attendance import filled isn't typed over (owner, 19 October 2026: "imported data shouldn't be
+      // editable"): the month is imported again, or the import undone on its review, to change it; sent as it is, it is
+      // no change
       const mark = line.attendanceImport as unknown as AttendanceImportMark | null;
-      const markAfter = markAfterTyping(mark, Object.keys(diff));
+      const locked = importedInputsChanged(mark, Object.keys(diff));
+      if (locked.length) throw new ConflictException(importedInputRefusal(locked[0], line.nameEn, mark!.at));
       for (const key of MONEY_INPUTS) if (key in diff) diff[key] = 'changed';
       Object.assign(diff, changes({ onHold: line.onHold, comments: line.comments }, { onHold: change.onHold, comments: change.comments }));
       if (!Object.keys(diff).length) continue;
@@ -433,7 +438,6 @@ export class PayrollService {
           inputs: json(inputs),
           onHold: change.onHold,
           comments: change.comments,
-          ...(mark && { attendanceImport: markAfter ? json(markAfter) : Prisma.DbNull }),
           ...worked(line.terms as unknown as PayrollTerms, inputs, rules, law),
         },
         diff,

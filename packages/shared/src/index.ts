@@ -371,3 +371,9 @@ export * from './permissions.js';
 // check-in's address, people matched by name (and their Zoho ID once confirmed), and a person's month by the system's
 // shift, leave, holidays and permission: the hours counted, the absent days, the permission hours
 export * from './attendance-import.js';
+
+// the Attendance section (owner, 19 October 2026: "the attendance is not active in the side menu"): the days kept from
+// the imports read back for HR, the CEO and Finance, a manager's team and an employee's own month: a day's short hours
+// and missing check-out, a month's figures, Daily Attendance's filters, the Summary's period and its rows by department
+// and team
+export * from './attendance-days.js';

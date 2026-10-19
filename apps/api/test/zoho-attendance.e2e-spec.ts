@@ -50,6 +50,7 @@ interface Person {
     warnings: string[];
   } | null;
   applied: { at: string; by: string | null } | null;
+  undone: { at: string; by: string | null } | null;
 }
 
 interface Review {
@@ -60,15 +61,16 @@ interface Review {
   hidden: { count: number; label: string } | null;
   counts: { matched: number; toConfirm: number; notFound: number; skipped: number; notOnRun: number };
   canApply: boolean;
+  undoable: number;
 }
 
 interface Line {
   id: string;
   employeeId: string;
   terms: { permissionHours?: number };
-  inputs: { workedHours: number | null; noShowDays: number | null; permissionHours: number | null };
+  inputs: { workedHours: number | null; noShowDays: number | null; permissionHours: number | null; expectedHours?: number | null };
   result: { permissionHours?: number; noShowCut: number };
-  attendanceImport: { source: string; importId: string; fields: string[] } | null;
+  attendanceImport: { source: string; importId: string; fields: string[]; before?: Record<string, number | null> } | null;
 }
 
 const said = (res: { body: { message: string | string[] } }) => ([] as string[]).concat(res.body.message);
@@ -113,6 +115,8 @@ describe('Zoho People attendance import (e2e)', () => {
   const review = async (importId: string, session = hr) => (await api().get(`/api/payroll/runs/${runId}/attendance-imports/${importId}`).set('Cookie', session).expect(200)).body as Review;
   const choose = (importId: string, body: object, session = hr) => api().patch(`/api/payroll/runs/${runId}/attendance-imports/${importId}/people`).set('Cookie', session).send(body);
   const apply = (importId: string, session = hr) => api().post(`/api/payroll/runs/${runId}/attendance-imports/${importId}/apply`).set('Cookie', session);
+  const undo = (importId: string, session = hr) => api().post(`/api/payroll/runs/${runId}/attendance-imports/${importId}/undo`).set('Cookie', session);
+  const typeIn = (lineId: string, inputs: Record<string, number | null>) => api().patch(`/api/payroll/runs/${runId}/lines`).set('Cookie', hr).send({ lines: [{ id: lineId, inputs }] });
   const lines = async (session = hr) => (await api().get(`/api/payroll/runs/${runId}`).set('Cookie', session).expect(200)).body.lines as Line[];
   const lineOf = async (key: string, session = hr) => (await lines(session)).find((l) => l.employeeId === ids[key])!;
   const named = (r: Review, name: string) => r.people.find((p) => p.zohoName === name)!;
@@ -143,7 +147,16 @@ describe('Zoho People attendance import (e2e)', () => {
         ],
       },
       { id: `72-${RUN}`, name: OMAR, days: [{ date: d1, in: '09:00', out: '18:00', permission: '01:30' }, { date: d2, status: 'Absent' }] },
-      { id: `73-${RUN}`, name: L_TEST, days: [{ date: d1, in: '09:30', out: '18:30', inLocation: officeAt(13) }] },
+      {
+        id: `73-${RUN}`,
+        name: L_TEST,
+        days: [
+          { date: d1, in: '09:30', out: '18:30', inLocation: officeAt(13) }, // 9:00
+          // the shift's 15 minutes' grace (owner, 19 October 2026): counted until 7:15 PM
+          { date: d2, in: '10:30', out: '19:30', inLocation: officeAt(13) }, // 8:45
+          { date: d3, in: '10:15', out: '19:15', inLocation: officeAt(13) }, // 9:00
+        ],
+      },
       { id: `74-${RUN}`, name: STRANGER, days: [{ date: d1, in: '09:00', out: '17:00' }] },
       { id: `75-${RUN}`, name: CLEO, days: [{ date: d1, in: '09:00', out: '18:00' }, { date: d2, status: 'Absent' }] },
       { id: `76-${RUN}`, name: NADIA, days: [{ date: d1, in: '09:00', out: '18:00' }] },
@@ -161,7 +174,12 @@ describe('Zoho People attendance import (e2e)', () => {
     await api().patch('/api/leave/settings').set('Cookie', hr).send({ permissionHoursPerMonth: 4, permissionMaxHoursPerDay: 2 }).expect(200);
     deptId = (await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Attendance ${RUN}` }).expect(201)).body.id;
     // the MORNING shift: 9 hours within 9:00–19:00, Sunday to Thursday (owner, 16 October 2026)
-    shiftId = (await prisma.shift.create({ data: { code: `M${RUN}`.slice(0, 20), startTime: toTimeOfDay('09:00'), endTime: toTimeOfDay('19:00'), hoursPerDay: 9, workingDays: [0, 1, 2, 3, 4] }, select: { id: true } })).id;
+    shiftId = (
+      await prisma.shift.create({
+        data: { code: `M${RUN}`.slice(0, 20), startTime: toTimeOfDay('09:00'), endTime: toTimeOfDay('19:00'), hoursPerDay: 9, graceMinutes: 15, workingDays: [0, 1, 2, 3, 4] },
+        select: { id: true },
+      })
+    ).id;
 
     const holidays = new Set((await prisma.holiday.findMany({ select: { date: true } })).map((h) => fromDateOnly(h.date)));
     for (let d = firstDay(MONTH); d <= lastDay(MONTH); d = addDays(d, 1)) if (weekday(d) <= 4 && !holidays.has(d)) work.push(d);
@@ -228,6 +246,7 @@ describe('Zoho People attendance import (e2e)', () => {
 
   describe('the review and apply', () => {
     let importId: string;
+    let secondId: string;
 
     it('matches people by name (spellings alike), asks about a close one, finds none for others; works each month out by the system’s rules', async () => {
       // one file with everyone but Nadia, and Nadia's own
@@ -293,6 +312,9 @@ describe('Zoho People attendance import (e2e)', () => {
       expect(named(after, OMAR).month).toMatchObject({ daysWorked: 1, absentDays: 1, hoursCounted: 9, permissionHours: null, permissionFrom: 'system' });
       expect(named(after, OMAR).month!.warnings).toContain("The permission requests approved in the system count this month, not Zoho's permission column.");
       expect(named(after, L_TEST)).toMatchObject({ match: 'confirmed', employee: { id: ids.lina } });
+      // the shift's grace moves the window's end to 7:15 PM (owner, 19 October 2026: "if the employee checked in 10:15 he
+      // can check out till 7:15 and the 9 hours are counted")
+      expect(named(after, L_TEST).month!.days.map((d) => d.hoursCounted)).toEqual([9, 8.75, 9]);
       expect(named(after, STRANGER).match).toBe('skipped');
       expect(after.counts).toEqual({ matched: 4, toConfirm: 0, notFound: 0, skipped: 1, notOnRun: 1 });
       await choose(importId, { key: 'nobody', skipped: true }).expect(404);
@@ -302,6 +324,8 @@ describe('Zoho People attendance import (e2e)', () => {
 
     it('applies to the lines HR fills: worked hours, no-show days and permission hours from Zoho; the days kept; the Zoho IDs remembered', async () => {
       const before = await lineOf('cleo', ceo);
+      // what HR typed before: Undo puts it back
+      await typeIn((await lineOf('lina')).id, { workedHours: 100 }).expect(200);
       const applied = (await apply(importId).expect(200)).body as Review;
       expect(named(applied, RANIA).applied).toMatchObject({ by: expect.any(String) });
       expect(named(applied, NADIA).applied).toBeNull();
@@ -336,9 +360,19 @@ describe('Zoho People attendance import (e2e)', () => {
       const log = await prisma.auditLog.findMany({ where: { entityType: 'attendance_import', entityId: importId }, orderBy: { at: 'asc' } });
       expect(log.map((l) => l.action)).toEqual(['create', 'update', 'update', 'update', 'apply']);
 
-      // what HR types afterwards is no longer from Zoho
-      await api().patch(`/api/payroll/runs/${runId}/lines`).set('Cookie', hr).send({ lines: [{ id: rania.id, inputs: { workedHours: 150 } }] }).expect(200);
-      expect((await lineOf('rania')).attendanceImport?.fields).toEqual(['noShowDays', 'permissionHours']);
+      // what the import filled isn't typed over (owner, 19 October 2026: "imported data shouldn't be editable")
+      const [y, m, d] = TODAY.split('-');
+      expect((await typeIn(rania.id, { workedHours: 150 }).expect(409)).body.message).toBe(
+        `Worked hours for Rania Invented Girgis ${RUN} came from the Zoho import of ${d}/${m}/${y}: import the month again to change them, or undo that import on its review.`,
+      );
+      expect((await typeIn(rania.id, { noShowDays: 0 }).expect(409)).body.message).toContain(`No-show days for Rania Invented Girgis ${RUN} came from the Zoho import`);
+      await typeIn(rania.id, { permissionHours: null }).expect(409);
+      // sent as it is it is no change, and the figures not from Zoho stay HR's
+      await typeIn(rania.id, { workedHours: rania.inputs.workedHours, expectedHours: 180 }).expect(200);
+      const after = await lineOf('rania');
+      expect(after.inputs).toMatchObject({ workedHours: rania.inputs.workedHours, expectedHours: 180 });
+      expect(after.attendanceImport?.fields).toEqual(['workedHours', 'noShowDays', 'permissionHours']);
+      await typeIn(rania.id, { expectedHours: null }).expect(200);
     });
 
     it('the CEO sees the C-level people of the files and applies theirs, nobody else’s', async () => {
@@ -353,11 +387,48 @@ describe('Zoho People attendance import (e2e)', () => {
 
     it('matches by the remembered Zoho ID next time, and importing the month again replaces its Zoho days', async () => {
       const again = (await upload([[await zohoWorkbook([{ id: `71-${RUN}`, name: 'R. I. G.', days: [{ date: work[0], in: '09:00', out: '18:00' }] }]), 'rania.xlsx']]).expect(201)).body as Review;
+      secondId = again.id;
       expect(again.people[0]).toMatchObject({ match: 'linked', employee: { id: ids.rania } });
       await apply(again.id).expect(200);
       const days = await prisma.attendanceDay.findMany({ where: { employeeId: ids.rania } });
       expect(days.map((d) => fromDateOnly(d.date))).toEqual([work[0]]);
       expect((await lineOf('rania')).inputs).toMatchObject({ workedHours: 9, noShowDays: 0, permissionHours: null });
+    });
+
+    it('undoes an import: the lines HR fills from it get back what HR had typed, its days go; the CEO undoes the C-level people’s', async () => {
+      // the first import still filled Omar's and Lina's lines (HR's) and Cleo's (the CEO's); Rania's is the second's
+      expect((await review(importId)).undoable).toBe(2);
+      const undone = (await undo(importId).expect(200)).body as Review;
+      expect(undone.undoable).toBe(0);
+      expect(named(undone, L_TEST)).toMatchObject({ applied: null, undone: { by: expect.any(String) } });
+      const lina = await lineOf('lina');
+      expect(lina.inputs).toMatchObject({ workedHours: 100, noShowDays: null, permissionHours: null });
+      expect(lina.attendanceImport).toBeNull();
+      expect((await lineOf('omar')).inputs).toMatchObject({ workedHours: null, noShowDays: null, permissionHours: null });
+      expect((await lineOf('rania')).attendanceImport?.importId).toBe(secondId);
+      expect((await lineOf('cleo', ceo)).attendanceImport?.importId).toBe(importId);
+      // its days go for those put back: Cleo's stay, the CEO's to undo
+      expect(await prisma.attendanceDay.count({ where: { importId, employeeId: { in: [ids.omar, ids.lina] } } })).toBe(0);
+      expect(await prisma.attendanceDay.count({ where: { importId, employeeId: ids.cleo } })).toBe(2);
+      // nothing left of it for HR; once undone, HR types the figures again
+      expect((await undo(importId).expect(409)).body.message).toBe('Nothing on this payroll is filled from this import for you to undo.');
+      await typeIn(lina.id, { workedHours: 120 }).expect(200);
+
+      await undo(importId, ceo).expect(200);
+      expect((await lineOf('cleo', ceo)).attendanceImport).toBeNull();
+      expect((await lineOf('cleo', ceo)).inputs).toMatchObject({ workedHours: null, noShowDays: null });
+      expect(await prisma.attendanceDay.count({ where: { importId } })).toBe(0);
+      expect((await prisma.attendanceImport.findUniqueOrThrow({ where: { id: importId } })).appliedAt).toBeNull();
+      const log = await prisma.auditLog.findMany({ where: { entityType: 'attendance_import', entityId: importId, action: 'undo' }, orderBy: { at: 'asc' } });
+      expect(log.map((l) => (l.diff as { lines: number }).lines)).toEqual([2, 1]);
+
+      // the second, undone: Rania's line back to empty, as before the first (an earlier import's figures are never kept as HR's)
+      await undo(secondId).expect(200);
+      expect((await lineOf('rania')).inputs).toMatchObject({ workedHours: null, noShowDays: null, permissionHours: null });
+      expect(await prisma.attendanceDay.count({ where: { employeeId: ids.rania } })).toBe(0);
+      // applied again, it fills them again
+      await apply(secondId).expect(200);
+      expect((await lineOf('rania')).inputs).toMatchObject({ workedHours: 9, noShowDays: 0 });
     });
 
     it('is only on a draft run', async () => {
@@ -366,6 +437,7 @@ describe('Zoho People attendance import (e2e)', () => {
         const file = await zohoWorkbook([{ id: '1', name: 'Invented', days: [{ date: work[0], in: '09:00', out: '18:00' }] }]);
         expect((await upload([[file, 'a.xlsx']]).expect(409)).body.message).toBe(`The ${monthName(MONTH)} payroll isn't a draft any more, so attendance can't be imported on it.`);
         await apply(importId).expect(409);
+        await undo(secondId).expect(409);
       } finally {
         await prisma.payrollRun.update({ where: { id: runId }, data: { status: 'draft' } });
       }

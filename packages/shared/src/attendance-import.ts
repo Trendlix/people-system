@@ -4,7 +4,8 @@
 // - "one file with everyone, or many files at once": each file's rows are grouped by person (attendance-import in the API).
 // - Hours by the system's shift rule, not Zoho's shift: a day counts the time between check-in and check-out within the
 //   shift's window, at most its hours to work (attendance.ts hoursCountedForDay: the MORNING shift's 9 hours within
-//   9:00–19:00), never Zoho's "Morning Shift (10:00 AM - 07:00 PM)".
+//   9:00–19:00, its end moved by the shift's grace minutes: 19:15, owner, 19 October 2026: "if the employee checked in
+//   10:15 he can check out till 7:15 and the 9 hours are counted"), never Zoho's "Morning Shift (10:00 AM - 07:00 PM)".
 // - People matched by name: Zoho's Employee Name against the profile's English name, written alike (case, spaces,
 //   punctuation, and the Arabic names' English spellings, Gerges and Girgis, Mohammed and Mohamed); the same name is a
 //   match, a close one is HR's to confirm ("Did you mean …?"), none is HR's to pick or skip; a link HR confirms is
@@ -291,8 +292,8 @@ export interface AttendanceMonthInput {
   /** YYYY-MM. */
   month: string;
   days: readonly ImportedDay[];
-  /** Their employment's shift: its window, hours to work and working days; null without one. */
-  shift: (ShiftTimes & { workingDays: readonly number[] }) | null;
+  /** Their employment's shift: its window, hours to work, grace minutes (the window's end moves by them) and working days; null without one. */
+  shift: (ShiftTimes & { workingDays: readonly number[]; graceMinutes?: number | null }) | null;
   /** The official holidays of the month (YYYY-MM-DD). */
   holidays: readonly string[];
   /** The days of the month they have approved leave in the system (YYYY-MM-DD). */
@@ -439,20 +440,59 @@ function clock(hours: number): string {
 export const IMPORTED_INPUTS = ['workedHours', 'noShowDays', 'permissionHours'] as const;
 export type ImportedInput = (typeof IMPORTED_INPUTS)[number];
 
+/** The inputs as the screens and messages name them. */
+export const IMPORTED_INPUT_LABELS: Record<ImportedInput, string> = {
+  workedHours: 'Worked hours',
+  noShowDays: 'No-show days',
+  permissionHours: 'Permission hours',
+};
+
 /**
- * What a payroll line keeps of the import that filled it, for the grid to mark those inputs "from Zoho": the import, when
- * it was applied, and the inputs it filled that are still as it filled them (HR's typed values replaced).
+ * What a payroll line keeps of the import that filled it, for the grid to show those inputs "from Zoho" and keep them
+ * from being typed over (owner, 19 October 2026: "imported data shouldn't be editable"): the import, when it was applied,
+ * the inputs it filled, and what they were before (`before`: HR's typed figures, none when empty or filled by an earlier
+ * import), which Undo this import puts back. A mark from before Undo has no `before`: undone, those inputs are emptied.
  */
 export interface AttendanceImportMark {
   source: 'zoho';
   importId: string;
   at: string;
   fields: ImportedInput[];
+  before?: Partial<Record<ImportedInput, number | null>>;
 }
 
-/** The mark once HR has typed some inputs (`typed`): those are no longer from the import; null when none is left. */
-export function markAfterTyping(mark: AttendanceImportMark | null | undefined, typed: readonly string[]): AttendanceImportMark | null {
-  if (!mark) return null;
-  const fields = mark.fields.filter((f) => !typed.includes(f));
-  return fields.length ? { ...mark, fields } : null;
+/**
+ * What the inputs a new import fills were before it (`before` of its mark): those an earlier import filled keep what
+ * they were before that one (its own `before`), so undoing either never brings back a figure from Zoho as if HR typed
+ * it; the others are what the line has (HR's typed figures, or none).
+ */
+export function figuresBefore(
+  fields: readonly ImportedInput[],
+  inputs: Partial<Record<ImportedInput, number | null | undefined>>,
+  earlier: AttendanceImportMark | null | undefined,
+): Partial<Record<ImportedInput, number | null>> {
+  const out: Partial<Record<ImportedInput, number | null>> = {};
+  for (const f of fields) out[f] = earlier?.fields.includes(f) ? (earlier.before?.[f] ?? null) : (inputs[f] ?? null);
+  return out;
+}
+
+/**
+ * The imported inputs a change would alter (owner, 19 October 2026: "imported data shouldn't be editable"): those
+ * among `changed` (the inputs whose value changes) that the line's mark holds. None: the change may go ahead.
+ */
+export function importedInputsChanged(mark: Pick<AttendanceImportMark, 'fields'> | null | undefined, changed: readonly string[]): ImportedInput[] {
+  if (!mark) return [];
+  return mark.fields.filter((f) => changed.includes(f));
+}
+
+const CAIRO_DAY = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', day: '2-digit', month: '2-digit', year: 'numeric' });
+
+/**
+ * Why an imported input can't be typed over (409): "Worked hours for Rania Girgis came from the Zoho import of
+ * 19/10/2026: import the month again to change them, or undo that import on its review." `at`: when it was applied.
+ */
+export function importedInputRefusal(field: ImportedInput, name: string, at: string): string {
+  const moment = new Date(at);
+  const day = Number.isNaN(moment.getTime()) ? at : CAIRO_DAY.format(moment);
+  return `${IMPORTED_INPUT_LABELS[field]} for ${name} came from the Zoho import of ${day}: import the month again to change them, or undo that import on its review.`;
 }

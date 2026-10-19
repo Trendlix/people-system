@@ -73,7 +73,9 @@ import {
 // only shown, as the leave days are; what is typed instead is marked "typed by HR" (or the CEO) and wins. They count as
 // worked: the Attendance % is the worked hours with them over the expected hours, once worked hours are typed. The worked
 // hours, no-show days and permission hours an attendance import from Zoho People filled (owner, 19 October 2026: "Import
-// Zoho now, replace it later", HR's typed values replaced, marked "from Zoho") are marked "from Zoho" until typed over.
+// Zoho now, replace it later", HR's typed values replaced, marked "from Zoho") are marked "from Zoho" and read only
+// (owner, 19 October 2026: "imported data shouldn't be editable"): to change them HR imports the month again, or undoes
+// the import on its review.
 
 export interface GridRow extends GridLine {
   /** A C-level person's line (19 October 2026), for those who see it: marked so, the CEO's to fill. */
@@ -109,8 +111,8 @@ export interface GridRow extends GridLine {
   items: LineItems;
   itemsHref: string;
   /**
-   * The inputs an attendance import filled (owner, 19 October 2026: Zoho People), still as it filled them, and when it was
-   * applied: those cells are marked "from Zoho" until typed over. Null for none.
+   * The inputs an attendance import filled (owner, 19 October 2026: Zoho People), and when it was applied: those cells are
+   * marked "from Zoho" and read only ("imported data shouldn't be editable"). Null for none.
    */
   attendanceImport?: { fields: readonly string[]; at: string } | null;
 }
@@ -290,13 +292,13 @@ const Row = memo(function Row({
                 : '';
         const title = shift ? expectedTitle : fromPermission !== null ? permissionTitle : leaveTitle;
         const markId = `${cellId(row.id, c.field)}-from`;
-        // filled from Zoho People's attendance (19 October 2026), until typed over
-        const zoho = fromImport(row.attendanceImport, c.field, edits?.inputs?.[c.field] !== undefined, row.inputs[c.field] ?? null);
+        // filled from Zoho People's attendance (19 October 2026): read only, "imported data shouldn't be editable"
+        const zoho = fromImport(row.attendanceImport, c.field);
         const noted = marked || zoho;
         return (
           <Fragment key={c.field}>
             <td className="px-2 py-2">
-              {editable ? (
+              {editable && !zoho ? (
                 <input
                   id={cellId(row.id, c.field)}
                   value={filled && focused !== c.field ? filled : text}
@@ -311,16 +313,24 @@ const Row = memo(function Row({
                   aria-label={`${c.label} for ${row.name}`}
                   aria-describedby={noted ? markId : undefined}
                   aria-invalid={error ? true : undefined}
-                  title={error ?? (zoho ? importTitle(row.attendanceImport!.at, true) : marked ? title(own, true, who) : undefined)}
+                  title={error ?? (marked ? title(own, true, who) : undefined)}
                   placeholder={marked ? filled : c.kind === 'hours' ? '0:00' : undefined}
                   className={`${cellInput} ${WIDTH[c.kind]} ${filled ? 'text-muted italic' : ''} ${error ? invalid : ''}`}
                 />
               ) : (
                 <span
                   className="block text-right whitespace-nowrap tabular-nums"
-                  title={zoho ? importTitle(row.attendanceImport!.at, false) : marked ? title(own, false, who) : undefined}
+                  title={zoho ? importTitle(row.attendanceImport!.at) : marked ? title(own, false, who) : undefined}
                 >
-                  {own ? text : filled ? <span className="text-muted italic">{filled}</span> : <span className="text-muted">—</span>}
+                  {zoho && row.inputs[c.field] !== null && row.inputs[c.field] !== undefined ? (
+                    cellText(c.kind, row.inputs[c.field] ?? null)
+                  ) : own ? (
+                    text
+                  ) : filled ? (
+                    <span className="text-muted italic">{filled}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
                 </span>
               )}
               {noted && (
@@ -674,7 +684,8 @@ export function InputsGrid({
           days, a commission or a correction is entered with its reason; open one to add or change them, and the pay
           below follows. Released: already paid out this month, so not in the bank transfer. On hold: left out of the
           bank files this month. Figures marked &ldquo;from Zoho&rdquo; were filled by an attendance import from Zoho People
-          (Attendance from Zoho People, above); typing over one replaces it.
+          (Attendance from Zoho People, above) and can&apos;t be typed over: to change them, import the month again, or undo the import on
+          its review.
         </p>
       )}
     </div>

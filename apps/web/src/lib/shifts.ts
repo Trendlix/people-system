@@ -5,7 +5,8 @@ import { formatTime, parseTime } from './format';
 // is to maintain 9 hours within the shift window, its like flexible shift"): its window (start to end) and its hours to
 // work a day, which may be fewer than the window: then it is flexible, worked anywhere within it. The hours to work are
 // also the most attendance counts a day (owner, 16 October 2026: "maximum working hours to be recorded per day is 9
-// hours between checkin and check out"). Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// hours between checkin and check out"), counted until the window's end plus the grace minutes (owner, 19 October 2026).
+// Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 /** A time of day ("HH:mm") so many minutes after another, past midnight round the clock. */
 function minutesAfter(hhmm: string, minutes: number): string {
@@ -51,26 +52,36 @@ export interface ShiftHint {
   text: string;
 }
 
+/** "15-minute", "1-minute": the grace as the hint names it. */
+const graceText = (minutes: number) => `${minutes}-minute`;
+
 /**
- * The shift form's live hint: a fixed shift (hours to work the whole window, or not set) "Check-in after 9:15 AM counts
- * as late."; a flexible one (fewer hours than the window) "Flexible: 9:00 hours anywhere between 9:00 AM and 7:00 PM.
- * Check-in after 10:15 AM leaves too little of the window to work them." (the latest start is the end less the hours,
- * plus the grace minutes). Times "HH:mm"; the hours to work null for the whole window. The general rule while the times
- * can't be read.
+ * The shift form's live hint. The grace minutes move the end of the hours counted a day (owner, 19 October 2026: "grace
+ * period means that if the employee checked in 10:15 he can check out till 7:15 and the 9 hours are counted"). A fixed
+ * shift (hours to work the whole window, or not set): "Check-in after 9:15 AM counts as late. With the 15-minute grace,
+ * the hours count until 6:15 PM."; a flexible one (fewer hours than the window): "Flexible: 9:00 hours anywhere between
+ * 9:00 AM and 7:00 PM; with the 15-minute grace, check in by 10:15 AM and the day ends by 7:15 PM." (the latest check-in
+ * is the end less the hours, plus the grace; without grace, "check in by 10:00 AM to work them."). Times "HH:mm"; the
+ * hours to work null for the whole window. The general rule while the times can't be read.
  */
 export function shiftHint(shift: { startTime: string | null; endTime: string | null; graceMinutes: number | null; hoursPerDay: number | null }): ShiftHint {
-  const grace = shift.graceMinutes !== null && shift.graceMinutes >= 0 ? shift.graceMinutes : 0;
+  const grace = shift.graceMinutes !== null && shift.graceMinutes >= 0 ? Math.round(shift.graceMinutes) : 0;
   const window = shift.startTime && shift.endTime ? shiftHours(shift.startTime, shift.endTime) : null;
   if (!shift.startTime || !shift.endTime || window === null) {
     return { problem: false, text: 'Check-in after the start time plus the grace minutes counts as late.' };
   }
   const hours = shift.hoursPerDay ?? window;
   if (hours > window) return { problem: true, text: `The hours to work can't be more than the shift's window, ${formatHours(window)}.` };
-  if (hours === window) return { problem: false, text: `Check-in after ${formatTime(minutesAfter(shift.startTime, grace))} counts as late.` };
-  const latest = minutesAfter(shift.endTime, -hours * 60 + grace);
+  const ends = formatTime(minutesAfter(shift.endTime, grace));
+  if (hours === window) {
+    const late = `Check-in after ${formatTime(minutesAfter(shift.startTime, grace))} counts as late.`;
+    return { problem: false, text: grace > 0 ? `${late} With the ${graceText(grace)} grace, the hours count until ${ends}.` : late };
+  }
+  const latest = formatTime(minutesAfter(shift.endTime, -hours * 60 + grace));
+  const flexible = `Flexible: ${formatHours(hours)} hours anywhere between ${formatTime(shift.startTime)} and ${formatTime(shift.endTime)}`;
   return {
     problem: false,
-    text: `Flexible: ${formatHours(hours)} hours anywhere between ${formatTime(shift.startTime)} and ${formatTime(shift.endTime)}. Check-in after ${formatTime(latest)} leaves too little of the window to work them.`,
+    text: grace > 0 ? `${flexible}; with the ${graceText(grace)} grace, check in by ${latest} and the day ends by ${ends}.` : `${flexible}; check in by ${latest} to work them.`,
   };
 }
 

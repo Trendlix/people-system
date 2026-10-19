@@ -10,7 +10,9 @@ import { ZOHO_MAX_BYTES, ZOHO_MAX_FILES, ZOHO_TOO_LARGE } from './zoho-file.js';
 // Attendance from Zoho People on a draft payroll run (owner, 19 October 2026: "Import Zoho now, replace it later"): HR
 // uploads Zoho's attendance entries (one file with everyone or many, .xlsx), reviews who each person is and their month
 // by the system's rules, confirms or picks those not matched, and applies it to the run's lines; the CEO sees the
-// review and applies the C-level people's lines (the CEO fills them: owner, 19 October 2026), who HR doesn't see.
+// review and applies the C-level people's lines (the CEO fills them: owner, 19 October 2026), who HR doesn't see. What an
+// import filled can't be typed over on the run (owner, 19 October 2026: "imported data shouldn't be editable"): HR imports
+// the month again, or undoes the import here.
 
 // The files (each .xlsx of up to 5 MB, at most 60): one more than the most is let through so the service can say so in
 // words HR understand, rather than the upload library's.
@@ -64,5 +66,16 @@ export class AttendanceImportsController {
   @HttpCode(200)
   apply(@Param('id', ParseUUIDPipe) id: string, @Param('importId', ParseUUIDPipe) importId: string, @CurrentUser() user: SessionUser) {
     return this.imports.apply(id, importId, user);
+  }
+
+  /**
+   * Undo this import (owner, 19 October 2026: "imported data shouldn't be editable"): the lines the caller fills that it
+   * filled get back what they had before, and the days it kept for them go.
+   */
+  @Roles('hr', 'ceo')
+  @Post(':importId/undo')
+  @HttpCode(200)
+  undo(@Param('id', ParseUUIDPipe) id: string, @Param('importId', ParseUUIDPipe) importId: string, @CurrentUser() user: SessionUser) {
+    return this.imports.undo(id, importId, user);
   }
 }

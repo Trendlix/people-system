@@ -1,4 +1,4 @@
-import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, zonedMoment } from '@trendlix/shared';
+import { graceOf, hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, zonedMoment } from '@trendlix/shared';
 
 // What attendance will count a day (packages/shared/src/attendance.ts; owner, 16 October 2026: "maximum working hours
 // to be recorded per day is 9 hours between checkin and check out"): the time between check-in and check-out, at most
@@ -77,5 +77,44 @@ describe('attendance: only the time within the shift’s window counts', () => {
     expect(new Date(shiftWindowOn('2026-11-15', MORNING)!.end).toISOString()).toBe('2026-11-15T17:00:00.000Z');
     expect(zonedMoment('18/10/2026', '09:00')).toBeNaN();
     expect(shiftWindowOn('2026-10-18', { startTime: '09:00', endTime: '09:00' })).toBeNull();
+  });
+});
+
+describe('attendance: the grace minutes move the window’s end (owner, 19 October 2026: "grace period means that if the employee checked in 10:15 he can check out till 7:15 and the 9 hours are counted")', () => {
+  // the MORNING shift: 9 hours within 9:00 AM to 7:00 PM, 15 minutes' grace
+  const MORNING = { startTime: '09:00', endTime: '19:00', hoursPerDay: 9, graceMinutes: 15 };
+  const at = (time: string, day = '2026-10-18') => `${day}T${time}:00+03:00`;
+  const window = shiftWindowOn('2026-10-18', MORNING)!;
+
+  it('counts until 7:15 PM, still at most the hours to work', () => {
+    expect(new Date(window.start).toISOString()).toBe('2026-10-18T06:00:00.000Z');
+    expect(new Date(window.end).toISOString()).toBe('2026-10-18T16:15:00.000Z');
+    // in 10:15, out 7:15 PM: the 9 hours
+    expect(hoursCountedForDay(at('10:15'), at('19:15'), 9, window)).toBe(9);
+    // in 10:30, out 7:30 PM: counted to 7:15 PM, 8:45
+    expect(hoursCountedForDay(at('10:30'), at('19:30'), 9, window)).toBe(8.75);
+    // in 9:00, out 6:00 PM: 9:00
+    expect(hoursCountedForDay(at('09:00'), at('18:00'), 9, window)).toBe(9);
+    // coming early still counts from 9:00 AM: 8:00 to 5:30 PM is 8:30
+    expect(hoursCountedForDay(at('08:00'), at('17:30'), 9, window)).toBe(8.5);
+  });
+
+  it('moves a fixed shift’s end the same, past midnight and in winter time too', () => {
+    const fixed = shiftWindowOn('2026-10-18', { startTime: '09:00', endTime: '18:00', graceMinutes: 15 })!;
+    expect(new Date(fixed.end).toISOString()).toBe('2026-10-18T15:15:00.000Z');
+    expect(hoursCountedForDay(at('09:15'), at('18:15'), 9, fixed)).toBe(9);
+    expect(hoursCountedForDay(at('09:30'), at('18:30'), 9, fixed)).toBe(8.75);
+    const night = shiftWindowOn('2026-10-18', { startTime: '22:00', endTime: '06:00', graceMinutes: 30 })!;
+    expect(new Date(night.end).toISOString()).toBe('2026-10-19T03:30:00.000Z');
+    // winter time (UTC+2): 7:15 PM is 17:15 UTC
+    expect(new Date(shiftWindowOn('2026-11-15', MORNING)!.end).toISOString()).toBe('2026-11-15T17:15:00.000Z');
+  });
+
+  it('takes no grace, a grace of 0 or one that isn’t a number of minutes as none', () => {
+    for (const graceMinutes of [undefined, null, 0, -5, Number.NaN]) {
+      expect(new Date(shiftWindowOn('2026-10-18', { ...MORNING, graceMinutes })!.end).toISOString()).toBe('2026-10-18T16:00:00.000Z');
+    }
+    expect(graceOf({ graceMinutes: 15 })).toBe(15);
+    expect(graceOf({})).toBe(0);
   });
 });

@@ -177,18 +177,18 @@ export function permissionFill(approved: number | null | undefined, field: Input
 }
 
 /**
- * Whether a cell shows what an attendance import filled (owner, 19 October 2026: Zoho People's attendance, "HR's typed
- * values replaced, marked 'from Zoho'"): its field is among those the line's mark still has (the API drops one HR types
- * over), nothing else has been typed in it on the grid since (`edited`), and the import gave it a value (`value`: none
- * when the permission hours are the system's requests'). Marked "from Zoho".
+ * Whether a cell is what an attendance import filled (owner, 19 October 2026: Zoho People's attendance, "HR's typed
+ * values replaced, marked 'from Zoho'", then "imported data shouldn't be editable"): its field is among those the line's
+ * mark holds. Shown as text marked "from Zoho", never an input, and never sent: the API refuses a change to it (409). To
+ * change it, HR imports the month again or undoes the import on its review.
  */
-export function fromImport(mark: { fields: readonly string[] } | null | undefined, field: InputField, edited: boolean, value: number | null | undefined): boolean {
-  return !!mark && !edited && mark.fields.includes(field) && value !== null && value !== undefined;
+export function fromImport(mark: { fields: readonly string[] } | null | undefined, field: InputField): boolean {
+  return !!mark && mark.fields.includes(field);
 }
 
-/** What a cell filled from Zoho says when pointed at: when, and how to replace it. */
-export function importTitle(at: string, editable: boolean): string {
-  return `Filled from Zoho People's attendance, applied on ${formatDate(at) || at}.${editable ? ' Type another figure to replace it.' : ''}`;
+/** What a cell filled from Zoho says when pointed at: when, and how to change it. */
+export function importTitle(at: string): string {
+  return `Filled from Zoho People's attendance, applied on ${formatDate(at) || at}. To change it, import the month again, or undo that import on its review.`;
 }
 
 /**
@@ -323,6 +323,11 @@ export interface GridLine {
    * Left out: the line takes edits whenever the grid does.
    */
   editable?: boolean;
+  /**
+   * The inputs an attendance import filled (owner, 19 October 2026: "imported data shouldn't be editable"): read only,
+   * anything typed in them never sent nor counted. Null or left out: none.
+   */
+  attendanceImport?: { fields: readonly string[] } | null;
 }
 
 /** What was typed in a row and not saved yet: cells as typed, the hold and the comments. */
@@ -362,7 +367,8 @@ function rowChanges(line: GridLine, edits: RowEdits | undefined): { patch: LineP
   let count = 0;
   for (const [field, text] of Object.entries(edits.inputs ?? {}) as [InputField, string][]) {
     const column = COLUMN.get(field);
-    if (!column) continue;
+    // what an import filled isn't typed over (19 October 2026)
+    if (!column || fromImport(line.attendanceImport, field)) continue;
     const parsed = parseCell(column.kind, text);
     if (!parsed.ok) {
       errors.push({ lineId: line.id, field, message: parsed.error });

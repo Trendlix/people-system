@@ -2,7 +2,8 @@
 
 // Importing attendance from Zoho People on a draft payroll run (owner, 19 October 2026: "Import Zoho now, replace it
 // later"): uploading Zoho's attendance entries (the files as they are, POST /payroll/runs/:id/attendance-imports), HR's
-// choice for a person of them (confirm, pick, skip, back to the match by name: PATCH …/people) and Apply (POST …/apply).
+// choice for a person of them (confirm, pick, skip, back to the match by name: PATCH …/people), Apply (POST …/apply) and
+// Undo this import (POST …/undo; owner, 19 October 2026: "imported data shouldn't be editable").
 // Each forwards to the API, which checks the role (HR uploads; HR and the CEO choose and apply), that the run is a
 // draft, the files by their content, and whose lines the user fills, so calling these directly can't bypass that.
 import { refresh } from 'next/cache';
@@ -61,4 +62,20 @@ export async function applyAttendance(runId: string, importId: string): Promise<
   refresh();
   const n = view?.people.filter((p) => p.applied && p.applied.at === view?.appliedAt).length ?? 0;
   return { message: `Applied: ${n} ${n === 1 ? 'line' : 'lines'} filled from Zoho People. The payroll's figures and pay show them.` };
+}
+
+/**
+ * Undo this import (owner, 19 October 2026: "imported data shouldn't be editable"): the lines the user fills that it
+ * filled get back what they had before it was applied, and the days it kept for them go.
+ */
+export async function undoAttendance(runId: string, importId: string): Promise<FormState> {
+  if (!UUID.test(runId) || !UUID.test(importId)) return { errors: ['This import was not found.'] };
+  try {
+    await apiSend<AttendanceImportView>('POST', `${importPath(runId, importId)}/undo`);
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: apiMessages(err) };
+    throw err;
+  }
+  refresh();
+  return { message: 'Undone: the lines it filled are back to what they had before it, and its days are no longer kept.' };
 }

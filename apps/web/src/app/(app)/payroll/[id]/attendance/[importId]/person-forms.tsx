@@ -7,7 +7,8 @@ import type { FormState } from '@/lib/types';
 
 // HR's choices on an attendance import's review (owner, 19 October 2026: a close name is HR's to confirm, "Did you mean
 // …?"; none is HR's to pick or skip): Confirm a suggestion, choose someone else from the payroll's people, Skip, Undo
-// (back to the match by name), and Apply, which asks first (attendance-imports in the API decides whose lines it fills).
+// (back to the match by name), and Apply, which asks first (attendance-imports in the API decides whose lines it fills),
+// and Undo this import, which asks first too (owner, 19 October 2026: "imported data shouldn't be editable").
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -107,6 +108,33 @@ export function ApplyButton({ action, confirmText }: { action: () => Promise<For
     >
       <button type="submit" disabled={pending} className="btn btn-primary">
         {pending ? 'Applying…' : 'Apply to the payroll'}
+      </button>
+      <Refusal state={state} />
+      {state.message && (
+        <p role="status" className="text-sm text-ok">
+          {state.message}
+        </p>
+      )}
+    </form>
+  );
+}
+
+/**
+ * Undo this import, after a confirmation (owner, 19 October 2026: "imported data shouldn't be editable": to change what
+ * it filled, import the month again or undo it); what it did shows under it.
+ */
+export function UndoButton({ action, confirmText }: { action: () => Promise<FormState>; confirmText: string }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (!window.confirm(confirmText)) e.preventDefault();
+      }}
+      className="space-y-2"
+    >
+      <button type="submit" disabled={pending} className="btn btn-secondary">
+        {pending ? 'Undoing…' : 'Undo this import'}
       </button>
       <Refusal state={state} />
       {state.message && (

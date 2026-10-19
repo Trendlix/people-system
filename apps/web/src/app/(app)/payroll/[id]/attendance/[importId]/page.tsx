@@ -14,7 +14,7 @@ import { BackLink, Empty, Loading, UUID } from '../../../../organization/ui';
 import { loadRun } from '../../../data';
 import { canSeePayroll, monthName, preparesPayroll, runHref, runTitle } from '../../../list';
 import { notLoadedText } from '../../../load';
-import { applyAttendance, choosePerson } from '../actions';
+import { applyAttendance, choosePerson, undoAttendance } from '../actions';
 import {
   applyConfirmText,
   attendanceUploadHref,
@@ -29,9 +29,10 @@ import {
   permissionText,
   placeText,
   reviewSections,
+  undoConfirmText,
 } from '../attendance';
 import { loadImport } from '../data';
-import { ApplyButton, ChoiceButton, PickPerson } from './person-forms';
+import { ApplyButton, ChoiceButton, PickPerson, UndoButton } from './person-forms';
 
 // An attendance import's review (owner, 19 October 2026: attendance runs in Zoho People today, "Import Zoho now, replace
 // it later"; on a draft run, upload → review → Apply): the files read (their months: another month's days left out, the
@@ -42,8 +43,10 @@ import { ApplyButton, ChoiceButton, PickPerson } from './person-forms';
 // they come from, the days Zoho marks as leave without leave in the system, each with Record leave, as "In the system,
 // stop it in Zoho"), every day of it under Days, and why a line isn't filled when it isn't (matched twice, not on this
 // payroll, not the user's to fill). Skipped: Undo. Apply fills the lines the user fills (the CEO the C-level people's,
-// owner, 19 October 2026); for HR, the C-level people of the files are one row without their figures. Read only once the
-// run isn't a draft. The API decides every choice and what Apply fills.
+// owner, 19 October 2026); for HR, the C-level people of the files are one row without their figures. What Apply filled
+// can't be typed over on the run (owner, 19 October 2026: "imported data shouldn't be editable"): Undo this import puts
+// the lines the user fills back to what they had before it, and its days go. Read only once the run isn't a draft. The
+// API decides every choice and what Apply and Undo change.
 
 export const metadata: Metadata = { title: 'Attendance Review · People System' };
 
@@ -265,6 +268,12 @@ async function Review({ params }: { params: PageProps<'/payroll/[id]/attendance/
                     </span>
                     <span className="block text-xs text-muted">{MATCH_TEXT[p.match]}</span>
                     {p.applied && <span className="badge bg-ok-soft text-ok">Applied {formatDateTime(p.applied.at)}</span>}
+                    {!p.applied && p.undone && (
+                      <span className="badge bg-line-soft text-muted">
+                        Undone {formatDateTime(p.undone.at)}
+                        {p.undone.by && ` by ${p.undone.by}`}
+                      </span>
+                    )}
                     {why && <p className="text-xs text-warn">{why}</p>}
                     {draft && p.match === 'confirmed' && <ChoiceButton action={choose} personKey={p.key} choice="undo" label="Undo the choice" srLabel={`for ${p.zohoName}`} />}
                   </div>
@@ -342,14 +351,28 @@ async function Review({ params }: { params: PageProps<'/payroll/[id]/attendance/
           </h2>
           <p className="text-sm text-muted">
             Fills each matched person&apos;s line on {title} that you fill: the worked hours (the hours counted), the no-show days (the absent days) and the
-            permission hours, replacing what was typed on them, marked &ldquo;from Zoho&rdquo; on the figures. Their days are kept, replacing the
-            month&apos;s days of an earlier import. The C-level people&apos;s lines are the CEO&apos;s to fill.
+            permission hours, replacing what was typed on them, marked &ldquo;from Zoho&rdquo; on the figures and read only there. Their days are
+            kept, replacing the month&apos;s days of an earlier import. The C-level people&apos;s lines are the CEO&apos;s to fill.
           </p>
           {view.canApply ? (
             <ApplyButton action={applyAttendance.bind(null, id, importId)} confirmText={applyConfirmText(view)} />
           ) : (
             <p className="text-sm text-muted">Nobody here is yours to fill yet: confirm or choose the people above, and put them on this payroll first.</p>
           )}
+        </section>
+      )}
+
+      {draft && (view.undoable ?? 0) > 0 && (
+        <section aria-labelledby="undo-heading" className="card space-y-3 p-6">
+          <h2 id="undo-heading" className="font-semibold">
+            Undo This Import
+          </h2>
+          <p className="text-sm text-muted">
+            The figures it filled can&apos;t be typed over on {title}. To change them, import the month again (its figures replace these), or undo it:
+            the {view.undoable === 1 ? 'line' : `${view.undoable} lines`} you fill that it filled go back to the worked hours, no-show days and
+            permission hours typed before it was applied (empty if none were), and the days it kept for them are removed.
+          </p>
+          <UndoButton action={undoAttendance.bind(null, id, importId)} confirmText={undoConfirmText(view)} />
         </section>
       )}
     </div>

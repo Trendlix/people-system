@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { hasRole } from '../lib/roles';
 import {
   activeSubItem,
-  COMING_SOON,
+  AUDIT_LOG_PATH,
   decidesForTeam,
   DETAILS_CHANGES_PATH,
   isActive,
   isUnder,
   LEAVE_PATH,
+  MY_ATTENDANCE,
   MY_REQUESTS,
   MY_TEAM,
   NAV,
@@ -55,7 +56,6 @@ describe('the sidebar', () => {
     for (const role of ['hr', 'finance', 'ceo'] as const) expect(hasRole(as(role), ...(payroll.roles ?? []))).toBe(true);
     // salary data: not for an Admin or a Super Admin as such, nor a manager or an employee
     expect(hasRole(as('employee', 'manager', 'admin', 'super_admin'), ...(payroll.roles ?? []))).toBe(false);
-    expect(COMING_SOON).not.toContain('Payroll');
   });
 
   it('has Payroll as a heading with Overview, Unsettled, Additions / Deductions, Recurring Deductions and Reports under it (owner, 17 and 18 October 2026)', () => {
@@ -120,8 +120,54 @@ describe('the sidebar', () => {
     const leave = requests.items![3];
     for (const role of ['hr', 'ceo'] as const) expect(hasRole(as(role), ...(leave.roles ?? []))).toBe(true);
     expect(hasRole(as('employee', 'manager', 'finance', 'admin', 'super_admin'), ...(leave.roles ?? []))).toBe(false);
-    // no longer coming next
-    expect(COMING_SOON).not.toContain('Leave');
+  });
+
+  describe('Attendance (owner, 19 October 2026: "the attendance is not active in the side menu")', () => {
+    const attendance = NAV.find((n) => n.label === 'Attendance')!;
+    const pagesFor = (...roles: Role[]) =>
+      navFor({ roles, employeeId: 'x' })
+        .find((n) => n.label === 'Attendance')
+        ?.items?.map((i) => [i.label, i.href]) ?? null;
+
+    it('is a heading after Requests, for HR, the CEO and Finance, linking to Daily Attendance', () => {
+      const labels = NAV.map((n) => n.label);
+      expect(labels.indexOf('Attendance')).toBe(labels.indexOf('Requests') + 1);
+      expect(attendance).toMatchObject({ href: '/attendance', section: '/attendance' });
+      for (const role of ['hr', 'ceo', 'finance'] as const) expect(hasRole(as(role), ...(attendance.roles ?? []))).toBe(true);
+      expect(hasRole(as('employee', 'manager', 'admin', 'super_admin'), ...(attendance.roles ?? []))).toBe(false);
+    });
+
+    it('has Daily Attendance, Import (HR’s: "where am i going to import the sheets?"), Import History and Summary for HR; the CEO and Finance all but Import', () => {
+      expect(pagesFor('hr')).toEqual([
+        ['Daily Attendance', '/attendance'],
+        ['Import', '/attendance/import'],
+        ['Import History', '/attendance/imports'],
+        ['Summary', '/attendance/summary'],
+      ]);
+      for (const role of ['ceo', 'finance'] as const) {
+        expect(pagesFor(role)).toEqual([
+          ['Daily Attendance', '/attendance'],
+          ['Import History', '/attendance/imports'],
+          ['Summary', '/attendance/summary'],
+        ]);
+      }
+      expect(pagesFor('admin')).toBeNull();
+      expect(pagesFor('super_admin')).toBeNull();
+      expect(navFor({ roles: ['hr'], employeeId: 'x' }).find((n) => n.label === 'Attendance')?.href).toBe('/attendance');
+    });
+
+    it('highlights the page the user is on: a person’s month under Daily Attendance, Import apart from Import History', () => {
+      const current = (pathname: string) => activeSubItem(attendance, pathname)?.label ?? null;
+      expect(current('/attendance')).toBe('Daily Attendance');
+      expect(current('/attendance/0b8f2c1e-1111-4222-8333-444455556666')).toBe('Daily Attendance');
+      expect(current('/attendance/import')).toBe('Import');
+      expect(current('/attendance/imports')).toBe('Import History');
+      expect(current('/attendance/summary')).toBe('Summary');
+      expect(current('/attendancex')).toBeNull();
+      expect(isActive(attendance, '/attendance/summary')).toBe(true);
+      // an import's review is on its payroll run, under Payroll
+      expect(isActive(attendance, '/payroll/0b8f/attendance/1c9e')).toBe(false);
+    });
   });
 
   it('highlights the Requests page the user is on, and Requests as the section it is in', () => {
@@ -179,12 +225,14 @@ describe('the sidebar of an employee or a manager', () => {
   const ME = '3f1c2a9e-5b7d-4e1f-9a2b-6c8d0e4f1a2b';
   const links = (user: Parameters<typeof navFor>[0]) => navFor(user).map((n) => [n.label, n.href]);
 
-  it('is Dashboard, My Profile and My Requests for an employee, in that order', () => {
+  it('is Dashboard, My Profile, My Requests and My Attendance for an employee, in that order (My Attendance since 19 October 2026: "the attendance is not active in the side menu")', () => {
     expect(links({ roles: ['employee'], employeeId: ME })).toEqual([
       ['Dashboard', '/'],
       ['My Profile', `/employees/${ME}`],
       ['My Requests', MY_REQUESTS],
+      ['My Attendance', MY_ATTENDANCE],
     ]);
+    expect(MY_ATTENDANCE).toBe('/my-attendance');
   });
 
   it('adds My Team for a direct manager', () => {
@@ -192,6 +240,7 @@ describe('the sidebar of an employee or a manager', () => {
       ['Dashboard', '/'],
       ['My Profile', `/employees/${ME}`],
       ['My Requests', MY_REQUESTS],
+      ['My Attendance', MY_ATTENDANCE],
       ['My Team', MY_TEAM],
     ]);
     expect(links({ roles: ['manager'], employeeId: ME }).map(([label]) => label)).toContain('My Team');
@@ -202,6 +251,7 @@ describe('the sidebar of an employee or a manager', () => {
       ['Dashboard', '/'],
       ['My Profile', `/employees/${ME}`],
       ['My Requests', MY_REQUESTS],
+      ['My Attendance', MY_ATTENDANCE],
       ['My Team', MY_TEAM],
     ]);
     // once for a lead who is a manager too
@@ -216,7 +266,7 @@ describe('the sidebar of an employee or a manager', () => {
     expect(navFor({ roles: ['hr'], employeeId: ME, leads: true }).map((n) => n.href)).not.toContain(MY_TEAM);
   });
 
-  it('leaves out My Profile without a profile of their own', () => {
+  it('leaves out My Profile and My Attendance without a profile of their own', () => {
     expect(links({ roles: ['employee'], employeeId: null })).toEqual([
       ['Dashboard', '/'],
       ['My Requests', MY_REQUESTS],
@@ -227,7 +277,7 @@ describe('the sidebar of an employee or a manager', () => {
   it('shows them no Organization, Employees or HR page', () => {
     for (const roles of [['employee'], ['manager'], ['employee', 'manager']] as Role[][]) {
       const hrefs = navFor({ roles, employeeId: ME }).map((n) => n.href);
-      for (const page of ['/organization/company', '/employees', '/contracts', '/payroll', '/raise-requests', '/requests/details-changes', '/reimbursements', '/leave', '/offers', '/approvals', '/templates', '/users']) {
+      for (const page of ['/organization/company', '/employees', '/contracts', '/payroll', '/attendance', '/raise-requests', '/requests/details-changes', '/reimbursements', '/leave', '/offers', '/approvals', '/templates', '/users']) {
         expect(hrefs).not.toContain(page);
       }
     }
@@ -240,8 +290,8 @@ describe('the sidebar of an employee or a manager', () => {
     expect(isUnder('/employees/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e', profile.section!)).toBe(false);
   });
 
-  it('keeps Attendance alone under Coming Next, now that leave is live (18 October 2026)', () => {
-    expect(COMING_SOON).toEqual(['Attendance']);
+  it('has nothing coming next any more: Attendance, its last item, is a heading of its own (19 October 2026)', () => {
+    expect(NAV.map((n) => n.label)).toContain('Attendance');
   });
 });
 
@@ -249,11 +299,25 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
   const labels = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).map((n) => n.label);
 
   it('is the sidebar, each item for the roles it names: Employees, Contracts and Offers under People', () => {
-    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Approvals']);
-    expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests']);
-    expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Approvals']);
+    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'Approvals']);
+    expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance']);
+    expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'Approvals', 'Audit Log']);
     expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Approvals', 'Users']);
-    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Approvals', 'Templates', 'Users']);
+    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Approvals', 'Templates', 'Users', 'Audit Log']);
+  });
+
+  it('shows the Audit Log to the Super Admin, beside Users, and the CEO only (owner, 19 October 2026: "an Audit Log page showing who changed what and when")', () => {
+    const audit = NAV.find((n) => n.label === 'Audit Log')!;
+    expect(audit).toMatchObject({ href: AUDIT_LOG_PATH, section: '/audit' });
+    expect(AUDIT_LOG_PATH).toBe('/audit');
+    const all = NAV.map((n) => n.label);
+    expect(all.indexOf('Audit Log')).toBe(all.indexOf('Users') + 1);
+    for (const role of ['super_admin', 'ceo'] as const) expect(hasRole(as(role), ...(audit.roles ?? []))).toBe(true);
+    for (const role of ['hr', 'finance', 'admin', 'manager', 'employee'] as const) expect(hasRole(as(role), ...(audit.roles ?? []))).toBe(false);
+    expect(labels('hr', 'admin')).not.toContain('Audit Log');
+    expect(isActive(audit, '/audit')).toBe(true);
+    expect(isActive(audit, '/audit/excel')).toBe(true);
+    expect(isActive(audit, '/users')).toBe(false);
   });
 
   describe('People', () => {
@@ -348,6 +412,7 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       const shown = navFor({ roles, employeeId: 'x' }).map((n) => n.href);
       expect(shown).not.toContain(MY_REQUESTS);
       expect(shown).not.toContain(MY_TEAM);
+      expect(shown).not.toContain(MY_ATTENDANCE);
     }
   });
 

@@ -1,4 +1,4 @@
-import type { AttendanceMonthResult } from '@trendlix/shared';
+import type { AttendanceDayView, AttendanceFigures, AttendanceFilter, AttendanceMonthResult, AttendanceSummaryGroup, AttendanceSummaryRow, PayrollStatus } from '@trendlix/shared';
 
 // Attendance imported from Zoho People on a draft payroll run (owner, 19 October 2026: attendance runs in Zoho People
 // today, "Import Zoho now, replace it later"), as the API sends it (apps/api/src/attendance/attendance-imports.service.ts).
@@ -34,6 +34,8 @@ export interface AttendancePersonView {
   /** Their month by the system's rules, once matched. */
   month: AttendanceMonthResult | null;
   applied: { at: string; by: string | null } | null;
+  /** Undone on their line since (Undo this import, owner, 19 October 2026); left out by an API from before it. */
+  undone?: { at: string; by: string | null } | null;
 }
 
 /** A file of the import: its name, the sheet read, its rows and people, the months its days are in. */
@@ -61,6 +63,11 @@ export interface AttendanceImportView {
   hidden: { count: number; label: string } | null;
   counts: { matched: number; toConfirm: number; notFound: number; skipped: number; notOnRun: number };
   canApply: boolean;
+  /**
+   * The run's lines filled from it that the user fills, still marked from it: what Undo this import puts back (owner, 19
+   * October 2026: "imported data shouldn't be editable"); left out by an API from before it.
+   */
+  undoable?: number;
 }
 
 /** GET /payroll/runs/:id/attendance-imports: the run's imports, the latest first. */
@@ -71,4 +78,100 @@ export interface AttendanceImportSummary {
   files: number;
   people: number;
   appliedAt: string | null;
+}
+
+// ---------- the Attendance section (owner, 19 October 2026: "the attendance is not active in the side menu") ----------
+// As GET /attendance, /attendance/me, /attendance/employees/:id, /attendance/summary and /attendance/imports send them
+// (apps/api/src/attendance/attendance.service.ts).
+
+/** Who a row of attendance is, and where they worked that month ("Department › Team"). */
+export interface AttendanceEmployee {
+  id: string;
+  employeeCode: string;
+  fullNameEn: string;
+  jobTitle: string | null;
+  department: string | null;
+  departmentId: string | null;
+  confidential: boolean;
+}
+
+/** A day kept, as the pages show it, with the import it came from. */
+export type AttendanceDay = AttendanceDayView & { importId: string | null };
+
+/** A person's month: their days and the month's figures. */
+export interface AttendancePersonMonth {
+  employee: AttendanceEmployee;
+  month: string;
+  hoursADay: number | null;
+  figures: AttendanceFigures;
+  averageHours: number | null;
+  permissionFrom: 'system' | 'zoho' | null;
+  days: AttendanceDay[];
+}
+
+/** An import the days shown came from (the run's status for those who see payroll only). */
+export interface AttendanceSource {
+  importId: string;
+  runId: string;
+  month: string;
+  runStatus: PayrollStatus | null;
+  createdAt: string;
+  createdBy: string | null;
+  appliedAt: string | null;
+  appliedBy: string | null;
+  files: string[];
+}
+
+/** The month's payroll run (for those who see payroll), the way to import its attendance. */
+export interface AttendanceRunRef {
+  id: string;
+  status: PayrollStatus;
+}
+
+/** GET /attendance: a month of everyone's attendance, or a manager's team's. */
+export interface AttendanceMonthView {
+  month: string;
+  scope: 'everyone' | 'team';
+  filter: { departmentId: string | null; employeeId: string | null; only: AttendanceFilter | null };
+  people: AttendancePersonMonth[];
+  totals: AttendanceFigures;
+  withoutDays: AttendanceEmployee[];
+  hidden: { count: number; label: string } | null;
+  sources: AttendanceSource[];
+  run: AttendanceRunRef | null;
+}
+
+/** GET /attendance/me and /attendance/employees/:id: one person's month. */
+export interface PersonAttendanceView {
+  month: string;
+  person: AttendancePersonMonth;
+  self: boolean;
+  sources: AttendanceSource[];
+  run: AttendanceRunRef | null;
+}
+
+/** GET /attendance/summary: a period by department and team. */
+export interface AttendanceSummaryView {
+  generatedAt: string;
+  period: { from: string; to: string };
+  months: string[];
+  groups: AttendanceSummaryGroup[];
+  totals: AttendanceSummaryRow;
+  hidden: { count: number; label: string } | null;
+}
+
+/** GET /attendance/imports: an import across the runs. */
+export interface AttendanceImportRow {
+  id: string;
+  runId: string;
+  month: string;
+  runStatus: PayrollStatus;
+  createdAt: string;
+  createdBy: string | null;
+  files: { name: string; rows: number; people: number }[];
+  people: number;
+  counts: { matched: number; toConfirm: number; notFound: number; skipped: number };
+  appliedAt: string | null;
+  appliedBy: string | null;
+  undoneAt: string | null;
 }

@@ -1,5 +1,5 @@
-// Attendance (not built yet: payroll's worked hours are a month's total HR types on the run). The rules it will follow,
-// kept here for the attendance module to find.
+// Attendance's rules: payroll's worked hours are a month's total, typed on the run or filled from Zoho People's
+// attendance (attendance-import.ts), whose days the Attendance section shows (attendance-days.ts).
 // The most hours counted a day (owner, 16 October 2026: "maximum working hours to be recorded per day is 9 hours between
 // checkin and check out"): a day counts the time between check-in and check-out, never more than the shift's hours to
 // work a day, however long the person stayed. The hours to work are the shift's (owner, 16 October 2026: "my company
@@ -7,7 +7,10 @@
 // window (payroll.ts shiftWorkHours); they are also the most counted a day, with no separate setting. Payroll warns when
 // a month's worked hours typed are more than the most attendance could count (payroll.ts mostCountedHours). Only the
 // time within the shift's window counts (owner, 17 October 2026: "i have a window the employee have to fill 9 hours
-// within the window"): hoursCountedForDay with shiftWindowOn.
+// within the window"): hoursCountedForDay with shiftWindowOn. The shift's grace minutes move the window's end (owner, 19
+// October 2026: "grace period means that if the employee checked in 10:15 he can check out till 7:15 and the 9 hours are
+// counted"): on the MORNING shift (9 hours within 9:00–19:00, 15 minutes' grace) the hours count until 19:15, still at
+// most 9; a fixed shift's end moves the same.
 
 import { shiftWorkHours, type ShiftTimes } from './payroll.js';
 
@@ -58,8 +61,19 @@ export interface ShiftWindow {
   end: number;
 }
 
-/** A shift's window on a day (YYYY-MM-DD, in Cairo): 09:00–19:00 on 18 October; 22:00–06:00 runs into the 19th. */
-export function shiftWindowOn(day: string, shift: Pick<ShiftTimes, 'startTime' | 'endTime'>, timeZone = 'Africa/Cairo'): ShiftWindow | null {
+/** A shift's times and its grace minutes (none: no grace), as its window on a day is worked out from them. */
+export type ShiftWindowTimes = Pick<ShiftTimes, 'startTime' | 'endTime'> & { graceMinutes?: number | null };
+
+/** The grace minutes a window's end moves by: the shift's, whole minutes from 0 (none, or anything else: 0). */
+export const graceOf = (shift: { graceMinutes?: number | null }): number =>
+  typeof shift.graceMinutes === 'number' && Number.isFinite(shift.graceMinutes) && shift.graceMinutes > 0 ? Math.round(shift.graceMinutes) : 0;
+
+/**
+ * A shift's window on a day (YYYY-MM-DD, in Cairo): 09:00–19:00 on 18 October; 22:00–06:00 runs into the 19th. Its end
+ * moves by the shift's grace minutes (owner, 19 October 2026: "if the employee checked in 10:15 he can check out till
+ * 7:15 and the 9 hours are counted"): the MORNING shift's, with 15 minutes' grace, 09:00–19:15.
+ */
+export function shiftWindowOn(day: string, shift: ShiftWindowTimes, timeZone = 'Africa/Cairo'): ShiftWindow | null {
   // a shift that starts and ends at the same time has no hours to tell, as shiftHours says too
   if (shift.startTime.slice(0, 5) === shift.endTime.slice(0, 5)) return null;
   const start = zonedMoment(day, shift.startTime, timeZone);
@@ -69,7 +83,9 @@ export function shiftWindowOn(day: string, shift: Pick<ShiftTimes, 'startTime' |
     const next = new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)) + 1));
     end = zonedMoment(next.toISOString().slice(0, 10), shift.endTime, timeZone);
   }
-  return end > start ? { start, end } : null;
+  if (!(end > start)) return null;
+  // the grace after the end, as minutes of the clock: the same moment whatever the summer time
+  return { start, end: end + graceOf(shift) * 60_000 };
 }
 
 /**

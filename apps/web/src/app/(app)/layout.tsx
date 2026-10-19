@@ -2,7 +2,7 @@ import type { Role } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
-import { COMING_SOON, decidesForTeam, DETAILS_CHANGES_PATH, LEAVE_PATH, MY_TEAM, navFor, RAISE_REQUESTS_PATH, REIMBURSEMENTS_PATH } from '@/components/nav';
+import { decidesForTeam, DETAILS_CHANGES_PATH, LEAVE_PATH, MY_TEAM, navFor, RAISE_REQUESTS_PATH, REIMBURSEMENTS_PATH } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { UserMenu } from '@/components/user-menu';
 import { ViewAsBanner } from '@/components/view-as-banner';
@@ -125,16 +125,8 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
               <MainNav />
             </Suspense>
           </nav>
-          <div className="mt-8 hidden md:block">
-            <p className="px-3 text-xs font-semibold tracking-wide text-sidebar-text/70 uppercase">Coming Next</p>
-            <ul className="mt-2">
-              {COMING_SOON.map((label) => (
-                <li key={label} className="px-3 py-1.5 text-sm text-sidebar-text/60">
-                  {label}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* no Coming Next any more: Attendance, its last item, is a heading of its own (owner, 19 October 2026: "the
+              attendance is not active in the side menu") */}
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex min-h-16 items-center justify-end border-b border-line bg-card px-4 sm:px-8">

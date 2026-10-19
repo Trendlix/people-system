@@ -1,6 +1,8 @@
 import {
   attendanceMonth,
-  markAfterTyping,
+  figuresBefore,
+  importedInputRefusal,
+  importedInputsChanged,
   matchPerson,
   nameKey,
   nameSimilarity,
@@ -180,12 +182,52 @@ describe('a person’s month', () => {
   });
 });
 
-describe('the line’s mark of the import', () => {
-  it('drops the inputs HR types afterwards, and goes once none is left', () => {
-    const mark = { source: 'zoho' as const, importId: 'i1', at: '2026-10-19T10:00:00.000Z', fields: ['workedHours' as const, 'noShowDays' as const, 'permissionHours' as const] };
-    expect(markAfterTyping(mark, ['workedHours', 'onHold'])).toEqual({ ...mark, fields: ['noShowDays', 'permissionHours'] });
-    expect(markAfterTyping(mark, ['workedHours', 'noShowDays', 'permissionHours'])).toBeNull();
-    expect(markAfterTyping(null, ['workedHours'])).toBeNull();
-    expect(markAfterTyping(mark, [])).toEqual(mark);
+describe('the line’s mark of the import (owner, 19 October 2026: "imported data shouldn\'t be editable")', () => {
+  const mark = { source: 'zoho' as const, importId: 'i1', at: '2026-10-19T10:00:00.000Z', fields: ['workedHours' as const, 'noShowDays' as const, 'permissionHours' as const] };
+
+  it('holds the inputs it filled: a change to one of them is refused, the others go ahead', () => {
+    expect(importedInputsChanged(mark, ['workedHours', 'expectedHours'])).toEqual(['workedHours']);
+    expect(importedInputsChanged(mark, ['expectedHours', 'leaveDays'])).toEqual([]);
+    expect(importedInputsChanged({ ...mark, fields: ['workedHours'] }, ['noShowDays'])).toEqual([]);
+    expect(importedInputsChanged(null, ['workedHours'])).toEqual([]);
+  });
+
+  it('says why, with the day it was applied in Cairo and how to change it', () => {
+    expect(importedInputRefusal('workedHours', 'Rania Girgis', mark.at)).toBe(
+      'Worked hours for Rania Girgis came from the Zoho import of 19/10/2026: import the month again to change them, or undo that import on its review.',
+    );
+    // 11:30 PM UTC is the next day in Cairo
+    expect(importedInputRefusal('noShowDays', 'Omar', '2026-10-19T22:30:00.000Z')).toContain('No-show days for Omar came from the Zoho import of 20/10/2026');
+  });
+
+  it('keeps what the inputs were before it, for Undo: HR’s figures, and for those an earlier import filled what they were before that one', () => {
+    expect(figuresBefore(mark.fields, { workedHours: 150, noShowDays: null }, null)).toEqual({ workedHours: 150, noShowDays: null, permissionHours: null });
+    const earlier = { ...mark, importId: 'i0', fields: ['workedHours' as const, 'noShowDays' as const], before: { workedHours: 120, noShowDays: 1 } };
+    expect(figuresBefore(mark.fields, { workedHours: 170, noShowDays: 0, permissionHours: 2 }, earlier)).toEqual({ workedHours: 120, noShowDays: 1, permissionHours: 2 });
+    // a mark from before Undo has nothing kept: those become empty
+    expect(figuresBefore(['workedHours'], { workedHours: 170 }, { ...mark, before: undefined })).toEqual({ workedHours: null });
+  });
+});
+
+describe('a person’s month with the shift’s grace (owner, 19 October 2026: "if the employee checked in 10:15 he can check out till 7:15 and the 9 hours are counted")', () => {
+  const day = (date: string, from: string, to: string): ImportedDay => ({ date, checkIn: at(date, from), checkOut: at(date, to), place: 'office', zohoStatus: 'Present', permissionHours: 0 });
+  const month = (graceMinutes: number | null) =>
+    attendanceMonth({
+      month: '2026-09',
+      days: [day('2026-09-01', '10:15', '19:15'), day('2026-09-02', '10:30', '19:30'), day('2026-09-03', '09:00', '18:00')],
+      shift: { startTime: '09:00', endTime: '19:00', hoursPerDay: 9, workingDays: [0, 1, 2, 3, 4], graceMinutes },
+      holidays: [],
+      leaveDays: [],
+      employedFrom: '2026-09-01',
+      employedTo: '2026-09-03',
+      systemPermissionHours: 0,
+      permissionHoursPerMonth: 4,
+    });
+
+  it('counts each day until 7:15 PM, at most 9 hours', () => {
+    expect(month(15).days.map((d) => d.hoursCounted)).toEqual([9, 8.75, 9]);
+    expect(month(15).hoursCounted).toBe(26.75);
+    // without grace, until 7:00 PM
+    expect(month(0).days.map((d) => d.hoursCounted)).toEqual([8.75, 8.5, 9]);
   });
 });

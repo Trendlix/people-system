@@ -1,6 +1,7 @@
 // Sidebar items. Kept out of the 'use client' file so server components can read them. Relative imports: the tests run
 // without the "@/" alias.
 import type { Role } from '@trendlix/shared';
+import { ATTENDANCE_PATH, ATTENDANCE_SECTIONS } from '../app/(app)/attendance/sections';
 import { PAYROLL_SECTIONS } from '../app/(app)/payroll/sections';
 import { hasRole, isSelfService } from '../lib/roles';
 
@@ -44,6 +45,9 @@ export const REIMBURSEMENTS_PATH = '/reimbursements';
 
 /** The employees' leave requests and the month's calendar of who is off (app/(app)/leave), under Requests. */
 export const LEAVE_PATH = '/leave';
+
+/** The Audit Log (app/(app)/audit): who changed what and when, for the Super Admin and the CEO. */
+export const AUDIT_LOG_PATH = '/audit';
 
 export const NAV: NavItem[] = [
   { href: '/', label: 'Home' },
@@ -100,6 +104,17 @@ export const NAV: NavItem[] = [
       { href: LEAVE_PATH, label: 'Leave Requests', section: LEAVE_PATH, roles: ['hr', 'ceo'] },
     ],
   },
+  // attendance (owner, 19 October 2026: "the attendance is not active in the side menu"; it was under Coming Next until
+  // then): a heading with its pages, for HR, the CEO and Finance (Finance read only); Import is HR's (owner, the same
+  // day: "where am i going to import the sheets?"). A manager sees their team's from My Team, an employee their own on
+  // My Attendance.
+  {
+    href: ATTENDANCE_PATH,
+    label: 'Attendance',
+    section: ATTENDANCE_PATH,
+    roles: ['hr', 'ceo', 'finance'],
+    items: ATTENDANCE_SECTIONS.map((s) => ({ href: s.href, label: s.label, section: s.href, ...(s.roles && { roles: [...s.roles] }) })),
+  },
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
   {
     href: '/templates',
@@ -114,6 +129,9 @@ export const NAV: NavItem[] = [
     ],
   },
   { href: '/users', label: 'Users', section: '/users', roles: ['admin'] },
+  // who changed what and when (owner, 19 October 2026: "an Audit Log page showing who changed what and when"): the
+  // Super Admin's and the CEO's, last: beside Users for the Super Admin, after Approvals for the CEO
+  { href: AUDIT_LOG_PATH, label: 'Audit Log', section: AUDIT_LOG_PATH, roles: ['super_admin', 'ceo'] },
 ];
 
 // ---------- the employee's own side (owner's decisions, 17 October 2026) ----------
@@ -123,6 +141,9 @@ export const MY_REQUESTS = '/my-requests';
 
 /** A direct manager's direct reports (app/(app)/my-team), and what waits for them to decide. */
 export const MY_TEAM = '/my-team';
+
+/** The employee's own attendance, month by month (app/(app)/my-attendance; owner, 19 October 2026). */
+export const MY_ATTENDANCE = '/my-attendance';
 
 /**
  * Who the sidebar is for: their roles, their own employee profile (none: null; an API from before it: left out), and
@@ -140,9 +161,10 @@ export const decidesForTeam = (user: Pick<NavUser, 'roles' | 'leads'>) => hasRol
 /**
  * The sidebar of someone who is only an employee and/or a direct manager (isSelfService), as the owner suggested it (17
  * October 2026: "my suggestion for the employee side bar is 1- Dashboard 2- My Profile 3- My Requests"): their
- * dashboard (the home page), their own profile (when they have one) and their requests; a manager also My Team, their
- * direct reports, so they can reach their profiles. Nothing else: not Organization (the owner: "dont show him the
- * organization tab"), nor the Employees list or any HR page.
+ * dashboard (the home page), their own profile (when they have one) and their requests; their own attendance with
+ * their profile (owner, 19 October 2026: "the attendance is not active in the side menu"); a manager also My Team, their
+ * direct reports, so they can reach their profiles (and their month's attendance). Nothing else: not Organization (the
+ * owner: "dont show him the organization tab"), nor the Employees list or any HR page.
  */
 function selfServiceNav(user: NavUser): NavItem[] {
   const profile = user.employeeId ? `/employees/${user.employeeId}` : null;
@@ -150,6 +172,7 @@ function selfServiceNav(user: NavUser): NavItem[] {
     { href: '/', label: 'Dashboard' },
     ...(profile ? [{ href: profile, label: 'My Profile', section: profile }] : []),
     { href: MY_REQUESTS, label: 'My Requests', section: MY_REQUESTS },
+    ...(profile ? [{ href: MY_ATTENDANCE, label: 'My Attendance', section: MY_ATTENDANCE }] : []),
     // a department's head or a team's lead too (19 October 2026), for what waits for them there
     ...(decidesForTeam(user) ? [{ href: MY_TEAM, label: 'My Team', section: MY_TEAM }] : []),
   ];
@@ -169,7 +192,8 @@ export function navFor(user: NavUser | null): NavItem[] {
     if (!item.items) return [item];
     const items = item.items.filter(sees);
     if (!items.length) return [];
-    // links to the first of its pages the user sees: Payroll's, Templates' and People's first is their own page; Requests has none
+    // links to the first of its pages the user sees: Payroll's, Attendance's, Templates' and People's first is their own
+    // page; Requests has none
     return [{ ...item, href: items[0].href, items }];
   });
 }
@@ -204,6 +228,3 @@ export function activeSubItem(item: Pick<NavItem, 'items'>, pathname: string): N
   }
   return best;
 }
-
-/** What is coming next, under the sidebar: Leave went live on 18 October 2026 (Requests → Leave Requests, My Requests). */
-export const COMING_SOON = ['Attendance'];

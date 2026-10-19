@@ -293,7 +293,7 @@ async function Attendance({ run, user }: { run: PayrollRunView; user: SessionUse
           <h2 className="text-lg font-semibold">Attendance from Zoho People</h2>
           <p className="text-sm text-muted">
             The month&apos;s check-ins and check-outs from Zoho People fill the worked hours, the no-show days and the permission hours, by the
-            system&apos;s rules.
+            system&apos;s rules. Those figures can&apos;t be typed over: import the month again, or undo the import on its review.
           </p>
         </div>
         {hr && run.status === 'draft' && (
