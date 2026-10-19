@@ -5,7 +5,7 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useState, useTransitio
 import { formatHours, type PayBasis, type PayrollLeaveDays } from '@trendlix/shared';
 import { GroupHeading } from '@/components/group-heading';
 import { titleCase } from '@/lib/format';
-import { groupByPlace, showsDepartment } from '@/lib/place-groups';
+import { groupByPlace, placeOrder, showsDepartment, type PlaceRef } from '@/lib/place-groups';
 import type { FormState } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { profileHref } from '../../employees/tab-list';
@@ -325,8 +325,11 @@ export function InputsGrid({
   noShowDayMultiplier,
   editable,
   save,
+  places = [],
 }: {
   rows: GridRow[];
+  /** The departments and teams in Organization's order, for the groups to follow it (owner, 19 October 2026). */
+  places?: PlaceRef[];
   /** The run's rule: what a no-show day costs, in days' pay. */
   noShowDayMultiplier: number;
   editable: boolean;
@@ -344,7 +347,7 @@ export function InputsGrid({
   const canEdit = editable && save !== null;
 
   const byLine = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
-  const groups = useMemo(() => groupByPlace(rows, (l) => l.department), [rows]);
+  const groups = useMemo(() => groupByPlace(rows, (l) => l.department, placeOrder(places)), [rows, places]);
   const changes = useMemo(() => linePatches(rows, edits), [rows, edits]);
   const unsaved = useMemo(() => (canEdit ? unsavedCount(rows, edits) : { cells: 0, rows: 0 }), [canEdit, rows, edits]);
   const errors = useMemo(() => {

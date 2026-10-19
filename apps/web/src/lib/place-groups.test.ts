@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupByPlace, peopleCount, placeOf, showsDepartment } from './place-groups';
+import { groupByPlace, peopleCount, placeOf, placeOrder, showsDepartment } from './place-groups';
 
 const row = (name: string, department: string | null) => ({ name, department });
 const group = (rows: ReturnType<typeof row>[]) => groupByPlace(rows, (r) => r.department);
@@ -85,5 +85,45 @@ describe('peopleCount', () => {
   it('counts people', () => {
     expect(peopleCount(1)).toBe('1 employee');
     expect(peopleCount(4)).toBe('4 employees');
+  });
+});
+
+describe('Organization’s order', () => {
+  // owner, 19 October 2026: "sort the employees as the department sorting in the organization", then "same to the payroll"
+  const places = [
+    { id: 'c', nameEn: 'C-Level Management', parentId: null },
+    { id: 'o', nameEn: 'Operation Department', parentId: null },
+    { id: 'hr', nameEn: 'Human Resources Team', parentId: 'o' },
+    { id: 'm', nameEn: 'Marketing Department', parentId: null },
+    { id: 'ac', nameEn: 'Account Management Team', parentId: 'm' },
+    { id: 'cc', nameEn: 'Content Creation Team', parentId: 'm' },
+    { id: 'fin', nameEn: 'Finance Team', parentId: 'o' },
+  ];
+  const rows = [
+    { name: 'a', place: 'Marketing Department › Content Creation Team' },
+    { name: 'b', place: 'Business Development Department' },
+    { name: 'c', place: 'Operation Department › Finance Team' },
+    { name: 'd', place: 'C-Level Management' },
+    { name: 'e', place: 'Marketing Department › Account Management Team' },
+    { name: 'f', place: null },
+    { name: 'g', place: 'Operation Department › Human Resources Team' },
+    { name: 'h', place: 'Marketing Department' },
+  ];
+
+  it('puts departments and teams in the order set, those it doesn’t know by name after them, no department last', () => {
+    const groups = groupByPlace(rows, (r) => r.place, placeOrder(places));
+    expect(groups.map((g) => g.department)).toEqual(['C-Level Management', 'Operation Department', 'Marketing Department', 'Business Development Department', null]);
+    expect(groups[1].teams.map((t) => t.team)).toEqual(['Human Resources Team', 'Finance Team']);
+    expect(groups[2].teams.map((t) => t.team)).toEqual([null, 'Account Management Team', 'Content Creation Team']);
+  });
+
+  it('falls back to the names without an order', () => {
+    expect(groupByPlace(rows, (r) => r.place).map((g) => g.department)).toEqual([
+      'Business Development Department',
+      'C-Level Management',
+      'Marketing Department',
+      'Operation Department',
+      null,
+    ]);
   });
 });

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { EMPTY_PAYROLL_INPUTS } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
+import { loadPlaces } from '@/lib/places';
 import { getCurrentUser } from '@/lib/session';
 import type { PayrollLineView, PayrollRunView, SessionUser } from '@/lib/types';
 import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
@@ -274,7 +275,7 @@ function Exclusions({ run }: { run: PayrollRunView }) {
 async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!canSeePayroll(user)) return <Empty>Only HR, Finance and the CEO can see payroll.</Empty>;
-  const run = await loadRun(params);
+  const [run, places] = await Promise.all([loadRun(params), loadPlaces()]);
   if (!run) return <Empty>Not available yet: the server does not have payroll yet.</Empty>;
 
   const title = runTitle(run.month);
@@ -322,6 +323,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
             noShowDayMultiplier={run.rules.noShowDayMultiplier}
             editable={can.editInputs}
             save={can.editInputs ? saveRunLines.bind(null, run.id) : null}
+            places={places}
           />
         )}
       </section>
@@ -346,6 +348,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
             lawRates={run.lawRates}
             payslips={paid}
             waive={can.waiveAttendance ? setAttendanceWaiver.bind(null, run.id) : null}
+            places={places}
           />
         </section>
       )}

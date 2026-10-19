@@ -1,5 +1,5 @@
 import { departmentName } from '../../../lib/departments';
-import { groupByPlace, type DepartmentGroup } from '../../../lib/place-groups';
+import { groupByPlace, type DepartmentGroup, type PlaceOrder } from '../../../lib/place-groups';
 import type { EmployeeSummary } from '../../../lib/types';
 
 // The Employees list grouped (owner's request, 16 October 2026: "group active and inactive, then department, then
@@ -18,13 +18,16 @@ export interface DirectorySection<T> {
 /** Where someone works now, as "Department › Team"; null without a current employment or a department. */
 const placeNow = (e: Pick<EmployeeSummary, 'employment'>) => (e.employment?.department ? departmentName(e.employment.department) : null);
 
-/** The sections that have someone in them, Active first, each grouped by department and team. */
-export function directorySections<T extends Pick<EmployeeSummary, 'employment'>>(rows: readonly T[]): DirectorySection<T>[] {
+/**
+ * The sections that have someone in them, Active first, each grouped by department and team, in Organization's order
+ * when `order` is given (owner, 19 October 2026: "sort the employees as the department sorting in the organization").
+ */
+export function directorySections<T extends Pick<EmployeeSummary, 'employment'>>(rows: readonly T[], order?: PlaceOrder): DirectorySection<T>[] {
   const sections = [
     { key: 'active' as const, label: 'Active', note: 'Employed now: on probation, active, trainees and interns, on notice or on leave', rows: rows.filter((e) => e.employment !== null) },
     { key: 'inactive' as const, label: 'Inactive', note: 'Not employed yet, or left', rows: rows.filter((e) => e.employment === null) },
   ];
   return sections
     .filter((s) => s.rows.length > 0)
-    .map(({ rows: people, ...s }) => ({ ...s, count: people.length, groups: groupByPlace(people, placeNow) }));
+    .map(({ rows: people, ...s }) => ({ ...s, count: people.length, groups: groupByPlace(people, placeNow, order) }));
 }

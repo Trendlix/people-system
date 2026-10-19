@@ -29,11 +29,44 @@ export function placeOf(department: string | null): { department: string | null;
 const byName = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
 
 /**
- * The rows grouped by where each works (`place`: its department, or "Department › Team"): departments by name, those
- * without one last; in each, the department's own people first, then its teams by name. The rows keep their order
- * within a group.
+ * The order an Admin set on Organization → Departments & Job Titles (Reorder), so lists follow it (owner, 19 October
+ * 2026: "sort the employees as the department sorting in the organization"): each department's place, and each team's
+ * place within its department, by the names places show (as GET /departments lists them: in that order, a team naming
+ * its department by `parentId`).
  */
-export function groupByPlace<T>(rows: readonly T[], place: (row: T) => string | null): DepartmentGroup<T>[] {
+export interface PlaceOrder {
+  departments: Map<string, number>;
+  teams: Map<string, Map<string, number>>;
+}
+
+/** A department or team as GET /departments lists it, enough to order places (and to pass to a client component). */
+export type PlaceRef = { id: string; nameEn: string; parentId: string | null };
+
+export function placeOrder(list: readonly PlaceRef[]): PlaceOrder {
+  const tops = list.filter((d) => d.parentId === null);
+  return {
+    departments: new Map(tops.map((d, i) => [d.nameEn, i])),
+    teams: new Map(tops.map((d) => [d.nameEn, new Map(list.filter((t) => t.parentId === d.id).map((t, i) => [t.nameEn, i]))])),
+  };
+}
+
+/** Those the order knows first, in its order; then the others by name. */
+function byOrder(order: ReadonlyMap<string, number> | undefined) {
+  return (a: string, b: string) => {
+    const [x, y] = [order?.get(a), order?.get(b)];
+    if (x !== undefined && y !== undefined) return x - y;
+    if (x !== undefined) return -1;
+    if (y !== undefined) return 1;
+    return byName(a, b);
+  };
+}
+
+/**
+ * The rows grouped by where each works (`place`: its department, or "Department › Team"): departments in Organization's
+ * order when `order` is given (else by name), those without one last; in each, the department's own people first, then
+ * its teams in the same way. The rows keep their order within a group.
+ */
+export function groupByPlace<T>(rows: readonly T[], place: (row: T) => string | null, order?: PlaceOrder): DepartmentGroup<T>[] {
   const departments = new Map<string | null, Map<string | null, T[]>>();
   for (const row of rows) {
     const { department, team } = placeOf(place(row));
@@ -41,11 +74,13 @@ export function groupByPlace<T>(rows: readonly T[], place: (row: T) => string | 
     departments.set(department, teams);
     teams.set(team, [...(teams.get(team) ?? []), row]);
   }
+  const departmentOrder = byOrder(order?.departments);
   return [...departments.entries()]
-    .sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : byName(a, b)))
+    .sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : departmentOrder(a, b)))
     .map(([department, teams]) => {
+      const teamOrder = byOrder(department === null ? undefined : order?.teams.get(department));
       const sorted = [...teams.entries()]
-        .sort(([a], [b]) => (a === null ? -1 : b === null ? 1 : byName(a, b)))
+        .sort(([a], [b]) => (a === null ? -1 : b === null ? 1 : teamOrder(a, b)))
         .map(([team, list]) => ({ team, rows: list }));
       return { department, teams: sorted, count: sorted.reduce((n, t) => n + t.rows.length, 0) };
     });

@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Fragment, Suspense } from 'react';
 import { GroupHeading } from '@/components/group-heading';
-import { groupByPlace, showsDepartment } from '@/lib/place-groups';
+import { groupByPlace, placeOrder, showsDepartment, type PlaceOrder } from '@/lib/place-groups';
+import { loadPlaces } from '@/lib/places';
 import { getCurrentUser } from '@/lib/session';
 import type { RecurringDeductionView } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
@@ -69,8 +70,9 @@ function Consent({ row, opens }: { row: RecurringDeductionView; opens: boolean }
   );
 }
 
-function RecurringTable({ rows, hr, opens, today }: { rows: RecurringDeductionView[]; hr: boolean; opens: boolean; today: string }) {
-  const groups = groupByPlace(rows, placeOfRecurring);
+function RecurringTable({ rows, hr, opens, today, order }: { rows: RecurringDeductionView[]; hr: boolean; opens: boolean; today: string; order: PlaceOrder }) {
+  // in Organization's order of departments and teams (owner, 19 October 2026)
+  const groups = groupByPlace(rows, placeOfRecurring, order);
   const span = hr ? 7 : 6;
   const heading = (list: RecurringDeductionView[]) => ({ count: peopleOf(list), note: `${list.length} ${list.length === 1 ? 'deduction' : 'deductions'}` });
   return (
@@ -167,11 +169,13 @@ async function RecurringDeductions() {
   const opens = opensConsent(user);
   const today = todayInCairo();
   const thisMonth = monthOf(today);
-  const [loaded, choices] = await Promise.all([
+  const [loaded, choices, places] = await Promise.all([
     loadJson<RecurringDeductionView[]>('/payroll/recurring-deductions'),
     // the people one can be added for: those employed this month
     hr ? loadJson<AdjustmentChoices>(`/payroll/adjustments/choices?month=${thisMonth}`) : null,
+    loadPlaces(),
   ]);
+  const order = placeOrder(places);
   if (loaded.kind !== 'ok') return <Empty>{notLoadedText(loaded, 'recurring deductions')}</Empty>;
   const { current, ended } = splitByStatus(loaded.value);
   const people = choices?.kind === 'ok' ? choices.value.people : [];
@@ -217,7 +221,7 @@ async function RecurringDeductions() {
               </div>
             </details>
           )}
-          {current.length ? <RecurringTable rows={current} hr={hr} opens={opens} today={today} /> : <p className={quiet}>No recurring deductions running or to start.</p>}
+          {current.length ? <RecurringTable rows={current} hr={hr} opens={opens} today={today} order={order} /> : <p className={quiet}>No recurring deductions running or to start.</p>}
         </div>
       </section>
 
@@ -226,7 +230,7 @@ async function RecurringDeductions() {
           <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Ended ({ended.length})</summary>
           <div className="border-t border-line">
             {/* nothing to change on one ended */}
-            <RecurringTable rows={ended} hr={false} opens={opens} today={today} />
+            <RecurringTable rows={ended} hr={false} opens={opens} today={today} order={order} />
           </div>
         </details>
       )}

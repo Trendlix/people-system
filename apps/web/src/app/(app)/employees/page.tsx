@@ -7,7 +7,7 @@ import { Select } from '@/components/select';
 import { apiGet } from '@/lib/api';
 import { withTeams } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
-import { showsDepartment } from '@/lib/place-groups';
+import { placeOrder, showsDepartment } from '@/lib/place-groups';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary, Grade } from '@/lib/types';
 import { StaffOnly } from '../staff-only';
@@ -135,7 +135,8 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
       (!f.gradeId || e.employment?.grade?.id === f.gradeId),
   );
   const rows = f.standing ? base.filter((e) => e.standing === f.standing) : base;
-  const sections = directorySections(rows);
+  // departments and teams in the order set on Organization (owner, 19 October 2026)
+  const sections = directorySections(rows, placeOrder(departments));
   const counts = new Map<Standing, number>();
   for (const e of base) counts.set(e.standing, (counts.get(e.standing) ?? 0) + 1);
   const standings = STANDINGS.filter((s) => counts.has(s) || s === f.standing);

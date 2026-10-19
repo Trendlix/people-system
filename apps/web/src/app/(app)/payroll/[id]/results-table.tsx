@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Fragment, useOptimistic, useState, useTransition } from 'react';
 import type { LawRates, PayrollRules } from '@trendlix/shared';
 import { GroupHeading } from '@/components/group-heading';
-import { groupByPlace, showsDepartment } from '@/lib/place-groups';
+import { groupByPlace, placeOrder, showsDepartment, type PlaceRef } from '@/lib/place-groups';
 import type { FormState, PayrollLineView, PayrollTotals } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { contractHref } from '../../employees/tab-list';
@@ -125,8 +125,11 @@ export function ResultsTable({
   lawRates,
   payslips,
   waive = null,
+  places = [],
 }: {
   lines: PayrollLineView[];
+  /** The departments and teams in Organization's order, for the groups to follow it (owner, 19 October 2026). */
+  places?: PlaceRef[];
   totals: PayrollTotals;
   rules: PayrollRules;
   /** The run's copy of the rates set by law (left out by an API from before them). */
@@ -144,8 +147,8 @@ export function ResultsTable({
       return next;
     });
   const allOpen = lines.length > 0 && lines.every((l) => open.has(l.id));
-  // by department, then by team (owner's request, 16 October 2026)
-  const groups = groupByPlace(lines, (l) => l.department);
+  // by department, then by team (owner's request, 16 October 2026), in Organization's order (19 October 2026)
+  const groups = groupByPlace(lines, (l) => l.department, placeOrder(places));
   const span = COLUMNS.length + (payslips ? 2 : 1);
 
   return (
