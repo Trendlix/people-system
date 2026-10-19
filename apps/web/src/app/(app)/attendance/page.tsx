@@ -39,7 +39,10 @@ import { FigureTiles, MonthNav, SourcesNote } from './ui';
 // without any "No attendance imported for … yet" with the way to import it (HR: the Import page; the CEO and Finance:
 // the month's run, or Payroll). The month's totals of those listed on top. A C-level person (owner, 19 October 2026:
 // "make C level Employees details not visible to HR") is one hidden row for all but the CEO and the Super Admin. HR,
-// the CEO and Finance (Finance read only: nothing here changes anything); the API checks it again.
+// the CEO and Finance (Finance read only: nothing here changes anything); the API checks it again. Checking in on the
+// system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location check, or a
+// device) to replace Zoho"): the days of those who check in come from their check-ins (a working day gone by without
+// one absent), with the flagged ones for HR to see ("Only with flagged check-ins").
 
 export const metadata: Metadata = { title: 'Daily Attendance · People System' };
 
@@ -150,7 +153,10 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
       ) : (
         <>
           <Filters month={month} places={places} people={all.value.people} chosen={chosen} />
-          <FigureTiles label={`Everyone listed in ${monthName(month)}`} tiles={figureTiles(view.totals, { averageHours: averageHoursADay(view.totals) })} />
+          <FigureTiles
+            label={`Everyone listed in ${monthName(month)}`}
+            tiles={figureTiles(view.totals, { averageHours: averageHoursADay(view.totals), checksIn: view.people.some((p) => p.checksIn) })}
+          />
           {view.people.length === 0 && !view.hidden ? (
             <div className="card px-6 py-8 text-center text-sm text-muted">Nobody matches these filters in {monthName(month)}.</div>
           ) : (
@@ -166,7 +172,8 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
             {missing.length} {missing.length === 1 ? 'person' : 'people'} employed in {monthName(month)} with no attendance kept
           </summary>
           <p className="mt-2 text-muted">
-            Not in the imported files, or not matched to their profile: check the import&apos;s review.
+            They haven&apos;t checked in on the system, and aren&apos;t in Zoho People&apos;s imported files or weren&apos;t matched to their
+            profile: check the import&apos;s review.
           </p>
           <ul className="mt-2 columns-1 gap-6 sm:columns-2">
             {missing.map((e) => (
@@ -188,8 +195,9 @@ export default function DailyAttendancePage({ searchParams }: PageProps<'/attend
         <div>
           <h1 className="text-2xl font-semibold">Daily Attendance</h1>
           <p className="mt-1 max-w-3xl text-muted">
-            Everyone&apos;s days as imported from Zoho People, counted by the system&apos;s rules: the hours within each person&apos;s shift, at most its
-            hours a day; a working day without a check-in is absent; leave from the Leave module. Open a row for its days.
+            Everyone&apos;s days, from their check-ins on the system and Zoho People&apos;s imports, counted by the system&apos;s rules: the hours
+            within each person&apos;s shift, at most its hours a day; a working day without a check-in is absent; leave from the Leave module. A
+            check-in outside the work arrangement&apos;s rule is flagged. Open a row for its days.
           </p>
         </div>
         <Suspense fallback={<Loading />}>

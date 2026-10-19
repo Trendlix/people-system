@@ -1,4 +1,16 @@
-import type { AttendanceDayView, AttendanceFigures, AttendanceFilter, AttendanceMonthResult, AttendanceSummaryGroup, AttendanceSummaryRow, PayrollStatus } from '@trendlix/shared';
+import type {
+  AttendanceDayView,
+  AttendanceFigures,
+  AttendanceFilter,
+  AttendanceMonthResult,
+  AttendanceSummaryGroup,
+  AttendanceSummaryRow,
+  CheckInFlag,
+  CheckInPlace,
+  ExpectedPlace,
+  PayrollStatus,
+  PunchKind,
+} from '@trendlix/shared';
 
 // Attendance imported from Zoho People on a draft payroll run (owner, 19 October 2026: attendance runs in Zoho People
 // today, "Import Zoho now, replace it later"), as the API sends it (apps/api/src/attendance/attendance-imports.service.ts).
@@ -36,6 +48,12 @@ export interface AttendancePersonView {
   applied: { at: string; by: string | null } | null;
   /** Undone on their line since (Undo this import, owner, 19 October 2026); left out by an API from before it. */
   undone?: { at: string; by: string | null } | null;
+  /**
+   * They check in on the system this month (owner, 19 October 2026: "Check-in through the system (phone or web with the
+   * office location check, or a device) to replace Zoho"): applying keeps their Zoho days, counted before their first
+   * check-in, and their line is filled from their attendance days instead of Zoho's month. Left out by an API from before it.
+   */
+  checksIn?: boolean;
 }
 
 /** A file of the import: its name, the sheet read, its rows and people, the months its days are in. */
@@ -106,6 +124,12 @@ export interface AttendancePersonMonth {
   figures: AttendanceFigures;
   averageHours: number | null;
   permissionFrom: 'system' | 'zoho' | null;
+  /**
+   * They checked in on the system that month (owner, 19 October 2026: "Check-in through the system … to replace Zoho"):
+   * Zoho's days count only before their first check-in, and a working day gone by without one is absent. Left out by an
+   * API from before it.
+   */
+  checksIn?: boolean;
   days: AttendanceDay[];
 }
 
@@ -174,4 +198,53 @@ export interface AttendanceImportRow {
   appliedAt: string | null;
   appliedBy: string | null;
   undoneAt: string | null;
+}
+
+// ---------- checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the
+// office location check, or a device) to replace Zoho") ----------
+// As GET /me/attendance/today and POST /me/attendance/punches send them (apps/api/src/attendance/check-in.service.ts).
+// Never a point: the API reads the browser's location to tell the office from remote and drops it.
+
+/** A press of Check in or Check out as the day shows it: the server's moment, where it was, how accurate, its flags. */
+export interface PunchView {
+  kind: PunchKind;
+  at: string;
+  place: CheckInPlace;
+  accuracyMetres: number | null;
+  flags: CheckInFlag[];
+}
+
+/** The day as today's punches make it: the first check-in, the last check-out after it, the place, flags and hours. */
+export interface PunchedDayView {
+  checkIn: string | null;
+  checkOut: string | null;
+  place: CheckInPlace | null;
+  flags: CheckInFlag[];
+  hoursCounted: number;
+}
+
+/** GET /me/attendance/today: whether they check in, today's punches and day, and what the next press is. */
+export interface CheckInTodayView {
+  /** Null: they check in on the system; else why not, in a sentence. */
+  refusal: string | null;
+  /** The working day the next punch counts on (YYYY-MM-DD, Cairo). */
+  date: string;
+  /** The server's time now (ISO): the time a punch takes. */
+  now: string;
+  next: PunchKind;
+  punches: PunchView[];
+  day: PunchedDayView | null;
+  /** Where their work arrangement expects them today, and in words. */
+  expected: ExpectedPlace | null;
+  expectedText: string | null;
+  /** Whether HR set the office's point (Payroll Setup → Your Rules): without it every check-in is location unknown. */
+  officeLocationSet: boolean;
+  shift: { startTime: string; endTime: string; hoursPerDay: number | null; graceMinutes: number } | null;
+}
+
+/** POST /me/attendance/punches: the day after the punch, and what to tell them. */
+export interface PunchResultView extends CheckInTodayView {
+  messages: string[];
+  /** False when it was the same press twice within a minute (kept once). */
+  kept: boolean;
 }

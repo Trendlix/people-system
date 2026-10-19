@@ -23,6 +23,8 @@ import { loadWaitingClaims } from '../reimbursements/data';
 import { claimsLabel } from '../reimbursements/list';
 import { WaitingClaimsTable } from '../reimbursements/ui';
 import { TEAM_ATTENDANCE_PATH } from '../attendance/attendance';
+import { loadWaitingCorrections } from '../attendance/corrections/data';
+import { CorrectionsTable } from '../attendance/corrections/ui';
 import { loadTeam } from './data';
 import { askedByText, latestRaise, probationOf } from './team';
 
@@ -44,7 +46,8 @@ import { askedByText, latestRaise, probationOf } from './team';
 // (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day", asked "In the system, like leave") wait
 // in Leave to Approve with the leave, decided the same way, and show on the team's calendar as hours. Team Attendance
 // (owner, 19 October 2026: "the attendance is not active in the side menu"): the team's month of attendance from Zoho
-// People's imports, on a page of its own (my-team/attendance).
+// People's imports, on a page of its own (my-team/attendance). Corrections to Approve (owner, 19 October 2026: "Attendance
+// corrections with approval ("I forgot to check out")"): the days the team asked to correct, waiting for the manager.
 
 export const metadata: Metadata = { title: 'My Team · People System' };
 
@@ -204,6 +207,36 @@ async function LeaveToApprove() {
   );
 }
 
+/**
+ * The attendance corrections waiting for the manager (owner, 19 October 2026: "Attendance corrections with approval ("I
+ * forgot to check out")"; GET /attendance/corrections?status=waiting): who, the day, what was wrong and the right times,
+ * each with Decide. Nothing from an API from before them.
+ */
+async function CorrectionsToApprove() {
+  const corrections = await loadWaitingCorrections();
+  if (corrections.kind === 'unavailable' || corrections.kind === 'forbidden') return null;
+  return (
+    <section aria-labelledby="corrections-to-approve" className="space-y-3">
+      <div>
+        <h2 id="corrections-to-approve" className="text-lg font-semibold">
+          Corrections to Approve
+        </h2>
+        <p className="text-sm text-muted">
+          Days your direct reports asked to correct (a check-in or check-out forgotten, a time wrong, work away from the office), and those of people
+          without a direct manager in a team you lead or a department you head. Approve one, or reject it with a comment; HR decides it after you.
+        </p>
+      </div>
+      {corrections.kind === 'failed' ? (
+        <div className="card px-6 py-6 text-sm text-muted">The corrections waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : corrections.value.length === 0 ? (
+        <div className="card px-6 py-6 text-sm text-muted">No corrections are waiting for you.</div>
+      ) : (
+        <CorrectionsTable corrections={corrections.value} who note="waiting for you" />
+      )}
+    </section>
+  );
+}
+
 /** The team's month of who is off (GET /leave/calendar: a manager's own team), with the official holidays. */
 async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-team'>['searchParams'] }) {
   const query = await searchParams;
@@ -250,8 +283,8 @@ function TeamAttendance() {
           Team Attendance
         </h2>
         <p className="text-sm text-muted">
-          Your team&apos;s check-ins and check-outs month by month, as imported from Zoho People: the hours counted, absent days, short hours,
-          permission and leave, each day of them.
+          Your team&apos;s check-ins and check-outs month by month, on the system and from Zoho People&apos;s imports: the hours counted, absent
+          days, short hours, permission, leave and the flagged check-ins, each day of them.
         </p>
       </div>
       <Link href={TEAM_ATTENDANCE_PATH} className="btn btn-secondary no-underline">
@@ -266,12 +299,15 @@ export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
     <div className="max-w-5xl">
       <h1 className="text-2xl font-semibold">My Team</h1>
       <p className="mt-1 text-muted">
-        The people who report to you now, their leave and permission requests and reimbursement claims waiting for you, their attendance, and who
-        is off this month. Open a profile to see their details and their raise requests.
+        The people who report to you now, their leave and permission requests, attendance corrections and reimbursement claims waiting for you,
+        their attendance, and who is off this month. Open a profile to see their details and their raise requests.
       </p>
       <div className="mt-6 space-y-8">
         <Suspense fallback={null}>
           <LeaveToApprove />
+        </Suspense>
+        <Suspense fallback={null}>
+          <CorrectionsToApprove />
         </Suspense>
         <Suspense fallback={null}>
           <ToApprove />

@@ -16,16 +16,19 @@ import { myRequests, requestLabel } from '../my-requests/requests';
 import { loadTeam } from '../my-team/data';
 import { askedByText, probationOf, raiseNews } from '../my-team/team';
 import { loadOwnProfile } from '../own-profile';
-import { loadLeaveTypes, loadMyBalances, loadMyLeave, loadWaitingLeave, loadWaitingPermissions } from '../leave/data';
+import { loadLeaveTypes, loadMyBalances, loadMyLeave, loadMyPermissions, loadWaitingLeave, loadWaitingPermissions } from '../leave/data';
 import { daysText, leaveHref, leaveWhenText, MY_LEAVE_HREF, NEW_LEAVE_PATH, periodText, requestsLabel, upcomingLeave } from '../leave/list';
-import { isPermission, mergeRequests, permissionWhenText, requestHref } from '../leave/permissions';
+import { isPermission, mergeRequests, permissionDayText, permissionHoursLine, permissionHref, permissionInDaysText, permissionWhenText, requestHref, upcomingPermissions } from '../leave/permissions';
 import { LeaveBalanceFigures, LeaveStatusBadge } from '../leave/ui';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
 import { effectiveFromText, newRaiseRequestHref, progressText } from '../raise-requests/list';
 import { EffectiveFrom, FoldedRequestLog, RaiseRequestStatusBadge, RequestReason, Suggestion } from '../raise-requests/ui';
 import { loadMyClaims, loadWaitingClaims } from '../reimbursements/data';
+import { correctionDayText, correctionHref, correctionKindName } from '../attendance/corrections/corrections';
+import { loadMyCorrections } from '../attendance/corrections/data';
 import { claimHref, claimsLabel, NEW_CLAIM_PATH, progressText as claimProgressText } from '../reimbursements/list';
 import { ClaimAmount, ClaimStatusBadge } from '../reimbursements/ui';
+import { TodayCheckIn } from '../my-attendance/check-in-card';
 import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toDoItems, upcomingHolidays, workingDaysText } from './dashboard';
 
 // The employee's dashboard: the home page (/) of someone who is only an employee and/or a direct manager (owner, 17
@@ -39,7 +42,11 @@ import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toD
 // claims on My Requests with New reimbursement, and for a manager with claims waiting, Reimbursements to Approve. Leave
 // (owner, 18 October 2026: "can you apply the leaves according to the law?"): My Leave, their annual balance and their
 // leave coming up, with New leave; for a manager with requests waiting, Leave to Approve, with the permission requests
-// waiting too (owner, 19 October 2026: permission "In the system, like leave").
+// waiting too (owner, 19 October 2026: permission "In the system, like leave"); My Leave lists their approved permission
+// coming up too (owner, 19 October 2026: "upcoming permissions on the employee dashboard"). Today, first (owner, 19
+// October 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace
+// Zoho"): Check in / Check out with today's punches, for someone with a current employment (my-attendance/
+// check-in-card.tsx).
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -223,11 +230,13 @@ async function UpcomingHolidays({ today }: { today: string }) {
  * to the raise requests tab", 17 October 2026) and Ask to change my details (the change request page).
  */
 async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
-  const [raises, claims] = await Promise.all([loadEmployeeRaiseRequests(p.id), loadMyClaims()]);
+  const [raises, claims, corrections] = await Promise.all([loadEmployeeRaiseRequests(p.id), loadMyClaims(), loadMyCorrections()]);
   const own = raises.kind === 'ok' ? raises.value : null;
   const open = myRequests({ changes: p.changeRequests ?? [], raises: own?.requests ?? [] }).filter((r) => r.open);
   // their reimbursement claims still being decided (18 October 2026); none from an API from before them
   const openClaims = claims.kind === 'ok' ? claims.value.filter((c) => isOpenReimbursement(c.status)) : [];
+  // their attendance corrections being decided (19 October 2026: "Attendance corrections with approval")
+  const openCorrections = corrections.kind === 'ok' ? corrections.value.filter((c) => c.status === 'with_manager' || c.status === 'with_hr') : [];
   return (
     <Card
       title="My Requests"
@@ -237,10 +246,25 @@ async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
         </Link>
       }
     >
-      {open.length === 0 && openClaims.length === 0 ? (
+      {open.length === 0 && openClaims.length === 0 && openCorrections.length === 0 ? (
         <Quiet>No open requests.</Quiet>
       ) : (
         <ul className="divide-y divide-line-soft">
+          {openCorrections.map((c) => (
+            <li key={`correction:${c.id}`} className="space-y-1 py-2.5 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="min-w-0">
+                  <Link href={correctionHref(c.id)} className="font-medium">
+                    Attendance correction
+                  </Link>
+                  <p className="text-xs text-muted tabular-nums">
+                    {correctionDayText(c)} · {correctionKindName(c.correctionKind)}
+                  </p>
+                </div>
+                <LeaveStatusBadge status={c.status} confidential={c.confidential} />
+              </div>
+            </li>
+          ))}
           {openClaims.map((c) => (
             <li key={`claim:${c.id}`} className="space-y-1 py-2.5 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -356,13 +380,16 @@ async function ToApproveCard() {
 /**
  * Their annual balance of this year (the days available, large, and the entitlement, taken, booked and waiting) and their
  * leave coming up or under way (approved, or being decided), each opening its page; New leave. Nothing from an API from
- * before leave.
+ * before leave. Their approved permission coming up beside it (owner, 19 October 2026: "upcoming permissions on the
+ * employee dashboard"): the day, the hours and the times, each opening its page; none from an API from before
+ * permission.
  */
 async function MyLeaveCard({ profile: p, today }: { profile: EmployeeProfile; today: string }) {
   const year = Number(today.slice(0, 4));
-  const [balances, requests, types] = await Promise.all([loadMyBalances(year), loadMyLeave(), loadLeaveTypes()]);
+  const [balances, requests, types, permissions] = await Promise.all([loadMyBalances(year), loadMyLeave(), loadLeaveTypes(), loadMyPermissions()]);
   if (balances.kind === 'unavailable' && requests.kind === 'unavailable') return null;
   const upcoming = requests.kind === 'ok' ? upcomingLeave(requests.value, today) : [];
+  const upcomingHours = permissions.kind === 'ok' ? upcomingPermissions(permissions.value, today) : [];
   return (
     <Card
       title="My Leave"
@@ -395,6 +422,29 @@ async function MyLeaveCard({ profile: p, today }: { profile: EmployeeProfile; to
               <div className="text-right">
                 <LeaveStatusBadge status={r.status} confidential={r.confidential} />
                 <p className="mt-1 text-xs text-muted">{leaveWhenText(r, today)}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <h3 className="mt-5 text-sm font-semibold">Permission Coming Up</h3>
+      {permissions.kind === 'failed' ? (
+        <p className="mt-1 text-sm text-muted">Your permission couldn&apos;t be loaded.</p>
+      ) : upcomingHours.length === 0 ? (
+        <p className="mt-1 text-sm text-muted">No approved permission coming up.</p>
+      ) : (
+        <ul className="mt-1 divide-y divide-line-soft">
+          {upcomingHours.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 py-2.5 text-sm">
+              <div className="min-w-0">
+                <Link href={permissionHref(r.id)} className="font-medium tabular-nums">
+                  {permissionDayText(r)}
+                </Link>
+                <p className="text-xs text-muted tabular-nums">{permissionHoursLine(r)}</p>
+              </div>
+              <div className="text-right">
+                <LeaveStatusBadge status={r.status} confidential={r.confidential} />
+                <p className="mt-1 text-xs text-muted">{permissionInDaysText(r, today)}</p>
               </div>
             </li>
           ))}
@@ -587,10 +637,16 @@ export async function Dashboard({ user }: { user: Session }) {
     <div className="max-w-6xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">{profile ? `Welcome, ${greetingName(profile)}` : 'Welcome'}</h1>
-        <p className="mt-1 text-muted">Your job, the official holidays coming up, your leave, your requests and what is left to do.</p>
+        <p className="mt-1 text-muted">Checking in today, your job, the official holidays coming up, your leave, your requests and what is left to do.</p>
       </div>
       {!profile && <NoProfile user={user} />}
       <div className="grid items-start gap-4 lg:grid-cols-2">
+        {/* checking in on the system (19 October 2026): a current employment's, first */}
+        {profile?.employment && (
+          <Suspense fallback={<CardLoading title="Today" />}>
+            <TodayCheckIn />
+          </Suspense>
+        )}
         {profile && <YourJob profile={profile} user={user} today={today} />}
         <Suspense fallback={<CardLoading title="Upcoming Holidays" />}>
           <UpcomingHolidays today={today} />

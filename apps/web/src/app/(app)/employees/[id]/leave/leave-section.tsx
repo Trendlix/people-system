@@ -6,6 +6,7 @@ import { balanceYear, seesLeaveBalance, signedDays } from '../../../leave/balanc
 import { loadEmployeeLeave, loadLeaveTypes } from '../../../leave/data';
 import { AdjustBalanceForm } from '../../../leave/leave-forms';
 import { recordLeaveHref, recordsLeave, requestsLabel } from '../../../leave/list';
+import { recordPermissionHref } from '../../../leave/permissions';
 import { LeaveBalanceFigures, MyLeaveTable } from '../../../leave/ui';
 import { noLeaveText } from '../../employment-law';
 import { ProfileSection, profileHref, todayInCairo } from '../../ui';
@@ -14,9 +15,10 @@ import { ProfileSection, profileHref, todayInCairo } from '../../ui';
 // for HR, the CEO, Finance, the employee and their direct manager (the API decides; anyone else sees nothing here): the
 // annual balance of a year (?leaveYear=, this year to start with) and what is left of the other types, HR's adjustments
 // with their reasons, and the requests of the year. HR adjusts the balance (more days or fewer, with a reason) and
-// records leave on the employee's behalf. A freelance employment has no leave (18 October 2026: outside the labour law),
-// nor an intern's (19 October 2026: the unpaid internship, outside the law too), so it says so, and no leave is recorded
-// for it.
+// records leave on the employee's behalf, and permission too (owner, 19 October 2026: "a Record permission button on the
+// employee's profile": Record permission, the employee chosen already). A freelance employment has no leave (18 October
+// 2026: outside the labour law), nor an intern's (19 October 2026: the unpaid internship, outside the law too), so it
+// says so, and neither leave nor permission is recorded for it.
 
 const YEAR_LINK = 'inline-flex min-h-9 items-center text-sm font-semibold';
 
@@ -48,9 +50,15 @@ export async function LeaveSection({ employee: p, user, year: asked }: { employe
             </Link>
           )}
           {hr && p.employment && !noLeave && (
-            <Link href={recordLeaveHref(p.id)} className="btn btn-secondary min-h-9 px-3">
-              Record leave
-            </Link>
+            <>
+              <Link href={recordLeaveHref(p.id)} className="btn btn-secondary min-h-9 px-3">
+                Record leave
+              </Link>
+              {/* owner, 19 October 2026: "a Record permission button on the employee's profile", as Record leave */}
+              <Link href={recordPermissionHref(p.id)} className="btn btn-secondary min-h-9 px-3">
+                Record permission
+              </Link>
+            </>
           )}
         </>
       }

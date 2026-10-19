@@ -66,6 +66,8 @@ describe('a month’s figures', () => {
       leaveDays: 1,
       zohoLeaveDays: 1,
       missingCheckOuts: 1,
+      missingCheckIns: 0,
+      flaggedDays: 0,
       noCheckInDays: 1,
       holidays: 1,
       restDays: 1,

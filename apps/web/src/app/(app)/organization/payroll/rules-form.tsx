@@ -5,6 +5,8 @@ import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT } from '@trendlix/shared
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { ContractSettings, FormState, PayrollSettingsView } from '@/lib/types';
 import { plainAmount } from '../../employees/[id]/contracts/salary';
+import { OfficeLocationFields } from './office-location-fields';
+import { coordinateText } from './settings';
 
 // Payroll Setup → Your Rules (HR and Admin; owner's request, 16 October 2026): the rules runs are worked out with,
 // after the owner's payroll sheet, and the company defaults that change the sheet, kept with the contract settings: the
@@ -19,7 +21,10 @@ import { plainAmount } from '../../employees/[id]/contracts/salary';
 // the employee. how will it be managed?"): the most a month's installments of advances and loans may take of the wage,
 // the Labour Law's limit (owner, 18 October 2026, after reading the law: "Block above 10%"; Art. 113): 10% at most,
 // lower if the company sets it so; a plan or an installment past it is refused, and the run's line warns past it.
-// Shown only when the API has it.
+// Shown only when the API has it. Office Location (owner, 19 October 2026: "Check-in through the system (phone or web
+// with the office location check, or a device) to replace Zoho"): the office's point and radius a check-in on the system
+// is read against (office-location-fields.tsx); the office's addresses stay, as Zoho People's check-in addresses for its
+// import. Each shown only when the API has it.
 
 type RuleKey = 'dayDivisor' | 'attendanceGracePercent' | 'kpiGracePercent' | 'overtimeAbovePercent' | 'overtimeRate' | 'noShowDayMultiplier';
 
@@ -62,6 +67,7 @@ export function YourRulesForm({
   const reviewMonths = rules.salaryReviewMonths;
   const limitPercent = rules.installmentLimitPercent;
   const offices = rules.officeAddresses;
+  const radius = rules.officeRadiusMetres;
 
   const numberField = (f: RuleField, disabled = false) => (
     <div key={f.key} className={disabled ? 'opacity-60' : undefined}>
@@ -186,13 +192,26 @@ export function YourRulesForm({
         </div>
       )}
 
+      {radius !== undefined && (
+        <div className="border-t border-line-soft pt-5">
+          <fieldset className="space-y-4">
+            <legend className="font-semibold">Office Location</legend>
+            <OfficeLocationFields
+              latitude={valueOf(state, 'officeLatitude', coordinateText(rules.officeLatitude))}
+              longitude={valueOf(state, 'officeLongitude', coordinateText(rules.officeLongitude))}
+              radius={valueOf(state, 'officeRadiusMetres', String(radius))}
+            />
+          </fieldset>
+        </div>
+      )}
+
       {offices !== undefined && (
         <div className="border-t border-line-soft pt-5">
           <fieldset className="space-y-4">
-            <legend className="font-semibold">Office Addresses</legend>
+            <legend className="font-semibold">Zoho People&apos;s Check-in Addresses</legend>
             <div>
               <label htmlFor={fid('officeAddresses')} className="label">
-                The office&apos;s addresses, one a line
+                The office&apos;s addresses as Zoho People writes them, one a line
               </label>
               <textarea
                 id={fid('officeAddresses')}

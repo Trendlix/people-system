@@ -35,6 +35,8 @@ interface Figures {
   leaveDays: number;
   zohoLeaveDays: number;
   missingCheckOuts: number;
+  missingCheckIns: number;
+  flaggedDays: number;
   noCheckInDays: number;
   holidays: number;
   restDays: number;
@@ -289,6 +291,9 @@ describe('The Attendance section (e2e)', () => {
         leaveDays: 0,
         zohoLeaveDays: 1,
         missingCheckOuts: 1,
+        // checking in on the system (19 October 2026): none of these are the system's
+        missingCheckIns: 0,
+        flaggedDays: 0,
         noCheckInDays: 0,
         holidays: 0,
         restDays: 1,

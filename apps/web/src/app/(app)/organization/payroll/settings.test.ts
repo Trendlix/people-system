@@ -2,7 +2,11 @@ import type { Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
   BASIC_PERCENT_ERROR,
+  coordinateFrom,
+  coordinateText,
   dayOfMonth,
+  officeLocationFrom,
+  officeLocationText,
   INSURANCE_BASIC_ERROR,
   PAYDAY_ERROR,
   paidOnDefault,
@@ -202,5 +206,62 @@ describe('Your Rules: the office addresses (owner, 19 October 2026: "13 and 17 a
     const fd = form(rules);
     fd.set('officeAddresses', 'Trendlix\ntrendlix');
     expect(rulesBody(fd).errors).toEqual(['"trendlix" is there twice: keep it once.']);
+  });
+});
+
+describe('Your Rules: the office location (owner, 19 October 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace Zoho")', () => {
+  const LAT = "Enter the office's latitude from -90 to 90, e.g. 30.0596.";
+  const LNG = "Enter the office's longitude from -180 to 180, e.g. 31.3462.";
+  const BOTH = "Enter both the office's latitude and longitude, or neither.";
+  const RADIUS = "Enter the office's radius in whole metres from 20 to 5,000, e.g. 150.";
+  const at = (latitude: string, longitude: string, radius = '150') => officeLocationFrom({ latitude, longitude, radius });
+
+  it('reads the point to 6 decimals and the radius in whole metres', () => {
+    expect(at('30.0596', '31.3462')).toEqual({ body: { officeLatitude: 30.0596, officeLongitude: 31.3462, officeRadiusMetres: 150 }, problems: [] });
+    // more decimals than the API keeps: rounded, not refused
+    expect(at('30.05961234', '-31.34629876', '200').body).toEqual({ officeLatitude: 30.059612, officeLongitude: -31.346299, officeRadiusMetres: 200 });
+    // Arabic digits and decimal mark, as a phone may type them
+    expect(at('٣٠٫٠٥٩٦', '٣١٫٣٤٦٢', '١٥٠').body).toEqual({ officeLatitude: 30.0596, officeLongitude: 31.3462, officeRadiusMetres: 150 });
+    // empty radius: 150 to start with
+    expect(at('30.0596', '31.3462', '').body.officeRadiusMetres).toBe(150);
+  });
+
+  it('splits both pasted from a map into Latitude', () => {
+    expect(at('30.059612, 31.346123', '').body).toMatchObject({ officeLatitude: 30.059612, officeLongitude: 31.346123 });
+    expect(at(' 30.0596 ، 31.3462 ', '').problems).toEqual([]);
+  });
+
+  it('is not set with both empty, and wants both or neither', () => {
+    expect(at('', '')).toEqual({ body: { officeLatitude: null, officeLongitude: null, officeRadiusMetres: 150 }, problems: [] });
+    expect(at('30.0596', '').problems).toEqual([BOTH]);
+    expect(at('', '31.3462').problems).toEqual([BOTH]);
+  });
+
+  it('says what is wrong, with the shared checks the API makes', () => {
+    expect(at('95', '31.3462').problems).toEqual([LAT]);
+    expect(at('30.0596', '181').problems).toEqual([LNG]);
+    expect(at('north', '31.3462').problems).toEqual([LAT]);
+    expect(at('30.0596', '31.3462', '10').problems).toEqual([RADIUS]);
+    expect(at('30.0596', '31.3462', '150.5').problems).toEqual([RADIUS]);
+    expect(at('30.0596', '31.3462', '6000').problems).toEqual([RADIUS]);
+    expect([coordinateFrom(''), coordinateFrom('  '), coordinateFrom('−30.5'), coordinateFrom('30,5')]).toEqual([null, null, -30.5, NaN]);
+  });
+
+  it('is sent with the rules when the form has it, and refused before the API when wrong', () => {
+    const fd = form({ ...rules, officeLatitude: '30.0596', officeLongitude: '31.3462', officeRadiusMetres: '150' });
+    expect(rulesBody(fd)).toMatchObject({ rules: { officeLatitude: 30.0596, officeLongitude: 31.3462, officeRadiusMetres: 150 }, errors: [] });
+    // cleared: both null, sent as such
+    expect(rulesBody(form({ ...rules, officeLatitude: '', officeLongitude: '', officeRadiusMetres: '150' })).rules).toMatchObject({ officeLatitude: null, officeLongitude: null });
+    expect(rulesBody(form({ ...rules, officeLatitude: '30.0596', officeLongitude: '', officeRadiusMetres: '150' })).errors).toEqual([BOTH]);
+    // the form without it (an API from before it) sends none
+    expect(rulesBody(form(rules)).rules).not.toHaveProperty('officeRadiusMetres');
+  });
+
+  it('says it in the summary, and starts the fields with it', () => {
+    expect(officeLocationText({ officeLatitude: 30.0596, officeLongitude: 31.3462, officeRadiusMetres: 150 })).toBe('30.059600, 31.346200 · 150 m');
+    expect(officeLocationText({ officeLatitude: 30.0596, officeLongitude: 31.3462, officeRadiusMetres: 1200 })).toBe('30.059600, 31.346200 · 1,200 m');
+    expect(officeLocationText({ officeLatitude: null, officeLongitude: null, officeRadiusMetres: 150 })).toBe('Not set: check-ins are kept as location unknown');
+    expect(officeLocationText({})).toBe('Not set: check-ins are kept as location unknown');
+    expect([coordinateText(30.0596), coordinateText(null), coordinateText(undefined)]).toEqual(['30.059600', '', '']);
   });
 });

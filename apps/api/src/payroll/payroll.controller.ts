@@ -67,6 +67,14 @@ export class PayrollController {
     return this.payroll.refresh(id, user);
   }
 
+  /** Refresh from attendance (19 October 2026): the lines filled from the month's attendance days again. */
+  @Roles('hr', 'ceo')
+  @Post(':id/attendance-refresh')
+  @HttpCode(200)
+  refreshAttendance(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.payroll.refreshAttendance(id, user);
+  }
+
   /**
    * A draft's changed lines: { lines: [{ id, inputs?, onHold?, comments? }] }. HR's, and the CEO's for the C-level people's
    * lines (owner, 19 October 2026: "the CEO fills their inputs"; checked by the service, line by line).

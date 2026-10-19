@@ -180,16 +180,31 @@ export function permissionFill(approved: number | null | undefined, field: Input
  * Whether a cell is what an attendance import filled (owner, 19 October 2026: Zoho People's attendance, "HR's typed
  * values replaced, marked 'from Zoho'", then "imported data shouldn't be editable"): its field is among those the line's
  * mark holds. Shown as text marked "from Zoho", never an input, and never sent: the API refuses a change to it (409). To
- * change it, HR imports the month again or undoes the import on its review.
+ * change it, HR imports the month again or undoes the import on its review. Filled from the month's attendance days
+ * (checking in on the system, 19 October 2026) the same, marked "from attendance": they change with the attendance.
  */
 export function fromImport(mark: { fields: readonly string[] } | null | undefined, field: InputField): boolean {
   return !!mark && mark.fields.includes(field);
 }
 
-/** What a cell filled from Zoho says when pointed at: when, and how to change it. */
-export function importTitle(at: string): string {
-  return `Filled from Zoho People's attendance, applied on ${formatDate(at) || at}. To change it, import the month again, or undo that import on its review.`;
+/**
+ * Where an imported cell's figure came from: Zoho People's import, or the month's attendance days (owner, 19 October
+ * 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace Zoho"; those
+ * who check in on the system, or whose day was corrected). A mark from before it says none: Zoho's.
+ */
+export type ImportSource = 'zoho' | 'attendance';
+
+/** What a cell filled from Zoho, or from the attendance days, says when pointed at: when, and how to change it. */
+export function importTitle(at: string, source: ImportSource | null | undefined = 'zoho'): string {
+  const day = formatDate(at) || at;
+  if (source === 'attendance') {
+    return `Filled from the month's attendance days on ${day}. They change with the attendance: a correction approved, or Refresh from attendance.`;
+  }
+  return `Filled from Zoho People's attendance, applied on ${day}. To change it, import the month again, or undo that import on its review.`;
 }
+
+/** The mark under such a cell: "from Zoho", or "from attendance". */
+export const importMarkText = (source: ImportSource | null | undefined): string => (source === 'attendance' ? 'from attendance' : 'from Zoho');
 
 /**
  * The expected hours a row counts, as its Expected hours cell shows them (owner, 17 October 2026: "prefill the expected

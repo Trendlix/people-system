@@ -16,10 +16,13 @@ import { BECAME_OPEN_ENDED, CASUAL_TOO_LONG, TRAINING_ENDED } from './employees/
 import { LawWarningBadges } from './employees/law-badges';
 import { Loading, profileHref, todayInCairo } from './employees/ui';
 import { dueNote } from './organization/contracts/labels';
+import { TodayCheckIn } from './my-attendance/check-in-card';
 
 // The home page. Someone who is only an employee and/or a direct manager gets their dashboard (owner, 17 October
 // 2026: "create a dashboard for the employee relevant to his role", dashboard/cards.tsx); HR, Finance, the CEO and
-// Admins (a Super Admin too) keep the home page as it was: what waits for them, and the modules.
+// Admins (a Super Admin too) keep the home page as it was: what waits for them, and the modules. Those of them with an
+// employee profile check in too (owner, 19 October 2026: "Check-in through the system (phone or web with the office
+// location check, or a device) to replace Zoho"): a compact Today card while they do, with the way to My Attendance.
 
 const MODULES = [
   { title: 'Organization', text: 'Company profile, departments and their teams, job titles with their grade ranges and job descriptions, grades, shifts.', href: '/organization/company' },
@@ -252,11 +255,28 @@ async function ContractAlerts() {
   );
 }
 
+/** Today's check-in for HR, the CEO, Finance or an Admin with an employee profile, when they check in (19 October 2026). */
+async function StaffCheckIn() {
+  let user: SessionUser;
+  try {
+    user = await getCurrentUser();
+  } catch (err) {
+    if (err instanceof ApiError) return null;
+    throw err;
+  }
+  if (!user.employeeId) return null;
+  return <TodayCheckIn home className="mt-6 max-w-xl" />;
+}
+
 function StaffHome() {
   return (
     <div className="max-w-4xl">
       <h1 className="text-2xl font-semibold">Welcome</h1>
       <p className="mt-1 text-muted">TrendLIX People System. Modules go live one at a time.</p>
+
+      <Suspense fallback={null}>
+        <StaffCheckIn />
+      </Suspense>
 
       <Suspense fallback={null}>
         <ContractAlerts />

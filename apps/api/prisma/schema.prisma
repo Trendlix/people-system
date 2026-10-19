@@ -24,61 +24,64 @@ model Role {
 }
 
 model User {
-  id                 String                   @id @default(uuid()) @db.Uuid
-  email              String                   @unique
-  passwordHash       String?                  @map("password_hash")
-  mfaEnabled         Boolean                  @default(false) @map("mfa_enabled")
-  isActive           Boolean                  @default(true) @map("is_active")
-  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt          DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+  id                 String                     @id @default(uuid()) @db.Uuid
+  email              String                     @unique
+  passwordHash       String?                    @map("password_hash")
+  mfaEnabled         Boolean                    @default(false) @map("mfa_enabled")
+  isActive           Boolean                    @default(true) @map("is_active")
+  createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime                   @updatedAt @map("updated_at") @db.Timestamptz
   roles              UserRole[]
-  auditEntries       AuditLog[]               @relation("AuditUser") // what was done as this user
-  auditOnBehalf      AuditLog[]               @relation("AuditOnBehalf") // what this Super Admin did while viewing as someone, in their name
+  auditEntries       AuditLog[]                 @relation("AuditUser") // what was done as this user
+  auditOnBehalf      AuditLog[]                 @relation("AuditOnBehalf") // what this Super Admin did while viewing as someone, in their name
   uploads            PaperworkItem[]
   corrections        OcrCorrection[]
-  endingsHrApproved  EmploymentEnding[]       @relation("EndingHrApproval") // endings this user recorded (and so approved) for HR
-  endingsCeoDecided  EmploymentEnding[]       @relation("EndingCeoDecision") // endings this user approved or rejected as CEO
+  endingsHrApproved  EmploymentEnding[]         @relation("EndingHrApproval") // endings this user recorded (and so approved) for HR
+  endingsCeoDecided  EmploymentEnding[]         @relation("EndingCeoDecision") // endings this user approved or rejected as CEO
   confirmations      ProfileConfirmation[] // the times this user confirmed their own details
-  changesRequested   ProfileChangeRequest[]   @relation("ChangeRequester") // changes this user asked for to their own details
-  changesDecided     ProfileChangeRequest[]   @relation("ChangeDecision") // change requests this user approved, rejected or cancelled
-  uploadedVersions   TemplateVersion[]        @relation("TemplateUpload") // template versions this user uploaded
-  publishedVersions  TemplateVersion[]        @relation("TemplatePublication") // template versions this user published
-  documentsMade      GeneratedDocument[]      @relation("DocumentGeneration") // documents this user generated from templates
-  documentsPrinted   GeneratedDocument[]      @relation("DocumentPrinting") // documents this user marked printed
-  documentsSigned    GeneratedDocument[]      @relation("DocumentSignedUpload") // documents whose signed scan this user uploaded
-  documentsVerified  GeneratedDocument[]      @relation("DocumentVerification") // documents this user verified
-  offersCreated      JobOffer[]               @relation("OfferCreation") // job offers this user drafted
-  offersSent         JobOffer[]               @relation("OfferSending") // job offers this user sent last
-  offersAnswered     JobOffer[]               @relation("OfferAnswer") // job offers whose answer this user recorded
-  payrollsCreated    PayrollRun[]             @relation("PayrollCreation") // payroll runs this user started
-  payrollsApproved   PayrollRun[]             @relation("PayrollApproval") // payroll runs this user approved as CEO
-  payslipsDrawn      Payslip[]                @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
-  lawRatesChanged    PayrollLawYear[]         @relation("LawRatesChange") // years of the rates set by law this user changed last
-  adjustmentsMade    PayrollAdjustment[]      @relation("AdjustmentEntry") // additions and deductions this user entered
-  adjustmentsCut     PayrollAdjustment[]      @relation("AdjustmentCancel") // additions and deductions this user cancelled
-  advancesGiven      PayrollAdvance[]         @relation("AdvanceEntry") // advances and loans this user entered
-  advancesSettled    PayrollAdvance[]         @relation("AdvanceSettlement") // advances and loans this user marked settled
-  recurringMade      RecurringDeduction[]     @relation("RecurringDeductionEntry") // recurring deductions this user set up
-  recurringConsents  RecurringDeduction[]     @relation("RecurringDeductionConsent") // recurring deductions whose signed consent this user recorded
-  settlementsMade    FinalSettlement[]        @relation("FinalSettlementBy") // final settlements this user marked settled
-  holdsReleased      PayrollHoldRelease[]     @relation("HoldReleaseBy") // held pay this user recorded as paid out
-  raisesApproved     Contract[]               @relation("RaiseApproval") // raises (and renewals with new pay) this user approved as CEO
-  raisesRequested    RaiseRequest[]           @relation("RaiseRequester") // raise requests this user made
-  raisesDeclined     RaiseRequest[]           @relation("RaiseRequestDecline") // raise requests this user declined (HR or the CEO)
-  raiseRequestSteps  RaiseRequestStep[]       @relation("RaiseRequestStepActor") // steps of raise requests this user took
-  reimbursementsSent ReimbursementClaim[]     @relation("ReimbursementCreation") // reimbursement claims this user sent
-  reimbursementSteps ReimbursementClaimStep[] @relation("ReimbursementStepActor") // steps of reimbursement claims this user took
-  leaveRequestsMade  LeaveRequest[]           @relation("LeaveRequestCreation") // leave requests this user sent, or recorded for an employee as HR
-  leaveSteps         LeaveRequestStep[]       @relation("LeaveStepActor") // steps of leave requests this user took
-  leaveAdjustments   LeaveAdjustment[]        @relation("LeaveAdjustmentBy") // changes to annual leave balances this user made as HR
-  leaveClosings      LeaveYearClosing[]       @relation("LeaveYearClosingBy") // the years this user closed the leave balances of
-  leaveYearsClosed   LeaveBalanceYear[]       @relation("LeaveBalanceClosedBy") // the balances this user closed: at a Year Closing, or paid on leaving
-  leaveSetupChanged  LeaveSettings[]          @relation("LeaveSettingsBy") // the Leave Setup, when this user changed it last
-  permissionsMade    PermissionRequest[]      @relation("PermissionRequestCreation") // permission requests this user sent, or recorded for an employee as HR
-  attendanceImports  AttendanceImport[]       @relation("AttendanceImportBy") // attendance files this user uploaded on a payroll run
-  attendanceApplied  AttendanceImport[]       @relation("AttendanceImportAppliedBy") // attendance imports this user applied to a run's lines last
-  attendanceDays     AttendanceDay[]          @relation("AttendanceDayImportedBy") // days of attendance this user's apply kept
-  permissionSteps    PermissionRequestStep[]  @relation("PermissionStepActor") // steps of permission requests this user took
+  changesRequested   ProfileChangeRequest[]     @relation("ChangeRequester") // changes this user asked for to their own details
+  changesDecided     ProfileChangeRequest[]     @relation("ChangeDecision") // change requests this user approved, rejected or cancelled
+  uploadedVersions   TemplateVersion[]          @relation("TemplateUpload") // template versions this user uploaded
+  publishedVersions  TemplateVersion[]          @relation("TemplatePublication") // template versions this user published
+  documentsMade      GeneratedDocument[]        @relation("DocumentGeneration") // documents this user generated from templates
+  documentsPrinted   GeneratedDocument[]        @relation("DocumentPrinting") // documents this user marked printed
+  documentsSigned    GeneratedDocument[]        @relation("DocumentSignedUpload") // documents whose signed scan this user uploaded
+  documentsVerified  GeneratedDocument[]        @relation("DocumentVerification") // documents this user verified
+  offersCreated      JobOffer[]                 @relation("OfferCreation") // job offers this user drafted
+  offersSent         JobOffer[]                 @relation("OfferSending") // job offers this user sent last
+  offersAnswered     JobOffer[]                 @relation("OfferAnswer") // job offers whose answer this user recorded
+  payrollsCreated    PayrollRun[]               @relation("PayrollCreation") // payroll runs this user started
+  payrollsApproved   PayrollRun[]               @relation("PayrollApproval") // payroll runs this user approved as CEO
+  payslipsDrawn      Payslip[]                  @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
+  lawRatesChanged    PayrollLawYear[]           @relation("LawRatesChange") // years of the rates set by law this user changed last
+  adjustmentsMade    PayrollAdjustment[]        @relation("AdjustmentEntry") // additions and deductions this user entered
+  adjustmentsCut     PayrollAdjustment[]        @relation("AdjustmentCancel") // additions and deductions this user cancelled
+  advancesGiven      PayrollAdvance[]           @relation("AdvanceEntry") // advances and loans this user entered
+  advancesSettled    PayrollAdvance[]           @relation("AdvanceSettlement") // advances and loans this user marked settled
+  recurringMade      RecurringDeduction[]       @relation("RecurringDeductionEntry") // recurring deductions this user set up
+  recurringConsents  RecurringDeduction[]       @relation("RecurringDeductionConsent") // recurring deductions whose signed consent this user recorded
+  settlementsMade    FinalSettlement[]          @relation("FinalSettlementBy") // final settlements this user marked settled
+  holdsReleased      PayrollHoldRelease[]       @relation("HoldReleaseBy") // held pay this user recorded as paid out
+  raisesApproved     Contract[]                 @relation("RaiseApproval") // raises (and renewals with new pay) this user approved as CEO
+  raisesRequested    RaiseRequest[]             @relation("RaiseRequester") // raise requests this user made
+  raisesDeclined     RaiseRequest[]             @relation("RaiseRequestDecline") // raise requests this user declined (HR or the CEO)
+  raiseRequestSteps  RaiseRequestStep[]         @relation("RaiseRequestStepActor") // steps of raise requests this user took
+  reimbursementsSent ReimbursementClaim[]       @relation("ReimbursementCreation") // reimbursement claims this user sent
+  reimbursementSteps ReimbursementClaimStep[]   @relation("ReimbursementStepActor") // steps of reimbursement claims this user took
+  leaveRequestsMade  LeaveRequest[]             @relation("LeaveRequestCreation") // leave requests this user sent, or recorded for an employee as HR
+  leaveSteps         LeaveRequestStep[]         @relation("LeaveStepActor") // steps of leave requests this user took
+  leaveAdjustments   LeaveAdjustment[]          @relation("LeaveAdjustmentBy") // changes to annual leave balances this user made as HR
+  leaveClosings      LeaveYearClosing[]         @relation("LeaveYearClosingBy") // the years this user closed the leave balances of
+  leaveYearsClosed   LeaveBalanceYear[]         @relation("LeaveBalanceClosedBy") // the balances this user closed: at a Year Closing, or paid on leaving
+  leaveSetupChanged  LeaveSettings[]            @relation("LeaveSettingsBy") // the Leave Setup, when this user changed it last
+  permissionsMade    PermissionRequest[]        @relation("PermissionRequestCreation") // permission requests this user sent, or recorded for an employee as HR
+  attendanceImports  AttendanceImport[]         @relation("AttendanceImportBy") // attendance files this user uploaded on a payroll run
+  attendanceApplied  AttendanceImport[]         @relation("AttendanceImportAppliedBy") // attendance imports this user applied to a run's lines last
+  attendanceDays     AttendanceDay[]            @relation("AttendanceDayImportedBy") // days of attendance this user's apply kept
+  permissionSteps    PermissionRequestStep[]    @relation("PermissionStepActor") // steps of permission requests this user took
+  attendancePunches  AttendancePunch[]          @relation("AttendancePunchBy") // the presses of Check in and Check out this user made
+  correctionsMade    AttendanceCorrection[]     @relation("AttendanceCorrectionCreation") // attendance corrections this user asked for, or made directly as HR
+  correctionSteps    AttendanceCorrectionStep[] @relation("AttendanceCorrectionStepActor") // steps of attendance corrections this user took
 
   @@map("users")
 }
@@ -364,7 +367,10 @@ model Employee {
   leaveRequests              LeaveRequest[]         @relation("LeaveRequester") // the leave this person asked for, or HR recorded for them
   leaveToDecide              LeaveRequest[]         @relation("LeaveManager") // the leave requests this person decided, or decides, as the requester's direct manager
   permissions                PermissionRequest[]    @relation("PermissionRequester") // the permission hours this person asked for, or HR recorded for them
-  attendanceDays             AttendanceDay[] // each day of attendance kept, imported from Zoho People for now
+  attendanceDays             AttendanceDay[] // each day of attendance kept: imported from Zoho People, or from their check-ins on the system
+  attendancePunches          AttendancePunch[] // each press of Check in and Check out on the system (19 October 2026)
+  attendanceCorrections      AttendanceCorrection[] @relation("AttendanceCorrectionRequester") // the days this person asked to correct, or HR corrected
+  correctionsToDecide        AttendanceCorrection[] @relation("AttendanceCorrectionManager") // the corrections this person decided, or decides, as the requester's direct manager
   permissionsToDecide        PermissionRequest[]    @relation("PermissionManager") // the permission requests this person decided, or decides, as the requester's direct manager
   leaveBalances              LeaveBalanceYear[] // each year's annual leave: carried in, closed
   leaveAdjustments           LeaveAdjustment[] // HR's changes to the annual leave balance
@@ -379,38 +385,38 @@ model Employee {
 // The person's grade is the employment's own, within the range of grades its job title takes (owner's decision,
 // 15 October 2026; checked by the API).
 model Employment {
-  id               String               @id @default(uuid()) @db.Uuid
-  employeeId       String               @map("employee_id") @db.Uuid
-  employee         Employee             @relation("Employments", fields: [employeeId], references: [id], onDelete: Cascade)
-  employmentType   EmploymentType       @map("employment_type")
-  status           EmployeeStatus       @default(probation) // resigned or terminated once ended
-  departmentId     String?              @map("department_id") @db.Uuid // a team, or a department
-  department       Department?          @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  jobTitleId       String?              @map("job_title_id") @db.Uuid
-  jobTitle         JobTitle?            @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
-  gradeId          String?              @map("grade_id") @db.Uuid // the person's own grade, within the job title's range
-  grade            Grade?               @relation(fields: [gradeId], references: [id], onDelete: Restrict)
-  managerId        String?              @map("manager_id") @db.Uuid
-  manager          Employee?            @relation("Manager", fields: [managerId], references: [id], onDelete: Restrict)
-  joinDate         DateTime             @map("join_date") @db.Date
-  probationEnd     DateTime?            @map("probation_end") @db.Date
-  workArrangement  WorkArrangement      @default(office) @map("work_arrangement")
-  officeDays       Int[]                @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
-  shiftId          String?              @map("shift_id") @db.Uuid
+  id               String                 @id @default(uuid()) @db.Uuid
+  employeeId       String                 @map("employee_id") @db.Uuid
+  employee         Employee               @relation("Employments", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentType   EmploymentType         @map("employment_type")
+  status           EmployeeStatus         @default(probation) // resigned or terminated once ended
+  departmentId     String?                @map("department_id") @db.Uuid // a team, or a department
+  department       Department?            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  jobTitleId       String?                @map("job_title_id") @db.Uuid
+  jobTitle         JobTitle?              @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  gradeId          String?                @map("grade_id") @db.Uuid // the person's own grade, within the job title's range
+  grade            Grade?                 @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  managerId        String?                @map("manager_id") @db.Uuid
+  manager          Employee?              @relation("Manager", fields: [managerId], references: [id], onDelete: Restrict)
+  joinDate         DateTime               @map("join_date") @db.Date
+  probationEnd     DateTime?              @map("probation_end") @db.Date
+  workArrangement  WorkArrangement        @default(office) @map("work_arrangement")
+  officeDays       Int[]                  @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
+  shiftId          String?                @map("shift_id") @db.Uuid
   // hazardous or unhealthy work, or work in a remote area: 7 more days of annual leave (Labour Law 14/2025 Art. 124:
   // "تزاد مدة الإجازة السنوية بمقدار سبعة أيام للعمال الذين يعملون فى الأعمال الخطرة، أو المضرة بالصحة، أو فى المناطق النائية")
-  hazardousWork    Boolean              @default(false) @map("hazardous_work")
+  hazardousWork    Boolean                @default(false) @map("hazardous_work")
   // employment types by the labour law (owner, 18 October 2026): paid by commission (full-time only; the law's wage
   // includes "العمولة أو النسبة المئوية", Art. 1(4)(أ)), what Sales was; and the nature of the work (Art. 1(6–8))
-  paidByCommission Boolean              @default(false) @map("paid_by_commission")
-  workNature       String               @default("regular") @map("work_nature") // WORK_NATURES: regular, temporary, casual, seasonal
-  shift            Shift?               @relation(fields: [shiftId], references: [id], onDelete: Restrict)
-  jdAcknowledgedAt DateTime?            @map("jd_acknowledged_at") @db.Date
-  endDate          DateTime?            @map("end_date") @db.Date // empty while current
-  endReason        String?              @map("end_reason") // packages/shared END_REASONS: resigned, terminated, contract_ended …
-  endNote          String?              @map("end_note")
-  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  paidByCommission Boolean                @default(false) @map("paid_by_commission")
+  workNature       String                 @default("regular") @map("work_nature") // WORK_NATURES: regular, temporary, casual, seasonal
+  shift            Shift?                 @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  jdAcknowledgedAt DateTime?              @map("jd_acknowledged_at") @db.Date
+  endDate          DateTime?              @map("end_date") @db.Date // empty while current
+  endReason        String?                @map("end_reason") // packages/shared END_REASONS: resigned, terminated, contract_ended …
+  endNote          String?                @map("end_note")
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz
   contracts        Contract[]
   endings          EmploymentEnding[]
   documents        GeneratedDocument[]
@@ -420,6 +426,7 @@ model Employment {
   finalSettlement  FinalSettlement? // its final dues, once settled (open until then)
   leaveRequests    LeaveRequest[] // the leave taken under it
   permissions      PermissionRequest[] // the permission hours taken under it
+  corrections      AttendanceCorrection[] // the attendance corrections of its days
   leaveBalances    LeaveBalanceYear[] // each year's annual leave under it
   leaveAdjustments LeaveAdjustment[]
 
@@ -1078,6 +1085,13 @@ model PayrollSettings {
   // the office's addresses as Zoho People writes a check-in's location (owner, 19 October 2026: "13 and 17 al mahrouki
   // is also in office"): a check-in at one of them is a day at the office, anywhere else remote
   officeAddresses         String[] @default(["Trendlix", "13, Al Doctor Al Mahrouqi Street", "15, Al Doctor Al Mahrouqi Street", "17, Al Doctor Al Mahrouqi Street"]) @map("office_addresses")
+  // the office's point and radius for checking in on the system (owner, 19 October 2026: "Check-in through the system
+  // (phone or web with the office location check, or a device) to replace Zoho"): a check-in within the radius is at the
+  // office, outside it remote; no point yet: location unknown (packages/shared check-in.ts). Only office, remote or
+  // unknown is kept of a check-in, never its coordinates. 150 metres to start with, 20 to 5,000
+  officeLatitude          Decimal? @map("office_latitude") @db.Decimal(9, 6)
+  officeLongitude         Decimal? @map("office_longitude") @db.Decimal(9, 6)
+  officeRadiusMetres      Int      @default(150) @map("office_radius_metres")
   updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("payroll_settings")
@@ -1711,29 +1725,122 @@ model AttendanceImport {
 // A day of someone's attendance (owner, 19 October 2026), kept so the system's own attendance can build on it later:
 // the first check-in and the last check-out, what the day was by the system's rules (ATTENDANCE_DAY_STATUSES), Zoho's
 // status as it said it, office or remote (never the address), Zoho's permission hours that day, and the hours it counts
-// by the shift's rule. One a person, day and source: importing a month again replaces that month's Zoho days.
+// by the shift's rule. One a person, day and source: importing a month again replaces that month's Zoho days. Checking
+// in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location check,
+// or a device) to replace Zoho") keeps a day of source 'system' from the day's punches (AttendancePunch): its place may
+// be 'unknown' (the location refused or unavailable), and `flags` says a check-in broke its work arrangement's rule
+// (CHECK_IN_FLAGS: kept, never refused). 'device' is kept for a fingerprint or face device, not read yet. The day shown
+// is the first of correction, system, device, zoho there is (packages/shared check-in.ts SOURCE_PRECEDENCE).
 model AttendanceDay {
-  id              String            @id @default(uuid()) @db.Uuid
-  employeeId      String            @map("employee_id") @db.Uuid
-  employee        Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  date            DateTime          @db.Date
-  checkIn         DateTime?         @map("check_in") @db.Timestamptz
-  checkOut        DateTime?         @map("check_out") @db.Timestamptz
+  id              String                @id @default(uuid()) @db.Uuid
+  employeeId      String                @map("employee_id") @db.Uuid
+  employee        Employee              @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date            DateTime              @db.Date
+  checkIn         DateTime?             @map("check_in") @db.Timestamptz
+  checkOut        DateTime?             @map("check_out") @db.Timestamptz
   status          String // ATTENDANCE_DAY_STATUSES
-  zohoStatus      String?           @map("zoho_status")
+  zohoStatus      String?               @map("zoho_status")
   place           String? // WORK_PLACES: office, remote
-  permissionHours Decimal?          @map("permission_hours") @db.Decimal(4, 2)
-  hoursCounted    Decimal           @map("hours_counted") @db.Decimal(5, 2)
-  source          String            @default("zoho")
-  importId        String?           @map("import_id") @db.Uuid
-  import          AttendanceImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
-  importedById    String?           @map("imported_by") @db.Uuid
-  importedBy      User?             @relation("AttendanceDayImportedBy", fields: [importedById], references: [id], onDelete: SetNull)
-  importedAt      DateTime          @default(now()) @map("imported_at") @db.Timestamptz
+  permissionHours Decimal?              @map("permission_hours") @db.Decimal(4, 2)
+  hoursCounted    Decimal               @map("hours_counted") @db.Decimal(5, 2)
+  source          String                @default("zoho")
+  importId        String?               @map("import_id") @db.Uuid
+  import          AttendanceImport?     @relation(fields: [importId], references: [id], onDelete: SetNull)
+  importedById    String?               @map("imported_by") @db.Uuid
+  importedBy      User?                 @relation("AttendanceDayImportedBy", fields: [importedById], references: [id], onDelete: SetNull)
+  importedAt      DateTime              @default(now()) @map("imported_at") @db.Timestamptz
+  flags           String[]              @default([]) // CHECK_IN_FLAGS, a 'system' day's: e.g. checked in outside the office on an office day
+  // a correction approved (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check out")"):
+  // a day of source 'correction' over the one it corrects, which stays as it was; the day it was applied over as it was
+  // then (CorrectedFrom: its source, status, times and place; null: no day on record), and the last correction applied
+  correctedFrom   Json?                 @map("corrected_from")
+  correctionId    String?               @map("correction_id") @db.Uuid
+  correction      AttendanceCorrection? @relation(fields: [correctionId], references: [id], onDelete: SetNull)
 
   @@unique([employeeId, date, source])
   @@index([date])
   @@map("attendance_days")
+}
+
+// An attendance correction (owner, 19 October 2026, "Proceed with those": "Attendance corrections with approval ("I
+// forgot to check out")"): a day of someone's attendance asked to be corrected, under the employment the day is in;
+// what was wrong (CORRECTION_KINDS), the right check-in and check-out as moments (null: as on record), why (required),
+// the day as it was shown when asked (dayBefore), decided as leave is (LEAVE_STATUSES) by the direct manager (else the
+// team lead, else the department's head: approverRole) then HR, a C-level person's HR stage by the CEO; recorded by HR
+// directly, approved at once. Approved (appliedAt), the day is kept as source 'correction' over the one it corrects
+// (packages/shared attendance-corrections.ts), and the month's draft payroll line refilled.
+model AttendanceCorrection {
+  id            String                     @id @default(uuid()) @db.Uuid
+  employeeId    String                     @map("employee_id") @db.Uuid
+  employee      Employee                   @relation("AttendanceCorrectionRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId  String                     @map("employment_id") @db.Uuid
+  employment    Employment                 @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  date          DateTime                   @db.Date
+  kind          String // CORRECTION_KINDS
+  checkIn       DateTime?                  @map("check_in") @db.Timestamptz
+  checkOut      DateTime?                  @map("check_out") @db.Timestamptz
+  reason        String
+  dayBefore     Json?                      @map("day_before") // the day as shown when asked: { status, checkIn, checkOut, place, source }; null: none on record
+  status        String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
+  managerId     String?                    @map("manager_id") @db.Uuid
+  manager       Employee?                  @relation("AttendanceCorrectionManager", fields: [managerId], references: [id], onDelete: Restrict)
+  approverRole  String?                    @map("approver_role") // APPROVER_ROLES, set exactly when managerId is
+  rejectedStage String?                    @map("rejected_stage") // LEAVE_STAGES: manager, hr
+  rejectReason  String?                    @map("reject_reason")
+  recordedByHr  Boolean                    @default(false) @map("recorded_by_hr")
+  appliedAt     DateTime?                  @map("applied_at") @db.Timestamptz // when its approval changed the day
+  createdById   String?                    @map("created_by") @db.Uuid
+  createdBy     User?                      @relation("AttendanceCorrectionCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime                   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime                   @updatedAt @map("updated_at") @db.Timestamptz
+  steps         AttendanceCorrectionStep[]
+  days          AttendanceDay[] // the corrected day it was applied to last
+
+  @@index([employeeId, date])
+  @@index([status])
+  @@index([managerId])
+  @@map("attendance_corrections")
+}
+
+// Each step of an attendance correction, in the order taken (LEAVE_STEP_KINDS), as a leave request's.
+model AttendanceCorrectionStep {
+  id           BigInt               @id @default(autoincrement())
+  correctionId String               @map("correction_id") @db.Uuid
+  correction   AttendanceCorrection @relation(fields: [correctionId], references: [id], onDelete: Cascade)
+  kind         String
+  decision     String? // LEAVE_DECISIONS, on the stages' decisions only
+  comment      String?
+  actorId      String?              @map("actor_id") @db.Uuid
+  actor        User?                @relation("AttendanceCorrectionStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  at           DateTime             @default(now()) @db.Timestamptz
+
+  @@index([correctionId])
+  @@map("attendance_correction_steps")
+}
+
+// A press of Check in or Check out on the system (owner, 19 October 2026: "Check-in through the system (phone or web
+// with the office location check …)"): the working day it counts on (check-in.ts shiftDayOf), in or out, the server's
+// moment (never the device's), where it was (CHECK_IN_PLACES: office, remote, unknown; never the coordinates, which
+// are read and dropped), the reading's accuracy in metres, where the work arrangement expected them that day (office or
+// anywhere) and the flags of a check-in that broke it. Several a day: the day's check-in is the first in, its check-out
+// the last out (AttendanceDay, source 'system'). Who pressed (the employee, or a Super Admin acting as them).
+model AttendancePunch {
+  id             String   @id @default(uuid()) @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date           DateTime @db.Date
+  kind           String // PUNCH_KINDS: in, out
+  at             DateTime @default(now()) @db.Timestamptz
+  place          String // CHECK_IN_PLACES
+  accuracyMetres Int?     @map("accuracy_metres")
+  expected       String // office, anywhere
+  flags          String[] @default([])
+  source         String   @default("system") // system; device for a fingerprint or face device, later
+  userId         String?  @map("user_id") @db.Uuid
+  user           User?    @relation("AttendancePunchBy", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, date])
+  @@map("attendance_punches")
 }
 
 // A request's documents (a medical certificate, proof of sitting the exam): photos or PDFs, kept like the employee file.

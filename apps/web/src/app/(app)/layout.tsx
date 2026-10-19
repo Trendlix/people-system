@@ -10,6 +10,7 @@ import { ApiError } from '@/lib/api';
 import { isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
+import type { CorrectionCounts } from '@/lib/correction-types';
 import type { ChangeRequest, EndingSummary, LeaveCounts, ReimbursementCounts, SessionUser } from '@/lib/types';
 import { followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './approvals/data';
 import { followsRaises, PENDING_RAISES } from './approvals/raises';
@@ -19,6 +20,7 @@ import { loadOwnProfile } from './own-profile';
 import { countsRaiseRequests, waitingForYouCount, WITH_HR_REQUESTS } from './raise-requests/list';
 import { canSeeLeaveRequests, LEAVE_COUNTS } from './leave/list';
 import { canSeeReimbursements, CLAIM_COUNTS } from './reimbursements/list';
+import { CORRECTION_COUNTS, CORRECTIONS_PATH, seesCorrections } from './attendance/corrections/corrections';
 import { readsChangeRequests, waitingForYou } from './requests/details-changes/list';
 
 /**
@@ -47,16 +49,19 @@ async function MainNav() {
   // requests at HR's step; beside Details Changes and Approvals, their change requests, which the CEO decides; beside
   // Reimbursements and Leave Requests, what the API counts as waiting for the CEO. Each count is what the user decides.
   // The leave count (`waiting`) has the permission requests in it (owner, 19 October 2026: permission "In the system,
-  // like leave"), beside Leave Requests and in My Team's, as they are decided the same way.
+  // like leave"), beside Leave Requests and in My Team's, as they are decided the same way. The attendance corrections
+  // waiting (owner, 19 October 2026: "Attendance corrections with approval"): beside Attendance → Corrections for HR and
+  // the CEO, in My Team's for a manager or a lead.
   const self = isSelfService({ roles });
   const manager = self && decidesForTeam({ roles, leads: user?.leads });
-  const [endings, pendingChanges, raises, requests, claims, leave] = await Promise.all([
+  const [endings, pendingChanges, raises, requests, claims, leave, corrections] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS) : null,
     readsChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS) : null,
     followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES) : null,
     countsRaiseRequests({ roles }) ? getOrNull<RaiseRequest[]>(WITH_HR_REQUESTS) : null,
     canSeeReimbursements({ roles }) || manager ? getOrNull<ReimbursementCounts>(CLAIM_COUNTS) : null,
     canSeeLeaveRequests({ roles }) || manager ? getOrNull<LeaveCounts>(LEAVE_COUNTS) : null,
+    seesCorrections({ roles }) || manager ? getOrNull<CorrectionCounts>(CORRECTION_COUNTS) : null,
   ]);
   const changes = pendingChanges && waitingForYou({ roles }, pendingChanges);
   const raiseRequests = requests ? waitingForYouCount({ roles }, requests) : 0;
@@ -66,11 +71,12 @@ async function MainNav() {
   if (raiseRequests) counts[RAISE_REQUESTS_PATH] = raiseRequests;
   if (changes?.length) counts[DETAILS_CHANGES_PATH] = changes.length;
   if (self) {
-    const team = (claims?.waiting ?? 0) + (leave?.waiting ?? 0);
+    const team = (claims?.waiting ?? 0) + (leave?.waiting ?? 0) + (corrections?.waiting ?? 0);
     if (team) counts[MY_TEAM] = team;
   } else {
     if (claims?.waiting) counts[REIMBURSEMENTS_PATH] = claims.waiting;
     if (leave?.waiting) counts[LEAVE_PATH] = leave.waiting;
+    if (corrections?.waiting) counts[CORRECTIONS_PATH] = corrections.waiting;
   }
   return <NavLinks items={navFor(user)} counts={Object.keys(counts).length ? counts : undefined} />;
 }

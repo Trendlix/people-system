@@ -13,8 +13,6 @@ import {
   NO_ATTENDANCE_FIGURES,
   PERMISSION_RULE_DEFAULTS,
   periodMonthCount,
-  shiftWorkHours,
-  type AttendanceDayStatus,
   type AttendanceDayView,
   type AttendanceFigures,
   type AttendanceFilter,
@@ -23,17 +21,17 @@ import {
   type AttendanceSummaryRow,
   type PayrollStatus,
   type PersonMonthFigures,
-  type WorkPlace,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
-import { fromTimeOfDay } from '../common/time-of-day.js';
 import { ConfidentialService, type ConfidentialView } from '../employees/confidential.service.js';
-import type { Prisma } from '../generated/prisma/client.js';
 import { employedIn, placeName, userNames } from '../payroll/adjustments/people.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { actsAs } from '../auth/roles.js';
+import { AttendanceDaysService, DAY_SELECT, type DayRow } from './attendance-days.service.js';
+import { AttendanceCorrectionsService, type MonthCorrectable, type MonthCorrection } from './corrections.service.js';
 import { seesEveryonesAttendance, teamOf } from './attendance-scope.js';
 import type { AttendanceListQueryDto, AttendanceSummaryQueryDto } from './attendance.dto.js';
 import { attendanceSummaryFileName, attendanceWorkbook } from './attendance-workbook.js';
@@ -76,7 +74,9 @@ export interface AttendancePersonMonth {
   averageHours: number | null;
   /** Where the month's permission hours come from: the system's approved requests, Zoho's column, or none. */
   permissionFrom: 'system' | 'zoho' | null;
-  /** Each day kept, with the import it came from. */
+  /** Whether they checked in on the system this month (a day of theirs is the system's): Zoho's days count only before. */
+  checksIn: boolean;
+  /** Each day, one a date from its source (AttendanceDayView.source), with the import it came from. */
   days: (AttendanceDayView & { importId: string | null })[];
 }
 
@@ -125,6 +125,20 @@ export interface AttendancePersonView {
   self: boolean;
   sources: AttendanceSourceView[];
   run: AttendanceRunRef | null;
+  /**
+   * Attendance corrections (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check out")"):
+   * the person's corrections of the month (any status), whether its days can be corrected now (not once its payroll is
+   * approved or paid), and whether the caller corrects a day of theirs directly (HR, never their own).
+   */
+  corrections: MonthCorrection[];
+  correctable: MonthCorrectable;
+  canCorrect: boolean;
+  /**
+   * Every press of Check in and Check out on the system of the month (owner, 19 October 2026: "Check-in through the
+   * system …"), in order: the day each counts on, in or out, the server's moment, office, remote or unknown, the
+   * accuracy and the flags. The day shows the first check-in and the last check-out; these show every press.
+   */
+  punches: { date: string; kind: string; at: string; place: string; accuracyMetres: number | null; flags: string[] }[];
 }
 
 /** GET /attendance/summary: a period by department and team. */
@@ -142,32 +156,6 @@ export interface AttendanceSummaryView {
 /** The Summary with each person's month, for the workbook's By Person sheet. */
 export type AttendanceSummaryReport = AttendanceSummaryView & { rows: (PersonMonthFigures & { employee: AttendanceEmployeeView })[] };
 
-/** The employment a month is read with: its place, job title and shift. */
-const EMPLOYMENT_SELECT = {
-  employeeId: true,
-  joinDate: true,
-  departmentId: true,
-  department: { select: { id: true, nameEn: true, parent: { select: { id: true, nameEn: true } } } },
-  jobTitle: { select: { titleEn: true } },
-  shift: { select: { startTime: true, endTime: true, hoursPerDay: true } },
-} satisfies Prisma.EmploymentSelect;
-
-type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT_SELECT }>;
-
-const DAY_SELECT = {
-  employeeId: true,
-  date: true,
-  checkIn: true,
-  checkOut: true,
-  status: true,
-  zohoStatus: true,
-  place: true,
-  permissionHours: true,
-  hoursCounted: true,
-  importId: true,
-} satisfies Prisma.AttendanceDaySelect;
-
-type DayRow = Prisma.AttendanceDayGetPayload<{ select: typeof DAY_SELECT }>;
 
 /** Who the caller sees: everyone, or these people (a team, themself). */
 type Scope = { kind: 'everyone' } | { kind: 'some'; ids: string[] };
@@ -178,6 +166,8 @@ export class AttendanceService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly confidential: ConfidentialService,
+    private readonly attendanceDays: AttendanceDaysService,
+    private readonly corrections: AttendanceCorrectionsService,
   ) {}
 
   /**
@@ -302,9 +292,13 @@ export class AttendanceService {
     const withDays: string[] = [];
     for (const month of monthRange(period.from, period.to)) {
       const of = shown.filter((d) => fromDateOnly(d.date).startsWith(month));
-      if (!of.length) continue;
+      // those who check in on the system have days even in a month with none kept (its working days gone by: absent)
+      const checkIn = (await this.attendanceDays.checkInPeople(month)).filter((id) => !confidential.hidden.has(id));
+      const ids = [...new Set([...of.map((d) => d.employeeId), ...checkIn])];
+      if (!ids.length) continue;
+      const months = await this.personMonths(month, ids, of, confidential);
+      if (![...months.people.values()].some((p) => p.days.length)) continue;
       withDays.push(month);
-      const months = await this.personMonths(month, [...new Set(of.map((d) => d.employeeId))], of, confidential);
       for (const p of [...months.people.values()].sort(byName)) {
         if (!p.days.length) continue;
         rows.push({ employeeId: p.employee.id, month, place: months.places.get(p.employee.id) ?? null, figures: p.figures, employee: p.employee });
@@ -339,7 +333,8 @@ export class AttendanceService {
     const dayRows: { month: string; employee: AttendanceEmployeeView; day: AttendanceDayView }[] = [];
     for (const month of report.months) {
       const of = days.filter((d) => fromDateOnly(d.date).startsWith(month));
-      const months = await this.personMonths(month, [...new Set(of.map((d) => d.employeeId))], of, confidential);
+      const listed = [...new Set(report.rows.filter((r) => r.month === month).map((r) => r.employeeId))];
+      const months = await this.personMonths(month, listed, of, confidential);
       for (const p of [...months.people.values()].sort(byName)) for (const day of p.days) dayRows.push({ month, employee: p.employee, day });
     }
     const data = await attendanceWorkbook(report, dayRows);
@@ -370,25 +365,50 @@ export class AttendanceService {
         figures: { ...NO_ATTENDANCE_FIGURES },
         averageHours: null,
         permissionFrom: null,
+        checksIn: false,
         days: [],
       };
     }
     const payroll = seesEveryonesAttendance(user);
-    return { month, person, self, sources: await this.sources(person.days.map((d) => d.importId), user), run: payroll ? await this.runOf(month) : null };
+    const [sources, run, corrections, correctable, punches] = await Promise.all([
+      this.sources(person.days.map((d) => d.importId), user),
+      payroll ? this.runOf(month) : null,
+      this.corrections.ofMonth(employeeId, month),
+      this.corrections.monthCorrectable(month),
+      this.prisma.attendancePunch.findMany({
+        where: { employeeId, date: monthDays(month) },
+        orderBy: { at: 'asc' },
+        select: { date: true, kind: true, at: true, place: true, accuracyMetres: true, flags: true },
+      }),
+    ]);
+    // HR corrects a day directly (never their own; a C-level person's only HR who sees them, as they see the page)
+    const canCorrect = actsAs(user.roles, ['hr']) && !self;
+    return {
+      month,
+      person,
+      self,
+      sources,
+      run,
+      corrections,
+      correctable,
+      canCorrect,
+      punches: punches.map((p) => ({ date: fromDateOnly(p.date), kind: p.kind, at: p.at.toISOString(), place: p.place, accuracyMetres: p.accuracyMetres, flags: p.flags })),
+    };
   }
 
   /**
-   * Each person's month: their employment in it (the latest: its place, job title, shift), their days as kept with
-   * their permission (the system's requests when the month has any, else Zoho's within the allowance), the figures.
-   * People with no employment in the month and no days are left out.
+   * Each person's month (AttendanceDaysService): their employment in it (the latest: its place, job title, shift), their
+   * days of every source, one a date (a correction, the system's check-ins, Zoho's import), with the days gone by since
+   * their first check-in on the system, their permission (the system's requests when the month has any, else Zoho's
+   * within the allowance), the figures. People with no employment in the month and no days are left out.
    */
   private async personMonths(month: string, ids: readonly string[], days: readonly DayRow[], confidential: ConfidentialView) {
     const people = new Map<string, AttendancePersonMonth>();
     const places = new Map<string, AttendancePlace | null>();
     if (!ids.length) return { people, places };
-    const [employees, employments, permissions, setup] = await Promise.all([
+    const [employees, months, permissions, setup] = await Promise.all([
       this.prisma.employee.findMany({ where: { id: { in: [...ids] } }, select: { id: true, employeeCode: true, fullNameEn: true } }),
-      this.prisma.employment.findMany({ where: { employeeId: { in: [...ids] }, ...employedIn(month) }, orderBy: { joinDate: 'desc' }, select: EMPLOYMENT_SELECT }),
+      this.attendanceDays.monthOf(month, ids, days),
       this.prisma.permissionRequest.findMany({
         where: { employeeId: { in: [...ids] }, status: 'approved', date: monthDays(month) },
         select: { employeeId: true, date: true, hours: true },
@@ -396,36 +416,20 @@ export class AttendanceService {
       this.prisma.leaveSettings.findUnique({ where: { id: 1 }, select: { permissionHoursPerMonth: true } }),
     ]);
     const allowance = setup?.permissionHoursPerMonth.toNumber() ?? PERMISSION_RULE_DEFAULTS.hoursPerMonth;
-    const employmentOf = new Map<string, EmploymentRow>();
-    for (const e of employments) if (!employmentOf.has(e.employeeId)) employmentOf.set(e.employeeId, e);
-    const daysOf = new Map<string, DayRow[]>();
-    for (const d of days) daysOf.set(d.employeeId, [...(daysOf.get(d.employeeId) ?? []), d]);
 
     for (const e of employees) {
-      const job = employmentOf.get(e.id);
-      const kept = daysOf.get(e.id) ?? [];
-      if (!job && !kept.length) continue;
-      const s = job?.shift;
-      const hoursADay = s ? shiftWorkHours({ startTime: fromTimeOfDay(s.startTime), endTime: fromTimeOfDay(s.endTime), hoursPerDay: s.hoursPerDay?.toNumber() ?? null }) : null;
+      const m = months.get(e.id);
+      if (!m) continue;
+      const job = m.employment;
+      const hoursADay = m.hoursADay;
       // the month's permission (owner, 19 October 2026: "In the system, like leave"): the approved requests when there are any
       const requests = permissions.filter((p) => p.employeeId === e.id);
       const system = new Map<string, number>();
       for (const r of requests) system.set(fromDateOnly(r.date), (system.get(fromDateOnly(r.date)) ?? 0) + r.hours.toNumber());
       const fromSystem = requests.length > 0;
-      const dayViews = kept.map((d) => ({
-        ...attendanceDayView(
-          {
-            date: fromDateOnly(d.date),
-            status: d.status as AttendanceDayStatus,
-            checkIn: d.checkIn?.toISOString() ?? null,
-            checkOut: d.checkOut?.toISOString() ?? null,
-            place: (d.place as WorkPlace | null) ?? null,
-            zohoStatus: d.zohoStatus,
-            permissionHours: fromSystem ? (system.get(fromDateOnly(d.date)) ?? 0) : (d.permissionHours?.toNumber() ?? 0),
-            hoursCounted: d.hoursCounted.toNumber(),
-          },
-          hoursADay,
-        ),
+      const dayViews = m.days.map((d) => ({
+        // Zoho's column on its days (and on a day corrected over one of them, which carries it)
+        ...attendanceDayView({ ...d, permissionHours: fromSystem ? (system.get(d.date) ?? 0) : d.source === 'zoho' || d.source === 'correction' ? d.permissionHours : 0 }, hoursADay),
         importId: d.importId,
       }));
       const systemHours = [...system.values()].reduce((a, b) => a + b, 0);
@@ -445,6 +449,7 @@ export class AttendanceService {
         figures,
         averageHours: averageHoursADay(figures),
         permissionFrom: fromSystem ? 'system' : figures.permissionHours > 0 ? 'zoho' : null,
+        checksIn: m.sources.some((x) => x === 'system' || x === 'device'),
         days: dayViews,
       });
     }

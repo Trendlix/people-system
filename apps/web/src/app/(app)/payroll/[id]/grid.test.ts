@@ -11,6 +11,7 @@ import {
   expectedCell,
   fromImport,
   GRID_COLUMNS,
+  importMarkText,
   importTitle,
   ITEMS_AFTER,
   LEAVE_FIELDS,
@@ -512,6 +513,22 @@ describe('the figures filled from Zoho People (owner, 19 October 2026: "HR\'s ty
 
   it('says when it was filled, and how to change it', () => {
     expect(importTitle(mark.at)).toBe("Filled from Zoho People's attendance, applied on 19/10/2026. To change it, import the month again, or undo that import on its review.");
+    expect(importTitle(mark.at, 'zoho')).toBe(importTitle(mark.at));
+    expect(importMarkText('zoho')).toBe('from Zoho');
+    // a mark from before the source: Zoho's
+    expect(importMarkText(undefined)).toBe('from Zoho');
+  });
+
+  it('marks the cells filled from the month’s attendance days "from attendance" (checking in on the system, 19 October 2026), read only the same', () => {
+    const fromDays = { ...mark, source: 'attendance' as const };
+    expect(fromImport(fromDays, 'workedHours')).toBe(true);
+    expect(fromImport(fromDays, 'expectedHours')).toBe(false);
+    expect(importMarkText('attendance')).toBe('from attendance');
+    expect(importTitle(fromDays.at, 'attendance')).toBe(
+      "Filled from the month's attendance days on 19/10/2026. They change with the attendance: a correction approved, or Refresh from attendance.",
+    );
+    const line = { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 150 }, onHold: false, comments: null, attendanceImport: fromDays };
+    expect(linePatches([line], { [A]: { inputs: { workedHours: '160:00', expectedHours: '176:00' } } }).patches).toEqual([{ id: A, inputs: { expectedHours: 176 } }]);
   });
 
   it('never sends what is typed in a cell the import filled, but the others', () => {

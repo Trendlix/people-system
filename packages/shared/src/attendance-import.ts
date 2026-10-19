@@ -454,11 +454,20 @@ export const IMPORTED_INPUT_LABELS: Record<ImportedInput, string> = {
  * import), which Undo this import puts back. A mark from before Undo has no `before`: undone, those inputs are emptied.
  */
 export interface AttendanceImportMark {
-  source: 'zoho';
-  importId: string;
+  /**
+   * 'zoho': filled by a Zoho import (importId); 'attendance': filled from the month's attendance days (owner's brief, 19
+   * October 2026: "a draft run's lines are filled from the month's attendance days … marked 'from attendance', read-only
+   * like the Zoho cells"), for someone who checks in on the system or whose day was corrected (`sources`: the days'
+   * sources).
+   */
+  source: 'zoho' | 'attendance';
+  /** The Zoho import, for 'zoho'. */
+  importId?: string;
   at: string;
   fields: ImportedInput[];
   before?: Partial<Record<ImportedInput, number | null>>;
+  /** The sources of the days an 'attendance' fill took (check-in.ts ATTENDANCE_SOURCES). */
+  sources?: string[];
 }
 
 /**
@@ -491,8 +500,39 @@ const CAIRO_DAY = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', d
  * Why an imported input can't be typed over (409): "Worked hours for Rania Girgis came from the Zoho import of
  * 19/10/2026: import the month again to change them, or undo that import on its review." `at`: when it was applied.
  */
-export function importedInputRefusal(field: ImportedInput, name: string, at: string): string {
+export function importedInputRefusal(field: ImportedInput, name: string, at: string, source: AttendanceImportMark['source'] = 'zoho'): string {
   const moment = new Date(at);
   const day = Number.isNaN(moment.getTime()) ? at : CAIRO_DAY.format(moment);
+  if (source === 'attendance') {
+    return `${IMPORTED_INPUT_LABELS[field]} for ${name} come from the attendance days (filled ${day}): they change with the attendance itself, by a correction approved or Refresh from attendance.`;
+  }
   return `${IMPORTED_INPUT_LABELS[field]} for ${name} came from the Zoho import of ${day}: import the month again to change them, or undo that import on its review.`;
+}
+
+/** A day as a line's figures are taken from it: what it was, the hours it counts, its permission and source. */
+export interface LineDay {
+  status: AttendanceDayStatus;
+  hoursCounted: number;
+  permissionHours: number;
+  source?: string;
+}
+
+/**
+ * What a payroll line takes from a month's attendance days (owner's brief, 19 October 2026: "a draft run's lines are
+ * filled from the month's attendance days (source 'system' first; for a person with none, the Zoho days if imported)"):
+ * the hours counted (to the minute), the absent days as no-show days, and the permission hours: none when the system's
+ * approved permission requests count (`systemPermissionHours` > 0: the line has them from its terms) or there are none,
+ * else Zoho's column of its days within the month's allowance, as an import fills them. Pay by the hour: the hours only.
+ */
+export function attendanceLineInputs(
+  days: readonly LineDay[],
+  opts: { systemPermissionHours: number; permissionHoursPerMonth: number; hourly: boolean },
+): Partial<Record<ImportedInput, number | null>> {
+  const worked = days.filter((d) => d.status === 'worked');
+  const workedHours = minutes(worked.reduce((sum, d) => sum + (d.hoursCounted > 0 ? d.hoursCounted : 0), 0));
+  if (opts.hourly) return { workedHours };
+  // Zoho's column: its days', and a corrected day's over one of Zoho's (which carries it)
+  const zoho = halfHoursOrMinutes(days.filter((d) => ['zoho', 'correction'].includes(d.source ?? 'zoho')).reduce((sum, d) => sum + (d.permissionHours > 0 ? d.permissionHours : 0), 0));
+  const permission = opts.systemPermissionHours > 0 || zoho <= 0 ? null : Math.min(zoho, Math.max(0, opts.permissionHoursPerMonth));
+  return { workedHours, noShowDays: days.filter((d) => d.status === 'absent').length, permissionHours: permission !== null && permission > 0 ? permission : null };
 }

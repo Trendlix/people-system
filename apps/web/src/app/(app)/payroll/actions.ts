@@ -59,6 +59,16 @@ export async function refreshRun(id: string): Promise<FormState> {
 }
 
 /**
+ * Refresh from attendance (owner, 19 October 2026: "Check-in through the system (phone or web with the office location
+ * check, or a device) to replace Zoho"): a draft's lines of those who check in on the system, or whose days were
+ * corrected, filled again from the month's attendance days (HR and the CEO; the API refuses any other run, 409).
+ */
+export async function refreshFromAttendance(id: string): Promise<FormState> {
+  if (!UUID.test(id)) return NOT_FOUND;
+  return act(() => apiSend('POST', `/payroll/runs/${id}/attendance-refresh`), 'Filled again from the attendance days.');
+}
+
+/**
  * Saves the rows of the inputs grid that changed, in one request (a draft: HR's lines, and the C-level people's the
  * CEO's, owner, 19 October 2026: "the CEO fills their inputs"; the API refuses a line that isn't the caller's).
  */

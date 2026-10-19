@@ -209,8 +209,8 @@ export default function AttendanceSummaryPage({ searchParams }: PageProps<'/atte
         <div>
           <h1 className="text-2xl font-semibold">Attendance Summary</h1>
           <p className="mt-1 max-w-3xl text-muted">
-            The attendance imported from Zoho People by department and team: absent days, short hours against each shift, permission hours, remote
-            days and the hours worked a day on average.
+            The attendance, from check-ins on the system and Zoho People&apos;s imports, by department and team: absent days, short hours against
+            each shift, permission hours, remote days and the hours worked a day on average.
           </p>
         </div>
         <Suspense fallback={<Loading />}>

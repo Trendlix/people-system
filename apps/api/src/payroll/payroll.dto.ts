@@ -19,7 +19,15 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT, SALARY_REVIEW_MONTHS_MAX, SALARY_REVIEW_MONTHS_MIN } from '@trendlix/shared';
+import {
+  INSTALLMENT_LIMIT_MIN,
+  LAW_INSTALLMENT_PERCENT,
+  OFFICE_RADIUS_DEFAULT,
+  OFFICE_RADIUS_MAX,
+  OFFICE_RADIUS_MIN,
+  SALARY_REVIEW_MONTHS_MAX,
+  SALARY_REVIEW_MONTHS_MIN,
+} from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
 import { MONTH } from './months.js';
@@ -42,6 +50,10 @@ const PURPOSE_MESSAGE = 'Enter the ACH transaction purpose in capital letters an
 const PAYDAY_MESSAGE = 'Enter the day of the month salaries are paid, a whole number from 1 to 31, or leave it empty.';
 const REVIEW_MESSAGE = `Enter after how many months without a raise a salary review is due, a whole number from ${SALARY_REVIEW_MONTHS_MIN} to ${SALARY_REVIEW_MONTHS_MAX}, e.g. 12.`;
 const INSTALLMENT_LIMIT_MESSAGE = `Enter the most a month's installments of advances and loans may take, from ${INSTALLMENT_LIMIT_MIN} to ${LAW_INSTALLMENT_PERCENT} percent of the wage, e.g. 10: the law allows at most ${LAW_INSTALLMENT_PERCENT}% (Labour Law Art. 113).`;
+
+const LATITUDE_MESSAGE = "Enter the office's latitude from -90 to 90, with up to 6 decimals, e.g. 30.059600.";
+const LONGITUDE_MESSAGE = "Enter the office's longitude from -180 to 180, with up to 6 decimals, e.g. 31.346200.";
+const RADIUS_MESSAGE = `Enter the office's radius in whole metres from ${OFFICE_RADIUS_MIN} to ${OFFICE_RADIUS_MAX}, e.g. ${OFFICE_RADIUS_DEFAULT}.`;
 
 export class UpdatePayrollSettingsDto {
   @Sent() @IsInt({ message: DIVISOR_MESSAGE }) @Min(20, { message: DIVISOR_MESSAGE }) @Max(31, { message: DIVISOR_MESSAGE })
@@ -123,6 +135,20 @@ export class UpdatePayrollSettingsDto {
   @ArrayMaxSize(20, { message: 'Enter at most 20 office addresses.' })
   @IsString({ each: true, message: 'Enter each office address as text, e.g. 15, Al Doctor Al Mahrouqi Street.' })
   officeAddresses?: string[];
+
+  /**
+   * The office's point for checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web
+   * with the office location check …)"): its latitude and longitude, both or neither (null clears it: every check-in is
+   * location unknown), and its radius in whole metres (150 to start with).
+   */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 6, allowNaN: false, allowInfinity: false }, { message: LATITUDE_MESSAGE }) @Min(-90, { message: LATITUDE_MESSAGE }) @Max(90, { message: LATITUDE_MESSAGE })
+  officeLatitude?: number | null;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 6, allowNaN: false, allowInfinity: false }, { message: LONGITUDE_MESSAGE }) @Min(-180, { message: LONGITUDE_MESSAGE }) @Max(180, { message: LONGITUDE_MESSAGE })
+  officeLongitude?: number | null;
+
+  @Sent() @IsInt({ message: RADIUS_MESSAGE }) @Min(OFFICE_RADIUS_MIN, { message: RADIUS_MESSAGE }) @Max(OFFICE_RADIUS_MAX, { message: RADIUS_MESSAGE })
+  officeRadiusMetres?: number;
 }
 
 // ---------- runs ----------

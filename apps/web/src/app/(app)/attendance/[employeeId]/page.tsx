@@ -4,20 +4,26 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { CLevelBadge } from '@/components/c-level-badge';
 import { cLevelTitle } from '@/lib/confidential';
+import type { MonthCorrectionsPart } from '@/lib/correction-types';
 import { getCurrentUser } from '@/lib/session';
 import { todayInCairo } from '../../employees/ui';
 import { BackLink, Empty, Loading, UUID } from '../../organization/ui';
 import { StaffOnly } from '../../staff-only';
 import { monthName } from '../../payroll/list';
-import { canSeeAttendance, dailyHref, figureTiles, importWay, personHref, readAttendanceMonth, reviewsImports } from '../attendance';
+import { canSeeAttendance, dailyHref, figureTiles, importWay, personHref, readAttendanceMonth, reviewsImports, type PunchRow } from '../attendance';
+import { hrCorrectionHref } from '../corrections/corrections';
+import { DayCorrectionCell } from '../corrections/day-cell';
 import { loadPerson } from '../data';
 import { notLoaded } from '../not-loaded';
 import { DaysTable, FigureTiles, MonthNav, SourcesNote } from '../ui';
 
 // A person's month (owner's brief, 19 October 2026: Daily Attendance, "A person's month also as a page"): their figures
-// and every day kept from Zoho People's imports, with the month before and after a click away, and where the days came
-// from. HR, the CEO and Finance; a C-level person's only the CEO and the Super Admin (the API answers 404 for the rest,
-// as for anyone not there).
+// and every day kept, from their check-ins on the system (owner, 19 October 2026: "Check-in through the system (phone or
+// web with the office location check, or a device) to replace Zoho") and Zoho People's imports, with the month before
+// and after a click away, and where the days came from. HR, the CEO and Finance; a C-level person's only the CEO and the
+// Super Admin (the API answers 404 for the rest, as for anyone not there). Attendance corrections (owner, 19 October
+// 2026: "Attendance corrections with approval"): HR's Correct on each day (never their own), a correction being decided
+// on its day, a corrected day "corrected from …", and every press of the day under it.
 
 export const metadata: Metadata = { title: 'Attendance · People System' };
 
@@ -30,7 +36,11 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
   const loaded = await loadPerson(employeeId, month);
   if (loaded.kind === 'unavailable') notFound();
   if (loaded.kind !== 'ok') return <Empty>{notLoaded(loaded, 'attendance')}</Empty>;
-  const { person: p, sources, run } = loaded.value;
+  const view = loaded.value as typeof loaded.value & MonthCorrectionsPart & { punches?: PunchRow[] };
+  const { person: p, sources, run } = view;
+  const today = todayInCairo();
+  // attendance corrections (19 October 2026): HR corrects a day directly; anyone here sees a correction being decided
+  const corrections = view.corrections;
   const way = importWay(user, month, run);
   return (
     <div className="space-y-6">
@@ -53,8 +63,8 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
       {p.days.length === 0 ? (
         <div className="card space-y-3 px-6 py-8 text-center">
           <p className="text-muted">
-            No attendance of {p.employee.fullNameEn} kept for {monthName(month)}: the month isn&apos;t imported yet, or they weren&apos;t matched in its
-            files. Import it on the month&apos;s payroll run.
+            No attendance of {p.employee.fullNameEn} kept for {monthName(month)}: they haven&apos;t checked in on the system, and Zoho People&apos;s
+            attendance for the month isn&apos;t imported yet or they weren&apos;t matched in its files. Import it on the month&apos;s payroll run.
           </p>
           <Link href={way.href} className="btn btn-secondary no-underline">
             {way.label}
@@ -68,7 +78,25 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
               Days
             </h2>
             <div className="card">
-              <DaysTable days={p.days} name={p.employee.fullNameEn} />
+              <DaysTable
+                days={p.days}
+                name={p.employee.fullNameEn}
+                punches={view.punches ?? []}
+                action={
+                  corrections
+                    ? (d) => (
+                        <DayCorrectionCell
+                          day={d}
+                          corrections={corrections}
+                          correctable={view.canCorrect ? view.correctable : null}
+                          today={today}
+                          href={(date) => hrCorrectionHref(p.employee.id, date)}
+                          label="Correct"
+                        />
+                      )
+                    : undefined
+                }
+              />
             </div>
           </section>
           <SourcesNote sources={sources} reviews={reviewsImports(user)} />

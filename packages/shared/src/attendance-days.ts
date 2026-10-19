@@ -3,9 +3,15 @@
 // CEO and Finance (Daily Attendance, a person's month, the Summary by department and team), for a manager's team and
 // for an employee's own month. What a kept day shows (its short hours against the shift, a check-in without a
 // check-out), a month's figures, the filters of Daily Attendance, the Summary's period and its rows by department and
-// team. Pure: the API works the figures out with these and the web shows the same words.
+// team. Pure: the API works the figures out with these and the web shows the same words. Checking in on the system
+// (owner, 19 October 2026: "Check-in through the system … to replace Zoho", check-in.ts): a day may come from the
+// system's check-ins too, its place unknown and its check-ins flagged; a day has one source shown (a correction, the
+// system's, a device's, Zoho's: SOURCE_PRECEDENCE), and from someone's first check-in on, a working day gone by with
+// none is absent (monthDays).
 
-import type { AttendanceDayStatus, WorkPlace } from './attendance-import.js';
+import type { AttendanceDayStatus } from './attendance-import.js';
+import type { CorrectedFrom } from './attendance-corrections.js';
+import { CHECK_IN_SOURCES, daysByPrecedence, isCheckInFlag, type AttendanceSource, type CheckInFlag, type DayPlace } from './check-in.js';
 
 /** To the minute, as the import counts hours. */
 const toMinute = (hours: number) => Math.round(hours * 60) / 60 + 0;
@@ -20,7 +26,8 @@ export interface KeptDay {
   /** Moments, ISO; null: none in Zoho's file. */
   checkIn: string | null;
   checkOut: string | null;
-  place: WorkPlace | null;
+  /** Office or remote; a check-in on the system whose location was refused or unavailable, unknown. */
+  place: DayPlace | null;
   zohoStatus: string | null;
   /**
    * The day's permission hours as the month counts them (the owner's rule, 19 October 2026): the permission requests
@@ -29,6 +36,16 @@ export interface KeptDay {
   permissionHours: number;
   /** The hours it counts, by the shift's rule (attendance.ts hoursCountedForDay). */
   hoursCounted: number;
+  /** Where it came from (none: Zoho's, as every day was before 19 October 2026's check-ins). */
+  source?: AttendanceSource;
+  /** A check-in on the system that broke its work arrangement's rule (CHECK_IN_FLAGS): kept, flagged. */
+  flags?: readonly string[];
+  /**
+   * A correction approved (owner, 19 October 2026: "Attendance corrections with approval"): the day it was applied over,
+   * kept as it was (null: no day on record), and the correction.
+   */
+  correctedFrom?: CorrectedFrom | null;
+  correctionId?: string | null;
 }
 
 /** A kept day as the Attendance pages show it. */
@@ -39,6 +56,10 @@ export interface AttendanceDayView extends KeptDay {
   shortHours: number;
   /** A check-in without a check-out: no hours counted that day. */
   missingCheckOut: boolean;
+  /** A check-out without a check-in (on the system): no hours counted that day. */
+  missingCheckIn: boolean;
+  /** The day's flags it knows (CHECK_IN_FLAGS). */
+  flags: CheckInFlag[];
 }
 
 /**
@@ -49,10 +70,11 @@ export interface AttendanceDayView extends KeptDay {
 export function attendanceDayView(day: KeptDay, hoursADay: number | null): AttendanceDayView {
   const worked = day.status === 'worked';
   const missingCheckOut = worked && !!day.checkIn && !day.checkOut;
+  const missingCheckIn = worked && !day.checkIn && !!day.checkOut;
   const counted = worked && !!day.checkIn && !!day.checkOut;
   const expectedHours = worked && typeof hoursADay === 'number' && hoursADay > 0 ? hoursADay : null;
   const shortHours = counted && expectedHours !== null ? Math.max(0, toMinute(expectedHours - day.hoursCounted - Math.max(0, day.permissionHours))) : 0;
-  return { ...day, expectedHours, shortHours, missingCheckOut };
+  return { ...day, expectedHours, shortHours, missingCheckOut, missingCheckIn, flags: (day.flags ?? []).filter(isCheckInFlag) };
 }
 
 // ---------- a month's figures ----------
@@ -78,6 +100,10 @@ export interface AttendanceFigures {
   /** Days Zoho marks as leave with no leave in the system: for HR to record there. */
   zohoLeaveDays: number;
   missingCheckOuts: number;
+  /** Check-outs on the system without a check-in that day: no hours counted. */
+  missingCheckIns: number;
+  /** Days whose check-in on the system broke the work arrangement's rule (CHECK_IN_FLAGS). */
+  flaggedDays: number;
   /** Days Zoho says present or on duty without a check-in: not absent, nor any hours. */
   noCheckInDays: number;
   holidays: number;
@@ -97,6 +123,8 @@ export const NO_ATTENDANCE_FIGURES: Readonly<AttendanceFigures> = Object.freeze(
   leaveDays: 0,
   zohoLeaveDays: 0,
   missingCheckOuts: 0,
+  missingCheckIns: 0,
+  flaggedDays: 0,
   noCheckInDays: 0,
   holidays: 0,
   restDays: 0,
@@ -122,6 +150,8 @@ export function attendanceFigures(days: readonly AttendanceDayView[], options: {
       if (d.place === 'office') f.officeDays++;
       if (d.place === 'remote') f.remoteDays++;
       if (d.missingCheckOut) f.missingCheckOuts++;
+      if (d.missingCheckIn) f.missingCheckIns++;
+      if (d.flags.length) f.flaggedDays++;
       f.hoursCounted += d.hoursCounted;
       f.shortHours += d.shortHours;
     } else if (d.status === 'absent') f.absentDays++;
@@ -153,7 +183,7 @@ export function averageHoursADay(f: Pick<AttendanceFigures, 'hoursCounted' | 'da
 // ---------- Daily Attendance's filters ----------
 
 /** "Only with absences" and the like (owner's brief, 19 October 2026): who Daily Attendance lists. */
-export const ATTENDANCE_FILTERS = ['absences', 'short_hours', 'missing_check_outs', 'remote', 'zoho_leave'] as const;
+export const ATTENDANCE_FILTERS = ['absences', 'short_hours', 'missing_check_outs', 'remote', 'zoho_leave', 'flagged'] as const;
 export type AttendanceFilter = (typeof ATTENDANCE_FILTERS)[number];
 
 export const ATTENDANCE_FILTER_LABELS: Record<AttendanceFilter, string> = {
@@ -162,6 +192,9 @@ export const ATTENDANCE_FILTER_LABELS: Record<AttendanceFilter, string> = {
   missing_check_outs: 'Only with missing check-outs',
   remote: 'Only with remote days',
   zoho_leave: 'Only with leave in Zoho only',
+  // a check-in on the system that broke the work arrangement's rule (owner's brief, 19 October 2026: "flagged … for the
+  // manager and HR to see on Daily Attendance")
+  flagged: 'Only with flagged check-ins',
 };
 
 export const isAttendanceFilter = (value: unknown): value is AttendanceFilter => (ATTENDANCE_FILTERS as readonly unknown[]).includes(value);
@@ -179,10 +212,76 @@ export function matchesAttendanceFilter(f: AttendanceFigures, filter: Attendance
       return f.remoteDays > 0;
     case 'zoho_leave':
       return f.zohoLeaveDays > 0;
+    case 'flagged':
+      return f.flaggedDays > 0;
     default:
       return true;
   }
 }
+
+// ---------- a person's month from every source ----------
+
+/** A kept day with where it came from: what monthDays merges. */
+export interface SourcedDay extends KeptDay {
+  source: AttendanceSource;
+}
+
+/** What a person's month of days is worked out from, besides their kept days. */
+export interface MonthDaysContext {
+  /** YYYY-MM. */
+  month: string;
+  /** Today in Cairo (YYYY-MM-DD): only the days before it can have gone by without a check-in. */
+  today: string;
+  /**
+   * The first day they checked in on the system (or on a device), in any month; null: never. From it on, a working day
+   * gone by with no day kept is absent; before it, only what Zoho's import kept counts.
+   */
+  checkInFrom: string | null;
+  /** Their shift's working days (0 = Sunday); null: Sunday to Thursday. */
+  workingDays: readonly number[] | null;
+  /** The official holidays of the month, and the days of it they have approved leave in the system. */
+  holidays: readonly string[];
+  leaveDays: readonly string[];
+  /** Their employment's first and last day (null: current, or none). */
+  employedFrom: string | null;
+  employedTo: string | null;
+}
+
+const SUN_TO_THU: readonly number[] = [0, 1, 2, 3, 4];
+const nextDay = (ymd: string) => new Date(Date.parse(`${ymd}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * A person's days of a month, one a date (owner's brief, 19 October 2026): each date's kept day from the first source
+ * there is (a correction, the system's check-ins, a device's, Zoho's import: SOURCE_PRECEDENCE); and from their first
+ * check-in on the system on (`checkInFrom`), within the month and their employment, up to yesterday, each date with
+ * none: an official holiday, a rest day of their shift, a day of approved leave, or else an absent day (a working day
+ * gone by without a check-in), as source 'system'. Someone who never checked in on the system has only what Zoho's
+ * import kept, as before. In date order.
+ */
+export function monthDays<D extends SourcedDay>(rows: readonly D[], ctx: MonthDaysContext): (D | SourcedDay)[] {
+  const days: (D | SourcedDay)[] = daysByPrecedence(rows.filter((r) => r.date.startsWith(ctx.month)));
+  if (!ctx.checkInFrom) return days;
+  const first = `${ctx.month}-01`;
+  const last = new Date(Date.UTC(Number(ctx.month.slice(0, 4)), Number(ctx.month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  let from = ctx.checkInFrom > first ? ctx.checkInFrom : first;
+  if (ctx.employedFrom && ctx.employedFrom > from) from = ctx.employedFrom;
+  let to = last;
+  if (ctx.employedTo && ctx.employedTo < to) to = ctx.employedTo;
+  const known = new Set(days.map((d) => d.date));
+  const holidays = new Set(ctx.holidays);
+  const leave = new Set(ctx.leaveDays);
+  const working = new Set(ctx.workingDays ?? SUN_TO_THU);
+  for (let date = from; date <= to && date < ctx.today; date = nextDay(date)) {
+    if (known.has(date)) continue;
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const status: AttendanceDayStatus = holidays.has(date) ? 'holiday' : !working.has(weekday) ? 'rest' : leave.has(date) ? 'leave' : 'absent';
+    days.push({ date, status, checkIn: null, checkOut: null, place: null, zohoStatus: null, permissionHours: 0, hoursCounted: 0, source: 'system', flags: [] });
+  }
+  return days.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Whether a source is one of the system's check-ins (CHECK_IN_SOURCES): from someone's first one on, missing days are absent. */
+export const isCheckInSource = (source: string): boolean => (CHECK_IN_SOURCES as readonly string[]).includes(source);
 
 // ---------- the Summary's period ----------
 

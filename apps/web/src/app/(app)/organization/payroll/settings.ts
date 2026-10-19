@@ -1,4 +1,15 @@
-import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT, officeAddressesProblems, SALARY_REVIEW_MONTHS_MAX, SALARY_REVIEW_MONTHS_MIN, type PayrollRules, type Role } from '@trendlix/shared';
+import {
+  INSTALLMENT_LIMIT_MIN,
+  LAW_INSTALLMENT_PERCENT,
+  OFFICE_RADIUS_DEFAULT,
+  officeAddressesProblems,
+  officeLocationProblems,
+  officeLocationSet,
+  SALARY_REVIEW_MONTHS_MAX,
+  SALARY_REVIEW_MONTHS_MIN,
+  type PayrollRules,
+  type Role,
+} from '@trendlix/shared';
 import { hasRole } from '../../../../lib/roles';
 import { parseAmount } from '../../employees/[id]/contracts/salary';
 
@@ -14,7 +25,9 @@ import { parseAmount } from '../../employees/[id]/contracts/salary';
 // holidays and working days were the third section until they got a tab of their own (owner, 16 October 2026: "make
 // holiday a separate tab"; organization/holidays). 4 Paying Salaries: the company's CIB account, the ACH purpose and
 // the payday. Pure code, tested: who sees it, each form read into what the API takes and the payday's date. Relative
-// imports: the tests run without the "@/" alias.
+// imports: the tests run without the "@/" alias. The office's location (owner, 19 October 2026: "Check-in through the
+// system (phone or web with the office location check, or a device) to replace Zoho"): its point and radius, which tell
+// a check-in on the system at the office from remote.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -70,7 +83,58 @@ export interface ContractDefaultsBody {
  * the months after which a salary review is due when the form has them (an API from before it leaves it off the form).
  */
 export type RulesBody = Omit<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'> &
-  Partial<Pick<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'>> & { salaryReviewMonths?: number; installmentLimitPercent?: number; officeAddresses?: string[] };
+  Partial<Pick<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'>> & {
+    salaryReviewMonths?: number;
+    installmentLimitPercent?: number;
+    officeAddresses?: string[];
+  } & Partial<OfficeLocationBody>;
+
+/** The office's point and radius as PATCH /payroll/settings takes them: both coordinates or neither (null: not set). */
+export interface OfficeLocationBody {
+  officeLatitude: number | null;
+  officeLongitude: number | null;
+  officeRadiusMetres: number;
+}
+
+/** A coordinate kept to 6 decimals (about 10 cm), as the API keeps it. */
+export const roundCoordinate = (n: number): number => Math.round(n * 1e6) / 1e6 + 0;
+
+/** A coordinate as typed: a decimal number, a minus allowed, kept to 6 decimals; empty: none (null); else NaN. */
+export function coordinateFrom(raw: string): number | null {
+  const s = latin(raw).trim().replace(/[\u2212\u2013]/g, '-');
+  if (s === '') return null;
+  if (!/^[-+]?\d{1,3}(\.\d+)?$/.test(s)) return NaN;
+  return roundCoordinate(Number(s));
+}
+
+/** "30.0596, 31.3462" pasted from a map into the latitude field: the two of them. */
+const PAIR = /^\s*([-+]?\d{1,3}(?:\.\d+)?)\s*[,،]\s*([-+]?\d{1,3}(?:\.\d+)?)\s*$/;
+
+/**
+ * The office's location as typed in Your Rules: the latitude and longitude (both pasted into the latitude field from a
+ * map, "30.0596, 31.3462", are split), each to 6 decimals, both empty for not set; the radius in whole metres (150 to
+ * start with). What is wrong is the shared checks' (officeLocationProblems), the API's own.
+ */
+export function officeLocationFrom(typed: { latitude: string; longitude: string; radius: string }): { body: OfficeLocationBody; problems: string[] } {
+  let latitude = latin(typed.latitude);
+  let longitude = latin(typed.longitude);
+  const pair = longitude.trim() === '' ? PAIR.exec(latitude) : null;
+  if (pair) [latitude, longitude] = [pair[1], pair[2]];
+  const radiusText = latin(typed.radius).trim();
+  const radius = radiusText === '' ? OFFICE_RADIUS_DEFAULT : /^\d+$/.test(radiusText) ? Number(radiusText) : NaN;
+  const body = { officeLatitude: coordinateFrom(latitude), officeLongitude: coordinateFrom(longitude), officeRadiusMetres: radius };
+  return { body, problems: officeLocationProblems({ latitude: body.officeLatitude, longitude: body.officeLongitude, radiusMetres: radius }) };
+}
+
+/** The office's location as the Your Rules summary says it: "30.059600, 31.346200 · 150 m", or not set. */
+export function officeLocationText(s: { officeLatitude?: number | null; officeLongitude?: number | null; officeRadiusMetres?: number }): string {
+  const radius = s.officeRadiusMetres ?? OFFICE_RADIUS_DEFAULT;
+  if (!officeLocationSet({ latitude: s.officeLatitude ?? null, longitude: s.officeLongitude ?? null })) return 'Not set: check-ins are kept as location unknown';
+  return `${s.officeLatitude!.toFixed(6)}, ${s.officeLongitude!.toFixed(6)} · ${radius.toLocaleString('en-US')} m`;
+}
+
+/** A saved coordinate as the field starts with it: "30.059600"; none: empty. */
+export const coordinateText = (n: number | null | undefined): string => (typeof n === 'number' && Number.isFinite(n) ? n.toFixed(6) : '');
 
 /**
  * The office's addresses as typed (owner, 19 October 2026: attendance from Zoho People, "13 and 17 al mahrouki is also in
@@ -118,6 +182,12 @@ export function rulesBody(fd: FormData): { rules: RulesBody; defaults: ContractD
     const addresses = officeAddressesFrom(text(fd, 'officeAddresses'));
     errors.push(...officeAddressesProblems(addresses));
     rules.officeAddresses = addresses;
+  }
+  // the office's point and radius for checking in on the system (19 October 2026): both or neither, as the API checks them
+  if (fd.has('officeRadiusMetres')) {
+    const { body, problems } = officeLocationFrom({ latitude: text(fd, 'officeLatitude'), longitude: text(fd, 'officeLongitude'), radius: text(fd, 'officeRadiusMetres') });
+    errors.push(...problems);
+    Object.assign(rules, body);
   }
   const defaults: ContractDefaultsBody = {};
   if (fd.has('basicPercentDefault')) {

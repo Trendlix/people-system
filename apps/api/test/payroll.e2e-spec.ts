@@ -236,6 +236,10 @@ describe('Payroll (e2e)', () => {
           installmentLimitPercent: 10,
           // the office's addresses as Zoho People writes a check-in's location (owner, 19 October 2026)
           officeAddresses: ['Trendlix', '13, Al Doctor Al Mahrouqi Street', '15, Al Doctor Al Mahrouqi Street', '17, Al Doctor Al Mahrouqi Street'],
+          // the office's point for checking in on the system (19 October 2026): not set, 150 metres to start with
+          officeLatitude: null,
+          officeLongitude: null,
+          officeRadiusMetres: 150,
         });
       }
       await api().get('/api/payroll/settings').set('Cookie', staff).expect(403);

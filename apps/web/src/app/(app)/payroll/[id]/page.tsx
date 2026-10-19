@@ -12,7 +12,7 @@ import { loadPayrollSettings } from '../../organization/payroll/data';
 import { paidOnDefault } from '../../organization/payroll/settings';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { adjustmentsHref } from '../adjustments/adjustments';
-import { approveRun, deleteRun, markRunPaid, refreshRun, returnRun, saveRunLines, setAttendanceWaiver, submitRun } from '../actions';
+import { approveRun, deleteRun, markRunPaid, refreshFromAttendance, refreshRun, returnRun, saveRunLines, setAttendanceWaiver, submitRun } from '../actions';
 import { loadRun } from '../data';
 import { bankFilesReady, bankLeftOut, fileHref } from '../files';
 import { canSeePayroll, employeesLabel, preparesPayroll, rulesSummary, runActions, runTitle } from '../list';
@@ -20,7 +20,7 @@ import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslip
 import { PayrollStatusBadge, PayrollStepper } from '../ui';
 import { anyEditable, employeesNote, figuresNote, filesNote, hiddenCount, hiddenRowLabel, hiddenTotalsNote, lineEditable } from './access';
 import { RunAdjustments } from './adjustments-section';
-import { attendanceUploadHref } from './attendance/attendance';
+import { attendanceUploadHref, REFRESH_FROM_ATTENDANCE_HINT, refreshesFromAttendance } from './attendance/attendance';
 import { loadImports } from './attendance/data';
 import { ImportsList } from './attendance/imports-list';
 import { CibFileForm } from './downloads';
@@ -182,8 +182,9 @@ function gridRows(lines: PayrollLineView[], month: string, today: string, runLev
     // the month's additions and deductions, opening the person's month on Additions / Deductions (17 October 2026)
     items: lineItems(l),
     itemsHref: adjustmentsHref(month, today, l.employeeId),
-    // the inputs Zoho People's attendance filled (19 October 2026), marked "from Zoho" until typed over
-    attendanceImport: l.attendanceImport ? { fields: l.attendanceImport.fields, at: l.attendanceImport.at } : null,
+    // the inputs Zoho People's attendance filled (19 October 2026), marked "from Zoho", or the month's attendance days
+    // (checking in on the system, 19 October 2026), marked "from attendance"; read only
+    attendanceImport: l.attendanceImport ? { fields: l.attendanceImport.fields, at: l.attendanceImport.at, source: l.attendanceImport.source ?? 'zoho' } : null,
   }));
 }
 
@@ -275,9 +276,13 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
 }
 
 /**
- * Attendance from Zoho People (owner, 19 October 2026: attendance runs in Zoho People today, "Import Zoho now, replace it
- * later"): on a draft, HR's Import attendance from Zoho People, and the run's imports, each opening its review, where it
- * is applied to the lines (the CEO applies the C-level people's). For HR and the CEO only; nothing from an API from before.
+ * Attendance (owner, 19 October 2026: attendance runs in Zoho People today, "Import Zoho now, replace it later"; then
+ * "Check-in through the system (phone or web with the office location check, or a device) to replace Zoho"): the
+ * month's attendance fills the lines' worked hours, no-show days and permission hours: the attendance days of those who
+ * check in on the system (or whose days were corrected), marked "from attendance", with Refresh from attendance on a
+ * draft (HR and the CEO); Zoho People's import for the others: on a draft, HR's Import attendance from Zoho People, and
+ * the run's imports, each opening its review, where it is applied to the lines (the CEO applies the C-level people's).
+ * For HR and the CEO only; nothing from an API from before.
  */
 async function Attendance({ run, user }: { run: PayrollRunView; user: SessionUser }) {
   const hr = preparesPayroll(user);
@@ -285,24 +290,47 @@ async function Attendance({ run, user }: { run: PayrollRunView; user: SessionUse
   const imports = await loadImports(run.id);
   if (imports.kind === 'unavailable' || imports.kind === 'forbidden') return null;
   const list = imports.kind === 'ok' ? imports.value : [];
-  if (run.status !== 'draft' && !list.length) return null;
+  const draft = run.status === 'draft';
+  if (!draft && !list.length) return null;
+  const refreshes = refreshesFromAttendance(user, run.status);
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">Attendance from Zoho People</h2>
-          <p className="text-sm text-muted">
-            The month&apos;s check-ins and check-outs from Zoho People fill the worked hours, the no-show days and the permission hours, by the
-            system&apos;s rules. Those figures can&apos;t be typed over: import the month again, or undo the import on its review.
-          </p>
-        </div>
-        {hr && run.status === 'draft' && (
-          <Link href={attendanceUploadHref(run.id)} className="btn btn-secondary">
-            Import attendance from Zoho People
-          </Link>
-        )}
+      <div>
+        <h2 className="text-lg font-semibold">Attendance</h2>
+        <p className="max-w-4xl text-sm text-muted">
+          The month&apos;s attendance fills the worked hours, the no-show days and the permission hours, by the system&apos;s rules: the attendance
+          days of those who check in on the system, marked &ldquo;from attendance&rdquo;, and Zoho People&apos;s import for the others, marked
+          &ldquo;from Zoho&rdquo;. Those figures can&apos;t be typed over: they change with the attendance, or by importing the month again or
+          undoing the import on its review.
+        </p>
       </div>
-      {imports.kind === 'failed' ? <p className="text-sm text-muted">The imports couldn&apos;t be loaded. {imports.messages.join(' ')}</p> : <ImportsList runId={run.id} imports={list} />}
+      {(refreshes || (hr && draft)) && (
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+          {refreshes && (
+            <div className="max-w-md space-y-1">
+              <ActionButton action={refreshFromAttendance.bind(null, run.id)} pendingText="Refreshing…">
+                Refresh from attendance
+              </ActionButton>
+              <p className="text-xs text-muted">{REFRESH_FROM_ATTENDANCE_HINT}</p>
+            </div>
+          )}
+          {hr && draft && (
+            <Link href={attendanceUploadHref(run.id)} className="btn btn-secondary min-h-9 px-3">
+              Import attendance from Zoho People
+            </Link>
+          )}
+        </div>
+      )}
+      {imports.kind === 'failed' ? (
+        <p className="text-sm text-muted">The imports couldn&apos;t be loaded. {imports.messages.join(' ')}</p>
+      ) : (
+        list.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">Zoho People Imports</h3>
+            <ImportsList runId={run.id} imports={list} />
+          </div>
+        )
+      )}
     </section>
   );
 }

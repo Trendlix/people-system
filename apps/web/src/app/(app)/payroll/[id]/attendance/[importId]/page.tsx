@@ -18,6 +18,7 @@ import { applyAttendance, choosePerson, undoAttendance } from '../actions';
 import {
   applyConfirmText,
   attendanceUploadHref,
+  CHECKS_IN_NOTE,
   checkTimesText,
   countChips,
   daysCount,
@@ -46,7 +47,9 @@ import { ApplyButton, ChoiceButton, PickPerson, UndoButton } from './person-form
 // owner, 19 October 2026); for HR, the C-level people of the files are one row without their figures. What Apply filled
 // can't be typed over on the run (owner, 19 October 2026: "imported data shouldn't be editable"): Undo this import puts
 // the lines the user fills back to what they had before it, and its days go. Read only once the run isn't a draft. The
-// API decides every choice and what Apply and Undo change.
+// API decides every choice and what Apply and Undo change. Someone who checks in on the system this month (owner, 19
+// October 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace
+// Zoho") is said so: their Zoho days count before their first check-in, and their line is filled from their days.
 
 export const metadata: Metadata = { title: 'Attendance Review · People System' };
 
@@ -267,6 +270,8 @@ async function Review({ params }: { params: PageProps<'/payroll/[id]/attendance/
                       {p.zohoId && ` (${p.zohoId})`}
                     </span>
                     <span className="block text-xs text-muted">{MATCH_TEXT[p.match]}</span>
+                    {/* checking in on the system (19 October 2026): their line is filled from their attendance days */}
+                    {p.checksIn && <p className="rounded-lg bg-accent-soft px-2.5 py-1.5 text-xs text-accent">{CHECKS_IN_NOTE}</p>}
                     {p.applied && <span className="badge bg-ok-soft text-ok">Applied {formatDateTime(p.applied.at)}</span>}
                     {!p.applied && p.undone && (
                       <span className="badge bg-line-soft text-muted">

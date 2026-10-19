@@ -12,6 +12,7 @@ import {
   MY_ATTENDANCE,
   MY_REQUESTS,
   MY_TEAM,
+  myAttendanceInMenu,
   NAV,
   navFor,
   profileBack,
@@ -137,20 +138,26 @@ describe('the sidebar', () => {
       expect(hasRole(as('employee', 'manager', 'admin', 'super_admin'), ...(attendance.roles ?? []))).toBe(false);
     });
 
-    it('has Daily Attendance, Import (HR’s: "where am i going to import the sheets?"), Import History and Summary for HR; the CEO and Finance all but Import', () => {
+    it('has Daily Attendance, Import (HR’s: "where am i going to import the sheets?"), Import History, Summary and Corrections for HR; the CEO all but Import; Finance neither Import nor Corrections', () => {
       expect(pagesFor('hr')).toEqual([
         ['Daily Attendance', '/attendance'],
         ['Import', '/attendance/import'],
         ['Import History', '/attendance/imports'],
         ['Summary', '/attendance/summary'],
+        // the days asked to be corrected (19 October 2026: "Attendance corrections with approval")
+        ['Corrections', '/attendance/corrections'],
       ]);
-      for (const role of ['ceo', 'finance'] as const) {
-        expect(pagesFor(role)).toEqual([
-          ['Daily Attendance', '/attendance'],
-          ['Import History', '/attendance/imports'],
-          ['Summary', '/attendance/summary'],
-        ]);
-      }
+      expect(pagesFor('ceo')).toEqual([
+        ['Daily Attendance', '/attendance'],
+        ['Import History', '/attendance/imports'],
+        ['Summary', '/attendance/summary'],
+        ['Corrections', '/attendance/corrections'],
+      ]);
+      expect(pagesFor('finance')).toEqual([
+        ['Daily Attendance', '/attendance'],
+        ['Import History', '/attendance/imports'],
+        ['Summary', '/attendance/summary'],
+      ]);
       expect(pagesFor('admin')).toBeNull();
       expect(pagesFor('super_admin')).toBeNull();
       expect(navFor({ roles: ['hr'], employeeId: 'x' }).find((n) => n.label === 'Attendance')?.href).toBe('/attendance');
@@ -163,6 +170,8 @@ describe('the sidebar', () => {
       expect(current('/attendance/import')).toBe('Import');
       expect(current('/attendance/imports')).toBe('Import History');
       expect(current('/attendance/summary')).toBe('Summary');
+      expect(current('/attendance/corrections')).toBe('Corrections');
+      expect(current('/attendance/corrections/0b8f2c1e-1111-4222-8333-444455556666')).toBe('Corrections');
       expect(current('/attendancex')).toBeNull();
       expect(isActive(attendance, '/attendance/summary')).toBe(true);
       // an import's review is on its payroll run, under Payroll
@@ -264,6 +273,17 @@ describe('the sidebar of an employee or a manager', () => {
     expect(decidesForTeam({ roles: ['employee'] })).toBe(false);
     // HR who lead a department keep their own sidebar: no My Team there
     expect(navFor({ roles: ['hr'], employeeId: ME, leads: true }).map((n) => n.href)).not.toContain(MY_TEAM);
+  });
+
+  it('links My Attendance from the user menu for HR, Finance, the CEO and Admins with a profile, who check in too (19 October 2026)', () => {
+    for (const role of ['hr', 'finance', 'ceo', 'admin', 'super_admin'] as const) {
+      expect(myAttendanceInMenu({ roles: [role], employeeId: ME })).toBe(true);
+      expect(myAttendanceInMenu({ roles: [role], employeeId: null })).toBe(false);
+      expect(myAttendanceInMenu({ roles: [role] })).toBe(false);
+    }
+    // an employee or a manager has it in the sidebar already
+    expect(myAttendanceInMenu({ roles: ['employee'], employeeId: ME })).toBe(false);
+    expect(myAttendanceInMenu({ roles: ['employee', 'manager'], employeeId: ME })).toBe(false);
   });
 
   it('leaves out My Profile and My Attendance without a profile of their own', () => {

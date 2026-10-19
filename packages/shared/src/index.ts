@@ -377,3 +377,12 @@ export * from './attendance-import.js';
 // and missing check-out, a month's figures, Daily Attendance's filters, the Summary's period and its rows by department
 // and team
 export * from './attendance-days.js';
+
+// checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location
+// check, or a device) to replace Zoho"): the office's point and radius, office, remote or unknown, the rules by work
+// arrangement and their flags, punches made a day, who checks in, and where a day came from (a device's later)
+export * from './check-in.js';
+
+// attendance corrections (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check out")"): what
+// was wrong with a day, the checks, the day a correction makes (the day it corrects kept), and when it can be applied
+export * from './attendance-corrections.js';

@@ -13,10 +13,12 @@ import { PeopleTable } from '../../attendance/people-table';
 import { MonthNav } from '../../attendance/ui';
 
 // Team Attendance, from My Team (owner's brief, 19 October 2026: "managers and team leads see their team's attendance
-// from My Team"): a month of the team's days kept from Zoho People's imports, one row a person with the month's figures,
-// each opening to their days; read only. The team is as My Team has it: the direct reports, and for a team's lead or a
-// department's head the people without a direct manager whose leave they decide (the API decides who). A C-level
-// report (owner, 19 October 2026: "make C level Employees details not visible to HR") is one hidden row.
+// from My Team"): a month of the team's days kept, from their check-ins on the system (owner, 19 October 2026: "Check-in
+// through the system (phone or web with the office location check, or a device) to replace Zoho") and Zoho People's
+// imports, one row a person with the month's figures (the flagged check-ins among them), each opening to their days;
+// read only. The team is as My Team has it: the direct reports, and for a team's lead or a department's head the people
+// without a direct manager whose leave they decide (the API decides who). A C-level report (owner, 19 October 2026:
+// "make C level Employees details not visible to HR") is one hidden row.
 
 export const metadata: Metadata = { title: 'Team Attendance · People System' };
 
@@ -50,8 +52,8 @@ export default function TeamAttendancePage({ searchParams }: PageProps<'/my-team
         <BackLink href={MY_TEAM}>My Team</BackLink>
         <h1 className="text-2xl font-semibold">Team Attendance</h1>
         <p className="max-w-3xl text-muted">
-          Your team&apos;s days as imported from Zoho People: the hours within each person&apos;s shift, absent days, short hours, permission and leave.
-          Open a row for its days.
+          Your team&apos;s days, from their check-ins on the system and Zoho People&apos;s imports: the hours within each person&apos;s shift, absent
+          days, short hours, permission and leave; a check-in outside the work arrangement&apos;s rule is flagged. Open a row for its days.
         </p>
       </div>
       <Suspense fallback={<Loading />}>

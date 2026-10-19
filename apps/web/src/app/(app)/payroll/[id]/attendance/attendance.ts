@@ -1,6 +1,17 @@
-import { ATTENDANCE_DAY_STATUS_LABELS, formatHours, WORK_PLACE_LABELS, type AttendanceDayStatus, type AttendanceMonthResult, type WorkPlace } from '@trendlix/shared';
+import {
+  ATTENDANCE_DAY_STATUS_LABELS,
+  CHECK_IN_PLACE_LABELS,
+  formatHours,
+  WORK_PLACE_LABELS,
+  type AttendanceDayStatus,
+  type AttendanceMonthResult,
+  type DayPlace,
+  type PayrollStatus,
+  type Role,
+} from '@trendlix/shared';
 import type { AttendanceImportFile, AttendanceImportView, AttendancePersonView, PersonMatch } from '../../../../../lib/attendance-types';
 import { formatTime } from '../../../../../lib/format';
+import { hasRole } from '../../../../../lib/roles';
 import { monthName } from '../../list';
 
 // Importing attendance from Zoho People on a draft payroll run (owner, 19 October 2026: attendance runs in Zoho People
@@ -11,6 +22,16 @@ import { monthName } from '../../list';
 // system is listed for HR to record in the system (owner: "In the system, stop it in Zoho"). The C-level people's lines
 // are the CEO's to fill (owner, 19 October 2026). The API decides all of it; these helpers word what it sent and group the
 // review. Pure code, tested; relative imports, as vitest doesn't know the "@/" paths.
+
+/**
+ * Who presses Refresh from attendance (owner, 19 October 2026: "Check-in through the system (phone or web with the office
+ * location check, or a device) to replace Zoho"): HR and the CEO, on a draft (the API refuses any other run).
+ */
+export const refreshesFromAttendance = (user: { roles: readonly Role[] }, status: PayrollStatus): boolean => status === 'draft' && hasRole(user, 'hr', 'ceo');
+
+/** What Refresh from attendance does, said beside it. */
+export const REFRESH_FROM_ATTENDANCE_HINT =
+  "Fills the worked hours, no-show days and permission hours again from the month's attendance days, for those who check in on the system or whose days were corrected. Each check-in and each correction approved does it by itself; refresh after a shift, a leave or a holiday changes.";
 
 /** The upload page of a run, and an import's review. */
 export const attendanceUploadHref = (runId: string) => `/payroll/${encodeURIComponent(runId)}/attendance`;
@@ -102,6 +123,13 @@ export function undoConfirmText(view: Pick<AttendanceImportView, 'undoable'>): s
   return `Undo this import on ${n} ${n === 1 ? 'line' : 'lines'}? The worked hours, no-show days and permission hours go back to what was typed before it was applied (empty if nothing was), and the days it kept are removed.`;
 }
 
+/**
+ * What the review says of someone who checks in on the system this month (owner, 19 October 2026: "Check-in through the
+ * system (phone or web with the office location check, or a device) to replace Zoho"): applying keeps their Zoho days,
+ * counted before their first check-in, and their line is filled from their attendance days instead of Zoho's month.
+ */
+export const CHECKS_IN_NOTE = "Checks in on the system this month: Zoho's days count before their first check-in, and their line is filled from their attendance days.";
+
 /** Why someone matched isn't filled by Apply, when they aren't: null when they are. */
 export function notAppliedReason(p: AttendancePersonView, hr: boolean): string | null {
   if (!isMatched(p.match)) return null;
@@ -142,7 +170,8 @@ export function checkTimesText(d: { checkIn: string | null; checkOut: string | n
 }
 
 export const dayStatusText = (status: AttendanceDayStatus) => ATTENDANCE_DAY_STATUS_LABELS[status] ?? status;
-export const placeText = (place: WorkPlace | null) => (place ? WORK_PLACE_LABELS[place] : '—');
+/** Where a day was worked: the office, remote, or (a check-in on the system, 19 October 2026) location unknown. */
+export const placeText = (place: DayPlace | null | undefined) => (!place ? '—' : place === 'unknown' ? CHECK_IN_PLACE_LABELS.unknown : (WORK_PLACE_LABELS[place] ?? place));
 
 /** "3 days", "1 day". */
 export const daysCount = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;

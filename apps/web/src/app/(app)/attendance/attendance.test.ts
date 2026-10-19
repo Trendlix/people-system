@@ -8,7 +8,11 @@ import {
   attendanceMonthChoices,
   attendancePeriodTitle,
   canSeeAttendance,
+  checkInCell,
+  correctedNote,
   dailyHref,
+  dayFlagTexts,
+  daySourceText,
   figureTiles,
   filtered,
   hoursText,
@@ -21,7 +25,9 @@ import {
   importWay,
   lockedText,
   noAttendanceText,
+  notImportedYetText,
   personHref,
+  punchesText,
   quickSummaryPeriods,
   readAttendanceMonth,
   readFilters,
@@ -50,6 +56,28 @@ describe('who sees the Attendance section', () => {
     expect([importsAttendance({ roles: ['hr'] }), importsAttendance({ roles: ['ceo'] }), importsAttendance({ roles: ['finance'] })]).toEqual([true, false, false]);
     expect([reviewsImports({ roles: ['hr'] }), reviewsImports({ roles: ['ceo'] }), reviewsImports({ roles: ['finance'] })]).toEqual([true, true, false]);
     expect(ATTENDANCE_SECTIONS.find((s) => s.key === 'import')?.roles).toEqual(['hr']);
+    // the corrections HR and the CEO decide (19 October 2026: "Attendance corrections with approval")
+    expect(ATTENDANCE_SECTIONS.find((s) => s.key === 'corrections')).toMatchObject({ href: '/attendance/corrections', roles: ['hr', 'ceo'] });
+  });
+});
+
+describe('a corrected day and its presses (19 October 2026)', () => {
+  it('says what a corrected day was corrected from, and nothing of another', () => {
+    const from = { source: 'system' as const, status: 'worked' as const, checkIn: '2026-10-12T06:30:00.000Z', checkOut: null, place: 'office' as const };
+    expect(correctedNote({ source: 'correction', correctedFrom: from })).toBe('Corrected from 9:30 AM – no check-out');
+    expect(correctedNote({ source: 'correction', correctedFrom: null })).toBe('Corrected from no day on record');
+    expect(correctedNote({ source: 'system', correctedFrom: from })).toBeNull();
+  });
+
+  it('lists a day’s presses in order, in 12-hour time with their place', () => {
+    const punches = [
+      { date: '2026-10-12', kind: 'out', at: '2026-10-12T10:00:00.000Z', place: 'remote' },
+      { date: '2026-10-12', kind: 'in', at: '2026-10-12T06:05:00.000Z', place: 'office' },
+      { date: '2026-10-13', kind: 'in', at: '2026-10-13T06:00:00.000Z', place: 'unknown' },
+    ];
+    expect(punchesText(punches, '2026-10-12')).toBe('In 9:05 AM (office) · Out 1:00 PM (remote)');
+    expect(punchesText(punches, '2026-10-13')).toBe('In 9:00 AM (location unknown)');
+    expect(punchesText(punches, '2026-10-14')).toBeNull();
   });
 });
 
@@ -124,6 +152,9 @@ describe('a month’s figures in words', () => {
       ['Missing check-outs', '0', 'A check-in without a check-out: no hours', null],
     ]);
     expect(figureTiles(NO_ATTENDANCE_FIGURES, { averageHours: null }).find((t) => t.key === 'hours')?.note).toBeNull();
+    // no one checks in on the system, and none missing or flagged: no tiles for them
+    expect(tiles.map((t) => t.key)).not.toContain('checkins');
+    expect(tiles.map((t) => t.key)).not.toContain('flagged');
     expect([hoursText(0), hoursText(0, true), hoursText(null), hoursText(9.25)]).toEqual(['0:00', '—', '—', '9:15']);
   });
 });
@@ -147,7 +178,12 @@ describe('where the days came from, and a month without any', () => {
   });
 
   it('says none is imported yet, and points HR to Import, the CEO and Finance to the month’s run or Payroll', () => {
-    expect(noAttendanceText('2026-10')).toBe("No attendance imported for October 2026 yet — import it on the month's payroll run.");
+    expect(noAttendanceText('2026-10')).toBe(
+      "No attendance for October 2026 yet: no one has checked in on the system, and Zoho People's attendance isn't imported — import it on the month's payroll run.",
+    );
+    expect(notImportedYetText('2026-10')).toBe(
+      "No attendance for October 2026 yet. Check-ins on the system show here as they are made, and HR imports Zoho People's attendance with the month's payroll.",
+    );
     expect(importWay({ roles: ['hr'] }, '2026-10', null)).toEqual({ href: '/attendance/import?month=2026-10', label: "Import October 2026's attendance" });
     expect(importWay({ roles: ['ceo'] }, '2026-10', { id: 'r1', status: 'draft' })).toEqual({ href: '/payroll/r1', label: 'Open the October 2026 payroll' });
     expect(importWay({ roles: ['finance'] }, '2026-10', null)).toEqual({ href: '/payroll', label: 'Payroll' });
@@ -221,5 +257,51 @@ describe('Import History', () => {
       'Undo this import on 2 lines? The worked hours, no-show days and permission hours go back to what was typed before it was applied (empty if nothing was), and the days it kept are removed.',
     );
     expect(undoConfirmText({ undoable: 1 })).toContain('on 1 line?');
+  });
+});
+
+describe('checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace Zoho")', () => {
+  const unknownPlace = attendanceDayView(
+    { date: '2026-10-18', status: 'worked', checkIn: '2026-10-18T06:05:00Z', checkOut: '2026-10-18T14:10:00Z', place: 'unknown', zohoStatus: null, permissionHours: 0, hoursCounted: 8, source: 'system', flags: ['location_unknown'] },
+    8,
+  );
+  const outOnly = attendanceDayView(
+    { date: '2026-10-19', status: 'worked', checkIn: null, checkOut: '2026-10-19T14:10:00Z', place: 'office', zohoStatus: null, permissionHours: 0, hoursCounted: 0, source: 'system' },
+    8,
+  );
+  const goneBy = attendanceDayView({ date: '2026-10-15', status: 'absent', checkIn: null, checkOut: null, place: null, zohoStatus: null, permissionHours: 0, hoursCounted: 0, source: 'system' }, 8);
+  const zoho = attendanceDayView({ date: '2026-10-01', status: 'worked', checkIn: '2026-10-01T06:00:00Z', checkOut: '2026-10-01T14:00:00Z', place: 'office', zohoStatus: 'Present', permissionHours: 0, hoursCounted: 8 }, 8);
+
+  it('says where each day came from: a working day gone by without a check-in is the system’s', () => {
+    expect([daySourceText(unknownPlace), daySourceText(goneBy), daySourceText(zoho), daySourceText({ source: 'device' }), daySourceText({ source: 'correction' })]).toEqual([
+      'Checked in on the system',
+      'Checked in on the system',
+      'Zoho People',
+      'Attendance device',
+      'Corrected',
+    ]);
+  });
+
+  it('words the flags, and shows a check-out without a check-in as missing', () => {
+    expect(dayFlagTexts(unknownPlace)).toEqual(['Location unknown on an office day']);
+    expect(dayFlagTexts({ flags: ['outside_office', 'outside_office', 'other'] })).toEqual(['Checked in outside the office on an office day']);
+    expect(dayFlagTexts({})).toEqual([]);
+    expect([checkInCell(unknownPlace), checkInCell(outOnly), checkInCell(goneBy), checkInCell({ checkIn: null })]).toEqual(['time', 'missing', 'none', 'none']);
+  });
+
+  it('adds tiles for the missing check-ins and the flagged days, for someone who checks in or a month with any', () => {
+    const f = attendanceFigures([unknownPlace, outOnly, goneBy]);
+    const tiles = figureTiles(f, { averageHours: 8, hoursADay: 8, checksIn: true });
+    expect(tiles.slice(-2).map((t) => [t.key, t.label, t.value, t.note, t.tone])).toEqual([
+      ['checkins', 'Missing check-ins', '1', 'A check-out without a check-in: no hours', 'warn'],
+      ['flagged', 'Flagged days', '1', "A check-in outside the work arrangement's rule", 'warn'],
+    ]);
+    // someone who checks in, nothing missing or flagged: shown, plain
+    expect(figureTiles(attendanceFigures([zoho]), { averageHours: 8, checksIn: true }).slice(-2).map((t) => [t.value, t.tone])).toEqual([
+      ['0', null],
+      ['0', null],
+    ]);
+    // not checking in, but a flagged day (a list's totals): that one alone
+    expect(figureTiles({ ...NO_ATTENDANCE_FIGURES, flaggedDays: 2 }, { averageHours: null }).map((t) => t.key).slice(-2)).toEqual(['checkouts', 'flagged']);
   });
 });

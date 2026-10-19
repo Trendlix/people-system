@@ -1,5 +1,14 @@
 import ExcelJS from 'exceljs';
-import { ATTENDANCE_DAY_STATUS_LABELS, WORK_PLACE_LABELS, type AttendanceDayView, type AttendanceFigures, type AttendanceSummaryRow } from '@trendlix/shared';
+import {
+  ATTENDANCE_DAY_STATUS_LABELS,
+  ATTENDANCE_SOURCE_LABELS,
+  CHECK_IN_FLAG_LABELS,
+  CHECK_IN_PLACE_LABELS,
+  type AttendanceDayView,
+  type AttendanceFigures,
+  type AttendanceSource,
+  type AttendanceSummaryRow,
+} from '@trendlix/shared';
 import { addSheet, type Column } from '../employees/missing-workbook.js';
 import { monthName } from '../payroll/months.js';
 import type { AttendanceEmployeeView, AttendanceSummaryReport } from './attendance.service.js';
@@ -36,6 +45,9 @@ function figureColumns<T>(f: (row: T) => AttendanceFigures, average: (row: T) =>
     { header: 'Leave days', width: 10, value: (r) => f(r).leaveDays, numFmt: '0' },
     { header: 'Leave in Zoho only', width: 15, value: (r) => f(r).zohoLeaveDays, numFmt: '0' },
     { header: 'Missing check-outs', width: 15, value: (r) => f(r).missingCheckOuts, numFmt: '0' },
+    // checking in on the system (19 October 2026): a check-out without a check-in, and the check-ins flagged
+    { header: 'Missing check-ins', width: 14, value: (r) => f(r).missingCheckIns, numFmt: '0' },
+    { header: 'Flagged days', width: 12, value: (r) => f(r).flaggedDays, numFmt: '0' },
   ];
 }
 
@@ -86,9 +98,12 @@ const DAY_COLUMNS: readonly Column<DayRow>[] = [
   { header: 'Check-out', width: 11, value: (r) => cairoTime(r.day.checkOut) },
   { header: 'Hours counted', width: 13, value: (r) => (r.day.status === 'worked' ? asTime(r.day.hoursCounted) : null), numFmt: HOURS },
   { header: 'Short hours', width: 11, value: (r) => (r.day.shortHours > 0 ? asTime(r.day.shortHours) : null), numFmt: HOURS },
-  { header: 'Where', width: 9, value: (r) => (r.day.place ? WORK_PLACE_LABELS[r.day.place] : null) },
+  { header: 'Where', width: 16, value: (r) => (r.day.place ? CHECK_IN_PLACE_LABELS[r.day.place] : null) },
   { header: 'Permission hours', width: 14, value: (r) => (r.day.permissionHours > 0 ? asTime(r.day.permissionHours) : null), numFmt: HOURS },
   { header: 'Zoho says', width: 22, value: (r) => r.day.zohoStatus },
+  // where the day came from, and a check-in on the system flagged by its work arrangement (19 October 2026)
+  { header: 'From', width: 22, value: (r) => ATTENDANCE_SOURCE_LABELS[(r.day.source ?? 'zoho') as AttendanceSource] ?? r.day.source ?? null },
+  { header: 'Flagged', width: 40, value: (r) => (r.day.flags.length ? r.day.flags.map((f) => CHECK_IN_FLAG_LABELS[f]).join('; ') : null) },
 ];
 
 /** The Summary's rows as the first sheet lists them: each department, then its teams; those without one as "No department". */

@@ -328,6 +328,8 @@ function recordLookups(p: PrismaService): Readonly<Record<string, Lookup>> {
     recurring_deduction: async (ids) => owned(await p.recurringDeduction.findMany({ ...by(ids), select: owner })),
     leave_request: async (ids) => owned(await p.leaveRequest.findMany({ ...by(ids), select: owner })),
     permission_request: async (ids) => owned(await p.permissionRequest.findMany({ ...by(ids), select: owner })),
+    attendance_correction: async (ids) => owned(await p.attendanceCorrection.findMany({ ...by(ids), select: owner })),
+    attendance_day: async (ids) => owned(await p.attendanceDay.findMany({ ...by(ids), select: owner })),
     leave_adjustment: async (ids) => owned(await p.leaveAdjustment.findMany({ ...by(ids), select: owner })),
     reimbursement_claim: async (ids) => owned(await p.reimbursementClaim.findMany({ ...by(ids), select: owner })),
     profile_confirmation: async (ids) => owned(await p.profileConfirmation.findMany({ ...by(ids), select: owner })),

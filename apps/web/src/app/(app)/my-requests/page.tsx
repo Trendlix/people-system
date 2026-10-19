@@ -20,6 +20,9 @@ import { LeaveBalanceFigures, MyLeaveTable, MyPermissionTable } from '../leave/u
 import { loadMyClaims } from '../reimbursements/data';
 import { claimsLabel, NEW_CLAIM_PATH } from '../reimbursements/list';
 import { MyClaimsTable } from '../reimbursements/ui';
+import { ASK_CORRECTION_PATH } from '../attendance/corrections/corrections';
+import { loadMyCorrections } from '../attendance/corrections/data';
+import { CorrectionsTable } from '../attendance/corrections/ui';
 import {
   askedByManager,
   filterRequests,
@@ -41,7 +44,7 @@ import {
 // keeps them), each with its decisions as the API gives them to the employee; buttons to ask again; for a direct
 // manager also the raises they asked for for their direct reports (no figure: the API sends a manager none). The
 // changes to their details are their profile's: the one waiting for HR and the latest ten decided. Leave has a section
-// of its own (below); attendance comes later. Cancelling a change waiting for HR stays on the change request page. Request a raise opens the
+// of its own (below), and attendance corrections too (19 October 2026). Cancelling a change waiting for HR stays on the change request page. Request a raise opens the
 // request form under Requests → Raise Requests for themself (17 October 2026: "i think raising a request should be moved
 // from the Employee tab to the raise requests tab"), which comes back here once sent, saying so; each raise shows the
 // month it is asked from ("Effective from"). Reimbursements (owner, 18 October 2026: "allow the employee to add
@@ -397,6 +400,47 @@ async function Reimbursements() {
   );
 }
 
+/**
+ * Their attendance corrections (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check
+ * out")"; GET /me/attendance/corrections): the day, what was wrong, the right times and where each stands, the latest day
+ * first, each opening its page (every step, Cancel while it is being decided); Ask for a correction. Nothing from an API
+ * from before them, nor without a profile of their own.
+ */
+async function Corrections() {
+  const user = await getCurrentUser();
+  const profile = await loadOwnProfile(user);
+  if (!profile) return null;
+  const corrections = await loadMyCorrections();
+  if (corrections.kind === 'unavailable') return null;
+  return (
+    <section id="my-corrections" aria-labelledby="my-corrections-heading" className="mt-10 scroll-mt-6 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="my-corrections-heading" className="text-lg font-semibold">
+            Attendance Corrections
+          </h2>
+          <p className="text-sm text-muted">
+            Days you asked to correct: a check-in or check-out forgotten, a time wrong, work away from the office. Your direct manager decides each
+            first, then HR; approved, the day is corrected.
+          </p>
+        </div>
+        {profile.employment && (
+          <Link href={ASK_CORRECTION_PATH} className="btn btn-secondary">
+            Ask for a correction
+          </Link>
+        )}
+      </div>
+      {corrections.kind !== 'ok' ? (
+        <div className="card px-6 py-6 text-sm text-muted">Your corrections couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : corrections.value.length === 0 ? (
+        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t asked for a correction. Ask from My Attendance, on the day that isn&apos;t right.</div>
+      ) : (
+        <CorrectionsTable corrections={corrections.value} note="the latest day first." />
+      )}
+    </section>
+  );
+}
+
 export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests'>) {
   return (
     <div className="max-w-4xl">
@@ -411,9 +455,11 @@ export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests
         <Leave />
       </Suspense>
       <Suspense fallback={null}>
+        <Corrections />
+      </Suspense>
+      <Suspense fallback={null}>
         <Reimbursements />
       </Suspense>
-      <p className="mt-8 text-sm text-muted">Attendance is coming soon.</p>
     </div>
   );
 }

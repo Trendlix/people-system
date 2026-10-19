@@ -13,9 +13,11 @@ import { DaysTable } from './ui';
 // A month's people, one row each with the month's figures, grouped by department, then team, in Organization's order
 // (owner's brief, 19 October 2026: Daily Attendance), each opening to their days in place (Days); for a manager their
 // team's (My Team → Team Attendance). Read only: the days are as the imports kept them. The C-level people the user
-// doesn't see are one row at the end (`hidden`).
+// doesn't see are one row at the end (`hidden`). Checking in on the system (owner, 19 October 2026: "Check-in through the
+// system (phone or web with the office location check, or a device) to replace Zoho"): the check-outs without a
+// check-in under the missing check-outs, and the days whose check-in was flagged for the manager and HR.
 
-const COLUMNS = 10;
+const COLUMNS = 11;
 
 /** Where a name opens: the person's month (HR, the CEO, Finance), their profile (a manager's team), or nowhere. */
 export type PersonLink = 'attendance' | 'profile' | null;
@@ -60,6 +62,9 @@ export function PeopleTable({ groups, month, link, hidden }: { groups: Departmen
             </th>
             <th scope="col" className="text-right">
               Missing Check-outs
+            </th>
+            <th scope="col" className="text-right">
+              Flagged Days
             </th>
             <th scope="col">
               <span className="sr-only">Days</span>
@@ -112,7 +117,15 @@ export function PeopleTable({ groups, month, link, hidden }: { groups: Departmen
                             {f.leaveDays}
                             {f.zohoLeaveDays > 0 && <div className="text-xs text-warn">+{f.zohoLeaveDays} in Zoho only</div>}
                           </td>
-                          <td className={`text-right tabular-nums ${f.missingCheckOuts ? 'font-semibold text-warn' : ''}`}>{f.missingCheckOuts}</td>
+                          <td className={`text-right tabular-nums ${f.missingCheckOuts ? 'font-semibold text-warn' : ''}`}>
+                            {f.missingCheckOuts}
+                            {(f.missingCheckIns ?? 0) > 0 && (
+                              <div className="text-xs font-normal whitespace-nowrap text-warn">
+                                +{f.missingCheckIns} {f.missingCheckIns === 1 ? 'check-in' : 'check-ins'} missing
+                              </div>
+                            )}
+                          </td>
+                          <td className={`text-right tabular-nums ${f.flaggedDays ? 'font-semibold text-warn' : ''}`}>{f.flaggedDays ?? 0}</td>
                           <td className="text-right">
                             <button
                               type="button"

@@ -24,6 +24,7 @@ import { shrinkPhoto } from '../employees/shrink-photo';
 import { sizeText } from '../reimbursements/claim';
 import { leaveYearData } from './actions';
 import { daysNumber, daysText, hrStageName, LEAVE_COMMENT_READERS, leaveCommentReaders, leaveDecisionButton } from './list';
+import { correctionDecisionButton } from '../attendance/corrections/corrections';
 import { permissionDecisionButton } from './permissions';
 import { balanceAfter, countLeaveDays, countText, DOCUMENT_ACCEPT, leaveFormProblems, REASON_MAX, requestYear, rulesOf, type TypedLeave } from './request';
 
@@ -469,7 +470,9 @@ export function NewLeaveForm({
 // ---------- deciding a request ----------
 
 /** Leave, or a permission request (19 October 2026), for the forms' words. */
-type RequestKindWord = 'leave' | 'permission';
+// an attendance correction (owner, 19 October 2026: "Attendance corrections with approval") is decided and cancelled
+// with the same forms
+type RequestKindWord = 'leave' | 'permission' | 'correction';
 
 /**
  * An approver's decision on a request waiting for them: Approve (a comment optional), or Reject with a comment. Rejecting
@@ -498,7 +501,12 @@ export function LeaveDecisionForm({
   const [comment, setComment] = useState(() => valueOf(state, 'comment'));
   const needsComment = decision !== '' && leaveDecisionNeedsComment(decision);
   const ready = decision !== '' && (!needsComment || comment.trim() !== '');
-  const button = kind === 'permission' ? permissionDecisionButton(decision, stage, confidential) : leaveDecisionButton(decision, stage, confidential);
+  const button =
+    kind === 'permission'
+      ? permissionDecisionButton(decision, stage, confidential)
+      : kind === 'correction'
+        ? correctionDecisionButton(decision, stage, confidential)
+        : leaveDecisionButton(decision, stage, confidential);
 
   return (
     <form

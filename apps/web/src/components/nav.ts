@@ -159,6 +159,13 @@ type NavUser = { roles: readonly Role[]; employeeId?: string | null; leads?: boo
 export const decidesForTeam = (user: Pick<NavUser, 'roles' | 'leads'>) => hasRole(user, 'manager') || user.leads === true;
 
 /**
+ * Whether the user menu links to My Attendance (owner, 19 October 2026: "Check-in through the system (phone or web with
+ * the office location check, or a device) to replace Zoho"): HR, Finance, the CEO and Admins with an employee profile
+ * check in too, and their sidebar doesn't list it; an employee's or a manager's sidebar has it.
+ */
+export const myAttendanceInMenu = (user: NavUser): boolean => !!user.employeeId && !isSelfService(user);
+
+/**
  * The sidebar of someone who is only an employee and/or a direct manager (isSelfService), as the owner suggested it (17
  * October 2026: "my suggestion for the employee side bar is 1- Dashboard 2- My Profile 3- My Requests"): their
  * dashboard (the home page), their own profile (when they have one) and their requests; their own attendance with

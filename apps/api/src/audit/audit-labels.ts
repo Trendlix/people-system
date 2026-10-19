@@ -7,6 +7,8 @@
 /** Each kind of record, in sentence case, as the page names it ("Contract CON-2026-0007"). */
 export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   allowance_type: 'Allowance type',
+  attendance_correction: 'Attendance correction',
+  attendance_day: 'Attendance day',
   attendance_import: 'Attendance import',
   attendance_summary: 'Attendance summary',
   audit_log: 'Audit log',
@@ -67,6 +69,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   complete: 'Completed',
   confirm: 'Confirmed',
   confirm_probation: 'Confirmed after probation',
+  correct: 'Corrected',
   create: 'Created',
   decline: 'Declined',
   delete: 'Deleted',
@@ -95,6 +98,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   record: 'Recorded by HR',
   record_consent: 'Recorded the signed consent',
   refresh: 'Refreshed',
+  refresh_attendance: 'Refreshed from attendance',
   reject: 'Rejected',
   reopen: 'Reopened',
   reorder: 'Reordered',

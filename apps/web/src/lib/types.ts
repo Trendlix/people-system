@@ -1765,6 +1765,15 @@ export interface PayrollSettingsView extends PayrollRules {
    * API from before it.
    */
   officeAddresses?: string[];
+  /**
+   * The office's point and the radius around it for checking in on the system (owner, 19 October 2026: "Check-in through
+   * the system (phone or web with the office location check, or a device) to replace Zoho"): within the radius a check-in
+   * is at the office, outside it remote; no point (both null): location unknown. Up to 6 decimals; the radius in whole
+   * metres, 20 to 5,000 (150 to start with). Optional: left out by an API from before it.
+   */
+  officeLatitude?: number | null;
+  officeLongitude?: number | null;
+  officeRadiusMetres?: number;
 }
 
 /**

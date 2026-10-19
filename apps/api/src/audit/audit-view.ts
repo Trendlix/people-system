@@ -278,6 +278,7 @@ const PEOPLE: Role[] = ['hr', 'ceo', 'finance']; // every profile (employees/acc
 const FILE: Role[] = ['hr', 'ceo']; // the employee file and the issued documents
 const PAY: Role[] = ['hr', 'finance', 'ceo']; // payroll and salaries
 const LEAVE: Role[] = ['hr', 'ceo'];
+const ATTENDANCE: Role[] = ['hr', 'ceo', 'finance']; // the Attendance section
 const DETAILS: Role[] = ['hr', 'admin', 'ceo'];
 const OFFERS: Role[] = ['hr', 'ceo'];
 const ORG: Role[] = ['hr', 'finance', 'ceo', 'admin'];
@@ -342,6 +343,10 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return record?.parentId ? { href: `/leave/${record.parentId}`, label: 'Open leave request', roles: LEAVE } : null;
     case 'permission_request':
       return id ? own(`/leave/permissions/${id}`, 'Open permission request', LEAVE) : null;
+    case 'attendance_correction':
+      return id ? own(`/attendance/corrections/${id}`, 'Open attendance correction', LEAVE) : null;
+    case 'attendance_day':
+      return person ? { href: `/attendance/${person}`, label: 'Open attendance', roles: ATTENDANCE } : null;
     case 'reimbursement_claim':
       return id ? own(`/reimbursements/${id}`, 'Open reimbursement claim', PAY) : null;
     case 'reimbursement_receipt':

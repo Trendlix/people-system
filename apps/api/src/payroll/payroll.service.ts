@@ -22,6 +22,7 @@ import {
 } from '@trendlix/shared';
 import { ALLOWANCE_ORDER } from '../allowances/rows.js';
 import { AuditService, changes } from '../audit/audit.service.js';
+import { AttendanceFillService } from '../attendance/attendance-fill.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
@@ -221,6 +222,7 @@ export class PayrollService {
     private readonly gridInputs: GridInputsService,
     private readonly recurring: RecurringDeductionsService,
     private readonly confidential: ConfidentialService,
+    private readonly attendance: AttendanceFillService,
   ) {}
 
   /** Every run, newest month first, with its totals: without the C-level people's lines hidden from the caller. */
@@ -309,6 +311,8 @@ export class PayrollService {
         ...(countOn(lines, pending) && { adjustments: countOn(lines, pending) }),
       },
     });
+    // the lines of those who check in on the system filled from the month's attendance days (19 October 2026)
+    await this.attendance.fillRun(run.id, user);
     return this.get(run.id, user);
   }
 
@@ -363,6 +367,22 @@ export class PayrollService {
         ...(Object.keys(lawChanges).length && { lawRates: lawChanges }),
       },
     });
+    // and from the month's attendance days as they are now (19 October 2026)
+    await this.attendance.fillRun(id, user);
+    return this.get(id, user);
+  }
+
+  /**
+   * Refresh from attendance (owner's brief, 19 October 2026: "a 'Refresh from attendance' on the run recomputes them"):
+   * a draft's lines of those whose month has days of the system's own (their check-ins on the system, a correction
+   * approved) filled again from the month's attendance days, the working days gone by without a check-in up to yesterday
+   * among them (attendance-fill.service.ts); Zoho's imports stay as they were applied.
+   */
+  async refreshAttendance(id: string, user: SessionUser): Promise<PayrollRunView> {
+    const run = await this.row(id);
+    this.assertStatus(run, 'draft', 'refreshed from attendance');
+    const result = await this.attendance.fillRun(id, user);
+    await this.audit.record({ userId: user.id, action: 'refresh_attendance', entityType: RUN, entityId: id, diff: { month: monthOf(run), ...result } });
     return this.get(id, user);
   }
 
@@ -428,7 +448,7 @@ export class PayrollService {
       // no change
       const mark = line.attendanceImport as unknown as AttendanceImportMark | null;
       const locked = importedInputsChanged(mark, Object.keys(diff));
-      if (locked.length) throw new ConflictException(importedInputRefusal(locked[0], line.nameEn, mark!.at));
+      if (locked.length) throw new ConflictException(importedInputRefusal(locked[0], line.nameEn, mark!.at, mark!.source));
       for (const key of MONEY_INPUTS) if (key in diff) diff[key] = 'changed';
       Object.assign(diff, changes({ onHold: line.onHold, comments: line.comments }, { onHold: change.onHold, comments: change.comments }));
       if (!Object.keys(diff).length) continue;

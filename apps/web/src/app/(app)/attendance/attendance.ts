@@ -1,10 +1,19 @@
 import {
+  ATTENDANCE_SOURCE_LABELS,
   attendancePeriod,
+  cairoClock,
+  CHECK_IN_FLAG_LABELS,
+  CHECK_IN_PLACE_LABELS,
+  correctedFromText,
   formatHours,
   isAttendanceFilter,
+  isCheckInFlag,
   PAYROLL_STATUS_LABELS,
   type AttendanceFigures,
   type AttendanceFilter,
+  type AttendanceSource as DaySource,
+  type CheckInPlace,
+  type CorrectedFrom,
   type PayrollStatus,
   type Role,
 } from '@trendlix/shared';
@@ -20,7 +29,10 @@ import { ATTENDANCE_IMPORT_PATH, ATTENDANCE_PATH, ATTENDANCE_SUMMARY_PATH } from
 // Attendance). Plain helpers for the pages (no server-only, so they are unit tested): who sees what, the month, filters
 // and period in the address and the links that keep them, the Import page's months (owner, the same day: "where am i
 // going to import the sheets?"), and each figure in words. The API decides who sees whom; hiding is a convenience.
-// Relative imports: the tests run without the "@/" alias.
+// Relative imports: the tests run without the "@/" alias. Checking in on the system (owner, 19 October 2026: "Check-in
+// through the system (phone or web with the office location check, or a device) to replace Zoho"): a day comes from the
+// system's check-ins too (or a correction, a device later), with where it came from, its flags and a check-out without a
+// check-in; a month's missing check-ins and flagged days.
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -154,8 +166,15 @@ export interface FigureTile {
   tone: 'danger' | 'warn' | null;
 }
 
-/** A person's (or a list's) month at the top of its page: what they worked, were absent, short, on permission, on leave. */
-export function figureTiles(f: AttendanceFigures, o: { averageHours: number | null; hoursADay?: number | null; permissionFrom?: 'system' | 'zoho' | null }): FigureTile[] {
+/**
+ * A person's (or a list's) month at the top of its page: what they worked, were absent, short, on permission, on leave,
+ * the missing check-outs; for someone who checks in on the system (`checksIn`; a list: anyone in it), or a month with
+ * any, the check-outs without a check-in and the days whose check-in was flagged (19 October 2026).
+ */
+export function figureTiles(
+  f: AttendanceFigures,
+  o: { averageHours: number | null; hoursADay?: number | null; permissionFrom?: 'system' | 'zoho' | null; checksIn?: boolean },
+): FigureTile[] {
   const permissionNote = o.permissionFrom === 'system' ? 'Approved in the system' : o.permissionFrom === 'zoho' ? "Zoho's, within the month's allowance" : null;
   return [
     { key: 'worked', label: 'Days worked', value: String(f.daysWorked), note: `${f.officeDays} at the office · ${f.remoteDays} remote`, tone: null },
@@ -177,7 +196,68 @@ export function figureTiles(f: AttendanceFigures, o: { averageHours: number | nu
       tone: f.zohoLeaveDays > 0 ? 'warn' : null,
     },
     { key: 'checkouts', label: 'Missing check-outs', value: String(f.missingCheckOuts), note: 'A check-in without a check-out: no hours', tone: f.missingCheckOuts > 0 ? 'warn' : null },
+    // checking in on the system (19 October 2026); an API from before it has neither
+    ...checkInTiles(f, o.checksIn === true),
   ];
+}
+
+function checkInTiles(f: AttendanceFigures, checksIn: boolean): FigureTile[] {
+  const missing = f.missingCheckIns ?? 0;
+  const flagged = f.flaggedDays ?? 0;
+  const tiles: FigureTile[] = [];
+  if (checksIn || missing > 0) {
+    tiles.push({ key: 'checkins', label: 'Missing check-ins', value: String(missing), note: 'A check-out without a check-in: no hours', tone: missing > 0 ? 'warn' : null });
+  }
+  if (checksIn || flagged > 0) {
+    tiles.push({ key: 'flagged', label: 'Flagged days', value: String(flagged), note: "A check-in outside the work arrangement's rule", tone: flagged > 0 ? 'warn' : null });
+  }
+  return tiles;
+}
+
+// ---------- a day's source and flags (checking in on the system, 19 October 2026) ----------
+
+/**
+ * Where a day came from, in words: "Zoho People", "Checked in on the system" (a working day gone by without a check-in
+ * too: the system's), "Attendance device", "Corrected". A day without one (an API from before it) is Zoho's.
+ */
+export function daySourceText(day: { source?: string | null }): string {
+  const source = (day.source ?? 'zoho') as DaySource;
+  return ATTENDANCE_SOURCE_LABELS[source] ?? day.source ?? '';
+}
+
+/** A day's flags in words, the known ones once each: "Checked in outside the office on an office day". */
+export const dayFlagTexts = (day: { flags?: readonly string[] | null }): string[] => [...new Set((day.flags ?? []).filter(isCheckInFlag))].map((f) => CHECK_IN_FLAG_LABELS[f]);
+
+/** A day's check-in cell: its time, "Missing" (a check-out without a check-in, in amber), or none. */
+export function checkInCell(day: { checkIn: string | null; missingCheckIn?: boolean }): 'time' | 'missing' | 'none' {
+  if (day.checkIn) return 'time';
+  return day.missingCheckIn ? 'missing' : 'none';
+}
+
+/**
+ * A corrected day's note (owner, 19 October 2026: "Attendance corrections with approval": the original times kept and
+ * shown as "corrected from …"): "Corrected from 9:30 AM – no check-out"; null for a day not corrected.
+ */
+export function correctedNote(day: { source?: string | null; correctedFrom?: CorrectedFrom | null }): string | null {
+  return day.source === 'correction' ? correctedFromText(day.correctedFrom ?? null) : null;
+}
+
+/** A press of Check in or Check out as a person's month lists it (GET /attendance/employees/:id: `punches`). */
+export interface PunchRow {
+  date: string;
+  kind: string;
+  at: string;
+  place: string;
+}
+
+/**
+ * A day's presses in a line (owner's brief, 19 October 2026: "Several presses a day are kept as punches"): "In 9:05 AM
+ * (office) · Out 1:00 PM (remote) · In 2:00 PM (location unknown)"; null for a day without any.
+ */
+export function punchesText(punches: readonly PunchRow[], date: string): string | null {
+  const of = punches.filter((p) => p.date === date).sort((a, b) => a.at.localeCompare(b.at));
+  if (!of.length) return null;
+  return of.map((p) => `${p.kind === 'out' ? 'Out' : 'In'} ${cairoClock(p.at)} (${(CHECK_IN_PLACE_LABELS[p.place as CheckInPlace] ?? p.place).toLowerCase()})`).join(' · ');
 }
 
 // ---------- where the days came from ----------
@@ -190,12 +270,13 @@ export function sourceText(s: AttendanceSource): string {
   return [read, applied, files].filter(Boolean).join(' · ');
 }
 
-/** What a month without days says. */
-export const noAttendanceText = (month: string) => `No attendance imported for ${monthName(month)} yet — import it on the month's payroll run.`;
+/** What a month without days says: no one checked in on the system, nor is Zoho People's attendance imported. */
+export const noAttendanceText = (month: string) =>
+  `No attendance for ${monthName(month)} yet: no one has checked in on the system, and Zoho People's attendance isn't imported — import it on the month's payroll run.`;
 
 /** What a month without days says to someone who doesn't import it: an employee, a manager. */
 export const notImportedYetText = (month: string) =>
-  `No attendance imported for ${monthName(month)} yet. HR imports each month's attendance from Zoho People with the month's payroll.`;
+  `No attendance for ${monthName(month)} yet. Check-ins on the system show here as they are made, and HR imports Zoho People's attendance with the month's payroll.`;
 
 /** The month's payroll run, or Payroll when it has none. */
 export const runWay = (month: string, run: AttendanceRunRef | null): { href: string; label: string } =>

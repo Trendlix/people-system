@@ -208,6 +208,30 @@ export function permissionHourOptions(maxHoursPerDay: number): { value: string; 
   });
 }
 
+// ---------- coming up, on the employee's dashboard ----------
+
+/** How many permissions the dashboard's My Leave lists coming up. */
+export const UPCOMING_PERMISSIONS = 5;
+
+/**
+ * The employee's approved permission still to come, for their dashboard's My Leave (owner, 19 October 2026: "upcoming
+ * permissions on the employee dashboard"): approved, on today or a later day, the soonest first (the earlier time first
+ * on one day), at most `limit`. Those being decided are on My Requests.
+ */
+export function upcomingPermissions<P extends Pick<PermissionRequestView, 'status' | 'date' | 'fromTime'>>(requests: readonly P[], today: string, limit = UPCOMING_PERMISSIONS): P[] {
+  return requests
+    .filter((p) => p.status === 'approved' && p.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.fromTime ?? '99:99').localeCompare(b.fromTime ?? '99:99'))
+    .slice(0, limit);
+}
+
+/** How far off a permission's day is, as My Leave says it: "Today", "Tomorrow", "In 5 days". */
+export function permissionInDaysText(p: Pick<PermissionRequestView, 'date'>, today: string): string {
+  const days = Math.round((Date.parse(`${p.date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+  if (days <= 0) return 'Today';
+  return days === 1 ? 'Tomorrow' : `In ${days} days`;
+}
+
 /** Said in place of the form, and on My Requests, while Leave Setup gives no permission hours. */
 export const PERMISSION_OFF_TEXT = 'Permission is turned off: Leave Setup gives no permission hours a month.';
 

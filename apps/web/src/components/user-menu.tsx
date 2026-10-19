@@ -4,6 +4,7 @@ import { ApiError } from '@/lib/api';
 import { ROLE_LABELS } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { canViewAs, type Session } from '@/lib/view-as';
+import { MY_ATTENDANCE, myAttendanceInMenu } from './nav';
 import { ViewAsButton } from './view-as';
 
 export async function UserMenu() {
@@ -18,7 +19,9 @@ export async function UserMenu() {
 
   // While a Super Admin views as someone, the menu is that user's, as they see it (the banner says who is viewing),
   // without Change password: theirs is not the Super Admin's to change. View as… is for a Super Admin in their own
-  // session only (owner's decision, 17 October 2026).
+  // session only (owner's decision, 17 October 2026). My attendance for HR, Finance, the CEO and Admins with an employee
+  // profile, who check in on the system too (owner, 19 October 2026: "Check-in through the system … to replace Zoho") and
+  // whose sidebar doesn't list it.
   return (
     <div className="flex min-w-0 items-center gap-3">
       {user ? (
@@ -32,6 +35,11 @@ export async function UserMenu() {
         </p>
       )}
       {user && canViewAs(user) && <ViewAsButton />}
+      {user && myAttendanceInMenu(user) && (
+        <Link href={MY_ATTENDANCE} className="text-sm whitespace-nowrap">
+          My attendance
+        </Link>
+      )}
       {user && !user.viewAs && (
         <Link href="/account/password" className="text-sm whitespace-nowrap">
           Change password

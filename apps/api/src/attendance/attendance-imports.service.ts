@@ -30,7 +30,10 @@ import { json, savedInputs, worked } from '../payroll/line-work.js';
 import { firstDay, lastDay, monthName } from '../payroll/months.js';
 import { runLawRates } from '../payroll/views.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { AttendanceDaysService } from './attendance-days.service.js';
+import { AttendanceFillService } from './attendance-fill.service.js';
 import type { AttendancePersonDto } from './attendance-imports.dto.js';
+import { CorrectionDaysService } from './correction-days.service.js';
 import { personKey, readZohoWorkbook, ZOHO_MAX_FILES, ZohoFileError, type ZohoRow } from './zoho-file.js';
 
 const IMPORT = 'attendance_import';
@@ -95,6 +98,11 @@ export interface AttendancePersonView {
   applied: { at: string; by: string | null } | null;
   /** Undone on their line since it was applied (owner, 19 October 2026), and by whom. */
   undone: { at: string; by: string | null } | null;
+  /**
+   * They check in on the system this month (19 October 2026): applying keeps their Zoho days (counted on the days before
+   * their check-ins), and their line is filled from their attendance days instead of Zoho's month.
+   */
+  checksIn: boolean;
 }
 
 export interface AttendanceImportView {
@@ -161,6 +169,9 @@ export class AttendanceImportsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly confidential: ConfidentialService,
+    private readonly attendanceDays: AttendanceDaysService,
+    private readonly fill: AttendanceFillService,
+    private readonly correctionDays: CorrectionDaysService,
   ) {}
 
   /** Reads the files on a draft run and keeps their days of its month for the review. */
@@ -369,11 +380,22 @@ export class AttendanceImportsService {
     const at = new Date();
     const lineById = new Map(run.lines.map((l) => [l.id, l]));
     const audits: { lineId: string; employeeCode: string; diff: Record<string, unknown> }[] = [];
+    // those who check in on the system this month (19 October 2026): their Zoho days kept, their line filled from the
+    // month's attendance days afterwards
+    const checkIn = new Set(due.filter((p) => p.checksIn).map((p) => p.employee!.id));
 
     await this.prisma.$transaction(async (tx) => {
       for (const p of due) {
         const line = lineById.get(p.lineId!)!;
         const m = p.month!;
+        if (checkIn.has(p.employee!.id)) {
+          await tx.attendanceDay.deleteMany({ where: { employeeId: p.employee!.id, source: 'zoho', date: { gte: toDateOnly(firstDay(month)), lte: toDateOnly(lastDay(month)) } } });
+          if (m.days.length) await tx.attendanceDay.createMany({ data: m.days.map((d: AttendanceDayResult) => dayRow(p.employee!.id, d, importId, user.id, at)) });
+          const stored = people.find((s) => s.key === p.key)!;
+          stored.applied = { at: at.toISOString(), by: user.id };
+          stored.undone = null;
+          continue;
+        }
         const hourly = line.payBasis === 'hourly';
         const was = savedInputs(line.inputs);
         const filled: Partial<PayrollInputs> = hourly
@@ -411,7 +433,12 @@ export class AttendanceImportsService {
     for (const a of audits) {
       await this.audit.record({ userId: user.id, action: 'update', entityType: LINE, entityId: a.lineId, diff: { runId, month, employeeCode: a.employeeCode, ...a.diff } });
     }
-    await this.audit.record({ userId: user.id, action: 'apply', entityType: IMPORT, entityId: importId, diff: { runId, month, lines: due.length } });
+    await this.audit.record({ userId: user.id, action: 'apply', entityType: IMPORT, entityId: importId, diff: { runId, month, lines: due.length, ...(checkIn.size && { fromAttendance: checkIn.size }) } });
+    // a day corrected over one of Zoho's (19 October 2026) is made again over the day imported now, and the lines of
+    // those whose month has a corrected day or check-ins take their attendance days
+    const applied = due.map((p) => p.employee!.id);
+    await this.correctionDays.rebuildMonth(applied, month, user);
+    await this.fill.fillRun(runId, user, applied);
     return this.view(runId, importId, user);
   }
 
@@ -428,13 +455,16 @@ export class AttendanceImportsService {
     const imp = await this.row(runId, importId);
     const confidential = await this.confidential.view(user);
     const due = undoableLines(run.lines, importId, user, confidential);
-    if (!due.length) throw new ConflictException('Nothing on this payroll is filled from this import for you to undo.');
+    // those who check in on the system, whose line is filled from the attendance days with this import's days in them
+    // (19 October 2026): their days go, and their line takes the days left
+    const viaAttendance = await this.filledFromAttendance(run.lines, importId, user, confidential);
+    if (!due.length && !viaAttendance.length) throw new ConflictException('Nothing on this payroll is filled from this import for you to undo.');
     const month = fromDateOnly(run.month).slice(0, 7);
     const rules = run.rules as unknown as PayrollRules;
     const law = runLawRates(run);
     const at = new Date();
     const people = imp.people as unknown as StoredPerson[];
-    const employees = new Set(due.map((l) => l.employeeId));
+    const employees = new Set([...due, ...viaAttendance].map((l) => l.employeeId));
     const audits: { lineId: string; employeeCode: string; diff: Record<string, unknown> }[] = [];
     let days = 0;
     // the people of the files whose lines are put back: no longer applied
@@ -459,8 +489,10 @@ export class AttendanceImportsService {
         p.applied = null;
         p.undone = { at: at.toISOString(), by: user.id };
       }
-      // applied while any line of the run (anyone's) is still filled from it
-      const stillApplied = run.lines.some((l) => (l.attendanceImport as unknown as AttendanceImportMark | null)?.importId === importId && !due.includes(l));
+      // applied while any line of the run (anyone's) is still filled from it, or anyone's days are still its own
+      const stillApplied =
+        run.lines.some((l) => (l.attendanceImport as unknown as AttendanceImportMark | null)?.importId === importId && !due.includes(l)) ||
+        (await tx.attendanceDay.count({ where: { importId } })) > 0;
       await tx.attendanceImport.update({
         where: { id: imp.id },
         data: { people: json(people), ...(!stillApplied && { appliedAt: null, appliedById: null }) },
@@ -469,11 +501,32 @@ export class AttendanceImportsService {
     for (const a of audits) {
       await this.audit.record({ userId: user.id, action: 'update', entityType: LINE, entityId: a.lineId, diff: { runId, month, employeeCode: a.employeeCode, ...a.diff } });
     }
-    await this.audit.record({ userId: user.id, action: 'undo', entityType: IMPORT, entityId: importId, diff: { runId, month, lines: due.length, days } });
+    await this.audit.record({ userId: user.id, action: 'undo', entityType: IMPORT, entityId: importId, diff: { runId, month, lines: due.length + viaAttendance.length, days } });
+    // a corrected day is made again without this import's day under it, and a line filled from the attendance days
+    // takes them as they are without this import's (19 October 2026)
+    await this.correctionDays.rebuildMonth([...employees], month, user);
+    await this.fill.fillRun(runId, user, [...employees]);
     return this.view(runId, importId, user);
   }
 
   // ---------- helpers ----------
+
+  /**
+   * The run's lines filled from the attendance days (19 October 2026: someone who checks in on the system) whose month
+   * has days kept from this import, that the caller fills; none hidden from them.
+   */
+  private async filledFromAttendance<L extends { employeeId: string; attendanceImport: Prisma.JsonValue | null }>(
+    lines: readonly L[],
+    importId: string,
+    user: SessionUser,
+    confidential: ConfidentialView,
+  ): Promise<L[]> {
+    const marked = lines.filter((l) => (l.attendanceImport as unknown as AttendanceImportMark | null)?.source === 'attendance');
+    if (!marked.length) return [];
+    const kept = await this.prisma.attendanceDay.findMany({ where: { importId, employeeId: { in: marked.map((l) => l.employeeId) } }, distinct: ['employeeId'], select: { employeeId: true } });
+    const ids = new Set(kept.map((k) => k.employeeId));
+    return marked.filter((l) => ids.has(l.employeeId) && !confidential.hidden.has(l.employeeId) && changesPayrollLine(user, confidential.all.has(l.employeeId)));
+  }
 
   /** A run that is a draft, else 409 saying what can't be done (`what`). */
   private async draftRun(runId: string, what: string) {
@@ -534,6 +587,9 @@ export class AttendanceImportsService {
     for (const r of resolved) if (r.employeeId && isMatched(r.match)) matchedTimes.set(r.employeeId, (matchedTimes.get(r.employeeId) ?? 0) + 1);
 
     const lineOf = new Map(run.lines.map((l) => [l.employeeId, l]));
+    // those who check in on the system this month (19 October 2026): their line is filled from their attendance days
+    const matchedIds = [...new Set(resolved.filter((r) => r.employeeId && isMatched(r.match)).map((r) => r.employeeId!))];
+    const own = await this.attendanceDays.monthOf(month, matchedIds);
     const months = await this.months(
       month,
       resolved.filter((r) => r.employeeId && isMatched(r.match) && !confidential.hidden.has(r.employeeId)).map((r) => ({ employeeId: r.employeeId!, employmentId: lineOf.get(r.employeeId!)?.employmentId ?? null, days: r.p.days })),
@@ -571,6 +627,7 @@ export class AttendanceImportsService {
         month: employeeId ? (months.get(employeeId) ?? null) : null,
         applied: r.p.applied ? { at: r.p.applied.at, by: appliedBy.get(r.p.applied.by)?.name ?? null } : null,
         undone: r.p.undone ? { at: r.p.undone.at, by: appliedBy.get(r.p.undone.by)?.name ?? null } : null,
+        checksIn: employeeId ? (own.get(employeeId)?.sources.some((x) => x === 'system' || x === 'device') ?? false) : false,
       });
     }
     // the outside rows said with each person's month
@@ -602,7 +659,7 @@ export class AttendanceImportsService {
         notOnRun: shown.filter((p) => isMatched(p.match) && !p.lineId).length,
       },
       canApply: run.status === 'draft' && shown.some((p) => isMatched(p.match) && !p.duplicate && p.lineId && p.editable),
-      undoable: run.status === 'draft' ? undoableLines(run.lines, importId, user, confidential).length : 0,
+      undoable: run.status === 'draft' ? undoableLines(run.lines, importId, user, confidential).length + (await this.filledFromAttendance(run.lines, importId, user, confidential)).length : 0,
     };
     return { view, imp, people };
   }

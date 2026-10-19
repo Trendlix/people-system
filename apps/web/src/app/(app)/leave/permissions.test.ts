@@ -20,6 +20,7 @@ import {
   permissionHourOptions,
   permissionHoursLine,
   permissionHref,
+  permissionInDaysText,
   permissionMonthText,
   permissionReadyText,
   permissionSentText,
@@ -37,6 +38,7 @@ import {
   shownMessage,
   typedPermissionValues,
   typedTimes,
+  upcomingPermissions,
   usedOnDay,
   WAITING_PERMISSIONS,
   workedOutTimes,
@@ -215,6 +217,30 @@ describe('a permission, in words', () => {
     expect(noPermissionText('trainee')).toBeNull();
     expect(noPermissionText('freelance')).toContain('No permission under a freelance employment');
     expect(noPermissionText('intern')).toContain('No permission under an unpaid internship');
+  });
+});
+
+describe('coming up, on the dashboard', () => {
+  // owner, 19 October 2026: "upcoming permissions on the employee dashboard"
+  it('lists the approved permission of today and later, the soonest first, the earlier time first on a day', () => {
+    const rows = [
+      permission({ id: 'past', date: '2026-10-18', status: 'approved' }),
+      permission({ id: 'later', date: '2026-11-10', status: 'approved', fromTime: null, toTime: null }),
+      permission({ id: 'today', date: '2026-10-19', status: 'approved', fromTime: '17:00' }),
+      permission({ id: 'morning', date: '2026-11-10', status: 'approved', fromTime: '09:00', toTime: '10:00', hours: 1 }),
+      permission({ id: 'waiting', date: '2026-10-20', status: 'with_manager' }),
+      permission({ id: 'rejected', date: '2026-10-21', status: 'rejected' }),
+      permission({ id: 'cancelled', date: '2026-10-22', status: 'cancelled' }),
+    ];
+    expect(upcomingPermissions(rows, '2026-10-19').map((p) => p.id)).toEqual(['today', 'morning', 'later']);
+    expect(upcomingPermissions(rows, '2026-10-19', 1).map((p) => p.id)).toEqual(['today']);
+    expect(upcomingPermissions([], '2026-10-19')).toEqual([]);
+  });
+
+  it('says how far off it is', () => {
+    expect(permissionInDaysText({ date: '2026-10-19' }, '2026-10-19')).toBe('Today');
+    expect(permissionInDaysText({ date: '2026-10-20' }, '2026-10-19')).toBe('Tomorrow');
+    expect(permissionInDaysText({ date: '2026-10-29' }, '2026-10-19')).toBe('In 10 days');
   });
 });
 

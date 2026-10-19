@@ -5,6 +5,7 @@ import {
   applicable,
   applyConfirmText,
   attendanceReviewHref,
+  CHECKS_IN_NOTE,
   checkTimesText,
   countChips,
   dayTone,
@@ -12,6 +13,8 @@ import {
   notAppliedReason,
   permissionText,
   personChoice,
+  placeText,
+  refreshesFromAttendance,
   reviewSections,
   uploadProblems,
 } from './attendance';
@@ -138,5 +141,23 @@ describe('the review', () => {
     expect(personChoice(fd({ key: 'a', choice: 'undo' }))).toEqual({ key: 'a', employeeId: null, skipped: false });
     expect(personChoice(fd({ key: 'a', employeeId: 'x' }))).toBeNull();
     expect(personChoice(fd({ employeeId: '00000000-0000-4000-8000-000000000001' }))).toBeNull();
+  });
+});
+
+describe('checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace Zoho")', () => {
+  it('says a place the location of which is unknown, beside the office and remote', () => {
+    expect([placeText('office'), placeText('remote'), placeText('unknown'), placeText(null), placeText(undefined)]).toEqual(['Office', 'Remote', 'Location unknown', '—', '—']);
+  });
+
+  it('lets HR and the CEO refresh a draft from attendance, no one else and no other run', () => {
+    expect(refreshesFromAttendance({ roles: ['hr'] }, 'draft')).toBe(true);
+    expect(refreshesFromAttendance({ roles: ['ceo'] }, 'draft')).toBe(true);
+    expect(refreshesFromAttendance({ roles: ['finance'] }, 'draft')).toBe(false);
+    expect(refreshesFromAttendance({ roles: ['admin', 'super_admin'] }, 'draft')).toBe(false);
+    for (const status of ['pending_ceo', 'approved', 'paid'] as const) expect(refreshesFromAttendance({ roles: ['hr', 'ceo'] }, status)).toBe(false);
+  });
+
+  it('says of someone who checks in that their line is filled from their attendance days', () => {
+    expect(CHECKS_IN_NOTE).toBe("Checks in on the system this month: Zoho's days count before their first check-in, and their line is filled from their attendance days.");
   });
 });
