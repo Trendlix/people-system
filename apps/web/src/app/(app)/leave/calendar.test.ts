@@ -5,11 +5,15 @@ import {
   calendarDays,
   calendarPath,
   calendarPeople,
+  cellLabel,
   monthRange,
+  monthSummaryText,
   monthTitle,
   nextMonth,
   offPerDay,
   offThisMonthText,
+  permissionCellText,
+  permissionCellWords,
   previousMonth,
   readDepartment,
   readMonth,
@@ -119,5 +123,60 @@ describe('who is off', () => {
     expect(offThisMonthText(0)).toBe('No one off this month');
     expect(offThisMonthText(1)).toBe('1 person off this month');
     expect(offThisMonthText(3)).toBe('3 people off this month');
+  });
+});
+
+describe('permission on the calendar (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day"; as hours)', () => {
+  const days = calendarDays('2026-11', [], '2026-10-19');
+  const permission = (e: Partial<LeaveCalendarEntry> & { who?: string }) =>
+    entry({ kind: 'permission', type: { nameEn: 'Permission' }, startDate: '2026-11-03', endDate: '2026-11-03', halfDay: false, hours: 2, fromTime: '17:00', toTime: '19:00', ...e });
+
+  it('marks its day with its hours, not as a day off; someone with only permission still has a row', () => {
+    const people = calendarPeople([permission({ who: 'karim' }), entry({ who: 'nour', startDate: '2026-11-04', endDate: '2026-11-05' })], days);
+    expect(people.map((p) => [p.name, p.daysOff, p.permissionHours])).toEqual([
+      ['Karim Nabil', 0, 2],
+      ['Nour Adel', 2, 0],
+    ]);
+    const cell = people[0].cells[2]!;
+    expect(cell).toMatchObject({ typeName: 'Permission', halfDay: false, waiting: false, first: true, last: true, requestId: 'r-karim-2026-11-03' });
+    expect(cell.permission).toEqual({ hours: 2, fromTime: '17:00', toTime: '19:00' });
+    expect(permissionCellText(cell.permission!)).toBe('2:00');
+    // permission isn't counted among those off
+    expect(offPerDay(people, days.length).slice(2, 5)).toEqual([0, 1, 1]);
+    expect(monthSummaryText(people)).toBe('1 person off this month, 1 with permission');
+    expect(monthSummaryText([])).toBe('No one off this month');
+  });
+
+  it('says what it is to those who can’t see the grid: the hours, the times, approved or being decided', () => {
+    const [karim] = calendarPeople([permission({ who: 'karim' })], days);
+    expect(cellLabel(karim.cells[2]!, karim.name, days[2])).toBe('Karim Nabil: Permission, 2 hours, 5:00 PM – 7:00 PM, approved, Tuesday 03/11/2026');
+    const [waiting] = calendarPeople([permission({ who: 'karim', status: 'with_manager', hours: 1.5, fromTime: null, toTime: null })], days);
+    expect(cellLabel(waiting.cells[2]!, waiting.name, days[2])).toBe('Karim Nabil: Permission, 1 hour 30 minutes, being decided, Tuesday 03/11/2026');
+    expect(permissionCellWords('Permission', { hours: 0.5, fromTime: '09:00', toTime: null })).toBe('Permission, 30 minutes, from 9:00 AM');
+    // a leave day says it as before
+    const [nour] = calendarPeople([entry({ startDate: '2026-11-04', endDate: '2026-11-04', halfDay: true, status: 'with_hr' })], days);
+    expect(cellLabel(nour.cells[3]!, nour.name, days[3])).toBe('Nour Adel: Annual leave, half a day, being decided, Wednesday 04/11/2026');
+  });
+
+  it('gives way to leave on the same day, and two of a day show their hours together', () => {
+    const [nour] = calendarPeople([permission({}), entry({ startDate: '2026-11-03', endDate: '2026-11-03' })], days);
+    expect(nour.cells[2]).toMatchObject({ typeName: 'Annual leave', permission: null });
+    expect([nour.daysOff, nour.permissionHours]).toEqual([1, 0]);
+    const [twice] = calendarPeople([permission({ hours: 1, fromTime: '09:00', toTime: '10:00' }), permission({ id: 'r-2', hours: 0.5, fromTime: '17:00', toTime: '17:30' })], days);
+    expect(twice.cells[2]?.permission).toEqual({ hours: 1.5, fromTime: null, toTime: null });
+    expect(twice.permissionHours).toBe(1.5);
+    // an approved one over one being decided, as leave
+    const [approved] = calendarPeople([permission({ status: 'with_hr', hours: 1 }), permission({ id: 'r-3', hours: 2 })], days);
+    expect(approved.cells[2]).toMatchObject({ waiting: false, permission: { hours: 2 } });
+  });
+
+  it('reads on a phone with its hours and times, opening its own request', () => {
+    const people = calendarPeople([permission({ who: 'karim' })], days);
+    const agenda = calendarAgenda(people, days);
+    expect(agenda.map((a) => [a.day.date, a.off.map((o) => [o.name, o.permission?.hours, o.requestId])])).toEqual([['2026-11-03', [['Karim Nabil', 2, 'r-karim-2026-11-03']]]]);
+  });
+
+  it('isn’t shown rejected or cancelled', () => {
+    expect(calendarPeople([permission({ status: 'rejected' }), permission({ status: 'cancelled' })], days)).toEqual([]);
   });
 });

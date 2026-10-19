@@ -361,3 +361,13 @@ export * from './department-leads.js';
 // them (the CEO, the Super Admin, the person themself), who decides their requests' HR stages and fills their payroll
 // lines (the CEO), and what the screens say of those left out
 export * from './confidential.js';
+
+// permission (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a maximum 2 hours per
+// day", asked "In the system, like leave"): its Leave Setup limits, a request's problems, and the month's hours the
+// payroll counts as worked
+export * from './permissions.js';
+
+// attendance from Zoho People (owner, 19 October 2026: "Import Zoho now, replace it later"): office or remote by the
+// check-in's address, people matched by name (and their Zoho ID once confirmed), and a person's month by the system's
+// shift, leave, holidays and permission: the hours counted, the absent days, the permission hours
+export * from './attendance-import.js';

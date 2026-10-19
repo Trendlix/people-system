@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AllowancesModule } from './allowances/allowances.module.js';
+import { AttendanceModule } from './attendance/attendance.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CompanyModule } from './company/company.module.js';
@@ -53,6 +54,7 @@ import { UsersModule } from './users/users.module.js';
     PayrollStatisticsModule,
     ReimbursementsModule,
     LeaveModule,
+    AttendanceModule,
     UsersModule,
   ],
   controllers: [HealthController, VersionController],

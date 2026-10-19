@@ -292,8 +292,8 @@ describe('payroll register', () => {
     expect(ws.getRow(8).getCell(net).value).toEqual({ formula: `SUM(${letter}5:${letter}7)`, result: 24763.16 });
     expect(ws.getRow(8).getCell(2).value).toBe('Total');
     // two columns more since 17 October 2026: the attendance waived, and the additions and deductions in words; two more
-    // since 18 October 2026: the unpaid leave days and their cut
-    expect(ws.getRow(8).getCell(REGISTER_COLUMNS.length).address).toBe('AW8');
+    // since 18 October 2026: the unpaid leave days and their cut; one more since 19 October 2026: the permission hours
+    expect(ws.getRow(8).getCell(REGISTER_COLUMNS.length).address).toBe('AX8');
   });
 
   it('the expected hours attendance was measured on, and the leave days after the no-show days (17 October 2026)', async () => {

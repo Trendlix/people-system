@@ -61,6 +61,7 @@ export function YourRulesForm({
   const off = hasSwitch && !paysOvertime;
   const reviewMonths = rules.salaryReviewMonths;
   const limitPercent = rules.installmentLimitPercent;
+  const offices = rules.officeAddresses;
 
   const numberField = (f: RuleField, disabled = false) => (
     <div key={f.key} className={disabled ? 'opacity-60' : undefined}>
@@ -179,6 +180,32 @@ export function YourRulesForm({
                 all of the employee&apos;s advance recoveries and loan installments in a month together, against their current contract&apos;s gross.
                 Recording a plan, changing or moving an installment, or entering a recovery past it is refused, and the run&apos;s line warns past it.
                 {` ${INSTALLMENT_LIMIT_MIN} to ${LAW_INSTALLMENT_PERCENT}`}; lower if the company wants less.
+              </p>
+            </div>
+          </fieldset>
+        </div>
+      )}
+
+      {offices !== undefined && (
+        <div className="border-t border-line-soft pt-5">
+          <fieldset className="space-y-4">
+            <legend className="font-semibold">Office Addresses</legend>
+            <div>
+              <label htmlFor={fid('officeAddresses')} className="label">
+                The office&apos;s addresses, one a line
+              </label>
+              <textarea
+                id={fid('officeAddresses')}
+                name="officeAddresses"
+                rows={Math.max(4, offices.length + 1)}
+                defaultValue={valueOf(state, 'officeAddresses', offices.join('\n'))}
+                aria-describedby={fid('officeAddresses-hint')}
+                className="input max-w-xl"
+              />
+              <p id={fid('officeAddresses-hint')} className="hint">
+                For attendance from Zoho People: a check-in at one of these is a day at the office, anywhere else remote, and only that is kept,
+                never the address. Part of the address as Zoho People writes it, e.g. 15, Al Doctor Al Mahrouqi Street, or the company&apos;s name.
+                At most 20.
               </p>
             </div>
           </fieldset>

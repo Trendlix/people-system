@@ -20,6 +20,9 @@ import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslip
 import { PayrollStatusBadge, PayrollStepper } from '../ui';
 import { anyEditable, employeesNote, figuresNote, filesNote, hiddenCount, hiddenRowLabel, hiddenTotalsNote, lineEditable } from './access';
 import { RunAdjustments } from './adjustments-section';
+import { attendanceUploadHref } from './attendance/attendance';
+import { loadImports } from './attendance/data';
+import { ImportsList } from './attendance/imports-list';
 import { CibFileForm } from './downloads';
 import { contractsNote, lineItems } from './grid';
 import { InputsGrid, type GridRow } from './inputs-grid';
@@ -174,9 +177,13 @@ function gridRows(lines: PayrollLineView[], month: string, today: string, runLev
     contractsNote: contractsNote(l.terms),
     // the month's approved leave, which fills in the leave cells (18 October 2026); none on lines made before then
     leave: l.terms.leave ?? null,
+    // the month's approved permission hours, counted as worked (19 October 2026); none by the hour, nor on lines made before then
+    permissionHours: l.payBasis === 'hourly' ? null : (l.terms.permissionHours ?? null),
     // the month's additions and deductions, opening the person's month on Additions / Deductions (17 October 2026)
     items: lineItems(l),
     itemsHref: adjustmentsHref(month, today, l.employeeId),
+    // the inputs Zoho People's attendance filled (19 October 2026), marked "from Zoho" until typed over
+    attendanceImport: l.attendanceImport ? { fields: l.attendanceImport.fields, at: l.attendanceImport.at } : null,
   }));
 }
 
@@ -267,6 +274,39 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
   );
 }
 
+/**
+ * Attendance from Zoho People (owner, 19 October 2026: attendance runs in Zoho People today, "Import Zoho now, replace it
+ * later"): on a draft, HR's Import attendance from Zoho People, and the run's imports, each opening its review, where it
+ * is applied to the lines (the CEO applies the C-level people's). For HR and the CEO only; nothing from an API from before.
+ */
+async function Attendance({ run, user }: { run: PayrollRunView; user: SessionUser }) {
+  const hr = preparesPayroll(user);
+  if (!hr && !user.roles.includes('ceo')) return null;
+  const imports = await loadImports(run.id);
+  if (imports.kind === 'unavailable' || imports.kind === 'forbidden') return null;
+  const list = imports.kind === 'ok' ? imports.value : [];
+  if (run.status !== 'draft' && !list.length) return null;
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Attendance from Zoho People</h2>
+          <p className="text-sm text-muted">
+            The month&apos;s check-ins and check-outs from Zoho People fill the worked hours, the no-show days and the permission hours, by the
+            system&apos;s rules.
+          </p>
+        </div>
+        {hr && run.status === 'draft' && (
+          <Link href={attendanceUploadHref(run.id)} className="btn btn-secondary">
+            Import attendance from Zoho People
+          </Link>
+        )}
+      </div>
+      {imports.kind === 'failed' ? <p className="text-sm text-muted">The imports couldn&apos;t be loaded. {imports.messages.join(' ')}</p> : <ImportsList runId={run.id} imports={list} />}
+    </section>
+  );
+}
+
 function Exclusions({ run }: { run: PayrollRunView }) {
   if (run.exclusions.length === 0) return null;
   return (
@@ -323,6 +363,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
 
       <Actions run={run} user={user} title={title} payday={payday} />
       <SummaryCards run={run} />
+      <Attendance run={run} user={user} />
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">

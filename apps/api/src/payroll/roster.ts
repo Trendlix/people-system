@@ -3,7 +3,9 @@ import {
   insuredWageVersion,
   lawRatesFor,
   monthLeaveDays,
+  monthPermissionHours,
   paidDaysOf,
+  PERMISSION_RULE_DEFAULTS,
   shiftDaysIn,
   shiftExpectedHours,
   shiftWorkHours,
@@ -40,7 +42,10 @@ import { firstDay, lastDay } from './months.js';
 // hours (payroll.ts expectedHoursOf). The month's approved leave (owner, 18 October 2026: "can you apply the leaves
 // according to the law?"): its paid and unpaid days within the days paid, as each type counts them on the shift's
 // working days (Sunday to Thursday without a shift) less the holidays, the grid's Leave days and Unpaid leave days unless
-// HR types others (payroll.ts leaveDaysOf); none for pay by the hour.
+// HR types others (payroll.ts leaveDaysOf); none for pay by the hour. The month's approved permission hours (owner, 19
+// October 2026: "4 hours per month with a maximum 2 hours per day", counted as worked): those on days paid, at most the
+// Leave Setup's hours a month, the grid's Permission hours unless HR types others (payroll.ts permissionHoursOf); none
+// for pay by the hour.
 
 /** An employment as the roster reads it, with its signed contracts that may be in force in the month. */
 export interface RosterEmployment {
@@ -66,6 +71,8 @@ export interface RosterEmployment {
   contracts: RosterContract[];
   /** The employment's approved leave that touches the month (the Leave module, 18 October 2026); none when missing. */
   leaves?: PayrollLeave[];
+  /** The employment's approved permission in the month (19 October 2026): each day and its hours; none when missing. */
+  permissions?: { date: string; hours: number }[];
 }
 
 /** A signed contract (a version of the employment's) that may be in force in the month. */
@@ -169,6 +176,17 @@ export function leaveTermsOf(
 }
 
 /**
+ * The month's approved permission hours a line's terms take (owner, 19 October 2026: counted as worked): those on days
+ * within the parts of the month paid, at most the Leave Setup's hours a month (permissions.ts monthPermissionHours);
+ * null without any.
+ */
+export function permissionTermsOf(month: string, parts: readonly { from: string; to: string }[], permissions: readonly { date: string; hours: number }[], hoursPerMonth: number): number | null {
+  if (!permissions.length) return null;
+  const hours = monthPermissionHours(permissions, month, hoursPerMonth, parts);
+  return hours > 0 ? hours : null;
+}
+
+/**
  * A trainee's training agreement as the month pays it (owner, 18 October 2026; Labour Law 14/2025 Art. 29: "المكافأة
  * التى يحصل عليها المتدرج فى كل مرحلة بصورة تصاعدية"): each stage from its first day at its own pay, as a renewal's days
  * are paid on its own (contractParts), so a stage that starts mid-month splits the month by days; the last stage to the
@@ -207,6 +225,8 @@ export function contractParts(from: string, to: string, contracts: readonly Rost
  * the month (left and hired again) is paid on the later one; the earlier is listed as left out. `holidays` are the
  * official holidays' days (YYYY-MM-DD) in the month. `law`: the rates set by law the run is worked out with (its
  * year's), whose insurable limits the insured wage is kept within; the built-in ones of the year unless given.
+ * `permissionHoursPerMonth`: the Leave Setup's permission hours a month (19 October 2026), the most a line's permission
+ * counts; the owner's 4 unless given.
  */
 export function roster(
   month: string,
@@ -214,6 +234,7 @@ export function roster(
   rules: Pick<PayrollRules, 'dayDivisor'>,
   holidays: readonly string[] = [],
   law: LawRates = lawRatesFor(Number(month.slice(0, 4))),
+  permissionHoursPerMonth: number = PERMISSION_RULE_DEFAULTS.hoursPerMonth,
 ): { lines: RosterLine[]; exclusions: Exclusion[] } {
   const from = firstDay(month);
   const to = lastDay(month);
@@ -270,6 +291,8 @@ export function roster(
       contract.payBasis === 'monthly'
         ? leaveTermsOf(month, parts, e.shift?.workingDays, holidays, e.leaves ?? [], paidDays.reduce((sum, n) => sum + n, 0))
         : null;
+    // the month's approved permission hours (19 October 2026), for the monthly paid: counted as worked
+    const permissionHours = contract.payBasis === 'monthly' ? permissionTermsOf(month, parts, e.permissions ?? [], permissionHoursPerMonth) : null;
     lines.push({
       employeeId: p.id,
       employmentId: e.id,
@@ -301,6 +324,7 @@ export function roster(
         hoursPerDay,
         ...shiftExpected(month, e, parts, contract.payBasis, hoursPerDay, holidays),
         ...(leave && { leave }),
+        ...(permissionHours !== null && { permissionHours }),
       },
     });
   }

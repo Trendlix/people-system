@@ -51,6 +51,12 @@
 // Leave module fills in the Leave days (paid leave: nothing cut) and a new Unpaid leave days (unpaid leave, and the
 // unpaid share of a partly paid one such as sick leave below 100%: a day of the gross ÷ the day divisor cut for each),
 // both taken out of the shift's expected hours like a no-show day's; what HR types still wins (leaveDaysOf).
+// Permission (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a maximum 2 hours per
+// day", asked "In the system, like leave"; permissions.ts): the month's approved permission hours, within the Leave
+// Setup's hours a month, count as worked: the attendance is the worked hours and the permission hours together, so
+// they are never cut as short hours. The run takes them with the line's terms (PayrollTerms.permissionHours) and the
+// grid shows them; what HR types (or an attendance import fills) instead wins (permissionHoursOf). None for pay by the
+// hour, which pays only the hours worked.
 
 import type { AllowanceTerms } from './contracts.js';
 import { adjustmentSums, DAYS_TYPE_OF, isDaysType, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
@@ -208,6 +214,13 @@ export interface PayrollTerms {
    * hasn't typed others (leaveDaysOf). Missing on lines without leave, for pay by the hour, and on lines made before then.
    */
   leave?: PayrollLeaveDays | null;
+  /**
+   * The month's approved permission hours (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day",
+   * counted as worked): those on days paid, at most the Leave Setup's hours a month (permissions.ts
+   * monthPermissionHours). What the grid's Permission hours are filled in with when HR hasn't typed others
+   * (permissionHoursOf). Missing on lines without any, for pay by the hour, and on lines made before then.
+   */
+  permissionHours?: number | null;
 }
 
 /** A month's approved leave as a line's terms keep it: the paid days and the unpaid days, whole, half or in shares. */
@@ -287,6 +300,13 @@ export interface PayrollInputs {
    * inputs saved before then: none.
    */
   unpaidLeaveDays?: number | null;
+  /**
+   * The month's permission hours (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day"): added to
+   * the worked hours for the attendance, so they are never cut as short hours. Filled in from the approved permission
+   * requests (PayrollTerms.permissionHours) unless HR types them, or an attendance import fills them; at most the Leave
+   * Setup's hours a month (the API refuses more). Not for pay by the hour. Missing on inputs saved before then: none.
+   */
+  permissionHours?: number | null;
   /** Already paid out this month: not in the bank transfer. */
   released: number | null;
   /**
@@ -306,6 +326,7 @@ export const EMPTY_PAYROLL_INPUTS: PayrollInputs = {
   noShowDays: null,
   leaveDays: null,
   unpaidLeaveDays: null,
+  permissionHours: null,
   released: null,
   attendanceWaived: false,
 };
@@ -367,7 +388,13 @@ export interface PayrollResult {
    * out before then (measuredExpectedHours).
    */
   expectedHours: number | null;
-  /** Worked ÷ expected hours; null when attendance isn't tracked or can't be counted. */
+  /**
+   * The permission hours counted as worked (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per
+   * day"), added to the worked hours for the attendance ratio: missing without any, when attendance isn't tracked (no
+   * worked hours given), for pay by the hour, and on lines worked out before then.
+   */
+  permissionHours?: number;
+  /** Worked (with the permission hours) ÷ expected hours; null when attendance isn't tracked or can't be counted. */
   attendanceRatio: number | null;
   /** The attendance that counts (1 at or above the grace percent). */
   attendanceScore: number;
@@ -553,7 +580,7 @@ type SalaryPart = Pick<
   | 'kpiCut'
   | 'noShowCut'
   | 'overtime'
-> & { attendanceWaived: number; unpaidLeaveCut: number };
+> & { attendanceWaived: number; unpaidLeaveCut: number; permissionHours?: number };
 
 /**
  * A shift's window in hours, from its start and end ("HH:mm"): an end before the start runs past midnight. Null when
@@ -643,6 +670,18 @@ export function leaveDaysOf(
     leaveDays: typed(inputs.leaveDays) ?? (leave && leave.paidDays > 0 ? leave.paidDays : null),
     unpaidLeaveDays: typed(inputs.unpaidLeaveDays) ?? (leave && leave.unpaidDays > 0 ? leave.unpaidDays : null),
   };
+}
+
+/**
+ * The permission hours a line is worked out with (owner, 19 October 2026: counted as worked): as HR typed them (or an
+ * attendance import filled them), else the month's approved permission hours the terms took; null when neither. What
+ * HR types is never overwritten.
+ */
+export function permissionHoursOf(terms: Pick<PayrollTerms, 'permissionHours'>, inputs: Pick<PayrollInputs, 'permissionHours'>): number | null {
+  const typed = inputs.permissionHours;
+  if (typed !== null && typed !== undefined) return typed;
+  const taken = terms.permissionHours;
+  return typeof taken === 'number' && taken > 0 ? taken : null;
 }
 
 /**
@@ -775,6 +814,8 @@ export function payrollLine(
             hoursPerDay: terms.hoursPerDay ?? null,
             shiftExpectedHours: terms.expectedHours ?? null,
             expectedDays: terms.expectedDays ?? null,
+            // the month's permission hours, counted as worked (owner, 19 October 2026)
+            permissionHours: permissionHoursOf(terms, i),
           },
           warnings,
         );
@@ -876,8 +917,9 @@ export function payrollLine(
 
 /**
  * A monthly salary for the days paid, with the cuts and the overtime the owner's sheet works out (its formula errors
- * fixed), and its no-show days charged once (owner's decisions, 16 October 2026). Attendance is the worked hours ÷ the
- * expected hours, counted as full at or above the grace percent (90). The expected hours (expectedHoursOf, owner,
+ * fixed), and its no-show days charged once (owner's decisions, 16 October 2026). Attendance is the worked hours, with
+ * the month's permission hours (owner, 19 October 2026: counted as worked), ÷ the expected hours, counted as full at or
+ * above the grace percent (90). The expected hours (expectedHoursOf, owner,
  * 17 October 2026: "dont count abcent days or leave days, as they already have their own deduction and fields") are
  * HR's when typed, taken as they are, else the shift's working days less the holidays (owner's request, 16 October
  * 2026) less the no-show and leave days, a day of the shift each; without a shift, HR's figure, with a warning when
@@ -906,6 +948,8 @@ function monthlyPart(
     shiftExpectedHours: number | null;
     /** The shift's working days in the days paid, and the holidays on them: null without a shift, or by the hour. */
     expectedDays: ShiftDays | null;
+    /** The month's permission hours (permissionHoursOf): counted as worked (owner, 19 October 2026). */
+    permissionHours?: number | null;
   },
   warnings: string[],
 ): SalaryPart {
@@ -918,7 +962,10 @@ function monthlyPart(
   // unpaid leave and the unpaid share of a partly paid one (owner, 18 October 2026): days off like the paid leave's
   const unpaidLeaveDays = given(i.unpaidLeaveDays ?? null);
   const daysOff = daysOffName(noShowDays, leaveDays + unpaidLeaveDays);
-  const worked = i.workedHours;
+  // the permission hours count as worked (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day"),
+  // so they are never cut as short hours; only once there are worked hours to add them to (attendance tracked)
+  const permission = i.workedHours !== null && typeof pay.permissionHours === 'number' && pay.permissionHours > 0 ? pay.permissionHours : 0;
+  const worked = i.workedHours === null ? null : fraction(i.workedHours + permission);
   const shift = pay.shiftExpectedHours;
   const fromShift = i.expectedHours === null && shift !== null && shift > 0;
   const absentHours = fromShift ? shiftDaysHours(i.noShowDays, pay.hoursPerDay) : 0;
@@ -966,8 +1013,9 @@ function monthlyPart(
   // the most attendance will count (owner, 16 October 2026: "maximum working hours to be recorded per day is 9 hours
   // between checkin and check out"): the shift's hours to work a day on its working days in the days paid, less the
   // holidays and the no-show and leave days; the total typed isn't cut, only warned about
+  // the worked hours as typed, without the permission hours: what attendance counted
   const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays, leaveDays + unpaidLeaveDays);
-  if (worked !== null && most !== null && pay.hoursPerDay !== null && worked > most) {
+  if (i.workedHours !== null && most !== null && pay.hoursPerDay !== null && i.workedHours > most) {
     const perDay = formatHours(pay.hoursPerDay);
     warnings.push(`Worked hours are more than ${perDay} a day on the shift's working days (${formatHours(most)} this month): attendance will count at most ${perDay} a day`);
   }
@@ -979,6 +1027,7 @@ function monthlyPart(
     absentHours,
     leaveHours,
     expectedHours: expected,
+    ...(permission > 0 && { permissionHours: permission }),
     attendanceRatio,
     attendanceScore,
     kpiScore,
@@ -1004,6 +1053,10 @@ function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): 
   if (!(given(terms.hourlyRate) > 0)) warnings.push('Paid by the hour, but the contract has no hourly rate');
   if ([i.expectedHours, i.softSkills, i.performance, i.clientSatisfaction, i.noShowDays, i.leaveDays, i.unpaidLeaveDays ?? null].some((v) => v !== null)) {
     warnings.push("Paid by the hour: the expected hours, KPIs, no-show days and leave days don't change the pay");
+  }
+  // permission (owner, 19 October 2026) is time not worked: by the hour, only the hours worked are paid
+  if (i.permissionHours !== null && i.permissionHours !== undefined && i.permissionHours > 0) {
+    warnings.push("Paid by the hour: the permission hours aren't paid, only the hours worked");
   }
   return {
     fixed: piasters(given(i.workedHours) * given(terms.hourlyRate)),

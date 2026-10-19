@@ -234,6 +234,8 @@ describe('Payroll (e2e)', () => {
           salaryReviewMonths: 12,
           // the most a month's installments may take of the wage: the law's 10% (owner, 18 October 2026: "Block above 10%")
           installmentLimitPercent: 10,
+          // the office's addresses as Zoho People writes a check-in's location (owner, 19 October 2026)
+          officeAddresses: ['Trendlix', '13, Al Doctor Al Mahrouqi Street', '15, Al Doctor Al Mahrouqi Street', '17, Al Doctor Al Mahrouqi Street'],
         });
       }
       await api().get('/api/payroll/settings').set('Cookie', staff).expect(403);
@@ -355,6 +357,8 @@ describe('Payroll (e2e)', () => {
         leaveDays: null,
         // unpaid leave (18 October 2026: the Leave module), filled in from the approved leave unless typed
         unpaidLeaveDays: null,
+        // permission (19 October 2026), filled in from the approved permission requests unless typed
+        permissionHours: null,
         released: null,
         // the CEO's waiver (17 October 2026); no bonus or penalty days, commission or settlements: they are on
         // Additions / Deductions since then

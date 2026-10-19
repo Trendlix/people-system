@@ -570,3 +570,29 @@ describe('breakdown: the attendance deduction waived by the CEO (owner, 17 Octob
     expect(waivedByCeo(lineOf(terms, inputs))).toBe(false);
   });
 });
+
+describe('breakdown: the permission hours (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a maximum 2 hours per day")', () => {
+  it('says "Permission: 4:00" where the hours explain the attendance, counted as worked, from the permission approved', () => {
+    // 133 worked and 4 of permission of the 152 expected: 137 ÷ 152 = 90.13%, at or above the grace
+    const approved = lineOf({ ...terms, permissionHours: 4 }, inputs);
+    expect(approved.result.permissionHours).toBe(4);
+    expect(stepOf(approved, 'permission')).toEqual({ key: 'permission', label: 'Permission', value: '4:00', kind: 'info', note: 'Counted as worked, from the permission approved this month' });
+    expect(stepOf(approved, 'hours')).toMatchObject({ value: '133:00 of 152:00', note: '137:00 with the permission hours, as attendance counts them' });
+    expect(stepOf(approved, 'attendance')).toMatchObject({ value: '90.13%', note: 'At or above 90%: counts in full' });
+    // the steps come in order: the hours worked, then the permission, then the attendance
+    const keys = breakdown(approved, PAYROLL_RULE_DEFAULTS).map((r) => r.key);
+    expect(keys.indexOf('permission')).toBe(keys.indexOf('hours') + 1);
+    expect(keys.indexOf('attendance')).toBe(keys.indexOf('permission') + 1);
+  });
+
+  it('says so when HR typed them, and has no row without any, without worked hours, or by the hour', () => {
+    const typed = lineOf({ ...terms, permissionHours: 4 }, { ...inputs, permissionHours: 1.5 });
+    expect(stepOf(typed, 'permission')).toMatchObject({ value: '1:30', note: 'Counted as worked, as typed by HR' });
+    expect(stepOf(lineOf(terms, inputs), 'permission')).toBeUndefined();
+    expect(stepOf(lineOf(terms, inputs), 'hours')).toEqual({ key: 'hours', label: 'Hours worked', value: '133:00 of 152:00', kind: 'info' });
+    // attendance not tracked: nothing to add them to
+    expect(stepOf(lineOf({ ...terms, permissionHours: 4 }, { ...inputs, workedHours: null }), 'permission')).toBeUndefined();
+    const hourly = lineOf({ ...terms, payBasis: 'hourly', hourlyRate: 60, permissionHours: 4 }, { ...EMPTY_PAYROLL_INPUTS, workedHours: 100 });
+    expect(stepOf(hourly, 'permission')).toBeUndefined();
+  });
+});

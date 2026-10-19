@@ -16,8 +16,9 @@ import { myRequests, requestLabel } from '../my-requests/requests';
 import { loadTeam } from '../my-team/data';
 import { askedByText, probationOf, raiseNews } from '../my-team/team';
 import { loadOwnProfile } from '../own-profile';
-import { loadLeaveTypes, loadMyBalances, loadMyLeave, loadWaitingLeave } from '../leave/data';
+import { loadLeaveTypes, loadMyBalances, loadMyLeave, loadWaitingLeave, loadWaitingPermissions } from '../leave/data';
 import { daysText, leaveHref, leaveWhenText, MY_LEAVE_HREF, NEW_LEAVE_PATH, periodText, requestsLabel, upcomingLeave } from '../leave/list';
+import { isPermission, mergeRequests, permissionWhenText, requestHref } from '../leave/permissions';
 import { LeaveBalanceFigures, LeaveStatusBadge } from '../leave/ui';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
 import { effectiveFromText, newRaiseRequestHref, progressText } from '../raise-requests/list';
@@ -37,7 +38,8 @@ import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toD
 // The cards that need more than the profile load on their own. Reimbursements (owner, 18 October 2026): their open
 // claims on My Requests with New reimbursement, and for a manager with claims waiting, Reimbursements to Approve. Leave
 // (owner, 18 October 2026: "can you apply the leaves according to the law?"): My Leave, their annual balance and their
-// leave coming up, with New leave; for a manager with requests waiting, Leave to Approve.
+// leave coming up, with New leave; for a manager with requests waiting, Leave to Approve, with the permission requests
+// waiting too (owner, 19 October 2026: permission "In the system, like leave").
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -409,10 +411,14 @@ async function MyLeaveCard({ profile: p, today }: { profile: EmployeeProfile; to
   );
 }
 
-/** The leave requests waiting for the manager, the first to decide them: who, the type and when, each with Decide. Only when some are. */
+/**
+ * The leave and permission requests waiting for the manager, the first to decide them: who, the type (Permission) and
+ * when (a permission's day and hours), each with Decide. Only when some are.
+ */
 async function LeaveToApproveCard() {
-  const requests = await loadWaitingLeave();
-  if (requests.kind !== 'ok' || requests.value.length === 0) return null;
+  const [leave, permissions] = await Promise.all([loadWaitingLeave(), loadWaitingPermissions()]);
+  const requests = mergeRequests(leave.kind === 'ok' ? leave.value : [], permissions.kind === 'ok' ? permissions.value : []);
+  if (requests.length === 0) return null;
   return (
     <Card
       title="Leave to Approve"
@@ -423,21 +429,28 @@ async function LeaveToApproveCard() {
       }
     >
       <ul className="divide-y divide-line-soft">
-        {requests.value.map((r) => (
-          <li key={r.id} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 py-2.5 text-sm first:pt-0">
+        {requests.map((r) => (
+          <li key={`${r.type.id}:${r.id}`} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 py-2.5 text-sm first:pt-0">
             <div className="min-w-0">
               <p className="font-medium">{r.employee.fullNameEn}</p>
               <p className="text-xs text-muted">
-                {r.type.nameEn} · <span className="tabular-nums">{periodText(r)}</span> · {daysText(r.days)}
+                {r.type.nameEn} ·{' '}
+                {isPermission(r) ? (
+                  <span className="tabular-nums">{permissionWhenText(r)}</span>
+                ) : (
+                  <>
+                    <span className="tabular-nums">{periodText(r)}</span> · {daysText(r.days)}
+                  </>
+                )}
               </p>
             </div>
-            <Link href={leaveHref(r.id)} className={`${small} btn-primary`}>
+            <Link href={requestHref(r)} className={`${small} btn-primary`}>
               Decide<span className="sr-only"> on the {r.type.nameEn} request by {r.employee.fullNameEn}</span>
             </Link>
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-xs text-muted">{requestsLabel(requests.value.length)} waiting for you</p>
+      <p className="mt-2 text-xs text-muted">{requestsLabel(requests.length)} waiting for you</p>
     </Card>
   );
 }

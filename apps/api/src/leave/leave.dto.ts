@@ -17,7 +17,18 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { LEAVE_BALANCES, LEAVE_DECISIONS, LEAVE_PAYS, LEAVE_STATUSES, type LeaveBalanceKind, type LeaveDecision, type LeavePay, type LeaveStatus } from '@trendlix/shared';
+import {
+  LEAVE_BALANCES,
+  LEAVE_DECISIONS,
+  LEAVE_PAYS,
+  LEAVE_STATUSES,
+  PERMISSION_DAY_MAX,
+  PERMISSION_MONTH_MAX,
+  type LeaveBalanceKind,
+  type LeaveDecision,
+  type LeavePay,
+  type LeaveStatus,
+} from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
 
@@ -47,6 +58,9 @@ const BooleanOf = () =>
 /** A name of 1 to 100 characters (after trimming), with one message whatever is wrong. */
 const IsName = (message: string) =>
   ValidateBy({ name: 'isName', validator: { validate: (v) => typeof v === 'string' && v.length > 0 && v.length <= 100, defaultMessage: () => message } });
+
+const PERMISSION_MONTH_MESSAGE = `Enter the permission hours a month from 0 to ${PERMISSION_MONTH_MAX}, in half hours, e.g. 4 (0: no permission).`;
+const PERMISSION_DAY_MESSAGE = `Enter the most permission hours a day from 0.5 to ${PERMISSION_DAY_MAX}, in half hours, e.g. 2.`;
 
 const limit = (what: string, min: number, max: number) => `Enter ${what} as a whole number from ${min} to ${max}, or leave it empty for none.`;
 const YEAR_MESSAGE = 'Choose a year, e.g. 2026.';
@@ -119,7 +133,10 @@ export class UpdateLeaveTypeDto extends LeaveTypeFields {
 
 const setupDays = (what: string) => `Enter ${what} as a whole number of days from 0 to 366.`;
 
-/** The annual leave's numbers (Art. 124) and the years days may be carried (Art. 125): each field sent replaces it. */
+/**
+ * The annual leave's numbers (Art. 124), the years days may be carried (Art. 125) and the permission hours (19 October
+ * 2026): each field sent replaces it.
+ */
 export class UpdateLeaveSettingsDto {
   @IsOptional() @IsInt({ message: setupDays('the first year’s days') }) @Min(0, { message: setupDays('the first year’s days') }) @Max(366, { message: setupDays('the first year’s days') })
   firstYearDays?: number;
@@ -147,6 +164,17 @@ export class UpdateLeaveSettingsDto {
 
   @IsOptional() @IsInt({ message: 'Enter the years days may be carried as a whole number from 1 to 10.' }) @Min(1, { message: 'Enter the years days may be carried as a whole number from 1 to 10.' }) @Max(10, { message: 'Enter the years days may be carried as a whole number from 1 to 10.' })
   settleWithinYears?: number;
+
+  /**
+   * The permission hours a month (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day"), in half
+   * hours, 0 to 40 (0: no permission); with the most a day, checked together (permissionRulesProblems).
+   */
+  @IsOptional() @IsNumber({ allowNaN: false, allowInfinity: false }, { message: PERMISSION_MONTH_MESSAGE })
+  permissionHoursPerMonth?: number;
+
+  /** The most permission hours a day, in half hours, 0.5 to 8. */
+  @IsOptional() @IsNumber({ allowNaN: false, allowInfinity: false }, { message: PERMISSION_DAY_MESSAGE })
+  permissionMaxHoursPerDay?: number;
 }
 
 // ---------- requests ----------

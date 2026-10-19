@@ -82,7 +82,16 @@ export function settingsRules(s: LeaveSettings): LeaveRules {
   };
 }
 
-export const settingsView = (s: LeaveSettings) => ({ ...settingsRules(s), updatedAt: s.updatedAt.toISOString() });
+/**
+ * The Leave Setup as the API sends it: the annual leave's numbers, and the permission hours a month and the most a day
+ * (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day", "Yes, in Leave Setup").
+ */
+export const settingsView = (s: LeaveSettings) => ({
+  ...settingsRules(s),
+  permissionHoursPerMonth: s.permissionHoursPerMonth.toNumber(),
+  permissionMaxHoursPerDay: s.permissionMaxHoursPerDay.toNumber(),
+  updatedAt: s.updatedAt.toISOString(),
+});
 
 /**
  * What a request is shown with: its employee and where they work under the employment it is under, their direct manager

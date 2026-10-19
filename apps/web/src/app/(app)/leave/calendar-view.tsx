@@ -3,36 +3,64 @@ import { Fragment } from 'react';
 import { GroupHeading } from '@/components/group-heading';
 import { formatDate } from '@/lib/format';
 import { groupByPlace, showsDepartment } from '@/lib/place-groups';
-import { calendarAgenda, monthTitle, nextMonth, offPerDay, offThisMonthText, previousMonth, typeLetters, type CalendarDay, type CalendarPerson } from './calendar';
+import { permissionClock } from '@trendlix/shared';
+import {
+  calendarAgenda,
+  cellLabel,
+  monthSummaryText,
+  monthTitle,
+  nextMonth,
+  offPerDay,
+  permissionCellText,
+  permissionCellWords,
+  previousMonth,
+  typeLetters,
+  type AgendaPerson,
+  type CalendarDay,
+  type CalendarPerson,
+} from './calendar';
 import { CalendarDepartmentFilter, type DepartmentChoice } from './calendar-filter';
 import { daysNumber, leaveHref } from './list';
+import { permissionHref } from './permissions';
 
 // The month's calendar of who is off (owner, 18 October 2026, leaves first: "if we will work on the attendance and
 // leaves, how will we build it?"): on a wide screen a grid, a row for each person off in the month, grouped by
 // department, then team, a column for each day with its weekday and the official holidays shaded, each day off marked
 // with its type's letter (half a day half filled; one still being decided outlined), and how many are off each day; on a
 // phone the same month as a list of its days, each with who is off and the holidays. The month and the department are
-// in the address, so a link keeps them.
+// in the address, so a link keeps them. A permission (owner, 19 October 2026: "4 hours per month with a maximum 2 hours
+// per day"; on the calendar "as hours") marks its day with its hours ("2:00"), outlined rather than filled so it reads
+// apart from a day of leave, and opens its own page; the Days column adds the month's permission hours under the days.
 
 const LINK = 'btn btn-secondary min-h-9 px-3 no-underline';
 
-/** A day's leave in the grid: its type's letter, filled when approved, outlined while it is being decided. */
+/** Where a day's mark opens: its leave request's page, or its permission request's. */
+const cellHref = (cell: { requestId: string | null; permission: unknown }) =>
+  cell.requestId ? (cell.permission ? permissionHref(cell.requestId) : leaveHref(cell.requestId)) : null;
+
+/**
+ * A day's leave in the grid: its type's letter, filled when approved, outlined while it is being decided; a permission
+ * its hours, outlined in the accent colour when approved (19 October 2026).
+ */
 function Cell({ cell, letter, name, day }: { cell: NonNullable<CalendarPerson['cells'][number]>; letter: string; name: string; day: CalendarDay }) {
-  const label = `${name}: ${cell.typeName}${cell.halfDay ? ', half a day' : ''}${cell.waiting ? ', being decided' : ''}, ${day.weekdayName} ${formatDate(day.date)}`;
-  const look = cell.waiting ? 'border border-dashed border-warn bg-warn-soft text-warn' : 'bg-accent text-white';
+  const label = cellLabel(cell, name, day);
+  const look = cell.waiting ? 'border border-dashed border-warn bg-warn-soft text-warn' : cell.permission ? 'border border-accent bg-accent-soft text-accent' : 'bg-accent text-white';
   const shape = `${cell.first ? 'rounded-l-md' : ''} ${cell.last ? 'rounded-r-md' : ''}`;
   const body = (
     <span
       title={label}
-      className={`relative flex h-7 items-center justify-center overflow-hidden text-[11px] font-semibold ${look} ${shape}`}
+      className={`relative flex h-7 items-center justify-center overflow-hidden font-semibold ${cell.permission ? 'text-[10px] tracking-tight' : 'text-[11px]'} ${look} ${shape}`}
     >
       {cell.halfDay && <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1/2 bg-card/70" />}
-      <span className="relative">{letter}</span>
+      <span aria-hidden="true" className="relative tabular-nums">
+        {cell.permission ? permissionCellText(cell.permission) : letter}
+      </span>
       <span className="sr-only">{label}</span>
     </span>
   );
-  return cell.requestId ? (
-    <Link href={leaveHref(cell.requestId)} prefetch={false} className="block no-underline">
+  const href = cellHref(cell);
+  return href ? (
+    <Link href={href} prefetch={false} className="block no-underline">
       {body}
     </Link>
   ) : (
@@ -48,7 +76,7 @@ function MonthGrid({ days, people, letters }: { days: CalendarDay[]; people: Cal
   return (
     <div className="card overflow-x-auto">
       <table className="w-full border-collapse text-sm">
-        <caption className="sr-only">Who is off on each day of the month</caption>
+        <caption className="sr-only">Who is off, or has permission, on each day of the month</caption>
         <thead>
           <tr>
             <th scope="col" className="sticky left-0 z-10 min-w-44 border-b border-line bg-card px-3 py-2 text-left text-xs font-semibold tracking-wide text-muted uppercase">
@@ -92,7 +120,11 @@ function MonthGrid({ days, people, letters }: { days: CalendarDay[]; people: Cal
                         {c && <Cell cell={c} letter={letters.get(c.typeName) ?? '•'} name={p.name} day={days[i]} />}
                       </td>
                     ))}
-                    <td className="border-b border-line-soft px-3 py-1.5 text-right tabular-nums">{daysNumber(p.daysOff)}</td>
+                    <td className="border-b border-line-soft px-3 py-1.5 text-right tabular-nums">
+                      {p.daysOff > 0 ? daysNumber(p.daysOff) : <span className="text-muted">—</span>}
+                      {/* the month's permission hours, under the days off (19 October 2026) */}
+                      {p.permissionHours > 0 && <span className="block text-[11px] whitespace-nowrap text-muted">{permissionClock(p.permissionHours)} permission</span>}
+                    </td>
                   </tr>
                 ))}
               </Fragment>
@@ -114,6 +146,18 @@ function MonthGrid({ days, people, letters }: { days: CalendarDay[]; people: Cal
         </tfoot>
       </table>
     </div>
+  );
+}
+
+/** Who is off (or has permission) on a day of the phone's list, opening their request when there is one. */
+function AgendaName({ person: o }: { person: AgendaPerson }) {
+  const href = cellHref(o);
+  return href ? (
+    <Link href={href} prefetch={false} className="font-medium">
+      {o.name}
+    </Link>
+  ) : (
+    <span className="font-medium">{o.name}</span>
   );
 }
 
@@ -139,17 +183,11 @@ function MonthAgenda({ days, people }: { days: CalendarDay[]; people: CalendarPe
               {off.map((o) => (
                 <li key={o.id} className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
                   <span className="min-w-0">
-                    {o.requestId ? (
-                      <Link href={leaveHref(o.requestId)} prefetch={false} className="font-medium">
-                        {o.name}
-                      </Link>
-                    ) : (
-                      <span className="font-medium">{o.name}</span>
-                    )}
+                    <AgendaName person={o} />
                     {o.place && <span className="block text-xs text-muted">{o.place}</span>}
                   </span>
                   <span className={`text-xs ${o.waiting ? 'text-warn' : 'text-muted'}`}>
-                    {o.typeName}
+                    {o.permission ? permissionCellWords(o.typeName, o.permission) : o.typeName}
                     {o.halfDay && ', half a day'}
                     {o.waiting && ', being decided'}
                   </span>
@@ -191,7 +229,9 @@ export function LeaveCalendar({
   filterAction: string;
   hidden: Record<string, string>;
 }) {
-  const letters = typeLetters(people.flatMap((p) => p.cells.flatMap((c) => (c ? [c.typeName] : []))));
+  // a permission shows its hours, not a letter (19 October 2026)
+  const letters = typeLetters(people.flatMap((p) => p.cells.flatMap((c) => (c && !c.permission ? [c.typeName] : []))));
+  const permissions = people.some((p) => p.permissionHours > 0);
   const holidays = days.filter((d) => d.holidays.length);
   return (
     <div className="space-y-4">
@@ -213,12 +253,15 @@ export function LeaveCalendar({
       </div>
 
       <p className="text-sm text-muted">
-        {offThisMonthText(people.length)}
+        {monthSummaryText(people)}
         {showsWaiting && ', approved and still being decided'}.
       </p>
 
       {people.length === 0 ? (
-        <div className="card px-6 py-8 text-center text-sm text-muted">No one has leave in {monthTitle(month)}{departmentId ? ' in this department' : ''}.</div>
+        <div className="card px-6 py-8 text-center text-sm text-muted">
+          No one has leave or permission in {monthTitle(month)}
+          {departmentId ? ' in this department' : ''}.
+        </div>
       ) : (
         <>
           <div className="hidden md:block">
@@ -238,6 +281,12 @@ export function LeaveCalendar({
               {name}
             </li>
           ))}
+          {permissions && (
+            <li className="flex items-center gap-1.5">
+              <span className="flex h-5 items-center justify-center rounded border border-accent bg-accent-soft px-1 text-[10px] font-semibold text-accent tabular-nums">2:00</span>
+              Permission, its hours that day
+            </li>
+          )}
           {showsWaiting && (
             <li className="flex items-center gap-1.5">
               <span className="size-5 rounded border border-dashed border-warn bg-warn-soft" /> Being decided

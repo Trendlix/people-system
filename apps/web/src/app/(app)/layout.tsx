@@ -46,6 +46,8 @@ async function MainNav() {
   // takes their HR (and Finance) stages, so the CEO's counts have them: beside Raise Requests, the C-level people's
   // requests at HR's step; beside Details Changes and Approvals, their change requests, which the CEO decides; beside
   // Reimbursements and Leave Requests, what the API counts as waiting for the CEO. Each count is what the user decides.
+  // The leave count (`waiting`) has the permission requests in it (owner, 19 October 2026: permission "In the system,
+  // like leave"), beside Leave Requests and in My Team's, as they are decided the same way.
   const self = isSelfService({ roles });
   const manager = self && decidesForTeam({ roles, leads: user?.leads });
   const [endings, pendingChanges, raises, requests, claims, leave] = await Promise.all([

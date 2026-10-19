@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { LEAVE_RULE_DEFAULTS, type LeaveBalanceKind, type LeavePay } from '@trendlix/shared';
+import { LEAVE_RULE_DEFAULTS, PERMISSION_RULE_DEFAULTS, permissionRulesProblems, type LeaveBalanceKind, type LeavePay } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { actsAs, assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -131,11 +131,20 @@ export class LeaveTypesService {
     return settingsView(await this.settingsRow());
   }
 
-  /** HR changes the annual leave's numbers: each field sent. A year already closed keeps what it was closed with. */
+  /**
+   * HR changes the annual leave's numbers and the permission hours (19 October 2026): each field sent. A year already
+   * closed keeps what it was closed with; a permission already sent stays as it was sent.
+   */
   async updateSettings(dto: UpdateLeaveSettingsDto, user: SessionUser) {
     const before = await this.settingsRow();
     const sentValues = Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined));
     const { updatedAt: _u, ...was } = settingsView(before);
+    // the hours a month and the most a day, checked together: in half hours, a day's no more than a month's
+    const problems = permissionRulesProblems({
+      hoursPerMonth: dto.permissionHoursPerMonth ?? was.permissionHoursPerMonth,
+      maxHoursPerDay: dto.permissionMaxHoursPerDay ?? was.permissionMaxHoursPerDay,
+    });
+    if (problems.length) throw new BadRequestException(problems);
     const diff = changes(was, sentValues);
     if (!Object.keys(diff).length) return settingsView(before);
     const row = await this.prisma.leaveSettings.update({ where: { id: 1 }, data: { ...sentValues, updatedById: user.id } });
@@ -146,7 +155,12 @@ export class LeaveTypesService {
   // ---------- helpers ----------
 
   private async settingsRow() {
-    return (await this.prisma.leaveSettings.findUnique({ where: { id: 1 } })) ?? (await this.prisma.leaveSettings.create({ data: { id: 1, ...LEAVE_RULE_DEFAULTS } }));
+    return (
+      (await this.prisma.leaveSettings.findUnique({ where: { id: 1 } })) ??
+      (await this.prisma.leaveSettings.create({
+        data: { id: 1, ...LEAVE_RULE_DEFAULTS, permissionHoursPerMonth: PERMISSION_RULE_DEFAULTS.hoursPerMonth, permissionMaxHoursPerDay: PERMISSION_RULE_DEFAULTS.maxHoursPerDay },
+      }))
+    );
   }
 
   /**

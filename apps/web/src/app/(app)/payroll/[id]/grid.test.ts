@@ -1,6 +1,7 @@
 import { EMPTY_PAYROLL_INPUTS, payrollLine, type PayrollAdjustmentItem, type PayrollInputs, type PayrollSegment, type PayrollTerms, type SavedPayrollInputs } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  attendanceHours,
   attendancePercent,
   cellText,
   columnNote,
@@ -8,7 +9,9 @@ import {
   dayRange,
   errorLine,
   expectedCell,
+  fromImport,
   GRID_COLUMNS,
+  importTitle,
   ITEMS_AFTER,
   LEAVE_FIELDS,
   leaveFill,
@@ -16,7 +19,9 @@ import {
   linePatches,
   noShowPay,
   parseCell,
+  permissionFill,
   placeApiErrors,
+  rowPermissionHours,
   tidyCell,
   unsavedCount,
   unsavedText,
@@ -40,8 +45,9 @@ describe('the grid’s columns', () => {
     // 2026: "instead of there, i think earnings and deductions will be enough"): Earnings and Deductions after the leave
     // days, read only
     // the unpaid leave days beside the leave days (owner, 18 October 2026: "can you apply the leaves according to the
-    // law?"), the Earnings and Deductions after them
-    expect(GRID_COLUMNS.map((c) => c.label)).toEqual(['Worked hours', 'Expected hours', 'No-show days', 'Leave days', 'Unpaid leave days', 'Released']);
+    // law?"), the Earnings and Deductions after them; the permission hours right after the worked hours (19 October 2026)
+    expect(GRID_COLUMNS.map((c) => c.label)).toEqual(['Worked hours', 'Permission hours', 'Expected hours', 'No-show days', 'Leave days', 'Unpaid leave days', 'Released']);
+    expect(GRID_COLUMNS.find((c) => c.field === 'permissionHours')?.kind).toBe('hours');
     expect(ITEMS_AFTER).toBe('unpaidLeaveDays');
     // nor the CEO's attendance waiver, ticked on the results table (17 October 2026)
     const notTyped = ['softSkills', 'performance', 'clientSatisfaction', 'attendanceWaived'];
@@ -420,3 +426,91 @@ describe('the leave days filled in from the leave approved (owner, 18 October 20
   });
 });
 
+
+describe('the permission hours (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a maximum 2 hours per day")', () => {
+  it('are filled in from the permission approved for the month, the other cells with nothing', () => {
+    expect(permissionFill(4, 'permissionHours')).toBe(4);
+    expect(permissionFill(1.5, 'permissionHours')).toBe(1.5);
+    expect(permissionFill(4, 'workedHours')).toBeNull();
+    // none approved, or a line from before permission (or by the hour)
+    expect(permissionFill(0, 'permissionHours')).toBeNull();
+    expect(permissionFill(null, 'permissionHours')).toBeNull();
+    expect(permissionFill(undefined, 'permissionHours')).toBeNull();
+    expect(columnNote('permissionHours', 2)).toBe('Counted as worked');
+  });
+
+  it('are the typed ones when typed (0 too), else the approved ones', () => {
+    expect(rowPermissionHours(4, null)).toBe(4);
+    expect(rowPermissionHours(4, 2)).toBe(2);
+    expect(rowPermissionHours(4, 0)).toBe(0);
+    expect(rowPermissionHours(null, null)).toBeNull();
+    expect(rowPermissionHours(undefined, 1.5)).toBe(1.5);
+  });
+
+  it('count as worked once there are worked hours, not by the hour', () => {
+    expect(attendanceHours(133, 4)).toBe(137);
+    expect(attendanceHours(133, null)).toBe(133);
+    expect(attendanceHours(133, 0)).toBe(133);
+    // attendance not tracked: nothing to add them to
+    expect(attendanceHours(null, 4)).toBeNull();
+    // by the hour, only the hours worked are paid
+    expect(attendanceHours(133, 4, true)).toBe(133);
+    // 133 + 4 of 152: 90.13%, at or above the grace
+    expect(attendancePercent(attendanceHours(133, 4), 152)).toBe(90.13);
+  });
+
+  it('give the Attendance % payrollLine counts', () => {
+    const terms: PayrollTerms = {
+      year: 2026,
+      payBasis: 'monthly',
+      gross: 10_000,
+      basicPercent: 80,
+      hourlyRate: null,
+      allowances: [],
+      paidDays: 30,
+      statutory: true,
+      insured: true,
+      insuredWage: 10_000,
+      hoursPerDay: 8,
+      expectedHours: 152,
+      expectedDays: { workingDays: 20, holidays: 1 },
+      permissionHours: 4,
+    };
+    const inputs = { ...EMPTY_PAYROLL_INPUTS, workedHours: 133 };
+    const paid = payrollLine(terms, inputs);
+    expect(paid.permissionHours).toBe(4);
+    const shown = attendancePercent(attendanceHours(inputs.workedHours, rowPermissionHours(terms.permissionHours, null)), expectedCell({ shiftExpectedHours: 152, hoursPerDay: 8 }, inputs).hours);
+    expect(shown).toBe(Math.round(paid.attendanceRatio! * 10_000) / 100);
+    // typed over: 2 hours instead of the 4 approved
+    const typed = payrollLine(terms, { ...inputs, permissionHours: 2 });
+    expect(typed.permissionHours).toBe(2);
+    expect(attendancePercent(attendanceHours(133, rowPermissionHours(4, 2)), 152)).toBe(Math.round(typed.attendanceRatio! * 10_000) / 100);
+  });
+
+  it('are typed as hours, and sent only when changed', () => {
+    expect(parseCell('hours', '1:30')).toEqual({ ok: true, value: 1.5 });
+    expect(linePatches([{ id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS }, onHold: false, comments: null }], { [A]: { inputs: { permissionHours: '2:00' } } }).patches).toEqual([
+      { id: A, inputs: { permissionHours: 2 } },
+    ]);
+    // a line saved before the field existed has it as not given: an empty cell is no change
+    expect(linePatches([{ id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, permissionHours: undefined }, onHold: false, comments: null }], { [A]: { inputs: { permissionHours: '' } } }).patches).toEqual([]);
+  });
+});
+
+describe('the figures filled from Zoho People (owner, 19 October 2026: "HR\'s typed values replaced, marked \'from Zoho\'")', () => {
+  const mark = { fields: ['workedHours', 'noShowDays', 'permissionHours'], at: '2026-10-19T09:30:00.000Z' };
+
+  it('marks a cell the import filled until it is typed over, and none it left empty', () => {
+    expect(fromImport(mark, 'workedHours', false, 170.5)).toBe(true);
+    expect(fromImport(mark, 'workedHours', true, 170.5)).toBe(false);
+    // the permission hours were the system's requests': the import left the cell empty
+    expect(fromImport(mark, 'permissionHours', false, null)).toBe(false);
+    expect(fromImport(mark, 'expectedHours', false, 180)).toBe(false);
+    expect(fromImport(null, 'workedHours', false, 170.5)).toBe(false);
+  });
+
+  it('says when it was filled, and how to replace it', () => {
+    expect(importTitle(mark.at, true)).toBe("Filled from Zoho People's attendance, applied on 19/10/2026. Type another figure to replace it.");
+    expect(importTitle(mark.at, false)).toBe("Filled from Zoho People's attendance, applied on 19/10/2026.");
+  });
+});

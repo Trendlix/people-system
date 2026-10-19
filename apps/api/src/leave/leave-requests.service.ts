@@ -12,6 +12,7 @@ import {
   leaveRequestProblems,
   leaveStage,
   leaveStatusAfterApproval,
+  permissionHoursText,
   serviceMonths,
   takesFromAnnual,
   underLabourLaw,
@@ -46,6 +47,7 @@ import { checkedDocuments } from './documents.js';
 import { LeaveBalancesService, TAKING, type LeaveBalancesView, type LeaveEmployment } from './leave-balances.service.js';
 import type { CreateLeaveRequestDto, DecideLeaveDto, HrCancelLeaveDto, LeaveCalendarQueryDto, ListLeaveRequestsDto, RecordLeaveRequestDto } from './leave.dto.js';
 import { LeavePayrollService } from './leave-payroll.service.js';
+import { PermissionRequestsService, type PermissionCalendarItem } from './permissions.service.js';
 import { recordLeaveStep } from './steps.js';
 import { DOCUMENT_ENTITY, partiesOf, placeOf, REQUEST_ENTITY, REQUEST_INCLUDE, requestView, rulesOf, type LeaveRequestView, type RequestRow } from './views.js';
 
@@ -57,9 +59,10 @@ const statusWords = (status: string) => {
   return label[0].toLowerCase() + label.slice(1);
 };
 
-/** A day off on the calendar, as GET /leave/calendar sends it. */
+/** A day off on the calendar, as GET /leave/calendar sends it: leave (kind 'leave'), beside the permissions (PermissionCalendarItem). */
 export interface LeaveCalendarItem {
   id: string;
+  kind: 'leave';
   employee: { id: string; fullNameEn: string; department: string | null; team: string | null };
   type: { id: string; nameEn: string; nameAr: string };
   startDate: string;
@@ -92,6 +95,7 @@ export class LeaveRequestsService {
     private readonly balances: LeaveBalancesService,
     private readonly payroll: LeavePayrollService,
     private readonly confidential: ConfidentialService,
+    private readonly permissions: PermissionRequestsService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -195,10 +199,14 @@ export class LeaveRequestsService {
     return this.views(rows, caller);
   }
 
-  /** How many requests wait for the caller's decision, for the menu's badges. */
-  async counts(user: SessionUser): Promise<{ waiting: number }> {
+  /**
+   * How many requests wait for the caller's decision, for the menu's badges: the leave and the permission requests (owner,
+   * 19 October 2026: permission "In the system, like leave") together, and each.
+   */
+  async counts(user: SessionUser): Promise<{ waiting: number; leave: number; permissions: number }> {
     const caller = await this.caller(user);
-    return { waiting: await this.prisma.leaveRequest.count({ where: waitingWhere(caller) }) };
+    const [leave, permissions] = await Promise.all([this.prisma.leaveRequest.count({ where: waitingWhere(caller) }), this.permissions.waitingCount(caller)]);
+    return { waiting: leave + permissions, leave, permissions };
   }
 
   async one(id: string, user: SessionUser): Promise<LeaveRequestView> {
@@ -317,9 +325,10 @@ export class LeaveRequestsService {
   /**
    * Who is off from `from` to `to` (this month unless sent; at most a year): approved leave, and for HR the requests
    * being decided too; HR and the CEO everyone's, a manager their team's and their own, anyone else their own. By a
-   * department (its teams with it) or a team when one is chosen.
+   * department (its teams with it) or a team when one is chosen. With the permissions the same way (owner's brief, 19
+   * October 2026: "the calendar (as hours)"), each with its hours, after the leave.
    */
-  async calendar(query: LeaveCalendarQueryDto, user: SessionUser): Promise<LeaveCalendarItem[]> {
+  async calendar(query: LeaveCalendarQueryDto, user: SessionUser): Promise<(LeaveCalendarItem | PermissionCalendarItem)[]> {
     const caller = await this.caller(user);
     const today = todayInCairo();
     const from = query.from ?? `${today.slice(0, 7)}-01`;
@@ -347,8 +356,9 @@ export class LeaveRequestsService {
         type: { select: { id: true, nameEn: true, nameAr: true } },
       },
     });
-    return rows.map((r) => ({
+    const leave = rows.map((r) => ({
       id: r.id,
+      kind: 'leave' as const,
       employee: { id: r.employee.id, fullNameEn: r.employee.fullNameEn, ...placeOf(r.employment.department) },
       type: r.type,
       startDate: fromDateOnly(r.startDate),
@@ -356,6 +366,8 @@ export class LeaveRequestsService {
       halfDay: r.halfDay,
       status: r.status as LeaveStatus,
     }));
+    const permissions = await this.permissions.calendarItems(scopeWhere(caller), isHr(user) ? TAKING : ['approved'], from, to, query.departmentId);
+    return [...leave, ...permissions];
   }
 
   // ---------- helpers ----------
@@ -436,6 +448,17 @@ export class LeaveRequestsService {
       if (overlap) {
         const when = `from ${shownDate(fromDateOnly(overlap.startDate))} to ${shownDate(fromDateOnly(overlap.endDate))}`;
         throw new ConflictException(`${name ? `${name} already has` : 'You already have'} ${overlap.type.nameEn} ${when} (${statusWords(overlap.status)}) on some of these days. Choose other days.`);
+      }
+      // nor on a day with permission asked for (19 October 2026): a day of leave needs none, so it is cancelled first
+      const permission = await tx.permissionRequest.findFirst({
+        where: { employeeId, status: { in: [...TAKING] }, date: { gte: toDateOnly(dto.startDate), lte: toDateOnly(dto.endDate) } },
+        orderBy: { date: 'asc' },
+        select: { date: true, hours: true, status: true },
+      });
+      if (permission) {
+        throw new ConflictException(
+          `${name ? `${name} has` : 'You have'} permission for ${permissionHoursText(permission.hours.toNumber())} on ${shownDate(fromDateOnly(permission.date))} (${statusWords(permission.status)}): cancel it first, or choose other days.`,
+        );
       }
       const made = await tx.leaveRequest.create({
         data: {

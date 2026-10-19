@@ -13,9 +13,10 @@ import { loadOwnProfile } from '../own-profile';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
 import { askedAt, justSent, newRaiseRequestHref, raiseRequestAnchor } from '../raise-requests/list';
 import { EffectiveFrom, FoldedRequestLog, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, RequestSent, Requester, Suggestion } from '../raise-requests/ui';
-import { loadLeaveTypes, loadMyBalances, loadMyLeave } from '../leave/data';
+import { loadLeaveTypes, loadMyBalances, loadMyLeave, loadMyPermissionMonth, loadMyPermissions } from '../leave/data';
 import { NEW_LEAVE_PATH, requestsLabel } from '../leave/list';
-import { LeaveBalanceFigures, MyLeaveTable } from '../leave/ui';
+import { NEW_PERMISSION_PATH, noPermissionText, PERMISSION_OFF_TEXT, permissionMonthText } from '../leave/permissions';
+import { LeaveBalanceFigures, MyLeaveTable, MyPermissionTable } from '../leave/ui';
 import { loadMyClaims } from '../reimbursements/data';
 import { claimsLabel, NEW_CLAIM_PATH } from '../reimbursements/list';
 import { MyClaimsTable } from '../reimbursements/ui';
@@ -48,6 +49,9 @@ import {
 // first, each opening its page (receipts, every step, Cancel while it is being decided), and New reimbursement. Leave
 // (owner, 18 October 2026: "can you apply the leaves according to the law?") has one too, above it: the annual balance
 // of the year and what is left of the other types, their requests, newest first, each opening its page, and New leave.
+// Permission (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a maximum 2 hours per
+// day", asked "In the system, like leave") is a part of it: this month's hours (approved, waiting, left of the Leave
+// Setup's), their permission requests, the latest day first, each opening its page, and New permission beside New leave.
 
 export const metadata: Metadata = { title: 'My Requests · People System' };
 
@@ -251,18 +255,61 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/my-request
 }
 
 /**
+ * Their permission (owner, 19 October 2026): this month's hours (GET /me/permissions/allowance) and their requests, the
+ * latest day first (GET /me/permissions), each opening its page. Nothing from an API from before permission; turned off
+ * in Leave Setup, said so (their past requests still listed).
+ */
+async function Permission({ month }: { month: string }) {
+  const [requests, figures] = await Promise.all([loadMyPermissions(), loadMyPermissionMonth(month)]);
+  if (requests.kind === 'unavailable') return null;
+  return (
+    <div id="my-permission" className="scroll-mt-6 space-y-3 pt-4">
+      <div>
+        <h3 className="font-semibold">Permission</h3>
+        <p className="text-sm text-muted">
+          A few hours away from a working day, e.g. to leave early or come late, in half hours. Decided as leave is; approved, its hours count as worked.
+        </p>
+      </div>
+      {figures.kind === 'ok' ? (
+        <p className="card px-5 py-4 text-sm font-semibold tabular-nums">
+          {figures.value.hoursPerMonth > 0 ? permissionMonthText(figures.value, month) : PERMISSION_OFF_TEXT}
+        </p>
+      ) : (
+        figures.kind !== 'unavailable' &&
+        figures.kind !== 'forbidden' && <div className="card px-6 py-6 text-sm text-muted">Your permission hours couldn&apos;t be loaded. Please try again in a moment.</div>
+      )}
+      {requests.kind !== 'ok' ? (
+        <div className="card px-6 py-6 text-sm text-muted">Your permission requests couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : requests.value.length === 0 ? (
+        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t asked for permission yet. Ask with New permission.</div>
+      ) : (
+        <div className="card">
+          <MyPermissionTable requests={requests.value} />
+          <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(requests.value.length)}, the latest day first.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Their leave (owner, 18 October 2026): the annual balance of this year (the entitlement, carried in, adjusted, taken,
  * booked, waiting, available, and from when it may be used in a first year) and what is left of the other types, and
  * their requests, newest first (GET /me/leave/requests), each opening its page; and New leave. Nothing from an API from
- * before leave, nor without a profile of their own.
+ * before leave, nor without a profile of their own. Their permission below it, and New permission beside New leave (19
+ * October 2026) while they have a current employment under the labour law and Leave Setup gives permission hours.
  */
 async function Leave() {
   const user = await getCurrentUser();
   const profile = await loadOwnProfile(user);
   if (!profile) return null;
-  const year = Number(todayInCairo().slice(0, 4));
-  const [requests, balances, types] = await Promise.all([loadMyLeave(), loadMyBalances(year), loadLeaveTypes()]);
+  const today = todayInCairo();
+  const year = Number(today.slice(0, 4));
+  const month = today.slice(0, 7);
+  const [requests, balances, types, permission] = await Promise.all([loadMyLeave(), loadMyBalances(year), loadLeaveTypes(), loadMyPermissionMonth(month)]);
   if (requests.kind === 'unavailable') return null;
+  const asksPermission =
+    !!profile.employment && !noPermissionText(profile.employment.employmentType) && permission.kind === 'ok' && permission.value.hoursPerMonth > 0;
   return (
     <section id="my-leave" aria-labelledby="my-leave-heading" className="mt-10 scroll-mt-6 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -270,12 +317,19 @@ async function Leave() {
           <h2 id="my-leave-heading" className="text-lg font-semibold">
             Leave
           </h2>
-          <p className="text-sm text-muted">Your leave balance and requests. Your direct manager decides each request first, then HR.</p>
+          <p className="text-sm text-muted">Your leave balance, your permission hours and your requests. Your direct manager decides each request first, then HR.</p>
         </div>
         {profile.employment && (
-          <Link href={NEW_LEAVE_PATH} className="btn btn-primary">
-            New leave
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href={NEW_LEAVE_PATH} className="btn btn-primary">
+              New leave
+            </Link>
+            {asksPermission && (
+              <Link href={NEW_PERMISSION_PATH} className="btn btn-secondary">
+                New permission
+              </Link>
+            )}
+          </div>
         )}
       </div>
       {balances.kind === 'ok' ? (
@@ -297,6 +351,7 @@ async function Leave() {
           <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(requests.value.length)}, newest first.</p>
         </div>
       )}
+      <Permission month={month} />
     </section>
   );
 }

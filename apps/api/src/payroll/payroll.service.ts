@@ -4,8 +4,13 @@ import {
   changesPayrollLine,
   EMPTY_PAYROLL_INPUTS,
   insuredWageDate,
+  formatHours,
   leaveDaysOf,
+  markAfterTyping,
   payrollLine,
+  PERMISSION_RULE_DEFAULTS,
+  permissionHoursText,
+  type AttendanceImportMark,
   type LawRates,
   type LeavePay,
   type PayBasis,
@@ -22,7 +27,7 @@ import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/dat
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import { traineeStagesOf } from '../contracts/views.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
-import type { Prisma } from '../generated/prisma/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GridInputsService } from './adjustments/grid-inputs.service.js';
 import { RecurringDeductionsService } from './adjustments/recurring.service.js';
@@ -80,6 +85,9 @@ const rosterSelect = (from: Date, to: Date) =>
       where: { status: 'approved', startDate: { lte: to }, endDate: { gte: from } },
       select: { startDate: true, endDate: true, halfDay: true, type: { select: { paid: true, payPercent: true, calendarDays: true } } },
     },
+    // the approved permission in the month (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day"):
+    // the grid's permission hours, counted as worked (roster.ts permissionTermsOf)
+    permissions: { where: { status: 'approved', date: { gte: from, lte: to } }, select: { date: true, hours: true } },
     // signed versions (active, superseded or ended) that may be in force in the month, and those a raise's insured wage
     // may still stand on (owner's decision, 16 October 2026): ended within 13 months before it, as a raise's insured wage
     // follows its pay at the latest from the next 1 January after it takes effect (raises.ts)
@@ -148,6 +156,7 @@ function rosterEmployment(e: EmploymentRow): RosterEmployment {
       payPercent: l.type.payPercent?.toNumber() ?? null,
       calendarDays: l.type.calendarDays,
     })),
+    permissions: e.permissions.map((p) => ({ date: fromDateOnly(p.date), hours: p.hours.toNumber() })),
   };
 }
 
@@ -358,7 +367,7 @@ export class PayrollService {
 
   /**
    * Changes a draft's lines: their inputs (null clears one), holds and comments; a line's leave days no more than its
-   * days paid. Each changed line is worked out again with the run's rules and rates set by law; the audit log has what
+   * days paid, its permission hours no more than the Leave Setup's hours a month (19 October 2026). Each changed line is worked out again with the run's rules and rates set by law; the audit log has what
    * changed (the leave days too), the money inputs only as changed.
    */
   async updateLines(id: string, dto: UpdatePayrollLinesDto, user: SessionUser): Promise<PayrollRunView> {
@@ -383,6 +392,10 @@ export class PayrollService {
     }
     const rules = run.rules as unknown as PayrollRules;
     const law = runLawRates(run);
+    // the permission hours a month (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day"): the most
+    // a line's typed permission hours may be
+    const setup = await this.prisma.leaveSettings.findUnique({ where: { id: 1 }, select: { permissionHoursPerMonth: true } });
+    const permissionMonth = setup ? setup.permissionHoursPerMonth.toNumber() : PERMISSION_RULE_DEFAULTS.hoursPerMonth;
 
     const updates: { line: LineRow; data: Prisma.PayrollLineUpdateInput; diff: Record<string, unknown> }[] = [];
     for (const change of dto.lines) {
@@ -401,13 +414,28 @@ export class PayrollService {
           `${line.nameEn}: the leave days (${leave.leaveDays ?? 0}) and the unpaid leave days (${leave.unpaidLeaveDays ?? 0}) can't be more than the ${paidDays} days paid this month together.`,
         );
       }
+      // permission counts as worked within the month's allowance only (19 October 2026)
+      if (typeof inputs.permissionHours === 'number' && inputs.permissionHours > permissionMonth) {
+        throw new BadRequestException(
+          `${line.nameEn}: the permission hours (${formatHours(inputs.permissionHours)}) can't be more than the ${permissionHoursText(permissionMonth)} a month Leave Setup allows.`,
+        );
+      }
       const diff: Record<string, unknown> = changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>);
+      // what HR types is no longer from an attendance import (19 October 2026)
+      const mark = line.attendanceImport as unknown as AttendanceImportMark | null;
+      const markAfter = markAfterTyping(mark, Object.keys(diff));
       for (const key of MONEY_INPUTS) if (key in diff) diff[key] = 'changed';
       Object.assign(diff, changes({ onHold: line.onHold, comments: line.comments }, { onHold: change.onHold, comments: change.comments }));
       if (!Object.keys(diff).length) continue;
       updates.push({
         line,
-        data: { inputs: json(inputs), onHold: change.onHold, comments: change.comments, ...worked(line.terms as unknown as PayrollTerms, inputs, rules, law) },
+        data: {
+          inputs: json(inputs),
+          onHold: change.onHold,
+          comments: change.comments,
+          ...(mark && { attendanceImport: markAfter ? json(markAfter) : Prisma.DbNull }),
+          ...worked(line.terms as unknown as PayrollTerms, inputs, rules, law),
+        },
         diff,
       });
     }
@@ -633,14 +661,16 @@ export class PayrollService {
   private async roster(month: string, rules: PayrollRules, law: LawRates) {
     const from = toDateOnly(firstDay(month));
     const to = toDateOnly(lastDay(month));
-    const [rows, holidays] = await Promise.all([
+    const [rows, holidays, leaveSetup] = await Promise.all([
       this.prisma.employment.findMany({
         where: { joinDate: { lte: to }, OR: [{ endDate: null }, { endDate: { gte: from } }] },
         select: rosterSelect(from, to),
       }),
       this.holidays.datesBetween(firstDay(month), lastDay(month)),
+      // the permission hours a month (19 October 2026): the most a line's permission counts
+      this.prisma.leaveSettings.findUnique({ where: { id: 1 }, select: { permissionHoursPerMonth: true } }),
     ]);
-    return roster(month, rows.map(rosterEmployment), rules, holidays, law);
+    return roster(month, rows.map(rosterEmployment), rules, holidays, law, leaveSetup?.permissionHoursPerMonth.toNumber());
   }
 
   /** The employees' bank details as they are now, by employee. Read in full here, never sent. */

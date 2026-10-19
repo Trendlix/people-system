@@ -3,12 +3,14 @@ import {
   formatHours,
   paidAdjustments,
   parseHours,
+  permissionHoursOf,
   type PayrollInputs,
   type PayrollLeaveDays,
   type PayrollResult,
   type PayrollSegment,
   type PayrollTerms,
 } from '@trendlix/shared';
+import { formatDate } from '../../../../lib/format';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 
 // The run's inputs grid (owner's decisions, 16 October 2026): the month's figures HR types for each employee, laid out
@@ -36,9 +38,16 @@ import { formatEgp } from '../../employees/[id]/contracts/salary';
 // deductions after tax), each opening that person's month on Additions / Deductions, the one place to enter them. A
 // draft's line is worked out again whenever one of them changes, so the totals follow. Released (it changes the bank
 // transfer, not the pay), Hold and Comments stay. The CEO fills the C-level people's lines, HR the rest (owner, 19
-// October 2026: "the CEO fills their inputs"): a row the caller doesn't fill is read only, and never sent. Pure code,
-// tested: the columns, how each cell is read and shown, which rows changed (only those are sent, in one PATCH
-// /payroll/runs/:id/lines), and the API's refusals put by the cell they are about.
+// October 2026: "the CEO fills their inputs"): a row the caller doesn't fill is read only, and never sent. Permission
+// hours, right after the worked hours (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a
+// maximum 2 hours per day", asked "In the system, like leave"): the month's approved permission hours, within the Leave
+// Setup's hours a month, filled in from the run's terms (permissionFill) and marked "from permissions", as the leave days
+// are "from leave": only shown, never sent; what HR (or the CEO, on a C-level person's line) types instead wins, the API
+// refusing more than the month's allowance. They count as worked: the Attendance % is the worked hours with them over
+// the expected hours (attendanceHours), as the pay counts it, and only once there are worked hours (attendance tracked);
+// none for pay by the hour, which pays the hours worked alone. Pure code, tested: the columns, how each cell is read and
+// shown, which rows changed (only those are sent, in one PATCH /payroll/runs/:id/lines), and the API's refusals put by
+// the cell they are about.
 
 /** The inputs HR types on the grid: not the CEO's attendance waiver (17 October 2026), which the results table has. */
 export type InputField = Exclude<keyof PayrollInputs, 'attendanceWaived'>;
@@ -63,6 +72,8 @@ export interface GridColumn {
  */
 export const GRID_COLUMNS: readonly GridColumn[] = [
   { field: 'workedHours', label: 'Worked hours', kind: 'hours' },
+  // the month's permission hours, counted as worked (owner, 19 October 2026), beside the worked hours
+  { field: 'permissionHours', label: 'Permission hours', kind: 'hours' },
   { field: 'expectedHours', label: 'Expected hours', kind: 'hours' },
   { field: 'noShowDays', label: 'No-show days', kind: 'days' },
   { field: 'leaveDays', label: 'Leave days', kind: 'days' },
@@ -130,11 +141,54 @@ export function tidyCell(kind: FieldKind, text: string): string {
 
 /**
  * The attendance a row's hours give, in percent: worked ÷ expected, the expected hours already without the no-show and
- * leave days (expectedCell); null when either is missing, or nothing is expected.
+ * leave days (expectedCell); null when either is missing, or nothing is expected. `worked`: with the permission hours
+ * (attendanceHours).
  */
 export function attendancePercent(worked: number | null, expected: number | null): number | null {
   if (worked === null || expected === null || expected <= 0) return null;
   return Math.round((worked / expected) * 10_000) / 100;
+}
+
+/**
+ * The hours attendance counts as worked (owner, 19 October 2026: permission counts as worked): the worked hours with
+ * the permission hours, as payrollLine adds them; null without worked hours (attendance not tracked: nothing to add them
+ * to), and the worked hours alone for pay by the hour (`hourly`), which pays only the hours worked.
+ */
+export function attendanceHours(worked: number | null, permission: number | null, hourly = false): number | null {
+  if (worked === null) return null;
+  if (hourly || permission === null || !(permission > 0)) return worked;
+  return Math.round((worked + permission) * 1e6) / 1e6;
+}
+
+/**
+ * The permission hours a row counts (permissionHoursOf): those typed in the cell (`typed`, as read), else the month's
+ * approved permission hours the run took (`approved`, PayrollTerms.permissionHours); null for neither.
+ */
+export const rowPermissionHours = (approved: number | null | undefined, typed: number | null) =>
+  permissionHoursOf({ permissionHours: approved ?? null }, { permissionHours: typed });
+
+/**
+ * The hours a Permission hours cell is filled in with when nobody typed any (owner, 19 October 2026): the month's
+ * approved permission hours, as the run took them (PayrollTerms.permissionHours); null for none, and for the other cells.
+ */
+export function permissionFill(approved: number | null | undefined, field: InputField): number | null {
+  if (field !== 'permissionHours') return null;
+  return typeof approved === 'number' && approved > 0 ? approved : null;
+}
+
+/**
+ * Whether a cell shows what an attendance import filled (owner, 19 October 2026: Zoho People's attendance, "HR's typed
+ * values replaced, marked 'from Zoho'"): its field is among those the line's mark still has (the API drops one HR types
+ * over), nothing else has been typed in it on the grid since (`edited`), and the import gave it a value (`value`: none
+ * when the permission hours are the system's requests'). Marked "from Zoho".
+ */
+export function fromImport(mark: { fields: readonly string[] } | null | undefined, field: InputField, edited: boolean, value: number | null | undefined): boolean {
+  return !!mark && !edited && mark.fields.includes(field) && value !== null && value !== undefined;
+}
+
+/** What a cell filled from Zoho says when pointed at: when, and how to replace it. */
+export function importTitle(at: string, editable: boolean): string {
+  return `Filled from Zoho People's attendance, applied on ${formatDate(at) || at}.${editable ? ' Type another figure to replace it.' : ''}`;
 }
 
 /**
@@ -174,12 +228,15 @@ export const noShowPay = (multiplier: number) => `${multiplier} ${multiplier ===
 
 /**
  * What a column's heading says under it: what a no-show day costs and that a leave day is paid, each with its hours out
- * of the expected hours (owner, 16 and 17 October 2026); null for the others.
+ * of the expected hours (owner, 16 and 17 October 2026), and that permission hours count as worked (19 October 2026);
+ * null for the others.
  */
 export function columnNote(field: InputField, noShowDayMultiplier: number): string | null {
   if (field === 'noShowDays') return `${noShowPay(noShowDayMultiplier)}, out of the expected hours`;
   if (field === 'leaveDays') return 'Paid, out of the expected hours';
   if (field === 'unpaidLeaveDays') return "A day's pay each, out of the expected hours";
+  // permission (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day")
+  if (field === 'permissionHours') return 'Counted as worked';
   return null;
 }
 

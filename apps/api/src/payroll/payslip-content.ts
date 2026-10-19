@@ -167,6 +167,7 @@ const L = {
   daysPaid: { en: 'Days paid', ar: 'الأيام المدفوعة' },
   thisMonth: { en: 'This Month', ar: 'هذا الشهر' },
   hoursWorked: { en: 'Hours worked', ar: 'ساعات العمل' },
+  permissionHours: { en: 'Permission hours', ar: 'ساعات الإذن' },
   kpiAverage: { en: 'KPI average', ar: 'متوسط مؤشرات الأداء' },
   bonusDays: { en: 'Bonus days', ar: 'أيام المكافأة' },
   noShowDays: { en: 'No-show days', ar: 'أيام الغياب دون إذن' },
@@ -462,6 +463,12 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     });
   } else if (inputs.workedHours !== null) {
     cells.push({ label: t(L.hoursWorked), value: num(formatHours(inputs.workedHours)), note: null });
+  }
+  // the permission hours counted as worked (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per
+  // day"): in the attendance above with the hours worked; none on a line worked out before then
+  const permission = !hourly && Number.isFinite(result.permissionHours) && (result.permissionHours ?? 0) > 0 ? result.permissionHours! : 0;
+  if (permission > 0) {
+    cells.push({ label: t(L.permissionHours), value: num(formatHours(permission)), note: ar ? 'تُحتسب ضمن ساعات العمل في الحضور' : 'Counted as worked in attendance' });
   }
 
   // the KPI average, as payrollLine takes it: the attendance score and the KPIs given

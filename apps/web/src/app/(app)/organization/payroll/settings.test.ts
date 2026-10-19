@@ -8,6 +8,7 @@ import {
   paidOnDefault,
   paydayDate,
   payingBody,
+  officeAddressesFrom,
   rulesBody,
   INSTALLMENT_LIMIT_ERROR,
   SALARY_REVIEW_ERROR,
@@ -184,5 +185,22 @@ describe('the payday', () => {
       'the 25th',
       'the 31st',
     ]);
+  });
+});
+
+describe('Your Rules: the office addresses (owner, 19 October 2026: "13 and 17 al mahrouki is also in office")', () => {
+  it('sends one address a line, trimmed, the empty lines dropped', () => {
+    expect(officeAddressesFrom('  Trendlix \n\n15, Al Doctor Al Mahrouqi Street\r\n')).toEqual(['Trendlix', '15, Al Doctor Al Mahrouqi Street']);
+    const fd = form(rules);
+    fd.set('officeAddresses', 'Trendlix\n13, Al Doctor Al Mahrouqi Street');
+    expect(rulesBody(fd)).toMatchObject({ rules: { officeAddresses: ['Trendlix', '13, Al Doctor Al Mahrouqi Street'] }, errors: [] });
+    // the form without the field (an API from before it) sends none
+    expect(rulesBody(form(rules)).rules).not.toHaveProperty('officeAddresses');
+  });
+
+  it('refuses one twice, as the API does', () => {
+    const fd = form(rules);
+    fd.set('officeAddresses', 'Trendlix\ntrendlix');
+    expect(rulesBody(fd).errors).toEqual(['"trendlix" is there twice: keep it once.']);
   });
 });

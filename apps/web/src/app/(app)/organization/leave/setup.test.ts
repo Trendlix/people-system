@@ -1,6 +1,21 @@
 import { LEAVE_RULE_DEFAULTS } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { balanceText, editsLeaveSetup, payText, requestsCountText, seesYearClosing, settingsBody, typeBody, typeSource, unitText, wholeFrom, yearClosingHref } from './setup';
+import {
+  balanceText,
+  editsLeaveSetup,
+  hoursFromText,
+  payText,
+  PERMISSION_FIELDS,
+  permissionSettingText,
+  requestsCountText,
+  seesYearClosing,
+  settingsBody,
+  typeBody,
+  typeSource,
+  unitText,
+  wholeFrom,
+  yearClosingHref,
+} from './setup';
 
 // Organization → Leave (owner, 18 October 2026: "can you apply the leaves according to the law?")
 
@@ -41,6 +56,45 @@ describe('the annual leave’s days (Art. 124)', () => {
     expect(wholeFrom('3', 0, 5)).toBe(3);
     expect(wholeFrom('6', 0, 5)).toBeNaN();
     expect(wholeFrom('1.5', 0, 5)).toBeNaN();
+  });
+});
+
+describe('permission’s hours (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day", "Yes, in Leave Setup")', () => {
+  const law = Object.fromEntries(Object.entries(LEAVE_RULE_DEFAULTS).map(([k, v]) => [k, String(v)]));
+
+  it('are saved with the annual leave’s days when the form has them, in half hours', () => {
+    expect(PERMISSION_FIELDS.map((f) => [f.label, f.defaultHours])).toEqual([
+      ['Permission hours a month', 4],
+      ['Most permission hours a day', 2],
+    ]);
+    expect(settingsBody(form({ ...law, permissionHoursPerMonth: '4', permissionMaxHoursPerDay: '2' }))).toEqual({
+      body: { ...LEAVE_RULE_DEFAULTS, permissionHoursPerMonth: 4, permissionMaxHoursPerDay: 2 },
+      errors: [],
+    });
+    // 0 a month: no permission; a comma or Arabic digits typed
+    expect(settingsBody(form({ ...law, permissionHoursPerMonth: '0', permissionMaxHoursPerDay: '1,5' })).body).toMatchObject({ permissionHoursPerMonth: 0, permissionMaxHoursPerDay: 1.5 });
+    expect(hoursFromText('٤')).toBe(4);
+    expect(hoursFromText('')).toBeNaN();
+    // an API from before permission: the form has none, and none is sent
+    expect(settingsBody(form(law)).body).not.toHaveProperty('permissionHoursPerMonth');
+  });
+
+  it('say what is wrong, as the API would', () => {
+    expect(settingsBody(form({ ...law, permissionHoursPerMonth: '4.25', permissionMaxHoursPerDay: '2' })).errors).toEqual([
+      'Enter the permission hours a month from 0 to 40, in half hours, e.g. 4 (0: no permission).',
+    ]);
+    expect(settingsBody(form({ ...law, permissionHoursPerMonth: '4', permissionMaxHoursPerDay: '' })).errors).toEqual([
+      'Enter the most permission hours a day from 0.5 to 8, in half hours, e.g. 2.',
+    ]);
+    expect(settingsBody(form({ ...law, permissionHoursPerMonth: '2', permissionMaxHoursPerDay: '3' })).errors).toEqual([
+      "The most hours a day (3 hours) can't be more than the hours a month (2 hours).",
+    ]);
+  });
+
+  it('read in words for those who don’t change them', () => {
+    expect(permissionSettingText(4)).toBe('4 hours');
+    expect(permissionSettingText(1.5)).toBe('1 hour 30 minutes');
+    expect(permissionSettingText(0)).toBe('None: no permission');
   });
 });
 

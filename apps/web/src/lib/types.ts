@@ -1,5 +1,6 @@
 import type {
   ApproverRole,
+  AttendanceImportMark,
   ChangeRequestStatus,
   ContractForm,
   ContractKind,
@@ -1649,6 +1650,11 @@ export interface PayrollLineView {
    * when HR changed every line of a draft.
    */
   editable?: boolean;
+  /**
+   * The inputs an attendance import filled (owner, 19 October 2026: Zoho People), still as it filled them: the grid
+   * marks them "from Zoho". Null: none; left out by an API from before it.
+   */
+  attendanceImport?: AttendanceImportMark | null;
 }
 
 /** Someone employed in the month but not on the run, and why ("No signed contract for this month"). */
@@ -1753,6 +1759,12 @@ export interface PayrollSettingsView extends PayrollRules {
    * Law 14/2025 Art. 113), a plan past it refused. Optional: left out by an API from before it.
    */
   installmentLimitPercent?: number;
+  /**
+   * The office's addresses as Zoho People writes a check-in's location (owner, 19 October 2026: "13 and 17 al mahrouki
+   * is also in office"): a check-in at one of them is a day at the office, anywhere else remote. Optional: left out by an
+   * API from before it.
+   */
+  officeAddresses?: string[];
 }
 
 /**
@@ -2053,6 +2065,13 @@ export interface LeaveSettingsView {
   hazardousExtraDays: number;
   firstYearMinMonths: number;
   settleWithinYears: number;
+  /**
+   * Permission (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day", "Yes, in Leave Setup"): the
+   * hours a month someone may be away from a working day (0: no permission), and the most hours of one day, in half
+   * hours. Left out by an API from before permission.
+   */
+  permissionHoursPerMonth?: number;
+  permissionMaxHoursPerDay?: number;
 }
 
 /** A step logged on a leave request: sent, sent straight to HR, recorded by HR, each stage's decision, cancelled. */
@@ -2157,21 +2176,99 @@ export interface EmployeeLeave extends LeaveBalances {
   adjustments?: LeaveAdjustmentView[];
 }
 
-/** GET /leave/calendar?from=&to=&departmentId=: who is off when (approved leave, and for HR those being decided too). */
+/**
+ * GET /leave/calendar?from=&to=&departmentId=: who is off when (approved leave, and for HR those being decided too), and
+ * since 19 October 2026 the permissions the same way (`kind: 'permission'`): one day each (its startDate and endDate),
+ * with its hours and times, its type named Permission, never half a day.
+ */
 export interface LeaveCalendarEntry {
   /** The request's id when the API sends it. */
   id?: string;
+  /** Leave, or a permission (19 October 2026); left out by an API from before permission: leave. */
+  kind?: 'leave' | 'permission';
   employee: { id: string; fullNameEn: string; department: string | null; team: string | null };
   type: { nameEn: string };
   startDate: string;
   endDate: string;
   halfDay: boolean;
   status: LeaveStatus;
+  /** A permission's hours, and its times (HH:MM) when given. */
+  hours?: number;
+  fromTime?: string | null;
+  toTime?: string | null;
 }
 
-/** GET /leave/requests/counts: how many leave requests wait for the caller, for the sidebar. */
+/**
+ * GET /leave/requests/counts: how many requests wait for the caller, for the sidebar: `waiting`, the leave and the
+ * permission requests together (19 October 2026), and each (left out by an API from before permission).
+ */
 export interface LeaveCounts {
   waiting: number;
+  leave?: number;
+  permissions?: number;
+}
+
+// ---------- permission (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a maximum 2
+// hours per day", asked how it is asked for, "In the system, like leave"; packages/shared/src/permissions.ts) ----------
+// A few hours away from a working day, in half hours, at most the Leave Setup's hours a day and a month; asked for from
+// My Requests or recorded by HR, decided as leave is (the direct manager, else the team lead, else the department's
+// head, then HR; a C-level person's HR stage by the CEO), every step logged. Its approved hours count as worked on the
+// month's payroll line.
+
+/**
+ * A permission request, as GET /leave/permissions, GET /me/permissions and GET /leave/permissions/:id give it: shaped as
+ * a leave request is for what they share (its status, stage, who decides it, the steps), with its day (also as its
+ * startDate and endDate), its hours and times instead of a type and days. `monthLeft`: what is left of its month's hours
+ * with it counted; null when the caller doesn't see the person's figures (a C-level person's manager).
+ */
+export interface PermissionRequestView {
+  id: string;
+  kind: 'permission';
+  employee: { id: string; fullNameEn: string; fullNameAr: string | null; department: string | null; team: string | null };
+  type: { id: string; key: string; nameEn: string; nameAr: string };
+  date: string;
+  startDate: string;
+  endDate: string;
+  hours: number;
+  /** HH:MM (Cairo), as given or worked out from the hours; null without times. */
+  fromTime: string | null;
+  toTime: string | null;
+  reason: string | null;
+  status: LeaveStatus;
+  stage: LeaveStage | null;
+  waitingForYou: boolean;
+  /** The employee may cancel it now: theirs, being decided, or approved and its day still to come. */
+  canCancel: boolean;
+  /** HR may cancel it now: approved, and not HR's own. */
+  hrCanCancel?: boolean;
+  manager: RequestApprover | null;
+  rejectedStage: LeaveStage | null;
+  rejectReason: string | null;
+  recordedByHr: boolean;
+  steps: LeaveRequestStep[];
+  monthLeft: number | null;
+  createdAt: string;
+  /** The employee is C-level: HR's stage is the CEO's (or HR with Super Admin). */
+  confidential?: boolean;
+}
+
+/**
+ * A person's permission hours of a month (GET /me/permissions/allowance?month=): the Leave Setup's hours a month and most
+ * a day, those approved, those being decided, what is left to ask for, and the hours asked for on each day.
+ */
+export interface PermissionMonthView {
+  month: string;
+  hoursPerMonth: number;
+  maxHoursPerDay: number;
+  approved: number;
+  pending: number;
+  left: number;
+  days: { date: string; hours: number }[];
+}
+
+/** GET /employees/:id/permissions?month= (HR, the CEO, Finance, the person, their manager now): their month, with its requests. */
+export interface EmployeePermissionMonth extends PermissionMonthView {
+  requests: PermissionRequestView[];
 }
 
 /**

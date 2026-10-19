@@ -15,7 +15,22 @@ import { NotLoaded, SettingRow, SetupSection } from '../payroll/section';
 import { Loading } from '../ui';
 import { deleteLeaveType, saveLeaveSettings } from './actions';
 import { LeaveSettingsForm } from './settings-form';
-import { balanceText, editsLeaveSetup, LEAVE_TYPES_ID, leaveTypeHref, NEW_LEAVE_TYPE_HREF, payText, requestsCountText, seesYearClosing, SETTING_FIELDS, typeSource, unitText, yearClosingHref } from './setup';
+import {
+  balanceText,
+  editsLeaveSetup,
+  LEAVE_TYPES_ID,
+  leaveTypeHref,
+  NEW_LEAVE_TYPE_HREF,
+  payText,
+  PERMISSION_FIELDS,
+  permissionSettingText,
+  requestsCountText,
+  seesYearClosing,
+  SETTING_FIELDS,
+  typeSource,
+  unitText,
+  yearClosingHref,
+} from './setup';
 import { closingYear } from './year-closing';
 
 // Organization → Leave, beside Holidays (owner, 18 October 2026: "can you apply the leaves according to the law?", "make
@@ -26,7 +41,9 @@ import { closingYear } from './year-closing';
 // child's birth, exams, maternity, Hajj, childcare off as it is for companies of 50 or more, unpaid), each a card with
 // its days, pay, balance and rules in words, on or off; HR adds and changes them, a Super Admin deletes one no request
 // uses. 3 Year Closing: what of each employee's unused days is carried and what is paid, HR's decision at the year's end.
-// HR changes it; the other staff read it (the API checks every request again).
+// HR changes it; the other staff read it (the API checks every request again). Permission (owner, 19 October 2026: "4
+// hours per month with a maximum 2 hours per day", asked where its limits live, "Yes, in Leave Setup") is in the first
+// section, Annual Leave and Permission: its hours a month and most hours a day, saved with the annual leave's days.
 
 export const metadata: Metadata = { title: 'Leave Setup · People System' };
 
@@ -55,14 +72,24 @@ async function AnnualLeave({ user }: { user: SessionUser }) {
             </span>
           </SettingRow>
         ))}
+        {/* permission's hours (19 October 2026), when the API has them */}
+        {PERMISSION_FIELDS.map((f) => {
+          const hours = s[f.key];
+          return typeof hours === 'number' ? (
+            <SettingRow key={f.key} label={f.label}>
+              <span className="tabular-nums">{permissionSettingText(hours)}</span>
+            </SettingRow>
+          ) : null;
+        })}
       </dl>
     );
   }
+  const permission = loaded.kind === 'ok' && typeof loaded.value.permissionHoursPerMonth === 'number';
   return (
     <SetupSection
       id="annual-leave"
-      title="Annual Leave"
-      intro="The days a year by service, age and disability (Art. 124: “لا يدخل فى حسابها أيام عطلات الأعياد والمناسبات الرسمية والراحة الأسبوعية”: holidays and rest days aren’t counted). Each employee’s prior service, disability and hazardous work are on their profile."
+      title={permission ? 'Annual Leave and Permission' : 'Annual Leave'}
+      intro={`The days a year by service, age and disability (Art. 124: “لا يدخل فى حسابها أيام عطلات الأعياد والمناسبات الرسمية والراحة الأسبوعية”: holidays and rest days aren’t counted). Each employee’s prior service, disability and hazardous work are on their profile.${permission ? ' Then permission: the hours a month and the most a day an employee may be away from a working day.' : ''}`}
     >
       {body}
     </SetupSection>

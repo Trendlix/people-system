@@ -9,6 +9,7 @@ import {
   sumAmounts,
   normalLawRates,
   paidAdjustments,
+  type AttendanceImportMark,
   type EmploymentType,
   type LawRates,
   type PayBasis,
@@ -79,6 +80,11 @@ export interface PayrollLineView {
   confidential: boolean;
   /** Whether the caller changes its inputs, hold and comments now: a draft's, HR's, a C-level person's the CEO's. */
   editable: boolean;
+  /**
+   * The inputs an attendance import filled (owner, 19 October 2026: Zoho People), still as it filled them, for the grid
+   * to mark "from Zoho"; null when none.
+   */
+  attendanceImport: AttendanceImportMark | null;
 }
 
 export interface PayrollRunView {
@@ -248,6 +254,7 @@ export function lineView(line: LineRow, bank: LineBank, limits: LineLimits | nul
     payslips: { en: line.payslips.some((p) => p.language === 'en'), ar: line.payslips.some((p) => p.language === 'ar') },
     confidential: access.confidential,
     editable: access.editable,
+    attendanceImport: (line.attendanceImport as unknown as AttendanceImportMark | null) ?? null,
   };
 }
 

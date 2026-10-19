@@ -13,11 +13,14 @@ import { profileHref } from '../../employees/tab-list';
 import { CONFIDENTIAL_LINE_TITLE, HIDDEN_INPUTS_NOTE, typist } from './access';
 import { cutText } from './breakdown';
 import {
+  attendanceHours,
   attendancePercent,
   cellText,
   columnNote,
   errorLine,
   expectedCell,
+  fromImport,
+  importTitle,
   GRID_COLUMNS,
   ITEMS_AFTER,
   LEAVE_FIELDS,
@@ -25,7 +28,9 @@ import {
   linePatches,
   noShowPay,
   parseCell,
+  permissionFill,
   placeApiErrors,
+  rowPermissionHours,
   tidyCell,
   unsavedCount,
   unsavedText,
@@ -62,7 +67,13 @@ import {
 // and wins. The C-level people's lines (owner, 19 October 2026: "make C level Employees details not visible to HR") are
 // the CEO's to fill on a draft, HR the rest: each row takes edits only when its line is the caller's (`editable`), the
 // others read only, and the CEO and the Super Admin see those lines marked C-level (what is typed in one marked "typed
-// by the CEO"). For those they are hidden from, one row at the end stands for them, with no figures.
+// by the CEO"). For those they are hidden from, one row at the end stands for them, with no figures. Permission hours,
+// right after the worked hours (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a
+// maximum 2 hours per day"), are filled in from the permission approved for the month, marked "from permissions" and
+// only shown, as the leave days are; what is typed instead is marked "typed by HR" (or the CEO) and wins. They count as
+// worked: the Attendance % is the worked hours with them over the expected hours, once worked hours are typed. The worked
+// hours, no-show days and permission hours an attendance import from Zoho People filled (owner, 19 October 2026: "Import
+// Zoho now, replace it later", HR's typed values replaced, marked "from Zoho") are marked "from Zoho" until typed over.
 
 export interface GridRow extends GridLine {
   /** A C-level person's line (19 October 2026), for those who see it: marked so, the CEO's to fill. */
@@ -89,9 +100,19 @@ export interface GridRow extends GridLine {
   contractsNote: string | null;
   /** The month's approved leave the run took (owner, 18 October 2026): what the leave cells are filled in with; null for none. */
   leave: PayrollLeaveDays | null;
+  /**
+   * The month's approved permission hours the run took (owner, 19 October 2026), within the Leave Setup's hours a month:
+   * what the Permission hours cell is filled in with; null for none, and by the hour.
+   */
+  permissionHours: number | null;
   /** The month's additions and deductions as the line has them (17 October 2026), and where they are entered. */
   items: LineItems;
   itemsHref: string;
+  /**
+   * The inputs an attendance import filled (owner, 19 October 2026: Zoho People), still as it filled them, and when it was
+   * applied: those cells are marked "from Zoho" until typed over. Null for none.
+   */
+  attendanceImport?: { fields: readonly string[]; at: string } | null;
 }
 
 const WIDTH: Record<FieldKind, string> = { hours: 'w-24', days: 'w-20', released: 'w-28' };
@@ -162,11 +183,19 @@ function typedCells(row: GridRow, edits: RowEdits | undefined) {
   };
   return {
     workedHours: value('workedHours', 'hours'),
+    permissionHours: value('permissionHours', 'hours'),
     expectedHours: value('expectedHours', 'hours'),
     noShowDays: value('noShowDays', 'days'),
     leaveDays: value('leaveDays', 'days'),
     unpaidLeaveDays: value('unpaidLeaveDays', 'days'),
   };
+}
+
+/** What a Permission hours figure is: filled in from the permission approved for the month, or typed over it (19 October 2026). */
+function permissionTitle(own: boolean, editable: boolean, who: string): string {
+  return own
+    ? `Typed by ${who}: taken instead of the permission approved this month, counted as worked.${editable ? ' Clear it to use the approved permission.' : ''}`
+    : `From the permission approved this month (Requests → Leave Requests), counted as worked.${editable ? ' Type other hours to replace them.' : ''}`;
 }
 
 /** What a leave cell's figure is: filled in from the leave approved for the month, or typed over it (18 October 2026). */
@@ -204,7 +233,9 @@ const Row = memo(function Row({
   const cells = typedCells(row, edits);
   // HR's expected hours, else the shift's less the no-show and leave days as typed now (owner, 17 October 2026)
   const expected = expectedCell(row, cells);
-  const attendance = attendancePercent(cells.workedHours, expected.hours);
+  // the permission hours count as worked (19 October 2026): those typed, else the month's approved
+  const worked = attendanceHours(cells.workedHours, rowPermissionHours(row.permissionHours, cells.permissionHours), row.payBasis === 'hourly');
+  const attendance = attendancePercent(worked, expected.hours);
   // who a figure typed on the line is marked as typed by: the CEO on a C-level person's (19 October 2026)
   const who = typist(row.confidential);
   return (
@@ -240,15 +271,28 @@ const Row = memo(function Row({
         const text = shownText(row, edits, c.field, c.kind);
         const error = errorOf(c.field);
         // the Expected hours of a row with a shift: filled in from the shift's unless HR typed others (owner, 17 October
-        // 2026); the leave days from the leave approved for the month (18 October 2026); `filled` is only shown, never
-        // an edit, so it is never sent nor counts as unsaved
+        // 2026); the leave days from the leave approved for the month (18 October 2026), the permission hours from the
+        // permission approved (19 October 2026); `filled` is only shown, never an edit, so it is never sent nor counts
+        // as unsaved
         const shift = c.field === 'expectedHours' && row.shiftExpectedHours !== null;
         const fromLeave = LEAVE_FIELDS.includes(c.field) ? leaveFill(row.leave, c.field) : null;
-        const marked = shift || fromLeave !== null;
+        const fromPermission = permissionFill(row.permissionHours, c.field);
+        const marked = shift || fromLeave !== null || fromPermission !== null;
         const own = text.trim() !== '';
-        const filled = own ? '' : shift && expected.hours !== null ? formatHours(expected.hours) : fromLeave !== null ? cellText('days', fromLeave) : '';
-        const title = shift ? expectedTitle : leaveTitle;
+        const filled = own
+          ? ''
+          : shift && expected.hours !== null
+            ? formatHours(expected.hours)
+            : fromLeave !== null
+              ? cellText('days', fromLeave)
+              : fromPermission !== null
+                ? cellText('hours', fromPermission)
+                : '';
+        const title = shift ? expectedTitle : fromPermission !== null ? permissionTitle : leaveTitle;
         const markId = `${cellId(row.id, c.field)}-from`;
+        // filled from Zoho People's attendance (19 October 2026), until typed over
+        const zoho = fromImport(row.attendanceImport, c.field, edits?.inputs?.[c.field] !== undefined, row.inputs[c.field] ?? null);
+        const noted = marked || zoho;
         return (
           <Fragment key={c.field}>
             <td className="px-2 py-2">
@@ -265,20 +309,23 @@ const Row = memo(function Row({
                   inputMode={c.kind === 'hours' ? 'text' : 'decimal'}
                   autoComplete="off"
                   aria-label={`${c.label} for ${row.name}`}
-                  aria-describedby={marked ? markId : undefined}
+                  aria-describedby={noted ? markId : undefined}
                   aria-invalid={error ? true : undefined}
-                  title={error ?? (marked ? title(own, true, who) : undefined)}
+                  title={error ?? (zoho ? importTitle(row.attendanceImport!.at, true) : marked ? title(own, true, who) : undefined)}
                   placeholder={marked ? filled : c.kind === 'hours' ? '0:00' : undefined}
                   className={`${cellInput} ${WIDTH[c.kind]} ${filled ? 'text-muted italic' : ''} ${error ? invalid : ''}`}
                 />
               ) : (
-                <span className="block text-right whitespace-nowrap tabular-nums" title={marked ? title(own, false, who) : undefined}>
+                <span
+                  className="block text-right whitespace-nowrap tabular-nums"
+                  title={zoho ? importTitle(row.attendanceImport!.at, false) : marked ? title(own, false, who) : undefined}
+                >
                   {own ? text : filled ? <span className="text-muted italic">{filled}</span> : <span className="text-muted">—</span>}
                 </span>
               )}
-              {marked && (
+              {noted && (
                 <span id={markId} className={`mt-0.5 block text-right text-[11px] whitespace-nowrap ${own ? 'text-accent' : 'text-muted'}`}>
-                  {own ? `typed by ${who}` : shift ? 'from the shift' : 'from leave'}
+                  {zoho ? 'from Zoho' : own ? `typed by ${who}` : shift ? 'from the shift' : fromPermission !== null ? 'from permissions' : 'from leave'}
                 </span>
               )}
             </td>
@@ -610,7 +657,10 @@ export function InputsGrid({
       {canEdit && (
         <p className="hint">
           Hours as 270:00 or 270.5; days in whole or half days. Leave a cell empty when it doesn&apos;t apply: empty
-          worked hours count in full. The expected hours are filled in from the shift: its working days in the days paid
+          worked hours count in full. Permission hours: filled in from the permission approved this month (
+          <Link href="/leave?kind=permission">Requests → Leave Requests</Link>), within the hours a month Leave Setup gives, and counted as worked:
+          the attendance is the worked hours with them; type other hours to replace them, and clearing them brings the approved ones back. The
+          expected hours are filled in from the shift: its working days in the days paid
           less the holidays (<Link href="/organization/holidays">Organization → Holidays</Link>) and less the no-show and
           leave days, at its hours to work a day, and they change as you type those days. Type other hours to replace
           them, already without the no-show and leave days; clearing them brings the shift&apos;s back. Without a shift,
@@ -623,7 +673,8 @@ export function InputsGrid({
           month&apos;s on <Link href="/payroll/adjustments">Additions / Deductions</Link>, where a bonus or penalty in
           days, a commission or a correction is entered with its reason; open one to add or change them, and the pay
           below follows. Released: already paid out this month, so not in the bank transfer. On hold: left out of the
-          bank files this month.
+          bank files this month. Figures marked &ldquo;from Zoho&rdquo; were filled by an attendance import from Zoho People
+          (Attendance from Zoho People, above); typing over one replaces it.
         </p>
       )}
     </div>

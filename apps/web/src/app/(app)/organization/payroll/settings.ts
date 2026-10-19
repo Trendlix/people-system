@@ -1,4 +1,4 @@
-import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT, SALARY_REVIEW_MONTHS_MAX, SALARY_REVIEW_MONTHS_MIN, type PayrollRules, type Role } from '@trendlix/shared';
+import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT, officeAddressesProblems, SALARY_REVIEW_MONTHS_MAX, SALARY_REVIEW_MONTHS_MIN, type PayrollRules, type Role } from '@trendlix/shared';
 import { hasRole } from '../../../../lib/roles';
 import { parseAmount } from '../../employees/[id]/contracts/salary';
 
@@ -70,7 +70,17 @@ export interface ContractDefaultsBody {
  * the months after which a salary review is due when the form has them (an API from before it leaves it off the form).
  */
 export type RulesBody = Omit<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'> &
-  Partial<Pick<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'>> & { salaryReviewMonths?: number; installmentLimitPercent?: number };
+  Partial<Pick<PayrollRules, 'overtimeAbovePercent' | 'overtimeRate'>> & { salaryReviewMonths?: number; installmentLimitPercent?: number; officeAddresses?: string[] };
+
+/**
+ * The office's addresses as typed (owner, 19 October 2026: attendance from Zoho People, "13 and 17 al mahrouki is also in
+ * office"): one a line, each trimmed, the empty lines dropped.
+ */
+export const officeAddressesFrom = (typed: string): string[] =>
+  typed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 
 /**
  * The Your Rules form: the rules as PATCH /payroll/settings takes them, the company defaults as PATCH
@@ -102,6 +112,12 @@ export function rulesBody(fd: FormData): { rules: RulesBody; defaults: ContractD
     const percent = numberFrom(text(fd, 'installmentLimitPercent'), { min: INSTALLMENT_LIMIT_MIN, max: LAW_INSTALLMENT_PERCENT });
     if (Number.isNaN(percent)) errors.push(INSTALLMENT_LIMIT_ERROR);
     rules.installmentLimitPercent = percent;
+  }
+  // the office's addresses (19 October 2026): a check-in at one of them is a day at the office, as the API checks them
+  if (fd.has('officeAddresses')) {
+    const addresses = officeAddressesFrom(text(fd, 'officeAddresses'));
+    errors.push(...officeAddressesProblems(addresses));
+    rules.officeAddresses = addresses;
   }
   const defaults: ContractDefaultsBody = {};
   if (fd.has('basicPercentDefault')) {

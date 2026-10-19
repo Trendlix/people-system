@@ -74,6 +74,11 @@ model User {
   leaveClosings      LeaveYearClosing[]       @relation("LeaveYearClosingBy") // the years this user closed the leave balances of
   leaveYearsClosed   LeaveBalanceYear[]       @relation("LeaveBalanceClosedBy") // the balances this user closed: at a Year Closing, or paid on leaving
   leaveSetupChanged  LeaveSettings[]          @relation("LeaveSettingsBy") // the Leave Setup, when this user changed it last
+  permissionsMade    PermissionRequest[]      @relation("PermissionRequestCreation") // permission requests this user sent, or recorded for an employee as HR
+  attendanceImports  AttendanceImport[]       @relation("AttendanceImportBy") // attendance files this user uploaded on a payroll run
+  attendanceApplied  AttendanceImport[]       @relation("AttendanceImportAppliedBy") // attendance imports this user applied to a run's lines last
+  attendanceDays     AttendanceDay[]          @relation("AttendanceDayImportedBy") // days of attendance this user's apply kept
+  permissionSteps    PermissionRequestStep[]  @relation("PermissionStepActor") // steps of permission requests this user took
 
   @@map("users")
 }
@@ -283,6 +288,9 @@ enum WorkArrangement {
 model Employee {
   id                         String                 @id @default(uuid()) @db.Uuid
   employeeCode               String                 @unique @map("employee_code") // EMP-0142: shown everywhere, different from the national ID
+  // their Employee Id in Zoho People (owner, 19 October 2026: attendance imported from Zoho, people matched by name and
+  // the links HR confirms remembered), e.g. "103" or "10001 - HYB": the next import matches them by it
+  zohoPeopleId               String?                @unique @map("zoho_people_id")
   insuranceNo                String?                @unique @map("insurance_no") // الرقم التأميني, the social insurance number: digits only
   // the occupation in the social insurance table (packages/shared occupations.ts), printed on Form 1 as كود المهنة: six
   // digits, checked by the database too; the name is the table's, never stored. HR sets it on the profile's Social
@@ -355,6 +363,9 @@ model Employee {
   reimbursementsToDecide     ReimbursementClaim[]   @relation("ReimbursementManager") // the claims this person decided, or decides, as the claimant's direct manager
   leaveRequests              LeaveRequest[]         @relation("LeaveRequester") // the leave this person asked for, or HR recorded for them
   leaveToDecide              LeaveRequest[]         @relation("LeaveManager") // the leave requests this person decided, or decides, as the requester's direct manager
+  permissions                PermissionRequest[]    @relation("PermissionRequester") // the permission hours this person asked for, or HR recorded for them
+  attendanceDays             AttendanceDay[] // each day of attendance kept, imported from Zoho People for now
+  permissionsToDecide        PermissionRequest[]    @relation("PermissionManager") // the permission requests this person decided, or decides, as the requester's direct manager
   leaveBalances              LeaveBalanceYear[] // each year's annual leave: carried in, closed
   leaveAdjustments           LeaveAdjustment[] // HR's changes to the annual leave balance
   leading                    Department[]           @relation("DepartmentHead") // the departments this person heads and the teams they lead
@@ -408,6 +419,7 @@ model Employment {
   reimbursements   ReimbursementClaim[] // the reimbursements claimed under it
   finalSettlement  FinalSettlement? // its final dues, once settled (open until then)
   leaveRequests    LeaveRequest[] // the leave taken under it
+  permissions      PermissionRequest[] // the permission hours taken under it
   leaveBalances    LeaveBalanceYear[] // each year's annual leave under it
   leaveAdjustments LeaveAdjustment[]
 
@@ -1063,6 +1075,9 @@ model PayrollSettings {
   // owner, 18 October 2026, after reading the law: "Block above 10%"); set lower if the company wants, never higher.
   // Until then a warning at a share of the pay (1–100, none: no warning)
   installmentLimitPercent Decimal  @default(10) @map("installment_limit_percent") @db.Decimal(5, 2)
+  // the office's addresses as Zoho People writes a check-in's location (owner, 19 October 2026: "13 and 17 al mahrouki
+  // is also in office"): a check-in at one of them is a day at the office, anywhere else remote
+  officeAddresses         String[] @default(["Trendlix", "13, Al Doctor Al Mahrouqi Street", "15, Al Doctor Al Mahrouqi Street", "17, Al Doctor Al Mahrouqi Street"]) @map("office_addresses")
   updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("payroll_settings")
@@ -1085,25 +1100,26 @@ model Holiday {
 // One month's payroll: a run per month. Its lines are worked out again whenever their inputs change while it is a
 // draft; once the CEO approves it nothing changes but its being marked paid.
 model PayrollRun {
-  id             String        @id @default(uuid()) @db.Uuid
-  month          DateTime      @unique @db.Date // the month's first day
-  status         String        @default("draft") // PAYROLL_STATUSES: draft, pending_ceo, approved, paid
-  rules          Json // the PayrollRules it is worked out with: the settings', copied when made and when refreshed
+  id                String             @id @default(uuid()) @db.Uuid
+  month             DateTime           @unique @db.Date // the month's first day
+  status            String             @default("draft") // PAYROLL_STATUSES: draft, pending_ceo, approved, paid
+  rules             Json // the PayrollRules it is worked out with: the settings', copied when made and when refreshed
   // the LawRates it is worked out with: the year's rates set by law, copied when made and when refreshed; null on runs made
   // before 17 October 2026, which were worked out with the built-in rates (the same as the rows the law rates migration added)
-  lawRates       Json?         @map("law_rates")
-  exclusions     Json          @default("[]") // the people left out when made or refreshed, and why: [{ employeeId, employeeCode, name, reason }]
-  createdById    String?       @map("created_by") @db.Uuid
-  createdBy      User?         @relation("PayrollCreation", fields: [createdById], references: [id], onDelete: SetNull)
-  submittedAt    DateTime?     @map("submitted_at") @db.Timestamptz // sent to the CEO, last
-  approvedById   String?       @map("approved_by") @db.Uuid
-  approvedBy     User?         @relation("PayrollApproval", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt     DateTime?     @map("approved_at") @db.Timestamptz
-  returnedReason String?       @map("returned_reason") // why the CEO sent it back to HR, until it is sent again
-  paidOn         DateTime?     @map("paid_on") @db.Date
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
-  lines          PayrollLine[]
+  lawRates          Json?              @map("law_rates")
+  exclusions        Json               @default("[]") // the people left out when made or refreshed, and why: [{ employeeId, employeeCode, name, reason }]
+  createdById       String?            @map("created_by") @db.Uuid
+  createdBy         User?              @relation("PayrollCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  submittedAt       DateTime?          @map("submitted_at") @db.Timestamptz // sent to the CEO, last
+  approvedById      String?            @map("approved_by") @db.Uuid
+  approvedBy        User?              @relation("PayrollApproval", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt        DateTime?          @map("approved_at") @db.Timestamptz
+  returnedReason    String?            @map("returned_reason") // why the CEO sent it back to HR, until it is sent again
+  paidOn            DateTime?          @map("paid_on") @db.Date
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  lines             PayrollLine[]
+  attendanceImports AttendanceImport[] // the attendance files read on it (Zoho People, 19 October 2026)
 
   @@map("payroll_runs")
 }
@@ -1152,6 +1168,9 @@ model PayrollLine {
   accountNo         String?             @map("account_no")
   iban              String?
   holderName        String?             @map("holder_name")
+  // the inputs an attendance import filled (owner, 19 October 2026: Zoho People): { source: 'zoho', importId, at, fields:
+  // the inputs it filled still as it filled them }; a field HR types afterwards is no longer from it; null: none
+  attendanceImport  Json?               @map("attendance_import")
   createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz
   payslips          Payslip[] // the line's payslip, in English and, when asked for, in Arabic
@@ -1532,19 +1551,23 @@ model LeaveType {
 // months served before the first year's leave may be used, and the years days may be carried before they are settled
 // (Art. 125). The migration seeds the law's numbers; HR changes them.
 model LeaveSettings {
-  id                 Int      @id @default(1) // always 1
-  firstYearDays      Int      @default(15) @map("first_year_days")
-  standardDays       Int      @default(21) @map("standard_days")
-  longServiceDays    Int      @default(30) @map("long_service_days")
-  longServiceYears   Int      @default(10) @map("long_service_years")
-  longServiceAge     Int      @default(50) @map("long_service_age")
-  disabilityDays     Int      @default(45) @map("disability_days")
-  hazardousExtraDays Int      @default(7) @map("hazardous_extra_days")
-  firstYearMinMonths Int      @default(6) @map("first_year_min_months")
-  settleWithinYears  Int      @default(3) @map("settle_within_years")
-  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
-  updatedById        String?  @map("updated_by") @db.Uuid
-  updatedBy          User?    @relation("LeaveSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  id                       Int      @id @default(1) // always 1
+  firstYearDays            Int      @default(15) @map("first_year_days")
+  standardDays             Int      @default(21) @map("standard_days")
+  longServiceDays          Int      @default(30) @map("long_service_days")
+  longServiceYears         Int      @default(10) @map("long_service_years")
+  longServiceAge           Int      @default(50) @map("long_service_age")
+  disabilityDays           Int      @default(45) @map("disability_days")
+  hazardousExtraDays       Int      @default(7) @map("hazardous_extra_days")
+  firstYearMinMonths       Int      @default(6) @map("first_year_min_months")
+  settleWithinYears        Int      @default(3) @map("settle_within_years")
+  // permission (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day", "Yes, in Leave Setup"): the
+  // hours a month someone may be away for (0: none) and the most of one day, in half hours
+  permissionHoursPerMonth  Decimal  @default(4) @map("permission_hours_per_month") @db.Decimal(4, 1)
+  permissionMaxHoursPerDay Decimal  @default(2) @map("permission_max_hours_per_day") @db.Decimal(3, 1)
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById              String?  @map("updated_by") @db.Uuid
+  updatedBy                User?    @relation("LeaveSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@map("leave_settings")
 }
@@ -1605,6 +1628,112 @@ model LeaveRequestStep {
 
   @@index([requestId])
   @@map("leave_request_steps")
+}
+
+// A permission request (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a maximum 2
+// hours per day", asked "In the system, like leave"): a few hours of one working day away, in half hours, from and to
+// times when given (e.g. leaving at 17:00), under the employment the day is in; decided as leave is (LEAVE_STATUSES),
+// by the direct manager (else the team lead, else the department's head: approverRole) then HR, a C-level person's HR
+// stage by the CEO; recorded by HR on the employee's behalf, approved at once. A table of its own rather than a leave
+// type: it is counted in hours against the month, not in days against a balance, and the payroll counts it as worked,
+// not as leave (packages/shared permissions.ts).
+model PermissionRequest {
+  id            String                  @id @default(uuid()) @db.Uuid
+  employeeId    String                  @map("employee_id") @db.Uuid
+  employee      Employee                @relation("PermissionRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId  String                  @map("employment_id") @db.Uuid
+  employment    Employment              @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  date          DateTime                @db.Date
+  hours         Decimal                 @db.Decimal(3, 1)
+  fromTime      DateTime?               @map("from_time") @db.Time(0)
+  toTime        DateTime?               @map("to_time") @db.Time(0)
+  reason        String?
+  status        String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
+  managerId     String?                 @map("manager_id") @db.Uuid
+  manager       Employee?               @relation("PermissionManager", fields: [managerId], references: [id], onDelete: Restrict)
+  approverRole  String?                 @map("approver_role") // APPROVER_ROLES, set exactly when managerId is
+  rejectedStage String?                 @map("rejected_stage") // LEAVE_STAGES: manager, hr
+  rejectReason  String?                 @map("reject_reason")
+  recordedByHr  Boolean                 @default(false) @map("recorded_by_hr")
+  createdById   String?                 @map("created_by") @db.Uuid
+  createdBy     User?                   @relation("PermissionRequestCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime                @updatedAt @map("updated_at") @db.Timestamptz
+  steps         PermissionRequestStep[]
+
+  @@index([employeeId, date])
+  @@index([status])
+  @@index([managerId])
+  @@map("permission_requests")
+}
+
+// Each step of a permission request, in the order taken (LEAVE_STEP_KINDS), as a leave request's.
+model PermissionRequestStep {
+  id        BigInt            @id @default(autoincrement())
+  requestId String            @map("request_id") @db.Uuid
+  request   PermissionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind      String
+  decision  String? // LEAVE_DECISIONS, on the stages' decisions only
+  comment   String?
+  actorId   String?           @map("actor_id") @db.Uuid
+  actor     User?             @relation("PermissionStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  at        DateTime          @default(now()) @db.Timestamptz
+
+  @@index([requestId])
+  @@map("permission_request_steps")
+}
+
+// Attendance files read on a draft payroll run (owner, 19 October 2026: attendance runs in Zoho People today, "Import
+// Zoho now, replace it later"): Zoho's daily attendance entries, one file with everyone or many, kept until applied as
+// each person's days (never an address: each check-in's place is kept as office or remote) and who HR matched them to.
+// `people`: [{ key, zohoId, zohoName, days: ImportedDay[], pick: employee id | null, skipped, applied: [{ by, at }] }].
+// `files`: [{ name, sheet, rows, people, months }]. Applying fills the run's lines and keeps the days (AttendanceDay).
+model AttendanceImport {
+  id          String          @id @default(uuid()) @db.Uuid
+  runId       String          @map("run_id") @db.Uuid
+  run         PayrollRun      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  month       DateTime        @db.Date // the run's month, its first day
+  source      String          @default("zoho") // zoho: Zoho People's attendance entries
+  files       Json
+  people      Json
+  createdById String?         @map("created_by") @db.Uuid
+  createdBy   User?           @relation("AttendanceImportBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  appliedById String?         @map("applied_by") @db.Uuid
+  appliedBy   User?           @relation("AttendanceImportAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+  appliedAt   DateTime?       @map("applied_at") @db.Timestamptz // the last time it was applied
+  days        AttendanceDay[]
+
+  @@index([runId])
+  @@map("attendance_imports")
+}
+
+// A day of someone's attendance (owner, 19 October 2026), kept so the system's own attendance can build on it later:
+// the first check-in and the last check-out, what the day was by the system's rules (ATTENDANCE_DAY_STATUSES), Zoho's
+// status as it said it, office or remote (never the address), Zoho's permission hours that day, and the hours it counts
+// by the shift's rule. One a person, day and source: importing a month again replaces that month's Zoho days.
+model AttendanceDay {
+  id              String            @id @default(uuid()) @db.Uuid
+  employeeId      String            @map("employee_id") @db.Uuid
+  employee        Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date            DateTime          @db.Date
+  checkIn         DateTime?         @map("check_in") @db.Timestamptz
+  checkOut        DateTime?         @map("check_out") @db.Timestamptz
+  status          String // ATTENDANCE_DAY_STATUSES
+  zohoStatus      String?           @map("zoho_status")
+  place           String? // WORK_PLACES: office, remote
+  permissionHours Decimal?          @map("permission_hours") @db.Decimal(4, 2)
+  hoursCounted    Decimal           @map("hours_counted") @db.Decimal(5, 2)
+  source          String            @default("zoho")
+  importId        String?           @map("import_id") @db.Uuid
+  import          AttendanceImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  importedById    String?           @map("imported_by") @db.Uuid
+  importedBy      User?             @relation("AttendanceDayImportedBy", fields: [importedById], references: [id], onDelete: SetNull)
+  importedAt      DateTime          @default(now()) @map("imported_at") @db.Timestamptz
+
+  @@unique([employeeId, date, source])
+  @@index([date])
+  @@map("attendance_days")
 }
 
 // A request's documents (a medical certificate, proof of sitting the exam): photos or PDFs, kept like the employee file.

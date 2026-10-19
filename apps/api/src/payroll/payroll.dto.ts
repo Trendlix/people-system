@@ -112,6 +112,17 @@ export class UpdatePayrollSettingsDto {
   @Min(INSTALLMENT_LIMIT_MIN, { message: INSTALLMENT_LIMIT_MESSAGE })
   @Max(LAW_INSTALLMENT_PERCENT, { message: INSTALLMENT_LIMIT_MESSAGE })
   installmentLimitPercent?: number;
+
+  /**
+   * The office's addresses as Zoho People writes a check-in's location (owner, 19 October 2026: "13 and 17 al mahrouki
+   * is also in office"): each a part of an address (e.g. "15, Al Doctor Al Mahrouqi Street", or "Trendlix"), at most 20;
+   * an empty list makes every check-in remote.
+   */
+  @Sent()
+  @IsArray({ message: 'Send the office addresses as a list.' })
+  @ArrayMaxSize(20, { message: 'Enter at most 20 office addresses.' })
+  @IsString({ each: true, message: 'Enter each office address as text, e.g. 15, Al Doctor Al Mahrouqi Street.' })
+  officeAddresses?: string[];
 }
 
 // ---------- runs ----------
@@ -186,6 +197,12 @@ export class PayrollInputsDto {
    * wins (null: as the leave says). With the leave days, no more than the line's days paid.
    */
   @Days() unpaidLeaveDays?: number | null;
+  /**
+   * The month's permission hours (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day"): counted as
+   * worked, never cut as short hours. Filled in from the approved permission requests; typed, it wins (null: as the
+   * requests say). No more than the Leave Setup's hours a month (PayrollService.updateLines).
+   */
+  @Hours() permissionHours?: number | null;
   @Amount(0, RELEASED_MESSAGE) released?: number | null;
 }
 

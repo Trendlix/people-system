@@ -24,7 +24,10 @@ function submitted(fd: FormData): Record<string, string> {
   return out;
 }
 
-/** The annual leave's days (PATCH /leave/settings): all of them, as the form has them. */
+/**
+ * The annual leave's days (PATCH /leave/settings): all of them, as the form has them, with the permission hours a month
+ * and most a day (19 October 2026) when it has them; the API's refusals (permissionRulesProblems) shown as they come.
+ */
 export async function saveLeaveSettings(_prev: FormState, fd: FormData): Promise<FormState> {
   const { body, errors } = settingsBody(fd);
   if (errors.length) return { errors, values: submitted(fd) };
@@ -35,7 +38,12 @@ export async function saveLeaveSettings(_prev: FormState, fd: FormData): Promise
     throw err;
   }
   refresh();
-  return { message: 'Saved. Balances are worked out with these days from now on.' };
+  return {
+    message:
+      body.permissionHoursPerMonth !== undefined
+        ? 'Saved. Balances are worked out with these days from now on, and new permission requests are checked against these hours.'
+        : 'Saved. Balances are worked out with these days from now on.',
+  };
 }
 
 async function saveType(fd: FormData, request: () => Promise<unknown>): Promise<FormState> {

@@ -8,7 +8,9 @@ import type { Prisma } from '../generated/prisma/client.js';
 // straight to HR). Pure code: the rules themselves are packages/shared leaves.ts. A C-level person's request (owner, 19
 // October 2026: "make C level Employees details not visible to HR"; their HR stages go to the CEO): HR's stage is the
 // CEO's (or HR's with Super Admin: packages/shared decidesConfidentialStage); HR and their manager now don't see it, the
-// manager it was sent to still decides the manager stage, as the request is theirs to decide.
+// manager it was sent to still decides the manager stage, as the request is theirs to decide. Permission requests
+// (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day", asked "In the system, like leave") are
+// decided exactly as leave is, so these rules serve both tables (RequestWhere).
 
 /**
  * The caller, their own employee profile (the one whose work email they sign in with), if any, and the C-level people,
@@ -25,6 +27,12 @@ export const isConfidentialRequest = (r: Pick<RequestParties, 'employeeId'>, cal
 
 /** Whether the request's person is hidden from the caller: C-level, and not the caller themself. */
 export const hiddenRequest = (r: Pick<RequestParties, 'employeeId'>, caller: Caller) => caller.confidential?.hidden.has(r.employeeId) ?? false;
+
+/**
+ * A filter on the requests decided as leave is: leave requests and permission requests (19 October 2026) have the same
+ * fields for whose they are, who decides them and where they stand, so one filter serves both tables.
+ */
+export type RequestWhere = Prisma.LeaveRequestWhereInput & Prisma.PermissionRequestWhereInput;
 
 /** The hidden people, for the lists' filters. */
 const hiddenIds = (caller: Caller) => [...(caller.confidential?.hidden ?? [])];
@@ -89,8 +97,8 @@ export const hrMayCancel = (r: RequestParties & { status: string }, caller: Call
  * The requests waiting for the caller's decision: those with them as the direct manager, those with HR for HR, a C-level
  * person's with HR for the CEO (and HR with Super Admin), not for HR; never their own.
  */
-export function waitingWhere(caller: Caller): Prisma.LeaveRequestWhereInput {
-  const or: Prisma.LeaveRequestWhereInput[] = [];
+export function waitingWhere(caller: Caller): RequestWhere {
+  const or: RequestWhere[] = [];
   const confidential = [...(caller.confidential?.all ?? [])];
   if (caller.employeeId) or.push({ status: 'with_manager', managerId: caller.employeeId });
   const ordinary = isHr(caller.user);
@@ -106,7 +114,7 @@ export function waitingWhere(caller: Caller): Prisma.LeaveRequestWhereInput {
  * The requests the caller sees in lists and the calendar: everyone's for HR and the CEO; a manager's, those sent to them
  * and their team's now (and their own); anyone else's, their own.
  */
-export function scopeWhere(caller: Caller): Prisma.LeaveRequestWhereInput {
+export function scopeWhere(caller: Caller): RequestWhere {
   const hidden = hiddenIds(caller);
   const shown = hidden.length ? { employeeId: { notIn: hidden } } : {};
   if (seesEveryRequest(caller.user)) {
@@ -125,7 +133,7 @@ export function scopeWhere(caller: Caller): Prisma.LeaveRequestWhereInput {
 }
 
 /** The requests of the others the caller sees in Leave Requests: as scopeWhere, without their own unless HR or the CEO. */
-export function othersWhere(caller: Caller): Prisma.LeaveRequestWhereInput {
+export function othersWhere(caller: Caller): RequestWhere {
   const hidden = hiddenIds(caller);
   const shown = hidden.length ? { employeeId: { notIn: hidden } } : {};
   if (seesEveryRequest(caller.user)) {

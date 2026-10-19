@@ -265,7 +265,8 @@ describe('Leave (e2e)', () => {
       const before = (await mine(ben, year)).annual;
       expect(before).toMatchObject({ entitlement: 21, pending: 2, available: 19 });
       expect(first.balanceAfter).toBe(19);
-      expect((await api().get('/api/leave/requests/counts').set('Cookie', mona).expect(200)).body).toEqual({ waiting: 1 });
+      // the leave and the permission requests waiting together, and each (permission: 19 October 2026)
+      expect((await api().get('/api/leave/requests/counts').set('Cookie', mona).expect(200)).body).toEqual({ waiting: 1, leave: 1, permissions: 0 });
       await decide(first.id, { decision: 'approve' }, ben).expect(403);
       await decide(first.id, { decision: 'approve' }, hr).expect(409);
       first = (await decide(first.id, { decision: 'approve' }, mona).expect(200)).body;

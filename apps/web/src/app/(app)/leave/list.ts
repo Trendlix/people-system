@@ -390,10 +390,13 @@ export const LEAVE_COMMENT_READERS = 'The employee sees your comment, and so do 
 export const leaveCommentReaders = (confidential?: boolean | null) =>
   confidential === true ? 'The employee sees your comment, and so do the direct manager, the CEO and the Super Admin.' : LEAVE_COMMENT_READERS;
 
-/** HR cancelling an approved request: the comment is required (POST /leave/requests/:id/cancel). */
-export function hrCancelBody(fd: FormData): { body: { comment: string } | null; errors: string[] } {
+/**
+ * HR cancelling an approved request: the comment is required (POST /leave/requests/:id/cancel); `what` it is, leave or
+ * permission (POST /leave/permissions/:id/cancel, 19 October 2026).
+ */
+export function hrCancelBody(fd: FormData, what: 'leave' | 'permission' = 'leave'): { body: { comment: string } | null; errors: string[] } {
   const comment = text(fd, 'comment');
-  return comment ? { body: { comment }, errors: [] } : { body: null, errors: ['Write why the leave is cancelled: the employee sees it.'] };
+  return comment ? { body: { comment }, errors: [] } : { body: null, errors: [`Write why the ${what} is cancelled: the employee sees it.`] };
 }
 
 // ---------- the dashboard ----------

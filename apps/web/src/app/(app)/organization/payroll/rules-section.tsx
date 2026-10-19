@@ -17,8 +17,9 @@ import { NotLoaded, SettingRow, SetupSection } from './section';
 // the forms read them, and are edited only here: Organization → Contracts & Endings shows them with a link here. When a
 // salary review is due, after how many months without a raise, is a payroll setting the Salary Raises report reads
 // (owner's decision, 16 October 2026), and the most a month's installments may take of the wage, the Labour Law's limit
-// (owner, 18 October 2026, after reading the law: "Block above 10%"). HR and Admin change them; Finance and the CEO read
-// them.
+// (owner, 18 October 2026, after reading the law: "Block above 10%"), and the office's addresses a Zoho People check-in is
+// read against, at the office or remote (owner, 19 October 2026: "13 and 17 al mahrouki is also in office"). HR and Admin
+// change them; Finance and the CEO read them.
 
 const INTRO =
   'The company’s own rules for working out each month’s pay, following its payroll sheet, and the defaults new contracts start with. A run keeps the rules it was made or last refreshed with, so a change here applies to runs made or refreshed afterwards; approved runs keep theirs.';
@@ -56,6 +57,14 @@ export async function YourRulesSection({ user }: { user: SessionUser }) {
               <SettingRow label="Most a month's installments may take">
                 <span className="tabular-nums">{settings.value.installmentLimitPercent}%</span>
                 <span className="text-muted"> · of the wage, all of an employee&apos;s advances and loans together; the law allows at most 10% (Art. 113)</span>
+              </SettingRow>
+            </dl>
+          )}
+          {settings.value.officeAddresses !== undefined && (
+            <dl className="mt-4">
+              <SettingRow label="Office addresses">
+                {settings.value.officeAddresses.length ? settings.value.officeAddresses.join(' · ') : <span className="text-muted">None: every check-in is remote</span>}
+                <span className="text-muted"> · a check-in from Zoho People at one of these is a day at the office</span>
               </SettingRow>
             </dl>
           )}

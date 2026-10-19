@@ -669,3 +669,20 @@ describe('numbers as printed', () => {
     expect(c.deductions!.total.value).toBe(source.line.result.deductions);
   });
 });
+
+describe('payslipContent: the month’s permission hours', () => {
+  it('says the permission hours counted as worked (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day")', () => {
+    const c = payslipContent(payslipSource('monthly', { terms: { ...NONE, permissionHours: 4 }, inputs: { softSkills: null, performance: null, clientSatisfaction: null } }), 'en');
+    expect(c.thisMonth!.cells.map((x) => x.label)).toEqual(['Hours worked', 'Permission hours']);
+    // 165:30 worked and 4:00 of permission, of 176:00
+    expect(c.thisMonth!.cells[0]).toMatchObject({ value: '165:30 of 176:00', note: '96.31%: counts as full (90% or more)' });
+    expect(c.thisMonth!.cells[1]).toEqual({ label: 'Permission hours', value: '4:00', note: 'Counted as worked in attendance' });
+    const ar = payslipContent(payslipSource('monthly', { terms: { ...NONE, permissionHours: 4 } }), 'ar');
+    expect(ar.thisMonth!.cells.find((x) => x.label === 'ساعات الإذن')).toMatchObject({ note: 'تُحتسب ضمن ساعات العمل في الحضور' });
+  });
+
+  it('has none by the hour, where only the hours worked are paid', () => {
+    const c = payslipContent(payslipSource('hourly', { inputs: { permissionHours: 2 } }), 'en');
+    expect(c.thisMonth!.cells.map((x) => x.label)).toEqual(['Hours worked']);
+  });
+});

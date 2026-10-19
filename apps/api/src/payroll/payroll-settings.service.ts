@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import type { PayrollRules } from '@trendlix/shared';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { OFFICE_ADDRESS_DEFAULTS, officeAddressesProblems, type PayrollRules } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { PayrollSettings } from '../generated/prisma/client.js';
@@ -32,6 +32,12 @@ export interface PayrollSettingsView extends Required<PayrollRules> {
    * or an installment past it is refused; the run's lines warn past it. Until then a warning at 1 to 100 (none: none).
    */
   installmentLimitPercent: number;
+  /**
+   * The office's addresses as Zoho People writes a check-in's location (owner, 19 October 2026: "13 and 17 al mahrouki
+   * is also in office"): a day checked in at one of them is at the office, anywhere else remote (attendance-import.ts
+   * placeOf). Al Doctor Al Mahrouqi Street 13, 15 and 17 and Trendlix to start with.
+   */
+  officeAddresses: string[];
 }
 
 /** The rules a run is worked out with, as the settings have them now: Pay overtime always says on or off. */
@@ -53,6 +59,7 @@ const view = (s: PayrollSettings): PayrollSettingsView => ({
   payday: s.payday,
   salaryReviewMonths: s.salaryReviewMonths,
   installmentLimitPercent: s.installmentLimitPercent.toNumber(),
+  officeAddresses: s.officeAddresses ?? [...OFFICE_ADDRESS_DEFAULTS],
 });
 
 // The payroll settings (owner's decisions, 16 October 2026): the sheet's rules to start with (a month of 30 days,
@@ -68,7 +75,9 @@ const view = (s: PayrollSettings): PayrollSettingsView => ({
 // a warning past 10% of the pay to start with (owner, 18 October 2026: "Warn when a month's installments pass __ % of
 // the pay"), the law's limit since the owner read the Labour Law with us (owner, 18 October 2026, after reading the law:
 // "Block above 10%"; Art. 113): 10 to start with, lower if set so, never higher. No run copies it either: plans past
-// it are refused, and the run's lines warn with it as it is.
+// it are refused, and the run's lines warn with it as it is. Your Rules also has the office's addresses (owner, 19
+// October 2026: attendance imported from Zoho People, a check-in at the office or remote), which no run copies either:
+// an import reads the check-ins' places with them as they are.
 @Injectable()
 export class PayrollSettingsService {
   constructor(
@@ -87,6 +96,12 @@ export class PayrollSettingsService {
 
   async update(dto: UpdatePayrollSettingsDto, user: SessionUser): Promise<PayrollSettingsView> {
     const before = await this.row();
+    // the office's addresses, each trimmed, the empty ones dropped (19 October 2026)
+    const officeAddresses = dto.officeAddresses?.map((a) => a.trim()).filter(Boolean);
+    if (officeAddresses) {
+      const problems = officeAddressesProblems(officeAddresses);
+      if (problems.length) throw new BadRequestException(problems);
+    }
     const data = {
       dayDivisor: dto.dayDivisor,
       attendanceGracePercent: dto.attendanceGracePercent,
@@ -101,6 +116,7 @@ export class PayrollSettingsService {
       payday: dto.payday,
       salaryReviewMonths: dto.salaryReviewMonths,
       installmentLimitPercent: dto.installmentLimitPercent,
+      officeAddresses,
     };
     const after = await this.prisma.payrollSettings.update({ where: { id: ID }, data });
     const diff = changes(view(before) as unknown as Record<string, unknown>, data);

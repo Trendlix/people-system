@@ -108,6 +108,8 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'Variable', kind: 'money', width: 13, value: (l) => l.result.variable },
   { header: 'Paid days', kind: 'days', width: 9, value: (l) => l.terms.paidDays },
   { header: 'Worked hours', kind: 'hours', width: 11, value: (l) => l.inputs.workedHours },
+  // the permission hours counted as worked with them (owner, 19 October 2026): none on lines worked out before then
+  { header: 'Permission hours', kind: 'hours', width: 11, value: (l) => l.result.permissionHours ?? null },
   // those attendance was measured on: HR's, else the shift's less the no-show and leave days (17 October 2026)
   { header: 'Expected hours', kind: 'hours', width: 11, value: (l) => measuredExpectedHours(l) },
   { header: 'Attendance %', kind: 'percent', width: 11, value: (l) => l.result.attendanceRatio },

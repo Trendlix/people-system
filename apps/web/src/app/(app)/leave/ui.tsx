@@ -2,23 +2,31 @@ import Link from 'next/link';
 import type { LeaveStatus } from '@trendlix/shared';
 import { asLeadNote } from '@/lib/department-leads';
 import { formatDateTime } from '@/lib/format';
-import type { LeaveBalances, LeaveRequestView, LeaveTypeView } from '@/lib/types';
+import type { LeaveBalances, LeaveRequestStep, LeaveRequestView, LeaveTypeView, PermissionRequestView, RequestApprover } from '@/lib/types';
 import { annualFigures, availableText, typeLeftText } from './balance';
-import { daysText, leaveHref, leaveProgressText, leaveStatusLabel, leaveStepText, leaveStepTone, periodText, STATUS_BADGE } from './list';
+import { daysText, leaveProgressText, leaveStatusLabel, leaveStepText, leaveStepTone, periodText, STATUS_BADGE } from './list';
+import { isPermission, permissionDayText, permissionHoursLine, permissionWhenText, requestHref, type RequestRow } from './permissions';
 
 // Parts of a leave request (owner, 18 October 2026: "can you apply the leaves according to the law?") shown on its page,
 // on Requests → Leave Requests, on My Requests, on My Team, on the dashboard and on a profile, worded as the
 // reimbursement claims are: its status, when and how many days, where it stands with the comment of a rejection, its log
 // of every step as a timeline, the tables of the employee's own requests and of those waiting for a direct manager, and
-// the balance card: the annual balance and what is left of the other types.
+// the balance card: the annual balance and what is left of the other types. A permission request (owner, 19 October
+// 2026: "In the system, like leave") is shown with the same parts where they fit: its status, where it stands, its log,
+// and a row of the tables of those waiting for a direct manager, its day and hours in place of the days; the employee's
+// own permissions have a table of their own.
 
 /** With the manager, With HR, Approved, Rejected or Cancelled; With the CEO for a C-level person's with HR (`confidential`). */
 export function LeaveStatusBadge({ status, confidential }: { status: LeaveStatus; confidential?: boolean }) {
   return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{leaveStatusLabel(status, confidential)}</span>;
 }
 
-/** Where it stands, with the comment of a rejection or a cancellation. */
-export function LeaveProgress({ request }: { request: LeaveRequestView }) {
+/** Where it stands, with the comment of a rejection or a cancellation: of a leave or a permission request. */
+export function LeaveProgress({
+  request,
+}: {
+  request: Pick<LeaveRequestView, 'status' | 'manager' | 'rejectedStage' | 'rejectReason' | 'recordedByHr' | 'confidential' | 'steps'>;
+}) {
   const p = leaveProgressText(request);
   return (
     <>
@@ -32,9 +40,16 @@ const DOT: Record<'ok' | 'danger' | 'none', string> = { ok: 'bg-ok', danger: 'bg
 
 /**
  * The request's log: every step in order, what happened, the comment, who and when (the manager stage by who decides it;
- * a C-level person's HR stage by the stage, which the CEO decides).
+ * a C-level person's HR stage by the stage, which the CEO decides). `stepText`: how a step is said, a permission
+ * request's its own (permissionStepText: its hours given back).
  */
-export function LeaveTimeline({ request }: { request: Pick<LeaveRequestView, 'steps' | 'manager' | 'confidential'> }) {
+export function LeaveTimeline({
+  request,
+  stepText = leaveStepText,
+}: {
+  request: Pick<LeaveRequestView, 'steps' | 'manager' | 'confidential'>;
+  stepText?: (s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null) => string;
+}) {
   const steps = request.steps ?? [];
   if (!steps.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
   return (
@@ -42,7 +57,7 @@ export function LeaveTimeline({ request }: { request: Pick<LeaveRequestView, 'st
       {steps.map((s) => (
         <li key={s.id} className="relative">
           <span aria-hidden="true" className={`absolute top-1.5 -left-[23px] size-3 rounded-full border-2 border-card ${DOT[leaveStepTone(s) ?? 'none']}`} />
-          <p className="text-sm font-medium">{leaveStepText(s, request.manager, request.confidential)}</p>
+          <p className="text-sm font-medium">{stepText(s, request.manager, request.confidential)}</p>
           {s.comment && <p className="mt-0.5 text-sm whitespace-pre-line">“{s.comment}”</p>}
           <p className="text-xs text-muted">
             {s.actor && <span className="break-words">{s.actor} · </span>}
@@ -54,25 +69,28 @@ export function LeaveTimeline({ request }: { request: Pick<LeaveRequestView, 'st
   );
 }
 
-/** The type, linked to the request's page. */
-function TypeLink({ request: r, who = false }: { request: LeaveRequestView; who?: boolean }) {
+/** The type (Permission for a permission request), linked to the request's page. */
+function TypeLink({ request: r, who = false }: { request: RequestRow; who?: boolean }) {
   return (
-    <Link href={leaveHref(r.id)} className="font-semibold">
+    <Link href={requestHref(r)} className="font-semibold">
       {r.type.nameEn}
       <span className="sr-only">
-        , {periodText(r)}
+        , {isPermission(r) ? permissionWhenText(r) : periodText(r)}
         {who ? ` for ${r.employee.fullNameEn}` : ''}
       </span>
     </Link>
   );
 }
 
-/** When, and how many days: "05/10/2026 – 08/10/2026", "4 days". */
-function When({ request: r }: { request: LeaveRequestView }) {
+/**
+ * When, and how long: a leave's days ("05/10/2026 – 08/10/2026", "4 days"); a permission's day and its hours with the
+ * times ("Tuesday 03/11/2026", "2 hours (5:00 PM – 7:00 PM)").
+ */
+export function RequestWhen({ request: r }: { request: RequestRow }) {
   return (
     <>
-      <span className="whitespace-nowrap tabular-nums">{periodText(r)}</span>
-      <span className="block text-xs text-muted tabular-nums">{daysText(r.days)}</span>
+      <span className="whitespace-nowrap tabular-nums">{isPermission(r) ? permissionDayText(r) : periodText(r)}</span>
+      <span className="block text-xs text-muted tabular-nums">{isPermission(r) ? permissionHoursLine(r) : daysText(r.days)}</span>
     </>
   );
 }
@@ -100,7 +118,7 @@ export function MyLeaveTable({ requests }: { requests: LeaveRequestView[] }) {
                 <div className="text-xs text-muted">{r.recordedByHr ? 'Recorded by HR' : 'Sent'} {formatDateTime(r.createdAt)}</div>
               </td>
               <td className="min-w-40">
-                <When request={r} />
+                <RequestWhen request={r} />
               </td>
               <td className="min-w-48">
                 <LeaveStatusBadge status={r.status} confidential={r.confidential} />
@@ -117,10 +135,11 @@ export function MyLeaveTable({ requests }: { requests: LeaveRequestView[] }) {
 }
 
 /**
- * The requests waiting for a direct manager (My Team, Leave to Approve): who, the type, when, each with Decide. One
- * waiting for them as a team lead or head of department (19 October 2026: the employee has no direct manager) says so.
+ * The requests waiting for a direct manager (My Team, Leave to Approve): who, the type, when, each with Decide; the
+ * leave and the permission requests together (19 October 2026), a permission's day with its hours. One waiting for them
+ * as a team lead or head of department (19 October 2026: the employee has no direct manager) says so.
  */
-export function WaitingLeaveTable({ requests }: { requests: LeaveRequestView[] }) {
+export function WaitingLeaveTable({ requests }: { requests: RequestRow[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="table">
@@ -147,12 +166,57 @@ export function WaitingLeaveTable({ requests }: { requests: LeaveRequestView[] }
                 {r.reason && <p className="text-xs break-words text-muted">{r.reason}</p>}
               </td>
               <td className="min-w-40">
-                <When request={r} />
+                <RequestWhen request={r} />
               </td>
               <td className="text-right">
-                <Link href={leaveHref(r.id)} className="btn btn-primary min-h-9 px-3">
+                <Link href={requestHref(r)} className="btn btn-primary min-h-9 px-3">
                   Decide<span className="sr-only"> on the {r.type.nameEn} request by {r.employee.fullNameEn}</span>
                 </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * The employee's own permission requests (My Requests): the day, the hours with the times, where it stands, each opening
+ * its page (its timeline, Cancel while it may be).
+ */
+export function MyPermissionTable({ requests }: { requests: PermissionRequestView[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="table">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Hours</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {requests.map((r) => (
+            <tr key={r.id} className={`align-top ${r.status === 'cancelled' || r.status === 'rejected' ? 'text-muted' : ''}`}>
+              <td className="min-w-40">
+                <Link href={requestHref(r)} className="font-semibold whitespace-nowrap tabular-nums">
+                  {permissionDayText(r)}
+                  <span className="sr-only">, permission of {permissionHoursLine(r)}</span>
+                </Link>
+                <div className="text-xs text-muted">
+                  {r.recordedByHr ? 'Recorded by HR' : 'Sent'} {formatDateTime(r.createdAt)}
+                </div>
+              </td>
+              <td className="min-w-40 tabular-nums">
+                {permissionHoursLine(r)}
+                {r.reason && <p className="line-clamp-2 text-xs break-words text-muted">{r.reason}</p>}
+              </td>
+              <td className="min-w-48">
+                <LeaveStatusBadge status={r.status} confidential={r.confidential} />
+                <p className="mt-1 text-xs text-muted">
+                  <LeaveProgress request={r} />
+                </p>
               </td>
             </tr>
           ))}

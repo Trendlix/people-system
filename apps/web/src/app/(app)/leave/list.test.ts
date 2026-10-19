@@ -225,6 +225,8 @@ describe('deciding a request', () => {
   it('needs HR’s comment to cancel an approved one', () => {
     expect(hrCancelBody(fd({ comment: ' ' })).body).toBeNull();
     expect(hrCancelBody(fd({ comment: 'Recorded twice' })).body).toEqual({ comment: 'Recorded twice' });
+    // a permission's (19 October 2026), worded for it
+    expect(hrCancelBody(fd({ comment: '' }), 'permission').errors).toEqual(['Write why the permission is cancelled: the employee sees it.']);
   });
 });
 

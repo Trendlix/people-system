@@ -24,6 +24,7 @@ import { shrinkPhoto } from '../employees/shrink-photo';
 import { sizeText } from '../reimbursements/claim';
 import { leaveYearData } from './actions';
 import { daysNumber, daysText, hrStageName, LEAVE_COMMENT_READERS, leaveCommentReaders, leaveDecisionButton } from './list';
+import { permissionDecisionButton } from './permissions';
 import { balanceAfter, countLeaveDays, countText, DOCUMENT_ACCEPT, leaveFormProblems, REASON_MAX, requestYear, rulesOf, type TypedLeave } from './request';
 
 // The forms of a leave request (owner, 18 October 2026: "can you apply the leaves according to the law?"): the new
@@ -31,7 +32,9 @@ import { balanceAfter, countLeaveDays, countText, DOCUMENT_ACCEPT, leaveFormProb
 // counted live as the law counts them (the shift's working days less the official holidays, Art. 124; calendar days for
 // a type counted so), the annual balance after it, and the shared checks shown live, Send staying off while any is left;
 // an approver's decision on the request's page (Approve, or Reject with a comment); the employee's Cancel; HR's Cancel of
-// an approved one, with a comment; and HR's adjustment of a balance. The API checks everything again.
+// an approved one, with a comment; and HR's adjustment of a balance. The API checks everything again. A permission
+// request (owner, 19 October 2026: "In the system, like leave") is decided and cancelled with the same forms, worded for
+// it (`kind`): its hours, not days, go back.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -465,12 +468,27 @@ export function NewLeaveForm({
 
 // ---------- deciding a request ----------
 
+/** Leave, or a permission request (19 October 2026), for the forms' words. */
+type RequestKindWord = 'leave' | 'permission';
+
 /**
  * An approver's decision on a request waiting for them: Approve (a comment optional), or Reject with a comment. Rejecting
  * asks first. `confidential`: a C-level person's request, which goes on to the CEO, not HR, and HR doesn't read (19
- * October 2026).
+ * October 2026). `kind`: a leave or a permission request.
  */
-export function LeaveDecisionForm({ action, stage, name, confidential = false }: { action: Action; stage: LeaveStage; name: string; confidential?: boolean }) {
+export function LeaveDecisionForm({
+  action,
+  stage,
+  name,
+  confidential = false,
+  kind = 'leave',
+}: {
+  action: Action;
+  stage: LeaveStage;
+  name: string;
+  confidential?: boolean;
+  kind?: RequestKindWord;
+}) {
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   const [decision, setDecision] = useState<LeaveDecision | ''>(() => {
@@ -480,15 +498,15 @@ export function LeaveDecisionForm({ action, stage, name, confidential = false }:
   const [comment, setComment] = useState(() => valueOf(state, 'comment'));
   const needsComment = decision !== '' && leaveDecisionNeedsComment(decision);
   const ready = decision !== '' && (!needsComment || comment.trim() !== '');
-  const button = leaveDecisionButton(decision, stage, confidential);
+  const button = kind === 'permission' ? permissionDecisionButton(decision, stage, confidential) : leaveDecisionButton(decision, stage, confidential);
 
   return (
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (decision === 'reject' && !window.confirm(`Reject the leave request by ${name}? Your comment shows on it.`)) e.preventDefault();
+        if (decision === 'reject' && !window.confirm(`Reject the ${kind} request by ${name}? Your comment shows on it.`)) e.preventDefault();
       }}
-      aria-label={`Decide on the leave request by ${name}`}
+      aria-label={`Decide on the ${kind} request by ${name}`}
       className="space-y-4"
     >
       <FormErrors errors={state.errors} />
@@ -534,8 +552,8 @@ export function LeaveDecisionForm({ action, stage, name, confidential = false }:
   );
 }
 
-/** The employee's Cancel: asks first; the request stays on their list, cancelled, its days given back. */
-export function CancelLeaveForm({ action, what }: { action: () => Promise<FormState>; what: string }) {
+/** The employee's Cancel: asks first; the request stays on their list, cancelled, its days (a permission's hours) given back. */
+export function CancelLeaveForm({ action, what, kind = 'leave' }: { action: () => Promise<FormState>; what: string; kind?: RequestKindWord }) {
   const [state, formAction, pending] = useActionState(action, {});
   return (
     <form
@@ -547,14 +565,14 @@ export function CancelLeaveForm({ action, what }: { action: () => Promise<FormSt
     >
       <FormErrors errors={state.errors} />
       <button type="submit" disabled={pending} className="btn btn-secondary">
-        {pending ? 'Cancelling…' : 'Cancel this leave'}
+        {pending ? 'Cancelling…' : `Cancel this ${kind}`}
       </button>
     </form>
   );
 }
 
-/** HR's Cancel of an approved request, with the comment the employee reads; its days go back to the balance. */
-export function HrCancelLeaveForm({ action, what }: { action: Action; what: string }) {
+/** HR's Cancel of an approved request, with the comment the employee reads; its days go back to the balance (a permission's hours to the month). */
+export function HrCancelLeaveForm({ action, what, kind = 'leave' }: { action: Action; what: string; kind?: RequestKindWord }) {
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   const [comment, setComment] = useState(() => valueOf(state, 'comment'));
@@ -562,7 +580,8 @@ export function HrCancelLeaveForm({ action, what }: { action: Action; what: stri
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Cancel the approved ${what}? Its days go back to the balance; your comment shows on it.`)) e.preventDefault();
+        const back = kind === 'permission' ? 'Its hours go back to the month’s allowance' : 'Its days go back to the balance';
+        if (!window.confirm(`Cancel the approved ${what}? ${back}; your comment shows on it.`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -583,11 +602,12 @@ export function HrCancelLeaveForm({ action, what }: { action: Action; what: stri
           className="input"
         />
         <p id={fid('comment-hint')} className="hint">
-          E.g. the employee came back early, or it was recorded by mistake. {LEAVE_COMMENT_READERS}
+          {kind === 'permission' ? 'E.g. the employee stayed at work after all, or it was recorded by mistake.' : 'E.g. the employee came back early, or it was recorded by mistake.'}{' '}
+          {LEAVE_COMMENT_READERS}
         </p>
       </div>
       <button type="submit" disabled={pending || comment.trim() === ''} className="btn btn-danger">
-        {pending ? 'Cancelling…' : 'Cancel the leave'}
+        {pending ? 'Cancelling…' : `Cancel the ${kind}`}
       </button>
     </form>
   );

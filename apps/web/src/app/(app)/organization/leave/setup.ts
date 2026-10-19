@@ -5,6 +5,11 @@ import {
   LEAVE_PAY_LABELS,
   LEAVE_PAYS,
   LEAVE_RULE_DEFAULTS,
+  PERMISSION_DAY_MAX,
+  PERMISSION_MONTH_MAX,
+  PERMISSION_RULE_DEFAULTS,
+  permissionHoursText,
+  permissionRulesProblems,
   type LeaveBalanceKind,
   type LeaveKind,
   type LeavePay,
@@ -22,7 +27,9 @@ import type { LeaveSettingsView, LeaveTypeBody, LeaveTypeView } from '../../../.
 // the Year Closing, where HR decides what of each employee's unused days is carried and what is paid. HR changes them;
 // the other staff read them (the API checks every request again). Pure code, tested: who sees and changes what, the
 // forms read into what the API takes (with the API's checks), and the words the cards show. Relative imports: the tests
-// run without the "@/" alias.
+// run without the "@/" alias. Permission (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day",
+// asked where its limits live, "Yes, in Leave Setup") has its two figures in the same form: the hours a month (0: no
+// permission) and the most hours a day, in half hours.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -75,9 +82,31 @@ export function unitText(n: number, unit: 'days' | 'years' | 'months'): string {
 /** The law's figure, for "The law: 21 days" beside a setting changed from it. */
 export const lawDefault = (key: keyof LeaveRules) => LEAVE_RULE_DEFAULTS[key];
 
+// ---------- permission (19 October 2026) ----------
+
+/** The permission figures of the Leave Setup: their labels, units and limits (packages/shared permissions.ts). */
+export const PERMISSION_FIELDS: readonly { key: 'permissionHoursPerMonth' | 'permissionMaxHoursPerDay'; label: string; min: number; max: number; defaultHours: number }[] = [
+  { key: 'permissionHoursPerMonth', label: 'Permission hours a month', min: 0, max: PERMISSION_MONTH_MAX, defaultHours: PERMISSION_RULE_DEFAULTS.hoursPerMonth },
+  { key: 'permissionMaxHoursPerDay', label: 'Most permission hours a day', min: 0.5, max: PERMISSION_DAY_MAX, defaultHours: PERMISSION_RULE_DEFAULTS.maxHoursPerDay },
+];
+
+/** The hint under the permission figures. */
+export const PERMISSION_HINT = '0 hours a month: no permission. In half hours.';
+
+/** Hours as typed ("4", "1.5", "1,5", "٤"); NaN when they aren't a number (the checks then say so). */
+export function hoursFromText(raw: string): number {
+  const s = latin(raw).replace(/,/g, '.').trim();
+  return /^\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+}
+
+/** A permission figure in words, for those who read the Leave Setup: "4 hours", "None" for 0 hours a month. */
+export const permissionSettingText = (hours: number) => (hours > 0 ? permissionHoursText(hours) : 'None: no permission');
+
 /**
  * The Leave Setup form as PATCH /leave/settings takes it, all of it, and what is wrong: each a whole number within its
  * limits; the days from the second year no fewer than the first year's, and those after long service no fewer than them.
+ * With the permission figures when the form has them (an API from before permission sends none, so the form shows
+ * none): in half hours, as the shared checks say (permissionRulesProblems).
  */
 export function settingsBody(fd: FormData): { body: LeaveSettingsView; errors: string[] } {
   const errors: string[] = [];
@@ -90,6 +119,11 @@ export function settingsBody(fd: FormData): { body: LeaveSettingsView; errors: s
   if (!errors.length) {
     if (body.standardDays < body.firstYearDays) errors.push('The days from the second year can’t be fewer than the first year’s.');
     if (body.longServiceDays < body.standardDays) errors.push('The days after long service can’t be fewer than those from the second year.');
+  }
+  if (fd.has('permissionHoursPerMonth') || fd.has('permissionMaxHoursPerDay')) {
+    body.permissionHoursPerMonth = hoursFromText(text(fd, 'permissionHoursPerMonth'));
+    body.permissionMaxHoursPerDay = hoursFromText(text(fd, 'permissionMaxHoursPerDay'));
+    errors.push(...permissionRulesProblems({ hoursPerMonth: body.permissionHoursPerMonth, maxHoursPerDay: body.permissionMaxHoursPerDay }));
   }
   return { body, errors };
 }

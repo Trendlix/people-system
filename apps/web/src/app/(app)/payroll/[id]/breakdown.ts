@@ -44,8 +44,11 @@ import { contractLabel, dayRange } from './grid';
 // (days) or a Penalty (days) (owner, 17 October 2026: the grid's bonus and penalty days, commission and settlements
 // moved to Additions / Deductions) says its days with what the run worked it out to; a line saved before then has its
 // Bonus, Commission, Settlements and Penalties rows as typed on the grid. An attendance deduction the CEO waived (owner,
-// 17 October 2026: "allow the CEO to wave the deduction by ticking a box") says so on the attendance cut. Pure code,
-// tested; relative imports, as vitest doesn't know the @/ paths.
+// 17 October 2026: "allow the CEO to wave the deduction by ticking a box") says so on the attendance cut. The month's
+// permission hours (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day") count as worked: where
+// the hours explain the attendance, "Permission: 4:00" as the line counted them (PayrollResult.permissionHours), from
+// the permission approved or as typed, and the hours worked with them. Pure code, tested; relative imports, as vitest
+// doesn't know the @/ paths.
 
 export interface BreakdownRow {
   key: string;
@@ -196,12 +199,25 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
   const expected = measuredExpectedHours(line);
   const hours: BreakdownRow[] = [];
   if (expected !== null) hours.push({ key: 'expected', label: 'Expected hours', value: formatHours(expected), kind: 'info', note: expectedNote(line) });
+  // the permission hours counted as worked (owner, 19 October 2026): as the line counted them, only once hours are worked
+  const permission = typeof r.permissionHours === 'number' && r.permissionHours > 0 ? r.permissionHours : 0;
   if (i.workedHours !== null) {
     hours.push({
       key: 'hours',
       label: 'Hours worked',
       value: expected !== null ? `${formatHours(i.workedHours)} of ${formatHours(expected)}` : formatHours(i.workedHours),
       kind: 'info',
+      ...(permission > 0 && { note: `${formatHours(i.workedHours + permission)} with the permission hours, as attendance counts them` }),
+    });
+  }
+  if (permission > 0) {
+    const typedPermission = i.permissionHours !== null && i.permissionHours !== undefined;
+    hours.push({
+      key: 'permission',
+      label: 'Permission',
+      value: formatHours(permission),
+      kind: 'info',
+      note: `Counted as worked${typedPermission ? ', as typed by HR' : ', from the permission approved this month'}`,
     });
   }
   // paid leave (owner, 17 October 2026): nothing cut, its hours out of the shift's; unpaid leave (18 October 2026): a
