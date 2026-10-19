@@ -28,9 +28,11 @@ describe('the sidebar', () => {
     ]);
     // the sub-items have no roles of their own: they show with their item
     expect(templates.items?.every((s) => !('roles' in s))).toBe(true);
-    expect(hasRole(as('hr'), ...(templates.roles ?? []))).toBe(true);
-    expect(hasRole(as('ceo'), ...(templates.roles ?? []))).toBe(true);
+    // a Super Admin's only (owner, 19 October 2026: "enable templates sidebar to super admin only")
     expect(hasRole(as('super_admin'), ...(templates.roles ?? []))).toBe(true);
+    expect(hasRole(as('hr'), ...(templates.roles ?? []))).toBe(false);
+    expect(hasRole(as('ceo'), ...(templates.roles ?? []))).toBe(false);
+    expect(hasRole(as('admin'), ...(templates.roles ?? []))).toBe(false);
     expect(hasRole(as('employee', 'manager', 'finance'), ...(templates.roles ?? []))).toBe(false);
   });
 
@@ -222,10 +224,10 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
   const labels = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).map((n) => n.label);
 
   it('is the sidebar, each item for the roles it names: Employees, Contracts and Offers under People', () => {
-    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Approvals', 'Templates']);
+    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Approvals']);
     expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests']);
-    expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Approvals', 'Templates']);
-    expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Approvals', 'Templates', 'Users']);
+    expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Approvals']);
+    expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Approvals', 'Users']);
     expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Approvals', 'Templates', 'Users']);
   });
 
@@ -303,9 +305,9 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
           .find((n) => n.label === label)
           ?.items?.map((i) => i.label);
       expect(sub('Payroll', 'finance')).toEqual(['Overview', 'Unsettled', 'Additions / Deductions', 'Recurring Deductions', 'Reports']);
-      expect(sub('Templates', 'admin')).toEqual(['Library', 'Fields Guide']);
+      expect(sub('Templates', 'super_admin')).toEqual(['Library', 'Fields Guide']);
       expect(navFor({ roles: ['hr'], employeeId: 'x' }).find((n) => n.label === 'Payroll')?.href).toBe('/payroll');
-      expect(navFor({ roles: ['ceo'], employeeId: 'x' }).find((n) => n.label === 'Templates')?.href).toBe('/templates');
+      expect(navFor({ roles: ['super_admin'], employeeId: 'x' }).find((n) => n.label === 'Templates')?.href).toBe('/templates');
     });
 
     it('doesn’t change NAV itself for the next user', () => {

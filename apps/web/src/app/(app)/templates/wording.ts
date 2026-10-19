@@ -22,17 +22,23 @@ import { count } from './tag-check';
 
 type WithRoles = Pick<SessionUser, 'roles'>;
 
-/** HR, Admin (a Super Admin too) and the CEO see the library and download its files; the API checks this again. */
+/**
+ * Only a Super Admin sees the library, uploads and publishes versions (owner, 19 October 2026: "enable templates sidebar
+ * to super admin only"; before, HR, Admin and the CEO saw it). Deleting a draft: canDelete, a Super Admin too.
+ */
 export function seesTemplates(user: WithRoles): boolean {
-  return hasRole(user, 'hr', 'admin', 'ceo');
+  return hasRole(user, 'super_admin');
 }
 
-/** HR and Admin (a Super Admin too) upload and publish versions; the CEO only views. Deleting a draft: canDelete. */
+/** Uploading and publishing versions: a Super Admin, as seeing them. */
 export function managesTemplates(user: WithRoles): boolean {
-  return hasRole(user, 'hr', 'admin');
+  return hasRole(user, 'super_admin');
 }
 
-export const WHO_SEES = 'Only HR, Admin and the CEO can see the templates.';
+export const WHO_SEES = 'Only a Super Admin can see the templates.';
+
+/** Said instead of a link to a template, to those who can't open the templates. */
+export const ASK_SUPER_ADMIN = 'A Super Admin manages the templates.';
 
 /** Said where the server doesn't have templates yet (it answers 404). */
 export const NOT_AVAILABLE = 'Not available yet.';

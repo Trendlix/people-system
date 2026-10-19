@@ -3,6 +3,7 @@ import { DocumentViewer, VIEW_BUTTON } from '@/components/document-viewer';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
 import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import type { DocumentItem, EmployeeProfile, GeneratedDocument, GeneratedDocumentStatus } from '@/lib/types';
+import { ASK_SUPER_ADMIN } from '../../../templates/wording';
 import { contractHref, Loading, ProfileSection, todayInCairo } from '../../ui';
 import { ActionButton } from '../contracts/contract-buttons';
 import { loadDocuments } from './data';
@@ -45,7 +46,8 @@ export type DocumentEmployee = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'empl
 type Employee = DocumentEmployee;
 
 /** What the caller may do: `act` (HR) generate and move documents along, `delete` (a Super Admin) delete them. */
-export type DocumentAccess = { act: boolean; delete: boolean };
+/** `templates`: may open the templates (a Super Admin); others are told who manages them instead of a link. */
+export type DocumentAccess = { act: boolean; delete: boolean; templates?: boolean };
 
 const TONE_TEXT: Record<Tone, string> = { ok: 'text-ok', warn: 'text-warn', accent: 'text-accent', muted: 'text-muted' };
 const TONE_BADGE: Record<Tone, string> = { ok: 'bg-ok-soft text-ok', warn: 'bg-warn-soft text-warn', accent: '', muted: 'bg-line-soft text-muted' };
@@ -179,12 +181,15 @@ function ItemRow({ item, employee, can, today }: { item: DocumentItem; employee:
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
             {context && <span className="text-muted">{context} ·</span>}
             <span className={`font-medium ${TONE_TEXT[template.tone]}`}>{template.text}</span>
-            {can.act && !published && (
-              <Link href={itemTemplateHref(item)} className="font-semibold">
-                {item.templateStatus === 'missing' ? 'Upload it in Templates' : 'Open the template'}
-                <span className="sr-only"> for {item.name}</span>
-              </Link>
-            )}
+            {can.act && !published &&
+              (can.templates ? (
+                <Link href={itemTemplateHref(item)} className="font-semibold">
+                  {item.templateStatus === 'missing' ? 'Upload it in Templates' : 'Open the template'}
+                  <span className="sr-only"> for {item.name}</span>
+                </Link>
+              ) : (
+                <span className="text-muted">{ASK_SUPER_ADMIN}</span>
+              ))}
           </p>
         </div>
         {can.act && published && (

@@ -65,20 +65,21 @@ const library = (): TemplateSlotView[] =>
   }));
 
 describe('who sees and manages the library', () => {
-  it('lets HR, Admin, a Super Admin and the CEO see it', () => {
-    expect(seesTemplates(as('employee', 'hr'))).toBe(true);
-    expect(seesTemplates(as('employee', 'admin'))).toBe(true);
+  // owner, 19 October 2026: "enable templates sidebar to super admin only"
+  it('lets only a Super Admin see it', () => {
     expect(seesTemplates(as('employee', 'super_admin'))).toBe(true);
-    expect(seesTemplates(as('employee', 'ceo'))).toBe(true);
+    expect(seesTemplates(as('employee', 'hr'))).toBe(false);
+    expect(seesTemplates(as('employee', 'admin'))).toBe(false);
+    expect(seesTemplates(as('employee', 'ceo'))).toBe(false);
     expect(seesTemplates(as('employee', 'finance'))).toBe(false);
     expect(seesTemplates(as('employee', 'manager'))).toBe(false);
     expect(seesTemplates(as('employee'))).toBe(false);
   });
 
-  it('lets HR, Admin and a Super Admin upload and publish, not the CEO', () => {
-    expect(managesTemplates(as('employee', 'hr'))).toBe(true);
-    expect(managesTemplates(as('employee', 'admin'))).toBe(true);
+  it('lets only a Super Admin upload and publish', () => {
     expect(managesTemplates(as('employee', 'super_admin'))).toBe(true);
+    expect(managesTemplates(as('employee', 'hr'))).toBe(false);
+    expect(managesTemplates(as('employee', 'admin'))).toBe(false);
     expect(managesTemplates(as('employee', 'ceo'))).toBe(false);
   });
 });

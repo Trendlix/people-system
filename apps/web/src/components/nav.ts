@@ -104,7 +104,8 @@ export const NAV: NavItem[] = [
     href: '/templates',
     label: 'Templates',
     section: '/templates',
-    roles: ['hr', 'admin', 'ceo'],
+    // a Super Admin's only (owner, 19 October 2026: "enable templates sidebar to super admin only")
+    roles: ['super_admin'],
     // the library, and the guide to the fields a template can use (owner's request, 15 October 2026)
     items: [
       { href: '/templates', label: 'Library', section: '/templates' },

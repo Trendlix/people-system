@@ -20,6 +20,7 @@ import { canSeeOffers, managesOffers, offerDocumentHref, placeName, shownStatus,
 import { canBeSent, documentLabels, documentState, draftTemplateVersion, missingHelp, offerTimeline, templateProblem, waitingText, type TimelineEvent } from '../timeline';
 import { OfferStatusBadge } from '../ui';
 import { ExtendOffer, RecordAnswer, SendOffer, WithdrawOffer } from './offer-actions';
+import { ASK_SUPER_ADMIN, seesTemplates } from '../../templates/wording';
 
 // One job offer: what it says, where it stands (a timeline from drafted to the profile made), what filling in its
 // template lacks, and what HR can do next: preview or download the PDF, edit, send it by email or copy the link,
@@ -34,7 +35,7 @@ const small = 'btn min-h-9 px-3';
  * Why the offer's document can't be made: the one place the page says it (the sending buttons are left out meanwhile).
  * For a draft, or a sent offer that would be sent again (`status`: as shown, so not one past its last day).
  */
-function MissingValues({ offer: o, status }: { offer: OfferView; status: OfferView['status'] }) {
+function MissingValues({ offer: o, status, templates }: { offer: OfferView; status: OfferView['status']; templates: boolean }) {
   const problem = templateProblem(o);
   const help = o.status === 'draft' ? missingHelp(o) : [];
   if ((status !== 'draft' && status !== 'sent') || (!problem && help.length === 0)) return null;
@@ -49,7 +50,7 @@ function MissingValues({ offer: o, status }: { offer: OfferView; status: OfferVi
       </h2>
       {problem && (
         <p>
-          {problem.text} <Link href={problem.href}>Open the template</Link>
+          {problem.text} {templates ? <Link href={problem.href}>Open the template</Link> : ASK_SUPER_ADMIN}
         </p>
       )}
       {help.length > 0 && (
@@ -57,7 +58,7 @@ function MissingValues({ offer: o, status }: { offer: OfferView; status: OfferVi
           {help.map((m) => (
             <li key={m.tag}>
               <span className="font-semibold">{m.label}</span>: {m.what}{' '}
-              {m.href && m.linkText && (
+              {m.href && m.linkText && (templates || !m.href.startsWith('/templates')) && (
                 <Link href={m.href}>
                   {m.linkText}
                   <span className="sr-only">: {m.label}</span>
@@ -307,7 +308,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
         </p>
       </div>
 
-      <MissingValues offer={o} status={status} />
+      <MissingValues offer={o} status={status} templates={seesTemplates(user)} />
 
       {status === 'accepted' && !o.hiredAt && (
         <p role="alert" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">

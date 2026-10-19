@@ -14,6 +14,7 @@ import { loadDocuments } from '../documents/data';
 import { checkDocument } from '../documents/document-actions';
 import { MissingList } from '../documents/document-forms';
 import { DocumentItems, type DocumentAccess } from '../documents/document-rows';
+import { ASK_SUPER_ADMIN, seesTemplates } from '../../../templates/wording';
 import { itemTemplateHref, NOT_AVAILABLE, type CheckResult } from '../documents/wording';
 import {
   basicPrinted,
@@ -249,7 +250,7 @@ function readyText(r: Readiness): string {
 }
 
 /** For HR: whether each form offered can be generated now, or the details it still needs, each linked to where it is filled in. */
-function FormsReadiness({ forms, checks }: { forms: DocumentItem[]; checks: (CheckResult | null)[] }) {
+function FormsReadiness({ forms, checks, templates }: { forms: DocumentItem[]; checks: (CheckResult | null)[]; templates: boolean }) {
   return (
     <ProfileSection title="Readiness" note="Checked against what each form's template prints">
       <ul className="card">
@@ -260,12 +261,15 @@ function FormsReadiness({ forms, checks }: { forms: DocumentItem[]; checks: (Che
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h3 className="font-semibold">{titleCase(form.name)}</h3>
                 <span className={`badge ${READY_BADGE[r.state]}`}>{readyText(r)}</span>
-                {r.state === 'template' && (
-                  <Link href={itemTemplateHref(form)} className={`text-sm ${LINK}`}>
-                    {form.templateStatus === 'missing' ? 'Upload it in Templates' : 'Open the template'}
-                    <span className="sr-only"> for {form.name}</span>
-                  </Link>
-                )}
+                {r.state === 'template' &&
+                  (templates ? (
+                    <Link href={itemTemplateHref(form)} className={`text-sm ${LINK}`}>
+                      {form.templateStatus === 'missing' ? 'Upload it in Templates' : 'Open the template'}
+                      <span className="sr-only"> for {form.name}</span>
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-muted">{ASK_SUPER_ADMIN}</span>
+                  ))}
               </div>
               {r.state === 'missing' && <MissingList missing={r.missing} title="Fill these in before generating it." alert={false} />}
               {r.state === 'unchecked' && <p className="text-sm text-muted">{r.errors.join(' ')}</p>}
@@ -321,7 +325,7 @@ async function InsuranceForms({ profile: p, can }: { profile: EmployeeProfile; c
 
   return (
     <>
-      {can.act && forms.length > 0 && <FormsReadiness forms={forms} checks={checks} />}
+      {can.act && forms.length > 0 && <FormsReadiness forms={forms} checks={checks} templates={!!can.templates} />}
       <ProfileSection title="Forms" note={forms.length > 0 ? 'Generated from the templates, to print and sign' : undefined}>
         {forms.length > 0 ? <DocumentItems items={forms} employee={p} can={can} today={today} /> : <Dashed>{gapText ?? 'No social insurance forms apply yet.'}</Dashed>}
         {forms.length > 0 && gapText && <p className="text-sm text-muted">{gapText}</p>}
@@ -411,7 +415,7 @@ export async function InsuranceTab({ profile: p }: { profile: EmployeeProfile })
       <InsuranceDetails profile={p} />
       {canSeeEmployeeFiles(user) && (
         <Suspense fallback={<SectionLoading title="Forms" />}>
-          <InsuranceForms profile={p} can={{ act: p.access.edit, delete: canDelete(user) }} />
+          <InsuranceForms profile={p} can={{ act: p.access.edit, delete: canDelete(user), templates: seesTemplates(user) }} />
         </Suspense>
       )}
       {/* the employee file's, for those who see the Documents tab */}

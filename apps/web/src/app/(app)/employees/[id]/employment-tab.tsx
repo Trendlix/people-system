@@ -42,6 +42,7 @@ import { RaiseRequestsSection } from './raise-requests/raise-requests-section';
 import { hasPlans } from './advances/advances';
 import { AdvancesLoading, AdvancesSection, loadDeductionPlans } from './advances/advances-section';
 import { SalaryHistoryLoading, SalaryHistorySection } from './salary-history/salary-history-section';
+import { seesTemplates } from '../../templates/wording';
 
 // The Employment tab: everything about the job, in one place (owner, 16 October 2026: "there is no point of adding
 // employment then adding contract and no active employment without a contract, its like a loop for me"; the Contracts
@@ -481,7 +482,7 @@ function IssuedDocumentsSubTab({ profile: p, user }: { profile: EmployeeProfile;
     // (#contract-documents); here, not inside the part that loads, so the page finds it to scroll to at once
     <div id="contract-documents" className="scroll-mt-6 space-y-8">
       <Suspense fallback={<GeneratedDocumentsLoading />}>
-        <GeneratedDocuments employee={p} can={{ act: p.access.edit, delete: canDelete(user) }} />
+        <GeneratedDocuments employee={p} can={{ act: p.access.edit, delete: canDelete(user), templates: seesTemplates(user) }} />
       </Suspense>
     </div>
   );
