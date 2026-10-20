@@ -1,13 +1,20 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
+import { clearBiometric } from '@/lib/native';
 import type { FormState } from '@/lib/types';
 import { changePassword } from './actions';
 
 export function ChangePasswordForm() {
   const [state, formAction] = useActionState(changePassword, {} as FormState);
   const fid = useFieldIds();
+  // a changed password turns off fingerprint sign-in on every phone of theirs (owner, 20 October 2026: chose Face ID /
+  // fingerprint sign-in for the app; the API revokes the credentials): in the app, this phone's copy goes too, so it
+  // offers to turn it on again rather than ask for a fingerprint the server no longer takes. Nothing outside the app.
+  useEffect(() => {
+    if (state.message) void clearBiometric();
+  }, [state]);
   return (
     <form action={formAction} className="card max-w-xl space-y-5 p-6">
       <FormErrors errors={state.errors} />

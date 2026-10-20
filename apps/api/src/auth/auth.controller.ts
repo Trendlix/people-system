@@ -3,6 +3,8 @@ import type { Request, Response } from 'express';
 import { readToken } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
 import { CurrentActiveSession, CurrentUser, Public } from './decorators.js';
+import { DeviceCredentialsService, type DeviceView, type NewDevice } from './device-credentials.service.js';
+import { CreateDeviceDto, DeviceSignInDto } from './device.dto.js';
 import { LoginDto } from './login.dto.js';
 import { ChangePasswordDto } from './password.dto.js';
 import { setSessionCookie } from './session-cookie.js';
@@ -15,6 +17,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly sessions: SessionsService,
+    private readonly devices: DeviceCredentialsService,
   ) {}
 
   /** The website signs in for the person and passes on their browser's user agent and IP address (else the request's). */
@@ -67,9 +70,46 @@ export class AuthController {
     return this.sessions.endOwn(user, id);
   }
 
+  /** Changing one's password also ends one's other sessions and stops fingerprint sign-in on one's phones. */
   @Post('change-password')
   @HttpCode(204)
-  changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: SessionUser): Promise<void> {
-    return this.auth.changePassword(user.id, dto.currentPassword, dto.newPassword);
+  changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<void> {
+    return this.auth.changePassword(user.id, dto.currentPassword, dto.newPassword, session.id);
+  }
+
+  // Fingerprint sign-in in the app (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first password
+  // sign-in"; apps/mobile/README.md, Phase 3). Turned on from an app session (never while viewing as someone): the
+  // answer carries the secret this once, for the phone to keep behind the fingerprint.
+  @Post('devices')
+  @HttpCode(201)
+  createDevice(@Body() dto: CreateDeviceDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<NewDevice> {
+    return this.devices.create(user, session, dto);
+  }
+
+  /**
+   * The website signs in with the phone's credential for the person, as with a password (their app's user agent and IP
+   * address passed on): an ordinary app session and its cookie. Public, like login; refused with a 401 saying why.
+   */
+  @Public()
+  @Post('devices/sign-in')
+  @HttpCode(200)
+  async deviceSignIn(@Body() dto: DeviceSignInDto, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
+    const origin = { userAgent: dto.userAgent ?? req.headers['user-agent'] ?? null, ip: dto.ip ?? req.ip ?? null };
+    const { token, user } = await this.auth.deviceSignIn(dto.id, dto.secret, origin, dto.ip ?? null);
+    setSessionCookie(res, token, SESSION_HOURS * 60 * 60 * 1000);
+    return user;
+  }
+
+  /** Your Sessions: the phones that sign in as the user with a fingerprint (the one viewed as, while viewing as someone). */
+  @Get('devices')
+  listDevices(@CurrentUser() user: SessionUser): Promise<DeviceView[]> {
+    return this.devices.list(user.id);
+  }
+
+  /** Sign out beside one of one's phones: its fingerprint sign-in stops ('signed_out'). */
+  @Post('devices/:id/revoke')
+  @HttpCode(204)
+  revokeDevice(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<void> {
+    return this.devices.revokeOwn(user, id);
   }
 }

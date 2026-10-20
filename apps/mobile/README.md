@@ -222,6 +222,76 @@ The phone pages live in `apps/web/src/app/(phone)/app/` (their own layout, not t
 - Shell: a biometric plugin + secure storage plugin (Keychain/Keystore), no secret ever in plain storage.
 - Done when: second open of the APK signs in with the fingerprint; revoking the device forces the password.
 
+#### Phase 3 contract — what was built (20 October 2026)
+
+The owner chose Face ID / fingerprint sign-in for the app (20 October 2026). On Android it is the **fingerprint**: only
+a *strong* (Class 3) biometric can unlock a Keystore key, and many Android face unlocks are *weak* (Class 2), so on those
+phones the prompt takes the fingerprint only (a phone whose face unlock is Class 3, e.g. a Pixel 8 or later, may offer
+the face too). The shared rules: `packages/shared/src/device-credentials.ts`.
+
+**The API** (`apps/api/src/auth/`: `device-credentials.service.ts`, `device-rules.ts`, `user-devices.controller.ts`;
+table `device_credentials`, migration `20261020110000_device_credentials`):
+
+| Endpoint | Who | Body → answer |
+|---|---|---|
+| `POST /auth/devices` | the signed-in user, on an **app** session only, never while viewing as someone | `{ deviceName, platform: 'android' \| 'ios' }` → 201 `{ id, secret }`, the secret this once (32 random bytes, base64url). The user's active credential with the same device name and platform is revoked (`replaced`). 403 on a website session or while viewing as someone. |
+| `POST /auth/devices/sign-in` | public, like login | `{ id, secret, userAgent?, ip? }` → 200 `{ id, email, roles }` and the session cookie, like login: an ordinary **app** session (it replaces the user's older app session; the 15 minutes apply). 401 `{ message: 'Sign in with your password this time.', reason: 'unknown' \| 'revoked' \| 'expired' }`; 429 after 10 refusals of a credential, or 20 from one address, within 15 minutes. |
+| `GET /auth/devices` | the signed-in user (the one viewed as, while viewing) | → `[{ id, deviceName, platform, createdAt, lastUsedAt }]`, newest first: the ones that still sign in. |
+| `POST /auth/devices/:id/revoke` | the signed-in user, their own | → 204 (`signed_out`); another's: 404. |
+| `GET /users/:userId/devices` | Admin, Super Admin | → the same list for that user. |
+| `POST /users/:userId/devices/revoke` · `POST /users/:userId/devices/:id/revoke` | Admin, Super Admin; a Super Admin's only a Super Admin | → 200 `{ revoked: n }` (`revoked`). |
+
+- The table keeps the secret's SHA-256 only (`secret_hash`), compared in constant time; never the secret, nor in the
+  audit log. A credential signs in when it isn't revoked, its account is active, and it was used (or made) within the
+  last **90 days**; one past the 90 days is revoked (`expired`) when tried.
+- Revoked by themselves: deactivating the account (`deactivated`), a password change (`password_changed`: the user's
+  **other sessions end too**, on the website and the app), a reset by an Admin (`password_reset`).
+- Audit: `device_add` "Turned on fingerprint sign-in", `device_login` "Signed in with fingerprint" (also the Users
+  page's last sign-in), `device_login_failed` "Fingerprint sign-in refused" (the reason and the address, never the
+  secret), `device_revoke` "Turned off fingerprint sign-in".
+
+**The shell's plugin `TrendlixBiometric`** (`android/app/src/main/java/com/trendlix/people/TrendlixBiometricPlugin.java`,
+registered in `MainActivity.java`; AndroidX Biometric `androidx.biometric:biometric` **1.1.0**, the current stable, at
+`androidxBiometricVersion` in `variables.gradle`). An AES-256-GCM key in the Android Keystore that needs a strong
+biometric for every use (`setUserAuthenticationRequired(true)`, `setInvalidatedByBiometricEnrollment(true)`); the
+secret is encrypted with it behind the prompt, and only the ciphertext, its IV and the credential's id are kept, in the
+app's private preferences. The secret is never logged.
+
+| Method | Answer |
+|---|---|
+| `isAvailable()` | `{ available, reason?: 'NONE_ENROLLED' \| 'NO_HARDWARE' \| 'WEAK_ONLY' \| 'UNAVAILABLE', deviceName }` (`deviceName`: e.g. "Google Pixel 8"). |
+| `isEnrolled()` | `{ enrolled, id? }`: a secret is kept (and its key is still there). |
+| `enroll({ id, secret, title?, negativeButtonText? })` | the prompt (ENCRYPT) → `{ enrolled: true }`. |
+| `unlock({ title?, negativeButtonText? })` | the prompt (DECRYPT) → `{ id, secret }`. |
+| `clear()` | the key and what is kept are deleted → `{}`. |
+
+- Refusals are codes only: `CANCELLED` (closed, or "Use password"), `LOCKOUT` (too many tries), `KEY_INVALIDATED` (a
+  fingerprint was added or removed since: everything is cleared and the password is asked for), `NOT_AVAILABLE` (no
+  strong biometric enrolled, or nothing kept), `FAILED`.
+- The prompt's texts come from the page (no text for people in native code), with English defaults: "Sign in to TrendLIX
+  People" and "Use password".
+- One prompt at a time (a second call while one is open: `FAILED`); a prompt with no answer within 2 minutes is given up
+  as `CANCELLED`.
+- `capacitor.config.ts` sets `loggingBehavior: 'none'`: Capacitor's bridge would otherwise write every plugin call's
+  options and answer (the secret among them) to logcat in the debug APKs CI builds.
+
+**The website** (`apps/web`):
+- `lib/native.ts`: `biometricStatus()`, `enrollBiometric(id, secret)`, `unlockBiometric()`, `clearBiometric()` through
+  `pluginOf('TrendlixBiometric')`; outside the app all unavailable.
+- **Home (`/app`)**, inside the app, signed in with the password: "Use your fingerprint to sign in next time?" with
+  **Turn on** (a server action makes the credential, the page hands the secret to the plugin: never to localStorage)
+  and **Not now** (remembered on the phone). Not shown when the phone can't, it is already on, or while viewing as
+  someone.
+- **The sign-in page**, inside the app with a fingerprint kept: **Sign in with fingerprint**, asked once by itself when
+  the page opens, unless the person has just signed out (`?reason=signed_out`). Then a server action trades `{ id,
+  secret }` for the session cookie and opens `next` or `/app`. A 401 clears the phone's credential ("Sign in with your
+  password this time."); a changed fingerprint too ("Your fingerprints changed: sign in with your password.").
+- **Signing out in the app** keeps the fingerprint (the next open offers it) and lands on `/login?reason=signed_out`,
+  which doesn't ask for it by itself.
+- **Your Sessions**: "Fingerprint Sign-In", the person's phones (name, platform, added, last used) with Sign out; this
+  phone's clears the app's copy too. **Users page**: the person's phones beside their sessions, Sign out and Sign out all
+  devices (Admin, Super Admin).
+
 ### Phase 4 — Notifications
 - API: `push_devices` (user, platform, token, last seen), `notifications` (user, kind, title, body, link, read, created),
   an emitter called from the existing flows (leave/permission/claim/correction/raise request decided or waiting, a
@@ -298,7 +368,9 @@ What is in `apps/mobile` (the npm workspace `@trendlix/mobile`, installed from t
 - `android/` — generated by `npx cap add android` (Capacitor 8.5.3) and committed. The hand edits: the version lines
   in `android/app/build.gradle` (`MOBILE_VERSION_CODE` / `MOBILE_VERSION_NAME`, default 1 / `0.1.0`); Phase 2's
   permissions in `AndroidManifest.xml`, the app's own plugin `TrendlixLocationPlugin.java` registered in
-  `MainActivity.java`, and Google Play services' location in `app/build.gradle` and `variables.gradle`. After adding a
+  `MainActivity.java`, and Google Play services' location in `app/build.gradle` and `variables.gradle`; Phase 3's own
+  plugin `TrendlixBiometricPlugin.java` (registered there too) and AndroidX Biometric in the same two Gradle files (the
+  manifest is unchanged: the library brings `USE_BIOMETRIC`). After adding a
   plugin package, `npx cap sync android` rewrites `capacitor.settings.gradle` and `app/capacitor.build.gradle` (kept
   in git, never edited by hand).
   `npx cap sync android` recreates what is not kept in git: `app/src/main/assets/public` (a copy of `www`),
@@ -379,7 +451,18 @@ npm run open:android -w @trendlix/mobile       # opens the project in Android St
     phone with Developer options, set a fake-GPS app as the *mock location app*, check in, and see "Fake GPS
     suspected" on the press and on Daily Attendance (Only with flagged check-ins); New reimbursement → Take a photo of
     the receipt → send it; open a PDF receipt from the request's page.
-- [ ] Phase 3 — Face ID / fingerprint sign-in
+- [ ] Phase 3 — Face ID / fingerprint sign-in — **built 20 Oct 2026, pending CI** (the "Mobile (Android)" run with
+  AndroidX Biometric and the `TrendlixBiometric` plugin; see "Phase 3 contract — what was built" above).
+  - Done: the API's device credentials (table, endpoints, the limit on refusals, revoked on deactivation, password change
+    and reset; a password change also ends the other sessions), the shell's `TrendlixBiometric` plugin, the web's bridge,
+    the Home offer, the sign-in page's fingerprint button, Your Sessions' and the Users page's Fingerprint Sign-In.
+  - Checked on the Mac: API unit tests, `tsc`, lint and the whole e2e suite (`device-credentials.e2e-spec.ts` added);
+    `npx cap sync android`, `npx cap doctor`, `tsc` on the config; the Java compiled outside Gradle against the Capacitor
+    and AndroidX Biometric sources.
+  - Only CI and a phone can prove: the Gradle build with AndroidX Biometric 1.1.0; then on a phone: Turn on after a
+    password sign-in, the prompt, the next open signing in with the fingerprint, "Use password", a lockout after wrong
+    fingers, a fingerprint added since (the password asked for), Sign out on Your Sessions forcing the password, a
+    face-only phone (`WEAK_ONLY`: no offer), Android 7–9's fingerprint dialog.
 - [ ] Phase 4 — Notifications
 - [ ] Phase 5 — Polish and offline
 - [ ] Phase 6 — iPhone

@@ -48,10 +48,11 @@ export async function setActive(id: string, _prev: FormState, fd: FormData): Pro
   );
 }
 
+/** A reset also turns off fingerprint sign-in on their phones (20 October 2026): the API revokes the credentials. */
 export async function setPassword(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   return change(
     () => apiSend('PUT', `/users/${id}/password`, { password: text(fd, 'password') }),
-    'New temporary password set. Pass it on to the person; they should change it after signing in.',
+    'New temporary password set, and fingerprint sign-in turned off on their phones. Pass it on to the person; they should change it after signing in.',
   );
 }
 
@@ -75,6 +76,41 @@ export async function endUserSessions(id: string): Promise<FormState> {
 export async function endUserSession(id: string, sessionId: string): Promise<{ error?: string }> {
   try {
     await apiSend('POST', `/users/${id}/sessions/${encodeURIComponent(sessionId)}/end`);
+  } catch (err) {
+    if (err instanceof ApiError) return { error: err.messages.join(' ') };
+    throw err;
+  }
+  refresh();
+  return {};
+}
+
+/**
+ * Turns off fingerprint sign-in on every phone of the user's (owner, 20 October 2026: chose Face ID / fingerprint sign-in
+ * for the app): each asks for the password next time. The API refuses an Admin on a Super Admin's account (403).
+ */
+export async function signOutUserDevices(id: string): Promise<FormState> {
+  let revoked = 0;
+  try {
+    revoked = (await apiSend<{ revoked: number }>('POST', `/users/${id}/devices/revoke`))?.revoked ?? 0;
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: err.messages };
+    throw err;
+  }
+  refresh();
+  return {
+    message:
+      revoked === 1
+        ? 'Fingerprint sign-in turned off on 1 phone.'
+        : revoked
+          ? `Fingerprint sign-in turned off on ${revoked} phones.`
+          : 'They had no phones with fingerprint sign-in.',
+  };
+}
+
+/** Turns off fingerprint sign-in on one of the user's phones, as listed on their page. */
+export async function signOutUserDevice(id: string, deviceId: string): Promise<{ error?: string }> {
+  try {
+    await apiSend('POST', `/users/${id}/devices/${encodeURIComponent(deviceId)}/revoke`);
   } catch (err) {
     if (err instanceof ApiError) return { error: err.messages.join(' ') };
     throw err;

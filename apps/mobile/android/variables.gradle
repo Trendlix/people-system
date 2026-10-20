@@ -16,4 +16,7 @@ ext {
     // Google Play services' location: the app's own TrendlixLocationPlugin and @capacitor/geolocation use the same one
     // (README Phase 2, 20 October 2026; the plugin's default)
     playServicesLocationVersion = '21.3.0'
+    // AndroidX Biometric: the app's own TrendlixBiometricPlugin, fingerprint sign-in (README Phase 3, 20 October 2026);
+    // the current stable, checked on Google's Maven 20 October 2026 (the newer ones are alphas)
+    androidxBiometricVersion = '1.1.0'
 }

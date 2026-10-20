@@ -2,14 +2,17 @@ import { ROLES } from '@trendlix/shared';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
+import { FingerprintDevices } from '@/components/fingerprint-devices';
 import { SessionList } from '@/components/session-list';
+import { devicesNotLoadedText } from '@/lib/fingerprint';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { assignableRoles, canChangeAccount, isSuperAdmin } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
-import type { OpenSession, UserAccount } from '@/lib/types';
-import { endUserSession, endUserSessions, setActive, setPassword, updateRoles } from '../actions';
+import type { FingerprintDevice, OpenSession, UserAccount } from '@/lib/types';
+import { loadJson } from '../../payroll/load';
+import { endUserSession, endUserSessions, setActive, setPassword, signOutUserDevice, signOutUserDevices, updateRoles } from '../actions';
 import { BackLink, LINKED_BY_WORK_EMAIL, Loading, ONLY_SUPER_ADMIN_CHANGES, RequireAdmin, RoleBadges, StatusBadge } from '../ui';
-import { EndSessionsForm, PasswordForm, RolesForm, StatusForm } from '../user-forms';
+import { EndSessionsForm, PasswordForm, RolesForm, SignOutDevicesForm, StatusForm } from '../user-forms';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -22,7 +25,13 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 async function EditUser({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [me, user, sessions] = await Promise.all([getCurrentUser(), apiGet<UserAccount>(`/users/${id}`), apiGet<OpenSession[]>(`/users/${id}/sessions`)]);
+  // the phones as an API from before fingerprint sign-in answers them too (404: said in their place, not the 404 page)
+  const [me, user, sessions, devices] = await Promise.all([
+    getCurrentUser(),
+    apiGet<UserAccount>(`/users/${id}`),
+    apiGet<OpenSession[]>(`/users/${id}/sessions`),
+    loadJson<FingerprintDevice[]>(`/users/${id}/devices`),
+  ]);
   const self = me.id === user.id;
   // A Super Admin's roles, active flag and password are a Super Admin's to change: an Admin sees them read-only (the
   // API refuses with 403). Only a Super Admin is offered the Super Admin role.
@@ -115,6 +124,37 @@ async function EditUser({ params }: { params: Promise<{ id: string }> }) {
               {mayChange && sessions.length > 0 && <EndSessionsForm action={endUserSessions.bind(null, id)} email={user.email} />}
             </>
           )}
+        </section>
+
+        {/* the phones that sign in to the app with their fingerprint (owner, 20 October 2026: chose Face ID / fingerprint
+            sign-in for the app): an Admin signs them out, one or all; a Super Admin's, only a Super Admin. One's own:
+            Your Sessions. */}
+        <section className="card max-w-xl space-y-4 p-6">
+          <div>
+            <h3 className="font-semibold">Fingerprint Sign-In</h3>
+            <p className="mt-1 text-sm text-muted">
+              {self ? (
+                <>
+                  Your own phones are on <Link href="/account/sessions">Your Sessions</Link>.
+                </>
+              ) : (
+                'The phones they sign in to the TrendLIX People app on with a fingerprint. Signing a phone out asks for their password there next time.'
+              )}
+            </p>
+          </div>
+          {!self &&
+            (devices.kind === 'ok' ? (
+              <>
+                <FingerprintDevices
+                  devices={devices.value}
+                  end={mayChange ? signOutUserDevice.bind(null, id) : undefined}
+                  empty="No phone signs in with their fingerprint."
+                />
+                {mayChange && devices.value.length > 0 && <SignOutDevicesForm action={signOutUserDevices.bind(null, id)} email={user.email} />}
+              </>
+            ) : (
+              <p className="text-sm text-muted">{devicesNotLoadedText(devices)}</p>
+            ))}
         </section>
 
         {mayChange &&

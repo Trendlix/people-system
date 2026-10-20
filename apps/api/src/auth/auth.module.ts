@@ -5,7 +5,9 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthController } from './auth.controller.js';
 import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
+import { DeviceCredentialsService } from './device-credentials.service.js';
 import { SessionsService } from './sessions.service.js';
+import { UserDevicesController } from './user-devices.controller.js';
 import { UserSessionsController } from './user-sessions.controller.js';
 import { ViewAsController } from './view-as.controller.js';
 import { ViewAsService } from './view-as.service.js';
@@ -17,7 +19,7 @@ import { ViewAsService } from './view-as.service.js';
       useFactory: (config: ConfigService) => ({ secret: config.getOrThrow<string>('JWT_SECRET') }),
     }),
   ],
-  controllers: [AuthController, ViewAsController, UserSessionsController],
-  providers: [AuthService, SessionsService, ViewAsService, { provide: APP_GUARD, useClass: AuthGuard }],
+  controllers: [AuthController, ViewAsController, UserSessionsController, UserDevicesController],
+  providers: [AuthService, SessionsService, DeviceCredentialsService, ViewAsService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AuthModule {}

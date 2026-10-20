@@ -210,7 +210,10 @@ export function PasswordForm({ action, email }: { action: Action; email: string 
     <form action={formAction} className="card max-w-xl space-y-5 p-6">
       <div>
         <h3 className="font-semibold">Set a New Temporary Password</h3>
-        <p className="mt-1 text-sm text-muted">For when {email} has forgotten their password. The old one stops working at once.</p>
+        <p className="mt-1 text-sm text-muted">
+          For when {email} has forgotten their password. The old one stops working at once, and fingerprint sign-in on their
+          phones is turned off too.
+        </p>
       </div>
       <FormErrors errors={state.errors} />
       <TemporaryPassword id={fid('password')} label="New temporary password" />
@@ -237,6 +240,31 @@ export function EndSessionsForm({ action, email }: { action: Action; email: stri
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={pending} className="btn btn-secondary">
           {pending ? 'Ending…' : 'End all sessions'}
+        </button>
+        <Saved state={state} />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Turns off fingerprint sign-in on every phone of the user's (owner, 20 October 2026: chose Face ID / fingerprint sign-in
+ * for the app), after asking: each asks for the password next time.
+ */
+export function SignOutDevicesForm({ action, email }: { action: Action; email: string }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (!window.confirm(`Turn off fingerprint sign-in on every phone of ${email}? They sign in with their password there next time.`)) e.preventDefault();
+      }}
+      className="space-y-3"
+    >
+      <FormErrors errors={state.errors} />
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={pending} className="btn btn-secondary">
+          {pending ? 'Signing out…' : 'Sign out all devices'}
         </button>
         <Saved state={state} />
       </div>

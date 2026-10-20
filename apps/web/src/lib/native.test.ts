@@ -1,19 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  BIOMETRIC_PROMPTS,
+  biometricStatus,
   CAMERA_MESSAGES,
   cameraErrorKind,
   canTakePhoto,
-  canUseBiometrics,
+  clearBiometric,
+  enrollBiometric,
   geolocationSource,
   getPosition,
   isNativeApp,
+  NATIVE_LATER,
   nativePlatform,
+  OWN_BIOMETRIC_PLUGIN,
   photoName,
   pluginErrorCode,
   pluginOf,
   registerForPush,
   takePhoto,
-  verifyBiometrics,
+  unlockBiometric,
   type NativeHost,
 } from './native';
 
@@ -199,10 +204,145 @@ describe('a photo from the app’s camera', () => {
   });
 });
 
+// Phase 3 (owner, 20 October 2026: chose Face ID / fingerprint sign-in for the app; README: "Sign-in: Face ID /
+// fingerprint after the first password sign-in"): the app's own TrendlixBiometric plugin, faked here
+describe('the fingerprint, for signing in', () => {
+  /** A plugin refusal as the shell gives it: an error with its code. */
+  const refusal = (code: string) => Object.assign(new Error(`refused: ${code}`), { code });
+
+  /** The shell's TrendlixBiometric plugin, answering as given (each method replaceable). */
+  function biometric(overrides: Partial<Record<'isAvailable' | 'isEnrolled' | 'enroll' | 'unlock' | 'clear', (...args: never[]) => unknown>> = {}) {
+    return {
+      isAvailable: vi.fn(async () => ({ available: true, deviceName: 'Google Pixel 8' })),
+      isEnrolled: vi.fn(async () => ({ enrolled: false })),
+      enroll: vi.fn(async () => ({ enrolled: true })),
+      unlock: vi.fn(async () => ({ id: 'cred-1', secret: 's3cr3t-value' })),
+      clear: vi.fn(async () => ({})),
+      ...overrides,
+    };
+  }
+  const phone = (plugin: ReturnType<typeof biometric>, platform = 'android'): NativeHost => ({ Capacitor: app({ [OWN_BIOMETRIC_PLUGIN]: plugin }, platform) });
+
+  it('is unavailable outside the app, or in a shell without the plugin, and nothing is asked', async () => {
+    const off = { available: false, reason: 'NOT_APP', enrolled: false, id: null, deviceName: null, platform: null };
+    await expect(biometricStatus({})).resolves.toEqual(off);
+    await expect(biometricStatus(undefined)).resolves.toEqual(off);
+    await expect(biometricStatus({ Capacitor: app() })).resolves.toEqual(off);
+    const plugin = biometric();
+    await expect(biometricStatus({ Capacitor: { isNativePlatform: () => false, Plugins: { [OWN_BIOMETRIC_PLUGIN]: plugin } } })).resolves.toEqual(off);
+    expect(plugin.isAvailable).not.toHaveBeenCalled();
+    await expect(enrollBiometric('cred-1', 'secret', {})).resolves.toEqual({ kind: 'unavailable' });
+    await expect(unlockBiometric({})).resolves.toEqual({ kind: 'unavailable' });
+    await expect(clearBiometric({})).resolves.toBeUndefined();
+  });
+
+  it('says the phone can, with its name and kind, and nothing kept yet', async () => {
+    await expect(biometricStatus(phone(biometric()))).resolves.toEqual({
+      available: true,
+      reason: null,
+      enrolled: false,
+      id: null,
+      deviceName: 'Google Pixel 8',
+      platform: 'android',
+    });
+    const iphone = biometric({ isAvailable: async () => ({ available: true, deviceName: '  ' }) });
+    await expect(biometricStatus(phone(iphone, 'ios'))).resolves.toMatchObject({ available: true, deviceName: null, platform: 'ios' });
+  });
+
+  it('gives the credential’s id once one is kept (never the secret)', async () => {
+    const status = await biometricStatus(phone(biometric({ isEnrolled: async () => ({ enrolled: true, id: 'cred-7' }) })));
+    expect(status).toMatchObject({ available: true, enrolled: true, id: 'cred-7' });
+    expect(JSON.stringify(status)).not.toContain('secret');
+    // "enrolled" without an id isn't one
+    await expect(biometricStatus(phone(biometric({ isEnrolled: async () => ({ enrolled: true }) })))).resolves.toMatchObject({ enrolled: false, id: null });
+  });
+
+  it('says why the phone can’t, in the plugin’s words', async () => {
+    for (const reason of ['NONE_ENROLLED', 'NO_HARDWARE', 'WEAK_ONLY', 'UNAVAILABLE']) {
+      const plugin = biometric({ isAvailable: async () => ({ available: false, reason, deviceName: 'Samsung SM-A146B' }) });
+      await expect(biometricStatus(phone(plugin))).resolves.toMatchObject({ available: false, reason, deviceName: 'Samsung SM-A146B', platform: 'android' });
+    }
+    // a reason it never gives, or none
+    await expect(biometricStatus(phone(biometric({ isAvailable: async () => ({ available: false, reason: 'WHATEVER' }) })))).resolves.toMatchObject({ reason: 'UNAVAILABLE' });
+    await expect(biometricStatus(phone(biometric({ isAvailable: async () => ({}) })))).resolves.toMatchObject({ available: false, reason: 'UNAVAILABLE' });
+  });
+
+  it('is unavailable when the plugin throws, and never fails itself', async () => {
+    const throwing = biometric({ isAvailable: async () => Promise.reject(new Error('broken')) });
+    await expect(biometricStatus(phone(throwing))).resolves.toEqual({ available: false, reason: 'UNAVAILABLE', enrolled: false, id: null, deviceName: null, platform: 'android' });
+    const sync = biometric({
+      isAvailable: () => {
+        throw new Error('sync');
+      },
+    });
+    await expect(biometricStatus(phone(sync))).resolves.toMatchObject({ available: false, reason: 'UNAVAILABLE' });
+    // a failing isEnrolled: nothing kept, as far as the page knows
+    await expect(biometricStatus(phone(biometric({ isEnrolled: async () => Promise.reject(new Error('x')) })))).resolves.toMatchObject({ available: true, enrolled: false });
+  });
+
+  it('turns it on behind the fingerprint, with the page’s own prompt', async () => {
+    const plugin = biometric();
+    await expect(enrollBiometric('cred-1', 'secret-1', phone(plugin))).resolves.toEqual({ kind: 'enrolled' });
+    expect(plugin.enroll).toHaveBeenCalledWith({ id: 'cred-1', secret: 'secret-1', title: 'Turn on fingerprint sign-in', negativeButtonText: 'Cancel' });
+    expect(BIOMETRIC_PROMPTS.enroll).toEqual({ title: 'Turn on fingerprint sign-in', negativeButtonText: 'Cancel' });
+    // an answer that doesn't say so, or nothing to keep
+    await expect(enrollBiometric('cred-1', 'secret-1', phone(biometric({ enroll: async () => ({}) })))).resolves.toEqual({ kind: 'failed' });
+    await expect(enrollBiometric('', 'secret-1', phone(biometric()))).resolves.toEqual({ kind: 'failed' });
+  });
+
+  it('reads each refusal of turning it on', async () => {
+    const refusing = (code: string) => phone(biometric({ enroll: async () => Promise.reject(refusal(code)) }));
+    await expect(enrollBiometric('c', 's', refusing('CANCELLED'))).resolves.toEqual({ kind: 'cancelled' });
+    await expect(enrollBiometric('c', 's', refusing('LOCKOUT'))).resolves.toEqual({ kind: 'lockout' });
+    await expect(enrollBiometric('c', 's', refusing('NOT_AVAILABLE'))).resolves.toEqual({ kind: 'unavailable' });
+    await expect(enrollBiometric('c', 's', refusing('KEY_INVALIDATED'))).resolves.toEqual({ kind: 'failed' });
+    await expect(enrollBiometric('c', 's', refusing('FAILED'))).resolves.toEqual({ kind: 'failed' });
+    await expect(enrollBiometric('c', 's', phone(biometric({ enroll: async () => Promise.reject(new Error('no code')) })))).resolves.toEqual({ kind: 'failed' });
+  });
+
+  it('unlocks the credential with the fingerprint, the sign-in prompt offering the password', async () => {
+    const plugin = biometric();
+    await expect(unlockBiometric(phone(plugin))).resolves.toEqual({ kind: 'unlocked', id: 'cred-1', secret: 's3cr3t-value' });
+    expect(plugin.unlock).toHaveBeenCalledWith({ title: 'Sign in to TrendLIX People', negativeButtonText: 'Use password' });
+    // an answer without a string id and secret
+    for (const answer of [{}, { id: 'cred-1' }, { secret: 'x' }, { id: 7, secret: 'x' }, { id: 'cred-1', secret: '' }, null]) {
+      await expect(unlockBiometric(phone(biometric({ unlock: async () => answer })))).resolves.toEqual({ kind: 'failed' });
+    }
+  });
+
+  it('reads each refusal of signing in, a changed fingerprint among them', async () => {
+    const refusing = (code: string) => phone(biometric({ unlock: async () => Promise.reject(refusal(code)) }));
+    await expect(unlockBiometric(refusing('CANCELLED'))).resolves.toEqual({ kind: 'cancelled' });
+    await expect(unlockBiometric(refusing('LOCKOUT'))).resolves.toEqual({ kind: 'lockout' });
+    await expect(unlockBiometric(refusing('KEY_INVALIDATED'))).resolves.toEqual({ kind: 'key_invalidated' });
+    await expect(unlockBiometric(refusing('NOT_AVAILABLE'))).resolves.toEqual({ kind: 'unavailable' });
+    await expect(unlockBiometric(refusing('FAILED'))).resolves.toEqual({ kind: 'failed' });
+    await expect(unlockBiometric(refusing('SOMETHING_ELSE'))).resolves.toEqual({ kind: 'failed' });
+    const sync = biometric({
+      unlock: () => {
+        throw refusal('CANCELLED');
+      },
+    });
+    await expect(unlockBiometric(phone(sync))).resolves.toEqual({ kind: 'cancelled' });
+  });
+
+  it('clears what the phone keeps, and never fails doing it', async () => {
+    const plugin = biometric();
+    await expect(clearBiometric(phone(plugin))).resolves.toBeUndefined();
+    expect(plugin.clear).toHaveBeenCalledOnce();
+    await expect(clearBiometric(phone(biometric({ clear: async () => Promise.reject(new Error('x')) })))).resolves.toBeUndefined();
+    const sync = biometric({
+      clear: () => {
+        throw new Error('sync');
+      },
+    });
+    await expect(clearBiometric(phone(sync))).resolves.toBeUndefined();
+  });
+});
+
 describe('the later phases', () => {
-  it('offers nothing native yet: Face ID or a fingerprint, push', async () => {
-    await expect(canUseBiometrics()).resolves.toBe(false);
-    await expect(verifyBiometrics('Sign in to TrendLIX People')).resolves.toBe(false);
+  it('offers no push yet', async () => {
     await expect(registerForPush()).resolves.toBeNull();
+    expect(Object.keys(NATIVE_LATER)).toEqual(['push']);
   });
 });

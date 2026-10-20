@@ -27,7 +27,7 @@ export interface UserView {
   isActive: boolean;
   roles: Role[];
   createdAt: Date;
-  /** The latest successful sign-in, from the audit log. */
+  /** The latest successful sign-in (with the password or the fingerprint), from the audit log. */
   lastSignInAt: Date | null;
   /** The employee whose work email is this user's email. There is no other link between the two. */
   employee: { id: string; employeeCode: string; fullNameEn: string } | null;
@@ -128,9 +128,12 @@ export class UsersService {
       }
       if (diff.isActive) await tx.user.update({ where: { id }, data: { isActive: after.isActive } });
       // deactivating signs them out at once: their open sessions end (sessions kept on the server, 20 October 2026), so
-      // reactivating the account doesn't bring an old one back; the update's entry records it
+      // reactivating the account doesn't bring an old one back; nor does their phones' fingerprint sign-in (README
+      // Phase 3, 20 October 2026: revoked, 'deactivated'). The update's entry records it.
       if (diff.isActive && !after.isActive) {
-        await tx.session.updateMany({ where: { userId: id, endedAt: null }, data: { endedAt: new Date(), endReason: 'revoked' } });
+        const now = new Date();
+        await tx.session.updateMany({ where: { userId: id, endedAt: null }, data: { endedAt: now, endReason: 'revoked' } });
+        await tx.deviceCredential.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: now, revokeReason: 'deactivated' } });
       }
     });
 
@@ -138,12 +141,21 @@ export class UsersService {
     return this.get(id);
   }
 
-  /** An admin sets a new temporary password, e.g. when someone has forgotten theirs; a Super Admin's, only a Super Admin. */
+  /**
+   * An admin sets a new temporary password, e.g. when someone has forgotten theirs; a Super Admin's, only a Super Admin.
+   * Their phones' fingerprint sign-in stops too ('password_reset'; README Phase 3, 20 October 2026): the new password
+   * first. Their open sessions stay: the Users page's End all sessions is beside it.
+   */
   async setPassword(id: string, dto: SetPasswordDto, actor: SessionUser): Promise<void> {
     const user = await this.get(id);
     if (isSuperAdmin(user) && !isSuperAdmin(actor)) throw new ForbiddenException(SUPER_ADMIN_ACCOUNT_ONLY);
-    await this.prisma.user.update({ where: { id }, data: { passwordHash: await hashPassword(dto.password) } });
-    await this.audit.record({ userId: actor.id, action: 'password_reset', entityType: ENTITY, entityId: id });
+    const passwordHash = await hashPassword(dto.password);
+    const devicesRevoked = await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { passwordHash } });
+      const { count } = await tx.deviceCredential.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date(), revokeReason: 'password_reset' } });
+      return count;
+    });
+    await this.audit.record({ userId: actor.id, action: 'password_reset', entityType: ENTITY, entityId: id, diff: { devicesRevoked } });
   }
 
   private async roleRows(keys: Role[]) {
@@ -158,7 +170,8 @@ export class UsersService {
     const [signIns, employees] = await Promise.all([
       this.prisma.auditLog.groupBy({
         by: ['entityId'],
-        where: { action: 'login', entityType: ENTITY, entityId: { in: users.map((u) => u.id) } },
+        // with the password, or with the fingerprint in the app (20 October 2026)
+        where: { action: { in: ['login', 'device_login'] }, entityType: ENTITY, entityId: { in: users.map((u) => u.id) } },
         _max: { at: true },
       }),
       this.prisma.employee.findMany({

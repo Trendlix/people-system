@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
+import { FingerprintSignIn } from './fingerprint-sign-in';
 import { LoginForm } from './login-form';
 import { SignedOutNotice } from './signed-out-notice';
 
@@ -24,7 +25,10 @@ export default function LoginPage({ searchParams }: PageProps<'/login'>) {
           <Suspense fallback={null}>
             <SignedOutNotice searchParams={searchParams} />
           </Suspense>
+          {/* in the app, with a sign-in kept behind the phone's fingerprint: Sign in with fingerprint above the password
+              (owner, 20 October 2026: chose Face ID / fingerprint sign-in for the app); nothing elsewhere */}
           <Suspense>
+            <FingerprintSignIn />
             <LoginForm />
           </Suspense>
         </div>

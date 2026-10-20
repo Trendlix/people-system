@@ -1,9 +1,12 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { sessionKindOf } from '@trendlix/shared';
+import { sessionKindOf, type SessionKind } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { DeviceCredentialsService } from './device-credentials.service.js';
+import { isCredentialId } from './device-rules.js';
 import { hashPassword, verifyPassword } from './password.js';
+import { keptIp } from './session-rules.js';
 import { SESSION_HOURS, sessionUserOf, WITH_ROLES, type Me, type SessionUser } from './session-user.js';
 import { SessionsService, type ActiveSession } from './sessions.service.js';
 import { sessionClaims, tokenPayload } from './view-as.js';
@@ -24,6 +27,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
     private readonly sessions: SessionsService,
+    private readonly devices: DeviceCredentialsService,
   ) {}
 
   /**
@@ -51,11 +55,38 @@ export class AuthService {
     }
 
     const kind = sessionKindOf(origin.userAgent);
-    const exp = Math.floor(Date.now() / 1000) + SESSION_HOURS * 60 * 60;
-    const sid = await this.sessions.start(user.id, kind, origin, new Date(exp * 1000));
+    const { sid, token } = await this.openSession(user.id, kind, origin);
     await this.audit.record({ userId: user.id, action: 'login', entityType: 'user', entityId: user.id, diff: { kind, sessionId: sid } });
-    const token = await this.jwt.signAsync(tokenPayload({ sub: user.id, sid, viewAs: null, act: false, exp }));
     return { token, user: sessionUserOf(user) };
+  }
+
+  /**
+   * Signing in with the fingerprint in the app (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first
+   * password sign-in"; apps/mobile/README.md, Phase 3): the phone's device credential, unlocked by the fingerprint,
+   * traded for an ordinary app session, as a password sign-in in the app starts: it ends the user's open app session (the
+   * new one wins), and the 15 minutes apply as ever. Refused (401 with the reason, 429 after too many refusals) by the
+   * device credentials service. `limitIp`: the person's address as the website saw it, counted for the limit.
+   */
+  async deviceSignIn(
+    id: string,
+    secret: string,
+    origin: { userAgent?: string | null; ip?: string | null },
+    limitIp: string | null,
+  ): Promise<{ token: string; user: SessionUser }> {
+    const ip = keptIp(limitIp);
+    await this.devices.ensureNotLimited(isCredentialId(id) ? id : null, ip);
+    const { credentialId, user } = await this.devices.verify(id, secret, ip);
+    const { sid, token } = await this.openSession(user.id, 'app', origin);
+    await this.audit.record({ userId: user.id, action: 'device_login', entityType: 'user', entityId: user.id, diff: { kind: 'app', sessionId: sid, credentialId } });
+    return { token, user: sessionUserOf(user) };
+  }
+
+  /** A new session of `kind` for the user (ending their open one of the same kind), and its token, for 8 hours. */
+  private async openSession(userId: string, kind: SessionKind, origin: { userAgent?: string | null; ip?: string | null }): Promise<{ sid: string; token: string }> {
+    const exp = Math.floor(Date.now() / 1000) + SESSION_HOURS * 60 * 60;
+    const sid = await this.sessions.start(userId, kind, origin, new Date(exp * 1000));
+    const token = await this.jwt.signAsync(tokenPayload({ sub: userId, sid, viewAs: null, act: false, exp }));
+    return { sid, token };
   }
 
   /**
@@ -91,16 +122,31 @@ export class AuthService {
     };
   }
 
-  /** A signed-in person changes their own password; the current one is asked for again. */
-  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  /**
+   * A signed-in person changes their own password; the current one is asked for again. Their phones' fingerprint sign-in
+   * stops ('password_changed': turned on again from the app after signing in with the new password; README Phase 3, 20
+   * October 2026), and their other open sessions end ('revoked'), on the website and in the app: only the one they
+   * changed it from stays (`currentSessionId`).
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string, currentSessionId: string): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { passwordHash: true } });
     const ok = user.passwordHash ? await verifyPassword(currentPassword, user.passwordHash) : false;
     if (!ok) throw new BadRequestException('Your current password is not correct.');
     if (newPassword === currentPassword) {
       throw new BadRequestException('Choose a new password that is different from your current one.');
     }
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(newPassword) } });
-    await this.audit.record({ userId, action: 'password_change', entityType: 'user', entityId: userId });
+    const passwordHash = await hashPassword(newPassword);
+    const now = new Date();
+    const { sessionsEnded, devicesRevoked } = await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+      const sessions = await tx.session.updateMany({
+        where: { userId, endedAt: null, expiresAt: { gt: now }, id: { not: currentSessionId } },
+        data: { endedAt: now, endReason: 'revoked' },
+      });
+      const devices = await tx.deviceCredential.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now, revokeReason: 'password_changed' } });
+      return { sessionsEnded: sessions.count, devicesRevoked: devices.count };
+    });
+    await this.audit.record({ userId, action: 'password_change', entityType: 'user', entityId: userId, diff: { sessionsEnded, devicesRevoked } });
   }
 
   private async ensureNotLockedOut(email: string): Promise<void> {

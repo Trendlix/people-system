@@ -10,8 +10,10 @@ import { readLocation, LOCATION_GIVE_UP_MS, LOCATION_OPTIONS, type LocationResul
 // message when refused) … Android mock location → mock: true on the punch"; "Receipts: the Camera plugin inside the
 // app"): the location for a check-in from the app's own TrendlixLocation plugin, which tells a mock (fake GPS)
 // location, else the Geolocation plugin, else the browser's; a photo from the app's camera as a File for the forms.
-// Face ID / fingerprint (Phase 3) and push notifications (Phase 4) are stubs that say they aren't there yet, so the
-// pages can be written against them now. No "@/" imports: it is unit tested.
+// Phase 3 (owner, 20 October 2026: chose Face ID / fingerprint sign-in for the app; README: "Sign-in: Face ID /
+// fingerprint after the first password sign-in"): the app's own TrendlixBiometric plugin keeps the sign-in's secret
+// behind the fingerprint. Push notifications (Phase 4) are a stub that says it isn't there yet, so the pages can be
+// written against it now. No "@/" imports: it is unit tested.
 
 // ---------- what the shell puts on the page ----------
 
@@ -279,24 +281,165 @@ export async function takePhoto(win: NativeHost | undefined = host(), load: (add
   }
 }
 
+// ---------- the fingerprint, for signing in (Phase 3) ----------
+
+/** The name the shell registers its own biometric plugin under (apps/mobile/android, TrendlixBiometricPlugin.java). */
+export const OWN_BIOMETRIC_PLUGIN = 'TrendlixBiometric';
+
+/**
+ * The app's own biometric plugin (Phase 3, 20 October 2026; apps/mobile/README.md, "Phase 3 contract"): an AES key in the
+ * Android Keystore that needs a strong biometric (on Android, the fingerprint) for every use; the sign-in's secret is
+ * kept encrypted with it, behind the prompt. It refuses with a code: CANCELLED (closed, or "Use password"), LOCKOUT (too
+ * many tries), KEY_INVALIDATED (a fingerprint added or removed since: everything cleared), NOT_AVAILABLE, FAILED. The
+ * prompt's texts come from the page.
+ */
+export interface TrendlixBiometricPlugin {
+  isAvailable(): Promise<{ available: boolean; reason?: string; deviceName?: string }>;
+  isEnrolled(): Promise<{ enrolled: boolean; id?: string }>;
+  enroll(options: { id: string; secret: string; title?: string; negativeButtonText?: string }): Promise<{ enrolled: boolean }>;
+  unlock(options?: { title?: string; negativeButtonText?: string }): Promise<{ id?: string; secret?: string }>;
+  clear(): Promise<unknown>;
+}
+
+/** The prompt's texts (no text for people in native code): turning it on, and signing in. */
+export const BIOMETRIC_PROMPTS = {
+  enroll: { title: 'Turn on fingerprint sign-in', negativeButtonText: 'Cancel' },
+  unlock: { title: 'Sign in to TrendLIX People', negativeButtonText: 'Use password' },
+} as const;
+
+/** Why the fingerprint can't sign in here: not the app (or a shell without the plugin), or what the phone said. */
+export type BiometricUnavailableReason = 'NOT_APP' | 'NONE_ENROLLED' | 'NO_HARDWARE' | 'WEAK_ONLY' | 'UNAVAILABLE';
+
+const PHONE_REASONS: readonly BiometricUnavailableReason[] = ['NONE_ENROLLED', 'NO_HARDWARE', 'WEAK_ONLY', 'UNAVAILABLE'];
+
+/**
+ * What the phone can do: whether a strong biometric can unlock (`reason` why not, null when it can), whether a sign-in is
+ * kept behind it (`id`: the credential's id, never the secret), the phone's own name ("Google Pixel 8") and its kind.
+ */
+export interface BiometricStatus {
+  available: boolean;
+  reason: BiometricUnavailableReason | null;
+  enrolled: boolean;
+  id: string | null;
+  deviceName: string | null;
+  platform: 'android' | 'ios' | null;
+}
+
+/** The plugin, when the shell carries one that answers to it; null outside the app. */
+function biometricPlugin(win: NativeHost | undefined): TrendlixBiometricPlugin | null {
+  const plugin = pluginOf<TrendlixBiometricPlugin>(OWN_BIOMETRIC_PLUGIN, win);
+  return plugin && typeof plugin.isAvailable === 'function' && typeof plugin.unlock === 'function' ? plugin : null;
+}
+
+const filled = (value: unknown): value is string => typeof value === 'string' && value.trim() !== '';
+
+/**
+ * What the phone can do for fingerprint sign-in. Outside the app, or a shell without the plugin: not available
+ * (NOT_APP), nothing kept. A plugin that fails to answer: not available (UNAVAILABLE). Never throws.
+ */
+export async function biometricStatus(win: NativeHost | undefined = host()): Promise<BiometricStatus> {
+  const off = (reason: BiometricUnavailableReason): BiometricStatus => ({ available: false, reason, enrolled: false, id: null, deviceName: null, platform: null });
+  const plugin = biometricPlugin(win);
+  if (!plugin) return off('NOT_APP');
+  const kind = nativePlatform(win);
+  const platform = kind === 'web' ? null : kind;
+  let answer: Awaited<ReturnType<TrendlixBiometricPlugin['isAvailable']>>;
+  try {
+    answer = await plugin.isAvailable();
+  } catch {
+    return { ...off('UNAVAILABLE'), platform };
+  }
+  const deviceName = filled(answer?.deviceName) ? answer.deviceName.trim() : null;
+  const available = answer?.available === true;
+  const said = answer?.reason as BiometricUnavailableReason | undefined;
+  const reason = available ? null : said && PHONE_REASONS.includes(said) ? said : 'UNAVAILABLE';
+  let kept: Awaited<ReturnType<TrendlixBiometricPlugin['isEnrolled']>> | null = null;
+  try {
+    kept = typeof plugin.isEnrolled === 'function' ? await plugin.isEnrolled() : null;
+  } catch {
+    kept = null;
+  }
+  const id = kept?.enrolled === true && filled(kept.id) ? kept.id : null;
+  return { available, reason, enrolled: id !== null, id, deviceName, platform };
+}
+
+/** Turning it on: kept behind the fingerprint; closed; too many tries; no strong biometric here; anything else. */
+export type BiometricEnrollResult = { kind: 'enrolled' } | { kind: 'cancelled' } | { kind: 'lockout' } | { kind: 'unavailable' } | { kind: 'failed' };
+
+/** Signing in: the credential, unlocked; closed; too many tries; the fingerprints changed (all cleared); none here; anything else. */
+export type BiometricUnlockResult =
+  | { kind: 'unlocked'; id: string; secret: string }
+  | { kind: 'cancelled' }
+  | { kind: 'lockout' }
+  | { kind: 'key_invalidated' }
+  | { kind: 'unavailable' }
+  | { kind: 'failed' };
+
+/** A plugin refusal's code, as a result's kind. */
+function refusalKind(err: unknown): 'cancelled' | 'lockout' | 'key_invalidated' | 'unavailable' | 'failed' {
+  switch (codeOf(err)) {
+    case 'CANCELLED':
+      return 'cancelled';
+    case 'LOCKOUT':
+      return 'lockout';
+    case 'KEY_INVALIDATED':
+      return 'key_invalidated';
+    case 'NOT_AVAILABLE':
+      return 'unavailable';
+    default:
+      return 'failed';
+  }
+}
+
+/**
+ * Keeps the credential the API just made behind the phone's fingerprint (the prompt: "Turn on fingerprint sign-in").
+ * The secret goes to the plugin only: never logged, never kept by the page. Never throws.
+ */
+export async function enrollBiometric(id: string, secret: string, win: NativeHost | undefined = host()): Promise<BiometricEnrollResult> {
+  const plugin = biometricPlugin(win);
+  if (!plugin || typeof plugin.enroll !== 'function') return { kind: 'unavailable' };
+  if (!filled(id) || !filled(secret)) return { kind: 'failed' };
+  try {
+    const answer = await plugin.enroll({ id, secret, ...BIOMETRIC_PROMPTS.enroll });
+    return answer?.enrolled === true ? { kind: 'enrolled' } : { kind: 'failed' };
+  } catch (err) {
+    const kind = refusalKind(err);
+    // a key changed while turning it on is a failure like any other: the page asks again
+    return { kind: kind === 'key_invalidated' ? 'failed' : kind };
+  }
+}
+
+/**
+ * Asks for the fingerprint to sign in (the prompt: "Sign in to TrendLIX People", "Use password"), giving the credential
+ * it unlocks, for the sign-in action only. An answer without both is a failure. Never throws.
+ */
+export async function unlockBiometric(win: NativeHost | undefined = host()): Promise<BiometricUnlockResult> {
+  const plugin = biometricPlugin(win);
+  if (!plugin) return { kind: 'unavailable' };
+  try {
+    const answer = await plugin.unlock({ ...BIOMETRIC_PROMPTS.unlock });
+    return filled(answer?.id) && filled(answer?.secret) ? { kind: 'unlocked', id: answer.id, secret: answer.secret } : { kind: 'failed' };
+  } catch (err) {
+    return { kind: refusalKind(err) };
+  }
+}
+
+/** Forgets the phone's credential (the key and what is kept): the API refused it, or it was signed out. Never rejects. */
+export async function clearBiometric(win: NativeHost | undefined = host()): Promise<void> {
+  const plugin = pluginOf<TrendlixBiometricPlugin>(OWN_BIOMETRIC_PLUGIN, win);
+  try {
+    if (plugin && typeof plugin.clear === 'function') await plugin.clear();
+  } catch {
+    // nothing kept, or the plugin failed: the API no longer takes it either way
+  }
+}
+
 // ---------- later phases (stubs) ----------
 
 /** Why a native feature isn't offered yet: the phase that adds it. */
 export const NATIVE_LATER = {
-  biometrics: 'Phase 3: Face ID or a fingerprint after the first sign-in with the password.',
   push: 'Phase 4: notifications on the phone. Until then nothing is sent.',
 } as const;
-
-/** Whether Face ID or a fingerprint can sign in (Phase 3). Not yet: always false. */
-export async function canUseBiometrics(): Promise<boolean> {
-  return false;
-}
-
-/** Asks for Face ID or a fingerprint (Phase 3), saying why. Not yet: always false (not verified). */
-export async function verifyBiometrics(reason: string): Promise<boolean> {
-  void reason;
-  return false;
-}
 
 /** Registers the phone for push notifications (Phase 4), giving its token to send to the website. Not yet: null. */
 export async function registerForPush(): Promise<{ token: string; platform: 'android' | 'ios' } | null> {

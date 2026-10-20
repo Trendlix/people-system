@@ -392,6 +392,10 @@ export * from './attendance-corrections.js';
 // the app's kinds, why one ends, the 15 minutes for HR, Admin and Super Admin, and the sign-in page's words
 export * from './sessions.js';
 
+// fingerprint sign-in in the app (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first password
+// sign-in"): the phones, why a credential stops working, the 90 days without use, and the refused sign-in's words
+export * from './device-credentials.js';
+
 // check-ins locked to the office network (owner, 20 October 2026: "allow me to lock checkin's to wifi name or ip,
 // whatever is right"): IP addresses and ranges, the office's networks, who is locked (Office staff, unless HR lets them
 // check in from anywhere), and the address the website signs for the API

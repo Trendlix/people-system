@@ -22,6 +22,9 @@ const config: CapacitorConfig = {
   // lets the website's server tell a request from the app ("TrendLIXPeople") from one from a phone's browser; the
   // pages themselves check for window.Capacitor (apps/web/src/lib/native.ts)
   appendUserAgent: 'TrendLIXPeople',
+  // no bridge logging, even in the debug APKs CI builds: Capacitor would otherwise write every plugin call's options and
+  // answer to logcat, and the fingerprint sign-in's secret is one of them (README Phase 3, 20 October 2026: never logged)
+  loggingBehavior: 'none',
   server: {
     url: `${SITE}/app`,
     // the site only: every other link (a PDF on another domain, a map, a phone number) opens outside the app

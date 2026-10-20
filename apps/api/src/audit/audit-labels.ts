@@ -78,6 +78,12 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   create: 'Created',
   decline: 'Declined',
   delete: 'Deleted',
+  // fingerprint sign-in in the app (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first password
+  // sign-in"); never the secret
+  device_add: 'Turned on fingerprint sign-in',
+  device_login: 'Signed in with fingerprint',
+  device_login_failed: 'Fingerprint sign-in refused',
+  device_revoke: 'Turned off fingerprint sign-in',
   done: 'Completed',
   download_unprotected: 'Downloaded unprotected',
   end: 'Ended',

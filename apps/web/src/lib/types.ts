@@ -6,6 +6,7 @@ import type {
   ContractKind,
   ContractStatus,
   Degree,
+  DevicePlatform,
   EducationGrade,
   EmployeeStatus,
   EmploymentType,
@@ -725,6 +726,20 @@ export interface OpenSession {
   userAgent: string | null;
   /** The session this page was asked with: "This device". */
   current: boolean;
+}
+
+/**
+ * A phone that signs in to the TrendLIX People app with a fingerprint (owner, 20 October 2026: chose Face ID /
+ * fingerprint sign-in for the app; README: "Sign-in: Face ID / fingerprint after the first password sign-in"), as Your
+ * Sessions and the Users page list it (GET /auth/devices, GET /users/:id/devices): only the ones that still sign in,
+ * newest first. `lastUsedAt`: its last fingerprint sign-in; null when never used.
+ */
+export interface FingerprintDevice {
+  id: string;
+  deviceName: string;
+  platform: DevicePlatform;
+  createdAt: string;
+  lastUsedAt: string | null;
 }
 
 export interface UserAccount {

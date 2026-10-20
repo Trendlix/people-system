@@ -83,8 +83,30 @@ model User {
   correctionsMade    AttendanceCorrection[]     @relation("AttendanceCorrectionCreation") // attendance corrections this user asked for, or made directly as HR
   correctionSteps    AttendanceCorrectionStep[] @relation("AttendanceCorrectionStepActor") // steps of attendance corrections this user took
   sessions           Session[] // this user's sign-ins, active and ended
+  deviceCredentials  DeviceCredential[] // the phones this user signs in on with a fingerprint, active and revoked
 
   @@map("users")
+}
+
+// A phone's fingerprint sign-in (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first password
+// sign-in"; apps/mobile/README.md, Phase 3): the API gave the phone a random secret, kept here only as its SHA-256, which
+// the phone keeps behind the fingerprint and trades for an ordinary app session. One active a user per phone (device name
+// and platform). It stops signing in when revoked (DEVICE_REVOKE_REASONS) or after 90 days without use. The rules:
+// packages/shared device-credentials.ts and apps/api/src/auth/device-rules.ts.
+model DeviceCredential {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceName   String    @map("device_name") // what the phone calls itself, e.g. "Google Pixel 8", up to 100 characters
+  platform     String // DEVICE_PLATFORMS: android, ios
+  secretHash   String    @unique @map("secret_hash") // SHA-256 of the secret, in hex; never the secret
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz // the last fingerprint sign-in; null until the first
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz
+  revokeReason String?   @map("revoke_reason") // DEVICE_REVOKE_REASONS
+
+  @@index([userId, revokedAt])
+  @@map("device_credentials")
 }
 
 // A sign-in, kept on the server (owner, 20 October 2026: "make any admin or HR session to be valid for 15 minutes

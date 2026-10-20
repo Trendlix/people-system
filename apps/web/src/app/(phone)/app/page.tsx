@@ -17,6 +17,7 @@ import { loadHolidayYears, loadMyBalances, loadMyLeave, loadMyPermissionMonth, l
 import { permissionDayText, permissionHoursLine, permissionInDaysText, upcomingPermissions } from '../../(app)/leave/permissions';
 import { LeaveStatusBadge } from '../../(app)/leave/ui';
 import { approveCount } from './approve-count';
+import { FingerprintOffer } from './fingerprint-offer';
 import { askOptions } from './requests/new/options';
 import { decidesSomething } from './tabs';
 import { PhoneCard, PhoneLoading, Quiet, RowLink, RowList } from './ui';
@@ -235,6 +236,9 @@ async function Home() {
           </Link>
         </p>
       )}
+      {/* fingerprint sign-in next time (owner, 20 October 2026: chose Face ID / fingerprint sign-in for the app): offered
+          in the app on an app session, never while viewing as someone; the phone decides whether it can */}
+      {!user.viewAs && user.session?.kind === 'app' && <FingerprintOffer />}
       {/* checking in (19 October 2026), the first thing on the phone: a current employment's */}
       {profile?.employment && (
         <Suspense fallback={<CardLoading title="Today" />}>
