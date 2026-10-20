@@ -447,6 +447,38 @@ describe('Migrations (e2e)', () => {
     await step('ceo_decision', 'approve', 'annual', 'performance');
   });
 
+  it('deductions before tax: every one there is stays after tax, only a Recurring deduction may be before tax, the limit empty or above 0 (owner, 20 October 2026)', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_before_tax_deductions'))!;
+    await migratedUpTo(migration);
+    // before: a recurring deduction, its month's Recurring deduction, and a one-off deduction
+    await db.query(`
+      INSERT INTO employees (id, employee_code, full_name_en, full_name_ar, updated_at) VALUES ('00000000-0000-4000-8000-0000000000e1', 'EMP-0001', 'Omar', 'عمر', now());
+      INSERT INTO recurring_deductions (id, employee_id, name, amount, start_month, updated_at)
+        VALUES ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000e1', 'Medical subscription', 350, '2026-11-01', now());
+      INSERT INTO payroll_adjustments (id, employee_id, month, kind, type, taxed, amount, reason, recurring_id, updated_at) VALUES
+        ('00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000e1', '2026-11-01', 'deduction', 'recurring', false, 350, 'Medical subscription', '00000000-0000-4000-8000-0000000000b1', now()),
+        ('00000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-0000000000e1', '2026-11-01', 'deduction', 'other', false, 100, 'Invented', NULL, now());
+    `);
+    await db.query(sql(migration));
+
+    expect((await db.query('SELECT before_tax FROM recurring_deductions')).rows).toEqual([{ before_tax: false }]);
+    expect((await db.query('SELECT type, before_tax FROM payroll_adjustments ORDER BY id')).rows).toEqual([
+      { type: 'recurring', before_tax: false },
+      { type: 'other', before_tax: false },
+    ]);
+    expect((await db.query('SELECT before_tax_health_limit FROM payroll_law_years')).rows.every((r: { before_tax_health_limit: unknown }) => r.before_tax_health_limit === null)).toBe(true);
+    // ticked: the recurring deduction and its month's deduction; never another deduction, nor an addition
+    await db.query("UPDATE recurring_deductions SET before_tax = true");
+    await db.query("UPDATE payroll_adjustments SET before_tax = true WHERE type = 'recurring'");
+    await expect(db.query("UPDATE payroll_adjustments SET before_tax = true WHERE type = 'other'")).rejects.toThrow(/payroll_adjustments_before_tax_check/);
+    // the recurring deduction deleted: its months' deductions keep it
+    await db.query('DELETE FROM recurring_deductions');
+    expect((await db.query("SELECT recurring_id, before_tax FROM payroll_adjustments WHERE type = 'recurring'")).rows).toEqual([{ recurring_id: null, before_tax: true }]);
+    // the limit a year: empty, or above 0
+    await db.query('UPDATE payroll_law_years SET before_tax_health_limit = 6000 WHERE year = 2026');
+    await expect(db.query('UPDATE payroll_law_years SET before_tax_health_limit = 0 WHERE year = 2026')).rejects.toThrow(/payroll_law_years_before_tax_health_limit_check/);
+  });
+
   describe('super admin: the role, given to the original admin account only (owner’s decision, 15 October 2026)', () => {
     const migration = () => readdirSync(MIGRATIONS).find((m) => m.endsWith('_super_admin'))!;
     const superAdmins = async () =>

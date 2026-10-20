@@ -57,9 +57,17 @@
 // they are never cut as short hours. The run takes them with the line's terms (PayrollTerms.permissionHours) and the
 // grid shows them; what HR types (or an attendance import fills) instead wins (permissionHoursOf). None for pay by the
 // hour, which pays only the hours worked.
+// Deductions before tax (owner, 20 October 2026, asked whether the employee's medical share, a recurring deduction, is
+// taken before or after tax: "Before Tax i think"): a Recurring deduction whose recurring deduction HR ticked "Deducted
+// before tax" (PayrollAdjustmentItem.beforeTax) lowers the taxable pay before the income tax is worked out: the taxable
+// pay as it was less the month's deductions before tax, never below 0, and at most a twelfth of the year's before-tax
+// health insurance limit when Payroll Setup has one (law-rates.ts; salary.ts monthlySalaryTax). It is then taken from
+// the net as every deduction is; social insurance (on the insured wage) and the Martyrs' Fund (on the taxed pay) don't
+// change. The line keeps both (PayrollResult.beforeTaxDeductions, taxableLowered). Lines without one, and every line
+// worked out before then, are as they were.
 
 import type { AllowanceTerms } from './contracts.js';
-import { adjustmentSums, DAYS_TYPE_OF, isDaysType, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
+import { adjustmentSums, DAYS_TYPE_OF, isDaysType, mayBeBeforeTax, sumAmounts, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
 import type { PayBasis } from './contracts.js';
 import { lawRatesFor, type LawRates } from './law-rates.js';
 import { grossToNet, monthlySalaryTax } from './salary.js';
@@ -244,6 +252,12 @@ export interface PayrollAdjustmentItem {
   /** A Bonus (days) or a Penalty (days): its days, whole or half. Missing for the others. */
   days?: number;
   reason: string;
+  /**
+   * A Recurring deduction whose recurring deduction HR ticked "Deducted before tax" (owner, 20 October 2026: "Before
+   * Tax i think"): true, and it lowers the taxable pay before the income tax. Missing on every other item, and on items
+   * taken before then: after tax.
+   */
+  beforeTax?: boolean;
 }
 
 /** An addition or deduction as a line paid it: a Bonus (days)'s or a Penalty (days)'s amount worked out. */
@@ -460,6 +474,18 @@ export interface PayrollResult {
   additionsUntaxed?: number;
   adjustmentDeductions?: number;
   /**
+   * The month's deductions before tax (owner, 20 October 2026, on the employee's medical share: "Before Tax i think"):
+   * the Recurring deductions ticked "Deducted before tax", summed; they are in adjustmentDeductions too, as they are
+   * taken from the net as every deduction is. Missing on a line without any, and on lines worked out before then.
+   */
+  beforeTaxDeductions?: number;
+  /**
+   * What they lowered the taxable pay by before the income tax was worked out: as much as they are, but never taking the
+   * taxable pay below 0 and at most a twelfth of the year's before-tax health insurance limit when one is set; 0 for a
+   * freelancer, who pays no tax. Missing with beforeTaxDeductions.
+   */
+  taxableLowered?: number;
+  /**
    * The month's additions and deductions as paid, in the order entered, a Bonus (days)'s and a Penalty (days)'s amount
    * worked out (their days' share of `bonus` and `penaltyCut`): the line's record of what each came to. Missing on a
    * line without any, and on lines worked out before 17 October 2026, whose terms have every amount (paidAdjustments).
@@ -478,6 +504,18 @@ export function resultAdjustments(r: Pick<PayrollResult, 'additionsTaxed' | 'add
   const n = (v: number | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
   return { taxed: n(r.additionsTaxed), untaxed: n(r.additionsUntaxed), deductions: n(r.adjustmentDeductions) };
 }
+
+/**
+ * A result's deductions before tax (owner, 20 October 2026: "Before Tax i think") and what they lowered the taxable pay
+ * by; 0 on a line without any, and on lines worked out before then.
+ */
+export function resultBeforeTax(r: Pick<PayrollResult, 'beforeTaxDeductions' | 'taxableLowered'>): { deductions: number; lowered: number } {
+  const n = (v: number | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return { deductions: n(r.beforeTaxDeductions), lowered: n(r.taxableLowered) };
+}
+
+/** Whether an item is taken before tax: a Recurring deduction ticked so (20 October 2026). */
+export const isBeforeTax = (a: Pick<PayrollAdjustmentItem, 'kind' | 'type' | 'beforeTax'>): boolean => a.beforeTax === true && mayBeBeforeTax(a.kind, a.type);
 
 /**
  * A line's additions and deductions as paid (owner, 17 October 2026), in the order entered: its result's record since
@@ -748,8 +786,9 @@ function daysOffName(noShowDays: number, leaveDays: number): string | null {
  * at a day of the fixed part and the other taxed additions in the pay earned; the allowances for the days paid; social
  * insurance on the insured wage, whole for a part month; the salary tax and the Martyrs' Fund on the actual pay; a
  * Penalty (days) at a day of the contract's net and the other deductions after the tax, the untaxed additions after
- * them. The insurance shares, the tax and the Fund follow `law`, the rates set by law the run keeps (owner's request,
- * 16 October 2026); without them, the built-in ones of the run's year.
+ * them; a Recurring deduction ticked before tax (20 October 2026) lowers the taxable pay first, within the year's
+ * limit, and is taken with them. The insurance shares, the tax and the Fund follow `law`, the rates set by law the run
+ * keeps (owner's request, 16 October 2026); without them, the built-in ones of the run's year.
  */
 export function payrollLine(
   terms: PayrollTerms,
@@ -862,14 +901,19 @@ export function payrollLine(
   const employerInsurance = piasters(insuredWage * law.employerInsuranceRate);
 
   // the salary tax and the Martyrs' Fund on the actual pay and the taxable allowances (owner's decision, 16 October
-  // 2026: the sheet's method, without its bracket errors); none for a freelancer
+  // 2026: the sheet's method, without its bracket errors); none for a freelancer. The month's deductions before tax
+  // (owner, 20 October 2026, on the employee's medical share: "Before Tax i think") lower the taxable pay first, never
+  // below 0 and within the year's before-tax health insurance limit when set (monthlySalaryTax)
   const taxedPay = piasters(earned + taxableAllowances);
-  const tax = terms.statutory
-    ? monthlySalaryTax({ taxedPay, employeeInsurance }, law)
+  const beforeTaxDeductions = sumAmounts(paid.filter((a) => isBeforeTax(a) && !isDaysType(a.type)).map((a) => a.amount));
+  const beforeTax = beforeTaxDeductions > 0 ? { beforeTax: beforeTaxDeductions } : {};
+  const tax: ReturnType<typeof monthlySalaryTax> = terms.statutory
+    ? monthlySalaryTax({ taxedPay, employeeInsurance, ...beforeTax }, law)
     : { healthInsurance: 0, monthlyTaxable: 0, annualNetIncome: 0, annualTax: 0, monthlyTax: 0, martyrsFund: 0 };
 
   // comprehensive health insurance is 0 while it doesn't apply in Cairo; it is in the deductions so the net stays right;
-  // the month's deductions (17 October 2026) are taken after tax with the others, its untaxed additions added after it
+  // the month's deductions (17 October 2026) are taken after tax with the others, its untaxed additions added after it;
+  // those before tax (20 October 2026) are taken from the net with them, having lowered the tax
   const adjustmentDeductions = adjustments.deductions;
   const additionsUntaxed = adjustments.untaxedAdditions;
   const deductions = piasters(employeeInsurance + tax.healthInsurance + tax.monthlyTax + tax.martyrsFund + penaltyCut + adjustmentDeductions);
@@ -910,6 +954,8 @@ export function payrollLine(
     additionsTaxed,
     additionsUntaxed,
     adjustmentDeductions,
+    // only on a line with deductions before tax (20 October 2026), so every other line reads as it did
+    ...(beforeTaxDeductions > 0 ? { beforeTaxDeductions, taxableLowered: tax.beforeTax ?? 0 } : {}),
     ...(paid.length ? { adjustments: paid } : {}),
     warnings,
   };

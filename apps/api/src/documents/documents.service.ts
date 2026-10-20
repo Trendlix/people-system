@@ -6,16 +6,17 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { COMMISSION_SLOTS, LABELS, type EmploymentType, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
+import { advanceBalance, COMMISSION_SLOTS, LABELS, type AdjustmentStatus, type EmploymentType, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
 import { ALLOWANCE_ORDER } from '../allowances/rows.js';
 import { AuditService } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { toDateOnly, todayInCairo } from '../common/date-only.js';
+import { dayInCairo, fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { INSURANCE_BASIC_DEFAULT } from '../contracts/contract-settings.service.js';
 import { seesBank, seesIdentity, seesSalary } from '../employees/access.js';
 import { insuredContractPay, insuredVersionOf } from '../employees/insured-wage.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { LeaveSettlementService } from '../leave/leave-settlement.service.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { detectPaperworkType, extensionOf, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from '../paperwork/paperwork-file.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
@@ -43,6 +44,7 @@ import {
   type Situation,
 } from './offer.js';
 import { previewValues } from './preview.js';
+import type { SettlementSource } from './settlement-values.js';
 import { missingTags, resolveValues, restrictedTags, rightFor, sourceTag, type MissingTag, type RestrictedRight, type ValueSources } from './values.js';
 import { DOCUMENT, documentView, type DocumentRow, type DocumentStatus } from './views.js';
 
@@ -223,6 +225,7 @@ export class DocumentsService {
     private readonly audit: AuditService,
     private readonly lawRates: LawRatesService,
     private readonly confidential: ConfidentialService,
+    private readonly leave: LeaveSettlementService,
   ) {}
 
   /** The Employment tab: the documents offered for the current employment (else the latest), in sections. */
@@ -603,7 +606,8 @@ export class DocumentsService {
       contract = termsContract(employment.contracts);
     }
 
-    const [person, company, offer, settings, lawYears] = await Promise.all([
+    const ending = employment.endings[0] ?? null;
+    const [person, company, offer, settings, lawYears, settlement] = await Promise.all([
       this.prisma.employee.findUniqueOrThrow({
         where: { id: employeeId },
         select: {
@@ -644,9 +648,10 @@ export class DocumentsService {
       this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }),
       // the rates set by law: the insured wage Form 1 prints is within this year's insurable limits
       this.lawRates.years(),
+      // what the clearance and dues prints of the final settlement (20 October 2026)
+      this.settlementOf(employeeId, employment, ending),
     ]);
     const { identity, bank, ...own } = person;
-    const ending = employment.endings[0] ?? null;
     const insuranceBasicDefault = settings?.insuranceBasicDefault.toNumber() ?? INSURANCE_BASIC_DEFAULT;
     return {
       slot,
@@ -665,10 +670,48 @@ export class DocumentsService {
         company,
         insuranceBasicDefault,
         lawYears,
+        settlement,
         raise: contract && raiseSource(contract, employment.contracts),
         ...(contract && contract.status !== 'draft' && { insuredContractTotal: insuredTotalToday(contract, employment.contracts) }),
       },
     };
+  }
+
+  /**
+   * The final settlement of an employment with an ending recorded, or ended, as its documents print it (20 October 2026:
+   * the owner unsure, Claude recommended listing its deductions on the clearance and dues); null before. The advances
+   * and loans still owed: those open with something outstanding (deducted, by the owner's rule of 18 October 2026:
+   * "taken from the final settlement, unless waived"), and those HR settled as deducted from the final settlement or
+   * waived (POST /payroll/advances/:id/settle) since the leaving was known, the notice given or else the end date, in
+   * Cairo; with what was still owed of each, the recoveries applied before taken off. The unused annual leave as the
+   * final settlement lists it (Unsettled), worked out once the employment has its end date.
+   */
+  private async settlementOf(employeeId: string, employment: EmploymentRow, ending: EmploymentRow['endings'][number] | null): Promise<SettlementSource | null> {
+    const since = [ending?.noticeGivenOn, employment.endDate]
+      .filter((d): d is Date => d instanceof Date)
+      .map((d) => fromDateOnly(d))
+      .sort()[0];
+    if (!since) return null;
+    const [advances, unused] = await Promise.all([
+      this.prisma.payrollAdvance.findMany({
+        where: { employeeId, OR: [{ status: 'open' }, { status: 'settled', settledHow: { in: ['final_settlement', 'waived'] } }] },
+        orderBy: [{ givenOn: 'asc' }, { createdAt: 'asc' }],
+        select: { kind: true, reason: true, amount: true, status: true, settledHow: true, settledAt: true, recoveries: { select: { amount: true, status: true } } },
+      }),
+      employment.endDate ? this.leave.unused([employment.id]) : null,
+    ]);
+    const owed = advances
+      .filter((a) => a.status === 'open' || (a.settledAt !== null && dayInCairo(a.settledAt) >= since))
+      .map((a) => ({
+        kind: a.kind,
+        reason: a.reason,
+        // a recovery always has its amount (only a bonus or penalty in days has none)
+        outstanding: advanceBalance(a.amount.toNumber(), a.recoveries.map((r) => ({ amount: r.amount?.toNumber() ?? 0, status: r.status as AdjustmentStatus }))).outstanding,
+        waived: a.settledHow === 'waived',
+      }))
+      .filter((a) => a.outstanding > 0);
+    const leave = unused?.get(employment.id);
+    return { owed, unusedLeave: leave && leave.days > 0 ? { days: leave.days, dayRate: leave.dayRate, amount: leave.amount } : null };
   }
 
   /** The slot's published version: its tags, language, format and (a PDF) fields, and its file when it is to be filled in. */

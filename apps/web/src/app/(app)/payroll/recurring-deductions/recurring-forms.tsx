@@ -8,7 +8,7 @@ import { parseAmount } from '../../employees/[id]/contracts/salary';
 import type { PersonRef } from '../adjustments/adjustments';
 import { limitHref } from '../unsettled/installments';
 import { InlineForm, Note } from '../unsettled/unsettled-forms';
-import { CONSENT_FILE_MAX_MB, lastMonth, NAME_MAX, raisesAmount, recurringPreview, type RecurringPreview } from './recurring';
+import { BEFORE_TAX_HINT, BEFORE_TAX_TICK, CONSENT_FILE_MAX_MB, lastMonth, NAME_MAX, raisesAmount, recurringPreview, type RecurringPreview } from './recurring';
 
 // Recurring Deductions' forms (owner, 18 October 2026: a medical subscription is an ongoing monthly share), for HR: a
 // new one for an employee (what for, the amount a month, the first month and, if it has one, the last); on each one
@@ -19,7 +19,10 @@ import { CONSENT_FILE_MAX_MB, lastMonth, NAME_MAX, raisesAmount, recurringPrevie
 // employee file); a higher amount needs the tick again; one added before has its consent recorded (or its signed
 // consent attached) from its row. What It Comes To shows, as it is typed, what the law counts the 25% against (the
 // gross less about its tax and insurance and the month's installments) and warns of each month past it: a warning
-// only, it can still be saved.
+// only, it can still be saved. Deducted before tax (owner, 20 October 2026, asked whether the employee's medical share
+// is taken before or after tax: "Before Tax i think"): a tick on adding one, changing its amount (as it is to start
+// with) and editing it, off by default, with the hint that the tax law limits it; ticked, What It Comes To says the
+// share lowers the taxable pay.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 type MonthChoice = { value: string; label: string };
@@ -141,6 +144,43 @@ function ConsentTick({ state, fid, label = 'The employee’s signed consent is o
   );
 }
 
+/**
+ * "Deducted before tax (lowers taxable pay)" (owner, 20 October 2026: "Before Tax i think"), off unless `saved`, with
+ * its hint: the tax law limits the deduction.
+ */
+function BeforeTaxTick({
+  state,
+  fid,
+  saved = false,
+  onChange,
+}: {
+  state: FormState;
+  fid: (n: string) => string;
+  saved?: boolean;
+  /** Told when it is ticked or not, e.g. for What It Comes To. */
+  onChange?: (ticked: boolean) => void;
+}) {
+  return (
+    <div>
+      <label className="flex min-h-11 w-fit cursor-pointer items-center gap-3 text-sm font-semibold">
+        <input
+          type="checkbox"
+          name="beforeTax"
+          value="yes"
+          defaultChecked={valueOf(state, 'beforeTax', saved ? 'yes' : '') === 'yes'}
+          onChange={onChange && ((e) => onChange(e.target.checked))}
+          aria-describedby={fid('beforeTax-hint')}
+          className="size-5 accent-accent"
+        />
+        {BEFORE_TAX_TICK}
+      </label>
+      <p id={fid('beforeTax-hint')} className="hint">
+        {BEFORE_TAX_HINT}
+      </p>
+    </div>
+  );
+}
+
 /** The signed consent, a photo or a PDF, kept in the employee file; `required` when attaching is all the form does. */
 function ConsentFile({ fid, required = false }: { fid: (n: string) => string; required?: boolean }) {
   return (
@@ -172,6 +212,7 @@ function WhatItComesTo({ preview }: { preview: RecurringPreview | null }) {
     <div aria-live="polite" className={`space-y-1 rounded-lg border bg-card p-3 text-sm ${over ? 'border-warn' : 'border-line'}`}>
       <p className="text-xs font-semibold tracking-wide text-muted uppercase">What It Comes To</p>
       <p className="font-semibold tabular-nums">{preview.period}</p>
+      {preview.beforeTax && <p className="tabular-nums">{preview.beforeTax}</p>}
       {preview.share && <p className="text-muted tabular-nums">{preview.share}</p>}
       {over && (
         <div className="mt-2 rounded-lg bg-warn-soft px-3 py-2 text-warn">
@@ -229,6 +270,7 @@ export function AddRecurringForm({
   const [amount, setAmount] = useState(valueOf(state, 'amount', ''));
   const [start, setStart] = useState(valueOf(state, 'startMonth', thisMonth));
   const [end, setEnd] = useState(valueOf(state, 'endMonth', ''));
+  const [beforeTax, setBeforeTax] = useState(valueOf(state, 'beforeTax', '') === 'yes');
   // each employee's pay, installments and other recurring deductions, read once when they are chosen
   const { limits, read } = useLimits();
   const [answered, setAnswered] = useState(state);
@@ -239,6 +281,7 @@ export function AddRecurringForm({
       setAmount('');
       setStart(thisMonth);
       setEnd('');
+      setBeforeTax(false);
     }
   }
   useEffect(() => {
@@ -249,7 +292,7 @@ export function AddRecurringForm({
     setEmployeeId(id);
     read(id);
   }
-  const preview = recurringPreview(amount, start, end, employeeId ? limits[employeeId] : undefined);
+  const preview = recurringPreview(amount, start, end, employeeId ? limits[employeeId] : undefined, { beforeTax });
 
   return (
     <form {...form} ref={ref} aria-label="Add a recurring deduction" className="space-y-3 rounded-lg border border-line bg-canvas p-4">
@@ -286,14 +329,15 @@ export function AddRecurringForm({
           </div>
         </div>
       </div>
+      <BeforeTaxTick state={state} fid={fid} onChange={setBeforeTax} />
       <WhatItComesTo preview={preview} />
       <div className="space-y-3 rounded-lg border border-line bg-card p-3">
         <ConsentTick state={state} fid={fid} />
         <ConsentFile fid={fid} />
       </div>
       <p className="hint">
-        Each month&apos;s payroll run takes it as a deduction after tax, from its first month to its last, or until it is stopped; it stops by itself
-        from the month after someone&apos;s last working day.
+        Each month&apos;s payroll run takes it as a deduction after tax (before tax when ticked so), from its first month to its last, or until it is
+        stopped; it stops by itself from the month after someone&apos;s last working day.
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton busy={pending} pendingText="Adding…">
@@ -323,20 +367,22 @@ function ChangeFields({
 }: {
   state: FormState;
   fid: (n: string) => string;
-  saved: { amount: number; endMonth: string | null; stoppedFrom: string | null };
+  saved: { amount: number; endMonth: string | null; stoppedFrom: string | null; beforeTax?: boolean };
   froms: MonthChoice[];
   employeeId: string;
   recurringId: string;
 }) {
   const [amount, setAmount] = useState(valueOf(state, 'amount', saved.amount.toFixed(2)));
   const [from, setFrom] = useState(valueOf(state, 'fromMonth', froms[0]?.value ?? ''));
+  // the new one before tax as this one is, unless unticked (20 October 2026)
+  const [beforeTax, setBeforeTax] = useState(valueOf(state, 'beforeTax', saved.beforeTax ? 'yes' : '') === 'yes');
   const { limits, read } = useLimits();
   useEffect(() => {
     read(employeeId);
   });
   const typed = parseAmount(amount);
   const raised = typed !== null && raisesAmount(typed, saved.amount);
-  const preview = recurringPreview(amount, from, lastMonth(saved) ?? '', limits[employeeId], { replacing: recurringId });
+  const preview = recurringPreview(amount, from, lastMonth(saved) ?? '', limits[employeeId], { replacing: recurringId, beforeTax });
   return (
     <>
       <AmountField state={state} fid={fid} saved={saved.amount.toFixed(2)} label="New amount a month (EGP)" onChange={setAmount} />
@@ -347,6 +393,7 @@ function ChangeFields({
         <MonthSelect id={fid('fromMonth')} name="fromMonth" required months={froms} value={valueOf(state, 'fromMonth', froms[0]?.value ?? '')} onChange={setFrom} />
         <p className="hint">The months before keep the amount they had.</p>
       </div>
+      <BeforeTaxTick state={state} fid={fid} saved={saved.beforeTax === true} onChange={setBeforeTax} />
       <WhatItComesTo preview={preview} />
       {raised && <ConsentTick state={state} fid={fid} label="The employee’s signed consent to the new amount is on file" />}
     </>
@@ -355,7 +402,8 @@ function ChangeFields({
 
 /**
  * One running or to come, for HR: Change amount from a month (it stops there and one with the new amount starts), Stop
- * from a month (why, optional), Edit its name or last month; and its consent (Labour Law Art. 114): Record consent for
+ * from a month (why, optional), Edit its name, last month or whether it is deducted before tax (20 October 2026); and
+ * its consent (Labour Law Art. 114): Record consent for
  * one added before it was asked, Attach signed consent for one recorded without it.
  */
 export function RecurringActions({
@@ -382,6 +430,8 @@ export function RecurringActions({
     stoppedFrom: string | null;
     /** Its consent: none recorded (null), recorded (with or without the signed consent), or unknown (an API from before it). */
     consent: { recorded: boolean; attached: boolean } | undefined;
+    /** Deducted before tax (20 October 2026). */
+    beforeTax?: boolean;
   };
   /** The months a change or a stop can be from, the first to start with. */
   froms: MonthChoice[];
@@ -445,6 +495,7 @@ export function RecurringActions({
               </label>
               <MonthSelect id={fid('endMonth')} name="endMonth" months={ends} value={valueOf(state, 'endMonth', saved.endMonth ?? '')} emptyLabel="Until stopped" />
             </div>
+            <BeforeTaxTick state={state} fid={fid} saved={saved.beforeTax === true} />
           </>
         )}
       </InlineForm>

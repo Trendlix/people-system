@@ -1,7 +1,9 @@
 import ExcelJS from 'exceljs';
 import {
   adjustmentTypeLabel,
+  BEFORE_TAX_LABEL,
   daysText,
+  isBeforeTax,
   leaveDaysOf,
   lineDays,
   measuredExpectedHours,
@@ -9,6 +11,7 @@ import {
   PAY_BASIS_LABELS,
   PAYROLL_STATUS_LABELS,
   resultAdjustments,
+  resultBeforeTax,
   type PayBasis,
   type PayrollResult,
   type PayrollStatus,
@@ -37,6 +40,9 @@ import { byDepartment } from './roster.js';
 // Penalties what they came to; the Commission and Settlements columns have what a line saved before then had typed (a
 // commission since is a taxed addition, a settlement a Correction). The attendance cut the CEO waived (owner, 17
 // October 2026: "allow the CEO to wave the deduction by ticking a box") has a column of its own after the cut.
+// Deductions before tax (owner, 20 October 2026, on the employee's medical share: "Before Tax i think"): a column of
+// their own before the income tax, which they lowered, and out of the Deductions (after tax); in the Additions and
+// deductions column each says "before tax", with what the taxable pay was lowered by when the year's limit held it back.
 
 export interface RegisterLine {
   department: string | null;
@@ -80,18 +86,25 @@ const egp = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 2,
 
 /**
  * A line's additions and deductions in words, by type with the reason: "Bonus (days): 2 days, 640.00 (Target met);
- * Loan installment: −1,000.00 (Car loan, 2 of 6)". Null without any.
+ * Loan installment: −1,000.00 (Car loan, 2 of 6)"; a deduction before tax (20 October 2026) "Recurring deduction:
+ * −350.00, before tax (Medical subscription)", and when the year's limit (or the pay) held what they lowered the
+ * taxable pay by, "Taxable pay lowered by 300.00 of the 350.00 before tax" last. Null without any.
  */
 export function adjustmentsText(l: Pick<RegisterLine, 'terms' | 'result'>): string | null {
   const items = paidAdjustments(l);
   if (!items.length) return null;
-  return items
-    .map((a) => {
-      const amount = `${a.kind === 'deduction' ? '−' : ''}${egp(a.amount)}`;
-      return `${adjustmentTypeLabel(a.kind, a.type)}: ${a.days ? `${daysText(a.days)}, ` : ''}${amount}${a.taxed || a.kind === 'deduction' ? '' : ', not taxed'} (${a.reason})`;
-    })
-    .join('; ');
+  const words = items.map((a) => {
+    const amount = `${a.kind === 'deduction' ? '−' : ''}${egp(a.amount)}`;
+    const tax = isBeforeTax(a) ? `, ${BEFORE_TAX_LABEL.toLowerCase()}` : a.taxed || a.kind === 'deduction' ? '' : ', not taxed';
+    return `${adjustmentTypeLabel(a.kind, a.type)}: ${a.days ? `${daysText(a.days)}, ` : ''}${amount}${tax} (${a.reason})`;
+  });
+  const before = resultBeforeTax(l.result);
+  if (before.deductions > 0 && Math.round(before.lowered * 100) < Math.round(before.deductions * 100)) words.push(`Taxable pay lowered by ${egp(before.lowered)} of the ${egp(before.deductions)} before tax`);
+  return words.join('; ');
 }
+
+/** The month's deductions after tax: all of them but those before tax (20 October 2026). */
+const afterTaxDeductions = (r: PayrollResult) => Math.round((resultAdjustments(r).deductions - resultBeforeTax(r).deductions) * 100) / 100 + 0;
 
 /** Days for a column: none, an empty cell. */
 const someDays = (n: number) => (n > 0 ? n : null);
@@ -142,10 +155,13 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'Allowances', kind: 'money', width: 12, value: (l) => l.result.allowances },
   { header: 'Earned', kind: 'money', width: 14, value: (l) => l.result.earned },
   { header: 'Social insurance (employee)', kind: 'money', width: 14, value: (l) => l.result.employeeInsurance },
+  // the deductions before tax (owner, 20 October 2026: "Before Tax i think"), which lowered the income tax: none on
+  // lines without any, nor on lines worked out before then
+  { header: 'Deductions (before tax)', kind: 'money', width: 12, value: (l) => resultBeforeTax(l.result).deductions },
   { header: 'Income tax', kind: 'money', width: 12, value: (l) => l.result.monthlyTax },
   { header: "Martyrs' fund", kind: 'money', width: 11, value: (l) => l.result.martyrsFund },
   { header: 'Penalties', kind: 'money', width: 12, value: (l) => l.result.penaltyCut },
-  { header: 'Deductions (after tax)', kind: 'money', width: 12, value: (l) => resultAdjustments(l.result).deductions },
+  { header: 'Deductions (after tax)', kind: 'money', width: 12, value: (l) => afterTaxDeductions(l.result) },
   { header: 'Additions (not taxed)', kind: 'money', width: 12, value: (l) => resultAdjustments(l.result).untaxed },
   { header: 'Net', kind: 'money', width: 14, value: (l) => l.result.net },
   { header: 'Released', kind: 'money', width: 12, value: (l) => l.result.released },

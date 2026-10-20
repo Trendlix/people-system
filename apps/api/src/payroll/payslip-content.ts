@@ -2,6 +2,7 @@ import {
   adjustmentTypeLabel,
   adjustmentTypeLabelAr,
   formatHours,
+  isBeforeTax,
   LABELS,
   leaveDaysOf,
   lineDays,
@@ -10,6 +11,7 @@ import {
   paysOvertime,
   RECURRING_TYPE,
   resultAdjustments,
+  resultBeforeTax,
   splitSegments,
   toArabicDigits,
   type EmploymentType,
@@ -44,7 +46,9 @@ import { monthArabic, monthName } from './months.js';
 // penalty days, commission and settlement as typed on the grid. An attendance deduction the CEO waived (owner, 17
 // October 2026: "allow the CEO to wave the deduction by ticking a box") is said under This Month, and not deducted.
 // A Recurring deduction (owner, 18 October 2026, e.g. a medical subscription's share) reads as its name, "Medical
-// subscription (family)", with its type as the note.
+// subscription (family)", with its type as the note; one deducted before tax (owner, 20 October 2026: "Before Tax i
+// think") says so, "Recurring deduction · Before tax: lowers the taxable pay", and the salary tax says what it was
+// worked out on, "On the pay less 350.00 deducted before tax".
 // A row that is 0 is left out, and so is a section with nothing in it. Left off on purpose: the company cost, the tax working, HR's comments, the warnings,
 // the full account number, the IBAN and the national ID. In English for everyone; in Arabic on request, right to left,
 // every number in ٠-٩ but the codes with Latin letters (EMP-0007, PAY-2026-10) and the banks' short names (CIB, QNB).
@@ -193,6 +197,7 @@ const L = {
   settlement: { en: 'Settlement', ar: 'تسوية' },
   oneOff: { en: 'One-off amount this month', ar: 'مبلغ لمرة واحدة هذا الشهر' },
   notTaxed: { en: 'Not taxed', ar: 'غير خاضع للضريبة' },
+  beforeTax: { en: 'Before tax: lowers the taxable pay', ar: 'قبل الضريبة: يخفض الوعاء الخاضع للضريبة' },
   earningsTotal: { en: 'Total earnings', ar: 'إجمالي الاستحقاقات' },
   deductions: { en: 'Deductions', ar: 'الاستقطاعات' },
   insurance: { en: 'Social insurance', ar: 'التأمينات الاجتماعية' },
@@ -623,7 +628,10 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   const law = run.lawRates;
   const employeeRate = percentOf(law.employeeInsuranceRate * 100);
   deduct(L.insurance, result.employeeInsurance, num(ar ? `${employeeRate} من أجر الاشتراك ${formatAmount(result.insuredWage)}` : `${employeeRate} of the insured wage, ${formatAmount(result.insuredWage)}`));
-  deduct(L.tax, result.monthlyTax);
+  // after the deductions before tax (20 October 2026) lowered the taxable pay
+  const lowered = resultBeforeTax(result).lowered;
+  const taxNote = lowered > 0 ? num(ar ? `بعد خصم ${formatAmount(lowered)} قبل الضريبة` : `On the pay less ${formatAmount(lowered)} deducted before tax`) : null;
+  deduct(L.tax, result.monthlyTax, taxNote);
   deduct(L.martyrs, result.martyrsFund, num(ar ? `${percentOf(law.martyrsRate * 100)} من الأجر` : `${percentOf(law.martyrsRate * 100)} of the pay`));
   // a line approved before the medical subscription was taken off the payroll (owner's decision, 16 October 2026)
   // keeps it in its result and its deductions: still its own row, so the rows add up and it isn't health insurance
@@ -636,9 +644,10 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   deduct(L.penalty, piasters(result.penaltyCut - ofType('penalty_days')), ar ? arabicDays(inputs.penaltyDays ?? 0) : englishDays(inputs.penaltyDays ?? 0));
   deduct(L.medical, oldMedical, t(L.monthlySubscription));
   // the month's deductions (owner, 17 October 2026), each by its type, with its reason (a Penalty (days) with its days);
-  // a Recurring deduction (18 October 2026) by its name, "Medical subscription (family)", its type the note
+  // a Recurring deduction (18 October 2026) by its name, "Medical subscription (family)", its type the note, and
+  // that it is before tax when it is (20 October 2026)
   for (const a of items.filter((x) => x.kind === 'deduction' && x.amount !== 0)) {
-    if (a.type === RECURRING_TYPE) deductions.push(row(reasonText(a.reason), a.amount, typeLabel(a.kind, a.type)));
+    if (a.type === RECURRING_TYPE) deductions.push(row(reasonText(a.reason), a.amount, notes(typeLabel(a.kind, a.type), isBeforeTax(a) ? t(L.beforeTax) : null)));
     else deductions.push(row(typeLabel(a.kind, a.type), a.amount, notes(daysNote(a), reasonText(a.reason))));
   }
 

@@ -8,7 +8,10 @@ import { formatMoney, formatPercent, parseAmount, plainAmount } from '../../empl
 // enter the variables that might affect the sheet"): by year, the social insurance shares and the insurable wage's
 // limits, the personal exemption, the Martyrs' Fund, comprehensive health insurance and the salary tax's tiers and
 // bands, "editable by superadmin, to modify it if the law changed"; since 18 October 2026 the minimum wage too, which a
-// trainee's last training stage is paid at least (Labour Law 14/2025 Art. 29), left empty until the owner sets it. Each
+// trainee's last training stage is paid at least (Labour Law 14/2025 Art. 29), left empty until the owner sets it; since
+// 20 October 2026 (owner, on the employee's medical share: "Before Tax i think") the before-tax health insurance limit a
+// year, which caps what the recurring deductions ticked "Deducted before tax" lower the taxable pay by (a twelfth a
+// month), left empty for no limit, as the tax law's limit is the accountant's to give. Each
 // year's values apply from that year: a year without its own uses the latest earlier one (the earliest for a year before
 // them all). HR, Finance, the CEO and Admin read them; only the Super Admin changes them, and the API checks this again.
 // Pure code, tested: who sees and changes them, the form as typed (rates as percents, amounts in EGP) into the rates PUT
@@ -150,6 +153,8 @@ export interface LawRatesTyped {
   healthInsuranceRate: string;
   /** Empty: not set (owner, 18 October 2026: the owner sets it; a trainee's last stage is checked against it). */
   minimumWage: string;
+  /** EGP a year; empty: no limit (owner, 20 October 2026: "Before Tax i think"). */
+  beforeTaxHealthLimit: string;
   taxTiers: TierRow[];
 }
 
@@ -165,17 +170,20 @@ export function typedOf(r: LawRates, year = r.year): LawRatesTyped {
     martyrsRate: percentField(r.martyrsRate),
     healthInsuranceRate: percentField(r.healthInsuranceRate),
     minimumWage: typeof r.minimumWage === 'number' ? plainAmount(r.minimumWage) : '',
+    beforeTaxHealthLimit: typeof r.beforeTaxHealthLimit === 'number' ? plainAmount(r.beforeTaxHealthLimit) : '',
     taxTiers: tierRowsOf(r.taxTiers),
   };
 }
 
 /**
  * The rates the form gives, as PUT /payroll/law-rates/:year takes them (with the year); what can't be read is NaN. The
- * minimum wage only when typed, as normalLawRates keeps it.
+ * minimum wage and the before-tax health insurance limit only when typed, as normalLawRates keeps them.
  */
 export function lawRatesOf(t: LawRatesTyped): LawRates {
   const year = latin(t.year).trim();
   const minimumWage = optionalAmountOf(t.minimumWage);
+  // a form from before it came has none: no limit
+  const beforeTaxHealthLimit = optionalAmountOf(t.beforeTaxHealthLimit ?? '');
   return {
     year: /^\d{4}$/.test(year) ? Number(year) : NaN,
     employeeInsuranceRate: rateOf(t.employeeInsuranceRate),
@@ -186,6 +194,7 @@ export function lawRatesOf(t: LawRatesTyped): LawRates {
     martyrsRate: rateOf(t.martyrsRate),
     healthInsuranceRate: rateOf(t.healthInsuranceRate),
     ...(minimumWage !== null && { minimumWage }),
+    ...(beforeTaxHealthLimit !== null && { beforeTaxHealthLimit }),
     taxTiers: taxTiersOf(t.taxTiers),
   };
 }
@@ -206,7 +215,7 @@ export function formProblems(t: LawRatesTyped, adding: { kept: readonly number[]
 
 /**
  * What PUT /payroll/law-rates/:year takes: every rate but the year, which is in the address (unknown fields are
- * refused); the minimum wage null when it isn't set.
+ * refused); the minimum wage and the before-tax health insurance limit null when they aren't set.
  */
 export function lawRatesBody(r: LawRates): Omit<LawRates, 'year'> {
   return {
@@ -218,9 +227,17 @@ export function lawRatesBody(r: LawRates): Omit<LawRates, 'year'> {
     martyrsRate: r.martyrsRate,
     healthInsuranceRate: r.healthInsuranceRate,
     minimumWage: r.minimumWage ?? null,
+    beforeTaxHealthLimit: r.beforeTaxHealthLimit ?? null,
     taxTiers: normalTaxTiers(r.taxTiers),
   };
 }
+
+/**
+ * The before-tax health insurance limit in words (20 October 2026): "Before tax: up to 6,000.00 a year", or "Before tax:
+ * no limit set".
+ */
+export const beforeTaxLimitText = (r: Pick<LawRates, 'beforeTaxHealthLimit'>) =>
+  typeof r.beforeTaxHealthLimit === 'number' ? `Before tax: up to ${formatMoney(r.beforeTaxHealthLimit)} a year` : 'Before tax: no limit set';
 
 // ---------- the table, and the Salary Calculator's list ----------
 

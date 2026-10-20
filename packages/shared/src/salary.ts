@@ -8,7 +8,7 @@
 // built-in ones.
 
 import { insuredSalary, insuredWageOf, monthlyFromHourly, WEEKS_PER_MONTH, type AllowanceTerms } from './contracts.js';
-import { LAW_7_2024_TAX_TIERS, limitOf, ratesOf, taxTierLimits, type LawRatesOrYear, type TaxTier } from './law-rates.js';
+import { beforeTaxMonthlyLimit, LAW_7_2024_TAX_TIERS, limitOf, ratesOf, taxTierLimits, type LawRatesOrYear, type TaxTier } from './law-rates.js';
 
 /** The annual net income is rounded down to the nearest ten pounds before the tax (Law 91/2005 Art. 8). */
 export const ROUND_INCOME_DOWN_TO = 10;
@@ -76,6 +76,12 @@ export interface MonthlySalaryTax {
   annualTax: number;
   monthlyTax: number;
   martyrsFund: number;
+  /**
+   * What the month's deductions before tax lowered the taxable pay by (owner, 20 October 2026, on the employee's medical
+   * share: "Before Tax i think"): as much as they are, but never below 0 and at most a twelfth of the year's before-tax
+   * health insurance limit when one is set. Missing when none were given.
+   */
+  beforeTax?: number;
 }
 
 /**
@@ -83,15 +89,21 @@ export interface MonthlySalaryTax {
  * employee's social insurance: the month as if paid all year (× 12), less the personal exemption, rounded down to ten
  * pounds, taxed in the tiers and ÷ 12, with the year's rates (`rates`, or the built-in ones of a year: this year's
  * unless given). Used for a contract's salary (grossToNet) and for a month's actual pay (payroll.ts). Nothing is paid
- * to the Fund on pay below zero.
+ * to the Fund on pay below zero. The month's deductions before tax (`beforeTax`; owner, 20 October 2026: "Before Tax i
+ * think"; payroll.ts) lower the taxable pay first, never below 0 and within the year's before-tax health insurance limit
+ * (a twelfth of it a month) when set; the Fund stays on the taxed pay.
  */
 export function monthlySalaryTax(
-  { taxedPay, employeeInsurance }: { taxedPay: number; employeeInsurance: number },
+  { taxedPay, employeeInsurance, beforeTax }: { taxedPay: number; employeeInsurance: number; beforeTax?: number },
   rates: LawRatesOrYear = new Date().getFullYear(),
 ): MonthlySalaryTax {
   const r = ratesOf(rates);
   const healthInsurance = piasters(Math.max(0, taxedPay) * r.healthInsuranceRate);
-  const monthlyTaxable = piasters(taxedPay - employeeInsurance - healthInsurance);
+  const taxable = piasters(taxedPay - employeeInsurance - healthInsurance);
+  // the deductions before tax: what they come to, within the limit, never taking the taxable pay below 0
+  const given = typeof beforeTax === 'number' && Number.isFinite(beforeTax) && beforeTax > 0;
+  const lowered = given ? piasters(Math.min(piasters(beforeTax), beforeTaxMonthlyLimit(r) ?? Infinity, Math.max(0, taxable))) : 0;
+  const monthlyTaxable = piasters(taxable - lowered);
   const yearly = monthlyTaxable * 12 - r.personalExemption;
   const annualNetIncome = yearly > 0 ? Math.floor(yearly / ROUND_INCOME_DOWN_TO) * ROUND_INCOME_DOWN_TO : 0;
   const annualTax = annualSalaryTax(annualNetIncome, r.taxTiers);
@@ -102,6 +114,7 @@ export function monthlySalaryTax(
     annualTax,
     monthlyTax: piasters(annualTax / 12),
     martyrsFund: piasters(Math.max(0, taxedPay) * r.martyrsRate),
+    ...(given && { beforeTax: lowered }),
   };
 }
 

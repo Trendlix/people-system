@@ -44,6 +44,9 @@ describe('what kind of value a tag has', () => {
     expect(isAmountTag('trainee_stages')).toBe(false);
     expect(isAmountTag('trainee_stages_en')).toBe(false);
     expect(isAmountTag('national_id')).toBe(false);
+    // the final settlement's total deducted, not its lines (20 October 2026)
+    expect(isAmountTag('deductions_total')).toBe(true);
+    expect(isAmountTag('deductions')).toBe(false);
   });
 });
 

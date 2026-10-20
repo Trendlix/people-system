@@ -3,7 +3,11 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import type { MockInstance } from 'vitest';
+import { addDays, todayInCairo } from '../src/common/date-only.js';
 import { arabicAmountInWords } from '../src/documents/engine/index.js';
+import { printedMoney } from '../src/documents/format.js';
+import { MASK } from '../src/documents/preview.js';
+import { printedDayCount } from '../src/documents/settlement-values.js';
 import { PdfService } from '../src/pdf/pdf.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { paragraphTexts, readDocx, textParts } from '../src/templates/docx-tags.js';
@@ -675,6 +679,101 @@ describe('Documents (e2e)', () => {
         expect(viewed?.diff).toMatchObject({ seen: 'generated', fields: ['hourly_rate', 'net_hourly_rate', 'basic_percent'] });
       } finally {
         await prisma.grade.update({ where: { id: gradeId }, data: { levelAr: grade.levelAr } });
+      }
+    });
+  });
+
+  describe("the final settlement's deductions on the clearance and dues", () => {
+    // 20 October 2026, the owner unsure, Claude recommended listing them: the advances and loans still owed on leaving,
+    // deducted ("taken from the final settlement, unless waived", the owner's words of 18 October 2026) or waived, the
+    // unused annual leave paid and the total deducted, one per line; restricted as pay is
+    /** Each paragraph of a .docx's body as its lines: its text, split where a value's line breaks became <w:br/>. */
+    const paragraphLines = (file: Buffer) =>
+      [...readZip(file).read('word/document.xml')!.toString('utf8').matchAll(/<w:p>.*?<\/w:p>/g)].map((m) => m[0].split('<w:br/>').map((part) => part.replace(/<[^>]+>/g, '')));
+
+    it('lists each still owed, deducted or waived, the unused leave and the total deducted; masked for an Admin, who sees no pay', async () => {
+      const upload = await api()
+        .post('/api/templates/clearance_dues/versions')
+        .set('Cookie', superAdmin)
+        .attach('file', docx({ body: p(r('{{full_name_ar}}')) + p(r('{{deductions}}')) + p(r('{{deductions_en}}')) + p(r('المجموع: {{deductions_total}}')) }), 'clearance_dues.docx')
+        .field('language', 'ar')
+        .expect(201);
+      await api().post(`/api/templates/versions/${upload.body.id}/publish`).set('Cookie', superAdmin).expect(200);
+
+      const lina = await hire('Lina Leaver', 'full_time');
+      await contract(lina, { grossSalary: 9000 });
+      const advance = async (kind: string, amount: number, givenOn: string, reason: string) =>
+        (await api().post('/api/payroll/advances').set('Cookie', hr).send({ employeeId: lina.id, kind, amount, givenOn, reason }).expect(201)).body.id as string;
+      const settle = (id: string, body: object) => api().post(`/api/payroll/advances/${id}/settle`).set('Cookie', hr).send(body).expect(200);
+      const [old, laptop, rent, fuel, travel] = [
+        await advance('advance', 200, '2026-02-01', 'Old'),
+        await advance('loan', 3000, '2026-03-01', 'Laptop'),
+        await advance('advance', 1000, '2026-04-01', 'Rent'),
+        await advance('advance', 500, '2026-05-01', 'Fuel'),
+        await advance('advance', 700, '2026-06-01', 'Travel'),
+      ];
+      try {
+        // nothing to leave yet: no final settlement to print
+        expect((await check(lina.id, { slotKey: 'clearance_dues' }).expect(400)).body.message).toContain('once an ending of the employment is recorded');
+        // waived long before leaving: not the final settlement's
+        await settle(old, { how: 'waived', note: 'Written off in February' });
+        await prisma.payrollAdvance.update({ where: { id: old }, data: { settledAt: new Date('2026-02-15T10:00:00Z') } });
+
+        // she resigns, and her employment ends 5 days ago
+        const today = todayInCairo();
+        await api()
+          .post(`/api/employees/${lina.id}/employments/${lina.employmentId}/endings`)
+          .set('Cookie', hr)
+          .send({ ruleKey: 'resignation', noticeGivenOn: addDays(today, -30), certifiedOffice: 'Nasr City labour office', certifiedSerial: `L-${RUN}`, certifiedOn: addDays(today, -31) })
+          .expect(201);
+        await api().post(`/api/employees/${lina.id}/employments/${lina.employmentId}/end`).set('Cookie', hr).send({ endDate: addDays(today, -5), endReason: 'resigned' }).expect(200);
+        // the laptop loan stays open: deducted, as the owner's rule has it, unless waived
+        await settle(rent, { how: 'waived', note: 'Goodwill on leaving' });
+        await settle(fuel, { how: 'final_settlement' });
+        await settle(travel, { how: 'paid_back', note: 'Paid back in cash' });
+
+        // the unused leave as the final settlement lists it (Unsettled)
+        const unsettled = (await api().get('/api/payroll/unsettled').set('Cookie', hr).expect(200)).body as {
+          settlements: { rows: { employmentId: string; unusedLeave: { days: number; dayRate: number; amount: number } | null }[] };
+        };
+        const leave = unsettled.settlements.rows.find((s) => s.employmentId === lina.employmentId)!.unusedLeave!;
+        expect(leave.days).toBeGreaterThan(0);
+        expect(leave.dayRate).toBeGreaterThan(0);
+
+        const res = await generate(lina.id, { slotKey: 'clearance_dues' }).expect(201);
+        expect(res.body.hasRestricted).toBe(true);
+        expect(paragraphLines(await docxOf(res.body.id))).toEqual([
+          ['عمر خالد محمود'],
+          [
+            'قرض (Laptop): المتبقي 3,000 جنيه، مخصوم من المستحقات',
+            'سلفة (Rent): المتبقي 1,000 جنيه، تم التنازل عنها',
+            'سلفة (Fuel): المتبقي 500 جنيه، مخصوم من المستحقات',
+            `رصيد الإجازة السنوية غير المستنفد: ${printedDayCount(leave.days, 'ar')} × ${printedMoney(leave.dayRate)} جنيه = ${printedMoney(leave.amount)} جنيه`,
+            'إجمالي المخصوم: 3,500 جنيه',
+          ],
+          [
+            'Loan (Laptop): EGP 3,000 still owed, deducted',
+            'Advance (Rent): EGP 1,000 still owed, waived',
+            'Advance (Fuel): EGP 500 still owed, deducted',
+            `Unused leave: ${printedDayCount(leave.days, 'en')} × EGP ${printedMoney(leave.dayRate)} = EGP ${printedMoney(leave.amount)}`,
+            'Total deducted: EGP 3,500',
+          ],
+          ['المجموع: 3,500'],
+        ]);
+        // printing it settles nothing: the loan is HR's to settle on Unsettled
+        expect((await prisma.payrollAdvance.findUniqueOrThrow({ where: { id: laptop }, select: { status: true } })).status).toBe('open');
+        // amounts, as pay: the view is in the audit log
+        expect((await auditOf(res.body.id)).find((a) => a.action === 'view_restricted')?.diff).toMatchObject({
+          seen: 'generated',
+          fields: ['deductions', 'deductions_en', 'deductions_total'],
+        });
+
+        // an Admin previews the template with Lina's data: the amounts masked, as a salary is
+        const admin = await signIn(app, await createUser(prisma, ['admin']));
+        await api().get(`/api/templates/versions/${upload.body.id}/preview`).query({ employeeId: lina.id }).set('Cookie', admin).buffer(true).parse(bytes).expect(200);
+        expect(paragraphLines(Buffer.from(convert.mock.lastCall![0]))).toEqual([['عمر خالد محمود'], [MASK], [MASK], [`المجموع: ${MASK}`]]);
+      } finally {
+        await prisma.payrollAdvance.deleteMany({ where: { employeeId: lina.id } });
       }
     });
   });

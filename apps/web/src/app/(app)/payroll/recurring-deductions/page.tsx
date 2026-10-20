@@ -16,6 +16,7 @@ import { monthName, monthOf } from '../list';
 import { loadJson, notLoadedText } from '../load';
 import { changeRecurring, createRecurring, editRecurring, recordConsent, stopRecurring } from './actions';
 import {
+  beforeTaxText,
   canSeeRecurring,
   changesRecurring,
   consentHref,
@@ -45,6 +46,8 @@ import { AddRecurringForm, RecurringActions } from './recurring-forms';
 // as salaries; the API checks it again. Each one says whether the employee's signed consent is on file (owner, 18
 // October 2026, after reading the law: "record the consent"; Labour Law Art. 114), who recorded it and when, with the
 // signed consent for HR and the CEO, who see the employee file it is kept in; HR records it for one added before.
+// One ticked deducted before tax (owner, 20 October 2026, asked whether the employee's medical share is taken before or
+// after tax: "Before Tax i think") says "Before tax" under its name: its months lower the taxable pay first.
 
 export const metadata: Metadata = { title: 'Recurring Deductions · People System' };
 
@@ -113,6 +116,11 @@ function RecurringTable({ rows, hr, opens, today, order }: { rows: RecurringDedu
                         </td>
                         <td className="min-w-48">
                           {r.name}
+                          {beforeTaxText(r) && (
+                            <div className="mt-1">
+                              <span className="badge bg-accent-soft text-accent">{beforeTaxText(r)}</span>
+                            </div>
+                          )}
                           <Consent row={r} opens={opens} />
                           {r.stopNote && <div className="text-xs text-muted">Stopped: {r.stopNote}</div>}
                         </td>
@@ -139,6 +147,7 @@ function RecurringTable({ rows, hr, opens, today, order }: { rows: RecurringDedu
                                   endMonth: r.endMonth,
                                   stoppedFrom: r.stoppedFrom,
                                   consent: r.consent === undefined ? undefined : { recorded: r.consent !== null, attached: !!r.consent?.paper },
+                                  beforeTax: r.beforeTax === true,
                                 }}
                                 froms={fromChoices(r, today)}
                                 ends={editEndChoices(r, today)}
@@ -245,9 +254,9 @@ export default function RecurringDeductionsPage() {
         <h1 className="text-2xl font-semibold">Recurring Deductions</h1>
         <p className="mt-1 text-muted">
           A fixed amount taken from an employee&apos;s pay every month, such as their share of a medical subscription: from its first month to its last, or
-          until it is stopped. Each month&apos;s payroll run takes it after tax, named on the payslip as it is here. The employee&apos;s signed consent
-          must be on file, and the law allows such deductions up to 25% of the pay after tax, insurance and installments (Labour Law Art. 114).
-          Advances and loans are recovered by their installments, on Unsettled.
+          until it is stopped. Each month&apos;s payroll run takes it after tax, or before tax when ticked so (it then lowers the taxable pay), named on
+          the payslip as it is here. The employee&apos;s signed consent must be on file, and the law allows such deductions up to 25% of the pay after
+          tax, insurance and installments (Labour Law Art. 114). Advances and loans are recovered by their installments, on Unsettled.
         </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

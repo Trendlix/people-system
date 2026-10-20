@@ -302,6 +302,22 @@ function LawRatesForm({
           </fieldset>
         </div>
 
+        {/* the before-tax health insurance limit (owner, 20 October 2026, on the employee's medical share: "Before Tax i think") */}
+        <div className="border-t border-line-soft pt-5">
+          <fieldset className="space-y-4">
+            <legend className="font-semibold">Before-Tax Health Insurance</legend>
+            <div className="sm:max-w-sm">
+              <Field
+                id={fid('beforeTaxHealthLimit')}
+                label="Before-tax health insurance limit a year (EGP)"
+                hint="The most of an employee's health insurance share, the recurring deductions ticked Deducted before tax, that lowers their taxable pay in a year: a twelfth of it a month. The tax law limits it: ask your accountant for the limit. Leave it empty for no limit."
+                value={typed.beforeTaxHealthLimit}
+                onChange={set('beforeTaxHealthLimit')}
+              />
+            </div>
+          </fieldset>
+        </div>
+
         <TierEditor fid={fid} rows={typed.taxTiers} onChange={(taxTiers) => setTyped((t) => ({ ...t, taxTiers }))} />
 
         <p className="text-sm text-muted">

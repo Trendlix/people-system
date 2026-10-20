@@ -11,6 +11,7 @@ import {
   type SavedPayrollInputs,
 } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
+import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { breakdown, cutText, expectedHoursNote, percentText, shiftHoursNote, waivedByCeo, waiverOf } from './breakdown';
 
 // An invented employee's month, worked out by hand. The shift: 22 working days in the month less 1 holiday, at 8:00 to
@@ -489,6 +490,51 @@ describe('breakdown: the month’s additions and deductions (owner, 17 October 2
   it('a line without any has no such rows', () => {
     const none = { ...terms, adjustments: [] };
     expect(breakdown({ payBasis: 'monthly', terms: none, inputs: EMPTY_PAYROLL_INPUTS, result: payrollLine(none, EMPTY_PAYROLL_INPUTS) }, PAYROLL_RULE_DEFAULTS).some((r) => r.key.startsWith('adjustment-'))).toBe(false);
+  });
+});
+
+describe('breakdown: a Recurring deduction before tax (owner, 20 October 2026: "Before Tax i think")', () => {
+  const medical: PayrollAdjustmentItem = { id: 'r1', kind: 'deduction', type: 'recurring', taxed: false, amount: 350, reason: 'Medical subscription (family)', beforeTax: true };
+  const loan: PayrollAdjustmentItem = { id: 'l1', kind: 'deduction', type: 'loan_installment', taxed: false, amount: 1000, reason: 'Car loan, 2 of 6' };
+  const lineWith = (items: PayrollAdjustmentItem[], law = lawRatesFor(2026)) => {
+    const t: PayrollTerms = { ...terms, adjustments: items };
+    return { payBasis: 'monthly' as const, terms: t, inputs: EMPTY_PAYROLL_INPUTS, result: payrollLine(t, EMPTY_PAYROLL_INPUTS, PAYROLL_RULE_DEFAULTS, law) };
+  };
+
+  it('is a row before the taxable pay, which says what it was lowered by; the others after tax as before', () => {
+    const line = lineWith([medical, loan]);
+    const rows = breakdown(line, PAYROLL_RULE_DEFAULTS);
+    const keys = rows.map((r) => r.key);
+    expect(keys.slice(keys.indexOf('employeeInsurance'), keys.indexOf('tax') + 1)).toEqual(['employeeInsurance', 'adjustment-r1', 'taxable', 'tax']);
+    expect(keys.slice(keys.indexOf('martyrsFund'), keys.indexOf('deductions') + 1)).toEqual(['martyrsFund', 'adjustment-l1', 'deductions']);
+    expect(rows.find((r) => r.key === 'adjustment-r1')).toEqual({
+      key: 'adjustment-r1',
+      label: 'Recurring deduction',
+      value: '−EGP 350.00',
+      kind: 'cut',
+      note: 'Medical subscription (family) · before tax: lowers the taxable pay',
+    });
+    expect(rows.find((r) => r.key === 'taxable')?.note).toBe(`After EGP 350.00 deducted before tax; a year's net income for tax: ${formatEgp(line.result.annualNetIncome)}`);
+    expect(rows.find((r) => r.key === 'adjustment-l1')?.note).toBe('Car loan, 2 of 6 · after tax');
+    // the tax is lower than with it after tax
+    expect(line.result.monthlyTax).toBeLessThan(lineWith([{ ...medical, beforeTax: undefined }, loan]).result.monthlyTax);
+  });
+
+  it('says when the year’s limit held some of it back', () => {
+    const line = lineWith([medical], { ...lawRatesFor(2026), beforeTaxHealthLimit: 2400 });
+    expect(line.result).toMatchObject({ beforeTaxDeductions: 350, taxableLowered: 200 });
+    expect(breakdown(line, PAYROLL_RULE_DEFAULTS).find((r) => r.key === 'taxable')?.note).toBe(
+      `After EGP 200.00 of the EGP 350.00 deducted before tax (the before-tax limit, or the pay, holds back the rest); a year's net income for tax: ${formatEgp(line.result.annualNetIncome)}`,
+    );
+  });
+
+  it('after tax, the rows read as they always did', () => {
+    const line = lineWith([{ ...medical, beforeTax: undefined }]);
+    const rows = breakdown(line, PAYROLL_RULE_DEFAULTS);
+    const keys = rows.map((r) => r.key);
+    expect(keys.slice(keys.indexOf('employeeInsurance'), keys.indexOf('taxable') + 1)).toEqual(['employeeInsurance', 'taxable']);
+    expect(rows.find((r) => r.key === 'adjustment-r1')?.note).toBe('Medical subscription (family) · after tax');
+    expect(rows.find((r) => r.key === 'taxable')?.note).toBe(`A year's net income for tax: ${formatEgp(line.result.annualNetIncome)}`);
   });
 });
 

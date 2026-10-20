@@ -47,6 +47,14 @@ export interface LawRates {
    * sets it; missing or null when not set, and nothing is checked against it.
    */
   minimumWage?: number | null;
+  /**
+   * The most of the employee's health insurance share that may lower their taxable pay in a year (owner, 20 October
+   * 2026, asked whether the employee's medical share is taken before or after tax: "Before Tax i think"): the recurring
+   * deductions HR ticks "Deducted before tax" lower a month's taxable pay by at most a twelfth of it (beforeTaxMonthlyLimit),
+   * as the tax works a month out as a twelfth of the year. The tax law limits the deduction, but its limit isn't built
+   * in (the accountant gives it): the Super Admin sets it; missing or null when not set, and then there is no limit.
+   */
+  beforeTaxHealthLimit?: number | null;
 }
 
 /** The rates' fields other than the year: what a year's row holds. */
@@ -155,7 +163,18 @@ export function normalLawRates(r: LawRates): LawRates {
     taxTiers: normalTaxTiers(r.taxTiers),
     // only when set, so a table without it compares as it did
     ...(typeof r.minimumWage === 'number' && { minimumWage: r.minimumWage }),
+    // the same for the before-tax health insurance limit (20 October 2026)
+    ...(typeof r.beforeTaxHealthLimit === 'number' && { beforeTaxHealthLimit: r.beforeTaxHealthLimit }),
   };
+}
+
+/**
+ * The most a month's deductions before tax lower its taxable pay by (owner, 20 October 2026: "Before Tax i think"): a
+ * twelfth of the year's before-tax health insurance limit, down to the piaster; null when no limit is set.
+ */
+export function beforeTaxMonthlyLimit(r: Pick<LawRates, 'beforeTaxHealthLimit'>): number | null {
+  const limit = r.beforeTaxHealthLimit;
+  return typeof limit === 'number' && Number.isFinite(limit) && limit > 0 ? Math.floor(Math.round(limit * 100) / 12) / 100 : null;
 }
 
 // ---------- checks ----------
@@ -256,7 +275,8 @@ const RATE_NAMES = {
 /**
  * What is wrong with a year's rates, in plain words (none: they can be kept): the year from 2000 to 2100, each rate
  * from 0% to 100%, the insurable wage's minimum above 0 and its maximum not below it, the exemption not below 0, the
- * minimum wage above 0 when set, all to the piaster, and the tax table (taxTiersProblems).
+ * minimum wage and the before-tax health insurance limit above 0 when set, all to the piaster, and the tax table
+ * (taxTiersProblems).
  */
 export function lawRatesProblems(r: LawRates): string[] {
   const problems: string[] = [];
@@ -274,6 +294,9 @@ export function lawRatesProblems(r: LawRates): string[] {
   }
   if (r.minimumWage !== undefined && r.minimumWage !== null && !isLimit(r.minimumWage)) {
     problems.push('Enter the minimum wage as an amount above 0, to the piaster, or leave it empty.');
+  }
+  if (r.beforeTaxHealthLimit !== undefined && r.beforeTaxHealthLimit !== null && !isLimit(r.beforeTaxHealthLimit)) {
+    problems.push('Enter the before-tax health insurance limit a year as an amount above 0, to the piaster, or leave it empty for no limit.');
   }
   problems.push(...taxTiersProblems(r.taxTiers));
   return problems;

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { INTERN_NO_WAGE_TEXT, LABELS, OFFER_VALID_DAYS, PAY_BASIS_LABELS } from '@trendlix/shared';
 import { DocumentViewer } from '@/components/document-viewer';
+import { PrintPdf } from '@/components/print-pdf';
 import { getBrand } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
@@ -23,7 +24,7 @@ import { ExtendOffer, RecordAnswer, SendOffer, WithdrawOffer } from './offer-act
 import { ASK_SUPER_ADMIN, seesTemplates } from '../../templates/wording';
 
 // One job offer: what it says, where it stands (a timeline from drafted to the profile made), what filling in its
-// template lacks, and what HR can do next: preview or download the PDF, edit, send it by email or copy the link,
+// template lacks, and what HR can do next: preview, download or print the PDF, edit, send it by email or copy the link,
 // extend it, withdraw it, record an answer given another way, make the profile once accepted; a Super Admin deletes one
 // that wasn't accepted (owner's decisions, 15 October 2026). The CEO sees all of it, without the actions. Its document
 // is only ever a protected PDF, never a Word file (owner's request, 15 October 2026: "No doc file export, just a
@@ -365,6 +366,11 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
                   {labels.download}
                   <span className="sr-only"> ({name})</span>
                 </a>
+                {/* owner's request, 20 October 2026: "add Print Button"; the protected PDF allows printing */}
+                <PrintPdf src={offerDocumentHref(o.id)} title={`Job offer ${o.number}, for printing`} className={`${small} btn-secondary`}>
+                  {labels.print}
+                  <span className="sr-only"> ({name})</span>
+                </PrintPdf>
               </>
             )}
             {manages && (status === 'draft' || status === 'sent' || status === 'expired') && (

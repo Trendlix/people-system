@@ -42,8 +42,9 @@ function boxesSample(tag: string): string {
   if (SAMPLES[tag]) return SAMPLES[tag];
   const t = TAGS.get(tag);
   if (t?.note?.startsWith('DD/MM/YYYY')) return DATE;
-  // an amount of money: the pay tags but the words and the lists of allowances, and a payslip's deductions
-  if ((t?.group === 'pay' && !/_words|^allowances(_ar|_en)?$/.test(tag)) || tag === 'deductions') return MONEY;
+  // an amount of money: the pay tags but the words and the lists of allowances, and the final settlement's total
+  // deducted (20 October 2026: its deductions are lines of words now)
+  if ((t?.group === 'pay' && !/_words|^allowances(_ar|_en)?$/.test(tag)) || tag === 'deductions_total') return MONEY;
   return DIGITS;
 }
 

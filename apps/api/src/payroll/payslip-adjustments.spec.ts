@@ -60,6 +60,26 @@ describe('payslipContent: the month’s additions and deductions', () => {
     const c = payslipContent(payslipSource('monthly'), 'en');
     expect(c.earnings!.rows.map((x) => x.label)).not.toContain('Incentive');
   });
+
+  it('a Recurring deduction before tax says so, and the salary tax what it was worked out on (owner, 20 October 2026: "Before Tax i think")', () => {
+    const medical: PayrollAdjustmentItem = { id: 'r1', kind: 'deduction', type: 'recurring', taxed: false, amount: 350, reason: 'Medical subscription (family)', beforeTax: true };
+    const before = payslipSource('monthly', { terms: { adjustments: [medical] } });
+    const after = payslipSource('monthly', { terms: { adjustments: [{ ...medical, beforeTax: undefined }] } });
+    expect(before.line.result.monthlyTax).toBeLessThan(after.line.result.monthlyTax);
+    const en = payslipContent(before, 'en');
+    expect(en.deductions!.rows.at(-1)).toEqual({ label: 'Medical subscription (family)', note: 'Recurring deduction · Before tax: lowers the taxable pay', amount: '350.00', value: 350 });
+    expect(en.deductions!.rows.find((x) => x.label === 'Salary tax')).toMatchObject({ note: 'On the pay less 350.00 deducted before tax', value: before.line.result.monthlyTax });
+    // the rows still add up to the deductions and the net
+    expect(sum(en.deductions!.rows)).toBe(before.line.result.deductions);
+    expect(Math.round((en.earnings!.total.value - en.deductions!.total.value) * 100) / 100).toBe(before.line.result.net);
+    const ar = payslipContent(before, 'ar');
+    expect(ar.deductions!.rows.at(-1)!.note).toBe('خصم شهري، قبل الضريبة: يخفض الوعاء الخاضع للضريبة');
+    expect(ar.deductions!.rows.find((x) => x.label === 'ضريبة كسب العمل')!.note).toBe('بعد خصم ٣٥٠٫٠٠ قبل الضريبة');
+    // after tax, as before: its type alone, and nothing said on the tax
+    const plain = payslipContent(after, 'en');
+    expect(plain.deductions!.rows.at(-1)!.note).toBe('Recurring deduction');
+    expect(plain.deductions!.rows.find((x) => x.label === 'Salary tax')!.note).toBeNull();
+  });
 });
 
 describe('the register’s columns for them', () => {
@@ -74,6 +94,30 @@ describe('the register’s columns for them', () => {
     // a line worked out before 17 October 2026: none
     const older = { ...line, result: { ...line.result, additionsTaxed: undefined, additionsUntaxed: undefined, adjustmentDeductions: undefined } };
     expect(REGISTER_COLUMNS.find((c) => c.header === 'Additions (taxed)')!.value(older, 1)).toBe(0);
+  });
+
+  it('has the deductions before tax before the income tax, out of those after tax (owner, 20 October 2026: "Before Tax i think")', () => {
+    const headers = REGISTER_COLUMNS.map((c) => c.header);
+    expect(headers.slice(headers.indexOf('Social insurance (employee)'), headers.indexOf('Income tax') + 1)).toEqual([
+      'Social insurance (employee)',
+      'Deductions (before tax)',
+      'Income tax',
+    ]);
+    const medical: PayrollAdjustmentItem = { id: 'r1', kind: 'deduction', type: 'recurring', taxed: false, amount: 350, reason: 'Medical subscription (family)', beforeTax: true };
+    const lineOf = (source: ReturnType<typeof payslipSource>) => ({ ...source.line, name: source.line.nameEn, bankFile: null, onHold: false, comments: null });
+    const value = (l: ReturnType<typeof lineOf>, header: string) => REGISTER_COLUMNS.find((c) => c.header === header)!.value(l, 1);
+    const line = lineOf(payslipSource('monthly', { terms: { adjustments: [...ADJUSTMENTS, medical] } }));
+    expect([value(line, 'Deductions (before tax)'), value(line, 'Deductions (after tax)')]).toEqual([350, 1000]);
+    expect(value(line, 'Additions and deductions')).toBe(
+      'Incentive: 1,500.00 (Campaign launch); Reimbursement: 320.75, not taxed (Taxi to the client); Loan installment: −1,000.00 (Car loan, 2 of 6); Recurring deduction: −350.00, before tax (Medical subscription (family))',
+    );
+    // after tax: in the after-tax column, said as before
+    const after = lineOf(payslipSource('monthly', { terms: { adjustments: [...ADJUSTMENTS, { ...medical, beforeTax: undefined }] } }));
+    expect([value(after, 'Deductions (before tax)'), value(after, 'Deductions (after tax)')]).toEqual([0, 1350]);
+    expect(value(after, 'Additions and deductions')).toMatch(/Recurring deduction: −350\.00 \(Medical subscription \(family\)\)$/);
+    // held back by the year's limit: what the taxable pay was lowered by said last
+    const limited = { ...line, result: { ...line.result, taxableLowered: 300 } };
+    expect(value(limited, 'Additions and deductions')).toMatch(/; Taxable pay lowered by 300\.00 of the 350\.00 before tax$/);
   });
 });
 

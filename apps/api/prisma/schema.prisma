@@ -1238,6 +1238,10 @@ model PayrollLawYear {
   // the private sector's minimum wage a month (owner, 18 October 2026): a trainee's last stage is paid at least this
   // (Labour Law 14/2025 Art. 29); not seeded, the owner sets it; null: not set, nothing checked against it
   minimumWage           Decimal? @map("minimum_wage") @db.Decimal(12, 2)
+  // the most of the employee's health insurance share that lowers their taxable pay in a year (owner, 20 October 2026,
+  // on the medical share: "Before Tax i think"): the recurring deductions ticked "Deducted before tax" lower a month's
+  // taxable pay by at most a twelfth of it; not seeded, as the law's limit is the accountant's to give; null: no limit
+  beforeTaxHealthLimit  Decimal? @map("before_tax_health_limit") @db.Decimal(12, 2)
   updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
   updatedById           String?  @map("updated_by") @db.Uuid // null for the rows the migration added
   updatedBy             User?    @relation("LawRatesChange", fields: [updatedById], references: [id], onDelete: SetNull)
@@ -1273,7 +1277,10 @@ model PayrollAdjustment {
   month         DateTime            @db.Date // the month's first day: the run it goes on
   kind          String // ADJUSTMENT_KINDS: addition, deduction
   type          String // ADDITION_TYPES or DEDUCTION_TYPES, by kind
-  taxed         Boolean // an addition taxed with the pay; never a deduction (taken after tax)
+  taxed         Boolean // an addition taxed with the pay; never a deduction (taken after tax, or before it: beforeTax)
+  // a Recurring deduction of a recurring deduction ticked "Deducted before tax" (owner, 20 October 2026: "Before Tax i
+  // think"): it lowers the taxable pay before the income tax; false for every other, which is after tax
+  beforeTax     Boolean             @default(false) @map("before_tax")
   amount        Decimal?            @db.Decimal(12, 2) // RESTRICTED: EGP, more than 0; in days, none until applied (what the line paid)
   days          Decimal?            @db.Decimal(3, 1) // a Bonus (days) or a Penalty (days): whole or half days, up to 31; none for the others
   reason        String
@@ -1341,6 +1348,7 @@ model PayrollAdvance {
 // until HR stops it. Each month's run adds its Recurring deduction (a PayrollAdjustment linked to it) for the months it
 // is due and the employee is employed. HR changes the amount from a month on (this one stopped then, a new one from
 // then) or stops it; an employment ending stops it from the month after the last working day ("Left the company").
+// Taken after tax unless HR ticks it "Deducted before tax" (owner, 20 October 2026: "Before Tax i think").
 // RESTRICTED (HR, Finance, CEO; the employee their own), like a salary.
 model RecurringDeduction {
   id                  String              @id @default(uuid()) @db.Uuid
@@ -1352,6 +1360,9 @@ model RecurringDeduction {
   endMonth            DateTime?           @map("end_month") @db.Date // the last month's first day; null: until stopped
   stoppedFrom         DateTime?           @map("stopped_from") @db.Date // the first day of the first month no longer deducted, once stopped
   stopNote            String?             @map("stop_note") // why it was stopped: HR's, or "Left the company"
+  // "Deducted before tax (lowers taxable pay)" (owner, 20 October 2026, asked whether the employee's medical share is
+  // taken before or after tax: "Before Tax i think"), off by default: its months' Recurring deductions carry it
+  beforeTax           Boolean             @default(false) @map("before_tax")
   createdById         String?             @map("created_by") @db.Uuid
   createdBy           User?               @relation("RecurringDeductionEntry", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz

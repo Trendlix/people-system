@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { isDaysType, type AdjustmentKind, type AdjustmentType, type PayrollAdjustmentItem, type PayrollResult, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
+import { isDaysType, mayBeBeforeTax, type AdjustmentKind, type AdjustmentType, type PayrollAdjustmentItem, type PayrollResult, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
 import { AuditService } from '../../audit/audit.service.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import { toDateOnly } from '../../common/date-only.js';
@@ -15,13 +15,15 @@ const LINE = 'payroll_line';
 
 /**
  * An addition or deduction as a line keeps it: one in days with its days and no amount, which the run works out
- * (owner, 17 October 2026).
+ * (owner, 17 October 2026); a Recurring deduction ticked before tax with beforeTax (owner, 20 October 2026: "Before Tax
+ * i think"), every other without it, so a line's terms read as they did before then.
  */
 export const itemOf = (a: {
   id: string;
   kind: string;
   type: string;
   taxed: boolean;
+  beforeTax?: boolean;
   amount: Prisma.Decimal | null;
   days: Prisma.Decimal | null;
   reason: string;
@@ -33,6 +35,7 @@ export const itemOf = (a: {
   amount: isDaysType(a.type) ? null : (a.amount?.toNumber() ?? 0),
   ...(isDaysType(a.type) && { days: a.days?.toNumber() ?? 0 }),
   reason: a.reason,
+  ...(a.beforeTax === true && mayBeBeforeTax(a.kind, a.type) && { beforeTax: true }),
 });
 
 /** What the line's result says each of its additions and deductions came to, by id. */

@@ -1,14 +1,17 @@
 import {
   adjustmentTypeLabel,
+  BEFORE_TAX_LABEL,
   daysText,
   EMPTY_PAYROLL_INPUTS,
   formatHours,
+  isBeforeTax,
   lawRatesFor,
   leaveDaysOf,
   measuredExpectedHours,
   paidAdjustments,
   paysOvertime,
   resultAdjustments,
+  resultBeforeTax,
   splitSegments,
   type LawRates,
   type PayrollAllowance,
@@ -47,8 +50,10 @@ import { contractLabel, dayRange } from './grid';
 // 17 October 2026: "allow the CEO to wave the deduction by ticking a box") says so on the attendance cut. The month's
 // permission hours (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day") count as worked: where
 // the hours explain the attendance, "Permission: 4:00" as the line counted them (PayrollResult.permissionHours), from
-// the permission approved or as typed, and the hours worked with them. Pure code, tested; relative imports, as vitest
-// doesn't know the @/ paths.
+// the permission approved or as typed, and the hours worked with them. A Recurring deduction ticked before tax (owner,
+// 20 October 2026, on the employee's medical share: "Before Tax i think") is a row before the taxable pay, "Before tax:
+// lowers the taxable pay", and the taxable pay says what it was lowered by (less when the year's limit or the pay held
+// it back). Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 export interface BreakdownRow {
   key: string;
@@ -321,14 +326,16 @@ function hourlySteps({ terms: t, inputs: i, result: r }: Line): BreakdownRow[] {
 
 /**
  * The line's additions or deductions of a kind (owner, 17 October 2026), each a row by its type with its reason, as the
- * line paid them: a Bonus (days) or a Penalty (days) with its days and what the run worked it out to.
+ * line paid them: a Bonus (days) or a Penalty (days) with its days and what the run worked it out to. Additions taxed
+ * or not (`taxed`, null: both); deductions before tax or after (`taxed` true: those before tax, 20 October 2026; false:
+ * those after; null: both).
  */
 function adjustmentRows(line: Line, kind: 'addition' | 'deduction', taxed: boolean | null): BreakdownRow[] {
   return paidAdjustments(line)
-    .filter((a) => a.kind === kind && (taxed === null || a.taxed === taxed))
+    .filter((a) => a.kind === kind && (taxed === null || (kind === 'deduction' ? isBeforeTax(a) : a.taxed) === taxed))
     .map((a) => {
       const inDays = a.days ? `${daysText(a.days)} of ${kind === 'addition' ? 'the fixed part' : "the contract's net"}` : null;
-      const tax = kind === 'deduction' ? 'after tax' : a.taxed ? 'taxed' : 'not taxed, added after tax';
+      const tax = kind === 'deduction' ? (isBeforeTax(a) ? `${BEFORE_TAX_LABEL.toLowerCase()}: lowers the taxable pay` : 'after tax') : a.taxed ? 'taxed' : 'not taxed, added after tax';
       return {
         key: `adjustment-${a.id}`,
         label: adjustmentTypeLabel(a.kind, a.type),
@@ -377,6 +384,22 @@ export function waiverOf(line: Pick<Line, 'inputs' | 'result'>): { amount: numbe
 /** A line whose attendance deduction the CEO waived: "Waived by the CEO" on it for HR and Finance. */
 export const waivedByCeo = (line: Pick<Line, 'inputs' | 'result'>) => line.inputs.attendanceWaived === true && (line.result.attendanceWaived ?? 0) > 0;
 
+/**
+ * The taxable pay's note: a year's net income for tax, and on a line with deductions before tax (owner, 20 October
+ * 2026: "Before Tax i think") what they lowered it by: "After EGP 350.00 deducted before tax; a year's net income for
+ * tax: …", saying when the year's limit or the pay held some of them back.
+ */
+export function taxableNote(r: Pick<PayrollResult, 'annualNetIncome' | 'beforeTaxDeductions' | 'taxableLowered'>): string {
+  const year = `year's net income for tax: ${formatEgp(r.annualNetIncome)}`;
+  const before = resultBeforeTax(r);
+  if (!(before.deductions > 0)) return `A ${year}`;
+  const held = Math.round(before.lowered * 100) < Math.round(before.deductions * 100);
+  const lowered = held
+    ? `After ${formatEgp(before.lowered)} of the ${formatEgp(before.deductions)} deducted before tax (the before-tax limit, or the pay, holds back the rest)`
+    : `After ${formatEgp(before.lowered)} deducted before tax`;
+  return `${lowered}; a ${year}`;
+}
+
 /** Every step of a line, in order, as its row in the results table opens it. */
 export function breakdown(given: Line, rules: PayrollRules, law?: LawRates): BreakdownRow[] {
   // inputs saved before a field existed (the leave days, 17 October 2026) read as not given
@@ -417,17 +440,13 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates): Bre
       note: t.insuredWageAsBefore ? `As before the raise until ${monthName(t.insuredWageAsBefore.slice(0, 7))}` : undefined,
     },
     { key: 'employeeInsurance', label: 'Social insurance', value: cutText(r.employeeInsurance), kind: 'cut', note: insuranceNote },
-    {
-      key: 'taxable',
-      label: 'Taxable pay',
-      value: formatEgp(r.monthlyTaxable),
-      kind: 'info',
-      note: t.statutory ? `A year's net income for tax: ${formatEgp(r.annualNetIncome)}` : undefined,
-    },
+    // the deductions before tax (20 October 2026), which lowered the taxable pay
+    ...adjustmentRows(line, 'deduction', true),
+    { key: 'taxable', label: 'Taxable pay', value: formatEgp(r.monthlyTaxable), kind: 'info', note: t.statutory ? taxableNote(r) : undefined },
     { key: 'tax', label: 'Income tax', value: cutText(r.monthlyTax), kind: 'cut' },
     { key: 'martyrsFund', label: 'Martyrs’ fund', value: cutText(r.martyrsFund), kind: 'cut' },
     ...typed.penalties,
-    ...adjustmentRows(line, 'deduction', null),
+    ...adjustmentRows(line, 'deduction', false),
     { key: 'deductions', label: 'Deductions', value: cutText(r.deductions), kind: 'total' },
     ...adjustmentRows(line, 'addition', false),
     { key: 'net', label: 'Net', value: formatEgp(r.net), kind: 'total' },

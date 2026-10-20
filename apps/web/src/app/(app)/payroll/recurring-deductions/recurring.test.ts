@@ -2,6 +2,9 @@ import type { Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import type { RecurringDeductionView } from '../../../../lib/types';
 import {
+  BEFORE_TAX_HINT,
+  BEFORE_TAX_TICK,
+  beforeTaxText,
   canSeeRecurring,
   changeRecurringBody,
   changesRecurring,
@@ -175,7 +178,8 @@ describe('what the forms send', () => {
   it('a new one: the employee, what for, the amount a month, the first month and the last (empty: until stopped)', () => {
     const typed = { employeeId: 'e1', name: ' Medical subscription (family) ', amount: '350', startMonth: '2026-11', endMonth: '', consentOnFile: 'yes' };
     expect(recurringBody(form(typed))).toEqual({
-      body: { employeeId: 'e1', name: 'Medical subscription (family)', amount: 350, startMonth: '2026-11', endMonth: null, consentOnFile: true },
+      // after tax unless ticked (20 October 2026)
+      body: { employeeId: 'e1', name: 'Medical subscription (family)', amount: 350, startMonth: '2026-11', endMonth: null, beforeTax: false, consentOnFile: true },
       file: null,
       errors: [],
     });
@@ -215,6 +219,7 @@ describe('what the forms send', () => {
       amount: '350.00',
       startMonth: '2026-11',
       endMonth: '',
+      beforeTax: 'false',
       consentOnFile: 'true',
       consentFile: 'consent.pdf',
     });
@@ -222,7 +227,7 @@ describe('what the forms send', () => {
   });
 
   it('a change of amount: the new amount and the month it starts; more needs the consent ticked again', () => {
-    expect(changeRecurringBody(form({ amount: '400', fromMonth: '2027-01' }))).toEqual({ body: { amount: 400, fromMonth: '2027-01' }, errors: [] });
+    expect(changeRecurringBody(form({ amount: '400', fromMonth: '2027-01' }))).toEqual({ body: { amount: 400, fromMonth: '2027-01', beforeTax: false }, errors: [] });
     expect(changeRecurringBody(form({ amount: '0', fromMonth: '' })).errors).toEqual([
       'Enter the amount a month, more than 0, e.g. 350 or 350.50.',
       'Choose the month the new amount starts.',
@@ -230,10 +235,10 @@ describe('what the forms send', () => {
     // 350 now: 400 is more, 300 less
     expect(changeRecurringBody(form({ amount: '400', fromMonth: '2027-01' }), 350).errors).toEqual([MORE_CONSENT_ERROR]);
     expect(changeRecurringBody(form({ amount: '400', fromMonth: '2027-01', consentOnFile: 'yes' }), 350)).toEqual({
-      body: { amount: 400, fromMonth: '2027-01', consentOnFile: true },
+      body: { amount: 400, fromMonth: '2027-01', beforeTax: false, consentOnFile: true },
       errors: [],
     });
-    expect(changeRecurringBody(form({ amount: '300', fromMonth: '2027-01' }), 350)).toEqual({ body: { amount: 300, fromMonth: '2027-01' }, errors: [] });
+    expect(changeRecurringBody(form({ amount: '300', fromMonth: '2027-01' }), 350)).toEqual({ body: { amount: 300, fromMonth: '2027-01', beforeTax: false }, errors: [] });
     expect(raisesAmount(350.01, 350)).toBe(true);
     expect(raisesAmount(350, 350)).toBe(false);
     expect(raisesAmount(NaN, 350)).toBe(false);
@@ -256,11 +261,49 @@ describe('what the forms send', () => {
   });
 
   it('an edit: the name and the last month (empty: until stopped)', () => {
-    expect(editRecurringBody(form({ name: 'Medical subscription (single)', endMonth: '' }))).toEqual({ body: { name: 'Medical subscription (single)', endMonth: null }, errors: [] });
+    expect(editRecurringBody(form({ name: 'Medical subscription (single)', endMonth: '' }))).toEqual({
+      body: { name: 'Medical subscription (single)', endMonth: null, beforeTax: false },
+      errors: [],
+    });
     expect(editRecurringBody(form({ name: '', endMonth: '2027-13' })).errors).toEqual([
       'Say what it is for, e.g. Medical subscription (family).',
       'Choose the last month it is deducted, or leave it empty to deduct it until stopped.',
     ]);
+  });
+});
+
+describe('deducted before tax (owner, 20 October 2026: "Before Tax i think")', () => {
+  it('is a tick, off by default, with the hint that the tax law limits it', () => {
+    expect(BEFORE_TAX_TICK).toBe('Deducted before tax (lowers taxable pay)');
+    expect(BEFORE_TAX_HINT).toMatch(/^The tax law limits this deduction: ask your accountant for the limit\. /);
+  });
+
+  it('the add, change and edit forms send it ticked or not', () => {
+    const typed = { employeeId: 'e1', name: 'Medical subscription (family)', amount: '350', startMonth: '2026-11', endMonth: '', consentOnFile: 'yes' };
+    const added = recurringBody(form({ ...typed, beforeTax: 'yes' }));
+    expect(added.body.beforeTax).toBe(true);
+    expect(recurringForm(added.body, null).get('beforeTax')).toBe('true');
+    expect(recurringBody(form(typed)).body.beforeTax).toBe(false);
+    expect(changeRecurringBody(form({ amount: '300', fromMonth: '2027-01', beforeTax: 'yes' }), 350).body).toEqual({ amount: 300, fromMonth: '2027-01', beforeTax: true });
+    expect(editRecurringBody(form({ name: 'Gym', endMonth: '', beforeTax: 'yes' })).body).toEqual({ name: 'Gym', endMonth: null, beforeTax: true });
+    // unticked: not in the form at all
+    expect(editRecurringBody(form({ name: 'Gym', endMonth: '' })).body.beforeTax).toBe(false);
+  });
+
+  it('the list says Before tax for one ticked so', () => {
+    expect(beforeTaxText(recurring({ beforeTax: true }))).toBe('Before tax');
+    expect(beforeTaxText(recurring({ beforeTax: false }))).toBeNull();
+    // an API from before it: after tax
+    expect(beforeTaxText(recurring())).toBeNull();
+  });
+
+  it('What It Comes To says the share lowers the taxable pay, only when ticked', () => {
+    const said = 'Deducted before tax: the share lowers the taxable pay by EGP 350.00 a month, so less income tax is taken (within the limit the tax law sets on it).';
+    expect(recurringPreview('350', '2026-11', '', undefined, { beforeTax: true })?.beforeTax).toBe(said);
+    expect(recurringPreview('350', '2026-11', '', null, { beforeTax: true })?.beforeTax).toBe(said);
+    expect(recurringPreview('350', '2026-11', '', { gross: 10_000, byMonth: {} }, { beforeTax: true })?.beforeTax).toBe(said);
+    expect(recurringPreview('350', '2026-11', '', undefined)).not.toHaveProperty('beforeTax');
+    expect(recurringPreview('350', '2026-11', '', undefined, { beforeTax: false })).not.toHaveProperty('beforeTax');
   });
 });
 

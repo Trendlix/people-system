@@ -202,8 +202,8 @@ describe('what the template lacks', () => {
     expect(draftTemplateVersion(offer({ template: { ...draftOnly, status: 'missing', previewVersion: null } }))).toBeNull();
     expect(draftTemplateVersion(offer({ status: 'sent', template: draftOnly }))).toBeNull();
 
-    expect(documentLabels(null)).toEqual({ preview: 'Preview (PDF)', download: 'Download PDF' });
-    expect(documentLabels(3)).toEqual({ preview: 'Preview (PDF, draft template v3)', download: 'Download PDF (draft template v3)' });
+    expect(documentLabels(null)).toEqual({ preview: 'Preview (PDF)', download: 'Download PDF', print: 'Print' });
+    expect(documentLabels(3)).toEqual({ preview: 'Preview (PDF, draft template v3)', download: 'Download PDF (draft template v3)', print: 'Print (draft template v3)' });
   });
 });
 

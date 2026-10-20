@@ -31,6 +31,10 @@ import { isMonth, monthName, monthOf } from '../list';
 // so they are unit tested): who sees it, each one in words, the months the forms offer, what they come to and what
 // they send. Relative imports: the tests run without the "@/" alias. Salary data: HR, Finance and the CEO; HR changes
 // them; the API checks every request.
+// Deducted before tax (owner, 20 October 2026, asked whether the employee's medical share is taken before or after tax:
+// "Before Tax i think"): a tick on the add, change and edit forms, off by default, "Deducted before tax (lowers taxable
+// pay)", its hint that the tax law limits it (ask the accountant; Payroll Setup's limit, once set, is kept to); the list
+// says "Before tax", and What It Comes To that the share lowers the taxable pay.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -45,6 +49,14 @@ export const opensConsent = (user: WithRoles) => hasRole(user, 'hr', 'ceo');
 
 /** The most a name may be: the API's. */
 export const NAME_MAX = 100;
+
+/** The tick (owner, 20 October 2026: "Before Tax i think"), and its hint: the tax law limits the deduction. */
+export const BEFORE_TAX_TICK = 'Deducted before tax (lowers taxable pay)';
+export const BEFORE_TAX_HINT =
+  'The tax law limits this deduction: ask your accountant for the limit. Once a Super Admin sets it in Payroll Setup (rates set by law), the payroll keeps to it.';
+
+/** "Before tax" on the list for one ticked so; null for one after tax, as they are by default. */
+export const beforeTaxText = (r: Pick<RecurringDeductionView, 'beforeTax'>): string | null => (r.beforeTax === true ? 'Before tax' : null);
 
 // ---------- each one in words ----------
 
@@ -176,6 +188,11 @@ export interface RecurringPreview {
   share: string | null;
   /** The months their recurring deductions pass 25% of it, the earliest first: warnings only, it can still be saved. */
   warnings: string[];
+  /**
+   * Ticked deducted before tax (owner, 20 October 2026: "Before Tax i think"): that the share lowers the taxable pay, so
+   * less income tax is taken. Missing when it isn't ticked.
+   */
+  beforeTax?: string;
 }
 
 /** The most months the 25% is looked at in: five years. */
@@ -202,15 +219,16 @@ const percentOf = (part: number, of: number) => Math.round((part / of) * 1000) /
  * gross (their signed contract's, `limit` from /payroll/advances/limit) less about its income tax and social insurance
  * and the month's installments of advances and loans, of which a month's recurring deductions, this one and their
  * others (`replacing`: the one a change of amount stops from its month, left out), may take 25%: what it is in its
- * first month, and a warning for each month past it. Null until an amount and a first month can be read, or when the
- * rules refuse them (the form says why when sent).
+ * first month, and a warning for each month past it. Ticked deducted before tax (`beforeTax`, 20 October 2026), that it
+ * lowers the taxable pay. Null until an amount and a first month can be read, or when the rules refuse them (the form
+ * says why when sent).
  */
 export function recurringPreview(
   amountInput: string,
   start: string,
   end: string,
   limit: LimitFigures | null | undefined,
-  options: { replacing?: string } = {},
+  options: { replacing?: string; beforeTax?: boolean } = {},
 ): RecurringPreview | null {
   const amount = parseAmount(amountInput);
   if (amount === null || Number.isNaN(amount) || !isMonth(start)) return null;
@@ -221,9 +239,13 @@ export function recurringPreview(
     months !== null && last
       ? `${months} ${months === 1 ? 'month' : 'months'}, ${monthName(start)}${months > 1 ? ` to ${monthName(last)}` : ''}: ${formatEgp(amount)} a month, ${formatEgp(sumAmounts(Array(months).fill(amount)))} in all.`
       : `From ${monthName(start)} until stopped: ${formatEgp(amount)} a month, ${formatEgp(sumAmounts(Array(12).fill(amount)))} a year.`;
-  if (limit === undefined) return { period, share: null, warnings: [] };
+  // before tax (20 October 2026): the share lowers the taxable pay, within the tax law's limit on it
+  const beforeTax = options.beforeTax
+    ? { beforeTax: `Deducted before tax: the share lowers the taxable pay by ${formatEgp(amount)} a month, so less income tax is taken (within the limit the tax law sets on it).` }
+    : {};
+  if (limit === undefined) return { period, share: null, warnings: [], ...beforeTax };
   if (!limit || limit.gross === null || limit.gross <= 0) {
-    return { period, share: 'No current contract, so its share of the pay can’t be shown.', warnings: [] };
+    return { period, share: 'No current contract, so its share of the pay can’t be shown.', warnings: [], ...beforeTax };
   }
   const gross = limit.gross;
   const tax = limit.tax ?? 0;
@@ -241,7 +263,7 @@ export function recurringPreview(
     const w = deductionLimitWarning(totalIn(m), baseIn(m), m);
     return w ? [w] : [];
   });
-  return { period, share: `${counted} ${mine}`, warnings };
+  return { period, share: `${counted} ${mine}`, warnings, ...beforeTax };
 }
 
 // ---------- what the forms send ----------
@@ -277,12 +299,16 @@ export function consentFileOf(fd: FormData, errors: string[]): File | null {
 /** The tick "The employee's signed consent is on file". */
 const ticked = (fd: FormData) => text(fd, 'consentOnFile') === 'yes';
 
+/** The tick "Deducted before tax (lowers taxable pay)" (20 October 2026). */
+const beforeTaxTicked = (fd: FormData) => text(fd, 'beforeTax') === 'yes';
+
 /**
- * A new one: the employee, what for, the amount a month, the first month and the last (empty: until stopped), and the
- * tick that the employee's signed consent is on file, needed; the signed consent itself if chosen.
+ * A new one: the employee, what for, the amount a month, the first month and the last (empty: until stopped), whether
+ * it is deducted before tax (20 October 2026), and the tick that the employee's signed consent is on file, needed; the
+ * signed consent itself if chosen.
  */
 export function recurringBody(fd: FormData): {
-  body: { employeeId: string; name: string; amount: number; startMonth: string; endMonth: string | null; consentOnFile: true };
+  body: { employeeId: string; name: string; amount: number; startMonth: string; endMonth: string | null; beforeTax: boolean; consentOnFile: true };
   file: File | null;
   errors: string[];
 } {
@@ -296,7 +322,7 @@ export function recurringBody(fd: FormData): {
   errors.push(...recurringDeductionProblems(amount, startMonth, endMonth));
   if (!ticked(fd)) errors.push(CONSENT_ERROR);
   const file = consentFileOf(fd, errors);
-  return { body: { employeeId, name, amount, startMonth, endMonth, consentOnFile: true }, file, errors };
+  return { body: { employeeId, name, amount, startMonth, endMonth, beforeTax: beforeTaxTicked(fd), consentOnFile: true }, file, errors };
 }
 
 /** What a new one is sent as: a form, with the signed consent when chosen. */
@@ -307,16 +333,21 @@ export function recurringForm(body: ReturnType<typeof recurringBody>['body'], fi
   form.append('amount', body.amount.toFixed(2));
   form.append('startMonth', body.startMonth);
   form.append('endMonth', body.endMonth ?? '');
+  form.append('beforeTax', body.beforeTax ? 'true' : 'false');
   form.append('consentOnFile', 'true');
   if (file) form.append('consentFile', file, file.name);
   return form;
 }
 
 /**
- * A change of amount: the new amount a month and the month it starts (this one stops there, a new one starts); for a
- * higher amount, the tick that the employee's signed consent to it is on file (`saved`: the amount it has).
+ * A change of amount: the new amount a month and the month it starts (this one stops there, a new one starts), whether
+ * the new one is deducted before tax (the tick, as this one is to start with: 20 October 2026); for a higher amount,
+ * the tick that the employee's signed consent to it is on file (`saved`: the amount it has).
  */
-export function changeRecurringBody(fd: FormData, saved?: number): { body: { amount: number; fromMonth: string; consentOnFile?: true }; errors: string[] } {
+export function changeRecurringBody(
+  fd: FormData,
+  saved?: number,
+): { body: { amount: number; fromMonth: string; beforeTax: boolean; consentOnFile?: true }; errors: string[] } {
   const errors: string[] = [];
   const amount = amountOf(fd);
   // the rules' own wording for the amount
@@ -324,7 +355,8 @@ export function changeRecurringBody(fd: FormData, saved?: number): { body: { amo
   const fromMonth = text(fd, 'fromMonth');
   if (!isMonth(fromMonth)) errors.push('Choose the month the new amount starts.');
   if (saved !== undefined && raisesAmount(amount, saved) && !ticked(fd)) errors.push(MORE_CONSENT_ERROR);
-  return { body: ticked(fd) ? { amount, fromMonth, consentOnFile: true } : { amount, fromMonth }, errors };
+  const beforeTax = beforeTaxTicked(fd);
+  return { body: ticked(fd) ? { amount, fromMonth, beforeTax, consentOnFile: true } : { amount, fromMonth, beforeTax }, errors };
 }
 
 /** Whether a new amount is more than it has: the employee's consent to it is needed again. */
@@ -360,11 +392,11 @@ export function stopRecurringBody(fd: FormData): { body: { fromMonth: string; no
   return { body: note ? { fromMonth, note } : { fromMonth }, errors };
 }
 
-/** A change of name or last month (empty: until stopped). */
-export function editRecurringBody(fd: FormData): { body: { name: string; endMonth: string | null }; errors: string[] } {
+/** A change of name, last month (empty: until stopped) or whether it is deducted before tax (20 October 2026). */
+export function editRecurringBody(fd: FormData): { body: { name: string; endMonth: string | null; beforeTax: boolean }; errors: string[] } {
   const errors: string[] = [];
   const name = nameOf(fd, errors);
   const endMonth = text(fd, 'endMonth') || null;
   if (endMonth !== null && !isMonth(endMonth)) errors.push('Choose the last month it is deducted, or leave it empty to deduct it until stopped.');
-  return { body: { name, endMonth }, errors };
+  return { body: { name, endMonth, beforeTax: beforeTaxTicked(fd) }, errors };
 }

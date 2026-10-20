@@ -7,7 +7,8 @@
 // - Unsettled: the runs not yet paid, the lines on hold not paid out since, the final settlements of people who left,
 //   and the advances and loans still being recovered.
 // The amounts are EGP to the piaster. A run takes a line's additions and deductions with adjustmentSums (payroll.ts):
-// the taxed additions into the gross, the untaxed ones after tax, the deductions after tax.
+// the taxed additions into the gross, the untaxed ones after tax, the deductions after tax (a Recurring deduction ticked
+// before tax, 20 October 2026, lowering the taxable pay first).
 // The one place to enter them (owner, 17 October 2026, on the run's inputs grid, pointing at its Penalty Days, Bonus
 // Days, Commission and Settlements columns: "instead of there, i think earnings and deductions will be enough"; he chose
 // "Yes, as proposed"): two types work in days, the run working the amount out from the person's pay for the month: a
@@ -20,6 +21,10 @@
 // share, e.g. a medical subscription, set up once (installments.ts) and added to each month's payroll as a Recurring
 // deduction, after tax like every deduction, its reason the share's name ("Medical subscription (family)"). HR doesn't
 // enter one by hand on Additions / Deductions (ENTERED_TYPES): the month's run adds it.
+// Deducted before tax (owner, 20 October 2026, asked whether the employee's medical share is taken before or after tax:
+// "Before Tax i think"): an option on each recurring deduction, off by default, that its months' Recurring deductions
+// carry (beforeTax): one ticked lowers the taxable pay before the income tax is worked out (payroll.ts), then is taken
+// from the net as every deduction is. Only a Recurring deduction can be (mayBeBeforeTax); every other is after tax.
 // Unused leave paid (owner, 18 October 2026: "make it with decision with the year closing"; Labour Law 14/2025 Art.
 // 125): the days of annual leave a Year Closing pays, in January of the next year (or the next open month), and the
 // unused balance paid on leaving with the final settlement, at a day of the gross; taxed, as pay. The Leave module adds
@@ -136,7 +141,8 @@ export const ADDITION_TAXED: Record<AdditionType, boolean | null> = {
 
 /**
  * Whether an addition or deduction is taxed: an addition as its type says, Other as HR chose (null when not chosen,
- * which is refused); a deduction never, as every deduction is taken after tax.
+ * which is refused); a deduction never, as a deduction is taken after tax, or, a Recurring deduction ticked so (20
+ * October 2026), before it, which is its own flag (beforeTax), never `taxed`.
  */
 export function adjustmentTaxed(kind: AdjustmentKind, type: string, chosen: boolean | null | undefined): boolean | null {
   if (kind === 'deduction') return false;
@@ -144,6 +150,19 @@ export function adjustmentTaxed(kind: AdjustmentKind, type: string, chosen: bool
   if (fixed === undefined) return null;
   return fixed ?? (typeof chosen === 'boolean' ? chosen : null);
 }
+
+// ---------- before tax ----------
+
+/**
+ * Whether a deduction of this kind and type may be taken before tax (owner, 20 October 2026, on the employee's medical
+ * share: "Before Tax i think"): a Recurring deduction only, whose recurring deduction HR ticked "Deducted before tax";
+ * it then lowers the taxable pay before the income tax (payroll.ts payrollLine). Every other is after tax.
+ */
+export const mayBeBeforeTax = (kind: string, type: string): boolean => kind === 'deduction' && type === RECURRING_TYPE;
+
+/** How the line's breakdown, the payslip and the register say a deduction is taken before tax. */
+export const BEFORE_TAX_LABEL = 'Before tax';
+export const BEFORE_TAX_LABEL_AR = 'قبل الضريبة';
 
 // ---------- in days ----------
 

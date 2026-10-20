@@ -5,6 +5,7 @@ import {
   ADDITION_TAXED,
   adjustmentSums,
   adjustmentTypeLabel,
+  BEFORE_TAX_LABEL,
   daysText,
   ENTERED_TYPES,
   isAdjustmentDays,
@@ -64,6 +65,11 @@ export interface AdjustmentRow {
   kind: AdjustmentKind;
   type: AdjustmentType;
   taxed: boolean;
+  /**
+   * A Recurring deduction of a recurring deduction ticked "Deducted before tax" (owner, 20 October 2026: "Before Tax i
+   * think"): it lowers the taxable pay before the income tax. Left out by an API from before it: after tax.
+   */
+  beforeTax?: boolean;
   /**
    * EGP. A Bonus (days) or a Penalty (days): what the month's run worked it out to, null while no run has it (17
    * October 2026).
@@ -225,6 +231,19 @@ export function monthTotals(rows: readonly AdjustmentRow[]): AdjustmentSums & { 
 /** How many of the month's (not cancelled) are in days with no amount worked out yet: no run has them. */
 export const daysNotWorkedOut = (rows: readonly AdjustmentRow[]) => rows.filter((r) => r.status !== 'cancelled' && r.amount === null).length;
 
+/**
+ * The deductions tile's note: "All after tax", or, with Recurring deductions ticked before tax (owner, 20 October 2026:
+ * "Before Tax i think"), how much of them is before tax: "EGP 350.00 before tax · the rest after tax". The cancelled
+ * left out; one in days, with no amount yet, isn't before tax.
+ */
+export function deductionsTaxNote(rows: readonly AdjustmentRow[]): string {
+  const before = rows.filter((r) => r.status !== 'cancelled' && r.kind === 'deduction' && r.beforeTax === true);
+  if (!before.length) return 'All after tax';
+  const sum = before.reduce((cents, r) => cents + Math.round((r.amount ?? 0) * 100), 0) / 100;
+  const all = rows.filter((r) => r.status !== 'cancelled' && r.kind === 'deduction').length;
+  return before.length === all ? `All before tax (${formatEgp(sum)})` : `${formatEgp(sum)} before tax · the rest after tax`;
+}
+
 /** A pending one HR may still change: while the month isn't locked. */
 export const changeable = (row: Pick<AdjustmentRow, 'status'>, locked: string | null) => row.status === 'pending' && locked === null;
 
@@ -243,9 +262,12 @@ export const pendingIds = (rows: readonly Pick<AdjustmentRow, 'id' | 'status'>[]
 /** "Bonus", "Loan installment". */
 export const typeText = (row: Pick<AdjustmentRow, 'kind' | 'type'>) => adjustmentTypeLabel(row.kind, row.type);
 
-/** How it meets the tax: "Taxed" or "Not taxed" for an addition, "After tax" for every deduction. */
-export function taxText(row: Pick<AdjustmentRow, 'kind' | 'taxed'>): string {
-  if (row.kind === 'deduction') return 'After tax';
+/**
+ * How it meets the tax: "Taxed" or "Not taxed" for an addition, "After tax" for a deduction, "Before tax" for a
+ * Recurring deduction ticked so (owner, 20 October 2026: "Before Tax i think").
+ */
+export function taxText(row: Pick<AdjustmentRow, 'kind' | 'taxed' | 'beforeTax'>): string {
+  if (row.kind === 'deduction') return row.beforeTax === true ? BEFORE_TAX_LABEL : 'After tax';
   return row.taxed ? 'Taxed' : 'Not taxed';
 }
 
@@ -384,7 +406,7 @@ export function adjustmentBody(fd: FormData, entering: boolean): { body: Record<
 
 /** The note on how they reach the pay (owner, 17 October 2026): the month's run takes them. */
 export const RUN_NOTE =
-  "Each is added to its month's payroll run: taxed additions into the gross, untaxed ones after tax, deductions after tax; a bonus or penalty in days is worked out from the person's pay that month. A draft run takes a change at once; from the CEO's step on they can't change, and the CEO's approval applies them.";
+  "Each is added to its month's payroll run: taxed additions into the gross, untaxed ones after tax, deductions after tax (a recurring deduction ticked before tax lowers the taxable pay first); a bonus or penalty in days is worked out from the person's pay that month. A draft run takes a change at once; from the CEO's step on they can't change, and the CEO's approval applies them.";
 
 // ---------- on a run ----------
 

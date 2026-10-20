@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { DocumentViewer, VIEW_BUTTON } from '@/components/document-viewer';
+import { PrintPdf } from '@/components/print-pdf';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
 import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import type { DocumentItem, EmployeeProfile, GeneratedDocument, GeneratedDocumentStatus } from '@/lib/types';
@@ -79,7 +80,7 @@ function Progress({ document: d }: { document: GeneratedDocument }) {
   );
 }
 
-/** One generated document: its status, file and progress; Preview (PDF), Download PDF and PDF for e-signature until the signed copy is uploaded, then View signed copy; HR's next step; Delete. */
+/** One generated document: its status, file and progress; Preview (PDF), Download PDF, Print and PDF for e-signature until the signed copy is uploaded, then View signed copy; HR's next step; Delete. */
 function DocumentLine({ document: d, item, employee, can }: { document: GeneratedDocument; item: DocumentItem; employee: Employee; can: DocumentAccess }) {
   const steps = nextSteps(d.status);
   const what = `${item.name}, generated ${formatDate(d.generatedAt)}`;
@@ -114,6 +115,12 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
           <a href={documentDownloadHref(employee.id, d.id)} className={`${VIEW_BUTTON} text-accent`}>
             Download PDF<span className="sr-only"> ({what})</span>
           </a>
+        )}
+        {/* as on a job offer (owner's request, 20 October 2026: "add Print Button"): the protected PDF allows printing */}
+        {!hasSigned && (
+          <PrintPdf src={documentFileHref(employee.id, d.id)} title={`${item.name}, for printing`} className={`${VIEW_BUTTON} text-accent`}>
+            Print<span className="sr-only"> ({what})</span>
+          </PrintPdf>
         )}
         {/* HR only: Adobe Sign and DocuSign refuse the protected PDF (owner, 15 October 2026); every download is recorded */}
         {can.act && !hasSigned && (

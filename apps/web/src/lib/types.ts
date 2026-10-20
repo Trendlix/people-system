@@ -1983,6 +1983,12 @@ export interface RecurringDeductionView {
   endMonth: string | null;
   stoppedFrom: string | null;
   stopNote: string | null;
+  /**
+   * "Deducted before tax (lowers taxable pay)" (owner, 20 October 2026, asked whether the employee's medical share is
+   * taken before or after tax: "Before Tax i think"): its months' deductions lower the taxable pay before the income
+   * tax. False by default: after tax. Left out by an API from before it.
+   */
+  beforeTax?: boolean;
   status: RecurringDeductionStatus;
   deducted: { month: string; amount: number; status: 'pending' | 'applied' | 'cancelled' }[];
   /**

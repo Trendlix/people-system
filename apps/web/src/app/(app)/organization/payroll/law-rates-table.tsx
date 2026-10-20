@@ -1,6 +1,6 @@
 import type { LawRatesView } from '@/lib/types';
 import { formatMoney, formatPercent } from '../../employees/[id]/contracts/salary';
-import { changedText, limitsText, tierLabels, tiersSummary } from './law-rates';
+import { beforeTaxLimitText, changedText, limitsText, tierLabels, tiersSummary } from './law-rates';
 
 // The years' rates set by law as Rates Set by Law lists them (owner's request, 16 October 2026), oldest year first:
 // each year's values (the minimum wage since 18 October 2026, "Not set" until the owner sets it), its salary tax summed
@@ -104,6 +104,8 @@ export function LawRatesTable({
                 <td className="align-top whitespace-nowrap tabular-nums">
                   {formatPercent(v.healthInsuranceRate)}
                   <span className={quiet}>{v.healthInsuranceRate > 0 ? 'of the taxed pay' : 'not applied'}</span>
+                  {/* the limit on the share deducted before tax (20 October 2026) */}
+                  <span className={quiet}>{beforeTaxLimitText(v)}</span>
                 </td>
                 <td className="align-top whitespace-nowrap tabular-nums">
                   {typeof v.minimumWage === 'number' ? (

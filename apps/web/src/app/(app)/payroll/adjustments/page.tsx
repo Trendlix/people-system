@@ -22,6 +22,7 @@ import {
   canSeeAdjustments,
   changeable,
   daysNotWorkedOut,
+  deductionsTaxNote,
   enteredText,
   entersAdjustments,
   isRecurring,
@@ -102,7 +103,8 @@ function Totals({ rows }: { rows: AdjustmentRow[] }) {
   const t = monthTotals(rows);
   const tiles = [
     { label: 'Additions', value: formatEgp(t.additions), note: `${formatEgp(t.taxedAdditions)} taxed · ${formatEgp(t.untaxedAdditions)} not taxed` },
-    { label: 'Deductions', value: formatEgp(t.deductions), note: 'All after tax' },
+    // those before tax (20 October 2026) said apart
+    { label: 'Deductions', value: formatEgp(t.deductions), note: deductionsTaxNote(rows) },
     { label: 'Net effect on pay', value: netText(t.net), note: 'Before the tax the taxed additions bring' },
     { label: 'People', value: String(t.people), note: `${t.count} ${t.count === 1 ? 'entry' : 'entries'}, the cancelled left out` },
   ];

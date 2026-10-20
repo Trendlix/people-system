@@ -38,17 +38,19 @@ export const lawRatesOf = (row: PayrollLawYear): LawRates =>
     healthInsuranceRate: row.healthInsuranceRate.toNumber(),
     taxTiers: row.taxTiers as unknown as TaxTier[],
     minimumWage: row.minimumWage?.toNumber() ?? null,
+    beforeTaxHealthLimit: row.beforeTaxHealthLimit?.toNumber() ?? null,
   });
 
-/** What a row keeps of a year's rates (all but the year); the minimum wage null when not set. */
+/** What a row keeps of a year's rates (all but the year); the minimum wage and the before-tax limit null when not set. */
 const rowData = (r: LawRates) => {
-  const { year: _year, taxTiers, minimumWage, ...rates } = normalLawRates(r);
-  return { ...rates, minimumWage: minimumWage ?? null, taxTiers: taxTiers as unknown as Prisma.InputJsonValue };
+  const { year: _year, taxTiers, minimumWage, beforeTaxHealthLimit, ...rates } = normalLawRates(r);
+  return { ...rates, minimumWage: minimumWage ?? null, beforeTaxHealthLimit: beforeTaxHealthLimit ?? null, taxTiers: taxTiers as unknown as Prisma.InputJsonValue };
 };
 
 // The rates set by law, by year (owner's request, 16 October 2026: "creating a setup page for payroll to enter the
 // variables that might affect the sheet"): the social insurance shares and insurable wage limits, the personal
-// exemption, the Martyrs' Fund, health insurance and the salary tax's tiers. HR, Finance, the CEO and Admin read them;
+// exemption, the Martyrs' Fund, health insurance and the salary tax's tiers; and (owner, 20 October 2026, on the
+// employee's medical share: "Before Tax i think") the before-tax health insurance limit a year, empty for none. HR, Finance, the CEO and Admin read them;
 // the Super Admin alone adds, changes or deletes a year (the tax brackets "editable by superadmin, to modify it if the
 // law changed"), every change in the audit log with what it was and what it became. The other modules ask here for a
 // year's rates: payroll runs (the run's year, a copy kept on the run), contracts and offers (the year they start), the
@@ -103,9 +105,14 @@ export class LawRatesService {
   async put(year: number, dto: PutLawRatesDto, user: SessionUser): Promise<LawRatesView> {
     if (!isSuperAdmin(user)) throw new ForbiddenException(ONLY_SUPER_ADMIN_CHANGES_LAW_RATES);
     const before = await this.prisma.payrollLawYear.findUnique({ where: { year } });
-    // the minimum wage left out keeps the year's (a page from before it came sends none)
+    // the minimum wage, or the before-tax health insurance limit (20 October 2026), left out keeps the year's (a page
+    // from before it came sends none)
     const sent = ratesSent(year, dto);
-    const rates = normalLawRates(dto.minimumWage === undefined ? { ...sent, minimumWage: before?.minimumWage?.toNumber() ?? null } : sent);
+    const rates = normalLawRates({
+      ...sent,
+      ...(dto.minimumWage === undefined && { minimumWage: before?.minimumWage?.toNumber() ?? null }),
+      ...(dto.beforeTaxHealthLimit === undefined && { beforeTaxHealthLimit: before?.beforeTaxHealthLimit?.toNumber() ?? null }),
+    });
     const problems = lawRatesProblems(rates);
     if (problems.length) throw new BadRequestException(problems);
 
@@ -118,10 +125,11 @@ export class LawRatesService {
       await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, diff: { year, ...after } });
     } else {
       const { year: _was, ...was } = lawRatesOf(before);
-      // the minimum wage as null when not set, so clearing it is recorded too
-      const diff = changes({ ...was, minimumWage: was.minimumWage ?? null } as unknown as Record<string, unknown>, {
+      // the minimum wage and the before-tax limit as null when not set, so clearing them is recorded too
+      const diff = changes({ ...was, minimumWage: was.minimumWage ?? null, beforeTaxHealthLimit: was.beforeTaxHealthLimit ?? null } as unknown as Record<string, unknown>, {
         ...after,
         minimumWage: after.minimumWage ?? null,
+        beforeTaxHealthLimit: after.beforeTaxHealthLimit ?? null,
       } as unknown as Record<string, unknown>);
       if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, diff: { year, ...diff } });
     }

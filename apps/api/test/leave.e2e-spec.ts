@@ -345,7 +345,9 @@ describe('Leave (e2e)', () => {
 
     it('the law’s other rules: maternity for a woman, exam leave’s ten days’ notice (not for HR recording it)', async () => {
       expect(said(await ask(ben, { type: 'maternity', startDate: week(7) }, [[PNG, 'medical.png']]).expect(400))).toEqual(['Maternity leave is for female employees only.']);
-      const soon = addDays(TODAY, 3);
+      // three days ahead, moved to a working day of the shift (Sunday to Thursday): a Friday or Saturday is a rest day
+      let soon = addDays(TODAY, 3);
+      while (weekday(soon) === 5 || weekday(soon) === 6) soon = addDays(soon, 1);
       expect(said(await ask(ben, { type: 'exam', startDate: soon }, [[PNG, 'exam.png']]).expect(400))[0]).toMatch(/^Exam leave needs 10 days' notice/);
       await record(ids.ben, { type: 'exam', startDate: soon }, [[PNG, 'exam.png']]).expect(201);
       await record(ids.ben, { type: 'exam', startDate: addDays(soon, 1) }, [], ben).expect(403);

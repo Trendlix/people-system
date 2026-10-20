@@ -29,6 +29,7 @@ function rowOf(r: LawRates, updatedById: string | null = null): PayrollLawYear {
     // as JSONB gives them back: its own key order
     taxTiers: JSON.parse(JSON.stringify(normalTaxTiers(r.taxTiers).map((t) => ({ bands: t.bands.map((b) => ({ rate: b.rate, upTo: b.upTo })), upTo: t.upTo })))),
     minimumWage: typeof r.minimumWage === 'number' ? new Prisma.Decimal(r.minimumWage) : null,
+    beforeTaxHealthLimit: typeof r.beforeTaxHealthLimit === 'number' ? new Prisma.Decimal(r.beforeTaxHealthLimit) : null,
     updatedAt: new Date('2026-10-16T10:00:00Z'),
     updatedById,
   };
@@ -53,6 +54,7 @@ function service(rows: PayrollLawYear[] = BUILT_IN_LAW_RATES.map((r) => rowOf(r)
           ...data,
           ...Object.fromEntries(['employeeInsuranceRate', 'employerInsuranceRate', 'insurableWageMin', 'insurableWageMax', 'personalExemption', 'martyrsRate', 'healthInsuranceRate'].map((k) => [k, new Prisma.Decimal(data[k] as number)])),
           minimumWage: typeof data.minimumWage === 'number' ? new Prisma.Decimal(data.minimumWage) : (data.minimumWage ?? null),
+          beforeTaxHealthLimit: typeof data.beforeTaxHealthLimit === 'number' ? new Prisma.Decimal(data.beforeTaxHealthLimit) : (data.beforeTaxHealthLimit ?? null),
           year: where.year,
           updatedAt: new Date(),
         } as unknown as PayrollLawYear;
@@ -161,6 +163,28 @@ describe('LawRatesService', () => {
       response: { message: ['Enter the minimum wage as an amount above 0, to the piaster, or leave it empty.'] },
     });
     expect(audit.map((a) => (a.diff as Record<string, unknown>).minimumWage)).toEqual([{ from: null, to: 7000 }, undefined, { from: 7000, to: null }]);
+  });
+
+  it('keeps the before-tax health insurance limit a year has, set, cleared, or kept when left out (owner, 20 October 2026)', async () => {
+    const { lawRates, db, audit } = service();
+    // not built in (the accountant gives it): none until the Super Admin sets one, and none is no limit
+    expect((await lawRates.list()).map((r) => r.beforeTaxHealthLimit)).toEqual([undefined, undefined]);
+    expect((await lawRates.put(2026, { ...body(Y2026), beforeTaxHealthLimit: 6000 }, superAdmin)).beforeTaxHealthLimit).toBe(6000);
+    expect((await lawRates.forYear(2026)).beforeTaxHealthLimit).toBe(6000);
+    // a page from before it came sends none: the year keeps it, and the minimum wage is kept apart
+    expect((await lawRates.put(2026, { ...body(Y2026), minimumWage: 7000 }, superAdmin)).beforeTaxHealthLimit).toBe(6000);
+    // null clears it
+    expect((await lawRates.put(2026, { ...body(Y2026), beforeTaxHealthLimit: null }, superAdmin)).beforeTaxHealthLimit).toBeUndefined();
+    expect(db.rows.find((r) => r.year === 2026)!.beforeTaxHealthLimit).toBeNull();
+    expect(db.rows.find((r) => r.year === 2026)!.minimumWage!.toNumber()).toBe(7000);
+    await expect(lawRates.put(2026, { ...body(Y2026), beforeTaxHealthLimit: 0 }, superAdmin)).rejects.toMatchObject({
+      response: { message: ['Enter the before-tax health insurance limit a year as an amount above 0, to the piaster, or leave it empty for no limit.'] },
+    });
+    expect(audit.map((a) => (a.diff as Record<string, unknown>).beforeTaxHealthLimit)).toEqual([{ from: null, to: 6000 }, undefined, { from: 6000, to: null }]);
+    // a run made from then keeps it with its copy
+    await lawRates.put(2026, { ...body(Y2026), beforeTaxHealthLimit: 6000 }, superAdmin);
+    const copy = JSON.parse(JSON.stringify(await lawRates.forYear(2026))) as Prisma.JsonValue;
+    expect(runLawRates({ month: new Date('2026-11-01T00:00:00Z'), lawRates: copy }).beforeTaxHealthLimit).toBe(6000);
   });
 
   it('deletes a year for a Super Admin only, never the earliest', async () => {

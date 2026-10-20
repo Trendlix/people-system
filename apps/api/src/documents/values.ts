@@ -52,9 +52,10 @@ import {
 } from './format.js';
 import { traineeStagesOf } from '../contracts/views.js';
 import { TYPED_TAGS } from './offer.js';
+import { deductedTotal, printedDeductions, type SettlementSource } from './settlement-values.js';
 
 // Every tag's value for one document (spec §8; owner's request, 15 October 2026), from the employee's profile, their
-// employment, a contract version (or a job offer's terms), an ending, the company profile and the document's date, written as the document
+// employment, a contract version (or a job offer's terms), an ending and its final settlement, the company profile and the document's date, written as the document
 // prints it (format.ts). A slot's overrides are applied last: on the social insurance copy, {{gross_salary}} prints the
 // insured salary. Only the tags asked for are worked out, so a template that doesn't print an amount in words never
 // needs it. A value is plain text, but for the role's duties, which keep their formatting (engine/rich.ts).
@@ -147,6 +148,11 @@ export interface ValueSources {
     traineeStages?: Prisma.JsonValue | null;
   } | null;
   ending: { noticeGivenOn: Date; lastWorkingDay: Date; reason: string | null } | null;
+  /**
+   * The final settlement of an employment ending or ended (20 October 2026; settlement-values.ts): the advances and
+   * loans still owed, deducted from it or waived, and the unused annual leave paid with it. Missing or null: no ending.
+   */
+  settlement?: SettlementSource | null;
   /** The job offer: the one being sent, or for an employee the offer they accepted. */
   offer?: { number: string; expiresOn: Date } | null;
   company: {
@@ -451,9 +457,15 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     letter_to: () => text(src.inputs.letter_to),
     letter_purpose: () => text(src.inputs.letter_purpose),
 
-    // payslips come from payroll, which isn't built yet
+    // a payslip is drawn by the payroll itself (owner's decision, 16 October 2026: a system-drawn PDF), not filled in
+    // from a template: no pay month here
     pay_month: () => '',
-    deductions: () => '',
+    // the final settlement's, on the clearance and dues (20 October 2026: the owner unsure, Claude recommended listing
+    // them): what it deducts, one per line, with the unused leave it pays and the total deducted; none is a value too
+    deductions: () => printedDeductions(src.settlement, language),
+    deductions_ar: () => printedDeductions(src.settlement, 'ar'),
+    deductions_en: () => printedDeductions(src.settlement, 'en'),
+    deductions_total: () => (src.settlement ? printedMoney(deductedTotal(src.settlement)) : ''),
 
     company_name_ar: () => text(co?.nameAr),
     company_name_en: () => text(co?.nameEn),
@@ -652,7 +664,11 @@ const WHERE: Record<string, Where> = {
   last_working_day: EMPLOYMENT('ending'),
   reason_ar: EMPLOYMENT('ending'),
   pay_month: EMPLOYMENT('payroll'),
-  deductions: EMPLOYMENT('payroll'),
+  // the final settlement's: there is one once an ending is recorded (20 October 2026)
+  deductions: EMPLOYMENT('ending'),
+  deductions_ar: EMPLOYMENT('ending'),
+  deductions_en: EMPLOYMENT('ending'),
+  deductions_total: EMPLOYMENT('ending'),
   company_name_ar: COMPANY('nameAr'),
   company_name_en: COMPANY('nameEn'),
   company_address_ar: COMPANY('addressAr'),
@@ -730,7 +746,8 @@ export function rightFor(tag: string): RestrictedRight | null {
   const t = TAGS.get(tag);
   if (!t?.restricted) return null;
   if (t.group === 'bank') return 'bank';
-  if (t.group === 'pay' || t.group === 'payslip' || t.group === 'raise') return 'salary';
+  // the ending's are the final settlement's amounts (20 October 2026)
+  if (t.group === 'pay' || t.group === 'payslip' || t.group === 'raise' || t.group === 'ending') return 'salary';
   return 'identity'; // the national ID, and the company representative's
 }
 

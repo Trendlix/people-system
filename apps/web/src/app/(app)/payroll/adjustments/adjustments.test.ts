@@ -11,6 +11,7 @@ import {
   canSeeAdjustments,
   changeable,
   daysNotWorkedOut,
+  deductionsTaxNote,
   entersAdjustments,
   linksAdvance,
   monthChoices,
@@ -152,10 +153,22 @@ describe('the month’s rows', () => {
     expect(daysNotWorkedOut(rows)).toBe(1);
   });
 
+  it('says how much of the month’s deductions is before tax (owner, 20 October 2026: "Before Tax i think")', () => {
+    const deduction = (over: Partial<AdjustmentRow>) => row({ kind: 'deduction', type: 'recurring', taxed: false, ...over });
+    expect(deductionsTaxNote([row({ amount: 100 }), deduction({ amount: 350 })])).toBe('All after tax');
+    expect(deductionsTaxNote([deduction({ amount: 350, beforeTax: true }), deduction({ type: 'penalty', amount: 100 })])).toBe('EGP 350.00 before tax · the rest after tax');
+    expect(deductionsTaxNote([deduction({ amount: 350, beforeTax: true }), deduction({ amount: 120.5, beforeTax: true })])).toBe('All before tax (EGP 470.50)');
+    // the cancelled left out
+    expect(deductionsTaxNote([deduction({ amount: 350, beforeTax: true, status: 'cancelled' })])).toBe('All after tax');
+  });
+
   it('says each one in words', () => {
     expect(taxText(row())).toBe('Taxed');
     expect(taxText(row({ type: 'reimbursement', taxed: false }))).toBe('Not taxed');
     expect(taxText(row({ kind: 'deduction', taxed: false }))).toBe('After tax');
+    // a Recurring deduction ticked before tax (owner, 20 October 2026: "Before Tax i think")
+    expect(taxText(row({ kind: 'deduction', type: 'recurring', taxed: false, beforeTax: true }))).toBe('Before tax');
+    expect(taxText(row({ kind: 'deduction', type: 'recurring', taxed: false, beforeTax: false }))).toBe('After tax');
     expect(signedAmount(row({ amount: 1500 }))).toBe('+EGP 1,500.00');
     expect(signedAmount(row({ kind: 'deduction', amount: 250.5 }))).toBe('−EGP 250.50');
     // in days (17 October 2026): what the run worked it out to once a run has it, else the days alone

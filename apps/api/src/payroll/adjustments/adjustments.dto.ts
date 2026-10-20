@@ -308,6 +308,15 @@ const NumberOf = () =>
 /** A yes sent as a form's text ("true", "yes", "on"), else as it is: JSON's true and false. */
 const YesOf = () => Transform(({ value }) => (typeof value === 'string' ? ['true', 'yes', 'on'].includes(value.trim().toLowerCase()) : value));
 
+const BEFORE_TAX_MESSAGE = 'Send whether it is deducted before tax as true or false.';
+
+/**
+ * "Deducted before tax (lowers taxable pay)" (owner, 20 October 2026, asked whether the employee's medical share is
+ * taken before or after tax: "Before Tax i think"): optional, a form's yes or no too; left out, after tax for a new one,
+ * and as it was for a change.
+ */
+const BeforeTax = () => applyDecorators(YesOf(), IsOptional(), IsBoolean({ message: BEFORE_TAX_MESSAGE }));
+
 /**
  * A recurring deduction (owner, 18 October 2026), e.g. the employee's share of a medical subscription: the employee,
  * what it is for, the amount a month, the first month and, if it ends, the last; and that the employee's signed
@@ -333,6 +342,10 @@ export class CreateRecurringDeductionDto {
   /** The employee's signed consent to it is on file (Labour Law Art. 114): only true is taken. */
   @YesOf() @Equals(true, { message: CONSENT_MESSAGE })
   consentOnFile: true;
+
+  /** Deducted before tax (owner, 20 October 2026: "Before Tax i think"): after tax unless true. */
+  @BeforeTax()
+  beforeTax?: boolean;
 }
 
 /**
@@ -348,6 +361,10 @@ export class ChangeRecurringDeductionDto {
 
   @IsOptional() @IsBoolean({ message: 'Send whether the signed consent is on file as true or false.' })
   consentOnFile?: boolean;
+
+  /** The new one deducted before tax (owner, 20 October 2026: "Before Tax i think"); left out, as this one is. */
+  @BeforeTax()
+  beforeTax?: boolean;
 }
 
 /** Stopped from a month on (the first month no longer deducted), with a note if HR wants. */
@@ -359,13 +376,17 @@ export class StopRecurringDeductionDto {
   note?: string | null;
 }
 
-/** Its name, or its last month (null: until stopped). */
+/** Its name, its last month (null: until stopped), or whether it is deducted before tax (20 October 2026). */
 export class UpdateRecurringDeductionDto {
   @Trim() @Sent() @IsString({ message: NAME_MESSAGE }) @MinLength(1, { message: NAME_MESSAGE }) @MaxLength(100, { message: NAME_LENGTH })
   name?: string;
 
   @TrimOrNull() @IsOptional() @Matches(MONTH, { message: END_MESSAGE })
   endMonth?: string | null;
+
+  /** Deducted before tax (owner, 20 October 2026: "Before Tax i think"); left out, as it is. */
+  @BeforeTax()
+  beforeTax?: boolean;
 }
 
 /** ?employeeId=&status=running|ended: running lists those still to come too; every filter optional. */

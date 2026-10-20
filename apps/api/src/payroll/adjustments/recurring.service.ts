@@ -47,6 +47,12 @@ type Db = PrismaService | Prisma.TransactionClient;
 // file as a paper (deduction_consent) like the other papers; one set up before has none until HR records it
 // (recordConsent). A higher amount needs it again; a lower one keeps it. The 25% is a warning only: the forms show it
 // as they are typed, and the run's line (payroll views.ts).
+// Deducted before tax (owner, 20 October 2026, asked whether the employee's medical share is taken before or after tax:
+// "Before Tax i think"): HR may tick a recurring deduction "Deducted before tax (lowers taxable pay)", off by default,
+// when setting it up, changing its amount (the new one as this one unless sent) or editing it; its months' Recurring
+// deductions carry it (an edit changes those still pending in months whose run isn't with the CEO, approved or paid,
+// and works their draft lines out again), and the run lowers the taxable pay by them before the income tax (packages/
+// shared payroll.ts). In the audit log only when ticked, or changed.
 @Injectable()
 export class RecurringDeductionsService {
   constructor(
@@ -100,6 +106,8 @@ export class RecurringDeductionsService {
     await this.assertOpenMonth(dto.startMonth, 'start it from a later month');
     // the signed consent to the employee file, the last check (a file that isn't a photo or a PDF is refused)
     const paper = file ? await this.paperwork.upload(employee.id, { kind: 'deduction_consent' }, file, user) : null;
+    // after tax unless ticked (20 October 2026)
+    const beforeTax = dto.beforeTax === true;
     const row = await this.prisma.recurringDeduction.create({
       data: {
         employeeId: employee.id,
@@ -107,6 +115,7 @@ export class RecurringDeductionsService {
         amount: dto.amount,
         startMonth: toDateOnly(firstDay(dto.startMonth)),
         endMonth: endMonth && toDateOnly(firstDay(endMonth)),
+        beforeTax,
         createdById: user.id,
         consentRecordedAt: new Date(),
         consentRecordedById: user.id,
@@ -125,6 +134,7 @@ export class RecurringDeductionsService {
         amount: 'set',
         startMonth: dto.startMonth,
         endMonth,
+        ...(beforeTax && { beforeTax: true }),
         consent: 'recorded',
         ...(paper && { consentFile: paper.fileName, consentPaperworkId: paper.id }),
       },
@@ -138,7 +148,8 @@ export class RecurringDeductionsService {
    * (and the stop HR set for a later month, if any), starts then. The month from its first on, one it is deducted in,
    * and not one whose run is with the CEO, approved or paid. A higher amount needs the employee's signed consent to it
    * on file (the DTO's consentOnFile, recorded anew); a lower one keeps the consent this one has (or records it, when
-   * ticked and none was). Answers the new one.
+   * ticked and none was). The new one is deducted before tax as sent (20 October 2026), else as this one is. Answers
+   * the new one.
    */
   async change(id: string, dto: ChangeRecurringDeductionDto, user: SessionUser): Promise<RecurringDeductionView> {
     const row = await this.row(id);
@@ -157,6 +168,8 @@ export class RecurringDeductionsService {
     const consent = anew
       ? { consentRecordedAt: new Date(), consentRecordedById: user.id, consentPaperworkId: null }
       : { consentRecordedAt: row.consentRecordedAt, consentRecordedById: row.consentRecordedById, consentPaperworkId: row.consentPaperworkId };
+    // before tax as sent, else as this one (20 October 2026)
+    const beforeTax = dto.beforeTax ?? row.beforeTax;
 
     const made = await this.prisma.$transaction(async (tx) => {
       await tx.recurringDeduction.update({ where: { id }, data: { stoppedFrom: toDateOnly(firstDay(from)), stopNote: `Amount changed from ${monthName(from)}` } });
@@ -171,6 +184,7 @@ export class RecurringDeductionsService {
           // stopped from a later month already: the new one stops then too
           stoppedFrom: row.stoppedFrom,
           stopNote: row.stoppedFrom ? row.stopNote : null,
+          beforeTax,
           createdById: user.id,
           ...consent,
         },
@@ -181,7 +195,14 @@ export class RecurringDeductionsService {
       action: 'change',
       entityType: RECURRING,
       entityId: id,
-      diff: { employeeCode: row.employee.employeeCode, name: row.name, amount: 'changed', stoppedFrom: from, replacedBy: made.id },
+      diff: {
+        employeeCode: row.employee.employeeCode,
+        name: row.name,
+        amount: 'changed',
+        ...(beforeTax !== row.beforeTax && { beforeTax: { from: row.beforeTax, to: beforeTax } }),
+        stoppedFrom: from,
+        replacedBy: made.id,
+      },
     });
     await this.audit.record({
       userId: user.id,
@@ -195,6 +216,7 @@ export class RecurringDeductionsService {
         startMonth: from,
         endMonth: months.endMonth,
         ...(months.stoppedFrom && { stoppedFrom: months.stoppedFrom }),
+        ...(beforeTax && { beforeTax: true }),
         replaces: id,
         consent: anew ? 'recorded' : consent.consentRecordedAt ? 'as before' : 'not recorded',
       },
@@ -235,15 +257,20 @@ export class RecurringDeductionsService {
   }
 
   /**
-   * HR renames one (its months' Recurring deductions still pending say the new name) or changes its last month: never
+   * HR renames one (its months' Recurring deductions still pending say the new name), changes its last month (never
    * before a month it was deducted in, the pending ones after it cancelled, a later one added to a draft run of its
-   * months.
+   * months), or ticks or unticks it deducted before tax (owner, 20 October 2026: "Before Tax i think"; its months'
+   * Recurring deductions still pending are taken so). The pending ones renamed or retold are those in months whose run
+   * isn't with the CEO, approved or paid; a draft's lines are worked out again with them.
    */
   async update(id: string, dto: UpdateRecurringDeductionDto, user: SessionUser): Promise<RecurringDeductionView> {
     const row = await this.row(id);
     const months = recurringMonths(row);
     const endMonth = dto.endMonth === undefined ? months.endMonth : dto.endMonth;
-    const diff: Record<string, unknown> = changes({ name: row.name, endMonth: months.endMonth }, { name: dto.name, endMonth: dto.endMonth });
+    const diff: Record<string, unknown> = changes(
+      { name: row.name, endMonth: months.endMonth, beforeTax: row.beforeTax },
+      { name: dto.name, endMonth: dto.endMonth, beforeTax: dto.beforeTax },
+    );
     if (!Object.keys(diff).length) return this.get(id);
     if ('endMonth' in diff) {
       this.assertNoProblems(row.amount.toNumber(), months.startMonth, endMonth);
@@ -253,14 +280,21 @@ export class RecurringDeductionsService {
       }
     }
     const cancelled = 'endMonth' in diff && endMonth !== null ? await this.pendingFrom(row, monthPlus(endMonth, 1)) : [];
-    // the name on its pending months, those not with the CEO, approved or paid
-    const renamed = dto.name !== undefined && dto.name !== row.name ? await this.pendingFrom(row, months.startMonth, false) : [];
+    // the name, and whether before tax (20 October 2026), on its pending months, those not with the CEO, approved or paid
+    const renaming = 'name' in diff;
+    const retelling = 'beforeTax' in diff;
+    const renamed = renaming || retelling ? await this.pendingFrom(row, months.startMonth, false) : [];
     const cancelledIds = new Set(cancelled.map((c) => c.id));
     await this.prisma.$transaction(async (tx) => {
-      await tx.recurringDeduction.update({ where: { id }, data: { name: dto.name, endMonth: endMonth && toDateOnly(firstDay(endMonth)) } });
+      await tx.recurringDeduction.update({ where: { id }, data: { name: dto.name, endMonth: endMonth && toDateOnly(firstDay(endMonth)), beforeTax: dto.beforeTax } });
       await this.cancel(tx, cancelled, user);
       const rename = renamed.filter((r) => !cancelledIds.has(r.id)).map((r) => r.id);
-      if (rename.length) await tx.payrollAdjustment.updateMany({ where: { id: { in: rename } }, data: { reason: dto.name } });
+      if (rename.length) {
+        await tx.payrollAdjustment.updateMany({
+          where: { id: { in: rename } },
+          data: { ...(renaming && { reason: dto.name }), ...(retelling && { beforeTax: dto.beforeTax }) },
+        });
+      }
     });
     await this.audit.record({ userId: user.id, action: 'update', entityType: RECURRING, entityId: id, diff: { employeeCode: row.employee.employeeCode, ...diff } });
     await this.recordCancelled(row, cancelled, user);
@@ -270,7 +304,13 @@ export class RecurringDeductionsService {
         action: 'update',
         entityType: ADJUSTMENT,
         entityId: r.id,
-        diff: { employeeCode: row.employee.employeeCode, kind: 'deduction', reason: { from: row.name, to: dto.name }, recurringId: id },
+        diff: {
+          employeeCode: row.employee.employeeCode,
+          kind: 'deduction',
+          ...(renaming && { reason: { from: row.name, to: dto.name } }),
+          ...(retelling && { beforeTax: { from: row.beforeTax, to: dto.beforeTax } }),
+          recurringId: id,
+        },
       });
     }
     await this.runs.syncDrafts([...cancelled, ...renamed].map((c) => c.month), [row.employeeId], user);
@@ -329,7 +369,17 @@ export class RecurringDeductionsService {
         AND: [{ OR: [{ endMonth: null }, { endMonth: { gte: first } }] }, { OR: [{ stoppedFrom: null }, { stoppedFrom: { gt: first } }] }],
         deductions: { none: { month: first } },
       },
-      select: { id: true, employeeId: true, name: true, amount: true, startMonth: true, endMonth: true, stoppedFrom: true, employee: { select: { employeeCode: true } } },
+      select: {
+        id: true,
+        employeeId: true,
+        name: true,
+        amount: true,
+        startMonth: true,
+        endMonth: true,
+        stoppedFrom: true,
+        beforeTax: true,
+        employee: { select: { employeeCode: true } },
+      },
     });
     const due = rows.filter((r) => recurringDue(recurringMonths(r), month));
     if (!due.length) return 0;
@@ -348,6 +398,8 @@ export class RecurringDeductionsService {
         kind: 'deduction',
         type: RECURRING_TYPE,
         taxed: false,
+        // before tax when ticked so (owner, 20 October 2026: "Before Tax i think")
+        beforeTax: r.beforeTax,
         amount: r.amount,
         reason: r.name,
         recurringId: r.id,
@@ -365,7 +417,18 @@ export class RecurringDeductionsService {
         entityType: ADJUSTMENT,
         entityId: m.id,
         // the amount only as set (restricted, as a salary)
-        diff: { employeeCode: r.employee.employeeCode, month, kind: 'deduction', type: RECURRING_TYPE, taxed: false, amount: 'set', reason: r.name, recurringId: r.id, automatically: true },
+        diff: {
+          employeeCode: r.employee.employeeCode,
+          month,
+          kind: 'deduction',
+          type: RECURRING_TYPE,
+          taxed: false,
+          ...(r.beforeTax && { beforeTax: true }),
+          amount: 'set',
+          reason: r.name,
+          recurringId: r.id,
+          automatically: true,
+        },
       });
     }
     return made.length;

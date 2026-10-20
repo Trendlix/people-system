@@ -9,7 +9,8 @@ import { passPdfOn, wantsDownload } from '@/lib/protected-pdf';
 // time (from the newest draft of its template while none is published, which the API's X-Template-Draft header names,
 // passed on); a sent one's is as sent. The API checks the role (HR, CEO). When the document can't be made (values
 // missing, no template, no PDF converter, the converter failing), the reason is shown as plain text in its place.
-// Links here are plain links, never prefetched.
+// Links here are plain links, never prefetched. Print loads it into the page to print it (owner's request, 20 October
+// 2026: "add Print Button"), showing that reason under the button.
 
 const ID = /^[0-9a-f-]{36}$/i;
 

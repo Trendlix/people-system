@@ -40,6 +40,14 @@ export class PutLawRatesDto {
    */
   @IsOptional() @Numeric('the minimum wage')
   minimumWage?: number | null;
+
+  /**
+   * The most of the employee's health insurance share that lowers their taxable pay in a year (owner, 20 October 2026,
+   * on the medical share: "Before Tax i think"): the recurring deductions ticked "Deducted before tax" lower a month's
+   * taxable pay by at most a twelfth of it. Null clears it (no limit); left out, the year keeps the one it has.
+   */
+  @IsOptional() @Numeric('the before-tax health insurance limit')
+  beforeTaxHealthLimit?: number | null;
 }
 
 /** A year's rates from what was sent for it. */
@@ -54,4 +62,5 @@ export const ratesSent = (year: number, d: PutLawRatesDto): LawRates => ({
   healthInsuranceRate: d.healthInsuranceRate,
   taxTiers: d.taxTiers,
   ...(d.minimumWage !== undefined && { minimumWage: d.minimumWage }),
+  ...(d.beforeTaxHealthLimit !== undefined && { beforeTaxHealthLimit: d.beforeTaxHealthLimit }),
 });

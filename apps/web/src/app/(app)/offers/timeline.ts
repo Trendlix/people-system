@@ -140,10 +140,17 @@ export function draftTemplateVersion(o: Pick<OfferView, 'status' | 'template'>):
   return o.status === 'draft' && t?.status === 'draft' ? (t.previewVersion ?? null) : null;
 }
 
-/** The labels of the document's buttons: "Preview (PDF)" and "Download PDF", saying so when a draft template is used. */
-export function documentLabels(draftVersion: number | null): { preview: string; download: string } {
-  if (draftVersion === null) return { preview: 'Preview (PDF)', download: 'Download PDF' };
-  return { preview: `Preview (PDF, draft template v${draftVersion})`, download: `Download PDF (draft template v${draftVersion})` };
+/**
+ * The labels of the document's buttons: "Preview (PDF)", "Download PDF" and "Print" (owner's request, 20 October 2026:
+ * "add Print Button"), saying so when a draft template is used.
+ */
+export function documentLabels(draftVersion: number | null): { preview: string; download: string; print: string } {
+  if (draftVersion === null) return { preview: 'Preview (PDF)', download: 'Download PDF', print: 'Print' };
+  return {
+    preview: `Preview (PDF, draft template v${draftVersion})`,
+    download: `Download PDF (draft template v${draftVersion})`,
+    print: `Print (draft template v${draftVersion})`,
+  };
 }
 
 /** The start of what the page says while the server has no PDF converter (`pdfAvailable` false). */

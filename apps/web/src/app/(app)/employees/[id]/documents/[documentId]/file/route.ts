@@ -6,7 +6,8 @@ import { passPdfOn, wantsDownload } from '@/lib/protected-pdf';
 // the API. The API checks the role (HR, CEO). It is only ever a protected PDF (owner's request, 15 October 2026: "No doc
 // file export, just a protected PDF"): opened in the browser (the Employment tab's Preview (PDF)), or saved with
 // ?download=1 (Download PDF). Without the server's PDF converter there is no document to give out, and the API's reason
-// is shown as plain text. Links here are plain links, never prefetched.
+// is shown as plain text. Links here are plain links, never prefetched. Print loads it into the page to print it
+// (owner's request, 20 October 2026: "add Print Button").
 
 const ID = /^[0-9a-z-]{1,64}$/i;
 

@@ -50,6 +50,11 @@ export interface AdjustmentView {
   type: AdjustmentType;
   taxed: boolean;
   /**
+   * A Recurring deduction of a recurring deduction ticked "Deducted before tax" (owner, 20 October 2026: "Before Tax i
+   * think"): it lowers the taxable pay before the income tax. False for every other, which is after tax.
+   */
+  beforeTax: boolean;
+  /**
    * EGP. One in days (owner, 17 October 2026): what the month's run worked it out to, as its line has it, or once
    * applied what the line paid; null while no run has it (no run yet, or not on it).
    */
@@ -84,6 +89,7 @@ export function adjustmentView(a: AdjustmentRow, names: ReadonlyMap<string, User
     kind: a.kind as AdjustmentKind,
     type: a.type as AdjustmentType,
     taxed: a.taxed,
+    beforeTax: a.beforeTax,
     amount: a.amount?.toNumber() ?? worked.get(a.id) ?? null,
     days: a.days?.toNumber() ?? null,
     reason: a.reason,
@@ -229,6 +235,12 @@ export interface RecurringDeductionView {
   endMonth: string | null;
   stoppedFrom: string | null;
   stopNote: string | null;
+  /**
+   * "Deducted before tax (lowers taxable pay)" (owner, 20 October 2026, asked whether the employee's medical share is
+   * taken before or after tax: "Before Tax i think"): its months' Recurring deductions lower the taxable pay before the
+   * income tax. False, as it is by default: after tax.
+   */
+  beforeTax: boolean;
   status: RecurringStatus;
   /** Its months' Recurring deductions, oldest first: added by each month's run. */
   deducted: { month: string; amount: number; status: AdjustmentStatus }[];
@@ -252,6 +264,7 @@ export function recurringView(r: RecurringRow, current: string, names: ReadonlyM
     amount: r.amount.toNumber(),
     ...months,
     stopNote: r.stopNote,
+    beforeTax: r.beforeTax,
     status: recurringStatus(months, current),
     deducted: r.deductions.map((x) => ({ month: monthOfDate(x.month), amount: x.amount?.toNumber() ?? 0, status: x.status as AdjustmentStatus })),
     consent: r.consentRecordedAt && { recordedAt: r.consentRecordedAt, recordedBy: refOf(names, r.consentRecordedBy), paper: r.consentPaperwork },

@@ -4,6 +4,7 @@ import {
   addBand,
   addTier,
   bandLabels,
+  beforeTaxLimitText,
   changedText,
   changesLawRates,
   changeTier,
@@ -267,9 +268,27 @@ describe('the form', () => {
       healthInsuranceRate: 0,
       // not set: sent as null, which clears it
       minimumWage: null,
+      beforeTaxHealthLimit: null,
       taxTiers: normalTaxTiers(LAW_7_2024_TAX_TIERS),
     });
     expect(lawRatesBody({ ...Y2026, minimumWage: 7000 }).minimumWage).toBe(7000);
+    expect(lawRatesBody({ ...Y2026, beforeTaxHealthLimit: 6000 }).beforeTaxHealthLimit).toBe(6000);
+  });
+
+  it('takes the before-tax health insurance limit a year, left empty for no limit (owner, 20 October 2026: "Before Tax i think")', () => {
+    expect(typedOf(Y2026).beforeTaxHealthLimit).toBe('');
+    expect(typedOf({ ...Y2026, beforeTaxHealthLimit: 6000 }).beforeTaxHealthLimit).toBe('6000');
+    expect(lawRatesOf({ ...typedOf(Y2026), beforeTaxHealthLimit: '6,000' }).beforeTaxHealthLimit).toBe(6000);
+    expect(lawRatesOf({ ...typedOf(Y2026), beforeTaxHealthLimit: '٦٠٠٠' }).beforeTaxHealthLimit).toBe(6000);
+    // empty: not in the rates (and sent as null)
+    expect(lawRatesOf({ ...typedOf(Y2026), beforeTaxHealthLimit: ' ' })).not.toHaveProperty('beforeTaxHealthLimit');
+    expect(lawRatesOf(typedOf({ ...Y2026, beforeTaxHealthLimit: 6000 }))).toEqual(normalLawRates({ ...Y2026, beforeTaxHealthLimit: 6000 }));
+    expect(formProblems({ ...typedOf(Y2026), beforeTaxHealthLimit: '0' }, null)).toEqual([
+      'Enter the before-tax health insurance limit a year as an amount above 0, to the piaster, or leave it empty for no limit.',
+    ]);
+    // the table says it under the health insurance
+    expect(beforeTaxLimitText({ beforeTaxHealthLimit: 6000 })).toBe('Before tax: up to 6,000.00 a year');
+    expect(beforeTaxLimitText(Y2026)).toBe('Before tax: no limit set');
   });
 });
 
