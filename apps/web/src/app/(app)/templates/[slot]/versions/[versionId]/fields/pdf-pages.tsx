@@ -47,10 +47,11 @@ async function reasonOf(res: Response, notLoaded: string): Promise<string> {
 }
 
 /**
- * The PDF at `src`, opened with pdf.js; `onOpened` is told the size of each page, in points, as pdf.js shows it at scale
- * 1. `notLoaded`: what is said when it can't be opened.
+ * The PDF at `src` (an address, or a file of the page itself, e.g. a document chosen in a form), opened with pdf.js;
+ * `onOpened` is told the size of each page, in points, as pdf.js shows it at scale 1. `notLoaded`: what is said when it
+ * can't be opened.
  */
-function usePdfDocument(src: string, onOpened?: (sizes: PdfPageSize[]) => void, notLoaded = NOT_LOADED): Loaded {
+function usePdfDocument(src: string | Blob, onOpened?: (sizes: PdfPageSize[]) => void, notLoaded = NOT_LOADED): Loaded {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
   const opened = useRef(onOpened);
   useEffect(() => {
@@ -60,9 +61,14 @@ function usePdfDocument(src: string, onOpened?: (sizes: PdfPageSize[]) => void, 
     let gone = false;
     let task: PDFDocumentLoadingTask | null = null;
     (async () => {
-      const res = await fetch(src, { cache: 'no-store' });
-      if (!res.ok) throw new Refused(await reasonOf(res, notLoaded));
-      const data = new Uint8Array(await res.arrayBuffer());
+      let data: Uint8Array;
+      if (typeof src === 'string') {
+        const res = await fetch(src, { cache: 'no-store' });
+        if (!res.ok) throw new Refused(await reasonOf(res, notLoaded));
+        data = new Uint8Array(await res.arrayBuffer());
+      } else {
+        data = new Uint8Array(await src.arrayBuffer());
+      }
       const lib = await loadPdfjs();
       if (gone) return;
       task = lib.getDocument({ data, isEvalSupported: false });
@@ -177,10 +183,10 @@ function PageView({
 }
 
 /**
- * The pages of the PDF at `src`, `pages` (in points) at `scale` screen pixels a point, one under the other. `root`: the
- * scrolling area they are in; `onOpened`: the page sizes pdf.js read; `children(n, size)`: what goes over page n.
- * `notLoaded`: what is said when the file can't be opened (another document than a form, e.g. a payslip on the phone
- * pages, owner, 20 October 2026: the employee app).
+ * The pages of the PDF at `src` (an address, or a file of the page itself), `pages` (in points) at `scale` screen pixels
+ * a point, one under the other. `root`: the scrolling area they are in; `onOpened`: the page sizes pdf.js read;
+ * `children(n, size)`: what goes over page n. `notLoaded`: what is said when the file can't be opened (another document
+ * than a form, e.g. a payslip on the phone pages, owner, 20 October 2026: the employee app).
  */
 export function PdfPages({
   src,
@@ -191,7 +197,7 @@ export function PdfPages({
   notLoaded,
   children,
 }: {
-  src: string;
+  src: string | Blob;
   pages: readonly PdfPageSize[];
   scale: number;
   root: Element | null;

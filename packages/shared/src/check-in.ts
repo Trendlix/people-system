@@ -165,22 +165,42 @@ export function expectedPlace(arrangement: string, officeDays: readonly number[]
   return 'anywhere';
 }
 
-/** What a check-in that breaks its arrangement's rule is flagged as: allowed, and shown to the manager and HR. */
-export const CHECK_IN_FLAGS = ['outside_office', 'location_unknown'] as const;
+/**
+ * What a check-in is flagged as, allowed and shown to the manager and HR: one that breaks its arrangement's rule, or
+ * one whose location the phone itself said is made up (fake GPS: the employee app on Android tells a mock location,
+ * apps/mobile/README.md Phase 2, owner, 20 October 2026: "Android mock location → mock: true on the punch → flagged
+ * ("Fake GPS suspected") on Daily Attendance").
+ */
+export const CHECK_IN_FLAGS = ['outside_office', 'location_unknown', 'fake_gps'] as const;
 export type CheckInFlag = (typeof CHECK_IN_FLAGS)[number];
 
 export const CHECK_IN_FLAG_LABELS: Record<CheckInFlag, string> = {
   outside_office: 'Checked in outside the office on an office day',
   location_unknown: 'Location unknown on an office day',
+  fake_gps: 'Fake GPS suspected',
 };
 
 export const isCheckInFlag = (v: unknown): v is CheckInFlag => (CHECK_IN_FLAGS as readonly unknown[]).includes(v);
 
-/** The flags of a check-in: on an office day, remote is outside the office and unknown can't be told; anywhere, none. */
-export function checkInFlags(expected: ExpectedPlace, place: CheckInPlace): CheckInFlag[] {
-  if (expected !== 'office') return [];
-  if (place === 'remote') return ['outside_office'];
-  return place === 'unknown' ? ['location_unknown'] : [];
+/**
+ * The flags of a check-in: on an office day, remote is outside the office and unknown can't be told; anywhere, none
+ * for the place. A location the phone said is a mock one (`mock`, known only inside the employee app on Android) is
+ * fake GPS suspected, whatever the arrangement; the place is still read from it as from any other.
+ */
+export function checkInFlags(expected: ExpectedPlace, place: CheckInPlace, mock = false): CheckInFlag[] {
+  const flags: CheckInFlag[] = [];
+  if (expected === 'office' && place === 'remote') flags.push('outside_office');
+  if (expected === 'office' && place === 'unknown') flags.push('location_unknown');
+  if (mock) flags.push('fake_gps');
+  return flags;
+}
+
+/**
+ * The flags of a press: a check-in's as checkInFlags; a check-out's place breaks no rule (only check-ins are held to the
+ * arrangement), but a mock location on it is fake GPS suspected all the same.
+ */
+export function punchFlags(kind: PunchKind, expected: ExpectedPlace, place: CheckInPlace, mock = false): CheckInFlag[] {
+  return kind === 'in' ? checkInFlags(expected, place, mock) : mock ? ['fake_gps'] : [];
 }
 
 /** What the employee is told of where today's check-in is expected. */
@@ -214,7 +234,7 @@ export interface PunchedDay {
   checkOut: string | null;
   /** The first check-in's place, else (only check-outs) the last check-out's. */
   place: CheckInPlace | null;
-  /** Every check-in's flags, once each. */
+  /** Every check-in's flags, and fake GPS suspected on a check-out too, once each. */
   flags: CheckInFlag[];
   hoursCounted: number;
 }
@@ -235,7 +255,8 @@ export function dayFromPunches(date: string, punches: readonly PunchLike[], shif
   const outs = sorted.filter((p) => p.kind === 'out');
   const firstIn = ins[0] ?? null;
   const lastOut = (firstIn ? outs.filter((p) => Date.parse(p.at) > Date.parse(firstIn.at)) : outs).at(-1) ?? null;
-  const flags = [...new Set(ins.flatMap((p) => (p.flags ?? []).filter(isCheckInFlag)))];
+  // the check-ins' flags; of a check-out's, only fake GPS (its place breaks no rule), in the order pressed
+  const flags = [...new Set(sorted.flatMap((p) => (p.flags ?? []).filter(isCheckInFlag).filter((f) => p.kind === 'in' || f === 'fake_gps')))];
   const hours =
     firstIn && lastOut ? hoursCountedForDay(firstIn.at, lastOut.at, shift ? mostHoursCountedADay(shift) : null, shift ? shiftWindowOn(date, shift) : null) : 0;
   return {
@@ -317,7 +338,9 @@ export function punchMessages(
     messages.push(
       f === 'outside_office'
         ? `${CHECK_IN_FLAG_LABELS[f]}: it is kept, and your manager and HR see it flagged.`
-        : `${CHECK_IN_FLAG_LABELS[f]}: it is kept, and your manager and HR see it flagged. Allow the location next time.`,
+        : f === 'fake_gps'
+          ? `${CHECK_IN_FLAG_LABELS[f]}: your phone said this location comes from an app that sets a made-up one. The ${punch.kind === 'in' ? 'check-in' : 'check-out'} is kept, and your manager and HR see it flagged. Turn such an app off before you check in.`
+          : `${CHECK_IN_FLAG_LABELS[f]}: it is kept, and your manager and HR see it flagged. Allow the location next time.`,
     );
   }
   return messages;

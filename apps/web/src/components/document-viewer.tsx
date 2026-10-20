@@ -2,12 +2,18 @@
 
 import { useCallback, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNativeApp } from '@/lib/use-native';
+import { PdfView } from './pdf-view';
+import { useAppSection } from './surface';
 
 // Viewing a document: a button that opens it in a pop-up window over the page (a native modal <dialog>: focus stays in
 // it, Esc or a click outside closes it, and focus goes back to the button), one file, or the two sides of an ID card
 // side by side (stacked on narrow screens). Pictures are fitted to the window; a PDF fills it, with Open in a new tab for
 // browsers that cannot show one inside a page. Nothing is loaded until it is opened, and it is loaded again at each
 // opening: opening a national ID scan from the employee file is written to the audit log (app/paperwork/[itemId]).
+// On the phone pages (/app) and anywhere inside the employee app, a PDF is drawn in the window with pdf.js instead of a
+// frame, as the payslip is (owner, 20 October 2026: the employee app; an Android web view shows a PDF in a frame as a
+// blank box), and there is no Open in a new tab in the app (it has no tabs); pictures are shown as everywhere.
 
 /** One file to show. */
 export interface ViewerFile {
@@ -17,7 +23,10 @@ export interface ViewerFile {
   alt: string;
   /** Its address (e.g. /paperwork/<itemId>, loaded only once the window opens), or a file made or chosen in this page. */
   src: string | Blob;
-  /** A PDF is shown in a frame, anything else as a picture. A Blob's own type is used when it is left out. */
+  /**
+   * A PDF is shown in a frame (drawn with pdf.js on the phone pages and in the app), anything else as a picture. A
+   * Blob's own type is used when it is left out.
+   */
   mimeType?: string;
 }
 
@@ -41,7 +50,10 @@ function useAddress(src: string | Blob) {
   );
 }
 
-function Shown({ file }: { file: ViewerFile }) {
+const NOT_LOADED = 'This file could not be loaded. Close the window and try again.';
+
+/** One file in the window; `drawPdf`: a PDF drawn with pdf.js (the phone pages, the app) rather than in a frame. */
+function Shown({ file, drawPdf }: { file: ViewerFile; drawPdf: boolean }) {
   const [state, setState] = useState<'loading' | 'shown' | 'failed'>('loading');
   const attach = useAddress(file.src);
   const src = typeof file.src === 'string' ? file.src : undefined;
@@ -49,8 +61,15 @@ function Shown({ file }: { file: ViewerFile }) {
   if (state === 'failed') {
     return (
       <p role="alert" className="m-auto max-w-sm p-4 text-center text-sm text-danger">
-        This file could not be loaded. Close the window and try again.
+        {NOT_LOADED}
       </p>
+    );
+  }
+  if (isPdf(file) && drawPdf) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-line">
+        <PdfView src={file.src} title={file.alt} notLoaded={NOT_LOADED} bleed={false} />
+      </div>
     );
   }
   if (isPdf(file)) return <iframe ref={attach} src={src} title={file.alt} className="min-h-0 w-full flex-1 rounded-md border border-line bg-white" />;
@@ -81,6 +100,8 @@ const close = (e: React.MouseEvent<HTMLElement>) => e.currentTarget.closest('dia
  */
 function ViewerWindow({ title, files, onClosed }: { title: React.ReactNode; files: ViewerFile[]; onClosed: () => void }) {
   const titleId = useId();
+  const inApp = useNativeApp();
+  const drawPdf = useAppSection() !== null || inApp;
   const attach = useCallback((dialog: HTMLDialogElement | null) => {
     if (dialog && !dialog.open) dialog.showModal();
   }, []);
@@ -115,7 +136,8 @@ function ViewerWindow({ title, files, onClosed }: { title: React.ReactNode; file
       {/* two files side by side on wide screens, one above the other on narrow ones */}
       <div className={`grid min-h-0 flex-1 gap-4 overflow-auto p-4 ${files.length > 1 ? 'grid-rows-2 sm:grid-cols-2 sm:grid-rows-1' : 'grid-rows-1'}`}>
         {files.map((file, i) => {
-          const newTab = isPdf(file) && typeof file.src === 'string' ? file.src : null;
+          // the app has no tabs: a PDF is drawn in the window there
+          const newTab = isPdf(file) && typeof file.src === 'string' && !inApp ? file.src : null;
           return (
             <figure key={i} className="m-0 flex min-h-0 min-w-0 flex-col gap-2">
               {(file.label || newTab) && (
@@ -128,7 +150,7 @@ function ViewerWindow({ title, files, onClosed }: { title: React.ReactNode; file
                   )}
                 </figcaption>
               )}
-              <Shown file={file} />
+              <Shown file={file} drawPdf={drawPdf} />
             </figure>
           );
         })}

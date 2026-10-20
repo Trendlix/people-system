@@ -2,6 +2,7 @@ import {
   attendanceDayView,
   attendanceFigures,
   attendanceLineInputs,
+  CHECK_IN_FLAG_LABELS,
   checkInFlags,
   checkInPlace,
   checkInRefusal,
@@ -16,6 +17,7 @@ import {
   nextPunch,
   officeLocationProblems,
   officeLocationSet,
+  punchFlags,
   punchMessages,
   shiftDayOf,
   zonedMoment,
@@ -90,6 +92,22 @@ describe('the rules by work arrangement', () => {
     expect(checkInFlags('anywhere', 'unknown')).toEqual([]);
   });
 
+  // the employee app on Android tells a mock location (apps/mobile/README.md Phase 2, owner, 20 October 2026: "Android
+  // mock location → mock: true on the punch → flagged ("Fake GPS suspected")")
+  it('flags a mock location as fake GPS suspected, whatever the arrangement, a check-out too', () => {
+    expect(checkInFlags('anywhere', 'office', true)).toEqual(['fake_gps']);
+    expect(checkInFlags('office', 'office', true)).toEqual(['fake_gps']);
+    expect(checkInFlags('office', 'remote', true)).toEqual(['outside_office', 'fake_gps']);
+    expect(checkInFlags('office', 'office', false)).toEqual([]);
+    expect(punchFlags('in', 'office', 'remote')).toEqual(['outside_office']);
+    expect(punchFlags('in', 'anywhere', 'remote', true)).toEqual(['fake_gps']);
+    // a check-out's place breaks no rule, but a mock location on it is suspected all the same
+    expect(punchFlags('out', 'office', 'remote')).toEqual([]);
+    expect(punchFlags('out', 'office', 'unknown')).toEqual([]);
+    expect(punchFlags('out', 'office', 'remote', true)).toEqual(['fake_gps']);
+    expect(CHECK_IN_FLAG_LABELS.fake_gps).toBe('Fake GPS suspected');
+  });
+
   it('tells the employee where they are expected', () => {
     expect(expectedPlaceText('office', 'office')).toBe('You work at the office: check in there.');
     expect(expectedPlaceText('hybrid', 'office')).toBe('Today is one of your office days: check in at the office.');
@@ -120,6 +138,13 @@ describe('a day from its punches', () => {
     const d = dayFromPunches(day, [punch('in', day, '09:00', { place: 'unknown', flags: ['location_unknown'] }), punch('in', day, '11:00', { place: 'remote', flags: ['outside_office', 'location_unknown'] })], MORNING);
     expect(d.place).toBe('unknown');
     expect(d.flags).toEqual(['location_unknown', 'outside_office']);
+  });
+
+  it('takes fake GPS suspected from a check-out too, but no other flag of one', () => {
+    const d = dayFromPunches(day, [punch('in', day, '09:00'), punch('out', day, '18:00', { place: 'remote', flags: ['outside_office', 'fake_gps'] })], MORNING);
+    expect(d.flags).toEqual(['fake_gps']);
+    const both = dayFromPunches(day, [punch('in', day, '09:00', { flags: ['fake_gps'] }), punch('in', day, '14:00', { flags: ['location_unknown'] }), punch('out', day, '18:00', { flags: ['fake_gps'] })], MORNING);
+    expect(both.flags).toEqual(['fake_gps', 'location_unknown']);
   });
 
   it('says what the next press is', () => {
@@ -158,6 +183,11 @@ describe('a day from its punches', () => {
       'You didn’t allow the location: the check-in is kept as location unknown.',
       'Location unknown on an office day: it is kept, and your manager and HR see it flagged. Allow the location next time.',
     ]);
+    expect(punchMessages({ ...punch('in', day, '09:05'), flags: ['fake_gps'] }, [])).toEqual([
+      'Checked in at 9:05 AM, at the office.',
+      'Fake GPS suspected: your phone said this location comes from an app that sets a made-up one. The check-in is kept, and your manager and HR see it flagged. Turn such an app off before you check in.',
+    ]);
+    expect(punchMessages({ ...punch('out', day, '18:05'), flags: ['fake_gps'] }, [punch('in', day, '09:05')])[1]).toContain('The check-out is kept, and your manager and HR see it flagged.');
     expect(punchMessages({ ...punch('in', day, '09:05', { place: 'unknown' }), flags: [] }, [], { officeSet: false })[1]).toBe(
       'The office’s location isn’t set on the system yet: the check-in is kept as location unknown.',
     );
@@ -241,6 +271,14 @@ describe('a month’s days from every source', () => {
     expect(views[1].flags).toEqual(['outside_office']);
     const f = attendanceFigures(views);
     expect(f).toMatchObject({ missingCheckIns: 1, flaggedDays: 1, remoteDays: 1 });
+    expect(matchesAttendanceFilter(f, 'flagged')).toBe(true);
+  });
+
+  it('counts a day with fake GPS suspected as flagged, for "Only with flagged check-ins"', () => {
+    const view = attendanceDayView(d('2026-10-13', 'system', { checkIn: '2026-10-13T06:00:00.000Z', place: 'office', flags: ['fake_gps', 'not_a_flag'] }), 9);
+    expect(view.flags).toEqual(['fake_gps']);
+    const f = attendanceFigures([view]);
+    expect(f.flaggedDays).toBe(1);
     expect(matchesAttendanceFilter(f, 'flagged')).toBe(true);
   });
 });

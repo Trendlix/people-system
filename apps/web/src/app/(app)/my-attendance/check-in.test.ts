@@ -14,6 +14,8 @@ import {
   latestView,
   LOCATION_OPTIONS,
   locationErrorOf,
+  locationHelpText,
+  mockRefused,
   placeLabel,
   punchBody,
   punchBodyFrom,
@@ -21,6 +23,7 @@ import {
   punchRows,
   readingOf,
   readLocation,
+  withoutMock,
 } from './check-in';
 
 // Checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location
@@ -122,6 +125,37 @@ describe('the press, as the API takes it', () => {
     expect(punchBodyFrom({ kind: 'lunch' })).toBeNull();
     expect(punchBodyFrom(null)).toBeNull();
     expect(punchBodyFrom('in')).toBeNull();
+  });
+
+  // the employee app on Android says whether a point is a mock one (fake GPS, Phase 2, 20 October 2026)
+  it('sends whether the point is a mock one only when the app’s location said it, true or false', () => {
+    expect(readingOf({ latitude: 30, longitude: 31, accuracy: 9, mock: true })).toEqual({ latitude: 30, longitude: 31, accuracy: 9, mock: true });
+    expect(readingOf({ latitude: 30, longitude: 31, accuracy: 9, mock: 'yes' })).toEqual({ latitude: 30, longitude: 31, accuracy: 9 });
+    expect(punchBody('in', { latitude: 30, longitude: 31, accuracy: 9, mock: true })).toEqual({ kind: 'in', latitude: 30, longitude: 31, accuracy: 9, mock: true });
+    expect(punchBody('out', { latitude: 30, longitude: 31, accuracy: null, mock: false })).toEqual({ kind: 'out', latitude: 30, longitude: 31, mock: false });
+    expect(punchBody('in', { latitude: 30, longitude: 31, accuracy: null })).not.toHaveProperty('mock');
+    expect(punchBodyFrom({ kind: 'in', latitude: 30, longitude: 31, mock: true })).toEqual({ kind: 'in', latitude: 30, longitude: 31, mock: true });
+    expect(punchBodyFrom({ kind: 'in', latitude: 30, longitude: 31, mock: 1 })).toEqual({ kind: 'in', latitude: 30, longitude: 31 });
+    // no point, nothing to be a mock one
+    expect(punchBodyFrom({ kind: 'in', locationError: 'denied', mock: true })).toEqual({ kind: 'in', locationError: 'denied' });
+  });
+
+  it('sends the press again without mock to an API from before it, and only then', () => {
+    const body = { kind: 'in' as const, latitude: 30, longitude: 31, accuracy: 9, mock: true };
+    expect(mockRefused(body, 400, ['property mock should not exist'])).toBe(true);
+    expect(withoutMock(body)).toEqual({ kind: 'in', latitude: 30, longitude: 31, accuracy: 9 });
+    expect(withoutMock({ kind: 'out', latitude: 30, longitude: 31, mock: false })).toEqual({ kind: 'out', latitude: 30, longitude: 31 });
+    expect(mockRefused(body, 400, ['property mock should not exist', 'The location could not be read.'])).toBe(false);
+    expect(mockRefused(body, 403, ['property mock should not exist'])).toBe(false);
+    expect(mockRefused({ kind: 'in', latitude: 30, longitude: 31 }, 400, ['property mock should not exist'])).toBe(false);
+  });
+
+  it('says what to do when the location couldn’t be read: the app’s settings inside it, the site’s outside', () => {
+    expect(locationHelpText('denied', true)).toContain('Settings → Apps → TrendLIX People → Permissions → Location → Allow only while using the app');
+    expect(locationHelpText('denied', false)).toBe('To check in with your location, allow this site to use it in your browser’s settings, then press again.');
+    expect(locationHelpText('unavailable', true)).toBe('Turn on the phone’s location (Settings → Location), then press again.');
+    expect(locationHelpText('timeout', false)).toContain('took too long');
+    expect(locationHelpText('unsupported', false)).toBeNull();
   });
 
   it('says why a press couldn’t be sent: the API’s words, or not there yet', () => {

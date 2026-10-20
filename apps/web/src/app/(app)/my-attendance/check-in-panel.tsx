@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { CheckInTodayView, PunchResultView } from '@/lib/attendance-types';
 import { getPosition } from '@/lib/native';
+import { useNativeApp } from '@/lib/use-native';
 import { punchAttendance } from './actions';
 import {
   buttonLabel,
@@ -11,7 +12,9 @@ import {
   flagLabels,
   hoursSoFarText,
   latestView,
+  locationHelpText,
   LOCATION_NOTE,
+  LOCATION_NOTE_IN_APP,
   OFFICE_NOT_SET_TEXT,
   placeLabel,
   punchBody,
@@ -29,13 +32,17 @@ import {
 // newer of the page's view and the press's is shown. `compact`: the home page's card, without the punches' list. The
 // location is read through the one bridge to the phone (lib/native.ts): the employee app's own when it has it, else the
 // browser's. `big`: the phone pages' Home (owner, 20 October 2026: the employee app, "to enable them to check in and
-// out"), a larger button across the screen, and the time since the first check-in while not checked out yet.
+// out"), a larger button across the screen, and the time since the first check-in while not checked out yet. When the
+// location couldn't be read, what to do about it is said under what was kept (inside the app: the phone's settings for
+// TrendLIX People; the app's Phase 2, "a clear message when refused").
 
 export function CheckInPanel({ initial, compact = false, big = false }: { initial: CheckInTodayView; compact?: boolean; big?: boolean }) {
   const [pressed, setPressed] = useState<PunchResultView | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const [help, setHelp] = useState<string | null>(null);
   const [phase, setPhase] = useState<PunchPhase>('idle');
+  const inApp = useNativeApp();
   const noteId = useId();
   const view = latestView(initial, pressed);
   const busy = phase !== 'idle';
@@ -55,8 +62,10 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
     const kind = view.next;
     setErrors([]);
     setMessages([]);
+    setHelp(null);
     setPhase('locating');
     const location = await getPosition();
+    setHelp('locationError' in location ? locationHelpText(location.locationError, inApp) : null);
     setPhase('sending');
     try {
       const result = await punchAttendance(punchBody(kind, location));
@@ -97,7 +106,7 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
           {buttonLabel(view.next, phase)}
         </button>
         <p id={noteId} className="hint max-w-md">
-          {LOCATION_NOTE}
+          {inApp ? LOCATION_NOTE_IN_APP : LOCATION_NOTE}
         </p>
       </div>
 
@@ -112,6 +121,7 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
             {messages.map((m) => (
               <li key={m}>{m}</li>
             ))}
+            {help && <li>{help}</li>}
           </ul>
         )}
       </div>

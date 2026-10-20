@@ -150,7 +150,7 @@ The phone pages live in `apps/web/src/app/(phone)/app/` (their own layout, not t
 - **Open for later phases:** documents and receipts in the request pages still open in the site's document viewer
   (a PDF in a frame: fine in a phone's browser, blank in an Android web view — Phase 2/5 can draw them with pdf.js as
   the payslip is, or open them natively); in the APK, a location permission prompt needs the shell's manifest entries
-  (Phase 2).
+  (Phase 2). *Both done in Phase 2, below.*
 
 ### Phase 2 — Native location and the camera
 - `lib/native.ts`: location through the Capacitor Geolocation plugin inside the app (high accuracy, a timeout, a clear
@@ -159,6 +159,59 @@ The phone pages live in `apps/web/src/app/(phone)/app/` (their own layout, not t
 - Receipts: the Camera plugin inside the app (photo → upload as today), file input outside.
 - Permission texts (Android manifest; later iOS Info.plist): location only while using the app, camera.
 - Done when: check-in in the APK uses native location, a fake-GPS app is flagged, a receipt photo uploads.
+
+#### Phase 2 — what was built (20 October 2026)
+
+- **The plugins** (in `apps/mobile/package.json`, exact versions, the lock file updated, `npx cap sync android` run and
+  its two generated Gradle files committed: `android/capacitor.settings.gradle`, `android/app/capacitor.build.gradle`):
+  `@capacitor/geolocation` **8.2.4** and `@capacitor/camera` **8.2.6** (both for Capacitor 8, written in Kotlin; the
+  plugin modules bring their own Kotlin Gradle plugin, so the app's Gradle files need nothing for it).
+- **Fake GPS — the app's own plugin `TrendlixLocation`** (`android/app/src/main/java/com/trendlix/people/
+  TrendlixLocationPlugin.java`, registered in `MainActivity.java` before the bridge starts). The Geolocation plugin
+  does **not** say whether a location is a mock one (its Android code drops it), so this small Java plugin reads the
+  location itself and adds Android's own word on it:
+  - `getPosition({ enableHighAccuracy, timeout, maximumAge })` → `{ latitude, longitude, accuracy, timestamp, mock }`.
+  - It asks for the location permission with the system's prompt (precise, or approximate only, both read), checks
+    the phone's location is on, then asks Google Play services' **fused location** once (as the Geolocation plugin
+    does: high accuracy, within the timeout, no older reading than `maximumAge`).
+  - `mock` is `Location.isMock()` on Android 12 and later, `Location.isFromMockProvider()` before: true when the
+    location came from a **mock location app** (Developer options → *Select mock location app*, which every fake-GPS
+    app needs). Nothing else is guessed (no list of apps, no root check).
+  - Refusals are codes, never text for people (the pages word them): `DENIED`, `LOCATION_OFF`, `TIMEOUT`,
+    `UNAVAILABLE`, and `NO_PLAY_SERVICES` (a phone without Google Play services: the page then asks the Geolocation
+    plugin, whose own fallback uses Android's location manager — **mock not known** there).
+  - One new Gradle line for it: `com.google.android.gms:play-services-location` in `app/build.gradle`, at
+    `playServicesLocationVersion = '21.3.0'` in `variables.gradle` (the version the Geolocation plugin uses too).
+- **The manifest** (`android/app/src/main/AndroidManifest.xml`): `ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION`,
+  `CAMERA`; `ACCESS_BACKGROUND_LOCATION` removed with `tools:node="remove"` (never in the background, whatever a library
+  asks for); GPS and camera hardware `required="false"`. Android's permission prompts carry no text of the app's (the
+  page says why it asks: "Each press asks your phone for your location …"); iOS's Info.plist texts come in Phase 6.
+- **The web bridge** (`apps/web/src/lib/native.ts`): `getPosition()` asks `TrendlixLocation` first inside the app (high
+  accuracy, 10 s, `maximumAge: 0`, the 30 s give-up of the check-in), then the Geolocation plugin, then the browser's
+  `navigator.geolocation`; the point carries `mock` only when the app's plugin said it (a browser: left out, "not
+  known"). `takePhoto()` opens the Camera plugin's `takePhoto` (the back camera, upright, not saved to the gallery) and
+  reads the photo from the address the shell serves it at (`webPath`, on the site's own origin), as a `File`
+  (`photo-YYYYMMDD-HHMMSS.jpg`); closing the camera says nothing, a refused camera says how to allow it.
+  `canTakePhoto()`, `lib/use-native.ts` (`useNativeApp()`, false while hydrating).
+- **The pages:** the check-in panel says, after a press whose location couldn't be read, what to do (inside the app:
+  Settings → Apps → TrendLIX People → Permissions → Location → Allow only while using the app); **Take a photo** on
+  receipts and leave documents (`components/camera-button.tsx`) opens the app's camera inside the app and the file box
+  with `capture` outside; the **document viewer** draws a PDF with pdf.js (`components/pdf-view.tsx`) on the `/app`
+  pages and anywhere inside the app (no frame, no "Open in a new tab" in the app); pictures as before.
+- **The API and the shared rule:** `POST /me/attendance/punches` takes `mock: boolean` (optional; anything else is
+  refused). A press with `mock: true` is kept like any other (its place read from the point, the point dropped) and
+  flagged **`fake_gps` — "Fake GPS suspected"** (packages/shared `check-in.ts`: `CHECK_IN_FLAGS`, `punchFlags`), on a
+  check-in whatever the arrangement and on a check-out too (a check-out's place breaks no rule, but a made-up location
+  is suspected all the same); the day takes it (`dayFromPunches`), so Daily Attendance shows it, counts it in Flagged
+  days, lists it under **Only with flagged check-ins**, and the Excel export words it. Migration
+  `20261020060000_fake_gps_flag` widens the two flag checks. Not in the audit log (the punches are their own record).
+  The web's server action sends a press again without `mock` if an API from before it refuses the word (the web and
+  the API are deployed apart).
+- **What only CI and a phone can prove** (no JDK or Android SDK on the Mac): the Gradle build with the two Kotlin
+  plugins and the Java plugin; then on a phone: the location prompt on the first Check in, check-in from the office and
+  away, "Allow only while using the app" offered and no background location; a fake-GPS app (set as the mock location
+  app in Developer options) giving "Fake GPS suspected" on the punch and on Daily Attendance; Take a photo opening the
+  camera and the receipt uploading; a PDF receipt or leave document drawn in the viewer.
 
 ### Phase 3 — Face ID / fingerprint sign-in
 - API: `device_credentials` (user, device name, platform, secret hash, created, last used, revoked) — create (signed-in
@@ -234,8 +287,12 @@ What is in `apps/mobile` (the npm workspace `@trendlix/mobile`, installed from t
 - `capacitor.config.ts` — app id, name, `server.url` (`https://people.trendlix.com/app`), `allowNavigation`, the offline
   page (`server.errorPath`), Android WebView settings. `www/index.html` is a tiny loader (never shown while `server.url`
   is set); `www/offline.html` is the no-connection page with Retry.
-- `android/` — generated by `npx cap add android` (Capacitor 8.5.3) and committed. The only hand edit so far: the
-  version lines in `android/app/build.gradle` (`MOBILE_VERSION_CODE` / `MOBILE_VERSION_NAME`, default 1 / `0.1.0`).
+- `android/` — generated by `npx cap add android` (Capacitor 8.5.3) and committed. The hand edits: the version lines
+  in `android/app/build.gradle` (`MOBILE_VERSION_CODE` / `MOBILE_VERSION_NAME`, default 1 / `0.1.0`); Phase 2's
+  permissions in `AndroidManifest.xml`, the app's own plugin `TrendlixLocationPlugin.java` registered in
+  `MainActivity.java`, and Google Play services' location in `app/build.gradle` and `variables.gradle`. After adding a
+  plugin package, `npx cap sync android` rewrites `capacitor.settings.gradle` and `app/capacitor.build.gradle` (kept
+  in git, never edited by hand).
   `npx cap sync android` recreates what is not kept in git: `app/src/main/assets/public` (a copy of `www`),
   `assets/capacitor.config.json`, `assets/capacitor.plugins.json`, `res/xml/config.xml`,
   `capacitor-cordova-android-plugins/`.
@@ -275,7 +332,8 @@ npm run open:android -w @trendlix/mobile       # opens the project in Android St
 
 ## 8. Status (update at the end of every phase)
 
-- [ ] Phase 0 — Scaffolding and CI — **built 20 Oct 2026, waiting for the first green "Mobile (Android)" run.**
+- [x] Phase 0 — Scaffolding and CI — **done 20 Oct 2026**: the "Mobile (Android)" runs 0.1.2 and 0.1.3 built the APK in
+  CI (the Gradle build, the artifact and its name).
   - Done: the workspace `@trendlix/mobile` (`@capacitor/core`, `@capacitor/android`, `@capacitor/cli` 8.5.3,
     TypeScript 6.0.3, all pinned; package-lock.json updated), `capacitor.config.ts`, `www/` (loader and offline page),
     `android/` generated and committed, the version from the run number, `.github/workflows/mobile-android.yml`
@@ -289,7 +347,7 @@ npm run open:android -w @trendlix/mobile       # opens the project in Android St
   - Only CI can prove (no JDK or Android SDK on the Mac): the Gradle build (`assembleDebug`), the artifact upload and
     its name, the Release on a tag, the signing key kept between runs; then on a phone: the APK installs, opens
     people.trendlix.com/app (the sign-in page today), and shows the offline page in airplane mode.
-- [ ] Phase 1 — The phone pages — **built 20 Oct 2026, not pushed yet; to try on a phone's browser and the APK.**
+- [x] Phase 1 — The phone pages — **done 20 Oct 2026** (pushed; to try on a phone's browser and the APK).
   - Done: the `/app` pages and their contract (Phase 1 above), `lib/native.ts`, `lib/surface.ts`, the shared page
     bodies and forms (Take a photo on receipts and leave documents), "Open the app view" on the site at phone width,
     and the API's `GET /api/me/payslips` and `GET /api/me/payslips/:lineId/:language` (the employee's own payslips).
@@ -299,7 +357,19 @@ npm run open:android -w @trendlix/mobile       # opens the project in Android St
   - To try (owner): sign in on a phone's browser at people.trendlix.com/app, check in and out, ask for leave, a
     permission, a reimbursement with a receipt photo, a correction from Attendance; open a payslip; as a manager, decide
     on To Approve. Then the same in the APK.
-- [ ] Phase 2 — Native location and the camera
+- [ ] Phase 2 — Native location and the camera — **built 20 Oct 2026, waiting for the "Mobile (Android)" run** (see
+  "Phase 2 — what was built" above).
+  - Done: the Geolocation and Camera plugins, the app's own `TrendlixLocation` plugin (fake GPS), the manifest
+    permissions, the bridge's `getPosition()` / `takePhoto()`, Take a photo and the check-in's help in the app, PDFs
+    drawn with pdf.js in the viewer on the phone pages and in the app, the API's `mock` and the "Fake GPS suspected"
+    flag (shared rule, migration, Daily Attendance and its filter).
+  - Checked on the Mac: `npx cap sync android` and `npx cap doctor`, `tsc` on the config; web `next typegen`, `tsc`,
+    `eslint`, `vitest` and the build; API unit tests, `tsc`, lint and the whole e2e suite (fake GPS cases added).
+  - Only CI and a phone can prove: see the list at the end of "Phase 2 — what was built".
+  - To try (owner): install the new APK; press Check in (allow the location "while using the app"); on an Android
+    phone with Developer options, set a fake-GPS app as the *mock location app*, check in, and see "Fake GPS
+    suspected" on the press and on Daily Attendance (Only with flagged check-ins); New reimbursement → Take a photo of
+    the receipt → send it; open a PDF receipt from the request's page.
 - [ ] Phase 3 — Face ID / fingerprint sign-in
 - [ ] Phase 4 — Notifications
 - [ ] Phase 5 — Polish and offline

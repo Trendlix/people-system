@@ -286,6 +286,8 @@ describe('checking in on the system (owner, 19 October 2026: "Check-in through t
     expect(dayFlagTexts(unknownPlace)).toEqual(['Location unknown on an office day']);
     expect(dayFlagTexts({ flags: ['outside_office', 'outside_office', 'other'] })).toEqual(['Checked in outside the office on an office day']);
     expect(dayFlagTexts({})).toEqual([]);
+    // the employee app on Android told a mock location (Phase 2, 20 October 2026)
+    expect(dayFlagTexts({ flags: ['fake_gps'] })).toEqual(['Fake GPS suspected']);
     expect([checkInCell(unknownPlace), checkInCell(outOnly), checkInCell(goneBy), checkInCell({ checkIn: null })]).toEqual(['time', 'missing', 'none', 'none']);
   });
 
@@ -294,7 +296,7 @@ describe('checking in on the system (owner, 19 October 2026: "Check-in through t
     const tiles = figureTiles(f, { averageHours: 8, hoursADay: 8, checksIn: true });
     expect(tiles.slice(-2).map((t) => [t.key, t.label, t.value, t.note, t.tone])).toEqual([
       ['checkins', 'Missing check-ins', '1', 'A check-out without a check-in: no hours', 'warn'],
-      ['flagged', 'Flagged days', '1', "A check-in outside the work arrangement's rule", 'warn'],
+      ['flagged', 'Flagged days', '1', "A check-in outside the work arrangement's rule, or on a fake GPS", 'warn'],
     ]);
     // someone who checks in, nothing missing or flagged: shown, plain
     expect(figureTiles(attendanceFigures([zoho]), { averageHours: 8, checksIn: true }).slice(-2).map((t) => [t.value, t.tone])).toEqual([

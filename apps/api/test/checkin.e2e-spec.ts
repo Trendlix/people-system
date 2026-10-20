@@ -406,4 +406,50 @@ describe('Checking in on the system (e2e)', () => {
       expect(said(await api().post(`/api/payroll/runs/${pastRun}/attendance-refresh`).set('Cookie', hr).expect(409))[0]).toContain("can't be refreshed from attendance");
     });
   });
+
+  // The employee app on Android says when a location is a mock one (apps/mobile/README.md Phase 2, owner, 20 October
+  // 2026: "Android mock location → mock: true on the punch → flagged ("Fake GPS suspected") on Daily Attendance").
+  describe('fake GPS from the employee app', () => {
+    beforeAll(async () => {
+      await person('mila', 'Mila Mockgps', { workArrangement: 'wfh' }, false);
+      await person('omar', 'Omar Officemock', { workArrangement: 'office' }, false);
+    });
+
+    it('keeps a check-in on a mock location like any other, never its coordinates, and flags it', async () => {
+      const res = (await punch('mila', { kind: 'in', ...NEAR, mock: true }).expect(200)).body as Today;
+      expect(res.kept).toBe(true);
+      // the place is still read from the point, and only it and the accuracy are kept
+      expect(res.punches[0]).toMatchObject({ kind: 'in', place: 'office', accuracyMetres: 18, flags: ['fake_gps'] });
+      expect(res.messages).toContain(
+        'Fake GPS suspected: your phone said this location comes from an app that sets a made-up one. The check-in is kept, and your manager and HR see it flagged. Turn such an app off before you check in.',
+      );
+      expect(JSON.stringify(res)).not.toContain('30.0601');
+      expect((await prisma.attendancePunch.findFirstOrThrow({ where: { employeeId: ids.mila } })).flags).toEqual(['fake_gps']);
+      expect((await prisma.attendanceDay.findFirstOrThrow({ where: { employeeId: ids.mila, source: 'system' } })).flags).toEqual(['fake_gps']);
+    });
+
+    it('flags it beside the arrangement’s own flag, on a check-out too; a location that isn’t a mock one isn’t', async () => {
+      const omar = (await punch('omar', { kind: 'in', ...FAR, mock: true }).expect(200)).body as Today;
+      expect(omar.punches[0]).toMatchObject({ place: 'remote', flags: ['outside_office', 'fake_gps'] });
+      // a check-out isn't held to the arrangement, but a mock location on it is suspected all the same
+      const out = (await punch('omar', { kind: 'out', ...FAR, mock: true }).expect(200)).body as Today;
+      expect(out.punches[1]).toMatchObject({ kind: 'out', place: 'remote', flags: ['fake_gps'] });
+      expect(out.day?.flags).toEqual(['outside_office', 'fake_gps']);
+      // the phone saying it isn't a mock one: no flag
+      const mila = (await punch('mila', { kind: 'out', ...FAR, mock: false }).expect(200)).body as Today;
+      expect(mila.punches[1]).toMatchObject({ kind: 'out', flags: [] });
+      expect(mila.day?.flags).toEqual(['fake_gps']);
+      expect(said(await punch('mila', { kind: 'in', ...NEAR, mock: 'yes' }).expect(400))).toEqual(['Say whether the location is a mock one with true or false.']);
+    });
+
+    it('shows on Daily Attendance and under "Only with flagged check-ins"', async () => {
+      const view = (await api().get(`/api/attendance?month=${CURRENT}&departmentId=${deptId}&only=flagged`).set('Cookie', hr).expect(200)).body as {
+        people: { employee: { id: string }; figures: { flaggedDays: number }; days: { date: string; flags: string[] }[] }[];
+      };
+      const mila = view.people.find((p) => p.employee.id === ids.mila);
+      expect(mila?.figures.flaggedDays).toBe(1);
+      expect(mila?.days.find((d) => d.date === TODAY)?.flags).toEqual(['fake_gps']);
+      expect(view.people.map((p) => p.employee.id)).toEqual(expect.arrayContaining([ids.mila, ids.omar]));
+    });
+  });
 });

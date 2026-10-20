@@ -8,11 +8,14 @@ import { PdfPages } from '@/app/(app)/templates/[slot]/versions/[versionId]/fiel
 // app, "My attendance and payslips"): a payslip on the phone pages. A phone's web view (the app's) can't show a PDF in a
 // frame, so it is drawn with pdf.js, as Place Fields draws a template (pdf-pages.tsx); the file comes from the site's own
 // route, with the session. The page sizes are read from the file once it is opened, and the pages fitted to the width.
+// The document viewer draws its PDFs with it too on the phone pages and inside the app (the app's Phase 2, 20 October
+// 2026), from an address or a file chosen in the page; `bleed`: out to the screen's edges (a page's own PDF, the
+// payslip), else within its box (the viewer's window).
 
 /** The space PdfPages leaves around the pages (p-4), on each side. */
 const PADDING = 16;
 
-export function PdfView({ src, title, notLoaded }: { src: string; title: string; notLoaded: string }) {
+export function PdfView({ src, title, notLoaded, bleed = true }: { src: string | Blob; title: string; notLoaded: string; bleed?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState<PdfPageSize[]>([]);
   const [width, setWidth] = useState(0);
@@ -30,7 +33,7 @@ export function PdfView({ src, title, notLoaded }: { src: string; title: string;
   const scale = width > PADDING * 2 ? (width - PADDING * 2) / widest : 1;
 
   return (
-    <div ref={box} role="document" aria-label={title} className="-mx-4 overflow-x-hidden bg-line-soft">
+    <div ref={box} role="document" aria-label={title} className={`overflow-x-hidden bg-line-soft ${bleed ? '-mx-4' : ''}`}>
       <PdfPages src={src} pages={pages} scale={scale} root={null} onOpened={opened} notLoaded={notLoaded}>
         {() => null}
       </PdfPages>

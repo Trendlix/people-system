@@ -209,7 +209,7 @@ function checkInTiles(f: AttendanceFigures, checksIn: boolean): FigureTile[] {
     tiles.push({ key: 'checkins', label: 'Missing check-ins', value: String(missing), note: 'A check-out without a check-in: no hours', tone: missing > 0 ? 'warn' : null });
   }
   if (checksIn || flagged > 0) {
-    tiles.push({ key: 'flagged', label: 'Flagged days', value: String(flagged), note: "A check-in outside the work arrangement's rule", tone: flagged > 0 ? 'warn' : null });
+    tiles.push({ key: 'flagged', label: 'Flagged days', value: String(flagged), note: "A check-in outside the work arrangement's rule, or on a fake GPS", tone: flagged > 0 ? 'warn' : null });
   }
   return tiles;
 }

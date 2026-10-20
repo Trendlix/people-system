@@ -36,8 +36,12 @@ export const LOCATION_OPTIONS: PositionOptions = { enableHighAccuracy: true, tim
  */
 export const LOCATION_GIVE_UP_MS = 30_000;
 
-/** What the browser gave: its point and how accurate it is in metres, or why there is none. */
-export type LocationResult = { latitude: number; longitude: number; accuracy: number | null } | { locationError: CheckInLocationError };
+/**
+ * What the browser gave: its point and how accurate it is in metres, or why there is none. `mock`: whether the phone
+ * said the point is a mock one (fake GPS), known only inside the employee app on Android (lib/native.ts, Phase 2, 20
+ * October 2026); left out when not known (a browser can't tell).
+ */
+export type LocationResult = { latitude: number; longitude: number; accuracy: number | null; mock?: boolean } | { locationError: CheckInLocationError };
 
 /** A GeolocationPositionError's code in the API's words: 1 refused, 2 unavailable, 3 too slow; anything else unavailable. */
 export function locationErrorOf(code: number | null | undefined): CheckInLocationError {
@@ -48,12 +52,20 @@ export function locationErrorOf(code: number | null | undefined): CheckInLocatio
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 
-/** A reading's coordinates as sent: a point on the earth, its accuracy when the browser gives one; else unavailable. */
-export function readingOf(coords: { latitude: number; longitude: number; accuracy?: number | null } | null | undefined): LocationResult {
+/**
+ * A reading's coordinates as sent: a point on the earth, its accuracy when the browser gives one, and whether it is a
+ * mock one when the app's own location says so (true or false only); else unavailable.
+ */
+export function readingOf(coords: { latitude: number; longitude: number; accuracy?: number | null; mock?: unknown } | null | undefined): LocationResult {
   if (!coords || !finite(coords.latitude) || !finite(coords.longitude) || Math.abs(coords.latitude) > 90 || Math.abs(coords.longitude) > 180) {
     return { locationError: 'unavailable' };
   }
-  return { latitude: coords.latitude, longitude: coords.longitude, accuracy: finite(coords.accuracy) && coords.accuracy >= 0 ? coords.accuracy : null };
+  return {
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    accuracy: finite(coords.accuracy) && coords.accuracy >= 0 ? coords.accuracy : null,
+    ...(typeof coords.mock === 'boolean' && { mock: coords.mock }),
+  };
 }
 
 /**
@@ -85,30 +97,55 @@ export function readLocation(geo: Pick<Geolocation, 'getCurrentPosition'> | null
 
 // ---------- the press, as the API takes it ----------
 
-/** POST /me/attendance/punches: in or out, and the point read or why there is none. Never a time. */
+/**
+ * POST /me/attendance/punches: in or out, and the point read (with whether it is a mock one, when that is known) or why
+ * there is none. Never a time.
+ */
 export type PunchBody =
-  | { kind: PunchKind; latitude: number; longitude: number; accuracy?: number }
+  | { kind: PunchKind; latitude: number; longitude: number; accuracy?: number; mock?: boolean }
   | { kind: PunchKind; locationError: CheckInLocationError };
 
-/** The press with what the browser gave. */
+/** The press with what the browser gave: `mock` only when the app's location said it (a browser never sends it). */
 export function punchBody(kind: PunchKind, location: LocationResult): PunchBody {
   if ('locationError' in location) return { kind, locationError: location.locationError };
-  return { kind, latitude: location.latitude, longitude: location.longitude, ...(location.accuracy !== null && { accuracy: location.accuracy }) };
+  return {
+    kind,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    ...(location.accuracy !== null && { accuracy: location.accuracy }),
+    ...(typeof location.mock === 'boolean' && { mock: location.mock }),
+  };
+}
+
+/**
+ * Whether the API refused the press only for its `mock` (an API from before the employee app's Phase 2, which refuses a
+ * word it doesn't know): then it goes again without it (withoutMock), so a check-in is never lost to the order the web
+ * and the API are deployed in.
+ */
+export function mockRefused(body: PunchBody, status: number, messages: readonly string[]): boolean {
+  return status === 400 && 'mock' in body && messages.length > 0 && messages.every((m) => /^property mock should not exist$/.test(m));
+}
+
+/** The press without whether its point is a mock one. */
+export function withoutMock(body: PunchBody): PunchBody {
+  if (!('mock' in body)) return body;
+  const { kind, latitude, longitude, accuracy } = body;
+  return { kind, latitude, longitude, ...(accuracy !== undefined && { accuracy }) };
 }
 
 const isLocationError = (v: unknown): v is CheckInLocationError => (CHECK_IN_LOCATION_ERRORS as readonly unknown[]).includes(v);
 
 /**
  * A press as the server action passes it on, read again (anything can call a server action): its kind, and either a
- * point on the earth (with its accuracy when it is one) or a reason; null when it isn't a press. Nothing else, a time
- * least of all, is passed on.
+ * point on the earth (with its accuracy when it is one, and whether it is a mock one when that is true or false) or a
+ * reason; null when it isn't a press. Nothing else, a time least of all, is passed on.
  */
 export function punchBodyFrom(input: unknown): PunchBody | null {
   if (!input || typeof input !== 'object') return null;
   const v = input as Record<string, unknown>;
   if (!isPunchKind(v.kind)) return null;
   if (finite(v.latitude) && finite(v.longitude)) {
-    const reading = readingOf({ latitude: v.latitude, longitude: v.longitude, accuracy: finite(v.accuracy) ? v.accuracy : null });
+    const reading = readingOf({ latitude: v.latitude, longitude: v.longitude, accuracy: finite(v.accuracy) ? v.accuracy : null, mock: v.mock });
     return punchBody(v.kind, reading);
   }
   return { kind: v.kind, locationError: isLocationError(v.locationError) ? v.locationError : 'unavailable' };
@@ -217,6 +254,26 @@ export const OFFICE_NOT_SET_TEXT = "HR hasn't set the office's location on the s
 /** What the panel says of where the location goes (it is asked each press, and never kept). */
 export const LOCATION_NOTE =
   'Each press asks your browser for your location to tell the office from remote. Only office, remote or location unknown is kept, never where you are.';
+
+/** The same inside the employee app, which reads the phone's own location and tells a made-up one (Phase 2, 20 October 2026). */
+export const LOCATION_NOTE_IN_APP =
+  'Each press asks your phone for your location to tell the office from remote. Only office, remote or location unknown is kept, never where you are; a location the phone says an app made up is flagged.';
+
+/**
+ * What to do when a press's location couldn't be read (the employee app's Phase 2, 20 October 2026: "a clear message
+ * when refused"), said under what the API kept: inside the app, the phone's settings for TrendLIX People (the location
+ * only while the app is in use); in a browser, the site's permission. Null when there is nothing to do.
+ */
+export function locationHelpText(error: CheckInLocationError, inApp: boolean): string | null {
+  if (error === 'denied') {
+    return inApp
+      ? 'To check in with your location, allow TrendLIX People to use it: on the phone, Settings → Apps → TrendLIX People → Permissions → Location → Allow only while using the app, with precise location on. Then press again.'
+      : 'To check in with your location, allow this site to use it in your browser’s settings, then press again.';
+  }
+  if (error === 'unavailable') return inApp ? 'Turn on the phone’s location (Settings → Location), then press again.' : 'Turn on your device’s location, then press again.';
+  if (error === 'timeout') return 'Your location took too long to read: move nearer a window or outside, then press again.';
+  return null;
+}
 
 /** What a press that couldn't be sent says, from the API's answer (a 404 from an API from before it: not there yet). */
 export function punchErrors(status: number, messages: readonly string[]): string[] {

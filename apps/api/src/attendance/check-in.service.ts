@@ -1,6 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import {
-  checkInFlags,
   checkInPlace,
   checkInRefusal,
   dayFromPunches,
@@ -9,6 +8,7 @@ import {
   nextPunch,
   OFFICE_RADIUS_DEFAULT,
   officeLocationSet,
+  punchFlags,
   punchMessages,
   shiftDayOf,
   type CheckInFlag,
@@ -98,7 +98,9 @@ const punchView = (p: { kind: string; at: Date; place: string; accuracyMetres: n
 // refused or unavailable or the office's point isn't set; only that and the accuracy are kept, the point is dropped
 // here (the owner chose to keep only office or remote). Their work arrangement says where they are expected (office:
 // the office; hybrid: the office on its office days; anyone else anywhere): a check-in elsewhere is kept, flagged for
-// the manager and HR, never refused. Each press is a punch (the same press twice within a minute kept once); the day is
+// the manager and HR, never refused. A press on a location the employee app said is a mock one (fake GPS on Android,
+// `mock`, the app's Phase 2, 20 October 2026) is kept the same way, its place read as any other, and flagged "Fake GPS
+// suspected". Each press is a punch (the same press twice within a minute kept once); the day is
 // kept from them (AttendanceDay, source 'system': the first check-in, the last check-out after it, its hours by the
 // shift's rule and grace), in a transaction holding the employee's row; then the month's draft payroll line takes it
 // (attendance-fill.service.ts), a day corrected already made again with it (correction-days.service.ts). Not in the
@@ -128,7 +130,8 @@ export class CheckInService {
     // the point read and dropped: only office, remote or unknown and the accuracy go further
     const { place, accuracyMetres } = checkInPlace(reading, office);
     const expected = expectedPlace(employment.workArrangement, employment.officeDays, weekday(date));
-    const flags = dto.kind === 'in' ? checkInFlags(expected, place) : [];
+    // a check-in breaking the arrangement's rule, and any press on a location the phone said is a mock one (fake GPS)
+    const flags = punchFlags(dto.kind, expected, place, dto.mock === true);
 
     const { kept, earlier } = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;
