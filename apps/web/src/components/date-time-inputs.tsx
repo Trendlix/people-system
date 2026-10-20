@@ -1,13 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Select } from '@/components/select';
 import { addDays, addMonthsKeepingDay, MONTH_NAMES, monthGrid, shiftMonth, spokenDate, todayInCairo, WEEKDAY_NAMES, WEEKDAY_SHORT, yearPage } from '@/lib/date-picker';
 import { formatDate, parseDate } from '@/lib/format';
+import { HOURS, minuteOptions, NO_TIME, noneChosen, PERIODS, timeParts, timeText, type Period, type TimeParts } from '@/lib/time-parts';
 
-// Date and time fields typed as DD/MM/YYYY and 12-hour time. The browser's own date and time pickers follow the
-// computer's region settings (often MM/DD/YYYY or 24-hour), so plain text fields are used instead; the form
-// action turns what was typed into the API's format with dateFrom / timeFrom (lib/form-data.ts).
+// Date fields typed as DD/MM/YYYY and times chosen on the 12-hour clock. The browser's own date and time pickers follow
+// the computer's region settings (often MM/DD/YYYY or 24-hour), so they aren't used; the form action turns the field
+// into the API's format with dateFrom / timeFrom (lib/form-data.ts).
 //
 // A date field also opens a mini calendar (owner, 19 October 2026: "open a date picker in a mini calendar when choosing
 // any date"): clicking the field or its calendar button, or pressing ↓ in it, opens a month to choose a day from, with
@@ -380,6 +382,139 @@ function Calendar({ input, focusDay, onClose }: { input: HTMLInputElement; focus
   );
 }
 
-export function TimeInput(props: FieldProps) {
-  return <input {...props} type="text" autoComplete="off" placeholder="9:00 AM" maxLength={8} className="input" />;
+/**
+ * A time chosen in three lists on one row: the hour (1–12), the minutes in quarter hours and AM or PM (owner, 20 October
+ * 2026, on the permission form's From and To typed as "5:00pm" and "6": "make AM and PM a selector, as people might be
+ * confused" and "make the hours and minutes with a selector too. minutes with 15 minutes selector"). A minute off the
+ * quarter hours that the field had already (a check-in at 9:07 AM, a shift at 9:10) is one more choice, so it is kept.
+ *
+ * The form gets the time as before, as one field named `name` holding "5:00 PM" (lib/time-parts.ts), "" with nothing
+ * chosen and "5:-- PM" with only some of it, which the form's checks refuse as they refused a badly typed time.
+ * Choosing writes the field as if typed (a text field kept out of sight, not type="hidden", so React's onChange runs for
+ * it), so the forms' onChange and onInput, their checks and their actions work as they did. `id` goes on the hour, for
+ * the field's label. A field not `required` can be left empty, cleared with its × button; a required one offers no
+ * empty choice once it has a time.
+ */
+export function TimeInput({ id, name, defaultValue, required = false, 'aria-describedby': describedBy }: FieldProps) {
+  const field = useRef<HTMLInputElement>(null);
+  const hourList = useRef<HTMLSelectElement>(null);
+  const [parts, setParts] = useState(() => timeParts(defaultValue));
+  // a minute off the quarter hours it started with stays a choice, even once another is chosen
+  const [startMinute] = useState(() => timeParts(defaultValue).minute);
+  const [given, setGiven] = useState(defaultValue);
+  // counts the form's resets: the lists are drawn again after one
+  const [resets, setResets] = useState(0);
+
+  // the form gives another time (e.g. sent back after a refusal): it is shown, unless it is the one chosen already
+  if (defaultValue !== given) {
+    setGiven(defaultValue);
+    if (defaultValue !== timeText(parts)) setParts(timeParts(defaultValue));
+  }
+
+  // a form's reset (React resets a form after its action) puts the field back to its default: the lists follow it
+  useEffect(() => {
+    const form = field.current?.form;
+    if (!form) return;
+    let later: ReturnType<typeof setTimeout> | undefined;
+    const reset = () => {
+      // the reset event comes before the fields are reset
+      later = setTimeout(() => {
+        if (!field.current) return;
+        setParts(timeParts(field.current.value));
+        setResets((n) => n + 1);
+      });
+    };
+    form.addEventListener('reset', reset);
+    return () => {
+      form.removeEventListener('reset', reset);
+      clearTimeout(later);
+    };
+  }, []);
+
+  function choose(next: TimeParts) {
+    setParts(next);
+    if (field.current) typeInto(field.current, timeText(next));
+  }
+
+  // an empty choice while the part isn't chosen; in a field that may be left empty, always
+  const empty = (part: string) =>
+    (!required || part === '') && (
+      <option value="" disabled={required}>
+        --
+      </option>
+    );
+  const list = 'input min-w-0 flex-1 px-2 tabular-nums';
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Fragment key={resets}>
+        <Select
+          ref={hourList}
+          id={id}
+          required={required}
+          value={parts.hour}
+          onChange={(e) => choose({ ...parts, hour: e.target.value })}
+          aria-describedby={describedBy}
+          className={list}
+        >
+          {empty(parts.hour)}
+          {HOURS.map((h) => (
+            <option key={h} value={h}>
+              {h}
+            </option>
+          ))}
+        </Select>
+        <span aria-hidden="true" className="font-semibold text-muted">
+          :
+        </span>
+        <Select
+          aria-label="Minutes"
+          required={required}
+          value={parts.minute}
+          onChange={(e) => choose({ ...parts, minute: e.target.value })}
+          aria-describedby={describedBy}
+          className={list}
+        >
+          {empty(parts.minute)}
+          {minuteOptions(startMinute, parts.minute).map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="AM or PM"
+          required={required}
+          value={parts.period}
+          onChange={(e) => choose({ ...parts, period: e.target.value as Period | '' })}
+          aria-describedby={describedBy}
+          className={list}
+        >
+          {empty(parts.period)}
+          {PERIODS.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </Select>
+      </Fragment>
+      {!required && (
+        <button
+          type="button"
+          aria-label="Clear the time"
+          onClick={() => {
+            choose(NO_TIME);
+            hourList.current?.focus();
+          }}
+          // kept in its place while there is nothing to clear, so the lists don't move
+          className={`flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-ink ${noneChosen(parts) ? 'invisible' : ''}`}
+        >
+          <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="size-4">
+            <path d="M5.5 5.5l9 9M14.5 5.5l-9 9" />
+          </svg>
+        </button>
+      )}
+      <input ref={field} type="text" hidden name={name} defaultValue={timeText(timeParts(defaultValue))} autoComplete="off" />
+    </div>
+  );
 }

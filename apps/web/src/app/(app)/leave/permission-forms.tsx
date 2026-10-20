@@ -27,9 +27,10 @@ import { REASON_MAX } from './request';
 // for, "In the system, like leave"): the employee's own request from My Requests, or HR's record on someone's behalf,
 // approved at once. Above it what is left of the month's hours (approved, waiting, left of the Leave Setup's hours a
 // month); the day, the hours in half hours up to the day's most, the times when given (with one of them the other follows
-// from the hours, shown as typed), and a reason. The shared checks show live, Send staying off while any is left; a day
-// in another month reads that month's hours. What only the API knows (a rest day of the shift, an official holiday, a day
-// of leave) it refuses when sent, and that shows here with what was typed.
+// from the hours, shown as chosen; the times chosen in lists, owner, 20 October 2026: "make AM and PM a selector"), and a
+// reason. The shared checks show live, Send staying off while any is left; a day in another month reads that month's
+// hours. What only the API knows (a rest day of the shift, an official holiday, a day of leave) it refuses when sent,
+// and that shows here with what was typed.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -186,8 +187,8 @@ export function NewPermissionForm({
           <TimeInput id={fid('toTime')} name="toTime" defaultValue={typed.toTime} aria-describedby={fid('times-hint')} />
         </div>
         <p id={fid('times-hint')} className="hint -mt-3 sm:col-span-2">
-          Fill one: the other follows from the hours, e.g. leaving at 5:00 PM for 2 hours is from 5:00 PM.
-          {times && ` As typed: ${times}.`}
+          Choose one: the other follows from the hours, e.g. leaving at 5:00 PM for 2 hours is from 5:00 PM.
+          {times && ` As chosen: ${times}.`}
         </p>
         <div className="sm:col-span-2">
           <label htmlFor={fid('reason')} className="label">

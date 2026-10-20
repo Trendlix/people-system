@@ -14,12 +14,15 @@ export function dateFrom(fd: FormData, key: string, label: string, errors: strin
   return parsed;
 }
 
-/** A 12-hour time field ("9:00 AM") as HH:mm. "" stays ""; a bad time adds a message to `errors`. */
+/**
+ * A 12-hour time field ("9:00 AM") as HH:mm. "" stays ""; a time that can't be read adds a message to `errors`: one
+ * partly chosen in the three lists of TimeInput (owner, 20 October 2026: "make AM and PM a selector"), e.g. "5:-- PM".
+ */
 export function timeFrom(fd: FormData, key: string, label: string, errors: string[]): string {
   const raw = String(fd.get(key) ?? '');
   const parsed = parseTime(raw);
   if (parsed === null) {
-    errors.push(`Enter the ${label} as a 12-hour time, e.g. 9:00 AM.`);
+    errors.push(`Choose the hour, minutes and AM or PM of the ${label}.`);
     return raw;
   }
   return parsed;

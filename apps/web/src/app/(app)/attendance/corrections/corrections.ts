@@ -283,9 +283,11 @@ export interface CorrectionBody {
   reason: string;
 }
 
+// the times are chosen in three lists (owner, 20 October 2026: "make AM and PM a selector"), so one that can't be read
+// is partly chosen (lib/time-parts.ts)
 const TIME_ERRORS = {
-  checkIn: 'Enter the time of the check-in as a 12-hour time, e.g. 9:05 AM.',
-  checkOut: 'Enter the time of the check-out as a 12-hour time, e.g. 6:30 PM.',
+  checkIn: 'Choose the hour, minutes and AM or PM of the check-in.',
+  checkOut: 'Choose the hour, minutes and AM or PM of the check-out.',
 } as const;
 
 /** The typed form read: the day, the kind, the times as HH:MM (only those the kind asks for), the reason; or what can't be read. */

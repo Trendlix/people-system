@@ -116,7 +116,9 @@ describe('the form', () => {
 
   it('checks live what it can, in 12-hour time and DD/MM/YYYY', () => {
     expect(correctionFormProblems(typed(), ctx)).toEqual([]);
-    expect(correctionFormProblems(typed({ checkOut: '25:00' }), ctx)).toEqual(['Enter the time of the check-out as a 12-hour time, e.g. 6:30 PM.']);
+    expect(correctionFormProblems(typed({ checkOut: '25:00' }), ctx)).toEqual(['Choose the hour, minutes and AM or PM of the check-out.']);
+    // partly chosen in the lists (lib/time-parts.ts): AM or PM missing
+    expect(correctionFormProblems(typed({ checkOut: '6:30 --' }), ctx)).toEqual(['Choose the hour, minutes and AM or PM of the check-out.']);
     expect(correctionFormProblems(typed({ checkOut: '8:00 AM' }), ctx)).toEqual(['The check-out (8:00 AM) must be after the check-in (9:05 AM) on the same day.']);
     expect(correctionFormProblems(typed({ date: '20/10/2026' }), ctx)).toEqual(['20/10/2026 is still to come: only a day gone by, or today, can be corrected.']);
     expect(correctionFormProblems(typed({ reason: '' }), ctx)[0]).toContain('Write why the day needs correcting');

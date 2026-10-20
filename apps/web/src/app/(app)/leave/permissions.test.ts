@@ -294,9 +294,11 @@ describe('the form', () => {
     expect(typedTimes({ fromTime: '5:00 PM', toTime: '' })).toEqual({ fromTime: '17:00', toTime: null, problems: [] });
     expect(typedTimes({ fromTime: '', toTime: '19:00' })).toEqual({ fromTime: null, toTime: '19:00', problems: [] });
     expect(typedTimes({ fromTime: '25:00', toTime: 'soon' }).problems).toEqual([
-      'Enter the time it starts as a 12-hour time, e.g. 5:00 PM.',
-      'Enter the time it ends as a 12-hour time, e.g. 7:00 PM.',
+      'Choose the hour, minutes and AM or PM of the time it starts.',
+      'Choose the hour, minutes and AM or PM of the time it ends.',
     ]);
+    // partly chosen in the lists (lib/time-parts.ts): the minutes missing
+    expect(typedTimes({ fromTime: '5:-- PM', toTime: '' }).problems).toEqual(['Choose the hour, minutes and AM or PM of the time it starts.']);
   });
 
   it('shows the shared and the API’s messages with the dates and times as the screens show them', () => {
@@ -344,7 +346,7 @@ describe('the form', () => {
     expect(permissionForm(form({ date: '10/11/2026', hours: '2', fromTime: '', toTime: '' }))).toEqual({ body: { date: '2026-11-10', hours: 2 }, errors: [] });
     expect(permissionForm(form({ date: '', hours: '', fromTime: 'later', toTime: '' }))).toEqual({
       body: null,
-      errors: ['Enter the day of the permission.', 'Choose the hours.', 'Enter the time it starts as a 12-hour time, e.g. 5:00 PM.'],
+      errors: ['Enter the day of the permission.', 'Choose the hours.', 'Choose the hour, minutes and AM or PM of the time it starts.'],
     });
     expect(typedPermissionValues(form({ date: '10/11/2026', hours: '1', employeeId: ID }))).toEqual({ date: '10/11/2026', hours: '1', fromTime: '', toTime: '', reason: '', employeeId: ID });
   });

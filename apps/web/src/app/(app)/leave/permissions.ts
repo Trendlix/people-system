@@ -335,9 +335,11 @@ export function hoursFrom(raw: string): number | null {
   return isHalfHours(n) && n > 0 && n <= PERMISSION_DAY_MAX ? n : null;
 }
 
+// the times are chosen in three lists (owner, 20 October 2026: "make AM and PM a selector"), so one that can't be read
+// is partly chosen (lib/time-parts.ts)
 const TIME_ERRORS = {
-  fromTime: 'Enter the time it starts as a 12-hour time, e.g. 5:00 PM.',
-  toTime: 'Enter the time it ends as a 12-hour time, e.g. 7:00 PM.',
+  fromTime: 'Choose the hour, minutes and AM or PM of the time it starts.',
+  toTime: 'Choose the hour, minutes and AM or PM of the time it ends.',
 } as const;
 
 /** The times as typed (12-hour, or 24-hour), as HH:MM, null when left empty, with what can't be read. */

@@ -152,7 +152,7 @@ export function CorrectionForm({
           <TimeInput id={fid('checkOut')} name="checkOut" defaultValue={typed.checkOut} aria-describedby={fid('times-hint')} />
         </div>
         <p id={fid('times-hint')} className="hint -mt-3 sm:col-span-2">
-          12-hour times on the day, e.g. 9:05 AM and 6:30 PM. A time left empty stays as on record.
+          Times on the day, to the quarter hour, e.g. 9:15 AM and 6:30 PM. A time left empty stays as on record.
         </p>
         <div className="sm:col-span-2">
           <label htmlFor={fid('reason')} className="label">
