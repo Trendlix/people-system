@@ -1,0 +1,153 @@
+import { describe, expect, it } from 'vitest';
+import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
+import type { RaiseRequest } from '../../../../lib/raise-types';
+import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } from '../../../../lib/types';
+import {
+  appRequestCounts,
+  appRequestHref,
+  appRequestProgress,
+  appRequestRows,
+  appRequestTitle,
+  appRequestWhen,
+  filterAppRequests,
+  readAppRequestFilters,
+} from './rows';
+
+// The phone pages' My Requests (owner, 20 October 2026: the employee app, "apply for their requests"). Every request
+// here is invented.
+
+const ID = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
+
+const leave = {
+  id: ID(1),
+  type: { id: 't', nameEn: 'Annual leave', nameAr: 'اعتيادية', paid: 'paid' },
+  startDate: '2026-11-02',
+  endDate: '2026-11-04',
+  halfDay: false,
+  days: 3,
+  status: 'with_manager',
+  manager: { id: 'm', fullNameEn: 'Sara Ali', role: 'direct_manager' },
+  rejectedStage: null,
+  rejectReason: null,
+  recordedByHr: false,
+  createdAt: '2026-10-18T09:00:00.000Z',
+  steps: [],
+} as unknown as LeaveRequestView;
+
+const permission = {
+  id: ID(2),
+  kind: 'permission',
+  date: '2026-10-27',
+  hours: 2,
+  fromTime: '15:00',
+  toTime: '17:00',
+  status: 'approved',
+  manager: null,
+  rejectedStage: null,
+  rejectReason: null,
+  recordedByHr: false,
+  createdAt: '2026-10-19T09:00:00.000Z',
+  steps: [],
+} as unknown as PermissionRequestView;
+
+const claim = {
+  id: ID(3),
+  type: { id: 'r', nameEn: 'Taxi', nameAr: 'تاكسي' },
+  expenseDate: '2026-10-15',
+  amount: 250,
+  approvedAmount: null,
+  status: 'with_finance',
+  manager: null,
+  rejectedStage: null,
+  rejectReason: null,
+  payMonth: null,
+  payroll: null,
+  createdAt: '2026-10-16T09:00:00.000Z',
+} as unknown as ReimbursementClaimView;
+
+const correction = {
+  id: ID(4),
+  date: '2026-10-14',
+  correctionKind: 'forgot_check_out',
+  status: 'rejected',
+  manager: null,
+  rejectedStage: 'hr',
+  rejectReason: 'No',
+  recordedByHr: false,
+  createdAt: '2026-10-20T09:00:00.000Z',
+  steps: [],
+} as unknown as AttendanceCorrectionView;
+
+const raise = {
+  id: ID(5),
+  status: 'with_hr',
+  effectiveFrom: '2026-11-01',
+  origin: 'asked',
+  raise: null,
+  createdAt: '2026-10-10T09:00:00.000Z',
+} as unknown as RaiseRequest;
+
+const all = appRequestRows({ leave: [leave], permissions: [permission], claims: [claim], corrections: [correction], raises: [raise, raise] });
+
+describe('every request in one list', () => {
+  it('lists each once, newest first', () => {
+    expect(all.map((r) => r.kind)).toEqual(['correction', 'permission', 'leave', 'reimbursement', 'raise']);
+  });
+
+  it('knows which are still being decided', () => {
+    expect(all.filter((r) => r.open).map((r) => r.kind)).toEqual(['leave', 'reimbursement', 'raise']);
+  });
+
+  it('copes with what couldn’t be read', () => {
+    expect(appRequestRows({})).toEqual([]);
+    expect(appRequestRows({ leave: [leave] })).toHaveLength(1);
+  });
+});
+
+describe('the filters', () => {
+  it('reads a kind and open ones from the address, anything else as All', () => {
+    expect(readAppRequestFilters({ kind: 'leave', status: 'open' })).toEqual({ kind: 'leave', status: 'open' });
+    expect(readAppRequestFilters({ kind: 'details', status: 'closed' })).toEqual({ kind: '', status: '' });
+    expect(readAppRequestFilters({ kind: ['leave', 'raise'] })).toEqual({ kind: '', status: '' });
+  });
+
+  it('keeps the kind chosen and open ones when asked', () => {
+    expect(filterAppRequests(all, { kind: 'leave', status: '' }).map((r) => r.id)).toEqual([ID(1)]);
+    expect(filterAppRequests(all, { kind: '', status: 'open' }).map((r) => r.kind)).toEqual(['leave', 'reimbursement', 'raise']);
+    expect(filterAppRequests(all, { kind: 'correction', status: 'open' })).toEqual([]);
+  });
+
+  it('counts each chip within the status chosen', () => {
+    expect(appRequestCounts(all, { status: '' })).toEqual({ '': 5, leave: 1, permission: 1, reimbursement: 1, correction: 1, raise: 1 });
+    expect(appRequestCounts(all, { status: 'open' })).toEqual({ '': 3, leave: 1, permission: 0, reimbursement: 1, correction: 0, raise: 1 });
+  });
+});
+
+describe('a row', () => {
+  const row = (kind: string) => all.find((r) => r.kind === kind)!;
+
+  it('says what it is and when', () => {
+    expect(appRequestTitle(row('leave'))).toBe('Annual leave');
+    expect(appRequestWhen(row('leave'))).toBe('02/11/2026 – 04/11/2026 · 3 days');
+    expect(appRequestTitle(row('permission'))).toBe('Permission');
+    expect(appRequestWhen(row('permission'))).toMatch(/^Tuesday 27\/10\/2026 · 2 hours/);
+    expect(appRequestTitle(row('reimbursement'))).toBe('Taxi reimbursement');
+    expect(appRequestWhen(row('reimbursement'))).toMatch(/^15\/10\/2026 · EGP 250\.00$/);
+    expect(appRequestTitle(row('correction'))).toBe('Attendance correction');
+    expect(appRequestWhen(row('correction'))).toMatch(/^Wednesday 14\/10\/2026 · /);
+    expect(appRequestTitle(row('raise'))).toBe('Raise request');
+    expect(appRequestWhen(row('raise'))).toBe('Effective from November 2026');
+  });
+
+  it('says where it stands as its page does', () => {
+    expect(appRequestProgress(row('leave'))).toMatch(/Sara Ali/);
+    expect(appRequestProgress(row('permission'))).toBe('Approved');
+    expect(appRequestProgress(row('reimbursement'))).toBe('Waiting for Finance');
+    expect(appRequestProgress(row('correction'))).toBe('Rejected by HR');
+  });
+
+  it('opens its page in the phone pages', () => {
+    expect(appRequestHref(row('leave'))).toBe(`/app/requests/leave/${ID(1)}`);
+    expect(appRequestHref(row('reimbursement'), 'approve')).toBe(`/app/approve/reimbursement/${ID(3)}`);
+  });
+});

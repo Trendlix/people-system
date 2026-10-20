@@ -1,20 +1,21 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { CheckInTodayView, PunchResultView } from '@/lib/attendance-types';
+import { getPosition } from '@/lib/native';
 import { punchAttendance } from './actions';
 import {
   buttonLabel,
   dayHoursText,
   dayTimesText,
   flagLabels,
+  hoursSoFarText,
   latestView,
   LOCATION_NOTE,
   OFFICE_NOT_SET_TEXT,
   placeLabel,
   punchBody,
   punchRows,
-  readLocation,
   type PunchPhase,
 } from './check-in';
 
@@ -25,9 +26,12 @@ import {
 // office, remote or location unknown, a second check-in, a check-out without a check-in, a flag. Below it the day so far
 // (the first check-in → the last check-out, the hours counted by the shift's rule) and today's punches with their place,
 // the reading's accuracy and their flags. The page's data is read again after a press (the server action), and the
-// newer of the page's view and the press's is shown. `compact`: the home page's card, without the punches' list.
+// newer of the page's view and the press's is shown. `compact`: the home page's card, without the punches' list. The
+// location is read through the one bridge to the phone (lib/native.ts): the employee app's own when it has it, else the
+// browser's. `big`: the phone pages' Home (owner, 20 October 2026: the employee app, "to enable them to check in and
+// out"), a larger button across the screen, and the time since the first check-in while not checked out yet.
 
-export function CheckInPanel({ initial, compact = false }: { initial: CheckInTodayView; compact?: boolean }) {
+export function CheckInPanel({ initial, compact = false, big = false }: { initial: CheckInTodayView; compact?: boolean; big?: boolean }) {
   const [pressed, setPressed] = useState<PunchResultView | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
@@ -37,6 +41,13 @@ export function CheckInPanel({ initial, compact = false }: { initial: CheckInTod
   const busy = phase !== 'idle';
   // a second tap while the first is on its way is ignored (the API keeps the same press twice in a minute once anyway)
   const going = useRef(false);
+  // the clock for the time since checking in (the phone pages): the server's at first, then this device's each half minute
+  const [now, setNow] = useState(() => Date.parse(initial.now));
+  useEffect(() => {
+    if (!big) return;
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [big]);
 
   async function press() {
     if (going.current) return;
@@ -45,7 +56,7 @@ export function CheckInPanel({ initial, compact = false }: { initial: CheckInTod
     setErrors([]);
     setMessages([]);
     setPhase('locating');
-    const location = await readLocation(typeof navigator === 'undefined' ? null : navigator.geolocation);
+    const location = await getPosition();
     setPhase('sending');
     try {
       const result = await punchAttendance(punchBody(kind, location));
@@ -68,6 +79,7 @@ export function CheckInPanel({ initial, compact = false }: { initial: CheckInTod
   // the press's words in amber when what it kept is flagged or its place unknown, else in green
   const last = pressed ? [...pressed.punches].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1) : undefined;
   const warned = !!last && (last.flags.length > 0 || last.place === 'unknown');
+  const soFar = big ? hoursSoFarText(day, now) : null;
 
   return (
     <div className="space-y-4">
@@ -80,7 +92,7 @@ export function CheckInPanel({ initial, compact = false }: { initial: CheckInTod
           // not disabled while busy, so the focus stays on it for what is said next; a second press is ignored
           aria-disabled={busy || undefined}
           aria-describedby={noteId}
-          className={`btn ${view.next === 'in' ? 'btn-primary' : 'btn-secondary border-accent text-accent'} min-h-14 w-full text-base sm:w-auto sm:min-w-60 ${busy ? 'cursor-wait opacity-60' : ''}`}
+          className={`btn ${view.next === 'in' ? 'btn-primary' : 'btn-secondary border-accent text-accent'} ${big ? 'min-h-16 w-full rounded-xl text-lg' : 'min-h-14 w-full text-base sm:w-auto sm:min-w-60'} ${busy ? 'cursor-wait opacity-60' : ''}`}
         >
           {buttonLabel(view.next, phase)}
         </button>
@@ -119,6 +131,7 @@ export function CheckInPanel({ initial, compact = false }: { initial: CheckInTod
           <div>
             <dt className="text-xs text-muted">Hours counted</dt>
             <dd className="font-semibold tabular-nums">{dayHoursText(day)}</dd>
+            {soFar && <dd className="text-xs text-muted tabular-nums">{soFar}</dd>}
           </div>
           {dayFlags.length > 0 && (
             <div className="sm:col-span-2">

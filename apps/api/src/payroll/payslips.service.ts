@@ -24,11 +24,20 @@ import { monthOf, runLawRates } from './views.js';
 // all of a run's as a ZIP; every payslip drawn and every download is in the audit log, without amounts (the line is
 // restricted data). Emailing them comes later. A C-level person's payslips (owner, 19 October 2026: "make C level
 // Employees details not visible to HR") only for the CEO and a Super Admin: 404 for anyone else, and left out of the ZIP.
+//
+// The employee's own (owner, 20 October 2026, the employee app: "My attendance and payslips"): anyone signed in lists
+// their own months paid and opens their own payslips, the same list and the same kept files as HR's, from GET /me/payslips.
+// Their own only: anyone else's line is answered as not there (404, never 403), so line ids can't be probed. A C-level
+// person sees their own as anyone does (ConfidentialService.isHidden is false for oneself).
 
 const LINE = 'payroll_line';
 const RUN = 'payroll_run';
 
 export const ON_HOLD = 'On hold this month: not paid, so there is no payslip.';
+export const LINE_NOT_FOUND = 'Payroll line not found.';
+
+/** Whose lines a caller opens: those they may see (HR, Finance, the CEO), or only their own (GET /me/payslips/…). */
+export type PayslipsOf = 'visible' | 'own';
 
 /** A payslip as the employee file lists it: one per month paid. */
 export interface EmployeePayslip {
@@ -129,10 +138,14 @@ export class PayslipsService {
     return drawn;
   }
 
-  /** A line's payslip in a language: the kept one, or drawn and kept the first time it is asked for. */
-  async lineFile(lineId: string, language: PayslipLanguage, user: SessionUser): Promise<PayslipFile> {
+  /**
+   * A line's payslip in a language: the kept one, or drawn and kept the first time it is asked for. `of: 'own'`: only the
+   * caller's own line; anyone else's, or any line for a sign-in without an employee profile, isn't there (checked before
+   * the run's status, so a 409 never confirms someone else's line).
+   */
+  async lineFile(lineId: string, language: PayslipLanguage, user: SessionUser, of: PayslipsOf = 'visible'): Promise<PayslipFile> {
     const line = await this.prisma.payrollLine.findUnique({ where: { id: lineId }, select: SOURCE_SELECT });
-    if (!line || (await this.confidential.isHidden(user, line.employeeId))) throw new NotFoundException('Payroll line not found.');
+    if (!line || !(await this.mayOpen(line.employeeId, user, of))) throw new NotFoundException(LINE_NOT_FOUND);
     this.assertPaid(line.run);
     if (line.onHold) throw new ConflictException(ON_HOLD);
     const file = (await this.kept(line.id, language)) ?? (await this.draw(line, (await this.sources([line])).get(line.id)!, language, user));
@@ -186,6 +199,28 @@ export class PayslipsService {
   async employeePayslips(employeeId: string, user: SessionUser): Promise<EmployeePayslip[]> {
     const employee = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true } });
     if (!employee || (await this.confidential.isHidden(user, employeeId))) throw new NotFoundException('Employee not found.');
+    return this.monthsPaid(employeeId);
+  }
+
+  /**
+   * The caller's own months paid, as the employee file lists them; none without an employee profile (the one whose work
+   * email they sign in with), as their own leave and claims. Their own, so nothing of it is hidden from them.
+   */
+  async myPayslips(user: SessionUser): Promise<EmployeePayslip[]> {
+    const self = await this.confidential.selfId(user);
+    return self ? this.monthsPaid(self) : [];
+  }
+
+  // ---------- helpers ----------
+
+  /** Whether the caller opens a line of this person's: one they may see, or (`own`) only their own. */
+  private async mayOpen(employeeId: string, user: SessionUser, of: PayslipsOf): Promise<boolean> {
+    if (of === 'own') return (await this.confidential.selfId(user)) === employeeId;
+    return !(await this.confidential.isHidden(user, employeeId));
+  }
+
+  /** A person's lines in the runs marked paid, newest first, with which payslips are drawn. */
+  private async monthsPaid(employeeId: string): Promise<EmployeePayslip[]> {
     const lines = await this.prisma.payrollLine.findMany({
       where: { employeeId, run: { status: 'paid' } },
       select: {
@@ -213,8 +248,6 @@ export class PayslipsService {
       };
     });
   }
-
-  // ---------- helpers ----------
 
   private assertPaid(run: { month: Date; status: string }) {
     if (run.status !== 'paid') {

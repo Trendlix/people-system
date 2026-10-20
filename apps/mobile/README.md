@@ -114,6 +114,44 @@ to try.
 - Works in a phone browser too. C-level rules and every permission check come from the API as today.
 - Done when: an employee and a manager can do all of it from a phone's browser and from the APK.
 
+#### Phase 1 contract — what was built (20 October 2026)
+
+The phone pages live in `apps/web/src/app/(phone)/app/` (their own layout, not the sidebar's). Their addresses are in
+`apps/web/src/lib/surface.ts` (`APP_PATHS`, `appItemHref`, …): later phases link to these, never to the site's pages.
+
+| Route | What it is |
+|---|---|
+| `/app` | **Home**: today's check-in (the site's panel, larger, with the time since checking in), what waits for the caller (deciders), New request tiles (Leave · Permission · Reimbursement · Correction, each only where it applies), balances (annual leave, this month's permission hours), coming up (their leave and permission, the official holidays). |
+| `/app/requests` | **Requests**: every request of theirs (leave, permission, reimbursement, correction, raise), newest first, status and where it stands; `?kind=leave\|permission\|reimbursement\|correction\|raise`, `?status=open`; `?sent=1` after a raise request. |
+| `/app/requests/new` | New request: the kinds they may ask for now. |
+| `/app/requests/new/leave` · `/permission` · `/reimbursement` · `/correction?date=YYYY-MM-DD` · `/raise?employee=<id>` | The site's own forms (shared components), in the phone layout; reimbursement receipts and leave documents add **Take a photo** (`accept="image/*,application/pdf"`, `capture="environment"`) beside the file box. |
+| `/app/requests/{leave,permission,reimbursement,correction,raise}/<id>` | A request of theirs: every step, Cancel while it may be; `?done=` says what was just done. |
+| `/app/attendance?month=YYYY-MM` | **Attendance**: the month's figures and days (My Attendance's data), each day → Ask for a correction (or the correction being decided). |
+| `/app/payslips` | **Payslips**: their months paid (`GET /api/me/payslips`, added for the app), net, month on hold said. |
+| `/app/payslips/<lineId>?language=ar` | A payslip drawn in the page with pdf.js (a web view can't show a PDF in a frame), Download PDF, In Arabic/English. |
+| `/app/payslips/<lineId>/<en\|ar>?download=1` | The protected PDF (route handler → `GET /api/me/payslips/:lineId/:language`, the caller's own line only, 404 otherwise). |
+| `/app/approve` | **To Approve** (managers, team leads, department heads, HR, the CEO, Finance): leave and permission, claims, corrections, raise requests at HR's step, raises with the CEO; endings and details changes linked to the site's Approvals. `?done=raise-…` after the CEO's decision. |
+| `/app/approve/{leave,permission,reimbursement,correction}/<id>` | The item with the site's decision form (Approve / Reject + comment; a claim's lower amount too) and every step. |
+| `/app/approve/raise/<requestId>` · `/app/approve/pay-raise/<contractId>` | HR's step on a raise request (the CEO's for a C-level person); the CEO's decision on a raise. |
+
+- **One set of forms and actions:** the section's layout says where a form is shown (`components/surface.tsx`, a hidden
+  `surface` field = `requests` or `approve`); the site's server actions send it on with `afterAction()` (lib/surface.ts)
+  to the same request's page under that section. The page bodies are shared files next to the site's pages
+  (`new-leave.tsx`, `leave-request.tsx`, `claim-detail.tsx`, …), each taking `surface`.
+- **The native bridge:** `apps/web/src/lib/native.ts` — `isNativeApp()`, `nativePlatform()`, `pluginOf()`,
+  `geolocationSource()` / `getPosition()` (the Capacitor Geolocation plugin when the shell carries it, else the
+  browser's; the check-in panel reads through it), and stubs for Phase 2–4: `takePhoto()`, `canUseBiometrics()`,
+  `verifyBiometrics()`, `registerForPush()`. No Capacitor npm package in the web app.
+- **Signed out:** the proxy sends `/app…` to `/login?next=/app…` and back after signing in, as for every page.
+- **On the site:** at phone width, "Open the app view" in the header links to `/app`; the app's menu has "Open the
+  full site", Change password and Sign out; the bell is a placeholder until Phase 4.
+- **Light only**, as the site (`color-scheme: only light`, so a phone's dark mode doesn't darken it); `viewport-fit=
+  cover` with the safe-area insets; one column (max 36rem) from 320 px, the tab bar lower in landscape.
+- **Open for later phases:** documents and receipts in the request pages still open in the site's document viewer
+  (a PDF in a frame: fine in a phone's browser, blank in an Android web view — Phase 2/5 can draw them with pdf.js as
+  the payslip is, or open them natively); in the APK, a location permission prompt needs the shell's manifest entries
+  (Phase 2).
+
 ### Phase 2 — Native location and the camera
 - `lib/native.ts`: location through the Capacitor Geolocation plugin inside the app (high accuracy, a timeout, a clear
   message when refused), browser geolocation outside; Android **mock location** → `mock: true` on the punch → flagged
@@ -251,7 +289,16 @@ npm run open:android -w @trendlix/mobile       # opens the project in Android St
   - Only CI can prove (no JDK or Android SDK on the Mac): the Gradle build (`assembleDebug`), the artifact upload and
     its name, the Release on a tag, the signing key kept between runs; then on a phone: the APK installs, opens
     people.trendlix.com/app (the sign-in page today), and shows the offline page in airplane mode.
-- [ ] Phase 1 — The phone pages
+- [ ] Phase 1 — The phone pages — **built 20 Oct 2026, not pushed yet; to try on a phone's browser and the APK.**
+  - Done: the `/app` pages and their contract (Phase 1 above), `lib/native.ts`, `lib/surface.ts`, the shared page
+    bodies and forms (Take a photo on receipts and leave documents), "Open the app view" on the site at phone width,
+    and the API's `GET /api/me/payslips` and `GET /api/me/payslips/:lineId/:language` (the employee's own payslips).
+  - Checked: web `next typegen`, `tsc`, `eslint`, `vitest` and `npm run build --workspace apps/web`; API unit tests,
+    `tsc`, lint and the whole e2e suite (new cases for the own payslips, C-level included); `/app` signed out redirects
+    to `/login?next=%2Fapp`, and the built shell sends `viewport-fit=cover` and the theme colour.
+  - To try (owner): sign in on a phone's browser at people.trendlix.com/app, check in and out, ask for leave, a
+    permission, a reimbursement with a receipt photo, a correction from Attendance; open a payslip; as a manager, decide
+    on To Approve. Then the same in the APK.
 - [ ] Phase 2 — Native location and the camera
 - [ ] Phase 3 — Face ID / fingerprint sign-in
 - [ ] Phase 4 — Notifications

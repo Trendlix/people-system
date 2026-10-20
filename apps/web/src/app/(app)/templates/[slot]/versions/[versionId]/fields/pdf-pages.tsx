@@ -40,14 +40,17 @@ type Loaded = { kind: 'loading' } | { kind: 'ok'; doc: PDFDocumentProxy } | { ki
 class Refused extends Error {}
 
 /** The reason the web server's route gave (plain text, e.g. a refusal), when it is short enough to show. */
-async function reasonOf(res: Response): Promise<string> {
+async function reasonOf(res: Response, notLoaded: string): Promise<string> {
   const type = res.headers.get('content-type') ?? '';
   const text = type.startsWith('text/plain') ? (await res.text().catch(() => '')).trim() : '';
-  return text && text.length < 300 ? text : NOT_LOADED;
+  return text && text.length < 300 ? text : notLoaded;
 }
 
-/** The PDF at `src`, opened with pdf.js; `onOpened` is told the size of each page, in points, as pdf.js shows it at scale 1. */
-function usePdfDocument(src: string, onOpened?: (sizes: PdfPageSize[]) => void): Loaded {
+/**
+ * The PDF at `src`, opened with pdf.js; `onOpened` is told the size of each page, in points, as pdf.js shows it at scale
+ * 1. `notLoaded`: what is said when it can't be opened.
+ */
+function usePdfDocument(src: string, onOpened?: (sizes: PdfPageSize[]) => void, notLoaded = NOT_LOADED): Loaded {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
   const opened = useRef(onOpened);
   useEffect(() => {
@@ -58,7 +61,7 @@ function usePdfDocument(src: string, onOpened?: (sizes: PdfPageSize[]) => void):
     let task: PDFDocumentLoadingTask | null = null;
     (async () => {
       const res = await fetch(src, { cache: 'no-store' });
-      if (!res.ok) throw new Refused(await reasonOf(res));
+      if (!res.ok) throw new Refused(await reasonOf(res, notLoaded));
       const data = new Uint8Array(await res.arrayBuffer());
       const lib = await loadPdfjs();
       if (gone) return;
@@ -73,13 +76,13 @@ function usePdfDocument(src: string, onOpened?: (sizes: PdfPageSize[]) => void):
       opened.current?.(sizes);
       setLoaded({ kind: 'ok', doc });
     })().catch((err: unknown) => {
-      if (!gone) setLoaded({ kind: 'failed', message: err instanceof Refused ? err.message : NOT_LOADED });
+      if (!gone) setLoaded({ kind: 'failed', message: err instanceof Refused ? err.message : notLoaded });
     });
     return () => {
       gone = true;
       void task?.destroy();
     };
-  }, [src]);
+  }, [src, notLoaded]);
   return loaded;
 }
 
@@ -176,6 +179,8 @@ function PageView({
 /**
  * The pages of the PDF at `src`, `pages` (in points) at `scale` screen pixels a point, one under the other. `root`: the
  * scrolling area they are in; `onOpened`: the page sizes pdf.js read; `children(n, size)`: what goes over page n.
+ * `notLoaded`: what is said when the file can't be opened (another document than a form, e.g. a payslip on the phone
+ * pages, owner, 20 October 2026: the employee app).
  */
 export function PdfPages({
   src,
@@ -183,6 +188,7 @@ export function PdfPages({
   scale,
   root,
   onOpened,
+  notLoaded,
   children,
 }: {
   src: string;
@@ -190,9 +196,10 @@ export function PdfPages({
   scale: number;
   root: Element | null;
   onOpened?: (sizes: PdfPageSize[]) => void;
+  notLoaded?: string;
   children: (page: number, size: PdfPageSize) => React.ReactNode;
 }) {
-  const loaded = usePdfDocument(src, onOpened);
+  const loaded = usePdfDocument(src, onOpened, notLoaded);
   return (
     // as wide as the widest page at a zoom past the area's width (so it scrolls sideways), else as wide as the area
     <div className="flex w-max min-w-full flex-col gap-4 p-4">
@@ -201,6 +208,8 @@ export function PdfPages({
           {loaded.message}
         </p>
       )}
+      {/* sizes read from the file itself (a payslip on the phone pages): until it is opened, nothing else shows */}
+      {loaded.kind === 'loading' && pages.length === 0 && <p className="py-6 text-center text-sm text-muted">Loading…</p>}
       {pages.map((size, i) => (
         <PageView key={i} doc={loaded.kind === 'ok' ? loaded.doc : null} number={i + 1} size={size} scale={scale} root={root}>
           {children(i + 1, size)}

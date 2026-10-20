@@ -17,6 +17,8 @@ import { DocumentViewer } from '@/components/document-viewer';
 import { fits } from '@/components/file-drop';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
+import { SurfaceField, useAppSection } from '@/components/surface';
+import { CameraButton } from '@/components/camera-button';
 import { formatDate, parseDate, titleCase } from '@/lib/format';
 import type { FormState, MyReimbursementType } from '@/lib/types';
 import { choice } from '../employees/[id]/contracts/pay-fields';
@@ -68,6 +70,8 @@ function ReceiptsField({
   const next = useRef(1);
   const [over, setOver] = useState(false);
   const [refused, setRefused] = useState<string[]>([]);
+  // on the phone pages (owner, 20 October 2026: the employee app, "reimbursement with a receipt photo"): Take a photo too
+  const onPhonePages = useAppSection() !== null;
 
   async function add(files: readonly File[]) {
     const taken = files.filter((f) => fits(f, RECEIPT_ACCEPT));
@@ -123,6 +127,7 @@ function ReceiptsField({
           onChange={(e) => void add(Array.from(e.currentTarget.files ?? []))}
           className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-white file:px-4 file:text-sm file:font-semibold"
         />
+        {onPhonePages && <CameraButton onFiles={(files) => void add(files)} disabled={left <= 0} label="Take a photo of the receipt" />}
         <p aria-live="polite" className={`text-xs ${refused.length ? 'text-danger' : 'text-muted'}`}>
           {refused.length
             ? `${refused.join(', ')} ${refused.length === 1 ? 'was' : 'were'} not added: a receipt is a photo (JPG, PNG or WebP) or a PDF.`
@@ -297,6 +302,7 @@ export function NewClaimForm({ action, types, today, cancelHref }: { action: Act
       className="card space-y-5 p-5"
     >
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label htmlFor={fid('typeId')} className="label">
@@ -456,6 +462,7 @@ export function DecisionForm({
       className="space-y-4"
     >
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       <fieldset>
         <legend className="label">Decision</legend>
         <div className="space-y-2">
@@ -546,6 +553,7 @@ export function CancelClaimForm({ action, what }: { action: () => Promise<FormSt
       className="space-y-3"
     >
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       <button type="submit" disabled={pending} className="btn btn-secondary">
         {pending ? 'Cancelling…' : 'Cancel this claim'}
       </button>

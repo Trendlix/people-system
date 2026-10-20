@@ -262,6 +262,15 @@ export function noPermissionText(employmentType: string): string | null {
     : 'No permission under a freelance employment: a freelancer works outside the labour law (Art. 1(1)), so permission, like leave, isn’t theirs.';
 }
 
+/**
+ * Whether someone asks for permission now (New permission is offered): a current employment under the labour law, and
+ * Leave Setup giving hours a month (`month`: their month's hours as read; null when it couldn't be). My Requests and
+ * the phone pages' Home (owner, 20 October 2026: the employee app).
+ */
+export function asksPermission(employment: { employmentType: string } | null | undefined, month: Pick<PermissionMonthView, 'hoursPerMonth'> | null | undefined): boolean {
+  return !!employment && !noPermissionText(employment.employmentType) && !!month && month.hoursPerMonth > 0;
+}
+
 // ---------- what the page says once something is done ----------
 
 /** Once sent: where it goes (as a leave request), or, recorded by HR, that it is approved and counts as worked. */

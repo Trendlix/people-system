@@ -7,18 +7,19 @@ import { NEW_RAISE_REQUEST_PATH } from '../list';
 // Who the raise is asked for, first on the request form (owner, 17 October 2026: raising a request moved to Requests →
 // Raise Requests, "Under Requests"): the people the user may ask for, searched by typing; choosing one opens the form for
 // them (?employee=<id>, so the address can be shared and the page reads what they may suggest). A GET form, so it also
-// works with the button alone.
+// works with the button alone. `action`: the page it opens, on the site or on the phone pages (owner, 20 October 2026:
+// the employee app).
 
 export interface PickerOption {
   id: string;
   label: string;
 }
 
-export function EmployeePicker({ options, chosen }: { options: readonly PickerOption[]; chosen: string | null }) {
+export function EmployeePicker({ options, chosen, action = NEW_RAISE_REQUEST_PATH }: { options: readonly PickerOption[]; chosen: string | null; action?: string }) {
   const form = useRef<HTMLFormElement>(null);
   return (
     // keyed by the one chosen, so following a link to another shows it, not what was picked before
-    <form key={chosen ?? ''} ref={form} action={NEW_RAISE_REQUEST_PATH} className="card flex flex-wrap items-end gap-3 p-5">
+    <form key={chosen ?? ''} ref={form} action={action} className="card flex flex-wrap items-end gap-3 p-5">
       <div className="min-w-64 flex-1">
         <label htmlFor="raise-request-employee" className="label">
           Employee

@@ -343,6 +343,11 @@ describe('C-level people kept from HR (e2e)', () => {
       const claraLine = lineOf(await runAs(ceo), clara)!;
       for (const session of [hr, finance]) await get(`/payroll/lines/${claraLine.id}/payslip/en`, session).expect(404);
       await get(`/payroll/lines/${claraLine.id}/payslip/en`, ceo).buffer(true).parse(bytes).expect(200);
+      // Clara's own, from her own payslips (owner, 20 October 2026, the employee app): never hidden from her
+      expect(((await get('/me/payslips', claraSession).expect(200)).body as { lineId: string }[]).map((p) => p.lineId)).toEqual([claraLine.id]);
+      const own = await get(`/me/payslips/${claraLine.id}/en`, claraSession).buffer(true).parse(bytes).expect(200);
+      expect(own.headers['content-type']).toBe('application/pdf');
+      await get(`/me/payslips/${lineOf(await runAs(ceo), nadia)!.id}/en`, claraSession).expect(404);
     });
 
     it('the statistics and the salary raises report leave her out for HR, and say so', async () => {

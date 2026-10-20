@@ -190,6 +190,24 @@ export function dayHoursText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut' | 
   return 'No hours counted without a check-in';
 }
 
+/**
+ * How long since the day's first check-in while not checked out yet, in hours (the phone pages' Home, owner, 20 October
+ * 2026: the employee app, "check in and out"): the time on the clock, not the hours counted, which the shift's rule
+ * counts once they check out; null when not checked in, or checked out.
+ */
+export function hoursSoFar(day: Pick<PunchedDayView, 'checkIn' | 'checkOut'> | null | undefined, nowMs: number): number | null {
+  if (!day?.checkIn || day.checkOut) return null;
+  const from = Date.parse(day.checkIn);
+  if (!Number.isFinite(from) || !Number.isFinite(nowMs)) return null;
+  return Math.max(0, (nowMs - from) / 3_600_000);
+}
+
+/** The time since the first check-in, said: "3:25 since you checked in"; null as hoursSoFar. */
+export function hoursSoFarText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut'> | null | undefined, nowMs: number): string | null {
+  const hours = hoursSoFar(day, nowMs);
+  return hours === null ? null : `${formatHours(hours)} since you checked in`;
+}
+
 /** The working day the panel is for: "Monday 19/10/2026". */
 export const dayTitle = (date: string): string => `${weekdayOf(date)} ${formatDate(date)}`.trim();
 

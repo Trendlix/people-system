@@ -108,10 +108,16 @@ export const countsRaiseRequests = (user: WithRoles) => hasRole(user, 'hr', 'ceo
  * C-level people's waiting for HR's step, which the CEO takes (19 October 2026), not one returned to HR to rework.
  */
 export function waitingForYouCount(user: WithRoles, requests: readonly Pick<RaiseRequest, 'status' | 'raise' | 'origin' | 'confidential'>[]): number {
-  return requests.filter((r) => {
-    if (r.status !== 'with_hr' || !decidesHrStage(user, r.confidential)) return false;
-    return handlesRaiseRequests(user) || requestActions(user, r).decide;
-  }).length;
+  return requests.filter((r) => waitsForYou(user, r)).length;
+}
+
+/**
+ * Whether a request with HR waits for the caller (waitingForYouCount's test, one request): HR's step, taken by HR, or by
+ * the CEO on a C-level person's. Also the phone pages' To approve (owner, 20 October 2026: the employee app).
+ */
+export function waitsForYou(user: WithRoles, r: Pick<RaiseRequest, 'status' | 'raise' | 'origin' | 'confidential'>): boolean {
+  if (r.status !== 'with_hr' || !decidesHrStage(user, r.confidential)) return false;
+  return handlesRaiseRequests(user) || requestActions(user, r).decide;
 }
 
 // ---------- the status filter ----------

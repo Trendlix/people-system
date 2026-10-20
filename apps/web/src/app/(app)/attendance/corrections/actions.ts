@@ -4,11 +4,13 @@
 // asking for one (the employee's own), HR correcting a day directly (approved at once), cancelling one while it is being
 // decided, and each approver's decision (approve, or reject with a comment). Each forwards to the API, which checks the
 // day, the month's payroll, who decides each stage and that nobody decides their own, so calling these directly can't
-// bypass that. Once sent, the correction's page opens.
+// bypass that. Once sent, the correction's page opens: the site's, or the phone pages' for a form sent from them (owner,
+// 20 October 2026: the employee app; lib/surface.ts).
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { LeaveStage } from '@trendlix/shared';
 import { ApiError, apiSend } from '@/lib/api';
+import { afterAction } from '@/lib/surface';
 import type { AttendanceCorrectionView } from '@/lib/correction-types';
 import type { FormState } from '@/lib/types';
 import { leaveDecisionBody } from '../../leave/list';
@@ -31,7 +33,7 @@ export async function askCorrection(_prev: FormState, fd: FormData): Promise<For
   }
   // My Attendance, My Requests and the manager's count in the sidebar now have it
   refresh();
-  redirect(made?.id ? correctionDoneHref(made.id, 'sent') : '/my-attendance');
+  redirect(afterAction(fd, made?.id ? correctionDoneHref(made.id, 'sent') : '/my-attendance'));
 }
 
 /** HR corrects a person's day directly (POST /attendance/corrections, with the employee): approved at once. */
@@ -52,17 +54,20 @@ export async function recordCorrection(_prev: FormState, fd: FormData): Promise<
   redirect(made?.id ? correctionDoneHref(made.id, 'recorded') : `/attendance/${encodeURIComponent(employeeId)}`);
 }
 
-/** The employee cancels their correction while it is being decided (POST /me/attendance/corrections/:id/cancel). */
-export async function cancelMyCorrection(id: string): Promise<FormState> {
+/**
+ * The employee cancels their correction while it is being decided (POST /me/attendance/corrections/:id/cancel). `fd`: the
+ * form's, which says where it was sent from.
+ */
+export async function cancelMyCorrection(id: string, _prev?: FormState, fd?: FormData): Promise<FormState> {
   try {
     await apiSend('POST', `/me/attendance/corrections/${encodeURIComponent(id)}/cancel`);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409) redirect(correctionDoneHref(id, 'moved'));
+    if (err instanceof ApiError && err.status === 409) redirect(afterAction(fd, correctionDoneHref(id, 'moved')));
     if (err instanceof ApiError) return { errors: shown(err.messages) };
     throw err;
   }
   refresh();
-  redirect(correctionDoneHref(id, 'cancelled'));
+  redirect(afterAction(fd, correctionDoneHref(id, 'cancelled')));
 }
 
 /**
@@ -81,5 +86,5 @@ export async function decideCorrection(id: string, stage: LeaveStage, _prev: For
   }
   // the lists and the counts in the sidebar change with it
   refresh();
-  redirect(correctionDoneHref(id, `${stage}_${body.decision}`));
+  redirect(afterAction(fd, correctionDoneHref(id, `${stage}_${body.decision}`)));
 }

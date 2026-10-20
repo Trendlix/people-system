@@ -5,11 +5,13 @@
 // (what the employee's claims already take of the caps), cancelling a claim while it is being decided, and each
 // approver's decision: approve it, approve a lower amount with a comment, or reject it with one. Each forwards to the
 // API, which checks who may claim, the type's conditions, who decides each stage and that nobody decides their own
-// claim, so calling these directly can't bypass that. Once sent, the employee lands on the claim's page.
+// claim, so calling these directly can't bypass that. Once sent, the employee lands on the claim's page: the site's, or
+// the phone pages' for a form sent from them (owner, 20 October 2026: the employee app; lib/surface.ts).
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { ReimbursementStage } from '@trendlix/shared';
 import { ApiError, apiFetch, apiSend, apiUpload, messagesOf } from '@/lib/api';
+import { afterAction } from '@/lib/surface';
 import type { FormState, MyReimbursementType, ReimbursementClaimView } from '@/lib/types';
 import { claimForm, typedValues } from './claim';
 import { claimDoneHref, decisionBody } from './list';
@@ -42,7 +44,7 @@ export async function sendClaim(_prev: FormState, fd: FormData): Promise<FormSta
   }
   // My Requests and the manager's count in the sidebar now have it
   refresh();
-  redirect(claim?.id ? claimDoneHref(claim.id, 'sent') : '/my-requests');
+  redirect(afterAction(fd, claim?.id ? claimDoneHref(claim.id, 'sent') : '/my-requests'));
 }
 
 /**
@@ -67,8 +69,11 @@ export async function typesForDate(expenseDate: string): Promise<{ types: MyReim
   }
 }
 
-/** The employee cancels their claim while it is being decided (POST /me/reimbursements/:id/cancel); its page says so. */
-export async function cancelClaim(claimId: string): Promise<FormState> {
+/**
+ * The employee cancels their claim while it is being decided (POST /me/reimbursements/:id/cancel); its page says so.
+ * `fd`: the form's, which says where it was sent from.
+ */
+export async function cancelClaim(claimId: string, _prev?: FormState, fd?: FormData): Promise<FormState> {
   try {
     await apiSend('POST', `/me/reimbursements/${encodeURIComponent(claimId)}/cancel`);
   } catch (err) {
@@ -76,7 +81,7 @@ export async function cancelClaim(claimId: string): Promise<FormState> {
     throw err;
   }
   refresh();
-  redirect(claimDoneHref(claimId, 'cancelled'));
+  redirect(afterAction(fd, claimDoneHref(claimId, 'cancelled')));
 }
 
 /**
@@ -94,11 +99,11 @@ export async function decideClaim(claimId: string, current: number, stage: Reimb
     await apiSend('POST', `/reimbursements/${encodeURIComponent(claimId)}/decide`, body);
   } catch (err) {
     // decided by someone else, or cancelled, since the page was opened: it shows where the claim stands now, and says so
-    if (err instanceof ApiError && err.status === 409) redirect(claimDoneHref(claimId, 'moved'));
+    if (err instanceof ApiError && err.status === 409) redirect(afterAction(fd, claimDoneHref(claimId, 'moved')));
     if (err instanceof ApiError) return { errors: asShown(err.messages), values };
     throw err;
   }
   // the lists and the counts in the sidebar change with it
   refresh();
-  redirect(claimDoneHref(claimId, `${stage}_${body.decision}`));
+  redirect(afterAction(fd, claimDoneHref(claimId, `${stage}_${body.decision}`)));
 }

@@ -5,7 +5,7 @@ import { HolidaysService } from './holidays.service.js';
 import { PayrollController, PayrollSettingsController } from './payroll.controller.js';
 import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayrollService } from './payroll.service.js';
-import { PayslipsController } from './payslips.controller.js';
+import { MyPayslipsController, PayslipsController } from './payslips.controller.js';
 import { PayslipsService } from './payslips.service.js';
 
 // Payroll, phase 1 (owner's decisions, 16 October 2026): the settings, monthly runs worked out from the contracts and
@@ -13,9 +13,10 @@ import { PayslipsService } from './payslips.service.js';
 // payslips, issued when HR marks a run paid. The official holidays (Payroll Setup, owner's request of 16 October 2026),
 // which a run takes out of each shift's working days for the expected hours. The expected hours are worked out, never
 // typed (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data"): ExpectedHoursService
-// clears any a draft's line had typed.
+// clears any a draft's line had typed. The employee's own payslips (owner, 20 October 2026, the employee app: "My
+// attendance and payslips"): MyPayslipsController.
 @Module({
-  controllers: [PayrollSettingsController, HolidaysController, PayrollController, PayslipsController],
+  controllers: [PayrollSettingsController, HolidaysController, PayrollController, PayslipsController, MyPayslipsController],
   providers: [PayrollSettingsService, HolidaysService, PayrollService, PayslipsService, ExpectedHoursService],
 })
 export class PayrollModule {}

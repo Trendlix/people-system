@@ -9,6 +9,8 @@ import {
   dayTimesText,
   dayTitle,
   flagLabels,
+  hoursSoFar,
+  hoursSoFarText,
   latestView,
   LOCATION_OPTIONS,
   locationErrorOf,
@@ -180,5 +182,22 @@ describe('the panel', () => {
     expect(dayHoursText({ checkIn: '2026-10-19T06:05:00.000Z', checkOut: null, hoursCounted: 0 })).toBe('Counted once you check out');
     expect(dayHoursText({ checkIn: null, checkOut: '2026-10-19T14:10:00.000Z', hoursCounted: 0 })).toBe('No hours counted without a check-in');
     expect(dayTitle('2026-10-19')).toBe('Monday 19/10/2026');
+  });
+});
+
+describe('the time since checking in, on the phone pages', () => {
+  const at = (iso: string) => Date.parse(iso);
+
+  it('counts the clock from the first check-in while not checked out', () => {
+    const day = { checkIn: '2026-10-20T06:05:00.000Z', checkOut: null };
+    expect(hoursSoFar(day, at('2026-10-20T09:30:00.000Z'))).toBeCloseTo(3 + 25 / 60);
+    expect(hoursSoFarText(day, at('2026-10-20T09:30:00.000Z'))).toBe('3:25 since you checked in');
+  });
+
+  it('says nothing before a check-in, once checked out, or for a clock behind it', () => {
+    expect(hoursSoFar({ checkIn: null, checkOut: null }, at('2026-10-20T09:30:00.000Z'))).toBeNull();
+    expect(hoursSoFar({ checkIn: '2026-10-20T06:05:00.000Z', checkOut: '2026-10-20T14:00:00.000Z' }, at('2026-10-20T15:00:00.000Z'))).toBeNull();
+    expect(hoursSoFar(null, Date.now())).toBeNull();
+    expect(hoursSoFarText({ checkIn: '2026-10-20T06:05:00.000Z', checkOut: null }, at('2026-10-20T06:00:00.000Z'))).toBe('0:00 since you checked in');
   });
 });

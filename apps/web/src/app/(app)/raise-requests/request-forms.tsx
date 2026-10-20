@@ -23,6 +23,7 @@ import {
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
+import { SurfaceField } from '@/components/surface';
 import { formatDate, parseDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 import { choice } from '../employees/[id]/contracts/pay-fields';
@@ -296,6 +297,7 @@ export function RequestRaiseForm({
   return (
     <form action={formAction} aria-label={forSelf ? 'Request a raise' : `Request a raise for ${name}`} className="card space-y-5 p-5">
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <label htmlFor={fid('raiseReason')} className="label">

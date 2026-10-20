@@ -7,6 +7,7 @@
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
+import { afterAction } from '@/lib/surface';
 import type { FormState } from '@/lib/types';
 import { ceoDecisionBody, ceoDoneKey, type CeoChoice } from '../raise-requests/decisions';
 import { raiseRequestsDoneHref, readStatus as readRaiseStatus } from '../raise-requests/list';
@@ -99,11 +100,14 @@ async function sendRaiseDecision(id: string, fd: FormData): Promise<{ choice: Ce
   return { choice };
 }
 
-/** The CEO's decision on a pay raise, on Approvals. */
+/**
+ * The CEO's decision on a pay raise, on Approvals; from the phone pages' To approve (owner, 20 October 2026: the
+ * employee app, "managers and team leads approve from the phone"), back to To approve (lib/surface.ts).
+ */
 export async function decideRaise(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const sent = await sendRaiseDecision(id, fd);
   if ('state' in sent) return sent.state;
-  redirect(`/approvals?done=${ceoDoneKey(sent.choice)}`);
+  redirect(afterAction(fd, `/approvals?done=${ceoDoneKey(sent.choice)}`));
 }
 
 /**

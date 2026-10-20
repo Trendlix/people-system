@@ -12,11 +12,13 @@
 // Contract section's; the CEO's decision on the raise is on Approvals (approvals/actions.ts). Asked for on its own page
 // under Requests → Raise Requests since 17 October 2026 ("i think raising a request should be moved from the Employee
 // tab to the raise requests tab"), with the month it is asked from ("Effective from"); once sent, the requester lands
-// where it is listed.
+// where it is listed: on the site, or the phone pages' My Requests for a form sent from them (owner, 20 October 2026:
+// the employee app; lib/surface.ts).
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { RAISE_FIGURE_KINDS } from '@trendlix/shared';
 import { ApiError, apiSend } from '@/lib/api';
+import { afterAction } from '@/lib/surface';
 import { getCurrentUser } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 import { hrDecisionBody, requestBody } from './decisions';
@@ -54,7 +56,7 @@ export async function requestRaise(employeeId: string, suggestsAmount: boolean, 
   const user = await getCurrentUser();
   // the lists (and HR's count beside Raise Requests in the sidebar) now have it
   refresh();
-  redirect(requestSentHref(user, user.employeeId === employeeId));
+  redirect(afterAction(fd, requestSentHref(user, user.employeeId === employeeId)));
 }
 
 /**

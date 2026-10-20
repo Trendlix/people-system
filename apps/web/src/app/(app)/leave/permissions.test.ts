@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LeaveRequestView, PermissionMonthView, PermissionRequestView } from '../../../lib/types';
 import {
+  asksPermission,
   emptyRequestsText,
   hoursFrom,
   isPermission,
@@ -346,5 +347,16 @@ describe('the form', () => {
       errors: ['Enter the day of the permission.', 'Choose the hours.', 'Enter the time it starts as a 12-hour time, e.g. 5:00 PM.'],
     });
     expect(typedPermissionValues(form({ date: '10/11/2026', hours: '1', employeeId: ID }))).toEqual({ date: '10/11/2026', hours: '1', fromTime: '', toTime: '', reason: '', employeeId: ID });
+  });
+});
+
+describe('whether New permission is offered (My Requests, the phone pages)', () => {
+  it('needs an employment under the labour law and hours a month', () => {
+    expect(asksPermission({ employmentType: 'full_time' }, { hoursPerMonth: 4 })).toBe(true);
+    expect(asksPermission({ employmentType: 'full_time' }, { hoursPerMonth: 0 })).toBe(false);
+    expect(asksPermission({ employmentType: 'full_time' }, null)).toBe(false);
+    expect(asksPermission({ employmentType: 'freelance' }, { hoursPerMonth: 4 })).toBe(false);
+    expect(asksPermission({ employmentType: 'intern' }, { hoursPerMonth: 4 })).toBe(false);
+    expect(asksPermission(null, { hoursPerMonth: 4 })).toBe(false);
   });
 });

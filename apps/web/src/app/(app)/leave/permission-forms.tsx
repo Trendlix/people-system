@@ -6,6 +6,7 @@ import { permissionClock, permissionHoursText, permissionMonth } from '@trendlix
 import { DateInput, TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
+import { SurfaceField } from '@/components/surface';
 import { formatDate, parseDate } from '@/lib/format';
 import type { FormState, PermissionMonthView } from '@/lib/types';
 import { monthName } from '../payroll/list';
@@ -124,6 +125,7 @@ export function NewPermissionForm({
       className="card space-y-5 p-5"
     >
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       {person.employeeId && <input type="hidden" name="employeeId" value={person.employeeId} />}
 
       <div role="status" aria-live="polite" className="rounded-lg bg-canvas px-4 py-3 text-sm">

@@ -6,11 +6,14 @@
 // approved one, with a comment, the days given back), each approver's decision (approve, or reject with a comment), and
 // HR's adjustment of an annual balance. Each forwards to the API, which checks who may ask, the type's rules, the
 // balance, an overlap, who decides each stage and that nobody decides their own, so calling these directly can't bypass
-// that. Once sent, the request's page opens.
+// that. Once sent, the request's page opens: the site's, or the phone pages' for a form sent from them (owner, 20 October
+// 2026: "what if we tried to build a mobile app for the employees? to enable them to check in and out, and apply for their
+// requests"; lib/surface.ts).
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { LeaveStage } from '@trendlix/shared';
 import { ApiError, apiFetch, apiSend, apiUpload, messagesOf } from '@/lib/api';
+import { afterAction } from '@/lib/surface';
 import type { EmployeeLeave, FormState, Holiday, LeaveBalances, LeaveRequestView } from '@/lib/types';
 import { adjustmentBody } from './balance';
 import { hrCancelBody, leaveDecisionBody, leaveDoneHref } from './list';
@@ -49,7 +52,7 @@ export async function sendLeave(_prev: FormState, fd: FormData): Promise<FormSta
   }
   // My Requests, the balances and the manager's count in the sidebar now have it
   refresh();
-  redirect(request?.id ? leaveDoneHref(request.id, 'sent') : '/my-requests');
+  redirect(afterAction(fd, request?.id ? leaveDoneHref(request.id, 'sent') : '/my-requests'));
 }
 
 /**
@@ -104,17 +107,20 @@ export async function leaveYearData(year: number, employeeId: string | null): Pr
   return { balances: balances.value, holidays: 'value' in holidays ? holidays.value : [] };
 }
 
-/** The employee cancels their request (POST /me/leave/requests/:id/cancel): while it is being decided, or before it starts. */
-export async function cancelMyLeave(requestId: string): Promise<FormState> {
+/**
+ * The employee cancels their request (POST /me/leave/requests/:id/cancel): while it is being decided, or before it starts.
+ * `fd`: the form's, which says where it was sent from.
+ */
+export async function cancelMyLeave(requestId: string, _prev?: FormState, fd?: FormData): Promise<FormState> {
   try {
     await apiSend('POST', `/me/leave/requests/${encodeURIComponent(requestId)}/cancel`);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409) redirect(leaveDoneHref(requestId, 'moved'));
+    if (err instanceof ApiError && err.status === 409) redirect(afterAction(fd, leaveDoneHref(requestId, 'moved')));
     if (err instanceof ApiError) return { errors: shown(err.messages) };
     throw err;
   }
   refresh();
-  redirect(leaveDoneHref(requestId, 'cancelled'));
+  redirect(afterAction(fd, leaveDoneHref(requestId, 'cancelled')));
 }
 
 /** HR cancels an approved request (POST /leave/requests/:id/cancel), with a comment; its days are given back. */
@@ -125,12 +131,12 @@ export async function cancelLeaveByHr(requestId: string, _prev: FormState, fd: F
   try {
     await apiSend('POST', `/leave/requests/${encodeURIComponent(requestId)}/cancel`, body);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409) redirect(leaveDoneHref(requestId, 'moved'));
+    if (err instanceof ApiError && err.status === 409) redirect(afterAction(fd, leaveDoneHref(requestId, 'moved')));
     if (err instanceof ApiError) return { errors: shown(err.messages), values };
     throw err;
   }
   refresh();
-  redirect(leaveDoneHref(requestId, 'cancelled'));
+  redirect(afterAction(fd, leaveDoneHref(requestId, 'cancelled')));
 }
 
 /**
@@ -145,13 +151,13 @@ export async function decideLeave(requestId: string, stage: LeaveStage, _prev: F
   try {
     await apiSend('POST', `/leave/requests/${encodeURIComponent(requestId)}/decide`, body);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409) redirect(leaveDoneHref(requestId, 'moved'));
+    if (err instanceof ApiError && err.status === 409) redirect(afterAction(fd, leaveDoneHref(requestId, 'moved')));
     if (err instanceof ApiError) return { errors: shown(err.messages), values };
     throw err;
   }
   // the lists and the counts in the sidebar change with it
   refresh();
-  redirect(leaveDoneHref(requestId, `${stage}_${body.decision}`));
+  redirect(afterAction(fd, leaveDoneHref(requestId, `${stage}_${body.decision}`)));
 }
 
 /**

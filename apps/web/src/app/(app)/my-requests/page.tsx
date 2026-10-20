@@ -7,15 +7,16 @@ import { getCurrentUser } from '@/lib/session';
 import type { EmployeeProfile } from '@/lib/types';
 import { NoProfile } from '../dashboard/cards';
 import { ChangeRequestStatusBadge, ChangesTable } from '../employees/[id]/change-request/request-parts';
-import { employeeRaiseRequestsHref, Loading, todayInCairo } from '../employees/ui';
+import { Loading, todayInCairo } from '../employees/ui';
 import { loadTeam } from '../my-team/data';
 import { loadOwnProfile } from '../own-profile';
+import { RaiseCard } from './raise-card';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
-import { askedAt, justSent, newRaiseRequestHref, raiseRequestAnchor } from '../raise-requests/list';
-import { EffectiveFrom, FoldedRequestLog, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, RequestSent, Requester, Suggestion } from '../raise-requests/ui';
+import { justSent, newRaiseRequestHref } from '../raise-requests/list';
+import { RequestSent } from '../raise-requests/ui';
 import { loadLeaveTypes, loadMyBalances, loadMyLeave, loadMyPermissionMonth, loadMyPermissions } from '../leave/data';
 import { NEW_LEAVE_PATH, requestsLabel } from '../leave/list';
-import { NEW_PERMISSION_PATH, noPermissionText, PERMISSION_OFF_TEXT, permissionMonthText } from '../leave/permissions';
+import { asksPermission as offersPermission, NEW_PERMISSION_PATH, PERMISSION_OFF_TEXT, permissionMonthText } from '../leave/permissions';
 import { LeaveBalanceFigures, MyLeaveTable, MyPermissionTable } from '../leave/ui';
 import { loadMyClaims } from '../reimbursements/data';
 import { claimsLabel, NEW_CLAIM_PATH } from '../reimbursements/list';
@@ -121,56 +122,6 @@ function DetailsCard({ item, employeeId }: { item: Extract<MyRequest, { kind: 'd
           See or cancel this request
         </Link>
       )}
-    </li>
-  );
-}
-
-/**
- * A raise they asked for (or, for a manager, asked for for a direct report): the reason from the list and the comment,
- * the raise suggested, the raise prepared, where it stands, and its log of every step (owner, 17 October 2026), each as
- * the API shapes it for the viewer.
- */
-function RaiseCard({ item }: { item: Extract<MyRequest, { kind: 'raise' | 'team' }> }) {
-  const r = item.request;
-  return (
-    <li id={raiseRequestAnchor(r.id)} className="card scroll-mt-6 space-y-4 p-5 target:ring-2 target:ring-accent">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h3 className="font-semibold">{requestTitle(item)}</h3>
-          <p className="text-sm text-muted">Asked {askedAt(r)}</p>
-        </div>
-        <RaiseRequestStatusBadge status={r.status} confidential={r.confidential} />
-      </div>
-      <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-        <Item label="Asked by">
-          <Requester request={r} />
-        </Item>
-        <Item label="Effective from">
-          <EffectiveFrom request={r} />
-        </Item>
-        {/* the raise suggested, as far as the API lets the viewer see it (a manager: a percent only) */}
-        {(r.suggestion || r.suggestedGross !== null) && (
-          <Item label="Suggested raise">
-            <Suggestion request={r} />
-          </Item>
-        )}
-        <Item label="Why" wide>
-          <RequestReason request={r} />
-        </Item>
-        {r.raise && (
-          <Item label="The raise">
-            <PreparedRaise request={r} />
-          </Item>
-        )}
-        <Item label="Where it stands">
-          <Progress request={r} />
-        </Item>
-      </dl>
-      {/* every step, as the request logs it (owner, 17 October 2026: "all the request steps to be logged in the request") */}
-      <FoldedRequestLog request={r} />
-      <Link href={employeeRaiseRequestsHref(r.employee.id)} className="inline-block text-sm font-semibold">
-        {item.kind === 'team' ? `Open ${r.employee.fullNameEn}'s raise requests` : 'Open on my profile'}
-      </Link>
     </li>
   );
 }
@@ -311,8 +262,7 @@ async function Leave() {
   const month = today.slice(0, 7);
   const [requests, balances, types, permission] = await Promise.all([loadMyLeave(), loadMyBalances(year), loadLeaveTypes(), loadMyPermissionMonth(month)]);
   if (requests.kind === 'unavailable') return null;
-  const asksPermission =
-    !!profile.employment && !noPermissionText(profile.employment.employmentType) && permission.kind === 'ok' && permission.value.hoursPerMonth > 0;
+  const asksPermission = offersPermission(profile.employment, permission.kind === 'ok' ? permission.value : null);
   return (
     <section id="my-leave" aria-labelledby="my-leave-heading" className="mt-10 scroll-mt-6 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">

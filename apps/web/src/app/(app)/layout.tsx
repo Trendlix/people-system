@@ -1,5 +1,6 @@
 import type { Role } from '@trendlix/shared';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
 import { decidesForTeam, DETAILS_CHANGES_PATH, LEAVE_PATH, MY_TEAM, navFor, RAISE_REQUESTS_PATH, REIMBURSEMENTS_PATH } from '@/components/nav';
@@ -135,7 +136,12 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
               attendance is not active in the side menu") */}
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex min-h-16 items-center justify-end border-b border-line bg-card px-4 sm:px-8">
+          <header className="flex min-h-16 items-center justify-end gap-3 border-b border-line bg-card px-4 sm:px-8">
+            {/* on a phone-width screen, the way to the phone pages (owner, 20 October 2026: "what if we tried to build a
+                mobile app for the employees? to enable them to check in and out, and apply for their requests") */}
+            <Link href="/app" className="mr-auto shrink-0 text-sm font-semibold sm:hidden">
+              Open the app view
+            </Link>
             <Suspense fallback={<span className="text-sm text-muted">Loading…</span>}>
               <UserMenu />
             </Suspense>

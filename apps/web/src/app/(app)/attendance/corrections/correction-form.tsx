@@ -6,6 +6,7 @@ import { ATTENDANCE_SOURCE_LABELS, CORRECTION_REASON_MAX, type AttendanceSource,
 import { DateInput, TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
+import { SurfaceField } from '@/components/surface';
 import type { MonthCorrectable, MonthCorrection } from '@/lib/correction-types';
 import { formatDate, parseDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
@@ -97,6 +98,7 @@ export function CorrectionForm({
       className="card space-y-5 p-5"
     >
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       {person.employeeId && <input type="hidden" name="employeeId" value={person.employeeId} />}
 
       <div className="grid gap-5 sm:grid-cols-2">

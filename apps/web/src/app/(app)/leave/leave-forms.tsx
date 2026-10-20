@@ -17,6 +17,8 @@ import { DocumentViewer } from '@/components/document-viewer';
 import { fits } from '@/components/file-drop';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
+import { SurfaceField, useAppSection } from '@/components/surface';
+import { CameraButton } from '@/components/camera-button';
 import { formatDate, parseDate, titleCase } from '@/lib/format';
 import type { FormState, Holiday, LeaveBalances, LeaveTypeView } from '@/lib/types';
 import { choice } from '../employees/[id]/contracts/pay-fields';
@@ -71,6 +73,8 @@ function DocumentsField({
   const next = useRef(1);
   const [over, setOver] = useState(false);
   const [refused, setRefused] = useState<string[]>([]);
+  // on the phone pages (owner, 20 October 2026: the employee app): Take a photo too, e.g. of a medical certificate
+  const onPhonePages = useAppSection() !== null;
 
   async function add(files: readonly File[]) {
     const taken = files.filter((f) => fits(f, DOCUMENT_ACCEPT));
@@ -125,6 +129,7 @@ function DocumentsField({
           onChange={(e) => void add(Array.from(e.currentTarget.files ?? []))}
           className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-white file:px-4 file:text-sm file:font-semibold"
         />
+        {onPhonePages && <CameraButton onFiles={(files) => void add(files)} disabled={left <= 0} label="Take a photo of the document" />}
         <p aria-live="polite" className={`text-xs ${refused.length ? 'text-danger' : 'text-muted'}`}>
           {refused.length
             ? `${refused.join(', ')} ${refused.length === 1 ? 'was' : 'were'} not added: a document is a photo (JPG, PNG or WebP) or a PDF.`
@@ -324,6 +329,7 @@ export function NewLeaveForm({
       className="card space-y-5 p-5"
     >
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       {person.employeeId && <input type="hidden" name="employeeId" value={person.employeeId} />}
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="sm:col-span-2">
@@ -518,6 +524,7 @@ export function LeaveDecisionForm({
       className="space-y-4"
     >
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       <fieldset>
         <legend className="label">Decision</legend>
         <div className="flex flex-wrap gap-2">
@@ -572,6 +579,7 @@ export function CancelLeaveForm({ action, what, kind = 'leave' }: { action: () =
       className="space-y-3"
     >
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       <button type="submit" disabled={pending} className="btn btn-secondary">
         {pending ? 'Cancelling…' : `Cancel this ${kind}`}
       </button>
@@ -594,6 +602,7 @@ export function HrCancelLeaveForm({ action, what, kind = 'leave' }: { action: Ac
       className="space-y-3"
     >
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       <div>
         <label htmlFor={fid('comment')} className="label">
           Why it is cancelled

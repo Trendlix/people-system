@@ -54,6 +54,7 @@ import {
   countsRaiseRequests,
   statusLabel,
   waitingForYouCount,
+  waitsForYou,
 } from './list';
 
 const as = (...roles: Role[]) => ({ roles });
@@ -600,6 +601,9 @@ describe('a C-level person’s request (owner, 19 October 2026: "make C level Em
     expect(waitingForYouCount(as('hr', 'super_admin'), withHr)).toBe(4);
     expect(waitingForYouCount(as('ceo'), withHr)).toBe(1);
     expect(waitingForYouCount(as('finance'), withHr)).toBe(0);
+    // one at a time, as the phone pages' To Approve lists them (20 October 2026)
+    expect(withHr.map((r) => waitsForYou(as('hr'), r))).toEqual([true, true, false, false, false]);
+    expect(withHr.map((r) => waitsForYou(as('ceo'), r))).toEqual([false, false, true, false, false]);
   });
 
   it('says it is with the CEO while it waits for HR’s step', () => {

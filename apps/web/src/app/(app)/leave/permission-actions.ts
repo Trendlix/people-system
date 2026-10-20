@@ -6,11 +6,13 @@
 // (the employee while it is being decided or before its day; HR an approved one, with a comment, its hours given back)
 // and each approver's decision (approve, or reject with a comment). Each forwards to the API, which checks the Leave
 // Setup's hours, the day (a rest day, an official holiday, a day of leave), who decides each stage and that nobody decides
-// their own, so calling these directly can't bypass that. Once sent, the request's page opens.
+// their own, so calling these directly can't bypass that. Once sent, the request's page opens: the site's, or the phone
+// pages' for a form sent from them (owner, 20 October 2026: the employee app; lib/surface.ts).
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { LeaveStage } from '@trendlix/shared';
 import { ApiError, apiFetch, apiSend, messagesOf } from '@/lib/api';
+import { afterAction } from '@/lib/surface';
 import type { EmployeePermissionMonth, FormState, PermissionMonthView, PermissionRequestView } from '@/lib/types';
 import { hrCancelBody, leaveDecisionBody } from './list';
 import { permissionDoneHref, permissionForm, shownMessage, typedPermissionValues } from './permissions';
@@ -35,7 +37,7 @@ export async function sendPermission(_prev: FormState, fd: FormData): Promise<Fo
   }
   // My Requests, the month's hours and the manager's count in the sidebar now have it
   refresh();
-  redirect(request?.id ? permissionDoneHref(request.id, 'sent') : '/my-requests');
+  redirect(afterAction(fd, request?.id ? permissionDoneHref(request.id, 'sent') : '/my-requests'));
 }
 
 /** HR records permission on an employee's behalf (POST /leave/permissions, with the employee), approved at once. */
@@ -83,17 +85,20 @@ export async function permissionMonthData(month: string, employeeId: string | nu
   }
 }
 
-/** The employee cancels their request (POST /me/permissions/:id/cancel): while it is being decided, or before its day. */
-export async function cancelMyPermission(requestId: string): Promise<FormState> {
+/**
+ * The employee cancels their request (POST /me/permissions/:id/cancel): while it is being decided, or before its day.
+ * `fd`: the form's, which says where it was sent from.
+ */
+export async function cancelMyPermission(requestId: string, _prev?: FormState, fd?: FormData): Promise<FormState> {
   try {
     await apiSend('POST', `/me/permissions/${encodeURIComponent(requestId)}/cancel`);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409) redirect(permissionDoneHref(requestId, 'moved'));
+    if (err instanceof ApiError && err.status === 409) redirect(afterAction(fd, permissionDoneHref(requestId, 'moved')));
     if (err instanceof ApiError) return { errors: shown(err.messages) };
     throw err;
   }
   refresh();
-  redirect(permissionDoneHref(requestId, 'cancelled'));
+  redirect(afterAction(fd, permissionDoneHref(requestId, 'cancelled')));
 }
 
 /** HR cancels an approved request (POST /leave/permissions/:id/cancel), with a comment; its hours are given back. */
@@ -104,12 +109,12 @@ export async function cancelPermissionByHr(requestId: string, _prev: FormState, 
   try {
     await apiSend('POST', `/leave/permissions/${encodeURIComponent(requestId)}/cancel`, body);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409) redirect(permissionDoneHref(requestId, 'moved'));
+    if (err instanceof ApiError && err.status === 409) redirect(afterAction(fd, permissionDoneHref(requestId, 'moved')));
     if (err instanceof ApiError) return { errors: shown(err.messages), values };
     throw err;
   }
   refresh();
-  redirect(permissionDoneHref(requestId, 'cancelled'));
+  redirect(afterAction(fd, permissionDoneHref(requestId, 'cancelled')));
 }
 
 /**
@@ -124,11 +129,11 @@ export async function decidePermission(requestId: string, stage: LeaveStage, _pr
   try {
     await apiSend('POST', `/leave/permissions/${encodeURIComponent(requestId)}/decide`, body);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409) redirect(permissionDoneHref(requestId, 'moved'));
+    if (err instanceof ApiError && err.status === 409) redirect(afterAction(fd, permissionDoneHref(requestId, 'moved')));
     if (err instanceof ApiError) return { errors: shown(err.messages), values };
     throw err;
   }
   // the lists and the counts in the sidebar change with it
   refresh();
-  redirect(permissionDoneHref(requestId, `${stage}_${body.decision}`));
+  redirect(afterAction(fd, permissionDoneHref(requestId, `${stage}_${body.decision}`)));
 }

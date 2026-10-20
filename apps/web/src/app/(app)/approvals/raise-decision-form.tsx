@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react';
 import { RAISE_DECISION_LABELS, RAISE_DECISIONS, RAISE_REASON_LABELS, raiseReasonOptions, type RaiseDecision, type RaiseReason, type RaiseRequester } from '@trendlix/shared';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
+import { SurfaceField } from '@/components/surface';
 import type { FormState } from '@/lib/types';
 import { choice } from '../employees/[id]/contracts/pay-fields';
 import { commentReaders } from '../raise-requests/list';
@@ -99,6 +100,7 @@ export function RaiseDecisionForm({
       }
     >
       <FormErrors errors={state.errors} />
+      <SurfaceField />
       <fieldset>
         <legend className="label">Your decision</legend>
         <div className="flex flex-wrap gap-2">
