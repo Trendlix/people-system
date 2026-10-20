@@ -1,0 +1,23 @@
+{
+  "name": "@trendlix/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TrendLIX People: the employee app, a Capacitor shell over https://people.trendlix.com/app",
+  "scripts": {
+    "sync": "cap sync android",
+    "doctor": "cap doctor",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "open:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3",
+    "typescript": "6.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

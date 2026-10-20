@@ -1,0 +1,175 @@
+name: Mobile (Android)
+
+# Builds TrendLIX People, the employee app (apps/mobile, README Phase 0), as an Android APK the owner downloads and
+# installs to try each phase (owner, 20 October 2026: "actions will be responsible for build the app so that i can
+# download the apk app to test it while developing process phases"). No store, no signing secrets yet: the APK is
+# debug-signed, which installs directly on a phone ("install unknown apps" allowed once).
+#
+# Runs on a push to main that touches apps/mobile or this file, by hand ("Run workflow" on the Actions page), and on a
+# tag mobile-v<version> (e.g. mobile-v0.2.0), which also attaches the APK to a GitHub Release. The backend deploy
+# (backend.yml) does not watch apps/mobile, and this one does not watch the API, the web app or the lock file.
+#
+# Where the APK is: Actions -> the run -> Artifacts -> trendlix-people-<version> (a .zip with the .apk inside), kept
+# 30 days. The version: versionCode = the run number, versionName = <major.minor of apps/mobile/package.json>.<run>
+# (e.g. 0.1.42), or the tag's version on a tag.
+
+on:
+  push:
+    branches: [main]
+    tags: ['mobile-v*']
+    paths:
+      - 'apps/mobile/**'
+      - '.github/workflows/mobile-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# a newer push replaces a build still running for the same branch; a tag's build is always finished
+concurrency:
+  group: mobile-android-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  build:
+    name: Build the debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.name }}
+    env:
+      HAS_DEBUG_KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 != '' }}
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Gradle's downloads (the wrapper, the Android plugin, AndroidX) are kept between runs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+          cache-dependency-path: |
+            apps/mobile/android/*.gradle*
+            apps/mobile/android/app/*.gradle*
+            apps/mobile/android/gradle/wrapper/gradle-wrapper.properties
+            apps/mobile/package.json
+
+      # the runner's Android SDK, with its licences accepted; Gradle fetches any platform or build tools still missing
+      - uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+
+      # One signing key for every test build, so a newer APK installs over an older one (a phone refuses an update
+      # signed with another key). From the secret ANDROID_DEBUG_KEYSTORE_BASE64 when it is set (apps/mobile/README.md,
+      # Building locally); until then the debug key Gradle makes on the first run is kept in the Actions cache, which
+      # GitHub drops after 7 days without a build; the next APK then needs the old app uninstalled once.
+      - name: Signing key from the cache
+        if: env.HAS_DEBUG_KEYSTORE != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
+      - name: Signing key from the secret
+        if: env.HAS_DEBUG_KEYSTORE == 'true'
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p ~/.android
+          printf '%s' "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+
+      - name: Version
+        id: version
+        run: |
+          code="$GITHUB_RUN_NUMBER"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            name="${GITHUB_REF_NAME#mobile-v}"
+          else
+            base="$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')")"
+            name="$base.$code"
+          fi
+          if ! printf '%s' "$name" | grep -Eq '^[0-9]+(\.[0-9]+)*([.-][0-9A-Za-z]+)*$'; then
+            echo "::error::The version '$name' is not a version (a tag must look like mobile-v0.2.0)."
+            exit 1
+          fi
+          echo "MOBILE_VERSION_CODE=$code" >> "$GITHUB_ENV"
+          echo "MOBILE_VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Version $name (code $code)"
+
+      # only what the app needs from the monorepo: Capacitor and TypeScript (to read capacitor.config.ts)
+      - name: Install
+        working-directory: .
+        run: npm ci --workspace @trendlix/mobile --include-workspace-root --no-audit --no-fund
+
+      - name: Check the Capacitor config
+        run: npx tsc --noEmit -p tsconfig.json
+
+      # copies www and capacitor.config.ts into the Android project and links the Capacitor Android library
+      - name: Sync the Android project
+        run: npx cap sync android
+
+      - name: Build
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Name the APK
+        id: apk
+        run: |
+          src=android/app/build/outputs/apk/debug/app-debug.apk
+          dest="$RUNNER_TEMP/trendlix-people-$MOBILE_VERSION_NAME.apk"
+          cp "$src" "$dest"
+          echo "path=$dest" >> "$GITHUB_OUTPUT"
+          # the signing certificate's fingerprint: the same from one build to the next means the APK updates in place
+          tools="$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -1)"
+          cert="$("$tools/apksigner" verify --print-certs "$dest" 2>/dev/null | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          {
+            echo "### TrendLIX People $MOBILE_VERSION_NAME"
+            echo ""
+            echo "- Debug APK, version code $MOBILE_VERSION_CODE, $(du -h "$dest" | cut -f1)"
+            echo "- APK SHA-256 \`$(sha256sum "$dest" | cut -d' ' -f1)\`"
+            echo "- Signing certificate SHA-256 \`${cert:-unknown}\`"
+            echo "- Install: Artifacts below -> trendlix-people-$MOBILE_VERSION_NAME -> unzip -> open the .apk on the phone (apps/mobile/README.md, section 6)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trendlix-people-${{ steps.version.outputs.name }}
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Attach the APK to a GitHub Release
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'mobile-v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: trendlix-people-${{ needs.build.outputs.version }}
+          path: apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: TrendLIX People ${{ needs.build.outputs.version }}
+          prerelease: true
+          files: apk/*.apk
+          fail_on_unmatched_files: true
+          body: |
+            Test build of TrendLIX People ${{ needs.build.outputs.version }} for Android (debug-signed, not from a store).
+            Download the .apk below on the phone, open it, allow "Install unknown apps" the first time, and install;
+            it installs over an older test build.

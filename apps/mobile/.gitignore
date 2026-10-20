@@ -1,0 +1,9 @@
+# Never in the repository (README section 4): the Firebase file comes from a GitHub secret in CI (Phase 4) and the
+# signing keystores live in GitHub Secrets (before any store release).
+android/app/google-services.json
+*.jks
+*.keystore
+
+# APKs and bundles from a build on a computer (CI uploads its own as a workflow artifact)
+*.apk
+*.aab
