@@ -513,13 +513,13 @@ describe('Pay raises (e2e)', () => {
       // a raise not yet signed stays with those who see salaries, and so does its request
       expect(((await contractsOf(benP, ben).expect(200)).body as Contract[]).map((c) => c.id)).not.toContain(raise.id);
       const id = raise.raise!.requestId!;
-      for (const session of [ben, manager]) {
-        const seen = (await api().get(`/api/employees/${benP.id}/raise-requests`).set('Cookie', session).expect(200)).body as { requests: { id: string }[]; canRequest: boolean };
-        expect(seen.requests.map((q) => q.id)).not.toContain(id);
-        // nor is it the one open request a person has: they may still ask
-        expect(seen.canRequest).toBe(true);
-      }
-      expect((await api().get(`/api/employees/${benP.id}/raise-requests`).set('Cookie', hr).expect(200)).body.requests.map((q: { id: string }) => q.id)).toContain(id);
+      // the employee and his manager see no raise requests at all (owner, 20 October 2026: "raises not to be visible to
+      // employee level for now", "Hide from managers too")
+      for (const session of [ben, manager]) await api().get(`/api/employees/${benP.id}/raise-requests`).set('Cookie', session).expect(403);
+      const forHr = (await api().get(`/api/employees/${benP.id}/raise-requests`).set('Cookie', hr).expect(200)).body as { requests: { id: string }[]; canRequest: boolean };
+      expect(forHr.requests.map((q) => q.id)).toContain(id);
+      // nor is it the one open request a person has: HR may still ask for one
+      expect(forHr.canRequest).toBe(true);
       expect(await requestOf(id)).toMatchObject({ raise: { way: 'contract', change: 'new_contract' }, comment: 'Prepared directly by HR' });
       await step(raise.id, 'send', hr, { comment: 'For the new year' }).expect(200);
       await step(raise.id, 'decline', ceo, {}).expect(400);

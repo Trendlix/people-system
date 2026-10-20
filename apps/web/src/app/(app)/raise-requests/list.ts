@@ -1,4 +1,5 @@
 import {
+  EMPLOYEE_LEVEL_SEES_RAISES,
   effectiveFromChoices,
   isFirstOfMonth,
   nextFirstOfMonth,
@@ -585,18 +586,30 @@ export function figuresNote(forSelf: boolean): string {
  * make), and who sees the figures of the raise asked for: the employee's own, theirs and HR, Finance and the CEO's,
  * never the manager's ("allow the requestor raiser to see figures too"; for a manager "No, only percent"). HR's or the
  * CEO's decision: the employee too when they asked themself. A return, or HR's note on sending: HR and the CEO only.
- * `requester` null: a raise without a request, whose decision stays with HR.
+ * `requester` null: a raise without a request, whose decision stays with HR. While the employee level doesn't see raise
+ * requests (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from managers
+ * too"; `employeeLevelSees`, the switch), only HR, Finance and the CEO read any of them.
  */
-export function commentReaders(step: 'request' | 'decision' | 'return' | 'send', requester: RaiseRequester | null, forSelf = false): string {
+export function commentReaders(
+  step: 'request' | 'decision' | 'return' | 'send',
+  requester: RaiseRequester | null,
+  forSelf = false,
+  employeeLevelSees: boolean = EMPLOYEE_LEVEL_SEES_RAISES,
+): string {
   if (step === 'return') return 'HR sees this comment, with the raise returned to them; the employee and their manager don’t.';
   if (step === 'send') return 'The CEO sees this note; the employee and their manager don’t.';
+  if (step !== 'request' && requester === null) return 'HR, Finance and the CEO see this comment, with the raise.';
+  if (!employeeLevelSees) {
+    return step === 'request' && forSelf
+      ? 'HR, Finance and the CEO see this comment and the figures of the raise you suggest; your direct manager doesn’t.'
+      : 'HR, Finance and the CEO see this comment; the employee and their manager don’t see raise requests for now.';
+  }
   if (step === 'request') {
     if (forSelf) return 'HR, Finance, the CEO and your direct manager see this comment; the figures of the raise you suggest, only you, HR, Finance and the CEO.';
     return requester === 'manager'
       ? 'HR, Finance and the CEO see this comment; the employee doesn’t see a request you make.'
       : 'Finance, the CEO and the employee’s direct manager see this comment, the manager no figures; the employee doesn’t see a request HR makes.';
   }
-  if (requester === null) return 'HR, Finance and the CEO see this comment, with the raise.';
   return requester === 'self'
     ? 'The employee and their manager see this comment.'
     : 'The employee’s manager sees this comment; the employee doesn’t see this request.';

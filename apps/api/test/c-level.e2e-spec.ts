@@ -379,7 +379,12 @@ describe('C-level people kept from HR (e2e)', () => {
 
   describe('approvals: HR’s stages of hers go to the CEO', () => {
     it('her raise request: HR neither sees nor decides it; the CEO takes HR’s step', async () => {
-      const asked = (await post(`/employees/${clara.id}/raise-requests`, claraSession, { effectiveFrom: NEXT_FIRST, raiseReason: 'performance', comment: 'A strong year', suggestedIncrease: 5000 }).expect(201)).body as {
+      const body = { effectiveFrom: NEXT_FIRST, raiseReason: 'performance', comment: 'A strong year', suggestedIncrease: 5000 };
+      // she doesn't ask for herself, nor read her own: the employee level sees no raise requests (owner, 20 October
+      // 2026: "raises not to be visible to employee level for now"); HR with Super Admin asks for her
+      await post(`/employees/${clara.id}/raise-requests`, claraSession, body).expect(403);
+      await get(`/employees/${clara.id}/raise-requests`, claraSession).expect(403);
+      const asked = (await post(`/employees/${clara.id}/raise-requests`, hrSuper, body).expect(201)).body as {
         id: string;
         status: string;
         confidential: boolean;

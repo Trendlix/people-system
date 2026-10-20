@@ -1,6 +1,7 @@
 import {
   becameOpenEnded,
   casualTooLong,
+  EMPLOYEE_LEVEL_SEES_RAISES,
   ENDING_RULE_DEFAULTS,
   insuredWageDate,
   isTrainingType,
@@ -237,12 +238,15 @@ export type ContractView = ReturnType<typeof contractView>;
 /**
  * A version that changes the pay (a raise, or a renewal with new pay; owner's decisions, 16 October 2026): why, the
  * CEO's step, the promotion with it, Form 2 and from when the insured wage follows it. Null for one that doesn't. The
- * CEO's reason for returning it may name amounts: only for those who see salaries.
+ * CEO's reason for returning it may name amounts: only for those who see salaries. The request it came from only for
+ * them too while the employee level doesn't see raise requests (owner, 20 October 2026: "raises not to be visible to
+ * employee level for now"): the employee keeps the signed version itself.
  */
 export function raiseView(c: ContractRow, seesSalary: boolean) {
   if (c.approval === null) return null;
   const startDate = fromDateOnly(c.startDate)!;
   const form2From = fromDateOnly(c.form2From);
+  const request = seesSalary || EMPLOYEE_LEVEL_SEES_RAISES ? c.raiseRequest : null;
   return {
     reason: c.raiseReason as RaiseReason,
     approval: c.approval as RaiseApproval,
@@ -254,9 +258,9 @@ export function raiseView(c: ContractRow, seesSalary: boolean) {
     newGrade: c.newGrade && { id: c.newGrade.id, code: c.newGrade.code },
     form2From,
     insuredWageFrom: insuredWageDate(startDate, form2From),
-    requestId: c.raiseRequest?.id ?? null,
+    requestId: request?.id ?? null,
     // asked for, or prepared directly by HR (owner, 19 October 2026: every raise has its request on Raise Requests)
-    requestOrigin: (c.raiseRequest?.origin as RaiseRequestOrigin | undefined) ?? null,
+    requestOrigin: (request?.origin as RaiseRequestOrigin | undefined) ?? null,
   };
 }
 

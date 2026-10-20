@@ -1,6 +1,8 @@
 import 'server-only';
 import { cache } from 'react';
+import { seesRaiseRequests } from '@trendlix/shared';
 import { isRestricted } from '@/lib/confidential';
+import { getCurrentUser } from '@/lib/session';
 import type { EmployeeCard, EmployeeProfile } from '@/lib/types';
 import { getOrNull } from '../approvals/data';
 import { loadEmployeeRaiseRequests, type EmployeeRaiseRequestsLoad } from '../raise-requests/data';
@@ -10,7 +12,8 @@ import { loadEmployeeRaiseRequests, type EmployeeRaiseRequestsLoad } from '../ra
 // API lets a manager open their direct reports') for their employment, and their raise requests (the API sends a
 // manager every one, without a figure). A C-level report (owner, 19 October 2026: "make C level Employees details not
 // visible to HR") is their directory card for the manager: no profile, and no raise requests asked for (the API
-// answers 404 for them).
+// answers 404 for them). Nor are they asked for while the manager doesn't see raise requests (owner, 20 October 2026:
+// "raises not to be visible to employee level for now", then "Hide from managers too"; seesRaiseRequests).
 
 export interface TeamMember {
   /** As the manager's profile lists them (`reports`): their code, name, job title and status. */
@@ -22,17 +25,17 @@ export interface TeamMember {
   raises: EmployeeRaiseRequestsLoad;
 }
 
-/** A C-level report's raise requests, which the manager doesn't see: as if not theirs to see. */
+/** Raise requests the manager doesn't see (a C-level report's; anyone's while they don't see raise requests): as if not theirs to see. */
 const NOT_THEIRS: EmployeeRaiseRequestsLoad = { kind: 'forbidden' };
 
 /** The manager's direct reports, in the profile's order (by name). Read once a request: `manager` is loadOwnProfile's. */
-export const loadTeam = cache(
-  (manager: EmployeeProfile): Promise<TeamMember[]> =>
-    Promise.all(
-      manager.reports.map(async (report): Promise<TeamMember> => {
-        const profile = await getOrNull<EmployeeProfile | EmployeeCard>(`/employees/${report.id}`);
-        if (profile && isRestricted(profile)) return { report, profile: null, restricted: true, raises: NOT_THEIRS };
-        return { report, profile, restricted: false, raises: await loadEmployeeRaiseRequests(report.id) };
-      }),
-    ),
-);
+export const loadTeam = cache(async (manager: EmployeeProfile): Promise<TeamMember[]> => {
+  const seesRaises = seesRaiseRequests(await getCurrentUser());
+  return Promise.all(
+    manager.reports.map(async (report): Promise<TeamMember> => {
+      const profile = await getOrNull<EmployeeProfile | EmployeeCard>(`/employees/${report.id}`);
+      if (profile && isRestricted(profile)) return { report, profile: null, restricted: true, raises: NOT_THEIRS };
+      return { report, profile, restricted: false, raises: seesRaises ? await loadEmployeeRaiseRequests(report.id) : NOT_THEIRS };
+    }),
+  );
+});

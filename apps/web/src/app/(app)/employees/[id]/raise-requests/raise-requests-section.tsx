@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { seesRaiseRequests } from '@trendlix/shared';
 import type { EmployeeProfile, SessionUser } from '@/lib/types';
 import { loadEmployeeRaiseRequests, type EmployeeRaiseRequestsLoad } from '../../../raise-requests/data';
 import { askedAt, handlesRaiseRequests, isDirect, newRaiseRequestHref, requestPlace, showsRaiseRequests } from '../../../raise-requests/list';
@@ -25,7 +26,9 @@ import { ProfileSection } from '../../ui';
 // asked from. Since 19 October 2026 a raise HR prepared directly (on the contract, or a renewal with new pay) is listed
 // too, "Prepared directly by HR", for HR, Finance and the CEO only (the API sends it no one else). A C-level person's
 // request (owner, 19 October 2026: "make C level Employees details not visible to HR") says "With the CEO" while it waits
-// for HR's step, which the CEO takes on Raise Requests.
+// for HR's step, which the CEO takes on Raise Requests. Since 20 October 2026 (owner: "raises not to be visible to
+// employee level for now", then "Hide from managers too") nothing for someone who doesn't see raise requests
+// (seesRaiseRequests, packages/shared raises.ts): the employee on their own profile, their manager on a report's.
 
 type Profile = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'isSelf' | 'employment'>;
 
@@ -61,6 +64,7 @@ export async function RaiseRequestsSection({
   /** The requests, when the tab read them already. */
   loaded?: EmployeeRaiseRequestsLoad;
 }) {
+  if (!seesRaiseRequests(user)) return null;
   const load = loaded ?? (await loadEmployeeRaiseRequests(p.id));
   // not the caller's to see, a server from before raise requests, or nothing to see or ask: nothing here
   if (!showsRaiseRequests(load)) return null;

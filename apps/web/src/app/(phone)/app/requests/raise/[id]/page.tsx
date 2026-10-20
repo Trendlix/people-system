@@ -9,11 +9,14 @@ import { RaiseCard } from '../../../../../(app)/my-requests/raise-card';
 import { UUID } from '../../../../../(app)/organization/ui';
 import { loadOwnProfile } from '../../../../../(app)/own-profile';
 import { loadEmployeeRaiseRequests } from '../../../../../(app)/raise-requests/data';
+import { RaiseRequestsOnly } from '../../../../../(app)/raise-requests/new/new-raise-request';
 import { PageTitle, PhoneLoading } from '../../../ui';
 
 // A raise request of the employee's on the phone pages (owner, 20 October 2026: the employee app, "raise requests"):
 // the card My Requests shows (my-requests/raise-card.tsx): the reason and comment, the month it is asked from, the raise
-// suggested and prepared, where it stands and every step, as the API shapes it for them.
+// suggested and prepared, where it stands and every step, as the API shapes it for them. The 404 page for someone who
+// doesn't see raise requests (owner, 20 October 2026: "raises not to be visible to employee level for now"), before
+// its title shows.
 
 export const metadata: Metadata = { title: 'Raise Request · TrendLIX People' };
 
@@ -35,11 +38,15 @@ async function Request({ params }: { params: PageProps<'/app/requests/raise/[id]
 
 export default function PhoneRaiseRequestPage({ params }: PageProps<'/app/requests/raise/[id]'>) {
   return (
-    <div className="space-y-4">
-      <PageTitle title="Raise Request" back={appBack('requests')} />
-      <Suspense fallback={<PhoneLoading />}>
-        <Request params={params} />
-      </Suspense>
-    </div>
+    <Suspense fallback={<PhoneLoading />}>
+      <RaiseRequestsOnly>
+        <div className="space-y-4">
+          <PageTitle title="Raise Request" back={appBack('requests')} />
+          <Suspense fallback={<PhoneLoading />}>
+            <Request params={params} />
+          </Suspense>
+        </div>
+      </RaiseRequestsOnly>
+    </Suspense>
   );
 }

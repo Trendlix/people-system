@@ -17,6 +17,14 @@ export const PROBATION_SOON_DAYS = 30;
 export const RAISE_NEWS_DAYS = 30;
 
 /**
+ * My Team's line under its heading: their raise requests named only to a manager who sees them (owner, 20 October 2026:
+ * "raises not to be visible to employee level for now", then "Hide from managers too"; seesRaiseRequests).
+ */
+export const myTeamIntro = (seesRaises: boolean) =>
+  'The people who report to you now, their leave and permission requests, attendance corrections and reimbursement claims waiting for you, ' +
+  `their attendance, and who is off this month. Open a profile to see their details${seesRaises ? ' and their raise requests' : ''}.`;
+
+/**
  * A report's probation while they are on it: when it ends, how many days from today (negative once passed), and whether
  * that is soon (within PROBATION_SOON_DAYS, or passed while they are still on probation). Null when they aren't on
  * probation, or it has no end date; and for a trainee or an intern, whose agreement has none (19 October 2026), even with

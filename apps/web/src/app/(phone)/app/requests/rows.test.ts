@@ -1,3 +1,4 @@
+import { seesRaiseRequests } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
 import type { RaiseRequest } from '../../../../lib/raise-types';
@@ -5,6 +6,7 @@ import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } 
 import {
   appRequestCounts,
   appRequestHref,
+  appRequestKindsFor,
   appRequestProgress,
   appRequestRows,
   appRequestTitle,
@@ -149,5 +151,24 @@ describe('a row', () => {
   it('opens its page in the phone pages', () => {
     expect(appRequestHref(row('leave'))).toBe(`/app/requests/leave/${ID(1)}`);
     expect(appRequestHref(row('reimbursement'), 'approve')).toBe(`/app/approve/reimbursement/${ID(3)}`);
+  });
+});
+
+describe('raise requests kept from the employee level (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from managers too")', () => {
+  it('offers the Raises chip only to someone who sees raise requests, by the shared helper', () => {
+    expect(appRequestKindsFor(true)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'raise']);
+    expect(appRequestKindsFor(false)).toEqual(['leave', 'permission', 'reimbursement', 'correction']);
+    expect(appRequestKindsFor(seesRaiseRequests({ roles: ['employee'] }))).not.toContain('raise');
+    expect(appRequestKindsFor(seesRaiseRequests({ roles: ['manager'] }))).not.toContain('raise');
+    expect(appRequestKindsFor(seesRaiseRequests({ roles: ['ceo'] }))).toContain('raise');
+  });
+
+  it('reads ?kind=raise as All for them', () => {
+    expect(readAppRequestFilters({ kind: 'raise', status: 'open' }, appRequestKindsFor(false))).toEqual({ kind: '', status: 'open' });
+    expect(readAppRequestFilters({ kind: 'raise' }, appRequestKindsFor(true))).toEqual({ kind: 'raise', status: '' });
+  });
+
+  it('lists no raise rows when none are read', () => {
+    expect(appRequestRows({ leave: [leave] }).map((r) => r.kind)).toEqual(['leave']);
   });
 });

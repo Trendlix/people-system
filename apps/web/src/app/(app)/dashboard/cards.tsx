@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { isOpenReimbursement, LABELS } from '@trendlix/shared';
+import { isOpenReimbursement, LABELS, seesRaiseRequests } from '@trendlix/shared';
 import { decidesForTeam, MY_REQUESTS, MY_TEAM } from '@/components/nav';
 import { departmentName } from '@/lib/departments';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -46,7 +46,9 @@ import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toD
 // coming up too (owner, 19 October 2026: "upcoming permissions on the employee dashboard"). Today, first (owner, 19
 // October 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace
 // Zoho"): Check in / Check out with today's punches, for someone with a current employment (my-attendance/
-// check-in-card.tsx).
+// check-in-card.tsx). Raises (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide
+// from managers too"): to someone who doesn't see raise requests (seesRaiseRequests, packages/shared raises.ts) none of
+// them, not read: no raise on My Requests nor Request a raise, and My Team without its Raise Requests news.
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -227,11 +229,12 @@ async function UpcomingHolidays({ today }: { today: string }) {
  * asked for, as the API shows them to the employee: the reason from the list, the raise suggested and the log, 17
  * October 2026; the month it is asked from too), and ways to ask: Request a raise (the request form under Requests →
  * Raise Requests for themself, when they may ask now: "i think raising a request should be moved from the Employee tab
- * to the raise requests tab", 17 October 2026) and Ask to change my details (the change request page).
+ * to the raise requests tab", 17 October 2026) and Ask to change my details (the change request page). The raises only
+ * for someone who sees raise requests (`seesRaises`, 20 October 2026).
  */
-async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
-  const [raises, claims, corrections] = await Promise.all([loadEmployeeRaiseRequests(p.id), loadMyClaims(), loadMyCorrections()]);
-  const own = raises.kind === 'ok' ? raises.value : null;
+async function MyRequestsCard({ profile: p, seesRaises }: { profile: EmployeeProfile; seesRaises: boolean }) {
+  const [raises, claims, corrections] = await Promise.all([seesRaises ? loadEmployeeRaiseRequests(p.id) : null, loadMyClaims(), loadMyCorrections()]);
+  const own = raises?.kind === 'ok' ? raises.value : null;
   const open = myRequests({ changes: p.changeRequests ?? [], raises: own?.requests ?? [] }).filter((r) => r.open);
   // their reimbursement claims still being decided (18 October 2026); none from an API from before them
   const openClaims = claims.kind === 'ok' ? claims.value.filter((c) => isOpenReimbursement(c.status)) : [];
@@ -316,7 +319,7 @@ async function MyRequestsCard({ profile: p }: { profile: EmployeeProfile }) {
           ))}
         </ul>
       )}
-      {raises.kind === 'failed' && <p className="mt-2 text-xs text-muted">Your raise requests couldn&apos;t be loaded.</p>}
+      {raises?.kind === 'failed' && <p className="mt-2 text-xs text-muted">Your raise requests couldn&apos;t be loaded.</p>}
       {claims.kind === 'failed' && <p className="mt-2 text-xs text-muted">Your reimbursement claims couldn&apos;t be loaded.</p>}
       <div className="mt-4 flex flex-wrap gap-2">
         {own?.canRequest && (
@@ -546,10 +549,12 @@ function ToDoCard({ profile: p }: { profile: EmployeeProfile }) {
 
 /**
  * A manager's direct reports, each linked to their profile, with their job title and status and a probation ending
- * soon; and the raise requests the manager is told about (open, or decided lately), never a figure.
+ * soon; and the raise requests the manager is told about (open, or decided lately), never a figure: only to a manager
+ * who sees raise requests (20 October 2026).
  */
 async function MyTeamCard({ profile, user, today }: { profile: EmployeeProfile; user: Session; today: string }) {
   const team = await loadTeam(profile);
+  const seesRaises = seesRaiseRequests(user);
   const news = team
     .flatMap((m) => (m.raises.kind === 'ok' ? raiseNews(m.raises.value.requests, today) : []))
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
@@ -566,7 +571,7 @@ async function MyTeamCard({ profile, user, today }: { profile: EmployeeProfile; 
       {team.length === 0 ? (
         <Quiet>No one reports to you at the moment.</Quiet>
       ) : (
-        <div className="grid gap-x-8 gap-y-4 lg:grid-cols-2">
+        <div className={seesRaises ? 'grid gap-x-8 gap-y-4 lg:grid-cols-2' : undefined}>
           <ul className="divide-y divide-line-soft">
             {team.map(({ report: r, profile: theirs }) => {
               const probation = probationOf(theirs?.employment, today);
@@ -588,29 +593,31 @@ async function MyTeamCard({ profile, user, today }: { profile: EmployeeProfile; 
               );
             })}
           </ul>
-          <div>
-            <h3 className="text-sm font-semibold">Raise Requests</h3>
-            {news.length === 0 ? (
-              <p className="mt-2 text-sm text-muted">No raise requests to tell you about.</p>
-            ) : (
-              <ul className="mt-1 divide-y divide-line-soft">
-                {news.map((r) => (
-                  <li key={r.id} className="space-y-0.5 py-2.5 text-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Link href={employeeRaiseRequestsHref(r.employee.id)} className="font-medium">
-                        {r.employee.fullNameEn}
-                      </Link>
-                      <RaiseRequestStatusBadge status={r.status} confidential={r.confidential} />
-                    </div>
-                    <p className="text-xs text-muted">
-                      Asked by {askedByText(r, user.email)} on <span className="tabular-nums">{formatDate(r.createdAt)}</span> · {progressText(r).text}
-                    </p>
-                    {r.effectiveFrom && <p className="text-xs text-muted">Effective from {effectiveFromText(r)}</p>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          {seesRaises && (
+            <div>
+              <h3 className="text-sm font-semibold">Raise Requests</h3>
+              {news.length === 0 ? (
+                <p className="mt-2 text-sm text-muted">No raise requests to tell you about.</p>
+              ) : (
+                <ul className="mt-1 divide-y divide-line-soft">
+                  {news.map((r) => (
+                    <li key={r.id} className="space-y-0.5 py-2.5 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Link href={employeeRaiseRequestsHref(r.employee.id)} className="font-medium">
+                          {r.employee.fullNameEn}
+                        </Link>
+                        <RaiseRequestStatusBadge status={r.status} confidential={r.confidential} />
+                      </div>
+                      <p className="text-xs text-muted">
+                        Asked by {askedByText(r, user.email)} on <span className="tabular-nums">{formatDate(r.createdAt)}</span> · {progressText(r).text}
+                      </p>
+                      {r.effectiveFrom && <p className="text-xs text-muted">Effective from {effectiveFromText(r)}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
       )}
     </Card>
@@ -660,7 +667,7 @@ export async function Dashboard({ user }: { user: Session }) {
               </Suspense>
             )}
             <Suspense fallback={<CardLoading title="My Requests" />}>
-              <MyRequestsCard profile={profile} />
+              <MyRequestsCard profile={profile} seesRaises={seesRaiseRequests(user)} />
             </Suspense>
             <ToDoCard profile={profile} />
           </>

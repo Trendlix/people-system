@@ -7,11 +7,22 @@ import type { ChangeRequest } from '../../../lib/types';
 // employee: the changes to their details they asked HR for (on their profile: the one waiting and the latest decided)
 // and the raises they asked for; for a manager also the raises they asked for for their direct reports. Leave has a
 // section of its own on the page (18 October 2026); attendance comes later. Pure code, tested: putting them in one list, and its filters by kind and status.
-// Relative imports: the tests run without the "@/" alias.
+// Relative imports: the tests run without the "@/" alias. Since 20 October 2026 (owner: "raises not to be visible to
+// employee level for now", then "Hide from managers too") someone who doesn't see raise requests (seesRaiseRequests,
+// packages/shared raises.ts) has their details changes alone here: no raise kinds to filter by, nor a raise to ask for.
 
 /** Details changes, raises for themself, and a manager's raise requests for their direct reports. */
 export const REQUEST_KINDS = ['details', 'raise', 'team'] as const;
 export type RequestKind = (typeof REQUEST_KINDS)[number];
+
+/** The kinds My Requests may filter by: all of them for someone who sees raise requests, else the details changes alone. */
+export const requestKindsFor = (seesRaises: boolean): RequestKind[] => REQUEST_KINDS.filter((k) => seesRaises || k === 'details');
+
+/** What My Requests says before anything is asked for, naming only the buttons there are. */
+export const noRequestsText = (seesRaises: boolean) =>
+  seesRaises
+    ? 'You haven’t made any requests yet. Ask HR to change your details, or ask for a raise, with the buttons above.'
+    : 'You haven’t made any requests yet. Ask HR to change your details with the button above.';
 
 export const REQUEST_KIND_LABELS: Record<RequestKind, string> = {
   details: 'Details changes',
@@ -76,12 +87,15 @@ type Query = Record<string, string | string[] | undefined>;
 
 const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '');
 
-/** The filters in the page's address (?kind=raise&status=open); anything it doesn't know is All. */
-export function readRequestFilters(query: Query): RequestFilters {
+/**
+ * The filters in the page's address (?kind=raise&status=open); anything it doesn't know is All, and so is a kind it
+ * doesn't offer (`kinds`: requestKindsFor's; a raise kind to someone who doesn't see raise requests).
+ */
+export function readRequestFilters(query: Query, kinds: readonly RequestKind[] = REQUEST_KINDS): RequestFilters {
   const kind = one(query.kind);
   const status = one(query.status);
   return {
-    kind: (REQUEST_KINDS as readonly string[]).includes(kind) ? (kind as RequestKind) : '',
+    kind: (kinds as readonly string[]).includes(kind) ? (kind as RequestKind) : '',
     status: (REQUEST_STATES as readonly string[]).includes(status) ? (status as RequestState) : '',
   };
 }

@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { seesRaiseRequests } from '@trendlix/shared';
 import { getCurrentUser } from '@/lib/session';
-import { APP_PATHS, APP_REQUEST_KINDS, appRequestsHref } from '@/lib/surface';
+import { APP_PATHS, appRequestsHref } from '@/lib/surface';
 import { NoProfile } from '../../../(app)/dashboard/cards';
 import { loadMyCorrections } from '../../../(app)/attendance/corrections/data';
 import { loadMyLeave, loadMyPermissions } from '../../../(app)/leave/data';
@@ -18,6 +19,7 @@ import {
   APP_REQUEST_KIND_LABELS,
   appRequestCounts,
   appRequestHref,
+  appRequestKindsFor,
   appRequestProgress,
   appRequestRows,
   appRequestTitle,
@@ -32,7 +34,9 @@ import {
 // kind (leave, permission, reimbursement claims, attendance corrections, raise requests), each with its status and
 // where it stands, opening its page with every step; chips to show one kind or the open ones (in the address, so a
 // link keeps them); and New request. The lists are the API's for the employee (GET /me/…), as My Requests reads them
-// on the site. Changes to their details stay on the site's profile.
+// on the site. Changes to their details stay on the site's profile. Raise requests (owner, 20 October 2026: "raises not
+// to be visible to employee level for now", then "Hide from managers too") only for someone who sees them
+// (seesRaiseRequests): not read, listed or offered as a chip otherwise.
 
 export const metadata: Metadata = { title: 'My Requests · TrendLIX People' };
 
@@ -46,35 +50,37 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   const profile = await loadOwnProfile(user);
   if (!profile) return <NoProfile user={user} />;
+  const seesRaises = seesRaiseRequests(user);
   const [leave, permissions, claims, corrections, raises] = await Promise.all([
     loadMyLeave(),
     loadMyPermissions(),
     loadMyClaims(),
     loadMyCorrections(),
-    loadEmployeeRaiseRequests(profile.id),
+    seesRaises ? loadEmployeeRaiseRequests(profile.id) : null,
   ]);
   const rows = appRequestRows({
     leave: leave.kind === 'ok' ? leave.value : undefined,
     permissions: permissions.kind === 'ok' ? permissions.value : undefined,
     claims: claims.kind === 'ok' ? claims.value : undefined,
     corrections: corrections.kind === 'ok' ? corrections.value : undefined,
-    raises: raises.kind === 'ok' ? raises.value.requests : undefined,
+    raises: raises?.kind === 'ok' ? raises.value.requests : undefined,
   });
-  const failed = [leave, permissions, claims, corrections, raises].some((l) => l.kind === 'failed');
-  const f = readAppRequestFilters(query);
+  const failed = [leave, permissions, claims, corrections, raises].some((l) => l?.kind === 'failed');
+  const kinds = appRequestKindsFor(seesRaises);
+  const f = readAppRequestFilters(query, kinds);
   const shown = filterAppRequests(rows, f);
   const counts = appRequestCounts(rows, f);
 
   return (
     <div className="space-y-4">
-      {justSent(query) && <RequestSent />}
+      {seesRaises && justSent(query) && <RequestSent />}
       <Link href={APP_PATHS.newRequest} className="btn btn-primary min-h-12 w-full">
         New request
       </Link>
       {failed && <Quiet>Some of your requests couldn&apos;t be loaded. Please try again in a moment.</Quiet>}
       <nav aria-label="Filter by kind" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
         <Chip href={appRequestsHref('', f.status)} label="All" count={counts['']} active={!f.kind} />
-        {APP_REQUEST_KINDS.map((k) => (
+        {kinds.map((k) => (
           <Chip key={k} href={appRequestsHref(k, f.status)} label={APP_REQUEST_KIND_LABELS[k]} count={counts[k]} active={f.kind === k} />
         ))}
       </nav>

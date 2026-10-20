@@ -29,6 +29,7 @@
 // Requests at every stage. Pure code, for the API and the screens.
 
 import { monthlyFromHourly } from './contracts.js';
+import type { Role } from './index.js';
 
 /** What a contract version is: a whole contract (the first, a renewal, a raise's new contract), or a salary amendment. */
 export const CONTRACT_KINDS = ['contract', 'amendment'] as const;
@@ -232,6 +233,60 @@ export function payDifference(from: number, to: number): { amount: number; perce
 export const RAISE_REQUESTERS = ['self', 'manager', 'hr'] as const;
 export type RaiseRequester = (typeof RAISE_REQUESTERS)[number];
 export const RAISE_REQUESTER_LABELS: Record<RaiseRequester, string> = { self: 'The employee', manager: 'The direct manager', hr: 'HR' };
+
+// ---------- who sees raise requests ----------
+
+/**
+ * Whether the employee level sees raise requests. Off since 20 October 2026 (owner: "raises not to be visible to
+ * employee level for now"; asked whether the direct managers still see them, "Hide from managers too"): raise requests
+ * are seen only by HR, Finance, the CEO and a Super Admin, and asked for only by them (HR for anyone); an employee, a
+ * direct manager or an Admin sees nothing of them, on the site, the phone pages and in the API alike. A signed contract
+ * or amendment stays where it is: the employee signs it anyway. Requests an employee or a manager asked for before carry
+ * on with HR and the CEO. "For now": turning it back is this one line, true.
+ */
+export const EMPLOYEE_LEVEL_SEES_RAISES: boolean = false;
+
+/** Who sees raise requests while the employee level doesn't: HR, Finance, the CEO and a Super Admin. */
+export const RAISE_REQUEST_ROLES = ['hr', 'finance', 'ceo', 'super_admin'] as const satisfies readonly Role[];
+
+/**
+ * Whether someone sees raise requests at all (their own, their team's or everyone's) and the ways to ask for one:
+ * anyone while the employee level does (whose, raiseRequestAccess decides), else HR, Finance, the CEO and a Super Admin
+ * only (20 October 2026). `employeeLevelSees`: the switch, given by the tests.
+ */
+export function seesRaiseRequests(user: { roles: readonly Role[] }, employeeLevelSees: boolean = EMPLOYEE_LEVEL_SEES_RAISES): boolean {
+  return employeeLevelSees || user.roles.some((r) => (RAISE_REQUEST_ROLES as readonly Role[]).includes(r));
+}
+
+/** How someone sees a person's raise requests: all of it (HR, Finance, the CEO), the employee their own, the direct manager their report's. */
+export type RaiseRequestViewer = 'full' | 'self' | 'manager';
+
+/**
+ * What someone may do with a person's raise requests, from who they are to that person (`self`: the person themself;
+ * `manager`: their direct manager now): ask for one as whom, and see them how, each null for not at all. They ask as
+ * the employee for themself first (so HR asking for themself asks as the employee), then as HR for anyone, then as the
+ * direct manager; HR, Finance and the CEO see all of it, else the employee their own, else the manager their report's.
+ * Someone who doesn't see raise requests (seesRaiseRequests: the employee level while it doesn't, 20 October 2026)
+ * neither asks nor sees; HR, Finance, the CEO and a Super Admin as before.
+ */
+export function raiseRequestAccess(
+  who: { roles: readonly Role[]; self: boolean; manager: boolean },
+  employeeLevelSees: boolean = EMPLOYEE_LEVEL_SEES_RAISES,
+): { requester: RaiseRequester | null; viewer: RaiseRequestViewer | null } {
+  if (!seesRaiseRequests(who, employeeLevelSees)) return { requester: null, viewer: null };
+  const hr = who.roles.includes('hr');
+  const full = who.roles.some((r) => r === 'hr' || r === 'finance' || r === 'ceo');
+  return {
+    requester: who.self ? 'self' : hr ? 'hr' : who.manager ? 'manager' : null,
+    viewer: full ? 'full' : who.self ? 'self' : who.manager ? 'manager' : null,
+  };
+}
+
+/** What the API answers someone who doesn't see raise requests asking for one (seesRaiseRequests). */
+export const RAISE_REQUESTS_ASKED_BY_HR = 'Raise requests are made by HR only for now: speak to HR if you think a raise is due.';
+
+/** What the API answers someone who doesn't see raise requests reading them. */
+export const RAISE_REQUESTS_SEEN_BY_HR = 'Raise requests are seen only by HR, Finance and the CEO for now.';
 
 /**
  * A request's progress, HR then the CEO: with HR (new, or returned by the CEO), with the CEO (HR approved it, which

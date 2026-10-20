@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { CONTRACT_STATUS_LABELS, END_REASON_LABELS, LABELS } from '@trendlix/shared';
+import { CONTRACT_STATUS_LABELS, END_REASON_LABELS, LABELS, seesRaiseRequests } from '@trendlix/shared';
 import { ApiError, apiGet } from '@/lib/api';
 import { DECIDES_NOTE, leadRows } from '@/lib/department-leads';
 import { departmentName } from '@/lib/departments';
@@ -68,7 +68,10 @@ import { seesTemplates } from '../../templates/wording';
 //   managed?"): the open advances and loans with the next installment, and the recurring deductions, which the employee
 //   sees on their own profile too. The API sends each viewer only what they may see: the employee and their manager get
 //   only the requests (the employee, their own plans), so they are offered Salary only when there is something there
-//   for them.
+//   for them. Since 20 October 2026 (owner: "raises not to be visible to employee level for now", then "Hide from
+//   managers too") the Raise Requests only for those who see raise requests (seesRaiseRequests, packages/shared
+//   raises.ts): the employee and their manager get no requests at all, their own included, so Salary is the employee's
+//   loans and deductions alone.
 // - Issued Documents, HR's and the CEO's: the documents generated from the templates (#contract-documents), which HR
 //   generates and moves along and the CEO views and downloads; not the Documents tab, the papers the employee brings.
 // Links from before the sub-tabs name only an anchor (?tab=employment#payslips): AnchorSubTab moves them to the sub-tab
@@ -464,12 +467,15 @@ function SalarySubTab({
           </Suspense>
         </div>
       )}
-      <div id="raise-requests" className="scroll-mt-6">
-        {/* no placeholder: for many who open the tab there is nothing here (the API decides) */}
-        <Suspense fallback={null}>
-          <RaiseRequestsSection employee={p} user={user} loaded={raiseRequests} />
-        </Suspense>
-      </div>
+      {/* only for those who see raise requests (20 October 2026) */}
+      {seesRaiseRequests(user) && (
+        <div id="raise-requests" className="scroll-mt-6">
+          {/* no placeholder: for many who open the tab there is nothing here (the API decides) */}
+          <Suspense fallback={null}>
+            <RaiseRequestsSection employee={p} user={user} loaded={raiseRequests} />
+          </Suspense>
+        </div>
+      )}
       {seesPay && (
         // where a link to the employee's payslips points (#payslips)
         <div id="payslips" className="scroll-mt-6">
@@ -523,9 +529,12 @@ export async function EmploymentTab({
   const user = await getCurrentUser();
   const seesPay = canSeePayroll(user);
   // to the employee and their manager, Salary is only the raise requests and, on the employee's own profile, their loans
-  // and deductions (18 October 2026): offered when there is something there for them
+  // and deductions (18 October 2026): offered when there is something there for them; the raise requests not even read
+  // for someone who doesn't see them (20 October 2026)
   const own = !!user.employeeId && user.employeeId === p.id;
-  const [raiseRequests, plans] = seesPay ? [undefined, undefined] : await Promise.all([loadEmployeeRaiseRequests(p.id), own ? loadDeductionPlans(p.id) : undefined]);
+  const [raiseRequests, plans] = seesPay
+    ? [undefined, undefined]
+    : await Promise.all([seesRaiseRequests(user) ? loadEmployeeRaiseRequests(p.id) : undefined, own ? loadDeductionPlans(p.id) : undefined]);
   const tabs = visibleSubTabs({
     pay: seesPay,
     raiseRequests: raiseRequests !== undefined && showsRaiseRequests(raiseRequests),

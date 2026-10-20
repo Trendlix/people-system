@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { seesRaiseRequests } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
@@ -29,15 +30,17 @@ import {
   filterRequests,
   myRequests,
   myRequestsHref,
+  noRequestsText,
   readRequestFilters,
   REQUEST_KIND_LABELS,
-  REQUEST_KINDS,
   REQUEST_STATE_LABELS,
   REQUEST_STATES,
   requestCounts,
+  requestKindsFor,
   requestTitle,
   type MyRequest,
   type RequestFilters,
+  type RequestKind,
 } from './requests';
 
 // My Requests (owner, 17 October 2026: "my suggestion for the employee side bar is 1- Dashboard 2- My Profile 3- My
@@ -56,6 +59,9 @@ import {
 // Permission (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a maximum 2 hours per
 // day", asked "In the system, like leave") is a part of it: this month's hours (approved, waiting, left of the Leave
 // Setup's), their permission requests, the latest day first, each opening its page, and New permission beside New leave.
+// Raises (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from managers too"):
+// to someone who doesn't see raise requests (seesRaiseRequests, packages/shared raises.ts) nothing of them, their own
+// nor their team's: no Request a raise, no raise cards, no Raises or For my team filter; their details changes alone.
 
 export const metadata: Metadata = { title: 'My Requests · People System' };
 
@@ -126,9 +132,9 @@ function DetailsCard({ item, employeeId }: { item: Extract<MyRequest, { kind: 'd
   );
 }
 
-function Filters({ all, f, team }: { all: MyRequest[]; f: RequestFilters; team: boolean }) {
+function Filters({ all, f, offered, team }: { all: MyRequest[]; f: RequestFilters; offered: readonly RequestKind[]; team: boolean }) {
   const counts = requestCounts(all, f);
-  const kinds = REQUEST_KINDS.filter((k) => k !== 'team' || team || f.kind === 'team');
+  const kinds = offered.filter((k) => k !== 'team' || team || f.kind === 'team');
   return (
     <div className="space-y-2">
       <nav aria-label="Filter by kind" className="flex flex-wrap gap-2">
@@ -166,27 +172,28 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/my-request
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   const profile = await loadOwnProfile(user);
   if (!profile) return <NoProfile user={user} />;
-  const manager = hasRole(user, 'manager');
-  const [raises, team] = await Promise.all([loadEmployeeRaiseRequests(profile.id), manager ? loadTeam(profile) : []]);
-  const own = raises.kind === 'ok' ? raises.value : null;
+  // raise requests, their own and their team's, only for those who see them (20 October 2026); not even read otherwise
+  const seesRaises = seesRaiseRequests(user);
+  const manager = seesRaises && hasRole(user, 'manager');
+  const [raises, team] = await Promise.all([seesRaises ? loadEmployeeRaiseRequests(profile.id) : null, manager ? loadTeam(profile) : []]);
+  const own = raises?.kind === 'ok' ? raises.value : null;
   const forTeam = team.flatMap((m) => (m.raises.kind === 'ok' ? askedByManager(m.raises.value.requests, user.email) : []));
   const all = myRequests({ changes: profile.changeRequests ?? [], raises: own?.requests ?? [], team: forTeam });
-  const f = readRequestFilters(query);
+  const offered = requestKindsFor(seesRaises);
+  const f = readRequestFilters(query, offered);
   const shown = filterRequests(all, f);
-  const unloaded = raises.kind === 'failed' || team.some((m) => m.raises.kind === 'failed');
+  const unloaded = raises?.kind === 'failed' || team.some((m) => m.raises.kind === 'failed');
 
   return (
     <div className="space-y-5">
-      {justSent(query) && <RequestSent />}
+      {seesRaises && justSent(query) && <RequestSent />}
       <NewRequestButtons profile={profile} canRequestRaise={!!own?.canRequest} />
       {unloaded && <p className="text-sm text-muted">Some of your raise requests couldn&apos;t be loaded. Please try again in a moment.</p>}
       {all.length === 0 ? (
-        <div className="card px-6 py-10 text-center text-sm text-muted">
-          You haven&apos;t made any requests yet. Ask HR to change your details, or ask for a raise, with the buttons above.
-        </div>
+        <div className="card px-6 py-10 text-center text-sm text-muted">{noRequestsText(seesRaises)}</div>
       ) : (
         <>
-          <Filters all={all} f={f} team={forTeam.length > 0} />
+          <Filters all={all} f={f} offered={offered} team={forTeam.length > 0} />
           {shown.length === 0 ? (
             <div className="card px-6 py-10 text-center text-sm text-muted">
               No requests match these filters. <Link href={myRequestsHref({ kind: '', status: '' })}>Show all</Link>

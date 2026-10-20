@@ -27,6 +27,13 @@ const OPTIONS: Record<AskKind, AskOption> = {
   raise: { key: 'raise', href: APP_PATHS.newRaise, label: 'Raise', text: 'A raise for yourself, or for a direct report, with a reason.' },
 };
 
+/**
+ * Whether a raise is offered: to someone who sees raise requests (owner, 20 October 2026: "raises not to be visible to
+ * employee level for now", then "Hide from managers too"; seesRaiseRequests), when they may ask for themself now (the
+ * API's canRequest), or to a manager, for a direct report (the form's picker offers whom they may).
+ */
+export const offersRaise = (p: { seesRaises: boolean; canRequest: boolean; manager: boolean }): boolean => p.seesRaises && (p.canRequest || p.manager);
+
 export function askOptions(p: {
   /** Their current employment; none: only a reimbursement (and a raise, when the API says they may ask). */
   employment: { employmentType: string } | null | undefined;

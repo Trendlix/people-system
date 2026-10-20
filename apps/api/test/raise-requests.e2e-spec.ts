@@ -1,11 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { INestApplication } from '@nestjs/common';
-import { monthlyFromHourly, nextFirstOfMonth } from '@trendlix/shared';
+import { monthlyFromHourly, nextFirstOfMonth, RAISE_REQUESTS_ASKED_BY_HR, RAISE_REQUESTS_SEEN_BY_HR } from '@trendlix/shared';
 import pg from 'pg';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
-import { addDays, todayInCairo } from '../src/common/date-only.js';
+import { addDays, todayInCairo, toDateOnly } from '../src/common/date-only.js';
 import { firstDay, monthsLater } from '../src/payroll/months.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
@@ -20,8 +20,12 @@ import { assertTestDatabase } from './test-env.js';
 // ("Keep salaries private", 16 October 2026); a request from before still readable; and the migration's backfill of
 // the steps known. Effective from (17 October 2026: "in the request their should be a tab called Effective from"): the
 // month a request is asked from, required, a 1st of this month or a later one, seen by everyone who sees the request,
-// and HR's approval taking it as the raise's effective date unless HR sets another. Everything made here is deleted at
-// the end. Every name and amount is invented.
+// and HR's approval taking it as the raise's effective date unless HR sets another. Since 20 October 2026 (owner: "raises
+// not to be visible to employee level for now", then "Hide from managers too"; EMPLOYEE_LEVEL_SEES_RAISES, off) the
+// employee and the manager are refused asking and reading; their requests here are the ones they asked for before
+// (askedBefore), which carry on with HR and the CEO as before. What they did and saw with the switch on is
+// raise-requests-switched-on.e2e-spec.ts's, and the views' unit tests'. Everything made here is deleted at the end.
+// Every name and amount is invented.
 
 const RUN = Date.now().toString(36).toLowerCase();
 const today = todayInCairo();
@@ -155,6 +159,56 @@ describe('Raise requests (e2e)', () => {
   const contractOf = async <T>(p: Person, id: string) =>
     ((await api().get(`/api/employees/${p.id}/employments/${p.employmentId}/contracts`).set('Cookie', hr).expect(200)).body as (T & { id: string })[]).find((c) => c.id === id)!;
   const auditOf = (entityId: string) => prisma.auditLog.findMany({ where: { entityType: 'raise_request', entityId }, orderBy: { id: 'asc' } });
+  /** The employee level is refused (20 October 2026): asking, with a reason why, and reading. */
+  const refused = async (p: Person, session: string) => {
+    expect((await ask(p, { raiseReason: 'annual', comment: 'Asked again' }, session).expect(403)).body.message).toBe(RAISE_REQUESTS_ASKED_BY_HR);
+    expect((await api().get(`/api/employees/${p.id}/raise-requests`).set('Cookie', session).expect(403)).body.message).toBe(RAISE_REQUESTS_SEEN_BY_HR);
+  };
+
+  /**
+   * A request an employee (for himself) or a direct manager asked for before 20 October 2026, when the API took it from
+   * them: its row, its submitted step and its audit entry, as RaiseRequestsService.create wrote them. `step`: the figures
+   * the submitted step was logged with (the one typed, the other worked out, and the gross it comes to).
+   */
+  async function askedBefore(
+    p: Person,
+    email: string,
+    requester: 'self' | 'manager',
+    r: { raiseReason: string; comment: string; effectiveFrom: string; suggestedIncrease?: number; suggestedPercent?: number; step: { increaseAmount: number; increasePercent: number; gross: number } },
+  ): Promise<Request> {
+    const by = await prisma.user.findUniqueOrThrow({ where: { email }, select: { id: true } });
+    const amount = r.suggestedIncrease !== undefined;
+    const made = await prisma.raiseRequest.create({
+      data: {
+        employeeId: p.id,
+        employmentId: p.employmentId,
+        requestedById: by.id,
+        requester,
+        raiseReason: r.raiseReason,
+        comment: r.comment,
+        suggestedIncrease: r.suggestedIncrease ?? null,
+        suggestedPercent: r.suggestedPercent ?? null,
+        suggestedGross: r.step.gross,
+        effectiveFrom: toDateOnly(r.effectiveFrom),
+        steps: {
+          create: [
+            { kind: 'submitted', actorId: by.id, raiseReason: r.raiseReason, comment: r.comment, effectiveDate: toDateOnly(r.effectiveFrom), figure: amount ? 'amount' : 'percent', ...r.step },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: by.id,
+        action: 'create',
+        entityType: 'raise_request',
+        entityId: made.id,
+        diff: { employeeId: p.id, requester, raiseReason: r.raiseReason, comment: r.comment, effectiveFrom: r.effectiveFrom, status: 'with_hr', [amount ? 'suggestedIncrease' : 'suggestedPercent']: 'set' },
+      },
+    });
+    return requestOf(p, made.id, hr);
+  }
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
@@ -199,28 +253,43 @@ describe('Raise requests (e2e)', () => {
     await app.close();
   });
 
-  describe('the employee asks; HR approves with another raise; the CEO returns, then approves with another; signed', () => {
+  describe('the employee asked before; HR approves with another raise; the CEO returns, then approves with another; signed', () => {
     let q: Request;
     let raiseId: string;
 
-    it('a reason from the list first, a comment, then an amount or a percent', async () => {
+    it('the employee and his manager are refused, asking and reading; nothing is made', async () => {
       const body = { raiseReason: 'performance', comment: 'Led the yearly audit', suggestedIncrease: 1500 };
-      expect(said(await ask(benP, { ...body, raiseReason: undefined }, ben).expect(400))).toMatch(/Choose why the raise is asked for/);
-      // adjustment stays for the raises from before; it isn't asked for
-      await ask(benP, { ...body, raiseReason: 'adjustment' }, ben).expect(400);
-      expect(said(await ask(benP, { ...body, comment: '  ' }, ben).expect(400))).toMatch(/Write a comment/);
-      expect((await ask(benP, { ...body, suggestedPercent: 10 }, ben).expect(400)).body.message).toBe('Give the raise as an amount or a percent, not both.');
-      // Effective from: required, the 1st of a month, this month or a later one
-      expect(said(await ask(benP, { ...body, effectiveFrom: undefined }, ben).expect(400))).toMatch(/Choose the month the raise is to take effect from/);
-      expect(said(await ask(benP, { ...body, effectiveFrom: '2026-11-31' }, ben).expect(400))).toMatch(/Choose the month the raise is to take effect from/);
-      expect(said(await ask(benP, { ...body, effectiveFrom: addDays(NEXT_EFFECTIVE, 1) }, ben).expect(400))).toMatch(/takes effect on the 1st of a month/);
-      expect(said(await ask(benP, { ...body, effectiveFrom: firstDay(monthsLater(CURRENT, -1)) }, ben).expect(400))).toMatch(/from this month or a later one/);
-      await ask(benP, { ...body, suggestedIncrease: undefined, suggestedPercent: 101 }, ben).expect(400);
-      await ask(benP, { ...body, suggestedIncrease: 10.005 }, ben).expect(400);
-      // the old shape is refused
-      await ask(benP, { reason: 'A year of good reviews', suggestedGross: 11000 }, ben).expect(400);
+      expect((await ask(benP, body, ben).expect(403)).body.message).toBe(RAISE_REQUESTS_ASKED_BY_HR);
+      expect((await ask(benP, { ...body, suggestedIncrease: undefined, suggestedPercent: 8 }, manager).expect(403)).body.message).toBe(RAISE_REQUESTS_ASKED_BY_HR);
+      for (const session of [ben, manager]) await refused(benP, session);
+      // the same for anyone at the employee level, whoever it is for: no answer says who is there
+      for (const session of [ben, stranger]) {
+        expect((await api().get(`/api/employees/${dana.id}/raise-requests`).set('Cookie', session).expect(403)).body.message).toBe(RAISE_REQUESTS_SEEN_BY_HR);
+      }
+      await ask(benP, { raiseReason: 'annual', comment: 'Me too' }, stranger).expect(403);
+      expect(await prisma.raiseRequest.count({ where: { employeeId: benP.id } })).toBe(0);
+    });
 
-      q = (await ask(benP, body, ben).expect(201)).body as Request;
+    it('a reason from the list first, a comment, then an amount or a percent; one open at a time', async () => {
+      // HR asking for Ben: the checks of every request
+      const body = { raiseReason: 'performance', comment: 'Led the yearly audit', suggestedIncrease: 1500 };
+      expect(said(await ask(benP, { ...body, raiseReason: undefined }, hr).expect(400))).toMatch(/Choose why the raise is asked for/);
+      // adjustment stays for the raises from before; it isn't asked for
+      await ask(benP, { ...body, raiseReason: 'adjustment' }, hr).expect(400);
+      expect(said(await ask(benP, { ...body, comment: '  ' }, hr).expect(400))).toMatch(/Write a comment/);
+      expect((await ask(benP, { ...body, suggestedPercent: 10 }, hr).expect(400)).body.message).toBe('Give the raise as an amount or a percent, not both.');
+      // Effective from: required, the 1st of a month, this month or a later one
+      expect(said(await ask(benP, { ...body, effectiveFrom: undefined }, hr).expect(400))).toMatch(/Choose the month the raise is to take effect from/);
+      expect(said(await ask(benP, { ...body, effectiveFrom: '2026-11-31' }, hr).expect(400))).toMatch(/Choose the month the raise is to take effect from/);
+      expect(said(await ask(benP, { ...body, effectiveFrom: addDays(NEXT_EFFECTIVE, 1) }, hr).expect(400))).toMatch(/takes effect on the 1st of a month/);
+      expect(said(await ask(benP, { ...body, effectiveFrom: firstDay(monthsLater(CURRENT, -1)) }, hr).expect(400))).toMatch(/from this month or a later one/);
+      await ask(benP, { ...body, suggestedIncrease: undefined, suggestedPercent: 101 }, hr).expect(400);
+      await ask(benP, { ...body, suggestedIncrease: 10.005 }, hr).expect(400);
+      // the old shape is refused
+      await ask(benP, { reason: 'A year of good reviews', suggestedGross: 11000 }, hr).expect(400);
+
+      // the one Ben asked for himself before 20 October 2026: with HR, and HR decides it as before
+      q = await askedBefore(benP, benEmail, 'self', { ...body, effectiveFrom: ASKED_FROM, step: { increaseAmount: 1500, increasePercent: 15, gross: 11500 } });
       expect(q).toMatchObject({
         status: 'with_hr',
         requester: 'self',
@@ -228,72 +297,64 @@ describe('Raise requests (e2e)', () => {
         comment: 'Led the yearly audit',
         reason: 'Led the yearly audit',
         effectiveFrom: ASKED_FROM,
-        // his own suggestion, not the gross it comes to
-        suggestion: { kind: 'amount', amount: 1500, percent: null, gross: null },
-        suggestedGross: null,
+        suggestion: { kind: 'amount', amount: 1500, gross: 11500 },
         raise: null,
-        amountsHidden: true,
+        amountsHidden: false,
       });
       expect(kinds(q)).toEqual(['submitted']);
       expect(q.steps[0]).toMatchObject({ raiseReason: 'performance', comment: 'Led the yearly audit', effectiveDate: ASKED_FROM, by: { email: benEmail } });
-      expect(figures(q.steps[0])).toEqual(['amount', 1500, null, null]);
-      expect((await ask(benP, body, ben).expect(409)).body.message).toBe('A raise request for you is already open. It is decided first.');
-      // the amount only as set in the audit log
-      const [created] = await auditOf(q.id);
-      expect(created.diff).toEqual({
-        employeeId: benP.id,
-        requester: 'self',
-        raiseReason: 'performance',
-        comment: 'Led the yearly audit',
-        effectiveFrom: ASKED_FROM,
-        status: 'with_hr',
-        suggestedIncrease: 'set',
-      });
+      // still his one open request: HR can't ask another for him
+      expect((await ask(benP, body, hr).expect(409)).body.message).toBe(`A raise request for Ben Asking ${RUN} is already open (with hr). It is decided first.`);
       // a request's Effective from is always a 1st, in the database too
       await expect(prisma.$executeRaw`UPDATE raise_requests SET effective_from = ${addDays(ASKED_FROM, 1)}::date WHERE id = ${q.id}::uuid`).rejects.toThrow(
         /raise_requests_effective_from_check/,
       );
     });
 
-    it('who sees what: HR, Finance and the CEO everything; the manager no figure; nobody else', async () => {
+    it('who sees what: HR, Finance and the CEO everything, as before; the employee and the manager nothing', async () => {
       for (const session of [hr, finance, ceo]) {
         const view = await requestOf(benP, q.id, session);
         expect(view).toMatchObject({ suggestion: { kind: 'amount', amount: 1500, gross: 11500 }, suggestedGross: 11500, inForce: { grossSalary: 10000 }, amountsHidden: false });
         expect(figures(view.steps[0])).toEqual(['amount', 1500, 15, 11500]);
-      }
-      const forHr = await requestsOf(benP, hr);
-      expect(forHr).toMatchObject({ suggestsAmount: true, suggestionKinds: ['amount', 'percent'], currentGross: 10000, canRequest: false });
-      const forManager = await requestsOf(benP, manager);
-      expect(forManager).toMatchObject({ suggestsAmount: false, suggestionKinds: ['percent'], currentGross: null });
-      // the pay the figures are worked out from while asking (17 October 2026): HR, Finance, the CEO and the employee
-      // for his own; never the manager ("No, only percent")
-      const benPay = { payBasis: 'monthly', grossSalary: 10000, hourlyRate: null, allowances: [] };
-      for (const session of [hr, finance, ceo, ben]) expect((await requestsOf(benP, session)).pay).toMatchObject(benPay);
-      expect(forManager.pay).toBeNull();
-      // with the allowances, as the net needs them: Dana's transport, taxed, not insured
-      expect((await requestsOf(dana, hr)).pay).toMatchObject({ grossSalary: 9000, allowances: [{ amount: 500, taxable: true, insured: false }] });
-      // his own only: nobody else's, and nowhere else (the request itself and his contracts keep the salary from him)
-      await api().get(`/api/employees/${dana.id}/raise-requests`).set('Cookie', ben).expect(404);
-      expect((await requestOf(benP, q.id, ben)).inForce).toBeNull();
-      const benContracts = (await api().get(`/api/employees/${benP.id}/employments/${benP.employmentId}/contracts`).set('Cookie', ben).expect(200)).body as { grossSalary: number | null }[];
-      expect(benContracts.length).toBeGreaterThan(0);
-      expect(benContracts.every((c) => c.grossSalary === null)).toBe(true);
-      // the request as HR, Finance and the CEO see it: the pay in force with what the net needs, for the figures when deciding
-      expect((await requestOf(benP, q.id, hr)).inForce).toMatchObject(benPay);
-      expect(forManager.requests[0]).toMatchObject({ id: q.id, raiseReason: 'performance', comment: 'Led the yearly audit', suggestion: null, suggestedGross: null, inForce: null });
-      expect(figures(forManager.requests[0].steps[0])).toEqual([null, null, null, null]);
-      // Effective from is a date, not a figure: everyone who sees the request sees it, on it and its submitted step
-      for (const session of [ben, manager, hr, finance, ceo]) {
-        const view = await requestOf(benP, q.id, session);
+        // Effective from, on it and its submitted step
         expect(view.effectiveFrom).toBe(ASKED_FROM);
         expect(view.steps[0].effectiveDate).toBe(ASKED_FROM);
       }
-      expect(await requestsOf(benP, ben)).toMatchObject({ suggestionKinds: ['amount', 'percent'], currentGross: null });
-      await api().get(`/api/employees/${benP.id}/raise-requests`).set('Cookie', stranger).expect(404);
-      await ask(benP, { raiseReason: 'annual', comment: 'Me too' }, stranger).expect(404);
+      const forHr = await requestsOf(benP, hr);
+      expect(forHr).toMatchObject({ suggestsAmount: true, suggestionKinds: ['amount', 'percent'], currentGross: 10000, canRequest: false });
+      // Finance and the CEO follow them: they see them, and ask for no one but themselves
+      for (const session of [finance, ceo]) expect(await requestsOf(benP, session)).toMatchObject({ canRequest: false, currentGross: 10000, suggestionKinds: [] });
+      // the pay the figures are worked out from while asking (17 October 2026): HR, Finance and the CEO
+      const benPay = { payBasis: 'monthly', grossSalary: 10000, hourlyRate: null, allowances: [] };
+      for (const session of [hr, finance, ceo]) expect((await requestsOf(benP, session)).pay).toMatchObject(benPay);
+      // with the allowances, as the net needs them: Dana's transport, taxed, not insured
+      expect((await requestsOf(dana, hr)).pay).toMatchObject({ grossSalary: 9000, allowances: [{ amount: 500, taxable: true, insured: false }] });
+      // the request as HR, Finance and the CEO see it: the pay in force with what the net needs, for the figures when deciding
+      expect((await requestOf(benP, q.id, hr)).inForce).toMatchObject(benPay);
+      // the employee and his manager: nothing of it; his contracts keep the salary from him, as before
+      for (const session of [ben, manager]) await refused(benP, session);
+      const benContracts = (await api().get(`/api/employees/${benP.id}/employments/${benP.employmentId}/contracts`).set('Cookie', ben).expect(200)).body as { grossSalary: number | null }[];
+      expect(benContracts.length).toBeGreaterThan(0);
+      expect(benContracts.every((c) => c.grossSalary === null)).toBe(true);
       const all = (await api().get('/api/raise-requests?status=with_hr').set('Cookie', finance).expect(200)).body as Request[];
       expect(all.find((x) => x.id === q.id)).toMatchObject({ suggestedGross: 11500 });
-      await api().get('/api/raise-requests').set('Cookie', manager).expect(403);
+      for (const session of [manager, ben]) await api().get('/api/raise-requests').set('Cookie', session).expect(403);
+    });
+
+    it('a Super Admin viewing as the employee or the manager sees what they would: nothing; as HR, everything', async () => {
+      // a Super Admin of its own, so switching doesn't touch the session the other tests use
+      const viewer = await signIn(app, await createUser(prisma, ['super_admin']));
+      const viewingAs = async (email: string) => {
+        const userId = (await prisma.user.findUniqueOrThrow({ where: { email }, select: { id: true } })).id;
+        const res = await api().post('/api/auth/view-as').set('Cookie', viewer).send({ userId }).expect(200);
+        return ([] as string[]).concat(res.headers['set-cookie'] ?? []).find((c) => c.startsWith('ps_session='))!.split(';')[0];
+      };
+      for (const email of [benEmail, managerEmail]) {
+        const session = await viewingAs(email);
+        expect((await api().get(`/api/employees/${benP.id}/raise-requests`).set('Cookie', session).expect(403)).body.message).toBe(RAISE_REQUESTS_SEEN_BY_HR);
+      }
+      const asHr = await viewingAs(hrEmail);
+      expect((await requestsOf(benP, asHr)).requests.map((r) => r.id)).toContain(q.id);
     });
 
     it('HR alone decides it, with a comment; as suggested takes the suggestion, another raise needs one', async () => {
@@ -331,19 +392,8 @@ describe('Raise requests (e2e)', () => {
       await hrApprove(q.id, { decision: 'approve_other', increasePercent: 5, comment: 'Again', way: 'amendment', effectiveDate: EFFECTIVE }).expect(409);
       await hrReject(q.id, { comment: 'Changed my mind' }).expect(409);
 
-      // the employee and the manager: HR's decision and comment, no figure, no date yet
-      for (const session of [ben, manager]) {
-        const view = await requestOf(benP, q.id, session);
-        expect(kinds(view)).toEqual(['submitted', 'hr_decision:approve_other', 'prepared', 'sent']);
-        expect(view.steps[1].comment).toBe('Within the band');
-        for (const s of view.steps.slice(1)) expect(figures(s)).toEqual([null, null, null, null]);
-        expect(view.steps[2]).toMatchObject({ way: 'amendment', effectiveDate: null });
-        expect(view.raise).toMatchObject({ effectiveDate: null, newGross: null, previousGross: null });
-        // the raise's date stays HR's, Finance's and the CEO's until it is signed; the request's month is everyone's
-        expect(view.steps[1].effectiveDate).toBeNull();
-        expect(view.effectiveFrom).toBe(ASKED_FROM);
-        expect(view.steps[0]).toMatchObject({ kind: 'submitted', effectiveDate: ASKED_FROM });
-      }
+      // the employee and the manager: still nothing of it (before 20 October 2026, HR's decision and comment, no figure)
+      for (const session of [ben, manager]) await refused(benP, session);
       // the audit log: the figure only as set
       const audit = await auditOf(q.id);
       expect(audit.map((a) => a.action)).toEqual(['create', 'prepare', 'submit']);
@@ -362,9 +412,7 @@ describe('Raise requests (e2e)', () => {
       expect(kinds(forHr)).toEqual(['submitted', 'hr_decision:approve_other', 'prepared', 'sent', 'returned', 'sent']);
       expect(forHr.steps[4]).toMatchObject({ comment: 'Make it a round figure', by: { email: ceoEmail } });
       expect(forHr.steps[5]).toMatchObject({ comment: 'Rounded up', gross: 11500 });
-      const forBen = await requestOf(benP, q.id, ben);
-      expect(forBen.steps[4].comment).toBeNull();
-      expect(forBen.steps[5].comment).toBeNull();
+      for (const session of [finance, ceo]) expect((await requestOf(benP, q.id, session)).steps[4].comment).toBe('Make it a round figure');
     });
 
     it('the CEO alone decides it, with a comment; approves it with another raise (+EGP 1,200): its pay is changed to it', async () => {
@@ -379,56 +427,52 @@ describe('Raise requests (e2e)', () => {
       expect(kinds(forHr).at(-1)).toBe('ceo_decision:approve_other');
       expect(forHr.steps.at(-1)).toMatchObject({ comment: 'Well earned', by: { email: ceoEmail } });
       expect(figures(forHr.steps.at(-1)!)).toEqual(['amount', 1200, 12, 11200]);
-      const forManager = await requestOf(benP, q.id, manager);
-      expect(forManager.steps.at(-1)).toMatchObject({ decision: 'approve_other', comment: 'Well earned', increaseAmount: null, increasePercent: null, gross: null });
+      for (const session of [ben, manager]) await refused(benP, session);
       // decided: no more decisions
       await ceoStep(raiseId, 'approve', { comment: 'Again' }).expect(409);
       await ceoStep(raiseId, 'decline', { comment: 'No' }).expect(409);
     });
 
-    it('signed (no second approval): done; the employee sees their new salary, the manager never a figure', async () => {
+    it('signed (no second approval): done; the employee has the signed amendment, not the request', async () => {
       await sign(raiseId).expect(200);
       const forHr = await requestOf(benP, q.id, hr);
       expect(forHr).toMatchObject({ status: 'done', raise: { stage: 'signed', previousGross: 10000, newGross: 11200 } });
       expect(kinds(forHr)).toEqual(['submitted', 'hr_decision:approve_other', 'prepared', 'sent', 'returned', 'sent', 'ceo_decision:approve_other', 'signed']);
       expect(forHr.steps.at(-1)).toMatchObject({ gross: 11200, effectiveDate: EFFECTIVE, by: { email: hrEmail } });
 
-      const forBen = await requestOf(benP, q.id, ben);
-      expect(forBen).toMatchObject({ status: 'done', raise: { newGross: 11200, effectiveDate: EFFECTIVE, previousGross: null } });
-      expect(figures(forBen.steps.at(-1)!)).toEqual([null, null, null, 11200]);
-      expect(forBen.steps.slice(1, -1).every((s) => s.gross === null && s.increaseAmount === null && s.increasePercent === null)).toBe(true);
-      const forManager = await requestOf(benP, q.id, manager);
-      expect(forManager.raise).toMatchObject({ newGross: null, previousGross: null, effectiveDate: EFFECTIVE });
-      expect(forManager.steps.every((s) => s.gross === null && s.increaseAmount === null && s.increasePercent === null)).toBe(true);
+      // the amendment stays where it was (he signs it anyway), its salary kept from him as before; the request it came
+      // from is HR's, Finance's and the CEO's alone now
+      type Version = { id: string; grossSalary: number | null; raise: { reason: string; requestId: string | null; requestOrigin: string | null } | null };
+      const benContracts = (await api().get(`/api/employees/${benP.id}/employments/${benP.employmentId}/contracts`).set('Cookie', ben).expect(200)).body as Version[];
+      expect(benContracts.find((c) => c.id === raiseId)).toMatchObject({ grossSalary: null, raise: { reason: 'performance', requestId: null, requestOrigin: null } });
+      expect((await contractOf<Version>(benP, raiseId)).raise).toMatchObject({ requestId: q.id, requestOrigin: 'request' });
+      for (const session of [ben, manager]) await refused(benP, session);
       expect((await auditOf(q.id)).map((a) => a.action)).toEqual(['create', 'prepare', 'submit', 'return', 'submit', 'approve', 'done']);
     });
 
     it('a signing undone (a Super Admin) is logged, and signed again', async () => {
       await api().post(`/api/contracts/${raiseId}/unsign`).set('Cookie', superAdmin).expect(200);
-      const undone = await requestOf(benP, q.id, ben);
+      const undone = await requestOf(benP, q.id, hr);
       expect(undone.status).toBe('approved');
       expect(kinds(undone).at(-1)).toBe('unsigned');
-      // not signed any more: the new salary is hidden again
-      expect(undone.steps.every((s) => s.gross === null || s.kind === 'submitted')).toBe(true);
       await sign(raiseId).expect(200);
       expect(kinds(await requestOf(benP, q.id, hr)).slice(-3)).toEqual(['signed', 'unsigned', 'signed']);
     });
   });
 
-  describe('the manager asks, a percent only; HR approves it as suggested, a new contract; the CEO rejects it', () => {
+  describe('the manager asked before, a percent; HR approves it as suggested, a new contract; the CEO rejects it', () => {
     let q: Request;
 
-    it('a manager suggests a percent, never an amount, and sees their own percent back', async () => {
-      expect((await ask(benP, { raiseReason: 'counter_offer', comment: 'An offer from a competitor', suggestedIncrease: 1000 }, manager).expect(400)).body.message).toBe(
-        "A manager suggests a raise as a percent only, as managers don't see salaries: HR and the CEO set the amount.",
-      );
-      q = (await ask(benP, { raiseReason: 'counter_offer', comment: 'An offer from a competitor', suggestedPercent: 8 }, manager).expect(201)).body as Request;
-      expect(q).toMatchObject({ requester: 'manager', suggestion: { kind: 'percent', percent: 8, amount: null, gross: null }, suggestedGross: null });
-      expect(figures(q.steps[0])).toEqual(['percent', null, 8, null]);
-      // HR: on the 11,200 in force, +8% is 12,096
-      expect((await requestOf(benP, q.id, hr)).suggestion).toEqual({ kind: 'percent', amount: null, percent: 8, gross: 12096 });
-      // the employee doesn't see the manager's request
-      expect((await requestsOf(benP, ben)).requests.map((r) => r.id)).not.toContain(q.id);
+    it('a manager is refused now; the percent one he asked for before is HR’s to decide', async () => {
+      const body = { raiseReason: 'counter_offer', comment: 'An offer from a competitor', suggestedPercent: 8 };
+      expect((await ask(benP, body, manager).expect(403)).body.message).toBe(RAISE_REQUESTS_ASKED_BY_HR);
+      // the amount a manager never suggests: refused as before, now asking at all
+      expect((await ask(benP, { ...body, suggestedPercent: undefined, suggestedIncrease: 1000 }, manager).expect(403)).body.message).toBe(RAISE_REQUESTS_ASKED_BY_HR);
+      // asked for before 20 October 2026: HR, on the 11,200 in force, +8% is 12,096
+      q = await askedBefore(benP, managerEmail, 'manager', { ...body, effectiveFrom: NEXT_EFFECTIVE, step: { increaseAmount: 896, increasePercent: 8, gross: 12096 } });
+      expect(q).toMatchObject({ requester: 'manager', status: 'with_hr', suggestion: { kind: 'percent', amount: null, percent: 8, gross: 12096 } });
+      expect(figures(q.steps[0])).toEqual(['percent', 896, 8, 12096]);
+      for (const session of [ben, manager]) await refused(benP, session);
     });
 
     it('HR approves it as suggested as a new contract, from the month it is asked from (no date given): the raise takes the suggestion', async () => {
@@ -439,22 +483,21 @@ describe('Raise requests (e2e)', () => {
       expect(figures(approved.steps[1])).toEqual(['percent', 896, 8, 12096]);
       expect(approved.steps[1].effectiveDate).toBe(NEXT_EFFECTIVE);
       expect(approved.steps[2]).toMatchObject({ way: 'contract', effectiveDate: NEXT_EFFECTIVE });
-      // the manager: their own percent back, nothing of HR's
-      const forManager = await requestOf(benP, q.id, manager);
-      expect(figures(forManager.steps[0])).toEqual(['percent', null, 8, null]);
-      expect(figures(forManager.steps[1])).toEqual([null, null, null, null]);
+      // the manager who asked: still nothing of it
+      for (const session of [ben, manager]) await refused(benP, session);
     });
 
-    it('the CEO rejects it with a comment: the draft goes, the request is declined, the manager reads why', async () => {
+    it('the CEO rejects it with a comment: the draft goes, the request is declined, with why', async () => {
       const raise = (await requestOf(benP, q.id, hr)).raise!;
       await ceoStep(raise.contractId, 'decline', {}).expect(400);
       await ceoStep(raise.contractId, 'decline', { comment: 'Not matching offers this year' }).expect(204);
       expect(await prisma.contract.findUnique({ where: { id: raise.contractId } })).toBeNull();
-      const forManager = await requestOf(benP, q.id, manager);
-      expect(forManager).toMatchObject({ status: 'declined', raise: null, decision: { stage: 'ceo', reason: 'Not matching offers this year' } });
-      expect(kinds(forManager)).toEqual(['submitted', 'hr_decision:approve', 'prepared', 'sent', 'ceo_decision:reject']);
-      expect(forManager.steps.at(-1)).toMatchObject({ comment: 'Not matching offers this year', contractNumber: raise.number, by: { email: ceoEmail } });
+      const forHr = await requestOf(benP, q.id, hr);
+      expect(forHr).toMatchObject({ status: 'declined', raise: null, decision: { stage: 'ceo', reason: 'Not matching offers this year' } });
+      expect(kinds(forHr)).toEqual(['submitted', 'hr_decision:approve', 'prepared', 'sent', 'ceo_decision:reject']);
+      expect(forHr.steps.at(-1)).toMatchObject({ comment: 'Not matching offers this year', contractNumber: raise.number, by: { email: ceoEmail } });
       expect((await auditOf(q.id)).at(-1)).toMatchObject({ action: 'decline', diff: { stage: 'ceo', decision: 'reject', comment: 'Not matching offers this year' } });
+      for (const session of [ben, manager]) await refused(benP, session);
     });
   });
 
@@ -462,6 +505,16 @@ describe('Raise requests (e2e)', () => {
     it('HR rejects a request with a comment (the old body too)', async () => {
       const q = (await ask(dana, { raiseReason: 'cost_of_living', comment: 'Inflation this year', suggestedIncrease: 2000 }, hr).expect(201)).body as Request;
       expect(q).toMatchObject({ requester: 'hr', suggestion: { kind: 'amount', amount: 2000, gross: 11000 }, amountsHidden: false });
+      // the amount only as set in the audit log
+      expect((await auditOf(q.id))[0].diff).toEqual({
+        employeeId: dana.id,
+        requester: 'hr',
+        raiseReason: 'cost_of_living',
+        comment: 'Inflation this year',
+        effectiveFrom: ASKED_FROM,
+        status: 'with_hr',
+        suggestedIncrease: 'set',
+      });
       await hrReject(q.id, {}).expect(400);
       await hrReject(q.id, { comment: 'x' }, ceo).expect(403);
       const rejected = (await hrReject(q.id, { reason: 'Covered by the yearly review' }).expect(200)).body as Request;
@@ -554,8 +607,8 @@ describe('Raise requests (e2e)', () => {
           },
         },
       });
-      const forBen = await requestOf(benP, old.id, ben);
-      expect(forBen).toMatchObject({
+      const forHr = await requestOf(benP, old.id, hr);
+      expect(forHr).toMatchObject({
         reason: 'A year of good reviews',
         comment: 'A year of good reviews',
         raiseReason: null,
@@ -565,12 +618,10 @@ describe('Raise requests (e2e)', () => {
         suggestion: { kind: 'gross', gross: 12000 },
         decision: { stage: 'hr', reason: 'After the review' },
       });
-      expect(kinds(forBen)).toEqual(['submitted', 'hr_decision:reject']);
-      expect(figures(forBen.steps[0])).toEqual([null, null, null, 12000]);
-      const forManager = await requestOf(benP, old.id, manager);
-      expect(forManager).toMatchObject({ suggestedGross: null, suggestion: null });
-      expect(figures(forManager.steps[0])).toEqual([null, null, null, null]);
-      expect((await requestOf(benP, old.id, hr)).suggestedGross).toBe(12000);
+      expect(kinds(forHr)).toEqual(['submitted', 'hr_decision:reject']);
+      expect(figures(forHr.steps[0])).toEqual([null, null, null, 12000]);
+      // Ben and his manager: nothing of it now (what each saw before is the views' unit tests')
+      for (const session of [ben, manager]) await refused(benP, session);
     });
 
     it('HR gives the raise’s date on one with HR: it has no Effective from to take', async () => {

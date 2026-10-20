@@ -543,17 +543,32 @@ describe('Effective from (owner, 17 October 2026: "in the request their should b
 });
 
 describe('who reads a comment', () => {
-  it('says so under each box', () => {
-    expect(commentReaders('request', 'self', true)).toBe(
+  it('says so under each box, with the employee level seeing raise requests (as before 20 October 2026)', () => {
+    expect(commentReaders('request', 'self', true, true)).toBe(
       'HR, Finance, the CEO and your direct manager see this comment; the figures of the raise you suggest, only you, HR, Finance and the CEO.',
     );
-    expect(commentReaders('request', 'manager')).toMatch(/the employee doesn’t see a request you make/);
-    expect(commentReaders('request', 'hr')).toMatch(/^Finance, the CEO and the employee’s direct manager see this comment, the manager no figures/);
-    expect(commentReaders('decision', 'self')).toBe('The employee and their manager see this comment.');
-    expect(commentReaders('decision', 'manager')).toBe('The employee’s manager sees this comment; the employee doesn’t see this request.');
-    expect(commentReaders('decision', null)).toBe('HR, Finance and the CEO see this comment, with the raise.');
-    expect(commentReaders('return', 'self')).toMatch(/^HR sees this comment/);
-    expect(commentReaders('send', 'self')).toMatch(/^The CEO sees this note/);
+    expect(commentReaders('request', 'manager', false, true)).toMatch(/the employee doesn’t see a request you make/);
+    expect(commentReaders('request', 'hr', false, true)).toMatch(/^Finance, the CEO and the employee’s direct manager see this comment, the manager no figures/);
+    expect(commentReaders('decision', 'self', false, true)).toBe('The employee and their manager see this comment.');
+    expect(commentReaders('decision', 'manager', false, true)).toBe('The employee’s manager sees this comment; the employee doesn’t see this request.');
+    expect(commentReaders('decision', null, false, true)).toBe('HR, Finance and the CEO see this comment, with the raise.');
+    expect(commentReaders('return', 'self', false, true)).toMatch(/^HR sees this comment/);
+    expect(commentReaders('send', 'self', false, true)).toMatch(/^The CEO sees this note/);
+  });
+
+  it('names no employee nor manager while the employee level doesn’t see raise requests (owner, 20 October 2026)', () => {
+    const hidden = 'HR, Finance and the CEO see this comment; the employee and their manager don’t see raise requests for now.';
+    // the switch as it ships
+    expect(commentReaders('decision', 'self')).toBe(hidden);
+    expect(commentReaders('decision', 'self', false, false)).toBe(hidden);
+    expect(commentReaders('decision', 'manager', false, false)).toBe(hidden);
+    expect(commentReaders('request', 'hr', false, false)).toBe(hidden);
+    expect(commentReaders('request', 'manager', false, false)).toBe(hidden);
+    expect(commentReaders('request', 'self', true, false)).toBe('HR, Finance and the CEO see this comment and the figures of the raise you suggest; your direct manager doesn’t.');
+    // the same as before where the employee level never read it
+    expect(commentReaders('decision', null, false, false)).toBe('HR, Finance and the CEO see this comment, with the raise.');
+    expect(commentReaders('return', 'self', false, false)).toMatch(/^HR sees this comment/);
+    expect(commentReaders('send', 'self', false, false)).toMatch(/^The CEO sees this note/);
   });
 });
 

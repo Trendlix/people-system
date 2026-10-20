@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RaiseRequest } from '../../../lib/raise-types';
-import { askedByText, latestRaise, probationOf, raiseNews } from './team';
+import { askedByText, latestRaise, myTeamIntro, probationOf, raiseNews } from './team';
 
 const raise = (id: string, createdAt: string, status: RaiseRequest['status'], over: Partial<RaiseRequest> = {}): RaiseRequest => ({
   id,
@@ -81,5 +81,13 @@ describe('askedByText', () => {
     expect(askedByText({ requester: 'manager', requestedBy: null }, me)).toBe('their direct manager');
     expect(askedByText({ requester: 'self', requestedBy: { email: 'omar@trendlix.com' } }, me)).toBe('the employee');
     expect(askedByText({ requester: 'hr', requestedBy: { email: 'hr@trendlix.com' } }, me)).toBe('HR');
+  });
+});
+
+describe('myTeamIntro', () => {
+  it('names their raise requests only to a manager who sees them (owner, 20 October 2026: "Hide from managers too")', () => {
+    expect(myTeamIntro(true)).toMatch(/Open a profile to see their details and their raise requests\.$/);
+    expect(myTeamIntro(false)).toMatch(/Open a profile to see their details\.$/);
+    expect(myTeamIntro(false)).not.toMatch(/raise/);
   });
 });

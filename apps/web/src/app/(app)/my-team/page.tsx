@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { seesRaiseRequests } from '@trendlix/shared';
 import { CLevelBadge } from '@/components/c-level-badge';
 import { cLevelTitle } from '@/lib/confidential';
 import { formatDate } from '@/lib/format';
@@ -26,7 +27,7 @@ import { TEAM_ATTENDANCE_PATH } from '../attendance/attendance';
 import { loadWaitingCorrections } from '../attendance/corrections/data';
 import { CorrectionsTable } from '../attendance/corrections/ui';
 import { loadTeam } from './data';
-import { askedByText, latestRaise, probationOf } from './team';
+import { askedByText, latestRaise, myTeamIntro, probationOf } from './team';
 
 // My Team (owner's decisions, 17 October 2026): a direct manager's direct reports, in their sidebar, so they reach
 // their profiles (the Employees list isn't theirs any more). Each one with their job title and status, the probation
@@ -48,6 +49,9 @@ import { askedByText, latestRaise, probationOf } from './team';
 // (owner, 19 October 2026: "the attendance is not active in the side menu"): the team's month of attendance from Zoho
 // People's imports, on a page of its own (my-team/attendance). Corrections to Approve (owner, 19 October 2026: "Attendance
 // corrections with approval ("I forgot to check out")"): the days the team asked to correct, waiting for the manager.
+// Raise requests (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from
+// managers too"): a manager who doesn't see them (seesRaiseRequests, packages/shared raises.ts) gets no Raise Requests
+// column, no Request a raise and no See the requests; their team without them.
 
 export const metadata: Metadata = { title: 'My Team · People System' };
 
@@ -59,6 +63,7 @@ async function Team() {
   if (!profile) return <NoProfile user={user} />;
   const team = await loadTeam(profile);
   const today = todayInCairo();
+  const seesRaises = seesRaiseRequests(user);
   if (team.length === 0) return <Empty>No one reports to you at the moment.</Empty>;
 
   return (
@@ -70,7 +75,7 @@ async function Team() {
             <th scope="col">Job Title</th>
             <th scope="col">Status</th>
             <th scope="col">Probation Ends</th>
-            <th scope="col">Raise Requests</th>
+            {seesRaises && <th scope="col">Raise Requests</th>}
           </tr>
         </thead>
         <tbody>
@@ -101,29 +106,31 @@ async function Team() {
                     dash
                   )}
                 </td>
-                <td className="min-w-64">
-                  {restricted ? (
-                    dash
-                  ) : raises.kind === 'failed' ? (
-                    <span className="text-sm text-muted">Couldn&apos;t load.</span>
-                  ) : latest ? (
-                    <div className="space-y-1 text-sm">
-                      <RaiseRequestStatusBadge status={latest.status} />
-                      <p className="text-xs text-muted">
-                        Asked by {askedByText(latest, user.email)} on <span className="tabular-nums">{formatDate(latest.createdAt)}</span> ·{' '}
-                        {progressText(latest).text}
-                      </p>
-                    </div>
-                  ) : (
-                    <span className="text-sm text-muted">None yet</span>
-                  )}
-                  {raises.kind === 'ok' && (latest || raises.value.canRequest) && (
-                    <Link href={raises.value.canRequest ? newRaiseRequestHref(r.id) : employeeRaiseRequestsHref(r.id)} className="mt-1.5 block text-sm font-semibold">
-                      {raises.value.canRequest ? 'Request a raise' : 'See the requests'}
-                      <span className="sr-only"> for {r.fullNameEn}</span>
-                    </Link>
-                  )}
-                </td>
+                {seesRaises && (
+                  <td className="min-w-64">
+                    {restricted ? (
+                      dash
+                    ) : raises.kind === 'failed' ? (
+                      <span className="text-sm text-muted">Couldn&apos;t load.</span>
+                    ) : latest ? (
+                      <div className="space-y-1 text-sm">
+                        <RaiseRequestStatusBadge status={latest.status} />
+                        <p className="text-xs text-muted">
+                          Asked by {askedByText(latest, user.email)} on <span className="tabular-nums">{formatDate(latest.createdAt)}</span> ·{' '}
+                          {progressText(latest).text}
+                        </p>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-muted">None yet</span>
+                    )}
+                    {raises.kind === 'ok' && (latest || raises.value.canRequest) && (
+                      <Link href={raises.value.canRequest ? newRaiseRequestHref(r.id) : employeeRaiseRequestsHref(r.id)} className="mt-1.5 block text-sm font-semibold">
+                        {raises.value.canRequest ? 'Request a raise' : 'See the requests'}
+                        <span className="sr-only"> for {r.fullNameEn}</span>
+                      </Link>
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -294,13 +301,19 @@ function TeamAttendance() {
   );
 }
 
+/** The page's line, naming their raise requests only to those who see them (20 October 2026). */
+async function Intro() {
+  return myTeamIntro(seesRaiseRequests(await getCurrentUser()));
+}
+
 export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
   return (
     <div className="max-w-5xl">
       <h1 className="text-2xl font-semibold">My Team</h1>
       <p className="mt-1 text-muted">
-        The people who report to you now, their leave and permission requests, attendance corrections and reimbursement claims waiting for you,
-        their attendance, and who is off this month. Open a profile to see their details and their raise requests.
+        <Suspense fallback={myTeamIntro(false)}>
+          <Intro />
+        </Suspense>
       </p>
       <div className="mt-6 space-y-8">
         <Suspense fallback={null}>

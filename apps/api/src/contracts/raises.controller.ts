@@ -20,7 +20,9 @@ import { SalaryHistoryService } from './salary-history.service.js';
 // Pay raises during a contract, the salary history and raise requests (owner's decisions, 16 October 2026). HR enters
 // a raise and sends it; the CEO alone decides it, and a renewal with new pay the same way (a raise's id is its contract
 // version's: it is signed and deleted as a contract); HR records Form 2. Anyone may ask for a raise who is the employee,
-// their direct manager or HR (checked by the service). Since 17 October 2026 ("Approve - Approve with another raise
+// their direct manager or HR (checked by the service); since 20 October 2026 (owner: "raises not to be visible to
+// employee level for now", then "Hide from managers too") only HR, Finance, the CEO and a Super Admin ask and see, the
+// employee level refused (packages/shared raises.ts, EMPLOYEE_LEVEL_SEES_RAISES). Since 17 October 2026 ("Approve - Approve with another raise
 // amount or percentge - Reject, and add a comment"): HR approves a request (as suggested or with another raise, which
 // prepares the raise and sends it to the CEO) or rejects it, and the CEO approves a raise (as it reached them or with
 // another raise), rejects it or returns it to HR, each with a comment. Each answer is the raise (its contract version)
@@ -118,14 +120,20 @@ export class RaisesController {
 
   // ---------- raise requests ----------
 
-  /** By the employee themself, their direct manager or HR (checked by the service). */
+  /**
+   * By the employee themself, their direct manager or HR (checked by the service); since 20 October 2026 not by the
+   * employee level (owner: "raises not to be visible to employee level for now", "Hide from managers too"): 403.
+   */
   @ConfidentialOf('employee')
   @Post('employees/:id/raise-requests')
   request(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateRaiseRequestDto, @CurrentUser() user: SessionUser) {
     return this.requests.create(id, dto, user);
   }
 
-  /** The employee's requests as the caller may see them, and whether the caller may ask for one now. */
+  /**
+   * The employee's requests as the caller may see them, and whether the caller may ask for one now; 403 for the employee
+   * level while it doesn't see raise requests (20 October 2026), the employee themself and their manager too.
+   */
   @ConfidentialOf('employee')
   @Get('employees/:id/raise-requests')
   employeeRequests(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {

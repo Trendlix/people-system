@@ -6,7 +6,11 @@ import {
   payChangeOf,
   payStage,
   RAISE_REQUEST_STATUS_LABELS,
+  RAISE_REQUESTS_ASKED_BY_HR,
+  RAISE_REQUESTS_SEEN_BY_HR,
   raisedPay,
+  raiseRequestAccess,
+  seesRaiseRequests,
   suggestionKindsFor,
   type PayBasis,
   type PayChange,
@@ -20,7 +24,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { actsAs } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
-import { editsEmployees, isSelf, seesSalary } from '../employees/access.js';
+import { isSelf, seesSalary } from '../employees/access.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
@@ -205,6 +209,11 @@ export type RaiseRequestView = ReturnType<typeof raiseRequestView>;
 // not shown in the raise request history too") a raise HR prepares directly has its request too, prepared directly by HR
 // (direct-requests.ts): listed with the others, following its raise, never rejected by HR (nobody asked for it), not the
 // person's one open request, and seen by HR, Finance and the CEO only, as its raise is kept from the others until signed.
+// Since 20 October 2026 (owner: "raises not to be visible to employee level for now", then "Hide from managers too"; the
+// switch is EMPLOYEE_LEVEL_SEES_RAISES in packages/shared raises.ts) the employee level neither asks nor sees: an
+// employee, a direct manager or an Admin is refused (403) asking for a raise and reading a person's requests; HR, Finance,
+// the CEO and a Super Admin as before (raiseRequestAccess). Requests an employee or a manager asked for before carry on
+// with HR and the CEO.
 @Injectable()
 export class RaiseRequestsService {
   constructor(
@@ -216,9 +225,11 @@ export class RaiseRequestsService {
 
   /**
    * A request for the employee, by themself, their direct manager or HR, from a month (Effective from, 17 October 2026:
-   * the 1st of this month in Cairo or a later one).
+   * the 1st of this month in Cairo or a later one). Refused to the employee level while it doesn't see raise requests
+   * (20 October 2026): only HR, Finance, the CEO and a Super Admin ask then.
    */
   async create(employeeId: string, dto: CreateRaiseRequestDto, user: SessionUser) {
+    if (!seesRaiseRequests(user)) throw new ForbiddenException(RAISE_REQUESTS_ASKED_BY_HR);
     const { employee, employment, requester, viewer } = await this.asker(employeeId, user);
     if (!requester || !viewer) throw new ForbiddenException('Only the employee themself, their direct manager or HR can ask for a raise for them.');
     if (!employment) throw new ConflictException(`${employee.fullNameEn} has no current employment: a raise is asked for under one.`);
@@ -341,9 +352,11 @@ export class RaiseRequestsService {
    * figure. Anyone else is refused. With what the caller may suggest, for HR the gross in force (to show what a
    * suggestion comes to), and the pay in force for the figures shown while asking (`pay`: HR, Finance, the CEO and the
    * employee themself, 17 October 2026; null for a manager). A request prepared directly by HR (19 October 2026) only for
-   * HR, Finance and the CEO.
+   * HR, Finance and the CEO. Refused to the employee level while it doesn't see raise requests (20 October 2026): the
+   * employee and their manager see nothing of them then.
    */
   async forEmployee(employeeId: string, user: SessionUser) {
+    if (!seesRaiseRequests(user)) throw new ForbiddenException(RAISE_REQUESTS_SEEN_BY_HR);
     const { employee, employment, requester, viewer } = await this.asker(employeeId, user);
     if (!viewer) throw new ForbiddenException('Only the employee, their direct manager, HR, Finance and the CEO see raise requests.');
     const confidential = await this.confidential.isConfidential(employeeId);
@@ -423,7 +436,9 @@ export class RaiseRequestsService {
   /**
    * The employee, their current employment (with its contract in force), and who the caller is to them: as one who may
    * ask (self, HR, their direct manager; in that order, so HR asking for themself asks as the employee) and as one who
-   * may see (full: HR, Finance, the CEO; self; manager). 404 for an employee the caller may not see at all.
+   * may see (full: HR, Finance, the CEO; self; manager), by raiseRequestAccess (packages/shared raises.ts): neither for
+   * the employee level while it doesn't see raise requests (20 October 2026). 404 for an employee the caller may not see
+   * at all.
    */
   private async asker(employeeId: string, user: SessionUser) {
     const employee = await this.prisma.employee.findFirst({
@@ -445,8 +460,7 @@ export class RaiseRequestsService {
     const me = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } });
     const self = isSelf(user, employee);
     const manager = !!me && !!employment && employment.managerId === me.id;
-    const requester: RaiseRequester | null = self ? 'self' : editsEmployees(user) ? 'hr' : manager ? 'manager' : null;
-    const viewer: RequestViewer | null = seesSalary(user) ? 'full' : self ? 'self' : manager ? 'manager' : null;
+    const { requester, viewer } = raiseRequestAccess({ roles: user.roles, self, manager });
     return { employee, employment, requester, viewer };
   }
 

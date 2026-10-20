@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { seesRaiseRequests } from '@trendlix/shared';
 import { actionablePeople } from '@/lib/confidential';
 import { loadLawRates } from '@/lib/law-rates';
 import { getCurrentUser } from '@/lib/session';
@@ -26,7 +28,10 @@ import { EmployeePicker } from './employee-picker';
 // "make C level Employees details not visible to HR"): the API refuses a raise request for them.
 // The page's heading and body, shown on the site (/raise-requests/new) and on the phone pages (/app/requests/new/raise;
 // owner, 20 October 2026: the employee app, "apply for their requests"), where the back link and Cancel go to the
-// phone pages' My Requests, the picker stays there, and the form, once sent, lands on that My Requests.
+// phone pages' My Requests, the picker stays there, and the form, once sent, lands on that My Requests. Since 20 October
+// 2026 (owner: "raises not to be visible to employee level for now", then "Hide from managers too") someone who doesn't
+// see raise requests (seesRaiseRequests, packages/shared raises.ts) gets the 404 page here, as if there were no such
+// page: the employee and the manager no longer ask (the API refuses them too).
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -34,6 +39,16 @@ const quiet = 'card px-6 py-6 text-sm text-muted';
 
 /** Where the back link goes, by its address. */
 const BACK_LABELS: Record<string, string> = { '/raise-requests': 'Raise Requests', '/my-requests': 'My Requests', '/my-team': 'My Team', [APP_PATHS.requests]: appBack('requests').label };
+
+/**
+ * The 404 page for someone who doesn't see raise requests (owner, 20 October 2026: "raises not to be visible to employee
+ * level for now"; seesRaiseRequests), before anything of the page shows, its loading heading too; the page for anyone
+ * else. Also the phone pages' raise request pages.
+ */
+export async function RaiseRequestsOnly({ children }: { children: React.ReactNode }) {
+  if (!seesRaiseRequests(await getCurrentUser())) notFound();
+  return children;
+}
 
 export function NewRaiseRequestHeading({ back }: { back: string | null }) {
   return (
@@ -50,6 +65,7 @@ export function NewRaiseRequestHeading({ back }: { back: string | null }) {
 
 export async function NewRaiseRequest({ searchParams, surface = 'site' }: { searchParams: Promise<Query>; surface?: Surface }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
+  if (!seesRaiseRequests(user)) notFound();
   const people = await getOrNull<EmployeeSummary[]>('/employees');
   const app = surface === 'site' ? null : appBack(surface).href;
   const listBack = app ?? (canSeeRaiseRequests(user) ? requestBackHref(user, false) : null);

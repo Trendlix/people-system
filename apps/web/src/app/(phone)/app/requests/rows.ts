@@ -17,7 +17,9 @@ import { progressText as claimProgressText } from '../../../(app)/reimbursements
 // first, whatever its kind: leave, permission, reimbursement claims, attendance corrections and raise requests, each
 // with where it stands as its own page says it, filtered by kind and open ones in the address. Each opens its page in
 // the phone pages. Pure code, tested; the words are the site's (each kind's list.ts). Relative imports: vitest doesn't
-// know the "@/" paths.
+// know the "@/" paths. Raise requests (owner, 20 October 2026: "raises not to be visible to employee level for now",
+// then "Hide from managers too") only for someone who sees them (seesRaiseRequests, packages/shared raises.ts): no
+// Raises chip otherwise, and ?kind=raise read as All.
 
 export type AppRequestRow =
   | { kind: 'leave'; id: string; at: string; open: boolean; request: LeaveRequestView }
@@ -75,11 +77,14 @@ type Query = Record<string, string | string[] | undefined>;
 
 const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '');
 
-/** The filters in the address (?kind=leave&status=open); anything else is All. */
-export function readAppRequestFilters(query: Query): AppRequestFilters {
+/** The kinds the list's chips offer: raise requests only to someone who sees them (20 October 2026). */
+export const appRequestKindsFor = (seesRaises: boolean): AppRequestKind[] => APP_REQUEST_KINDS.filter((k) => seesRaises || k !== 'raise');
+
+/** The filters in the address (?kind=leave&status=open); anything else is All, a kind not offered (`kinds`) too. */
+export function readAppRequestFilters(query: Query, kinds: readonly AppRequestKind[] = APP_REQUEST_KINDS): AppRequestFilters {
   const kind = one(query.kind);
   return {
-    kind: (APP_REQUEST_KINDS as readonly string[]).includes(kind) ? (kind as AppRequestKind) : '',
+    kind: (kinds as readonly string[]).includes(kind) ? (kind as AppRequestKind) : '',
     status: one(query.status) === 'open' ? 'open' : '',
   };
 }

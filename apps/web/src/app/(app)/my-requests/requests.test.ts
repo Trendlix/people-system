@@ -1,3 +1,4 @@
+import { seesRaiseRequests } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import type { RaiseRequest } from '../../../lib/raise-types';
 import type { ChangeRequest } from '../../../lib/types';
@@ -6,8 +7,10 @@ import {
   filterRequests,
   myRequests,
   myRequestsHref,
+  noRequestsText,
   readRequestFilters,
   requestCounts,
+  requestKindsFor,
   requestLabel,
   requestTitle,
   type MyRequest,
@@ -144,5 +147,28 @@ describe('a request’s heading', () => {
   it('is in Title Case as a heading, and in sentence case in a list', () => {
     expect([details, own, team].map(requestTitle)).toEqual(['Change to Your Details', 'Raise Request', 'Raise Request for Omar Sayed']);
     expect([details, own, team].map(requestLabel)).toEqual(['Change to your details', 'Raise request', 'Raise request for Omar Sayed']);
+  });
+});
+
+describe('raise requests kept from the employee level (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from managers too")', () => {
+  it('offers the raise kinds only to someone who sees raise requests, by the shared helper', () => {
+    expect(requestKindsFor(true)).toEqual(['details', 'raise', 'team']);
+    expect(requestKindsFor(false)).toEqual(['details']);
+    expect(requestKindsFor(seesRaiseRequests({ roles: ['employee'] }))).toEqual(['details']);
+    expect(requestKindsFor(seesRaiseRequests({ roles: ['employee', 'manager'] }))).toEqual(['details']);
+    expect(requestKindsFor(seesRaiseRequests({ roles: ['hr'] }))).toEqual(['details', 'raise', 'team']);
+  });
+
+  it('reads a raise kind in the address as All for them', () => {
+    const kinds = requestKindsFor(false);
+    expect(readRequestFilters({ kind: 'raise', status: 'open' }, kinds)).toEqual({ kind: '', status: 'open' });
+    expect(readRequestFilters({ kind: 'team' }, kinds)).toEqual({ kind: '', status: '' });
+    expect(readRequestFilters({ kind: 'details' }, kinds)).toEqual({ kind: 'details', status: '' });
+    expect(readRequestFilters({ kind: 'raise' }, requestKindsFor(true))).toEqual({ kind: 'raise', status: '' });
+  });
+
+  it('names only the buttons there are before anything is asked for', () => {
+    expect(noRequestsText(true)).toBe('You haven’t made any requests yet. Ask HR to change your details, or ask for a raise, with the buttons above.');
+    expect(noRequestsText(false)).toBe('You haven’t made any requests yet. Ask HR to change your details with the button above.');
   });
 });
