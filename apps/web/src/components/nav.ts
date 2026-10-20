@@ -17,7 +17,8 @@ export interface NavItem {
   roles?: Role[];
   /**
    * Links shown under this one (indented, smaller), each for whoever sees the item or for the roles it names. An item
-   * with them links to the first one the user sees (navFor).
+   * with them is a heading that opens and closes them, no longer a link (owner, 20 October 2026: "make the side menu
+   * subs expandable"; nav-groups.ts); its href is the first one the user sees (navFor), the page it linked to before.
    */
   items?: NavSubItem[];
 }
@@ -190,7 +191,7 @@ function selfServiceNav(user: NavUser): NavItem[] {
 /**
  * The sidebar's items for this user: an employee's or a manager's own (above); for HR, Finance, the CEO and Admins (a
  * Super Admin counts as an Admin) NAV, each item and sub-item for the roles it names, and an item with sub-items only
- * when the user sees one of them, linking to the first. Null (who it is couldn't be read, e.g. the API is down): Home
+ * when the user sees one of them, its href the first. Null (who it is couldn't be read, e.g. the API is down): Home
  * alone, which everyone has. Hiding a link is a convenience: the API checks every request.
  */
 export function navFor(user: NavUser | null): NavItem[] {
@@ -201,8 +202,9 @@ export function navFor(user: NavUser | null): NavItem[] {
     if (!item.items) return [item];
     const items = item.items.filter(sees);
     if (!items.length) return [];
-    // links to the first of its pages the user sees: Payroll's, Attendance's, Templates' and People's first is their own
-    // page; Requests has none
+    // its href the first of its pages the user sees, the page the heading linked to until it opened and closed them (20
+    // October 2026), its first item: Payroll's, Attendance's, Templates' and People's first is their own page; Requests
+    // has none
     return [{ ...item, href: items[0].href, items }];
   });
 }
