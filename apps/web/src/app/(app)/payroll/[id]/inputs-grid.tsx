@@ -19,6 +19,9 @@ import {
   columnNote,
   errorLine,
   expectedCell,
+  expectedMark,
+  expectedSource,
+  expectedTitle,
   fromImport,
   importMarkText,
   importTitle,
@@ -33,10 +36,12 @@ import {
   placeApiErrors,
   rowPermissionHours,
   tidyCell,
+  typesInto,
   unsavedCount,
   unsavedText,
   untaxedNote,
   type CellError,
+  type ExpectedSource,
   type FieldKind,
   type GridEdits,
   type GridLine,
@@ -55,10 +60,13 @@ import {
 // is with the CEO, or for anyone but HR (and the CEO, on the C-level people's lines). The expected hours are filled in
 // from the shift (owner, 17 October 2026: "prefill the expected hours, and dont count abcent days or leave days, as
 // they already have their own deduction and fields"): the shift's hours for the month less a day of it for each no-show
-// and leave day typed in the row, shown as the cell's figure (marked "from the shift") and changing as those days are
-// typed; only shown, never sent. What HR types over them is marked "typed by HR" and taken as already without those
-// days; clearing it brings the shift's back. The Attendance % is the worked hours over those expected hours, as the pay
-// counts it, so a day off is charged once (owner's decisions, 16 October 2026). A month under two contracts says so
+// and leave day typed in the row, changing as those days are typed. Locked since 20 October 2026 (owner, on the cell
+// "153:00 · from the shift": "expected hours to be locked based on shifts and attendance data"): read-only text on every
+// row, the C-level people's the CEO fills too, marked "from the shift" with what the days off took off the shift's hours
+// ("198:00 − 45:00 leave"); never an input, never sent, and the API refuses any. A line saved with HR's figure before
+// then (with the CEO, approved or paid) shows it marked "typed by HR"; a row without a shift has none, marked "no
+// shift". The Attendance % is the worked hours over those expected hours, as the pay counts it, so a day off is charged
+// once (owner's decisions, 16 October 2026). A month under two contracts says so
 // under the employee's name (owner, 17 October 2026: "take into consideration the start and end date of the contract if
 // it is in the middle of the billing period"). Earnings and Deductions, read only, in place of the Penalty days, Bonus
 // days, Commission and Settlements columns (owner, 17 October 2026: "instead of there, i think earnings and deductions
@@ -99,7 +107,8 @@ export interface GridRow extends GridLine {
   /**
    * The shift's hours for the month the run worked out: its working days in the days paid less the holidays, at its
    * hours to work a day (owner's request, 16 October 2026). Less the no-show and leave days typed in the row, the
-   * Expected hours cell's figure until HR types another (owner, 17 October 2026). Null without a shift, and by the hour.
+   * Expected hours cell's figure (owner, 17 October 2026), never typed over (20 October 2026). Null without a shift, and
+   * by the hour.
    */
   shiftExpectedHours: number | null;
   /** A month under two contracts or more: each one's days (contractsNote); null on one. */
@@ -140,13 +149,31 @@ const ATTENDANCE_AFTER: InputField = 'expectedHours';
 const percentFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
 /**
- * What an Expected hours figure is: filled in from the shift, or typed over it (owner, 17 October 2026) by HR, or on a
- * C-level person's line by the CEO (`who`, 19 October 2026).
+ * A row's Expected hours, read only on every row (owner, 20 October 2026: "expected hours to be locked based on shifts
+ * and attendance data"): the hours worked out from the shift less the row's no-show and leave days as they are now,
+ * marked where they came from (expectedMark) and, under it, what the days off took off the shift's hours.
  */
-function expectedTitle(own: boolean, editable: boolean, who: string): string {
-  return own
-    ? `Typed by ${who}: taken as the expected hours already without the no-show and leave days.${editable ? " Clear it to use the shift's hours." : ''}`
-    : `From the shift: its working days this month less the holidays, the no-show and leave days, at its hours to work a day.${editable ? ' Type other hours to replace them.' : ''}`;
+function ExpectedHoursCell({ lineId, hours, source, who }: { lineId: string; hours: number | null; source: ExpectedSource; who: string }) {
+  const mark = expectedMark(source, who);
+  const markId = `${cellId(lineId, 'expectedHours')}-from`;
+  return (
+    <td className="px-2 py-2">
+      <span
+        id={cellId(lineId, 'expectedHours')}
+        className="block text-right whitespace-nowrap tabular-nums"
+        title={expectedTitle(source, who)}
+        aria-describedby={mark ? markId : undefined}
+      >
+        {hours === null ? <span className="text-muted">—</span> : formatHours(hours)}
+      </span>
+      {mark && (
+        <span id={markId} className={`mt-0.5 block text-right text-[11px] whitespace-nowrap ${source.kind === 'typed' ? 'text-accent' : 'text-muted'}`}>
+          {mark}
+        </span>
+      )}
+      {source.kind === 'shift' && source.less && <span className="block text-right text-[11px] whitespace-nowrap text-muted tabular-nums">{source.less}</span>}
+    </td>
+  );
 }
 
 /**
@@ -192,7 +219,8 @@ function typedCells(row: GridRow, edits: RowEdits | undefined) {
   return {
     workedHours: value('workedHours', 'hours'),
     permissionHours: value('permissionHours', 'hours'),
-    expectedHours: value('expectedHours', 'hours'),
+    // never typed (20 October 2026): HR's only on a line saved with them before then
+    expectedHours: row.inputs.expectedHours ?? null,
     noShowDays: value('noShowDays', 'days'),
     leaveDays: value('leaveDays', 'days'),
     unpaidLeaveDays: value('unpaidLeaveDays', 'days'),
@@ -236,11 +264,12 @@ const Row = memo(function Row({
   const rowError = errorOf(null);
   const held = edits?.onHold ?? row.onHold;
   const comments = edits?.comments ?? row.comments ?? '';
-  // while HR is in a cell filled in (the expected hours, the leave days), its figure is the placeholder, so typing starts afresh
+  // while HR is in a cell filled in (the leave days, the permission hours), its figure is the placeholder, so typing starts afresh
   const [focused, setFocused] = useState<InputField | null>(null);
   const cells = typedCells(row, edits);
-  // HR's expected hours, else the shift's less the no-show and leave days as typed now (owner, 17 October 2026)
+  // the shift's less the no-show and leave days as typed now (owner, 17 October 2026), never typed (20 October 2026)
   const expected = expectedCell(row, cells);
+  const source = expectedSource(row, cells);
   // the permission hours count as worked (19 October 2026): those typed, else the month's approved
   const worked = attendanceHours(cells.workedHours, rowPermissionHours(row.permissionHours, cells.permissionHours), row.payBasis === 'hourly');
   const attendance = attendancePercent(worked, expected.hours);
@@ -276,27 +305,31 @@ const Row = memo(function Row({
         )}
       </td>
       {GRID_COLUMNS.map((c) => {
+        // the attendance the hours give, after the expected hours
+        const attendanceCell = c.field === ATTENDANCE_AFTER && (
+          <td className="text-right whitespace-nowrap tabular-nums">{attendance === null ? '—' : `${percentFormat.format(attendance)}%`}</td>
+        );
+        // the Expected hours, worked out from the shift and never typed (owner, 20 October 2026: "expected hours to be
+        // locked based on shifts and attendance data"): text on every row, whoever fills it
+        if (c.workedOut) {
+          return (
+            <Fragment key={c.field}>
+              <ExpectedHoursCell lineId={row.id} hours={expected.hours} source={source} who={who} />
+              {attendanceCell}
+            </Fragment>
+          );
+        }
         const text = shownText(row, edits, c.field, c.kind);
         const error = errorOf(c.field);
-        // the Expected hours of a row with a shift: filled in from the shift's unless HR typed others (owner, 17 October
-        // 2026); the leave days from the leave approved for the month (18 October 2026), the permission hours from the
+        // the leave days filled in from the leave approved for the month (18 October 2026), the permission hours from the
         // permission approved (19 October 2026); `filled` is only shown, never an edit, so it is never sent nor counts
         // as unsaved
-        const shift = c.field === 'expectedHours' && row.shiftExpectedHours !== null;
         const fromLeave = LEAVE_FIELDS.includes(c.field) ? leaveFill(row.leave, c.field) : null;
         const fromPermission = permissionFill(row.permissionHours, c.field);
-        const marked = shift || fromLeave !== null || fromPermission !== null;
+        const marked = fromLeave !== null || fromPermission !== null;
         const own = text.trim() !== '';
-        const filled = own
-          ? ''
-          : shift && expected.hours !== null
-            ? formatHours(expected.hours)
-            : fromLeave !== null
-              ? cellText('days', fromLeave)
-              : fromPermission !== null
-                ? cellText('hours', fromPermission)
-                : '';
-        const title = shift ? expectedTitle : fromPermission !== null ? permissionTitle : leaveTitle;
+        const filled = own ? '' : fromLeave !== null ? cellText('days', fromLeave) : fromPermission !== null ? cellText('hours', fromPermission) : '';
+        const title = fromPermission !== null ? permissionTitle : leaveTitle;
         const markId = `${cellId(row.id, c.field)}-from`;
         // filled from Zoho People's attendance, or from the month's attendance days (19 October 2026): read only, "imported
         // data shouldn't be editable"
@@ -305,7 +338,7 @@ const Row = memo(function Row({
         return (
           <Fragment key={c.field}>
             <td className="px-2 py-2">
-              {editable && !imported ? (
+              {editable && typesInto(row, c.field) ? (
                 <input
                   id={cellId(row.id, c.field)}
                   value={filled && focused !== c.field ? filled : text}
@@ -342,14 +375,11 @@ const Row = memo(function Row({
               )}
               {noted && (
                 <span id={markId} className={`mt-0.5 block text-right text-[11px] whitespace-nowrap ${own ? 'text-accent' : 'text-muted'}`}>
-                  {imported ? importMarkText(row.attendanceImport!.source) : own ? `typed by ${who}` : shift ? 'from the shift' : fromPermission !== null ? 'from permissions' : 'from leave'}
+                  {imported ? importMarkText(row.attendanceImport!.source) : own ? `typed by ${who}` : fromPermission !== null ? 'from permissions' : 'from leave'}
                 </span>
               )}
             </td>
-            {/* the attendance the hours give, after the expected hours */}
-            {c.field === ATTENDANCE_AFTER && (
-              <td className="text-right whitespace-nowrap tabular-nums">{attendance === null ? '—' : `${percentFormat.format(attendance)}%`}</td>
-            )}
+            {attendanceCell}
             {/* the month's additions and deductions, after the leave days (17 October 2026) and the unpaid ones (18 October) */}
             {c.field === ITEMS_AFTER && <ItemCells row={row} />}
           </Fragment>
@@ -677,11 +707,10 @@ export function InputsGrid({
           worked hours count in full. Permission hours: filled in from the permission approved this month (
           <Link href="/leave?kind=permission">Requests → Leave Requests</Link>), within the hours a month Leave Setup gives, and counted as worked:
           the attendance is the worked hours with them; type other hours to replace them, and clearing them brings the approved ones back. The
-          expected hours are filled in from the shift: its working days in the days paid
-          less the holidays (<Link href="/organization/holidays">Organization → Holidays</Link>) and less the no-show and
-          leave days, at its hours to work a day, and they change as you type those days. Type other hours to replace
-          them, already without the no-show and leave days; clearing them brings the shift&apos;s back. Without a shift,
-          type them yourself, without those days. No-show days: {noShowPay(noShowDayMultiplier)}, and their hours
+          expected hours are worked out, never typed: the shift&apos;s working days in the days paid less the holidays (
+          <Link href="/organization/holidays">Organization → Holidays</Link>) and less the no-show and leave days, at its
+          hours to work a day, and they change as those days do. Without a shift there are none, and attendance isn&apos;t
+          counted: set the shift on the Employment tab, then refresh the run. No-show days: {noShowPay(noShowDayMultiplier)}, and their hours
           aren&apos;t counted in attendance. Leave days and unpaid leave days: filled in from the leave approved this
           month (<Link href="/leave">Requests → Leave Requests</Link>), the unpaid share of a partly paid leave, such as
           sick leave below 100%, with the unpaid; type other days to replace them, and clearing them brings the

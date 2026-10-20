@@ -50,14 +50,24 @@ describe('Payroll: the CEO waives an attendance deduction (e2e)', () => {
   let ceoId: string;
   let finance: string;
   const people: string[] = [];
-  let alpha: Person; // 160 of 200 hours: an attendance cut
-  let beta: Person; // 190 of 200: none
+  let alpha: Person; // 80% of the shift's hours worked: an attendance cut
+  let beta: Person; // 95%: none
   let run: Run;
+  /** The seeded shift A, which both are on: their expected hours, worked out and never typed (20 October 2026). */
+  let shiftA: string;
+  /** The shift's hours for the month, as the run worked them out. */
+  let expected: number;
+  /** So much of the shift's hours, to the hundredth of an hour. */
+  const share = (part: number) => Math.round(expected * part * 100) / 100;
   const api = () => request(app.getHttpServer());
 
   async function hire(name: string): Promise<Person> {
     const person = await api().post('/api/employees').set('Cookie', hr).send({ fullNameEn: `${name} ${RUN}`, fullNameAr: 'موظف تجريبي' }).expect(201);
-    const hired = await api().post(`/api/employees/${person.body.id}/employments`).set('Cookie', hr).send({ employmentType: 'full_time', joinDate: JOINED }).expect(201);
+    const hired = await api()
+      .post(`/api/employees/${person.body.id}/employments`)
+      .set('Cookie', hr)
+      .send({ employmentType: 'full_time', joinDate: JOINED, shiftId: shiftA })
+      .expect(201);
     people.push(person.body.id);
     const draft = (await api().post(`/api/employees/${person.body.id}/employments/${hired.body.employment.id}/contracts`).set('Cookie', hr).send({ grossSalary: 10000 }).expect(201))
       .body as { id: string; startDate: string };
@@ -80,16 +90,21 @@ describe('Payroll: the CEO waives an attendance deduction (e2e)', () => {
     ceoId = (await prisma.user.findUniqueOrThrow({ where: { email: ceoEmail } })).id;
     finance = await signIn(app, await createUser(prisma, ['finance']));
     await prisma.payrollRun.deleteMany({ where: { month: new Date(`${MONTH}-01T00:00:00Z`) } });
+    shiftA = ((await api().get('/api/shifts').set('Cookie', hr).expect(200)).body as { id: string; code: string }[]).find((x) => x.code === 'A')!.id;
     alpha = await hire('Alpha');
     beta = await hire('Beta');
     run = (await api().post('/api/payroll/runs').set('Cookie', hr).send({ month: MONTH }).expect(201)).body as Run;
+    // the expected hours are the shift's (owner, 20 October 2026: "expected hours to be locked based on shifts and
+    // attendance data"): only the hours worked are typed
+    expected = lineOf(alpha).terms.expectedHours!;
+    expect(expected).toBeGreaterThan(0);
     await api()
       .patch(`/api/payroll/runs/${run.id}/lines`)
       .set('Cookie', hr)
       .send({
         lines: [
-          { id: lineOf(alpha).id, inputs: { workedHours: 160, expectedHours: 200 } },
-          { id: lineOf(beta).id, inputs: { workedHours: 190, expectedHours: 200 } },
+          { id: lineOf(alpha).id, inputs: { workedHours: share(0.8) } },
+          { id: lineOf(beta).id, inputs: { workedHours: share(0.95) } },
         ],
       })
       .expect(200);
@@ -104,7 +119,7 @@ describe('Payroll: the CEO waives an attendance deduction (e2e)', () => {
   });
 
   it('is only while the run is with the CEO', async () => {
-    // 160 of 200 hours: 80%, below 90%: 20% of the fixed 8,000 = 1,600
+    // 80% of the shift's hours, below 90%: 20% of the fixed 8,000 = 1,600
     expect(lineOf(alpha).result).toMatchObject({ attendanceRatio: 0.8, attendanceCut: 1600, attendanceWaived: 0 });
     expect((await waive(alpha, true).expect(409)).body.message).toBe(WITH_THE_CEO_ONLY('is a draft'));
     await act('submit', hr).expect(200);
@@ -156,11 +171,11 @@ describe('Payroll: the CEO waives an attendance deduction (e2e)', () => {
 
   it('stays when the CEO returns the run and HR changes the line, and is approved as it is; nothing changes it after', async () => {
     await act('return', ceo, { reason: 'Invented reason' }).expect(200);
-    // HR changes the hours: still waived, at the cut they give now (150 of 200: 25% of 8,000 = 2,000)
+    // HR changes the hours: still waived, at the cut they give now (75% of the shift's: 25% of 8,000 = 2,000)
     await api()
       .patch(`/api/payroll/runs/${run.id}/lines`)
       .set('Cookie', hr)
-      .send({ lines: [{ id: lineOf(alpha).id, inputs: { workedHours: 150 } }] })
+      .send({ lines: [{ id: lineOf(alpha).id, inputs: { workedHours: share(0.75) } }] })
       .expect(200);
     await getRun();
     expect(lineOf(alpha).result).toMatchObject({ attendanceCut: 0, attendanceWaived: 2000 });

@@ -259,14 +259,16 @@ describe('payslipContent: the month’s cuts and extras, with the run’s own ru
     expect(sum(c.deductions!.rows)).toBe(c.deductions!.total.value);
   });
 
-  it('the expected hours HR typed are taken as they are, the no-show day already out of them (17 October 2026)', () => {
-    const c = payslipContent(payslipSource('monthly', { inputs: { noShowDays: 1 } }), 'en');
+  it('the expected hours HR typed on a line saved with them (before 20 October 2026) are taken as they are, the no-show day already out of them', () => {
+    // never typed since (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data"); a
+    // run paid before then keeps the 176 HR typed (17 October 2026)
+    const c = payslipContent(payslipSource('monthly', { inputs: { expectedHours: 176, noShowDays: 1 } }), 'en');
     expect(c.thisMonth!.cells[0]).toEqual({ label: 'Hours worked', value: '165:30 of 176:00', note: '94.03%: counts as full (90% or more)' });
     expect(c.thisMonth!.cells.find((x) => x.label === 'No-show days')!.note).toBe('Each costs 2 days’ pay');
   });
 
   it('a line worked out before 17 October 2026 reads as it was: before 16 October with the hours as typed, then less the no-show day’s', () => {
-    const source = payslipSource('monthly', { inputs: { noShowDays: 1 } });
+    const source = payslipSource('monthly', { inputs: { expectedHours: 176, noShowDays: 1 } });
     const { absentHours: _a, leaveHours: _l, expectedHours: _e, parts: _p, ...was } = source.line.result;
     // before 16 October 2026: no absent hours, attendance on the 176 typed
     const older = { ...source, line: { ...source.line, result: { ...was, attendanceRatio: 0.9403409091 } as typeof source.line.result } };
@@ -290,8 +292,18 @@ describe('payslipContent: the month’s cuts and extras, with the run’s own ru
     // the same pay as without them: nothing in the earnings or deductions for them
     expect(c.earnings).toEqual(payslipContent(payslipSource('monthly', { terms: SHIFT, inputs: { workedHours: 160, expectedHours: null } }), 'en').earnings);
     expect(payslipContent(source, 'ar').thisMonth!.cells[3]).toEqual({ label: 'أيام الإجازة', value: '٢', note: 'إجازة مدفوعة الأجر: لا يُخصم عنها، ولا تُحتسب ساعاتها (١٦:٠٠) في الحضور' });
-    // HR's expected hours, already without them: no hours to speak of
-    expect(payslipContent(payslipSource('monthly', { inputs: { leaveDays: 1.5 } }), 'en').thisMonth!.cells.at(-1)).toEqual({ label: 'Leave days', value: '1.5', note: 'Paid leave: nothing deducted' });
+    // the expected hours HR typed on a line saved with them before 20 October 2026, already without them: no hours to speak of
+    expect(payslipContent(payslipSource('monthly', { inputs: { expectedHours: 176, leaveDays: 1.5 } }), 'en').thisMonth!.cells.at(-1)).toEqual({
+      label: 'Leave days',
+      value: '1.5',
+      note: 'Paid leave: nothing deducted',
+    });
+    // as the shift's hours: theirs out of them
+    expect(payslipContent(payslipSource('monthly', { inputs: { leaveDays: 1.5 } }), 'en').thisMonth!.cells.at(-1)).toEqual({
+      label: 'Leave days',
+      value: '1.5',
+      note: 'Paid leave: nothing deducted; their 12:00 hours aren’t counted in attendance',
+    });
     // by the hour: none
     expect(payslipContent(payslipSource('hourly', { inputs: { leaveDays: 2 } }), 'en').thisMonth!.cells.map((x) => x.label)).toEqual(['Hours worked']);
   });
@@ -495,7 +507,7 @@ describe('payslipContent: by the hour', () => {
   });
 
   it('shows the hours and the rate for the month, never a KPI or attendance cell', () => {
-    const withKpis = payslipContent(payslipSource('hourly', { inputs: { softSkills: 50, expectedHours: 100, noShowDays: 2 } }), 'en');
+    const withKpis = payslipContent(payslipSource('hourly', { inputs: { softSkills: 50, noShowDays: 2 } }), 'en');
     for (const content of [c, withKpis]) expect(content.thisMonth!.cells).toEqual([{ label: 'Hours worked', value: '92:30', note: 'At 150.00 an hour' }]);
   });
 

@@ -203,7 +203,7 @@ describe('payroll register', () => {
     parts: [{ contractId: 'contract', fixed: 8000, variable: 2000, allowances: 500 }],
     absentHours: 0,
     leaveHours: 0,
-    // as HR typed them: 190 worked of 200
+    // the shift's (never typed since 20 October 2026): 190 worked of 200
     expectedHours: 200,
     attendanceRatio: 0.95,
     attendanceScore: 1,
@@ -239,10 +239,26 @@ describe('payroll register', () => {
     name,
     jobTitle: 'Invented Title',
     payBasis: 'monthly',
-    terms: { year: 2026, payBasis: 'monthly', gross: 10000, basicPercent: 80, hourlyRate: null, allowances: [], paidDays: 30, statutory: true, insured: true, insuredWage: 10500, hoursPerDay: 8 },
+    terms: {
+      year: 2026,
+      payBasis: 'monthly',
+      gross: 10000,
+      basicPercent: 80,
+      hourlyRate: null,
+      allowances: [],
+      paidDays: 30,
+      statutory: true,
+      insured: true,
+      insuredWage: 10500,
+      hoursPerDay: 8,
+      // 25 working days of 8:00: the expected hours, worked out from the shift (owner, 20 October 2026: "expected hours to
+      // be locked based on shifts and attendance data")
+      expectedHours: 200,
+      expectedDays: { workingDays: 25, holidays: 0 },
+    },
     inputs: {
       workedHours: 190,
-      expectedHours: 200,
+      expectedHours: null,
       softSkills: 90,
       performance: null,
       clientSatisfaction: null,
@@ -305,7 +321,7 @@ describe('payroll register', () => {
     shift.result = { ...shift.result, absentHours: 8, leaveHours: 16, expectedHours: 152, attendanceRatio: 0.9894736842 };
     // worked out before 17 October 2026, its no-show day's 8 hours taken out of the 200 typed, and no leave days
     const older = line('Zed Invented', 'Sales', 8381.58);
-    older.inputs = { ...older.inputs, noShowDays: 1 };
+    older.inputs = { ...older.inputs, expectedHours: 200, noShowDays: 1 };
     delete (older.inputs as Partial<RegisterLine['inputs']>).leaveDays;
     older.result = { ...older.result, absentHours: 8, attendanceRatio: 0.9895833333 };
     delete (older.result as Partial<RegisterLine['result']>).expectedHours;

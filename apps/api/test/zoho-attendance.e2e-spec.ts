@@ -68,7 +68,7 @@ interface Line {
   id: string;
   employeeId: string;
   terms: { permissionHours?: number };
-  inputs: { workedHours: number | null; noShowDays: number | null; permissionHours: number | null; expectedHours?: number | null };
+  inputs: { workedHours: number | null; noShowDays: number | null; permissionHours: number | null; leaveDays?: number | null };
   result: { permissionHours?: number; noShowCut: number };
   attendanceImport: { source: string; importId: string; fields: string[]; before?: Record<string, number | null> } | null;
 }
@@ -367,12 +367,13 @@ describe('Zoho People attendance import (e2e)', () => {
       );
       expect((await typeIn(rania.id, { noShowDays: 0 }).expect(409)).body.message).toContain(`No-show days for Rania Invented Girgis ${RUN} came from the Zoho import`);
       await typeIn(rania.id, { permissionHours: null }).expect(409);
-      // sent as it is it is no change, and the figures not from Zoho stay HR's
-      await typeIn(rania.id, { workedHours: rania.inputs.workedHours, expectedHours: 180 }).expect(200);
+      // sent as it is it is no change, and the figures not from Zoho stay HR's (the expected hours aren't typed at all
+      // since 20 October 2026: worked out from the shift)
+      await typeIn(rania.id, { workedHours: rania.inputs.workedHours, leaveDays: 1 }).expect(200);
       const after = await lineOf('rania');
-      expect(after.inputs).toMatchObject({ workedHours: rania.inputs.workedHours, expectedHours: 180 });
+      expect(after.inputs).toMatchObject({ workedHours: rania.inputs.workedHours, leaveDays: 1 });
       expect(after.attendanceImport?.fields).toEqual(['workedHours', 'noShowDays', 'permissionHours']);
-      await typeIn(rania.id, { expectedHours: null }).expect(200);
+      await typeIn(rania.id, { leaveDays: null }).expect(200);
     });
 
     it('the CEO sees the C-level people of the files and applies theirs, nobody else’s', async () => {

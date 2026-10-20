@@ -36,13 +36,16 @@ export const MONTHLY_TERMS: PayrollTerms = {
   insured: true,
   insuredWage: 16700,
   hoursPerDay: 8,
+  // the shift's hours for the month, 22 working days of 8:00: the expected hours, worked out and never typed (owner, 20
+  // October 2026: "expected hours to be locked based on shifts and attendance data")
+  expectedHours: 176,
+  expectedDays: { workingDays: 22, holidays: 0 },
   adjustments: [BONUS_DAY],
 };
 
 export const MONTHLY_INPUTS: SavedPayrollInputs = {
   ...EMPTY_PAYROLL_INPUTS,
   workedHours: 165.5,
-  expectedHours: 176,
   softSkills: 70,
   performance: 65,
   clientSatisfaction: 72,

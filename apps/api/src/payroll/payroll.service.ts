@@ -36,6 +36,7 @@ import { RecurringDeductionsService } from './adjustments/recurring.service.js';
 import { RunAdjustmentsService } from './adjustments/run-adjustments.service.js';
 import { cleanBankDetails, inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
 import { achWorkbook, cibWorkbook } from './bank-files.js';
+import { ExpectedHoursService } from './expected-hours.service.js';
 import { HolidaysService } from './holidays.service.js';
 import { LawRatesService } from './law-rates/law-rates.service.js';
 import { json, savedInputs, withAdjustments, worked } from './line-work.js';
@@ -194,6 +195,9 @@ const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto
 // (adjustments/run-adjustments.service.ts); the CEO's approval applies them to their lines. The grid's bonus and penalty
 // days, commission and settlements went there too (owner, 17 October 2026: "instead of there, i think earnings and
 // deductions will be enough"): a run the CEO returns has any still typed on it moved (adjustments/grid-inputs.service.ts).
+// The expected hours are worked out, never typed (owner, 20 October 2026: "expected hours to be locked based on shifts
+// and attendance data"): the shift's less the no-show and leave days; the inputs refuse any (payroll.dto.ts), and a
+// draft's line, or a run the CEO returns, has those typed before then cleared (expected-hours.service.ts).
 // While the run is with the CEO, the CEO may waive a line's attendance deduction (owner, 17 October 2026: "if there is
 // an attendance deduction, allow the CEO to wave the deduction by ticking a box"): the line is worked out again without
 // it at once, and the approval takes it as it is.
@@ -223,6 +227,7 @@ export class PayrollService {
     private readonly recurring: RecurringDeductionsService,
     private readonly confidential: ConfidentialService,
     private readonly attendance: AttendanceFillService,
+    private readonly expectedHours: ExpectedHoursService,
   ) {}
 
   /** Every run, newest month first, with its totals: without the C-level people's lines hidden from the caller. */
@@ -389,8 +394,10 @@ export class PayrollService {
   /**
    * Changes a draft's lines: their inputs (null clears one), holds and comments; a line's leave days no more than its
    * days paid, its permission hours no more than the Leave Setup's hours a month (19 October 2026); never an input an
-   * attendance import filled (409: owner, 19 October 2026, "imported data shouldn't be editable"). Each changed line is worked out again with the run's rules and rates set by law; the audit log has what
-   * changed (the leave days too), the money inputs only as changed.
+   * attendance import filled (409: owner, 19 October 2026, "imported data shouldn't be editable"), nor the expected
+   * hours, always worked out from the shift (400 from the DTO: owner, 20 October 2026, "expected hours to be locked
+   * based on shifts and attendance data"). Each changed line is worked out again with the run's rules and rates set by
+   * law; the audit log has what changed (the leave days too), the money inputs only as changed.
    */
   async updateLines(id: string, dto: UpdatePayrollLinesDto, user: SessionUser): Promise<PayrollRunView> {
     const run = await this.row(id);
@@ -423,7 +430,9 @@ export class PayrollService {
     for (const change of dto.lines) {
       const line = lines.get(change.id)!;
       const was = savedInputs(line.inputs);
-      const inputs: PayrollInputs = { ...was, ...(change.inputs ? sent(change.inputs) : {}) };
+      // the expected hours are worked out from the shift, never typed (owner, 20 October 2026: "expected hours to be
+      // locked based on shifts and attendance data"): the DTO refuses any sent, and a draft's line never keeps any
+      const inputs: PayrollInputs = { ...was, ...(change.inputs ? sent(change.inputs) : {}), expectedHours: null };
       // paid leave is taken on days the month pays (owner, 17 October 2026), and unpaid leave too (18 October 2026)
       const lineTerms = line.terms as unknown as PayrollTerms;
       const paidDays = lineTerms.paidDays;
@@ -488,8 +497,11 @@ export class PayrollService {
     await this.prisma.payrollRun.update({ where: { id }, data: { status: 'draft', returnedReason: dto.reason } });
     await this.statusChanged(run, 'draft', 'return', user, { reason: dto.reason });
     // a draft again: any bonus or penalty days, commission or settlements still typed on its grid (sent before they
-    // moved, 17 October 2026) become additions and deductions
+    // moved, 17 October 2026) become additions and deductions, and any expected hours typed (sent before they were
+    // locked, 20 October 2026: "expected hours to be locked based on shifts and attendance data") are cleared, the
+    // shift's taken instead
     await this.gridInputs.convert(id);
+    await this.expectedHours.clear(id);
     return this.get(id, user);
   }
 

@@ -20,6 +20,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import {
+  EXPECTED_HOURS_NOT_TYPED,
   INSTALLMENT_LIMIT_MIN,
   LAW_INSTALLMENT_PERCENT,
   OFFICE_RADIUS_DEFAULT,
@@ -188,6 +189,14 @@ const Days = () => (target: object, key: string) => {
   Max(31, { message: DAYS_MESSAGE })(target, key);
   HalfDays()(target, key);
 };
+/**
+ * Never typed (owner, 20 October 2026, on the inputs grid's Expected hours: "expected hours to be locked based on shifts
+ * and attendance data"): any value sent is refused with why; null, or left out, is nothing typed, so it passes.
+ */
+const WorkedOut = (message: string) => (target: object, key: string) => {
+  IsOptional()(target, key);
+  ValidateBy({ name: 'workedOut', validator: { validate: () => false, defaultMessage: () => message } })(target, key);
+};
 const Amount = (min: number, message: string) => (target: object, key: string) => {
   IsOptional()(target, key);
   IsNumber({ maxDecimalPlaces: 2 }, { message })(target, key);
@@ -197,16 +206,19 @@ const Amount = (min: number, message: string) => (target: object, key: string) =
 
 /**
  * The month's inputs of a line, any of them (null clears one: not given). The hours are numbers (the screen reads
- * 270:30 as 270.5); attendance will fill the same inputs later. The expected hours HR types are taken as already
- * without the no-show and leave days (owner, 17 October 2026). There is no medical subscription any more (owner's
- * decision, 16 October 2026): `medical` is refused as any field not here is. Nor bonus or penalty days, commission or
- * settlements (owner, 17 October 2026: "instead of there, i think earnings and deductions will be enough"): they are
- * entered on Additions / Deductions, so `bonusDays`, `penaltyDays`, `commission` and `settlements` are refused too.
- * The CEO's attendance waiver has its own request (AttendanceWaiverDto), never sent with HR's inputs.
+ * 270:30 as 270.5); attendance will fill the same inputs later. The expected hours are never typed (owner, 20 October
+ * 2026: "expected hours to be locked based on shifts and attendance data"): the run works them out from the shift, the
+ * holidays and the no-show and leave days, so a value sent is refused (400: EXPECTED_HOURS_NOT_TYPED). There is no
+ * medical subscription any more (owner's decision, 16 October 2026): `medical` is refused as any field not here is.
+ * Nor bonus or penalty days, commission or settlements (owner, 17 October 2026: "instead of there, i think earnings and
+ * deductions will be enough"): they are entered on Additions / Deductions, so `bonusDays`, `penaltyDays`, `commission`
+ * and `settlements` are refused too. The CEO's attendance waiver has its own request (AttendanceWaiverDto), never sent
+ * with HR's inputs.
  */
 export class PayrollInputsDto {
   @Hours() workedHours?: number | null;
-  @Hours() expectedHours?: number | null;
+  /** Refused whenever sent with a value (20 October 2026): the run works them out (expectedHoursOf). */
+  @WorkedOut(EXPECTED_HOURS_NOT_TYPED) expectedHours?: null;
   @Percent() softSkills?: number | null;
   @Percent() performance?: number | null;
   @Percent() clientSatisfaction?: number | null;

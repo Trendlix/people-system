@@ -255,8 +255,9 @@ describe('breakdown: the expected hours (owner, 17 October 2026: "prefill the ex
     expect(stepOf(empty, 'attendance')?.value).toBe('Not tracked');
   });
 
-  it('are HR’s when typed, taken as already without the no-show and leave days: nothing more out of them', () => {
-    // HR's 140 with the no-show and the leave day still given: 133 of 140 is 95%, counted in full
+  it('are HR’s on a line saved with them before they were locked (20 October 2026), taken as already without the no-show and leave days', () => {
+    // a run with the CEO, approved or paid, as it was worked out: HR's 140 with the no-show and the leave day still
+    // given: 133 of 140 is 95%, counted in full
     const typed = lineOf(terms, { ...inputs, expectedHours: 140 });
     expect(typed.result).toMatchObject({ expectedHours: 140, absentHours: 0, leaveHours: 0, attendanceCut: 0 });
     expect(stepOf(typed, 'expected')).toMatchObject({ value: '140:00', note: 'As typed by HR: already without the no-show and leave days' });
@@ -264,7 +265,7 @@ describe('breakdown: the expected hours (owner, 17 October 2026: "prefill the ex
     expect(stepOf(typed, 'attendance')).toMatchObject({ value: '95%', note: 'At or above 90%: counts in full' });
   });
 
-  it('are HR’s alone without a shift; with none typed, the hours worked stand alone', () => {
+  it('are none without a shift (HR’s on a line saved with them before then): the hours worked stand alone', () => {
     const noShift = { ...terms, hoursPerDay: null, expectedHours: null, expectedDays: null };
     const typed = lineOf(noShift, { ...inputs, expectedHours: 140 });
     expect(stepOf(typed, 'expected')).toMatchObject({ value: '140:00', note: 'As typed by HR: already without the no-show and leave days' });

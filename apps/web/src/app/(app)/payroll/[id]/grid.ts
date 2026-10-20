@@ -1,9 +1,12 @@
 import {
   expectedHoursOf,
   formatHours,
+  leaveDaysOf,
   paidAdjustments,
   parseHours,
   permissionHoursOf,
+  shiftDaysHours,
+  type PayBasis,
   type PayrollInputs,
   type PayrollLeaveDays,
   type PayrollResult,
@@ -22,12 +25,15 @@ import { formatEgp } from '../../employees/[id]/contracts/salary';
 // The expected hours are filled in (owner, 17 October 2026: "prefill the expected hours, and dont count abcent days or
 // leave days, as they already have their own deduction and fields"): the hours the run worked out from the shift less
 // the holidays (owner's request, 16 October 2026, Payroll Setup), less a day of the shift for each no-show and leave
-// day typed in the row, as the pay counts them (expectedHoursOf); they follow those days as they are typed. What HR
-// types instead is taken as the expected hours already without the no-show and leave days, nothing more taken out, and
-// clearing it brings the shift's back; the figure filled in is only shown, never sent. The Attendance % is the worked
-// hours over those expected hours, as the pay counts it. Leave days (approved paid leave: nothing cut) and Unpaid leave
-// days (unpaid leave, and the unpaid share of a partly paid one such as sick leave below 100%: a day of the gross ÷ the
-// day divisor cut for each) are filled in from the leave approved for the month (owner, 18 October 2026: "can you apply
+// day typed in the row, as the pay counts them (expectedHoursOf); they follow those days as they are typed. Locked
+// since 20 October 2026 (owner, on the cell "153:00 · from the shift": "expected hours to be locked based on shifts and
+// attendance data"): always worked out, never typed, on every row, the CEO's C-level ones too (typesInto): shown as
+// text marked "from the shift" with what the days off took off the shift's hours ("198:00 − 45:00 leave",
+// expectedSource), never sent, the API refusing any; a line saved with HR's figure before then (a run with the CEO,
+// approved or paid) shows it marked "typed by HR", as it was worked out. Without a shift there are none, marked "no
+// shift": attendance isn't counted. The Attendance % is the worked hours over those expected hours, as the pay counts
+// it. Leave days (approved paid leave: nothing cut) and Unpaid leave days (unpaid leave, and the unpaid share of a
+// partly paid one such as sick leave below 100%: a day of the gross ÷ the day divisor cut for each) are filled in from the leave approved for the month (owner, 18 October 2026: "can you apply
 // the leaves according to the law?"; leaveFill), marked "from leave" as the expected hours are "from the shift": only
 // shown, never sent; what HR types instead wins, and clearing it brings the leave's back. A month under two contracts
 // (owner, 17 October 2026: "take into consideration the start and end date of the contract if it is in the middle of
@@ -63,6 +69,11 @@ export interface GridColumn {
   field: InputField;
   label: string;
   kind: FieldKind;
+  /**
+   * Worked out, never typed (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data"):
+   * the Expected hours, shown as text on every row and never sent (typesInto).
+   */
+  workedOut?: true;
 }
 
 /**
@@ -74,7 +85,8 @@ export const GRID_COLUMNS: readonly GridColumn[] = [
   { field: 'workedHours', label: 'Worked hours', kind: 'hours' },
   // the month's permission hours, counted as worked (owner, 19 October 2026), beside the worked hours
   { field: 'permissionHours', label: 'Permission hours', kind: 'hours' },
-  { field: 'expectedHours', label: 'Expected hours', kind: 'hours' },
+  // worked out from the shift less the days off, never typed (owner, 20 October 2026)
+  { field: 'expectedHours', label: 'Expected hours', kind: 'hours', workedOut: true },
   { field: 'noShowDays', label: 'No-show days', kind: 'days' },
   { field: 'leaveDays', label: 'Leave days', kind: 'days' },
   // unpaid leave (owner, 18 October 2026), beside the paid leave days
@@ -208,10 +220,10 @@ export const importMarkText = (source: ImportSource | null | undefined): string 
 
 /**
  * The expected hours a row counts, as its Expected hours cell shows them (owner, 17 October 2026: "prefill the expected
- * hours, and dont count abcent days or leave days, as they already have their own deduction and fields"): HR's figure
- * when typed (or saved), taken as it is; else the shift's hours for the month less a day of the shift for each no-show
- * and leave day in the row (`fromShift`), as payrollLine counts them (expectedHoursOf); null when neither (no shift, or
- * by the hour, with nothing typed).
+ * hours, and dont count abcent days or leave days, as they already have their own deduction and fields"): the shift's
+ * hours for the month less a day of the shift for each no-show and leave day in the row (`fromShift`), as payrollLine
+ * counts them (expectedHoursOf); on a line saved with HR's figure before they were locked (20 October 2026), that
+ * figure, taken as it is; null when neither (no shift, or by the hour).
  */
 export function expectedCell(
   row: { shiftExpectedHours: number | null; hoursPerDay: number | null; leave?: PayrollLeaveDays | null },
@@ -221,6 +233,52 @@ export function expectedCell(
   // the leave days filled in from the leave count as typed ones (leaveDaysOf, in expectedHoursOf)
   const hours = expectedHoursOf({ expectedHours: row.shiftExpectedHours, hoursPerDay: row.hoursPerDay, leave: row.leave ?? null }, cells);
   return { hours, fromShift: hours !== null };
+}
+
+/**
+ * Where a row's expected hours come from, as its Expected hours cell says (owner, 20 October 2026: "expected hours to be
+ * locked based on shifts and attendance data"): `shift`, worked out from the shift, with what the row's no-show, leave
+ * and unpaid leave days took off its hours for the month ("198:00 − 45:00 leave"; null when nothing did); `typed`, HR's
+ * figure on a line saved with it before then (with the CEO, approved or paid), as it was worked out; `noShift`, a
+ * monthly-paid row without a shift: no expected hours, so attendance isn't counted; `hourly`, pay by the hour, which
+ * pays the hours worked alone.
+ */
+export type ExpectedSource = { kind: 'shift'; less: string | null } | { kind: 'typed' } | { kind: 'noShift' } | { kind: 'hourly' };
+
+export function expectedSource(
+  row: { payBasis: PayBasis; shiftExpectedHours: number | null; hoursPerDay: number | null; leave?: PayrollLeaveDays | null },
+  cells: Pick<PayrollInputs, 'expectedHours' | 'noShowDays' | 'leaveDays' | 'unpaidLeaveDays'>,
+): ExpectedSource {
+  if (row.payBasis === 'hourly') return { kind: 'hourly' };
+  if (cells.expectedHours !== null && cells.expectedHours !== undefined) return { kind: 'typed' };
+  const shift = row.shiftExpectedHours;
+  if (shift === null) return { kind: 'noShift' };
+  // the leave days filled in from the leave count as typed ones (leaveDaysOf), as in expectedHoursOf
+  const leave = leaveDaysOf({ leave: row.leave ?? null }, cells);
+  const off: [number, string][] = [
+    [shiftDaysHours(cells.noShowDays, row.hoursPerDay), 'no-show'],
+    [shiftDaysHours(leave.leaveDays, row.hoursPerDay), 'leave'],
+    [shiftDaysHours(leave.unpaidLeaveDays, row.hoursPerDay), 'unpaid leave'],
+  ];
+  const taken = off.filter(([hours]) => hours > 0);
+  return { kind: 'shift', less: taken.length ? [formatHours(shift), ...taken.map(([hours, name]) => `${formatHours(hours)} ${name}`)].join(' − ') : null };
+}
+
+/** The mark under an Expected hours figure: "from the shift", "typed by HR" (or the CEO, `who`), "no shift"; none by the hour. */
+export function expectedMark(source: ExpectedSource, who: string): string | null {
+  if (source.kind === 'shift') return 'from the shift';
+  if (source.kind === 'typed') return `typed by ${who}`;
+  return source.kind === 'noShift' ? 'no shift' : null;
+}
+
+/** What an Expected hours figure says when pointed at: where it came from, and that it isn't typed (20 October 2026). */
+export function expectedTitle(source: ExpectedSource, who: string): string {
+  if (source.kind === 'shift') {
+    return "Worked out from the shift: its working days this month less the holidays, the no-show and leave days, at its hours to work a day. It follows those days; it can't be typed.";
+  }
+  if (source.kind === 'typed') return `Typed by ${who} before the expected hours were locked (20 October 2026): taken as already without the no-show and leave days.`;
+  if (source.kind === 'noShift') return "No shift on the employment, so there are no expected hours and attendance isn't counted: set the shift on the Employment tab, then refresh the run.";
+  return 'Paid by the hour: only the hours worked are paid, so there are no expected hours.';
 }
 
 /** The columns the leave approved for the month fills in (owner, 18 October 2026). */
@@ -373,6 +431,17 @@ export interface CellError {
 /** Comments as saved: trimmed, and none for empty. */
 const commentsOf = (text: string) => text.trim() || null;
 
+/**
+ * Whether a row's cell takes typing: its line is the caller's to fill (19 October 2026: the CEO fills the C-level
+ * people's, HR the rest), an import didn't fill it (19 October 2026: "imported data shouldn't be editable"), and its
+ * column is typed at all: never the Expected hours, worked out from the shift (owner, 20 October 2026: "expected hours
+ * to be locked based on shifts and attendance data"). A cell that doesn't is shown as text and never sent.
+ */
+export function typesInto(line: Pick<GridLine, 'editable' | 'attendanceImport'>, field: InputField): boolean {
+  const column = COLUMN.get(field);
+  return !!column && !column.workedOut && line.editable !== false && !fromImport(line.attendanceImport, field);
+}
+
 /** One row's changes against what is saved: the patch (null when nothing changed) and the cells that can't be read. */
 function rowChanges(line: GridLine, edits: RowEdits | undefined): { patch: LinePatch | null; errors: CellError[]; count: number } {
   // a line locked to the caller (another's to fill, 19 October 2026) is never sent
@@ -382,8 +451,8 @@ function rowChanges(line: GridLine, edits: RowEdits | undefined): { patch: LineP
   let count = 0;
   for (const [field, text] of Object.entries(edits.inputs ?? {}) as [InputField, string][]) {
     const column = COLUMN.get(field);
-    // what an import filled isn't typed over (19 October 2026)
-    if (!column || fromImport(line.attendanceImport, field)) continue;
+    // what an import filled isn't typed over (19 October 2026), nor what is worked out (the expected hours, 20 October)
+    if (!column || !typesInto(line, field)) continue;
     const parsed = parseCell(column.kind, text);
     if (!parsed.ok) {
       errors.push({ lineId: line.id, field, message: parsed.error });

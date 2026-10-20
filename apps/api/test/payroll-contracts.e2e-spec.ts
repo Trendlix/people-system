@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import type { PayrollInputs, PayrollResult, PayrollTerms } from '@trendlix/shared';
+import { EXPECTED_HOURS_NOT_TYPED, type PayrollInputs, type PayrollResult, type PayrollTerms } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, todayInCairo } from '../src/common/date-only.js';
@@ -232,7 +232,7 @@ describe('Payroll by the contracts’ dates (e2e)', () => {
     ]);
   });
 
-  it('the expected hours are the shift’s less the no-show and leave days; HR’s own are taken as typed', async () => {
+  it('the expected hours are the shift’s less the no-show and leave days, never typed (20 October 2026)', async () => {
     const shift = lineOf(renewed).terms.expectedHours!;
     // 1 no-show day and 2 of leave, a shift's day each, out of the shift's hours; 90% of what is left worked
     const left = shift - 3 * hoursPerDay;
@@ -244,12 +244,17 @@ describe('Payroll by the contracts’ dates (e2e)', () => {
     const audit = await prisma.auditLog.findMany({ where: { entityType: 'payroll_line', entityId: lineOf(renewed).id }, orderBy: { id: 'asc' } });
     expect(audit.at(-1)!.diff).toMatchObject({ noShowDays: { from: null, to: 1 }, leaveDays: { from: null, to: 2 } });
 
-    // HR's figure, already without the days off: nothing more comes out of it
-    await patchLine(renewed, { expectedHours: left });
-    expect(lineOf(renewed).result).toMatchObject({ absentHours: 0, leaveHours: 0, expectedHours: left, attendanceRatio: 0.9 });
-    // cleared: the shift's less the days off again
+    // HR can't type a figure of its own (owner, 20 October 2026: "expected hours to be locked based on shifts and
+    // attendance data"): refused with why, the shift's less the days off kept
+    const refused = await api()
+      .patch(`/api/payroll/runs/${run.id}/lines`)
+      .set('Cookie', hr)
+      .send({ lines: [{ id: lineOf(renewed).id, inputs: { expectedHours: left } }] })
+      .expect(400);
+    expect(refused.body.message).toEqual([EXPECTED_HOURS_NOT_TYPED]);
+    // null is nothing typed: no change
     await patchLine(renewed, { expectedHours: null });
-    expect(lineOf(renewed).result.expectedHours).toBe(left);
+    expect(lineOf(renewed).result).toMatchObject({ absentHours: hoursPerDay, leaveHours: 2 * hoursPerDay, expectedHours: left, attendanceRatio: 0.9 });
   });
 
   it('refuses leave days that aren’t whole or half days, or more than the days paid', async () => {

@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import type { PayrollInputs, PayrollResult, PayrollTerms } from '@trendlix/shared';
+import { EXPECTED_HOURS_NOT_TYPED, NO_SHIFT_NO_EXPECTED_HOURS, type PayrollInputs, type PayrollResult, type PayrollTerms } from '@trendlix/shared';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
@@ -14,7 +14,7 @@ import { assertTestDatabase } from './test-env.js';
 // Payroll Setup (owner's request, 16 October 2026: "creating a setup page for payroll to enter the variables that might
 // affect the sheet"): the official holidays and who keeps them, the payday, the basic share of the gross new contracts
 // start with, and the expected hours a run works out from each monthly-paid person's shift less the holidays, which HR
-// can type over. Other test files leave people with signed contracts in the same database, so these tests look at
+// can't type over (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data"). Other test files leave people with signed contracts in the same database, so these tests look at
 // their own people (names end with RUN). The run is for last month, counted from today in Cairo. Every name and
 // holiday is invented.
 
@@ -255,7 +255,7 @@ describe('Payroll Setup (e2e)', () => {
     let run: Run;
     let regular: Person; // shift A, all month
     let joiner: Person; // shift A, joined on the 12th
-    let typed: Person; // shift A, HR types the expected hours
+    let typed: Person; // shift A, HR tries to type the expected hours (refused since 20 October 2026)
     let noShift: Person;
     let hourly: Person; // shift A, paid by the hour
     /** Shift A's working days in the run's month; and those from the 12th. */
@@ -314,24 +314,33 @@ describe('Payroll Setup (e2e)', () => {
       expect(lineOf(run, regular).result).toMatchObject({ attendanceRatio: null, warnings: [] });
     });
 
-    it('attendance is measured on them when HR types only the worked hours; a figure HR types is kept over them', async () => {
+    it('attendance is measured on them when HR types the worked hours; HR can’t type others (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data")', async () => {
       const expected = (monthDays.length - 1) * hoursPerDay;
       const worked = expected - hoursPerDay;
+      // a figure of HR's own is refused with why, the worked hours sent with it not saved either
+      expect((await patchLines([{ id: lineOf(run, typed).id, inputs: { workedHours: 135, expectedHours: 150 } }]).expect(400)).body.message).toEqual([EXPECTED_HOURS_NOT_TYPED]);
+      const notSaved = (await api().get(`/api/payroll/runs/${run.id}`).set('Cookie', hr).expect(200)).body as Run;
+      expect(lineOf(notSaved, typed).inputs).toMatchObject({ workedHours: null, expectedHours: null });
       run = (
         await patchLines([
           { id: lineOf(run, regular).id, inputs: { workedHours: worked } },
-          { id: lineOf(run, typed).id, inputs: { workedHours: 135, expectedHours: 150 } },
+          { id: lineOf(run, typed).id, inputs: { workedHours: 135 } },
+          { id: lineOf(run, noShift).id, inputs: { workedHours: 135 } },
         ]).expect(200)
       ).body as Run;
       expect(lineOf(run, regular).inputs.expectedHours).toBeNull();
       expect(lineOf(run, regular).result.attendanceRatio).toBe(fraction(worked / expected));
       const t = lineOf(run, typed);
-      expect(t.inputs.expectedHours).toBe(150);
+      expect(t.inputs).toMatchObject({ workedHours: 135, expectedHours: null });
       expect(t.terms.expectedHours).toBe(expected);
-      expect(t.result.attendanceRatio).toBe(0.9);
+      expect(t.result).toMatchObject({ expectedHours: expected, attendanceRatio: fraction(135 / expected) });
+      // without a shift there are none: attendance isn't counted, and the line says how to get them
+      const n = lineOf(run, noShift);
+      expect(n.result).toMatchObject({ expectedHours: null, attendanceRatio: null, attendanceCut: 0 });
+      expect(n.result.warnings).toContain(NO_SHIFT_NO_EXPECTED_HOURS);
     });
 
-    it('a holiday added after the run was made counts once the draft is refreshed; what HR typed stays', async () => {
+    it('a holiday added after the run was made counts once the draft is refreshed; the worked hours HR typed stay', async () => {
       await addHoliday({ date: later, nameEn: `Invented later holiday ${RUN}` }).expect(201);
       // not until it is refreshed
       const before = (await api().get(`/api/payroll/runs/${run.id}`).set('Cookie', hr).expect(200)).body as Run;
@@ -343,14 +352,11 @@ describe('Payroll Setup (e2e)', () => {
       expect(r.terms).toMatchObject({ expectedHours: expected, expectedDays: { workingDays: monthDays.length, holidays: 2 } });
       expect(r.result.attendanceRatio).toBe(fraction(r.inputs.workedHours! / expected));
       expect(lineOf(run, joiner).terms.expectedHours).toBe((joinerDays.length - 2) * hoursPerDay);
+      // the shift's hours one holiday fewer: the 135 worked are measured on them
       const t = lineOf(run, typed);
-      expect(t.inputs).toMatchObject({ workedHours: 135, expectedHours: 150 });
+      expect(t.inputs).toMatchObject({ workedHours: 135, expectedHours: null });
       expect(t.terms.expectedHours).toBe(expected);
-      expect(t.result.attendanceRatio).toBe(0.9);
-
-      // cleared, the shift's figure counts again
-      run = (await patchLines([{ id: t.id, inputs: { expectedHours: null } }]).expect(200)).body as Run;
-      expect(lineOf(run, typed).result.attendanceRatio).toBe(fraction(135 / expected));
+      expect(t.result).toMatchObject({ expectedHours: expected, attendanceRatio: fraction(135 / expected) });
     });
 
     it('a holiday removed counts no more once the draft is refreshed', async () => {

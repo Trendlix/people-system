@@ -171,7 +171,8 @@ function gridRows(lines: PayrollLineView[], month: string, today: string, runLev
     // missing on lines worked out before 16 October 2026
     hoursPerDay: l.terms.hoursPerDay ?? null,
     // the shift's hours less the holidays (16 October 2026): less the no-show and leave days, the expected hours the
-    // cell is filled in with until HR types others (17 October 2026); none by the hour
+    // cell shows (17 October 2026), worked out and never typed (owner, 20 October 2026: "expected hours to be locked
+    // based on shifts and attendance data"); none by the hour
     shiftExpectedHours: l.payBasis === 'hourly' ? null : (l.terms.expectedHours ?? null),
     // a month under two contracts (owner, 17 October 2026)
     contractsNote: contractsNote(l.terms),

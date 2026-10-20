@@ -137,6 +137,13 @@ describe('PDF templates (e2e)', () => {
 
   afterAll(async () => {
     await prisma.generatedDocument.deleteMany();
+    // the employee made here goes, with what hangs on them: the ID card reader spells English names as the employees on
+    // file do, and this one's Arabic name (أحمد) with its English one ("Forms") would teach the paperwork tests a wrong
+    // spelling when they run after this file
+    if (employeeId) {
+      await prisma.employment.deleteMany({ where: { employeeId } });
+      await prisma.employee.deleteMany({ where: { id: employeeId } });
+    }
     await app.close();
   });
 

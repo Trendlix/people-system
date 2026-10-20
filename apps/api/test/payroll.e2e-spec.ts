@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { payrollLine, PAYROLL_RULE_DEFAULTS, type PayrollInputs, type PayrollResult, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
+import { EXPECTED_HOURS_NOT_TYPED, payrollLine, PAYROLL_RULE_DEFAULTS, type PayrollInputs, type PayrollResult, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
 import ExcelJS from 'exceljs';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,13 @@ const JOINER_DAYS = Math.min(30, Number(lastDay(MONTH).slice(8)) - 11);
 const SHIFT_A_DAYS = Array.from({ length: Number(lastDay(MONTH).slice(8)) }, (_, i) => new Date(`${MONTH}-${String(i + 1).padStart(2, '0')}T00:00:00Z`).getUTCDay()).filter(
   (day) => day <= 4,
 ).length;
+/**
+ * The shift A's hours for the run's month, 9:00 a day: the regular employee's expected hours, worked out and never typed
+ * (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data").
+ */
+const SHIFT_A_HOURS = SHIFT_A_DAYS * 9;
+/** 90% of them, to the minute's hundredth: the regular employee's hours worked, at the grace percent. */
+const WORKED_90 = Math.round(SHIFT_A_HOURS * 0.9 * 100) / 100;
 
 const CIB_ACCOUNT = '100012345678';
 const QNB_ACCOUNT = '12345678901';
@@ -331,8 +338,8 @@ describe('Payroll (e2e)', () => {
         insured: true,
         insuredWage: 13000, // the gross and the allowances, as the Social Insurance tab shows it
         hoursPerDay: 9, // the shift's 09:00 to 18:00: what a no-show day takes out of the expected hours
-        // the shift's working days in the month, no holidays: the expected hours when HR types none (Payroll Setup)
-        expectedHours: SHIFT_A_DAYS * 9,
+        // the shift's working days in the month, no holidays: the expected hours, never typed (Payroll Setup; 20 October 2026)
+        expectedHours: SHIFT_A_HOURS,
         expectedDays: { workingDays: SHIFT_A_DAYS, holidays: 0 },
         // the whole month under its one contract (owner, 17 October 2026: the contracts' dates)
         segments: [
@@ -432,11 +439,13 @@ describe('Payroll (e2e)', () => {
     it('HR types the month’s inputs: each changed line is worked out again, and the audit log has what changed', async () => {
       const r = lineOf(run, regular)!;
       const res = await patchLines(run.id, [
-        { id: r.id, inputs: { workedHours: 180, expectedHours: 200, softSkills: 70, released: 1000 }, comments: '  Invented note ' },
+        { id: r.id, inputs: { workedHours: WORKED_90, softSkills: 70, released: 1000 }, comments: '  Invented note ' },
       ]).expect(200);
       run = res.body as Run;
       const after = lineOf(run, regular)!;
-      expect(after.inputs).toMatchObject({ workedHours: 180, expectedHours: 200, softSkills: 70, released: 1000, performance: null });
+      // the expected hours the shift's, never typed (20 October 2026): 90% of them worked
+      expect(after.inputs).toMatchObject({ workedHours: WORKED_90, expectedHours: null, softSkills: 70, released: 1000, performance: null });
+      expect(after.result.expectedHours).toBe(SHIFT_A_HOURS);
       expect(after.comments).toBe('Invented note');
       expect(after.result).toEqual(payrollLine(after.terms, after.inputs, run.rules));
       expect(after.result.attendanceRatio).toBe(0.9);
@@ -450,8 +459,7 @@ describe('Payroll (e2e)', () => {
             runId: run.id,
             month: MONTH,
             employeeCode: regular.employeeCode,
-            workedHours: { from: null, to: 180 },
-            expectedHours: { from: null, to: 200 },
+            workedHours: { from: null, to: WORKED_90 },
             softSkills: { from: null, to: 70 },
             released: 'changed', // money: only that it changed
             comments: { from: null, to: 'Invented note' },
@@ -461,7 +469,7 @@ describe('Payroll (e2e)', () => {
 
       // null clears an input; the others stay; a line sent unchanged leaves no audit entry
       run = (await patchLines(run.id, [{ id: r.id, inputs: { softSkills: null } }, { id: lineOf(run, joiner)!.id, inputs: {} }]).expect(200)).body as Run;
-      expect(lineOf(run, regular)!.inputs).toMatchObject({ softSkills: null, workedHours: 180, released: 1000 });
+      expect(lineOf(run, regular)!.inputs).toMatchObject({ softSkills: null, workedHours: WORKED_90, released: 1000 });
       expect(await auditOf('payroll_line', lineOf(run, joiner)!.id)).toEqual([]);
 
       // by the hour: the hours worked are the pay; on hold, the bank files leave it out
@@ -486,6 +494,13 @@ describe('Payroll (e2e)', () => {
       }
       // nor is the CEO's waiver typed with HR's inputs
       expect(await refused({ attendanceWaived: true })).toEqual(['property attendanceWaived should not exist']);
+      // nor the expected hours, worked out from the shift (owner, 20 October 2026: "expected hours to be locked based on
+      // shifts and attendance data"): any figure, 0 too, with the reason; null is nothing typed
+      for (const hours of [200, 0, '200:00']) expect(await refused({ expectedHours: hours })).toEqual([EXPECTED_HOURS_NOT_TYPED]);
+      expect(EXPECTED_HOURS_NOT_TYPED).toBe("Expected hours are worked out from the shift, the holidays, leave and absent days; they can't be typed.");
+      const unchanged = lineOf((await patchLines(run.id, [{ id, inputs: { expectedHours: null } }]).expect(200)).body as Run, regular)!;
+      expect(unchanged.inputs.expectedHours).toBeNull();
+      expect(unchanged.result.expectedHours).toBe(SHIFT_A_HOURS);
       await patchLines(run.id, [{ id, inputs: { overtime: 5 } }]).expect(400);
       // no medical subscription any more (owner's decision, 16 October 2026): refused as any unknown field is
       expect(await refused({ medical: 100 })).toEqual(['property medical should not exist']);
@@ -497,13 +512,14 @@ describe('Payroll (e2e)', () => {
       );
       run = (await patchLines(run.id, [{ id, inputs: { noShowDays: 0.5 } }]).expect(200)).body as Run;
       const corrected = lineOf(run, regular)!;
-      // half a day off: the 200 HR typed are taken as already without it (owner, 17 October 2026: "dont count abcent
-      // days or leave days, as they already have their own deduction and fields"), so 180 of 200 is 90%
-      expect(corrected.result).toMatchObject({ absentHours: 0, expectedHours: 200, attendanceRatio: 0.9, noShowCut: 400 });
+      // half a day off: its 4:30 come out of the shift's hours (owner, 17 October 2026: "dont count abcent days or leave
+      // days, as they already have their own deduction and fields"), so the 90% worked is more of what is left
+      expect(corrected.result).toMatchObject({ absentHours: 4.5, expectedHours: SHIFT_A_HOURS - 4.5, attendanceScore: 1, attendanceCut: 0, noShowCut: 400 });
+      expect(corrected.result.attendanceRatio).toBeCloseTo(WORKED_90 / (SHIFT_A_HOURS - 4.5), 9);
       expect(corrected.result).toEqual(payrollLine(corrected.terms, corrected.inputs, run.rules));
-      // paid leave: no cut, in the audit log as the other inputs
+      // paid leave: no cut, its 13:30 out of the shift's hours too, in the audit log as the other inputs
       run = (await patchLines(run.id, [{ id, inputs: { leaveDays: 1.5 } }]).expect(200)).body as Run;
-      expect(lineOf(run, regular)!.result).toMatchObject({ leaveHours: 0, expectedHours: 200, attendanceRatio: 0.9, noShowCut: 400 });
+      expect(lineOf(run, regular)!.result).toMatchObject({ leaveHours: 13.5, expectedHours: SHIFT_A_HOURS - 18, attendanceCut: 0, noShowCut: 400 });
       expect((await auditOf('payroll_line', id)).at(-1)!.diff).toMatchObject({ leaveDays: { from: null, to: 1.5 } });
       // no more than the days paid: the joiner's
       const j = lineOf(run, joiner)!;

@@ -65,6 +65,14 @@
 // the net as every deduction is; social insurance (on the insured wage) and the Martyrs' Fund (on the taxed pay) don't
 // change. The line keeps both (PayrollResult.beforeTaxDeductions, taxableLowered). Lines without one, and every line
 // worked out before then, are as they were.
+// The expected hours locked (owner, 20 October 2026, on the inputs grid's Expected hours cell: "expected hours to be
+// locked based on shifts and attendance data"): always worked out, never typed: the shift's hours for the month (its
+// working days in the days paid less the holidays, × its hours a day) less a day of the shift for each no-show, leave
+// and unpaid leave day (expectedHoursOf). The API refuses expected hours sent with a line's inputs
+// (EXPECTED_HOURS_NOT_TYPED), and those HR typed on a draft's line before then are cleared when the API starts, or
+// when the CEO returns a run to HR (apps/api expected-hours.service.ts); a line with the CEO, approved or paid keeps
+// what was typed, and is worked out with it as it was. Without a shift there are none, so attendance isn't counted
+// (NO_SHIFT_NO_EXPECTED_HOURS); pay by the hour has none either, as before.
 
 import type { AllowanceTerms } from './contracts.js';
 import { adjustmentSums, DAYS_TYPE_OF, isDaysType, mayBeBeforeTax, sumAmounts, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
@@ -204,8 +212,9 @@ export interface PayrollTerms {
   /**
    * The shift's hours for the month (owner's request, 16 October 2026): its working days within the days paid (employed
    * and under contract, 17 October 2026), less the official holidays on them, × its hours a day (its hours to work,
-   * else its window: hoursPerDay). Less the no-show and leave days, they are the expected hours when HR hasn't typed
-   * others (expectedHoursOf). Null without a shift, and for pay by the hour; missing on lines worked out before then.
+   * else its window: hoursPerDay). Less the no-show and leave days, they are the expected hours (expectedHoursOf):
+   * always since 20 October 2026, when they stopped being typed; before then, when HR hadn't typed others. Null without
+   * a shift, and for pay by the hour; missing on lines worked out before then.
    */
   expectedHours?: number | null;
   /** What the shift's hours were worked out from: its working days in the days paid, and the holidays on them. */
@@ -279,10 +288,12 @@ export interface ShiftDays {
 export interface PayrollInputs {
   workedHours: number | null;
   /**
-   * The month's expected hours as HR typed them, taken as they are: already without the no-show and leave days, which
-   * have their own fields (owner, 17 October 2026: "dont count abcent days or leave days, as they already have their own
-   * deduction and fields"); until then a no-show day's hours came out of them. Not typed: the shift's hours less those
-   * days (expectedHoursOf), as the grid fills them in.
+   * The month's expected hours as HR typed them before 20 October 2026, taken as they are: already without the no-show
+   * and leave days, which have their own fields (owner, 17 October 2026: "dont count abcent days or leave days, as they
+   * already have their own deduction and fields"); until then a no-show day's hours came out of them. Never typed since
+   * (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data"): null on every draft's
+   * line, the API refusing any sent (EXPECTED_HOURS_NOT_TYPED), so the expected hours are the shift's less those days
+   * (expectedHoursOf); kept only on the lines of runs with the CEO, approved or paid that were saved with them.
    */
   expectedHours: number | null;
   /**
@@ -397,9 +408,10 @@ export interface PayrollResult {
    */
   leaveHours: number;
   /**
-   * The expected hours attendance is measured on, as the grid shows them (expectedHoursOf, 17 October 2026): HR's, else
-   * the shift's less the no-show and leave days; null without either, and for pay by the hour. Missing on lines worked
-   * out before then (measuredExpectedHours).
+   * The expected hours attendance is measured on, as the grid shows them (expectedHoursOf, 17 October 2026): the shift's
+   * less the no-show and leave days (HR's, on a line saved with them before 20 October 2026, when they stopped being
+   * typed); null without either, and for pay by the hour. Missing on lines worked out before 17 October 2026
+   * (measuredExpectedHours).
    */
   expectedHours: number | null;
   /**
@@ -675,10 +687,25 @@ export function shiftDaysHours(days: number | null | undefined, hoursPerDay: num
 export const noShowHours = (noShowDays: number | null, hoursPerDay: number | null | undefined): number => shiftDaysHours(noShowDays, hoursPerDay);
 
 /**
- * The expected hours a line is worked out with, as the inputs grid fills them in (owner, 17 October 2026: "prefill the
- * expected hours, and dont count abcent days or leave days, as they already have their own deduction and fields"): as
- * HR typed them, taken as already without the no-show and leave days; else the shift's hours for the month less a day
- * of the shift for each no-show and leave day, never below 0; null when neither. What HR types is never overwritten.
+ * Why a line's expected hours can't be typed (owner, 20 October 2026: "expected hours to be locked based on shifts and
+ * attendance data"): what the API answers expected hours sent with a line's inputs (400).
+ */
+export const EXPECTED_HOURS_NOT_TYPED = "Expected hours are worked out from the shift, the holidays, leave and absent days; they can't be typed.";
+
+/**
+ * Why a monthly-paid line with worked hours has no attendance when its employment has no shift (owner, 20 October 2026:
+ * the expected hours are worked out from the shift, never typed): nothing to measure the hours on.
+ */
+export const NO_SHIFT_NO_EXPECTED_HOURS =
+  "No shift on the employment, so there are no expected hours and attendance isn't counted: set the shift on the Employment tab, then refresh the run";
+
+/**
+ * The expected hours a line is worked out with, as the inputs grid shows them (owner, 17 October 2026: "prefill the
+ * expected hours, and dont count abcent days or leave days, as they already have their own deduction and fields"): the
+ * shift's hours for the month less a day of the shift for each no-show and leave day, never below 0; null without the
+ * shift's hours. Never typed since 20 October 2026 (owner: "expected hours to be locked based on shifts and attendance
+ * data"); a line saved before then with HR's figure (with the CEO, approved or paid) is worked out with it as it was,
+ * taken as already without the no-show and leave days.
  */
 export function expectedHoursOf(
   terms: Pick<PayrollTerms, 'expectedHours' | 'hoursPerDay' | 'leave'>,
@@ -967,9 +994,11 @@ export function payrollLine(
  * the month's permission hours (owner, 19 October 2026: counted as worked), ÷ the expected hours, counted as full at or
  * above the grace percent (90). The expected hours (expectedHoursOf, owner,
  * 17 October 2026: "dont count abcent days or leave days, as they already have their own deduction and fields") are
- * HR's when typed, taken as they are, else the shift's working days less the holidays (owner's request, 16 October
- * 2026) less the no-show and leave days, a day of the shift each; without a shift, HR's figure, with a warning when
- * there are days off to leave out of it. With a KPI given, the KPI average is that attendance score and the KPIs given,
+ * the shift's working days less the holidays (owner's request, 16 October 2026) less the no-show and leave days, a day
+ * of the shift each; never typed since 20 October 2026 (owner: "expected hours to be locked based on shifts and
+ * attendance data"), so without a shift there are none and attendance isn't counted, with a warning saying so. A line
+ * saved before then with HR's figure is worked out with it, taken as it is (without a shift, with a warning when there
+ * are days off to leave out of it). With a KPI given, the KPI average is that attendance score and the KPIs given,
  * counted as full at or above its grace percent (80); with none, the variable part isn't cut ("fixed only"). Overtime,
  * while the rules pay it (off from 16 October 2026: "No overtime for now"), is paid on the fixed part for the days paid
  * (the expected hours are the part month's) for attendance above the overtime percent (110), at the overtime rate
@@ -1019,7 +1048,11 @@ function monthlyPart(
   /** The expected hours attendance is measured on, as the grid shows them. */
   const expected = expectedHoursOf({ expectedHours: shift, hoursPerDay: pay.hoursPerDay }, i);
   const attendanceRatio = worked !== null && expected !== null && expected > 0 ? fraction(worked / expected) : null;
-  if (worked !== null && expected === null) warnings.push("Worked hours are given without the expected hours: attendance isn't counted");
+  // without a shift (no hours a day) there are none to measure the hours on, as they are never typed (owner, 20 October
+  // 2026): the warning says what to do
+  if (worked !== null && expected === null) {
+    warnings.push(pay.hoursPerDay === null ? NO_SHIFT_NO_EXPECTED_HOURS : "Worked hours are given without the expected hours: attendance isn't counted");
+  }
   // the shift's hours alone, without worked hours, are no reason to warn: attendance just isn't tracked yet
   if (worked === null && i.expectedHours !== null) warnings.push("Expected hours are given without the worked hours: attendance isn't counted");
   if (worked !== null && expected !== null && !(expected > 0)) {

@@ -9,6 +9,9 @@ import {
   dayRange,
   errorLine,
   expectedCell,
+  expectedMark,
+  expectedSource,
+  expectedTitle,
   fromImport,
   GRID_COLUMNS,
   importMarkText,
@@ -24,6 +27,7 @@ import {
   placeApiErrors,
   rowPermissionHours,
   tidyCell,
+  typesInto,
   unsavedCount,
   unsavedText,
   untaxedNote,
@@ -35,8 +39,8 @@ const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 
 const lines: GridLine[] = [
-  // a performance saved before the KPI columns came off the grid
-  { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 270.5, expectedHours: 280, performance: 90, leaveDays: 1 }, onHold: false, comments: null },
+  // a performance saved before the KPI columns came off the grid; no expected hours, never typed on a draft (20 October 2026)
+  { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 270.5, performance: 90, leaveDays: 1 }, onHold: false, comments: null },
   { id: B, name: 'Karim Nabil', inputs: { ...EMPTY_PAYROLL_INPUTS, released: 1500 }, onHold: true, comments: 'Bank details pending' },
 ];
 
@@ -53,6 +57,10 @@ describe('the grid’s columns', () => {
     // nor the CEO's attendance waiver, ticked on the results table (17 October 2026)
     const notTyped = ['softSkills', 'performance', 'clientSatisfaction', 'attendanceWaived'];
     expect(new Set(GRID_COLUMNS.map((c) => c.field))).toEqual(new Set(Object.keys(EMPTY_PAYROLL_INPUTS).filter((k) => !notTyped.includes(k))));
+  });
+
+  it('show the Expected hours worked out, never typed: the one column that is (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data")', () => {
+    expect(GRID_COLUMNS.filter((c) => c.workedOut).map((c) => c.field)).toEqual(['expectedHours']);
   });
 
   it('say what a no-show day costs under its column', () => {
@@ -164,7 +172,8 @@ describe('the expected hours filled in from the shift (owner, 17 October 2026: "
     expect(attendancePercent(133, expectedCell(shift, cells({ noShowDays: 2, leaveDays: 1 })).hours)).toBe(92.36);
   });
 
-  it('are HR’s when typed, taken as already without the no-show and leave days: nothing more comes out', () => {
+  it('are HR’s on a line saved with them before they were locked (20 October 2026), taken as already without the no-show and leave days', () => {
+    // a run with the CEO, approved or paid, as it was worked out
     expect(expectedCell(shift, cells({ expectedHours: 150, noShowDays: 2, leaveDays: 1 }))).toEqual({ hours: 150, fromShift: false });
     // 0 typed is HR's too
     expect(expectedCell(shift, cells({ expectedHours: 0 }))).toEqual({ hours: 0, fromShift: false });
@@ -172,10 +181,80 @@ describe('the expected hours filled in from the shift (owner, 17 October 2026: "
     expect(attendancePercent(133, expectedCell(shift, cells({ expectedHours: 150, noShowDays: 2 })).hours)).toBe(88.67);
   });
 
-  it('are HR’s alone without a shift (or by the hour): none filled in', () => {
+  it('are none without a shift (or by the hour); a line saved with HR’s keeps them', () => {
     const none = { shiftExpectedHours: null, hoursPerDay: null };
     expect(expectedCell(none, cells({ noShowDays: 2 }))).toEqual({ hours: null, fromShift: false });
     expect(expectedCell(none, cells({ expectedHours: 160, leaveDays: 1 }))).toEqual({ hours: 160, fromShift: false });
+  });
+});
+
+describe('the expected hours locked (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data")', () => {
+  // the shift's 198:00 for the month: 22 working days of 9:00
+  const row = { payBasis: 'monthly' as const, shiftExpectedHours: 198, hoursPerDay: 9, leave: null };
+  const cells = (c: Partial<PayrollInputs> = {}) => ({ expectedHours: null, noShowDays: null, leaveDays: null, unpaidLeaveDays: null, ...c });
+
+  it('are read only on every row: never typed, whoever fills the line', () => {
+    const draft: GridLine = { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS }, onHold: false, comments: null };
+    expect(typesInto(draft, 'expectedHours')).toBe(false);
+    // the cells beside them take typing
+    expect(typesInto(draft, 'workedHours')).toBe(true);
+    expect(typesInto(draft, 'noShowDays')).toBe(true);
+    // a C-level person's line the CEO fills (19 October 2026): the same
+    expect(typesInto({ ...draft, editable: true }, 'expectedHours')).toBe(false);
+    expect(typesInto({ ...draft, editable: true }, 'leaveDays')).toBe(true);
+    // a line that isn't the caller's, or a cell an import filled, takes none either
+    expect(typesInto({ ...draft, editable: false }, 'workedHours')).toBe(false);
+    expect(typesInto({ ...draft, attendanceImport: { fields: ['workedHours'] } }, 'workedHours')).toBe(false);
+  });
+
+  it('are never sent, whatever is typed in their cell, nor counted as unsaved', () => {
+    const draft: GridLine = { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS }, onHold: false, comments: null };
+    const typed = { [A]: { inputs: { expectedHours: '200:00' } } };
+    expect(linePatches([draft], typed)).toEqual({ patches: [], errors: [] });
+    expect(unsavedCount([draft], typed)).toEqual({ cells: 0, rows: 0 });
+    // with another cell changed, only that one goes
+    expect(linePatches([draft], { [A]: { inputs: { expectedHours: '200:00', noShowDays: '1' } } }).patches).toEqual([{ id: A, inputs: { noShowDays: 1 } }]);
+    // nor is one saved before then cleared from the grid
+    const saved: GridLine = { ...draft, inputs: { ...EMPTY_PAYROLL_INPUTS, expectedHours: 180 } };
+    expect(linePatches([saved], { [A]: { inputs: { expectedHours: '' } } }).patches).toEqual([]);
+    // nor a value that can't be read: it isn't a cell to put right
+    expect(linePatches([draft], { [A]: { inputs: { expectedHours: 'abc' } } })).toEqual({ patches: [], errors: [] });
+  });
+
+  it('say they come from the shift, and what the days off took off it', () => {
+    expect(expectedSource(row, cells())).toEqual({ kind: 'shift', less: null });
+    // 5 leave days of 9:00: "198:00 − 45:00 leave"
+    expect(expectedSource(row, cells({ leaveDays: 5 }))).toEqual({ kind: 'shift', less: '198:00 − 45:00 leave' });
+    // a no-show day, the leave approved (1 paid, half a day unpaid) as the row has it
+    const approved = { ...row, leave: { paidDays: 1, unpaidDays: 0.5 } };
+    expect(expectedSource(approved, cells({ noShowDays: 1 }))).toEqual({ kind: 'shift', less: '198:00 − 9:00 no-show − 9:00 leave − 4:30 unpaid leave' });
+    // what it says agrees with the figure: 198 − 22:30 = 175:30
+    expect(expectedCell(approved, cells({ noShowDays: 1 })).hours).toBe(175.5);
+    expect(expectedMark(expectedSource(row, cells()), 'HR')).toBe('from the shift');
+    expect(expectedTitle(expectedSource(row, cells()), 'HR')).toBe(
+      "Worked out from the shift: its working days this month less the holidays, the no-show and leave days, at its hours to work a day. It follows those days; it can't be typed.",
+    );
+  });
+
+  it('say HR (or the CEO) typed them on a line saved with them before then', () => {
+    const typed = expectedSource(row, cells({ expectedHours: 150 }));
+    expect(typed).toEqual({ kind: 'typed' });
+    expect(expectedMark(typed, 'HR')).toBe('typed by HR');
+    expect(expectedMark(typed, 'the CEO')).toBe('typed by the CEO');
+    expect(expectedTitle(typed, 'HR')).toBe('Typed by HR before the expected hours were locked (20 October 2026): taken as already without the no-show and leave days.');
+  });
+
+  it('are none without a shift, which says how to get them; none by the hour', () => {
+    const noShift = expectedSource({ ...row, shiftExpectedHours: null, hoursPerDay: null }, cells({ noShowDays: 1 }));
+    expect(noShift).toEqual({ kind: 'noShift' });
+    expect(expectedMark(noShift, 'HR')).toBe('no shift');
+    expect(expectedTitle(noShift, 'HR')).toBe(
+      "No shift on the employment, so there are no expected hours and attendance isn't counted: set the shift on the Employment tab, then refresh the run.",
+    );
+    const hourly = expectedSource({ ...row, payBasis: 'hourly', shiftExpectedHours: null }, cells());
+    expect(hourly).toEqual({ kind: 'hourly' });
+    expect(expectedMark(hourly, 'HR')).toBeNull();
+    expect(expectedTitle(hourly, 'HR')).toBe('Paid by the hour: only the hours worked are paid, so there are no expected hours.');
   });
 });
 
@@ -226,10 +305,10 @@ describe('a month under two contracts (owner, 17 October 2026: "take into consid
 describe('what changed', () => {
   it('sends only the rows and the cells that changed', () => {
     const { patches, errors } = linePatches(lines, {
-      [A]: { inputs: { workedHours: '271:00', expectedHours: '280', leaveDays: '' } },
+      [A]: { inputs: { workedHours: '271:00', noShowDays: '', leaveDays: '' } },
     });
     expect(errors).toEqual([]);
-    // the expected hours were typed as they are saved: not a change; the performance saved isn't sent
+    // the no-show days left empty as they are saved: not a change; the performance saved isn't sent
     expect(patches).toEqual([{ id: A, inputs: { workedHours: 271, leaveDays: null } }]);
   });
 
@@ -242,10 +321,8 @@ describe('what changed', () => {
     expect(linePatches(older, { [B]: { inputs: { leaveDays: '1.5' } } }).patches).toEqual([{ id: B, inputs: { leaveDays: 1.5 } }]);
   });
 
-  it('sends HR’s expected hours cleared as none, so the shift’s come back; a cell left empty sends nothing', () => {
-    // Mona's 280 typed over the shift's, cleared
-    expect(linePatches(lines, { [A]: { inputs: { expectedHours: '' } } }).patches).toEqual([{ id: A, inputs: { expectedHours: null } }]);
-    // Karim's, never typed: the figure filled in from the shift is only shown, never an edit
+  it('never sends the expected hours, worked out from the shift (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data")', () => {
+    expect(linePatches(lines, { [A]: { inputs: { expectedHours: '280' } } }).patches).toEqual([]);
     expect(unsavedCount(lines, { [B]: { inputs: { expectedHours: '' } } })).toEqual({ cells: 0, rows: 0 });
   });
 
@@ -410,7 +487,7 @@ describe('the leave days filled in from the leave approved (owner, 18 October 20
     expect(expectedCell(shift, cells({ leaveDays: 1 }))).toEqual({ hours: 152, fromShift: true });
     // HR typed 0 unpaid days: 0 is HR's too
     expect(expectedCell(shift, cells({ unpaidLeaveDays: 0 }))).toEqual({ hours: 152, fromShift: true });
-    // HR's expected hours: taken as they are
+    // HR's expected hours, on a line saved with them before they were locked (20 October 2026): taken as they are
     expect(expectedCell(shift, cells({ expectedHours: 150 }))).toEqual({ hours: 150, fromShift: false });
   });
 
@@ -528,16 +605,16 @@ describe('the figures filled from Zoho People (owner, 19 October 2026: "HR\'s ty
       "Filled from the month's attendance days on 19/10/2026. They change with the attendance: a correction approved, or Refresh from attendance.",
     );
     const line = { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 150 }, onHold: false, comments: null, attendanceImport: fromDays };
-    expect(linePatches([line], { [A]: { inputs: { workedHours: '160:00', expectedHours: '176:00' } } }).patches).toEqual([{ id: A, inputs: { expectedHours: 176 } }]);
+    expect(linePatches([line], { [A]: { inputs: { workedHours: '160:00', leaveDays: '1' } } }).patches).toEqual([{ id: A, inputs: { leaveDays: 1 } }]);
   });
 
   it('never sends what is typed in a cell the import filled, but the others', () => {
     const line = { id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS, workedHours: 170.5, noShowDays: 0 }, onHold: false, comments: null, attendanceImport: mark };
-    const edits = { [A]: { inputs: { workedHours: '150:00', noShowDays: '2', expectedHours: '180:00' } } };
-    expect(linePatches([line], edits).patches).toEqual([{ id: A, inputs: { expectedHours: 180 } }]);
+    const edits = { [A]: { inputs: { workedHours: '150:00', noShowDays: '2', leaveDays: '1' } } };
+    expect(linePatches([line], edits).patches).toEqual([{ id: A, inputs: { leaveDays: 1 } }]);
     expect(unsavedCount([line], edits)).toEqual({ cells: 1, rows: 1 });
     // undone, the mark gone: they are HR's again
-    expect(linePatches([{ ...line, attendanceImport: null }], edits).patches).toEqual([{ id: A, inputs: { workedHours: 150, noShowDays: 2, expectedHours: 180 } }]);
+    expect(linePatches([{ ...line, attendanceImport: null }], edits).patches).toEqual([{ id: A, inputs: { workedHours: 150, noShowDays: 2, leaveDays: 1 } }]);
   });
 });
 

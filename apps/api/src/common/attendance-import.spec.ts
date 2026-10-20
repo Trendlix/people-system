@@ -186,8 +186,8 @@ describe('the line’s mark of the import (owner, 19 October 2026: "imported dat
   const mark = { source: 'zoho' as const, importId: 'i1', at: '2026-10-19T10:00:00.000Z', fields: ['workedHours' as const, 'noShowDays' as const, 'permissionHours' as const] };
 
   it('holds the inputs it filled: a change to one of them is refused, the others go ahead', () => {
-    expect(importedInputsChanged(mark, ['workedHours', 'expectedHours'])).toEqual(['workedHours']);
-    expect(importedInputsChanged(mark, ['expectedHours', 'leaveDays'])).toEqual([]);
+    expect(importedInputsChanged(mark, ['workedHours', 'released'])).toEqual(['workedHours']);
+    expect(importedInputsChanged(mark, ['released', 'leaveDays'])).toEqual([]);
     expect(importedInputsChanged({ ...mark, fields: ['workedHours'] }, ['noShowDays'])).toEqual([]);
     expect(importedInputsChanged(null, ['workedHours'])).toEqual([]);
   });
