@@ -310,15 +310,41 @@ describe('the check-in counter', () => {
     expect(words('08:00:00', '20:30:00')).toEqual({ value: '9:00:00', note: 'Counting from 9:00 AM, when your shift starts', status: 'Your 9 hours are done' });
   });
 
-  it('with extra time counting (the coming rule: until a check-out limit, making up short hours): ticks past the hours, then stops at the limit', () => {
-    // owner, 20 October 2026: "no working hours to be counted after 8 PM even if the check out was 11 PM"
-    const makeUp = { ...rule, countUntil: at('20:00:00'), extraCounts: true };
+  it('on a shift that counts hours until a time (making up short hours): ticks past the hours, then stops at the limit', () => {
+    // owner, 20 October 2026: "no working hours to be counted after 8 PM even if the check out was 11 PM"; the shift's
+    // "Count hours until", as GET /me/attendance/today sends it
+    const UNTIL_8PM = { ...MORNING, countUntil: '20:00' };
+    const makeUp = countRuleOf(DATE, UNTIL_8PM);
+    expect(makeUp).toEqual({ windowStart: at('09:00:00'), countUntil: at('20:00:00'), hoursToWork: 9, extraCounts: true });
+    // none (null, or left out by an API from before it): today's rule
+    expect(countRuleOf(DATE, { ...MORNING, countUntil: null })).toEqual(rule);
     expect(count('09:00:00', '18:30:00', makeUp)).toMatchObject({ phase: 'extra', countedMs: 9.5 * 3_600_000 });
     expect(words('09:00:00', '18:30:00', makeUp)).toEqual({ value: '9:30:00', note: null, status: 'Your 9 hours are done. Extra time until 8:00 PM fills short hours this month' });
     expect(count('09:00:00', '23:00:00', makeUp)).toMatchObject({ phase: 'stopped', countedMs: 11 * 3_600_000 });
     expect(words('09:00:00', '23:00:00', makeUp).status).toBe('Your 9 hours are done. Extra time until 8:00 PM fills short hours this month');
     // short of the hours when the limit comes
     expect(words('12:00:00', '21:00:00', makeUp)).toEqual({ value: '8:00:00', note: null, status: 'Hours counted until 8:00 PM' });
+    expect(counterShows(open('09:00:00', UNTIL_8PM), at('18:30:00'))).toEqual({
+      kind: 'live',
+      value: '9:30:00',
+      note: null,
+      status: 'Your 9 hours are done. Extra time until 8:00 PM fills short hours this month',
+    });
+    // as attendance counts the day once they check out then: until 8:00 PM, past the 9 hours
+    const cases: [string, string, number][] = [
+      ['09:00', '23:00', 11],
+      ['10:00', '19:30', 9.5],
+      ['12:00', '21:00', 8],
+      ['08:00', '18:00', 9],
+    ];
+    for (const [checkIn, checkOut, hours] of cases) {
+      const punches = [
+        { kind: 'in' as const, at: new Date(at(`${checkIn}:00`)).toISOString(), place: 'office' as const },
+        { kind: 'out' as const, at: new Date(at(`${checkOut}:00`)).toISOString(), place: 'office' as const },
+      ];
+      expect(dayFromPunches(DATE, punches, UNTIL_8PM).hoursCounted).toBeCloseTo(hours, 6);
+      expect(count(`${checkIn}:00`, `${checkOut}:00`, makeUp).countedMs / 3_600_000).toBeCloseTo(hours, 6);
+    }
   });
 
   it('with no shift: the time since the check-in, with no target', () => {

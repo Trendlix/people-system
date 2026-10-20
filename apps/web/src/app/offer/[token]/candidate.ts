@@ -27,18 +27,8 @@ export function candidateView(status: OfferShownStatus | string): CandidateView 
 
 type HeaderSource = Pick<Headers, 'get'>;
 
-const IP = /^[0-9a-f.:]{2,45}$/i;
-
-/**
- * The candidate's IP address, recorded with their answer: the first entry of x-forwarded-for (the client, as the
- * deployment's proxy adds it), else x-real-ip; undefined when neither holds an address.
- */
-export function clientIp(h: HeaderSource): string | undefined {
-  const forwarded = h.get('x-forwarded-for')?.split(',')[0]?.trim();
-  if (forwarded && IP.test(forwarded)) return forwarded;
-  const real = h.get('x-real-ip')?.trim();
-  return real && IP.test(real) ? real : undefined;
-}
+// The candidate's IP address, recorded with their answer, is read by lib/client-ip.ts (shared with the sign-in and the
+// check-ins since 20 October 2026).
 
 /** The candidate's browser (its user agent), up to 500 characters; undefined without one. */
 export function userAgentOf(h: HeaderSource): string | undefined {

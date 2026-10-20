@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acceptBody, asShown, candidateView, clientIp, declineBody, isOfferToken, userAgentOf } from './candidate';
+import { acceptBody, asShown, candidateView, declineBody, isOfferToken, userAgentOf } from './candidate';
 
 const headersOf = (entries: Record<string, string>) => new Headers(entries);
 
@@ -32,17 +32,7 @@ describe('what the page shows', () => {
 });
 
 describe('who answered', () => {
-  it('takes the first address the proxy forwarded', () => {
-    expect(clientIp(headersOf({ 'x-forwarded-for': '41.33.10.2, 10.0.0.5', 'x-real-ip': '10.0.0.5' }))).toBe('41.33.10.2');
-    expect(clientIp(headersOf({ 'x-forwarded-for': '2001:db8::1' }))).toBe('2001:db8::1');
-  });
-
-  it('falls back to x-real-ip, and ignores what is not an address', () => {
-    expect(clientIp(headersOf({ 'x-real-ip': '197.45.1.9' }))).toBe('197.45.1.9');
-    expect(clientIp(headersOf({ 'x-forwarded-for': 'unknown', 'x-real-ip': '197.45.1.9' }))).toBe('197.45.1.9');
-    expect(clientIp(headersOf({ 'x-forwarded-for': '<script>' }))).toBeUndefined();
-    expect(clientIp(headersOf({}))).toBeUndefined();
-  });
+  // the IP address is read by lib/client-ip.ts, tested there (client-ip.test.ts)
 
   it('keeps the browser, up to 500 characters', () => {
     expect(userAgentOf(headersOf({ 'user-agent': ' Mozilla/5.0 (iPhone) ' }))).toBe('Mozilla/5.0 (iPhone)');

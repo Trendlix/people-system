@@ -1,6 +1,9 @@
 'use client';
 
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
+import { NETWORK_NEEDED_TEXT } from '@trendlix/shared';
 import type { CheckInTodayView, PunchResultView } from '@/lib/attendance-types';
 import { getPosition } from '@/lib/native';
 import { useNativeApp } from '@/lib/use-native';
@@ -21,6 +24,7 @@ import {
   punchRows,
   type PunchPhase,
 } from './check-in';
+import { appLocationRefusal, correctionLinkFor } from './network-lock';
 
 // The Check in / Check out panel (owner, 19 October 2026: "Check-in through the system (phone or web with the office
 // location check, or a device) to replace Zoho"): one big button, Check in or Check out as the day stands, mostly pressed
@@ -36,7 +40,10 @@ import {
 // it is said under what was kept (inside the app: the phone's settings for TrendLIX People; the app's Phase 2, "a clear
 // message when refused"). Under the button, the check-in counter (owner, 20 October 2026: "employees need to see a
 // checkin counter after their checkin", check-in-counter.tsx): the time worked so far while checked in, and the day's
-// hours counted once checked out, in place of the hours counted below.
+// hours counted once checked out, in place of the hours counted below. Check-ins locked to the office network (owner, 20
+// October 2026): a locked person is told so before pressing, and a press refused off it links to ask for a correction
+// of the day. Inside the app a press without a location isn't sent (owner, 20 October 2026: "Refuse without location",
+// "App only"): it says how to turn the location on; the API refuses it all the same.
 
 export function CheckInPanel({ initial, compact = false, big = false }: { initial: CheckInTodayView; compact?: boolean; big?: boolean }) {
   const [pressed, setPressed] = useState<PunchResultView | null>(null);
@@ -44,6 +51,8 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   const [errors, setErrors] = useState<string[]>([]);
   const [help, setHelp] = useState<string | null>(null);
   const [phase, setPhase] = useState<PunchPhase>('idle');
+  const [offNetwork, setOffNetwork] = useState(false);
+  const pathname = usePathname();
   const inApp = useNativeApp();
   const noteId = useId();
   const view = latestView(initial, pressed);
@@ -58,14 +67,26 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
     setErrors([]);
     setMessages([]);
     setHelp(null);
+    setOffNetwork(false);
     setPhase('locating');
     const location = await getPosition();
-    setHelp('locationError' in location ? locationHelpText(location.locationError, inApp) : null);
+    const help = 'locationError' in location ? locationHelpText(location.locationError, inApp) : null;
+    // inside the app, no press without the location (20 October 2026)
+    const refused = appLocationRefusal(inApp, location, help);
+    if (refused) {
+      setErrors(refused);
+      going.current = false;
+      setPhase('idle');
+      return;
+    }
+    setHelp(help);
     setPhase('sending');
     try {
       const result = await punchAttendance(punchBody(kind, location));
-      if ('errors' in result) setErrors(result.errors);
-      else {
+      if ('errors' in result) {
+        setErrors(result.errors);
+        setOffNetwork(!!result.offNetwork);
+      } else {
         setPressed(result.view);
         setMessages(result.view.messages);
       }
@@ -87,6 +108,7 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   return (
     <div className="space-y-4">
       {view.expectedText && <p className="text-sm">{view.expectedText}</p>}
+      {view.network?.locked && <p className="text-sm">{NETWORK_NEEDED_TEXT}</p>}
 
       <div>
         <button
@@ -122,6 +144,14 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
       {errors.length > 0 && (
         <div role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
           {errors.join(' ')}
+          {offNetwork && (
+            <>
+              {' '}
+              <Link href={correctionLinkFor(pathname, view.date)} className="font-semibold text-danger">
+                Ask for a correction
+              </Link>
+            </>
+          )}
         </div>
       )}
 

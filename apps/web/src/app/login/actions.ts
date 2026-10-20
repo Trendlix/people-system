@@ -4,9 +4,9 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { sessionKindOf } from '@trendlix/shared';
 import { API_URL, apiFetch, messagesOf } from '@/lib/api';
+import { clientIp } from '@/lib/client-ip';
 import { SESSION_COOKIE } from '@/lib/constants';
 import { keepSession } from '@/lib/session-cookie';
-import { clientIp } from '../offer/[token]/candidate';
 
 export interface LoginState {
   error?: string;

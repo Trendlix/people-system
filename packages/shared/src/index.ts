@@ -391,3 +391,8 @@ export * from './attendance-corrections.js';
 // then session to be terminated; only 1 active session per user online and 1 active mobile session"): the website and
 // the app's kinds, why one ends, the 15 minutes for HR, Admin and Super Admin, and the sign-in page's words
 export * from './sessions.js';
+
+// check-ins locked to the office network (owner, 20 October 2026: "allow me to lock checkin's to wifi name or ip,
+// whatever is right"): IP addresses and ranges, the office's networks, who is locked (Office staff, unless HR lets them
+// check in from anywhere), and the address the website signs for the API
+export * from './office-network.js';

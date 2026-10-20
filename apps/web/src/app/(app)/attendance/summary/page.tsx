@@ -12,6 +12,7 @@ import {
   attendanceMonthChoices,
   attendancePeriodTitle,
   canSeeAttendance,
+  filledText,
   hoursText,
   quickSummaryPeriods,
   readSummaryPeriod,
@@ -85,7 +86,11 @@ function Cells({ r, strong = false }: { r: AttendanceSummaryRow; strong?: boolea
       <td className={cell}>{hoursText(f.hoursCounted)}</td>
       <td className={cell}>{hoursText(r.averageHours)}</td>
       <td className={`${cell} ${f.absentDays ? 'text-danger' : ''}`}>{f.absentDays}</td>
-      <td className={`${cell} ${f.shortHours ? 'text-warn' : ''}`}>{hoursText(f.shortHours, true)}</td>
+      <td className={`${cell} ${f.shortHours ? 'text-warn' : ''}`}>
+        {hoursText(f.shortHours, true)}
+        {/* make-up hours (owner, 20 October 2026): the short hours the extra time filled, month by month */}
+        {filledText(f) && <div className="text-xs font-normal text-ok">{filledText(f)}</div>}
+      </td>
       <td className={cell}>{hoursText(f.permissionHours, true)}</td>
       <td className={cell}>{f.officeDays}</td>
       <td className={cell}>{f.remoteDays}</td>

@@ -678,7 +678,13 @@ export class AttendanceImportsService {
       this.prisma.employment.findMany({
         where: { employeeId: { in: ids }, ...employedIn(month) },
         orderBy: { joinDate: 'desc' },
-        select: { id: true, employeeId: true, joinDate: true, endDate: true, shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, workingDays: true } } },
+        select: {
+          id: true,
+          employeeId: true,
+          joinDate: true,
+          endDate: true,
+          shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true } },
+        },
       }),
       this.prisma.holiday.findMany({ where: { date: { gte: toDateOnly(first), lte: toDateOnly(last) } }, select: { date: true } }),
       this.prisma.leaveRequest.findMany({
@@ -708,9 +714,17 @@ export class AttendanceImportsService {
           month,
           days: w.days,
           // the window's end moved by the shift's grace minutes (owner, 19 October 2026: "if the employee checked in
-          // 10:15 he can check out till 7:15 and the 9 hours are counted")
+          // 10:15 he can check out till 7:15 and the 9 hours are counted"), or the time it counts hours until (owner, 20
+          // October 2026: "no working hours to be counted after 8 PM even if the check out was 11 PM")
           shift: s
-            ? { startTime: fromTimeOfDay(s.startTime), endTime: fromTimeOfDay(s.endTime), hoursPerDay: s.hoursPerDay?.toNumber() ?? null, graceMinutes: s.graceMinutes, workingDays: s.workingDays }
+            ? {
+                startTime: fromTimeOfDay(s.startTime),
+                endTime: fromTimeOfDay(s.endTime),
+                hoursPerDay: s.hoursPerDay?.toNumber() ?? null,
+                graceMinutes: s.graceMinutes,
+                countUntil: s.countUntil ? fromTimeOfDay(s.countUntil) : null,
+                workingDays: s.workingDays,
+              }
             : null,
           holidays: holidayDays,
           leaveDays,

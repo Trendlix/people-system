@@ -148,8 +148,8 @@ export async function deleteGrade(id: string, _prev: FormState, fd: FormData): P
 
 /**
  * The shift for the API. Times are chosen on the 12-hour clock ("9:00 AM") and sent as HH:mm; the hours to work a day
- * as hours (9, 9:00, 8:30), empty for the whole window (null; owner, 16 October 2026: flexible shifts); problems go in
- * `errors`.
+ * as hours (9, 9:00, 8:30), empty for the whole window (null; owner, 16 October 2026: flexible shifts); "Count hours
+ * until" as a time, empty for none (null; owner, 20 October 2026: make-up hours); problems go in `errors`.
  */
 const shiftBody = (fd: FormData, errors: string[]) => {
   const time = (key: string, label: string) => {
@@ -160,11 +160,14 @@ const shiftBody = (fd: FormData, errors: string[]) => {
   const grace = text(fd, 'graceMinutes').trim();
   const hoursPerDay = hoursToWorkFrom(text(fd, 'hoursPerDay'));
   if (Number.isNaN(hoursPerDay)) errors.push(HOURS_TO_WORK_ERROR);
+  // not required: none chosen is none
+  const countUntil = timeFrom(fd, 'countUntil', 'time hours count until', errors);
   return {
     code: text(fd, 'code'),
     startTime: time('startTime', 'start time'),
     endTime: time('endTime', 'end time'),
     hoursPerDay,
+    countUntil: countUntil === '' ? null : countUntil,
     graceMinutes: grace === '' ? undefined : Number(grace),
     workingDays: fd.getAll('workingDays').map(Number),
   };

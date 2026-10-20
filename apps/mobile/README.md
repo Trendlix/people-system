@@ -255,6 +255,14 @@ The phone pages live in `apps/web/src/app/(phone)/app/` (their own layout, not t
   Secrets / deploy/.env, never in chat).
 - The API stays private: the app reaches only `people.trendlix.com`.
 - The phone pages reuse the existing loaders, actions and shared rules — no second copy of a rule.
+- Check-ins locked to the office network (owner, 20 October 2026: "allow me to lock checkin's to wifi name or ip,
+  whatever is right"; Attendance → Check-in Setup): the app relies on the same lock as the website, with nothing native.
+  It shows `people.trendlix.com`, so the website reads the phone's public address and signs it for the API (`WEB_KEY`,
+  DEPLOY.md) exactly as for a browser; no Wi-Fi name or address is read on the phone, and none is kept.
+- Inside the app a check-in or check-out needs the location (owner, 20 October 2026: "dont allow checkins without
+  location is always active", then "Refuse without location", "App only"): read only at the moment of the press, never
+  tracked. The panel doesn't send a press without it and says how to turn it on; the API refuses an app session's press
+  without a location all the same (409). The website keeps a press without one as location unknown, as before.
 - Parallel agents split by area (API / web pages / shell); agree a contract first (endpoints and shapes) and write it
   here under the phase.
 - Before each push: every check green; then watch the web deploy, the backend deploy and the mobile workflow.
@@ -357,8 +365,9 @@ npm run open:android -w @trendlix/mobile       # opens the project in Android St
   - To try (owner): sign in on a phone's browser at people.trendlix.com/app, check in and out, ask for leave, a
     permission, a reimbursement with a receipt photo, a correction from Attendance; open a payslip; as a manager, decide
     on To Approve. Then the same in the APK.
-- [ ] Phase 2 — Native location and the camera — **built 20 Oct 2026, waiting for the "Mobile (Android)" run** (see
-  "Phase 2 — what was built" above).
+- [x] Phase 2 — Native location and the camera — **done 20 Oct 2026**: the "Mobile (Android)" run 0.1.4 built the APK
+  with the plugins and the app's own `TrendlixLocation` plugin (see "Phase 2 — what was built" above); on a phone the
+  owner tries the location prompt, a fake-GPS app, the camera and the PDFs.
   - Done: the Geolocation and Camera plugins, the app's own `TrendlixLocation` plugin (fake GPS), the manifest
     permissions, the bridge's `getPosition()` / `takePhoto()`, Take a photo and the check-in's help in the app, PDFs
     drawn with pdf.js in the viewer on the phone pages and in the app, the API's `mock` and the "Fake GPS suspected"

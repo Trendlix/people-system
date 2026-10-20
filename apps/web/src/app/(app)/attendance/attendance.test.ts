@@ -13,7 +13,9 @@ import {
   dailyHref,
   dayFlagTexts,
   daySourceText,
+  extraHoursText,
   figureTiles,
+  filledText,
   filtered,
   hoursText,
   importCountsText,
@@ -305,5 +307,36 @@ describe('checking in on the system (owner, 19 October 2026: "Check-in through t
     ]);
     // not checking in, but a flagged day (a list's totals): that one alone
     expect(figureTiles({ ...NO_ATTENDANCE_FIGURES, flaggedDays: 2 }, { averageHours: null }).map((t) => t.key).slice(-2)).toEqual(['checkouts', 'flagged']);
+  });
+});
+
+describe('make-up hours on the Attendance pages (owner, 20 October 2026: "within the same month")', () => {
+  // a shift that counts hours until 8:00 PM: a 7-hour day, then an 11-hour day and a 10:30 one, on 9 hours a day
+  const worked = (date: string, hoursCounted: number) =>
+    attendanceDayView({ date, status: 'worked', checkIn: `${date}T07:00:00.000Z`, checkOut: `${date}T19:00:00.000Z`, place: 'office', zohoStatus: null, permissionHours: 0, hoursCounted }, 9);
+  const days = [worked('2026-10-04', 7), worked('2026-10-05', 11), worked('2026-10-06', 10.5)];
+
+  it('says a day’s extra time, "+2:00 extra", and nothing on a day without', () => {
+    expect(days.map(extraHoursText)).toEqual([null, '+2:00 extra', '+1:30 extra']);
+    // an API from before it has none
+    expect(extraHoursText({})).toBeNull();
+  });
+
+  it('adds a tile of the short hours the month’s extra time filled, only with extra time', () => {
+    const f = attendanceFigures(days);
+    expect(f).toMatchObject({ shortHours: 2, extraHours: 3.5, shortHoursFilled: 2 });
+    const tiles = figureTiles(f, { averageHours: 9.5, hoursADay: 9 });
+    expect(tiles.map((t) => t.key).slice(0, 5)).toEqual(['worked', 'hours', 'absent', 'short', 'filled']);
+    expect(tiles.find((t) => t.key === 'filled')).toEqual({
+      key: 'filled',
+      label: 'Short hours filled by extra time',
+      value: '2:00',
+      note: "3:30 of extra time this month, past the shift's hours a day",
+      tone: null,
+    });
+    expect(filledText(f)).toBe('2:00 filled by extra time');
+    // no extra time: no tile, no note
+    expect(figureTiles(NO_ATTENDANCE_FIGURES, { averageHours: null }).map((t) => t.key)).not.toContain('filled');
+    expect([filledText(NO_ATTENDANCE_FIGURES), filledText({})]).toEqual([null, null]);
   });
 });

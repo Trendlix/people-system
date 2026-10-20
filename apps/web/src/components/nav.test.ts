@@ -130,12 +130,12 @@ describe('the sidebar', () => {
         .find((n) => n.label === 'Attendance')
         ?.items?.map((i) => [i.label, i.href]) ?? null;
 
-    it('is a heading after Requests, for HR, the CEO and Finance, linking to Daily Attendance', () => {
+    it('is a heading after Requests, for HR, the CEO and Finance, linking to Daily Attendance; and for an Admin, for Check-in Setup', () => {
       const labels = NAV.map((n) => n.label);
       expect(labels.indexOf('Attendance')).toBe(labels.indexOf('Requests') + 1);
       expect(attendance).toMatchObject({ href: '/attendance', section: '/attendance' });
-      for (const role of ['hr', 'ceo', 'finance'] as const) expect(hasRole(as(role), ...(attendance.roles ?? []))).toBe(true);
-      expect(hasRole(as('employee', 'manager', 'admin', 'super_admin'), ...(attendance.roles ?? []))).toBe(false);
+      for (const role of ['hr', 'ceo', 'finance', 'admin', 'super_admin'] as const) expect(hasRole(as(role), ...(attendance.roles ?? []))).toBe(true);
+      expect(hasRole(as('employee', 'manager'), ...(attendance.roles ?? []))).toBe(false);
     });
 
     it('has Daily Attendance, Import (HR’s: "where am i going to import the sheets?"), Import History, Summary and Corrections for HR; the CEO all but Import; Finance neither Import nor Corrections', () => {
@@ -146,6 +146,8 @@ describe('the sidebar', () => {
         ['Summary', '/attendance/summary'],
         // the days asked to be corrected (19 October 2026: "Attendance corrections with approval")
         ['Corrections', '/attendance/corrections'],
+        // the check-in locations and the office network's lock (20 October 2026: "Own page, several locations")
+        ['Check-in Setup', '/attendance/check-in-setup'],
       ]);
       expect(pagesFor('ceo')).toEqual([
         ['Daily Attendance', '/attendance'],
@@ -158,8 +160,10 @@ describe('the sidebar', () => {
         ['Import History', '/attendance/imports'],
         ['Summary', '/attendance/summary'],
       ]);
-      expect(pagesFor('admin')).toBeNull();
-      expect(pagesFor('super_admin')).toBeNull();
+      // an Admin and a Super Admin: Check-in Setup alone, the heading linking to it
+      expect(pagesFor('admin')).toEqual([['Check-in Setup', '/attendance/check-in-setup']]);
+      expect(pagesFor('super_admin')).toEqual([['Check-in Setup', '/attendance/check-in-setup']]);
+      expect(navFor({ roles: ['admin'], employeeId: 'x' }).find((n) => n.label === 'Attendance')?.href).toBe('/attendance/check-in-setup');
       expect(navFor({ roles: ['hr'], employeeId: 'x' }).find((n) => n.label === 'Attendance')?.href).toBe('/attendance');
     });
 
@@ -322,8 +326,9 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'Approvals']);
     expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance']);
     expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'Approvals', 'Audit Log']);
-    expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Approvals', 'Users']);
-    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Approvals', 'Templates', 'Users', 'Audit Log']);
+    // Attendance for Check-in Setup alone (20 October 2026: "Own page, several locations")
+    expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Attendance', 'Approvals', 'Users']);
+    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Attendance', 'Approvals', 'Templates', 'Users', 'Audit Log']);
   });
 
   it('shows the Audit Log to the Super Admin, beside Users, and the CEO only (owner, 19 October 2026: "an Audit Log page showing who changed what and when")', () => {

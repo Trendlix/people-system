@@ -1,12 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT } from '@trendlix/shared';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { ContractSettings, FormState, PayrollSettingsView } from '@/lib/types';
+import { CHECK_IN_SETUP_PATH } from '../../attendance/sections';
 import { plainAmount } from '../../employees/[id]/contracts/salary';
-import { OfficeLocationFields } from './office-location-fields';
-import { coordinateText } from './settings';
 
 // Payroll Setup → Your Rules (HR and Admin; owner's request, 16 October 2026): the rules runs are worked out with,
 // after the owner's payroll sheet, and the company defaults that change the sheet, kept with the contract settings: the
@@ -22,9 +22,8 @@ import { coordinateText } from './settings';
 // the Labour Law's limit (owner, 18 October 2026, after reading the law: "Block above 10%"; Art. 113): 10% at most,
 // lower if the company sets it so; a plan or an installment past it is refused, and the run's line warns past it.
 // Shown only when the API has it. Office Location (owner, 19 October 2026: "Check-in through the system (phone or web
-// with the office location check, or a device) to replace Zoho"): the office's point and radius a check-in on the system
-// is read against (office-location-fields.tsx); the office's addresses stay, as Zoho People's check-in addresses for its
-// import. Each shown only when the API has it.
+// with the office location check, or a device) to replace Zoho") and Zoho People's check-in addresses were here until
+// 20 October 2026 (owner: "Own page, several locations"): a line points to Attendance → Check-in Setup in their place.
 
 type RuleKey = 'dayDivisor' | 'attendanceGracePercent' | 'kpiGracePercent' | 'overtimeAbovePercent' | 'overtimeRate' | 'noShowDayMultiplier';
 
@@ -66,8 +65,6 @@ export function YourRulesForm({
   const off = hasSwitch && !paysOvertime;
   const reviewMonths = rules.salaryReviewMonths;
   const limitPercent = rules.installmentLimitPercent;
-  const offices = rules.officeAddresses;
-  const radius = rules.officeRadiusMetres;
 
   const numberField = (f: RuleField, disabled = false) => (
     <div key={f.key} className={disabled ? 'opacity-60' : undefined}>
@@ -192,44 +189,12 @@ export function YourRulesForm({
         </div>
       )}
 
-      {radius !== undefined && (
-        <div className="border-t border-line-soft pt-5">
-          <fieldset className="space-y-4">
-            <legend className="font-semibold">Office Location</legend>
-            <OfficeLocationFields
-              latitude={valueOf(state, 'officeLatitude', coordinateText(rules.officeLatitude))}
-              longitude={valueOf(state, 'officeLongitude', coordinateText(rules.officeLongitude))}
-              radius={valueOf(state, 'officeRadiusMetres', String(radius))}
-            />
-          </fieldset>
-        </div>
-      )}
-
-      {offices !== undefined && (
-        <div className="border-t border-line-soft pt-5">
-          <fieldset className="space-y-4">
-            <legend className="font-semibold">Zoho People&apos;s Check-in Addresses</legend>
-            <div>
-              <label htmlFor={fid('officeAddresses')} className="label">
-                The office&apos;s addresses as Zoho People writes them, one a line
-              </label>
-              <textarea
-                id={fid('officeAddresses')}
-                name="officeAddresses"
-                rows={Math.max(4, offices.length + 1)}
-                defaultValue={valueOf(state, 'officeAddresses', offices.join('\n'))}
-                aria-describedby={fid('officeAddresses-hint')}
-                className="input max-w-xl"
-              />
-              <p id={fid('officeAddresses-hint')} className="hint">
-                For attendance from Zoho People: a check-in at one of these is a day at the office, anywhere else remote, and only that is kept,
-                never the address. Part of the address as Zoho People writes it, e.g. 15, Al Doctor Al Mahrouqi Street, or the company&apos;s name.
-                At most 20.
-              </p>
-            </div>
-          </fieldset>
-        </div>
-      )}
+      {/* the check-in places moved to their own page (owner, 20 October 2026: "Own page, several locations") */}
+      <div className="border-t border-line-soft pt-5">
+        <p className="text-sm">
+          Check-in locations and Zoho&apos;s addresses are on <Link href={CHECK_IN_SETUP_PATH}>Attendance → Check-in Setup</Link>.
+        </p>
+      </div>
 
       {(basicShare !== undefined || insuranceBasic !== undefined) && (
         <div className="border-t border-line-soft pt-5">

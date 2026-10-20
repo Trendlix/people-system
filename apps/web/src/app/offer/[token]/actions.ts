@@ -7,9 +7,10 @@
 import { refresh } from 'next/cache';
 import { headers } from 'next/headers';
 import { ApiError } from '@/lib/api';
+import { clientIp } from '@/lib/client-ip';
 import { publicSend } from '@/lib/public-api';
 import type { FormState } from '@/lib/types';
-import { acceptBody, asShown, clientIp, declineBody, isOfferToken, userAgentOf } from './candidate';
+import { acceptBody, asShown, declineBody, isOfferToken, userAgentOf } from './candidate';
 
 const INVALID = "This link isn't valid. Please use the latest link you received.";
 

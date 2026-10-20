@@ -538,4 +538,27 @@ describe('Migrations (e2e)', () => {
       expect(await superAdmins()).toEqual([]);
     });
   });
+
+  // several check-in locations (owner, 20 October 2026: "Own page, several locations"): the one office point Payroll
+  // Setup had becomes the first location, "Office"; none set, none made; the old columns stay
+  describe('check-in locations', () => {
+    const migration = () => readdirSync(MIGRATIONS).find((m) => m.endsWith('_check_in_locations'))!;
+    const locations = async () =>
+      (await db.query<{ name: string; latitude: string; longitude: string; radius: number }>('SELECT name, latitude, longitude, radius_metres AS radius FROM check_in_locations')).rows;
+
+    it('copies the office point set on Payroll Setup into a first location named Office, with its radius', async () => {
+      await migratedUpTo(migration());
+      await db.query('UPDATE payroll_settings SET office_latitude = 30.0596, office_longitude = 31.3462, office_radius_metres = 220 WHERE id = 1');
+      await db.query(sql(migration()));
+      expect(await locations()).toEqual([{ name: 'Office', latitude: '30.059600', longitude: '31.346200', radius: 220 }]);
+      const { rows } = await db.query<{ lat: string }>('SELECT office_latitude AS lat FROM payroll_settings WHERE id = 1');
+      expect(rows).toEqual([{ lat: '30.059600' }]);
+    });
+
+    it('makes none when no office point was set', async () => {
+      await migratedUpTo(migration());
+      await db.query(sql(migration()));
+      expect(await locations()).toEqual([]);
+    });
+  });
 });

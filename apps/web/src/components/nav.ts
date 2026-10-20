@@ -107,12 +107,14 @@ export const NAV: NavItem[] = [
   // attendance (owner, 19 October 2026: "the attendance is not active in the side menu"; it was under Coming Next until
   // then): a heading with its pages, for HR, the CEO and Finance (Finance read only); Import is HR's (owner, the same
   // day: "where am i going to import the sheets?"). A manager sees their team's from My Team, an employee their own on
-  // My Attendance.
+  // My Attendance. Check-in Setup (owner, 20 October 2026: "Own page, several locations"), the check-in locations and the
+  // office network's lock, HR's and Admin's: an Admin (or a Super Admin) sees that page alone here, the heading linking
+  // to it.
   {
     href: ATTENDANCE_PATH,
     label: 'Attendance',
     section: ATTENDANCE_PATH,
-    roles: ['hr', 'ceo', 'finance'],
+    roles: ['hr', 'ceo', 'finance', 'admin'],
     items: ATTENDANCE_SECTIONS.map((s) => ({ href: s.href, label: s.label, section: s.href, ...(s.roles && { roles: [...s.roles] }) })),
   },
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },

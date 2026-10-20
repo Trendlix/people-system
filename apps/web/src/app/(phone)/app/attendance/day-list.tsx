@@ -3,7 +3,7 @@ import type { MonthCorrectable, MonthCorrection } from '@/lib/correction-types';
 import type { AttendanceDay } from '@/lib/attendance-types';
 import { formatDate } from '@/lib/format';
 import { appCorrectionHref, appItemHref } from '@/lib/surface';
-import { checkInCell, correctedNote, dayFlagTexts, daySourceText, hoursText, punchesText, type PunchRow } from '../../../(app)/attendance/attendance';
+import { checkInCell, correctedNote, dayFlagTexts, daySourceText, extraHoursText, hoursText, punchesText, type PunchRow } from '../../../(app)/attendance/attendance';
 import { dayCorrection } from '../../../(app)/attendance/corrections/corrections';
 import { leaveStatusLabel } from '../../../(app)/leave/list';
 import { weekdayOf } from '../../../(app)/organization/holidays/holidays';
@@ -11,7 +11,8 @@ import { cairoTime, dayStatusText, dayTone, placeText } from '../../../(app)/pay
 
 // A month's days on the phone pages (owner, 20 October 2026: the employee app, "My attendance … a day → Ask for a
 // correction"): My Attendance's table (attendance/ui.tsx, DaysTable) as a list a phone can read, each day a card with
-// what it was, the check-in and check-out, the hours counted and short, where, the permission, the flags, what it was
+// what it was, the check-in and check-out, the hours counted and short (or extra, owner, 20 October 2026: make-up
+// hours), where, the permission, the flags, what it was
 // corrected from and every press; and the day's correction: Ask for a correction (a day gone by or today, not of leave,
 // in a month whose payroll isn't approved, as the site says it: dayCorrection), or the correction being decided.
 
@@ -81,7 +82,11 @@ export function DayList({
               <Figure label="Check-out" tone={!d.checkOut && d.missingCheckOut ? 'text-warn' : undefined}>
                 {d.checkOut ? cairoTime(d.checkOut) : d.missingCheckOut ? 'Missing' : '—'}
               </Figure>
-              <Figure label="Hours counted">{d.status === 'worked' ? hoursText(d.hoursCounted) : '—'}</Figure>
+              <Figure label="Hours counted">
+                {d.status === 'worked' ? hoursText(d.hoursCounted) : '—'}
+                {/* make-up hours (owner, 20 October 2026): counted past the shift's hours a day */}
+                {extraHoursText(d) && <span className="block text-xs font-normal text-ok">{extraHoursText(d)}</span>}
+              </Figure>
               <Figure label="Short" tone={d.shortHours > 0 ? 'text-warn' : undefined}>
                 {d.shortHours > 0 ? hoursText(d.shortHours) : '—'}
               </Figure>

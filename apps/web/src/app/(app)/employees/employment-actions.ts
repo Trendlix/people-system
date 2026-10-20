@@ -73,6 +73,9 @@ function employmentBody(fd: FormData, errors: string[], withStatus: boolean) {
     // hazardous, unhealthy or remote work: 7 more days of annual leave (owner, 18 October 2026; Labour Law Art. 124),
     // sent with its marker when the form has it, unticked as no
     ...(fd.has('hazardousWorkSent') && { hazardousWork: fd.has('hazardousWork') }),
+    // an Office employee HR lets check in off the office network (owner, 20 October 2026: "Office staff, plus
+    // exceptions"), sent with its marker when the form has it, unticked as no
+    ...(fd.has('checkInAnywhereSent') && { checkInAnywhere: fd.has('checkInAnywhere') }),
   };
 }
 

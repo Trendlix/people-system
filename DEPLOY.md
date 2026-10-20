@@ -127,6 +127,15 @@ no environment, so it cannot see those). Its key is named differently from Prime
 **9. Vercel.** people-system → Settings → Environment Variables, Production: `API_URL` = `https://srv2055591.hstgr.cloud:8443`
 (no trailing slash, no `/api`) and `API_CA_CERT` = the line from step 5. Then redeploy, because settings apply to new deployments only.
 
+**10. The website's key** (for locking check-ins to the office network, see [below](#check-ins-locked-to-the-office-network-web_key)):
+
+```bash
+./web-key.sh   # writes WEB_KEY into .env if it has none, and prints it
+./deploy.sh    # the API starts with it
+```
+
+Then in Vercel, the same page as step 9: `WEB_KEY` = the value it printed, and redeploy.
+
 ## The OCR service
 
 `services/ocr` reads the text of national ID cards (phone photos), scanned certificates and signed contracts for the
@@ -196,6 +205,30 @@ The candidate's answers go to the HR user who sent the offer (reply-to), and the
 accepts or declines. The offer page candidates open is on the web app (`https://people.trendlix.com/offer/…`), never on
 this server.
 
+## Check-ins locked to the office network (WEB_KEY)
+
+Owner's decision, 20 October 2026 ("allow me to lock checkin's to wifi name or ip, whatever is right"): Attendance →
+Check-in Setup can lock Office staff's check-ins and check-outs to the office's internet line, by its **public IP** (a
+browser can't read a Wi-Fi's name, and a hotspot can take any name). Off it, the press is refused and the person asks
+for an attendance correction; HR's own recording of a day is never locked.
+
+- **Why a key.** Anyone with a session can call the API on port 8443 directly, so the API never trusts an address a
+  request merely names. The website (on Vercel) reads the visitor's address (`x-forwarded-for`, which Vercel sets itself)
+  and signs it with `WEB_KEY`: an HMAC-SHA256 over the address, the time and the SHA-256 of the session token, sent only
+  on the check-in's calls and Check-in Setup's. The API takes the address only with the right signature, within a minute
+  either way, for the same session token.
+- **Setting it up.** On the server: `./web-key.sh` (it makes the key in `deploy/.env` if there is none, never replacing
+  one, and prints it), then `./deploy.sh`. In Vercel: people-system → Settings → Environment Variables, Production,
+  `WEB_KEY` = the printed value; then redeploy. Check-in Setup says **Ready** once both sides have the same key.
+- **Without it** on either side the lock can't be switched on, and while the server has none no one is refused. If the
+  key in Vercel is removed or changed while the lock is on, Office staff's check-ins are refused until both match again
+  (Check-in Setup says which side is missing): switch the lock off there first when changing it.
+- **The office line needs a fixed IP** from the internet provider: if its address changes, check-ins are refused until
+  HR adds the new one (in the office: Add the network I'm on now). An IPv6 line is added by its /64.
+- **Nothing is kept of an employee's address**: not on the punch, not on the day, not in the audit log (a punch keeps the
+  office network's name only). The employee app needs nothing of its own: it shows the website, so the same signature
+  applies.
+
 ## On the server
 
 | Task | Command (in `/opt/people-system/deploy`) |
@@ -220,3 +253,5 @@ salaries: keep a copy off the server too, and restrict who can read it.
 - ID photos and scans sent to the OCR service never leave the server: it has no port of its own, reads them in memory
   only, logs nothing of their content, and makes no outside connection.
 - The pipeline's key can only run `deploy.sh` (no shell, no file copy, no forwarding). The server's GitHub key is read-only.
+- A check-in's address is trusted only as the website signed it with `WEB_KEY` (see above); a plain `x-forwarded-for`
+  sent straight to the API is ignored, and no employee's address is kept.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HOURS_TO_WORK_ERROR, hoursADayText, hoursToWorkFrom, hoursToWorkShown, shiftHint, shiftTimesText, typedShiftHint } from './shifts';
+import { COUNT_UNTIL_TIME_ERROR, HOURS_TO_WORK_ERROR, hoursADayText, hoursToWorkFrom, hoursToWorkShown, shiftHint, shiftTimesText, typedShiftHint } from './shifts';
 
 // A shift's window and its hours to work a day (owner, 16 October 2026, on the MORNING shift of 9:00 AM to 7:00 PM:
 // "my company shift is to maintain 9 hours within the shift window, its like flexible shift").
@@ -65,5 +65,34 @@ describe('the shift form’s hint', () => {
     expect(typedShiftHint({ ...typed, graceMinutes: '' }).text).toContain('check in by 10:00 AM to work them');
     expect(typedShiftHint({ ...typed, hoursPerDay: '8:20' })).toEqual({ problem: true, text: HOURS_TO_WORK_ERROR });
     expect(typedShiftHint({ ...typed, endTime: '7' }).text).toBe('Check-in after the start time plus the grace minutes counts as late.');
+  });
+});
+
+describe('the shift form’s hint with "Count hours until" (owner, 20 October 2026: make-up hours)', () => {
+  // "within the same month with no working hours to be counted after 8 PM even if the check out was 11 PM"
+  it('says hours count until it, past the hours to work, and the latest check-in that leaves them', () => {
+    expect(shiftHint({ ...morning, hoursPerDay: 9, countUntil: '20:00' })).toEqual({
+      problem: false,
+      text: "Flexible: 9:00 hours anywhere between 9:00 AM and 7:00 PM; check in by 11:00 AM to work them. Hours count until 8:00 PM: time past the 9:00 hours fills short hours on the month's other days.",
+    });
+    expect(shiftHint({ ...morning, hoursPerDay: null, countUntil: '21:00' }).text).toBe(
+      "Check-in after 9:15 AM counts as late. Hours count until 9:00 PM: time past the 10:00 hours fills short hours on the month's other days.",
+    );
+    // at the end itself: the grace still counts
+    expect(shiftHint({ ...morning, hoursPerDay: 9, countUntil: '19:00' }).text).toContain('Hours count until 7:15 PM');
+    // none: as before
+    expect(shiftHint({ ...morning, hoursPerDay: 9, countUntil: null })).toEqual(shiftHint({ ...morning, hoursPerDay: 9 }));
+  });
+
+  it('says what the API refuses: a time before the end, or one not fully chosen', () => {
+    expect(shiftHint({ ...morning, hoursPerDay: 9, countUntil: '18:00' })).toEqual({
+      problem: true,
+      text: 'Choose a "Count hours until" time at or after the shift ends, 7:00 PM, and before midnight.',
+    });
+    const typed = { startTime: '9:00 AM', endTime: '7:00 PM', graceMinutes: '15', hoursPerDay: '9' };
+    expect(typedShiftHint({ ...typed, countUntil: '8:00 PM' }).text).toContain('check in by 11:00 AM to work them. Hours count until 8:00 PM');
+    expect(typedShiftHint({ ...typed, countUntil: '' })).toEqual(typedShiftHint(typed));
+    expect(typedShiftHint({ ...typed, countUntil: '8:-- PM' })).toEqual({ problem: true, text: COUNT_UNTIL_TIME_ERROR });
+    expect(typedShiftHint({ ...typed, countUntil: '6:30 PM' }).problem).toBe(true);
   });
 });

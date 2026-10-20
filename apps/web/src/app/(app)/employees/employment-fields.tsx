@@ -23,6 +23,7 @@ import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import { CONFIDENTIAL_GRADES_LEFT_OUT, gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
+import { CheckInAnywhereField } from './check-in-anywhere-field';
 import { COMMISSION_HINT, employmentTypeHint, WORK_NATURE_HINTS, workPatternNote } from './employment-law';
 import { statusField } from './employment-status';
 import { HazardousWorkField } from './leave-fields';
@@ -465,6 +466,9 @@ export function EmploymentFields({
 
       {/* for the annual leave (18 October 2026), on an employment from an API that has it */}
       {employment?.hazardousWork !== undefined && <HazardousWorkField state={state} fid={fid} employment={employment} />}
+
+      {/* the office network's exception (20 October 2026: "Office staff, plus exceptions"), on an employment from an API that has it */}
+      {employment?.checkInAnywhere !== undefined && <CheckInAnywhereField state={state} fid={fid} employment={employment} arrangement={arrangement} />}
 
       {arrangement === 'hybrid' && (
         <fieldset>

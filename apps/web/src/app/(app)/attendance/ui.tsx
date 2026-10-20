@@ -4,7 +4,7 @@ import { formatDate } from '@/lib/format';
 import { weekdayOf } from '../organization/holidays/holidays';
 import { addMonths, monthName } from '../payroll/list';
 import { attendanceReviewHref, cairoTime, dayStatusText, dayTone, placeText } from '../payroll/[id]/attendance/attendance';
-import { checkInCell, correctedNote, dayFlagTexts, daySourceText, hoursText, punchesText, sourceText, type FigureTile, type PunchRow } from './attendance';
+import { checkInCell, correctedNote, dayFlagTexts, daySourceText, extraHoursText, hoursText, punchesText, sourceText, type FigureTile, type PunchRow } from './attendance';
 
 // The Attendance pages' parts (owner, 19 October 2026: "the attendance is not active in the side menu"): the month with
 // the one before and after, a month's figures as tiles, a person's days, and where the days came from. No hooks and
@@ -12,6 +12,7 @@ import { checkInCell, correctedNote, dayFlagTexts, daySourceText, hoursText, pun
 // (owner, 19 October 2026: "Check-in through the system (phone or web with the office location check, or a device) to
 // replace Zoho"): each day says where it came from, a check-in that broke the work arrangement's rule is flagged in
 // amber, a place may be location unknown, and a check-out without a check-in shows "Missing" like a missing check-out.
+// A day counted past the shift's hours a day (owner, 20 October 2026: make-up hours) says its extra time, "+1:30 extra".
 
 const LINK = 'btn btn-secondary min-h-9 px-3 no-underline';
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
@@ -103,6 +104,7 @@ export function DaysTable({
             const flags = dayFlagTexts(d);
             const corrected = correctedNote(d);
             const pressed = punchesText(punches, d.date);
+            const extra = extraHoursText(d);
             return (
               <tr key={d.date} className="align-top">
                 <td className="whitespace-nowrap tabular-nums">
@@ -115,7 +117,10 @@ export function DaysTable({
                 </td>
                 <td className="whitespace-nowrap tabular-nums">{checkIn === 'time' ? cairoTime(d.checkIn) : checkIn === 'missing' ? MISSING : NONE}</td>
                 <td className="whitespace-nowrap tabular-nums">{d.checkOut ? cairoTime(d.checkOut) : d.missingCheckOut ? MISSING : NONE}</td>
-                <td className="text-right tabular-nums">{d.status === 'worked' ? hoursText(d.hoursCounted) : NONE}</td>
+                <td className="text-right tabular-nums">
+                  {d.status === 'worked' ? hoursText(d.hoursCounted) : NONE}
+                  {extra && <span className="block text-xs whitespace-nowrap text-ok">{extra}</span>}
+                </td>
                 <td className={`text-right tabular-nums ${d.shortHours > 0 ? 'font-medium text-warn' : ''}`}>{d.shortHours > 0 ? hoursText(d.shortHours) : NONE}</td>
                 <td className="min-w-32">
                   {placeText(d.place)}

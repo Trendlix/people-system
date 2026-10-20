@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { OFFICE_ADDRESS_DEFAULTS, officeAddressesProblems, officeLocationProblems, type PayrollRules } from '@trendlix/shared';
+import { OFFICE_ADDRESS_DEFAULTS, officeAddressesProblems, type PayrollRules } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { PayrollSettings } from '../generated/prisma/client.js';
@@ -8,6 +8,10 @@ import type { UpdatePayrollSettingsDto } from './payroll.dto.js';
 
 const ENTITY = 'payroll_settings';
 const ID = 1;
+
+/** The answer to the office's point sent here (20 October 2026: several check-in locations on their own page). */
+export const OFFICE_POINT_MOVED =
+  "The office's location is a check-in location now: add or change it on Attendance → Check-in Setup, where several can be kept.";
 
 /** The settings as the API sends them: the rules a run copies, and the company's side of the bank files. */
 export interface PayrollSettingsView extends Required<PayrollRules> {
@@ -35,17 +39,11 @@ export interface PayrollSettingsView extends Required<PayrollRules> {
   /**
    * The office's addresses as Zoho People writes a check-in's location (owner, 19 October 2026: "13 and 17 al mahrouki
    * is also in office"): a day checked in at one of them is at the office, anywhere else remote (attendance-import.ts
-   * placeOf). Al Doctor Al Mahrouqi Street 13, 15 and 17 and Trendlix to start with.
+   * placeOf). Al Doctor Al Mahrouqi Street 13, 15 and 17 and Trendlix to start with. Edited on Attendance → Check-in
+   * Setup since 20 October 2026 (owner: "Own page, several locations"). The office's point and radius were sent here
+   * too until then: they are check-in locations now (check-in-setup.service.ts), and no longer sent.
    */
   officeAddresses: string[];
-  /**
-   * The office's point and radius for checking in on the system (owner, 19 October 2026: "Check-in through the system
-   * (phone or web with the office location check, or a device) to replace Zoho"): within the radius a check-in is at the
-   * office, outside it remote (packages/shared check-in.ts); no point: location unknown. 150 metres to start with.
-   */
-  officeLatitude: number | null;
-  officeLongitude: number | null;
-  officeRadiusMetres: number;
 }
 
 /** The rules a run is worked out with, as the settings have them now: Pay overtime always says on or off. */
@@ -68,9 +66,6 @@ const view = (s: PayrollSettings): PayrollSettingsView => ({
   salaryReviewMonths: s.salaryReviewMonths,
   installmentLimitPercent: s.installmentLimitPercent.toNumber(),
   officeAddresses: s.officeAddresses ?? [...OFFICE_ADDRESS_DEFAULTS],
-  officeLatitude: s.officeLatitude?.toNumber() ?? null,
-  officeLongitude: s.officeLongitude?.toNumber() ?? null,
-  officeRadiusMetres: s.officeRadiusMetres,
 });
 
 // The payroll settings (owner's decisions, 16 October 2026): the sheet's rules to start with (a month of 30 days,
@@ -90,7 +85,9 @@ const view = (s: PayrollSettings): PayrollSettingsView => ({
 // October 2026: attendance imported from Zoho People, a check-in at the office or remote), which no run copies either:
 // an import reads the check-ins' places with them as they are. And the office's point and radius (owner, 19 October
 // 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace Zoho"): a
-// check-in on the system within the radius is at the office, outside it remote; no run copies them either.
+// check-in on the system within the radius is at the office, outside it remote; no run copies them either. Those moved
+// to Attendance → Check-in Setup on 20 October 2026 (owner: "Own page, several locations"), several check-in locations:
+// sent here they are refused, saying so; the addresses stay here, edited from that page.
 @Injectable()
 export class PayrollSettingsService {
   constructor(
@@ -108,21 +105,15 @@ export class PayrollSettingsService {
   }
 
   async update(dto: UpdatePayrollSettingsDto, user: SessionUser): Promise<PayrollSettingsView> {
+    // the office's point and radius are check-in locations now (20 October 2026)
+    if (dto.officeLatitude !== undefined || dto.officeLongitude !== undefined || dto.officeRadiusMetres !== undefined) {
+      throw new BadRequestException([OFFICE_POINT_MOVED]);
+    }
     const before = await this.row();
     // the office's addresses, each trimmed, the empty ones dropped (19 October 2026)
     const officeAddresses = dto.officeAddresses?.map((a) => a.trim()).filter(Boolean);
     if (officeAddresses) {
       const problems = officeAddressesProblems(officeAddresses);
-      if (problems.length) throw new BadRequestException(problems);
-    }
-    // the office's point and radius for checking in (19 October 2026): both or neither, checked as they will be
-    const location = {
-      latitude: dto.officeLatitude === undefined ? (before.officeLatitude?.toNumber() ?? null) : dto.officeLatitude,
-      longitude: dto.officeLongitude === undefined ? (before.officeLongitude?.toNumber() ?? null) : dto.officeLongitude,
-      radiusMetres: dto.officeRadiusMetres ?? before.officeRadiusMetres,
-    };
-    if (dto.officeLatitude !== undefined || dto.officeLongitude !== undefined || dto.officeRadiusMetres !== undefined) {
-      const problems = officeLocationProblems(location);
       if (problems.length) throw new BadRequestException(problems);
     }
     const data = {
@@ -140,9 +131,6 @@ export class PayrollSettingsService {
       salaryReviewMonths: dto.salaryReviewMonths,
       installmentLimitPercent: dto.installmentLimitPercent,
       officeAddresses,
-      officeLatitude: dto.officeLatitude,
-      officeLongitude: dto.officeLongitude,
-      officeRadiusMetres: dto.officeRadiusMetres,
     };
     const after = await this.prisma.payrollSettings.update({ where: { id: ID }, data });
     const diff = changes(view(before) as unknown as Record<string, unknown>, data);

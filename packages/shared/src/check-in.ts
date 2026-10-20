@@ -72,12 +72,18 @@ export const CHECK_IN_PLACE_LABELS: Record<CheckInPlace, string> = { office: 'Of
 /** Where a day was worked as the pages show it: the office, remote, or (a check-in on the system) location unknown. */
 export type DayPlace = WorkPlace | 'unknown';
 
-/** The office's point and radius (Payroll Setup → Your Rules); no point: not set yet, so a check-in's place is unknown. */
+/**
+ * A place check-ins count as the office at: its point and radius, and its name. Several since 20 October 2026 (owner:
+ * "i cant find in the system where to add the eligable check in locations", then "Own page, several locations"):
+ * Attendance → Check-in Setup; the one office point of Payroll Setup → Your Rules before. No point: not set.
+ */
 export interface OfficeLocation {
   latitude: number | null;
   longitude: number | null;
   /** Whole metres: within it is the office. */
   radiusMetres: number;
+  /** The location's name, e.g. Head office; none for the one office point there was before. */
+  name?: string;
 }
 
 /** The office's radius to start with (owner's brief, 19 October 2026: "default 150 m"), and the least and most HR sets. */
@@ -89,6 +95,29 @@ const isNumber = (n: unknown): n is number => typeof n === 'number' && Number.is
 
 /** Whether the office's point is set: both its latitude and longitude. */
 export const officeLocationSet = (o: Pick<OfficeLocation, 'latitude' | 'longitude'>): boolean => isNumber(o.latitude) && isNumber(o.longitude);
+
+/** Whether any of the check-in locations has its point set: without one, every check-in's place is unknown. */
+export const checkInLocationsSet = (locations: readonly Pick<OfficeLocation, 'latitude' | 'longitude'>[]): boolean => locations.some(officeLocationSet);
+
+/** The longest name a check-in location takes. */
+export const CHECK_IN_LOCATION_NAME_MAX = 80;
+
+/** The most check-in locations Check-in Setup keeps. */
+export const CHECK_IN_LOCATIONS_MAX = 50;
+
+/**
+ * Why a check-in location can't be saved (none: it can; Attendance → Check-in Setup, owner, 20 October 2026: "Own page,
+ * several locations"): a name of up to 80 characters, both its latitude and longitude, and its radius, as the office's
+ * point and radius are checked (officeLocationProblems).
+ */
+export function checkInLocationProblems(l: { name: string; latitude: number | null; longitude: number | null; radiusMetres: number }): string[] {
+  const problems: string[] = [];
+  const name = l.name.trim();
+  if (!name) problems.push('Name the location, e.g. Head office.');
+  else if (name.length > CHECK_IN_LOCATION_NAME_MAX) problems.push(`Keep the location's name to ${CHECK_IN_LOCATION_NAME_MAX} characters or fewer.`);
+  if (l.latitude === null || l.longitude === null) problems.push("Enter the location's latitude and longitude, e.g. 30.0596 and 31.3462, or use your current location.");
+  return [...problems, ...officeLocationProblems(l).filter((p) => !p.startsWith('Enter both')).map((p) => p.replace("the office's", "the location's"))];
+}
 
 /**
  * Why the office's location can't be saved (none: it can): the latitude from −90 to 90 and the longitude from −180 to
@@ -127,6 +156,14 @@ export interface LocationReading {
 export const CHECK_IN_LOCATION_ERRORS = ['denied', 'unavailable', 'timeout', 'unsupported'] as const;
 export type CheckInLocationError = (typeof CHECK_IN_LOCATION_ERRORS)[number];
 
+/**
+ * Inside the employee app a press needs a location (owner, 20 October 2026: "the device location should be active for
+ * the application for location tracking services", "dont allow checkins without location is always active"; asked,
+ * "Refuse without location" and "App only"): read at the moment of the press, never tracked. The API refuses an app
+ * press without one (409) with this; on the website a press without one is kept, location unknown, as before.
+ */
+export const APP_LOCATION_NEEDED_MESSAGE = "Turn on your phone's location and allow TrendLIX People to use it, then try again.";
+
 export const CHECK_IN_LOCATION_ERROR_LABELS: Record<CheckInLocationError, string> = {
   denied: 'You didn’t allow the location',
   unavailable: 'The location isn’t available on this device now',
@@ -135,18 +172,29 @@ export const CHECK_IN_LOCATION_ERROR_LABELS: Record<CheckInLocationError, string
 };
 
 /**
- * Where a check-in was (owner's brief, 19 October 2026): within the office's radius the office, outside it remote; no
- * reading (refused or unavailable), a reading that isn't a point, or the office's point not set: unknown. The accuracy
- * kept is the reading's, in whole metres (none: null); the point itself is never kept.
+ * Where a check-in was (owner's brief, 19 October 2026): within an office location's radius the office, outside them all
+ * remote; no reading (refused or unavailable), a reading that isn't a point, or no location with its point set: unknown.
+ * Several locations since 20 October 2026 (owner: "Own page, several locations"): within ANY of them is the office, and
+ * `location` names the nearest one it is within (when it has a name). The accuracy kept is the reading's, in whole
+ * metres (none: null); the point itself is never kept.
  */
-export function checkInPlace(reading: LocationReading | null | undefined, office: OfficeLocation): { place: CheckInPlace; accuracyMetres: number | null } {
+export function checkInPlace(
+  reading: LocationReading | null | undefined,
+  offices: OfficeLocation | readonly OfficeLocation[],
+): { place: CheckInPlace; accuracyMetres: number | null; location?: string } {
   const accuracyMetres = reading && isNumber(reading.accuracy) && reading.accuracy >= 0 ? Math.round(reading.accuracy) : null;
   if (!reading || !isNumber(reading.latitude) || !isNumber(reading.longitude) || Math.abs(reading.latitude) > 90 || Math.abs(reading.longitude) > 180) {
     return { place: 'unknown', accuracyMetres: null };
   }
-  if (!officeLocationSet(office)) return { place: 'unknown', accuracyMetres };
-  const d = distanceMetres(reading, { latitude: office.latitude!, longitude: office.longitude! });
-  return { place: d <= office.radiusMetres ? 'office' : 'remote', accuracyMetres };
+  const set = (Array.isArray(offices) ? offices : [offices]).filter(officeLocationSet) as readonly OfficeLocation[];
+  if (!set.length) return { place: 'unknown', accuracyMetres };
+  let within: { office: OfficeLocation; d: number } | null = null;
+  for (const office of set) {
+    const d = distanceMetres(reading, { latitude: office.latitude!, longitude: office.longitude! });
+    if (d <= office.radiusMetres && (!within || d < within.d)) within = { office, d };
+  }
+  if (!within) return { place: 'remote', accuracyMetres };
+  return within.office.name ? { place: 'office', accuracyMetres, location: within.office.name } : { place: 'office', accuracyMetres };
 }
 
 // ---------- the rules by work arrangement ----------

@@ -7,7 +7,10 @@
 // (owner, 19 October 2026: "Check-in through the system … to replace Zoho", check-in.ts): a day may come from the
 // system's check-ins too, its place unknown and its check-ins flagged; a day has one source shown (a correction, the
 // system's, a device's, Zoho's: SOURCE_PRECEDENCE), and from someone's first check-in on, a working day gone by with
-// none is absent (monthDays).
+// none is absent (monthDays). Make-up hours (owner, 20 October 2026: "within the same month with no working hours to be
+// counted after 8 PM even if the check out was 11 PM"): on a shift that counts hours until a time a day may count more
+// than the shift's hours a day; what it counts past them is its extra time (AttendanceDayView.extraHours), and a month's
+// extra time fills its short hours (AttendanceFigures.shortHoursFilled), as the payroll counts the month's total.
 
 import type { AttendanceDayStatus } from './attendance-import.js';
 import type { CorrectedFrom } from './attendance-corrections.js';
@@ -54,6 +57,12 @@ export interface AttendanceDayView extends KeptDay {
   expectedHours: number | null;
   /** Short of the shift's hours on a day worked from check-in to check-out, after the day's permission; 0 otherwise. */
   shortHours: number;
+  /**
+   * Counted past the shift's hours a day on a day worked from check-in to check-out (owner, 20 October 2026: "within the
+   * same month"; only a shift that counts hours until a time counts past them): extra time, which fills the month's
+   * short hours; 0 otherwise.
+   */
+  extraHours: number;
   /** A check-in without a check-out: no hours counted that day. */
   missingCheckOut: boolean;
   /** A check-out without a check-in (on the system): no hours counted that day. */
@@ -64,8 +73,9 @@ export interface AttendanceDayView extends KeptDay {
 
 /**
  * A kept day with what it shows: a day worked with both a check-in and a check-out is short by the shift's hours a day
- * less the hours counted and the day's permission (never below 0); a check-in without a check-out is a missing
- * check-out (no hours, not short: it is said apart); any other day is neither.
+ * less the hours counted and the day's permission (never below 0), and has extra time when it counts more than the
+ * shift's hours a day (owner, 20 October 2026: a shift that counts hours until a time); a check-in without a check-out
+ * is a missing check-out (no hours, not short: it is said apart); any other day is neither.
  */
 export function attendanceDayView(day: KeptDay, hoursADay: number | null): AttendanceDayView {
   const worked = day.status === 'worked';
@@ -74,7 +84,8 @@ export function attendanceDayView(day: KeptDay, hoursADay: number | null): Atten
   const counted = worked && !!day.checkIn && !!day.checkOut;
   const expectedHours = worked && typeof hoursADay === 'number' && hoursADay > 0 ? hoursADay : null;
   const shortHours = counted && expectedHours !== null ? Math.max(0, toMinute(expectedHours - day.hoursCounted - Math.max(0, day.permissionHours))) : 0;
-  return { ...day, expectedHours, shortHours, missingCheckOut, missingCheckIn, flags: (day.flags ?? []).filter(isCheckInFlag) };
+  const extraHours = counted && expectedHours !== null ? Math.max(0, toMinute(day.hoursCounted - expectedHours)) : 0;
+  return { ...day, expectedHours, shortHours, extraHours, missingCheckOut, missingCheckIn, flags: (day.flags ?? []).filter(isCheckInFlag) };
 }
 
 // ---------- a month's figures ----------
@@ -92,6 +103,13 @@ export interface AttendanceFigures {
   absentDays: number;
   /** Short of the shift's hours on the days counted, after their permission (attendanceDayView). */
   shortHours: number;
+  /** Counted past the shift's hours a day on the days counted (attendanceDayView; owner, 20 October 2026). */
+  extraHours: number;
+  /**
+   * The short hours the extra time fills (owner, 20 October 2026: "within the same month"): each calendar month's extra
+   * hours against its own short hours, at most them; never another month's.
+   */
+  shortHoursFilled: number;
   permissionHours: number;
   officeDays: number;
   remoteDays: number;
@@ -117,6 +135,8 @@ export const NO_ATTENDANCE_FIGURES: Readonly<AttendanceFigures> = Object.freeze(
   hoursCounted: 0,
   absentDays: 0,
   shortHours: 0,
+  extraHours: 0,
+  shortHoursFilled: 0,
   permissionHours: 0,
   officeDays: 0,
   remoteDays: 0,
@@ -131,17 +151,19 @@ export const NO_ATTENDANCE_FIGURES: Readonly<AttendanceFigures> = Object.freeze(
 });
 
 const FIGURE_KEYS = Object.keys(NO_ATTENDANCE_FIGURES) as (keyof AttendanceFigures)[];
-const HOUR_KEYS: ReadonlySet<keyof AttendanceFigures> = new Set(['hoursCounted', 'shortHours', 'permissionHours']);
+const HOUR_KEYS: ReadonlySet<keyof AttendanceFigures> = new Set(['hoursCounted', 'shortHours', 'extraHours', 'shortHoursFilled', 'permissionHours']);
 
 /**
  * A month's figures from its days. The permission hours are the days' (the system's requests', else Zoho's column),
  * within `permissionLimit` when it is given (Zoho's column counts within the month's allowance: attendance-import.ts),
  * or `permissionHours` when the month's are known otherwise (the system's requests of the month, days without a row
- * too).
+ * too). The short hours filled by extra time (owner, 20 October 2026: "within the same month") are worked out month by
+ * month: a month's extra hours fill its own short hours, at most them.
  */
 export function attendanceFigures(days: readonly AttendanceDayView[], options: { permissionLimit?: number | null; permissionHours?: number } = {}): AttendanceFigures {
   const f: AttendanceFigures = { ...NO_ATTENDANCE_FIGURES };
   let permission = 0;
+  const byMonth = new Map<string, { extra: number; short: number }>();
   for (const d of days) {
     f.daysRecorded++;
     if (d.status === 'worked') {
@@ -154,6 +176,11 @@ export function attendanceFigures(days: readonly AttendanceDayView[], options: {
       if (d.flags.length) f.flaggedDays++;
       f.hoursCounted += d.hoursCounted;
       f.shortHours += d.shortHours;
+      // an API from before make-up hours (20 October 2026) has no extra time
+      const extra = d.extraHours ?? 0;
+      f.extraHours += extra;
+      const month = byMonth.get(d.date.slice(0, 7)) ?? { extra: 0, short: 0 };
+      byMonth.set(d.date.slice(0, 7), { extra: month.extra + extra, short: month.short + d.shortHours });
     } else if (d.status === 'absent') f.absentDays++;
     else if (d.status === 'leave') f.leaveDays++;
     else if (d.status === 'zoho_leave') f.zohoLeaveDays++;
@@ -164,6 +191,7 @@ export function attendanceFigures(days: readonly AttendanceDayView[], options: {
   }
   const limit = options.permissionLimit;
   f.permissionHours = options.permissionHours ?? (typeof limit === 'number' ? Math.min(permission, Math.max(0, limit)) : permission);
+  for (const m of byMonth.values()) f.shortHoursFilled += Math.min(toMinute(m.extra), toMinute(m.short));
   for (const k of HOUR_KEYS) f[k] = toMinute(f[k]);
   return f;
 }

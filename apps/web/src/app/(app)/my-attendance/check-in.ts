@@ -7,9 +7,10 @@ import {
   formatHours,
   isCheckInFlag,
   isPunchKind,
-  mostHoursCountedADay,
+  makesUpHours,
   PUNCH_KIND_LABELS,
   shiftWindowOn,
+  shiftWorkHours,
   type CheckInLocationError,
   type CheckInPlace,
   type PunchKind,
@@ -235,16 +236,18 @@ export function dayHoursText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut' | 
 // hoursCountedForDay, which dayFromPunches uses): from the check-in, or the shift window's start when later; until the
 // window's end moved by the grace (owner, 19 October 2026: "if the employee checked in 10:15 he can check out till 7:15
 // and the 9 hours are counted"); at most the hours to work. With them, when the hours will be done. Once checked out,
-// the day's hours counted by the server. The counting rule is about to change (owner, 20 October 2026: "within the same
-// month with no working hours to be counted after 8 PM even if the check out was 11 PM, record the checkout time but
-// count till the checkout window limit"): so the arithmetic is one function, checkInCount, whose inputs are each given
-// (CountRule), and today's shift makes them in one place (countRuleOf): the next rule changes those, not the panel.
+// the day's hours counted by the server. The arithmetic is one function, checkInCount, whose inputs are each given
+// (CountRule), and today's shift makes them in one place (countRuleOf). On a shift that counts hours until a time (owner,
+// 20 October 2026: "within the same month with no working hours to be counted after 8 PM even if the check out was 11
+// PM, record the checkout time but count till the checkout window limit"; its "Count hours until", 8:00 PM on MORNING)
+// the counter goes on past the hours to work until then, the extra time filling the month's short hours.
 
 /**
  * What the counter counts with (moments in milliseconds): from the check-in, or `windowStart` when later; until
- * `countUntil` (today the window's end with the grace; later the shift's check-out limit, 8:00 PM on MORNING); at
- * most `hoursToWork` unless `extraCounts` (today false; later true, the time past them making up the month's short
- * hours). Null: none (from the check-in, never stopped, no target): a plain clock since the check-in.
+ * `countUntil` (the window's end with the grace, or the shift's "Count hours until", 8:00 PM on MORNING, since 20
+ * October 2026); at most `hoursToWork` unless `extraCounts` (true on a shift with "Count hours until": the time past
+ * them makes up the month's short hours). Null: none (from the check-in, never stopped, no target): a plain clock since
+ * the check-in.
  */
 export interface CountRule {
   windowStart: number | null;
@@ -256,19 +259,24 @@ export interface CountRule {
 /** No shift to count by: the time since the check-in, with no target (never a wrong one). */
 export const PLAIN_COUNT: Readonly<CountRule> = Object.freeze({ windowStart: null, countUntil: null, hoursToWork: null, extraCounts: false });
 
-/** The shift as GET /me/attendance/today sends it: its window (HH:MM), hours to work a day and grace minutes. */
+/**
+ * The shift as GET /me/attendance/today sends it: its window (HH:MM), hours to work a day, grace minutes and the time it
+ * counts hours until (HH:MM; null or missing, from an API from before 20 October 2026: none).
+ */
 type TodayShift = NonNullable<CheckInTodayView['shift']>;
 
 /**
  * Today's rule from the shift (attendance.ts): its window on the working day `date` (YYYY-MM-DD, Cairo; a night
  * shift's runs into the next day), its end moved by the grace, and its hours to work (set on the shift, else its
- * whole window: a fixed shift's); time past them doesn't count. No shift, or one whose window can't be told: PLAIN_COUNT.
+ * whole window: a fixed shift's); time past them doesn't count. With "Count hours until" (owner, 20 October 2026:
+ * makesUpHours) the window ends then instead (shiftWindowOn) and the time past the hours to work counts. No shift, or
+ * one whose window can't be told: PLAIN_COUNT.
  */
 export function countRuleOf(date: string, shift: TodayShift | null | undefined): CountRule {
   if (!shift || typeof shift.startTime !== 'string' || typeof shift.endTime !== 'string') return { ...PLAIN_COUNT };
   const window = shiftWindowOn(date, shift);
   if (!window) return { ...PLAIN_COUNT };
-  return { windowStart: window.start, countUntil: window.end, hoursToWork: mostHoursCountedADay(shift), extraCounts: false };
+  return { windowStart: window.start, countUntil: window.end, hoursToWork: shiftWorkHours(shift), extraCounts: makesUpHours(shift) };
 }
 
 /**
@@ -421,9 +429,12 @@ export const OFFICE_NOT_SET_TEXT = "HR hasn't set the office's location on the s
 export const LOCATION_NOTE =
   'Each press asks your browser for your location to tell the office from remote. Only office, remote or location unknown is kept, never where you are.';
 
-/** The same inside the employee app, which reads the phone's own location and tells a made-up one (Phase 2, 20 October 2026). */
+/**
+ * The same inside the employee app, which reads the phone's own location and tells a made-up one (Phase 2, 20 October
+ * 2026), and needs it for a press (owner, 20 October 2026: "Refuse without location", "App only").
+ */
 export const LOCATION_NOTE_IN_APP =
-  'Each press asks your phone for your location to tell the office from remote. Only office, remote or location unknown is kept, never where you are; a location the phone says an app made up is flagged.';
+  'Each press needs your phone’s location, read only then, to tell the office from remote. Only office or remote is kept, never where you are; a location the phone says an app made up is flagged.';
 
 /**
  * What to do when a press's location couldn't be read (the employee app's Phase 2, 20 October 2026: "a clear message

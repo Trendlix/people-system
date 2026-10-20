@@ -80,7 +80,7 @@ const rosterSelect = (from: Date, to: Date) =>
     endDate: true,
     department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
     jobTitle: { select: { titleEn: true } },
-    shift: { select: { startTime: true, endTime: true, hoursPerDay: true, workingDays: true } },
+    shift: { select: { startTime: true, endTime: true, hoursPerDay: true, countUntil: true, workingDays: true } },
     employee: { select: { id: true, employeeCode: true, fullNameEn: true, socialInsured: true, insuranceComprehensiveWage: true } },
     // the approved leave that touches the month (owner, 18 October 2026: "can you apply the leaves according to the
     // law?"): the grid's leave days and unpaid leave days (roster.ts leaveTermsOf)
@@ -133,6 +133,8 @@ function rosterEmployment(e: EmploymentRow): RosterEmployment {
       startTime: fromTimeOfDay(e.shift.startTime),
       endTime: fromTimeOfDay(e.shift.endTime),
       hoursPerDay: e.shift.hoursPerDay?.toNumber() ?? null,
+      // the time hours count until (owner, 20 October 2026): a long day fills the month's short hours
+      countUntil: e.shift.countUntil ? fromTimeOfDay(e.shift.countUntil) : null,
       workingDays: e.shift.workingDays,
     },
     employee: { ...e.employee, insuranceComprehensiveWage: e.employee.insuranceComprehensiveWage?.toNumber() ?? null },

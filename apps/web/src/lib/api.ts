@@ -1,9 +1,11 @@
 import 'server-only';
 import './api-ca';
 import { BACKGROUND_HEADER } from '@trendlix/shared';
-import { cookies } from 'next/headers';
+import { cookies, headers as requestHeaders } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
+import { clientIp } from './client-ip';
 import { SESSION_COOKIE } from './constants';
+import { signedIpHeaders } from './signed-ip';
 import { reasonOf, signInPath } from './signed-out';
 import type { CompanyBrand } from './types';
 
@@ -38,6 +40,12 @@ export async function messagesOf(res: Response): Promise<string[]> {
  */
 export interface CallOptions {
   background?: boolean;
+  /**
+   * `signIp`: the visitor's address as this website saw it, signed with WEB_KEY for this session's token (lib/signed-ip.ts;
+   * owner, 20 October 2026: check-ins locked to the office network). Only on a check-in's calls and Check-in Setup's;
+   * nothing is signed without the key or an address.
+   */
+  signIp?: boolean;
 }
 
 async function call(path: string, init: RequestInit = {}, options: CallOptions = {}): Promise<Response> {
@@ -46,6 +54,9 @@ async function call(path: string, init: RequestInit = {}, options: CallOptions =
   if (typeof init.body === 'string') headers.set('content-type', 'application/json');
   if (token) headers.set('authorization', `Bearer ${token}`);
   if (options.background) headers.set(BACKGROUND_HEADER, '1');
+  if (options.signIp) {
+    for (const [name, value] of Object.entries(signedIpHeaders(process.env.WEB_KEY, token, clientIp(await requestHeaders())))) headers.set(name, value);
+  }
   try {
     return await fetch(`${API_URL}/api${path}`, { ...init, headers });
   } catch {
@@ -75,8 +86,8 @@ export async function apiGet<T>(path: string, options?: CallOptions): Promise<T>
 }
 
 /** POST / PUT / PATCH / DELETE for form actions: throws ApiError with the API's messages. */
-export async function apiSend<T = unknown>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T | undefined> {
-  const res = await call(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+export async function apiSend<T = unknown>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown, options?: CallOptions): Promise<T | undefined> {
+  const res = await call(path, { method, body: body === undefined ? undefined : JSON.stringify(body) }, options);
   if (res.status === 401) redirect(await signedOutPath(res));
   if (!res.ok) throw new ApiError(res.status, await messagesOf(res));
   return res.status === 204 ? undefined : ((await res.json()) as T);

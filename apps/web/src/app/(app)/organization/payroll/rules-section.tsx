@@ -3,13 +3,13 @@ import { canEditOrganisation } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { monthsLabel } from '../../employees/[id]/salary-history/salary-history';
+import { CHECK_IN_SETUP_PATH } from '../../attendance/sections';
 import { RAISES_PATH } from '../../payroll/reports/salary-raises/salary-raises';
 import { rulesSummary } from '../../payroll/list';
 import { updateYourRules } from './actions';
 import { loadContractDefaults, loadPayrollSettings } from './data';
 import { YourRulesForm } from './rules-form';
 import { NotLoaded, SettingRow, SetupSection } from './section';
-import { officeLocationText } from './settings';
 
 // Payroll Setup, 1 Your Rules (owner's request, 16 October 2026): the company's own rules for working out the pay,
 // after its payroll sheet with the sheet's formula errors fixed, and the company defaults that change the sheet. The
@@ -21,8 +21,9 @@ import { officeLocationText } from './settings';
 // (owner, 18 October 2026, after reading the law: "Block above 10%"), and the office's addresses a Zoho People check-in is
 // read against, at the office or remote (owner, 19 October 2026: "13 and 17 al mahrouki is also in office"), and the
 // office's point and radius a check-in on the system is read against (owner, 19 October 2026: "Check-in through the
-// system (phone or web with the office location check, or a device) to replace Zoho"). HR and Admin change them; Finance
-// and the CEO read them.
+// system (phone or web with the office location check, or a device) to replace Zoho"), until both moved to Attendance →
+// Check-in Setup (owner, 20 October 2026: "Own page, several locations"): a line points there. HR and Admin change them;
+// Finance and the CEO read them.
 
 const INTRO =
   'The company’s own rules for working out each month’s pay, following its payroll sheet, and the defaults new contracts start with. A run keeps the rules it was made or last refreshed with, so a change here applies to runs made or refreshed afterwards; approved runs keep theirs.';
@@ -63,22 +64,9 @@ export async function YourRulesSection({ user }: { user: SessionUser }) {
               </SettingRow>
             </dl>
           )}
-          {settings.value.officeRadiusMetres !== undefined && (
-            <dl className="mt-4">
-              <SettingRow label="Office location">
-                <span className="tabular-nums">{officeLocationText(settings.value)}</span>
-                <span className="text-muted"> · a check-in on the system within the radius is at the office, outside it remote</span>
-              </SettingRow>
-            </dl>
-          )}
-          {settings.value.officeAddresses !== undefined && (
-            <dl className="mt-4">
-              <SettingRow label="Zoho People's check-in addresses">
-                {settings.value.officeAddresses.length ? settings.value.officeAddresses.join(' · ') : <span className="text-muted">None: every check-in is remote</span>}
-                <span className="text-muted"> · a check-in from Zoho People at one of these is a day at the office</span>
-              </SettingRow>
-            </dl>
-          )}
+          <p className="mt-4 text-sm">
+            Check-in locations and Zoho&apos;s addresses are on <Link href={CHECK_IN_SETUP_PATH}>Attendance → Check-in Setup</Link>.
+          </p>
           {d && (d.basicPercentDefault !== undefined || d.insuranceBasicDefault !== undefined) && (
             <dl className="mt-4">
               {d.basicPercentDefault !== undefined && (

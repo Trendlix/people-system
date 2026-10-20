@@ -68,6 +68,8 @@ describe('the attendance Summary workbook', () => {
     expect(hoursOf(places[1][5])).toBeCloseTo(8 + 8 / 60, 5);
     expect(places.at(-1)?.slice(0, 4)).toEqual(['All', undefined, 2, 2]);
     expect(wb.getWorksheet('By Department and Team')!.getCell('F2').numFmt).toBe('[h]:mm');
+    // the short hours filled by extra time (make-up hours, 20 October 2026), after the short hours
+    expect(places[0].slice(8, 11)).toEqual(['Short hours', 'Short hours filled by extra time', 'Permission hours']);
 
     const people = rowsOf(wb.getWorksheet('By Person')!);
     expect(people[1].slice(0, 5)).toEqual(['September 2026', 'EMP-1', 'Rania Invented', 'Sales', 'Field Team']);

@@ -32,7 +32,10 @@ import { ATTENDANCE_IMPORT_PATH, ATTENDANCE_PATH, ATTENDANCE_SUMMARY_PATH } from
 // Relative imports: the tests run without the "@/" alias. Checking in on the system (owner, 19 October 2026: "Check-in
 // through the system (phone or web with the office location check, or a device) to replace Zoho"): a day comes from the
 // system's check-ins too (or a correction, a device later), with where it came from, its flags and a check-out without a
-// check-in; a month's missing check-ins and flagged days.
+// check-in; a month's missing check-ins and flagged days. Make-up hours (owner, 20 October 2026: "within the same month
+// with no working hours to be counted after 8 PM even if the check out was 11 PM"): on a shift that counts hours until a
+// time a day may count past the shift's hours a day, said "+1:30 extra", and the month says the short hours its extra
+// time filled.
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -157,6 +160,17 @@ export const hoursText = (hours: number | null | undefined, dashForNone = false)
 /** "1 day", "3 days". */
 export const daysText = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 
+/**
+ * A day's extra time (owner, 20 October 2026: counted past the shift's hours a day on a shift that counts hours until
+ * a time): "+1:30 extra"; null without any, and from an API from before it.
+ */
+export const extraHoursText = (day: { extraHours?: number | null }): string | null =>
+  typeof day.extraHours === 'number' && day.extraHours > 0 ? `+${formatHours(day.extraHours)} extra` : null;
+
+/** The short hours a month's extra time filled (20 October 2026): "1:30 filled by extra time"; null without any. */
+export const filledText = (f: { shortHoursFilled?: number | null }): string | null =>
+  typeof f.shortHoursFilled === 'number' && f.shortHoursFilled > 0 ? `${formatHours(f.shortHoursFilled)} filled by extra time` : null;
+
 /** A tile of a month's figures. */
 export interface FigureTile {
   key: string;
@@ -187,6 +201,8 @@ export function figureTiles(
       note: typeof o.hoursADay === 'number' ? `Against the shift's ${hoursText(o.hoursADay)} a day` : "Against the shift's hours a day",
       tone: f.shortHours > 0 ? 'warn' : null,
     },
+    // make-up hours (owner, 20 October 2026: "within the same month"): only with extra time
+    ...madeUpTiles(f),
     { key: 'permission', label: 'Permission hours', value: hoursText(f.permissionHours), note: permissionNote, tone: null },
     {
       key: 'leave',
@@ -198,6 +214,21 @@ export function figureTiles(
     { key: 'checkouts', label: 'Missing check-outs', value: String(f.missingCheckOuts), note: 'A check-in without a check-out: no hours', tone: f.missingCheckOuts > 0 ? 'warn' : null },
     // checking in on the system (19 October 2026); an API from before it has neither
     ...checkInTiles(f, o.checksIn === true),
+  ];
+}
+
+/** The month's extra time and the short hours it filled, once there is any (an API from before 20 October 2026 has none). */
+function madeUpTiles(f: Partial<Pick<AttendanceFigures, 'extraHours' | 'shortHoursFilled'>>): FigureTile[] {
+  const extra = typeof f.extraHours === 'number' ? f.extraHours : 0;
+  if (!(extra > 0)) return [];
+  return [
+    {
+      key: 'filled',
+      label: 'Short hours filled by extra time',
+      value: hoursText(typeof f.shortHoursFilled === 'number' ? f.shortHoursFilled : 0),
+      note: `${hoursText(extra)} of extra time this month, past the shift's hours a day`,
+      tone: null,
+    },
   ];
 }
 

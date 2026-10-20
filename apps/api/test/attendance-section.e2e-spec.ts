@@ -285,6 +285,9 @@ describe('The Attendance section (e2e)', () => {
         hoursCounted: 17.5,
         absentDays: 1,
         shortHours: 0.5,
+        // no day past the shift's 9 hours (make-up hours, 20 October 2026: make-up-hours.e2e-spec.ts)
+        extraHours: 0,
+        shortHoursFilled: 0,
         permissionHours: 0,
         officeDays: 2,
         remoteDays: 1,

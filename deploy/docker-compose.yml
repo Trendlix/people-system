@@ -57,6 +57,10 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      # the key the website signs a check-in's address with (check-ins locked to the office network, 20 October 2026):
+      # made by ./web-key.sh, the same value saved as WEB_KEY in Vercel. Without it the lock can't be switched on, and
+      # no one is refused for its lack. See .env.example.
+      WEB_KEY: ${WEB_KEY:-}
       TZ: Africa/Cairo
     networks: [inside]
     logging: *logs

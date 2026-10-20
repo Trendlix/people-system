@@ -13,11 +13,14 @@ import type { FormState, Shift } from '@/lib/types';
 // hours within the shift window, its like flexible shift"): fewer than the window, the shift is flexible, worked anywhere
 // within it; empty, the whole window. They are also the most attendance counts a day (owner, 16 October 2026: "maximum
 // working hours to be recorded per day is 9 hours between checkin and check out"). The hint under the times follows what
-// is typed: when check-in counts as late, or for a flexible shift the latest check-in that leaves its hours.
+// is typed: when check-in counts as late, or for a flexible shift the latest check-in that leaves its hours. "Count hours
+// until" (owner, 20 October 2026: "within the same month with no working hours to be counted after 8 PM even if the
+// check out was 11 PM / record the checkout time but count till the checkout window limit"): set, a day's hours count
+// until then, past the hours to work, so a long day fills short hours on the month's other days; empty, as before.
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-const FIELDS = ['startTime', 'endTime', 'graceMinutes', 'hoursPerDay'] as const;
+const FIELDS = ['startTime', 'endTime', 'graceMinutes', 'hoursPerDay', 'countUntil'] as const;
 
 export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: FormData) => Promise<FormState>; shift?: Shift }) {
   const [state, formAction] = useActionState(action, {});
@@ -31,6 +34,7 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
     endTime: valueOf(state, 'endTime', formatTime(shift?.endTime ?? '18:00')),
     graceMinutes: valueOf(state, 'graceMinutes', String(shift?.graceMinutes ?? 15)),
     hoursPerDay: valueOf(state, 'hoursPerDay', hoursToWorkShown(shift?.hoursPerDay)),
+    countUntil: valueOf(state, 'countUntil', shift?.countUntil ? formatTime(shift.countUntil) : ''),
   };
   // what is typed now, for the hint; the fields themselves keep their own text
   const [typed, setTyped] = useState<TypedShift>(shown);
@@ -96,6 +100,18 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
             aria-describedby={fid('hint')}
             className="input"
           />
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor={fid('countUntil')} className="label">
+            Count hours until
+          </label>
+          <div className="max-w-xs">
+            <TimeInput id={fid('countUntil')} name="countUntil" defaultValue={shown.countUntil ?? ''} aria-describedby={`${fid('countUntil-hint')} ${fid('hint')}`} />
+          </div>
+          <p id={fid('countUntil-hint')} className="hint">
+            Optional, at or after the shift ends and before midnight. Set, hours count until this time even past the hours to work, so a long day fills short hours on
+            the month&apos;s other days. Empty: they count until the end plus the grace, at most the hours to work.
+          </p>
         </div>
       </div>
       <p id={fid('hint')} aria-live="polite" className={`hint -mt-2 ${hint.problem ? 'text-danger' : ''}`}>

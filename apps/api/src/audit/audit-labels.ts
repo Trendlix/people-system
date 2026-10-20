@@ -12,6 +12,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   attendance_import: 'Attendance import',
   attendance_summary: 'Attendance summary',
   audit_log: 'Audit log',
+  // Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"; the office network's lock)
+  check_in_location: 'Check-in location',
   company: 'Company',
   contract: 'Contract',
   contract_settings: 'Contract defaults',
@@ -33,6 +35,7 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   leave_type: 'Leave type',
   leave_year_closing: 'Leave year closing',
   ocr_correction: 'Card reading fix',
+  office_networks: 'Office networks',
   paperwork: 'Employee document',
   payroll_adjustment: 'Addition or deduction',
   payroll_advance: 'Advance or loan',
@@ -65,6 +68,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   cancel: 'Cancelled',
   change: 'Changed the amount',
   change_installment: 'Changed the installments',
+  // a check-in or check-out refused off the office network (owner, 20 October 2026); never the address
+  check_in_refused: 'Check-in refused: not on the office network',
   close: 'Closed',
   complete: 'Completed',
   confirm: 'Confirmed',
@@ -158,6 +163,10 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   repNationalId: "Representative's national ID",
   from: 'From',
   to: 'To',
+  // check-ins locked to the office network (20 October 2026)
+  officeNetworks: 'Office networks',
+  officeNetworkLock: 'Lock check-ins to the office network',
+  checkInAnywhere: 'Can check in from anywhere',
 };
 
 /**

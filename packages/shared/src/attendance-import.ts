@@ -6,6 +6,8 @@
 //   shift's window, at most its hours to work (attendance.ts hoursCountedForDay: the MORNING shift's 9 hours within
 //   9:00–19:00, its end moved by the shift's grace minutes: 19:15, owner, 19 October 2026: "if the employee checked in
 //   10:15 he can check out till 7:15 and the 9 hours are counted"), never Zoho's "Morning Shift (10:00 AM - 07:00 PM)".
+//   A shift that counts hours until a time (owner, 20 October 2026: "no working hours to be counted after 8 PM even if
+//   the check out was 11 PM"; attendance.ts countUntilOf) counts each day until then, not capped at the hours to work.
 // - People matched by name: Zoho's Employee Name against the profile's English name, written alike (case, spaces,
 //   punctuation, and the Arabic names' English spellings, Gerges and Girgis, Mohammed and Mohamed); the same name is a
 //   match, a close one is HR's to confirm ("Did you mean …?"), none is HR's to pick or skip; a link HR confirms is
@@ -22,8 +24,8 @@
 //   Permission column counts, within the month's allowance, never both.
 // Pure: the API reads the files and applies these, and the web shows the same words.
 
-import { hoursCountedForDay, shiftWindowOn } from './attendance.js';
-import { shiftWorkHours, type ShiftTimes } from './payroll.js';
+import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn } from './attendance.js';
+import type { ShiftTimes } from './payroll.js';
 
 // ---------- office or remote ----------
 
@@ -292,8 +294,11 @@ export interface AttendanceMonthInput {
   /** YYYY-MM. */
   month: string;
   days: readonly ImportedDay[];
-  /** Their employment's shift: its window, hours to work, grace minutes (the window's end moves by them) and working days; null without one. */
-  shift: (ShiftTimes & { workingDays: readonly number[]; graceMinutes?: number | null }) | null;
+  /**
+   * Their employment's shift: its window, hours to work, grace minutes (the window's end moves by them), the time it
+   * counts hours until (20 October 2026; none: its end and grace) and working days; null without one.
+   */
+  shift: (ShiftTimes & { workingDays: readonly number[]; graceMinutes?: number | null; countUntil?: string | null }) | null;
   /** The official holidays of the month (YYYY-MM-DD). */
   holidays: readonly string[];
   /** The days of the month they have approved leave in the system (YYYY-MM-DD). */
@@ -355,7 +360,8 @@ export function attendanceMonth(input: AttendanceMonthInput): AttendanceMonthRes
   const working = new Set(shift?.workingDays ?? SUN_TO_THU);
   const holidays = new Set(input.holidays);
   const leave = new Set(input.leaveDays);
-  const most = shift ? shiftWorkHours(shift) : null;
+  // a day's cap: the hours to work, none on a shift counting until a time (20 October 2026)
+  const most = shift ? mostHoursCountedADay(shift) : null;
   const warnings: string[] = [];
   if (!shift) warnings.push('No shift on the employment: the hours are counted from check-in to check-out, Sunday to Thursday taken as the working days.');
 

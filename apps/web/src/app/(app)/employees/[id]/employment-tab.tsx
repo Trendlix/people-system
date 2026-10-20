@@ -164,6 +164,17 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
     ...(e.hazardousWork !== undefined
       ? [{ key: 'hazardousWork', label: 'Hazardous work', value: e.hazardousWork ? 'Yes' : 'No', note: e.hazardousWork ? '7 more days of annual leave (Art. 124)' : undefined }]
       : []),
+    // where they check in from (20 October 2026: check-ins locked to the office network, "Office staff, plus exceptions")
+    ...(e.checkInAnywhere !== undefined
+      ? [
+          {
+            key: 'checkInAnywhere',
+            label: 'Checks in from',
+            value: e.checkInAnywhere || e.workArrangement !== 'office' ? 'Anywhere' : 'The office network, when check-ins are locked to it',
+            note: e.checkInAnywhere ? 'Can check in from anywhere (HR’s exception)' : undefined,
+          },
+        ]
+      : []),
     {
       key: 'jdAcknowledgedAt',
       label: 'Job description acknowledged',

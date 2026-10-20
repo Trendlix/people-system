@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { formatHours, shiftHours } from '@trendlix/shared';
+import { countUntilProblems, formatHours, shiftHours } from '@trendlix/shared';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import { assertDeletes } from '../../auth/roles.js';
 import type { SessionUser } from '../../auth/session-user.js';
@@ -15,7 +15,11 @@ const ENTITY = 'shift';
 // flexible shift"): fewer than the window, it is flexible, worked anywhere within it; not set, the whole window, as
 // before. They are what payroll counts a day of the shift as, and the most attendance counts a day (owner, 16 October
 // 2026: "maximum working hours to be recorded per day is 9 hours between checkin and check out"). In half hours, never
-// more than the window: checked here with the times as they will be, and by the database.
+// more than the window: checked here with the times as they will be, and by the database. "Count hours until" (owner, 20
+// October 2026: "within the same month with no working hours to be counted after 8 PM even if the check out was 11 PM /
+// record the checkout time but count till the checkout window limit"): set, a day counts until that time and past the
+// hours to work, so a long day fills the month's short hours; at or after the end and the same day (packages/shared
+// countUntilProblems), checked here with the times as they will be, and by the database. Every change is audited.
 
 export interface ShiftView {
   id: string;
@@ -24,6 +28,8 @@ export interface ShiftView {
   endTime: string;
   /** The hours to work a day within the window; null: the whole window (shiftWorkHours in @trendlix/shared). */
   hoursPerDay: number | null;
+  /** "HH:mm": hours count until it, a long day making up short ones (20 October 2026); null: the end and grace. */
+  countUntil: string | null;
   graceMinutes: number;
   workingDays: number[];
 }
@@ -35,6 +41,7 @@ function view(s: Shift): ShiftView {
     startTime: fromTimeOfDay(s.startTime),
     endTime: fromTimeOfDay(s.endTime),
     hoursPerDay: s.hoursPerDay?.toNumber() ?? null,
+    countUntil: s.countUntil ? fromTimeOfDay(s.countUntil) : null,
     graceMinutes: s.graceMinutes,
     workingDays: [...s.workingDays].sort((a, b) => a - b),
   };
@@ -50,6 +57,12 @@ function assertHoursFit(start: string, end: string, hoursPerDay: number | null |
   if (typeof hoursPerDay === 'number' && window !== null && hoursPerDay > window) {
     throw new BadRequestException(`The hours to work can't be more than the shift's window, ${formatHours(window)}.`);
   }
+}
+
+/** The time hours count until is at or after the end, the same day (countUntilProblems): `until` null or missing, nothing to check. */
+function assertCountUntil(start: string, end: string, until: string | null | undefined) {
+  const problems = countUntilProblems({ startTime: start, endTime: end, countUntil: until });
+  if (problems.length) throw new BadRequestException(problems);
 }
 
 @Injectable()
@@ -72,12 +85,14 @@ export class ShiftsService {
   async create(dto: CreateShiftDto, userId: string): Promise<ShiftView> {
     assertOrder(dto.startTime, dto.endTime);
     assertHoursFit(dto.startTime, dto.endTime, dto.hoursPerDay);
+    assertCountUntil(dto.startTime, dto.endTime, dto.countUntil);
     const shift = await this.prisma.shift.create({
       data: {
         code: dto.code,
         startTime: toTimeOfDay(dto.startTime),
         endTime: toTimeOfDay(dto.endTime),
         hoursPerDay: dto.hoursPerDay ?? null,
+        countUntil: dto.countUntil ? toTimeOfDay(dto.countUntil) : null,
         graceMinutes: dto.graceMinutes,
         workingDays: dto.workingDays,
       },
@@ -93,6 +108,8 @@ export class ShiftsService {
     assertOrder(start, end);
     // the hours as they will be (sent, or kept) within the window as it will be
     assertHoursFit(start, end, dto.hoursPerDay === undefined ? before.hoursPerDay : dto.hoursPerDay);
+    // the time hours count until as it will be (sent, or kept) after the end as it will be
+    assertCountUntil(start, end, dto.countUntil === undefined ? before.countUntil : dto.countUntil);
     const shift = await this.prisma.shift.update({
       where: { id },
       data: {
@@ -100,13 +117,14 @@ export class ShiftsService {
         startTime: dto.startTime ? toTimeOfDay(dto.startTime) : undefined,
         endTime: dto.endTime ? toTimeOfDay(dto.endTime) : undefined,
         hoursPerDay: dto.hoursPerDay,
+        countUntil: dto.countUntil === undefined ? undefined : dto.countUntil ? toTimeOfDay(dto.countUntil) : null,
         graceMinutes: dto.graceMinutes,
         workingDays: dto.workingDays,
       },
     });
     const result = view(shift);
-    const { code, startTime, endTime, hoursPerDay, graceMinutes } = dto;
-    const diff = changes({ ...before }, { code, startTime, endTime, hoursPerDay, graceMinutes, workingDays: dto.workingDays && result.workingDays });
+    const { code, startTime, endTime, hoursPerDay, countUntil, graceMinutes } = dto;
+    const diff = changes({ ...before }, { code, startTime, endTime, hoursPerDay, countUntil, graceMinutes, workingDays: dto.workingDays && result.workingDays });
     if (Object.keys(diff).length) await this.audit.record({ userId, action: 'update', entityType: ENTITY, entityId: id, diff });
     return result;
   }

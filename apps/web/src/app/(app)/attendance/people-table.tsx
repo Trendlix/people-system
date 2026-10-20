@@ -7,7 +7,7 @@ import { GroupHeading } from '@/components/group-heading';
 import type { AttendancePersonMonth } from '@/lib/attendance-types';
 import { cLevelTitle } from '@/lib/confidential';
 import type { DepartmentGroup } from '@/lib/place-groups';
-import { hoursText, personHref } from './attendance';
+import { filledText, hoursText, personHref } from './attendance';
 import { DaysTable } from './ui';
 
 // A month's people, one row each with the month's figures, grouped by department, then team, in Organization's order
@@ -110,7 +110,11 @@ export function PeopleTable({ groups, month, link, hidden }: { groups: Departmen
                             {p.averageHours !== null && <div className="text-xs text-muted">{hoursText(p.averageHours)} a day</div>}
                           </td>
                           <td className={`text-right tabular-nums ${f.absentDays ? 'font-semibold text-danger' : ''}`}>{f.absentDays}</td>
-                          <td className={`text-right tabular-nums ${f.shortHours ? 'font-semibold text-warn' : ''}`}>{hoursText(f.shortHours, true)}</td>
+                          <td className={`text-right tabular-nums ${f.shortHours ? 'font-semibold text-warn' : ''}`}>
+                            {hoursText(f.shortHours, true)}
+                            {/* make-up hours (owner, 20 October 2026): the short hours the month's extra time filled */}
+                            {filledText(f) && <div className="text-xs font-normal whitespace-nowrap text-ok">{filledText(f)}</div>}
+                          </td>
                           <td className="text-right tabular-nums">{hoursText(f.permissionHours, true)}</td>
                           <td className="text-right tabular-nums">{f.remoteDays}</td>
                           <td className="text-right tabular-nums">

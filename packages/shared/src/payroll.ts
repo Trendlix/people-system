@@ -73,6 +73,16 @@
 // when the CEO returns a run to HR (apps/api expected-hours.service.ts); a line with the CEO, approved or paid keeps
 // what was typed, and is worked out with it as it was. Without a shift there are none, so attendance isn't counted
 // (NO_SHIFT_NO_EXPECTED_HOURS); pay by the hour has none either, as before.
+// Make-up hours (owner, 20 October 2026, asked "if an employee failed to complete 9 hours in a da, can he work extra
+// hours next day ? to raise his average?": "within the same month with no working hours to be counted after 8 PM even if
+// the check out was 11 PM / record the checkout time but count till the checkout window limit"): on a shift that counts
+// hours until a time (attendance.ts makesUpHours; PayrollTerms.makeUpHours) a day counts past its hours to work, so the
+// month's worked hours, summed from its days, fill the short hours of its other days worked. While the rules don't pay
+// overtime the hours counted are at most the expected hours (PayrollResult.hoursOverExpected keeps what was left out),
+// so making up is never overtime; the no-show and leave days are out of the expected hours already, so it never covers
+// them. With overtime paid, the hours are counted as worked, uncapped, and overtime is worked out from them as before.
+// Lines worked out before then, and every other shift's, are as they were; a run with the CEO, approved or paid keeps
+// its terms, so its figures never change.
 
 import type { AllowanceTerms } from './contracts.js';
 import { adjustmentSums, DAYS_TYPE_OF, isDaysType, mayBeBeforeTax, sumAmounts, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
@@ -219,6 +229,13 @@ export interface PayrollTerms {
   expectedHours?: number | null;
   /** What the shift's hours were worked out from: its working days in the days paid, and the holidays on them. */
   expectedDays?: ShiftDays | null;
+  /**
+   * The shift counts hours until a time (owner, 20 October 2026: "within the same month with no working hours to be
+   * counted after 8 PM"; attendance.ts makesUpHours): a day counts past its hours to work, filling short hours on the
+   * month's other days, and while overtime isn't paid the hours counted are at most the expected hours. Monthly pay
+   * only; missing on every other line, and on lines made before then.
+   */
+  makeUpHours?: boolean;
   /**
    * The month's additions and deductions on the line (owner, 17 October 2026: Additions / Deductions), as they were
    * when the run took them, in the order entered. Missing on lines without any, and on lines worked out before then.
@@ -420,6 +437,12 @@ export interface PayrollResult {
    * worked hours given), for pay by the hour, and on lines worked out before then.
    */
   permissionHours?: number;
+  /**
+   * The worked hours (with the permission hours) above the expected hours that weren't counted (owner, 20 October 2026:
+   * make-up hours): a shift that counts hours until a time, while the rules don't pay overtime, counts at most the
+   * expected hours, so extra time only fills short hours. Missing otherwise, and on lines worked out before then.
+   */
+  hoursOverExpected?: number;
   /** Worked (with the permission hours) ÷ expected hours; null when attendance isn't tracked or can't be counted. */
   attendanceRatio: number | null;
   /** The attendance that counts (1 at or above the grace percent). */
@@ -630,7 +653,7 @@ type SalaryPart = Pick<
   | 'kpiCut'
   | 'noShowCut'
   | 'overtime'
-> & { attendanceWaived: number; unpaidLeaveCut: number; permissionHours?: number };
+> & { attendanceWaived: number; unpaidLeaveCut: number; permissionHours?: number; hoursOverExpected?: number };
 
 /**
  * A shift's window in hours, from its start and end ("HH:mm"): an end before the start runs past midnight. Null when
@@ -882,6 +905,8 @@ export function payrollLine(
             expectedDays: terms.expectedDays ?? null,
             // the month's permission hours, counted as worked (owner, 19 October 2026)
             permissionHours: permissionHoursOf(terms, i),
+            // a long day fills the month's short hours (owner, 20 October 2026)
+            makeUpHours: terms.makeUpHours === true,
           },
           warnings,
         );
@@ -1003,7 +1028,10 @@ export function payrollLine(
  * while the rules pay it (off from 16 October 2026: "No overtime for now"), is paid on the fixed part for the days paid
  * (the expected hours are the part month's) for attendance above the overtime percent (110), at the overtime rate
  * (1.5). Worked hours above the most attendance counts (the shift's hours to work a day on its days: mostCountedHours)
- * are warned about, not cut. A no-show day costs the no-show multiplier (2) days of the gross (the sheet used the
+ * are warned about, not cut. On a shift that counts hours until a time (owner, 20 October 2026: "within the same month";
+ * makeUpHours) a day counts past its hours, so there is no such warning: a long day fills the month's short hours, and
+ * while overtime isn't paid the hours counted are at most the expected hours (the rest kept as hoursOverExpected); paid,
+ * they count uncapped. A no-show day costs the no-show multiplier (2) days of the gross (the sheet used the
  * declared insurance salary, empty for most), never more than the salary left for the days paid after the other cuts.
  * A paid leave day costs nothing; an unpaid leave day (owner, 18 October 2026) a day of the gross, never more than the
  * salary the no-show cut leaves. The attendance cut the CEO waived (owner, 17 October 2026) is 0, kept as attendanceWaived;
@@ -1025,6 +1053,8 @@ function monthlyPart(
     expectedDays: ShiftDays | null;
     /** The month's permission hours (permissionHoursOf): counted as worked (owner, 19 October 2026). */
     permissionHours?: number | null;
+    /** The shift counts hours until a time (PayrollTerms.makeUpHours, 20 October 2026). */
+    makeUpHours?: boolean;
   },
   warnings: string[],
 ): SalaryPart {
@@ -1040,13 +1070,18 @@ function monthlyPart(
   // the permission hours count as worked (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day"),
   // so they are never cut as short hours; only once there are worked hours to add them to (attendance tracked)
   const permission = i.workedHours !== null && typeof pay.permissionHours === 'number' && pay.permissionHours > 0 ? pay.permissionHours : 0;
-  const worked = i.workedHours === null ? null : fraction(i.workedHours + permission);
+  const workedAll = i.workedHours === null ? null : fraction(i.workedHours + permission);
   const shift = pay.shiftExpectedHours;
   const fromShift = i.expectedHours === null && shift !== null && shift > 0;
   const absentHours = fromShift ? shiftDaysHours(i.noShowDays, pay.hoursPerDay) : 0;
   const leaveHours = fromShift ? fraction(shiftDaysHours(i.leaveDays, pay.hoursPerDay) + shiftDaysHours(i.unpaidLeaveDays, pay.hoursPerDay)) : 0;
   /** The expected hours attendance is measured on, as the grid shows them. */
   const expected = expectedHoursOf({ expectedHours: shift, hoursPerDay: pay.hoursPerDay }, i);
+  // make-up hours (owner, 20 October 2026: "within the same month"): a long day's hours fill the month's short ones, at
+  // most up to the expected hours (without the no-show and leave days) while overtime isn't paid; paid, uncapped
+  const capped = pay.makeUpHours === true && !paysOvertime(rules) && workedAll !== null && expected !== null && expected > 0 && workedAll > expected;
+  const worked = capped ? expected : workedAll;
+  const hoursOverExpected = capped ? fraction(workedAll - expected) : 0;
   const attendanceRatio = worked !== null && expected !== null && expected > 0 ? fraction(worked / expected) : null;
   // without a shift (no hours a day) there are none to measure the hours on, as they are never typed (owner, 20 October
   // 2026): the warning says what to do
@@ -1093,8 +1128,9 @@ function monthlyPart(
   // between checkin and check out"): the shift's hours to work a day on its working days in the days paid, less the
   // holidays and the no-show and leave days; the total typed isn't cut, only warned about
   // the worked hours as typed, without the permission hours: what attendance counted
+  // (a shift that counts hours until a time counts past them a day, 20 October 2026: no such warning)
   const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays, leaveDays + unpaidLeaveDays);
-  if (i.workedHours !== null && most !== null && pay.hoursPerDay !== null && i.workedHours > most) {
+  if (pay.makeUpHours !== true && i.workedHours !== null && most !== null && pay.hoursPerDay !== null && i.workedHours > most) {
     const perDay = formatHours(pay.hoursPerDay);
     warnings.push(`Worked hours are more than ${perDay} a day on the shift's working days (${formatHours(most)} this month): attendance will count at most ${perDay} a day`);
   }
@@ -1107,6 +1143,7 @@ function monthlyPart(
     leaveHours,
     expectedHours: expected,
     ...(permission > 0 && { permissionHours: permission }),
+    ...(hoursOverExpected > 0 && { hoursOverExpected }),
     attendanceRatio,
     attendanceScore,
     kpiScore,

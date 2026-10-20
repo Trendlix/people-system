@@ -39,6 +39,8 @@ function figureColumns<T>(f: (row: T) => AttendanceFigures, average: (row: T) =>
     { header: 'Average a day', width: 12, value: (r) => asTime(average(r)), numFmt: HOURS },
     { header: 'Absent days', width: 11, value: (r) => f(r).absentDays, numFmt: '0' },
     { header: 'Short hours', width: 11, value: (r) => asTime(f(r).shortHours), numFmt: HOURS },
+    // make-up hours (owner, 20 October 2026: "within the same month"): the short hours a month's extra time filled
+    { header: 'Short hours filled by extra time', width: 16, value: (r) => asTime(f(r).shortHoursFilled), numFmt: HOURS },
     { header: 'Permission hours', width: 14, value: (r) => asTime(f(r).permissionHours), numFmt: HOURS },
     { header: 'Office days', width: 10, value: (r) => f(r).officeDays, numFmt: '0' },
     { header: 'Remote days', width: 11, value: (r) => f(r).remoteDays, numFmt: '0' },

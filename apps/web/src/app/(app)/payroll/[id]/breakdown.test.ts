@@ -643,3 +643,25 @@ describe('breakdown: the permission hours (owner, 19 October 2026: "this is an o
     expect(stepOf(hourly, 'permission')).toBeUndefined();
   });
 });
+
+describe('a line’s breakdown with make-up hours (owner, 20 October 2026: "within the same month")', () => {
+  it('says what above the expected hours wasn’t counted while overtime isn’t paid, nothing otherwise', () => {
+    // 160 worked of 152 expected on a shift that counts hours until a time: 152 counted, 8 left out, no overtime
+    const madeUp = lineOf({ ...terms, makeUpHours: true }, { ...inputs, workedHours: 160 });
+    expect(madeUp.result).toMatchObject({ attendanceRatio: 1, hoursOverExpected: 8, overtime: 0 });
+    expect(stepOf(madeUp, 'hours')).toEqual({
+      key: 'hours',
+      label: 'Hours worked',
+      value: '160:00 of 152:00',
+      kind: 'info',
+      note: '8:00 above the expected hours not counted: extra time fills short hours, never overtime',
+    });
+    expect(stepOf(madeUp, 'attendance')).toMatchObject({ value: '100%', note: 'At or above 90%: counts in full' });
+    // with the permission hours too: both said
+    expect(stepOf(lineOf({ ...terms, makeUpHours: true, permissionHours: 4 }, { ...inputs, workedHours: 150 }), 'hours')?.note).toBe(
+      '154:00 with the permission hours, as attendance counts them; 2:00 above the expected hours not counted: extra time fills short hours, never overtime',
+    );
+    // not on such a shift: as before
+    expect(stepOf(lineOf(terms, { ...inputs, workedHours: 160 }), 'hours')).toEqual({ key: 'hours', label: 'Hours worked', value: '160:00 of 152:00', kind: 'info' });
+  });
+});

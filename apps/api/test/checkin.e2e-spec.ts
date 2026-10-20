@@ -24,8 +24,9 @@ const TODAY = todayInCairo();
 const CURRENT = TODAY.slice(0, 7);
 const PAST = monthsLater(CURRENT, -3); // a month gone by: its days are past
 
-// the office, at an invented point, and points near it and far from it
-const OFFICE = { officeLatitude: 30.0596, officeLongitude: 31.3462, officeRadiusMetres: 150 };
+// the office, at an invented point, and points near it and far from it (a check-in location since 20 October 2026: owner,
+// "Own page, several locations", Attendance → Check-in Setup)
+const OFFICE = { name: `Office ${RUN}`, latitude: 30.0596, longitude: 31.3462, radiusMetres: 150 };
 const NEAR = { latitude: 30.0601, longitude: 31.3465, accuracy: 18.4 };
 const FAR = { latitude: 30.0444, longitude: 31.2357, accuracy: 25 };
 
@@ -60,7 +61,7 @@ describe('Checking in on the system (e2e)', () => {
   let finance: string;
   let hrUserId: string;
   let emailDomainBefore: string | null;
-  let settingsBefore: { officeLatitude: number | null; officeLongitude: number | null; officeRadiusMetres: number };
+  const locations: string[] = [];
   let deptId: string;
   let shiftId: string;
   const runs: string[] = [];
@@ -119,8 +120,6 @@ describe('Checking in on the system (e2e)', () => {
     finance = await signIn(app, await createUser(prisma, ['finance']));
     emailDomainBefore = (await api().get('/api/company').set('Cookie', hr).expect(200)).body.emailDomain;
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: '' }).expect(200);
-    const s = (await api().get('/api/payroll/settings').set('Cookie', hr).expect(200)).body;
-    settingsBefore = { officeLatitude: s.officeLatitude, officeLongitude: s.officeLongitude, officeRadiusMetres: s.officeRadiusMetres };
 
     deptId = (await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Check-in Dept ${RUN}` }).expect(201)).body.id;
     // the MORNING shift: 9 hours within 9:00–19:00, 15 minutes' grace, Sunday to Thursday
@@ -153,22 +152,25 @@ describe('Checking in on the system (e2e)', () => {
     await prisma.employee.deleteMany({ where: { id: { in: people } } });
     await prisma.shift.deleteMany({ where: { id: shiftId } });
     await prisma.department.deleteMany({ where: { id: deptId } });
-    await api().patch('/api/payroll/settings').set('Cookie', hr).send(settingsBefore).expect(200);
+    await prisma.checkInLocation.deleteMany({ where: { id: { in: locations } } });
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: emailDomainBefore ?? '' }).expect(200);
     await app.close();
   });
 
-  describe('Payroll Setup: the office’s location', () => {
-    it('is a point and a radius of 150 metres to start with, both or neither, set by HR', async () => {
-      expect(said(await api().patch('/api/payroll/settings').set('Cookie', hr).send({ officeLatitude: 30.06, officeLongitude: null }).expect(400))).toEqual([
-        "Enter both the office's latitude and longitude, or neither.",
-      ]);
-      expect(said(await api().patch('/api/payroll/settings').set('Cookie', hr).send({ officeRadiusMetres: 10 }).expect(400))[0]).toContain('from 20 to 5000');
-      expect(said(await api().patch('/api/payroll/settings').set('Cookie', hr).send({ officeLatitude: 95, officeLongitude: 31 }).expect(400))[0]).toContain('latitude from -90 to 90');
-      await api().patch('/api/payroll/settings').set('Cookie', finance).send(OFFICE).expect(403);
-      const saved = (await api().patch('/api/payroll/settings').set('Cookie', hr).send(OFFICE).expect(200)).body;
+  describe('Check-in Setup: the office’s location', () => {
+    it('is a check-in location, a point and a radius, set by HR (Payroll Setup no longer takes it)', async () => {
+      expect(said(await api().post('/api/attendance/check-in-setup/locations').set('Cookie', hr).send({ ...OFFICE, longitude: null }).expect(400))[0]).toContain('longitude');
+      expect(said(await api().post('/api/attendance/check-in-setup/locations').set('Cookie', hr).send({ ...OFFICE, radiusMetres: 10 }).expect(400))[0]).toContain('from 20 to 5,000');
+      expect(said(await api().post('/api/attendance/check-in-setup/locations').set('Cookie', hr).send({ ...OFFICE, latitude: 95 }).expect(400))[0]).toContain('latitude from -90 to 90');
+      await api().post('/api/attendance/check-in-setup/locations').set('Cookie', finance).send(OFFICE).expect(403);
+      const saved = (await api().post('/api/attendance/check-in-setup/locations').set('Cookie', hr).send(OFFICE).expect(201)).body;
+      locations.push(saved.id);
       expect(saved).toMatchObject(OFFICE);
-      expect((await api().get('/api/payroll/settings').set('Cookie', finance).expect(200)).body).toMatchObject(OFFICE);
+      // the office's point on Payroll Setup moved here (20 October 2026: "Own page, several locations")
+      expect(said(await api().patch('/api/payroll/settings').set('Cookie', hr).send({ officeLatitude: 30.06, officeLongitude: 31.3 }).expect(400))[0]).toContain(
+        'Attendance → Check-in Setup',
+      );
+      expect((await api().get('/api/payroll/settings').set('Cookie', finance).expect(200)).body).not.toHaveProperty('officeLatitude');
     });
   });
 

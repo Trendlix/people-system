@@ -11,15 +11,26 @@
 // October 2026: "grace period means that if the employee checked in 10:15 he can check out till 7:15 and the 9 hours are
 // counted"): on the MORNING shift (9 hours within 9:00–19:00, 15 minutes' grace) the hours count until 19:15, still at
 // most 9; a fixed shift's end moves the same.
+// Make-up hours (owner, 20 October 2026, asked "if an employee failed to complete 9 hours in a da, can he work extra
+// hours next day ? to raise his average?" and choosing within the same month: "within the same month with no working
+// hours to be counted after 8 PM even if the check out was 11 PM / record the checkout time but count till the checkout
+// window limit"): a shift may count hours until a time (its "Count hours until", Shift.countUntil: at or after its end,
+// the same day; the MORNING shift's 8:00 PM). Then a day counts from the later of the check-in and the window's start
+// to the earlier of the check-out and that time (never before the end and the grace), and is not capped at the hours to
+// work (mostHoursCountedADay: null), so a long day fills the month's short hours (payroll.ts: the month's worked hours at
+// most its expected hours while overtime isn't paid). The check-in and check-out are kept as they were; only the hours
+// counted change. A shift without it counts as above.
 
 import { shiftWorkHours, type ShiftTimes } from './payroll.js';
 
 /**
  * The most hours attendance counts a day on a shift: its hours to work a day (owner, 16 October 2026: "maximum working
- * hours to be recorded per day is 9 hours between checkin and check out"). Null when the shift's hours can't be told.
+ * hours to be recorded per day is 9 hours between checkin and check out"). Null when the shift's hours can't be told,
+ * and on a shift that counts hours until a time (owner, 20 October 2026: "within the same month with no working hours to
+ * be counted after 8 PM"; makesUpHours): its day isn't capped, the time is its limit.
  */
-export function mostHoursCountedADay(shift: ShiftTimes): number | null {
-  return shiftWorkHours(shift);
+export function mostHoursCountedADay(shift: ShiftTimes & Pick<ShiftWindowTimes, 'countUntil'>): number | null {
+  return makesUpHours(shift) ? null : shiftWorkHours(shift);
 }
 
 /** A moment as a time in milliseconds; NaN when it isn't one. */
@@ -61,31 +72,90 @@ export interface ShiftWindow {
   end: number;
 }
 
-/** A shift's times and its grace minutes (none: no grace), as its window on a day is worked out from them. */
-export type ShiftWindowTimes = Pick<ShiftTimes, 'startTime' | 'endTime'> & { graceMinutes?: number | null };
+/**
+ * A shift's times and its grace minutes (none: no grace), as its window on a day is worked out from them, and the time
+ * it counts hours until ("HH:mm"; owner, 20 October 2026: "no working hours to be counted after 8 PM even if the check
+ * out was 11 PM"; none: its end and grace, as before).
+ */
+export type ShiftWindowTimes = Pick<ShiftTimes, 'startTime' | 'endTime'> & { graceMinutes?: number | null; countUntil?: string | null };
 
 /** The grace minutes a window's end moves by: the shift's, whole minutes from 0 (none, or anything else: 0). */
 export const graceOf = (shift: { graceMinutes?: number | null }): number =>
   typeof shift.graceMinutes === 'number' && Number.isFinite(shift.graceMinutes) && shift.graceMinutes > 0 ? Math.round(shift.graceMinutes) : 0;
 
+const TIME_OF_DAY = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** A time of day as the messages say it, on the 12-hour clock: "20:00" → "8:00 PM"; as it is when it isn't one. */
+export function timeOfDayText(hhmm: string): string {
+  const t = hhmm.slice(0, 5);
+  if (!TIME_OF_DAY.test(t)) return hhmm;
+  const h = Number(t.slice(0, 2));
+  return `${h % 12 === 0 ? 12 : h % 12}:${t.slice(3)} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/**
+ * Why a shift's "Count hours until" can't be saved (none: it can, or it isn't set; owner, 20 October 2026: "no working
+ * hours to be counted after 8 PM even if the check out was 11 PM / record the checkout time but count till the checkout
+ * window limit"): a time of day ("HH:mm") at or after the shift's end and on the same day, so before midnight (a shift
+ * that runs past midnight: before it starts again). The API refuses what this refuses, and the shift form says it.
+ */
+export function countUntilProblems(shift: { startTime: string; endTime: string; countUntil?: string | null }): string[] {
+  const until = shift.countUntil;
+  if (until === null || until === undefined || until === '') return [];
+  const [start, end, limit] = [shift.startTime.slice(0, 5), shift.endTime.slice(0, 5), until.slice(0, 5)];
+  if (!TIME_OF_DAY.test(limit)) return ['Choose the time hours count until as a time of day, e.g. 8:00 PM.'];
+  if (!TIME_OF_DAY.test(start) || !TIME_OF_DAY.test(end) || start === end) return [];
+  const overnight = end < start;
+  if (limit < end || (overnight && limit >= start)) {
+    return [
+      overnight
+        ? `Choose a "Count hours until" time at or after the shift ends, ${timeOfDayText(end)}, and before it starts again, ${timeOfDayText(start)}.`
+        : `Choose a "Count hours until" time at or after the shift ends, ${timeOfDayText(end)}, and before midnight.`,
+    ];
+  }
+  return [];
+}
+
+/** The time a shift counts hours until ("HH:mm"): its "Count hours until" when set and allowed (countUntilProblems), else null. */
+export function countUntilOf(shift: ShiftWindowTimes): string | null {
+  const until = shift.countUntil;
+  if (typeof until !== 'string' || until === '') return null;
+  return countUntilProblems({ startTime: shift.startTime, endTime: shift.endTime, countUntil: until }).length ? null : until.slice(0, 5);
+}
+
+/**
+ * Whether a shift's long days make up its short ones within the month (owner, 20 October 2026: "within the same month"):
+ * it counts hours until a time (countUntilOf), so a day isn't capped at the hours to work.
+ */
+export const makesUpHours = (shift: ShiftWindowTimes): boolean => countUntilOf(shift) !== null;
+
 /**
  * A shift's window on a day (YYYY-MM-DD, in Cairo): 09:00–19:00 on 18 October; 22:00–06:00 runs into the 19th. Its end
  * moves by the shift's grace minutes (owner, 19 October 2026: "if the employee checked in 10:15 he can check out till
- * 7:15 and the 9 hours are counted"): the MORNING shift's, with 15 minutes' grace, 09:00–19:15.
+ * 7:15 and the 9 hours are counted"): the MORNING shift's, with 15 minutes' grace, 09:00–19:15. A shift that counts
+ * hours until a time (owner, 20 October 2026: "no working hours to be counted after 8 PM even if the check out was 11
+ * PM"; countUntilOf) ends then instead, on the day its window ends, never before its end and grace: the MORNING shift
+ * counting until 20:00, 09:00–20:00.
  */
 export function shiftWindowOn(day: string, shift: ShiftWindowTimes, timeZone = 'Africa/Cairo'): ShiftWindow | null {
   // a shift that starts and ends at the same time has no hours to tell, as shiftHours says too
   if (shift.startTime.slice(0, 5) === shift.endTime.slice(0, 5)) return null;
   const start = zonedMoment(day, shift.startTime, timeZone);
+  let endDay = day;
   let end = zonedMoment(day, shift.endTime, timeZone);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
   if (end <= start) {
     const next = new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)) + 1));
-    end = zonedMoment(next.toISOString().slice(0, 10), shift.endTime, timeZone);
+    endDay = next.toISOString().slice(0, 10);
+    end = zonedMoment(endDay, shift.endTime, timeZone);
   }
   if (!(end > start)) return null;
   // the grace after the end, as minutes of the clock: the same moment whatever the summer time
-  return { start, end: end + graceOf(shift) * 60_000 };
+  const graced = end + graceOf(shift) * 60_000;
+  // the time hours count until, the day the window ends (20 October 2026)
+  const until = countUntilOf(shift);
+  const limit = until ? zonedMoment(endDay, until, timeZone) : Number.NaN;
+  return { start, end: Number.isFinite(limit) ? Math.max(limit, graced) : graced };
 }
 
 /**
@@ -93,7 +163,8 @@ export function shiftWindowOn(day: string, shift: ShiftWindowTimes, timeZone = '
  * check-out past midnight is after the check-in): the time between them within the shift's window that day (owner, 17
  * October 2026: "i have a window the employee have to fill 9 hours within the window": coming early or staying late
  * adds nothing; shiftWindowOn; none given: not clipped), in whole minutes, never more than `mostHours` (the shift's:
- * mostHoursCountedADay; null: no shift, not capped), never below 0. 0 when either isn't a moment.
+ * mostHoursCountedADay; null: no shift, or a shift that counts hours until a time, owner, 20 October 2026: not capped,
+ * the window's end its limit), never below 0. 0 when either isn't a moment.
  */
 export function hoursCountedForDay(
   checkIn: Date | string,

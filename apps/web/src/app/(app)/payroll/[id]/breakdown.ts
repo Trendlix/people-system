@@ -53,7 +53,10 @@ import { contractLabel, dayRange } from './grid';
 // the permission approved or as typed, and the hours worked with them. A Recurring deduction ticked before tax (owner,
 // 20 October 2026, on the employee's medical share: "Before Tax i think") is a row before the taxable pay, "Before tax:
 // lowers the taxable pay", and the taxable pay says what it was lowered by (less when the year's limit or the pay held
-// it back). Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// it back). Make-up hours (owner, 20 October 2026: "within the same month with no working hours to be counted after 8 PM
+// even if the check out was 11 PM"): a line on a shift that counts hours until a time counts at most the expected hours
+// while overtime isn't paid, and Hours worked says what above them wasn't counted. Pure code, tested; relative imports,
+// as vitest doesn't know the @/ paths.
 
 export interface BreakdownRow {
   key: string;
@@ -206,13 +209,19 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
   if (expected !== null) hours.push({ key: 'expected', label: 'Expected hours', value: formatHours(expected), kind: 'info', note: expectedNote(line) });
   // the permission hours counted as worked (owner, 19 October 2026): as the line counted them, only once hours are worked
   const permission = typeof r.permissionHours === 'number' && r.permissionHours > 0 ? r.permissionHours : 0;
+  // make-up hours (owner, 20 October 2026): what above the expected hours wasn't counted, while overtime isn't paid
+  const over = typeof r.hoursOverExpected === 'number' && r.hoursOverExpected > 0 ? r.hoursOverExpected : 0;
   if (i.workedHours !== null) {
+    const notes = [
+      permission > 0 ? `${formatHours(i.workedHours + permission)} with the permission hours, as attendance counts them` : null,
+      over > 0 ? `${formatHours(over)} above the expected hours not counted: extra time fills short hours, never overtime` : null,
+    ].filter((n): n is string => n !== null);
     hours.push({
       key: 'hours',
       label: 'Hours worked',
       value: expected !== null ? `${formatHours(i.workedHours)} of ${formatHours(expected)}` : formatHours(i.workedHours),
       kind: 'info',
-      ...(permission > 0 && { note: `${formatHours(i.workedHours + permission)} with the permission hours, as attendance counts them` }),
+      ...(notes.length > 0 && { note: notes.join('; ') }),
     });
   }
   if (permission > 0) {

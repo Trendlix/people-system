@@ -5,6 +5,8 @@ import { AttendanceFillService } from './attendance-fill.service.js';
 import { AttendanceImportsController } from './attendance-imports.controller.js';
 import { AttendanceImportsService } from './attendance-imports.service.js';
 import { AttendanceService } from './attendance.service.js';
+import { CheckInSetupController } from './check-in-setup.controller.js';
+import { CheckInSetupService } from './check-in-setup.service.js';
 import { CheckInController } from './check-in.controller.js';
 import { CheckInService } from './check-in.service.js';
 import { CorrectionDaysService } from './correction-days.service.js';
@@ -20,11 +22,21 @@ import { AttendanceCorrectionsService } from './corrections.service.js';
 // from the punches, and a draft run's lines filled from the month's days (AttendanceFillService, which the payroll runs
 // use too: global). Attendance corrections (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to
 // check out")"): asked by the employee, decided by their manager then HR, or made by HR directly; the corrected day kept
-// over the day it corrects.
+// over the day it corrects. Check-in Setup (owner, 20 October 2026: "Own page, several locations"): the check-in locations
+// and the office networks with the lock on check-ins (CheckInSetupService).
 @Global()
 @Module({
-  controllers: [AttendanceController, AttendanceImportsController, CheckInController, MyCorrectionsController, AttendanceCorrectionsController],
-  providers: [AttendanceService, AttendanceImportsService, AttendanceDaysService, AttendanceFillService, CheckInService, CorrectionDaysService, AttendanceCorrectionsService],
+  controllers: [AttendanceController, AttendanceImportsController, CheckInController, CheckInSetupController, MyCorrectionsController, AttendanceCorrectionsController],
+  providers: [
+    AttendanceService,
+    AttendanceImportsService,
+    AttendanceDaysService,
+    AttendanceFillService,
+    CheckInService,
+    CheckInSetupService,
+    CorrectionDaysService,
+    AttendanceCorrectionsService,
+  ],
   exports: [AttendanceDaysService, AttendanceFillService],
 })
 export class AttendanceModule {}

@@ -8,8 +8,10 @@ import type {
   CheckInFlag,
   CheckInPlace,
   ExpectedPlace,
+  OfficeNetwork,
   PayrollStatus,
   PunchKind,
+  SignedIpProblem,
 } from '@trendlix/shared';
 
 // Attendance imported from Zoho People on a draft payroll run (owner, 19 October 2026: attendance runs in Zoho People
@@ -212,6 +214,13 @@ export interface PunchView {
   place: CheckInPlace;
   accuracyMetres: number | null;
   flags: CheckInFlag[];
+  /**
+   * The check-in location it was within, by its name then, and the office network it came from, by its name (owner, 20
+   * October 2026: several locations, and the office network's lock); never the coordinates or the address. Left out by
+   * an API from before them.
+   */
+  locationName?: string | null;
+  officeNetwork?: string | null;
 }
 
 /** The day as today's punches make it: the first check-in, the last check-out after it, the place, flags and hours. */
@@ -237,9 +246,18 @@ export interface CheckInTodayView {
   /** Where their work arrangement expects them today, and in words. */
   expected: ExpectedPlace | null;
   expectedText: string | null;
-  /** Whether HR set the office's point (Payroll Setup → Your Rules): without it every check-in is location unknown. */
+  /** Whether HR set a check-in location (Attendance → Check-in Setup): without one every check-in is location unknown. */
   officeLocationSet: boolean;
-  shift: { startTime: string; endTime: string; hoursPerDay: number | null; graceMinutes: number } | null;
+  /**
+   * Whether their check-ins and check-outs need the office network (owner, 20 October 2026: "Office staff, plus
+   * exceptions"). Left out by an API from before it.
+   */
+  network?: { locked: boolean };
+  /**
+   * Their shift: its window (HH:MM), hours a day, grace minutes and the time it counts hours until (HH:MM; owner, 20
+   * October 2026: make-up hours; null, or left out by an API from before it: none).
+   */
+  shift: { startTime: string; endTime: string; hoursPerDay: number | null; graceMinutes: number; countUntil?: string | null } | null;
 }
 
 /** POST /me/attendance/punches: the day after the punch, and what to tell them. */
@@ -247,4 +265,31 @@ export interface PunchResultView extends CheckInTodayView {
   messages: string[];
   /** False when it was the same press twice within a minute (kept once). */
   kept: boolean;
+}
+
+// ---------- Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations") ----------
+// As GET /attendance/check-in-setup/locations and /networks send them (apps/api/src/attendance/check-in-setup.service.ts).
+
+/** A place check-ins count as the office at: within its radius of its point. */
+export interface CheckInLocationView {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMetres: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * The office networks and the lock (owner, 20 October 2026: "allow me to lock checkin's to wifi name or ip, whatever is
+ * right"): the list, the switch, whether the server holds the key and the lock is in force, and this request's address
+ * as the website signed it (the office network it is on), or why it can't be trusted.
+ */
+export interface OfficeNetworksView {
+  lock: boolean;
+  networks: OfficeNetwork[];
+  serverKey: boolean;
+  inForce: boolean;
+  here: { signed: true; ip: string; network: string | null } | { signed: false; problem: SignedIpProblem };
 }

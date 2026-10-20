@@ -195,12 +195,17 @@ model Department {
 // hours from 0.5, never more than the window (checked by the API and the database). Payroll counts a day of the shift
 // as these hours (the expected hours, a no-show day's hours); they are also the most attendance counts a day (owner, 16
 // October 2026: "maximum working hours to be recorded per day is 9 hours between checkin and check out").
+// Count hours until (owner, 20 October 2026: "within the same month with no working hours to be counted after 8 PM even
+// if the check out was 11 PM / record the checkout time but count till the checkout window limit"): set, a day counts
+// until that time and past the hours to work, a long day filling the month's short hours (packages/shared attendance.ts
+// and payroll.ts); at or after the end, the same day (checked by the API and the database). Null: as before.
 model Shift {
   id           String       @id @default(uuid()) @db.Uuid
   code         String       @unique // A, B
   startTime    DateTime     @map("start_time") @db.Time(0)
   endTime      DateTime     @map("end_time") @db.Time(0)
   hoursPerDay  Decimal?     @map("hours_per_day") @db.Decimal(4, 2) // the hours to work a day; null: the whole window
+  countUntil   DateTime?    @map("count_until") @db.Time(0) // hours count until it, making up short days; null: the end and grace
   graceMinutes Int          @default(15) @map("grace_minutes")
   workingDays  Int[]        @default([0, 1, 2, 3, 4]) @map("working_days") @db.SmallInt // 0 = Sun … 6 = Sat
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
@@ -435,6 +440,9 @@ model Employment {
   // includes "العمولة أو النسبة المئوية", Art. 1(4)(أ)), what Sales was; and the nature of the work (Art. 1(6–8))
   paidByCommission Boolean                @default(false) @map("paid_by_commission")
   workNature       String                 @default("regular") @map("work_nature") // WORK_NATURES: regular, temporary, casual, seasonal
+  // "Can check in from anywhere" (owner, 20 October 2026: check-ins locked to the office network, "Office staff, plus
+  // exceptions"): HR lets an Office employee check in off the office network; the others aren't locked anyway
+  checkInAnywhere  Boolean                @default(false) @map("check_in_anywhere")
   shift            Shift?                 @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   jdAcknowledgedAt DateTime?              @map("jd_acknowledged_at") @db.Date
   endDate          DateTime?              @map("end_date") @db.Date // empty while current
@@ -1111,15 +1119,38 @@ model PayrollSettings {
   // is also in office"): a check-in at one of them is a day at the office, anywhere else remote
   officeAddresses         String[] @default(["Trendlix", "13, Al Doctor Al Mahrouqi Street", "15, Al Doctor Al Mahrouqi Street", "17, Al Doctor Al Mahrouqi Street"]) @map("office_addresses")
   // the office's point and radius for checking in on the system (owner, 19 October 2026: "Check-in through the system
-  // (phone or web with the office location check, or a device) to replace Zoho"): a check-in within the radius is at the
-  // office, outside it remote; no point yet: location unknown (packages/shared check-in.ts). Only office, remote or
-  // unknown is kept of a check-in, never its coordinates. 150 metres to start with, 20 to 5,000
+  // (phone or web with the office location check, or a device) to replace Zoho"). UNUSED since 20 October 2026 (owner:
+  // "Own page, several locations"): check-ins read the locations of Attendance → Check-in Setup (CheckInLocation), the
+  // migration check_in_locations copied this point into the first of them, "Office". Kept, unused, rather than dropped in
+  // the same deploy; the API neither reads nor writes them any more
   officeLatitude          Decimal? @map("office_latitude") @db.Decimal(9, 6)
   officeLongitude         Decimal? @map("office_longitude") @db.Decimal(9, 6)
   officeRadiusMetres      Int      @default(150) @map("office_radius_metres")
+  // check-ins locked to the office network (owner, 20 October 2026: "allow me to lock checkin's to wifi name or ip,
+  // whatever is right"; Attendance → Check-in Setup): the office's public addresses, each { label, range } (an IPv4
+  // address, an IPv4 range or an IPv6 range, packages/shared office-network.ts), and the switch "Lock check-ins to the
+  // office network". In force only with the key the website signs the address with (WEB_KEY, deploy/web-key.sh)
+  officeNetworks          Json     @default("[]") @map("office_networks")
+  officeNetworkLock       Boolean  @default(false) @map("office_network_lock")
   updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("payroll_settings")
+}
+
+// The places a check-in on the system counts as the office at (owner, 20 October 2026: "i cant find in the system where to
+// add the eligable check in locations", then "Own page, several locations"): Attendance → Check-in Setup, HR and Admin.
+// Within any one's radius a check-in is at the office, outside them all remote, no reading: unknown (packages/shared
+// check-in.ts checkInPlace). The first, "Office", is the point Payroll Setup → Your Rules had (the migration copied it).
+model CheckInLocation {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  latitude     Decimal  @db.Decimal(9, 6)
+  longitude    Decimal  @db.Decimal(9, 6)
+  radiusMetres Int      @default(150) @map("radius_metres") // 20 to 5,000
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("check_in_locations")
 }
 
 // The year's official holidays (owner's request, 16 October 2026, Payroll Setup): one day each, a holiday of several
@@ -1871,6 +1902,11 @@ model AttendancePunch {
   accuracyMetres Int?     @map("accuracy_metres")
   expected       String // office, anywhere
   flags          String[] @default([])
+  // the check-in location it was within (owner, 20 October 2026: "Own page, several locations"), by its name then, and the
+  // office network it came from, by its name (check-ins locked to the office network, 20 October 2026); never the
+  // coordinates or the address
+  locationName   String?  @map("location_name")
+  officeNetwork  String?  @map("office_network")
   source         String   @default("system") // system; device for a fingerprint or face device, later
   userId         String?  @map("user_id") @db.Uuid
   user           User?    @relation("AttendancePunchBy", fields: [userId], references: [id], onDelete: SetNull)

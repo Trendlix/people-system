@@ -2,6 +2,7 @@ import {
   DEFAULT_WORKING_DAYS,
   insuredWageVersion,
   lawRatesFor,
+  makesUpHours,
   monthLeaveDays,
   monthPermissionHours,
   paidDaysOf,
@@ -45,7 +46,9 @@ import { firstDay, lastDay } from './months.js';
 // HR types others (payroll.ts leaveDaysOf); none for pay by the hour. The month's approved permission hours (owner, 19
 // October 2026: "4 hours per month with a maximum 2 hours per day", counted as worked): those on days paid, at most the
 // Leave Setup's hours a month, the grid's Permission hours unless HR types others (payroll.ts permissionHoursOf); none
-// for pay by the hour.
+// for pay by the hour. A shift that counts hours until a time (owner, 20 October 2026: "within the same month with no
+// working hours to be counted after 8 PM"; attendance.ts makesUpHours) marks a monthly-paid line's terms makeUpHours: its
+// long days fill the month's short hours, at most the expected hours while overtime isn't paid (payroll.ts).
 
 /** An employment as the roster reads it, with its signed contracts that may be in force in the month. */
 export interface RosterEmployment {
@@ -56,10 +59,11 @@ export interface RosterEmployment {
   department: { nameEn: string; parent: { nameEn: string } | null } | null;
   jobTitle: string | null;
   /**
-   * The employment's shift: its times, "HH:mm", its hours to work a day (null: the whole window) and its working days,
-   * 0 = Sunday … 6 = Saturday; null without one.
+   * The employment's shift: its times, "HH:mm", its hours to work a day (null: the whole window), the time it counts
+   * hours until ("HH:mm", 20 October 2026; null or missing: none) and its working days, 0 = Sunday … 6 = Saturday; null
+   * without one.
    */
-  shift: { startTime: string; endTime: string; hoursPerDay?: number | null; workingDays: readonly number[] } | null;
+  shift: { startTime: string; endTime: string; hoursPerDay?: number | null; countUntil?: string | null; workingDays: readonly number[] } | null;
   employee: {
     id: string;
     employeeCode: string;
@@ -325,6 +329,8 @@ export function roster(
         ...shiftExpected(month, e, parts, contract.payBasis, hoursPerDay, holidays),
         ...(leave && { leave }),
         ...(permissionHours !== null && { permissionHours }),
+        // a long day fills the month's short hours (owner, 20 October 2026: "within the same month"), for the monthly paid
+        ...(contract.payBasis === 'monthly' && e.shift && makesUpHours(e.shift) && { makeUpHours: true }),
       },
     });
   }

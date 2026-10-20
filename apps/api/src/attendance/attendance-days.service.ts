@@ -46,7 +46,10 @@ export const DAY_SELECT = {
 
 export type DayRow = Prisma.AttendanceDayGetPayload<{ select: typeof DAY_SELECT }>;
 
-/** The employment a month is read with: its place, job title, dates and shift (its window, hours, grace and days). */
+/**
+ * The employment a month is read with: its place, job title, dates and shift (its window, hours, grace, the time it
+ * counts hours until, 20 October 2026, and days).
+ */
 export const EMPLOYMENT_SELECT = {
   id: true,
   employeeId: true,
@@ -57,7 +60,7 @@ export const EMPLOYMENT_SELECT = {
   officeDays: true,
   department: { select: { id: true, nameEn: true, parent: { select: { id: true, nameEn: true } } } },
   jobTitle: { select: { titleEn: true } },
-  shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, workingDays: true } },
+  shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true } },
 } satisfies Prisma.EmploymentSelect;
 
 export type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT_SELECT }>;
@@ -106,6 +109,8 @@ export const shiftTimesOf = (s: NonNullable<EmploymentRow['shift']>) => ({
   endTime: fromTimeOfDay(s.endTime),
   hoursPerDay: s.hoursPerDay?.toNumber() ?? null,
   graceMinutes: s.graceMinutes,
+  // a long day making up short ones (owner, 20 October 2026: "within the same month"): hours count until it
+  countUntil: s.countUntil ? fromTimeOfDay(s.countUntil) : null,
   workingDays: s.workingDays,
 });
 

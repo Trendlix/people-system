@@ -60,6 +60,9 @@ describe('a month’s figures', () => {
       absentDays: 1,
       // 9 − 8:08 − 0:30 on the 1st; none on the 2nd (9 counted); the 9th has no check-out
       shortHours: 22 / 60,
+      // no day past the shift's 9 hours (make-up hours, 20 October 2026: make-up-hours.spec.ts)
+      extraHours: 0,
+      shortHoursFilled: 0,
       permissionHours: 3,
       officeDays: 2,
       remoteDays: 1,

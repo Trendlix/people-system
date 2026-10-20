@@ -82,6 +82,13 @@ class EmploymentFieldsDto {
   /** The nature of the work (Art. 1(6–8)): regular unless sent; casual work is warned of past 6 months. */
   @Sent() @IsIn(WORK_NATURES, { message: WORK_NATURE_MESSAGE })
   workNature?: WorkNature;
+
+  /**
+   * "Can check in from anywhere" (owner, 20 October 2026: check-ins locked to the office network, "Office staff, plus
+   * exceptions"): an Office employee HR lets check in and out off the office network. Off unless sent.
+   */
+  @Sent() @IsBoolean({ message: 'Send whether they can check in from anywhere as true or false.' })
+  checkInAnywhere?: boolean;
 }
 
 /**

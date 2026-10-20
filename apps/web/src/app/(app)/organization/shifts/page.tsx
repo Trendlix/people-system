@@ -34,6 +34,7 @@ async function ShiftsList() {
                 <th>Shift</th>
                 <th>Hours</th>
                 <th>Hours to Work</th>
+                <th>Count Hours Until</th>
                 <th>Grace</th>
                 <th>Working Days</th>
                 {canEdit && <th><span className="sr-only">Actions</span></th>}
@@ -51,6 +52,8 @@ async function ShiftsList() {
                     {/* fewer hours than the window: worked anywhere within it (owner, 16 October 2026) */}
                     {isFlexibleShift(s) && <span className="badge ml-2">Flexible</span>}
                   </td>
+                  {/* a long day fills the month's short hours (owner, 20 October 2026); none: the end and the grace */}
+                  <td className="whitespace-nowrap tabular-nums">{s.countUntil ? formatTime(s.countUntil) : <span className="text-muted">End and grace</span>}</td>
                   <td className="whitespace-nowrap">{s.graceMinutes} min</td>
                   <td>{s.workingDays.map((d) => DAY_NAMES[d]).join(', ')}</td>
                   {canEdit && (

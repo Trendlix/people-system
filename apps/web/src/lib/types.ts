@@ -196,6 +196,8 @@ export interface Shift {
   startTime: string;
   endTime: string;
   hoursPerDay?: number | null;
+  /** "HH:mm": hours count until it, a long day making up short ones (owner, 20 October 2026); null or missing: none. */
+  countUntil?: string | null;
   graceMinutes: number;
   workingDays: number[];
 }
@@ -340,6 +342,11 @@ export interface Employment {
   workPattern?: WorkPattern;
   becameOpenEnded?: boolean;
   casualTooLong?: boolean;
+  /**
+   * "Can check in from anywhere" (owner, 20 October 2026: check-ins locked to the office network, "Office staff, plus
+   * exceptions"): HR lets an Office employee check in off the office network. Left out by an API from before it.
+   */
+  checkInAnywhere?: boolean;
   jdAcknowledgedAt: string | null;
   /** The last working day; null while current. */
   endDate: string | null;
@@ -1782,15 +1789,6 @@ export interface PayrollSettingsView extends PayrollRules {
    * API from before it.
    */
   officeAddresses?: string[];
-  /**
-   * The office's point and the radius around it for checking in on the system (owner, 19 October 2026: "Check-in through
-   * the system (phone or web with the office location check, or a device) to replace Zoho"): within the radius a check-in
-   * is at the office, outside it remote; no point (both null): location unknown. Up to 6 decimals; the radius in whole
-   * metres, 20 to 5,000 (150 to start with). Optional: left out by an API from before it.
-   */
-  officeLatitude?: number | null;
-  officeLongitude?: number | null;
-  officeRadiusMetres?: number;
 }
 
 /**
