@@ -7,7 +7,9 @@ import {
   formatHours,
   isCheckInFlag,
   isPunchKind,
+  mostHoursCountedADay,
   PUNCH_KIND_LABELS,
+  shiftWindowOn,
   type CheckInLocationError,
   type CheckInPlace,
   type PunchKind,
@@ -227,22 +229,186 @@ export function dayHoursText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut' | 
   return 'No hours counted without a check-in';
 }
 
+// ---------- the check-in counter ----------
+// Owner, 20 October 2026: "employees need to see a checkin counter after their checkin." While checked in, the time
+// worked so far ticks each second, counted the way attendance will count it once they check out (attendance.ts
+// hoursCountedForDay, which dayFromPunches uses): from the check-in, or the shift window's start when later; until the
+// window's end moved by the grace (owner, 19 October 2026: "if the employee checked in 10:15 he can check out till 7:15
+// and the 9 hours are counted"); at most the hours to work. With them, when the hours will be done. Once checked out,
+// the day's hours counted by the server. The counting rule is about to change (owner, 20 October 2026: "within the same
+// month with no working hours to be counted after 8 PM even if the check out was 11 PM, record the checkout time but
+// count till the checkout window limit"): so the arithmetic is one function, checkInCount, whose inputs are each given
+// (CountRule), and today's shift makes them in one place (countRuleOf): the next rule changes those, not the panel.
+
 /**
- * How long since the day's first check-in while not checked out yet, in hours (the phone pages' Home, owner, 20 October
- * 2026: the employee app, "check in and out"): the time on the clock, not the hours counted, which the shift's rule
- * counts once they check out; null when not checked in, or checked out.
+ * What the counter counts with (moments in milliseconds): from the check-in, or `windowStart` when later; until
+ * `countUntil` (today the window's end with the grace; later the shift's check-out limit, 8:00 PM on MORNING); at
+ * most `hoursToWork` unless `extraCounts` (today false; later true, the time past them making up the month's short
+ * hours). Null: none (from the check-in, never stopped, no target): a plain clock since the check-in.
  */
-export function hoursSoFar(day: Pick<PunchedDayView, 'checkIn' | 'checkOut'> | null | undefined, nowMs: number): number | null {
-  if (!day?.checkIn || day.checkOut) return null;
-  const from = Date.parse(day.checkIn);
-  if (!Number.isFinite(from) || !Number.isFinite(nowMs)) return null;
-  return Math.max(0, (nowMs - from) / 3_600_000);
+export interface CountRule {
+  windowStart: number | null;
+  countUntil: number | null;
+  hoursToWork: number | null;
+  extraCounts: boolean;
 }
 
-/** The time since the first check-in, said: "3:25 since you checked in"; null as hoursSoFar. */
-export function hoursSoFarText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut'> | null | undefined, nowMs: number): string | null {
-  const hours = hoursSoFar(day, nowMs);
-  return hours === null ? null : `${formatHours(hours)} since you checked in`;
+/** No shift to count by: the time since the check-in, with no target (never a wrong one). */
+export const PLAIN_COUNT: Readonly<CountRule> = Object.freeze({ windowStart: null, countUntil: null, hoursToWork: null, extraCounts: false });
+
+/** The shift as GET /me/attendance/today sends it: its window (HH:MM), hours to work a day and grace minutes. */
+type TodayShift = NonNullable<CheckInTodayView['shift']>;
+
+/**
+ * Today's rule from the shift (attendance.ts): its window on the working day `date` (YYYY-MM-DD, Cairo; a night
+ * shift's runs into the next day), its end moved by the grace, and its hours to work (set on the shift, else its
+ * whole window: a fixed shift's); time past them doesn't count. No shift, or one whose window can't be told: PLAIN_COUNT.
+ */
+export function countRuleOf(date: string, shift: TodayShift | null | undefined): CountRule {
+  if (!shift || typeof shift.startTime !== 'string' || typeof shift.endTime !== 'string') return { ...PLAIN_COUNT };
+  const window = shiftWindowOn(date, shift);
+  if (!window) return { ...PLAIN_COUNT };
+  return { windowStart: window.start, countUntil: window.end, hoursToWork: mostHoursCountedADay(shift), extraCounts: false };
+}
+
+/**
+ * Where the counter is: waiting for the window's start (checked in early), counting, the hours to work done (stopped
+ * there), past them while extra time counts, stopped at `countUntil`, or checked in after it (nothing counts).
+ */
+export type CountPhase = 'before_start' | 'counting' | 'done' | 'extra' | 'stopped' | 'after_limit';
+
+/** The counter at a moment. */
+export interface CheckInCount {
+  /** The time counted so far, in whole seconds' milliseconds. */
+  countedMs: number;
+  phase: CountPhase;
+  /** When counting starts: the check-in, or the window's start when later. */
+  countsFrom: number;
+  /** Checked in before the window's start: counting from it. */
+  fromWindowStart: boolean;
+  /** The hours to work are reached. */
+  hoursDone: boolean;
+  /** When the hours to work are done; null without them, or when that is after `countUntil`. */
+  doneAt: number | null;
+  countUntil: number | null;
+  hoursToWork: number | null;
+}
+
+const moment = (n: number | null | undefined): number | null => (typeof n === 'number' && Number.isFinite(n) ? n : null);
+
+/**
+ * The time counted from a check-in to `now` by a rule (CountRule), as attendance would count a check-out at `now`
+ * (there to the minute; here to the second): from the later of the check-in and the window's start, to the earlier of
+ * now and `countUntil`, at most the hours to work unless extra time counts, never below 0. Null when the check-in or
+ * now isn't a moment.
+ */
+export function checkInCount(input: CountRule & { checkIn: number; now: number }): CheckInCount | null {
+  const checkIn = moment(input.checkIn);
+  const now = moment(input.now);
+  if (checkIn === null || now === null) return null;
+  const windowStart = moment(input.windowStart);
+  const countUntil = moment(input.countUntil);
+  const hoursToWork = typeof input.hoursToWork === 'number' && input.hoursToWork > 0 && Number.isFinite(input.hoursToWork) ? input.hoursToWork : null;
+  const target = hoursToWork === null ? null : Math.round(hoursToWork * 3_600_000);
+  const countsFrom = windowStart === null ? checkIn : Math.max(checkIn, windowStart);
+  const end = countUntil === null ? now : Math.min(now, countUntil);
+  const span = Math.max(0, end - countsFrom);
+  const hoursDone = target !== null && span >= target;
+  const counted = hoursDone && !input.extraCounts ? target : span;
+  const doneAt = target === null || (countUntil !== null && countsFrom + target > countUntil) ? null : countsFrom + target;
+  const passed = countUntil !== null && now >= countUntil;
+  const phase: CountPhase =
+    countUntil !== null && countsFrom >= countUntil
+      ? 'after_limit'
+      : now < countsFrom
+        ? 'before_start'
+        : hoursDone && !input.extraCounts
+          ? 'done'
+          : passed
+            ? 'stopped'
+            : hoursDone
+              ? 'extra'
+              : 'counting';
+  return {
+    countedMs: Math.floor(counted / 1000) * 1000,
+    phase,
+    countsFrom,
+    fromWindowStart: windowStart !== null && checkIn < windowStart,
+    hoursDone,
+    doneAt,
+    countUntil,
+    hoursToWork,
+  };
+}
+
+/** A time counted, as the counter ticks: "3:12:45" (hours, minutes, seconds; never below 0). */
+export function durationClock(ms: number): string {
+  const s = Math.max(0, Math.floor((Number.isFinite(ms) ? ms : 0) / 1000));
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}`;
+}
+
+/** The hours to work, said: "9 hours", "1 hour", "8:30 hours". */
+export const hoursToWorkText = (hours: number): string => (Number.isInteger(hours) ? `${hours} ${hours === 1 ? 'hour' : 'hours'}` : `${formatHours(hours)} hours`);
+
+/** What the counter says at a moment: the time counted, a note on where it counts from, and what is next (said politely). */
+export interface CounterWords {
+  /** "3:12:45". */
+  value: string;
+  /** "Counting from 9:00 AM, when your shift starts"; null when counting from the check-in. */
+  note: string | null;
+  /** "Your 9 hours are done at 6:15 PM", "Hours count until 7:15 PM", "Your 9 hours are done"; null with no target. */
+  status: string | null;
+}
+
+/** The counter's words (times in Cairo, 12 hours). */
+export function counterWords(c: CheckInCount): CounterWords {
+  const until = c.countUntil === null ? null : cairoClock(c.countUntil);
+  const yours = c.hoursToWork === null ? null : `Your ${hoursToWorkText(c.hoursToWork)} ${c.hoursToWork === 1 ? 'is' : 'are'} done`;
+  const extra = `${yours}. Extra time${until ? ` until ${until}` : ''} fills short hours this month`;
+  let status: string | null = null;
+  if (c.phase === 'after_limit') status = `Hours count only until ${until}, so none are counted after it`;
+  else if (c.phase === 'done') status = yours;
+  else if (c.phase === 'extra' || (c.phase === 'stopped' && c.hoursDone)) status = extra;
+  else if (c.phase === 'stopped') status = `Hours counted until ${until}`;
+  else if (c.doneAt !== null && yours) status = `${yours} at ${cairoClock(c.doneAt)}`;
+  else if (until) status = `Hours count until ${until}`;
+  const note = c.fromWindowStart && c.phase !== 'after_limit' ? `Counting from ${cairoClock(c.countsFrom)}, when your shift starts` : null;
+  return { value: durationClock(c.countedMs), note, status };
+}
+
+/** What the card shows of the day's time: the counter while checked in, the day's total once checked out, or nothing. */
+export type CounterShows = ({ kind: 'live' } & CounterWords) | { kind: 'total'; text: string } | null;
+
+/**
+ * The counter for today's view at `now` (the server's clock, ms): while the day's last punch is a check-in, the time
+ * counted from the day's first check-in (attendance counts from the first check-in to the last check-out, so a second
+ * check-in after checking out goes on from the first) by today's shift (countRuleOf); once checked out, "Worked 8:52
+ * today", the hours the server counted; nothing before a check-in (a day off, a holiday, leave), or for a check-out
+ * without one.
+ */
+export function counterShows(view: Pick<CheckInTodayView, 'date' | 'next' | 'day' | 'shift'>, now: number): CounterShows {
+  const day = view.day;
+  if (!day?.checkIn) return null;
+  if (view.next === 'in') return day.checkOut ? { kind: 'total', text: `Worked ${formatHours(day.hoursCounted)} today` } : null;
+  const count = checkInCount({ ...countRuleOf(view.date, view.shift), checkIn: Date.parse(day.checkIn), now });
+  return count ? { kind: 'live', ...counterWords(count) } : null;
+}
+
+/** The server's clock as the counter keeps it: the newest server time seen, and how far it is ahead of this device's. */
+export interface ServerClock {
+  newest: number;
+  skew: number;
+}
+
+/**
+ * The clock after a view's server time is seen on this device (`deviceMs`, the device's clock then): the skew is
+ * measured again only from a newer server time, so a page shown again from before (Next.js keeps pages hidden, not
+ * unmounted) doesn't set the clock back.
+ */
+export function noteServerTime(clock: ServerClock, serverMs: number, deviceMs: number): ServerClock {
+  if (!Number.isFinite(serverMs) || !Number.isFinite(deviceMs) || !(serverMs > clock.newest)) return clock;
+  return { newest: serverMs, skew: serverMs - deviceMs };
 }
 
 /** The working day the panel is for: "Monday 19/10/2026". */

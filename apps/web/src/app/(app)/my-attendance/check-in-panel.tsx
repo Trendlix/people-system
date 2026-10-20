@@ -1,16 +1,16 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { CheckInTodayView, PunchResultView } from '@/lib/attendance-types';
 import { getPosition } from '@/lib/native';
 import { useNativeApp } from '@/lib/use-native';
 import { punchAttendance } from './actions';
+import { CheckInCounter } from './check-in-counter';
 import {
   buttonLabel,
   dayHoursText,
   dayTimesText,
   flagLabels,
-  hoursSoFarText,
   latestView,
   locationHelpText,
   LOCATION_NOTE,
@@ -32,9 +32,11 @@ import {
 // newer of the page's view and the press's is shown. `compact`: the home page's card, without the punches' list. The
 // location is read through the one bridge to the phone (lib/native.ts): the employee app's own when it has it, else the
 // browser's. `big`: the phone pages' Home (owner, 20 October 2026: the employee app, "to enable them to check in and
-// out"), a larger button across the screen, and the time since the first check-in while not checked out yet. When the
-// location couldn't be read, what to do about it is said under what was kept (inside the app: the phone's settings for
-// TrendLIX People; the app's Phase 2, "a clear message when refused").
+// out"), a larger button across the screen and a larger counter. When the location couldn't be read, what to do about
+// it is said under what was kept (inside the app: the phone's settings for TrendLIX People; the app's Phase 2, "a clear
+// message when refused"). Under the button, the check-in counter (owner, 20 October 2026: "employees need to see a
+// checkin counter after their checkin", check-in-counter.tsx): the time worked so far while checked in, and the day's
+// hours counted once checked out, in place of the hours counted below.
 
 export function CheckInPanel({ initial, compact = false, big = false }: { initial: CheckInTodayView; compact?: boolean; big?: boolean }) {
   const [pressed, setPressed] = useState<PunchResultView | null>(null);
@@ -48,13 +50,6 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   const busy = phase !== 'idle';
   // a second tap while the first is on its way is ignored (the API keeps the same press twice in a minute once anyway)
   const going = useRef(false);
-  // the clock for the time since checking in (the phone pages): the server's at first, then this device's each half minute
-  const [now, setNow] = useState(() => Date.parse(initial.now));
-  useEffect(() => {
-    if (!big) return;
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, [big]);
 
   async function press() {
     if (going.current) return;
@@ -88,7 +83,6 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   // the press's words in amber when what it kept is flagged or its place unknown, else in green
   const last = pressed ? [...pressed.punches].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1) : undefined;
   const warned = !!last && (last.flags.length > 0 || last.place === 'unknown');
-  const soFar = big ? hoursSoFarText(day, now) : null;
 
   return (
     <div className="space-y-4">
@@ -131,6 +125,8 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
         </div>
       )}
 
+      <CheckInCounter view={view} big={big} />
+
       {day && (
         <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
           <div>
@@ -138,11 +134,13 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
             <dd className="font-semibold tabular-nums">{dayTimesText(day)}</dd>
             {day.place && <dd className="text-xs text-muted">{placeLabel(day.place)}</dd>}
           </div>
-          <div>
-            <dt className="text-xs text-muted">Hours counted</dt>
-            <dd className="font-semibold tabular-nums">{dayHoursText(day)}</dd>
-            {soFar && <dd className="text-xs text-muted tabular-nums">{soFar}</dd>}
-          </div>
+          {/* with a check-in, the counter above says the hours */}
+          {!day.checkIn && (
+            <div>
+              <dt className="text-xs text-muted">Hours counted</dt>
+              <dd className="font-semibold tabular-nums">{dayHoursText(day)}</dd>
+            </div>
+          )}
           {dayFlags.length > 0 && (
             <div className="sm:col-span-2">
               <dt className="sr-only">Flagged</dt>

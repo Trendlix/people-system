@@ -1,22 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { checkInRefusal } from '@trendlix/shared';
+import { checkInRefusal, dayFromPunches } from '@trendlix/shared';
 import type { CheckInTodayView, PunchView } from '../../../lib/attendance-types';
 import {
   accuracyText,
   buttonLabel,
+  checkInCount,
   checkInShows,
+  counterShows,
+  counterWords,
+  countRuleOf,
   dayHoursText,
   dayTimesText,
   dayTitle,
+  durationClock,
   flagLabels,
-  hoursSoFar,
-  hoursSoFarText,
+  hoursToWorkText,
   latestView,
   LOCATION_OPTIONS,
   locationErrorOf,
   locationHelpText,
   mockRefused,
+  noteServerTime,
   placeLabel,
+  PLAIN_COUNT,
   punchBody,
   punchBodyFrom,
   punchErrors,
@@ -219,19 +225,171 @@ describe('the panel', () => {
   });
 });
 
-describe('the time since checking in, on the phone pages', () => {
-  const at = (iso: string) => Date.parse(iso);
-
-  it('counts the clock from the first check-in while not checked out', () => {
-    const day = { checkIn: '2026-10-20T06:05:00.000Z', checkOut: null };
-    expect(hoursSoFar(day, at('2026-10-20T09:30:00.000Z'))).toBeCloseTo(3 + 25 / 60);
-    expect(hoursSoFarText(day, at('2026-10-20T09:30:00.000Z'))).toBe('3:25 since you checked in');
+// The check-in counter (owner, 20 October 2026: "employees need to see a checkin counter after their checkin"), on the
+// MORNING shift: 9 hours to work within 9:00 AM to 7:00 PM, 15 minutes' grace, so hours count until 7:15 PM (owner, 19
+// October 2026: "if the employee checked in 10:15 he can check out till 7:15 and the 9 hours are counted"). Cairo is
+// three hours ahead of UTC on 20 October 2026 (summer time until the 29th).
+describe('the check-in counter', () => {
+  const DATE = '2026-10-20';
+  const at = (time: string, day = DATE) => Date.parse(`${day}T${time}+03:00`);
+  const MORNING = { startTime: '09:00', endTime: '19:00', hoursPerDay: 9, graceMinutes: 15 };
+  const rule = countRuleOf(DATE, MORNING);
+  const count = (checkIn: string, now: string, r = rule) => checkInCount({ ...r, checkIn: at(checkIn), now: at(now) })!;
+  const words = (checkIn: string, now: string, r = rule) => counterWords(count(checkIn, now, r));
+  /** Today's view, checked in at `checkIn` and not checked out. */
+  const open = (checkIn: string, shift: CheckInTodayView['shift'] = MORNING): CheckInTodayView => ({
+    ...TODAY,
+    date: DATE,
+    next: 'out',
+    shift,
+    day: { checkIn: new Date(at(checkIn)).toISOString(), checkOut: null, place: 'office', flags: [], hoursCounted: 0 },
   });
 
-  it('says nothing before a check-in, once checked out, or for a clock behind it', () => {
-    expect(hoursSoFar({ checkIn: null, checkOut: null }, at('2026-10-20T09:30:00.000Z'))).toBeNull();
-    expect(hoursSoFar({ checkIn: '2026-10-20T06:05:00.000Z', checkOut: '2026-10-20T14:00:00.000Z' }, at('2026-10-20T15:00:00.000Z'))).toBeNull();
-    expect(hoursSoFar(null, Date.now())).toBeNull();
-    expect(hoursSoFarText({ checkIn: '2026-10-20T06:05:00.000Z', checkOut: null }, at('2026-10-20T06:00:00.000Z'))).toBe('0:00 since you checked in');
+  it('takes today’s rule from the shift: its window’s start, its end with the grace, its hours; no extra time', () => {
+    expect(rule).toEqual({ windowStart: at('09:00:00'), countUntil: at('19:15:00'), hoursToWork: 9, extraCounts: false });
+    // a fixed shift: its whole window is the hours to work, its end still moved by the grace
+    expect(countRuleOf(DATE, { startTime: '09:00', endTime: '17:00', hoursPerDay: null, graceMinutes: 15 })).toEqual({
+      windowStart: at('09:00:00'),
+      countUntil: at('17:15:00'),
+      hoursToWork: 8,
+      extraCounts: false,
+    });
+    // a night shift's window runs into the next day
+    expect(countRuleOf(DATE, { startTime: '22:00', endTime: '06:00', hoursPerDay: null, graceMinutes: 0 })).toMatchObject({
+      windowStart: at('22:00:00'),
+      countUntil: at('06:00:00', '2026-10-21'),
+      hoursToWork: 8,
+    });
+    // no shift, or one whose window can't be told: a plain clock, never a wrong target
+    expect(countRuleOf(DATE, null)).toEqual(PLAIN_COUNT);
+    expect(countRuleOf(DATE, undefined)).toEqual(PLAIN_COUNT);
+    expect(countRuleOf(DATE, { startTime: '09:00', endTime: '09:00', hoursPerDay: 9, graceMinutes: 0 })).toEqual(PLAIN_COUNT);
+  });
+
+  it('checked in early: waits for the shift’s start, then counts from it', () => {
+    expect(count('08:30:00', '08:45:00')).toMatchObject({ phase: 'before_start', countedMs: 0, fromWindowStart: true, doneAt: at('18:00:00') });
+    expect(words('08:30:00', '08:45:00')).toEqual({
+      value: '0:00:00',
+      note: 'Counting from 9:00 AM, when your shift starts',
+      status: 'Your 9 hours are done at 6:00 PM',
+    });
+    expect(words('08:30:00', '12:12:45')).toEqual({
+      value: '3:12:45',
+      note: 'Counting from 9:00 AM, when your shift starts',
+      status: 'Your 9 hours are done at 6:00 PM',
+    });
+  });
+
+  it('in the middle of the day: ticks from the check-in and says when the hours are done', () => {
+    expect(count('09:15:00', '12:27:45')).toMatchObject({ phase: 'counting', countedMs: (3 * 3600 + 12 * 60 + 45) * 1000, fromWindowStart: false });
+    expect(words('09:15:00', '12:27:45')).toEqual({ value: '3:12:45', note: null, status: 'Your 9 hours are done at 6:15 PM' });
+    // to the second: a part second isn't shown
+    expect(checkInCount({ ...rule, checkIn: at('09:15:00'), now: at('09:15:01') + 999 })!.countedMs).toBe(1000);
+  });
+
+  it('at the grace: hours done by 7:15 PM are counted; later ones count until it, then stop', () => {
+    // in at 10:15 AM: the 9 hours end just at 7:15 PM
+    expect(words('10:15:00', '19:10:00')).toEqual({ value: '8:55:00', note: null, status: 'Your 9 hours are done at 7:15 PM' });
+    expect(count('10:15:00', '19:15:00')).toMatchObject({ phase: 'done', countedMs: 9 * 3_600_000 });
+    // in at 10:30 AM: they can't be done by 7:15 PM, so the latest counted time is said
+    expect(count('10:30:00', '19:00:00')).toMatchObject({ phase: 'counting', doneAt: null });
+    expect(words('10:30:00', '19:00:00')).toEqual({ value: '8:30:00', note: null, status: 'Hours count until 7:15 PM' });
+    expect(words('10:30:00', '19:40:00')).toEqual({ value: '8:45:00', note: null, status: 'Hours counted until 7:15 PM' });
+    expect(count('10:30:00', '19:40:00').phase).toBe('stopped');
+  });
+
+  it('checked in after the window: nothing counts', () => {
+    expect(count('19:30:00', '20:00:00')).toMatchObject({ phase: 'after_limit', countedMs: 0 });
+    expect(words('19:30:00', '20:00:00')).toEqual({ value: '0:00:00', note: null, status: 'Hours count only until 7:15 PM, so none are counted after it' });
+  });
+
+  it('past 9 hours: stops at them and says they are done', () => {
+    expect(count('09:00:00', '18:30:00')).toMatchObject({ phase: 'done', hoursDone: true, countedMs: 9 * 3_600_000 });
+    expect(words('09:00:00', '18:30:00')).toEqual({ value: '9:00:00', note: null, status: 'Your 9 hours are done' });
+    // checked in early and stayed late: still 9
+    expect(words('08:00:00', '20:30:00')).toEqual({ value: '9:00:00', note: 'Counting from 9:00 AM, when your shift starts', status: 'Your 9 hours are done' });
+  });
+
+  it('with extra time counting (the coming rule: until a check-out limit, making up short hours): ticks past the hours, then stops at the limit', () => {
+    // owner, 20 October 2026: "no working hours to be counted after 8 PM even if the check out was 11 PM"
+    const makeUp = { ...rule, countUntil: at('20:00:00'), extraCounts: true };
+    expect(count('09:00:00', '18:30:00', makeUp)).toMatchObject({ phase: 'extra', countedMs: 9.5 * 3_600_000 });
+    expect(words('09:00:00', '18:30:00', makeUp)).toEqual({ value: '9:30:00', note: null, status: 'Your 9 hours are done. Extra time until 8:00 PM fills short hours this month' });
+    expect(count('09:00:00', '23:00:00', makeUp)).toMatchObject({ phase: 'stopped', countedMs: 11 * 3_600_000 });
+    expect(words('09:00:00', '23:00:00', makeUp).status).toBe('Your 9 hours are done. Extra time until 8:00 PM fills short hours this month');
+    // short of the hours when the limit comes
+    expect(words('12:00:00', '21:00:00', makeUp)).toEqual({ value: '8:00:00', note: null, status: 'Hours counted until 8:00 PM' });
+  });
+
+  it('with no shift: the time since the check-in, with no target', () => {
+    expect(words('09:15:00', '12:27:45', PLAIN_COUNT)).toEqual({ value: '3:12:45', note: null, status: null });
+    expect(words('09:15:00', '23:15:00', PLAIN_COUNT)).toEqual({ value: '14:00:00', note: null, status: null });
+    // a device clock behind the check-in: 0, not below
+    expect(words('09:15:00', '09:00:00', PLAIN_COUNT).value).toBe('0:00:00');
+    expect(counterShows(open('09:15:00', null), at('12:27:45'))).toEqual({ kind: 'live', value: '3:12:45', note: null, status: null });
+  });
+
+  it('counts as attendance will once they check out at that moment (to the minute)', () => {
+    const cases: [string, string][] = [
+      ['08:30', '17:45'],
+      ['09:15', '12:27'],
+      ['10:15', '19:15'],
+      ['10:30', '19:40'],
+      ['19:30', '20:00'],
+      ['09:00', '22:00'],
+    ];
+    for (const [checkIn, checkOut] of cases) {
+      const kept = dayFromPunches(
+        DATE,
+        [
+          { kind: 'in', at: new Date(at(`${checkIn}:00`)).toISOString(), place: 'office' },
+          { kind: 'out', at: new Date(at(`${checkOut}:00`)).toISOString(), place: 'office' },
+        ],
+        MORNING,
+      );
+      expect(count(`${checkIn}:00`, `${checkOut}:00`).countedMs / 3_600_000).toBeCloseTo(kept.hoursCounted, 6);
+    }
+  });
+
+  it('shows the counter while checked in, the day’s total once checked out, and nothing before a check-in', () => {
+    expect(counterShows(open('09:15:00'), at('12:27:45'))).toEqual({ kind: 'live', value: '3:12:45', note: null, status: 'Your 9 hours are done at 6:15 PM' });
+    const out: CheckInTodayView = {
+      ...open('09:05:00'),
+      next: 'in',
+      day: { checkIn: new Date(at('09:05:00')).toISOString(), checkOut: new Date(at('17:57:00')).toISOString(), place: 'office', flags: [], hoursCounted: 8 + 52 / 60 },
+    };
+    expect(counterShows(out, at('18:30:00'))).toEqual({ kind: 'total', text: 'Worked 8:52 today' });
+    // checked in again after checking out: attendance counts from the first check-in to the last check-out
+    const again: CheckInTodayView = { ...out, next: 'out' };
+    expect(counterShows(again, at('18:00:00'))).toMatchObject({ kind: 'live', value: '8:55:00' });
+    // a day off, a holiday or leave: no check-in, nothing new
+    expect(counterShows({ ...TODAY, day: null }, at('12:00:00'))).toBeNull();
+    // a check-out without a check-in: nothing (the panel says no hours are counted)
+    expect(counterShows({ ...out, day: { ...out.day!, checkIn: null } }, at('18:30:00'))).toBeNull();
+  });
+
+  it('says the time counted and the hours to work', () => {
+    expect([durationClock(0), durationClock(-5000), durationClock(59_999), durationClock(3_600_000 * 11 + 61_000), durationClock(Number.NaN)]).toEqual([
+      '0:00:00',
+      '0:00:00',
+      '0:00:59',
+      '11:01:01',
+      '0:00:00',
+    ]);
+    expect([hoursToWorkText(9), hoursToWorkText(1), hoursToWorkText(8.5)]).toEqual(['9 hours', '1 hour', '8:30 hours']);
+    expect(counterWords(checkInCount({ ...rule, hoursToWork: 1, checkIn: at('09:00:00'), now: at('11:00:00') })!).status).toBe('Your 1 hour is done');
+    expect(checkInCount({ ...rule, checkIn: Number.NaN, now: at('11:00:00') })).toBeNull();
+  });
+
+  it('keeps the server’s clock from the newest view seen, so a page shown again from before doesn’t set it back', () => {
+    const start = { newest: Number.NEGATIVE_INFINITY, skew: 0 };
+    // the server 3 seconds ahead of this device
+    const seen = noteServerTime(start, 10_000, 7_000);
+    expect(seen).toEqual({ newest: 10_000, skew: 3_000 });
+    // an older view shown again later: the skew stays
+    expect(noteServerTime(seen, 9_000, 60_000)).toBe(seen);
+    // a newer one: measured again
+    expect(noteServerTime(seen, 20_000, 18_000)).toEqual({ newest: 20_000, skew: 2_000 });
+    expect(noteServerTime(seen, Number.NaN, 1)).toBe(seen);
   });
 });

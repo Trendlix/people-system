@@ -12,7 +12,8 @@ import { CheckInPanel } from './check-in-panel';
 // someone with no employee profile or no current employment gets nothing; a freelancer, or someone without a shift yet,
 // the reason, quietly. Nothing from an API from before it (404). Inside a Suspense boundary: it reads with the session.
 // `big`: first on the phone pages' Home (owner, 20 October 2026: the employee app, "to enable them to check in and
-// out"), the larger button and the time since checking in.
+// out"), the larger button and a larger check-in counter (owner, 20 October 2026: "employees need to see a checkin
+// counter after their checkin": check-in-counter.tsx, inside the panel).
 
 export async function TodayCheckIn({ home = false, big = false, className = '' }: { home?: boolean; big?: boolean; className?: string }) {
   const loaded = await loadJson<CheckInTodayView>('/me/attendance/today');
