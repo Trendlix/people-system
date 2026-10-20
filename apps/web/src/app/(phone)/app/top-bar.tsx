@@ -1,5 +1,8 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { logout } from '@/app/login/actions';
+import { BellLink, NotificationBell } from '@/components/notification-bell';
+import { PushTokenField } from '@/components/push-token-field';
 import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
 import type { Session } from '@/lib/view-as';
@@ -7,26 +10,8 @@ import { greetingName } from '../../(app)/dashboard/dashboard';
 import { loadOwnProfile } from '../../(app)/own-profile';
 
 // The phone pages' top bar (owner, 20 October 2026: the employee app; apps/mobile/README.md, Phase 1): the person's
-// name and job, the bell (a placeholder: notifications come in Phase 4, with an inbox) and a menu with the full site,
+// name and job, the bell (Phase 4, 20 October 2026: the inbox, with how many are unread) and a menu with the full site,
 // Change password and Sign out. An API outage must not take the page down: it says so in place of the name.
-
-/** The bell, for now only a placeholder: the inbox and push notifications are Phase 4. */
-function Bell() {
-  return (
-    <button
-      type="button"
-      disabled
-      title="Notifications come in a later version of the app."
-      className="inline-flex size-11 items-center justify-center rounded-full text-sidebar-text opacity-70"
-    >
-      <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 2H4.5z" />
-        <path d="M10 20.5a2 2 0 0 0 4 0" />
-      </svg>
-      <span className="sr-only">Notifications (coming in a later version)</span>
-    </button>
-  );
-}
 
 /** The menu: the full site, Change password (not while viewing as someone), Sign out. */
 function Menu({ user }: { user: Session | null }) {
@@ -50,6 +35,8 @@ function Menu({ user }: { user: Session | null }) {
           </Link>
         )}
         <form action={logout}>
+          {/* in the app, the phone's push token, unregistered on signing out (Phase 4) */}
+          <PushTokenField />
           <button type="submit" className="flex min-h-12 w-full cursor-pointer items-center px-4 text-left text-sm font-medium text-danger hover:bg-canvas">
             Sign out
           </button>
@@ -83,7 +70,13 @@ export async function TopBar() {
           </p>
         )}
       </div>
-      <Bell />
+      {user ? (
+        <Suspense fallback={<BellLink surface="app" unread={null} />}>
+          <NotificationBell surface="app" />
+        </Suspense>
+      ) : (
+        <BellLink surface="app" unread={null} />
+      )}
       <Menu user={user} />
     </div>
   );
@@ -95,7 +88,7 @@ export function TopBarFallback() {
     <div className="flex w-full items-center gap-1">
       <span className="sr-only">Loading…</span>
       <span aria-hidden="true" className="block h-3 max-w-28 flex-1 rounded-full bg-white/10" />
-      <Bell />
+      <BellLink surface="app" unread={null} />
       <Menu user={null} />
     </div>
   );

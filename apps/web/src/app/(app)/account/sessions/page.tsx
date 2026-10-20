@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { logout } from '@/app/login/actions';
 import { FingerprintDevices } from '@/components/fingerprint-devices';
+import { PushTokenField } from '@/components/push-token-field';
 import { SessionList } from '@/components/session-list';
 import { apiGet } from '@/lib/api';
 import { forgetFingerprint } from '@/lib/device-actions';
@@ -27,6 +28,8 @@ async function Sessions() {
         endLabel="Sign out"
         currentAction={
           <form action={logout}>
+            {/* in the app, the phone's push token, unregistered on signing out (Phase 4, 20 October 2026) */}
+            <PushTokenField />
             <button type="submit" className="btn btn-secondary">
               Sign out
             </button>

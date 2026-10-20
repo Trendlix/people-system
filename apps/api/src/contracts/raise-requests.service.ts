@@ -28,6 +28,7 @@ import { isSelf, seesSalary } from '../employees/access.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { NoticesService } from '../notifications/notices.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { payOf, recordStep, STEP_INCLUDE, stepFigures, stepView, typedFigure, type RequestViewer } from './raise-request-steps.js';
 import { commentOf, type CreateRaiseRequestDto, type RaiseCommentDto } from './raises.dto.js';
@@ -221,6 +222,7 @@ export class RaiseRequestsService {
     private readonly audit: AuditService,
     private readonly employees: EmployeesService,
     private readonly confidential: ConfidentialService,
+    private readonly notices: NoticesService,
   ) {}
 
   /**
@@ -303,6 +305,8 @@ export class RaiseRequestsService {
         ...(typed && { [typed.kind === 'amount' ? 'suggestedIncrease' : 'suggestedPercent']: 'set' }),
       },
     });
+    // to HR (the CEO for a C-level person), never the one who asked (Phase 4: notifications)
+    await this.notices.raiseRequestSent(row.id);
     return raiseRequestView(row, viewer, user.id, null, await this.confidential.isConfidential(employeeId));
   }
 

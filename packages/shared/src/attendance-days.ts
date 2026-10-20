@@ -14,7 +14,7 @@
 
 import type { AttendanceDayStatus } from './attendance-import.js';
 import type { CorrectedFrom } from './attendance-corrections.js';
-import { CHECK_IN_SOURCES, daysByPrecedence, isCheckInFlag, type AttendanceSource, type CheckInFlag, type DayPlace } from './check-in.js';
+import { CHECK_IN_SOURCES, countsAsRemote, daysByPrecedence, isCheckInFlag, type AttendanceSource, type CheckInFlag, type DayPlace } from './check-in.js';
 
 /** To the minute, as the import counts hours. */
 const toMinute = (hours: number) => Math.round(hours * 60) / 60 + 0;
@@ -29,7 +29,7 @@ export interface KeptDay {
   /** Moments, ISO; null: none in Zoho's file. */
   checkIn: string | null;
   checkOut: string | null;
-  /** Office or remote; a check-in on the system whose location was refused or unavailable, unknown. */
+  /** Office or remote; a check-in on the system at the person's approved home, home; one whose location was refused or unavailable, unknown. */
   place: DayPlace | null;
   zohoStatus: string | null;
   /**
@@ -170,7 +170,8 @@ export function attendanceFigures(days: readonly AttendanceDayView[], options: {
       f.daysWorked++;
       if (d.checkIn && d.checkOut) f.daysCounted++;
       if (d.place === 'office') f.officeDays++;
-      if (d.place === 'remote') f.remoteDays++;
+      // a day at home counts as remote (owner, 20 October 2026: "Label Home, flag elsewhere")
+      if (countsAsRemote(d.place)) f.remoteDays++;
       if (d.missingCheckOut) f.missingCheckOuts++;
       if (d.missingCheckIn) f.missingCheckIns++;
       if (d.flags.length) f.flaggedDays++;

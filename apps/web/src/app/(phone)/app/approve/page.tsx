@@ -7,6 +7,8 @@ import type { ChangeRequest, EndingSummary } from '@/lib/types';
 import { decidesEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from '../../../(app)/approvals/data';
 import { decidesRaises, PENDING_RAISES } from '../../../(app)/approvals/raises';
 import { loadWaitingCorrections } from '../../../(app)/attendance/corrections/data';
+import { loadWaitingHomes } from '../../../(app)/home-locations/data';
+import { seesHomes } from '../../../(app)/home-locations/home-locations';
 import { loadWaitingLeave, loadWaitingPermissions } from '../../../(app)/leave/data';
 import { loadRaiseRequests } from '../../../(app)/raise-requests/data';
 import { ceoDoneMessage, countsRaiseRequests, waitsForYou } from '../../../(app)/raise-requests/list';
@@ -22,7 +24,8 @@ import { waitingSections, waitingTotal } from './waiting';
 // My Team (a direct manager, a team's lead, a department's head) and HR's lists read them, waiting for the caller (the
 // API answers for them alone: a C-level person's HR stage to the CEO, as on the site); the raise requests at HR's step
 // for HR (a C-level person's for the CEO); the raises with the CEO for the CEO. Endings and details changes are decided
-// on the site's Approvals: said here, with the way there, when any wait.
+// on the site's Approvals: said here, with the way there, when any wait. Home locations (owner, 20 October 2026: "then
+// approved by the HR and CEO") at the caller's step, for HR, the CEO and the Super Admin.
 
 export const metadata: Metadata = { title: 'To Approve · TrendLIX People' };
 
@@ -56,13 +59,14 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
   if (!decidesSomething(user)) {
     return <div className="card px-4 py-8 text-center text-sm text-muted">Nothing here is yours to decide: requests wait here for those who decide them.</div>;
   }
-  const [leave, permissions, claims, corrections, withHr, payRaises] = await Promise.all([
+  const [leave, permissions, claims, corrections, withHr, payRaises, homes] = await Promise.all([
     loadWaitingLeave(),
     loadWaitingPermissions(),
     loadWaitingClaims(),
     loadWaitingCorrections(),
     countsRaiseRequests(user) ? loadRaiseRequests('with_hr') : null,
     decidesRaises(user) ? getOrNull<PendingRaise[]>(PENDING_RAISES) : undefined,
+    seesHomes(user) ? loadWaitingHomes() : null,
   ]);
   const sections = waitingSections({
     leave: listOf(leave),
@@ -71,6 +75,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
     corrections: listOf(corrections),
     raiseRequests: withHr === null ? undefined : withHr.kind === 'ok' ? withHr.value.filter((r: RaiseRequest) => waitsForYou(user, r)) : withHr.kind === 'failed' ? null : [],
     payRaises,
+    homes: homes === null ? undefined : listOf(homes),
   });
   const total = waitingTotal(sections);
   return (

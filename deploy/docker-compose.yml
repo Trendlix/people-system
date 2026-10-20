@@ -61,6 +61,12 @@ services:
       # made by ./web-key.sh, the same value saved as WEB_KEY in Vercel. Without it the lock can't be switched on, and
       # no one is refused for its lack. See .env.example.
       WEB_KEY: ${WEB_KEY:-}
+      # push notifications to the employee app (owner, 20 October 2026: "Push notifications: yes"; apps/mobile/README.md,
+      # Phase 4): the Firebase project's service account. Without all three, push is off and notifications stay in the
+      # inbox (the bell). See .env.example and DEPLOY.md.
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_CLIENT_EMAIL: ${FCM_CLIENT_EMAIL:-}
+      FCM_PRIVATE_KEY: ${FCM_PRIVATE_KEY:-}
       TZ: Africa/Cairo
     networks: [inside]
     logging: *logs

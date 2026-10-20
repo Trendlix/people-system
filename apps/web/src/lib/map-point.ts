@@ -1,11 +1,25 @@
 import { OFFICE_RADIUS_DEFAULT } from '@trendlix/shared';
-import { latin, roundCoordinate } from './setup';
 
 // The check-in locations on a map (owner, 20 October 2026: "let me view location on map and add location from map"):
 // the pure part, tested. A point read from what is pasted (a Google Maps or OpenStreetMap link, "30.0457, 31.1923", or
 // degrees, minutes and seconds), the area a location's circle covers, for the map to fit it, where a map starts, and
 // the place search on OpenStreetMap's Nominatim (only in Egypt, in English and Arabic, at most one search a second, as
-// its usage policy asks). Relative imports: the tests run without the "@/" alias.
+// its usage policy asks). Relative imports: the tests run without the "@/" alias. Moved here from Attendance → Check-in
+// Setup on 20 October 2026 for the home locations' maps (owner: "allow other users to request to add their home
+// locations when working from home"), with the coordinates' helpers it needs.
+
+/** Arabic digits and decimal mark, as a phone may type them, as Latin ones. */
+export const latin = (s: string) => s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/٫/g, '.');
+
+/** A coordinate kept to 6 decimals (about 10 cm), as the API keeps it. */
+export const roundCoordinate = (n: number): number => Math.round(n * 1e6) / 1e6 + 0;
+
+/** A saved coordinate as a field starts with it: "30.059600"; none: empty. */
+export const coordinateText = (n: number | null | undefined): string => (typeof n === 'number' && Number.isFinite(n) ? n.toFixed(6) : '');
+
+/** A map of a point on OpenStreetMap's own site, to check it. */
+export const mapHref = (l: { latitude: number; longitude: number }): string =>
+  `https://www.openstreetmap.org/?mlat=${l.latitude.toFixed(6)}&mlon=${l.longitude.toFixed(6)}#map=18/${l.latitude.toFixed(6)}/${l.longitude.toFixed(6)}`;
 
 /** A point on the map, each coordinate to 6 decimals. */
 export interface Point {

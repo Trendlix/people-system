@@ -14,6 +14,7 @@ import { EmployeesModule } from './employees/employees.module.js';
 import { HealthController } from './health/health.controller.js';
 import { LeaveModule } from './leave/leave.module.js';
 import { MailModule } from './mail/mail.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 import { OffersModule } from './offers/offers.module.js';
 import { VersionController } from './health/version.controller.js';
 import { OrganisationModule } from './organisation/organisation.module.js';
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module.js';
     AuditModule,
     ConfidentialModule,
     MailModule,
+    NotificationsModule,
     PdfModule,
     AuthModule,
     CompanyModule,

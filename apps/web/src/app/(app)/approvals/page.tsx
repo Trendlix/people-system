@@ -7,6 +7,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { loadLawRates } from '@/lib/law-rates';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import { getCurrentUser } from '@/lib/session';
+import type { HomeLocationView } from '@/lib/home-location-types';
 import type { ChangeRequest, EndingSummary, SessionUser } from '@/lib/types';
 import { ChangeRequestCard } from '../employees/[id]/change-request/request-parts';
 import { art154Text } from '../employees/employment-law';
@@ -15,6 +16,19 @@ import { INITIATOR_LABELS } from '../organization/contracts/labels';
 import { Empty, Loading } from '../organization/ui';
 import { countsRaiseRequests, handlesRaiseRequests, raiseRequestsHref, waitingForYouCount, WITH_HR_REQUESTS } from '../raise-requests/list';
 import { changeDeciders, readsChangeRequests } from '../requests/details-changes/list';
+import { decideHome } from '../home-locations/actions';
+import { HomeDecisionForm } from '../home-locations/forms';
+import {
+  APPROVALS_HOME_DONE,
+  APPROVALS_HOME_ID,
+  homeLocationHref,
+  homesLabel,
+  homeSourceText,
+  officeLockHint,
+  seesHomes,
+  WAITING_HOMES,
+} from '../home-locations/home-locations';
+import { HomeMap, HomeStatusBadge } from '../home-locations/ui';
 import { decideChangeRequest, decideEnding } from './actions';
 import { decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
 import { DecisionForm } from './decision-form';
@@ -37,6 +51,10 @@ import { decidesRaises, followsRaises, PENDING_RAISES, raisesLabel } from './rai
 //   only C-level people's), and the decide buttons show only to who decides each.
 // The CEO also takes HR's step on a C-level person's raise request, on Raise Requests: the Pay Raises section says how
 // many wait there. The API checks every decision again.
+// - Home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from
+//   home"; then "then approved by the HR and CEO"), at the user's step: HR's, with the point on a small map and the radius
+//   to approve it with (its circle following what is typed), or the CEO's; a C-level person's both by the CEO. Approve or
+//   reject with a comment; for HR, the CEO and the Super Admin only (never managers or Finance).
 
 const DONE: Record<string, string> = {
   approved: 'Ending approved.',
@@ -47,6 +65,7 @@ const DONE: Record<string, string> = {
   'raise-approved-other': 'Pay raise approved with your raise: its pay is changed to it. HR now has it signed; it is paid from its effective date.',
   'raise-returned': 'Pay raise returned to HR with your comment.',
   'raise-declined': 'Pay raise rejected. Its raise request shows as rejected, with your comment.',
+  ...APPROVALS_HOME_DONE,
 };
 
 function Item({ label, children }: { label: string; children: React.ReactNode }) {
@@ -225,11 +244,73 @@ async function PendingChangeRequests({ user }: { user: SessionUser }) {
   );
 }
 
+// ---------- home locations ----------
+
+/** A home location waiting for the user's step: who, the point on a small map (HR's step: following the radius typed), and the decision. */
+function PendingHomeCard({ request: r }: { request: HomeLocationView }) {
+  const stage = r.stage ?? 'hr';
+  const lockHint = r.employee.workArrangement ? officeLockHint({ workArrangement: r.employee.workArrangement, checkInAnywhere: r.employee.checkInAnywhere }) : null;
+  return (
+    <li className="card p-6">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="font-semibold">
+            <Link href={profileHref(r.employee.id, 'employment')}>{r.employee.fullNameEn}</Link>
+            <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>
+          </h3>
+          <p className="mt-0.5 text-sm">{r.label ?? 'No label: the point on the map'}</p>
+          <p className="text-xs text-muted">
+            Sent {formatDateTime(r.createdAt)} · {homeSourceText(r.accuracyMetres)}
+          </p>
+        </div>
+        <HomeStatusBadge status={r.status} confidential={r.confidential} />
+      </div>
+      {lockHint && (
+        <p className="mt-3 text-sm text-muted">
+          {r.employee.fullNameEn} works at the office: while check-ins are locked to the office network, a check-in from home is still refused off it.
+        </p>
+      )}
+      {stage === 'ceo' && (
+        <div className="mt-4">
+          <HomeMap request={r} />
+        </div>
+      )}
+      <div className="mt-4 border-t border-line-soft pt-4">
+        <HomeDecisionForm action={decideHome.bind(null, r.id, stage)} request={r} map={stage === 'hr'} from="approvals" />
+      </div>
+      <p className="mt-3 text-sm">
+        <Link href={homeLocationHref(r.id)}>Open the request, with every step</Link>
+      </p>
+    </li>
+  );
+}
+
+async function PendingHomes() {
+  // read quietly, like the change requests: an API from before home locations must not take the endings down with it
+  const homes = await getOrNull<HomeLocationView[]>(WAITING_HOMES);
+  if (homes === null) return <Empty>Home locations couldn&apos;t load.</Empty>;
+  if (homes.length === 0) return <Empty>No home locations are waiting for you.</Empty>;
+  const atHr = homes.some((h) => h.stage === 'hr');
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">
+        {homesLabel(homes.length)} waiting for you, newest first. {atHr ? `At HR’s step, approve it with the radius (100 m asked) or reject it; then the CEO decides it. ` : ''}A
+        rejection needs a comment, which the employee sees; its point is deleted.
+      </p>
+      <ul className="space-y-4">
+        {homes.map((h) => (
+          <PendingHomeCard key={h.id} request={h} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // ---------- the page ----------
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-4">
+    <section id={id} className="scroll-mt-6 space-y-4">
       <h2 className="text-lg font-semibold">{title}</h2>
       {/* each loads on its own */}
       <Suspense fallback={<Loading />}>{children}</Suspense>
@@ -243,7 +324,9 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
   const raises = followsRaises(user);
   // HR and Admin, and the CEO for C-level people's (19 October 2026)
   const changes = readsChangeRequests(user);
-  if (!endings && !raises && !changes) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
+  // HR, the CEO and the Super Admin, at their step (20 October 2026)
+  const homes = seesHomes(user);
+  if (!endings && !raises && !changes && !homes) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
 
   return (
@@ -267,6 +350,11 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
       {changes && (
         <Section title="Profile Change Requests">
           <PendingChangeRequests user={user} />
+        </Section>
+      )}
+      {homes && (
+        <Section title="Home Locations" id={APPROVALS_HOME_ID}>
+          <PendingHomes />
         </Section>
       )}
     </div>

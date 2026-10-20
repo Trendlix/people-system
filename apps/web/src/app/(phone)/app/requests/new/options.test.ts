@@ -7,20 +7,25 @@ const hours = { hoursPerMonth: 4 };
 
 describe('what the phone pages offer to ask for', () => {
   it('offers everything to a full-timer who may ask for a raise', () => {
-    expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: true })).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'raise']);
+    expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: true })).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home']);
   });
 
   it('leaves permission out while Leave Setup gives no hours, or they couldn’t be read', () => {
-    expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: { hoursPerMonth: 0 }, asksRaise: false })).toEqual(['leave', 'reimbursement', 'correction']);
-    expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: null, asksRaise: false })).toEqual(['leave', 'reimbursement', 'correction']);
+    expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: { hoursPerMonth: 0 }, asksRaise: false })).toEqual(['leave', 'reimbursement', 'correction', 'home']);
+    expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: null, asksRaise: false })).toEqual(['leave', 'reimbursement', 'correction', 'home']);
   });
 
   it('offers a freelancer no leave and no permission (outside the labour law)', () => {
-    expect(keys({ employment: { employmentType: 'freelance' }, permissionMonth: hours, asksRaise: false })).toEqual(['reimbursement', 'correction']);
+    expect(keys({ employment: { employmentType: 'freelance' }, permissionMonth: hours, asksRaise: false })).toEqual(['reimbursement', 'correction', 'home']);
   });
 
-  it('offers someone without an employment a reimbursement alone', () => {
-    expect(keys({ employment: null, permissionMonth: null, asksRaise: false })).toEqual(['reimbursement']);
+  it('offers someone without an employment a reimbursement and a home location alone', () => {
+    expect(keys({ employment: null, permissionMonth: null, asksRaise: false })).toEqual(['reimbursement', 'home']);
+  });
+
+  // owner, 20 October 2026: "allow other users to request to add their home locations when working from home"; everyone may ask
+  it('offers a home location to everyone with a profile, last', () => {
+    expect(askOptions({ employment: null, permissionMonth: null, asksRaise: false }).at(-1)).toMatchObject({ key: 'home', label: 'Home location', href: '/app/requests/new/home' });
   });
 
   it('opens each form on the phone pages', () => {
@@ -30,6 +35,7 @@ describe('what the phone pages offer to ask for', () => {
       '/app/requests/new/reimbursement',
       '/app/requests/new/correction',
       '/app/requests/new/raise',
+      '/app/requests/new/home',
     ]);
   });
 });
@@ -43,6 +49,7 @@ describe('a raise on New Request (owner, 20 October 2026: "raises not to be visi
       'permission',
       'reimbursement',
       'correction',
+      'home',
     ]);
   });
 

@@ -33,6 +33,7 @@ import { AttendanceFillService } from './attendance-fill.service.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
 import type { PunchDto } from './check-in.dto.js';
 import { CorrectionDaysService } from './correction-days.service.js';
+import { HomeLocationsService } from './home-locations.service.js';
 import type { SignedIp } from './signed-ip.js';
 
 type Db = PrismaService | Prisma.TransactionClient;
@@ -138,7 +139,11 @@ export interface PunchContext {
 // in the audit log, without the address. Inside the employee app (owner, 20 October 2026: "dont allow checkins without
 // location is always active", "Refuse without location", "App only"): a press without a location is refused (409),
 // with how to turn it on; the office network doesn't waive it. On the website a press without one is kept as before,
-// location unknown. HR's own recording of a day (a correction) is never refused by either.
+// location unknown. HR's own recording of a day (a correction) is never refused by either. Home locations (owner, 20
+// October 2026: "Label Home, flag elsewhere"): for someone with an approved home, a check-in outside every office location
+// within the home's radius is Home (remote for every other rule), and a remote one elsewhere is flagged "Not at home or
+// the office"; nothing is refused for it, and the office network's lock is as before (an Office person locked to it is
+// refused off it at home too, unless HR lets them check in from anywhere). Only the place is kept, never the point.
 @Injectable()
 export class CheckInService {
   constructor(
@@ -147,6 +152,7 @@ export class CheckInService {
     private readonly corrections: CorrectionDaysService,
     private readonly setup: CheckInSetupService,
     private readonly audit: AuditService,
+    private readonly homes: HomeLocationsService,
   ) {}
 
   async today(user: SessionUser): Promise<CheckInTodayView> {
@@ -161,7 +167,8 @@ export class CheckInService {
     const reading = typeof dto.latitude === 'number' && typeof dto.longitude === 'number' ? { latitude: dto.latitude, longitude: dto.longitude, accuracy: dto.accuracy ?? null } : null;
     // in the app a location is needed, read at the press and never tracked (owner, 20 October 2026: "App only")
     if (context.session === 'app' && !reading) throw new ConflictException(APP_LOCATION_NEEDED_MESSAGE);
-    const [locations, lock] = await Promise.all([this.setup.officeLocations(), this.setup.lockSetting()]);
+    // their approved home, if any (20 October 2026): read against it after the office, its point never kept with the punch
+    const [locations, lock, home] = await Promise.all([this.setup.officeLocations(), this.setup.lockSetting(), this.homes.homePoint(employeeId)]);
     const now = new Date();
     const shift = shiftOf(employment);
     const date = shiftDayOf(now, shift);
@@ -178,15 +185,16 @@ export class CheckInService {
       });
       throw new ConflictException(OFF_NETWORK_MESSAGE);
     }
-    // the point read and dropped: only office, remote or unknown, the accuracy and the location's name go further
-    const read = checkInPlace(reading, locations);
+    // the point read and dropped: only office, home, remote or unknown, the accuracy and the location's name go further
+    const read = checkInPlace(reading, locations, home);
     const place: CheckInPlace = network.network ? 'office' : read.place;
     const { accuracyMetres } = read;
     const locationName = read.location ?? null;
     const officeNetwork = network.network;
     const expected = expectedPlace(employment.workArrangement, employment.officeDays, weekday(date));
-    // a check-in breaking the arrangement's rule, and any press on a location the phone said is a mock one (fake GPS)
-    const flags = punchFlags(dto.kind, expected, place, dto.mock === true);
+    // a check-in breaking the arrangement's rule, and any press on a location the phone said is a mock one (fake GPS); a
+    // remote check-in by someone with an approved home, away from it and the office (not at home or the office)
+    const flags = punchFlags(dto.kind, expected, place, dto.mock === true, home !== null);
 
     const { kept, earlier } = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;

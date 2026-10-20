@@ -2,14 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useFieldIds } from '@/components/form';
-import { isShortMapLink, nextSearchAt, nominatimUrl, placesFrom, pointFromText, SEARCH_MIN_LENGTH, SHORT_LINK_TEXT, type Place, type Point } from './map-point';
-import { coordinateText } from './setup';
+import { coordinateText, isShortMapLink, nextSearchAt, nominatimUrl, placesFrom, pointFromText, SEARCH_MIN_LENGTH, SHORT_LINK_TEXT, type Place, type Point } from '@/lib/map-point';
 
 // A location's form's search for the place (owner, 20 October 2026: "let me view location on map and add location from
 // map"): a name or an address, found in Egypt by OpenStreetMap's Nominatim, asked from the browser, in English and
 // Arabic. Nominatim's usage policy: no search as it is typed (only on Enter or Search), at most one a second (the page's
 // forms together), what was found kept rather than asked again, and its attribution shown. A Google Maps or
-// OpenStreetMap link, or a point ("30.0457, 31.1923"), pasted in puts the pin at once, without asking anyone.
+// OpenStreetMap link, or a point ("30.0457, 31.1923"), pasted in puts the pin at once, without asking anyone. Shared
+// since 20 October 2026 with the home locations' form (owner: "allow other users to request to add their home locations
+// when working from home").
 
 /** When the page's last search went (or the next is to go): at most one a second, whichever form asks. */
 let lastSearchAt: number | null = null;
@@ -18,7 +19,14 @@ const found = new Map<string, Place[]>();
 
 const pointText = (p: Point) => `${coordinateText(p.latitude)}, ${coordinateText(p.longitude)}`;
 
-export function PlaceSearch({ onPoint }: { onPoint: (p: Point) => void }) {
+export function PlaceSearch({
+  onPoint,
+  keepText = 'Save the location to keep it.',
+}: {
+  onPoint: (p: Point) => void;
+  /** What keeps the point, said once the pin is put (a home location's form: sending the request). */
+  keepText?: string;
+}) {
   const fid = useFieldIds();
   const field = useRef<HTMLInputElement>(null);
   const [text, setText] = useState('');
@@ -39,7 +47,7 @@ export function PlaceSearch({ onPoint }: { onPoint: (p: Point) => void }) {
   function put(p: Point, where: string) {
     onPoint(p);
     setPlaces([]);
-    setStatus(`Pin put ${where}, at ${pointText(p)}. Save the location to keep it.`);
+    setStatus(`Pin put ${where}, at ${pointText(p)}. ${keepText}`);
   }
 
   function showFound(query: string, list: Place[]) {

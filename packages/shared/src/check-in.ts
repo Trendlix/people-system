@@ -10,7 +10,10 @@
 // refused (no one is locked out). Several presses a day are kept as punches; the day's check-in is the first in and its
 // check-out the last out, as Zoho People has them, its hours counted by the shift's rule with the grace minutes
 // (attendance.ts). A fingerprint or face device isn't here yet (no device details yet): its days would come as the
-// source 'device' (ATTENDANCE_SOURCES). Pure: the API decides with these and the web shows the same words.
+// source 'device' (ATTENDANCE_SOURCES). Pure: the API decides with these and the web shows the same words. Home
+// locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home",
+// then "Label Home, flag elsewhere"): within a person's approved home a check-in is Home (remote for every other rule),
+// and a remote one elsewhere is flagged for them; still only the place is kept, never the coordinates.
 
 import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, type ShiftWindowTimes } from './attendance.js';
 import type { WorkPlace } from './attendance-import.js';
@@ -63,14 +66,25 @@ export const CHECK_IN_SOURCES: readonly AttendanceSource[] = ['system', 'device'
 
 // ---------- where a check-in was ----------
 
-/** Where a check-in was: within the office's radius, outside it, or the location refused or unavailable. */
-export const CHECK_IN_PLACES = ['office', 'remote', 'unknown'] as const;
+/**
+ * Where a check-in was: within an office location's radius, within the person's approved home's (owner, 20 October
+ * 2026: "allow other users to request to add their home locations when working from home", then "Label Home, flag
+ * elsewhere"; home-locations.ts), outside them all, or the location refused or unavailable.
+ */
+export const CHECK_IN_PLACES = ['office', 'home', 'remote', 'unknown'] as const;
 export type CheckInPlace = (typeof CHECK_IN_PLACES)[number];
 
-export const CHECK_IN_PLACE_LABELS: Record<CheckInPlace, string> = { office: 'Office', remote: 'Remote', unknown: 'Location unknown' };
+export const CHECK_IN_PLACE_LABELS: Record<CheckInPlace, string> = { office: 'Office', home: 'Home', remote: 'Remote', unknown: 'Location unknown' };
 
-/** Where a day was worked as the pages show it: the office, remote, or (a check-in on the system) location unknown. */
-export type DayPlace = WorkPlace | 'unknown';
+/** Where a day was worked as the pages show it: the office, home, remote, or (a check-in on the system) location unknown. */
+export type DayPlace = WorkPlace | 'home' | 'unknown';
+
+/**
+ * Whether a place counts as remote work: remote, and home (owner, 20 October 2026: "Label Home, flag elsewhere"), which
+ * is labelled Home but is remote for every other rule: the work arrangement's checks, the month's remote days and Daily
+ * Attendance's "Only with remote days" (the payroll counts hours, not places; the office network's lock is the address's).
+ */
+export const countsAsRemote = (place: string | null | undefined): boolean => place === 'remote' || place === 'home';
 
 /**
  * A place check-ins count as the office at: its point and radius, and its name. Several since 20 October 2026 (owner:
@@ -171,30 +185,38 @@ export const CHECK_IN_LOCATION_ERROR_LABELS: Record<CheckInLocationError, string
   unsupported: 'This browser can’t give a location',
 };
 
+/** A person's approved home as a check-in is read against it: its point and radius (home-locations.ts). */
+export type HomePoint = Pick<OfficeLocation, 'latitude' | 'longitude' | 'radiusMetres'>;
+
 /**
  * Where a check-in was (owner's brief, 19 October 2026): within an office location's radius the office, outside them all
  * remote; no reading (refused or unavailable), a reading that isn't a point, or no location with its point set: unknown.
  * Several locations since 20 October 2026 (owner: "Own page, several locations"): within ANY of them is the office, and
  * `location` names the nearest one it is within (when it has a name). The accuracy kept is the reading's, in whole
- * metres (none: null); the point itself is never kept.
+ * metres (none: null); the point itself is never kept. A person's approved home (owner, 20 October 2026: "Label Home,
+ * flag elsewhere"): the place order is the office first, else within the home's radius home, else remote, else unknown;
+ * with no office location set a reading at home is still home, anywhere else unknown as before.
  */
 export function checkInPlace(
   reading: LocationReading | null | undefined,
   offices: OfficeLocation | readonly OfficeLocation[],
+  home: HomePoint | null = null,
 ): { place: CheckInPlace; accuracyMetres: number | null; location?: string } {
   const accuracyMetres = reading && isNumber(reading.accuracy) && reading.accuracy >= 0 ? Math.round(reading.accuracy) : null;
   if (!reading || !isNumber(reading.latitude) || !isNumber(reading.longitude) || Math.abs(reading.latitude) > 90 || Math.abs(reading.longitude) > 180) {
     return { place: 'unknown', accuracyMetres: null };
   }
   const set = (Array.isArray(offices) ? offices : [offices]).filter(officeLocationSet) as readonly OfficeLocation[];
-  if (!set.length) return { place: 'unknown', accuracyMetres };
   let within: { office: OfficeLocation; d: number } | null = null;
   for (const office of set) {
     const d = distanceMetres(reading, { latitude: office.latitude!, longitude: office.longitude! });
     if (d <= office.radiusMetres && (!within || d < within.d)) within = { office, d };
   }
-  if (!within) return { place: 'remote', accuracyMetres };
-  return within.office.name ? { place: 'office', accuracyMetres, location: within.office.name } : { place: 'office', accuracyMetres };
+  if (within) return within.office.name ? { place: 'office', accuracyMetres, location: within.office.name } : { place: 'office', accuracyMetres };
+  if (home && officeLocationSet(home) && distanceMetres(reading, { latitude: home.latitude!, longitude: home.longitude! }) <= home.radiusMetres) {
+    return { place: 'home', accuracyMetres };
+  }
+  return { place: set.length ? 'remote' : 'unknown', accuracyMetres };
 }
 
 // ---------- the rules by work arrangement ----------
@@ -217,38 +239,44 @@ export function expectedPlace(arrangement: string, officeDays: readonly number[]
  * What a check-in is flagged as, allowed and shown to the manager and HR: one that breaks its arrangement's rule, or
  * one whose location the phone itself said is made up (fake GPS: the employee app on Android tells a mock location,
  * apps/mobile/README.md Phase 2, owner, 20 October 2026: "Android mock location → mock: true on the punch → flagged
- * ("Fake GPS suspected") on Daily Attendance").
+ * ("Fake GPS suspected") on Daily Attendance"). And a remote check-in by someone with an approved home, outside every
+ * office location and their home (owner, 20 October 2026: "Label Home, flag elsewhere"): "Not at home or the office".
  */
-export const CHECK_IN_FLAGS = ['outside_office', 'location_unknown', 'fake_gps'] as const;
+export const CHECK_IN_FLAGS = ['outside_office', 'location_unknown', 'fake_gps', 'not_home_or_office'] as const;
 export type CheckInFlag = (typeof CHECK_IN_FLAGS)[number];
 
 export const CHECK_IN_FLAG_LABELS: Record<CheckInFlag, string> = {
   outside_office: 'Checked in outside the office on an office day',
   location_unknown: 'Location unknown on an office day',
   fake_gps: 'Fake GPS suspected',
+  not_home_or_office: 'Not at home or the office',
 };
 
 export const isCheckInFlag = (v: unknown): v is CheckInFlag => (CHECK_IN_FLAGS as readonly unknown[]).includes(v);
 
 /**
- * The flags of a check-in: on an office day, remote is outside the office and unknown can't be told; anywhere, none
- * for the place. A location the phone said is a mock one (`mock`, known only inside the employee app on Android) is
- * fake GPS suspected, whatever the arrangement; the place is still read from it as from any other.
+ * The flags of a check-in: on an office day, remote (home too: it counts as remote) is outside the office and unknown
+ * can't be told; anywhere, none for the place. A location the phone said is a mock one (`mock`, known only inside the
+ * employee app on Android) is fake GPS suspected, whatever the arrangement; the place is still read from it as from any
+ * other. Someone with an approved home (`hasHome`; owner, 20 October 2026: "Label Home, flag elsewhere") checking in
+ * remote, outside every office location and their home, is not at home or the office, whatever the arrangement; nothing
+ * is refused for it.
  */
-export function checkInFlags(expected: ExpectedPlace, place: CheckInPlace, mock = false): CheckInFlag[] {
+export function checkInFlags(expected: ExpectedPlace, place: CheckInPlace, mock = false, hasHome = false): CheckInFlag[] {
   const flags: CheckInFlag[] = [];
-  if (expected === 'office' && place === 'remote') flags.push('outside_office');
+  if (expected === 'office' && countsAsRemote(place)) flags.push('outside_office');
   if (expected === 'office' && place === 'unknown') flags.push('location_unknown');
   if (mock) flags.push('fake_gps');
+  if (hasHome && place === 'remote') flags.push('not_home_or_office');
   return flags;
 }
 
 /**
  * The flags of a press: a check-in's as checkInFlags; a check-out's place breaks no rule (only check-ins are held to the
- * arrangement), but a mock location on it is fake GPS suspected all the same.
+ * arrangement and to the home), but a mock location on it is fake GPS suspected all the same.
  */
-export function punchFlags(kind: PunchKind, expected: ExpectedPlace, place: CheckInPlace, mock = false): CheckInFlag[] {
-  return kind === 'in' ? checkInFlags(expected, place, mock) : mock ? ['fake_gps'] : [];
+export function punchFlags(kind: PunchKind, expected: ExpectedPlace, place: CheckInPlace, mock = false, hasHome = false): CheckInFlag[] {
+  return kind === 'in' ? checkInFlags(expected, place, mock, hasHome) : mock ? ['fake_gps'] : [];
 }
 
 /** What the employee is told of where today's check-in is expected. */
@@ -361,7 +389,7 @@ export function punchMessages(
   why: { locationError?: CheckInLocationError | null; officeSet?: boolean } = {},
 ): string[] {
   const time = cairoClock(punch.at);
-  const where = punch.place === 'unknown' ? 'location unknown' : punch.place === 'office' ? 'at the office' : 'remote';
+  const where = punch.place === 'unknown' ? 'location unknown' : punch.place === 'office' ? 'at the office' : punch.place === 'home' ? 'at home' : 'remote';
   const ins = earlier.filter((p) => p.kind === 'in').sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const messages: string[] = [];
   if (punch.kind === 'in') {
@@ -388,7 +416,9 @@ export function punchMessages(
         ? `${CHECK_IN_FLAG_LABELS[f]}: it is kept, and your manager and HR see it flagged.`
         : f === 'fake_gps'
           ? `${CHECK_IN_FLAG_LABELS[f]}: your phone said this location comes from an app that sets a made-up one. The ${punch.kind === 'in' ? 'check-in' : 'check-out'} is kept, and your manager and HR see it flagged. Turn such an app off before you check in.`
-          : `${CHECK_IN_FLAG_LABELS[f]}: it is kept, and your manager and HR see it flagged. Allow the location next time.`,
+          : f === 'not_home_or_office'
+            ? `${CHECK_IN_FLAG_LABELS[f]}: you checked in away from the office and from your approved home. It is kept, and your manager and HR see it flagged.`
+            : `${CHECK_IN_FLAG_LABELS[f]}: it is kept, and your manager and HR see it flagged. Allow the location next time.`,
     );
   }
   return messages;

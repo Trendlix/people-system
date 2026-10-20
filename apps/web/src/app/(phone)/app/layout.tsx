@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
 import type { Session } from '@/lib/view-as';
 import { approveCount } from './approve-count';
+import { PushBridge } from './push-bridge';
 import { TabBar, TabList } from './tab-bar';
 import { tabsFor } from './tabs';
 import { TopBar, TopBarFallback } from './top-bar';
@@ -69,6 +70,9 @@ export default function PhoneLayout({ children }: LayoutProps<'/app'>) {
       <Suspense fallback={null}>
         <SessionWatch />
       </Suspense>
+      {/* push notifications inside the app (Phase 4, 20 October 2026): registered again on each open once allowed, and a
+          notification tapped opens its page here */}
+      <PushBridge />
     </div>
   );
 }

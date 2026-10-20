@@ -75,6 +75,10 @@ describe('where an action sends someone on to from the phone pages', () => {
     expect(toAppHref(`/leave/permissions/${ID}?done=manager_approve`, 'approve')).toBe(`/app/approve/permission/${ID}?done=manager_approve`);
     expect(toAppHref(`/reimbursements/${ID}?done=cancelled`, 'requests')).toBe(`/app/requests/reimbursement/${ID}?done=cancelled`);
     expect(toAppHref(`/attendance/corrections/${ID}?done=hr_reject`, 'approve')).toBe(`/app/approve/correction/${ID}?done=hr_reject`);
+    // a home location (20 October 2026)
+    expect(toAppHref(`/home-locations/${ID}?done=sent`, 'requests')).toBe(`/app/requests/home/${ID}?done=sent`);
+    expect(toAppHref(`/home-locations/${ID}?done=ceo_approve`, 'approve')).toBe(`/app/approve/home/${ID}?done=ceo_approve`);
+    expect(toAppHref('/home-locations/new', 'requests')).toBe('/app/requests');
   });
 
   it('sends everything else to the section’s list, keeping only done and sent', () => {

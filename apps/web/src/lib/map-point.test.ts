@@ -6,6 +6,7 @@ import {
   circleBounds,
   isLink,
   isShortMapLink,
+  mapHref,
   nextSearchAt,
   nominatimUrl,
   placesFrom,
@@ -13,7 +14,6 @@ import {
   pointOf,
   startView,
 } from './map-point';
-import { mapHref } from './setup';
 
 // The check-in locations on a map (owner, 20 October 2026: "let me view location on map and add location from map"):
 // a point from what is pasted, the circle's fit, where a form's map starts, and the place search on Nominatim.

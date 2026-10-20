@@ -25,6 +25,9 @@ import { MyClaimsTable } from '../reimbursements/ui';
 import { ASK_CORRECTION_PATH } from '../attendance/corrections/corrections';
 import { loadMyCorrections } from '../attendance/corrections/data';
 import { CorrectionsTable } from '../attendance/corrections/ui';
+import { loadMyHomes } from '../home-locations/data';
+import { approvedHomeOf, asksHome, homeProgressText, MY_HOME_ID, NEW_HOME_PATH } from '../home-locations/home-locations';
+import { HomeMap, MyHomesTable } from '../home-locations/ui';
 import {
   askedByManager,
   filterRequests,
@@ -62,6 +65,9 @@ import {
 // Raises (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from managers too"):
 // to someone who doesn't see raise requests (seesRaiseRequests, packages/shared raises.ts) nothing of them, their own
 // nor their team's: no Request a raise, no raise cards, no Raises or For my team filter; their details changes alone.
+// Home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from
+// home"): a section of their own, with the home in force on a small map, their requests newest first, each opening its
+// page (every step, Withdraw while it is being decided, Remove once approved), and Home location to ask for one.
 
 export const metadata: Metadata = { title: 'My Requests · People System' };
 
@@ -398,6 +404,57 @@ async function Corrections() {
   );
 }
 
+/**
+ * Their home location (owner, 20 October 2026: "allow other users to request to add their home locations when working
+ * from home"; GET /me/home-locations): the home in force, on a small map, and their requests, newest first, each opening
+ * its page; Home location to ask for one while none is being decided. Nothing from an API from before them, nor without
+ * a profile of their own.
+ */
+async function HomeLocation() {
+  const user = await getCurrentUser();
+  const profile = await loadOwnProfile(user);
+  if (!profile) return null;
+  const homes = await loadMyHomes();
+  if (homes.kind === 'unavailable') return null;
+  const list = homes.kind === 'ok' ? homes.value : [];
+  const home = approvedHomeOf(list);
+  return (
+    <section id={MY_HOME_ID} aria-labelledby={`${MY_HOME_ID}-heading`} className="mt-10 scroll-mt-6 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id={`${MY_HOME_ID}-heading`} className="text-lg font-semibold">
+            Home Location
+          </h2>
+          <p className="text-sm text-muted">
+            For the days you work from home. HR approves it, then the CEO; approved, a check-in at home shows as Home. Only you, HR and the CEO see
+            it, never your manager.
+          </p>
+        </div>
+        {homes.kind === 'ok' && asksHome(list) && (
+          <Link href={NEW_HOME_PATH} className="btn btn-secondary">
+            {home ? 'Ask for another home location' : 'Home location'}
+          </Link>
+        )}
+      </div>
+      {homes.kind !== 'ok' ? (
+        <div className="card px-6 py-6 text-sm text-muted">Your home location couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : list.length === 0 ? (
+        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t asked for a home location. Ask with Home location.</div>
+      ) : (
+        <>
+          {home && (
+            <div className="card space-y-3 p-5">
+              <p className="text-sm font-semibold">{homeProgressText(home).text}</p>
+              <HomeMap request={home} own height="h-[180px]" />
+            </div>
+          )}
+          <MyHomesTable requests={list} note="newest first." />
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests'>) {
   return (
     <div className="max-w-4xl">
@@ -413,6 +470,9 @@ export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests
       </Suspense>
       <Suspense fallback={null}>
         <Corrections />
+      </Suspense>
+      <Suspense fallback={null}>
+        <HomeLocation />
       </Suspense>
       <Suspense fallback={null}>
         <Reimbursements />

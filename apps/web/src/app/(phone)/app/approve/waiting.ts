@@ -1,11 +1,13 @@
 import { PAY_CHANGE_LABELS } from '@trendlix/shared';
 import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
 import { formatDate } from '../../../../lib/format';
+import type { HomeLocationView } from '../../../../lib/home-location-types';
 import type { PendingRaise, RaiseRequest } from '../../../../lib/raise-types';
 import { appItemHref } from '../../../../lib/surface';
 import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } from '../../../../lib/types';
 import { correctionDayText, correctionKindName } from '../../../(app)/attendance/corrections/corrections';
 import { formatEgp } from '../../../(app)/employees/[id]/contracts/salary';
+import { homeWhatText } from '../../../(app)/home-locations/home-locations';
 import { daysText, periodText } from '../../../(app)/leave/list';
 import { isPermission, mergeRequests, permissionWhenText } from '../../../(app)/leave/permissions';
 import { effectiveFromText, reasonText } from '../../../(app)/raise-requests/list';
@@ -15,7 +17,9 @@ import { currentAmount } from '../../../(app)/reimbursements/list';
 // phone"): what waits for the caller, in sections as My Team and Approvals have them: leave and permission, the claims,
 // the attendance corrections, the raise requests at HR's step (HR's, or the CEO's for a C-level person), and the raises
 // with the CEO. The lists are the API's (each "waiting" read answers for the caller alone); each row opens the item's
-// page under To Approve, with the decision form. Pure code, tested; relative imports, as vitest doesn't know "@/".
+// page under To Approve, with the decision form. Pure code, tested; relative imports, as vitest doesn't know "@/". Home
+// locations at HR's step or the CEO's (owner, 20 October 2026: "then approved by the HR and CEO"), for those who decide
+// them.
 
 export interface WaitingRow {
   key: string;
@@ -27,7 +31,7 @@ export interface WaitingRow {
 }
 
 export interface WaitingSection {
-  key: 'leave' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise';
+  key: 'leave' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise' | 'home';
   /** Title Case. */
   title: string;
   rows: WaitingRow[];
@@ -48,6 +52,7 @@ export function waitingSections(from: {
   corrections?: List<AttendanceCorrectionView>;
   raiseRequests?: List<RaiseRequest>;
   payRaises?: List<PendingRaise>;
+  homes?: List<HomeLocationView>;
 }): WaitingSection[] {
   const sections: WaitingSection[] = [];
   const add = (key: WaitingSection['key'], title: string, failed: boolean, rows: WaitingRow[]) => {
@@ -115,6 +120,19 @@ export function waitingSections(from: {
         href: appItemHref('approve', 'pay-raise', r.id),
         name: r.employee.fullNameEn,
         line: [PAY_CHANGE_LABELS[r.change] ?? r.change, `from ${formatDate(r.startDate)}`, r.grossSalary !== null ? `gross ${formatEgp(r.grossSalary)}` : null].filter(Boolean).join(' · '),
+      })),
+    );
+  }
+  if (from.homes !== undefined) {
+    add(
+      'home',
+      'Home Locations',
+      from.homes === null,
+      (from.homes ?? []).map((h) => ({
+        key: `home:${h.id}`,
+        href: appItemHref('approve', 'home', h.id),
+        name: h.employee.fullNameEn,
+        line: `${h.stage === 'ceo' ? 'The CEO’s step' : 'HR’s step'} · ${homeWhatText(h)}`,
       })),
     );
   }

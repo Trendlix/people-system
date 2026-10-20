@@ -8,7 +8,9 @@ import type { LeafletLocations, LeafletPicker } from './location-map';
 // the page and its forms use them: Leaflet (location-map.tsx) needs the browser's window, so it is loaded only in the
 // browser, after the page, and only on a page with a map (next/dynamic without server rendering). Each map's box is
 // drawn at once, at its size, so nothing moves when the map comes in; if Leaflet can't be loaded, the box says so,
-// and the fields still do everything the map does.
+// and the fields still do everything the map does. Shared since 20 October 2026 (moved from Attendance → Check-in Setup)
+// with the home locations' pages (owner: "allow other users to request to add their home locations when working from
+// home"): a home's point and radius on its request, on Approvals, on Check-in Setup and on a profile, and the form's map.
 
 type LocationsProps = ComponentProps<typeof LeafletLocations>;
 type PickerProps = ComponentProps<typeof LeafletPicker>;

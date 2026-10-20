@@ -6,6 +6,7 @@ import { sessionKindOf } from '@trendlix/shared';
 import { API_URL, apiFetch, messagesOf } from '@/lib/api';
 import { clientIp } from '@/lib/client-ip';
 import { SESSION_COOKIE } from '@/lib/constants';
+import { pushTokenOf } from '@/lib/notifications';
 import { safeNext } from '@/lib/safe-next';
 import { keepSession } from '@/lib/session-cookie';
 import { signInPath } from '@/lib/signed-out';
@@ -51,8 +52,20 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
  * chose Face ID / fingerprint sign-in for the app; README: "Signing out in the app keeps the fingerprint (the next open
  * offers it)"): the phone's credential is left as it is, and the sign-in page opens with ?reason=signed_out, which only
  * stops it asking for the fingerprint by itself (Sign in with fingerprint is still there). The website: the sign-in page.
+ *
+ * In the app, the Sign out forms also send the phone's push token (components/push-token-field.tsx; owner, 20 October
+ * 2026: "Push notifications: yes"; README, Phase 4): it is unregistered first, while the session still is, so the phone
+ * gets no more notifications for the person signed out. Best effort: refused or unreachable, signing out goes on.
  */
-export async function logout(): Promise<void> {
+export async function logout(formData?: FormData): Promise<void> {
+  const pushToken = pushTokenOf(typeof formData?.get === 'function' ? formData.get('pushToken') : null);
+  if (pushToken) {
+    try {
+      await apiFetch('/me/push-devices/unregister', { method: 'POST', body: JSON.stringify({ token: pushToken }) });
+    } catch {
+      // unreachable: the API stops sending to a token Firebase says is gone
+    }
+  }
   try {
     await apiFetch('/auth/logout', { method: 'POST' });
   } catch {

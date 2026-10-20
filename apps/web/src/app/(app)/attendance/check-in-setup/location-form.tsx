@@ -3,14 +3,14 @@
 import { useState } from 'react';
 import { CHECK_IN_LOCATION_ERROR_LABELS, OFFICE_RADIUS_DEFAULT, OFFICE_RADIUS_MAX, OFFICE_RADIUS_MIN } from '@trendlix/shared';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm } from '@/components/form';
+import { PickPointMap } from '@/components/map/maps';
+import { PlaceSearch } from '@/components/map/place-search';
 import type { CheckInLocationView } from '@/lib/attendance-types';
+import { coordinateText, isLink, pointFromText, pointOf, roundCoordinate, type MapCircle, type Point } from '@/lib/map-point';
 import { getPosition } from '@/lib/native';
 import type { FormState } from '@/lib/types';
 import { accuracyText } from '../../my-attendance/check-in';
-import { isLink, pointFromText, pointOf, type MapCircle, type Point } from './map-point';
-import { PickPointMap } from './maps';
-import { PlaceSearch } from './place-search';
-import { coordinateText, locationFrom, roundCoordinate } from './setup';
+import { locationFrom } from './setup';
 
 // A check-in location's form (Attendance → Check-in Setup; owner, 20 October 2026: "Own page, several locations"): its
 // name, its point (latitude and longitude) and the radius around it in metres (150 to start with). A check-in on the

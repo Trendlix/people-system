@@ -23,6 +23,7 @@ import { fromDateOnly, shownDate, todayInCairo, toDateOnly, weekday } from '../c
 import { toTimeOfDay } from '../common/time-of-day.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { NoticesService } from '../notifications/notices.service.js';
 import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { firstDay, lastDay } from '../payroll/months.js';
@@ -109,6 +110,7 @@ export class PermissionRequestsService {
     private readonly balances: LeaveBalancesService,
     private readonly payroll: LeavePayrollService,
     private readonly confidential: ConfidentialService,
+    private readonly notices: NoticesService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -135,6 +137,8 @@ export class PermissionRequestsService {
     const employment = await this.balances.employmentOf(caller.employeeId);
     if (!employment || employment.endDate !== null) throw new ConflictException("You have no current employment, so you can't ask for permission.");
     const id = await this.submit(employment, dto, caller, false);
+    // to the one in charge of its first step (Phase 4: notifications), once it is saved
+    await this.notices.permission(id, 'sent');
     return this.one(id, user);
   }
 
@@ -254,6 +258,8 @@ export class PermissionRequestsService {
     });
     const date = fromDateOnly(before.date);
     if (to === 'approved') await this.payroll.syncDrafts(before.employeeId, date, date, user);
+    // to the next step's decider, or the employee once it is approved or rejected (Phase 4: notifications)
+    await this.notices.permission(id, 'decided');
     return this.one(id, user);
   }
 
@@ -281,6 +287,7 @@ export class PermissionRequestsService {
     });
     const date = fromDateOnly(before.date);
     await this.payroll.syncDrafts(before.employeeId, date, date, user);
+    await this.notices.permission(id, 'cancelled_by_hr');
     return this.one(id, user);
   }
 

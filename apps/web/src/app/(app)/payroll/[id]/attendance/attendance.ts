@@ -170,8 +170,12 @@ export function checkTimesText(d: { checkIn: string | null; checkOut: string | n
 }
 
 export const dayStatusText = (status: AttendanceDayStatus) => ATTENDANCE_DAY_STATUS_LABELS[status] ?? status;
-/** Where a day was worked: the office, remote, or (a check-in on the system, 19 October 2026) location unknown. */
-export const placeText = (place: DayPlace | null | undefined) => (!place ? '—' : place === 'unknown' ? CHECK_IN_PLACE_LABELS.unknown : (WORK_PLACE_LABELS[place] ?? place));
+/**
+ * Where a day was worked: the office, remote, or (a check-in on the system, 19 October 2026) location unknown, or home
+ * (the person's approved home, 20 October 2026: "Label Home, flag elsewhere").
+ */
+export const placeText = (place: DayPlace | null | undefined) =>
+  !place ? '—' : place === 'unknown' || place === 'home' ? CHECK_IN_PLACE_LABELS[place] : (WORK_PLACE_LABELS[place] ?? place);
 
 /** "3 days", "1 day". */
 export const daysCount = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;

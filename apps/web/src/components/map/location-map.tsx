@@ -4,8 +4,7 @@ import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useEffectEvent, useRef } from 'react';
 import { OFFICE_RADIUS_DEFAULT } from '@trendlix/shared';
-import { boundsOf, CAIRO, CAIRO_ZOOM, circleBounds, startView, type MapCircle, type MapView, type Point } from './map-point';
-import { roundCoordinate } from './setup';
+import { boundsOf, CAIRO, CAIRO_ZOOM, circleBounds, roundCoordinate, startView, type MapCircle, type MapView, type Point } from '@/lib/map-point';
 
 // The check-in locations on a map (owner, 20 October 2026: "let me view location on map and add location from map"),
 // drawn with Leaflet on OpenStreetMap's tiles (no key; their attribution stays on the map). Loaded only in the browser,
@@ -14,7 +13,8 @@ import { roundCoordinate } from './setup';
 // a click puts the pin and the pin can be dragged, the form's fields following (and the pin following the fields). On
 // a page of maps, scrolling past one doesn't zoom it: the mouse wheel zooms a map only once it is clicked, until the
 // pointer leaves it; on a phone one finger scrolls the page until the map is tapped. The keyboard pans (arrows) and
-// zooms (+ and -) a map once it has the focus.
+// zooms (+ and -) a map once it has the focus. Shared since 20 October 2026 with the home locations' maps (owner: "allow
+// other users to request to add their home locations when working from home").
 
 /** OpenStreetMap's own tiles, on the address its tile policy names (one host, no a/b/c subdomains). */
 const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';

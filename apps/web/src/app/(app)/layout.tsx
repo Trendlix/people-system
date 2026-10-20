@@ -5,6 +5,7 @@ import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
 import { decidesForTeam, DETAILS_CHANGES_PATH, LEAVE_PATH, MY_TEAM, navFor, RAISE_REQUESTS_PATH, REIMBURSEMENTS_PATH } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
+import { BellLink, NotificationBell } from '@/components/notification-bell';
 import { SessionWatch } from '@/components/session-watch';
 import { UserMenu } from '@/components/user-menu';
 import { ViewAsBanner } from '@/components/view-as-banner';
@@ -13,6 +14,7 @@ import { isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import type { CorrectionCounts } from '@/lib/correction-types';
+import type { HomeLocationCounts } from '@/lib/home-location-types';
 import type { ChangeRequest, EndingSummary, LeaveCounts, ReimbursementCounts, SessionUser } from '@/lib/types';
 import { followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './approvals/data';
 import { followsRaises, PENDING_RAISES } from './approvals/raises';
@@ -23,6 +25,7 @@ import { countsRaiseRequests, waitingForYouCount, WITH_HR_REQUESTS } from './rai
 import { canSeeLeaveRequests, LEAVE_COUNTS } from './leave/list';
 import { canSeeReimbursements, CLAIM_COUNTS } from './reimbursements/list';
 import { CORRECTION_COUNTS, CORRECTIONS_PATH, seesCorrections } from './attendance/corrections/corrections';
+import { HOME_COUNTS, seesHomes } from './home-locations/home-locations';
 import { readsChangeRequests, waitingForYou } from './requests/details-changes/list';
 
 /**
@@ -59,7 +62,9 @@ async function MainNav() {
   const self = isSelfService({ roles });
   const manager = self && decidesForTeam({ roles, leads: user?.leads });
   const bg = { background: true };
-  const [endings, pendingChanges, raises, requests, claims, leave, corrections] = await Promise.all([
+  // Beside Approvals too: the home locations at the user's step (owner, 20 October 2026: "then approved by the HR and
+  // CEO"), for HR, the CEO and the Super Admin.
+  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS, bg) : null,
     readsChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS, bg) : null,
     followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES, bg) : null,
@@ -67,10 +72,11 @@ async function MainNav() {
     canSeeReimbursements({ roles }) || manager ? getOrNull<ReimbursementCounts>(CLAIM_COUNTS, bg) : null,
     canSeeLeaveRequests({ roles }) || manager ? getOrNull<LeaveCounts>(LEAVE_COUNTS, bg) : null,
     seesCorrections({ roles }) || manager ? getOrNull<CorrectionCounts>(CORRECTION_COUNTS, bg) : null,
+    seesHomes({ roles }) ? getOrNull<HomeLocationCounts>(HOME_COUNTS, bg) : null,
   ]);
   const changes = pendingChanges && waitingForYou({ roles }, pendingChanges);
   const raiseRequests = requests ? waitingForYouCount({ roles }, requests) : 0;
-  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0);
+  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0) + (homes?.waiting ?? 0);
   const counts: Record<string, number> = {};
   if (waiting) counts['/approvals'] = waiting;
   if (raiseRequests) counts[RAISE_REQUESTS_PATH] = raiseRequests;
@@ -150,6 +156,10 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             <Link href="/app" className="mr-auto shrink-0 text-sm font-semibold sm:hidden">
               Open the app view
             </Link>
+            {/* the bell, with how many notifications are unread (owner, 20 October 2026: "Push notifications: yes") */}
+            <Suspense fallback={<BellLink surface="site" unread={null} />}>
+              <NotificationBell surface="site" />
+            </Suspense>
             <Suspense fallback={<span className="text-sm text-muted">Loading…</span>}>
               <UserMenu />
             </Suspense>

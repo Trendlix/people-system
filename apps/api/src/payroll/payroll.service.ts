@@ -30,6 +30,7 @@ import { fromTimeOfDay } from '../common/time-of-day.js';
 import { traineeStagesOf } from '../contracts/views.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { NoticesService } from '../notifications/notices.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GridInputsService } from './adjustments/grid-inputs.service.js';
 import { RecurringDeductionsService } from './adjustments/recurring.service.js';
@@ -230,6 +231,7 @@ export class PayrollService {
     private readonly confidential: ConfidentialService,
     private readonly attendance: AttendanceFillService,
     private readonly expectedHours: ExpectedHoursService,
+    private readonly notices: NoticesService,
   ) {}
 
   /** Every run, newest month first, with its totals: without the C-level people's lines hidden from the caller. */
@@ -585,6 +587,8 @@ export class PayrollService {
     await this.prisma.payrollRun.update({ where: { id }, data: { status: 'paid', paidOn: toDateOnly(dto.paidOn) } });
     await this.statusChanged(run, 'paid', 'paid', user, { paidOn: dto.paidOn });
     await this.payslips.issueRun(id, user);
+    // each person paid: their payslip is ready, and the claims paid with it (Phase 4: notifications)
+    await this.notices.payrollPaid(id);
     return this.get(id, user);
   }
 

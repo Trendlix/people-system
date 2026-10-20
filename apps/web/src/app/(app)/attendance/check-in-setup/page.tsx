@@ -3,8 +3,10 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { Suspense } from 'react';
 import { currentNetworkOf, normalizedIp } from '@trendlix/shared';
+import { LocationsMap } from '@/components/map/maps';
 import { clientIp } from '@/lib/client-ip';
 import { titleCase } from '@/lib/format';
+import type { MapCircle } from '@/lib/map-point';
 import { getCurrentUser } from '@/lib/session';
 import { webKeySet } from '@/lib/signed-ip';
 import type { SessionUser } from '@/lib/types';
@@ -12,12 +14,12 @@ import { Empty, Loading } from '../../organization/ui';
 import { SetupSection } from '../../organization/payroll/section';
 import type { Loaded } from '../../payroll/load';
 import { StaffOnly } from '../../staff-only';
+import { seesHomes } from '../../home-locations/home-locations';
 import { createLocation, removeLocation, saveNetworks, saveZohoAddresses, updateLocation } from './actions';
 import { loadLocations, loadNetworks, loadSettings } from './data';
 import { LocationCard } from './location-card';
+import { HomeLocationsSection } from './home-locations-section';
 import { LocationForm } from './location-form';
-import type { MapCircle } from './map-point';
-import { LocationsMap } from './maps';
 import { NetworksForm } from './networks-form';
 import { LOCATIONS_ID, lockText, networkStatus, NETWORKS_ID, removesLocations, seesCheckInSetup, ZOHO_ID } from './setup';
 import { ZohoAddressesForm } from './zoho-form';
@@ -31,7 +33,9 @@ import { ZohoAddressesForm } from './zoho-form';
 // with is in place on both sides; and Zoho People's check-in addresses, for its import (moved here from Payroll Setup →
 // Your Rules). HR and Admin (a Super Admin as an Admin); a Super Admin removes a location. The API checks every request.
 // The locations on a map (owner, the same day: "let me view location on map and add location from map"): one map of
-// them all above the list, named in tooltips, a map on each card, and a map in each form to put the point on.
+// them all above the list, named in tooltips, a map on each card, and a map in each form to put the point on. Home
+// Locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home"):
+// the approved homes, each with a small map and Remove, for HR and the Super Admin (never an Admin without them).
 
 export const metadata: Metadata = { title: 'Check-in Setup · People System' };
 
@@ -139,6 +143,11 @@ async function Gate() {
       <Suspense fallback={<Loading />}>
         <ZohoSection />
       </Suspense>
+      {seesHomes(user) && (
+        <Suspense fallback={<Loading />}>
+          <HomeLocationsSection />
+        </Suspense>
+      )}
     </>
   );
 }

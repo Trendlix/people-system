@@ -7,6 +7,7 @@
 | OCR (Python, `services/ocr`) | Same server, same Docker Compose | None outside: the API calls it at `http://ocr:8000` |
 | PDF converter (Gotenberg, LibreOffice) | Same server, same Docker Compose | None outside: the API calls it at `http://pdf:3000` |
 | Email (job offers) | The company's own email provider, by SMTP | Set in `deploy/.env` (see [Email](#email-job-offers)) |
+| Push notifications (the employee app) | Firebase Cloud Messaging (HTTP v1), from the API | Set in `deploy/.env` and a GitHub secret (see [Push notifications](#push-notifications-fcm)) |
 
 The browser only talks to the web app on Vercel. Vercel calls the API server-to-server, so the API needs no CORS setup
 and its address is never shown to browsers.
@@ -229,6 +230,31 @@ for an attendance correction; HR's own recording of a day is never locked.
   office network's name only). The employee app needs nothing of its own: it shows the website, so the same signature
   applies.
 
+## Push notifications (FCM)
+
+Owner's decision, 20 October 2026 ("Push notifications: yes"; apps/mobile/README.md, Phase 4): the API sends the
+employee app's notifications (a request waiting for someone, a decision, a payslip, the check-in reminders) through
+Firebase Cloud Messaging's HTTP v1 API, signed with the Firebase project's service account (no Firebase library). Every
+notification is also kept in the person's inbox (the bell on the site and the phone pages), so nothing is lost while push
+is off.
+
+| Where | Setting | From |
+|---|---|---|
+| Server, `deploy/.env` | `FCM_PROJECT_ID` | the service account's JSON file (Firebase → Project settings → Service accounts → Generate new private key): `project_id` |
+| Server, `deploy/.env` | `FCM_CLIENT_EMAIL` | the same file: `client_email` |
+| Server, `deploy/.env` | `FCM_PRIVATE_KEY` | the same file: `private_key`, pasted as it is (one line with `\n` in it, in double quotes) |
+| GitHub → Settings → Secrets → Actions | `GOOGLE_SERVICES_JSON` | the Android app's `google-services.json` (Firebase → Project settings → Your apps → `com.trendlix.people`), its whole contents |
+
+- **On the server:** the three values in `deploy/.env`, then `./deploy.sh`. `docker compose logs api` says *Push
+  notifications are off* when one is missing or the key doesn't read; nothing is said when they are right. The API needs
+  to reach `oauth2.googleapis.com` and `fcm.googleapis.com` over HTTPS (outgoing only, as for email).
+- **In GitHub:** the Mobile (Android) workflow writes `GOOGLE_SERVICES_JSON` to `apps/mobile/android/app/google-services.json`
+  before the build (never committed: the repository is public; never printed). Without the secret the APK is built
+  without push, with a notice on the run, and the app offers no notifications on the phone.
+- **What is sent:** short and general, names and dates only, never a salary, an amount, a reason or a comment (a locked
+  phone may show it); a C-level person's requests are never sent to HR. A phone FCM says is gone (the app removed, or
+  signed out) is removed from `push_devices`.
+
 ## On the server
 
 | Task | Command (in `/opt/people-system/deploy`) |
@@ -255,3 +281,5 @@ salaries: keep a copy off the server too, and restrict who can read it.
 - The pipeline's key can only run `deploy.sh` (no shell, no file copy, no forwarding). The server's GitHub key is read-only.
 - A check-in's address is trusted only as the website signed it with `WEB_KEY` (see above); a plain `x-forwarded-for`
   sent straight to the API is ignored, and no employee's address is kept.
+- The Firebase service account (`FCM_PRIVATE_KEY`) lives only in `deploy/.env` on the server and is never logged; the
+  app's `google-services.json` only in a GitHub secret. A push says no salary, amount, reason or comment.

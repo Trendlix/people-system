@@ -1,3 +1,4 @@
+import { PUSH_CHANNEL, PUSH_TOKEN_MAX } from '@trendlix/shared';
 import { readLocation, LOCATION_GIVE_UP_MS, LOCATION_OPTIONS, type LocationResult } from '../app/(app)/my-attendance/check-in';
 
 // The one bridge to the phone's own features (owner, 20 October 2026: "what if we tried to build a mobile app for the
@@ -12,8 +13,11 @@ import { readLocation, LOCATION_GIVE_UP_MS, LOCATION_OPTIONS, type LocationResul
 // location, else the Geolocation plugin, else the browser's; a photo from the app's camera as a File for the forms.
 // Phase 3 (owner, 20 October 2026: chose Face ID / fingerprint sign-in for the app; README: "Sign-in: Face ID /
 // fingerprint after the first password sign-in"): the app's own TrendlixBiometric plugin keeps the sign-in's secret
-// behind the fingerprint. Push notifications (Phase 4) are a stub that says it isn't there yet, so the pages can be
-// written against it now. No "@/" imports: it is unit tested.
+// behind the fingerprint. Phase 4 (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for
+// someone, a check-in reminder)"; README, Phase 4): the Capacitor Push Notifications plugin asks the phone's permission,
+// gives the phone's push token for the website to register with the API, and tells the page of a notification opened or
+// received while the app is open; only in an APK built with Firebase's settings, which the app's own TrendlixPush plugin
+// says (without them the plugin's register() crashes the app). No "@/" imports: it is unit tested.
 
 // ---------- what the shell puts on the page ----------
 
@@ -434,14 +438,256 @@ export async function clearBiometric(win: NativeHost | undefined = host()): Prom
   }
 }
 
-// ---------- later phases (stubs) ----------
+// ---------- push notifications (Phase 4) ----------
 
-/** Why a native feature isn't offered yet: the phase that adds it. */
-export const NATIVE_LATER = {
-  push: 'Phase 4: notifications on the phone. Until then nothing is sent.',
-} as const;
+/** The name the Capacitor Push Notifications plugin (@capacitor/push-notifications 8) is registered under. */
+export const PUSH_PLUGIN = 'PushNotifications';
 
-/** Registers the phone for push notifications (Phase 4), giving its token to send to the website. Not yet: null. */
-export async function registerForPush(): Promise<{ token: string; platform: 'android' | 'ios' } | null> {
-  return null;
+/** What the phone says of the notifications permission (Android 13+ asks for POST_NOTIFICATIONS; before, it is given). */
+export type PushPermissionState = 'prompt' | 'prompt-with-rationale' | 'granted' | 'denied';
+
+/** A listener the plugin added, to take off again. */
+export interface PushListenerHandle {
+  remove(): Promise<void>;
+}
+
+/** A notification as the plugin gives it: what it said, and its data (the API's { link, kind, id }, strings). */
+export interface PushMessage {
+  id?: string;
+  title?: string;
+  body?: string;
+  data?: unknown;
+}
+
+/** The events the plugin tells of: the token, a failed registration, one received while open, one tapped. */
+export type PushEventName = 'registration' | 'registrationError' | 'pushNotificationReceived' | 'pushNotificationActionPerformed';
+
+/** The Android notification channel, as createChannel takes it (importance 1–5: 4 is high, shown as a heads-up). */
+export interface PushChannel {
+  id: string;
+  name: string;
+  description?: string;
+  importance?: 1 | 2 | 3 | 4 | 5;
+  visibility?: -1 | 0 | 1;
+  vibration?: boolean;
+  lights?: boolean;
+}
+
+/** The plugin, as far as it is used. */
+export interface PushNotificationsPlugin {
+  checkPermissions(): Promise<{ receive: PushPermissionState }>;
+  requestPermissions(): Promise<{ receive: PushPermissionState }>;
+  register(): Promise<void>;
+  unregister?(): Promise<void>;
+  createChannel?(channel: PushChannel): Promise<void>;
+  addListener(eventName: PushEventName, listener: (event: never) => void): Promise<PushListenerHandle> | PushListenerHandle;
+  removeAllListeners?(): Promise<void>;
+}
+
+/** Whether notifications can come to this phone: not the app (or no plugin), not asked yet, allowed, or refused. */
+export type PushStatus = 'unavailable' | 'prompt' | 'granted' | 'denied';
+
+/** What registering came to: the phone's token, or why there is none. `not_asked`: not allowed yet, and not asked. */
+export type PushRegistration =
+  | { token: string; platform: 'android' | 'ios' }
+  | { reason: 'unavailable' | 'not_asked' | 'denied' | 'failed' | 'timeout' };
+
+/** How long registering waits for the phone's token (Firebase answers within a few seconds online). */
+export const PUSH_REGISTER_TIMEOUT_MS = 15_000;
+
+/** The plugin, when the app's shell carries one that answers to it; null outside the app. */
+function pushPlugin(win: NativeHost | undefined): PushNotificationsPlugin | null {
+  const plugin = pluginOf<PushNotificationsPlugin>(PUSH_PLUGIN, win);
+  return plugin && typeof plugin.checkPermissions === 'function' && typeof plugin.register === 'function' && typeof plugin.addListener === 'function' ? plugin : null;
+}
+
+/** The name the shell registers its own push plugin under (apps/mobile/android, TrendlixPushPlugin). */
+export const OWN_PUSH_PLUGIN = 'TrendlixPush';
+
+/**
+ * The app's own push plugin: whether the APK was built with the Firebase project's settings (google-services.json).
+ * Without them Firebase isn't set up, and the Push Notifications plugin's register() and unregister() crash the app, so
+ * nothing of push is asked of the phone then.
+ */
+export interface TrendlixPushPlugin {
+  isConfigured(): Promise<{ configured: boolean }>;
+}
+
+/** How long the app's own plugin is waited for (it only reads the APK's settings). */
+const PUSH_CONFIGURED_WAIT_MS = 5_000;
+
+/**
+ * The Push Notifications plugin, only when the shell carries both it and its own plugin, and the APK was built with
+ * Firebase's settings (TrendlixPush says configured: true); null otherwise: missing, not configured, refused, too slow.
+ * Never rejects.
+ */
+async function configuredPushPlugin(win: NativeHost | undefined): Promise<PushNotificationsPlugin | null> {
+  const plugin = pushPlugin(win);
+  if (!plugin || nativePlatform(win) === 'web') return null;
+  const own = pluginOf<TrendlixPushPlugin>(OWN_PUSH_PLUGIN, win);
+  if (!own || typeof own.isConfigured !== 'function') return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const slow = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), PUSH_CONFIGURED_WAIT_MS);
+    });
+    const answer = await Promise.race([own.isConfigured(), slow]);
+    return answer?.configured === true ? plugin : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The phone's word on the permission, as a status: "prompt-with-rationale" is still a prompt; anything else unknown. */
+function statusOf(state: unknown): Exclude<PushStatus, 'unavailable'> | null {
+  if (state === 'granted' || state === 'denied' || state === 'prompt') return state;
+  return state === 'prompt-with-rationale' ? 'prompt' : null;
+}
+
+/**
+ * Whether notifications can come to this phone. Outside the app, a shell without the plugins, an APK built without
+ * Firebase's settings, or a plugin that can't say: unavailable. Before Android 13 the permission is given with the app,
+ * so it is "granted". Never throws.
+ */
+export async function pushStatus(win: NativeHost | undefined = host()): Promise<PushStatus> {
+  const plugin = await configuredPushPlugin(win);
+  if (!plugin) return 'unavailable';
+  try {
+    return statusOf((await plugin.checkPermissions())?.receive) ?? 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+/** Takes a listener off, whether the plugin has given its handle yet or not; never fails. */
+function removeLater(handle: Promise<PushListenerHandle> | PushListenerHandle | undefined): void {
+  void Promise.resolve(handle)
+    .then((h) => h?.remove?.())
+    .catch(() => undefined);
+}
+
+/**
+ * Registers this phone for push notifications, giving its token for the website to register with the API. `ask`: asks
+ * the phone's permission when it hasn't been given yet (Android 13 and later's prompt; Home's Turn on), else only when
+ * it already is (the app's silent registration on each open, which keeps the token fresh). Makes the app's channel on
+ * Android (packages/shared PUSH_CHANNEL, importance high: shown as a heads-up), then waits for the token up to
+ * `timeoutMs`. Nothing is asked of the phone in an APK built without Firebase's settings (unavailable). Never throws:
+ * refused, failed, too slow or not the app is its reason.
+ */
+export async function registerForPush(
+  options: { ask: boolean },
+  win: NativeHost | undefined = host(),
+  timeoutMs = PUSH_REGISTER_TIMEOUT_MS,
+): Promise<PushRegistration> {
+  const plugin = await configuredPushPlugin(win);
+  const platform = nativePlatform(win);
+  if (!plugin || platform === 'web') return { reason: 'unavailable' };
+  try {
+    let state = statusOf((await plugin.checkPermissions())?.receive);
+    if (state === 'prompt') {
+      if (!options.ask) return { reason: 'not_asked' };
+      state = statusOf((await plugin.requestPermissions())?.receive);
+    }
+    if (state === 'denied' || state === 'prompt') return { reason: 'denied' };
+    if (state !== 'granted') return { reason: 'failed' };
+
+    if (platform === 'android' && typeof plugin.createChannel === 'function') {
+      try {
+        await plugin.createChannel({ ...PUSH_CHANNEL, importance: 4, vibration: true });
+      } catch {
+        // a channel the phone can't make: Android's default channel shows them all the same
+      }
+    }
+
+    return await new Promise<PushRegistration>((resolve) => {
+      const handles: (Promise<PushListenerHandle> | PushListenerHandle)[] = [];
+      let done = false;
+      const finish = (result: PushRegistration) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        handles.forEach(removeLater);
+        resolve(result);
+      };
+      const timer = setTimeout(() => finish({ reason: 'timeout' }), timeoutMs);
+      const listen = async () => {
+        handles.push(
+          plugin.addListener('registration', ((event: { value?: unknown }) => {
+            const token = typeof event?.value === 'string' ? event.value.trim() : '';
+            finish(token && token.length <= PUSH_TOKEN_MAX ? { token, platform } : { reason: 'failed' });
+          }) as (event: never) => void),
+        );
+        handles.push(plugin.addListener('registrationError', (() => finish({ reason: 'failed' })) as (event: never) => void));
+        await Promise.all(handles);
+        if (!done) await plugin.register();
+      };
+      listen().catch(() => finish({ reason: 'failed' }));
+    });
+  } catch {
+    return { reason: 'failed' };
+  }
+}
+
+/** A notification's data as strings only (the API sends { link, kind, id }); anything else left out. */
+export function pushData(data: unknown): Record<string, string> {
+  if (!data || typeof data !== 'object') return {};
+  return Object.fromEntries(Object.entries(data as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string'));
+}
+
+/** Listens to one of the plugin's events; the remover takes it off (also before the plugin gave its handle). */
+function listenTo(eventName: PushEventName, listener: (event: unknown) => void, win: NativeHost | undefined): () => void {
+  const plugin = pushPlugin(win);
+  if (!plugin) return () => {};
+  let handle: Promise<PushListenerHandle> | PushListenerHandle | undefined;
+  try {
+    handle = plugin.addListener(eventName, listener as (event: never) => void);
+  } catch {
+    return () => {};
+  }
+  // a plugin that refused to listen: nothing to take off
+  void Promise.resolve(handle).catch(() => undefined);
+  let removed = false;
+  return () => {
+    if (removed) return;
+    removed = true;
+    removeLater(handle);
+  };
+}
+
+/**
+ * Tells `fn` of a notification tapped (in the tray, or the one that opened the app: the plugin keeps it until a listener
+ * comes), with its data. Gives the remover; outside the app nothing is listened to.
+ */
+export function onPushOpened(fn: (data: Record<string, string>) => void, win: NativeHost | undefined = host()): () => void {
+  return listenTo('pushNotificationActionPerformed', (event) => fn(pushData((event as { notification?: PushMessage } | null)?.notification?.data)), win);
+}
+
+/**
+ * Tells `fn` of a notification received while the app is open (the shell shows it in the tray too: capacitor.config.ts
+ * presentationOptions). Gives the remover.
+ */
+export function onPushReceived(fn: (message: { title: string; body: string; data: Record<string, string> }) => void, win: NativeHost | undefined = host()): () => void {
+  return listenTo(
+    'pushNotificationReceived',
+    (event) => {
+      const m = (event ?? {}) as PushMessage;
+      fn({ title: typeof m.title === 'string' ? m.title : '', body: typeof m.body === 'string' ? m.body : '', data: pushData(m.data) });
+    },
+    win,
+  );
+}
+
+/**
+ * Stops this phone's push notifications (signing out): the plugin forgets its token, best effort; not in an APK built
+ * without Firebase's settings (nothing was registered). Never rejects.
+ */
+export async function forgetPush(win: NativeHost | undefined = host()): Promise<void> {
+  const plugin = await configuredPushPlugin(win);
+  try {
+    if (plugin && typeof plugin.unregister === 'function') await plugin.unregister();
+  } catch {
+    // nothing registered, or the plugin failed: the website has unregistered the token with the API anyway
+  }
 }

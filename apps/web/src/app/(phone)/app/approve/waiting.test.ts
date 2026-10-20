@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
+import type { HomeLocationView } from '../../../../lib/home-location-types';
 import type { PendingRaise, RaiseRequest } from '../../../../lib/raise-types';
 import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } from '../../../../lib/types';
 import { waitingSections, waitingTotal } from './waiting';
@@ -79,6 +80,20 @@ describe('what waits for the caller', () => {
     expect(corrections.rows[0].line).toMatch(/^Wednesday 14\/10\/2026 · /);
     expect(raises.rows[0].line).toBe('Performance raise · effective from November 2026');
     expect(pay.rows[0].line).toMatch(/ · from 01\/11\/2026 · gross EGP 15,000\.00$/);
+  });
+
+  // owner, 20 October 2026: "allow other users to request to add their home locations when working from home"
+  it('lists the home locations at HR’s step or the CEO’s, opening each under To Approve', () => {
+    const home = { id: ID(7), employee: nour, stage: 'hr', latitude: 30.1, longitude: 31.3, label: 'Home, Nasr City', radiusMetres: 100 } as unknown as HomeLocationView;
+    const ceoStep = { ...home, id: ID(8), stage: 'ceo', label: null, radiusMetres: 150 } as HomeLocationView;
+    const [homes] = waitingSections({ homes: [home, ceoStep] });
+    expect(homes).toMatchObject({ key: 'home', title: 'Home Locations', failed: false });
+    expect(homes.rows.map((r) => [r.href, r.name, r.line])).toEqual([
+      [`/app/approve/home/${ID(7)}`, 'Nour Adel', 'HR’s step · Home, Nasr City · 100 m'],
+      [`/app/approve/home/${ID(8)}`, 'Nour Adel', 'The CEO’s step · Point on the map · 150 m'],
+    ]);
+    expect(waitingSections({ homes: null })).toMatchObject([{ key: 'home', failed: true }]);
+    expect(waitingSections({ homes: [] })).toEqual([]);
   });
 
   it('leaves out what is empty or not the caller’s, and says what couldn’t be read', () => {

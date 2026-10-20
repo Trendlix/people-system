@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   addressesBody,
   coordinateFrom,
-  coordinateText,
   locationBody,
   locationFrom,
   locationText,
@@ -15,6 +14,7 @@ import {
   seesCheckInSetup,
   type NetworksState,
 } from './setup';
+import { coordinateText } from '../../../../lib/map-point';
 
 // Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"; check-ins locked to the office
 // network, the same day): who keeps it, the forms read as the API takes them, and what the page says of the lock.

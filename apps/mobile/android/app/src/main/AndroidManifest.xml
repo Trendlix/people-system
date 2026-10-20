@@ -34,6 +34,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Phase 4 (owner, 20 October 2026: "Push notifications: yes"; apps/mobile/README.md): a notification goes to the
+             channel the app makes (PUSH_CHANNEL "general", through the Push Notifications plugin's createChannel), with
+             the app's icon. These also let the plugin show a notification that arrives while the app is open. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="general" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
     </application>
 
     <!-- Permissions -->
@@ -49,6 +59,9 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
     <!-- the camera, for a photo of a receipt or a leave document (Take a photo) -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Phase 4: notifications on Android 13 and later, asked by the system's prompt through the Push Notifications
+         plugin's requestPermissions, after the page has said why (Home's "Get notified on this phone?") -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- neither is needed to install the app: without GPS or a camera it still checks in (location unknown) and sends files -->
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

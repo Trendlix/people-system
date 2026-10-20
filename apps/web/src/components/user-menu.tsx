@@ -5,6 +5,7 @@ import { ROLE_LABELS } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { canViewAs, type Session } from '@/lib/view-as';
 import { MY_ATTENDANCE, myAttendanceInMenu } from './nav';
+import { PushTokenField } from './push-token-field';
 import { ViewAsButton } from './view-as';
 
 export async function UserMenu() {
@@ -52,6 +53,8 @@ export async function UserMenu() {
         </Link>
       )}
       <form action={logout}>
+        {/* in the TrendLIX People app, the phone's push token, unregistered on signing out (Phase 4, 20 October 2026) */}
+        <PushTokenField />
         <button type="submit" className="btn btn-secondary">
           Sign out
         </button>

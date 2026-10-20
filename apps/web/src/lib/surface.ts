@@ -36,20 +36,22 @@ export const APP_PATHS = {
   newReimbursement: '/app/requests/new/reimbursement',
   newCorrection: '/app/requests/new/correction',
   newRaise: '/app/requests/new/raise',
+  // a home location (owner, 20 October 2026: "allow other users to request to add their home locations when working from home")
+  newHome: '/app/requests/new/home',
   attendance: '/app/attendance',
   payslips: '/app/payslips',
   approve: '/app/approve',
 } as const;
 
 /** The kinds of item a section opens: a request of the employee's, or one waiting for the caller (a pay raise: the CEO's). */
-export const APP_ITEM_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'pay-raise'] as const;
+export const APP_ITEM_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'pay-raise', 'home'] as const;
 export type AppItemKind = (typeof APP_ITEM_KINDS)[number];
 
 /** An item's page in a section: "/app/requests/leave/<id>", "/app/approve/reimbursement/<id>". */
 export const appItemHref = (section: AppSection, kind: AppItemKind, id: string) => `/app/${section}/${kind}/${encodeURIComponent(id)}`;
 
 /** The kinds of request the phone pages' My Requests lists, each a filter of it. */
-export const APP_REQUEST_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise'] as const;
+export const APP_REQUEST_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home'] as const;
 export type AppRequestKind = (typeof APP_REQUEST_KINDS)[number];
 
 /** My Requests on the phone pages, of one kind and/or open ones only: "/app/requests?kind=leave&status=open". */
@@ -97,6 +99,7 @@ const ITEM_PAGES: readonly [RegExp, AppItemKind][] = [
   [new RegExp(`^/leave/${ID}$`), 'leave'],
   [new RegExp(`^/reimbursements/${ID}$`), 'reimbursement'],
   [new RegExp(`^/attendance/corrections/${ID}$`), 'correction'],
+  [new RegExp(`^/home-locations/${ID}$`), 'home'],
 ];
 
 /** What an address says of what was just done, kept on the way: ?done= (decided, cancelled, moved on) and ?sent=. */

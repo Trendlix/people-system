@@ -8,6 +8,9 @@ coverage/
 # local secrets
 .env
 .env.local
+# the Firebase file of the app (push notifications): written in CI from the GOOGLE_SERVICES_JSON secret, never committed
+# (the repository is public; also in apps/mobile/.gitignore)
+apps/mobile/android/app/google-services.json
 
 # generated Prisma client
 apps/api/src/generated/

@@ -31,6 +31,7 @@ import {
   type Caller,
 } from '../leave/access.js';
 import type { DecideLeaveDto } from '../leave/leave.dto.js';
+import { NoticesService } from '../notifications/notices.service.js';
 import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { json } from '../payroll/line-work.js';
@@ -91,6 +92,7 @@ export class AttendanceCorrectionsService {
     private readonly days: AttendanceDaysService,
     private readonly correctionDays: CorrectionDaysService,
     private readonly fill: AttendanceFillService,
+    private readonly notices: NoticesService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -108,6 +110,8 @@ export class AttendanceCorrectionsService {
     const caller = await this.caller(user);
     if (!caller.employeeId) throw new ForbiddenException('Only an employee can ask for a correction: your sign-in has no employee profile.');
     const id = await this.submit(caller.employeeId, dto, caller, false);
+    // to the one in charge of its first step (Phase 4: notifications), once it is saved
+    await this.notices.correction(id, 'sent');
     return this.one(id, user);
   }
 
@@ -216,6 +220,8 @@ export class AttendanceCorrectionsService {
       diff: { employeeId: before.employeeId, date, stage, decision: dto.decision, status: { from: before.status, to }, ...(comment && { comment }) },
     });
     if (change) await this.applied(before.employeeId, date, id, change, user);
+    // to the next step's decider, or the employee once it is approved or rejected (Phase 4: notifications)
+    await this.notices.correction(id, 'decided');
     return this.one(id, user);
   }
 

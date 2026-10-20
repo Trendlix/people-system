@@ -26,6 +26,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   generated_document: 'Issued document',
   grade: 'Grade',
   holiday: 'Holiday',
+  // home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home")
+  home_location: 'Home location',
   job_offer: 'Job offer',
   job_title: 'Job title',
   leave_adjustment: 'Leave balance change',
@@ -112,8 +114,11 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   refresh: 'Refreshed',
   refresh_attendance: 'Refreshed from attendance',
   reject: 'Rejected',
+  // an approved home location removed (its point deleted), and one replaced by a newer approved one (20 October 2026)
+  remove: 'Removed',
   reopen: 'Reopened',
   reorder: 'Reordered',
+  replace: 'Replaced by a newer one',
   restore_attendance: 'Restored the attendance cut',
   return: 'Returned',
   salary_raises_file: 'Downloaded the salary raises',
@@ -173,6 +178,8 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   officeNetworks: 'Office networks',
   officeNetworkLock: 'Lock check-ins to the office network',
   checkInAnywhere: 'Can check in from anywhere',
+  // home locations (20 October 2026)
+  radiusMetres: 'Radius (metres)',
 };
 
 /**

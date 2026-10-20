@@ -6,6 +6,8 @@ import { getCurrentUser } from '@/lib/session';
 import { APP_PATHS, appRequestsHref } from '@/lib/surface';
 import { NoProfile } from '../../../(app)/dashboard/cards';
 import { loadMyCorrections } from '../../../(app)/attendance/corrections/data';
+import { loadMyHomes } from '../../../(app)/home-locations/data';
+import { HomeStatusBadge } from '../../../(app)/home-locations/ui';
 import { loadMyLeave, loadMyPermissions } from '../../../(app)/leave/data';
 import { LeaveStatusBadge } from '../../../(app)/leave/ui';
 import { loadOwnProfile } from '../../../(app)/own-profile';
@@ -36,13 +38,15 @@ import {
 // link keeps them); and New request. The lists are the API's for the employee (GET /me/…), as My Requests reads them
 // on the site. Changes to their details stay on the site's profile. Raise requests (owner, 20 October 2026: "raises not
 // to be visible to employee level for now", then "Hide from managers too") only for someone who sees them
-// (seesRaiseRequests): not read, listed or offered as a chip otherwise.
+// (seesRaiseRequests): not read, listed or offered as a chip otherwise. Their home location requests too (owner, 20
+// October 2026: "allow other users to request to add their home locations when working from home").
 
 export const metadata: Metadata = { title: 'My Requests · TrendLIX People' };
 
 function StatusBadge({ row }: { row: AppRequestRow }) {
   if (row.kind === 'reimbursement') return <ClaimStatusBadge status={row.request.status} confidential={row.request.confidential} />;
   if (row.kind === 'raise') return <RaiseRequestStatusBadge status={row.request.status} confidential={row.request.confidential} />;
+  if (row.kind === 'home') return <HomeStatusBadge status={row.request.status} confidential={row.request.confidential} />;
   return <LeaveStatusBadge status={row.request.status} confidential={row.request.confidential} />;
 }
 
@@ -51,12 +55,13 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
   const profile = await loadOwnProfile(user);
   if (!profile) return <NoProfile user={user} />;
   const seesRaises = seesRaiseRequests(user);
-  const [leave, permissions, claims, corrections, raises] = await Promise.all([
+  const [leave, permissions, claims, corrections, raises, homes] = await Promise.all([
     loadMyLeave(),
     loadMyPermissions(),
     loadMyClaims(),
     loadMyCorrections(),
     seesRaises ? loadEmployeeRaiseRequests(profile.id) : null,
+    loadMyHomes(),
   ]);
   const rows = appRequestRows({
     leave: leave.kind === 'ok' ? leave.value : undefined,
@@ -64,8 +69,9 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
     claims: claims.kind === 'ok' ? claims.value : undefined,
     corrections: corrections.kind === 'ok' ? corrections.value : undefined,
     raises: raises?.kind === 'ok' ? raises.value.requests : undefined,
+    homes: homes.kind === 'ok' ? homes.value : undefined,
   });
-  const failed = [leave, permissions, claims, corrections, raises].some((l) => l?.kind === 'failed');
+  const failed = [leave, permissions, claims, corrections, raises, homes].some((l) => l?.kind === 'failed');
   const kinds = appRequestKindsFor(seesRaises);
   const f = readAppRequestFilters(query, kinds);
   const shown = filterAppRequests(rows, f);

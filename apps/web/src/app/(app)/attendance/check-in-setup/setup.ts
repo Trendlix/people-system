@@ -9,6 +9,7 @@ import {
   type Role,
   type SignedIpProblem,
 } from '@trendlix/shared';
+import { latin, roundCoordinate } from '../../../../lib/map-point';
 import { canDelete, hasRole } from '../../../../lib/roles';
 import type { ViewAs } from '../../../../lib/view-as';
 
@@ -33,14 +34,10 @@ export const removesLocations = (user: WithRoles): boolean => canDelete(user);
 export const LOCATIONS_ID = 'check-in-locations';
 export const NETWORKS_ID = 'office-networks';
 export const ZOHO_ID = 'zoho-addresses';
+/** The approved home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home"). */
+export const HOMES_ID = 'home-locations';
 
 // ---------- the locations ----------
-
-/** Arabic digits and decimal mark, as a phone may type them, as Latin ones. */
-export const latin = (s: string) => s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/٫/g, '.');
-
-/** A coordinate kept to 6 decimals (about 10 cm), as the API keeps it. */
-export const roundCoordinate = (n: number): number => Math.round(n * 1e6) / 1e6 + 0;
 
 /** A coordinate as typed: a decimal number, a minus allowed, kept to 6 decimals; empty: none (null); else NaN. */
 export function coordinateFrom(raw: string): number | null {
@@ -49,9 +46,6 @@ export function coordinateFrom(raw: string): number | null {
   if (!/^[-+]?\d{1,3}(\.\d+)?$/.test(s)) return NaN;
   return roundCoordinate(Number(s));
 }
-
-/** A saved coordinate as the field starts with it: "30.059600"; none: empty. */
-export const coordinateText = (n: number | null | undefined): string => (typeof n === 'number' && Number.isFinite(n) ? n.toFixed(6) : '');
 
 /** "30.0596, 31.3462" pasted from a map into the latitude field: the two of them. */
 const PAIR = /^\s*([-+]?\d{1,3}(?:\.\d+)?)\s*[,،]\s*([-+]?\d{1,3}(?:\.\d+)?)\s*$/;
@@ -87,10 +81,6 @@ export const locationBody = (fd: FormData) =>
 /** A location's point and radius as the list says them: "30.059600, 31.346200 · within 150 m". */
 export const locationText = (l: { latitude: number; longitude: number; radiusMetres: number }): string =>
   `${l.latitude.toFixed(6)}, ${l.longitude.toFixed(6)} · within ${l.radiusMetres.toLocaleString('en-US')} m`;
-
-/** A map of a location's point, to check it. */
-export const mapHref = (l: { latitude: number; longitude: number }): string =>
-  `https://www.openstreetmap.org/?mlat=${l.latitude.toFixed(6)}&mlon=${l.longitude.toFixed(6)}#map=18/${l.latitude.toFixed(6)}/${l.longitude.toFixed(6)}`;
 
 // ---------- the office networks ----------
 

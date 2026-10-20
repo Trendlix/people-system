@@ -1,3 +1,4 @@
+import { PUSH_CHANNEL, PUSH_TOKEN_MAX } from '@trendlix/shared';
 import { describe, expect, it, vi } from 'vitest';
 import {
   BIOMETRIC_PROMPTS,
@@ -9,13 +10,19 @@ import {
   enrollBiometric,
   geolocationSource,
   getPosition,
+  forgetPush,
   isNativeApp,
-  NATIVE_LATER,
   nativePlatform,
+  onPushOpened,
+  onPushReceived,
   OWN_BIOMETRIC_PLUGIN,
+  OWN_PUSH_PLUGIN,
   photoName,
   pluginErrorCode,
   pluginOf,
+  PUSH_PLUGIN,
+  pushData,
+  pushStatus,
   registerForPush,
   takePhoto,
   unlockBiometric,
@@ -340,9 +347,235 @@ describe('the fingerprint, for signing in', () => {
   });
 });
 
-describe('the later phases', () => {
-  it('offers no push yet', async () => {
-    await expect(registerForPush()).resolves.toBeNull();
-    expect(Object.keys(NATIVE_LATER)).toEqual(['push']);
+// Phase 4 (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for someone, a check-in
+// reminder)"): the Capacitor Push Notifications plugin, faked here
+describe('push notifications on the phone', () => {
+  type Listener = (event: unknown) => void;
+
+  /**
+   * The shell's PushNotifications plugin: the permission as `permission` says (and `afterAsk` once asked), and on
+   * register() the token, a registration error, or nothing at all (`answer`), told to its listeners a moment later.
+   */
+  function push(options: { permission?: string; afterAsk?: string; answer?: 'token' | 'error' | 'none'; token?: string } = {}) {
+    const listeners = new Map<string, Set<Listener>>();
+    const emit = (name: string, event: unknown) => listeners.get(name)?.forEach((fn) => fn(event));
+    const plugin = {
+      checkPermissions: vi.fn(async () => ({ receive: options.permission ?? 'granted' })),
+      requestPermissions: vi.fn(async () => ({ receive: options.afterAsk ?? 'granted' })),
+      createChannel: vi.fn(async () => undefined),
+      register: vi.fn(async () => {
+        void Promise.resolve().then(() => {
+          if ((options.answer ?? 'token') === 'token') emit('registration', { value: options.token ?? 'fcm-token-1' });
+          else if (options.answer === 'error') emit('registrationError', { error: 'SERVICE_NOT_AVAILABLE' });
+        });
+      }),
+      unregister: vi.fn(async () => undefined),
+      addListener: vi.fn(async (name: string, fn: Listener) => {
+        if (!listeners.has(name)) listeners.set(name, new Set());
+        listeners.get(name)!.add(fn);
+        return { remove: vi.fn(async () => void listeners.get(name)?.delete(fn)) };
+      }),
+      emit,
+      listening: (name: string) => listeners.get(name)?.size ?? 0,
+    };
+    return plugin;
+  }
+  /** The app's own TrendlixPush plugin: the APK built with Firebase's settings, unless said otherwise. */
+  const own = (configured: unknown = true) => ({ isConfigured: vi.fn(async () => ({ configured })) });
+  const phone = (plugin: ReturnType<typeof push>, platform = 'android', ownPlugin: object | null = own()): NativeHost => ({
+    Capacitor: app({ [PUSH_PLUGIN]: plugin, ...(ownPlugin && { [OWN_PUSH_PLUGIN]: ownPlugin }) }, platform),
+  });
+  /** Lets the plugin's moment-later answers and the listeners' removal happen. */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('is unavailable outside the app, or in a shell without the plugin, and nothing is asked', async () => {
+    const plugin = push();
+    await expect(pushStatus({})).resolves.toBe('unavailable');
+    await expect(pushStatus(undefined)).resolves.toBe('unavailable');
+    await expect(pushStatus({ Capacitor: app() })).resolves.toBe('unavailable');
+    await expect(pushStatus({ Capacitor: { isNativePlatform: () => false, Plugins: { [PUSH_PLUGIN]: plugin } } })).resolves.toBe('unavailable');
+    await expect(registerForPush({ ask: true }, {})).resolves.toEqual({ reason: 'unavailable' });
+    await expect(registerForPush({ ask: true }, { Capacitor: app() })).resolves.toEqual({ reason: 'unavailable' });
+    await expect(forgetPush({})).resolves.toBeUndefined();
+    const off = onPushOpened(() => undefined, {});
+    expect(off).toBeTypeOf('function');
+    off();
+    expect(plugin.checkPermissions).not.toHaveBeenCalled();
+    expect(plugin.addListener).not.toHaveBeenCalled();
+  });
+
+  it('asks nothing of the phone in an APK built without Firebase’s settings (its register() would crash the app)', async () => {
+    const cases: [string, object | null][] = [
+      ['no TrendlixPush plugin', null],
+      ['not configured', own(false)],
+      ['configured, not as true', own('yes')],
+      ['refusing', { isConfigured: vi.fn(async () => Promise.reject(new Error('x'))) }],
+      ['throwing', { isConfigured: vi.fn(() => { throw new Error('x'); }) }],
+      ['no method', {}],
+    ];
+    for (const [, ownPlugin] of cases) {
+      const plugin = push();
+      await expect(pushStatus(phone(plugin, 'android', ownPlugin))).resolves.toBe('unavailable');
+      await expect(registerForPush({ ask: true }, phone(plugin, 'android', ownPlugin))).resolves.toEqual({ reason: 'unavailable' });
+      await expect(forgetPush(phone(plugin, 'android', ownPlugin))).resolves.toBeUndefined();
+      expect(plugin.register).not.toHaveBeenCalled();
+      expect(plugin.unregister).not.toHaveBeenCalled();
+      expect(plugin.checkPermissions).not.toHaveBeenCalled();
+      expect(plugin.requestPermissions).not.toHaveBeenCalled();
+      expect(plugin.createChannel).not.toHaveBeenCalled();
+    }
+  });
+
+  it('works as ever once the APK says it is configured', async () => {
+    const ownPlugin = own(true);
+    const plugin = push();
+    await expect(pushStatus(phone(plugin, 'android', ownPlugin))).resolves.toBe('granted');
+    await expect(registerForPush({ ask: false }, phone(plugin, 'android', ownPlugin))).resolves.toEqual({ token: 'fcm-token-1', platform: 'android' });
+    await expect(forgetPush(phone(plugin, 'android', ownPlugin))).resolves.toBeUndefined();
+    expect(ownPlugin.isConfigured).toHaveBeenCalledTimes(3);
+    expect(plugin.register).toHaveBeenCalledOnce();
+    expect(plugin.unregister).toHaveBeenCalledOnce();
+  });
+
+  it('says what the phone says of the permission', async () => {
+    await expect(pushStatus(phone(push({ permission: 'prompt' })))).resolves.toBe('prompt');
+    await expect(pushStatus(phone(push({ permission: 'prompt-with-rationale' })))).resolves.toBe('prompt');
+    await expect(pushStatus(phone(push({ permission: 'granted' })))).resolves.toBe('granted');
+    await expect(pushStatus(phone(push({ permission: 'denied' })))).resolves.toBe('denied');
+    await expect(pushStatus(phone(push({ permission: 'whatever' })))).resolves.toBe('unavailable');
+    const broken = push();
+    broken.checkPermissions.mockRejectedValueOnce(new Error('x'));
+    await expect(pushStatus(phone(broken))).resolves.toBe('unavailable');
+  });
+
+  it('registers once allowed: the channel made, the token given, the listeners taken off again', async () => {
+    const plugin = push({ token: '  fcm-token-1  ' });
+    await expect(registerForPush({ ask: false }, phone(plugin))).resolves.toEqual({ token: 'fcm-token-1', platform: 'android' });
+    expect(plugin.requestPermissions).not.toHaveBeenCalled();
+    expect(plugin.createChannel).toHaveBeenCalledWith({ id: PUSH_CHANNEL.id, name: PUSH_CHANNEL.name, description: PUSH_CHANNEL.description, importance: 4, vibration: true });
+    expect(plugin.register).toHaveBeenCalledOnce();
+    // the listeners were there before register() was called
+    expect(plugin.addListener.mock.invocationCallOrder.every((n) => n < plugin.register.mock.invocationCallOrder[0])).toBe(true);
+    await settle();
+    expect(plugin.listening('registration')).toBe(0);
+    expect(plugin.listening('registrationError')).toBe(0);
+  });
+
+  it('asks the phone only when told to', async () => {
+    const quiet = push({ permission: 'prompt' });
+    await expect(registerForPush({ ask: false }, phone(quiet))).resolves.toEqual({ reason: 'not_asked' });
+    expect(quiet.requestPermissions).not.toHaveBeenCalled();
+    expect(quiet.register).not.toHaveBeenCalled();
+
+    const allowed = push({ permission: 'prompt-with-rationale', afterAsk: 'granted' });
+    await expect(registerForPush({ ask: true }, phone(allowed))).resolves.toEqual({ token: 'fcm-token-1', platform: 'android' });
+    expect(allowed.requestPermissions).toHaveBeenCalledOnce();
+
+    const refused = push({ permission: 'prompt', afterAsk: 'denied' });
+    await expect(registerForPush({ ask: true }, phone(refused))).resolves.toEqual({ reason: 'denied' });
+    expect(refused.register).not.toHaveBeenCalled();
+
+    // the prompt closed without an answer: not allowed
+    await expect(registerForPush({ ask: true }, phone(push({ permission: 'prompt', afterAsk: 'prompt' })))).resolves.toEqual({ reason: 'denied' });
+  });
+
+  it('doesn’t ask again once refused', async () => {
+    const plugin = push({ permission: 'denied' });
+    await expect(registerForPush({ ask: true }, phone(plugin))).resolves.toEqual({ reason: 'denied' });
+    expect(plugin.requestPermissions).not.toHaveBeenCalled();
+    expect(plugin.register).not.toHaveBeenCalled();
+  });
+
+  it('fails on a registration error, a refused register(), or a token it can’t take', async () => {
+    const erring = push({ answer: 'error' });
+    await expect(registerForPush({ ask: false }, phone(erring))).resolves.toEqual({ reason: 'failed' });
+    await settle();
+    expect(erring.listening('registration')).toBe(0);
+
+    const refusing = push();
+    refusing.register.mockRejectedValueOnce(new Error('no Firebase'));
+    await expect(registerForPush({ ask: false }, phone(refusing))).resolves.toEqual({ reason: 'failed' });
+
+    await expect(registerForPush({ ask: false }, phone(push({ token: '   ' })))).resolves.toEqual({ reason: 'failed' });
+    await expect(registerForPush({ ask: false }, phone(push({ token: 'x'.repeat(PUSH_TOKEN_MAX + 1) })))).resolves.toEqual({ reason: 'failed' });
+
+    const askFails = push({ permission: 'prompt' });
+    askFails.requestPermissions.mockRejectedValueOnce(new Error('x'));
+    await expect(registerForPush({ ask: true }, phone(askFails))).resolves.toEqual({ reason: 'failed' });
+
+    const listenFails = push();
+    listenFails.addListener.mockRejectedValueOnce(new Error('x'));
+    await expect(registerForPush({ ask: false }, phone(listenFails))).resolves.toEqual({ reason: 'failed' });
+    expect(listenFails.register).not.toHaveBeenCalled();
+  });
+
+  it('registers all the same when the channel can’t be made', async () => {
+    const plugin = push();
+    plugin.createChannel.mockRejectedValueOnce(new Error('x'));
+    await expect(registerForPush({ ask: false }, phone(plugin))).resolves.toEqual({ token: 'fcm-token-1', platform: 'android' });
+  });
+
+  it('gives up when the phone doesn’t answer in time', async () => {
+    const plugin = push({ answer: 'none' });
+    await expect(registerForPush({ ask: false }, phone(plugin), 20)).resolves.toEqual({ reason: 'timeout' });
+    await settle();
+    expect(plugin.listening('registration')).toBe(0);
+    expect(plugin.listening('registrationError')).toBe(0);
+  });
+
+  it('makes no channel on an iPhone', async () => {
+    const plugin = push();
+    await expect(registerForPush({ ask: false }, phone(plugin, 'ios'))).resolves.toEqual({ token: 'fcm-token-1', platform: 'ios' });
+    expect(plugin.createChannel).not.toHaveBeenCalled();
+  });
+
+  it('tells of a notification tapped, with its data as strings, until taken off', async () => {
+    const plugin = push();
+    const opened = vi.fn();
+    const off = onPushOpened(opened, phone(plugin));
+    await settle();
+    plugin.emit('pushNotificationActionPerformed', { actionId: 'tap', notification: { id: '1', data: { link: '/leave/1', kind: 'leave_decided', id: 'n1', count: 3 } } });
+    expect(opened).toHaveBeenCalledWith({ link: '/leave/1', kind: 'leave_decided', id: 'n1' });
+    plugin.emit('pushNotificationActionPerformed', { actionId: 'tap', notification: {} });
+    expect(opened).toHaveBeenLastCalledWith({});
+    off();
+    off();
+    await settle();
+    expect(plugin.listening('pushNotificationActionPerformed')).toBe(0);
+  });
+
+  it('takes a listener off even before the plugin gave its handle', async () => {
+    const plugin = push();
+    const off = onPushReceived(() => undefined, phone(plugin));
+    off();
+    await settle();
+    expect(plugin.listening('pushNotificationReceived')).toBe(0);
+  });
+
+  it('tells of a notification received while open', async () => {
+    const plugin = push();
+    const received = vi.fn();
+    const off = onPushReceived(received, phone(plugin));
+    await settle();
+    plugin.emit('pushNotificationReceived', { id: '7', title: 'Leave approved', body: 'Your leave from 21/10/2026 is approved.', data: { link: '/leave/1' } });
+    expect(received).toHaveBeenCalledWith({ title: 'Leave approved', body: 'Your leave from 21/10/2026 is approved.', data: { link: '/leave/1' } });
+    plugin.emit('pushNotificationReceived', null);
+    expect(received).toHaveBeenLastCalledWith({ title: '', body: '', data: {} });
+    off();
+  });
+
+  it('reads a notification’s data as strings only', () => {
+    expect(pushData({ link: '/app', kind: 'check_in_reminder', n: 1, x: null })).toEqual({ link: '/app', kind: 'check_in_reminder' });
+    expect(pushData(null)).toEqual({});
+    expect(pushData('text')).toEqual({});
+  });
+
+  it('forgets the phone’s token on signing out, and never fails doing it', async () => {
+    const plugin = push();
+    await expect(forgetPush(phone(plugin))).resolves.toBeUndefined();
+    expect(plugin.unregister).toHaveBeenCalledOnce();
+    const failing = push();
+    failing.unregister.mockRejectedValueOnce(new Error('x'));
+    await expect(forgetPush(phone(failing))).resolves.toBeUndefined();
   });
 });

@@ -18,6 +18,7 @@ import { permissionDayText, permissionHoursLine, permissionInDaysText, upcomingP
 import { LeaveStatusBadge } from '../../(app)/leave/ui';
 import { approveCount } from './approve-count';
 import { FingerprintOffer } from './fingerprint-offer';
+import { PushOffer } from './push-offer';
 import { askOptions } from './requests/new/options';
 import { decidesSomething } from './tabs';
 import { PhoneCard, PhoneLoading, Quiet, RowLink, RowList } from './ui';
@@ -239,6 +240,9 @@ async function Home() {
       {/* fingerprint sign-in next time (owner, 20 October 2026: chose Face ID / fingerprint sign-in for the app): offered
           in the app on an app session, never while viewing as someone; the phone decides whether it can */}
       {!user.viewAs && user.session?.kind === 'app' && <FingerprintOffer />}
+      {/* notifications on this phone (owner, 20 October 2026: "Push notifications: yes"): offered the same way, when the
+          phone hasn't been asked yet */}
+      {!user.viewAs && user.session?.kind === 'app' && <PushOffer />}
       {/* checking in (19 October 2026), the first thing on the phone: a current employment's */}
       {profile?.employment && (
         <Suspense fallback={<CardLoading title="Today" />}>

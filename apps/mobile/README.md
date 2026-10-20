@@ -133,6 +133,7 @@ The phone pages live in `apps/web/src/app/(phone)/app/` (their own layout, not t
 | `/app/approve` | **To Approve** (managers, team leads, department heads, HR, the CEO, Finance): leave and permission, claims, corrections, raise requests at HR's step, raises with the CEO; endings and details changes linked to the site's Approvals. `?done=raise-…` after the CEO's decision. |
 | `/app/approve/{leave,permission,reimbursement,correction}/<id>` | The item with the site's decision form (Approve / Reject + comment; a claim's lower amount too) and every step. |
 | `/app/approve/raise/<requestId>` · `/app/approve/pay-raise/<contractId>` | HR's step on a raise request (the CEO's for a C-level person); the CEO's decision on a raise. |
+| `/app/requests/new/home` · `/app/requests/home/<id>` · `/app/approve/home/<id>` | **Home location** (added 20 Oct 2026; owner: "allow other users to request to add their home locations when working from home", then "Label Home, flag elsewhere", "then approved by the HR and CEO"): the site's form (`home-locations/new/ask-home.tsx`): the home on the shared Leaflet map, a place search, or **Use my current location** through `getPosition()` (the app's own location in the app, with its accuracy), a label, the radius shown as 100 m (HR sets it). The request's page: its point on a small map, every step, Withdraw while it is being decided, Remove once approved. Under To Approve, HR's step (with the radius) or the CEO's. A tile on New Request (not among Home's four shortcuts), `?kind=home` on Requests, a section on To Approve, and its count in the tab's. |
 
 - **One set of forms and actions:** the section's layout says where a form is shown (`components/surface.tsx`, a hidden
   `surface` field = `requests` or `approve`); the site's server actions send it on with `afterAction()` (lib/surface.ts)
@@ -303,6 +304,125 @@ app's private preferences. The secret is never logged.
   project — kept out of the repo, injected in CI from a secret).
 - Done when: with push configured, an approval reaches the phone; without it, the inbox shows it.
 
+#### Phase 4 contract — what was built (20 October 2026)
+
+The owner set up Firebase (20 October 2026: "Push notifications: yes"): the GitHub repository secret
+`GOOGLE_SERVICES_JSON` (the Android app's google-services.json, pasted as it is) and, in `deploy/.env` on the server,
+`FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL` and `FCM_PRIVATE_KEY` (the service account's). The shared rules:
+`packages/shared/src/notifications.ts`; the API: `apps/api/src/notifications/`.
+
+**Tables** (migration `20261020140000_notifications`):
+
+| Table | What |
+|---|---|
+| `notifications` | `user_id`, `kind` (NOTIFICATION_KINDS, checked), `title` (1–100), `body` (≤ 200), `link` (an address on the site: one `/` first, ≤ 300), `read_at`, `created_at`; indexed per user by `created_at` and by `read_at` (unread). |
+| `push_devices` | `user_id`, `platform` (`android`, `ios`), `token` (unique, ≤ 4096), `created_at`, `last_seen`. One user a token: the last to register on a shared phone gets its notifications. |
+| `notification_settings` | per user: `check_in_reminder`, `check_out_reminder`, both on by default (no row: both on). |
+| `reminders_sent` | `user_id`, `day` (Cairo), `kind`: the primary key, so a reminder goes once a person, day and kind. |
+
+**Endpoints** (under `/api`; the bell's count is read by the web as a background request, so it doesn't keep HR's 15
+minutes alive):
+
+| Endpoint | Who | Body → answer |
+|---|---|---|
+| `GET /me/notifications?page=N` | the signed-in user (the one viewed as, while viewing) | → `{ items: [{ id, kind, title, body, link, readAt, createdAt }], page, pageSize: 20, total, unread }`, newest first. |
+| `GET /me/notifications/unread-count` | the same | → `{ unread }` |
+| `POST /me/notifications/:id/read` | the same, their own | → 204; another's: 404. |
+| `POST /me/notifications/read-all` | the same | → 200 `{ marked }` |
+| `GET /me/notification-settings` · `PUT /me/notification-settings` | the same | `{ checkInReminder?, checkOutReminder? }` → both. |
+| `POST /me/push-devices` | an **app** session only, never while viewing as someone (403) | `{ token, platform }` → 204: registered, or refreshed (`last_seen`), or moved to this user. |
+| `POST /me/push-devices/unregister` | the signed-in user | `{ token }` → 204 (unknown: 204). The app's Sign out sends it. |
+
+**The emitter:** `NotificationsService.notify(userIds, { kind, title, body, link })` keeps one inbox row a user (active
+users only, each once; the texts cut to their limits, a link only on the site) and pushes it to their phones. It is
+called after the flow's transaction has committed, never throws into the flow, and returns once the rows are kept (the
+push goes on in the background). What each flow's step tells whom is `NoticesService` (`notices.service.ts`), called by
+the flows; the texts are `texts.ts`: short and general, names and dates (DD/MM/YYYY, 12-hour times), never a salary, an
+amount, a reason or a comment.
+
+| Flow (call site) | Kind → to whom | Title / body |
+|---|---|---|
+| Leave (`LeaveRequestsService.create`, `.decide`, `.hrCancel`) | `leave_waiting` → the one in charge of the step it is at: the manager it was sent to (direct manager, else team lead, else department head), then HR; a C-level person's HR step the CEO (or HR with Super Admin), never HR; never the requester. `leave_decided` → the employee once approved or rejected, or cancelled by HR. | "A leave request is waiting for you" / "Mona Adel, 22/10/2026–23/10/2026"; "Leave request approved" / the days; "Leave cancelled by HR". |
+| Permission (`PermissionRequestsService.create`, `.decide`, `.hrCancel`) | `permission_waiting`, `permission_decided`, as leave. | "A permission request is waiting for you" / "Mona Adel, 22/10/2026" … |
+| Attendance correction (`AttendanceCorrectionsService.create`, `.decide`) | `correction_waiting`, `correction_decided`, as leave. | "An attendance correction is waiting for you" … |
+| Reimbursement (`ReimbursementsService.create`, `.decide`; `PayrollService.markPaid`) | `reimbursement_waiting` → the manager, HR, then Finance (a C-level person's HR and Finance steps the CEO's); `reimbursement_decided` → the employee: approved by Finance, "To be paid with the October 2026 payroll", or rejected, "Your claim of 18/10/2026"; `reimbursement_paid` → the employee once the month's payroll is marked paid. | |
+| Raise request (`RaiseRequestsService.create`) | `raise_request_waiting` → HR (a C-level person's: the CEO, or HR with Super Admin), never the one who asked; never the employee or a manager (EMPLOYEE_LEVEL_SEES_RAISES is false). | "A raise request is waiting for you" / the name. |
+| Raise with the CEO (`RaisesService` HR's approval of a request, `.send`) | `pay_raise_waiting` → the CEO. | "A raise is waiting for your approval" / the name. |
+| The CEO's decision (`RaisesService.approve`, `.decline`, `.returnToHr`) | `pay_raise_decided` → HR (a C-level person's: HR with Super Admin), never the CEO who decided. | "Raise approved by the CEO" / the name … |
+| Payslip (`PayrollService.markPaid`, after the payslips are issued) | `payslip_issued` → each person paid (not on hold). | "Your October 2026 payslip is ready" / "Paid on 31/10/2026", opening `/app/payslips/<lineId>`. |
+| Home location (the home-location flow, to wire) | `home_location_waiting` → HR, then the CEO (a C-level person's: the CEO); `home_location_decided` → the employee. Kinds already allowed by the database. | Call `NotificationsService.notify(...)` after the step's transaction, as above. |
+
+Links are the site's (`/leave/<id>`, `/leave/permissions/<id>`, `/reimbursements/<id>`, `/attendance/corrections/<id>`,
+`/raise-requests?status=with_hr`, `/approvals`, `/my-attendance`), or already the phone pages' (`/app/payslips/<id>`);
+the phone pages open the same request's page under To Approve (the `_waiting` kinds and `pay_raise_decided`) or
+Requests (`apps/web/src/lib/notifications.ts notificationHref`, through `lib/surface.ts toAppHref`).
+
+**The reminders** (`reminder-rules.ts`, pure, tested with a fake clock; `reminders.service.ts`): `main.ts` starts a timer
+every 5 minutes in the API process (the tests' apps don't start it; they call `runOnce(now)`). Each round runs in a
+transaction holding a Postgres advisory lock (`pg_try_advisory_xact_lock(hashtext('people-system notification
+reminders'))`): another process finding it held sends nothing that round. Cairo time; the day before today is looked at
+too (a night shift's day is the day it starts).
+- **"You haven't checked in"** / "Your shift started at 9:00 AM. Check in when you start work.": on a working day of
+  the person's shift (not on approved leave, an official holiday, a day off of the shift, or a day with approved
+  permission), no check-in by the shift's start + grace + 30 minutes; sent until the day's hours stop counting.
+- **"Still checked in?"** / "You checked in at 9:05 AM. Check out when you leave.": the last press a check-in once the
+  hours stop counting (the shift's "Count hours until" if set, else its end + grace), within 4 hours of it.
+- Only for an employee with a work email an active user signs in with, a current employment under a shift (not a
+  freelancer), the reminder switched on; never on a day kept from Zoho People's import; once a person, day and kind (a
+  `reminders_sent` row made in the same transaction).
+
+**The FCM sender** (`fcm.ts`, `fcm-sender.service.ts`): FCM's HTTP v1 API
+(`https://fcm.googleapis.com/v1/projects/{project}/messages:send`) with an OAuth2 access token from the service
+account's own JWT (RS256 with `node:crypto`, scope `https://www.googleapis.com/auth/firebase.messaging`), kept until 5
+minutes before it ends; no Firebase library. The private key may come with literal `\n` and in quotes: both are read.
+Without all three settings (or with a key that doesn't read) push is **off**: said once in the API's log, the inbox
+works as ever. The message: `notification` { title, body }, `data` { id, kind, link } (strings), Android priority high
+on the channel `general`. A token FCM reports as `UNREGISTERED` or `INVALID_ARGUMENT` (not a field of ours) is removed; a
+refused access token is asked for again once; every call has a 10-second limit; nothing is thrown into a flow; never a
+token or a text in the log.
+
+**The shell:** `@capacitor/push-notifications` **8.1.3** (exact, the lock file updated, `npx cap sync android` run). The
+manifest: `POST_NOTIFICATIONS` (Android 13+, asked through the plugin's `requestPermissions`), and Firebase's defaults
+`default_notification_channel_id` = `general` and `default_notification_icon` = the app icon (`@mipmap/ic_launcher`),
+which also let the plugin show a notification that arrives while the app is open (`capacitor.config.ts`
+`plugins.PushNotifications.presentationOptions: ['badge', 'sound', 'alert']`). The app's own plugin **`TrendlixPush`**
+(`TrendlixPushPlugin.java`, registered in `MainActivity.java`): `isConfigured()` → `{ configured }`, true when the APK was
+built with google-services.json (Firebase's `google_app_id` is in its resources). Without it the Push Notifications
+plugin's `register()` and `unregister()` would stop the app, so the pages call them only when it says true.
+
+**CI** (`.github/workflows/mobile-android.yml`): before the Gradle build, "Firebase config for push notifications" writes
+the secret `GOOGLE_SERVICES_JSON` to `android/app/google-services.json` through an env var (`printf '%s'`, never echoed),
+checks it is JSON with the Android app `com.trendlix.people` (its shape only, never a value), and says "Push
+notifications: on" in the run's summary; without the secret it removes any such file, builds without push and leaves a
+notice. "Check the Gradle files for push" fails the build if the root `build.gradle` loses the google-services
+classpath (4.4.4) or `app/build.gradle` its template guard (the plugin applied only when the file is there). The file is
+in `.gitignore` (the root's and `apps/mobile/.gitignore`): the repository is public.
+
+**The website** (`apps/web`):
+- **The bell** with the unread count in the site's header and the phone pages' top bar (`components/notification-bell.tsx`),
+  a background request; signed out, an older API or the server unreachable: the bell without a count.
+- **The inbox:** `/notifications` and `/app/notifications` (one body, `app/(app)/notifications/inbox.tsx`): newest first,
+  20 a page (Newer / Older), the unread marked; pressing one marks it read and opens its page (the site's, or the phone
+  pages' through `notificationHref`); Mark all as read; **Reminders** with the two switches (those with an employee
+  profile).
+- **Push in the app** (`lib/native.ts`): `pushStatus()`, `registerForPush({ ask })`, `onPushOpened()`,
+  `onPushReceived()`, `forgetPush()`, each first asking `TrendlixPush` and doing nothing in an APK without Firebase. Home
+  offers "Get notified on this phone?" (**Turn on** / **Not now**, remembered on the phone) on an app session when the
+  phone hasn't been asked yet; Turn on asks the permission, makes the channel (high importance), registers the token
+  with the API and keeps it on the phone. The phone pages' layout registers again by itself on each open once allowed
+  (the token and `last_seen` kept fresh), opens a tapped notification's page, and refreshes the page (the bell) when one
+  arrives while open.
+- **Signing out in the app** (the top bar's menu, the site's header, Your Sessions): the form carries the phone's token
+  (`components/push-token-field.tsx`); `logout` unregisters it with the API before ending the session, and the phone
+  deletes its token too (the plugin's `unregister()`).
+
+**What only CI and a phone can prove** (no JDK or Android SDK on the Mac): the Gradle build with the plugin, Firebase
+Messaging and the google-services plugin applied from the secret; then on a phone: Home's offer and Android 13's
+permission prompt, a leave request reaching the manager's phone (closed, in the background, and open), tapping it opening
+the request under To Approve (also from a closed app), the check-in reminder at the shift's start + grace + 30 minutes,
+Sign out stopping them, the status bar icon (Android draws the app icon as a white shape: a proper notification icon
+comes with Phase 5's icon work).
+
 ### Phase 5 — Polish and offline
 - The offline screen, pull-to-refresh, app icon and splash from the logo, deep links from notifications to the page,
   back-button behaviour on Android, loading states, accessibility (sizes, contrast, screen readers).
@@ -370,7 +490,10 @@ What is in `apps/mobile` (the npm workspace `@trendlix/mobile`, installed from t
   permissions in `AndroidManifest.xml`, the app's own plugin `TrendlixLocationPlugin.java` registered in
   `MainActivity.java`, and Google Play services' location in `app/build.gradle` and `variables.gradle`; Phase 3's own
   plugin `TrendlixBiometricPlugin.java` (registered there too) and AndroidX Biometric in the same two Gradle files (the
-  manifest is unchanged: the library brings `USE_BIOMETRIC`). After adding a
+  manifest is unchanged: the library brings `USE_BIOMETRIC`); Phase 4's own plugin `TrendlixPushPlugin.java` (registered
+  there too), and in the manifest `POST_NOTIFICATIONS` and Firebase's default channel and icon. `app/google-services.json`
+  is written by CI from the secret `GOOGLE_SERVICES_JSON` and never committed; a build on a computer without it has no
+  push (to try push locally, download it from Firebase into `android/app/`, and never commit it). After adding a
   plugin package, `npx cap sync android` rewrites `capacitor.settings.gradle` and `app/capacitor.build.gradle` (kept
   in git, never edited by hand).
   `npx cap sync android` recreates what is not kept in git: `app/src/main/assets/public` (a copy of `www`),
@@ -451,19 +574,35 @@ npm run open:android -w @trendlix/mobile       # opens the project in Android St
     phone with Developer options, set a fake-GPS app as the *mock location app*, check in, and see "Fake GPS
     suspected" on the press and on Daily Attendance (Only with flagged check-ins); New reimbursement → Take a photo of
     the receipt → send it; open a PDF receipt from the request's page.
-- [ ] Phase 3 — Face ID / fingerprint sign-in — **built 20 Oct 2026, pending CI** (the "Mobile (Android)" run with
-  AndroidX Biometric and the `TrendlixBiometric` plugin; see "Phase 3 contract — what was built" above).
+- [x] Phase 3 — Face ID / fingerprint sign-in — **done 20 Oct 2026**: the "Mobile (Android)" run trendlix-people-0.1.6
+  built the APK with AndroidX Biometric and the app's own `TrendlixBiometric` plugin (see "Phase 3 contract — what was
+  built" above); on a phone the owner tries the list under "Only a phone can prove" below.
   - Done: the API's device credentials (table, endpoints, the limit on refusals, revoked on deactivation, password change
     and reset; a password change also ends the other sessions), the shell's `TrendlixBiometric` plugin, the web's bridge,
     the Home offer, the sign-in page's fingerprint button, Your Sessions' and the Users page's Fingerprint Sign-In.
   - Checked on the Mac: API unit tests, `tsc`, lint and the whole e2e suite (`device-credentials.e2e-spec.ts` added);
     `npx cap sync android`, `npx cap doctor`, `tsc` on the config; the Java compiled outside Gradle against the Capacitor
     and AndroidX Biometric sources.
-  - Only CI and a phone can prove: the Gradle build with AndroidX Biometric 1.1.0; then on a phone: Turn on after a
-    password sign-in, the prompt, the next open signing in with the fingerprint, "Use password", a lockout after wrong
-    fingers, a fingerprint added since (the password asked for), Sign out on Your Sessions forcing the password, a
-    face-only phone (`WEAK_ONLY`: no offer), Android 7–9's fingerprint dialog.
-- [ ] Phase 4 — Notifications
+  - Only a phone can prove (CI built it): Turn on after a password sign-in, the prompt, the next open signing in with
+    the fingerprint, "Use password", a lockout after wrong fingers, a fingerprint added since (the password asked for),
+    Sign out on Your Sessions forcing the password, a face-only phone (`WEAK_ONLY`: no offer), Android 7–9's fingerprint
+    dialog.
+  - Since (20 Oct 2026): the **home location** request among the phone pages (`/app/requests/new/home`, its page under
+    Requests and To Approve; see the Phase 1 contract's table): pages only, no new plugin; "Use my current location"
+    reads through the Phase 2 bridge (`getPosition()`).
+- [ ] Phase 4 — Notifications — **built 20 Oct 2026, pending CI** (the "Mobile (Android)" run with the Push Notifications
+  plugin and google-services.json from the secret; see "Phase 4 contract — what was built" above).
+  - Done: the API's notifications (tables, the emitter called from leave, permission, corrections, reimbursements, raise
+    requests and raises, payslips; the FCM sender; the two reminders on a 5-minute scheduler with an advisory lock; the
+    inbox, settings and push-device endpoints), the shell's plugin, `TrendlixPush` and manifest, the CI secret step, the
+    web's bell, inbox, reminder switches, Home's offer, the push bridge and unregistering on signing out.
+  - Checked on the Mac: API unit tests (FCM key, JWT, outcomes, the sender against a fake Google, the reminders with a fake
+    clock, the texts), `tsc`, lint and the whole e2e suite (`notifications.e2e-spec.ts` added, the payslip notice in
+    `payslips.e2e-spec.ts`); web `next typegen`, `tsc`, `eslint`, `vitest` and the build; `npx cap sync android`, `npx cap
+    doctor`, `tsc` on the config; the workflow parsed and its Firebase step run with no, bad, wrong and good JSON.
+  - Only CI and a phone can prove: see the end of "Phase 4 contract — what was built".
+  - Left for the owner: nothing; the secret and the server's three values are set. After the deploy, the API's log
+    should not say "Push notifications are off".
 - [ ] Phase 5 — Polish and offline
 - [ ] Phase 6 — iPhone
 

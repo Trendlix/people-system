@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import { DeleteForm } from '@/components/form';
+import { LocationsMap } from '@/components/map/maps';
 import type { CheckInLocationView } from '@/lib/attendance-types';
 import { titleCase } from '@/lib/format';
+import { mapHref } from '@/lib/map-point';
 import type { FormState } from '@/lib/types';
 import { LocationForm } from './location-form';
-import { LocationsMap } from './maps';
-import { locationText, mapHref } from './setup';
+import { locationText } from './setup';
 
 // One check-in location on Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"): its
 // name, point and radius, a map to check the point, Edit (HR and Admin) and Remove (a Super Admin, as every deletion).

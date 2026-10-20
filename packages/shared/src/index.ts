@@ -400,3 +400,13 @@ export * from './device-credentials.js';
 // whatever is right"): IP addresses and ranges, the office's networks, who is locked (Office staff, unless HR lets them
 // check in from anywhere), and the address the website signs for the API
 export * from './office-network.js';
+
+// home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from
+// home"; "Label Home, flag elsewhere", HR then the CEO): asked by anyone, decided by HR then the CEO, one approved a
+// person, its point kept only while decided or in force, and who sees and decides each
+export * from './home-locations.js';
+
+// notifications (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for someone, a check-in
+// reminder)"): what each one is about, the inbox's page, the two reminders and the person's switches, the phones' push
+// tokens and the Android channel
+export * from './notifications.js';

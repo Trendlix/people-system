@@ -117,6 +117,51 @@ jobs:
       - name: Sync the Android project
         run: npx cap sync android
 
+      # Push notifications (owner, 20 October 2026: "Push notifications: yes"; apps/mobile/README.md, Phase 4) need the
+      # Firebase project's google-services.json, kept as the repository secret GOOGLE_SERVICES_JSON (the file's contents
+      # as they are). The repository is public: the file is never committed (.gitignore) and never printed, only written
+      # from the secret through an env var. Without the secret the APK is built without push, and a notice says so: the
+      # google-services plugin is applied only when the file is there (app/build.gradle), and the app's own TrendlixPush
+      # plugin tells the pages, which then don't offer notifications on the phone (the inbox works all the same).
+      - name: Firebase config for push notifications
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          file=android/app/google-services.json
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            rm -f "$file"
+            echo "MOBILE_PUSH=off" >> "$GITHUB_ENV"
+            echo "::notice title=Push notifications off::The repository secret GOOGLE_SERVICES_JSON is not set, so this APK is built without push notifications (the inbox still works). See apps/mobile/README.md, Phase 4."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > "$file"
+          # its shape only, never a value: JSON, with the Android app com.trendlix.people in it
+          node -e '
+            const fs = require("fs");
+            let config;
+            try {
+              config = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            } catch {
+              console.log("::error::GOOGLE_SERVICES_JSON is not JSON: paste the google-services.json file from Firebase as it is.");
+              process.exit(1);
+            }
+            const apps = (config.client || []).map((c) => c && c.client_info && c.client_info.android_client_info && c.client_info.android_client_info.package_name);
+            if (!apps.includes("com.trendlix.people")) {
+              console.log("::error::google-services.json has no Android app com.trendlix.people: add it in the Firebase project and save its file again as GOOGLE_SERVICES_JSON.");
+              process.exit(1);
+            }
+          ' "$file"
+          echo "MOBILE_PUSH=on" >> "$GITHUB_ENV"
+          echo "Firebase config written for com.trendlix.people: push notifications on."
+
+      # the template's guards that push needs, checked so a regenerated Android project can't drop them silently: the
+      # google-services classpath at the root, and the plugin applied only when the file is there
+      - name: Check the Gradle files for push
+        working-directory: apps/mobile/android
+        run: |
+          grep -q "classpath 'com.google.gms:google-services:" build.gradle || { echo "::error::android/build.gradle has no google-services classpath."; exit 1; }
+          grep -q "file('google-services.json')" app/build.gradle && grep -q "apply plugin: 'com.google.gms.google-services'" app/build.gradle || { echo "::error::android/app/build.gradle no longer applies the google-services plugin when google-services.json is there."; exit 1; }
+
       - name: Build
         working-directory: apps/mobile/android
         run: |
@@ -139,6 +184,7 @@ jobs:
             echo "- Debug APK, version code $MOBILE_VERSION_CODE, $(du -h "$dest" | cut -f1)"
             echo "- APK SHA-256 \`$(sha256sum "$dest" | cut -d' ' -f1)\`"
             echo "- Signing certificate SHA-256 \`${cert:-unknown}\`"
+            echo "- Push notifications: ${MOBILE_PUSH:-off}"
             echo "- Install: Artifacts below -> trendlix-people-$MOBILE_VERSION_NAME -> unzip -> open the .apk on the phone (apps/mobile/README.md, section 6)"
           } >> "$GITHUB_STEP_SUMMARY"
 

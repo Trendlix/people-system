@@ -7,9 +7,11 @@ import { asksPermission } from '../../../../(app)/leave/permissions';
 // and on New Request, as the site offers each: leave under the labour law (not a freelancer or an unpaid intern),
 // permission too while Leave Setup gives hours a month, a reimbursement for anyone with a profile, a correction during
 // an employment, and a raise when they may ask for one now (for themself, or a manager for a direct report). The forms
-// check again, and the API checks everything. Pure code, tested; relative imports, as vitest doesn't know "@/".
+// check again, and the API checks everything. Pure code, tested; relative imports, as vitest doesn't know "@/". A home
+// location for anyone with a profile (owner, 20 October 2026: "allow other users to request to add their home locations
+// when working from home"; everyone may ask, for occasional days at home too).
 
-export type AskKind = 'leave' | 'permission' | 'reimbursement' | 'correction' | 'raise';
+export type AskKind = 'leave' | 'permission' | 'reimbursement' | 'correction' | 'raise' | 'home';
 
 export interface AskOption {
   key: AskKind;
@@ -25,6 +27,7 @@ const OPTIONS: Record<AskKind, AskOption> = {
   reimbursement: { key: 'reimbursement', href: APP_PATHS.newReimbursement, label: 'Reimbursement', text: 'An expense you paid for the company, with a photo of the receipt.' },
   correction: { key: 'correction', href: APP_PATHS.newCorrection, label: 'Correction', text: 'A day of your attendance that isn’t right: a check-in or check-out forgotten.' },
   raise: { key: 'raise', href: APP_PATHS.newRaise, label: 'Raise', text: 'A raise for yourself, or for a direct report, with a reason.' },
+  home: { key: 'home', href: APP_PATHS.newHome, label: 'Home location', text: 'Your home, for the days you work from there: check-ins there show as Home.' },
 };
 
 /**
@@ -49,5 +52,6 @@ export function askOptions(p: {
   keys.push('reimbursement');
   if (e) keys.push('correction');
   if (p.asksRaise) keys.push('raise');
+  keys.push('home');
   return keys.map((k) => OPTIONS[k]);
 }

@@ -24,6 +24,7 @@ import { fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { seesSalary } from '../employees/access.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { NoticesService } from '../notifications/notices.service.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { assertCurrent, comparable, ContractsService, fields, payTermsOf, salaryMasked, toData, type EmploymentRow } from './contracts.service.js';
@@ -134,6 +135,7 @@ export class RaisesService {
     private readonly allowances: AllowancesService,
     private readonly lawRates: LawRatesService,
     private readonly confidential: ConfidentialService,
+    private readonly notices: NoticesService,
   ) {}
 
   /**
@@ -332,11 +334,14 @@ export class RaisesService {
       if (problem) throw new BadRequestException(problem);
     }
     const comment = dto.comment || null;
-    return this.step(before, { approval: 'pending_ceo', sentAt: new Date(), returnedReason: null }, 'submit', 'with_ceo', user, employment, comment ? { comment } : {}, {
+    const view = await this.step(before, { approval: 'pending_ceo', sentAt: new Date(), returnedReason: null }, 'submit', 'with_ceo', user, employment, comment ? { comment } : {}, {
       kind: 'sent',
       comment,
       gross: before.grossSalary.toNumber(),
     });
+    // to the CEO (Phase 4: notifications)
+    await this.notices.payRaiseSent(id);
+    return view;
   }
 
   /** The CEO sends it back to HR with a comment (HR alone sees it); HR changes it and sends it again. */
@@ -344,7 +349,10 @@ export class RaisesService {
     const comment = commentOf(dto);
     const before = await this.raise(id);
     if (before.approval !== 'pending_ceo') throw this.wrongStep(before, 'returned');
-    return this.step(before, { approval: 'draft', returnedReason: comment }, 'return', 'with_hr', user, undefined, { reason: comment }, { kind: 'returned', comment });
+    const view = await this.step(before, { approval: 'draft', returnedReason: comment }, 'return', 'with_hr', user, undefined, { reason: comment }, { kind: 'returned', comment });
+    // to HR (Phase 4: notifications)
+    await this.notices.payRaiseDecided(before.employmentId, 'returned', user.id);
+    return view;
   }
 
   /**
@@ -364,7 +372,7 @@ export class RaisesService {
     const pay = figure ? await this.otherPay(before, previous, figure) : null;
     const decision: RaiseDecision = figure ? 'approve_other' : 'approve';
     const gross = pay?.grossSalary ?? before.grossSalary.toNumber();
-    return this.step(
+    const view = await this.step(
       before,
       { approval: 'approved', approvedById: user.id, approvedAt: new Date(), returnedReason: null, ...pay, ...(reason && { raiseReason: reason.to }) },
       'approve',
@@ -381,6 +389,9 @@ export class RaisesService {
       },
       reason ? { raiseReason: reason.to } : {},
     );
+    // to HR, who prepares it for signing (Phase 4: notifications)
+    await this.notices.payRaiseDecided(before.employmentId, 'approved', user.id);
+    return view;
   }
 
   /**
@@ -417,6 +428,8 @@ export class RaisesService {
         diff: { contract: before.number, status: { from: before.raiseRequest.status, to: 'declined' }, stage: 'ceo', decision: 'reject', comment },
       });
     }
+    // to HR (Phase 4: notifications)
+    await this.notices.payRaiseDecided(before.employmentId, 'rejected', user.id);
   }
 
   /**
@@ -770,6 +783,8 @@ export class RaisesService {
         },
       });
       await this.audit.record({ userId: user.id, action: 'submit', entityType: REQUEST, entityId: request.id, diff: { contract: row.number, status: { from: 'with_hr', to: 'with_ceo' } } });
+      // sent to the CEO at once (Phase 4: notifications)
+      await this.notices.payRaiseSent(row.id);
     }
     return contractView(row, await this.contracts.context(user, employment));
   }

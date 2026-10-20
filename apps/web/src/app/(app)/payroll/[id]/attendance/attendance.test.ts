@@ -147,6 +147,8 @@ describe('the review', () => {
 describe('checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace Zoho")', () => {
   it('says a place the location of which is unknown, beside the office and remote', () => {
     expect([placeText('office'), placeText('remote'), placeText('unknown'), placeText(null), placeText(undefined)]).toEqual(['Office', 'Remote', 'Location unknown', '—', '—']);
+    // a check-in at the person's approved home (20 October 2026)
+    expect(placeText('home')).toBe('Home');
   });
 
   it('lets HR and the CEO refresh a draft from attendance, no one else and no other run', () => {

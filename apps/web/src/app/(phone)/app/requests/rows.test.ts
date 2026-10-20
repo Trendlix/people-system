@@ -1,6 +1,7 @@
 import { seesRaiseRequests } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
+import type { HomeLocationView } from '../../../../lib/home-location-types';
 import type { RaiseRequest } from '../../../../lib/raise-types';
 import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } from '../../../../lib/types';
 import {
@@ -120,8 +121,8 @@ describe('the filters', () => {
   });
 
   it('counts each chip within the status chosen', () => {
-    expect(appRequestCounts(all, { status: '' })).toEqual({ '': 5, leave: 1, permission: 1, reimbursement: 1, correction: 1, raise: 1 });
-    expect(appRequestCounts(all, { status: 'open' })).toEqual({ '': 3, leave: 1, permission: 0, reimbursement: 1, correction: 0, raise: 1 });
+    expect(appRequestCounts(all, { status: '' })).toEqual({ '': 5, leave: 1, permission: 1, reimbursement: 1, correction: 1, raise: 1, home: 0 });
+    expect(appRequestCounts(all, { status: 'open' })).toEqual({ '': 3, leave: 1, permission: 0, reimbursement: 1, correction: 0, raise: 1, home: 0 });
   });
 });
 
@@ -156,8 +157,8 @@ describe('a row', () => {
 
 describe('raise requests kept from the employee level (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from managers too")', () => {
   it('offers the Raises chip only to someone who sees raise requests, by the shared helper', () => {
-    expect(appRequestKindsFor(true)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'raise']);
-    expect(appRequestKindsFor(false)).toEqual(['leave', 'permission', 'reimbursement', 'correction']);
+    expect(appRequestKindsFor(true)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home']);
+    expect(appRequestKindsFor(false)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'home']);
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['employee'] }))).not.toContain('raise');
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['manager'] }))).not.toContain('raise');
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['ceo'] }))).toContain('raise');
@@ -170,5 +171,47 @@ describe('raise requests kept from the employee level (owner, 20 October 2026: "
 
   it('lists no raise rows when none are read', () => {
     expect(appRequestRows({ leave: [leave] }).map((r) => r.kind)).toEqual(['leave']);
+  });
+});
+
+// owner, 20 October 2026: "allow other users to request to add their home locations when working from home"
+describe('home location requests', () => {
+  const home = {
+    id: ID(6),
+    kind: 'home',
+    latitude: 30.101234,
+    longitude: 31.380123,
+    label: 'Home, Nasr City',
+    radiusMetres: 100,
+    status: 'with_hr',
+    confidential: false,
+    approvedAt: null,
+    rejectedStage: null,
+    rejectReason: null,
+    createdAt: '2026-10-20T10:00:00.000Z',
+    steps: [],
+  } as unknown as HomeLocationView;
+  const removed = { ...home, id: ID(7), status: 'removed', latitude: null, longitude: null, label: null, createdAt: '2026-10-01T10:00:00.000Z' } as HomeLocationView;
+  const rows = appRequestRows({ leave: [leave], homes: [home, removed] });
+
+  it('are listed with the rest, newest first, open while with HR or the CEO', () => {
+    expect(rows.map((r) => [r.kind, r.id, r.open])).toEqual([
+      ['home', ID(6), true],
+      ['leave', ID(1), true],
+      ['home', ID(7), false],
+    ]);
+    expect(appRequestCounts(rows, { status: '' })).toMatchObject({ '': 3, home: 2, leave: 1 });
+    expect(filterAppRequests(rows, { kind: 'home', status: 'open' }).map((r) => r.id)).toEqual([ID(6)]);
+    expect(readAppRequestFilters({ kind: 'home' }, appRequestKindsFor(false))).toEqual({ kind: 'home', status: '' });
+  });
+
+  it('say what they are, where they stand, and open in the phone pages', () => {
+    const [open, , gone] = rows;
+    expect(appRequestTitle(open)).toBe('Home location');
+    expect(appRequestWhen(open)).toBe('Home, Nasr City · 100 m');
+    expect(appRequestProgress(open)).toBe('With HR, who decides it first; then the CEO');
+    expect(appRequestWhen(gone)).toBe('Point deleted');
+    expect(appRequestProgress(gone)).toBe('Removed: its point is deleted');
+    expect(appRequestHref(open)).toBe(`/app/requests/home/${ID(6)}`);
   });
 });

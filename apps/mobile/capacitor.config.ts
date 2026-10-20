@@ -44,6 +44,13 @@ const config: CapacitorConfig = {
     // webContentsDebuggingEnabled is left to Capacitor: on in debug builds (the test APKs, so chrome://inspect works
     // from a computer), off in release builds
   },
+  plugins: {
+    // push notifications (owner, 20 October 2026: "Push notifications: yes"; README Phase 4): one that arrives while the
+    // app is open is shown as well (with its sound), as one does while the app is closed; the page's bell refreshes too
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
+  },
 };
 
 export default config;

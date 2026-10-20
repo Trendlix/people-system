@@ -12,6 +12,8 @@ import { CheckInService } from './check-in.service.js';
 import { CorrectionDaysService } from './correction-days.service.js';
 import { AttendanceCorrectionsController, MyCorrectionsController } from './corrections.controller.js';
 import { AttendanceCorrectionsService } from './corrections.service.js';
+import { HomeLocationsController, MyHomeLocationsController } from './home-locations.controller.js';
+import { HomeLocationsService } from './home-locations.service.js';
 
 // Attendance (owner, 19 October 2026: attendance runs in Zoho People today, "Import Zoho now, replace it later"): Zoho
 // People's attendance entries imported on a draft payroll run, each day kept (AttendanceDay) for the system's own
@@ -23,10 +25,21 @@ import { AttendanceCorrectionsService } from './corrections.service.js';
 // use too: global). Attendance corrections (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to
 // check out")"): asked by the employee, decided by their manager then HR, or made by HR directly; the corrected day kept
 // over the day it corrects. Check-in Setup (owner, 20 October 2026: "Own page, several locations"): the check-in locations
-// and the office networks with the lock on check-ins (CheckInSetupService).
+// and the office networks with the lock on check-ins (CheckInSetupService). Home locations (owner, 20 October 2026: "allow
+// other users to request to add their home locations when working from home"): asked by anyone, decided by HR then the
+// CEO; a check-in within the person's approved home is Home (HomeLocationsService).
 @Global()
 @Module({
-  controllers: [AttendanceController, AttendanceImportsController, CheckInController, CheckInSetupController, MyCorrectionsController, AttendanceCorrectionsController],
+  controllers: [
+    AttendanceController,
+    AttendanceImportsController,
+    CheckInController,
+    CheckInSetupController,
+    MyCorrectionsController,
+    AttendanceCorrectionsController,
+    MyHomeLocationsController,
+    HomeLocationsController,
+  ],
   providers: [
     AttendanceService,
     AttendanceImportsService,
@@ -36,6 +49,7 @@ import { AttendanceCorrectionsService } from './corrections.service.js';
     CheckInSetupService,
     CorrectionDaysService,
     AttendanceCorrectionsService,
+    HomeLocationsService,
   ],
   exports: [AttendanceDaysService, AttendanceFillService],
 })

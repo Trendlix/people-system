@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
-import { todayInCairo } from '../src/common/date-only.js';
+import { shownDate, todayInCairo } from '../src/common/date-only.js';
 import { firstDay, monthName, monthsLater } from '../src/payroll/months.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { readZip } from '../src/templates/zip.js';
@@ -185,6 +185,13 @@ describe('Payslips (e2e)', () => {
     await getRun();
     expect(run.payslips).toBe(notHeld.length);
     expect(lineOf(broken).payslips.en).toBe(true);
+  });
+
+  it('tells each person paid that their payslip is ready, not the one on hold (Phase 4: notifications)', async () => {
+    const notes = await prisma.notification.findMany({ where: { userId: paidUserId, kind: 'payslip_issued' }, select: { title: true, body: true, link: true } });
+    expect(notes).toEqual([{ title: `Your ${monthName(MONTH)} payslip is ready`, body: `Paid on ${shownDate(todayInCairo())}`, link: `/app/payslips/${lineOf(paid).id}` }]);
+    const heldEmail = (await prisma.employee.findUniqueOrThrow({ where: { id: held.id }, select: { workEmail: true } })).workEmail!;
+    expect(await prisma.notification.count({ where: { userId: await userIdOf(heldEmail), kind: 'payslip_issued' } })).toBe(0);
   });
 
   it('a payslip is a protected PDF, shown in the browser, named after the month and the employee', async () => {

@@ -20,6 +20,7 @@ import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { seesEmployeeFile } from '../employees/access.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { NoticesService } from '../notifications/notices.service.js';
 import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { RunAdjustmentsService } from '../payroll/adjustments/run-adjustments.service.js';
@@ -67,6 +68,7 @@ export class ReimbursementsService {
     private readonly audit: AuditService,
     private readonly runs: RunAdjustmentsService,
     private readonly confidential: ConfidentialService,
+    private readonly notices: NoticesService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -162,6 +164,8 @@ export class ReimbursementsService {
         status,
       },
     });
+    // to the one in charge of its first step (Phase 4: notifications), once it is saved
+    await this.notices.reimbursement(id, 'sent');
     return this.one(id, user);
   }
 
@@ -333,6 +337,8 @@ export class ReimbursementsService {
       });
       await this.runs.syncDrafts([month], [before.employeeId], user);
     }
+    // to the next step's decider (HR, Finance), or the employee once it is approved or rejected (Phase 4: notifications)
+    await this.notices.reimbursement(id, 'decided');
     return this.one(id, user);
   }
 
