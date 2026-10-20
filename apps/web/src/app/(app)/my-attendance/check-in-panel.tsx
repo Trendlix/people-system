@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
-import { NETWORK_NEEDED_TEXT } from '@trendlix/shared';
+import { LOCATION_NEEDED_TEXT, NETWORK_NEEDED_TEXT } from '@trendlix/shared';
 import type { CheckInTodayView, PunchResultView } from '@/lib/attendance-types';
 import { getPosition } from '@/lib/native';
 import { useNativeApp } from '@/lib/use-native';
@@ -37,13 +37,17 @@ import { appLocationRefusal, correctionLinkFor } from './network-lock';
 // location is read through the one bridge to the phone (lib/native.ts): the employee app's own when it has it, else the
 // browser's. `big`: the phone pages' Home (owner, 20 October 2026: the employee app, "to enable them to check in and
 // out"), a larger button across the screen and a larger counter. When the location couldn't be read, what to do about
-// it is said under what was kept (inside the app: the phone's settings for TrendLIX People; the app's Phase 2, "a clear
+// it is said under what was kept (inside the app: the phone's settings for Trendlix People; the app's Phase 2, "a clear
 // message when refused"). Under the button, the check-in counter (owner, 20 October 2026: "employees need to see a
 // checkin counter after their checkin", check-in-counter.tsx): the time worked so far while checked in, and the day's
 // hours counted once checked out, in place of the hours counted below. Check-ins locked to the office network (owner, 20
 // October 2026): a locked person is told so before pressing, and a press refused off it links to ask for a correction
 // of the day. Inside the app a press without a location isn't sent (owner, 20 October 2026: "Refuse without location",
-// "App only"): it says how to turn the location on; the API refuses it all the same.
+// "App only"): it says how to turn the location on; the API refuses it all the same. On the website, with Check-in
+// Setup's switch refusing presses without a location for the person (owner, 20 October 2026: "Company switch +
+// exceptions"), they are told before pressing to allow it when the browser asks, and a press refused for it says how to
+// allow it in the browser and links to ask for a correction of the day. The spot is kept with each press (owner, the
+// same day: "Yes, keep the spot"): the note under the button says so, and today's list opens each on a map.
 
 export function CheckInPanel({ initial, compact = false, big = false }: { initial: CheckInTodayView; compact?: boolean; big?: boolean }) {
   const [pressed, setPressed] = useState<PunchResultView | null>(null);
@@ -51,7 +55,8 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   const [errors, setErrors] = useState<string[]>([]);
   const [help, setHelp] = useState<string | null>(null);
   const [phase, setPhase] = useState<PunchPhase>('idle');
-  const [offNetwork, setOffNetwork] = useState(false);
+  // refused off the office network or without a location: the day's correction a click away
+  const [askCorrection, setAskCorrection] = useState(false);
   const pathname = usePathname();
   const inApp = useNativeApp();
   const noteId = useId();
@@ -67,7 +72,7 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
     setErrors([]);
     setMessages([]);
     setHelp(null);
-    setOffNetwork(false);
+    setAskCorrection(false);
     setPhase('locating');
     const location = await getPosition();
     const help = 'locationError' in location ? locationHelpText(location.locationError, inApp) : null;
@@ -85,7 +90,7 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
       const result = await punchAttendance(punchBody(kind, location));
       if ('errors' in result) {
         setErrors(result.errors);
-        setOffNetwork(!!result.offNetwork);
+        setAskCorrection(!!result.offNetwork || !!result.noLocation);
       } else {
         setPressed(result.view);
         setMessages(result.view.messages);
@@ -109,6 +114,8 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
     <div className="space-y-4">
       {view.expectedText && <p className="text-sm">{view.expectedText}</p>}
       {view.network?.locked && <p className="text-sm">{NETWORK_NEEDED_TEXT}</p>}
+      {/* on the website, when the company refuses presses without a location for them (inside the app it is always needed) */}
+      {view.location?.required && !inApp && <p className="text-sm">{LOCATION_NEEDED_TEXT}</p>}
 
       <div>
         <button
@@ -144,7 +151,7 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
       {errors.length > 0 && (
         <div role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
           {errors.join(' ')}
-          {offNetwork && (
+          {askCorrection && (
             <>
               {' '}
               <Link href={correctionLinkFor(pathname, view.date)} className="font-semibold text-danger">
@@ -196,6 +203,14 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
                 <span className="text-muted">
                   {r.place}
                   {r.accuracy && <span className="tabular-nums"> · {r.accuracy}</span>}
+                  {r.map && (
+                    <>
+                      {' · '}
+                      <a href={r.map.href} target="_blank" rel="noopener noreferrer" title={r.map.title} className="font-semibold">
+                        Map<span className="sr-only"> of the {r.label.toLowerCase()} at {r.time} (opens in a new tab)</span>
+                      </a>
+                    </>
+                  )}
                 </span>
                 {r.flags.length > 0 && (
                   <span className="flex w-full flex-wrap gap-1.5">

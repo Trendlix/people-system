@@ -8,7 +8,7 @@ import { PhoneLoading } from '../../../ui';
 // (attendance/corrections/[id]/correction.tsx), its back link to the phone pages' My Requests, and what is done on it
 // coming back here.
 
-export const metadata: Metadata = { title: 'Attendance Correction · TrendLIX People' };
+export const metadata: Metadata = { title: 'Attendance Correction · Trendlix People' };
 
 export default function PhoneRequestsCorrectionPage({ params, searchParams }: PageProps<'/app/requests/correction/[id]'>) {
   return (

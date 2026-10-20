@@ -97,26 +97,35 @@ export function accessTokenOf(body: unknown, now: number): AccessToken | null {
   return { value: b.access_token, renewAt: now + Math.max(seconds * 1000 - TOKEN_RENEW_EARLY_MS, 60_000) };
 }
 
-/** A notification as it is pushed: its inbox row's id, kind, texts and where it opens. */
+/**
+ * A notification as it is pushed: its inbox row's id, kind, texts and where it opens; `tag`, for one sent again and
+ * again (the check-in reminder, every 10 minutes: CHECK_IN_REMINDER_TAG), so each takes the place of the last.
+ */
 export interface PushPayload {
   id: string;
   kind: string;
   title: string;
   body: string;
   link: string | null;
+  tag?: string | null;
 }
 
 /**
  * The message for one phone: the notification Android shows by itself while the app is closed (on the app's channel,
  * high priority so it shows at once), and the data the app reads when it is tapped (every value a string, as FCM needs).
+ * With a tag (owner, 20 October 2026: the check-in reminder "every 10 minutes"), Android's `notification.tag`: the
+ * phone replaces the one shown with that tag instead of adding another, and, as FCM never sets "alert only once", it
+ * still sounds and vibrates each time (the default sound and vibration, the highest priority on phones before Android 8,
+ * where the channel's importance doesn't decide it).
  */
 export function fcmMessage(token: string, n: PushPayload) {
+  const tagged = n.tag ? { tag: n.tag, notification_priority: 'PRIORITY_HIGH', default_sound: true, default_vibrate_timings: true } : {};
   return {
     message: {
       token,
       notification: { title: n.title, body: n.body },
       data: { id: n.id, kind: n.kind, link: n.link ?? '' },
-      android: { priority: 'high', notification: { channel_id: PUSH_CHANNEL.id } },
+      android: { priority: 'high', notification: { channel_id: PUSH_CHANNEL.id, ...tagged } },
     },
   };
 }

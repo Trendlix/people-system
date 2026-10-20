@@ -348,6 +348,12 @@ export interface Employment {
    * exceptions"): HR lets an Office employee check in off the office network. Left out by an API from before it.
    */
   checkInAnywhere?: boolean;
+  /**
+   * "Can check in without a location" (owner, 20 October 2026: "Company switch + exceptions"): with Check-in Setup's
+   * switch refusing presses without a location, HR lets this person press on the website without one. Left out by an
+   * API from before it.
+   */
+  checkInWithoutLocation?: boolean;
   jdAcknowledgedAt: string | null;
   /** The last working day; null while current. */
   endDate: string | null;
@@ -729,7 +735,7 @@ export interface OpenSession {
 }
 
 /**
- * A phone that signs in to the TrendLIX People app with a fingerprint (owner, 20 October 2026: chose Face ID /
+ * A phone that signs in to the Trendlix People app with a fingerprint (owner, 20 October 2026: chose Face ID /
  * fingerprint sign-in for the app; README: "Sign-in: Face ID / fingerprint after the first password sign-in"), as Your
  * Sessions and the Users page list it (GET /auth/devices, GET /users/:id/devices): only the ones that still sign in,
  * newest first. `lastUsedAt`: its last fingerprint sign-in; null when never used.

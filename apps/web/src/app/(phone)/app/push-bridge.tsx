@@ -7,7 +7,7 @@ import { pushHref } from '@/lib/notifications';
 import { turnOnPush } from '@/lib/push-client';
 
 // Push notifications in the app, once for the phone pages (owner, 20 October 2026: "Push notifications: yes (decisions,
-// things waiting for someone, a check-in reminder)"; apps/mobile/README.md, Phase 4). Inside the TrendLIX People app
+// things waiting for someone, a check-in reminder)"; apps/mobile/README.md, Phase 4). Inside the Trendlix People app
 // only, never on the server nor in a browser: once notifications are allowed, it registers the phone again by itself
 // each time the phone pages open (opening the app, after signing in, back from the full site: the token can change, the
 // person signed in too, and the API keeps when it was last seen), errors ignored; a notification tapped opens its page on

@@ -29,7 +29,7 @@ const isText = (value: unknown, max = MAX_TEXT): value is string => typeof value
 /** Turn on (Home, Your Sessions): the API's new credential for this phone, `{ id, secret }`, the secret this once. */
 export async function turnOnFingerprint(input: { deviceName: string; platform: string }): Promise<{ id: string; secret: string } | { error: string }> {
   const platform: unknown = input?.platform;
-  if (!isDevicePlatform(platform)) return { error: 'Fingerprint sign-in is turned on in the TrendLIX People app, on an Android phone or an iPhone.' };
+  if (!isDevicePlatform(platform)) return { error: 'Fingerprint sign-in is turned on in the Trendlix People app, on an Android phone or an iPhone.' };
   const deviceName = deviceNameOf(input?.deviceName) ?? UNNAMED[platform];
   let made: { id?: unknown; secret?: unknown } | undefined;
   try {

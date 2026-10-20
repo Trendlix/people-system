@@ -8,7 +8,7 @@ import { PhoneLoading } from '../../../ui';
 // (leave/permissions/[id]/permission-request.tsx), its back link to the phone pages' My Requests, and what is done on
 // it coming back here.
 
-export const metadata: Metadata = { title: 'Permission · TrendLIX People' };
+export const metadata: Metadata = { title: 'Permission · Trendlix People' };
 
 export default function PhoneRequestsPermissionPage({ params, searchParams }: PageProps<'/app/requests/permission/[id]'>) {
   return (

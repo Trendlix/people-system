@@ -5,7 +5,8 @@ import { IsBoolean, IsIn, IsNumber, IsOptional, Max, Min } from 'class-validator
 // A press of Check in or Check out (owner, 19 October 2026: "Check-in through the system (phone or web with the office
 // location check …)"): in or out, and what the browser read of where it is, its point and accuracy in metres, or why
 // it couldn't (refused, unavailable, too slow). Never a time: the server's is the punch's. The point is read to tell
-// office from remote and dropped, never kept. Inside the employee app on Android, also whether the phone said the
+// office from remote, and kept with the press since 20 October 2026 (owner: "Yes, keep the spot"), read only then and
+// never tracked. Inside the employee app on Android, also whether the phone said the
 // location is a mock one (apps/mobile/README.md Phase 2, owner, 20 October 2026: "Android mock location → mock: true
 // on the punch → flagged ("Fake GPS suspected")"); a browser can't tell, and sends nothing.
 

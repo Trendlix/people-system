@@ -33,6 +33,8 @@ export const removesLocations = (user: WithRoles): boolean => canDelete(user);
 /** The page's sections, for links into it. */
 export const LOCATIONS_ID = 'check-in-locations';
 export const NETWORKS_ID = 'office-networks';
+/** The switch refusing presses without a location (owner, 20 October 2026: "Company switch + exceptions"). */
+export const LOCATION_RULE_ID = 'without-location';
 export const ZOHO_ID = 'zoho-addresses';
 /** The approved home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home"). */
 export const HOMES_ID = 'home-locations';
@@ -127,6 +129,27 @@ export function lockText(state: Pick<NetworksState, 'lock' | 'inForce' | 'server
   if (state.lock && !state.networks.length) return 'Switched on, but not in force: there is no office network.';
   return 'Off: everyone checks in from anywhere; a check-in on an office network still counts as at the office.';
 }
+
+// ---------- presses without a location (owner, 20 October 2026: "i want a flag to restrict checkin and out from
+// unknown locations"; asked, "Company switch + exceptions", "Allow as Office") ----------
+
+/** The switch's form, as PUT /attendance/check-in-setup/location-rule takes it (a hidden "false", then the checkbox's "true"). */
+export const locationRuleBody = (fd: FormData): { refuseWithoutLocation: boolean } => ({ refuseWithoutLocation: fd.getAll('refuseWithoutLocation').includes('true') });
+
+/** The switch as it stands, in a sentence; `networkReady`: an office network counts without a location (the key in place and a network). */
+export function locationRuleText(rule: { refuseWithoutLocation: boolean }, networkReady: boolean | null): string {
+  if (!rule.refuseWithoutLocation) return 'Off: on the website a check-in without a location is kept as location unknown. In the app a location is always needed.';
+  const office = networkReady
+    ? ' A press from an office network without one counts as at the office.'
+    : networkReady === false
+      ? ' Without the key or an office network (above), a press from the office without a location is refused too.'
+      : '';
+  return `On: on the website a check-in or check-out without a location is refused, unless HR lets the person check in without one on their profile.${office} In the app a location is always needed.`;
+}
+
+/** What the saved switch says. */
+export const locationRuleSaved = (on: boolean): string =>
+  on ? 'Saved. Check-ins and check-outs without a location are refused from now on.' : 'Saved. Check-ins without a location are kept as location unknown again.';
 
 // ---------- Zoho People's check-in addresses ----------
 

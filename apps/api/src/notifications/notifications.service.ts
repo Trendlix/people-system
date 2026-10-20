@@ -53,7 +53,7 @@ const viewOf = (r: { id: string; kind: string; title: string; body: string; link
   createdAt: r.createdAt.toISOString(),
 });
 
-export const PUSH_APP_ONLY = 'Notifications on the phone are turned on in the TrendLIX People app.';
+export const PUSH_APP_ONLY = 'Notifications on the phone are turned on in the Trendlix People app.';
 export const PUSH_NOT_WHILE_VIEWING = 'You cannot turn on notifications on a phone while viewing as someone.';
 const NOT_FOUND = 'Notification not found.';
 
@@ -93,6 +93,35 @@ export class NotificationsService {
     }
   }
 
+  /**
+   * A reminder sent again and again (owner, 20 October 2026: the check-in reminder "every 10 minutes"), without filling
+   * the inbox: one row a day for it. `rowId`, the row of its earlier steps that day: moved to now and unread again, with
+   * the texts sent now; none (or gone): a new row. Pushed to the user's phones with `tag`, so the phone shows the latest
+   * in place of the last. Answers the row's id; null when nothing was kept (an inactive user, or a failure, logged).
+   * Never throws.
+   */
+  async remind(userId: string, input: NotificationInput, options: { rowId?: string | null; tag: string }): Promise<string | null> {
+    try {
+      const n = keptNotification(input);
+      if (!n) {
+        this.logger.warn(`A reminder of kind "${input.kind}" was not kept: it has no kind or title the inbox takes.`);
+        return null;
+      }
+      if (!(await this.prisma.user.count({ where: { id: userId, isActive: true } }))) return null;
+      let id: string | null = null;
+      if (options.rowId) {
+        const { count } = await this.prisma.notification.updateMany({ where: { id: options.rowId, userId }, data: { ...n, readAt: null, createdAt: new Date() } });
+        if (count) id = options.rowId;
+      }
+      id ??= (await this.prisma.notification.create({ data: { userId, ...n }, select: { id: true } })).id;
+      if (this.fcm.enabled) this.track(this.push([{ id, userId }], { ...n, tag: options.tag }));
+      return id;
+    } catch (err) {
+      this.logger.error(`A reminder of kind "${input.kind}" could not be kept: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
   /** Waits for the pushes still being sent (the tests; a graceful shutdown). */
   async flush(): Promise<void> {
     while (this.sending.size) await Promise.allSettled(this.sending);
@@ -103,8 +132,8 @@ export class NotificationsService {
     this.sending.add(done);
   }
 
-  /** Pushes each user's row to their phones. */
-  private async push(rows: readonly { id: string; userId: string }[], n: { kind: string; title: string; body: string; link: string | null }): Promise<void> {
+  /** Pushes each user's row to their phones (with a tag: in place of the one shown with it). */
+  private async push(rows: readonly { id: string; userId: string }[], n: { kind: string; title: string; body: string; link: string | null; tag?: string | null }): Promise<void> {
     const devices = await this.prisma.pushDevice.findMany({ where: { userId: { in: rows.map((r) => r.userId) } }, select: { id: true, userId: true, token: true } });
     for (const row of rows) {
       const theirs = devices.filter((d) => d.userId === row.userId);
@@ -145,24 +174,25 @@ export class NotificationsService {
 
   // ---------- the reminder switches ----------
 
+  /** The switches: "You haven't checked in" always on (owner, 20 October 2026: "No, always on"), "Still checked in?" as set. */
   async settings(userId: string): Promise<NotificationSettings> {
-    const row = await this.prisma.notificationSettings.findUnique({ where: { userId }, select: { checkInReminder: true, checkOutReminder: true } });
-    return row ?? { ...DEFAULT_NOTIFICATION_SETTINGS };
+    const row = await this.prisma.notificationSettings.findUnique({ where: { userId }, select: { checkOutReminder: true } });
+    return { ...DEFAULT_NOTIFICATION_SETTINGS, ...row, checkInReminder: true };
   }
 
-  /** Switches the reminders on or off; a switch not sent stays as it is. */
+  /**
+   * Switches "Still checked in?" on or off; not sent, it stays as it is. "You haven't checked in" can't be switched off:
+   * a change sent for it (by an older page or app) is left aside, and the answer says it is on.
+   */
   async saveSettings(userId: string, change: Partial<NotificationSettings>): Promise<NotificationSettings> {
-    const data = {
-      ...(typeof change.checkInReminder === 'boolean' && { checkInReminder: change.checkInReminder }),
-      ...(typeof change.checkOutReminder === 'boolean' && { checkOutReminder: change.checkOutReminder }),
-    };
+    const data = typeof change.checkOutReminder === 'boolean' ? { checkOutReminder: change.checkOutReminder } : {};
     const row = await this.prisma.notificationSettings.upsert({
       where: { userId },
       create: { userId, ...DEFAULT_NOTIFICATION_SETTINGS, ...data },
       update: data,
-      select: { checkInReminder: true, checkOutReminder: true },
+      select: { checkOutReminder: true },
     });
-    return row;
+    return { ...DEFAULT_NOTIFICATION_SETTINGS, ...row, checkInReminder: true };
   }
 
   // ---------- the phones ----------

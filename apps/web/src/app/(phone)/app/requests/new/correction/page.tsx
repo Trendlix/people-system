@@ -8,7 +8,7 @@ import { PhoneLoading } from '../../../ui';
 // correction"): the site's page and form (my-attendance/correct/ask-correction.tsx), the day from Attendance (?date=),
 // coming back to the phone pages once sent.
 
-export const metadata: Metadata = { title: 'Ask for a Correction · TrendLIX People' };
+export const metadata: Metadata = { title: 'Ask for a Correction · Trendlix People' };
 
 export default function PhoneAskCorrectionPage({ searchParams }: PageProps<'/app/requests/new/correction'>) {
   return (

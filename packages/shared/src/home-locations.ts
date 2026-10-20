@@ -12,8 +12,9 @@
 // the CEO and the Super Admin, never managers, Finance or the directory. Only the home's point is kept (and a label if
 // they give one), only while it is being decided or in force: rejected, withdrawn, replaced or removed, the point and the
 // label are deleted, the request's steps kept without them. The employee removes their approved home at any time, and HR
-// (the CEO, the Super Admin) too. A check-in keeps only the place, never the coordinates; the audit log never holds the
-// point. Pure: the API decides with these and the web shows the same words.
+// (the CEO, the Super Admin) too. A check-in never keeps the home's point: it keeps its place, and since 20 October 2026
+// the spot where it was pressed (punch-location.ts); the audit log never holds a point. Pure: the API decides with these
+// and the web shows the same words.
 
 import { decidesConfidentialStage, seesConfidential } from './confidential.js';
 import { OFFICE_RADIUS_MAX, OFFICE_RADIUS_MIN } from './check-in.js';

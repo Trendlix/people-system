@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-// TrendLIX People, the employee app (owner, 20 October 2026: "a mobile app for the employees ... to check in and out,
+// Trendlix People, the employee app (owner, 20 October 2026: "a mobile app for the employees ... to check in and out,
 // and apply for their requests"). The app is a Capacitor shell over the website's phone pages: it shows
 // https://people.trendlix.com/app in a WebView and never talks to the API itself (the API is reachable only from the
 // website). See README.md, section 2.
@@ -13,14 +13,16 @@ const SITE = 'https://people.trendlix.com';
 
 const config: CapacitorConfig = {
   appId: 'com.trendlix.people',
-  // the owner may rename the app (README section 5, Phase 5)
-  appName: 'TrendLIX People',
+  // the name under the icon (owner, 20 October 2026: "App Name: Trendlix People"; README Phase 5)
+  appName: 'Trendlix People',
   // bundled in the app: a tiny loader (never shown while server.url is set) and the offline page
   webDir: 'www',
   // the canvas colour of the website, so opening the app does not flash white before the first page
   backgroundColor: '#f4f5f7',
   // lets the website's server tell a request from the app ("TrendLIXPeople") from one from a phone's browser; the
-  // pages themselves check for window.Capacitor (apps/web/src/lib/native.ts)
+  // pages themselves check for window.Capacitor (apps/web/src/lib/native.ts). Kept as it is when the app was renamed
+  // (Phase 5, 20 October 2026): it is never shown, the server tells app sessions by it (packages/shared sessions.ts
+  // APP_USER_AGENT_MARK), and the APKs already installed send it.
   appendUserAgent: 'TrendLIXPeople',
   // no bridge logging, even in the debug APKs CI builds: Capacitor would otherwise write every plugin call's options and
   // answer to logcat, and the fingerprint sign-in's secret is one of them (README Phase 3, 20 October 2026: never logged)

@@ -36,14 +36,19 @@
         </provider>
 
         <!-- Phase 4 (owner, 20 October 2026: "Push notifications: yes"; apps/mobile/README.md): a notification goes to the
-             channel the app makes (PUSH_CHANNEL "general", through the Push Notifications plugin's createChannel), with
-             the app's icon. These also let the plugin show a notification that arrives while the app is open. -->
+             channel the app makes (PUSH_CHANNEL "general", through the Push Notifications plugin's createChannel). These
+             also let the plugin show a notification that arrives while the app is open. Phase 5 (20 October 2026): its
+             small icon is the T and the dot as a white shape (drawable-*/ic_stat_notify, from the owner's icon; Android
+             draws a status bar icon in one colour), tinted the brand's red where Android shows a colour. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="general" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@mipmap/ic_launcher" />
+            android:resource="@drawable/ic_stat_notify" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/trendlix_red" />
     </application>
 
     <!-- Permissions -->

@@ -27,7 +27,7 @@ import { waitingSections, waitingTotal } from './waiting';
 // on the site's Approvals: said here, with the way there, when any wait. Home locations (owner, 20 October 2026: "then
 // approved by the HR and CEO") at the caller's step, for HR, the CEO and the Super Admin.
 
-export const metadata: Metadata = { title: 'To Approve · TrendLIX People' };
+export const metadata: Metadata = { title: 'To Approve · Trendlix People' };
 
 type Loaded<T> = { kind: 'ok'; value: T } | { kind: string };
 const listOf = <T,>(loaded: Loaded<T[]>): T[] | null => (loaded.kind === 'ok' ? (loaded as { value: T[] }).value : loaded.kind === 'failed' ? null : []);

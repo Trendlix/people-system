@@ -171,7 +171,7 @@ export async function Reminders({ surface }: { surface: InboxSurface }) {
         <h2 id="reminders-heading" className="font-semibold">
           Reminders
         </h2>
-        <p className="mt-1 text-sm text-muted">Kept here, and sent to your phone when notifications are on in the TrendLIX People app.</p>
+        <p className="mt-1 text-sm text-muted">Kept here, and sent to your phone when notifications are on in the Trendlix People app.</p>
       </div>
       {loaded.kind === 'ok' ? (
         <ReminderSettingsForm initial={switchesOf(loaded.value)} big={surface === 'app'} />

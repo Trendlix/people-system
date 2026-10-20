@@ -15,13 +15,14 @@ import { SetupSection } from '../../organization/payroll/section';
 import type { Loaded } from '../../payroll/load';
 import { StaffOnly } from '../../staff-only';
 import { seesHomes } from '../../home-locations/home-locations';
-import { createLocation, removeLocation, saveNetworks, saveZohoAddresses, updateLocation } from './actions';
-import { loadLocations, loadNetworks, loadSettings } from './data';
+import { createLocation, removeLocation, saveLocationRule, saveNetworks, saveZohoAddresses, updateLocation } from './actions';
+import { loadLocationRule, loadLocations, loadNetworks, loadSettings } from './data';
 import { LocationCard } from './location-card';
 import { HomeLocationsSection } from './home-locations-section';
 import { LocationForm } from './location-form';
+import { LocationRuleForm } from './location-rule-form';
 import { NetworksForm } from './networks-form';
-import { LOCATIONS_ID, lockText, networkStatus, NETWORKS_ID, removesLocations, seesCheckInSetup, ZOHO_ID } from './setup';
+import { LOCATION_RULE_ID, locationRuleText, LOCATIONS_ID, lockText, networkStatus, NETWORKS_ID, removesLocations, seesCheckInSetup, ZOHO_ID } from './setup';
 import { ZohoAddressesForm } from './zoho-form';
 
 // Attendance → Check-in Setup (owner, 20 October 2026: "i cant find in the system where to add the eligable check in
@@ -35,15 +36,19 @@ import { ZohoAddressesForm } from './zoho-form';
 // The locations on a map (owner, the same day: "let me view location on map and add location from map"): one map of
 // them all above the list, named in tooltips, a map on each card, and a map in each form to put the point on. Home
 // Locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home"):
-// the approved homes, each with a small map and Remove, for HR and the Super Admin (never an Admin without them).
+// the approved homes, each with a small map and Remove, for HR and the Super Admin (never an Admin without them). The
+// spot kept with each press (owner, 20 October 2026: "Yes, keep the spot"), and Check-ins Without a Location, the switch
+// refusing presses without one (the same day: "Company switch + exceptions", "Allow as Office").
 
 export const metadata: Metadata = { title: 'Check-in Setup · People System' };
 
 const LOCATIONS_INTRO =
-  'A check-in on the system within the radius of any of these is at the office; outside them all it is remote, and without the location it is location unknown. Only that and the location’s name are kept, never the coordinates.';
+  'A check-in on the system within the radius of any of these is at the office; outside them all it is remote, and without the location it is location unknown. Each check-in keeps the spot where it was pressed, read only then: HR, the CEO and the Super Admin see it on a map, and each employee their own.';
 const NETWORKS_INTRO =
   'The office’s internet line, by its public address. With the lock on, Office staff can check in and out only from it: off it the press is refused, with a link to ask for an attendance correction. A check-in on it counts as at the office whatever the location says. No employee’s address is ever kept.';
 const ZOHO_INTRO = 'For attendance imported from Zoho People: a check-in at one of these addresses is a day at the office, anywhere else remote.';
+const LOCATION_RULE_INTRO =
+  'Whether a check-in or check-out on the website needs the location. In the app it always does; HR recording a day never does.';
 
 /** What a section says in place of what it couldn't load. */
 function notLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {
@@ -114,6 +119,26 @@ async function NetworksSection() {
   );
 }
 
+async function LocationRuleSection() {
+  const [loaded, networks] = await Promise.all([loadLocationRule(), loadNetworks()]);
+  // whether a press from the office network counts without a location: the key in place on both sides, and a network
+  const networkReady = networks.kind === 'ok' ? networkStatus(networks.value, webKeySet()).ready && networks.value.networks.length > 0 : null;
+  return (
+    <SetupSection id={LOCATION_RULE_ID} title="Check-ins Without a Location" intro={LOCATION_RULE_INTRO}>
+      {loaded.kind !== 'ok' ? (
+        <Missing>{notLoaded(loaded, 'the switch')}</Missing>
+      ) : (
+        <div className="space-y-5">
+          <p className={`rounded-lg px-4 py-3 text-sm ${loaded.value.refuseWithoutLocation ? 'bg-ok-soft text-ok' : 'bg-line-soft text-muted'}`} role="status">
+            {locationRuleText(loaded.value, networkReady)}
+          </p>
+          <LocationRuleForm action={saveLocationRule} on={loaded.value.refuseWithoutLocation} />
+        </div>
+      )}
+    </SetupSection>
+  );
+}
+
 async function ZohoSection() {
   const loaded = await loadSettings();
   return (
@@ -141,6 +166,9 @@ async function Gate() {
         <NetworksSection />
       </Suspense>
       <Suspense fallback={<Loading />}>
+        <LocationRuleSection />
+      </Suspense>
+      <Suspense fallback={<Loading />}>
         <ZohoSection />
       </Suspense>
       {seesHomes(user) && (
@@ -160,8 +188,8 @@ export default function CheckInSetupPage() {
           <h1 className="text-2xl font-semibold">Check-in Setup</h1>
           <p className="mt-1 max-w-3xl text-muted">
             Where a check-in counts as at the office: the check-in locations and the office&apos;s networks, with the lock that keeps Office staff&apos;s
-            check-ins to the office network, and Zoho People&apos;s addresses for its import. Who can check in from anywhere is set on each
-            person&apos;s <Link href="/employees">profile</Link>, with their work arrangement.
+            check-ins to the office network, whether a check-in needs the location, and Zoho People&apos;s addresses for its import. Who can check in
+            from anywhere, or without a location, is set on each person&apos;s <Link href="/employees">profile</Link>, with their work arrangement.
           </p>
         </div>
         <Suspense fallback={<Loading />}>

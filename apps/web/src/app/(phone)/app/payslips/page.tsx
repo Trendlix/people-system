@@ -13,7 +13,7 @@ import { loadMyPayslips } from './data';
 // months paid, newest first (a run's payslips are issued when HR marks it paid: owner's decisions, 16 October 2026),
 // each with its net, opening the payslip in the page; a month on hold has none. The API sends only the caller's own.
 
-export const metadata: Metadata = { title: 'Payslips · TrendLIX People' };
+export const metadata: Metadata = { title: 'Payslips · Trendlix People' };
 
 const quiet = 'card px-4 py-8 text-center text-sm text-muted';
 

@@ -1,19 +1,31 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
-import type { NotificationPage, NotificationSettings } from '@trendlix/shared';
+import type { CheckInReminderView, NotificationPage, NotificationSettings } from '@trendlix/shared';
 import { CurrentActiveSession, CurrentUser } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { ActiveSession } from '../auth/sessions.service.js';
 import { ListNotificationsDto, NotificationSettingsDto, RegisterPushDeviceDto, UnregisterPushDeviceDto } from './notifications.dto.js';
 import { NotificationsService } from './notifications.service.js';
+import { RemindersService } from './reminders.service.js';
 
 // The signed-in user's notifications (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for
 // someone, a check-in reminder)"; apps/mobile/README.md, Phase 4): the inbox behind the bell (the one viewed as, while a
-// Super Admin views as someone, who may only read it in view-only), the reminder switches, and the phone the app
-// registers for push (an app session only, never while viewing as someone). The bell's count is read by the web as a
-// background request, so it doesn't keep a session alive.
+// Super Admin views as someone, who may only read it in view-only), the reminder switches, the phone the app registers
+// for push (an app session only, never while viewing as someone), and whether the popup "You haven't checked in yet" is
+// due (owner, 20 October 2026: "a reminder for people that didn't checkin and not on a leave every 10 minutes. like a
+// popup"). The bell's count and the popup's question are read by the web as background requests, so they don't keep a
+// session alive.
 @Controller('me')
 export class NotificationsController {
-  constructor(private readonly notifications: NotificationsService) {}
+  constructor(
+    private readonly notifications: NotificationsService,
+    private readonly reminders: RemindersService,
+  ) {}
+
+  /** Whether the popup "You haven't checked in yet" is due now (never while viewing as someone). */
+  @Get('check-in-reminder')
+  checkInReminder(@CurrentUser() user: SessionUser): Promise<CheckInReminderView> {
+    return this.reminders.checkInReminderFor(user);
+  }
 
   @Get('notifications')
   list(@Query() query: ListNotificationsDto, @CurrentUser() user: SessionUser): Promise<NotificationPage> {

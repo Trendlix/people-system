@@ -1,15 +1,22 @@
 import { readFileSync } from 'node:fs';
 import {
+  ALWAYS_ON_REMINDERS,
+  CHECK_IN_REMINDER_EVERY_MINUTES,
+  CHECK_IN_REMINDER_FOR_MINUTES,
+  CHECK_IN_REMINDER_MAX,
   clippedText,
   DEFAULT_NOTIFICATION_SETTINGS,
   isNotificationKind,
   NOTIFICATION_KIND_LABELS,
   NOTIFICATION_KINDS,
+  NOTIFICATION_SETTING_LABELS,
   notificationSection,
   PUSH_CHANNEL,
   PUSH_PLATFORMS,
   REMINDER_KINDS,
   REMINDER_SETTING,
+  REMINDER_TICK_MINUTES,
+  reminderSwitchedOn,
   safeNotificationLink,
   WAITING_KINDS,
 } from '@trendlix/shared';
@@ -32,6 +39,15 @@ describe('notifications (shared)', () => {
     expect([...reminders.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual([...REMINDER_KINDS]);
     expect(REMINDER_SETTING).toEqual({ check_in_reminder: 'checkInReminder', check_out_reminder: 'checkOutReminder' });
     expect(DEFAULT_NOTIFICATION_SETTINGS).toEqual({ checkInReminder: true, checkOutReminder: true });
+    // "You haven't checked in" can't be switched off (owner, 20 October 2026: "No, always on"); "Still checked in?" can
+    expect(ALWAYS_ON_REMINDERS).toEqual(['check_in_reminder']);
+    expect(reminderSwitchedOn({ checkInReminder: false, checkOutReminder: false }, 'check_in_reminder')).toBe(true);
+    expect(reminderSwitchedOn({ checkInReminder: true, checkOutReminder: false }, 'check_out_reminder')).toBe(false);
+    expect(reminderSwitchedOn({ checkInReminder: false, checkOutReminder: true }, 'check_out_reminder')).toBe(true);
+    expect(NOTIFICATION_SETTING_LABELS.checkInReminder.alwaysOn).toContain('can’t be switched off');
+    expect(NOTIFICATION_SETTING_LABELS.checkOutReminder.alwaysOn).toBeUndefined();
+    // every 10 minutes for 2 hours: 12 at most, looked for every minute
+    expect([CHECK_IN_REMINDER_EVERY_MINUTES, CHECK_IN_REMINDER_FOR_MINUTES, CHECK_IN_REMINDER_MAX, REMINDER_TICK_MINUTES]).toEqual([10, 120, 12, 1]);
     expect(PUSH_PLATFORMS).toEqual(['android', 'ios']);
     expect(PUSH_CHANNEL.id).toBe('general');
   });

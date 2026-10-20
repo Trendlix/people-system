@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The brand's red, the dot of the owner's icon (assets/source/trendlix-icon.jpg, its most common red pixel; README
+         Phase 5, 20 October 2026): the notification's colour (AndroidManifest.xml, Firebase's default). -->
+    <color name="trendlix_red">#E21D3B</color>
+    <!-- The splash screen's background, the icon's black: Android 12's splash and the older one (drawable/splash.xml). -->
+    <color name="splash_background">#000000</color>
+</resources>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { IBM_Plex_Sans_Arabic, Instrument_Sans } from 'next/font/google';
+import { AppBackButton } from '@/components/app-back-button';
 import { FAVICON } from '@/lib/brand';
 import './globals.css';
 
@@ -26,7 +27,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="en" className={`${instrument.variable} ${plexArabic.variable} h-full antialiased`}>
-      <body className="min-h-full font-sans">{children}</body>
+      <body className="min-h-full font-sans">
+        {children}
+        {/* Android's back button inside the employee app, on every page it can show (Phase 5, 20 October 2026) */}
+        <AppBackButton />
+      </body>
     </html>
   );
 }

@@ -48,7 +48,7 @@ export interface NewDevice {
 
 const VIEW = { id: true, deviceName: true, platform: true, createdAt: true, lastUsedAt: true } as const;
 
-export const APP_SESSION_ONLY = 'Fingerprint sign-in can only be turned on in the TrendLIX People app.';
+export const APP_SESSION_ONLY = 'Fingerprint sign-in can only be turned on in the Trendlix People app.';
 export const NOT_WHILE_VIEWING = 'You cannot turn on fingerprint sign-in while viewing as someone.';
 const SUPER_ADMIN_ACCOUNT_ONLY = "Only a Super Admin can change a Super Admin's account.";
 const NOT_ACTIVE = 'This phone does not sign in with a fingerprint any more.';

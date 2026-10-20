@@ -202,3 +202,20 @@ html:has(dialog:modal) {
     min-height: calc(var(--rte-rows, 4) * 1.625em + 1rem);
   }
 }
+
+/*
+ * The phone pages (/app, the employee app; apps/mobile/README.md, Phase 5, 20 October 2026: accessibility, "visible
+ * focus"): a clear ring on whatever a keyboard, a switch or a screen reader's focus is on, in the accent blue, white on
+ * the dark top bar. Fields keep their own ring (.input). A component's own utilities (an inset ring) win over this;
+ * :where keeps the first rule's weight low, so the top bar's white wins over it.
+ */
+@layer components {
+  .phone-pages :where(a, button, summary, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .phone-pages .on-dark :is(a, button, summary):focus-visible {
+    outline-color: #ffffff;
+  }
+}

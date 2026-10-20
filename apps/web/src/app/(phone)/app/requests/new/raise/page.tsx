@@ -9,7 +9,7 @@ import { PhoneLoading } from '../../../ui';
 // back to the phone pages' My Requests once sent. The 404 page for someone who doesn't see raise requests (owner, 20
 // October 2026: "raises not to be visible to employee level for now", then "Hide from managers too").
 
-export const metadata: Metadata = { title: 'New Raise Request · TrendLIX People' };
+export const metadata: Metadata = { title: 'New Raise Request · Trendlix People' };
 
 export default function PhoneNewRaisePage({ searchParams }: PageProps<'/app/requests/new/raise'>) {
   return (

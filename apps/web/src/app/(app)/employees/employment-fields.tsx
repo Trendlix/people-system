@@ -23,7 +23,7 @@ import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import { CONFIDENTIAL_GRADES_LEFT_OUT, gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
-import { CheckInAnywhereField } from './check-in-anywhere-field';
+import { CheckInAnywhereField, CheckInWithoutLocationField } from './check-in-anywhere-field';
 import { COMMISSION_HINT, employmentTypeHint, WORK_NATURE_HINTS, workPatternNote } from './employment-law';
 import { statusField } from './employment-status';
 import { HazardousWorkField } from './leave-fields';
@@ -469,6 +469,9 @@ export function EmploymentFields({
 
       {/* the office network's exception (20 October 2026: "Office staff, plus exceptions"), on an employment from an API that has it */}
       {employment?.checkInAnywhere !== undefined && <CheckInAnywhereField state={state} fid={fid} employment={employment} arrangement={arrangement} />}
+
+      {/* refusing presses without a location's exception (20 October 2026: "Company switch + exceptions"), from an API that has it */}
+      {employment?.checkInWithoutLocation !== undefined && <CheckInWithoutLocationField state={state} fid={fid} employment={employment} />}
 
       {arrangement === 'hybrid' && (
         <fieldset>

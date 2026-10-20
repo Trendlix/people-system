@@ -138,7 +138,7 @@ async function EditUser({ params }: { params: Promise<{ id: string }> }) {
                   Your own phones are on <Link href="/account/sessions">Your Sessions</Link>.
                 </>
               ) : (
-                'The phones they sign in to the TrendLIX People app on with a fingerprint. Signing a phone out asks for their password there next time.'
+                'The phones they sign in to the Trendlix People app on with a fingerprint. Signing a phone out asks for their password there next time.'
               )}
             </p>
           </div>

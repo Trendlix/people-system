@@ -17,7 +17,7 @@ import { askOptions, offersRaise } from './options';
 // someone who sees raise requests (owner, 20 October 2026: "raises not to be visible to employee level for now", then
 // "Hide from managers too"; seesRaiseRequests).
 
-export const metadata: Metadata = { title: 'New Request · TrendLIX People' };
+export const metadata: Metadata = { title: 'New Request · Trendlix People' };
 
 async function Options() {
   const user = await getCurrentUser();

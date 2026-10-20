@@ -1,9 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
-import { zonedMoment } from '@trendlix/shared';
+import { BACKGROUND_HEADER, zonedMoment } from '@trendlix/shared';
 import pg from 'pg';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
-import { addDays, fromDateOnly, shownDate, todayInCairo, toDateOnly } from '../src/common/date-only.js';
+import { addDays, dayInCairo, fromDateOnly, shownDate, todayInCairo, toDateOnly } from '../src/common/date-only.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
 import { NoticesService } from '../src/notifications/notices.service.js';
 import { NotificationsService, PUSH_APP_ONLY, PUSH_NOT_WHILE_VIEWING } from '../src/notifications/notifications.service.js';
@@ -14,8 +14,12 @@ import { APP_USER_AGENT, createApp, createUser, signIn } from './helpers.js';
 // Notifications (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for someone, a check-in
 // reminder)"; apps/mobile/README.md, Phase 4): the inbox and its count, the reminder switches, the phones registered
 // from the app (an app session only, never while viewing as someone), who each flow tells at each step (the one in
-// charge of it, HR never of a C-level person's, the employee once decided), raise requests to HR and the CEO only, and
-// the reminders with a fake clock, once a person, day and kind, one process at a time. Push is off in the tests
+// charge of it, HR never of a C-level person's, the employee once decided), raise requests to HR and the CEO only, home
+// locations to HR then the CEO (never with the point or the label), and the reminders with a fake clock: "You haven't
+// checked in" from the shift's start every 10 minutes for 2 hours, once a step whichever process sends it, one inbox row
+// a day, always on (owner, 20 October 2026: "a reminder for people that didn't checkin and not on a leave every 10
+// minutes. like a popup"; "No, always on"), "Still checked in?" once a day, one process at a time; and the popup's
+// GET /me/check-in-reminder. Push is off in the tests
 // (vitest.config.e2e.ts): everything is in the inbox. These tests look at their own people (names end with RUN).
 
 const RUN = `nt${Date.now().toString(36).toLowerCase()}`;
@@ -41,6 +45,8 @@ describe('Notifications (e2e)', () => {
   let emailDomainBefore: string | null;
   let deptId: string;
   let shiftId: string;
+  /** The popup's test's shift, started 30 minutes before it runs. */
+  let liveShiftId: string | undefined;
   let typeId: string;
   let claimTypeId: string;
   /** A working day ahead, none of them a holiday: the reminders' day, then the permission's and the leave's. */
@@ -141,10 +147,11 @@ describe('Notifications (e2e)', () => {
     await prisma.reimbursementClaim.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.reimbursementType.deleteMany({ where: { id: claimTypeId } });
     await prisma.raiseRequest.deleteMany({ where: { employeeId: { in: people } } });
+    await prisma.homeLocationRequest.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.employment.deleteMany({ where: { employeeId: { in: people }, managerId: { not: null } } });
     await prisma.employment.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.employee.deleteMany({ where: { id: { in: people } } });
-    await prisma.shift.deleteMany({ where: { id: shiftId } });
+    await prisma.shift.deleteMany({ where: { id: { in: [shiftId, ...(liveShiftId ? [liveShiftId] : [])] } } });
     await prisma.department.deleteMany({ where: { id: deptId } });
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: emailDomainBefore ?? '' }).expect(200);
     await app.close();
@@ -203,10 +210,12 @@ describe('Notifications (e2e)', () => {
   });
 
   describe('the reminder switches', () => {
-    it('are both on until switched off; one not sent stays as it is', async () => {
+    it('"Still checked in?" on until switched off; "You haven’t checked in" always on (a change to it left aside)', async () => {
       expect((await api().get('/api/me/notification-settings').set('Cookie', sessions.rami).expect(200)).body).toEqual({ checkInReminder: true, checkOutReminder: true });
       expect((await api().put('/api/me/notification-settings').set('Cookie', sessions.rami).send({ checkOutReminder: false }).expect(200)).body).toEqual({ checkInReminder: true, checkOutReminder: false });
-      expect((await api().put('/api/me/notification-settings').set('Cookie', sessions.rami).send({ checkInReminder: false }).expect(200)).body).toEqual({ checkInReminder: false, checkOutReminder: false });
+      // owner, 20 October 2026: "No, always on"
+      expect((await api().put('/api/me/notification-settings').set('Cookie', sessions.rami).send({ checkInReminder: false }).expect(200)).body).toEqual({ checkInReminder: true, checkOutReminder: false });
+      expect((await api().get('/api/me/notification-settings').set('Cookie', sessions.rami).expect(200)).body).toEqual({ checkInReminder: true, checkOutReminder: false });
       await api().put('/api/me/notification-settings').set('Cookie', sessions.rami).send({ checkInReminder: 'yes' }).expect(400);
       await api().put('/api/me/notification-settings').set('Cookie', sessions.rami).send({ other: true }).expect(400);
       expect((await api().put('/api/me/notification-settings').set('Cookie', sessions.rami).send({ checkInReminder: true, checkOutReminder: true }).expect(200)).body).toEqual({ checkInReminder: true, checkOutReminder: true });
@@ -363,41 +372,141 @@ describe('Notifications (e2e)', () => {
       expect(await inbox('ceo')).toEqual([{ kind: 'raise_request_waiting', title: 'A raise request is waiting for you', body: `Cleo Chief ${RUN}`, link: '/raise-requests?status=with_hr' }]);
       for (const key of ['hr', 'hr2', 'hrSuper', 'cleo', 'mona']) expect(await kindsOf(key)).toEqual([]);
     });
+
+    it('a home location: HR, then the CEO, the employee at each decision; never the point, the label or a comment', async () => {
+      const label = `Home of ${RUN}`;
+      const id = (await api().post('/api/me/home-locations').set('Cookie', sessions.rami).send({ latitude: 30.101234, longitude: 31.380123, label }).expect(201)).body.id as string;
+      const link = `/home-locations/${id}`;
+      const asked = shownDate(todayInCairo());
+      const waiting = { kind: 'home_location_waiting', title: 'A home location is waiting for you', body: `Rami Report ${RUN}, asked on ${asked}`, link };
+      for (const key of ['hr', 'hr2', 'hrSuper']) expect(await inbox(key)).toEqual([waiting]);
+      for (const key of ['ceo', 'finance', 'mona', 'rami', 'superAdmin']) expect(await kindsOf(key)).toEqual([]);
+
+      await api().post(`/api/home-locations/${id}/decide`).set('Cookie', hr).send({ decision: 'approve', radiusMetres: 150 }).expect(200);
+      expect(await inbox('ceo')).toEqual([waiting]);
+      expect(await inbox('rami')).toEqual([{ kind: 'home_location_decided', title: 'Home location approved by HR', body: `Your request of ${asked} is with the CEO now`, link }]);
+      for (const key of ['hr', 'hr2', 'hrSuper']) expect(await kindsOf(key)).toEqual(['home_location_waiting']);
+      for (const key of ['finance', 'mona', 'superAdmin']) expect(await kindsOf(key)).toEqual([]);
+
+      await api().post(`/api/home-locations/${id}/decide`).set('Cookie', ceo).send({ decision: 'approve' }).expect(200);
+      expect((await inbox('rami')).at(-1)).toEqual({ kind: 'home_location_decided', title: 'Home location approved', body: `Your request of ${asked}`, link });
+      expect(await kindsOf('ceo')).toEqual(['home_location_waiting']);
+      const sent = JSON.stringify(await prisma.notification.findMany({ where: { link }, select: { title: true, body: true } }));
+      for (const never of ['30.10', '31.38', label]) expect(sent).not.toContain(never);
+      await prisma.homeLocationRequest.deleteMany({ where: { id } });
+    });
+
+    it('a C-level person’s home location: the CEO and HR with Super Admin at HR’s step, never HR; rejected without the comment', async () => {
+      const id = (await api().post('/api/me/home-locations').set('Cookie', sessions.cleo).send({ latitude: 30.060912, longitude: 31.370934 }).expect(201)).body.id as string;
+      const link = `/home-locations/${id}`;
+      const asked = shownDate(todayInCairo());
+      expect(await kindsOf('ceo')).toEqual(['home_location_waiting']);
+      expect(await kindsOf('hrSuper')).toEqual(['home_location_waiting']);
+      for (const key of ['hr', 'hr2', 'finance', 'mona', 'cleo']) expect(await kindsOf(key)).toEqual([]);
+
+      // HR with Super Admin takes HR's step: the CEO's step waits for the CEO, never for the one who just decided
+      await api().post(`/api/home-locations/${id}/decide`).set('Cookie', hrSuper).send({ decision: 'approve' }).expect(200);
+      expect(await kindsOf('ceo')).toEqual(['home_location_waiting', 'home_location_waiting']);
+      expect(await kindsOf('hrSuper')).toEqual(['home_location_waiting']);
+      expect(await inbox('cleo')).toEqual([{ kind: 'home_location_decided', title: 'Home location approved by HR', body: `Your request of ${asked} is with the CEO now`, link }]);
+      for (const key of ['hr', 'hr2']) expect(await kindsOf(key)).toEqual([]);
+
+      await api().post(`/api/home-locations/${id}/decide`).set('Cookie', ceo).send({ decision: 'reject', comment: 'Invented: too far from the office' }).expect(200);
+      expect((await inbox('cleo')).at(-1)).toEqual({ kind: 'home_location_decided', title: 'Home location rejected', body: `Your request of ${asked}`, link });
+      expect(JSON.stringify(await inbox('cleo'))).not.toContain('Invented');
+
+      // the CEO taking HR's step of a C-level person's: "by the CEO", and the CEO isn't told of their own next step
+      await clear();
+      const again = (await api().post('/api/me/home-locations').set('Cookie', sessions.cleo).send({ latitude: 30.060912, longitude: 31.370934 }).expect(201)).body.id as string;
+      await api().post(`/api/home-locations/${again}/decide`).set('Cookie', ceo).send({ decision: 'approve' }).expect(200);
+      expect(await kindsOf('ceo')).toEqual(['home_location_waiting']);
+      expect((await inbox('cleo')).map((n) => n.title)).toEqual(['Home location approved by the CEO']);
+      await prisma.homeLocationRequest.deleteMany({ where: { employeeId: ids.cleo } });
+    });
   });
 
   describe('the reminders (a fake clock)', () => {
     const at = (time: string, day = reminderDay) => new Date(zonedMoment(day, time));
 
+    const checkInText = { kind: 'check_in_reminder', title: 'You haven’t checked in', body: 'Your shift started at 9:00 AM. Check in now.', link: '/my-attendance' };
+    /** The day's check-in reminder as kept: how many went, when the last went, and its one inbox row. */
+    const sentRow = (key: string, day = reminderDay) =>
+      prisma.reminderSent.findUniqueOrThrow({ where: { userId_day_kind: { userId: users[key], day: toDateOnly(day), kind: 'check_in_reminder' } }, select: { count: true, lastSentAt: true, notificationId: true } });
+    const punch = (key: string, time: string, day = reminderDay) =>
+      prisma.attendancePunch.create({ data: { employeeId: ids[key], date: toDateOnly(day), kind: 'in', at: at(time, day), place: 'office', expected: 'office', userId: users[key] } });
+
     beforeAll(async () => {
       await clear();
-      // Noah checked in at 9:05; Mona switched the check-in reminder off
-      await prisma.attendancePunch.create({ data: { employeeId: ids.noah, date: toDateOnly(reminderDay), kind: 'in', at: at('09:05'), place: 'office', expected: 'office', userId: users.noah } });
+      // Noah checked in at 8:55; Mona tried to switch the check-in reminder off (owner, 20 October 2026: "No, always on")
+      await punch('noah', '08:55');
       await api().put('/api/me/notification-settings').set('Cookie', sessions.mona).send({ checkInReminder: false }).expect(200);
     });
 
-    it('"You haven’t checked in" at the start, the grace and 30 minutes, once', async () => {
-      await reminders.runOnce(at('09:44'));
+    it('"You haven’t checked in" at the shift’s start, then every 10 minutes: once a step, one inbox row refreshed, whatever the switch', async () => {
+      await reminders.runOnce(at('08:59'));
       expect(await kindsOf('rami')).toEqual([]);
-      await reminders.runOnce(at('09:45'));
-      expect(await inbox('rami')).toEqual([{ kind: 'check_in_reminder', title: 'You haven’t checked in', body: 'Your shift started at 9:00 AM. Check in when you start work.', link: '/my-attendance' }]);
+      await reminders.runOnce(at('09:00'));
+      expect(await inbox('rami')).toEqual([checkInText]);
+      expect(await inbox('mona')).toEqual([checkInText]);
       expect(await kindsOf('cleo')).toEqual(['check_in_reminder']);
-      // checked in, or the switch off: none
+      // checked in: none
       expect(await kindsOf('noah')).toEqual([]);
-      expect(await kindsOf('mona')).toEqual([]);
-      expect(await prisma.reminderSent.findMany({ where: { userId: users.rami }, select: { day: true, kind: true } })).toEqual([{ day: toDateOnly(reminderDay), kind: 'check_in_reminder' }]);
-      // five minutes on, and again: never twice
-      await reminders.runOnce(at('09:50'));
-      await reminders.tick(at('09:55'));
-      expect(await kindsOf('rami')).toEqual(['check_in_reminder']);
+      const [first] = await prisma.notification.findMany({ where: { userId: users.rami }, select: { id: true } });
+      expect(await sentRow('rami')).toEqual({ count: 1, lastSentAt: at('09:00'), notificationId: first.id });
+
+      // the same step, again (a round, and the timer's): never twice
+      await reminders.runOnce(at('09:05'));
+      await reminders.tick(at('09:09'));
+      expect(await sentRow('rami')).toMatchObject({ count: 1, lastSentAt: at('09:00') });
+
+      // read, then the next step: the same row, unread again with the latest time; the bell counts one
+      await api().post(`/api/me/notifications/${first.id}/read`).set('Cookie', sessions.rami).expect(204);
+      const before = (await prisma.notification.findUniqueOrThrow({ where: { id: first.id } })).createdAt;
+      await reminders.runOnce(at('09:10'));
+      const rows = await prisma.notification.findMany({ where: { userId: users.rami }, select: { id: true, readAt: true, createdAt: true, body: true } });
+      expect(rows).toEqual([{ id: first.id, readAt: null, createdAt: expect.any(Date), body: checkInText.body }]);
+      expect(rows[0].createdAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(await sentRow('rami')).toEqual({ count: 2, lastSentAt: at('09:10'), notificationId: first.id });
+      expect((await api().get('/api/me/notifications/unread-count').set('Cookie', sessions.rami).expect(200)).body).toEqual({ unread: 1 });
+      // its inbox row deleted: a new one at the next step
+      await prisma.notification.deleteMany({ where: { userId: users.mona } });
+      await reminders.runOnce(at('09:20'));
+      const [again] = await prisma.notification.findMany({ where: { userId: users.mona }, select: { id: true } });
+      expect(await sentRow('mona')).toEqual({ count: 3, lastSentAt: at('09:20'), notificationId: again.id });
     });
 
-    it('"Still checked in?" when hours stop counting', async () => {
+    it('a step claimed already is never sent again, whichever process looks: the row says so, without the lock too', async () => {
+      // as if another process had sent 09:30's step at 09:31
+      await prisma.reminderSent.updateMany({ where: { userId: users.rami, day: toDateOnly(reminderDay), kind: 'check_in_reminder' }, data: { count: 4, lastSentAt: at('09:31') } });
+      await reminders.runOnce(at('09:35'));
+      expect(await sentRow('rami')).toMatchObject({ count: 4, lastSentAt: at('09:31') });
+      expect(await sentRow('cleo')).toMatchObject({ count: 4, lastSentAt: at('09:35') });
+      // two rounds at once: the step goes once
+      await Promise.all([reminders.runOnce(at('09:40')), reminders.runOnce(at('09:40')), reminders.tick(at('09:41'))]);
+      expect(await sentRow('rami')).toMatchObject({ count: 5, lastSentAt: at('09:40') });
+      expect(await prisma.notification.count({ where: { userId: users.rami } })).toBe(1);
+    });
+
+    it('stops as soon as they check in, and after 2 hours: 12 at most', async () => {
+      // Cleo checks in at 9:45
+      await punch('cleo', '09:45');
+      for (const time of ['09:50', '10:00', '10:10', '10:20', '10:30', '10:40', '10:50', '10:59', '11:00', '11:30', '13:00']) await reminders.runOnce(at(time));
+      expect(await sentRow('cleo')).toMatchObject({ count: 5, lastSentAt: at('09:40') });
+      expect(await sentRow('rami')).toMatchObject({ count: 12, lastSentAt: at('10:50') });
+      expect(await sentRow('mona')).toMatchObject({ count: 12, lastSentAt: at('10:50') });
+      for (const key of ['rami', 'mona', 'cleo']) expect(await kindsOf(key)).toEqual(['check_in_reminder']);
+      expect(await kindsOf('noah')).toEqual([]);
+    });
+
+    it('"Still checked in?" when hours stop counting, once', async () => {
       await reminders.runOnce(at('17:14'));
       expect(await kindsOf('noah')).toEqual([]);
       await reminders.runOnce(at('17:15'));
-      expect(await inbox('noah')).toEqual([{ kind: 'check_out_reminder', title: 'Still checked in?', body: 'You checked in at 9:05 AM. Check out when you leave.', link: '/my-attendance' }]);
+      expect(await inbox('noah')).toEqual([{ kind: 'check_out_reminder', title: 'Still checked in?', body: 'You checked in at 8:55 AM. Check out when you leave.', link: '/my-attendance' }]);
+      expect((await inbox('cleo')).map((n) => n.kind)).toEqual(['check_in_reminder', 'check_out_reminder']);
       await reminders.runOnce(at('17:20'));
       expect(await kindsOf('noah')).toEqual(['check_out_reminder']);
+      expect(await prisma.reminderSent.findUniqueOrThrow({ where: { userId_day_kind: { userId: users.noah, day: toDateOnly(reminderDay), kind: 'check_out_reminder' } }, select: { count: true } })).toEqual({ count: 1 });
       // Rami never checked in: no "Still checked in?"
       expect(await kindsOf('rami')).toEqual(['check_in_reminder']);
     });
@@ -416,6 +525,60 @@ describe('Notifications (e2e)', () => {
       } finally {
         await other.end();
       }
+    });
+  });
+
+  describe('the popup: GET /me/check-in-reminder', () => {
+    const at = (time: string, day = reminderDay) => new Date(zonedMoment(day, time));
+    const none = { due: false, shiftStart: null, checkInPath: '/my-attendance' };
+    const cairoTime = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+    /** Pia's shift started 30 minutes ago, every day: her popup is due now, unless that day is an official holiday. */
+    let piaStart: string;
+    let piaDay: string;
+    let piaDue: boolean;
+
+    beforeAll(async () => {
+      const started = new Date(Date.now() - 30 * 60_000);
+      piaStart = cairoTime(started);
+      piaDay = dayInCairo(started);
+      piaDue = !(await prisma.holiday.count({ where: { date: toDateOnly(piaDay) } }));
+      liveShiftId = (
+        await prisma.shift.create({
+          data: { code: `P${RUN}`.slice(0, 20), startTime: toTimeOfDay(piaStart), endTime: toTimeOfDay(cairoTime(new Date(started.getTime() + 8 * 3600_000))), hoursPerDay: 8, graceMinutes: 15, workingDays: [0, 1, 2, 3, 4, 5, 6] },
+          select: { id: true },
+        })
+      ).id;
+      await person('pia', 'Pia Popup', { shiftId: liveShiftId });
+    });
+
+    it('by the same rule as the push, with a fake clock: within the 2 hours, not checked in, whatever was sent or switched', async () => {
+      const mona = await prisma.user.findUniqueOrThrow({ where: { id: users.mona }, select: { id: true, email: true } });
+      const asMona = { ...mona, roles: ['employee' as const] };
+      // twelve sent to Mona by now, her switch "off": still due until 11:00
+      expect(await reminders.checkInReminderFor(asMona, at('08:59'))).toEqual(none);
+      expect(await reminders.checkInReminderFor(asMona, at('10:30'))).toEqual({ due: true, shiftStart: '09:00', checkInPath: '/my-attendance' });
+      expect(await reminders.checkInReminderFor(asMona, at('11:00'))).toEqual(none);
+      // never while a Super Admin views as her
+      expect(await reminders.checkInReminderFor({ ...asMona, viewAs: { by: { id: users.superAdmin, email: 'x' }, act: false } }, at('10:30'))).toEqual(none);
+      // Cleo checked in at 9:45; Noah at 8:55
+      const cleo = await prisma.user.findUniqueOrThrow({ where: { id: users.cleo }, select: { id: true, email: true } });
+      expect(await reminders.checkInReminderFor({ ...cleo, roles: ['employee'] }, at('10:30'))).toEqual(none);
+    });
+
+    it('answers the signed-in person now, as a background request too; never while viewing as them, nor without a profile', async () => {
+      const due = piaDue ? { due: true, shiftStart: piaStart, checkInPath: '/my-attendance' } : none;
+      expect((await api().get('/api/me/check-in-reminder').set('Cookie', sessions.pia).expect(200)).body).toEqual(due);
+      expect((await api().get('/api/me/check-in-reminder').set('Cookie', sessions.pia).set(BACKGROUND_HEADER, '1').expect(200)).body).toEqual(due);
+      // HR without an employee profile, and no session at all
+      expect((await api().get('/api/me/check-in-reminder').set('Cookie', hr).expect(200)).body).toEqual(none);
+      await api().get('/api/me/check-in-reminder').expect(401);
+      // a Super Admin viewing as Pia: never
+      const switched = await api().post('/api/auth/view-as').set('Cookie', sessions.superAdmin).send({ userId: users.pia }).expect(200);
+      const viewing = ([] as string[]).concat(switched.headers['set-cookie'] ?? []).find((c) => c.startsWith('ps_session='))!.split(';')[0];
+      expect((await api().get('/api/me/check-in-reminder').set('Cookie', viewing).expect(200)).body).toEqual(none);
+      // checked in: no more
+      await prisma.attendancePunch.create({ data: { employeeId: ids.pia, date: toDateOnly(piaDay), kind: 'in', at: new Date(), place: 'office', expected: 'office', userId: users.pia } });
+      expect((await api().get('/api/me/check-in-reminder').set('Cookie', sessions.pia).expect(200)).body).toEqual(none);
     });
   });
 });

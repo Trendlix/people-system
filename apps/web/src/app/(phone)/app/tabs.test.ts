@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeTab, countText, decidesSomething, tabsFor } from './tabs';
+import { activeTab, countText, decidesSomething, tabLabel, tabsFor } from './tabs';
 
 const keys = (user: Parameters<typeof tabsFor>[0]) => tabsFor(user).map((t) => t.key);
 
@@ -39,5 +39,12 @@ describe('the phone pages’ tabs', () => {
     expect(countText(undefined)).toBeNull();
     expect(countText(3)).toBe('3');
     expect(countText(12)).toBe('9+');
+  });
+
+  it('names a tab for a screen reader with how many wait, the badge left unread', () => {
+    expect(tabLabel('Home', undefined)).toBe('Home');
+    expect(tabLabel('To Approve', 0)).toBe('To Approve');
+    expect(tabLabel('To Approve', 3)).toBe('To Approve, 3 waiting');
+    expect(tabLabel('To Approve', 12)).toBe('To Approve, more than 9 waiting');
   });
 });

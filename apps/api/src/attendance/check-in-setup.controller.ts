@@ -2,13 +2,14 @@ import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, 
 import type { Request } from 'express';
 import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { CreateCheckInLocationDto, UpdateCheckInLocationDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
+import { CreateCheckInLocationDto, UpdateCheckInLocationDto, UpdateLocationRuleDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
 
 // Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"): the check-in locations and the
 // office networks with the lock (check-ins locked to the office network, the same day). HR and Admin (a Super Admin as an
 // Admin); a location is removed by a Super Admin, as every deletion is. The networks' calls carry the visitor's address
-// as the website signed it, so the page can say whether the lock is ready.
+// as the website signed it, so the page can say whether the lock is ready. The switch refusing presses without a location
+// (owner, 20 October 2026: "Company switch + exceptions"), HR's and Admin's too.
 @Controller('attendance/check-in-setup')
 export class CheckInSetupController {
   constructor(private readonly setup: CheckInSetupService) {}
@@ -52,5 +53,19 @@ export class CheckInSetupController {
   @Put('networks')
   updateNetworks(@Body() dto: UpdateOfficeNetworksDto, @Req() req: Request, @CurrentUser() user: SessionUser) {
     return this.setup.updateNetworks(dto, req, user);
+  }
+
+  /** { refuseWithoutLocation }: the switch "Refuse check-ins and check-outs without a location". */
+  @Roles('hr', 'admin')
+  @Get('location-rule')
+  @Header('Cache-Control', 'private, no-store')
+  locationRule() {
+    return this.setup.locationRule();
+  }
+
+  @Roles('hr', 'admin')
+  @Put('location-rule')
+  updateLocationRule(@Body() dto: UpdateLocationRuleDto, @CurrentUser() user: SessionUser) {
+    return this.setup.updateLocationRule(dto, user);
   }
 }

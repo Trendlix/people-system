@@ -3,7 +3,7 @@ import { readLocation, LOCATION_GIVE_UP_MS, LOCATION_OPTIONS, type LocationResul
 
 // The one bridge to the phone's own features (owner, 20 October 2026: "what if we tried to build a mobile app for the
 // employees? to enable them to check in and out, and apply for their requests"; apps/mobile/README.md, "The native
-// bridge"). Inside the TrendLIX People app, a Capacitor shell showing these pages, `window.Capacitor` is there with the
+// bridge"). Inside the Trendlix People app, a Capacitor shell showing these pages, `window.Capacitor` is there with the
 // plugins the shell carries; in a phone's or a computer's browser it isn't, and each helper falls back to the browser's
 // own way. The web app depends on no Capacitor package: the plugins are reached through `window.Capacitor.Plugins`,
 // typed here, and every page calls the phone only through this file. Phase 1: where the app runs. Phase 2 (20 October
@@ -17,7 +17,9 @@ import { readLocation, LOCATION_GIVE_UP_MS, LOCATION_OPTIONS, type LocationResul
 // someone, a check-in reminder)"; README, Phase 4): the Capacitor Push Notifications plugin asks the phone's permission,
 // gives the phone's push token for the website to register with the API, and tells the page of a notification opened or
 // received while the app is open; only in an APK built with Firebase's settings, which the app's own TrendlixPush plugin
-// says (without them the plugin's register() crashes the app). No "@/" imports: it is unit tested.
+// says (without them the plugin's register() crashes the app). Phase 5 (README, Phase 5, 20 October 2026: "the Android
+// back button"): the Capacitor App plugin tells of each press of Android's back button and leaves the app when asked
+// (lib/back-button.ts decides what a press does). No "@/" imports: it is unit tested.
 
 // ---------- what the shell puts on the page ----------
 
@@ -43,7 +45,7 @@ export function capacitorOf(win: NativeHost | undefined = host()): CapacitorGlob
   return c && typeof c === 'object' ? c : null;
 }
 
-/** Whether the page is shown inside the TrendLIX People app (not a browser, nor the server). */
+/** Whether the page is shown inside the Trendlix People app (not a browser, nor the server). */
 export function isNativeApp(win: NativeHost | undefined = host()): boolean {
   const c = capacitorOf(win);
   try {
@@ -228,7 +230,7 @@ export type PhotoResult = { kind: 'photo'; file: File } | { kind: 'cancelled' } 
 
 /** What is said when the app's camera can't give the photo. */
 export const CAMERA_MESSAGES = {
-  denied: 'TrendLIX People isn’t allowed to use the camera: allow it on the phone (Settings → Apps → TrendLIX People → Permissions → Camera), or choose a file instead.',
+  denied: 'Trendlix People isn’t allowed to use the camera: allow it on the phone (Settings → Apps → Trendlix People → Permissions → Camera), or choose a file instead.',
   failed: 'The photo couldn’t be taken. Please try again, or choose a file instead.',
 } as const;
 
@@ -308,7 +310,7 @@ export interface TrendlixBiometricPlugin {
 /** The prompt's texts (no text for people in native code): turning it on, and signing in. */
 export const BIOMETRIC_PROMPTS = {
   enroll: { title: 'Turn on fingerprint sign-in', negativeButtonText: 'Cancel' },
-  unlock: { title: 'Sign in to TrendLIX People', negativeButtonText: 'Use password' },
+  unlock: { title: 'Sign in to Trendlix People', negativeButtonText: 'Use password' },
 } as const;
 
 /** Why the fingerprint can't sign in here: not the app (or a shell without the plugin), or what the phone said. */
@@ -414,7 +416,7 @@ export async function enrollBiometric(id: string, secret: string, win: NativeHos
 }
 
 /**
- * Asks for the fingerprint to sign in (the prompt: "Sign in to TrendLIX People", "Use password"), giving the credential
+ * Asks for the fingerprint to sign in (the prompt: "Sign in to Trendlix People", "Use password"), giving the credential
  * it unlocks, for the sign-in action only. An answer without both is a failure. Never throws.
  */
 export async function unlockBiometric(win: NativeHost | undefined = host()): Promise<BiometricUnlockResult> {
@@ -689,5 +691,59 @@ export async function forgetPush(win: NativeHost | undefined = host()): Promise<
     if (plugin && typeof plugin.unregister === 'function') await plugin.unregister();
   } catch {
     // nothing registered, or the plugin failed: the website has unregistered the token with the API anyway
+  }
+}
+
+// ---------- Android's back button (Phase 5) ----------
+
+/** The name the Capacitor App plugin (@capacitor/app 8) is registered under. */
+export const APP_PLUGIN = 'App';
+
+/** The App plugin, as far as it is used: the back button's press, and leaving the app. */
+export interface AppPlugin {
+  addListener(eventName: 'backButton', listener: (event: { canGoBack?: unknown } | null) => void): Promise<PushListenerHandle> | PushListenerHandle;
+  exitApp(): Promise<void>;
+}
+
+/** The plugin, when the app's shell carries one that answers to it; null outside the app and in an APK from before it. */
+function appPlugin(win: NativeHost | undefined): AppPlugin | null {
+  const plugin = pluginOf<AppPlugin>(APP_PLUGIN, win);
+  return plugin && typeof plugin.addListener === 'function' && typeof plugin.exitApp === 'function' ? plugin : null;
+}
+
+/** Whether Android's back button is the page's to decide: inside an app whose shell carries the App plugin. */
+export const handlesBackButton = (win: NativeHost | undefined = host()): boolean => appPlugin(win) !== null;
+
+/**
+ * Tells `fn` of each press of Android's back button, with whether the web view has a page to go back to. While a page
+ * listens, a press does nothing else (the plugin's own going back is off), so `fn` decides. Outside the app, or in an
+ * APK from before the plugin (its back button keeps Android's own way), nothing is listened to. Gives the remover, which
+ * takes it off also before the plugin gave its handle.
+ */
+export function onBackButton(fn: (event: { canGoBack: boolean }) => void, win: NativeHost | undefined = host()): () => void {
+  const plugin = appPlugin(win);
+  if (!plugin) return () => {};
+  let handle: Promise<PushListenerHandle> | PushListenerHandle | undefined;
+  try {
+    handle = plugin.addListener('backButton', (event) => fn({ canGoBack: event?.canGoBack === true }));
+  } catch {
+    return () => {};
+  }
+  void Promise.resolve(handle).catch(() => undefined);
+  let removed = false;
+  return () => {
+    if (removed) return;
+    removed = true;
+    removeLater(handle);
+  };
+}
+
+/** Leaves the app (Android: its screen is closed, as the back button does on its home screen). Never rejects. */
+export async function exitApp(win: NativeHost | undefined = host()): Promise<void> {
+  const plugin = appPlugin(win);
+  try {
+    if (plugin) await plugin.exitApp();
+  } catch {
+    // the phone refused: the person is still in the app, which is no harm
   }
 }

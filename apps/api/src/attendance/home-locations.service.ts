@@ -23,6 +23,7 @@ import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { NoticesService } from '../notifications/notices.service.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { HOME_ENTITY, HOME_INCLUDE, homeParties, homeView, type HomeCaller, type HomeLocationView, type HomeRow } from './home-location-views.js';
@@ -58,12 +59,15 @@ const FORGET = { latitude: null, longitude: null, label: null } as const;
 // employee, HR (not a C-level person's), the CEO and the Super Admin; managers and Finance are refused. Its point and
 // label are kept only while it is being decided or in force, and deleted (not hidden) once it isn't: rejected,
 // withdrawn, replaced or removed. Each step is logged on it and in the audit log, never with the point or the label.
+// Notifications (apps/mobile/README.md, Phase 4): once a request is sent or a step decided, the one in charge of the
+// next step is told, and the employee once HR or the CEO decides (NoticesService.homeLocation: names and dates only).
 @Injectable()
 export class HomeLocationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly confidential: ConfidentialService,
+    private readonly notices: NoticesService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -107,6 +111,8 @@ export class HomeLocationsService {
     });
     // never the point nor the label: what was asked and where it stands
     await this.audit.record({ userId: user.id, action: 'create', entityType: HOME_ENTITY, entityId: id, diff: { employeeId, radiusMetres: HOME_RADIUS_DEFAULT, status: 'with_hr' } });
+    // HR's step waits (a C-level person's, the CEO's)
+    await this.notices.homeLocation(id, 'sent');
     return this.one(id, user);
   }
 
@@ -264,6 +270,8 @@ export class HomeLocationsService {
     if (replaced) {
       await this.audit.record({ userId: user.id, action: 'replace', entityType: HOME_ENTITY, entityId: replaced, diff: { employeeId: before.employeeId, status: { from: 'approved', to: 'replaced' }, by: id } });
     }
+    // the CEO's step waits, or the employee hears how it was decided
+    await this.notices.homeLocation(id, 'decided', user.id);
     return this.one(id, user);
   }
 

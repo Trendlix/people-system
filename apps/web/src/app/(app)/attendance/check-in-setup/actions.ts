@@ -2,14 +2,15 @@
 
 // Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"): adding, changing and removing a
 // check-in location, saving the office networks with the lock (check-ins locked to the office network, the same day),
-// and Zoho People's check-in addresses. Each forwards to the API, which checks the role (HR and Admin; a Super Admin
+// the switch refusing presses without a location (the same day: "Company switch + exceptions"), and Zoho People's
+// check-in addresses. Each forwards to the API, which checks the role (HR and Admin; a Super Admin
 // removes a location) and the values again, so calling these directly can't bypass them. The networks are saved with the
 // visitor's address signed, as the API switches the lock on only when the website's signature arrives.
 import { refresh } from 'next/cache';
 import { ApiError, apiSend } from '@/lib/api';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
-import { addressesBody, locationBody, networksBody } from './setup';
+import { addressesBody, locationBody, locationRuleBody, locationRuleSaved, networksBody } from './setup';
 
 /** The submitted values, so the form can be refilled after an error. */
 function submitted(fd: FormData): Record<string, string> {
@@ -59,6 +60,12 @@ export async function saveNetworks(_prev: FormState, fd: FormData): Promise<Form
     () => apiSend('PUT', '/attendance/check-in-setup/networks', body, { signIp: true }),
     body.lock ? 'Saved. Office staff now check in and out on the office network only.' : 'Saved. Check-ins aren’t locked to the office network.',
   );
+}
+
+/** The switch refusing presses without a location (PUT /attendance/check-in-setup/location-rule). */
+export async function saveLocationRule(_prev: FormState, fd: FormData): Promise<FormState> {
+  const body = locationRuleBody(fd);
+  return send(fd, () => apiSend('PUT', '/attendance/check-in-setup/location-rule', body), locationRuleSaved(body.refuseWithoutLocation));
 }
 
 /** Zoho People's check-in addresses (PATCH /payroll/settings { officeAddresses }). */

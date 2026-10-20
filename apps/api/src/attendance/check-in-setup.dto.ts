@@ -57,3 +57,13 @@ export class UpdateOfficeNetworksDto {
   @IsObject({ each: true, message: 'Send each office network as its name and its address.' })
   networks: { label?: unknown; range?: unknown }[];
 }
+
+/**
+ * The switch "Refuse check-ins and check-outs without a location" (owner, 20 October 2026: "Company switch +
+ * exceptions"): on, a website press without a location is refused, unless HR exempts the person or it comes from an
+ * office network the website signed.
+ */
+export class UpdateLocationRuleDto {
+  @IsBoolean({ message: 'Send whether check-ins and check-outs without a location are refused as true or false.' })
+  refuseWithoutLocation: boolean;
+}

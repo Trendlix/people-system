@@ -9,6 +9,7 @@ import {
   officeNetworksFrom,
   SIGNED_IP_PROBLEM_TEXT,
   webKeyUsable,
+  type LocationRule,
   type NetworkLockSetting,
   type OfficeLocation,
   type OfficeNetwork,
@@ -21,11 +22,12 @@ import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { CheckInLocation } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type { CreateCheckInLocationDto, UpdateCheckInLocationDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
+import type { CreateCheckInLocationDto, UpdateCheckInLocationDto, UpdateLocationRuleDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
 import { verifySignedIp, type SignedIp } from './signed-ip.js';
 
 const LOCATION = 'check_in_location';
 const NETWORKS = 'office_networks';
+const LOCATION_RULE = 'check_in_location_rule';
 
 /** A check-in location as the API sends it. */
 export interface CheckInLocationView {
@@ -78,7 +80,10 @@ function networksOf(json: unknown): OfficeNetwork[] {
 // is removed by a Super Admin, as every deletion is (owner's decision, 15 October 2026). Each change is in the audit log.
 // The lock needs the key the website signs the visitor's address with (WEB_KEY, deploy/web-key.sh, on the server and in
 // Vercel): without it the switch can't be turned on, and while it is missing no one is refused. The networks are the
-// office's public addresses, kept with the payroll settings' row (id 1); no employee's address is ever kept.
+// office's public addresses, kept with the payroll settings' row (id 1); no employee's address is ever kept. And the
+// switch "Refuse check-ins and check-outs without a location" (owner, 20 October 2026: "i want a flag to restrict
+// checkin and out from unknown locations", then "Company switch + exceptions"), off to start with, on the same row: HR's
+// and Admin's, audited (packages/shared punch-location.ts decides each press with it).
 @Injectable()
 export class CheckInSetupService {
   constructor(
@@ -143,6 +148,27 @@ export class CheckInSetupService {
       inForce: networkLockInForce(setting),
       here: here.ip ? { signed: true, ip: here.ip, network: matchOfficeNetwork(here.ip, setting.networks)?.label ?? null } : { signed: false, problem: here.problem! },
     };
+  }
+
+  // ---------- refusing presses without a location ----------
+
+  /** The switch "Refuse check-ins and check-outs without a location" (off unless set). */
+  async locationRule(): Promise<LocationRule> {
+    const s = await this.prisma.payrollSettings.findUnique({ where: { id: 1 }, select: { refuseWithoutLocation: true } });
+    return { refuseWithoutLocation: s?.refuseWithoutLocation ?? false };
+  }
+
+  /** { refuseWithoutLocation }: on or off, in the audit log when it changes. */
+  async updateLocationRule(dto: UpdateLocationRuleDto, user: SessionUser): Promise<LocationRule> {
+    const before = await this.locationRule();
+    await this.prisma.payrollSettings.upsert({
+      where: { id: 1 },
+      update: { refuseWithoutLocation: dto.refuseWithoutLocation },
+      create: { id: 1, refuseWithoutLocation: dto.refuseWithoutLocation },
+    });
+    const diff = changes({ ...before }, { refuseWithoutLocation: dto.refuseWithoutLocation });
+    if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: LOCATION_RULE, diff });
+    return { refuseWithoutLocation: dto.refuseWithoutLocation };
   }
 
   // ---------- the check-in locations ----------

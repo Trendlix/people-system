@@ -8,7 +8,7 @@ import { PhoneLoading } from '../../../ui';
 // site's page (leave/[id]/leave-request.tsx), its back link to the phone pages' To Approve, and what is done on it
 // coming back here.
 
-export const metadata: Metadata = { title: 'Leave Request · TrendLIX People' };
+export const metadata: Metadata = { title: 'Leave Request · Trendlix People' };
 
 export default function PhoneApproveLeavePage({ params, searchParams }: PageProps<'/app/approve/leave/[id]'>) {
   return (

@@ -12,8 +12,10 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   attendance_import: 'Attendance import',
   attendance_summary: 'Attendance summary',
   audit_log: 'Audit log',
-  // Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"; the office network's lock)
+  // Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"; the office network's lock; the
+  // switch refusing presses without a location, "Company switch + exceptions")
   check_in_location: 'Check-in location',
+  check_in_location_rule: 'Check-ins without a location',
   company: 'Company',
   contract: 'Contract',
   contract_settings: 'Contract defaults',
@@ -70,8 +72,9 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   cancel: 'Cancelled',
   change: 'Changed the amount',
   change_installment: 'Changed the installments',
-  // a check-in or check-out refused off the office network (owner, 20 October 2026); never the address
-  check_in_refused: 'Check-in refused: not on the office network',
+  // a check-in or check-out refused off the office network (owner, 20 October 2026), or without a location (the same
+  // day: "Company switch + exceptions"), its reason in the change; never the address, never a point
+  check_in_refused: 'Check-in or check-out refused',
   close: 'Closed',
   complete: 'Completed',
   confirm: 'Confirmed',
@@ -178,6 +181,9 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   officeNetworks: 'Office networks',
   officeNetworkLock: 'Lock check-ins to the office network',
   checkInAnywhere: 'Can check in from anywhere',
+  // refusing presses without a location (20 October 2026)
+  refuseWithoutLocation: 'Refuse check-ins and check-outs without a location',
+  checkInWithoutLocation: 'Can check in without a location',
   // home locations (20 October 2026)
   radiusMetres: 'Radius (metres)',
 };

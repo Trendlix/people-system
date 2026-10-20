@@ -1,12 +1,14 @@
 import type { Metadata, Viewport } from 'next';
 import { Suspense } from 'react';
 import { brandMetadata } from '@/components/brand';
+import { CheckInReminder } from '@/components/check-in-reminder';
 import { SessionWatch } from '@/components/session-watch';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
 import type { Session } from '@/lib/view-as';
 import { approveCount } from './approve-count';
+import { PullToRefresh } from './pull-to-refresh';
 import { PushBridge } from './push-bridge';
 import { TabBar, TabList } from './tab-bar';
 import { tabsFor } from './tabs';
@@ -14,12 +16,14 @@ import { TopBar, TopBarFallback } from './top-bar';
 
 // The phone pages (owner, 20 October 2026: "what if we tried to build a mobile app for the employees? to enable them to
 // check in and out, and apply for their requests"; apps/mobile/README.md, Phase 1): a phone-first area of the site at
-// /app, which the TrendLIX People app shows (a Capacitor shell over these pages) and which works in a phone's browser
+// /app, which the Trendlix People app shows (a Capacitor shell over these pages) and which works in a phone's browser
 // too. Its own layout, not the sidebar's: the top bar with the person's name and the bell, the page, and the tab bar at
 // the bottom (Home, Requests, Attendance, Payslips, and To Approve for those who decide something), clear of the
 // phone's notch and home bar (viewport-fit=cover and the safe-area insets), one column at 320–430 px and in landscape,
 // in the site's colours. Signed out, the proxy sends people to the sign-in page and back here after it, as everywhere.
-// Every page reads with the person's session; the API decides what they may see and do, as on the site.
+// Every page reads with the person's session; the API decides what they may see and do, as on the site. Phase 5 (20
+// October 2026): pull to refresh at the top of every page, and a clear focus ring on everything that takes a tap
+// (globals.css, .phone-pages).
 
 // light only, as the site (it has no dark theme): "only light" also keeps a phone's dark mode from darkening the pages
 // itself (the app's web view, Chrome), so they look as the site does
@@ -27,7 +31,7 @@ export const viewport: Viewport = { themeColor: '#0e1726', viewportFit: 'cover',
 
 /** The browser tab icon: the company's thumbnail when there is one. */
 export async function generateMetadata(): Promise<Metadata> {
-  return { title: 'TrendLIX People', ...(await brandMetadata()) };
+  return { title: 'Trendlix People', ...(await brandMetadata()) };
 }
 
 /** The tab bar for the signed-in user, with how many things wait for them on To Approve. */
@@ -46,13 +50,14 @@ const SIDES = 'pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-a
 
 export default function PhoneLayout({ children }: LayoutProps<'/app'>) {
   return (
-    <div className="flex min-h-dvh flex-col bg-canvas">
-      {/* the view-as banner and the top bar stay at the top together as the page scrolls */}
-      <div className="sticky top-0 z-30">
+    <div className="phone-pages flex min-h-dvh flex-col bg-canvas">
+      {/* the view-as banner and the top bar stay at the top together as the page scrolls (pull to refresh comes from
+          under them) */}
+      <div className="sticky top-0 z-30" data-phone-header="">
         <Suspense fallback={null}>
           <ViewAsBanner />
         </Suspense>
-        <header className={`bg-sidebar pt-[env(safe-area-inset-top)] text-white ${SIDES}`}>
+        <header className={`on-dark bg-sidebar pt-[env(safe-area-inset-top)] text-white ${SIDES}`}>
           <div className="mx-auto flex min-h-14 max-w-xl items-center">
             <Suspense fallback={<TopBarFallback />}>
               <TopBar />
@@ -70,9 +75,16 @@ export default function PhoneLayout({ children }: LayoutProps<'/app'>) {
       <Suspense fallback={null}>
         <SessionWatch />
       </Suspense>
+      {/* "You haven't checked in yet" (owner, 20 October 2026: "a reminder for people that didn't checkin and not on a
+          leave every 10 minutes. like a popup"), Check in opening Home; never while viewing as someone */}
+      <Suspense fallback={null}>
+        <CheckInReminder surface="app" />
+      </Suspense>
       {/* push notifications inside the app (Phase 4, 20 October 2026): registered again on each open once allowed, and a
           notification tapped opens its page here */}
       <PushBridge />
+      {/* pull down at the top of a page to read it again (Phase 5, 20 October 2026) */}
+      <PullToRefresh />
     </div>
   );
 }

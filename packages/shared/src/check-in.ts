@@ -3,8 +3,10 @@
 // employment under a shift (not a freelancer) presses Check in and Check out on their Dashboard or My Attendance: the
 // time is the server's (Cairo), never the device's; the place is the browser's location, asked each time, against the
 // office's point and radius HR sets in Payroll Setup → Your Rules (150 metres to start with): within it the office,
-// outside it remote, refused or unavailable "location unknown". Only office, remote or unknown and the reading's
-// accuracy in metres are kept, never the coordinates (the owner chose to keep only office or remote). The work
+// outside it remote, refused or unavailable "location unknown". At first only office, remote or unknown and the
+// reading's accuracy in metres were kept, never the coordinates; since 20 October 2026 (owner: "Yes, keep the spot") the
+// point where each press was made is kept too, read only then, and seen by HR, the CEO, the Super Admin and the
+// employee (punch-location.ts). The work
 // arrangement says where they are expected (an office employee at the office, a hybrid one at the office on its office
 // days, anyone else anywhere): a check-in elsewhere is kept but flagged for the manager and HR on Daily Attendance, never
 // refused (no one is locked out). Several presses a day are kept as punches; the day's check-in is the first in and its
@@ -13,7 +15,7 @@
 // source 'device' (ATTENDANCE_SOURCES). Pure: the API decides with these and the web shows the same words. Home
 // locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home",
 // then "Label Home, flag elsewhere"): within a person's approved home a check-in is Home (remote for every other rule),
-// and a remote one elsewhere is flagged for them; still only the place is kept, never the coordinates.
+// and a remote one elsewhere is flagged for them; the home's own point is never kept on a punch.
 
 import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, type ShiftWindowTimes } from './attendance.js';
 import type { WorkPlace } from './attendance-import.js';
@@ -174,9 +176,10 @@ export type CheckInLocationError = (typeof CHECK_IN_LOCATION_ERRORS)[number];
  * Inside the employee app a press needs a location (owner, 20 October 2026: "the device location should be active for
  * the application for location tracking services", "dont allow checkins without location is always active"; asked,
  * "Refuse without location" and "App only"): read at the moment of the press, never tracked. The API refuses an app
- * press without one (409) with this; on the website a press without one is kept, location unknown, as before.
+ * press without one (409) with this; on the website a press without one is kept, location unknown, as before, unless
+ * the company refuses it (punch-location.ts, owner, 20 October 2026: "Company switch + exceptions").
  */
-export const APP_LOCATION_NEEDED_MESSAGE = "Turn on your phone's location and allow TrendLIX People to use it, then try again.";
+export const APP_LOCATION_NEEDED_MESSAGE = "Turn on your phone's location and allow Trendlix People to use it, then try again.";
 
 export const CHECK_IN_LOCATION_ERROR_LABELS: Record<CheckInLocationError, string> = {
   denied: 'You didn’t allow the location',
@@ -193,7 +196,7 @@ export type HomePoint = Pick<OfficeLocation, 'latitude' | 'longitude' | 'radiusM
  * remote; no reading (refused or unavailable), a reading that isn't a point, or no location with its point set: unknown.
  * Several locations since 20 October 2026 (owner: "Own page, several locations"): within ANY of them is the office, and
  * `location` names the nearest one it is within (when it has a name). The accuracy kept is the reading's, in whole
- * metres (none: null); the point itself is never kept. A person's approved home (owner, 20 October 2026: "Label Home,
+ * metres (none: null); the point itself is kept apart with the press (punch-location.ts, since 20 October 2026). A person's approved home (owner, 20 October 2026: "Label Home,
  * flag elsewhere"): the place order is the office first, else within the home's radius home, else remote, else unknown;
  * with no office location set a reading at home is still home, anywhere else unknown as before.
  */
@@ -248,6 +251,17 @@ export type CheckInFlag = (typeof CHECK_IN_FLAGS)[number];
 export const CHECK_IN_FLAG_LABELS: Record<CheckInFlag, string> = {
   outside_office: 'Checked in outside the office on an office day',
   location_unknown: 'Location unknown on an office day',
+  fake_gps: 'Fake GPS suspected',
+  not_home_or_office: 'Not at home or the office',
+};
+
+/**
+ * The flags in a word or two, for the compact badges of a day's row (owner, 20 October 2026: "simplify this"); the
+ * full words above stay as each badge's title and in Daily Attendance's filter.
+ */
+export const CHECK_IN_FLAG_SHORT_LABELS: Record<CheckInFlag, string> = {
+  outside_office: 'Outside the office',
+  location_unknown: 'No location',
   fake_gps: 'Fake GPS suspected',
   not_home_or_office: 'Not at home or the office',
 };

@@ -9,7 +9,7 @@ import { PageTitle, PhoneLoading } from '../ui';
 // tapped on the phone when it has no page of its own: the site's inbox (inbox.tsx), each notification opening its page
 // here (a request under My Requests or To Approve, a payslip, Home for the reminders).
 
-export const metadata: Metadata = { title: 'Notifications · TrendLIX People' };
+export const metadata: Metadata = { title: 'Notifications · Trendlix People' };
 
 async function Page({ searchParams }: { searchParams: PageProps<'/app/notifications'>['searchParams'] }) {
   const page = inboxPage((await searchParams).page);

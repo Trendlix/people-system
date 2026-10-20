@@ -143,8 +143,8 @@ export function HomeAskForm({ action, lockHint }: { action: Action; lockHint: st
         </div>
       </div>
       <p className="max-w-3xl text-sm text-muted">
-        Your home is personal: only you, HR and the CEO see it, never your manager. Sending it is your consent. A check-in within it shows as Home,
-        and keeps only that, never where you were. You can remove it at any time.
+        Your home is personal: only you, HR and the CEO see it, never your manager. Sending it is your consent. A check-in within it shows as Home.
+        Each check-in keeps the spot where you pressed, read only then; HR can see it. You can remove your home at any time.
       </p>
       <SubmitButton busy={pending} disabled={!point} pendingText="Sending…">
         Send to HR

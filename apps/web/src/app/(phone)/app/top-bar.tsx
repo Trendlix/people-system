@@ -11,12 +11,13 @@ import { loadOwnProfile } from '../../(app)/own-profile';
 
 // The phone pages' top bar (owner, 20 October 2026: the employee app; apps/mobile/README.md, Phase 1): the person's
 // name and job, the bell (Phase 4, 20 October 2026: the inbox, with how many are unread) and a menu with the full site,
-// Change password and Sign out. An API outage must not take the page down: it says so in place of the name.
+// Change password and Sign out. An API outage must not take the page down: it says so in place of the name. The bell
+// and the menu are 44 px targets (Phase 5, 20 October 2026: accessibility), their focus ring white on the dark bar.
 
-/** The menu: the full site, Change password (not while viewing as someone), Sign out. */
+/** The menu: the full site, Change password (not while viewing as someone), Sign out. Android's back button closes it. */
 function Menu({ user }: { user: Session | null }) {
   return (
-    <details className="relative">
+    <details className="relative" data-closes-on-back="">
       <summary className="inline-flex size-11 cursor-pointer list-none items-center justify-center rounded-full text-sidebar-text hover:bg-white/10 [&::-webkit-details-marker]:hidden">
         <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6" fill="currentColor">
           <circle cx="12" cy="5.5" r="1.8" />

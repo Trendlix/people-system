@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { decidesConfidentialStage, type Role } from '@trendlix/shared';
+import { cairoDay, decidesConfidentialStage, type Role } from '@trendlix/shared';
 import { actsAs } from '../auth/roles.js';
 import { fromDateOnly } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
@@ -11,6 +11,8 @@ import {
   claimPaidText,
   daysText,
   decidedText,
+  homeDecidedText,
+  homeWaitingText,
   payRaiseDecidedText,
   payRaiseWaitingText,
   payslipText,
@@ -29,7 +31,10 @@ import {
 // - the employee, once their own request is approved or rejected (a claim also when it is paid, a leave or a permission
 //   when HR cancels it), and when their payslip is issued;
 // - raise requests and raises, HR and the CEO only (owner, 20 October 2026: "raises not to be visible to employee level
-//   for now", then "Hide from managers too"; packages/shared EMPLOYEE_LEVEL_SEES_RAISES).
+//   for now", then "Hide from managers too"; packages/shared EMPLOYEE_LEVEL_SEES_RAISES);
+// - home locations (owner, 20 October 2026: "then approved by the HR and CEO"): HR's step to HR (a C-level person's to
+//   the CEO, or HR with Super Admin), then the CEO's to the CEO (a CEO's own to a Super Admin), never the person
+//   themself nor the one who just decided; the employee once HR or the CEO decides, never with the point or the label.
 // None of it ever throws into the flow: a failure is logged and the step stands.
 
 /** A request's steps as leave's are (with_manager → with_hr), and a claim's (… → with_finance). */
@@ -47,6 +52,7 @@ export const REQUEST_LINKS = {
   approvals: '/approvals',
   payslip: (lineId: string) => `/app/payslips/${lineId}`,
   myAttendance: '/my-attendance',
+  homeLocation: (id: string) => `/home-locations/${id}`,
 } as const;
 
 /** A request as the notices read it: whose it is, who it was sent to, where it stands, its name and its days. */
@@ -205,6 +211,44 @@ export class NoticesService {
     });
   }
 
+  // ---------- home locations: HR, then the CEO ----------
+
+  /**
+   * A home location sent, or a step decided (by `actorId`): the one in charge of the step it waits at now, as
+   * packages/shared decidesHomeStage has it (HR's: HR, a C-level person's the CEO or HR with Super Admin; the CEO's: the
+   * CEO, on a CEO's own request a Super Admin too), never the person themself nor the one who just decided; and, once
+   * HR or the CEO decides, the employee (HR's step "by HR", a C-level person's "by the CEO" when the CEO took it). Names
+   * and dates only.
+   */
+  async homeLocation(id: string, event: 'sent' | 'decided', actorId: string | null = null): Promise<void> {
+    await this.safely('home location', async () => {
+      const r = await this.prisma.homeLocationRequest.findUnique({
+        where: { id },
+        select: { employeeId: true, status: true, createdAt: true, employee: { select: { fullNameEn: true } }, createdBy: { select: { roles: { select: { role: { select: { key: true } } } } } } },
+      });
+      if (!r) return;
+      const link = REQUEST_LINKS.homeLocation(id);
+      const askedOn = cairoDay(r.createdAt);
+      const notActor = (ids: readonly string[]) => ids.filter((u) => u !== actorId);
+      if (r.status === 'with_hr') {
+        await this.notifications.notify(notActor(await this.stageDeciders('hr', r.employeeId)), homeWaitingText(r.employee.fullNameEn, askedOn, link));
+      } else if (r.status === 'with_ceo') {
+        const own = (await this.usersOf([r.employeeId])).get(r.employeeId);
+        const byCeo = r.createdBy?.roles.some((x) => x.role.key === 'ceo') ?? false;
+        const ceos = await this.usersWith((roles) => roles.includes('ceo') || (byCeo && roles.includes('super_admin')));
+        await this.notifications.notify(notActor(ceos.filter((u) => u !== own)), homeWaitingText(r.employee.fullNameEn, askedOn, link));
+      }
+      if (event !== 'decided') return;
+      if (r.status === 'with_ceo') {
+        const actor = actorId ? await this.prisma.user.findUnique({ where: { id: actorId }, select: { roles: { select: { role: { select: { key: true } } } } } }) : null;
+        const byTheCeo = (await this.confidential.isConfidential(r.employeeId)) && !!actor?.roles.some((x) => x.role.key === 'ceo');
+        await this.toEmployee(r.employeeId, homeDecidedText('first_step', askedOn, link, byTheCeo ? 'the CEO' : 'HR'));
+      } else if (r.status === 'approved' || r.status === 'rejected') {
+        await this.toEmployee(r.employeeId, homeDecidedText(r.status, askedOn, link));
+      }
+    });
+  }
+
   // ---------- who ----------
 
   /** The one in charge of a step: the manager it was sent to; HR or Finance (the CEO for a C-level person's). */
@@ -219,8 +263,8 @@ export class NoticesService {
 
   /**
    * Those who take HR's or Finance's step on someone's request: those holding the role; a C-level person's, the CEO (or
-   * the role's holders who see C-level people: with Super Admin). Never the person themself. Public for flows wired
-   * later (the home locations' HR step).
+   * the role's holders who see C-level people: with Super Admin). Never the person themself. Public for the flows that
+   * read it apart.
    */
   async stageDeciders(stage: 'hr' | 'finance', employeeId: string): Promise<string[]> {
     const [confidential, own] = await Promise.all([this.confidential.isConfidential(employeeId), this.usersOf([employeeId])]);

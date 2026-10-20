@@ -8,6 +8,8 @@ import {
   claimPaidText,
   daysText,
   decidedText,
+  homeDecidedText,
+  homeWaitingText,
   payRaiseDecidedText,
   payRaiseWaitingText,
   payslipText,
@@ -65,11 +67,30 @@ describe('notification texts', () => {
     expect(payRaiseDecidedText('returned', 'Mona Adel', '/x').title).toBe('Raise returned to HR by the CEO');
   });
 
+  it('tells of a home location by name and the day it was asked: never its point, label or comment', () => {
+    expect(homeWaitingText('Mona Adel', '2026-10-20', '/home-locations/h1')).toEqual({
+      kind: 'home_location_waiting',
+      title: 'A home location is waiting for you',
+      body: 'Mona Adel, asked on 20/10/2026',
+      link: '/home-locations/h1',
+    });
+    expect(homeDecidedText('first_step', '2026-10-20', '/home-locations/h1')).toEqual({
+      kind: 'home_location_decided',
+      title: 'Home location approved by HR',
+      body: 'Your request of 20/10/2026 is with the CEO now',
+      link: '/home-locations/h1',
+    });
+    // a C-level person's first step is the CEO's
+    expect(homeDecidedText('first_step', '2026-10-20', '/h', 'the CEO').title).toBe('Home location approved by the CEO');
+    expect(homeDecidedText('approved', '2026-10-20', '/h')).toMatchObject({ title: 'Home location approved', body: 'Your request of 20/10/2026' });
+    expect(homeDecidedText('rejected', '2026-10-20', '/h')).toMatchObject({ title: 'Home location rejected', body: 'Your request of 20/10/2026' });
+  });
+
   it('reminds on the 12-hour clock, in Cairo', () => {
     expect(checkInReminderText('09:00', '/my-attendance')).toEqual({
       kind: 'check_in_reminder',
       title: 'You haven’t checked in',
-      body: 'Your shift started at 9:00 AM. Check in when you start work.',
+      body: 'Your shift started at 9:00 AM. Check in now.',
       link: '/my-attendance',
     });
     expect(checkOutReminderText(new Date(zonedMoment('2026-10-20', '09:05')), '/my-attendance')).toMatchObject({
@@ -86,6 +107,8 @@ describe('notification texts', () => {
       claimDecidedText({ approved: true, payMonth: '2026-10-01' }, '/r'),
       claimPaidText('2026-10', '/r'),
       payslipText('2026-10', null, '/app/payslips/l1'),
+      homeWaitingText('A Very Long Name '.repeat(20), '2026-10-20', '/home-locations/h1'),
+      homeDecidedText('first_step', '2026-10-20', '/home-locations/h1', 'the CEO'),
       checkInReminderText('21:30', '/my-attendance'),
     ];
     for (const n of all) {

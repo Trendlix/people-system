@@ -1,6 +1,6 @@
 name: Mobile (Android)
 
-# Builds TrendLIX People, the employee app (apps/mobile, README Phase 0), as an Android APK the owner downloads and
+# Builds Trendlix People, the employee app (apps/mobile, README Phase 0), as an Android APK the owner downloads and
 # installs to try each phase (owner, 20 October 2026: "actions will be responsible for build the app so that i can
 # download the apk app to test it while developing process phases"). No store, no signing secrets yet: the APK is
 # debug-signed, which installs directly on a phone ("install unknown apps" allowed once).
@@ -179,7 +179,7 @@ jobs:
           tools="$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -1)"
           cert="$("$tools/apksigner" verify --print-certs "$dest" 2>/dev/null | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
           {
-            echo "### TrendLIX People $MOBILE_VERSION_NAME"
+            echo "### Trendlix People $MOBILE_VERSION_NAME"
             echo ""
             echo "- Debug APK, version code $MOBILE_VERSION_CODE, $(du -h "$dest" | cut -f1)"
             echo "- APK SHA-256 \`$(sha256sum "$dest" | cut -d' ' -f1)\`"
@@ -211,11 +211,11 @@ jobs:
 
       - uses: softprops/action-gh-release@v3
         with:
-          name: TrendLIX People ${{ needs.build.outputs.version }}
+          name: Trendlix People ${{ needs.build.outputs.version }}
           prerelease: true
           files: apk/*.apk
           fail_on_unmatched_files: true
           body: |
-            Test build of TrendLIX People ${{ needs.build.outputs.version }} for Android (debug-signed, not from a store).
+            Test build of Trendlix People ${{ needs.build.outputs.version }} for Android (debug-signed, not from a store).
             Download the .apk below on the phone, open it, allow "Install unknown apps" the first time, and install;
             it installs over an older test build.

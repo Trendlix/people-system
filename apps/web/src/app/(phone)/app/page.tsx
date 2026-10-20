@@ -21,7 +21,7 @@ import { FingerprintOffer } from './fingerprint-offer';
 import { PushOffer } from './push-offer';
 import { askOptions } from './requests/new/options';
 import { decidesSomething } from './tabs';
-import { PhoneCard, PhoneLoading, Quiet, RowLink, RowList } from './ui';
+import { PhoneCard, PhoneLoading, Quiet, RowLink, RowList, SkeletonRows } from './ui';
 
 // The phone pages' Home (owner, 20 October 2026: "what if we tried to build a mobile app for the employees? to enable
 // them to check in and out, and apply for their requests"; apps/mobile/README.md, Phase 1): today's check-in first, with
@@ -31,7 +31,7 @@ import { PhoneCard, PhoneLoading, Quiet, RowLink, RowList } from './ui';
 // permission hours; and what is coming up: their leave and permission, and the official holidays. Each opens its page
 // on the phone pages. Confirming their details stays on the site (its review page), linked from here.
 
-export const metadata: Metadata = { title: 'Home · TrendLIX People' };
+export const metadata: Metadata = { title: 'Home · Trendlix People' };
 
 const TILE =
   'flex min-h-20 flex-col items-start justify-between gap-2 rounded-xl border border-line bg-card p-3 text-sm font-semibold text-ink no-underline hover:border-accent active:bg-canvas';
@@ -212,10 +212,14 @@ async function ComingUp({ profile, today }: { profile: EmployeeProfile | null; t
   );
 }
 
+/** A card while it loads: its heading, and grey lines where its rows will be (Phase 5, 20 October 2026). */
 function CardLoading({ title }: { title: string }) {
   return (
-    <PhoneCard title={title}>
-      <Quiet>Loading…</Quiet>
+    <PhoneCard title={title} flush>
+      <div role="status">
+        <span className="sr-only">Loading…</span>
+        <SkeletonRows rows={2} />
+      </div>
     </PhoneCard>
   );
 }

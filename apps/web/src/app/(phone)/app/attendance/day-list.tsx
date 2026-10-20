@@ -3,18 +3,22 @@ import type { MonthCorrectable, MonthCorrection } from '@/lib/correction-types';
 import type { AttendanceDay } from '@/lib/attendance-types';
 import { formatDate } from '@/lib/format';
 import { appCorrectionHref, appItemHref } from '@/lib/surface';
-import { checkInCell, correctedNote, dayFlagTexts, daySourceText, extraHoursText, hoursText, punchesText, type PunchRow } from '../../../(app)/attendance/attendance';
+import { correctedNote, dayRow, daySourceText, extraHoursText, hoursText, type PunchRow } from '../../../(app)/attendance/attendance';
 import { dayCorrection } from '../../../(app)/attendance/corrections/corrections';
 import { leaveStatusLabel } from '../../../(app)/leave/list';
+import { AllPresses, DayEndView } from '../../../(app)/attendance/punch-ui';
 import { weekdayOf } from '../../../(app)/organization/holidays/holidays';
-import { cairoTime, dayStatusText, dayTone, placeText } from '../../../(app)/payroll/[id]/attendance/attendance';
+import { dayStatusText, dayTone } from '../../../(app)/payroll/[id]/attendance/attendance';
 
 // A month's days on the phone pages (owner, 20 October 2026: the employee app, "My attendance … a day → Ask for a
 // correction"): My Attendance's table (attendance/ui.tsx, DaysTable) as a list a phone can read, each day a card with
 // what it was, the check-in and check-out, the hours counted and short (or extra, owner, 20 October 2026: make-up
-// hours), where, the permission, the flags, what it was
-// corrected from and every press; and the day's correction: Ask for a correction (a day gone by or today, not of leave,
-// in a month whose payroll isn't approved, as the site says it: dayCorrection), or the correction being decided.
+// hours), the permission, what it was corrected from; and the day's correction: Ask for a correction (a day gone by or
+// today, not of leave, in a month whose payroll isn't approved, as the site says it: dayCorrection), or the correction
+// being decided.
+// Simpler (owner, 20 October 2026: "simplify this, i want to view if it is remote or office, and location link"): the
+// check-in and the check-out each with its place as a badge, a Map link to where it was pressed (their own spot) and the
+// flags in a word or two, and every press of the day collapsed in "All presses (14)" (punch-ui.tsx).
 
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
 
@@ -63,10 +67,8 @@ export function DayList({
     <ol aria-label="Your days" className="space-y-2">
       {days.map((d) => {
         const tone = dayTone(d.status);
-        const inCell = checkInCell(d);
-        const flags = dayFlagTexts(d);
+        const row = dayRow(d, punches);
         const corrected = correctedNote(d);
-        const pressed = punchesText(punches, d.date);
         return (
           <li key={d.date} className="card p-4">
             <div className="flex items-baseline justify-between gap-3">
@@ -75,12 +77,12 @@ export function DayList({
               </h3>
               <span className={`text-sm font-medium ${tone ? TONE[tone] : 'text-muted'}`}>{dayStatusText(d.status)}</span>
             </div>
-            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 min-[380px]:grid-cols-4">
-              <Figure label="Check-in" tone={inCell === 'missing' ? 'text-warn' : undefined}>
-                {inCell === 'time' ? cairoTime(d.checkIn) : inCell === 'missing' ? 'Missing' : '—'}
+            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
+              <Figure label="Check-in">
+                <DayEndView end={row.checkIn} />
               </Figure>
-              <Figure label="Check-out" tone={!d.checkOut && d.missingCheckOut ? 'text-warn' : undefined}>
-                {d.checkOut ? cairoTime(d.checkOut) : d.missingCheckOut ? 'Missing' : '—'}
+              <Figure label="Check-out">
+                <DayEndView end={row.checkOut} />
               </Figure>
               <Figure label="Hours counted">
                 {d.status === 'worked' ? hoursText(d.hoursCounted) : '—'}
@@ -91,20 +93,9 @@ export function DayList({
                 {d.shortHours > 0 ? hoursText(d.shortHours) : '—'}
               </Figure>
             </dl>
-            <p className="mt-2 text-xs text-muted">
-              {[d.place ? placeText(d.place) : null, d.permissionHours > 0 ? `Permission ${hoursText(d.permissionHours)}` : null, daySourceText(d)].filter(Boolean).join(' · ')}
-            </p>
+            <p className="mt-2 text-xs text-muted">{[d.permissionHours > 0 ? `Permission ${hoursText(d.permissionHours)}` : null, daySourceText(d)].filter(Boolean).join(' · ')}</p>
             {corrected && <p className="mt-1 text-xs text-muted">{corrected}</p>}
-            {pressed && <p className="mt-1 text-xs text-muted">{pressed}</p>}
-            {flags.length > 0 && (
-              <p className="mt-2 flex flex-wrap gap-1.5">
-                {flags.map((f) => (
-                  <span key={f} className="badge bg-warn-soft whitespace-normal text-warn">
-                    {f}
-                  </span>
-                ))}
-              </p>
-            )}
+            {row.more && <AllPresses presses={row.presses} className="mt-2" />}
             {corrections && (
               <div className="mt-3 empty:hidden">
                 <DayAction day={d} corrections={corrections} correctable={correctable} today={today} />

@@ -1,6 +1,7 @@
 import { PUSH_CHANNEL, PUSH_TOKEN_MAX } from '@trendlix/shared';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  APP_PLUGIN,
   BIOMETRIC_PROMPTS,
   biometricStatus,
   CAMERA_MESSAGES,
@@ -8,11 +9,14 @@ import {
   canTakePhoto,
   clearBiometric,
   enrollBiometric,
+  exitApp,
   geolocationSource,
   getPosition,
   forgetPush,
+  handlesBackButton,
   isNativeApp,
   nativePlatform,
+  onBackButton,
   onPushOpened,
   onPushReceived,
   OWN_BIOMETRIC_PLUGIN,
@@ -310,7 +314,7 @@ describe('the fingerprint, for signing in', () => {
   it('unlocks the credential with the fingerprint, the sign-in prompt offering the password', async () => {
     const plugin = biometric();
     await expect(unlockBiometric(phone(plugin))).resolves.toEqual({ kind: 'unlocked', id: 'cred-1', secret: 's3cr3t-value' });
-    expect(plugin.unlock).toHaveBeenCalledWith({ title: 'Sign in to TrendLIX People', negativeButtonText: 'Use password' });
+    expect(plugin.unlock).toHaveBeenCalledWith({ title: 'Sign in to Trendlix People', negativeButtonText: 'Use password' });
     // an answer without a string id and secret
     for (const answer of [{}, { id: 'cred-1' }, { secret: 'x' }, { id: 7, secret: 'x' }, { id: 'cred-1', secret: '' }, null]) {
       await expect(unlockBiometric(phone(biometric({ unlock: async () => answer })))).resolves.toEqual({ kind: 'failed' });
@@ -577,5 +581,62 @@ describe('push notifications on the phone', () => {
     const failing = push();
     failing.unregister.mockRejectedValueOnce(new Error('x'));
     await expect(forgetPush(phone(failing))).resolves.toBeUndefined();
+  });
+});
+
+describe('Android’s back button (Phase 5)', () => {
+  /** The App plugin: its back button listeners, a press, and leaving the app. */
+  function appPlugin() {
+    const listeners: ((event: unknown) => void)[] = [];
+    return {
+      listeners,
+      press: (event: unknown) => listeners.forEach((l) => l(event)),
+      addListener: vi.fn((_name: string, l: (event: unknown) => void) => {
+        listeners.push(l);
+        return Promise.resolve({ remove: vi.fn(async () => void listeners.splice(listeners.indexOf(l), 1)) });
+      }),
+      exitApp: vi.fn(async () => undefined),
+    };
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('is left to Android outside the app, and in an APK without the App plugin', () => {
+    expect(handlesBackButton({})).toBe(false);
+    expect(handlesBackButton({ Capacitor: app() })).toBe(false);
+    const fn = vi.fn();
+    const off = onBackButton(fn, { Capacitor: app() });
+    off();
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('tells of each press, with whether the web view can go back, until taken off', async () => {
+    const plugin = appPlugin();
+    const win = { Capacitor: app({ [APP_PLUGIN]: plugin }) };
+    expect(handlesBackButton(win)).toBe(true);
+    const fn = vi.fn();
+    const off = onBackButton(fn, win);
+    expect(plugin.addListener).toHaveBeenCalledWith('backButton', expect.any(Function));
+    plugin.press({ canGoBack: true });
+    plugin.press({ canGoBack: 'yes' });
+    plugin.press(null);
+    expect(fn.mock.calls).toEqual([[{ canGoBack: true }], [{ canGoBack: false }], [{ canGoBack: false }]]);
+    off();
+    off();
+    await settle();
+    expect(plugin.listeners).toHaveLength(0);
+  });
+
+  it('never fails on a plugin that refuses to listen', () => {
+    const plugin = { ...appPlugin(), addListener: vi.fn(() => { throw new Error('x'); }) };
+    expect(() => onBackButton(() => undefined, { Capacitor: app({ [APP_PLUGIN]: plugin }) })()).not.toThrow();
+  });
+
+  it('leaves the app when asked, and never fails doing it', async () => {
+    const plugin = appPlugin();
+    await expect(exitApp({ Capacitor: app({ [APP_PLUGIN]: plugin }) })).resolves.toBeUndefined();
+    expect(plugin.exitApp).toHaveBeenCalledOnce();
+    plugin.exitApp.mockRejectedValueOnce(new Error('x'));
+    await expect(exitApp({ Capacitor: app({ [APP_PLUGIN]: plugin }) })).resolves.toBeUndefined();
+    await expect(exitApp({})).resolves.toBeUndefined();
   });
 });

@@ -29,7 +29,17 @@ import {
   noAttendanceText,
   notImportedYetText,
   personHref,
-  punchesText,
+  allPressesLabel,
+  dayEnds,
+  dayPunches,
+  dayRow,
+  endFlags,
+  flagBadges,
+  morePresses,
+  placeBadge,
+  pressLabel,
+  pressName,
+  punchMap,
   quickSummaryPeriods,
   readAttendanceMonth,
   readFilters,
@@ -41,6 +51,7 @@ import {
   summaryExcelHref,
   summaryHref,
   teamAttendanceHref,
+  type PunchRow,
 } from './attendance';
 import { notLoaded } from './not-loaded';
 import { ATTENDANCE_SECTIONS } from './sections';
@@ -71,15 +82,103 @@ describe('a corrected day and its presses (19 October 2026)', () => {
     expect(correctedNote({ source: 'system', correctedFrom: from })).toBeNull();
   });
 
-  it('lists a day’s presses in order, in 12-hour time with their place', () => {
+  it('lists a day’s presses in order, in 12-hour time', () => {
     const punches = [
       { date: '2026-10-12', kind: 'out', at: '2026-10-12T10:00:00.000Z', place: 'remote' },
       { date: '2026-10-12', kind: 'in', at: '2026-10-12T06:05:00.000Z', place: 'office' },
       { date: '2026-10-13', kind: 'in', at: '2026-10-13T06:00:00.000Z', place: 'unknown' },
     ];
-    expect(punchesText(punches, '2026-10-12')).toBe('In 9:05 AM (office) · Out 1:00 PM (remote)');
-    expect(punchesText(punches, '2026-10-13')).toBe('In 9:00 AM (location unknown)');
-    expect(punchesText(punches, '2026-10-14')).toBeNull();
+    expect(dayPunches(punches, '2026-10-12').map(pressLabel)).toEqual(['In 9:05 AM', 'Out 1:00 PM']);
+    expect(dayPunches(punches, '2026-10-13').map(pressLabel)).toEqual(['In 9:00 AM']);
+    expect(dayPunches(punches, '2026-10-14')).toEqual([]);
+    expect(pressName(punches[0])).toBe('the check-out at 1:00 PM');
+  });
+});
+
+// Simpler rows (owner, 20 October 2026, of Tuesday 20/10/2026's row listing a dozen presses: "simplify this, i want to
+// view if it is remote or office, and location link"; "Yes, keep the spot", seen by "HR, CEO, Super Admin").
+describe('a day’s check-in and check-out, with the place and the Map (20 October 2026)', () => {
+  const DATE = '2026-10-20';
+  const at = (time: string) => `${DATE}T${time}:00.000Z`; // Cairo is UTC+3 that day
+  const press = (kind: 'in' | 'out', time: string, place: string, more: Partial<PunchRow> = {}): PunchRow => ({ date: DATE, kind, at: at(time), place, flags: [], ...more });
+  // the owner's day: in at 4:58 PM without a location, out and in again, then out at 7:35 PM at the office
+  const presses = [
+    press('in', '13:58', 'unknown', { flags: ['location_unknown'], latitude: null, longitude: null, accuracyMetres: null, pointFrom: null }),
+    press('out', '14:01', 'unknown'),
+    press('in', '14:01', 'remote', { flags: ['outside_office'], latitude: 30.0444, longitude: 31.2357, accuracyMetres: 25, pointFrom: 'press' }),
+    press('out', '16:35', 'office', { locationName: 'Head office', latitude: 30.0601, longitude: 31.3465, accuracyMetres: 12, pointFrom: 'press' }),
+  ];
+  const day = { date: DATE, checkIn: at('13:58'), checkOut: at('16:35'), place: 'unknown', flags: ['location_unknown', 'outside_office'], missingCheckIn: false, missingCheckOut: false };
+
+  it('finds the presses the day’s check-in and check-out are, and none for a time no press made', () => {
+    expect(dayEnds(day, presses)).toEqual({ checkIn: presses[0], checkOut: presses[3] });
+    // Zoho's day, or a correction's time
+    expect(dayEnds({ checkIn: at('06:00'), checkOut: null }, presses)).toEqual({ checkIn: null, checkOut: null });
+    // a check-in's time is never a check-out's press
+    expect(dayEnds({ checkIn: at('14:01'), checkOut: at('13:58') }, presses)).toEqual({ checkIn: presses[2], checkOut: null });
+  });
+
+  it('collapses the presses besides those two in “All presses (N)”', () => {
+    expect(morePresses(presses, dayEnds(day, presses))).toBe(true);
+    expect(morePresses([presses[0], presses[3]], dayEnds(day, [presses[0], presses[3]]))).toBe(false);
+    expect(morePresses([], { checkIn: null, checkOut: null })).toBe(false);
+    expect(allPressesLabel(14)).toBe('All presses (14)');
+  });
+
+  it('says the place as a badge: Office (with its location or network), Home, Remote, Location unknown', () => {
+    expect(placeBadge('office', { locationName: 'Head office', officeNetwork: null })).toEqual({ label: 'Office', tone: 'ok', title: 'Head office' });
+    expect(placeBadge('office', { locationName: null, officeNetwork: 'Main office line' })).toEqual({ label: 'Office', tone: 'ok', title: 'On the office network: Main office line' });
+    expect(placeBadge('home')).toEqual({ label: 'Home', tone: 'accent', title: null });
+    expect(placeBadge('remote')).toEqual({ label: 'Remote', tone: 'accent', title: null });
+    expect(placeBadge('unknown')).toEqual({ label: 'Location unknown', tone: 'muted', title: null });
+    expect(placeBadge(null)).toBeNull();
+  });
+
+  it('opens where a press was on Google Maps, the accuracy as the title; none without its spot', () => {
+    expect(punchMap(presses[3])).toEqual({ href: 'https://www.google.com/maps?q=30.060100,31.346500', title: 'Within 12 m' });
+    expect(punchMap({ ...presses[3], accuracyMetres: null })?.title).toBe('Accuracy not known');
+    expect(punchMap({ ...presses[3], accuracyMetres: 1200 })?.title).toBe('Within 1,200 m');
+    // an office press from before the spot was kept, at its location's point
+    expect(punchMap({ ...presses[3], pointFrom: 'location' })?.title).toBe('Head office’s point: the spot itself wasn’t kept then');
+    // no point, or the spot left out for the caller (a manager, Finance)
+    expect(punchMap(presses[0])).toBeNull();
+    expect(punchMap({ locationName: null })).toBeNull();
+  });
+
+  it('puts the flags in a word or two, the full words as their title, by the end they belong to', () => {
+    expect(flagBadges(['location_unknown', 'outside_office', 'location_unknown', 'other'])).toEqual([
+      { key: 'location_unknown', label: 'No location', title: 'Location unknown on an office day' },
+      { key: 'outside_office', label: 'Outside the office', title: 'Checked in outside the office on an office day' },
+    ]);
+    expect(flagBadges(['fake_gps', 'not_home_or_office']).map((f) => f.label)).toEqual(['Fake GPS suspected', 'Not at home or the office']);
+    // the check-in takes its own and a later check-in's; the check-out its own fake GPS
+    expect(endFlags(day, dayEnds(day, presses))).toEqual({ checkIn: ['location_unknown', 'outside_office'], checkOut: [] });
+    const mocked = { checkIn: presses[0], checkOut: { ...presses[3], flags: ['fake_gps'] } };
+    expect(endFlags({ flags: ['location_unknown', 'fake_gps'] }, mocked)).toEqual({ checkIn: ['location_unknown'], checkOut: ['fake_gps'] });
+    expect(endFlags({ flags: ['fake_gps'] }, { checkIn: { ...presses[0], flags: ['fake_gps'] }, checkOut: { ...presses[3], flags: ['fake_gps'] } })).toEqual({
+      checkIn: ['fake_gps'],
+      checkOut: ['fake_gps'],
+    });
+  });
+
+  it('makes the owner’s row: 4:58 PM location unknown, 7:35 PM at the office with a Map, the rest collapsed', () => {
+    const row = dayRow(day, presses);
+    expect(row.checkIn).toMatchObject({ shown: 'time', time: '4:58 PM', press: presses[0], badge: { label: 'Location unknown' }, flags: ['location_unknown', 'outside_office'] });
+    expect(row.checkOut).toMatchObject({ shown: 'time', time: '7:35 PM', press: presses[3], badge: { label: 'Office', title: 'Head office' }, flags: [] });
+    expect(punchMap(row.checkOut.press!)?.href).toBe('https://www.google.com/maps?q=30.060100,31.346500');
+    expect(row.presses).toHaveLength(4);
+    expect(row.more).toBe(true);
+  });
+
+  it('gives a Zoho day its place on the check-in, and a missing end Missing', () => {
+    const zoho = dayRow({ date: '2026-10-12', checkIn: '2026-10-12T06:00:00.000Z', checkOut: '2026-10-12T15:00:00.000Z', place: 'remote', flags: [] }, []);
+    expect(zoho.checkIn).toMatchObject({ shown: 'time', time: '9:00 AM', press: null, badge: { label: 'Remote' } });
+    expect(zoho.checkOut).toMatchObject({ shown: 'time', time: '6:00 PM', press: null, badge: null });
+    expect(zoho.more).toBe(false);
+    const open = dayRow({ ...day, checkOut: null, missingCheckOut: true }, presses.slice(0, 1));
+    expect(open.checkOut).toMatchObject({ shown: 'missing', badge: null });
+    const none = dayRow({ date: DATE, checkIn: null, checkOut: null, place: null, flags: [] }, []);
+    expect([none.checkIn.shown, none.checkOut.shown]).toEqual(['none', 'none']);
   });
 });
 

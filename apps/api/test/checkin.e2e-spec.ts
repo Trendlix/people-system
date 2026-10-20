@@ -11,8 +11,9 @@ import { createApp, createUser, signIn } from './helpers.js';
 
 // Checking in on the system (owner, 19 October 2026, "Proceed with those": "Check-in through the system (phone or web
 // with the office location check, or a device) to replace Zoho"). The office's point and radius on Payroll Setup; Check
-// in and Check out at the server's time, office within the radius, remote outside it, unknown without a location, only
-// that and the accuracy kept (never the coordinates); the rules by work arrangement flagging, never refusing; the same
+// in and Check out at the server's time, office within the radius, remote outside it, unknown without a location, that,
+// the accuracy and (owner, 20 October 2026: "Yes, keep the spot") the point pressed at kept with the press, never on the
+// day; the rules by work arrangement flagging, never refusing; the same
 // press twice kept once; who can't check in; the day kept from the punches (source 'system') and shown on Daily
 // Attendance with its flags; and a draft run's lines filled from the month's attendance days ("from attendance",
 // read-only), the working days gone by without a check-in absent, Zoho's days counted before the first check-in, a
@@ -35,7 +36,7 @@ interface Today {
   date: string;
   now: string;
   next: 'in' | 'out';
-  punches: { kind: string; at: string; place: string; accuracyMetres: number | null; flags: string[] }[];
+  punches: { kind: string; at: string; place: string; accuracyMetres: number | null; flags: string[]; latitude?: number | null; longitude?: number | null; pointFrom?: string | null }[];
   day: { checkIn: string | null; checkOut: string | null; place: string | null; flags: string[]; hoursCounted: number } | null;
   expected: string | null;
   expectedText: string | null;
@@ -210,7 +211,7 @@ describe('Checking in on the system (e2e)', () => {
       expect((await today('wael')).expected).toBe('anywhere');
     });
 
-    it('checks in at the server’s time at the office within the radius, keeping only the place and the accuracy', async () => {
+    it('checks in at the server’s time at the office within the radius, keeping the place, the accuracy and the spot', async () => {
       const before = Date.now();
       const res = (await punch('olga', { kind: 'in', ...NEAR }).expect(200)).body as Today;
       expect(res.kept).toBe(true);
@@ -220,10 +221,13 @@ describe('Checking in on the system (e2e)', () => {
       expect(Date.parse(res.punches[0].at)).toBeGreaterThanOrEqual(before - 1000);
       expect(Date.parse(res.punches[0].at)).toBeLessThanOrEqual(Date.now() + 1000);
       expect(res.messages?.[0]).toMatch(/^Checked in at \d{1,2}:\d{2} [AP]M, at the office\.$/);
-      expect(JSON.stringify(res)).not.toContain('30.0601');
+      // their own press with its spot (owner, 20 October 2026: "Yes, keep the spot")
+      expect(res.punches[0]).toMatchObject({ latitude: NEAR.latitude, longitude: NEAR.longitude, pointFrom: 'press' });
 
-      // kept as a punch and a day of source 'system', never the coordinates
-      const columns = (await prisma.$queryRaw<{ name: string }[]>`SELECT column_name AS name FROM information_schema.columns WHERE table_name = 'attendance_punches'`).map((c) => c.name);
+      // kept as a punch, with its point, and a day of source 'system', which has none
+      const kept = await prisma.attendancePunch.findFirstOrThrow({ where: { employeeId: ids.olga } });
+      expect([kept.latitude?.toNumber(), kept.longitude?.toNumber()]).toEqual([NEAR.latitude, NEAR.longitude]);
+      const columns = (await prisma.$queryRaw<{ name: string }[]>`SELECT column_name AS name FROM information_schema.columns WHERE table_name = 'attendance_days'`).map((c) => c.name);
       expect(columns.some((c) => /lat|lon|coord|point/.test(c))).toBe(false);
       const day = await prisma.attendanceDay.findUniqueOrThrow({ where: { employeeId_date_source: { employeeId: ids.olga, date: toDateOnly(TODAY), source: 'system' } } });
       expect(day).toMatchObject({ status: 'worked', place: 'office', flags: [] });
@@ -417,15 +421,14 @@ describe('Checking in on the system (e2e)', () => {
       await person('omar', 'Omar Officemock', { workArrangement: 'office' }, false);
     });
 
-    it('keeps a check-in on a mock location like any other, never its coordinates, and flags it', async () => {
+    it('keeps a check-in on a mock location like any other, with its spot, and flags it', async () => {
       const res = (await punch('mila', { kind: 'in', ...NEAR, mock: true }).expect(200)).body as Today;
       expect(res.kept).toBe(true);
-      // the place is still read from the point, and only it and the accuracy are kept
-      expect(res.punches[0]).toMatchObject({ kind: 'in', place: 'office', accuracyMetres: 18, flags: ['fake_gps'] });
+      // the place is still read from the point, which is kept with it so HR can see it (20 October 2026)
+      expect(res.punches[0]).toMatchObject({ kind: 'in', place: 'office', accuracyMetres: 18, flags: ['fake_gps'], latitude: NEAR.latitude, longitude: NEAR.longitude });
       expect(res.messages).toContain(
         'Fake GPS suspected: your phone said this location comes from an app that sets a made-up one. The check-in is kept, and your manager and HR see it flagged. Turn such an app off before you check in.',
       );
-      expect(JSON.stringify(res)).not.toContain('30.0601');
       expect((await prisma.attendancePunch.findFirstOrThrow({ where: { employeeId: ids.mila } })).flags).toEqual(['fake_gps']);
       expect((await prisma.attendanceDay.findFirstOrThrow({ where: { employeeId: ids.mila, source: 'system' } })).flags).toEqual(['fake_gps']);
     });

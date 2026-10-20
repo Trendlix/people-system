@@ -15,7 +15,9 @@ import { DaysTable } from './ui';
 // team's (My Team → Team Attendance). Read only: the days are as the imports kept them. The C-level people the user
 // doesn't see are one row at the end (`hidden`). Checking in on the system (owner, 19 October 2026: "Check-in through the
 // system (phone or web with the office location check, or a device) to replace Zoho"): the check-outs without a
-// check-in under the missing check-outs, and the days whose check-in was flagged for the manager and HR.
+// check-in under the missing check-outs, and the days whose check-in was flagged for the manager and HR. Each day's
+// check-in and check-out with its place and, for HR and the CEO, a Map link to where it was pressed (owner, 20 October
+// 2026: "location link"; a manager gets the place only: the API leaves the spot out).
 
 const COLUMNS = 11;
 
@@ -146,7 +148,7 @@ export function PeopleTable({ groups, month, link, hidden }: { groups: Departmen
                         {shown && (
                           <tr id={`attendance-days-${id}`}>
                             <td colSpan={COLUMNS} className="bg-canvas px-2 py-3">
-                              {p.days.length ? <DaysTable days={p.days} name={name} /> : <p className="px-2 text-sm text-muted">No days kept.</p>}
+                              {p.days.length ? <DaysTable days={p.days} name={name} punches={p.punches ?? []} /> : <p className="px-2 text-sm text-muted">No days kept.</p>}
                             </td>
                           </tr>
                         )}

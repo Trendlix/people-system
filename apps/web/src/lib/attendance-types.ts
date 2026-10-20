@@ -11,6 +11,7 @@ import type {
   OfficeNetwork,
   PayrollStatus,
   PunchKind,
+  PunchPointFrom,
   SignedIpProblem,
 } from '@trendlix/shared';
 
@@ -133,6 +134,32 @@ export interface AttendancePersonMonth {
    */
   checksIn?: boolean;
   days: AttendanceDay[];
+  /**
+   * Daily Attendance and the team view (owner, 20 October 2026: "simplify this, i want to view if it is remote or office,
+   * and location link"): every press of the month, the spot only for those who see it. Left out by an API from before it.
+   */
+  punches?: AttendancePunchRow[];
+}
+
+/**
+ * A press of Check in or Check out as the Attendance pages list it, under its day (GET /attendance's people, and
+ * /attendance/me's and /attendance/employees/:id's `punches`): the day it counts on, in or out, the server's moment, the
+ * place, the flags, the location's and the office network's names. The spot (owner, 20 October 2026: "Yes, keep the
+ * spot") only for HR, the CEO, the Super Admin and the employee themself: its point, the reading's accuracy and where
+ * the point comes from (the press, or an old office press's location); left out for everyone else.
+ */
+export interface AttendancePunchRow {
+  date: string;
+  kind: string;
+  at: string;
+  place: string;
+  flags?: readonly string[];
+  locationName?: string | null;
+  officeNetwork?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyMetres?: number | null;
+  pointFrom?: PunchPointFrom | null;
 }
 
 /** An import the days shown came from (the run's status for those who see payroll only). */
@@ -205,7 +232,8 @@ export interface AttendanceImportRow {
 // ---------- checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the
 // office location check, or a device) to replace Zoho") ----------
 // As GET /me/attendance/today and POST /me/attendance/punches send them (apps/api/src/attendance/check-in.service.ts).
-// Never a point: the API reads the browser's location to tell the office from remote and drops it.
+// The API reads the browser's location to tell the office from remote, and keeps the point with the press (owner, 20
+// October 2026: "Yes, keep the spot"): the employee's own today carries it.
 
 /** A press of Check in or Check out as the day shows it: the server's moment, where it was, how accurate, its flags. */
 export interface PunchView {
@@ -216,11 +244,15 @@ export interface PunchView {
   flags: CheckInFlag[];
   /**
    * The check-in location it was within, by its name then, and the office network it came from, by its name (owner, 20
-   * October 2026: several locations, and the office network's lock); never the coordinates or the address. Left out by
-   * an API from before them.
+   * October 2026: several locations, and the office network's lock); never the address. Left out by an API from
+   * before them.
    */
   locationName?: string | null;
   officeNetwork?: string | null;
+  /** Where it was pressed (20 October 2026: "Yes, keep the spot"), and where that point comes from; none: no point. */
+  latitude?: number | null;
+  longitude?: number | null;
+  pointFrom?: PunchPointFrom | null;
 }
 
 /** The day as today's punches make it: the first check-in, the last check-out after it, the place, flags and hours. */
@@ -254,6 +286,11 @@ export interface CheckInTodayView {
    */
   network?: { locked: boolean };
   /**
+   * Whether their presses on the website need a location (owner, 20 October 2026: "Company switch + exceptions"): Check-in
+   * Setup's switch on, and HR hasn't let them check in without one. Left out by an API from before it.
+   */
+  location?: { required: boolean };
+  /**
    * Their shift: its window (HH:MM), hours a day, grace minutes and the time it counts hours until (HH:MM; owner, 20
    * October 2026: make-up hours; null, or left out by an API from before it: none).
    */
@@ -279,6 +316,14 @@ export interface CheckInLocationView {
   radiusMetres: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * The switch "Refuse check-ins and check-outs without a location" (owner, 20 October 2026: "Company switch +
+ * exceptions"), as GET /attendance/check-in-setup/location-rule sends it.
+ */
+export interface LocationRuleView {
+  refuseWithoutLocation: boolean;
 }
 
 /**

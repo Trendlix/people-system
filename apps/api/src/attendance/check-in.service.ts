@@ -7,8 +7,11 @@ import {
   dayFromPunches,
   expectedPlace,
   expectedPlaceText,
+  locationRefusal,
   lockedToOfficeNetwork,
+  needsLocation,
   nextPunch,
+  NO_LOCATION_MESSAGE,
   OFF_NETWORK_MESSAGE,
   punchFlags,
   punchMessages,
@@ -17,6 +20,7 @@ import {
   type CheckInFlag,
   type CheckInPlace,
   type ExpectedPlace,
+  type LocationRule,
   type NetworkLockSetting,
   type OfficeLocation,
   type PunchKind,
@@ -34,24 +38,13 @@ import { CheckInSetupService } from './check-in-setup.service.js';
 import type { PunchDto } from './check-in.dto.js';
 import { CorrectionDaysService } from './correction-days.service.js';
 import { HomeLocationsService } from './home-locations.service.js';
+import { coordinate, PUNCH_SELECT, punchView, type PunchRow, type PunchView } from './punch-views.js';
 import type { SignedIp } from './signed-ip.js';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
 /** A press twice within this long is one press (a double tap on a phone). */
 const SAME_PRESS_MS = 60_000;
-
-/** A punch as the employee's day shows it. */
-export interface PunchView {
-  kind: PunchKind;
-  at: string;
-  place: CheckInPlace;
-  accuracyMetres: number | null;
-  flags: CheckInFlag[];
-  /** The check-in location it was within, by its name then; the office network it came from, by its name. */
-  locationName: string | null;
-  officeNetwork: string | null;
-}
 
 /** GET /me/attendance/today: whether they check in, today's punches and day, and what is next. */
 export interface CheckInTodayView {
@@ -72,6 +65,11 @@ export interface CheckInTodayView {
   officeLocationSet: boolean;
   /** Whether their check-ins and check-outs need the office network (owner, 20 October 2026): the lock, for them. */
   network: { locked: boolean };
+  /**
+   * Whether their presses on the website need a location (owner, 20 October 2026: "Company switch + exceptions"): the
+   * switch on and HR hasn't exempted them. Inside the app a location is always needed.
+   */
+  location: { required: boolean };
   /**
    * Their shift: its window (HH:MM), its hours a day, its grace minutes and the time it counts hours until (HH:MM; owner,
    * 20 October 2026: "no working hours to be counted after 8 PM even if the check out was 11 PM"; null: none).
@@ -94,20 +92,11 @@ const EMPLOYMENT = {
   workArrangement: true,
   officeDays: true,
   checkInAnywhere: true,
+  checkInWithoutLocation: true,
   shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true } },
 } satisfies Prisma.EmploymentSelect;
 
 type CheckInEmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
-
-const punchView = (p: { kind: string; at: Date; place: string; accuracyMetres: number | null; flags: string[]; locationName: string | null; officeNetwork: string | null }): PunchView => ({
-  kind: p.kind as PunchKind,
-  at: p.at.toISOString(),
-  place: p.place as CheckInPlace,
-  accuracyMetres: p.accuracyMetres,
-  flags: p.flags as CheckInFlag[],
-  locationName: p.locationName,
-  officeNetwork: p.officeNetwork,
-});
 
 /** What a press brings besides its body: the session's kind (the website or the app) and the address the website signed. */
 export interface PunchContext {
@@ -121,8 +110,8 @@ export interface PunchContext {
 // Dashboard or My Attendance: one press, at the server's time (Cairo), counted on the working day it is in (shiftDayOf:
 // a night shift's check-out after midnight on the night before). The browser's location, asked each time, is read
 // against the office's point and radius (Payroll Setup → Your Rules): office within it, remote outside it, unknown when
-// refused or unavailable or the office's point isn't set; only that and the accuracy are kept, the point is dropped
-// here (the owner chose to keep only office or remote). Their work arrangement says where they are expected (office:
+// refused or unavailable or the office's point isn't set; that, the accuracy and (since 20 October 2026, below) the
+// point are kept. Their work arrangement says where they are expected (office:
 // the office; hybrid: the office on its office days; anyone else anywhere): a check-in elsewhere is kept, flagged for
 // the manager and HR, never refused. A press on a location the employee app said is a mock one (fake GPS on Android,
 // `mock`, the app's Phase 2, 20 October 2026) is kept the same way, its place read as any other, and flagged "Fake GPS
@@ -139,11 +128,17 @@ export interface PunchContext {
 // in the audit log, without the address. Inside the employee app (owner, 20 October 2026: "dont allow checkins without
 // location is always active", "Refuse without location", "App only"): a press without a location is refused (409),
 // with how to turn it on; the office network doesn't waive it. On the website a press without one is kept as before,
-// location unknown. HR's own recording of a day (a correction) is never refused by either. Home locations (owner, 20
+// location unknown, unless the company refuses it (below). HR's own recording of a day (a correction) is never refused by either. Home locations (owner, 20
 // October 2026: "Label Home, flag elsewhere"): for someone with an approved home, a check-in outside every office location
 // within the home's radius is Home (remote for every other rule), and a remote one elsewhere is flagged "Not at home or
 // the office"; nothing is refused for it, and the office network's lock is as before (an Office person locked to it is
-// refused off it at home too, unless HR lets them check in from anywhere). Only the place is kept, never the point.
+// refused off it at home too, unless HR lets them check in from anywhere); the home's point is never kept on a punch.
+// The spot kept (owner, 20 October 2026: "Yes, keep the spot"): each press keeps the point where it was made, read only
+// then (a mock one too, flagged), never tracked and never in the audit log; the caller's own today shows it, and the
+// Attendance pages show it to HR, the CEO and the Super Admin (punch-views.ts). Refusing presses without a location
+// (owner, the same day: "Company switch + exceptions", "Allow as Office"): with Check-in Setup's switch on, a website
+// press without a reading is refused (409) unless HR exempts the person or it comes from an office network the website
+// signed (it is Office), in the audit log as check_in_refused, no_location, never with a point.
 @Injectable()
 export class CheckInService {
   constructor(
@@ -157,23 +152,25 @@ export class CheckInService {
 
   async today(user: SessionUser): Promise<CheckInTodayView> {
     const { employeeId, employment, refusal } = await this.who(user);
-    const [locations, lock] = await Promise.all([this.setup.officeLocations(), this.setup.lockSetting()]);
-    return this.view(this.prisma, employeeId, employment, refusal, locations, lock, new Date());
+    const [locations, lock, rule] = await Promise.all([this.setup.officeLocations(), this.setup.lockSetting(), this.setup.locationRule()]);
+    return this.view(this.prisma, employeeId, employment, refusal, { locations, lock, rule }, new Date());
   }
 
   async punch(dto: PunchDto, user: SessionUser, context: PunchContext): Promise<PunchResultView> {
     const { employeeId, employment, refusal } = await this.who(user);
     if (refusal || !employeeId || !employment) throw new ForbiddenException(refusal ?? 'You can’t check in on the system.');
     const reading = typeof dto.latitude === 'number' && typeof dto.longitude === 'number' ? { latitude: dto.latitude, longitude: dto.longitude, accuracy: dto.accuracy ?? null } : null;
-    // in the app a location is needed, read at the press and never tracked (owner, 20 October 2026: "App only")
-    if (context.session === 'app' && !reading) throw new ConflictException(APP_LOCATION_NEEDED_MESSAGE);
     // their approved home, if any (20 October 2026): read against it after the office, its point never kept with the punch
-    const [locations, lock, home] = await Promise.all([this.setup.officeLocations(), this.setup.lockSetting(), this.homes.homePoint(employeeId)]);
+    const [locations, lock, rule, home] = await Promise.all([this.setup.officeLocations(), this.setup.lockSetting(), this.setup.locationRule(), this.homes.homePoint(employeeId)]);
     const now = new Date();
     const shift = shiftOf(employment);
     const date = shiftDayOf(now, shift);
     // the office network (20 October 2026): refused off it when locked; on it, at the office
     const network = punchNetwork(lock, employment, context.signedIp.ip ?? null);
+    // without a location: in the app always refused, read at the press and never tracked (owner, 20 October 2026: "App
+    // only"); on the website when the company refuses it for them, unless from an office network ("Allow as Office")
+    const withoutLocation = locationRefusal({ session: context.session, reading: reading !== null, rule, person: employment, officeNetwork: network.network !== null });
+    if (withoutLocation === 'app') throw new ConflictException(APP_LOCATION_NEEDED_MESSAGE);
     if (network.refused) {
       await this.audit.record({
         userId: user.id,
@@ -185,12 +182,19 @@ export class CheckInService {
       });
       throw new ConflictException(OFF_NETWORK_MESSAGE);
     }
-    // the point read and dropped: only office, home, remote or unknown, the accuracy and the location's name go further
+    if (withoutLocation === 'no_location') {
+      // what was pressed, the day and why: there is no point to leave out
+      await this.audit.record({ userId: user.id, action: 'check_in_refused', entityType: 'employee', entityId: employeeId, diff: { kind: dto.kind, date, reason: 'no_location' } });
+      throw new ConflictException(NO_LOCATION_MESSAGE);
+    }
+    // the place read from the point (office, home, remote or unknown) with the location's name; the point itself kept
+    // with the press, to 6 decimals (owner, 20 October 2026: "Yes, keep the spot"), a mock one too
     const read = checkInPlace(reading, locations, home);
     const place: CheckInPlace = network.network ? 'office' : read.place;
     const { accuracyMetres } = read;
     const locationName = read.location ?? null;
     const officeNetwork = network.network;
+    const point = reading ? { latitude: coordinate(reading.latitude), longitude: coordinate(reading.longitude) } : { latitude: null, longitude: null };
     const expected = expectedPlace(employment.workArrangement, employment.officeDays, weekday(date));
     // a check-in breaking the arrangement's rule, and any press on a location the phone said is a mock one (fake GPS); a
     // remote check-in by someone with an approved home, away from it and the office (not at home or the office)
@@ -203,7 +207,7 @@ export class CheckInService {
       // the same press twice (a double tap): kept once
       if (last && last.kind === dto.kind && now.getTime() - last.at.getTime() < SAME_PRESS_MS) return { kept: false, earlier: before };
       await tx.attendancePunch.create({
-        data: { employeeId, date: toDateOnly(date), kind: dto.kind, at: now, place, accuracyMetres, expected, flags, locationName, officeNetwork, source: 'system', userId: user.id },
+        data: { employeeId, date: toDateOnly(date), kind: dto.kind, at: now, place, accuracyMetres, ...point, expected, flags, locationName, officeNetwork, source: 'system', userId: user.id },
       });
       const punches = [...before, { kind: dto.kind, at: now, place, flags }];
       const day = dayFromPunches(date, punches.map(asPunch), shift);
@@ -229,7 +233,7 @@ export class CheckInService {
       await this.corrections.rebuildIfCorrected(employeeId, date, user);
       await this.fill.fillMonth(employeeId, date.slice(0, 7), user);
     }
-    const view = await this.view(this.prisma, employeeId, employment, null, locations, lock, now);
+    const view = await this.view(this.prisma, employeeId, employment, null, { locations, lock, rule }, now);
     const messages = kept
       ? punchMessages({ kind: dto.kind, at: now.toISOString(), place, flags }, earlier.map(asPunch), { locationError: dto.locationError ?? null, officeSet: checkInLocationsSet(locations) })
       : [`Already ${dto.kind === 'in' ? 'checked in' : 'checked out'} a moment ago: that press is kept once.`];
@@ -250,25 +254,27 @@ export class CheckInService {
     employeeId: string | null,
     employment: CheckInEmploymentRow | null,
     refusal: string | null,
-    locations: readonly OfficeLocation[],
-    lock: NetworkLockSetting,
+    setup: { locations: readonly OfficeLocation[]; lock: NetworkLockSetting; rule: LocationRule },
     now: Date,
   ): Promise<CheckInTodayView> {
+    const { locations, lock, rule } = setup;
     const shift = employment ? shiftOf(employment) : null;
     const date = shiftDayOf(now, shift);
-    const punches = employeeId ? await db.attendancePunch.findMany({ where: { employeeId, date: toDateOnly(date) }, orderBy: { at: 'asc' } }) : [];
+    const punches: PunchRow[] = employeeId ? await db.attendancePunch.findMany({ where: { employeeId, date: toDateOnly(date) }, orderBy: { at: 'asc' }, select: PUNCH_SELECT }) : [];
     const expected = employment ? expectedPlace(employment.workArrangement, employment.officeDays, weekday(date)) : null;
     return {
       refusal,
       date,
       now: now.toISOString(),
       next: nextPunch(punches.map(asPunch)),
-      punches: punches.map(punchView),
+      // their own: with the spot (owner, 20 October 2026: "Yes, keep the spot")
+      punches: punches.map((p) => punchView(p, true, locations)),
       day: punches.length ? dayFromPunches(date, punches.map(asPunch), shift) : null,
       expected,
       expectedText: employment && expected ? expectedPlaceText(employment.workArrangement, expected) : null,
       officeLocationSet: checkInLocationsSet(locations),
       network: { locked: !!employment && lockedToOfficeNetwork(lock, employment) },
+      location: { required: !!employment && needsLocation(rule, employment) },
       shift: shift && { startTime: shift.startTime, endTime: shift.endTime, hoursPerDay: shift.hoursPerDay ?? null, graceMinutes: shift.graceMinutes ?? 0, countUntil: shift.countUntil },
     };
   }

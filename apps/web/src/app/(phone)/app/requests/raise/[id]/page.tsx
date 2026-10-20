@@ -18,7 +18,7 @@ import { PageTitle, PhoneLoading } from '../../../ui';
 // doesn't see raise requests (owner, 20 October 2026: "raises not to be visible to employee level for now"), before
 // its title shows.
 
-export const metadata: Metadata = { title: 'Raise Request · TrendLIX People' };
+export const metadata: Metadata = { title: 'Raise Request · Trendlix People' };
 
 async function Request({ params }: { params: PageProps<'/app/requests/raise/[id]'>['params'] }) {
   const { id } = await params;

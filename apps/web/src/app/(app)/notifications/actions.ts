@@ -5,7 +5,7 @@
 // marks it read and opens its page there (lib/notifications.ts, notificationHref), Mark all as read, and the person's two
 // reminder switches. Each is the caller's own; the API decides. While a Super Admin views as someone view only, the API
 // refuses every change: opening still opens the page, the rest says the API's words.
-import { DEFAULT_NOTIFICATION_SETTINGS, type NotificationSettings } from '@trendlix/shared';
+import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_SETTING_LABELS, type NotificationSettings } from '@trendlix/shared';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
@@ -66,12 +66,19 @@ function settingsOf(answer: unknown, sent: NotificationSettings): NotificationSe
   };
 }
 
-/** The reminders' Save: both switches as ticked (PUT /me/notification-settings). */
+/**
+ * The reminders' Save (PUT /me/notification-settings): the switches as ticked, those always on left out (owner, 20
+ * October 2026: "You haven't checked in" "No, always on": on, whatever the form says).
+ */
 export async function saveReminderSettings(_prev: ReminderSettingsState, formData: FormData): Promise<ReminderSettingsState> {
   const values: NotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS };
-  for (const key of Object.keys(DEFAULT_NOTIFICATION_SETTINGS) as (keyof NotificationSettings)[]) values[key] = formData.get(key) !== null;
+  const sent: Partial<NotificationSettings> = {};
+  for (const key of Object.keys(DEFAULT_NOTIFICATION_SETTINGS) as (keyof NotificationSettings)[]) {
+    if (NOTIFICATION_SETTING_LABELS[key].alwaysOn) continue;
+    values[key] = sent[key] = formData.get(key) !== null;
+  }
   try {
-    const answer = await apiSend<NotificationSettings>('PUT', '/me/notification-settings', values);
+    const answer = await apiSend<NotificationSettings>('PUT', '/me/notification-settings', sent);
     return { saved: true, values: settingsOf(answer, values) };
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;

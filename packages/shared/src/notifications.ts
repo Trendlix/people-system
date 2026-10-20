@@ -2,8 +2,11 @@
 // reminder)"; apps/mobile/README.md, Phase 4). Each one is kept in the person's inbox (the bell, on the site and the
 // phone pages) and, when the server's push is set up and the person has the app with notifications allowed, sent to
 // their phone too. Its texts are short and general: names and dates, never a salary, an amount, a reason or a comment
-// (they can show on a locked phone). Two reminders, each one the person can switch off: "You haven't checked in" and
-// "Still checked in?". Pure: the API keeps and sends them with these, the web shows them with the same words.
+// (they can show on a locked phone). Two reminders: "You haven't checked in", from the shift's start every 10 minutes
+// for 2 hours until they check in, always on (owner, 20 October 2026: "a reminder for people that didn't checkin and not
+// on a leave every 10 minutes. like a popup"; asked, "No, always on"), also a popup on the site and the phone pages; and
+// "Still checked in?", which the person can switch off. Pure: the API keeps and sends them with these, the web shows
+// them with the same words.
 
 import { DEVICE_PLATFORMS, type DevicePlatform } from './device-credentials.js';
 
@@ -73,13 +76,22 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
 
 // ---------- the reminders and the person's switches ----------
 
-/** The two reminders, sent once a person a working day each. */
+/** The two reminders: "You haven't checked in" every 10 minutes for 2 hours, "Still checked in?" once a working day. */
 export const REMINDER_KINDS = ['check_in_reminder', 'check_out_reminder'] as const satisfies readonly NotificationKind[];
 export type ReminderKind = (typeof REMINDER_KINDS)[number];
 
+/**
+ * The reminders nobody can switch off (owner, 20 October 2026, asked whether people may switch the check-in reminder
+ * off: "No, always on"): sent whatever their switch says.
+ */
+export const ALWAYS_ON_REMINDERS = ['check_in_reminder'] as const satisfies readonly ReminderKind[];
+
 /** The person's switches, both on until they switch one off. */
 export interface NotificationSettings {
-  /** "You haven't checked in": on a working day, no check-in by the shift's start, its grace and 30 minutes. */
+  /**
+   * "You haven't checked in": always on (ALWAYS_ON_REMINDERS). The API answers true and leaves a change aside; the field
+   * stays so an older page (or app) that sends it isn't refused.
+   */
   checkInReminder: boolean;
   /** "Still checked in?": checked in and not out by the time the day's hours stop counting. */
   checkOutReminder: boolean;
@@ -87,11 +99,12 @@ export interface NotificationSettings {
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = { checkInReminder: true, checkOutReminder: true };
 
-/** The switches as the settings show them: a label and what it does. */
-export const NOTIFICATION_SETTING_LABELS: Record<keyof NotificationSettings, { label: string; hint: string }> = {
+/** The switches as the settings show them: a label and what it does; `alwaysOn`: why it can't be switched off. */
+export const NOTIFICATION_SETTING_LABELS: Record<keyof NotificationSettings, { label: string; hint: string; alwaysOn?: string }> = {
   checkInReminder: {
     label: 'Remind me when I haven’t checked in',
-    hint: 'On a working day of your shift, 30 minutes after its start and grace, if you haven’t checked in.',
+    hint: 'On a working day of your shift, from its start, every 10 minutes for 2 hours, until you check in.',
+    alwaysOn: 'Everyone on a shift gets it, so it can’t be switched off. It stops as soon as you check in, and never comes on leave, a holiday or a day off.',
   },
   checkOutReminder: {
     label: 'Remind me when I’m still checked in',
@@ -105,11 +118,39 @@ export const REMINDER_SETTING: Record<ReminderKind, keyof NotificationSettings> 
   check_out_reminder: 'checkOutReminder',
 };
 
-/** Minutes after a shift's start and grace before "You haven't checked in" is sent. */
-export const CHECK_IN_REMINDER_AFTER_MINUTES = 30;
+/** Whether a reminder goes to someone with these switches: always for one nobody can switch off, else as switched. */
+export function reminderSwitchedOn(settings: NotificationSettings, kind: ReminderKind): boolean {
+  return (ALWAYS_ON_REMINDERS as readonly ReminderKind[]).includes(kind) || settings[REMINDER_SETTING[kind]] !== false;
+}
 
-/** How often the API looks for reminders to send, in minutes. */
-export const REMINDER_TICK_MINUTES = 5;
+/**
+ * "You haven't checked in" (owner, 20 October 2026: "every 10 minutes"; asked, from the "Shift start", stopping "After 2
+ * hours"): at the shift's start, then every 10 minutes, the last no later than 2 hours on: 12 at most.
+ */
+export const CHECK_IN_REMINDER_EVERY_MINUTES = 10;
+export const CHECK_IN_REMINDER_FOR_MINUTES = 120;
+export const CHECK_IN_REMINDER_MAX = CHECK_IN_REMINDER_FOR_MINUTES / CHECK_IN_REMINDER_EVERY_MINUTES;
+
+/**
+ * The Android notification tag the check-in reminder is pushed with: each new one takes the place of the last on the
+ * phone instead of piling up (and still sounds).
+ */
+export const CHECK_IN_REMINDER_TAG = 'check_in_reminder';
+
+/** How often the API looks for reminders to send, in minutes: every minute, so a 10-minute step is never late. */
+export const REMINDER_TICK_MINUTES = 1;
+
+/**
+ * GET /me/check-in-reminder: whether the popup "You haven't checked in yet" is due for the signed-in person now (the same
+ * rule as the push: a working day of their shift, not checked in, within the 2 hours from its start), the shift's start
+ * ("HH:mm"; null when not due), and the page with the check-in panel on the site (the phone pages show theirs on Home).
+ * Never due while a Super Admin views as someone.
+ */
+export interface CheckInReminderView {
+  due: boolean;
+  shiftStart: string | null;
+  checkInPath: string;
+}
 
 // ---------- the inbox and the phones ----------
 

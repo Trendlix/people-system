@@ -41,7 +41,7 @@ import {
 // (seesRaiseRequests): not read, listed or offered as a chip otherwise. Their home location requests too (owner, 20
 // October 2026: "allow other users to request to add their home locations when working from home").
 
-export const metadata: Metadata = { title: 'My Requests · TrendLIX People' };
+export const metadata: Metadata = { title: 'My Requests · Trendlix People' };
 
 function StatusBadge({ row }: { row: AppRequestRow }) {
   if (row.kind === 'reimbursement') return <ClaimStatusBadge status={row.request.status} confidential={row.request.confidential} />;

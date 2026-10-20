@@ -1,5 +1,5 @@
 // Where a session was signed in, in words, from the user agent the API kept with it (Your Sessions, the Users page):
-// "Safari on macOS", "Chrome on Android", "TrendLIX People app on Android". Only a hint for the person: it is what the
+// "Safari on macOS", "Chrome on Android", "Trendlix People app on Android". Only a hint for the person: it is what the
 // browser says of itself. Pure code (no "@/" imports): tested.
 
 const APP_MARK = 'TrendLIXPeople';
@@ -29,7 +29,7 @@ function browserOf(ua: string): string | null {
 export function deviceOf(userAgent: string | null | undefined): string {
   const ua = userAgent?.trim() ?? '';
   const system = systemOf(ua);
-  if (ua.endsWith(APP_MARK)) return system ? `TrendLIX People app on ${system}` : 'TrendLIX People app';
+  if (ua.endsWith(APP_MARK)) return system ? `Trendlix People app on ${system}` : 'Trendlix People app';
   const browser = browserOf(ua);
   if (browser && system) return `${browser} on ${system}`;
   return browser ?? system ?? 'Unknown device';

@@ -13,6 +13,7 @@ import {
   NO_ATTENDANCE_FIGURES,
   PERMISSION_RULE_DEFAULTS,
   periodMonthCount,
+  seesPunchPoints,
   type AttendanceDayView,
   type AttendanceFigures,
   type AttendanceFilter,
@@ -31,10 +32,12 @@ import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { actsAs } from '../auth/roles.js';
 import { AttendanceDaysService, DAY_SELECT, type DayRow } from './attendance-days.service.js';
+import { CheckInSetupService } from './check-in-setup.service.js';
 import { AttendanceCorrectionsService, type MonthCorrectable, type MonthCorrection } from './corrections.service.js';
 import { seesEveryonesAttendance, teamOf } from './attendance-scope.js';
 import type { AttendanceListQueryDto, AttendanceSummaryQueryDto } from './attendance.dto.js';
 import { attendanceSummaryFileName, attendanceWorkbook } from './attendance-workbook.js';
+import { PUNCH_SELECT, punchView, type PunchView } from './punch-views.js';
 
 // The Attendance section (owner, 19 October 2026: "is the attendance module active?", then "the attendance is not active
 // in the side menu"): the days kept from Zoho People's imports (attendance_days, filled when HR applies an import on a
@@ -46,7 +49,10 @@ import { attendanceSummaryFileName, attendanceWorkbook } from './attendance-work
 // 2026: "make C level Employees details not visible to HR") is only the CEO's, the Super Admin's and their own: for
 // everyone else one hidden note, their person 404. The figures: the day's permission is the system's approved requests
 // when the month has any, else Zoho's column (within the month's allowance), as the import counted them; short hours are
-// against the shift's hours a day.
+// against the shift's hours a day. Each press of Check in and Check out under its day (owner, 20 October 2026: "simplify
+// this, i want to view if it is remote or office, and location link"): its place for everyone who sees the day, and the
+// spot where it was pressed only for HR, the CEO, the Super Admin and the employee themself, a C-level person's never
+// HR's (packages/shared seesPunchPoints; punch-views.ts). The workbook keeps the places only.
 
 const NO_PROFILE = 'You have no employee profile, so there is no attendance of yours to show.';
 const NOT_FOUND = 'Employee not found.';
@@ -78,6 +84,11 @@ export interface AttendancePersonMonth {
   checksIn: boolean;
   /** Each day, one a date from its source (AttendanceDayView.source), with the import it came from. */
   days: (AttendanceDayView & { importId: string | null })[];
+  /**
+   * Daily Attendance and the team view (owner, 20 October 2026: "location link"): every press of the month on the
+   * system, in order, the spot only for those who see it (punch-views.ts). Left out elsewhere (the Summary).
+   */
+  punches?: PunchView[];
 }
 
 /** An import the days shown came from. */
@@ -135,10 +146,12 @@ export interface AttendancePersonView {
   canCorrect: boolean;
   /**
    * Every press of Check in and Check out on the system of the month (owner, 19 October 2026: "Check-in through the
-   * system …"), in order: the day each counts on, in or out, the server's moment, office, remote or unknown, the
-   * accuracy and the flags. The day shows the first check-in and the last check-out; these show every press.
+   * system …"), in order: the day each counts on, in or out, the server's moment, office, home, remote or unknown, the
+   * flags, the location's and the network's names; and the spot (its point and accuracy) only for HR, the CEO, the Super
+   * Admin and the person themself (owner, 20 October 2026: "Yes, keep the spot"; punch-views.ts). The day shows the first
+   * check-in and the last check-out; these show every press.
    */
-  punches: { date: string; kind: string; at: string; place: string; accuracyMetres: number | null; flags: string[] }[];
+  punches: PunchView[];
 }
 
 /** GET /attendance/summary: a period by department and team. */
@@ -168,6 +181,7 @@ export class AttendanceService {
     private readonly confidential: ConfidentialService,
     private readonly attendanceDays: AttendanceDaysService,
     private readonly corrections: AttendanceCorrectionsService,
+    private readonly setup: CheckInSetupService,
   ) {}
 
   /**
@@ -176,11 +190,10 @@ export class AttendanceService {
    */
   async month(query: AttendanceListQueryDto, user: SessionUser): Promise<AttendanceMonthView> {
     const month = query.month ?? todayInCairo().slice(0, 7);
-    const confidential = await this.confidential.view(user);
+    const [confidential, me] = await Promise.all([this.confidential.view(user), this.confidential.selfId(user)]);
     const everyone = seesEveryonesAttendance(user);
     let scope: Scope = { kind: 'everyone' };
     if (!everyone) {
-      const me = await this.confidential.selfId(user);
       const team = me ? await teamOf(this.prisma, me) : [];
       const leads = me ? (await this.prisma.department.count({ where: { headId: me } })) > 0 : false;
       if (!team.length && !user.roles.includes('manager') && !leads) {
@@ -230,6 +243,15 @@ export class AttendanceService {
           .map((p) => p.employee)
           .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn));
     const totals = people.reduce((t, p) => addFigures(t, p.figures), { ...NO_ATTENDANCE_FIGURES });
+    // each person's presses under their days, the spot only for those who see it (20 October 2026: "location link")
+    const pressed = people.length
+      ? await this.prisma.attendancePunch.findMany({ where: { employeeId: { in: people.map((p) => p.employee.id) }, date: monthDays(month) }, orderBy: { at: 'asc' }, select: { employeeId: true, ...PUNCH_SELECT } })
+      : [];
+    const locations = pressed.length ? await this.setup.officeLocations() : [];
+    for (const p of people) {
+      const sees = seesPunchPoints(user, { self: p.employee.id === me, confidential: confidential.all.has(p.employee.id) });
+      p.punches = pressed.filter((x) => x.employeeId === p.employee.id).map((x) => punchView(x, sees, locations));
+    }
     return {
       month,
       scope: everyone ? 'everyone' : 'team',
@@ -370,17 +392,16 @@ export class AttendanceService {
       };
     }
     const payroll = seesEveryonesAttendance(user);
-    const [sources, run, corrections, correctable, punches] = await Promise.all([
+    const [sources, run, corrections, correctable, punches, locations] = await Promise.all([
       this.sources(person.days.map((d) => d.importId), user),
       payroll ? this.runOf(month) : null,
       this.corrections.ofMonth(employeeId, month),
       this.corrections.monthCorrectable(month),
-      this.prisma.attendancePunch.findMany({
-        where: { employeeId, date: monthDays(month) },
-        orderBy: { at: 'asc' },
-        select: { date: true, kind: true, at: true, place: true, accuracyMetres: true, flags: true },
-      }),
+      this.prisma.attendancePunch.findMany({ where: { employeeId, date: monthDays(month) }, orderBy: { at: 'asc' }, select: PUNCH_SELECT }),
+      this.setup.officeLocations(),
     ]);
+    // the spot for HR, the CEO, the Super Admin and themself; a C-level person's never HR's (20 October 2026)
+    const sees = seesPunchPoints(user, { self, confidential: confidential.all.has(employeeId) });
     // HR corrects a day directly (never their own; a C-level person's only HR who sees them, as they see the page)
     const canCorrect = actsAs(user.roles, ['hr']) && !self;
     return {
@@ -392,7 +413,7 @@ export class AttendanceService {
       corrections,
       correctable,
       canCorrect,
-      punches: punches.map((p) => ({ date: fromDateOnly(p.date), kind: p.kind, at: p.at.toISOString(), place: p.place, accuracyMetres: p.accuracyMetres, flags: p.flags })),
+      punches: punches.map((p) => punchView(p, sees, locations)),
     };
   }
 

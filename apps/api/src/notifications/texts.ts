@@ -71,9 +71,27 @@ export function payslipText(month: string, paidOn: string | null, link: string):
   return { kind: 'payslip_issued', title: `Your ${monthName(month)} payslip is ready`, body: paidOn ? `Paid on ${shownDate(paidOn)}` : 'Open it in your payslips', link };
 }
 
-/** "You haven't checked in", 30 minutes after the shift's start and grace. */
+/**
+ * A home location waits for the decision of the one in charge of its step (owner, 20 October 2026: "then approved by the
+ * HR and CEO"): "Mona Adel, asked on 20/10/2026". Never the point, the label or a comment.
+ */
+export function homeWaitingText(name: string, askedOn: string, link: string): NotificationInput {
+  return { kind: 'home_location_waiting', title: 'A home location is waiting for you', body: `${name}, asked on ${shownDate(askedOn)}`, link };
+}
+
+/**
+ * The employee's home location decided at a step: approved at the first step (by HR, or the CEO for a C-level person's:
+ * `firstStep`, as the pages name it), now with the CEO; approved, in force; or rejected (never the comment).
+ */
+export function homeDecidedText(outcome: 'first_step' | 'approved' | 'rejected', askedOn: string, link: string, firstStep = 'HR'): NotificationInput {
+  const request = `Your request of ${shownDate(askedOn)}`;
+  if (outcome === 'first_step') return { kind: 'home_location_decided', title: `Home location approved by ${firstStep}`, body: `${request} is with the CEO now`, link };
+  return { kind: 'home_location_decided', title: `Home location ${outcome}`, body: request, link };
+}
+
+/** "You haven't checked in", from the shift's start every 10 minutes for 2 hours (owner, 20 October 2026). */
 export function checkInReminderText(shiftStart: string, link: string): NotificationInput {
-  return { kind: 'check_in_reminder', title: 'You haven’t checked in', body: `Your shift started at ${timeOfDayText(shiftStart)}. Check in when you start work.`, link };
+  return { kind: 'check_in_reminder', title: 'You haven’t checked in', body: `Your shift started at ${timeOfDayText(shiftStart)}. Check in now.`, link };
 }
 
 /** "Still checked in?", once the day's hours stop counting. */
@@ -96,6 +114,8 @@ export const TEXT_KINDS: readonly NotificationKind[] = [
   'pay_raise_waiting',
   'pay_raise_decided',
   'payslip_issued',
+  'home_location_waiting',
+  'home_location_decided',
   'check_in_reminder',
   'check_out_reminder',
 ];

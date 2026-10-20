@@ -89,6 +89,14 @@ class EmploymentFieldsDto {
    */
   @Sent() @IsBoolean({ message: 'Send whether they can check in from anywhere as true or false.' })
   checkInAnywhere?: boolean;
+
+  /**
+   * "Can check in without a location" (owner, 20 October 2026: "Company switch + exceptions"): with Check-in Setup's
+   * "Refuse check-ins and check-outs without a location" on, HR lets this person press on the website without one (the
+   * app always needs it). Off unless sent.
+   */
+  @Sent() @IsBoolean({ message: 'Send whether they can check in without a location as true or false.' })
+  checkInWithoutLocation?: boolean;
 }
 
 /**

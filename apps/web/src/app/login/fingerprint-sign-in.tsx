@@ -7,7 +7,7 @@ import { signInWithFingerprint } from '@/lib/device-actions';
 import { afterSignIn, afterUnlock, type FingerprintStep } from '@/lib/fingerprint';
 import { biometricStatus, clearBiometric, unlockBiometric } from '@/lib/native';
 
-// Sign in with fingerprint, on the sign-in page in the TrendLIX People app (owner, 20 October 2026: chose Face ID /
+// Sign in with fingerprint, on the sign-in page in the Trendlix People app (owner, 20 October 2026: chose Face ID /
 // fingerprint sign-in for the app; README: "Sign-in: Face ID / fingerprint after the first password sign-in"; "the
 // app-start screen tries the biometric unlock first"). Only inside the app with a sign-in kept behind the phone's
 // fingerprint: the button above the password, asked by itself once when the page opens, unless the person has just

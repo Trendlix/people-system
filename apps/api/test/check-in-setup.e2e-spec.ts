@@ -25,7 +25,7 @@ import { APP_USER_AGENT, createApp, createUser, signIn } from './helpers.js';
 // refused; a locked person refused off the network, both in and out, in the audit log without the address; on it, at the
 // office whatever the location says; an exempt or a hybrid person anywhere; no employee's address kept anywhere. Inside
 // the app (owner, 20 October 2026: "Refuse without location", "App only"): a press without a location is refused; on the
-// website it is kept, location unknown. These tests look at their own people (names end with RUN), put the networks'
+// website it is kept, location unknown (unless the company's switch refuses it: punch-location.e2e-spec.ts). These tests look at their own people (names end with RUN), put the networks'
 // setting back and delete what they made. Every name, point and address is invented.
 
 const RUN = Date.now().toString(36).toLowerCase();
@@ -179,7 +179,7 @@ describe('Check-in Setup and the office network (e2e)', () => {
       expect(await prisma.auditLog.count({ where: { entityType: 'check_in_location', entityId: spare.id, action: 'delete' } })).toBe(1);
     });
 
-    it('count a check-in within the second one as at the office, its name kept, never the point', async () => {
+    it('count a check-in within the second one as at the office, its name kept', async () => {
       const res = (await punch(sessions.walid, { kind: 'in', ...AT_STUDIO }).expect(200)).body;
       expect(res.punches.at(-1)).toMatchObject({ place: 'office', accuracyMetres: 12, locationName: STUDIO.name, officeNetwork: null });
       expect(res.messages[0]).toContain('at the office');
@@ -312,7 +312,7 @@ describe('Check-in Setup and the office network (e2e)', () => {
     });
   });
 
-  it('keeps no employee’s address anywhere: not on the punches, the days or the audit log', async () => {
+  it('keeps no employee’s address anywhere, and a reading’s point only on its press: not on the days or in the audit log', async () => {
     const punches = await prisma.attendancePunch.findMany({ where: { employeeId: { in: people } } });
     const days = await prisma.attendanceDay.findMany({ where: { employeeId: { in: people } } });
     const audit = await prisma.auditLog.findMany({ where: { at: { gte: started } } });
@@ -320,6 +320,8 @@ describe('Check-in Setup and the office network (e2e)', () => {
     const kept = JSON.stringify({ punches, days, audit }, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v));
     expect(kept).not.toContain(ON_NETWORK);
     expect(kept).not.toContain(OFF_NETWORK);
-    expect(kept).not.toContain('30.0446'); // nor a reading's point
+    // a reading's point on its press (owner, 20 October 2026: "Yes, keep the spot"), never on a day or in the audit log
+    expect(punches.some((p) => p.latitude?.toNumber() === AT_STUDIO.latitude)).toBe(true);
+    expect(JSON.stringify({ days, audit }, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v))).not.toContain('30.0446');
   });
 });

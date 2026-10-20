@@ -18,7 +18,7 @@ import { PageTitle, PhoneLoading } from '../../../ui';
 // it, or return it to HR, with a comment. Once decided, back to To Approve, saying what was done. The API lets only the
 // CEO decide.
 
-export const metadata: Metadata = { title: 'Pay Raise · TrendLIX People' };
+export const metadata: Metadata = { title: 'Pay Raise · Trendlix People' };
 
 const quiet = 'card px-4 py-8 text-center text-sm text-muted';
 

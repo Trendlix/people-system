@@ -15,7 +15,8 @@ import { createApp, createUser, signIn } from './helpers.js';
 // replaces the old; withdrawn, rejected, replaced or removed, the point is deleted. A check-in within the approved home
 // is Home, a remote one elsewhere flagged "Not at home or the office", someone without a home as before; Daily
 // Attendance, its filters and the workbook show both. Seen only by the employee, HR, the CEO and the Super Admin:
-// managers and Finance are refused. Never a coordinate on a punch, a day or the audit log. These tests look at their own
+// managers and Finance are refused. Never a home's point on a punch (a press keeps its own reading since 20 October
+// 2026: "Yes, keep the spot"), and no coordinate on a day or in the audit log. These tests look at their own
 // people (names end with RUN) and delete what they made. Every name and point is invented.
 
 const RUN = `hl${Date.now().toString(36).toLowerCase()}`;
@@ -41,6 +42,11 @@ const withoutCoordinates = (value: unknown) => {
   const text = JSON.stringify(value);
   return COORDINATES.filter((c) => text.includes(c));
 };
+/** The points pressed at: each press keeps its own reading (owner, 20 October 2026: "Yes, keep the spot"). */
+const PRESSED = [AT_HOME, CAFE, OLGA_HOME, NEW_HOME];
+const PRESSED_COORDINATES = new Set(PRESSED.flatMap((p) => [p.latitude, p.longitude]).flatMap((n) => [n.toFixed(6), n.toFixed(4)]));
+/** The coordinates in it of no reading pressed at: a home's own point, which no press may carry. */
+const homePointsIn = (value: unknown) => withoutCoordinates(value).filter((c) => !PRESSED_COORDINATES.has(c));
 
 const said = (res: { body: { message: string | string[] } }) => ([] as string[]).concat(res.body.message);
 
@@ -305,7 +311,9 @@ describe('Home locations (e2e)', () => {
       expect(again.punches.at(-1)).toMatchObject({ kind: 'in', place: 'remote', flags: ['not_home_or_office'] });
       expect(again.messages.join(' ')).toContain('Not at home or the office');
       expect(again.day).toMatchObject({ place: 'home', flags: ['not_home_or_office'] });
-      expect(withoutCoordinates([atHome, out, again])).toEqual([]);
+      // each press its own reading (20 October 2026), never the home's point
+      expect(atHome.punches.at(-1)).toMatchObject({ latitude: AT_HOME.latitude, longitude: AT_HOME.longitude });
+      expect(homePointsIn([atHome, out, again])).toEqual([]);
     });
 
     it('is as before for someone without a home', async () => {
@@ -339,7 +347,7 @@ describe('Home locations (e2e)', () => {
       expect(await shown('flagged')).not.toContain(ids.nadia);
       expect(await shown('remote')).toEqual(expect.arrayContaining([ids.walid, ids.olga, ids.nadia]));
       const daily = (await api().get(`/api/attendance?month=${CURRENT}&departmentId=${deptId}`).set('Cookie', hr).expect(200)).body;
-      expect(withoutCoordinates(daily)).toEqual([]);
+      expect(homePointsIn(daily)).toEqual([]);
 
       const res = await api()
         .get(`/api/attendance/summary.xlsx?month=${CURRENT}`)
@@ -415,13 +423,15 @@ describe('Home locations (e2e)', () => {
   });
 
   describe('the coordinates', () => {
-    it('are on no punch, no day, no step and nowhere in the audit log', async () => {
+    it('are on no day, no step and nowhere in the audit log; a punch keeps its own reading, never a home’s point', async () => {
       const punches = await prisma.attendancePunch.findMany({ where: { employeeId: { in: people } } });
       const days = await prisma.attendanceDay.findMany({ where: { employeeId: { in: people } } });
       const steps = await prisma.homeLocationStep.findMany({ where: { request: { employeeId: { in: people } } } });
       const audit = await prisma.auditLog.findMany({ where: { at: { gte: started } } });
       expect(punches.length).toBeGreaterThan(5);
-      expect(withoutCoordinates(punches.map((p) => ({ ...p, accuracyMetres: null })))).toEqual([]);
+      const pressed = new Set(PRESSED.map((p) => `${p.latitude},${p.longitude}`));
+      expect(punches.filter((p) => p.latitude).every((p) => pressed.has(`${p.latitude!.toNumber()},${p.longitude!.toNumber()}`))).toBe(true);
+      expect(withoutCoordinates(punches.map((p) => ({ ...p, accuracyMetres: null, latitude: null, longitude: null })))).toEqual([]);
       expect(withoutCoordinates(days)).toEqual([]);
       expect(withoutCoordinates(steps.map((s) => ({ ...s, id: s.id.toString() })))).toEqual([]);
       expect(audit.filter((a) => a.entityType === 'home_location').length).toBeGreaterThan(10);

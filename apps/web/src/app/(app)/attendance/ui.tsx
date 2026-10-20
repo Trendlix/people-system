@@ -3,8 +3,9 @@ import type { AttendanceDay, AttendanceSource } from '@/lib/attendance-types';
 import { formatDate } from '@/lib/format';
 import { weekdayOf } from '../organization/holidays/holidays';
 import { addMonths, monthName } from '../payroll/list';
-import { attendanceReviewHref, cairoTime, dayStatusText, dayTone, placeText } from '../payroll/[id]/attendance/attendance';
-import { checkInCell, correctedNote, dayFlagTexts, daySourceText, extraHoursText, hoursText, punchesText, sourceText, type FigureTile, type PunchRow } from './attendance';
+import { attendanceReviewHref, dayStatusText, dayTone } from '../payroll/[id]/attendance/attendance';
+import { correctedNote, dayRow, daySourceText, extraHoursText, hoursText, sourceText, type FigureTile, type PunchRow } from './attendance';
+import { AllPresses, DayEndView } from './punch-ui';
 
 // The Attendance pages' parts (owner, 19 October 2026: "the attendance is not active in the side menu"): the month with
 // the one before and after, a month's figures as tiles, a person's days, and where the days came from. No hooks and
@@ -13,6 +14,10 @@ import { checkInCell, correctedNote, dayFlagTexts, daySourceText, extraHoursText
 // replace Zoho"): each day says where it came from, a check-in that broke the work arrangement's rule is flagged in
 // amber, a place may be location unknown, and a check-out without a check-in shows "Missing" like a missing check-out.
 // A day counted past the shift's hours a day (owner, 20 October 2026: make-up hours) says its extra time, "+1:30 extra".
+// Simpler rows (owner, 20 October 2026: "simplify this, i want to view if it is remote or office, and location link"):
+// the check-in and the check-out each with its place as a badge and Map (punch-ui.tsx), the flags in a word or two by
+// them, "What It Was" the day's status with every press collapsed under it, and no Where column (the badges say it: a
+// day from Zoho People has its place on the check-in).
 
 const LINK = 'btn btn-secondary min-h-9 px-3 no-underline';
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
@@ -52,7 +57,6 @@ export function FigureTiles({ tiles, label }: { tiles: FigureTile[]; label: stri
   );
 }
 
-const MISSING = <span className="font-medium text-warn">Missing</span>;
 const NONE = <span className="text-muted">—</span>;
 
 /** Every day kept of a person's month, read only: where each came from, its flags. */
@@ -64,7 +68,7 @@ export function DaysTable({
 }: {
   days: readonly AttendanceDay[];
   name: string;
-  /** Every press of the month, shown under its day (a person's month only). */
+  /** Every press of the month: each day's check-in and check-out are among them, the rest collapsed under the day. */
   punches?: readonly PunchRow[];
   /**
    * A day's correction (owner, 19 October 2026: "Attendance corrections with approval"): Ask for a correction on the
@@ -88,7 +92,6 @@ export function DaysTable({
             <th scope="col" className="text-right">
               Short
             </th>
-            <th scope="col">Where</th>
             <th scope="col" className="text-right">
               Permission
             </th>
@@ -100,10 +103,8 @@ export function DaysTable({
         <tbody>
           {days.map((d) => {
             const tone = dayTone(d.status);
-            const checkIn = checkInCell(d);
-            const flags = dayFlagTexts(d);
+            const row = dayRow(d, punches);
             const corrected = correctedNote(d);
-            const pressed = punchesText(punches, d.date);
             const extra = extraHoursText(d);
             return (
               <tr key={d.date} className="align-top">
@@ -113,23 +114,19 @@ export function DaysTable({
                 <td className="min-w-32">
                   <span className={tone ? `font-medium ${TONE[tone]}` : undefined}>{dayStatusText(d.status)}</span>
                   {corrected && <span className="mt-0.5 block text-xs text-muted">{corrected}</span>}
-                  {pressed && <span className="mt-0.5 block max-w-64 text-xs text-muted">{pressed}</span>}
+                  {row.more && <AllPresses presses={row.presses} />}
                 </td>
-                <td className="whitespace-nowrap tabular-nums">{checkIn === 'time' ? cairoTime(d.checkIn) : checkIn === 'missing' ? MISSING : NONE}</td>
-                <td className="whitespace-nowrap tabular-nums">{d.checkOut ? cairoTime(d.checkOut) : d.missingCheckOut ? MISSING : NONE}</td>
+                <td className="min-w-36">
+                  <DayEndView end={row.checkIn} />
+                </td>
+                <td className="min-w-36">
+                  <DayEndView end={row.checkOut} />
+                </td>
                 <td className="text-right tabular-nums">
                   {d.status === 'worked' ? hoursText(d.hoursCounted) : NONE}
                   {extra && <span className="block text-xs whitespace-nowrap text-ok">{extra}</span>}
                 </td>
                 <td className={`text-right tabular-nums ${d.shortHours > 0 ? 'font-medium text-warn' : ''}`}>{d.shortHours > 0 ? hoursText(d.shortHours) : NONE}</td>
-                <td className="min-w-32">
-                  {placeText(d.place)}
-                  {flags.map((f) => (
-                    <span key={f} className="mt-1 block w-fit max-w-56 badge bg-warn-soft whitespace-normal text-warn">
-                      {f}
-                    </span>
-                  ))}
-                </td>
                 <td className="text-right tabular-nums">{d.permissionHours > 0 ? hoursText(d.permissionHours) : NONE}</td>
                 <td className="text-sm whitespace-nowrap text-muted">{daySourceText(d)}</td>
                 <td className="text-sm text-muted">{d.zohoStatus ?? '—'}</td>

@@ -6,6 +6,7 @@ import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
 import { decidesForTeam, DETAILS_CHANGES_PATH, LEAVE_PATH, MY_TEAM, navFor, RAISE_REQUESTS_PATH, REIMBURSEMENTS_PATH } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { BellLink, NotificationBell } from '@/components/notification-bell';
+import { CheckInReminder } from '@/components/check-in-reminder';
 import { SessionWatch } from '@/components/session-watch';
 import { UserMenu } from '@/components/user-menu';
 import { ViewAsBanner } from '@/components/view-as-banner';
@@ -133,6 +134,11 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
       </Suspense>
       <Suspense fallback={null}>
         <SessionWatch />
+      </Suspense>
+      {/* "You haven't checked in yet" (owner, 20 October 2026: "a reminder for people that didn't checkin and not on a
+          leave every 10 minutes. like a popup"), never while viewing as someone */}
+      <Suspense fallback={null}>
+        <CheckInReminder surface="site" />
       </Suspense>
       <div className="flex flex-1 flex-col md:flex-row">
         <aside className="bg-sidebar px-4 py-4 md:w-60 md:shrink-0 md:py-6">

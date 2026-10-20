@@ -21,7 +21,7 @@ import { DayList } from './day-list';
 // with the month before and after; each day's Ask for a correction, or the correction being decided. A C-level person
 // sees their own as everyone does.
 
-export const metadata: Metadata = { title: 'Attendance · TrendLIX People' };
+export const metadata: Metadata = { title: 'Attendance · Trendlix People' };
 
 async function Month({ searchParams }: { searchParams: PageProps<'/app/attendance'>['searchParams'] }) {
   const user = await getCurrentUser();

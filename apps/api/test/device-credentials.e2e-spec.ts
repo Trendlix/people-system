@@ -4,7 +4,7 @@ import type { App } from 'supertest/types.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { APP_USER_AGENT, createApp, createUser, PASSWORD, signIn } from './helpers.js';
 
-// Fingerprint sign-in in the TrendLIX People app (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first
+// Fingerprint sign-in in the Trendlix People app (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first
 // password sign-in"; apps/mobile/README.md, Phase 3). Turned on from an app session, never while viewing as someone; the
 // phone's secret is kept only hashed and traded for an ordinary app session (the new one wins, the 15 minutes apply). It
 // stops when revoked by its owner or an Admin, after 90 days without use, when the account is deactivated, or when the
@@ -14,7 +14,7 @@ const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
 const BROWSER = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
 const REFUSED = 'Sign in with your password this time.';
-const APP_ONLY = 'Fingerprint sign-in can only be turned on in the TrendLIX People app.';
+const APP_ONLY = 'Fingerprint sign-in can only be turned on in the Trendlix People app.';
 const SUPER_ADMIN_ONLY = "Only a Super Admin can change a Super Admin's account.";
 const PIXEL = { deviceName: 'Google Pixel 8', platform: 'android' } as const;
 

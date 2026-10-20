@@ -55,7 +55,7 @@ async function Fingerprints() {
           Fingerprint Sign-In
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Fingerprint sign-in is turned on in the TrendLIX People app, after signing in there with your password. A phone
+          Fingerprint sign-in is turned on in the Trendlix People app, after signing in there with your password. A phone
           stops signing in with it after {DEVICE_UNUSED_DAYS} days without use, and every phone does when your password
           changes: the password is asked for then.
         </p>

@@ -2,12 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { activeTab, countText, type AppTab, type AppTabKey } from './tabs';
+import { activeTab, countText, tabLabel, type AppTab, type AppTabKey } from './tabs';
 
 // The phone pages' tab bar (owner, 20 October 2026: the employee app; apps/mobile/README.md, Phase 1): fixed at the
 // bottom, within the thumb's reach, each tab a large target with its icon and name, clear of the phone's home bar
 // (safe-area insets), lower in landscape with the name beside the icon. The tab of the page is highlighted; To Approve
-// says how many wait for the caller.
+// says how many wait for the caller. Phase 5 (20 October 2026: accessibility): each tab at least 64 px tall (48 in
+// landscape) across a fifth of the bar, named for a screen reader with its count ("To Approve, 3 waiting"), its focus
+// ring inside it; the count's badge white on the accent blue (5.5:1), ringed off the icon.
 
 const ICON = 'size-6 shrink-0 landscape:size-5';
 
@@ -48,7 +50,7 @@ const ICONS: Record<AppTabKey, React.ReactNode> = {
 export function TabList({ tabs, active, counts }: { tabs: readonly AppTab[]; active: AppTabKey | null; counts?: Partial<Record<AppTabKey, number>> }) {
   return (
     <nav
-      aria-label="App"
+      aria-label="Tabs"
       className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-card pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
     >
       <ul className="mx-auto flex max-w-xl">
@@ -60,14 +62,14 @@ export function TabList({ tabs, active, counts }: { tabs: readonly AppTab[]; act
               <Link
                 href={t.href}
                 aria-current={on ? 'page' : undefined}
-                className={`flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] leading-tight font-semibold no-underline landscape:min-h-12 landscape:flex-row landscape:gap-1.5 landscape:text-xs ${on ? 'text-accent' : 'text-muted hover:text-ink'}`}
+                aria-label={count ? tabLabel(t.label, counts?.[t.key]) : undefined}
+                className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[11px] leading-tight font-semibold no-underline focus-visible:outline-offset-[-3px] landscape:min-h-12 landscape:flex-row landscape:gap-1.5 landscape:text-xs ${on ? 'text-accent' : 'text-muted hover:text-ink'}`}
               >
                 <span className="relative">
                   {ICONS[t.key]}
                   {count && (
-                    <span className="absolute -top-1.5 -right-3 min-w-5 rounded-full bg-accent px-1 text-center text-[10px] leading-5 text-white tabular-nums">
+                    <span aria-hidden="true" className="absolute -top-1.5 -right-3 min-w-5 rounded-full bg-accent px-1 text-center text-[11px] leading-5 font-semibold text-white tabular-nums ring-2 ring-card">
                       {count}
-                      <span className="sr-only"> waiting</span>
                     </span>
                   )}
                 </span>

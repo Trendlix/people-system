@@ -8,7 +8,7 @@ import { PhoneLoading } from '../../../ui';
 // the site's page (attendance/corrections/[id]/correction.tsx), its back link to the phone pages' To Approve, and what
 // is done on it coming back here.
 
-export const metadata: Metadata = { title: 'Attendance Correction · TrendLIX People' };
+export const metadata: Metadata = { title: 'Attendance Correction · Trendlix People' };
 
 export default function PhoneApproveCorrectionPage({ params, searchParams }: PageProps<'/app/approve/correction/[id]'>) {
   return (

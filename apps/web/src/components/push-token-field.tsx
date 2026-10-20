@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { clearPushToken, readPushToken } from '@/lib/notifications';
 import { forgetPush, isNativeApp } from '@/lib/native';
 
-// In a Sign out form, inside the TrendLIX People app (owner, 20 October 2026: "Push notifications: yes (decisions,
+// In a Sign out form, inside the Trendlix People app (owner, 20 October 2026: "Push notifications: yes (decisions,
 // things waiting for someone, a check-in reminder)"; apps/mobile/README.md, Phase 4): the push token this phone
 // registered, as a hidden field, so signing out unregisters it with the API (app/login/actions.ts, logout) and the phone
 // gets no more notifications for the person signed out. On sending the form, the phone forgets its token too and the

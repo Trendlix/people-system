@@ -49,3 +49,13 @@ export function activeTab(pathname: string): AppTabKey | null {
 
 /** A tab's count, as said beside it: "9+" past nine; none for nothing waiting. */
 export const countText = (n: number | null | undefined): string | null => (!n || n < 1 ? null : n > 9 ? '9+' : String(n));
+
+/**
+ * A tab's name for a screen reader (Phase 5, 20 October 2026: "the bell's and tabs' aria-labels"): its name, then how
+ * many wait ("To Approve, 3 waiting", "To Approve, more than 9 waiting"), the badge itself left unread.
+ */
+export function tabLabel(label: string, n: number | null | undefined): string {
+  const count = countText(n);
+  if (!count) return label;
+  return `${label}, ${count === '9+' ? 'more than 9' : count} waiting`;
+}

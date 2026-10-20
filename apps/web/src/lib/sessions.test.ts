@@ -78,9 +78,9 @@ describe('deviceOf', () => {
     expect(deviceOf('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36')).toBe('Chrome on Android');
   });
 
-  it('names the TrendLIX People app', () => {
-    expect(deviceOf('Mozilla/5.0 (Linux; Android 14; Pixel 8; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/129.0 Mobile Safari/537.36 TrendLIXPeople')).toBe('TrendLIX People app on Android');
-    expect(deviceOf('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 TrendLIXPeople')).toBe('TrendLIX People app on iPhone');
+  it('names the Trendlix People app', () => {
+    expect(deviceOf('Mozilla/5.0 (Linux; Android 14; Pixel 8; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/129.0 Mobile Safari/537.36 TrendLIXPeople')).toBe('Trendlix People app on Android');
+    expect(deviceOf('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 TrendLIXPeople')).toBe('Trendlix People app on iPhone');
   });
 
   it('says so when it can’t tell', () => {

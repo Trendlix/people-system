@@ -561,4 +561,26 @@ describe('Migrations (e2e)', () => {
       expect(await locations()).toEqual([]);
     });
   });
+
+  // "You haven't checked in" every 10 minutes (owner, 20 October 2026: "a reminder for people that didn't checkin and
+  // not on a leave every 10 minutes. like a popup"): the reminders sent before count once, sent when they were
+  it('check-in reminder steps: each reminder sent before counts as one, its time the last sent, no inbox row yet', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_check_in_reminder_steps'))!;
+    await migratedUpTo(migration);
+    await db.query(`
+      INSERT INTO users (id, email, updated_at) VALUES ('00000000-0000-4000-8000-0000000000b1', 'rami@trendlix.com', now());
+      INSERT INTO reminders_sent (user_id, day, kind, sent_at) VALUES
+        ('00000000-0000-4000-8000-0000000000b1', '2026-10-20', 'check_in_reminder', '2026-10-20T07:45:00Z'),
+        ('00000000-0000-4000-8000-0000000000b1', '2026-10-20', 'check_out_reminder', '2026-10-20T15:15:00Z');
+    `);
+    await db.query(sql(migration));
+    const { rows } = await db.query<{ kind: string; count: number; at: string; inbox: string | null }>(
+      `SELECT kind, count, to_char(last_sent_at AT TIME ZONE 'UTC', 'HH24:MI') AS at, notification_id AS inbox FROM reminders_sent ORDER BY kind`,
+    );
+    expect(rows).toEqual([
+      { kind: 'check_in_reminder', count: 1, at: '07:45', inbox: null },
+      { kind: 'check_out_reminder', count: 1, at: '15:15', inbox: null },
+    ]);
+    await expect(db.query(`UPDATE reminders_sent SET count = 0 WHERE kind = 'check_in_reminder'`)).rejects.toThrow(/reminders_sent_count_check/);
+  });
 });

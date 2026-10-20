@@ -62,7 +62,7 @@ import javax.crypto.spec.GCMParameterSpec;
  * Refusals are codes the page turns into its own words (no text for people here): CANCELLED (the prompt closed, or "Use
  * password"), LOCKOUT (too many tries), KEY_INVALIDATED (a fingerprint was added or removed since: everything is cleared
  * and the password is asked for), NOT_AVAILABLE (no strong biometric enrolled now, or nothing kept), FAILED (anything
- * else). The prompt's texts come from the page, with the owner-approved English defaults "Sign in to TrendLIX People" and
+ * else). The prompt's texts come from the page, with the owner-approved English defaults "Sign in to Trendlix People" and
  * "Use password".
  */
 @CapacitorPlugin(name = "TrendlixBiometric")
@@ -86,7 +86,7 @@ public class TrendlixBiometricPlugin extends Plugin {
     private static final String PREF_IV = "iv";
 
     /** The page's words come first; these are the owner-approved English ones (README Phase 3, 20 October 2026). */
-    private static final String DEFAULT_TITLE = "Sign in to TrendLIX People";
+    private static final String DEFAULT_TITLE = "Sign in to Trendlix People";
     private static final String DEFAULT_NEGATIVE = "Use password";
 
     /** packages/shared device-credentials.ts DEVICE_NAME_MAX ("Samsung SM-S918B"). */

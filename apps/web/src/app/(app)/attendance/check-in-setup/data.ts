@@ -2,7 +2,7 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
-import type { CheckInLocationView, OfficeNetworksView } from '@/lib/attendance-types';
+import type { CheckInLocationView, LocationRuleView, OfficeNetworksView } from '@/lib/attendance-types';
 import type { PayrollSettingsView } from '@/lib/types';
 import { loadJson, type Loaded } from '../../payroll/load';
 
@@ -32,6 +32,9 @@ export const loadNetworks = cache(async (): Promise<Loaded<OfficeNetworksView>> 
     return { kind: 'failed', messages: ['The server sent an answer that could not be read.'] };
   }
 });
+
+/** GET /attendance/check-in-setup/location-rule: whether presses without a location are refused (20 October 2026). */
+export const loadLocationRule = cache(() => loadJson<LocationRuleView>('/attendance/check-in-setup/location-rule'));
 
 /** GET /payroll/settings: Zoho People's check-in addresses are kept there. */
 export const loadSettings = cache(() => loadJson<PayrollSettingsView>('/payroll/settings'));

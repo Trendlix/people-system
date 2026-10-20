@@ -7,7 +7,7 @@ import { PhoneLoading } from '../../../ui';
 // New leave on the phone pages (owner, 20 October 2026: the employee app, "apply for their requests"): the site's page
 // and form (leave/new/new-leave.tsx), its rules and checks, coming back to the phone pages once sent.
 
-export const metadata: Metadata = { title: 'New Leave · TrendLIX People' };
+export const metadata: Metadata = { title: 'New Leave · Trendlix People' };
 
 export default function PhoneNewLeavePage() {
   return (

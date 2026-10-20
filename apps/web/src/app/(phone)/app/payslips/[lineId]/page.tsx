@@ -15,7 +15,7 @@ import { loadMyPayslips } from '../data';
 // first time it is asked for, as on the profile: owner's decisions, 16 October 2026), with Download PDF and Open the PDF
 // for a phone's own viewer. Only the caller's own: anyone else's line isn't found.
 
-export const metadata: Metadata = { title: 'Payslip · TrendLIX People' };
+export const metadata: Metadata = { title: 'Payslip · Trendlix People' };
 
 const back = { href: APP_PATHS.payslips, label: 'Payslips' };
 

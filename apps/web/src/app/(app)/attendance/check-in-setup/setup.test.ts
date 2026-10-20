@@ -5,6 +5,9 @@ import {
   coordinateFrom,
   locationBody,
   locationFrom,
+  locationRuleBody,
+  locationRuleSaved,
+  locationRuleText,
   locationText,
   lockText,
   networksBody,
@@ -133,6 +136,29 @@ describe('the office networks', () => {
     expect(lockText(state({ lock: true, serverKey: false }))).toContain('the server has no key, so no one is refused');
     expect(lockText(state({ lock: true, networks: [] }))).toContain('there is no office network');
     expect(lockText(state())).toMatch(/^Off:/);
+  });
+});
+
+describe('check-ins without a location (owner, 20 October 2026: "Company switch + exceptions")', () => {
+  it('reads the switch as the API takes it, off unless ticked', () => {
+    expect(locationRuleBody(form([['refuseWithoutLocation', 'false']]))).toEqual({ refuseWithoutLocation: false });
+    expect(locationRuleBody(form([['refuseWithoutLocation', 'false'], ['refuseWithoutLocation', 'true']]))).toEqual({ refuseWithoutLocation: true });
+    expect(locationRuleBody(form([]))).toEqual({ refuseWithoutLocation: false });
+  });
+
+  it('says where it stands: off; on, with the exemption, the office network when it is ready, and the app', () => {
+    expect(locationRuleText({ refuseWithoutLocation: false }, true)).toBe(
+      'Off: on the website a check-in without a location is kept as location unknown. In the app a location is always needed.',
+    );
+    const on = locationRuleText({ refuseWithoutLocation: true }, true);
+    expect(on).toContain('refused, unless HR lets the person check in without one on their profile');
+    expect(on).toContain('A press from an office network without one counts as at the office.');
+    expect(locationRuleText({ refuseWithoutLocation: true }, false)).toContain('a press from the office without a location is refused too');
+    expect(locationRuleText({ refuseWithoutLocation: true }, null)).not.toContain('office network');
+    expect([locationRuleSaved(true), locationRuleSaved(false)]).toEqual([
+      'Saved. Check-ins and check-outs without a location are refused from now on.',
+      'Saved. Check-ins without a location are kept as location unknown again.',
+    ]);
   });
 });
 

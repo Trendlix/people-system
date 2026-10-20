@@ -127,7 +127,7 @@ export const PUSH_TEXT = {
   offer: 'Get notified on this phone?',
   offerHint: 'Requests waiting for you, decisions on yours, your payslip and the check-in reminders.',
   on: 'Notifications are on.',
-  denied: 'Notifications are off for TrendLIX People. To allow them: Settings → Apps → TrendLIX People → Notifications.',
+  denied: 'Notifications are off for Trendlix People. To allow them: Settings → Apps → Trendlix People → Notifications.',
   failed: 'Notifications couldn’t be turned on. Please try again.',
   timeout: 'The phone didn’t answer in time. Check the internet connection and try again.',
 } as const;

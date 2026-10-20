@@ -278,7 +278,7 @@ describe('turning push on', () => {
       await expect(turnOnPushFlow(s)).resolves.toEqual({ kind: 'denied' });
       expect(s.save).not.toHaveBeenCalled();
     }
-    expect(PUSH_TEXT.denied).toContain('Settings → Apps → TrendLIX People → Notifications');
+    expect(PUSH_TEXT.denied).toContain('Settings → Apps → Trendlix People → Notifications');
   });
 
   it('goes quietly when the app can’t', async () => {

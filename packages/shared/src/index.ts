@@ -401,6 +401,11 @@ export * from './device-credentials.js';
 // check in from anywhere), and the address the website signs for the API
 export * from './office-network.js';
 
+// where each press was (owner, 20 October 2026: "simplify this, i want to view if it is remote or office, and location
+// link"; "Yes, keep the spot"): the point kept, who sees it (HR, the CEO, the Super Admin and the employee), and the
+// switch refusing presses without a location, with its exemption and the office network ("Allow as Office")
+export * from './punch-location.js';
+
 // home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from
 // home"; "Label Home, flag elsewhere", HR then the CEO): asked by anyone, decided by HR then the CEO, one approved a
 // person, its point kept only while decided or in force, and who sees and decides each

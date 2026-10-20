@@ -8,7 +8,7 @@ import { PhoneLoading } from '../../../ui';
 // locations when working from home"): the site's page and form (home-locations/new/ask-home.tsx), "Use my current
 // location" reading the app's own location inside the app, coming back to the phone pages once sent.
 
-export const metadata: Metadata = { title: 'Ask for a Home Location · TrendLIX People' };
+export const metadata: Metadata = { title: 'Ask for a Home Location · Trendlix People' };
 
 export default function PhoneAskHomePage() {
   return (

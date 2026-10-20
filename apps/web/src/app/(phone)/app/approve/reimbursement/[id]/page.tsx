@@ -8,7 +8,7 @@ import { PhoneLoading } from '../../../ui';
 // the site's page (reimbursements/[id]/claim-detail.tsx), its back link to the phone pages' To Approve, and what is
 // done on it coming back here.
 
-export const metadata: Metadata = { title: 'Reimbursement Claim · TrendLIX People' };
+export const metadata: Metadata = { title: 'Reimbursement Claim · Trendlix People' };
 
 export default function PhoneApproveReimbursementPage({ params, searchParams }: PageProps<'/app/approve/reimbursement/[id]'>) {
   return (

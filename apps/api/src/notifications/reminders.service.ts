@@ -1,25 +1,47 @@
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
-import { DEFAULT_NOTIFICATION_SETTINGS, REMINDER_TICK_MINUTES, type PunchKind } from '@trendlix/shared';
+import { CHECK_IN_REMINDER_MAX, CHECK_IN_REMINDER_TAG, DEFAULT_NOTIFICATION_SETTINGS, REMINDER_TICK_MINUTES, type CheckInReminderView, type PunchKind } from '@trendlix/shared';
+import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { REQUEST_LINKS } from './notices.service.js';
 import { NotificationsService } from './notifications.service.js';
-import { dayKey, reminderDays, remindersDue, sentKey, type DueReminder, type ReminderFacts, type ReminderPerson } from './reminder-rules.js';
+import {
+  checkInReminderNow,
+  dayKey,
+  liveShiftIds,
+  reminderDays,
+  remindersDue,
+  sentKey,
+  type DueReminder,
+  type PermissionSpan,
+  type ReminderFacts,
+  type ReminderPerson,
+  type ReminderShift,
+  type SentReminder,
+} from './reminder-rules.js';
 import { checkInReminderText, checkOutReminderText } from './texts.js';
 
 // The check-in reminders (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for someone, a
-// check-in reminder)"; apps/mobile/README.md, Phase 4), sent by the API itself: every 5 minutes it reads who should be
-// reminded now (reminder-rules.ts) and sends each reminder once a person, day and kind (the reminders_sent row, made in
-// the same transaction). Only one of the API's processes looks at a time: a Postgres advisory lock held for the
-// transaction; another process finding it held does nothing that round. Started by main.ts, so the tests' apps don't run
-// it by themselves: they call runOnce with a moment of their own.
+// check-in reminder)", then "a reminder for people that didn't checkin and not on a leave every 10 minutes. like a
+// popup"; apps/mobile/README.md, Phase 4), sent by the API itself: every minute it reads who should be reminded now
+// (reminder-rules.ts), only among the people of the shifts within their reminders' hours, and sends each 10-minute step
+// of "You haven't checked in" once, and "Still checked in?" once a day. A step is claimed on the reminders_sent row (its
+// count and last_sent_at), in the same transaction, only while the last one went before the step began, so it never
+// goes twice whichever process sends it. Only one of the API's processes looks at a time anyway: a Postgres advisory
+// lock held for the transaction; another process finding it held does nothing that round. The check-in reminder keeps
+// one inbox row a day (refreshed at each step) and is pushed with its tag, so the phone shows the latest only. Also the
+// popup's question (GET /me/check-in-reminder), by the same rule. Started by main.ts, so the tests' apps don't run it by
+// themselves: they call runOnce with a moment of their own.
 
 type Db = PrismaService | Prisma.TransactionClient;
 
 /** The advisory lock's name: hashtext() of it is the key every process takes. */
 const LOCK_NAME = 'people-system notification reminders';
+
+/** A reminder claimed for sending: how many have gone that day with it, and the day's inbox row so far. */
+type Claimed = DueReminder & { count: number; notificationId: string | null };
 
 @Injectable()
 export class RemindersService implements OnModuleDestroy {
@@ -32,7 +54,7 @@ export class RemindersService implements OnModuleDestroy {
     private readonly notifications: NotificationsService,
   ) {}
 
-  /** Starts looking every 5 minutes (main.ts, once the API listens). The timer never keeps the process alive. */
+  /** Starts looking every minute (main.ts, once the API listens). The timer never keeps the process alive. */
   start(): void {
     if (this.timer) return;
     this.timer = setInterval(() => void this.tick(), REMINDER_TICK_MINUTES * 60_000);
@@ -59,47 +81,95 @@ export class RemindersService implements OnModuleDestroy {
   }
 
   /**
-   * Sends the reminders due at `now` that weren't sent yet, and answers how many: none when another process holds the
-   * lock. Each is kept as sent before it goes, in the transaction holding the lock; then it is sent to the inbox and the
-   * phones, after the transaction.
+   * Sends the reminders due at `now` that weren't sent yet in their step, and answers how many: none when another
+   * process holds the lock. Each is claimed before it goes, in the transaction holding the lock; then it is sent to the
+   * inbox and the phones, after the transaction.
    */
   async runOnce(now: Date): Promise<number> {
     const due = await this.prisma.$transaction(
       async (tx) => {
         const [lock] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${LOCK_NAME})) AS locked`;
         if (!lock?.locked) return [];
+        // only the people of the shifts within their reminders' hours now: most rounds read the shifts and stop there
+        const live = liveShiftIds(await this.shifts(tx), now);
+        if (!live.size) return [];
         const days = reminderDays(now);
-        const people = await this.people(tx, days);
+        const people = await this.people(tx, days, { shiftIds: [...live] });
         if (!people.length) return [];
         const reminders = remindersDue(people, await this.facts(tx, people, days), now);
-        const kept: DueReminder[] = [];
+        const claimed: Claimed[] = [];
         for (const r of reminders) {
-          const { count } = await tx.reminderSent.createMany({ data: [{ userId: r.userId, day: toDateOnly(r.day), kind: r.kind, sentAt: now }], skipDuplicates: true });
-          if (count) kept.push(r);
+          const row = await this.claim(tx, r, now);
+          if (row) claimed.push({ ...r, ...row });
         }
-        return kept;
+        return claimed;
       },
       { timeout: 60_000, maxWait: 10_000 },
     );
     for (const r of due) {
-      await this.notifications.notify(
-        [r.userId],
-        r.kind === 'check_in_reminder' ? checkInReminderText(r.shiftStart, REQUEST_LINKS.myAttendance) : checkOutReminderText(r.checkedInAt, REQUEST_LINKS.myAttendance),
-      );
+      if (r.kind === 'check_in_reminder') {
+        const id = await this.notifications.remind(r.userId, checkInReminderText(r.shiftStart, REQUEST_LINKS.myAttendance), { rowId: r.notificationId, tag: CHECK_IN_REMINDER_TAG });
+        if (id && id !== r.notificationId) {
+          await this.prisma.reminderSent.updateMany({ where: { userId: r.userId, day: toDateOnly(r.day), kind: r.kind }, data: { notificationId: id } });
+        }
+      } else {
+        await this.notifications.notify([r.userId], checkOutReminderText(r.checkedInAt, REQUEST_LINKS.myAttendance));
+      }
     }
     if (due.length) this.logger.log(`Sent ${due.length} reminder${due.length === 1 ? '' : 's'}.`);
     return due.length;
   }
 
   /**
-   * Those who may be reminded on the days looked at: an employee with a work email that an active user signs in with,
-   * and an employment under a shift covering one of the days, with their switches (none kept: both on).
+   * The popup "You haven't checked in yet" (GET /me/check-in-reminder), for the signed-in person at `now`, by the same
+   * rule as the push, whatever was sent: never while a Super Admin views as someone.
    */
-  private async people(db: Db, days: readonly string[]): Promise<ReminderPerson[]> {
+  async checkInReminderFor(user: SessionUser, now = new Date()): Promise<CheckInReminderView> {
+    const none: CheckInReminderView = { due: false, shiftStart: null, checkInPath: REQUEST_LINKS.myAttendance };
+    if (user.viewAs) return none;
+    const days = reminderDays(now);
+    const person = (await this.people(this.prisma, days, { email: user.email })).find((p) => p.userId === user.id);
+    if (!person) return none;
+    const due = checkInReminderNow(person, await this.facts(this.prisma, [person], days), now);
+    return due ? { ...none, due: true, shiftStart: due.shiftStart } : none;
+  }
+
+  /**
+   * Claims a reminder's step on its reminders_sent row: made for the day's first, or counted again while the last one
+   * went before this step began (and fewer than 12 went). Answers the row's count and its inbox row; null when this step
+   * was sent already (by this process or another). The moments go as Dates, as Prisma's own reads and writes of the row
+   * send them (an ISO string would be read in the database's time zone otherwise).
+   */
+  private async claim(tx: Prisma.TransactionClient, r: DueReminder, now: Date): Promise<{ count: number; notificationId: string | null } | null> {
+    const [row] = await tx.$queryRaw<{ count: number; notification_id: string | null }[]>`
+      INSERT INTO reminders_sent (user_id, day, kind, count, last_sent_at)
+      VALUES (${r.userId}::uuid, ${r.day}::date, ${r.kind}, 1, ${now}::timestamptz)
+      ON CONFLICT (user_id, day, kind) DO UPDATE SET count = reminders_sent.count + 1, last_sent_at = EXCLUDED.last_sent_at
+      WHERE reminders_sent.last_sent_at < ${r.stepAt}::timestamptz AND reminders_sent.count < ${CHECK_IN_REMINDER_MAX}
+      RETURNING count, notification_id`;
+    return row ? { count: Number(row.count), notificationId: row.notification_id } : null;
+  }
+
+  /** Every shift, as the reminders read it (a handful of rows). */
+  private async shifts(db: Db): Promise<(ReminderShift & { id: string })[]> {
+    const rows = await db.shift.findMany({ select: { id: true, startTime: true, endTime: true, graceMinutes: true, countUntil: true, workingDays: true } });
+    return rows.map((s) => ({ id: s.id, ...shiftOf(s) }));
+  }
+
+  /**
+   * Those who may be reminded on the days looked at: an employee with a work email that an active user signs in with,
+   * and an employment under a shift covering one of the days, with their switches (none kept: both on). Only under
+   * `shiftIds` when given (a round), or only the one with `email` (the popup's question).
+   */
+  private async people(db: Db, days: readonly string[], only: { shiftIds?: string[]; email?: string } = {}): Promise<ReminderPerson[]> {
     const [first, last] = [days[0], days[days.length - 1]];
-    const covering = { joinDate: { lte: toDateOnly(last) }, OR: [{ endDate: null }, { endDate: { gte: toDateOnly(first) } }], shiftId: { not: null } } satisfies Prisma.EmploymentWhereInput;
+    const covering = {
+      joinDate: { lte: toDateOnly(last) },
+      OR: [{ endDate: null }, { endDate: { gte: toDateOnly(first) } }],
+      shiftId: only.shiftIds ? { in: only.shiftIds } : { not: null },
+    } satisfies Prisma.EmploymentWhereInput;
     const employees = await db.employee.findMany({
-      where: { workEmail: { not: null }, employments: { some: covering } },
+      where: { workEmail: only.email !== undefined ? only.email.toLowerCase() : { not: null }, employments: { some: covering } },
       select: {
         id: true,
         workEmail: true,
@@ -133,13 +203,7 @@ export class RemindersService implements OnModuleDestroy {
           joinDate: fromDateOnly(m.joinDate),
           endDate: m.endDate ? fromDateOnly(m.endDate) : null,
           employmentType: m.employmentType,
-          shift: m.shift && {
-            startTime: fromTimeOfDay(m.shift.startTime),
-            endTime: fromTimeOfDay(m.shift.endTime),
-            graceMinutes: m.shift.graceMinutes,
-            countUntil: m.shift.countUntil ? fromTimeOfDay(m.shift.countUntil) : null,
-            workingDays: m.shift.workingDays,
-          },
+          shift: m.shift && shiftOf(m.shift),
         })),
       });
     }
@@ -155,14 +219,19 @@ export class RemindersService implements OnModuleDestroy {
     const [holidays, leave, permission, zoho, punches, sent] = await Promise.all([
       db.holiday.findMany({ where: { date: { in: dates } }, select: { date: true } }),
       db.leaveRequest.findMany({ where: { employeeId: { in: employeeIds }, status: 'approved', startDate: { lte: last }, endDate: { gte: first } }, select: { employeeId: true, startDate: true, endDate: true } }),
-      db.permissionRequest.findMany({ where: { employeeId: { in: employeeIds }, status: 'approved', date: { in: dates } }, select: { employeeId: true, date: true } }),
+      db.permissionRequest.findMany({ where: { employeeId: { in: employeeIds }, status: 'approved', date: { in: dates } }, select: { employeeId: true, date: true, fromTime: true, toTime: true } }),
       db.attendanceDay.findMany({ where: { employeeId: { in: employeeIds }, date: { in: dates }, source: 'zoho' }, select: { employeeId: true, date: true } }),
       db.attendancePunch.findMany({ where: { employeeId: { in: employeeIds }, date: { in: dates } }, orderBy: { at: 'asc' }, select: { employeeId: true, date: true, kind: true, at: true } }),
-      db.reminderSent.findMany({ where: { userId: { in: userIds }, day: { in: dates } }, select: { userId: true, day: true, kind: true } }),
+      db.reminderSent.findMany({ where: { userId: { in: userIds }, day: { in: dates } }, select: { userId: true, day: true, kind: true, count: true, lastSentAt: true } }),
     ]);
     const leaveDays = new Set<string>();
     for (const l of leave) {
       for (const day of days) if (fromDateOnly(l.startDate) <= day && fromDateOnly(l.endDate) >= day) leaveDays.add(dayKey(l.employeeId, day));
+    }
+    const permitted = new Map<string, PermissionSpan[]>();
+    for (const p of permission) {
+      const key = dayKey(p.employeeId, fromDateOnly(p.date));
+      permitted.set(key, [...(permitted.get(key) ?? []), { fromTime: p.fromTime ? fromTimeOfDay(p.fromTime) : null, toTime: p.toTime ? fromTimeOfDay(p.toTime) : null }]);
     }
     const punched = new Map<string, { kind: PunchKind; at: Date }[]>();
     for (const p of punches) {
@@ -172,10 +241,21 @@ export class RemindersService implements OnModuleDestroy {
     return {
       holidays: new Set(holidays.map((h) => fromDateOnly(h.date))),
       leave: leaveDays,
-      permission: new Set(permission.map((p) => dayKey(p.employeeId, fromDateOnly(p.date)))),
+      permission: permitted,
       zoho: new Set(zoho.map((z) => dayKey(z.employeeId, fromDateOnly(z.date)))),
       punches: punched,
-      sent: new Set(sent.map((s) => sentKey(s.userId, fromDateOnly(s.day), s.kind as DueReminder['kind']))),
+      sent: new Map<string, SentReminder>(sent.map((s) => [sentKey(s.userId, fromDateOnly(s.day), s.kind as DueReminder['kind']), { count: s.count, lastSentAt: s.lastSentAt }])),
     };
   }
+}
+
+/** A shift's row as the reminders read it: its times "HH:mm". */
+function shiftOf(s: { startTime: Date; endTime: Date; graceMinutes: number | null; countUntil: Date | null; workingDays: number[] }): ReminderShift {
+  return {
+    startTime: fromTimeOfDay(s.startTime),
+    endTime: fromTimeOfDay(s.endTime),
+    graceMinutes: s.graceMinutes,
+    countUntil: s.countUntil ? fromTimeOfDay(s.countUntil) : null,
+    workingDays: s.workingDays,
+  };
 }

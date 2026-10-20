@@ -16,7 +16,12 @@
     </style>
 
 
+    <!-- The splash (README Phase 5, 20 October 2026: from the owner's icon): Android 12 and later always show their own,
+         the icon on a colour, which these two set (without them, AndroidX's defaults: Android's generic icon on the
+         phone's light or dark background); before Android 12, drawable/splash (the same T on black). -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
     </style>
 </resources>

@@ -1,0 +1,22 @@
+import { ApiError } from '@/lib/api';
+import type { ReminderSurface } from '@/lib/check-in-reminder';
+import { getCurrentUser } from '@/lib/session';
+import type { Session } from '@/lib/view-as';
+import { CheckInReminderPopup } from './check-in-reminder-popup';
+
+/**
+ * The check-in reminder's popup (owner, 20 October 2026: "a reminder for people that didn't checkin and not on a leave
+ * every 10 minutes. like a popup"), in the site's layout and the phone pages': for someone with an employee profile (the
+ * reminder is about their shift), never while a Super Admin views as someone. Nothing when the API can't be reached. Put
+ * in a layout, inside a Suspense boundary.
+ */
+export async function CheckInReminder({ surface }: { surface: ReminderSurface }) {
+  let user: Session | null = null;
+  try {
+    user = await getCurrentUser();
+  } catch (err) {
+    if (!(err instanceof ApiError)) throw err;
+  }
+  if (!user || user.viewAs || !user.employeeId) return null;
+  return <CheckInReminderPopup surface={surface} />;
+}

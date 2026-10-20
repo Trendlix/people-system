@@ -8,7 +8,7 @@ async function bootstrap() {
   configureApp(app);
   // No CORS: browsers never call this API directly; the Next.js server does.
   await app.listen(process.env.PORT ?? 3001);
-  // the check-in reminders, every 5 minutes (apps/mobile/README.md, Phase 4); the tests' apps don't start them
+  // the check-in reminders, looked for every minute (apps/mobile/README.md, Phase 4); the tests' apps don't start them
   app.get(RemindersService).start();
 }
 await bootstrap();

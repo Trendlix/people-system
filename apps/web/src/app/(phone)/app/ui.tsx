@@ -68,8 +68,34 @@ export function Quiet({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted">{children}</p>;
 }
 
-export function PhoneLoading() {
-  return <p className="py-8 text-center text-sm text-muted">Loading…</p>;
+/** Grey lines where a card's rows will be, while they load (Phase 5, 20 October 2026: loading states). */
+export function SkeletonRows({ rows = 3 }: { rows?: number }) {
+  return (
+    <div aria-hidden="true" className="divide-y divide-line-soft">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex min-h-16 items-center gap-3 px-4 py-3">
+          <span className="min-w-0 flex-1 space-y-2">
+            <span className={`block h-3.5 rounded-full bg-line motion-safe:animate-pulse ${i % 2 ? 'w-1/2' : 'w-2/3'}`} />
+            <span className="block h-3 w-1/3 rounded-full bg-line-soft motion-safe:animate-pulse" />
+          </span>
+          <span className="h-5 w-14 shrink-0 rounded-full bg-line-soft motion-safe:animate-pulse" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * While a page (or its part) loads: a card of grey lines where its rows will be, said as "Loading…" to a screen reader
+ * (Phase 5, 20 October 2026: loading states; every phone page's Suspense shows it under the page's own title).
+ */
+export function PhoneLoading({ rows = 3 }: { rows?: number }) {
+  return (
+    <div role="status" className="card overflow-hidden">
+      <span className="sr-only">Loading…</span>
+      <SkeletonRows rows={rows} />
+    </div>
+  );
 }
 
 /** What was just done, said at the top: in green, or in amber when it moved on meanwhile. */

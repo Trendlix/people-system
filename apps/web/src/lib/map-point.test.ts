@@ -4,6 +4,7 @@ import {
   CAIRO,
   CAIRO_ZOOM,
   circleBounds,
+  googleMapsHref,
   isLink,
   isShortMapLink,
   mapHref,
@@ -84,6 +85,14 @@ describe('a point from what is pasted', () => {
     expect(pointOf(30.123456789, 31.987654321)).toEqual(at(30.123457, 31.987654));
     expect([pointOf(null, 31), pointOf(30, undefined), pointOf(NaN, 31), pointOf(-91, 31), pointOf(30, 180.5)]).toEqual([null, null, null, null, null]);
     expect(pointOf(-90, -180)).toEqual(at(-90, -180));
+  });
+});
+
+describe('where a press was, on Google Maps (owner, 20 October 2026: "location link")', () => {
+  it('asks for the point to 6 decimals, and the paste reads it back', () => {
+    expect(googleMapsHref(at(30.0601, 31.3465))).toBe('https://www.google.com/maps?q=30.060100,31.346500');
+    expect(googleMapsHref(at(-33.8688, 151.2093))).toBe('https://www.google.com/maps?q=-33.868800,151.209300');
+    expect(pointFromText(googleMapsHref(at(30.112634, 31.445867)))).toEqual(at(30.112634, 31.445867));
   });
 });
 

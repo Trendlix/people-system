@@ -1,7 +1,8 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">TrendLIX People</string>
-    <string name="title_activity_main">TrendLIX People</string>
+    <!-- the app's name under its icon (owner, 20 October 2026: "App Name: Trendlix People") -->
+    <string name="app_name">Trendlix People</string>
+    <string name="title_activity_main">Trendlix People</string>
     <string name="package_name">com.trendlix.people</string>
     <string name="custom_url_scheme">com.trendlix.people</string>
 </resources>

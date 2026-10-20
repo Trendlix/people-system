@@ -21,6 +21,12 @@ export const coordinateText = (n: number | null | undefined): string => (typeof 
 export const mapHref = (l: { latitude: number; longitude: number }): string =>
   `https://www.openstreetmap.org/?mlat=${l.latitude.toFixed(6)}&mlon=${l.longitude.toFixed(6)}#map=18/${l.latitude.toFixed(6)}/${l.longitude.toFixed(6)}`;
 
+/**
+ * Where a check-in or check-out was pressed, on Google Maps (owner, 20 October 2026: "location link"): the point as its
+ * query, to 6 decimals. Opened in a new tab, with rel="noopener noreferrer".
+ */
+export const googleMapsHref = (l: { latitude: number; longitude: number }): string => `https://www.google.com/maps?q=${l.latitude.toFixed(6)},${l.longitude.toFixed(6)}`;
+
 /** A point on the map, each coordinate to 6 decimals. */
 export interface Point {
   latitude: number;

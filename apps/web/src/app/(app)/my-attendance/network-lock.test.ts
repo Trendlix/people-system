@@ -1,6 +1,6 @@
-import { APP_LOCATION_NEEDED_MESSAGE, OFF_NETWORK_MESSAGE } from '@trendlix/shared';
+import { APP_LOCATION_NEEDED_MESSAGE, NO_LOCATION_MESSAGE, OFF_NETWORK_MESSAGE } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { appLocationRefusal, correctionLinkFor, offNetworkRefused } from './network-lock';
+import { appLocationRefusal, correctionLinkFor, noLocationRefused, offNetworkRefused } from './network-lock';
 
 // The check-in panel's words for the office network's lock and the app's location rule (owner, 20 October 2026).
 
@@ -18,6 +18,16 @@ describe('a press refused off the office network', () => {
     expect(correctionLinkFor('/app/attendance', '2026-10-20')).toBe('/app/requests/new/correction?date=2026-10-20');
     expect(correctionLinkFor('/approvals', '2026-10-20')).toBe('/my-attendance/correct?date=2026-10-20');
     expect(correctionLinkFor(null, '2026-10-20')).toBe('/my-attendance/correct?date=2026-10-20');
+  });
+});
+
+describe('a website press refused without a location (owner, 20 October 2026: "Company switch + exceptions")', () => {
+  it('is the API’s 409 with its message, which says how to allow the location in the browser', () => {
+    expect(noLocationRefused(409, [NO_LOCATION_MESSAGE])).toBe(true);
+    expect(noLocationRefused(409, [OFF_NETWORK_MESSAGE])).toBe(false);
+    expect(noLocationRefused(409, [APP_LOCATION_NEEDED_MESSAGE])).toBe(false);
+    expect(noLocationRefused(400, [NO_LOCATION_MESSAGE])).toBe(false);
+    expect(NO_LOCATION_MESSAGE).toContain('in your browser');
   });
 });
 

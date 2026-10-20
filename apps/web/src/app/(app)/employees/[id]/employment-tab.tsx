@@ -176,6 +176,17 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
           },
         ]
       : []),
+    // whether their website presses need a location (20 October 2026: "Company switch + exceptions")
+    ...(e.checkInWithoutLocation !== undefined
+      ? [
+          {
+            key: 'checkInWithoutLocation',
+            label: 'Checks in without a location',
+            value: e.checkInWithoutLocation ? 'Yes' : 'No',
+            note: e.checkInWithoutLocation ? 'Can check in without a location (HR’s exception)' : 'Needs it when Check-in Setup refuses check-ins without one',
+          },
+        ]
+      : []),
     {
       key: 'jdAcknowledgedAt',
       label: 'Job description acknowledged',

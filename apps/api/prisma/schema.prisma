@@ -108,6 +108,7 @@ model Notification {
   link      String? // an address on the site, e.g. /leave/<id>
   readAt    DateTime? @map("read_at") @db.Timestamptz
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  reminders ReminderSent[] // the check-in reminder's day this row stands for (one row a day, refreshed at each step)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, readAt])
@@ -130,7 +131,8 @@ model PushDevice {
   @@map("push_devices")
 }
 
-// A user's reminder switches (Phase 4): "You haven't checked in" and "Still checked in?", both on until switched off.
+// A user's reminder switches (Phase 4): "Still checked in?", on until switched off. "You haven't checked in" is always on
+// (owner, 20 October 2026: "No, always on"): its column is kept but no longer read or written.
 model NotificationSettings {
   userId           String   @id @map("user_id") @db.Uuid
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -141,14 +143,20 @@ model NotificationSettings {
   @@map("notification_settings")
 }
 
-// A reminder sent (Phase 4): one a user, working day (in Cairo) and kind, so a reminder is never sent twice, whichever
-// of the API's processes looks first.
+// A reminder sent (Phase 4): one row a user, working day (in Cairo) and kind. "You haven't checked in" goes every 10
+// minutes for 2 hours (owner, 20 October 2026: "a reminder for people that didn't checkin and not on a leave every 10
+// minutes. like a popup"): `count` how many went that day, `lastSentAt` when the last went, so each 10-minute step goes
+// once, whichever of the API's processes looks first; "Still checked in?" once a day. `notificationId`: the day's one
+// inbox row, refreshed at each step (none: a new one next time).
 model ReminderSent {
-  userId String   @map("user_id") @db.Uuid
-  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  day    DateTime @db.Date
-  kind   String // REMINDER_KINDS: check_in_reminder, check_out_reminder
-  sentAt DateTime @default(now()) @map("sent_at") @db.Timestamptz
+  userId         String        @map("user_id") @db.Uuid
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  day            DateTime      @db.Date
+  kind           String // REMINDER_KINDS: check_in_reminder, check_out_reminder
+  count          Int           @default(1)
+  lastSentAt     DateTime      @default(now()) @map("last_sent_at") @db.Timestamptz
+  notificationId String?       @map("notification_id") @db.Uuid
+  notification   Notification? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
 
   @@id([userId, day, kind])
   @@map("reminders_sent")
@@ -532,6 +540,10 @@ model Employment {
   // "Can check in from anywhere" (owner, 20 October 2026: check-ins locked to the office network, "Office staff, plus
   // exceptions"): HR lets an Office employee check in off the office network; the others aren't locked anyway
   checkInAnywhere  Boolean                @default(false) @map("check_in_anywhere")
+  // "Can check in without a location" (owner, 20 October 2026: "Company switch + exceptions"): with Check-in Setup's
+  // "Refuse check-ins and check-outs without a location" on, HR lets this person press on the website without one (the
+  // app always needs it)
+  checkInWithoutLocation Boolean          @default(false) @map("check_in_without_location")
   shift            Shift?                 @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   jdAcknowledgedAt DateTime?              @map("jd_acknowledged_at") @db.Date
   endDate          DateTime?              @map("end_date") @db.Date // empty while current
@@ -1221,6 +1233,10 @@ model PayrollSettings {
   // office network". In force only with the key the website signs the address with (WEB_KEY, deploy/web-key.sh)
   officeNetworks          Json     @default("[]") @map("office_networks")
   officeNetworkLock       Boolean  @default(false) @map("office_network_lock")
+  // "Refuse check-ins and check-outs without a location" (owner, 20 October 2026: "i want a flag to restrict checkin and
+  // out from unknown locations", then "Company switch + exceptions"): on the website a press without a reading is refused,
+  // unless HR exempts the person or it comes from an office network the website signed
+  refuseWithoutLocation   Boolean  @default(false) @map("refuse_without_location")
   updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("payroll_settings")
@@ -1989,11 +2005,16 @@ model AttendancePunch {
   at             DateTime @default(now()) @db.Timestamptz
   place          String // CHECK_IN_PLACES
   accuracyMetres Int?     @map("accuracy_metres")
+  // where it was pressed (owner, 20 October 2026: "Yes, keep the spot"), read only then, never tracked: 6 decimals, both
+  // or neither; none from before, nor without a reading. Seen by HR, the CEO, the Super Admin and the employee only
+  // (packages/shared punch-location.ts); never in the audit log
+  latitude       Decimal? @db.Decimal(9, 6)
+  longitude      Decimal? @db.Decimal(9, 6)
   expected       String // office, anywhere
   flags          String[] @default([])
   // the check-in location it was within (owner, 20 October 2026: "Own page, several locations"), by its name then, and the
   // office network it came from, by its name (check-ins locked to the office network, 20 October 2026); never the
-  // coordinates or the address
+  // address
   locationName   String?  @map("location_name")
   officeNetwork  String?  @map("office_network")
   source         String   @default("system") // system; device for a fingerprint or face device, later

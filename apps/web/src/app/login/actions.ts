@@ -48,7 +48,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
  * Signing out also ends viewing as someone: the switched session is the Super Admin's own. It ends the session on the
  * server too (20 October 2026), so the token can't be used again; the cookie goes even when the API can't be reached.
  *
- * In the TrendLIX People app (its user agent's mark), signing out keeps the fingerprint sign-in (owner, 20 October 2026:
+ * In the Trendlix People app (its user agent's mark), signing out keeps the fingerprint sign-in (owner, 20 October 2026:
  * chose Face ID / fingerprint sign-in for the app; README: "Signing out in the app keeps the fingerprint (the next open
  * offers it)"): the phone's credential is left as it is, and the sign-in page opens with ?reason=signed_out, which only
  * stops it asking for the fingerprint by itself (Sign in with fingerprint is still there). The website: the sign-in page.

@@ -53,7 +53,7 @@ export async function UserMenu() {
         </Link>
       )}
       <form action={logout}>
-        {/* in the TrendLIX People app, the phone's push token, unregistered on signing out (Phase 4, 20 October 2026) */}
+        {/* in the Trendlix People app, the phone's push token, unregistered on signing out (Phase 4, 20 October 2026) */}
         <PushTokenField />
         <button type="submit" className="btn btn-secondary">
           Sign out

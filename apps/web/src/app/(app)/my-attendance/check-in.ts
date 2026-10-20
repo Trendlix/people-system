@@ -11,12 +11,14 @@ import {
   PUNCH_KIND_LABELS,
   shiftWindowOn,
   shiftWorkHours,
+  SPOT_KEPT_TEXT,
   type CheckInLocationError,
   type CheckInPlace,
   type PunchKind,
 } from '@trendlix/shared';
 import type { CheckInTodayView, PunchedDayView, PunchView } from '../../../lib/attendance-types';
 import { formatDate } from '../../../lib/format';
+import { punchMap } from '../attendance/attendance';
 import { weekdayOf } from '../organization/holidays/holidays';
 
 // Checking in on the system (owner, 19 October 2026, pasting the list and writing "Proceed with those": "Check-in through
@@ -25,8 +27,9 @@ import { weekdayOf } from '../organization/holidays/holidays';
 // CEO and Finance with an employee profile. Each press asks the browser where the phone or computer is, fresh and as
 // precise as it can within 10 seconds, and sends that point (or why there is none: refused, unavailable, too slow, a
 // browser without it) with Check in or Check out; never a time: the server's is the punch's. The API reads the point
-// against the office's and drops it: only office, remote or location unknown is kept. Pure code, tested: reading the
-// location, the press as the API takes it, and the panel's words. Relative imports: the tests run without "@/".
+// against the office's, and keeps it with the press (owner, 20 October 2026: "Yes, keep the spot"), read only then and
+// never tracked; the panel says so, and today's list opens each press's own spot on a map. Pure code, tested: reading
+// the location, the press as the API takes it, and the panel's words. Relative imports: the tests run without "@/".
 
 // ---------- the browser's location ----------
 
@@ -202,9 +205,11 @@ export interface PunchRow {
   place: string;
   accuracy: string | null;
   flags: string[];
+  /** Where it was pressed, on a map (20 October 2026: "location link"); none without a point. */
+  map: { href: string; title: string } | null;
 }
 
-/** Today's punches in the order pressed: "Check-in · 9:05 AM · Office · ±18 m", with their flags. */
+/** Today's punches in the order pressed: "Check-in · 9:05 AM · Office · ±18 m", with their flags and their Map. */
 export function punchRows(punches: readonly PunchView[]): PunchRow[] {
   return [...punches]
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
@@ -215,6 +220,7 @@ export function punchRows(punches: readonly PunchView[]): PunchRow[] {
       place: placeLabel(p.place),
       accuracy: accuracyText(p.accuracyMetres),
       flags: flagLabels(p.flags),
+      map: punchMap(p),
     }));
 }
 
@@ -425,26 +431,27 @@ export const dayTitle = (date: string): string => `${weekdayOf(date)} ${formatDa
 /** Said quietly when HR hasn't set the office's point yet. */
 export const OFFICE_NOT_SET_TEXT = "HR hasn't set the office's location on the system yet, so check-ins are kept as location unknown for now.";
 
-/** What the panel says of where the location goes (it is asked each press, and never kept). */
-export const LOCATION_NOTE =
-  'Each press asks your browser for your location to tell the office from remote. Only office, remote or location unknown is kept, never where you are.';
+/**
+ * What the panel says of where the location goes: it is asked each press, and the spot is kept with it (owner, 20
+ * October 2026: "Yes, keep the spot"; HR, the CEO and the Super Admin see it).
+ */
+export const LOCATION_NOTE = `Each press asks your browser for your location to tell the office from remote. ${SPOT_KEPT_TEXT}`;
 
 /**
  * The same inside the employee app, which reads the phone's own location and tells a made-up one (Phase 2, 20 October
  * 2026), and needs it for a press (owner, 20 October 2026: "Refuse without location", "App only").
  */
-export const LOCATION_NOTE_IN_APP =
-  'Each press needs your phone’s location, read only then, to tell the office from remote. Only office or remote is kept, never where you are; a location the phone says an app made up is flagged.';
+export const LOCATION_NOTE_IN_APP = `Each press needs your phone’s location to tell the office from remote. ${SPOT_KEPT_TEXT} A location the phone says an app made up is flagged.`;
 
 /**
  * What to do when a press's location couldn't be read (the employee app's Phase 2, 20 October 2026: "a clear message
- * when refused"), said under what the API kept: inside the app, the phone's settings for TrendLIX People (the location
+ * when refused"), said under what the API kept: inside the app, the phone's settings for Trendlix People (the location
  * only while the app is in use); in a browser, the site's permission. Null when there is nothing to do.
  */
 export function locationHelpText(error: CheckInLocationError, inApp: boolean): string | null {
   if (error === 'denied') {
     return inApp
-      ? 'To check in with your location, allow TrendLIX People to use it: on the phone, Settings → Apps → TrendLIX People → Permissions → Location → Allow only while using the app, with precise location on. Then press again.'
+      ? 'To check in with your location, allow Trendlix People to use it: on the phone, Settings → Apps → Trendlix People → Permissions → Location → Allow only while using the app, with precise location on. Then press again.'
       : 'To check in with your location, allow this site to use it in your browser’s settings, then press again.';
   }
   if (error === 'unavailable') return inApp ? 'Turn on the phone’s location (Settings → Location), then press again.' : 'Turn on your device’s location, then press again.';

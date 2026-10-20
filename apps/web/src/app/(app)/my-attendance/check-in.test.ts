@@ -27,6 +27,8 @@ import {
   punchBodyFrom,
   punchErrors,
   punchRows,
+  LOCATION_NOTE,
+  LOCATION_NOTE_IN_APP,
   readingOf,
   readLocation,
   withoutMock,
@@ -157,7 +159,7 @@ describe('the press, as the API takes it', () => {
   });
 
   it('says what to do when the location couldn’t be read: the app’s settings inside it, the site’s outside', () => {
-    expect(locationHelpText('denied', true)).toContain('Settings → Apps → TrendLIX People → Permissions → Location → Allow only while using the app');
+    expect(locationHelpText('denied', true)).toContain('Settings → Apps → Trendlix People → Permissions → Location → Allow only while using the app');
     expect(locationHelpText('denied', false)).toBe('To check in with your location, allow this site to use it in your browser’s settings, then press again.');
     expect(locationHelpText('unavailable', true)).toBe('Turn on the phone’s location (Settings → Location), then press again.');
     expect(locationHelpText('timeout', false)).toContain('took too long');
@@ -207,11 +209,22 @@ describe('the panel', () => {
       { kind: 'in', at: '2026-10-19T06:05:00.000Z', place: 'remote', accuracyMetres: 18, flags: ['outside_office'] },
     ];
     expect(punchRows(punches)).toEqual([
-      { key: expect.any(String), label: 'Check-in', time: '9:05 AM', place: 'Remote', accuracy: '±18 m', flags: ['Checked in outside the office on an office day'] },
-      { key: expect.any(String), label: 'Check-out', time: '5:10 PM', place: 'Location unknown', accuracy: null, flags: [] },
+      { key: expect.any(String), label: 'Check-in', time: '9:05 AM', place: 'Remote', accuracy: '±18 m', flags: ['Checked in outside the office on an office day'], map: null },
+      { key: expect.any(String), label: 'Check-out', time: '5:10 PM', place: 'Location unknown', accuracy: null, flags: [], map: null },
     ]);
+    // the spot kept since 20 October 2026 ("Yes, keep the spot"): their own press opens on a map
+    expect(punchRows([{ ...punches[1], latitude: 30.0601, longitude: 31.3465, pointFrom: 'press' }])[0].map).toEqual({
+      href: 'https://www.google.com/maps?q=30.060100,31.346500',
+      title: 'Within 18 m',
+    });
     expect([placeLabel('office'), placeLabel(null)]).toEqual(['Office', '—']);
     expect(flagLabels(['location_unknown', 'location_unknown', 'other'])).toEqual(['Location unknown on an office day']);
+  });
+
+  it('tells the employee the spot is kept, on the website and in the app (owner, 20 October 2026: "Yes, keep the spot")', () => {
+    expect(LOCATION_NOTE).toBe('Each press asks your browser for your location to tell the office from remote. Each check-in keeps the spot where you pressed, read only then; HR can see it.');
+    expect(LOCATION_NOTE_IN_APP).toContain('Each check-in keeps the spot where you pressed, read only then; HR can see it.');
+    expect(`${LOCATION_NOTE} ${LOCATION_NOTE_IN_APP}`).not.toMatch(/never where you are/);
   });
 
   it('says the day so far, its hours, and the day it is for', () => {

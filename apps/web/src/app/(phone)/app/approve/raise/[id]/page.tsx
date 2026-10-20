@@ -18,7 +18,7 @@ import { PageTitle, PhoneLoading } from '../../../ui';
 // reject it, always with a comment; a C-level person's the CEO decides. The whole raise form, and a raise prepared
 // already, stay on the site (its links). Once decided the card shows where it stands; the API checks every step.
 
-export const metadata: Metadata = { title: 'Raise Request · TrendLIX People' };
+export const metadata: Metadata = { title: 'Raise Request · Trendlix People' };
 
 const quiet = 'card px-4 py-8 text-center text-sm text-muted';
 

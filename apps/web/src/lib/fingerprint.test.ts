@@ -79,10 +79,10 @@ describe('turning it on', () => {
   it('names the phone from its user agent when the phone gives no name', async () => {
     const s = steps({ kind: 'enrolled' });
     await turnOnFingerprintFlow({ deviceName: null, platform: 'android' }, APP_UA, s);
-    expect(s.make).toHaveBeenCalledWith({ deviceName: 'TrendLIX People app on Android', platform: 'android' });
+    expect(s.make).toHaveBeenCalledWith({ deviceName: 'Trendlix People app on Android', platform: 'android' });
     expect(phoneName({ deviceName: null }, null)).toBe('Unknown device');
     // no platform known: the action refuses it in words
-    const none = steps({ kind: 'enrolled' }, { error: 'Fingerprint sign-in is turned on in the TrendLIX People app, on an Android phone or an iPhone.' });
+    const none = steps({ kind: 'enrolled' }, { error: 'Fingerprint sign-in is turned on in the Trendlix People app, on an Android phone or an iPhone.' });
     await expect(turnOnFingerprintFlow({ deviceName: 'X', platform: null }, APP_UA, none)).resolves.toMatchObject({ kind: 'error' });
     expect(none.make).toHaveBeenCalledWith({ deviceName: 'X', platform: '' });
     expect(none.enroll).not.toHaveBeenCalled();

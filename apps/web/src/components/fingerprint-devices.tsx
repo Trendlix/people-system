@@ -10,7 +10,7 @@ import type { FingerprintDevice } from '@/lib/types';
 import { useTurnOnFingerprint } from '@/lib/use-fingerprint';
 import { FingerprintIcon } from './fingerprint-icon';
 
-// The phones that sign in to the TrendLIX People app with a fingerprint (owner, 20 October 2026: chose Face ID /
+// The phones that sign in to the Trendlix People app with a fingerprint (owner, 20 October 2026: chose Face ID /
 // fingerprint sign-in for the app; README: "profile → Devices with Sign out"): each phone's name and kind, when it was
 // added and last used, and Sign out beside it. Your Sessions (one's own) and the Users page (an Admin's) both list them,
 // as SessionList does the sessions. On Your Sessions in the app, the phone it is shown on is marked "This phone" (the

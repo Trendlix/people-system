@@ -10,9 +10,12 @@ import { badgeText, bellLabel, INBOX_PATHS, type InboxSurface } from '@/lib/noti
 const TONES = {
   // the site's header, on white
   site: 'size-10 text-ink hover:bg-canvas',
-  // the phone pages' top bar, on the sidebar's dark blue
+  // the phone pages' top bar, on the sidebar's dark blue: a 44 px target (Phase 5, 20 October 2026: accessibility)
   app: 'size-11 text-sidebar-text hover:bg-white/10',
 } as const;
+
+/** The count's badge, white on red (6.6:1), ringed in the bar's own colour so it stands off the bell. */
+const BADGE_RING = { site: 'ring-white', app: 'ring-sidebar' } as const;
 
 /** The bell as drawn: a link to the inbox with the count's badge; `unread` null while (or when it can't be) read. */
 export function BellLink({ surface, unread }: { surface: InboxSurface; unread: number | null }) {
@@ -24,7 +27,7 @@ export function BellLink({ surface, unread }: { surface: InboxSurface; unread: n
         <path d="M10 20.5a2 2 0 0 0 4 0" />
       </svg>
       {badge && (
-        <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 min-w-5 rounded-full bg-danger px-1 text-center text-[11px] leading-5 font-semibold text-white tabular-nums">
+        <span aria-hidden="true" className={`absolute -top-0.5 -right-0.5 min-w-5 rounded-full bg-danger px-1 text-center text-[11px] leading-5 font-semibold text-white tabular-nums ring-2 ${BADGE_RING[surface]}`}>
           {badge}
         </span>
       )}

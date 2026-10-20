@@ -7,7 +7,7 @@ import { PhoneLoading } from '../../../ui';
 // claim, with every step, and Cancel while it may be: the site's page (reimbursements/[id]/claim-detail.tsx), its back
 // link to the phone pages' My Requests, and what is done on it coming back here.
 
-export const metadata: Metadata = { title: 'Reimbursement Claim · TrendLIX People' };
+export const metadata: Metadata = { title: 'Reimbursement Claim · Trendlix People' };
 
 export default function PhoneRequestsReimbursementPage({ params, searchParams }: PageProps<'/app/requests/reimbursement/[id]'>) {
   return (

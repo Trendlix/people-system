@@ -3,6 +3,7 @@ import {
   attendancePeriod,
   cairoClock,
   CHECK_IN_FLAG_LABELS,
+  CHECK_IN_FLAG_SHORT_LABELS,
   CHECK_IN_PLACE_LABELS,
   correctedFromText,
   formatHours,
@@ -12,14 +13,17 @@ import {
   type AttendanceFigures,
   type AttendanceFilter,
   type AttendanceSource as DaySource,
+  type CheckInFlag,
   type CheckInPlace,
   type CorrectedFrom,
   type PayrollStatus,
   type Role,
 } from '@trendlix/shared';
-import type { AttendanceImportRow, AttendanceRunRef, AttendanceSource } from '../../../lib/attendance-types';
+import type { AttendanceImportRow, AttendancePunchRow, AttendanceRunRef, AttendanceSource } from '../../../lib/attendance-types';
 import { formatDateTime } from '../../../lib/format';
+import { googleMapsHref } from '../../../lib/map-point';
 import { hasRole } from '../../../lib/roles';
+import { cairoTime } from '../payroll/[id]/attendance/attendance';
 import { addMonths, monthName, monthOf, runHref } from '../payroll/list';
 import { ATTENDANCE_IMPORT_PATH, ATTENDANCE_PATH, ATTENDANCE_SUMMARY_PATH } from './sections';
 
@@ -35,7 +39,10 @@ import { ATTENDANCE_IMPORT_PATH, ATTENDANCE_PATH, ATTENDANCE_SUMMARY_PATH } from
 // check-in; a month's missing check-ins and flagged days. Make-up hours (owner, 20 October 2026: "within the same month
 // with no working hours to be counted after 8 PM even if the check out was 11 PM"): on a shift that counts hours until a
 // time a day may count past the shift's hours a day, said "+1:30 extra", and the month says the short hours its extra
-// time filled.
+// time filled. Simpler rows (owner, 20 October 2026, of a row listing a dozen presses: "simplify this, i want to view if
+// it is remote or office, and location link"): a day's check-in and check-out each with its place as a badge and a small
+// Map link where it was pressed (for those the API gives the spot: HR, the CEO, the Super Admin, the employee), the
+// flags in a word or two, and every press of the day in a collapsed "All presses (14)".
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -273,22 +280,133 @@ export function correctedNote(day: { source?: string | null; correctedFrom?: Cor
   return day.source === 'correction' ? correctedFromText(day.correctedFrom ?? null) : null;
 }
 
-/** A press of Check in or Check out as a person's month lists it (GET /attendance/employees/:id: `punches`). */
-export interface PunchRow {
-  date: string;
-  kind: string;
-  at: string;
-  place: string;
+// ---------- a day's presses (owner, 20 October 2026: "simplify this, i want to view if it is remote or office, and
+// location link") ----------
+
+/** A press of Check in or Check out as the Attendance pages list it (lib/attendance-types.ts AttendancePunchRow). */
+export type PunchRow = AttendancePunchRow;
+
+const moment = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN);
+
+/** A day's presses (owner's brief, 19 October 2026: "Several presses a day are kept as punches"), in the order pressed. */
+export const dayPunches = (punches: readonly PunchRow[], date: string): PunchRow[] =>
+  punches.filter((p) => p.date === date).sort((a, b) => moment(a.at) - moment(b.at));
+
+/** The presses a day's check-in and check-out are: the check-in at its moment, the check-out at its; none for a time no press made (Zoho's, a correction's). */
+export function dayEnds(day: { checkIn: string | null; checkOut: string | null }, presses: readonly PunchRow[]): { checkIn: PunchRow | null; checkOut: PunchRow | null } {
+  const at = (kind: string, iso: string | null) => (iso ? (presses.find((p) => p.kind === kind && moment(p.at) === moment(iso)) ?? null) : null);
+  return { checkIn: at('in', day.checkIn), checkOut: at('out', day.checkOut) };
+}
+
+/** Whether a day's row lists "All presses (N)": when it has presses besides the check-in and check-out it shows. */
+export const morePresses = (presses: readonly PunchRow[], ends: { checkIn: PunchRow | null; checkOut: PunchRow | null }): boolean =>
+  presses.length > (ends.checkIn ? 1 : 0) + (ends.checkOut ? 1 : 0);
+
+/** The disclosure's summary: "All presses (14)". */
+export const allPressesLabel = (count: number): string => `All presses (${count})`;
+
+/** A press in the list: "In 4:58 PM", "Out 7:35 PM". */
+export const pressLabel = (p: Pick<PunchRow, 'kind' | 'at'>): string => `${p.kind === 'out' ? 'Out' : 'In'} ${cairoClock(p.at)}`;
+
+/** A press for a screen reader: "the check-in at 4:58 PM". */
+export const pressName = (p: Pick<PunchRow, 'kind' | 'at'>): string => `the ${p.kind === 'out' ? 'check-out' : 'check-in'} at ${cairoClock(p.at)}`;
+
+/** A place as a badge: its word, its colour, and (at the office) the location or network it was matched to. */
+export interface PlaceBadge {
+  label: string;
+  tone: 'ok' | 'accent' | 'muted';
+  title: string | null;
 }
 
 /**
- * A day's presses in a line (owner's brief, 19 October 2026: "Several presses a day are kept as punches"): "In 9:05 AM
- * (office) · Out 1:00 PM (remote) · In 2:00 PM (location unknown)"; null for a day without any.
+ * Where a press (or, without one, a day: Zoho's, a correction's) was, as a badge: Office, Home, Remote, Location
+ * unknown; at the office, the location's or the office network's name as its title. None without a place.
  */
-export function punchesText(punches: readonly PunchRow[], date: string): string | null {
-  const of = punches.filter((p) => p.date === date).sort((a, b) => a.at.localeCompare(b.at));
-  if (!of.length) return null;
-  return of.map((p) => `${p.kind === 'out' ? 'Out' : 'In'} ${cairoClock(p.at)} (${(CHECK_IN_PLACE_LABELS[p.place as CheckInPlace] ?? p.place).toLowerCase()})`).join(' · ');
+export function placeBadge(place: string | null | undefined, press?: Pick<PunchRow, 'locationName' | 'officeNetwork'> | null): PlaceBadge | null {
+  if (!place) return null;
+  const label = CHECK_IN_PLACE_LABELS[place as CheckInPlace] ?? place;
+  const tone = place === 'office' ? 'ok' : place === 'unknown' ? 'muted' : 'accent';
+  const title = place === 'office' ? (press?.locationName ?? (press?.officeNetwork ? `On the office network: ${press.officeNetwork}` : null)) : null;
+  return { label, tone, title };
+}
+
+/**
+ * The Map link of a press, where the API gives its spot (HR, the CEO, the Super Admin, the employee): Google Maps at its
+ * point, its title the reading's accuracy ("Within 12 m"); an old office press's location point says so. None without
+ * a point (a press without a location, or the spot not given to the caller).
+ */
+export function punchMap(p: Pick<PunchRow, 'latitude' | 'longitude' | 'accuracyMetres' | 'pointFrom' | 'locationName'>): { href: string; title: string } | null {
+  if (typeof p.latitude !== 'number' || typeof p.longitude !== 'number' || !Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) return null;
+  const href = googleMapsHref({ latitude: p.latitude, longitude: p.longitude });
+  if (p.pointFrom === 'location') return { href, title: `${p.locationName ?? 'The check-in location'}’s point: the spot itself wasn’t kept then` };
+  const metres = typeof p.accuracyMetres === 'number' && p.accuracyMetres >= 0 ? Math.round(p.accuracyMetres) : null;
+  return { href, title: metres === null ? 'Accuracy not known' : `Within ${metres.toLocaleString('en-US')} m` };
+}
+
+/** A flag as a compact badge: a word or two, the full words as its title (owner, 20 October 2026: "simplify this"). */
+export interface FlagBadge {
+  key: CheckInFlag;
+  label: string;
+  title: string;
+}
+
+const knownFlags = (flags: readonly string[] | null | undefined): CheckInFlag[] => [...new Set((flags ?? []).filter(isCheckInFlag))];
+
+/** Flags as compact badges, the known ones once each: "No location", titled "Location unknown on an office day". */
+export const flagBadges = (flags: readonly string[] | null | undefined): FlagBadge[] =>
+  knownFlags(flags).map((f) => ({ key: f, label: CHECK_IN_FLAG_SHORT_LABELS[f], title: CHECK_IN_FLAG_LABELS[f] }));
+
+/**
+ * Which of a day's flags go by its check-in and which by its check-out: by the check-out those of its own press (fake
+ * GPS suspected, the one a check-out has), by the check-in all the others (its own, and a later check-in's).
+ */
+export function endFlags(day: { flags?: readonly string[] | null }, ends: { checkIn: PunchRow | null; checkOut: PunchRow | null }): { checkIn: CheckInFlag[]; checkOut: CheckInFlag[] } {
+  const all = knownFlags(day.flags);
+  const own = knownFlags(ends.checkIn?.flags);
+  const checkOut = knownFlags(ends.checkOut?.flags).filter((f) => all.includes(f));
+  return { checkIn: all.filter((f) => !checkOut.includes(f) || own.includes(f)), checkOut };
+}
+
+/** What a day's check-in or check-out cell shows. */
+export interface DayEnd {
+  /** Its time ("4:58 PM"), "Missing" (a check-in without a check-out, or the other way), or none. */
+  shown: 'time' | 'missing' | 'none';
+  time: string;
+  /** The press it is, when one made it (none for Zoho's day or a correction's time). */
+  press: PunchRow | null;
+  badge: PlaceBadge | null;
+  flags: CheckInFlag[];
+}
+
+/**
+ * A day's row from its presses: the check-in's time, place and flags (the day's own place on a day no press made: Zoho's,
+ * a correction's), the check-out's time, place and flags; the day's presses, and whether there are more than these two.
+ */
+export function dayRow(
+  day: { date: string; checkIn: string | null; checkOut: string | null; place?: string | null; flags?: readonly string[] | null; missingCheckIn?: boolean; missingCheckOut?: boolean },
+  punches: readonly PunchRow[],
+): { checkIn: DayEnd; checkOut: DayEnd; presses: PunchRow[]; more: boolean } {
+  const presses = dayPunches(punches, day.date);
+  const ends = dayEnds(day, presses);
+  const flags = endFlags(day, ends);
+  return {
+    checkIn: {
+      shown: day.checkIn ? 'time' : day.missingCheckIn ? 'missing' : 'none',
+      time: cairoTime(day.checkIn),
+      press: ends.checkIn,
+      badge: day.checkIn ? placeBadge(ends.checkIn?.place ?? day.place, ends.checkIn) : null,
+      flags: flags.checkIn,
+    },
+    checkOut: {
+      shown: day.checkOut ? 'time' : day.missingCheckOut ? 'missing' : 'none',
+      time: cairoTime(day.checkOut),
+      press: ends.checkOut,
+      badge: ends.checkOut ? placeBadge(ends.checkOut.place, ends.checkOut) : null,
+      flags: flags.checkOut,
+    },
+    presses,
+    more: morePresses(presses, ends),
+  };
 }
 
 // ---------- where the days came from ----------

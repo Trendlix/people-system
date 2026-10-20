@@ -71,6 +71,12 @@ describe('FCM (push notifications)', () => {
       },
     });
     expect(fcmMessage('tok', { id: 'n2', kind: 'check_in_reminder', title: 't', body: 'b', link: null }).message.data.link).toBe('');
+    // the check-in reminder, every 10 minutes: tagged, so each replaces the last on the phone, and still sounds
+    expect(fcmMessage('tok', { id: 'n3', kind: 'check_in_reminder', title: 't', body: 'b', link: '/my-attendance', tag: 'check_in_reminder' }).message.android).toEqual({
+      priority: 'high',
+      notification: { channel_id: 'general', tag: 'check_in_reminder', notification_priority: 'PRIORITY_HIGH', default_sound: true, default_vibrate_timings: true },
+    });
+    expect(fcmMessage('tok', { id: 'n4', kind: 'leave_waiting', title: 't', body: 'b', link: null, tag: null }).message.android.notification).toEqual({ channel_id: 'general' });
   });
 
   it('removes a token FCM says is UNREGISTERED or INVALID_ARGUMENT; the message’s own fault keeps it', () => {
