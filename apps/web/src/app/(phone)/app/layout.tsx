@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Suspense } from 'react';
 import { brandMetadata } from '@/components/brand';
+import { SessionWatch } from '@/components/session-watch';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
@@ -63,6 +64,10 @@ export default function PhoneLayout({ children }: LayoutProps<'/app'>) {
       </main>
       <Suspense fallback={<TabList tabs={tabsFor(null)} active={null} />}>
         <Tabs />
+      </Suspense>
+      {/* the warning a minute before HR, Admin and Super Admin are signed out after 15 minutes (20 October 2026) */}
+      <Suspense fallback={null}>
+        <SessionWatch />
       </Suspense>
     </div>
   );

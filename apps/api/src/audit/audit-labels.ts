@@ -83,6 +83,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   learn: 'Learned a fix',
   login: 'Signed in',
   login_failed: 'Sign-in failed',
+  logout: 'Signed out',
   move: 'Moved to another month',
   paid: 'Marked paid',
   paid_out: 'Paid out held pay',
@@ -106,6 +107,10 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   return: 'Returned',
   salary_raises_file: 'Downloaded the salary raises',
   send: 'Sent',
+  // sessions kept on the server (owner, 20 October 2026)
+  session_idle: 'Signed out after 15 minutes without activity',
+  session_replaced: 'Signed out by a newer sign-in',
+  session_revoked: 'Ended the sessions',
   settle: 'Settled',
   sign: 'Signed',
   stop: 'Stopped',

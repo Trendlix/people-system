@@ -2,6 +2,7 @@ import { applyDecorators, createParamDecorator, ExecutionContext, SetMetadata } 
 import type { Role } from '@trendlix/shared';
 import { ONLY_SUPER_ADMIN_DELETES } from './roles.js';
 import type { SessionUser } from './session-user.js';
+import type { ActiveSession } from './sessions.service.js';
 import type { SessionClaims } from './view-as.js';
 
 export const IS_PUBLIC = 'isPublic';
@@ -36,4 +37,9 @@ export const CurrentUser = createParamDecorator(
 /** What the request's session token says, as the guard checked it (who is signed in, whom they view as, its expiry). */
 export const CurrentSession = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): SessionClaims => ctx.switchToHttp().getRequest().sessionClaims,
+);
+
+/** The request's session, kept on the server, as the guard found it: its id, kind and last activity (see sessions.service.ts). */
+export const CurrentActiveSession = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): ActiveSession => ctx.switchToHttp().getRequest().activeSession,
 );

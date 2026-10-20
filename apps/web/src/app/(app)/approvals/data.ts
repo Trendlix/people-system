@@ -1,5 +1,5 @@
 import 'server-only';
-import { ApiError, apiFetch } from '@/lib/api';
+import { ApiError, apiFetch, type CallOptions } from '@/lib/api';
 import { hasRole } from '@/lib/roles';
 import type { SessionUser } from '@/lib/types';
 
@@ -34,11 +34,12 @@ export const PENDING_CHANGE_REQUESTS = '/change-requests?status=pending';
 
 /**
  * A GET whose failure must not take the page down (the home page's cards, the sidebar's count): null when the API
- * refuses, can't be reached or doesn't have the endpoint yet, where `apiGet` would show the error or 404 page.
+ * refuses, can't be reached or doesn't have the endpoint yet, where `apiGet` would show the error or 404 page. The
+ * sidebar's counts are `background` (lib/api.ts): they don't count as activity (owner, 20 October 2026).
  */
-export async function getOrNull<T>(path: string): Promise<T | null> {
+export async function getOrNull<T>(path: string, options?: CallOptions): Promise<T | null> {
   try {
-    const res = await apiFetch(path);
+    const res = await apiFetch(path, undefined, options);
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch (err) {

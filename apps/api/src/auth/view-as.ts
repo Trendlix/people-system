@@ -5,8 +5,9 @@
 //
 // The session stays one signed cookie, as before. Its subject is always the person signed in; while they view as
 // someone it names that user too, and whether they act in their name. Switching, Act as them and going back each sign
-// a new one with the same expiry, so the switched session ends with the Super Admin's own (signing out, or 8 hours
-// after signing in), and going back needs no new sign-in.
+// a new one with the same expiry and the same session (sid, a row kept on the server since 20 October 2026: see
+// session-rules.ts), so the switched session is the Super Admin's own: it ends with it (signing out, a newer sign-in,
+// 15 minutes without activity, or 8 hours after signing in), and going back needs no new sign-in.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -14,6 +15,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export interface SessionClaims {
   /** The person signed in: a Super Admin while viewing as someone. */
   sub: string;
+  /** Their session, as the server keeps it (sessions.id): every token of one sign-in names the same one. */
+  sid: string;
   /** The user viewed as, or null in one's own session. */
   viewAs: string | null;
   /** Whether the Super Admin acts in that user's name; always false in one's own session. */
@@ -26,19 +29,22 @@ export interface SessionClaims {
 export function sessionClaims(payload: unknown): SessionClaims {
   const p = (payload ?? {}) as Record<string, unknown>;
   if (typeof p.sub !== 'string' || !UUID.test(p.sub)) throw new Error('No subject');
+  // a token signed before 20 October 2026 names no session: refused, and its user signs in again
+  if (typeof p.sid !== 'string' || !UUID.test(p.sid)) throw new Error('No session');
   if (typeof p.exp !== 'number' || !Number.isFinite(p.exp)) throw new Error('No expiry');
   if (p.viewAs === undefined || p.viewAs === null) {
     if (p.act !== undefined && p.act !== false) throw new Error('Acting without viewing as anyone');
-    return { sub: p.sub, viewAs: null, act: false, exp: p.exp };
+    return { sub: p.sub, sid: p.sid, viewAs: null, act: false, exp: p.exp };
   }
   if (typeof p.viewAs !== 'string' || !UUID.test(p.viewAs) || p.viewAs === p.sub) throw new Error('Not a user to view as');
   if (typeof p.act !== 'boolean') throw new Error('No act flag');
-  return { sub: p.sub, viewAs: p.viewAs, act: p.act, exp: p.exp };
+  return { sub: p.sub, sid: p.sid, viewAs: p.viewAs, act: p.act, exp: p.exp };
 }
 
-/** What a new session's token carries: only what is needed, and the expiry of the session it replaces. */
+/** What a new session's token carries: only what is needed, and the session and expiry of the one it replaces. */
 export function tokenPayload(claims: SessionClaims): Record<string, unknown> {
-  return claims.viewAs ? { sub: claims.sub, viewAs: claims.viewAs, act: claims.act, exp: claims.exp } : { sub: claims.sub, exp: claims.exp };
+  const own = { sub: claims.sub, sid: claims.sid };
+  return claims.viewAs ? { ...own, viewAs: claims.viewAs, act: claims.act, exp: claims.exp } : { ...own, exp: claims.exp };
 }
 
 /** The milliseconds left before a session ends, for the cookie's lifetime: never below zero. */

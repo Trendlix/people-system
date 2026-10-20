@@ -2,13 +2,14 @@ import { ROLES } from '@trendlix/shared';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
+import { SessionList } from '@/components/session-list';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { assignableRoles, canChangeAccount, isSuperAdmin } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
-import type { UserAccount } from '@/lib/types';
-import { setActive, setPassword, updateRoles } from '../actions';
+import type { OpenSession, UserAccount } from '@/lib/types';
+import { endUserSession, endUserSessions, setActive, setPassword, updateRoles } from '../actions';
 import { BackLink, LINKED_BY_WORK_EMAIL, Loading, ONLY_SUPER_ADMIN_CHANGES, RequireAdmin, RoleBadges, StatusBadge } from '../ui';
-import { PasswordForm, RolesForm, StatusForm } from '../user-forms';
+import { EndSessionsForm, PasswordForm, RolesForm, StatusForm } from '../user-forms';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -21,7 +22,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 async function EditUser({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [me, user] = await Promise.all([getCurrentUser(), apiGet<UserAccount>(`/users/${id}`)]);
+  const [me, user, sessions] = await Promise.all([getCurrentUser(), apiGet<UserAccount>(`/users/${id}`), apiGet<OpenSession[]>(`/users/${id}/sessions`)]);
   const self = me.id === user.id;
   // A Super Admin's roles, active flag and password are a Super Admin's to change: an Admin sees them read-only (the
   // API refuses with 403). Only a Super Admin is offered the Super Admin role.
@@ -87,6 +88,34 @@ async function EditUser({ params }: { params: Promise<{ id: string }> }) {
             )}
           </section>
         )}
+
+        {/* the sessions still open, on the website and in the app (owner, 20 October 2026: one of each a user, kept on
+            the server): an Admin ends them, one or all; a Super Admin's, only a Super Admin. One's own: Your Sessions. */}
+        <section className="card max-w-xl space-y-4 p-6">
+          <div>
+            <h3 className="font-semibold">Sessions</h3>
+            <p className="mt-1 text-sm text-muted">
+              {self ? (
+                <>
+                  Your own sessions are on <Link href="/account/sessions">Your Sessions</Link>.
+                </>
+              ) : (
+                'Where they are signed in now: once on the website and once in the app at most. Ending a session signs them out there at once.'
+              )}
+            </p>
+          </div>
+          {!self && (
+            <>
+              <SessionList
+                sessions={sessions}
+                end={mayChange ? endUserSession.bind(null, id) : undefined}
+                endLabel="End session"
+                empty="They are not signed in anywhere."
+              />
+              {mayChange && sessions.length > 0 && <EndSessionsForm action={endUserSessions.bind(null, id)} email={user.email} />}
+            </>
+          )}
+        </section>
 
         {mayChange &&
           (self ? (

@@ -34,9 +34,18 @@ export async function createUser(prisma: PrismaService, roles: Role[]): Promise<
   return email;
 }
 
-/** Signs in and returns the session cookie to send with later requests. */
-export async function signIn(app: INestApplication<App>, email: string): Promise<string> {
-  const res = await request(app.getHttpServer()).post('/api/auth/login').send({ email, password: PASSWORD }).expect(200);
+/** The TrendLIX People app's web view: its user agent ends with the app's mark (apps/mobile/capacitor.config.ts). */
+export const APP_USER_AGENT = 'Mozilla/5.0 (Linux; Android 14; Pixel 8; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/129.0 Mobile Safari/537.36 TrendLIXPeople';
+
+/**
+ * Signs in and returns the session cookie to send with later requests. A website session, unless `userAgent` is the
+ * app's; signing the same user in again with the same kind ends the earlier session (20 October 2026: the new one wins).
+ */
+export async function signIn(app: INestApplication<App>, email: string, userAgent?: string): Promise<string> {
+  const res = await request(app.getHttpServer())
+    .post('/api/auth/login')
+    .send({ email, password: PASSWORD, ...(userAgent && { userAgent }) })
+    .expect(200);
   const cookie = ([] as string[]).concat(res.headers['set-cookie'] ?? []).find((c) => c.startsWith('ps_session='));
   if (!cookie) throw new Error('No session cookie returned');
   return cookie.split(';')[0];

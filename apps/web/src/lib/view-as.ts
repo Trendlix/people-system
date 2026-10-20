@@ -1,4 +1,4 @@
-import type { Role } from '@trendlix/shared';
+import type { Role, SessionKind } from '@trendlix/shared';
 import { ROLE_LABELS } from './roles';
 import { matches } from './select-search';
 import type { SessionUser, UserAccount } from './types';
@@ -21,6 +21,12 @@ export interface ViewAs {
 export interface Session extends SessionUser {
   name?: string | null;
   viewAs?: ViewAs | null;
+  /**
+   * The request's session, kept on the server (owner, 20 October 2026): its id, where it was signed in, and the 15
+   * minutes without activity in milliseconds when they are for the person signed in (HR, Admin, Super Admin: the Super
+   * Admin's own while they view as someone), else null. An API from before sends none, hence optional.
+   */
+  session?: { id: string; kind: SessionKind; idleTimeoutMs: number | null } | null;
 }
 
 type Viewer = { roles: readonly Role[]; viewAs?: ViewAs | null };

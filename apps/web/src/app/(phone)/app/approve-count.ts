@@ -16,17 +16,20 @@ import { decidesSomething } from './tabs';
 // permission requests, the claims, the corrections, the raise requests at HR's step that wait for them, and the raises
 // with the CEO for the CEO. What can't be read counts none.
 
+// counts, as the sidebar's: they don't count as activity for the 15 minutes (lib/api.ts, 20 October 2026)
+const BACKGROUND = { background: true } as const;
+
 type Decider = Parameters<typeof decidesSomething>[0] & Parameters<typeof waitingForYouCount>[0];
 
 /** Read once a request (the tab bar and Home both say it): `user` is getCurrentUser's, the same object all through it. */
 export const approveCount = cache(async (user: Decider): Promise<number> => {
   if (!decidesSomething(user)) return 0;
   const [leave, claims, corrections, requests, raises] = await Promise.all([
-    getOrNull<LeaveCounts>(LEAVE_COUNTS),
-    getOrNull<ReimbursementCounts>(CLAIM_COUNTS),
-    getOrNull<CorrectionCounts>(CORRECTION_COUNTS),
-    countsRaiseRequests(user) ? getOrNull<RaiseRequest[]>(WITH_HR_REQUESTS) : null,
-    decidesRaises(user) ? getOrNull<PendingRaise[]>(PENDING_RAISES) : null,
+    getOrNull<LeaveCounts>(LEAVE_COUNTS, BACKGROUND),
+    getOrNull<ReimbursementCounts>(CLAIM_COUNTS, BACKGROUND),
+    getOrNull<CorrectionCounts>(CORRECTION_COUNTS, BACKGROUND),
+    countsRaiseRequests(user) ? getOrNull<RaiseRequest[]>(WITH_HR_REQUESTS, BACKGROUND) : null,
+    decidesRaises(user) ? getOrNull<PendingRaise[]>(PENDING_RAISES, BACKGROUND) : null,
   ]);
   return (leave?.waiting ?? 0) + (claims?.waiting ?? 0) + (corrections?.waiting ?? 0) + (requests ? waitingForYouCount(user, requests) : 0) + (raises?.length ?? 0);
 });

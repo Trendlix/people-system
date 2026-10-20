@@ -127,6 +127,11 @@ export class UsersService {
         await tx.userRole.createMany({ data: roleRows.map((r) => ({ userId: id, roleId: r.id })) });
       }
       if (diff.isActive) await tx.user.update({ where: { id }, data: { isActive: after.isActive } });
+      // deactivating signs them out at once: their open sessions end (sessions kept on the server, 20 October 2026), so
+      // reactivating the account doesn't bring an old one back; the update's entry records it
+      if (diff.isActive && !after.isActive) {
+        await tx.session.updateMany({ where: { userId: id, endedAt: null }, data: { endedAt: new Date(), endReason: 'revoked' } });
+      }
     });
 
     await this.audit.record({ userId: actor.id, action: 'update', entityType: ENTITY, entityId: id, diff });

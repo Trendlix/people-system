@@ -1,8 +1,10 @@
 import 'server-only';
 import './api-ca';
+import { BACKGROUND_HEADER } from '@trendlix/shared';
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { SESSION_COOKIE } from './constants';
+import { reasonOf, signInPath } from './signed-out';
 import type { CompanyBrand } from './types';
 
 // All API calls go from this Next.js server to the NestJS API, never from the browser,
@@ -29,11 +31,21 @@ export async function messagesOf(res: Response): Promise<string[]> {
   return [`Request failed (${res.status}).`];
 }
 
-async function call(path: string, init: RequestInit = {}): Promise<Response> {
+/**
+ * How a request is sent. `background`: one the web makes by itself, not the person (the sidebar's counts, the idle
+ * warning's checks): the API doesn't count it as activity (owner, 20 October 2026: HR, Admin and Super Admin are signed
+ * out after 15 minutes without activity), so a page left open doesn't keep the session alive. Pages and actions count.
+ */
+export interface CallOptions {
+  background?: boolean;
+}
+
+async function call(path: string, init: RequestInit = {}, options: CallOptions = {}): Promise<Response> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const headers = new Headers(init.headers);
   if (typeof init.body === 'string') headers.set('content-type', 'application/json');
   if (token) headers.set('authorization', `Bearer ${token}`);
+  if (options.background) headers.set(BACKGROUND_HEADER, '1');
   try {
     return await fetch(`${API_URL}/api${path}`, { ...init, headers });
   } catch {
@@ -41,10 +53,22 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
   }
 }
 
+/**
+ * Where a 401 sends the person: the sign-in page, saying why when the API said their session ended (15 minutes without
+ * activity, a sign-in on another device, signed out, ended by an Admin: see lib/signed-out.ts).
+ */
+export async function signedOutPath(res: Response): Promise<string> {
+  try {
+    return signInPath(reasonOf(await res.clone().json()));
+  } catch {
+    return signInPath(null);
+  }
+}
+
 /** GET for pages: signs out on 401 and shows the 404 page on 404. */
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await call(path);
-  if (res.status === 401) redirect('/login');
+export async function apiGet<T>(path: string, options?: CallOptions): Promise<T> {
+  const res = await call(path, {}, options);
+  if (res.status === 401) redirect(await signedOutPath(res));
   if (res.status === 404) notFound();
   if (!res.ok) throw new ApiError(res.status, await messagesOf(res));
   return (await res.json()) as T;
@@ -53,7 +77,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 /** POST / PUT / PATCH / DELETE for form actions: throws ApiError with the API's messages. */
 export async function apiSend<T = unknown>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T | undefined> {
   const res = await call(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
-  if (res.status === 401) redirect('/login');
+  if (res.status === 401) redirect(await signedOutPath(res));
   if (!res.ok) throw new ApiError(res.status, await messagesOf(res));
   return res.status === 204 ? undefined : ((await res.json()) as T);
 }
@@ -61,7 +85,7 @@ export async function apiSend<T = unknown>(method: 'POST' | 'PUT' | 'PATCH' | 'D
 /** Multipart upload (e.g. the company logo, scanned paperwork): throws ApiError with the API's messages. */
 export async function apiUpload<T = unknown>(method: 'PUT' | 'POST', path: string, form: FormData): Promise<T | undefined> {
   const res = await call(path, { method, body: form });
-  if (res.status === 401) redirect('/login');
+  if (res.status === 401) redirect(await signedOutPath(res));
   if (!res.ok) throw new ApiError(res.status, await messagesOf(res));
   return res.headers.get('content-type')?.includes('json') ? ((await res.json()) as T) : undefined;
 }
@@ -70,8 +94,8 @@ export async function apiUpload<T = unknown>(method: 'PUT' | 'POST', path: strin
  * A request with the caller's session (a GET unless `init` says otherwise, e.g. a POST with a JSON body), as the raw
  * response, for streaming a file on to the browser. Throws ApiError (503) when the API is unreachable.
  */
-export function apiFetch(path: string, init?: Pick<RequestInit, 'method' | 'body'>): Promise<Response> {
-  return call(path, init);
+export function apiFetch(path: string, init?: Pick<RequestInit, 'method' | 'body'>, options?: CallOptions): Promise<Response> {
+  return call(path, init, options);
 }
 
 /** Public company name and logo and thumbnail versions, for the sidebar, the sign-in page and the browser tab icon. Never throws. */

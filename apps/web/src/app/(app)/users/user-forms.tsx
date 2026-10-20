@@ -221,3 +221,25 @@ export function PasswordForm({ action, email }: { action: Action; email: string 
     </form>
   );
 }
+
+/** Ends every session the user has open (20 October 2026: sessions kept on the server), after asking. */
+export function EndSessionsForm({ action, email }: { action: Action; email: string }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (!window.confirm(`End every session of ${email}? They are signed out at once, on the website and in the app.`)) e.preventDefault();
+      }}
+      className="space-y-3"
+    >
+      <FormErrors errors={state.errors} />
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={pending} className="btn btn-secondary">
+          {pending ? 'Ending…' : 'End all sessions'}
+        </button>
+        <Saved state={state} />
+      </div>
+    </form>
+  );
+}

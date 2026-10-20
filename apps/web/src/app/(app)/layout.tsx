@@ -5,6 +5,7 @@ import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
 import { decidesForTeam, DETAILS_CHANGES_PATH, LEAVE_PATH, MY_TEAM, navFor, RAISE_REQUESTS_PATH, REIMBURSEMENTS_PATH } from '@/components/nav';
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
+import { SessionWatch } from '@/components/session-watch';
 import { UserMenu } from '@/components/user-menu';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
@@ -53,16 +54,19 @@ async function MainNav() {
   // like leave"), beside Leave Requests and in My Team's, as they are decided the same way. The attendance corrections
   // waiting (owner, 19 October 2026: "Attendance corrections with approval"): beside Attendance → Corrections for HR and
   // the CEO, in My Team's for a manager or a lead.
+  // The counts are background requests (owner, 20 October 2026: HR, Admin and Super Admin signed out after 15 minutes
+  // without activity): the web reads them by itself, so they don't count as activity; the page's own requests do.
   const self = isSelfService({ roles });
   const manager = self && decidesForTeam({ roles, leads: user?.leads });
+  const bg = { background: true };
   const [endings, pendingChanges, raises, requests, claims, leave, corrections] = await Promise.all([
-    followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS) : null,
-    readsChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS) : null,
-    followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES) : null,
-    countsRaiseRequests({ roles }) ? getOrNull<RaiseRequest[]>(WITH_HR_REQUESTS) : null,
-    canSeeReimbursements({ roles }) || manager ? getOrNull<ReimbursementCounts>(CLAIM_COUNTS) : null,
-    canSeeLeaveRequests({ roles }) || manager ? getOrNull<LeaveCounts>(LEAVE_COUNTS) : null,
-    seesCorrections({ roles }) || manager ? getOrNull<CorrectionCounts>(CORRECTION_COUNTS) : null,
+    followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS, bg) : null,
+    readsChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS, bg) : null,
+    followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES, bg) : null,
+    countsRaiseRequests({ roles }) ? getOrNull<RaiseRequest[]>(WITH_HR_REQUESTS, bg) : null,
+    canSeeReimbursements({ roles }) || manager ? getOrNull<ReimbursementCounts>(CLAIM_COUNTS, bg) : null,
+    canSeeLeaveRequests({ roles }) || manager ? getOrNull<LeaveCounts>(LEAVE_COUNTS, bg) : null,
+    seesCorrections({ roles }) || manager ? getOrNull<CorrectionCounts>(CORRECTION_COUNTS, bg) : null,
   ]);
   const changes = pendingChanges && waitingForYou({ roles }, pendingChanges);
   const raiseRequests = requests ? waitingForYouCount({ roles }, requests) : 0;
@@ -114,11 +118,15 @@ export function generateMetadata(): Promise<Metadata> {
 
 export default function AppLayout({ children }: LayoutProps<'/'>) {
   // The view-as banner above everything, on every page, while a Super Admin views as someone (owner's decision,
-  // 17 October 2026); it stays in sight as the page scrolls.
+  // 17 October 2026); it stays in sight as the page scrolls. The idle warning for HR, Admin and Super Admin (20 October
+  // 2026: signed out after 15 minutes without activity), a minute before.
   return (
     <div className="flex min-h-screen flex-col">
       <Suspense fallback={null}>
         <ViewAsBanner />
+      </Suspense>
+      <Suspense fallback={null}>
+        <SessionWatch />
       </Suspense>
       <div className="flex flex-1 flex-col md:flex-row">
         <aside className="bg-sidebar px-4 py-4 md:w-60 md:shrink-0 md:py-6">

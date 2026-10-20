@@ -45,6 +45,12 @@ export async function UserMenu() {
           Change password
         </Link>
       )}
+      {/* one's own sessions, on the website and in the app (20 October 2026); not while viewing as someone, as above */}
+      {user && !user.viewAs && (
+        <Link href="/account/sessions" className="text-sm whitespace-nowrap">
+          Sessions
+        </Link>
+      )}
       <form action={logout}>
         <button type="submit" className="btn btn-secondary">
           Sign out

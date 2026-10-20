@@ -5,7 +5,7 @@
 // back only while switched. The new session the API signs is kept as the session cookie, as signing in does.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { ApiError, apiFetch, apiGet, messagesOf } from './api';
+import { ApiError, apiFetch, apiGet, messagesOf, signedOutPath } from './api';
 import { keepSession } from './session-cookie';
 import type { UserAccount } from './types';
 import { viewAsChoices, type Session, type ViewAsChoice } from './view-as';
@@ -21,7 +21,7 @@ async function send(path: string, body?: object): Promise<ViewAsResult> {
     if (err instanceof ApiError) return { error: err.messages.join(' ') };
     throw err;
   }
-  if (res.status === 401) redirect('/login');
+  if (res.status === 401) redirect(await signedOutPath(res));
   if (!res.ok) return { error: (await messagesOf(res)).join(' ') };
   if (!(await keepSession(res))) return { error: 'Switching failed. Please try again.' };
   return {};

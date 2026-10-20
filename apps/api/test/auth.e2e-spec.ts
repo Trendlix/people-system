@@ -82,7 +82,17 @@ describe('Sign-in and access (e2e)', () => {
     const before = await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', session).expect(200);
     // nobody viewing as them: their own session (see view-as.e2e-spec.ts)
     // `leads`: in charge of no department or team (see department-leads.e2e-spec.ts)
-    expect(before.body).toEqual({ id: expect.any(String), email, roles: ['employee'], employeeId: null, name: null, leads: false, viewAs: null });
+    // `session`: the session kept on the server, and no 15 minutes without activity for an employee (see sessions.e2e-spec.ts)
+    expect(before.body).toEqual({
+      id: expect.any(String),
+      email,
+      roles: ['employee'],
+      employeeId: null,
+      name: null,
+      leads: false,
+      viewAs: null,
+      session: { id: expect.any(String), kind: 'web', idleTimeoutMs: null },
+    });
 
     const employee = await prisma.employee.create({
       data: { employeeCode: `ME-${Date.now().toString(36)}`, fullNameEn: 'Signed In', fullNameAr: 'مستخدم', workEmail: email },

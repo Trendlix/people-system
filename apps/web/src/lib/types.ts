@@ -42,6 +42,7 @@ import type {
   ReimbursementStepKind,
   Role,
   SavedPayrollInputs,
+  SessionKind,
   Standing,
   TemplateFolder,
   TemplateLanguage,
@@ -703,6 +704,22 @@ export interface EmployeeBank {
 // ---------- users ----------
 
 /** A sign-in account, from GET /users (Admins and Super Admins only). */
+/**
+ * A session still open (owner, 20 October 2026: sessions kept on the server, one on the website and one in the app a
+ * user), as Your Sessions and the Users page list it: where it was signed in, when, and its last activity.
+ */
+export interface OpenSession {
+  id: string;
+  kind: SessionKind;
+  createdAt: string;
+  lastActiveAt: string;
+  expiresAt: string;
+  /** The browser's or the app's, as it said at signing in; null when it said nothing. */
+  userAgent: string | null;
+  /** The session this page was asked with: "This device". */
+  current: boolean;
+}
+
 export interface UserAccount {
   id: string;
   email: string;

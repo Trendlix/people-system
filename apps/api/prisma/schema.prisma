@@ -82,8 +82,33 @@ model User {
   attendancePunches  AttendancePunch[]          @relation("AttendancePunchBy") // the presses of Check in and Check out this user made
   correctionsMade    AttendanceCorrection[]     @relation("AttendanceCorrectionCreation") // attendance corrections this user asked for, or made directly as HR
   correctionSteps    AttendanceCorrectionStep[] @relation("AttendanceCorrectionStepActor") // steps of attendance corrections this user took
+  sessions           Session[] // this user's sign-ins, active and ended
 
   @@map("users")
+}
+
+// A sign-in, kept on the server (owner, 20 October 2026: "make any admin or HR session to be valid for 15 minutes
+// inactive, then session to be terminated; only 1 active session per user online and 1 active mobile session"). The
+// session token names it (sid); the API refuses a token whose session has ended. One active session of each kind a user:
+// a new sign-in of the same kind ends the older one ('replaced'); a website and an app session can be active together.
+// HR, Admin and Super Admin are signed out after 15 minutes without activity ('idle'), on both. The rules: packages/shared
+// sessions.ts and apps/api/src/auth/session-rules.ts.
+model Session {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind         String // SESSION_KINDS: web, app
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  // the last request that counted as activity (the web's own background requests don't), kept at most every 30 seconds
+  lastActiveAt DateTime  @default(now()) @map("last_active_at") @db.Timestamptz
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz // 8 hours after signing in, as the token's expiry
+  endedAt      DateTime? @map("ended_at") @db.Timestamptz
+  endReason    String?   @map("end_reason") // SESSION_END_REASONS: signed_out, replaced, idle, expired, revoked
+  userAgent    String?   @map("user_agent") // the browser's or the app's, up to 300 characters
+  ip           String?
+
+  @@index([userId, endedAt])
+  @@map("sessions")
 }
 
 model UserRole {

@@ -1,4 +1,4 @@
-import type { Role } from '@trendlix/shared';
+import type { Role, SessionKind } from '@trendlix/shared';
 
 export const SESSION_COOKIE = 'ps_session';
 export const SESSION_HOURS = 8;
@@ -43,4 +43,16 @@ export interface Me extends SessionUser {
   name: string | null;
   leads: boolean;
   viewAs: ViewAs | null;
+  session: MeSession;
+}
+
+/**
+ * The request's session (owner, 20 October 2026: "make any admin or HR session to be valid for 15 minutes inactive"):
+ * its id, where it was signed in, and the 15 minutes in milliseconds when they are for the person signed in (HR, Admin,
+ * Super Admin: the Super Admin's own while they view as someone), else null. The web shows its idle warning with it.
+ */
+export interface MeSession {
+  id: string;
+  kind: SessionKind;
+  idleTimeoutMs: number | null;
 }

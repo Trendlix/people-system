@@ -386,3 +386,8 @@ export * from './check-in.js';
 // attendance corrections (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check out")"): what
 // was wrong with a day, the checks, the day a correction makes (the day it corrects kept), and when it can be applied
 export * from './attendance-corrections.js';
+
+// sessions kept on the server (owner, 20 October 2026: "make any admin or HR session to be valid for 15 minutes inactive,
+// then session to be terminated; only 1 active session per user online and 1 active mobile session"): the website and
+// the app's kinds, why one ends, the 15 minutes for HR, Admin and Super Admin, and the sign-in page's words
+export * from './sessions.js';

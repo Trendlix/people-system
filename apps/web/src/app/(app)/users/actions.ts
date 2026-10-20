@@ -54,3 +54,31 @@ export async function setPassword(id: string, _prev: FormState, fd: FormData): P
     'New temporary password set. Pass it on to the person; they should change it after signing in.',
   );
 }
+
+/**
+ * Ends every session the user has open, on the website and in the app (owner, 20 October 2026: sessions kept on the
+ * server): they are signed out at once. The API refuses an Admin on a Super Admin's account (403).
+ */
+export async function endUserSessions(id: string): Promise<FormState> {
+  let ended = 0;
+  try {
+    ended = (await apiSend<{ ended: number }>('POST', `/users/${id}/sessions/end`))?.ended ?? 0;
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: err.messages };
+    throw err;
+  }
+  refresh();
+  return { message: ended === 1 ? 'Session ended. They have been signed out.' : ended ? `${ended} sessions ended. They have been signed out.` : 'They had no sessions open.' };
+}
+
+/** Ends one of the user's sessions, as listed on their page. */
+export async function endUserSession(id: string, sessionId: string): Promise<{ error?: string }> {
+  try {
+    await apiSend('POST', `/users/${id}/sessions/${encodeURIComponent(sessionId)}/end`);
+  } catch (err) {
+    if (err instanceof ApiError) return { error: err.messages.join(' ') };
+    throw err;
+  }
+  refresh();
+  return {};
+}
