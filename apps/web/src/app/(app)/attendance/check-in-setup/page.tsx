@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { Suspense } from 'react';
 import { currentNetworkOf, normalizedIp } from '@trendlix/shared';
 import { clientIp } from '@/lib/client-ip';
+import { titleCase } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { webKeySet } from '@/lib/signed-ip';
 import type { SessionUser } from '@/lib/types';
@@ -15,6 +16,8 @@ import { createLocation, removeLocation, saveNetworks, saveZohoAddresses, update
 import { loadLocations, loadNetworks, loadSettings } from './data';
 import { LocationCard } from './location-card';
 import { LocationForm } from './location-form';
+import type { MapCircle } from './map-point';
+import { LocationsMap } from './maps';
 import { NetworksForm } from './networks-form';
 import { LOCATIONS_ID, lockText, networkStatus, NETWORKS_ID, removesLocations, seesCheckInSetup, ZOHO_ID } from './setup';
 import { ZohoAddressesForm } from './zoho-form';
@@ -27,6 +30,8 @@ import { ZohoAddressesForm } from './zoho-form';
 // lock checkin's to wifi name or ip, whatever is right"), and whether the key the website signs the visitor's address
 // with is in place on both sides; and Zoho People's check-in addresses, for its import (moved here from Payroll Setup →
 // Your Rules). HR and Admin (a Super Admin as an Admin); a Super Admin removes a location. The API checks every request.
+// The locations on a map (owner, the same day: "let me view location on map and add location from map"): one map of
+// them all above the list, named in tooltips, a map on each card, and a map in each form to put the point on.
 
 export const metadata: Metadata = { title: 'Check-in Setup · People System' };
 
@@ -48,6 +53,8 @@ const Missing = ({ children }: { children: React.ReactNode }) => <p className="r
 async function LocationsSection({ user }: { user: SessionUser }) {
   const loaded = await loadLocations();
   const removes = removesLocations(user);
+  const circles: MapCircle[] =
+    loaded.kind === 'ok' ? loaded.value.map((l) => ({ latitude: l.latitude, longitude: l.longitude, radiusMetres: l.radiusMetres, name: titleCase(l.name) })) : [];
   return (
     <SetupSection id={LOCATIONS_ID} title="Check-in Locations" intro={LOCATIONS_INTRO}>
       {loaded.kind !== 'ok' ? (
@@ -57,15 +64,18 @@ async function LocationsSection({ user }: { user: SessionUser }) {
           {loaded.value.length === 0 ? (
             <p className="text-sm text-muted">No check-in location yet: every check-in on the system is kept as location unknown. Add the office below.</p>
           ) : (
-            <ul className="space-y-3">
-              {loaded.value.map((l) => (
-                <LocationCard key={l.id} location={l} update={updateLocation.bind(null, l.id)} remove={removes ? removeLocation.bind(null, l.id) : null} />
-              ))}
-            </ul>
+            <>
+              <LocationsMap circles={circles} label="Map of all the check-in locations, each with its radius" />
+              <ul className="space-y-3">
+                {loaded.value.map((l) => (
+                  <LocationCard key={l.id} location={l} update={updateLocation.bind(null, l.id)} remove={removes ? removeLocation.bind(null, l.id) : null} />
+                ))}
+              </ul>
+            </>
           )}
           <div className="border-t border-line-soft pt-5">
             <h3 className="mb-3 font-semibold">Add a Location</h3>
-            <LocationForm action={createLocation} submitLabel="Add location" />
+            <LocationForm action={createLocation} submitLabel="Add location" around={circles} />
           </div>
           {!removes && <p className="text-xs text-muted">Only a Super Admin removes a location; edit one to move it.</p>}
         </div>

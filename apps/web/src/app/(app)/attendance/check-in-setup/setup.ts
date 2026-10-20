@@ -36,7 +36,8 @@ export const ZOHO_ID = 'zoho-addresses';
 
 // ---------- the locations ----------
 
-const latin = (s: string) => s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/٫/g, '.');
+/** Arabic digits and decimal mark, as a phone may type them, as Latin ones. */
+export const latin = (s: string) => s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/٫/g, '.');
 
 /** A coordinate kept to 6 decimals (about 10 cm), as the API keeps it. */
 export const roundCoordinate = (n: number): number => Math.round(n * 1e6) / 1e6 + 0;

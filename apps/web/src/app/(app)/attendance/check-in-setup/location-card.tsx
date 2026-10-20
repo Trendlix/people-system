@@ -6,10 +6,14 @@ import type { CheckInLocationView } from '@/lib/attendance-types';
 import { titleCase } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 import { LocationForm } from './location-form';
+import { LocationsMap } from './maps';
 import { locationText, mapHref } from './setup';
 
 // One check-in location on Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"): its
 // name, point and radius, a map to check the point, Edit (HR and Admin) and Remove (a Super Admin, as every deletion).
+// The map on the card itself (owner, the same day: "let me view location on map"): the pin and the radius's circle,
+// fitted to the circle; while the location is edited, its form's map in its place. "See it on a map" still opens
+// OpenStreetMap's own site.
 
 export function LocationCard({
   location: l,
@@ -40,6 +44,13 @@ export function LocationCard({
           </button>
         )}
       </div>
+      {!editing && (
+        <LocationsMap
+          circles={[{ latitude: l.latitude, longitude: l.longitude, radiusMetres: l.radiusMetres }]}
+          label={`Map of ${l.name}: its point and the ${l.radiusMetres.toLocaleString('en-US')} m around it`}
+          height="h-[200px]"
+        />
+      )}
       {editing && <LocationForm action={update} location={l} submitLabel="Save location" onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />}
       {remove && !editing && <DeleteForm action={remove} confirmText={`Remove the check-in location ${l.name}? Check-ins within it will no longer count as at the office.`} label="Remove location" />}
     </li>
