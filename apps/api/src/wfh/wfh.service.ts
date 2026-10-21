@@ -95,19 +95,52 @@ export interface WfhHistoryEntry {
   /** YYYY-MM-DD. */
   date: string;
   reason?: string | null;
+  /**
+   * Pending in Zoho People (owner, 21 October 2026: Zoho's pending carried on in the system's own approval, as pending
+   * leave is): a request at its first step, the approver in charge's (else HR's), instead of a day approved.
+   */
+  pending?: boolean;
+  /** Its Zoho row's ZOHO_LINK_ID with the day (leave-import.ts wfhLinkKey), kept once only: brought over again, a duplicate. */
+  zohoLinkId?: string | null;
+}
+
+/** How history is brought over. */
+export interface WfhHistoryOptions {
+  /**
+   * The transaction to record in (the leave import's Apply), all or nothing with the rest of it. Its audit entries and
+   * notices are then the caller's to send once it is committed: historyRecorded.
+   */
+  tx?: Prisma.TransactionClient;
+  /** The leave import bringing the days over, which its Undo removes them with. */
+  importId?: string | null;
+  /** Said on each day's first step, e.g. "Imported from <file>". */
+  comment?: string | null;
+}
+
+/** Leave not in the system yet that a preview reads as if it were (the leave import's own rows, applied with the days). */
+export interface WfhPreviewLeave {
+  employeeId: string;
+  from: string;
+  to: string;
+  type: string;
+  /** Its status's words, e.g. "approved". */
+  status: string;
 }
 
 /** Why a day of history wasn't brought over. */
 export type WfhHistorySkip = 'invalid_date' | 'not_found' | 'no_employment' | 'duplicate';
 
 /**
- * What recordHistory did: each day recorded (approved, from Zoho People), with what it was recorded past (the limits,
- * and a day that isn't a working office day of theirs: reported, never refused), and each day left out, with why.
+ * What recordHistory did: each day recorded (approved, from Zoho People; or, pending there, a request at its first step),
+ * with what it was recorded past (the limits, and a day that isn't a working office day of theirs: reported, never
+ * refused), and each day left out, with why. A preview's ids are empty.
  */
 export interface WfhHistoryResult {
-  recorded: { employeeId: string; date: string; id: string; warnings: string[] }[];
+  recorded: { employeeId: string; date: string; id: string; status: LeaveStatus; warnings: string[]; zohoLinkId: string | null }[];
   skipped: { employeeId: string; date: string; reason: WfhHistorySkip; message: string }[];
 }
+
+const UUID = /^[0-9a-f-]{36}$/i;
 
 // Working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp"; in
 // Zoho People it was a leave type; packages/shared wfh.ts). A working day in another place, not leave: no balance, no
@@ -125,7 +158,9 @@ export interface WfhHistoryResult {
 // someone on any day, past the notice and the limits too, with a reason and the warnings kept with it, approved at once
 // and audited (never their own; a C-level person's only HR who sees them). Each step is logged on the request and in the
 // audit log; the approver is told of a request waiting for them, the employee of their own decided (NoticesService).
-// Zoho People's history comes in through recordHistory (for the leave import), duplicates skipped, the limits reported.
+// Zoho People's history comes in through recordHistory (for the leave import: owner, 21 October 2026, "Yes, as approved
+// WFH days"), in the import's own transaction, duplicates skipped, the limits reported; previewHistory says the same
+// for the import's review without saving anything.
 @Injectable()
 export class WfhService {
   constructor(
@@ -462,21 +497,108 @@ export class WfhService {
 
   /**
    * Brings over days someone worked from home before the system (Zoho People's "Working from home" leave rows, mapped by
-   * the leave import): each recorded approved at once, source zoho, under the employment the day is in, with a step
-   * "Imported from Zoho People" by `by.userId` and an audit entry. The limits and the day's own rules are ignored for
-   * history but reported with each (`warnings`, kept on the request too). Skipped, with why: a date that isn't one, a
-   * person not found, a day outside their employments, and a duplicate (the same person and date already a day being
-   * decided or approved, or twice in `entries`). Days are taken in date order by person, so the limits read the earlier
-   * ones. Nobody is notified.
+   * the leave import: owner, 21 October 2026, "Yes, as approved WFH days"): each recorded approved at once, source zoho,
+   * under the employment the day is in, with a step "Imported from Zoho People" by `by.userId` and an audit entry; one
+   * pending in Zoho (`pending`) as a request at its first step instead, the approver in charge's (else HR's), and told to
+   * them, as pending leave imported is. The limits and the day's own rules are ignored for history but reported with
+   * each (`warnings`, kept on the request too). Skipped, with why: a date that isn't one, a person not found, a day
+   * outside their employments, and a duplicate (the same person and date already a day being decided or approved, its
+   * ZOHO_LINK_ID and day brought over before, or twice in `entries`). Days are taken in date order by person, so the
+   * limits read the earlier ones. Nobody is told of a day approved. All in one transaction holding each person's row:
+   * the caller's when `options.tx` is given (the import's Apply), which then calls historyRecorded once it is committed.
    */
-  async recordHistory(entries: readonly WfhHistoryEntry[], by: { userId: string }): Promise<WfhHistoryResult> {
+  async recordHistory(entries: readonly WfhHistoryEntry[], by: { userId: string }, options: WfhHistoryOptions = {}): Promise<WfhHistoryResult> {
+    if (options.tx) return this.history(options.tx, entries, { ...options, userId: by.userId });
+    if (!entries.length) return { recorded: [], skipped: [] };
+    const result = await this.prisma.$transaction((tx) => this.history(tx, entries, { ...options, userId: by.userId }), { timeout: 60_000 });
+    await this.historyRecorded(result, by, options);
+    return result;
+  }
+
+  /** What recordHistory would do now, saving nothing (the leave import's review); `leave`: leave read as the people's too. */
+  async previewHistory(entries: readonly WfhHistoryEntry[], leave: readonly WfhPreviewLeave[] = []): Promise<WfhHistoryResult> {
+    return this.history(this.prisma, entries, { userId: null, leave });
+  }
+
+  /** Once history recorded in a transaction is committed: an audit entry for each day, and the pending ones told to their decider. */
+  async historyRecorded(result: WfhHistoryResult, by: { userId: string }, options: Pick<WfhHistoryOptions, 'importId'> = {}): Promise<void> {
+    const today = todayInCairo();
+    for (const r of result.recorded) {
+      await this.audit.record({
+        userId: by.userId,
+        action: 'import',
+        entityType: WFH_ENTITY,
+        entityId: r.id,
+        diff: {
+          employeeId: r.employeeId,
+          date: r.date,
+          source: 'zoho',
+          status: r.status,
+          ...(options.importId && { importId: options.importId }),
+          ...(r.zohoLinkId && { zohoLinkId: r.zohoLinkId }),
+          ...(r.warnings.length && { warnings: r.warnings }),
+          ...(r.date >= today && { future: true }),
+        },
+      });
+    }
+    // a pending one, to the one in charge of its first step, as a request sent
+    for (const r of result.recorded.filter((x) => x.status !== 'approved')) await this.notices.wfh(r.id, 'sent');
+  }
+
+  /**
+   * History's days checked as recordHistory says, in date order by person, read in a few queries; saved when `userId` is
+   * given (in `db`, a transaction, each person's row held first, as a request asked for is), else only said (a preview,
+   * with `leave` read as the people's too).
+   */
+  private async history(
+    db: Db,
+    entries: readonly WfhHistoryEntry[],
+    options: WfhHistoryOptions & { userId: string | null; leave?: readonly WfhPreviewLeave[] },
+  ): Promise<WfhHistoryResult> {
     const result: WfhHistoryResult = { recorded: [], skipped: [] };
     if (!entries.length) return result;
-    const rules = await this.rules();
-    const today = todayInCairo();
-    const seen = new Set<string>();
+    const userId = options.userId;
     const sorted = [...entries].sort((a, b) => a.employeeId.localeCompare(b.employeeId) || String(a.date).localeCompare(String(b.date)));
-    const names = new Map<string, string | null>();
+    const ids = [...new Set(sorted.map((e) => e.employeeId).filter((id) => UUID.test(id)))].sort();
+    const dates = sorted.map((e) => e.date).filter((d) => isDateOnly(d)).sort();
+    const first = dates[0] ?? null;
+    const last = dates[dates.length - 1] ?? null;
+    const linkKeys = sorted.map((e) => e.zohoLinkId).filter((k): k is string => !!k);
+    if (userId) for (const id of ids) await db.$queryRaw`SELECT 1 FROM employees WHERE id = ${id}::uuid FOR UPDATE`;
+    const within = first !== null && last !== null && ids.length > 0;
+    // one after another: in a transaction they share its one connection
+    const rules = await this.rules(db);
+    const people = ids.length ? await db.employee.findMany({ where: { id: { in: ids } }, select: { id: true, fullNameEn: true } }) : [];
+    const employments = ids.length ? await db.employment.findMany({ where: { employeeId: { in: ids } }, orderBy: { joinDate: 'desc' }, select: EMPLOYMENT }) : [];
+    const holidays = within ? await db.holiday.findMany({ where: { date: { gte: toDateOnly(first), lte: toDateOnly(last) } }, select: { date: true, nameEn: true } }) : [];
+    const leave = within
+      ? await db.leaveRequest.findMany({
+          where: { employeeId: { in: ids }, status: { in: [...TAKING] }, startDate: { lte: toDateOnly(last) }, endDate: { gte: toDateOnly(first) } },
+          orderBy: { startDate: 'asc' },
+          select: { employeeId: true, startDate: true, endDate: true, status: true, type: { select: { nameEn: true } } },
+        })
+      : [];
+    const taken = within
+      ? await db.wfhRequest.findMany({
+          where: { employeeId: { in: ids }, status: { in: [...TAKING] }, date: { gte: toDateOnly(addDays(first, -WINDOW_DAYS)), lte: toDateOnly(addDays(last, WINDOW_DAYS)) } },
+          select: { employeeId: true, date: true },
+        })
+      : [];
+    const linked = linkKeys.length ? await db.wfhRequest.findMany({ where: { zohoLinkId: { in: linkKeys } }, select: { zohoLinkId: true } }) : [];
+    const nameOf = new Map(people.map((p) => [p.id, p.fullNameEn]));
+    const holidayOn = new Map(holidays.map((h) => [fromDateOnly(h.date), h.nameEn]));
+    const linkedKeys = new Set(linked.map((l) => l.zohoLinkId));
+    const takenBy = new Map<string, string[]>();
+    for (const t of taken) takenBy.set(t.employeeId, [...(takenBy.get(t.employeeId) ?? []), fromDateOnly(t.date)]);
+    const leaveOn = (employeeId: string, date: string): WfhDay['leave'] => {
+      const l = leave.find((x) => x.employeeId === employeeId && fromDateOnly(x.startDate) <= date && date <= fromDateOnly(x.endDate));
+      if (l) return { type: l.type.nameEn, status: statusWords(l.status) };
+      const p = options.leave?.find((x) => x.employeeId === employeeId && x.from <= date && date <= x.to);
+      return p ? { type: p.type, status: p.status } : null;
+    };
+    const approvers = new Map<string, Awaited<ReturnType<typeof approverFor>>>();
+    const seen = new Set<string>();
+
     for (const entry of sorted) {
       const { employeeId, date } = entry;
       const skip = (reason: WfhHistorySkip, message: string) => result.skipped.push({ employeeId, date, reason, message });
@@ -484,11 +606,7 @@ export class WfhService {
         skip('invalid_date', `${String(date)} isn't a date: write it as YYYY-MM-DD.`);
         continue;
       }
-      if (!names.has(employeeId)) {
-        const person = /^[0-9a-f-]{36}$/i.test(employeeId) ? await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { fullNameEn: true } }) : null;
-        names.set(employeeId, person?.fullNameEn ?? null);
-      }
-      const name = names.get(employeeId);
+      const name = nameOf.get(employeeId);
       if (!name) {
         skip('not_found', 'Employee not found.');
         continue;
@@ -499,46 +617,67 @@ export class WfhService {
         continue;
       }
       seen.add(key);
-      const employment = await this.employmentOn(employeeId, date);
+      const employment = employments.find((e) => e.employeeId === employeeId && fromDateOnly(e.joinDate) <= date && (e.endDate === null || fromDateOnly(e.endDate) >= date));
       if (!employment) {
         skip('no_employment', `${shownDate(date)} isn't within one of ${name}'s employments.`);
         continue;
       }
-      const made = await this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;
-        const day = await this.dayOf(tx, employment, date);
-        if (day.taken.includes(date)) return null;
-        // the day's own rules and the limits, reported for history, never refusing it (the notice is not history's)
-        const warnings = [...wfhDayProblems(date, day, name), ...wfhLimitProblems(date, rules, day.taken, name)];
-        const row = await tx.wfhRequest.create({
+      const mine = takenBy.get(employeeId) ?? [];
+      takenBy.set(employeeId, mine);
+      if (mine.includes(date)) {
+        skip('duplicate', `${name} has a work from home day on ${shownDate(date)} already.`);
+        continue;
+      }
+      if (entry.zohoLinkId && linkedKeys.has(entry.zohoLinkId)) {
+        skip('duplicate', `${name}'s work from home day on ${shownDate(date)} was brought over from Zoho People before.`);
+        continue;
+      }
+      const day: WfhDay = {
+        arrangement: employment.workArrangement,
+        officeDays: employment.officeDays,
+        workingDay: (employment.shift?.workingDays ?? DEFAULT_WORKING_DAYS).includes(weekday(date)),
+        holiday: holidayOn.get(date) ?? null,
+        leave: leaveOn(employeeId, date),
+        taken: [...mine],
+      };
+      // the day's own rules and the limits, reported for history, never refusing it (the notice is not history's)
+      const warnings = [...wfhDayProblems(date, day, name), ...wfhLimitProblems(date, rules, day.taken, name)];
+      // pending in Zoho: the approver in charge (19 October 2026), else straight to HR, as a request sent
+      let approver: Awaited<ReturnType<typeof approverFor>> = null;
+      if (entry.pending) {
+        if (!approvers.has(employment.id)) approvers.set(employment.id, await approverFor(db, { employeeId, managerId: employment.managerId, departmentId: employment.departmentId }));
+        approver = approvers.get(employment.id) ?? null;
+      }
+      const status: LeaveStatus = entry.pending ? firstLeaveStatus(approver !== null) : 'approved';
+      let id = '';
+      if (userId) {
+        const row = await db.wfhRequest.create({
           data: {
             employeeId,
             employmentId: employment.id,
             date: toDateOnly(date),
             reason: entry.reason?.trim() || null,
-            status: 'approved',
-            recordedByHr: true,
+            status,
+            managerId: approver?.employeeId ?? null,
+            approverRole: approver?.role ?? null,
+            recordedByHr: !entry.pending,
             source: 'zoho',
             warnings,
-            createdById: by.userId,
+            createdById: userId,
+            importId: options.importId ?? null,
+            zohoLinkId: entry.zohoLinkId ?? null,
           },
           select: { id: true },
         });
-        await this.step(tx, row.id, by.userId, { kind: 'imported' });
-        return { id: row.id, warnings };
-      });
-      if (!made) {
-        skip('duplicate', `${name} has a work from home day on ${shownDate(date)} already.`);
-        continue;
+        id = row.id;
+        if (entry.pending) {
+          await this.step(db, id, userId, { kind: 'submitted', comment: `${options.comment ?? 'Imported from Zoho People'}: pending in Zoho People.` });
+          if (!approver) await this.step(db, id, null, { kind: 'no_manager' });
+        } else await this.step(db, id, userId, { kind: 'imported', comment: options.comment ?? null });
       }
-      await this.audit.record({
-        userId: by.userId,
-        action: 'import',
-        entityType: WFH_ENTITY,
-        entityId: made.id,
-        diff: { employeeId, date, source: 'zoho', status: 'approved', ...(made.warnings.length && { warnings: made.warnings }), ...(date >= today && { future: true }) },
-      });
-      result.recorded.push({ employeeId, date, id: made.id, warnings: made.warnings });
+      mine.push(date);
+      if (entry.zohoLinkId) linkedKeys.add(entry.zohoLinkId);
+      result.recorded.push({ employeeId, date, id, status, warnings, zohoLinkId: entry.zohoLinkId ?? null });
     }
     return result;
   }

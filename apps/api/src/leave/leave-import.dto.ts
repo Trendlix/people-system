@@ -19,7 +19,10 @@ export class LeaveImportPersonDto {
   skipped?: boolean;
 }
 
-/** A Zoho leave type's mapping: the system's type it is imported as, skipped, or back to the default (neither sent). */
+/**
+ * A Zoho leave type's mapping: the system's type it is imported as, work-from-home days (`wfh`; owner, 21 October 2026:
+ * "Yes, as approved WFH days"), skipped, or back to the default (none sent).
+ */
 export class LeaveImportTypeDto {
   /** Zoho's leave type as the file writes it. */
   @IsString({ message: 'Send the Zoho leave type.' }) @MinLength(1) @MaxLength(200)
@@ -31,4 +34,8 @@ export class LeaveImportTypeDto {
 
   @IsOptional() @IsBoolean({ message: 'Send whether the type is skipped as true or false.' })
   skipped?: boolean;
+
+  /** Its rows imported as work-from-home days, not leave. */
+  @IsOptional() @IsBoolean({ message: 'Send whether the rows are work-from-home days as true or false.' })
+  wfh?: boolean;
 }

@@ -17,9 +17,14 @@ import {
   personIds,
   rowDaysText,
   rowPersonText,
+  rowTypeText,
   statusLabel,
   typeChoice,
+  typeMapValue,
+  undoConfirmText,
+  undoWhatText,
   uploadProblem,
+  wfhDaysListText,
   whenText,
 } from './import';
 
@@ -48,6 +53,8 @@ const row = (over: Partial<LeaveImportRow>): LeaveImportRow => ({
   fileDays: null,
   halfDay: false,
   pending: false,
+  wfh: false,
+  wfhDays: null,
   approval: null,
   approvalText: null,
   balance: null,
@@ -105,6 +112,28 @@ describe('the leave import', () => {
   it('asks before Apply, saying what it does', () => {
     const view = { leaves: [row({}), row({ row: 3, pending: true }), row({ row: 4, yours: false })], balances: [row({ sheet: 'balances', row: 2 })] };
     expect(applyConfirmText(view)).toMatch(/^Apply 1 leave as approved, 1 pending request sent for a decision, 1 balance set\? /);
+    // Zoho's Working from home rows: a work-from-home day each working day (owner, 21 October 2026: "Yes, as approved WFH days")
+    const wfh = { leaves: [row({}), row({ row: 3, wfh: true, days: 2 }), row({ row: 4, wfh: true, days: 1, pending: true })], balances: [] };
+    expect(applyConfirmText(wfh)).toMatch(/^Apply 1 leave as approved, 2 work-from-home days as approved, 1 pending work-from-home request sent for a decision\? /);
+  });
+
+  it('shows a Working from home row as a work-from-home day, its days, and the mapping’s choice', () => {
+    expect(rowTypeText(row({ wfh: true, typeText: 'Working from home' }))).toBe('Work-from-home day');
+    expect(rowTypeText(row({ type: { id: 't', nameEn: 'Annual leave' } }))).toBe('Annual leave');
+    expect(rowTypeText(row({ typeText: 'Marriage' }))).toBe('Marriage');
+    expect(wfhDaysListText(row({ wfh: true, wfhDays: ['2026-08-06', '2026-08-09'] }))).toBe('06/08/2026, 09/08/2026');
+    expect(wfhDaysListText(row({ wfh: true, wfhDays: ['2026-08-06'] }))).toBeNull();
+    expect(typeMapValue({ wfh: true, typeId: null })).toBe('wfh');
+    expect(typeMapValue({ wfh: false, typeId: 't-annual' })).toBe('t-annual');
+    expect(typeMapValue({ wfh: false, typeId: null })).toBe('skip');
+  });
+
+  it('says what Undo removes: all the import made, or the user’s share', () => {
+    expect(undoWhatText({ undoable: 8, kept: { leaves: 1, adjustments: 0, wfhDays: 7 } })).toBe('the 1 leave and 7 work-from-home days');
+    expect(undoWhatText({ undoable: 2, kept: { leaves: 2, adjustments: 1, wfhDays: 1 } })).toBe('2 of the 2 leaves, 1 balance change and 1 work-from-home day');
+    expect(undoConfirmText({ undoable: 1, kept: { leaves: 0, adjustments: 0, wfhDays: 1 } })).toBe(
+      'Undo this import? The 1 work-from-home day it made that you import is removed, and its rows can be imported again.',
+    );
   });
 
   it('lists the people to confirm and the choices made, each by what they are known by', () => {
@@ -130,20 +159,25 @@ describe('the leave import', () => {
     expect(typeChoice(fd({ zohoType: 'Annual Leave', typeId: id }))).toEqual({ zohoType: 'Annual Leave', typeId: id });
     expect(typeChoice(fd({ zohoType: 'Working from home', typeId: 'skip' }))).toEqual({ zohoType: 'Working from home', skipped: true });
     expect(typeChoice(fd({ zohoType: 'Sick Leave', typeId: 'default' }))).toEqual({ zohoType: 'Sick Leave' });
+    expect(typeChoice(fd({ zohoType: 'Working from home', typeId: 'wfh' }))).toEqual({ zohoType: 'Working from home', wfh: true });
     expect(typeChoice(fd({ typeId: id }))).toBeNull();
   });
 
   it('says where an import stands in the history; a Super Admin deletes one with nothing left of it', () => {
-    const base = { kept: { leaves: 0, adjustments: 0 }, appliedAt: null, appliedBy: null, undoneAt: null, undoneBy: null };
+    const base = { kept: { leaves: 0, adjustments: 0, wfhDays: 0 }, appliedAt: null, appliedBy: null, undoneAt: null, undoneBy: null };
     expect(historyStateText({ ...base, state: 'not_applied' })).toBe('Not applied');
-    expect(historyStateText({ ...base, state: 'applied', kept: { leaves: 12, adjustments: 1 }, appliedAt: '2026-10-21T09:30:00.000Z', appliedBy: 'Hala' })).toBe(
+    expect(historyStateText({ ...base, state: 'applied', kept: { leaves: 12, adjustments: 1, wfhDays: 0 }, appliedAt: '2026-10-21T09:30:00.000Z', appliedBy: 'Hala' })).toBe(
       'Applied 21/10/2026, 12:30 PM by Hala: 12 leaves and 1 balance',
+    );
+    expect(historyStateText({ ...base, state: 'applied', kept: { leaves: 2, adjustments: 0, wfhDays: 5 }, appliedAt: '2026-10-21T09:30:00.000Z', appliedBy: null })).toBe(
+      'Applied 21/10/2026, 12:30 PM: 2 leaves and 5 work-from-home days',
     );
     expect(historyStateText({ ...base, state: 'undone', undoneAt: '2026-10-21T10:00:00.000Z', undoneBy: null })).toBe('Undone 21/10/2026, 1:00 PM');
     expect(historyRowsText({ rows: { leaves: 1, balances: 2 } })).toBe('1 leave and 2 balances');
     expect(historyRowsText({ rows: { leaves: 0, balances: 0 } })).toBe('No rows');
-    expect(deleteBlocked({ leaves: 1, adjustments: 0 })).toBe('Undo it first: what it made is still in the system.');
-    expect(deleteBlocked({ leaves: 0, adjustments: 0 })).toBeNull();
+    expect(deleteBlocked({ leaves: 1, adjustments: 0, wfhDays: 0 })).toBe('Undo it first: what it made is still in the system.');
+    expect(deleteBlocked({ leaves: 0, adjustments: 0, wfhDays: 3 })).toBe('Undo it first: what it made is still in the system.');
+    expect(deleteBlocked({ leaves: 0, adjustments: 0, wfhDays: 0 })).toBeNull();
     expect(deletedNotice({ deleted: '1' })).toBe('The import was deleted.');
     expect(deletedNotice({})).toBeNull();
   });

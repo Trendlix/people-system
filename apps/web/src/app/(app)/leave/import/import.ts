@@ -1,13 +1,14 @@
-import { LEAVE_IMPORT_MAX_MB, LEAVE_IMPORT_ROW_STATUS_LABELS, signedDays, type LeaveImportRowStatus, type Role } from '@trendlix/shared';
+import { LEAVE_IMPORT_MAX_MB, LEAVE_IMPORT_ROW_STATUS_LABELS, signedDays, WFH_IMPORT_ROW_LABEL, ZOHO_WFH_TARGET, type LeaveImportRowStatus, type Role } from '@trendlix/shared';
 import { LEAVE_PATH } from '../../../../components/nav';
 import { formatDate, formatDateTime } from '../../../../lib/format';
-import type { LeaveImportHistoryRow, LeaveImportPerson, LeaveImportRow, LeaveImportView } from '../../../../lib/leave-import-types';
+import type { LeaveImportHistoryRow, LeaveImportKept, LeaveImportPerson, LeaveImportRow, LeaveImportType, LeaveImportView } from '../../../../lib/leave-import-types';
 import { hasRole } from '../../../../lib/roles';
 
 // Importing leave in bulk, on Leave Requests (owner, 21 October 2026: "how to import bulk leaves?"; he chose "Both", the
-// leave taken and the balances, and "Our Excel template"; Zoho People's leave export too): the addresses, who imports,
-// the upload's quick checks, the review's sections, counts and words, and the history's. Pure code, tested; relative
-// imports, as vitest doesn't know the @/ paths. The API decides every row.
+// leave taken and the balances, and "Our Excel template"; Zoho People's leave export too, its Working from home rows as
+// work-from-home days: "Yes, as approved WFH days"): the addresses, who imports, the upload's quick checks, the review's
+// sections, counts and words, and the history's. Pure code, tested; relative imports, as vitest doesn't know the @/
+// paths. The API decides every row.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -69,6 +70,16 @@ export function whenText(r: Pick<LeaveImportRow, 'from' | 'to' | 'fromText' | 't
 
 export const daysText = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 
+/** A row's type as the review shows it: a work-from-home row as such, else the system's type or the file's words. */
+export const rowTypeText = (r: Pick<LeaveImportRow, 'wfh' | 'type' | 'typeText'>): string => (r.wfh ? WFH_IMPORT_ROW_LABEL : (r.type?.nameEn ?? r.typeText));
+
+/** A work-from-home row's days, when it has more than one: "06/08/2026, 09/08/2026"; else null. */
+export const wfhDaysListText = (r: Pick<LeaveImportRow, 'wfh' | 'wfhDays'>): string | null =>
+  r.wfh && r.wfhDays && r.wfhDays.length > 1 ? r.wfhDays.map((d) => formatDate(d)).join(', ') : null;
+
+/** What a Zoho type's list has chosen: work-from-home days, the system's type, or Skip. */
+export const typeMapValue = (t: Pick<LeaveImportType, 'wfh' | 'typeId'>): string => (t.wfh ? ZOHO_WFH_TARGET : (t.typeId ?? 'skip'));
+
 /** The days a row counts, and the file's own figure when it is another. */
 export function rowDaysText(r: Pick<LeaveImportRow, 'days' | 'fileDays'>): string {
   if (r.days === null) return r.fileDays === null ? '—' : `${daysText(r.fileDays)} in the file`;
@@ -112,19 +123,44 @@ export const dueRows = (view: Pick<LeaveImportView, 'leaves' | 'balances'>) => [
 /** What Apply asks first. */
 export function applyConfirmText(view: Pick<LeaveImportView, 'leaves' | 'balances'>): string {
   const due = dueRows(view);
-  const leaves = due.filter((r) => r.sheet === 'leaves');
+  const leaves = due.filter((r) => r.sheet === 'leaves' && !r.wfh);
   const requests = leaves.filter((r) => r.pending).length;
-  const balances = due.length - leaves.length;
+  // a work-from-home row makes a day each working day of it (owner, 21 October 2026: "Yes, as approved WFH days")
+  const wfh = due.filter((r) => r.sheet === 'leaves' && r.wfh);
+  const wfhDays = wfh.filter((r) => !r.pending).reduce((n, r) => n + (r.days ?? 0), 0);
+  const wfhRequests = wfh.filter((r) => r.pending).reduce((n, r) => n + (r.days ?? 0), 0);
+  const balances = due.filter((r) => r.sheet === 'balances').length;
   const parts = [
     leaves.length - requests ? `${leaves.length - requests} ${leaves.length - requests === 1 ? 'leave' : 'leaves'} as approved` : null,
     requests ? `${requests} pending ${requests === 1 ? 'request' : 'requests'} sent for a decision` : null,
+    wfhDays ? `${wfhDays} work-from-home ${wfhDays === 1 ? 'day' : 'days'} as approved` : null,
+    wfhRequests ? `${wfhRequests} pending work-from-home ${wfhRequests === 1 ? 'request' : 'requests'} sent for a decision` : null,
     balances ? `${balances} ${balances === 1 ? 'balance' : 'balances'} set` : null,
   ].filter(Boolean);
   return `Apply ${parts.join(', ')}? The draft payrolls of their months take the leave; a payroll with the CEO, approved or paid doesn’t change. You can undo it while no payroll counting it is past its draft.`;
 }
 
-export function undoConfirmText(view: Pick<LeaveImportView, 'undoable'>): string {
-  return `Undo this import? The ${view.undoable === 1 ? 'leave or balance change' : `${view.undoable} leaves and balance changes`} it made that you import are removed, and its rows can be imported again.`;
+/** What an import made that is still there: "4 leaves, 1 balance change and 7 work-from-home days"; none: null. */
+export function keptText(kept: LeaveImportKept, balance = 'balance change'): string | null {
+  const parts = [
+    kept.leaves ? `${kept.leaves} ${kept.leaves === 1 ? 'leave' : 'leaves'}` : null,
+    kept.adjustments ? `${kept.adjustments} ${balance}${kept.adjustments === 1 ? '' : 's'}` : null,
+    kept.wfhDays ? `${kept.wfhDays} work-from-home ${kept.wfhDays === 1 ? 'day' : 'days'}` : null,
+  ].filter((x): x is string => !!x);
+  return parts.length ? listOf(parts) : null;
+}
+
+const keptTotal = (kept: LeaveImportKept) => kept.leaves + kept.adjustments + kept.wfhDays;
+
+/** What Undo removes: all the import made ("the 1 leave and 7 work-from-home days"), or the user's share of it. */
+export function undoWhatText(view: Pick<LeaveImportView, 'undoable' | 'kept'>): string {
+  const all = keptText(view.kept) ?? 'nothing';
+  return view.undoable === keptTotal(view.kept) ? `the ${all}` : `${view.undoable} of the ${all}`;
+}
+
+export function undoConfirmText(view: Pick<LeaveImportView, 'undoable' | 'kept'>): string {
+  const what = undoWhatText(view);
+  return `Undo this import? ${what[0].toUpperCase()}${what.slice(1)} it made that you import ${view.undoable === 1 ? 'is' : 'are'} removed, and its rows can be imported again.`;
 }
 
 export function deleteConfirmText(fileName: string): string {
@@ -132,7 +168,7 @@ export function deleteConfirmText(fileName: string): string {
 }
 
 /** Why a Super Admin can't delete an import yet; null: they can. */
-export const deleteBlocked = (kept: { leaves: number; adjustments: number }) => (kept.leaves + kept.adjustments > 0 ? 'Undo it first: what it made is still in the system.' : null);
+export const deleteBlocked = (kept: LeaveImportKept) => (keptTotal(kept) > 0 ? 'Undo it first: what it made is still in the system.' : null);
 
 /** What a person's choice form sends, read back: an employee, skip, or undo (back to the match). Null: nothing chosen. */
 export function personChoice(fd: FormData): { key: string; employeeId: string | null } | { key: string; skipped: true } | null {
@@ -145,12 +181,15 @@ export function personChoice(fd: FormData): { key: string; employeeId: string | 
   return /^[0-9a-f-]{36}$/i.test(employeeId) ? { key, employeeId } : null;
 }
 
-/** What a Zoho type's form sends, read back: a type, skip, or back to the default. Null: neither. */
-export function typeChoice(fd: FormData): { zohoType: string; typeId: string } | { zohoType: string; skipped: true } | { zohoType: string } | null {
+/** What a Zoho type's form sends, read back: a type, work-from-home days, skip, or back to the default. Null: none. */
+export function typeChoice(
+  fd: FormData,
+): { zohoType: string; typeId: string } | { zohoType: string; wfh: true } | { zohoType: string; skipped: true } | { zohoType: string } | null {
   const zohoType = String(fd.get('zohoType') ?? '');
   if (!zohoType) return null;
   const value = String(fd.get('typeId') ?? '');
   if (value === 'skip') return { zohoType, skipped: true };
+  if (value === ZOHO_WFH_TARGET) return { zohoType, wfh: true };
   if (value === 'default') return { zohoType };
   return /^[0-9a-f-]{36}$/i.test(value) ? { zohoType, typeId: value } : null;
 }
@@ -165,14 +204,14 @@ export function historyRowsText(r: Pick<LeaveImportHistoryRow, 'rows'>): string 
 
 /** Where an import stands: applied (what is left of it), undone, or not applied. */
 export function historyStateText(r: Pick<LeaveImportHistoryRow, 'state' | 'kept' | 'appliedAt' | 'appliedBy' | 'undoneAt' | 'undoneBy'>): string {
-  if (r.state === 'applied') {
-    const made = [r.kept.leaves ? `${r.kept.leaves} ${r.kept.leaves === 1 ? 'leave' : 'leaves'}` : null, r.kept.adjustments ? `${r.kept.adjustments} ${r.kept.adjustments === 1 ? 'balance' : 'balances'}` : null]
-      .filter(Boolean)
-      .join(' and ');
-    return `Applied ${formatDateTime(r.appliedAt)}${r.appliedBy ? ` by ${r.appliedBy}` : ''}: ${made}`;
-  }
+  if (r.state === 'applied') return `Applied ${formatDateTime(r.appliedAt)}${r.appliedBy ? ` by ${r.appliedBy}` : ''}: ${keptText(r.kept, 'balance') ?? 'nothing'}`;
   if (r.state === 'undone') return `Undone ${formatDateTime(r.undoneAt)}${r.undoneBy ? ` by ${r.undoneBy}` : ''}`;
   return 'Not applied';
+}
+
+/** "a", "a and b", "a, b and c". */
+function listOf(items: readonly string[]): string {
+  return items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
 /** The notice after a Super Admin deleted an import (?deleted=1). */

@@ -1,6 +1,7 @@
 import {
   ALREADY_AT_BALANCE,
   alreadyImportedText,
+  alreadyWfhText,
   balanceRowProblems,
   belowZeroText,
   daysMismatchText,
@@ -32,6 +33,14 @@ import {
   zohoEmployee,
   zohoLeaveDays,
   withLeaveNow,
+  wfhHalfDaysText,
+  wfhInFileText,
+  wfhLeftOutText,
+  wfhLinkKey,
+  wfhOutsideEmploymentText,
+  ZOHO_WFH_TARGET,
+  zohoTypeTarget,
+  zohoWfhDays,
   type ImportLeaveType,
   type SourcedDay,
   type LeaveTypeRules,
@@ -111,17 +120,83 @@ describe('Zoho People’s leave export', () => {
     expect(zohoApproval('Maybe')).toBeNull();
   });
 
-  it('maps its types by default: annual, sick, casual to the law’s; Working from home and Compensatory Off skipped, unless a type is added for the latter', () => {
-    expect(defaultZohoType('Annual Leave', TYPES)).toEqual({ typeId: 't-annual', note: null });
-    expect(defaultZohoType('Sick Leave', TYPES)).toEqual({ typeId: 't-sick', note: null });
-    expect(defaultZohoType('Casual leave (Exceptional)', TYPES)).toEqual({ typeId: 't-casual', note: null });
-    expect(defaultZohoType('Working from home - Bi Weekly', TYPES)).toEqual({ typeId: null, note: ZOHO_WFH_NOTE });
-    expect(defaultZohoType('Compensatory Off', TYPES)).toEqual({ typeId: null, note: ZOHO_COMP_OFF_NOTE });
+  it('maps its types by default: annual, sick, casual to the law’s; Working from home as work-from-home days; Compensatory Off skipped, unless a type is added for it', () => {
+    expect(defaultZohoType('Annual Leave', TYPES)).toEqual({ typeId: 't-annual', wfh: false, note: null });
+    expect(defaultZohoType('Sick Leave', TYPES)).toEqual({ typeId: 't-sick', wfh: false, note: null });
+    expect(defaultZohoType('Casual leave (Exceptional)', TYPES)).toEqual({ typeId: 't-casual', wfh: false, note: null });
+    // owner, 21 October 2026: "Yes, as approved WFH days"
+    expect(defaultZohoType('Working from home - Bi Weekly', TYPES)).toEqual({ typeId: null, wfh: true, note: ZOHO_WFH_NOTE });
+    expect(defaultZohoType('Working From Home', TYPES).wfh).toBe(true);
+    expect(ZOHO_WFH_NOTE).toBe('Imported as approved work-from-home days (not leave): they don’t touch balances or pay.');
+    expect(defaultZohoType('Compensatory Off', TYPES)).toEqual({ typeId: null, wfh: false, note: ZOHO_COMP_OFF_NOTE });
     const withOwn = [...TYPES, { id: 't-comp', key: 'custom-compensatory-day-off', kind: 'custom', nameEn: 'Compensatory day off', active: true }];
-    expect(defaultZohoType('Compensatory Off', withOwn)).toEqual({ typeId: 't-comp', note: null });
+    expect(defaultZohoType('Compensatory Off', withOwn)).toEqual({ typeId: 't-comp', wfh: false, note: null });
     // a type turned off isn't chosen; one of the same name is
     expect(defaultZohoType('Childcare leave', TYPES).typeId).toBeNull();
     expect(defaultZohoType('Marriage', TYPES).typeId).toBeNull();
+  });
+
+  it('a type’s target: HR’s choice (Skip, work-from-home days or a type) over the default, which Working from home is work-from-home days by', () => {
+    const wfh = defaultZohoType('Working from home - Bi Weekly', TYPES);
+    const annual = defaultZohoType('Annual Leave', TYPES);
+    const unmatched = defaultZohoType('Marriage', TYPES);
+    expect(zohoTypeTarget(undefined, wfh)).toEqual({ kind: 'wfh' });
+    // HR can still skip it
+    expect(zohoTypeTarget('skip', wfh)).toEqual({ kind: 'skip' });
+    expect(zohoTypeTarget('t-unpaid', wfh)).toEqual({ kind: 'leave', typeId: 't-unpaid' });
+    expect(zohoTypeTarget(undefined, annual)).toEqual({ kind: 'leave', typeId: 't-annual' });
+    expect(zohoTypeTarget(ZOHO_WFH_TARGET, annual)).toEqual({ kind: 'wfh' });
+    expect(zohoTypeTarget(undefined, unmatched)).toEqual({ kind: 'skip' });
+  });
+});
+
+describe('Zoho’s Working from home as work-from-home days (owner, 21 October 2026: "Yes, as approved WFH days")', () => {
+  // Sunday 25/10/2026 to Thursday 29/10/2026 work days; Friday 30 and Saturday 31 rest days; 27/10/2026 a holiday here
+  const holidays = new Set(['2026-10-27']);
+  const countsDay = (d: string) => ![5, 6].includes(new Date(`${d}T00:00:00Z`).getUTCDay()) && !holidays.has(d);
+
+  it('one a working day: the days Zoho calls Holiday/Weekend and the rest days and official holidays here left out; a half day is a day', () => {
+    const details = zohoLeaveDays(
+      '{Date:28-Oct-2026,Duration:Full Day},{Date:29-Oct-2026,Duration:Half Day,Session:1st Half},{Date:30-Oct-2026,Duration:Holiday/Weekend},{Date:31-Oct-2026,Duration:Holiday/Weekend},{Date:01-Nov-2026,Duration:Full Day}',
+    );
+    expect(zohoWfhDays('2026-10-28', '2026-11-01', details, countsDay)).toEqual({
+      days: ['2026-10-28', '2026-10-29', '2026-11-01'],
+      leftOut: [
+        { date: '2026-10-30', why: 'off_in_zoho' },
+        { date: '2026-10-31', why: 'off_in_zoho' },
+      ],
+      halfDays: ['2026-10-29'],
+    });
+    // a holiday inside the range is left out by the system's rule though Zoho counts it a full day
+    expect(zohoWfhDays('2026-10-26', '2026-10-28', zohoLeaveDays('{Date:26-Oct-2026,Duration:Full Day},{Date:27-Oct-2026,Duration:Full Day},{Date:28-Oct-2026,Duration:Full Day}'), countsDay)).toEqual({
+      days: ['2026-10-26', '2026-10-28'],
+      leftOut: [{ date: '2026-10-27', why: 'off_here' }],
+      halfDays: [],
+    });
+    // without the day details, the system's rule alone; a day Zoho calls Holiday/Weekend that is a working day here is still left out
+    expect(zohoWfhDays('2026-10-29', '2026-11-01', null, countsDay).days).toEqual(['2026-10-29', '2026-11-01']);
+    expect(zohoWfhDays('2026-10-25', '2026-10-25', zohoLeaveDays('{Date:25-Oct-2026,Duration:Holiday/Weekend}'), countsDay)).toEqual({ days: [], leftOut: [{ date: '2026-10-25', why: 'off_in_zoho' }], halfDays: [] });
+    // none for a row that isn't one: To before From, a date that isn't, more than a year
+    expect(zohoWfhDays('2026-10-29', '2026-10-28', null, countsDay).days).toEqual([]);
+    expect(zohoWfhDays('soon', '2026-10-28', null, countsDay).days).toEqual([]);
+    expect(zohoWfhDays('2026-01-01', '2027-06-30', null, countsDay).days).toEqual([]);
+  });
+
+  it('says what it left out, the half days, the days outside the employment and the duplicates; keeps a day’s link key', () => {
+    expect(
+      wfhLeftOutText([
+        { date: '2026-10-30', why: 'off_in_zoho' },
+        { date: '2026-10-31', why: 'off_in_zoho' },
+        { date: '2026-10-27', why: 'off_here' },
+      ]),
+    ).toBe('Left out: 30/10/2026 and 31/10/2026, holidays or weekends in Zoho; 27/10/2026, a rest day or official holiday here.');
+    expect(wfhLeftOutText([])).toBeNull();
+    expect(wfhHalfDaysText(['2026-10-29'])).toBe('29/10/2026 is a half day in Zoho People: a work-from-home day is a whole day here.');
+    expect(wfhHalfDaysText([])).toBeNull();
+    expect(wfhOutsideEmploymentText(['2026-10-25'], 'Rana Adel Fawzy')).toBe('25/10/2026 isn’t within one of Rana Adel Fawzy’s employments: left out.');
+    expect(alreadyWfhText('2026-10-28', 'approved')).toBe('Already a work-from-home day on 28/10/2026 (approved).');
+    expect(wfhInFileText('2026-10-28', 6)).toBe('Already a work-from-home day on 28/10/2026 in row 6 of the file.');
+    expect(wfhLinkKey('412000000123', '2026-10-28')).toBe('412000000123:2026-10-28');
   });
 });
 

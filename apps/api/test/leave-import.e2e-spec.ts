@@ -45,6 +45,8 @@ interface Row {
   days: number | null;
   halfDay: boolean;
   pending: boolean;
+  wfh: boolean;
+  wfhDays: string[] | null;
   adjustment: number | null;
   yours: boolean;
   notYours: string | null;
@@ -57,7 +59,7 @@ interface View {
   sourceLabel: string;
   sameFile: string | null;
   people: { key: string; name: string; code: string | null; match: string; toConfirm: boolean; employee: { id: string } | null; candidates: { id: string }[] }[];
-  types: { zohoType: string; rows: number; typeId: string | null; chosen: boolean; note: string | null }[];
+  types: { zohoType: string; rows: number; typeId: string | null; wfh: boolean; chosen: boolean; note: string | null }[];
   leaves: Row[];
   balances: Row[];
   counts: Record<string, number>;
@@ -66,7 +68,7 @@ interface View {
   noShowsToLeave: { days: number; people: number; text: string } | null;
   canApply: boolean;
   undoable: number;
-  kept: { leaves: number; adjustments: number };
+  kept: { leaves: number; adjustments: number; wfhDays: number };
   appliedAt: string | null;
   undoneAt: string | null;
 }
@@ -81,6 +83,8 @@ interface Line {
 }
 
 const said = (res: { body: { message: string | string[] } }) => ([] as string[]).concat(res.body.message);
+/** A date as the messages show it: DD/MM/YYYY. */
+const shown = (ymd: string) => ymd.split('-').reverse().join('/');
 
 describe('Leave import (e2e)', () => {
   let app: INestApplication<App>;
@@ -205,7 +209,9 @@ describe('Leave import (e2e)', () => {
     await prisma.attendanceImport.deleteMany({ where: { runId: { in: runs } } });
     await prisma.leaveRequest.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.leaveAdjustment.deleteMany({ where: { employeeId: { in: people } } });
+    await prisma.wfhRequest.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.leaveImport.deleteMany({ where: { id: { in: imports } } });
+    await prisma.holiday.deleteMany({ where: { nameEn: { endsWith: TAG } } });
     await prisma.leaveBalanceYear.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.leaveType.deleteMany({ where: { nameEn: { endsWith: TAG } } });
     await prisma.employment.deleteMany({ where: { employeeId: { in: people } } });
@@ -348,7 +354,7 @@ describe('Leave import (e2e)', () => {
     it('applies: the leave approved and marked imported, no steps; then the balance set to the figure; one audit entry with the counts', async () => {
       const v = (await apply(importId).expect(200)).body as View;
       expect(v.counts).toMatchObject({ applied: 5, ready: 0 });
-      expect(v.kept).toEqual({ leaves: 4, adjustments: 1 });
+      expect(v.kept).toEqual({ leaves: 4, adjustments: 1, wfhDays: 0 });
       const ann = await balances('ann');
       // 21 earned, 5 taken off by the opening balance, 6 imported: 10 left, the figure given
       expect(ann.annual).toMatchObject({ entitlement: 21, adjustments: -5 });
@@ -412,12 +418,12 @@ describe('Leave import (e2e)', () => {
       await api().delete(`/api/leave/import/${importId}`).set('Cookie', hr).expect(403);
       expect(said(await api().delete(`/api/leave/import/${importId}`).set('Cookie', superAdmin).expect(409))[0]).toMatch(/still in the system\. Undo it first, then delete it\.$/);
       const v = (await undo(importId).expect(200)).body as View;
-      expect(v.kept).toEqual({ leaves: 1, adjustments: 1 });
+      expect(v.kept).toEqual({ leaves: 1, adjustments: 1, wfhDays: 0 });
       expect(v.undoneAt).toBeNull();
       expect((await balances('ann')).annual).toMatchObject({ adjustments: 0, available: 21 });
       await undo(importId).expect(409);
       const byCeo = (await undo(importId, ceo).expect(200)).body as View;
-      expect(byCeo.kept).toEqual({ leaves: 0, adjustments: 0 });
+      expect(byCeo.kept).toEqual({ leaves: 0, adjustments: 0, wfhDays: 0 });
       expect(byCeo.undoneAt).not.toBeNull();
       // its rows are free again: ready to apply once more
       expect(rowOf(await review(importId), 2)).toMatchObject({ status: 'ready' });
@@ -479,8 +485,9 @@ describe('Leave import (e2e)', () => {
       expect(typeOf('Casual leave (Exceptional)')).toMatchObject({ typeId: types.casual });
       expect(typeOf('Sick Leave')).toMatchObject({ typeId: types.sick });
       expect(typeOf('Leave Without Pay')).toMatchObject({ typeId: types.unpaid });
-      expect(typeOf('Working from home - Bi Weekly')).toMatchObject({ typeId: null });
-      expect(typeOf('Working from home - Bi Weekly').note).toMatch(/^Working from home isn’t leave: those are working days at home, covered by attendance and home locations\./);
+      // owner, 21 October 2026: "Yes, as approved WFH days"
+      expect(typeOf('Working from home - Bi Weekly')).toMatchObject({ typeId: null, wfh: true, chosen: false });
+      expect(typeOf('Working from home - Bi Weekly').note).toBe('Imported as approved work-from-home days (not leave): they don’t touch balances or pay.');
       expect(typeOf('Compensatory Off')).toMatchObject({ typeId: null });
       expect(typeOf('Compensatory Off').note).toMatch(/Create a “Compensatory day off” type in Leave Setup \(paid, no balance\)/);
 
@@ -495,8 +502,9 @@ describe('Leave import (e2e)', () => {
       ]);
       expect(v.holidaysHint).toMatch(new RegExp(`^Check that ${YEAR}’s official holidays are set in Organization → Holidays before applying`));
       expect(rowOf(v, 5)).toMatchObject({ status: 'ready', days: 0.5, halfDay: true });
-      expect(rowOf(v, 6)).toMatchObject({ status: 'skipped' });
-      expect(rowOf(v, 7)).toMatchObject({ status: 'skipped' });
+      // Working from home: a work-from-home day, not leave; the pending one on the same day is in the file twice
+      expect(rowOf(v, 6)).toMatchObject({ status: 'ready', wfh: true, type: null, days: 1, wfhDays: [picks.b] });
+      expect(rowOf(v, 7)).toMatchObject({ status: 'duplicate', wfh: true, pending: true, reasons: [`Already a work-from-home day on ${shown(picks.b)} in row 6 of the file.`] });
       expect(rowOf(v, 8)).toMatchObject({ status: 'skipped' });
       expect(rowOf(v, 9)).toMatchObject({ status: 'ready', pending: true });
       expect(rowOf(v, 10)).toMatchObject({ status: 'skipped', reasons: ['Rejected in Zoho People: not imported.'] });
@@ -534,7 +542,11 @@ describe('Leave import (e2e)', () => {
     it('applies: approved leave as history, the pending one as a request with Zara’s manager, the others left', async () => {
       const before = await balances('zara');
       const v = (await apply(first).expect(200)).body as View;
-      expect([2, 3, 4, 5, 8, 9, 14].map((n) => rowOf(v, n).status)).toEqual(Array(7).fill('applied'));
+      expect([2, 3, 4, 5, 6, 8, 9, 14].map((n) => rowOf(v, n).status)).toEqual(Array(8).fill('applied'));
+      // the Working from home row: a work-from-home day approved, from this import, not leave
+      expect(await prisma.wfhRequest.findMany({ where: { importId: first }, select: { employeeId: true, status: true, zohoLinkId: true } })).toEqual([
+        { employeeId: ids.zara, status: 'approved', zohoLinkId: `${ZARA_ZOHO}05:${picks.b}` },
+      ]);
       const zara = await balances('zara');
       // the annual balance takes the annual and casual days (1 + 2 + 2 + 0.5), the pending one as pending; the
       // compensatory day off, of no balance, none
@@ -566,7 +578,7 @@ describe('Leave import (e2e)', () => {
       expect(rowOf(v, 2).reasons[0]).toMatch(new RegExp(`^Already imported from Leave View ${TAG}\\.xlsx, `));
       expect(rowOf(v, 3)).toMatchObject({ status: 'ready' });
       const applied = (await apply(second).expect(200)).body as View;
-      expect(applied.kept).toEqual({ leaves: 1, adjustments: 0 });
+      expect(applied.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 0 });
     });
 
     it('undoing frees its rows: the same file uploaded again is applied again', async () => {
@@ -576,8 +588,181 @@ describe('Leave import (e2e)', () => {
       const v = (await upload(secondFile, `Leave View ${TAG} October.xlsx`)).body as View;
       expect(v.sameFile).toBeNull();
       expect(rowOf(v, 3)).toMatchObject({ status: 'ready' });
-      expect((await apply(v.id).expect(200)).body.kept).toEqual({ leaves: 1, adjustments: 0 });
+      expect((await apply(v.id).expect(200)).body.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 0 });
       expect(await prisma.leaveRequest.count({ where: { zohoLinkId: `${ZARA_ZOHO}19` } })).toBe(1);
+    });
+  });
+
+  describe('Zoho’s Working from home as work-from-home days (owner, 21 October 2026: "Yes, as approved WFH days")', () => {
+    const M_WFH = `${YEAR}-08`;
+    const M_WFH2 = `${YEAR}-09`;
+    const WREN_ZOHO = String(50_000_000 + (Date.now() % 10_000_000));
+    const WALT_ZOHO = String(40_000_000 + (Date.now() % 10_000_000));
+    const wren = () => `Wren Remote ${TAG} ${WREN_ZOHO}`;
+    const walt = () => `Walt Remote ${TAG} ${WALT_ZOHO}`;
+    const full = (date: string) => ({ date, duration: 'Full Day' as const });
+    const off = (date: string) => ({ date, duration: 'Holiday/Weekend' as const });
+    let rows: ZohoLeaveIn[];
+    let file: Buffer;
+    let picks: Record<string, string>;
+    let importId: string;
+    let recordedId: string;
+    const wfhOf = (id: string) => prisma.wfhRequest.findMany({ where: { importId: id }, orderBy: [{ employeeId: 'asc' }, { date: 'asc' }], include: { steps: { orderBy: { id: 'asc' } } } });
+
+    beforeAll(async () => {
+      const wrenEmployment = await person('wren', `Wren Remote ${TAG}`, '2024-01-01');
+      await person('walt', `Walt Remote ${TAG}`, '2024-01-01');
+      await prisma.employee.update({ where: { id: ids.wren }, data: { zohoPeopleId: WREN_ZOHO } });
+      await prisma.employee.update({ where: { id: ids.walt }, data: { zohoPeopleId: WALT_ZOHO } });
+      // Wren's direct manager decides her pending request; Walt has nobody in charge: straight to HR
+      await prisma.employment.update({ where: { id: wrenEmployment }, data: { managerId: ids.mia } });
+      const aug = workDays(M_WFH);
+      // a Thursday and the Sunday after it, both working days, the Friday and Saturday between rest days
+      const thu = aug.find((d) => d > aug[0] && weekday(d) === 4 && aug.includes(addDays(d, 3)))!;
+      const sep = workDays(M_WFH2);
+      // Sunday to Tuesday, all working days, the Monday made an official holiday here (Zoho counts it a full day)
+      const sun = sep.find((d) => weekday(d) === 0 && sep.includes(addDays(d, 1)) && sep.includes(addDays(d, 2)))!;
+      const holiday = addDays(sun, 1);
+      await prisma.holiday.create({ data: { date: toDateOnly(holiday), nameEn: `WFH import holiday ${TAG}` } });
+      holidays.add(holiday);
+      const later = (d: string, gap: number) => sep.find((x) => x > addDays(d, gap))!;
+      const pending = later(sun, 7);
+      const rejected = later(pending, 1);
+      const cancelled = later(rejected, 1);
+      const recorded = later(cancelled, 3);
+      picks = { a1: aug[0], thu, sun: addDays(thu, 3), s: sun, holiday, s2: addDays(sun, 2), pending, rejected, cancelled, recorded, walt: aug[1], leave: aug.find((d) => d > addDays(thu, 6))! };
+      // a work-from-home day HR recorded already, on the system
+      recordedId = (await api().post('/api/wfh').set('Cookie', hr).send({ employeeId: ids.wren, date: recorded, reason: 'Recorded before the import' }).expect(201)).body.id;
+      rows = [
+        { linkId: `${WREN_ZOHO}01`, employee: wren(), type: 'Working from home', status: 'Approved', days: [full(picks.a1)] }, // 2
+        { linkId: `${WREN_ZOHO}02`, employee: wren(), type: 'Working from home', status: 'Approved', days: [full(thu), off(addDays(thu, 1)), off(addDays(thu, 2)), full(addDays(thu, 3))] }, // 3
+        { linkId: `${WREN_ZOHO}03`, employee: wren(), type: 'Working from home', status: 'Approved', days: [full(sun), full(holiday), full(addDays(sun, 2))] }, // 4: a holiday inside
+        { linkId: `${WREN_ZOHO}04`, employee: wren(), type: 'Working from home', status: 'Pending', days: [full(pending)] }, // 5
+        { linkId: `${WREN_ZOHO}05`, employee: wren(), type: 'Working from home', status: 'Rejected', days: [full(rejected)] }, // 6
+        { linkId: `${WREN_ZOHO}06`, employee: wren(), type: 'Working from home', status: 'Cancelled', days: [full(cancelled)] }, // 7
+        { linkId: `${WREN_ZOHO}07`, employee: wren(), type: 'Working from home', status: 'Approved', days: [full(recorded)] }, // 8: already one
+        { linkId: `${WREN_ZOHO}08`, employee: wren(), type: 'Working from home', status: 'Approved', days: [full(picks.a1)] }, // 9: the same day as row 2
+        { linkId: `${WALT_ZOHO}01`, employee: walt(), type: 'Working from home', status: 'Pending', days: [full(picks.walt)] }, // 10: nobody in charge
+        { linkId: `${WREN_ZOHO}09`, employee: wren(), type: 'Annual Leave', status: 'Approved', days: [full(picks.leave)] }, // 11: leave alongside
+      ];
+      file = await zohoLeaveWorkbook(rows);
+    });
+
+    it('defaults Working from home to work-from-home days: one a working day, Zoho’s holidays and weekends and the holidays here left out', async () => {
+      const v = (await upload(file, `Leave View WFH ${TAG}.xlsx`)).body as View;
+      importId = v.id;
+      expect(v.types.find((t) => t.zohoType === 'Working from home')).toMatchObject({ typeId: null, wfh: true, chosen: false, note: 'Imported as approved work-from-home days (not leave): they don’t touch balances or pay.' });
+      expect(rowOf(v, 2)).toMatchObject({ status: 'ready', wfh: true, type: null, days: 1, wfhDays: [picks.a1], pending: false });
+      expect(rowOf(v, 3)).toMatchObject({ status: 'ready', wfh: true, days: 2, wfhDays: [picks.thu, picks.sun] });
+      expect(rowOf(v, 3).notes).toContain(`Left out: ${shown(addDays(picks.thu, 1))} and ${shown(addDays(picks.thu, 2))}, holidays or weekends in Zoho.`);
+      // the limits (2 a month, 7 days apart) don't block history: said, as Apply says them
+      expect(rowOf(v, 3).warnings).toEqual(
+        expect.arrayContaining([expect.stringMatching(/^Two work from home days must be at least 7 days apart/), expect.stringMatching(/days of working from home are already asked for for Wren Remote/)]),
+      );
+      expect(rowOf(v, 4)).toMatchObject({ status: 'ready', days: 2, wfhDays: [picks.s, picks.s2] });
+      expect(rowOf(v, 4).notes).toContain(`Left out: ${shown(picks.holiday)}, a rest day or official holiday here.`);
+      expect(rowOf(v, 5)).toMatchObject({ status: 'ready', wfh: true, pending: true, wfhDays: [picks.pending] });
+      expect(rowOf(v, 5).notes).toContain('Pending in Zoho People: imported as a work-from-home request waiting for its decision here, the approver in charge’s, then HR’s.');
+      expect(rowOf(v, 6)).toMatchObject({ status: 'skipped', reasons: ['Rejected in Zoho People: not imported.'] });
+      expect(rowOf(v, 7)).toMatchObject({ status: 'skipped', reasons: ['Cancelled in Zoho People: not imported.'] });
+      expect(rowOf(v, 8)).toMatchObject({ status: 'duplicate', reasons: [`Already a work-from-home day on ${shown(picks.recorded)} (approved).`] });
+      expect(rowOf(v, 9)).toMatchObject({ status: 'duplicate', reasons: [`Already a work-from-home day on ${shown(picks.a1)} in row 2 of the file.`] });
+      expect(rowOf(v, 10)).toMatchObject({ status: 'ready', wfh: true, pending: true, employee: { id: ids.walt } });
+      expect(rowOf(v, 11)).toMatchObject({ status: 'ready', wfh: false, type: { id: types.annual } });
+      expect(v.counts).toMatchObject({ ready: 6, duplicate: 2, skipped: 2, pending: 2 });
+      expect(await prisma.wfhRequest.count({ where: { importId } })).toBe(0);
+    });
+
+    it('HR can still skip it, or choose work-from-home days for it again', async () => {
+      let v = (await mapType(importId, { zohoType: 'Working from home', skipped: true }).expect(200)).body as View;
+      expect(v.types.find((t) => t.zohoType === 'Working from home')).toMatchObject({ typeId: null, wfh: false, chosen: true, note: null });
+      for (const n of [2, 3, 4, 5, 8, 9, 10]) {
+        expect(rowOf(v, n)).toMatchObject({ status: 'skipped', reasons: ['“Working from home” is skipped: choose Work-from-home days for it above to import these rows.'] });
+      }
+      expect(rowOf(v, 11)).toMatchObject({ status: 'ready' });
+      v = (await mapType(importId, { zohoType: 'Working from home', wfh: true }).expect(200)).body as View;
+      expect(v.types.find((t) => t.zohoType === 'Working from home')).toMatchObject({ wfh: true, chosen: true });
+      expect(rowOf(v, 2)).toMatchObject({ status: 'ready', wfh: true });
+      v = (await mapType(importId, { zohoType: 'Working from home' }).expect(200)).body as View;
+      expect(v.types.find((t) => t.zohoType === 'Working from home')).toMatchObject({ wfh: true, chosen: false });
+      expect(v.counts).toMatchObject({ ready: 6 });
+    });
+
+    it('applies with the leave, in one go: approved days, Zoho’s pending as requests at their first step, nobody told of history', async () => {
+      const v = (await apply(importId).expect(200)).body as View;
+      expect([2, 3, 4, 5, 10, 11].map((n) => rowOf(v, n).status)).toEqual(Array(6).fill('applied'));
+      expect(v.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 7 });
+      expect(rowOf(v, 3)).toMatchObject({ wfh: true, days: 2, wfhDays: [picks.thu, picks.sun] });
+      // what bringing them over said comes back with the row
+      expect(rowOf(v, 3).warnings).toEqual(expect.arrayContaining([expect.stringMatching(/^Two work from home days must be at least 7 days apart/)]));
+      const made = await wfhOf(importId);
+      const of = (key: string) => made.filter((w) => w.employeeId === ids[key]);
+      expect(of('wren').map((w) => [fromDateOnly(w.date), w.status])).toEqual(
+        [
+          [picks.a1, 'approved'],
+          [picks.thu, 'approved'],
+          [picks.sun, 'approved'],
+          [picks.s, 'approved'],
+          [picks.s2, 'approved'],
+          [picks.pending, 'with_manager'],
+        ].sort((x, y) => x[0].localeCompare(y[0])),
+      );
+      // the holiday, the Friday and the Saturday aren't work-from-home days
+      expect(made.map((w) => fromDateOnly(w.date))).not.toEqual(expect.arrayContaining([picks.holiday]));
+      expect(made.map((w) => fromDateOnly(w.date))).not.toEqual(expect.arrayContaining([addDays(picks.thu, 1)]));
+      const approved = made.filter((w) => w.status === 'approved');
+      for (const w of approved) {
+        expect(w).toMatchObject({ source: 'zoho', recordedByHr: true, importId, managerId: null });
+        expect(w.steps.map((x) => x.kind)).toEqual(['imported']);
+      }
+      expect(approved.find((w) => fromDateOnly(w.date) === picks.sun)!.warnings.length).toBeGreaterThan(0);
+      expect(approved.find((w) => fromDateOnly(w.date) === picks.thu)!.zohoLinkId).toBe(`${WREN_ZOHO}02:${picks.thu}`);
+      // pending in Zoho: Wren's with her manager, Walt's (nobody in charge) with HR
+      const wrenPending = of('wren').find((w) => w.status === 'with_manager')!;
+      expect(wrenPending).toMatchObject({ managerId: ids.mia, approverRole: 'direct_manager', recordedByHr: false, source: 'zoho', importId });
+      expect(wrenPending.steps.map((x) => x.kind)).toEqual(['submitted']);
+      expect(wrenPending.steps[0].comment).toBe(`Imported from Leave View WFH ${TAG}.xlsx: pending in Zoho People.`);
+      const [waltPending] = of('walt');
+      expect(waltPending).toMatchObject({ status: 'with_hr', managerId: null });
+      expect(waltPending.steps.map((x) => x.kind)).toEqual(['submitted', 'no_manager']);
+      // the leave of the same file, applied with them
+      expect(await prisma.leaveRequest.count({ where: { importId, employeeId: ids.wren, status: 'approved' } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityType: 'wfh_request', action: 'import', entityId: { in: made.map((w) => w.id) } } })).toBe(7);
+      // the day HR recorded is left as it was
+      expect(await prisma.wfhRequest.findUnique({ where: { id: recordedId }, select: { importId: true, status: true } })).toEqual({ importId: null, status: 'approved' });
+    });
+
+    it('re-importing makes nothing new: the same file is said, another with the same rows has them as work-from-home days already', async () => {
+      const before = await prisma.wfhRequest.count({ where: { employeeId: { in: [ids.wren, ids.walt] } } });
+      const again = (await upload(file, `Leave View WFH ${TAG} again.xlsx`)).body as View;
+      expect(again.sameFile).not.toBeNull();
+      expect(again.canApply).toBe(false);
+      const other = (await upload(await zohoLeaveWorkbook([rows[0], rows[1], { ...rows[0], linkId: `${WREN_ZOHO}10` }]), `Leave View WFH ${TAG} October.xlsx`)).body as View;
+      expect(other.sameFile).toBeNull();
+      expect(rowOf(other, 2)).toMatchObject({ status: 'duplicate', reasons: [`Already a work-from-home day on ${shown(picks.a1)} (imported from Leave View WFH ${TAG}.xlsx).`] });
+      expect(rowOf(other, 3)).toMatchObject({ status: 'duplicate' });
+      expect(rowOf(other, 3).reasons).toHaveLength(2);
+      // another link id, the same person and day
+      expect(rowOf(other, 4)).toMatchObject({ status: 'duplicate', reasons: [`Already a work-from-home day on ${shown(picks.a1)} (imported from Leave View WFH ${TAG}.xlsx).`] });
+      expect(other.canApply).toBe(false);
+      await apply(other.id).expect(409);
+      expect(await prisma.wfhRequest.count({ where: { employeeId: { in: [ids.wren, ids.walt] } } })).toBe(before);
+    });
+
+    it('undo removes the work-from-home days it made with its leave; a Super Admin deletes it only after', async () => {
+      const refused = await api().delete(`/api/leave/import/${importId}`).set('Cookie', superAdmin).expect(409);
+      expect(said(refused)[0]).toBe('1 leave and 7 work-from-home days from this import are still in the system. Undo it first, then delete it.');
+      const made = (await wfhOf(importId)).map((w) => w.id);
+      const v = (await undo(importId).expect(200)).body as View;
+      expect(v.undoneAt).not.toBeNull();
+      expect(v.kept).toEqual({ leaves: 0, adjustments: 0, wfhDays: 0 });
+      expect(await prisma.wfhRequest.count({ where: { id: { in: made } } })).toBe(0);
+      expect(await prisma.leaveRequest.count({ where: { importId } })).toBe(0);
+      expect(await prisma.auditLog.count({ where: { entityType: 'wfh_request', action: 'delete', entityId: { in: made } } })).toBe(7);
+      expect(await prisma.wfhRequest.count({ where: { id: recordedId } })).toBe(1);
+      // its rows are free again
+      expect([2, 3, 4, 5, 10, 11].map((n) => rowOf(v, n).status)).toEqual(Array(6).fill('ready'));
+      await api().delete(`/api/leave/import/${importId}`).set('Cookie', superAdmin).expect(204);
     });
   });
 

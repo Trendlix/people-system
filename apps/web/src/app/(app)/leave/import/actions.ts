@@ -56,10 +56,10 @@ export async function chooseImportPerson(id: string, _prev: FormState, fd: FormD
   return change(id, 'PATCH', '/people', choice, 'skipped' in choice ? 'Skipped.' : choice.employeeId ? 'Saved.' : 'Back to the match by code or name.');
 }
 
-/** A Zoho leave type's mapping: the system's type, skip, or back to the default. */
+/** A Zoho leave type's mapping: the system's type, work-from-home days, skip, or back to the default. */
 export async function mapImportType(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const choice = typeChoice(fd);
-  if (!choice) return { errors: ['Choose a leave type from the list, or Skip.'] };
+  if (!choice) return { errors: ['Choose a leave type from the list, work-from-home days, or Skip.'] };
   return change(id, 'PATCH', '/types', choice, 'Saved.');
 }
 

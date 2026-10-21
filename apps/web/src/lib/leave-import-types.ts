@@ -2,6 +2,7 @@ import type { LeaveImportRowStatus, LeaveImportSource, ZohoApproval } from '@tre
 
 // A leave import as the API sends it (owner, 21 October 2026: "how to import bulk leaves?"; apps/api/src/leave/
 // leave-import.service.ts): the file, its people, a Zoho file's leave types, each row with its status, and the history.
+// Zoho's Working from home rows are work-from-home days, not leave (owner, 21 October 2026: "Yes, as approved WFH days").
 // Dates YYYY-MM-DD, moments ISO.
 
 export interface LeaveImportEmployee {
@@ -30,9 +31,13 @@ export interface LeaveImportPerson {
 export interface LeaveImportType {
   zohoType: string;
   rows: number;
+  /** The system's type its rows are imported as; null: skipped, or work-from-home days. */
   typeId: string | null;
+  /** Its rows are imported as work-from-home days. */
+  wfh: boolean;
   chosen: boolean;
   defaultTypeId: string | null;
+  defaultWfh: boolean;
   note: string | null;
 }
 
@@ -58,6 +63,9 @@ export interface LeaveImportRow {
   fileDays: number | null;
   halfDay: boolean;
   pending: boolean;
+  /** A work-from-home row: no type; its days, those it makes or made. */
+  wfh: boolean;
+  wfhDays: string[] | null;
   approval: ZohoApproval | null;
   approvalText: string | null;
   balance: number | null;
@@ -93,7 +101,14 @@ export interface LeaveImportView {
   typeOptions: { id: string; nameEn: string; kind: string; balance: string }[];
   canApply: boolean;
   undoable: number;
-  kept: { leaves: number; adjustments: number };
+  kept: LeaveImportKept;
+}
+
+/** What an import made that is still in the system: its leave, balance changes and work-from-home days. */
+export interface LeaveImportKept {
+  leaves: number;
+  adjustments: number;
+  wfhDays: number;
 }
 
 export interface LeaveImportHistoryRow {
@@ -104,7 +119,7 @@ export interface LeaveImportHistoryRow {
   createdAt: string;
   createdBy: string | null;
   rows: { leaves: number; balances: number };
-  kept: { leaves: number; adjustments: number };
+  kept: LeaveImportKept;
   appliedAt: string | null;
   appliedBy: string | null;
   undoneAt: string | null;

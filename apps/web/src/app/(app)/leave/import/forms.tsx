@@ -1,5 +1,6 @@
 'use client';
 
+import { ZOHO_WFH_TARGET, ZOHO_WFH_TARGET_LABEL } from '@trendlix/shared';
 import { useActionState, useRef, useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import { Select } from '@/components/select';
@@ -8,7 +9,8 @@ import { UPLOAD_ACCEPT, uploadProblem } from './import';
 
 // The leave import's forms (owner, 21 October 2026: "how to import bulk leaves?"): the upload, checked here for a quick
 // answer (an .xlsx of up to 5 MB) and again by the API, which reads it by its content; and a Zoho leave type's mapping,
-// saved as soon as it is chosen (a searchable list of the leave types on, or Skip). The people's choices and Apply, Undo
+// saved as soon as it is chosen (a searchable list: Skip, work-from-home days, which Working from home is by default,
+// owner, 21 October 2026: "Yes, as approved WFH days", and the leave types on). The people's choices and Apply, Undo
 // and Delete use the attendance import's and the contracts' buttons.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
@@ -53,7 +55,7 @@ export function UploadLeaveForm({ action }: { action: Action }) {
   );
 }
 
-/** A Zoho leave type's mapping: the system's type its rows are imported as, or Skip; saved when chosen. */
+/** A Zoho leave type's mapping: the system's type its rows are imported as, work-from-home days, or Skip; saved when chosen. */
 export function TypeMapForm({
   action,
   zohoType,
@@ -63,8 +65,8 @@ export function TypeMapForm({
 }: {
   action: Action;
   zohoType: string;
-  /** The type it is imported as now; null: skipped. */
-  value: string | null;
+  /** What it is imported as now: a type's id, ZOHO_WFH_TARGET (work-from-home days), or 'skip'. */
+  value: string;
   options: readonly { id: string; nameEn: string; kind: string }[];
   disabled?: boolean;
 }) {
@@ -80,8 +82,9 @@ export function TypeMapForm({
         <label htmlFor={fid('type')} className="label">
           Imported as
         </label>
-        <Select id={fid('type')} name="typeId" defaultValue={value ?? 'skip'} disabled={disabled || pending} onChange={() => form.current?.requestSubmit()} className="input">
+        <Select id={fid('type')} name="typeId" defaultValue={value} disabled={disabled || pending} onChange={() => form.current?.requestSubmit()} className="input">
           <option value="skip">Skip: not imported</option>
+          <option value={ZOHO_WFH_TARGET}>{ZOHO_WFH_TARGET_LABEL}</option>
           <optgroup label="The law’s leave types">
             {law.map((o) => (
               <option key={o.id} value={o.id}>

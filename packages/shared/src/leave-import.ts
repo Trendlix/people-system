@@ -5,9 +5,10 @@
 // requests in the system's own approval, its rejected and cancelled leave listed and not imported), and "while importing
 // make sure there will be no duplicates from the previous imported files" (owner, 21 October 2026): a Zoho row's link id
 // is kept on the leave it makes, a leave already in the system or imported before is a duplicate, the same file uploaded
-// again is said and all its rows are duplicates, and a balance already at its figure changes nothing. These are the pure
-// rules: reading a cell's text, the Zoho export's own columns, matching people, the checks of a row and the words the
-// review says. The API reads the workbook and applies; the web app shows the review.
+// again is said and all its rows are duplicates, and a balance already at its figure changes nothing. Zoho's "Working
+// from home" rows (owner, 21 October 2026: "Yes, as approved WFH days") become work-from-home days, one a working day,
+// not leave. These are the pure rules: reading a cell's text, the Zoho export's own columns, matching people, the checks
+// of a row and the words the review says. The API reads the workbook and applies; the web app shows the review.
 
 import { decidesConfidentialStage } from './confidential.js';
 import { matchPerson, nameKey, type MatchCandidate } from './attendance-import.js';
@@ -188,9 +189,21 @@ export interface ImportLeaveType {
   active: boolean;
 }
 
-/** Why Working from home is skipped by default (owner's brief, 21 October 2026). */
-export const ZOHO_WFH_NOTE =
-  'Working from home isn’t leave: those are working days at home, covered by attendance and home locations. Skipped by default.';
+/**
+ * Zoho People's "Working from home" rows (owner, 21 October 2026, asked of the 85 approved this year: "Yes, as approved
+ * WFH days"): a target of the type mapping of its own, next to the leave types and Skip, kept in the import's type map
+ * as this. Their days become work-from-home days (wfh.ts), never leave.
+ */
+export const ZOHO_WFH_TARGET = 'wfh';
+
+/** The target as the mapping offers it. */
+export const ZOHO_WFH_TARGET_LABEL = 'Work-from-home days';
+
+/** A row imported as work-from-home days, as the review names its type. */
+export const WFH_IMPORT_ROW_LABEL = 'Work-from-home day';
+
+/** Why Working from home is imported as work-from-home days by default (owner, 21 October 2026: "Yes, as approved WFH days"). */
+export const ZOHO_WFH_NOTE = 'Imported as approved work-from-home days (not leave): they don’t touch balances or pay.';
 
 /** Why Compensatory Off is skipped unless a type of the system matches it (21 October 2026). */
 export const ZOHO_COMP_OFF_NOTE =
@@ -214,26 +227,108 @@ const LAW_TYPE_WORDS: readonly [RegExp, string][] = [
 /**
  * The system's type a Zoho leave type is imported as unless HR chooses another (owner's brief, 21 October 2026): Annual
  * Leave as annual leave, Sick Leave as sick leave, Casual leave (Exceptional) as the law's casual leave, and the law's
- * others by their names; Working from home skipped (not leave); Compensatory Off skipped unless a type of the system is
- * named for it (HR adds one in Leave Setup); any other the type of the same name, else skipped. Only types on.
+ * others by their names; Working from home as work-from-home days (`wfh`; owner, 21 October 2026: "Yes, as approved WFH
+ * days"); Compensatory Off skipped unless a type of the system is named for it (HR adds one in Leave Setup); any other
+ * the type of the same name, else skipped. Only types on.
  */
-export function defaultZohoType(zohoType: string, types: readonly ImportLeaveType[]): { typeId: string | null; note: string | null } {
+export function defaultZohoType(zohoType: string, types: readonly ImportLeaveType[]): { typeId: string | null; wfh: boolean; note: string | null } {
   const k = headingKey(zohoType);
   const on = types.filter((t) => t.active);
-  if (/workingfromhome|workfromhome|wfh|remotework/.test(k)) return { typeId: null, note: ZOHO_WFH_NOTE };
+  if (/workingfromhome|workfromhome|wfh|remotework/.test(k)) return { typeId: null, wfh: true, note: ZOHO_WFH_NOTE };
   if (/compensatory|compoff/.test(k)) {
     const own = on.find((t) => /compensatory|compoff|inlieu/.test(headingKey(t.nameEn)));
-    return own ? { typeId: own.id, note: null } : { typeId: null, note: ZOHO_COMP_OFF_NOTE };
+    return own ? { typeId: own.id, wfh: false, note: null } : { typeId: null, wfh: false, note: ZOHO_COMP_OFF_NOTE };
   }
   const same = on.find((t) => headingKey(t.nameEn) === k);
-  if (same) return { typeId: same.id, note: null };
+  if (same) return { typeId: same.id, wfh: false, note: null };
   for (const [words, key] of LAW_TYPE_WORDS) {
     if (!words.test(k)) continue;
     const law = on.find((t) => t.key === key);
-    if (law) return { typeId: law.id, note: null };
+    if (law) return { typeId: law.id, wfh: false, note: null };
   }
-  return { typeId: null, note: ZOHO_UNMATCHED_NOTE };
+  return { typeId: null, wfh: false, note: ZOHO_UNMATCHED_NOTE };
 }
+
+/** What a Zoho type's rows are imported as: a leave type of the system, work-from-home days, or nothing (skipped). */
+export type ZohoTypeTarget = { kind: 'leave'; typeId: string } | { kind: 'wfh' } | { kind: 'skip' };
+
+/**
+ * A Zoho type's target: HR's choice as the type map keeps it ('skip', ZOHO_WFH_TARGET or a type's id), else the default
+ * (defaultZohoType). HR may still skip Working from home, or import any other type as work-from-home days.
+ */
+export function zohoTypeTarget(chosen: string | undefined, byDefault: { typeId: string | null; wfh: boolean }): ZohoTypeTarget {
+  if (chosen === 'skip') return { kind: 'skip' };
+  if (chosen === ZOHO_WFH_TARGET) return { kind: 'wfh' };
+  if (chosen) return { kind: 'leave', typeId: chosen };
+  if (byDefault.wfh) return { kind: 'wfh' };
+  return byDefault.typeId ? { kind: 'leave', typeId: byDefault.typeId } : { kind: 'skip' };
+}
+
+// ---------- Zoho's Working from home, as work-from-home days ----------
+
+/** Why a day of a work-from-home row isn't one of its days: a holiday or weekend in Zoho, a rest day or official holiday here. */
+export type WfhImportLeftOut = { date: string; why: 'off_in_zoho' | 'off_here' };
+
+/** The longest row read as work-from-home days, in days from From to To. */
+export const WFH_IMPORT_MAX_SPAN = 366;
+
+/**
+ * The work-from-home days a Zoho row makes (owner, 21 October 2026: "Yes, as approved WFH days"): one a working day from
+ * From to To. Left out: the days Zoho's details call Holiday/Weekend, and those the system doesn't count as working days
+ * (`countsDay`: the shift's working days without the official holidays, as recorded leave counts them). A half day in
+ * Zoho is a day (`halfDays` says which). Dates YYYY-MM-DD; none for a row that isn't one.
+ */
+export function zohoWfhDays(
+  from: string,
+  to: string,
+  details: readonly ZohoLeaveDay[] | null,
+  countsDay: (date: string) => boolean,
+): { days: string[]; leftOut: WfhImportLeftOut[]; halfDays: string[] } {
+  const out = { days: [] as string[], leftOut: [] as WfhImportLeftOut[], halfDays: [] as string[] };
+  if (!importDate(from) || !importDate(to) || to < from || spanOf(from, to) > WFH_IMPORT_MAX_SPAN) return out;
+  const kindOn = new Map((details ?? []).map((d) => [d.date, d.kind]));
+  for (let d = from; d <= to; d = nextDay(d)) {
+    if (kindOn.get(d) === 'off') out.leftOut.push({ date: d, why: 'off_in_zoho' });
+    else if (!countsDay(d)) out.leftOut.push({ date: d, why: 'off_here' });
+    else {
+      out.days.push(d);
+      if (kindOn.get(d) === 'half') out.halfDays.push(d);
+    }
+  }
+  return out;
+}
+
+/** "Left out: 24/10/2026 and 25/10/2026, holidays or weekends in Zoho; 29/10/2026, a rest day or official holiday here." Null: none. */
+export function wfhLeftOutText(leftOut: readonly WfhImportLeftOut[]): string | null {
+  const zoho = leftOut.filter((l) => l.why === 'off_in_zoho').map((l) => shown(l.date));
+  const here = leftOut.filter((l) => l.why === 'off_here').map((l) => shown(l.date));
+  const parts = [
+    zoho.length ? `${listOf(zoho)}, ${zoho.length === 1 ? 'a holiday or weekend' : 'holidays or weekends'} in Zoho` : null,
+    here.length ? `${listOf(here)}, ${here.length === 1 ? 'a rest day or official holiday' : 'rest days or official holidays'} here` : null,
+  ].filter(Boolean);
+  return parts.length ? `Left out: ${parts.join('; ')}.` : null;
+}
+
+/** Zoho's half days of a work-from-home row: each one a whole work-from-home day here. Null: none. */
+export const wfhHalfDaysText = (dates: readonly string[]): string | null =>
+  dates.length ? `${listOf(dates.map(shown))} ${dates.length === 1 ? 'is a half day' : 'are half days'} in Zoho People: a work-from-home day is a whole day here.` : null;
+
+/** Days of a work-from-home row outside every employment of the person: left out. */
+export const wfhOutsideEmploymentText = (dates: readonly string[], name: string): string =>
+  `${listOf(dates.map(shown))} ${dates.length === 1 ? 'isn’t' : 'aren’t'} within one of ${name}’s employments: left out.`;
+
+/** A day of a work-from-home row that is one already (owner's brief, 21 October 2026): nothing made for it. `how`: its status, or the file it came from. */
+export const alreadyWfhText = (date: string, how: string): string => `Already a work-from-home day on ${shown(date)} (${how}).`;
+
+/** A day of a work-from-home row that an earlier row of the file has too. */
+export const wfhInFileText = (date: string, row: number): string => `Already a work-from-home day on ${shown(date)} in row ${row} of the file.`;
+
+/** A work-from-home row pending in Zoho: carried on as a request in the system's own approval, as pending leave is. */
+export const ZOHO_WFH_PENDING_NOTE =
+  'Pending in Zoho People: imported as a work-from-home request waiting for its decision here, the approver in charge’s, then HR’s.';
+
+/** The key a work-from-home day keeps of its Zoho row, once only: the row's ZOHO_LINK_ID and the day. */
+export const wfhLinkKey = (linkId: string, date: string): string => `${linkId}:${date}`;
 
 // ---------- the people ----------
 
@@ -556,7 +651,11 @@ const shown = (ymd: string) => `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.sli
 const daysText = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 const timesText = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`);
 const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const whenText = (from: string, to: string) => (from === to ? `on ${shown(from)}` : `from ${shown(from)} to ${shown(to)}`);
+/** The day after a date. */
+const nextDay = (ymd: string) => new Date(Date.parse(`${ymd}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+/** The days from one date to another, both counted. */
+const spanOf = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+const whenText =(from: string, to: string) => (from === to ? `on ${shown(from)}` : `from ${shown(from)} to ${shown(to)}`);
 function monthsText(months: number): string {
   if (months > 0 && months % 12 === 0) return `${months / 12} ${months === 12 ? 'year' : 'years'}`;
   return `${months} ${months === 1 ? 'month' : 'months'}`;

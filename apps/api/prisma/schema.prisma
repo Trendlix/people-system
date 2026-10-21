@@ -1974,11 +1974,17 @@ model WfhRequest {
   createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime         @updatedAt @map("updated_at") @db.Timestamptz
   steps         WfhRequestStep[]
+  // brought over by a leave import (owner, 21 October 2026, of Zoho People's "Working from home" rows: "Yes, as approved
+  // WFH days"): the import, which Undo removes it with; and its Zoho row's ZOHO_LINK_ID with the day, once only
+  importId      String?          @map("import_id") @db.Uuid
+  leaveImport   LeaveImport?     @relation(fields: [importId], references: [id], onDelete: Restrict)
+  zohoLinkId    String?          @unique @map("zoho_link_id")
 
   @@index([employeeId, date])
   @@index([status])
   @@index([managerId])
   @@index([date])
+  @@index([importId])
   @@map("wfh_requests")
 }
 
@@ -2302,6 +2308,7 @@ model LeaveImport {
   undoneAt    DateTime?         @map("undone_at") @db.Timestamptz // once nothing it made is left
   leaves      LeaveRequest[]
   adjustments LeaveAdjustment[]
+  wfhDays     WfhRequest[]
 
   @@index([fileHash])
   @@map("leave_imports")

@@ -30,17 +30,22 @@ import {
   personIds,
   rowDaysText,
   rowPersonText,
+  rowTypeText,
   STATUS_TONE,
   statusLabel,
+  typeMapValue,
   undoConfirmText,
+  undoWhatText,
   whenText,
+  wfhDaysListText,
 } from '../import';
 
 // A leave import's review (owner, 21 October 2026: "how to import bulk leaves?"; "Both" and "Our Excel template"; Zoho
 // People's leave export too): the file, where it comes from, and the counts; what to check first (the same file imported
 // before: every row a duplicate; holidays Zoho counts that aren't set here; the no-shows on a draft payroll the leave turns
-// into leave); a Zoho file's leave types, each mapped once to the system's or skipped (Working from home isn't leave;
-// Compensatory Off waits for a type of its own in Leave Setup); the people to confirm or choose (a name alone, a close
+// into leave); a Zoho file's leave types, each mapped once to the system's, to work-from-home days or skipped (Working
+// from home as work-from-home days, owner, 21 October 2026: "Yes, as approved WFH days"; Compensatory Off waits for a
+// type of its own in Leave Setup); the people to confirm or choose (a name alone, a close
 // name, not found) or skip; then every row of Leaves taken and Balances with its status and why, the warnings that don't
 // block history and what applying does on the payroll; Apply (the rows ready that are the user's), Undo and, for a Super
 // Admin, Delete. A C-level person's rows are one line for HR: the CEO imports them (owner, 19 October 2026). The API
@@ -123,11 +128,14 @@ function LeavesTable({ rows }: { rows: LeaveImportRow[] }) {
                 <Who r={r} />
               </td>
               <td className="min-w-36 text-sm">
-                {r.type?.nameEn ?? r.typeText}
-                {r.type && r.typeText && r.typeText !== r.type.nameEn && <span className="block text-xs text-muted">In the file: {r.typeText}</span>}
+                {rowTypeText(r)}
+                {(r.type || r.wfh) && r.typeText && r.typeText !== rowTypeText(r) && <span className="block text-xs text-muted">In the file: {r.typeText}</span>}
               </td>
               <td className="text-sm whitespace-nowrap tabular-nums">{whenText(r)}</td>
-              <td className="text-sm whitespace-nowrap tabular-nums">{rowDaysText(r)}</td>
+              <td className="text-sm tabular-nums">
+                <span className="whitespace-nowrap">{rowDaysText(r)}</span>
+                {wfhDaysListText(r) && <span className="block max-w-40 text-xs text-muted">{wfhDaysListText(r)}</span>}
+              </td>
               <td className="min-w-64 max-w-md">
                 <Notes r={r} />
               </td>
@@ -249,7 +257,9 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
             <h2 id="types-heading" className="text-lg font-semibold">
               Leave Types
             </h2>
-            <p className="text-sm text-muted">Each of Zoho&apos;s leave types once: the system&apos;s type its rows are imported as, or Skip.</p>
+            <p className="text-sm text-muted">
+              Each of Zoho&apos;s leave types once: the system&apos;s type its rows are imported as, work-from-home days, or Skip.
+            </p>
           </div>
           <ul className="card divide-y divide-line-soft">
             {view.types.map((t) => (
@@ -261,7 +271,7 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
                   </span>
                 </div>
                 <div className="space-y-2">
-                  <TypeMapForm action={mapImportType.bind(null, id)} zohoType={t.zohoType} value={t.typeId} options={view.typeOptions} />
+                  <TypeMapForm action={mapImportType.bind(null, id)} zohoType={t.zohoType} value={typeMapValue(t)} options={view.typeOptions} />
                   {t.note && <p className="text-xs text-muted">{t.note}</p>}
                 </div>
               </li>
@@ -332,7 +342,8 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
             </h2>
             <p className="text-sm text-muted">
               Counted as recorded leave is: working days by the person&apos;s shift, without rest days and the official holidays; a different figure in the
-              file is a warning and the system&apos;s is used. A type&apos;s limits and a missing document are warnings only: this is history.
+              file is a warning and the system&apos;s is used. A type&apos;s limits and a missing document are warnings only: this is history. A
+              work-from-home row makes a work-from-home day each working day of it, not leave; its limits are warnings only too.
             </p>
           </div>
           <LeavesTable rows={view.leaves} />
@@ -359,9 +370,9 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
           Apply the Import
         </h2>
         <p className="text-sm text-muted">
-          In one go: the leave ready is recorded as approved and marked imported (Zoho&apos;s pending leave as requests, sent to their deciders), then
-          each balance is set. The draft payrolls of their months take the leave; a payroll with the CEO, approved or paid isn&apos;t changed. A
-          C-level person&apos;s rows are the CEO&apos;s to apply.
+          In one go: the leave ready is recorded as approved and marked imported (Zoho&apos;s pending leave as requests, sent to their deciders), with
+          the work-from-home days (approved, or pending ones as requests), then each balance is set. The draft payrolls of their months take the
+          leave; a payroll with the CEO, approved or paid isn&apos;t changed. A C-level person&apos;s rows are the CEO&apos;s to apply.
         </p>
         {view.canApply ? (
           <ActionButton action={applyLeaveImport.bind(null, id)} pendingText="Applying…" variant="primary" confirmText={applyConfirmText(view)}>
@@ -378,8 +389,8 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
             Undo the Import
           </h2>
           <p className="text-sm text-muted">
-            Removes the {view.undoable === 1 ? 'leave or balance change' : `${view.undoable} leaves and balance changes`} it made that you import, while
-            no payroll counting its leave is past its draft; its rows can then be imported again.
+            Removes {undoWhatText(view)} it made that you import, while no payroll counting its leave is past its draft; its rows can then be
+            imported again.
           </p>
           <ActionButton action={undoLeaveImport.bind(null, id)} pendingText="Undoing…" confirmText={undoConfirmText(view)}>
             Undo the import
