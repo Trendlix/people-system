@@ -5,24 +5,30 @@ import {
   ASSET_TYPE_LABELS,
   assetFieldsOf,
   assetLabelUrl,
+  type AssetHistoryView,
   type AssetView,
 } from '@trendlix/shared';
 import Link from 'next/link';
 import { DeleteForm } from '@/components/form';
-import { ASSET_PATHS } from '@/lib/asset-paths';
+import { APP_CUSTODY_PATHS, ASSET_PATHS, CUSTODY_PATHS } from '@/lib/asset-paths';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { deleteAsset } from './actions';
+import { AssetActions } from './asset-actions';
+import { CustodyHistoryList, MaintenanceList } from './asset-history';
 import { PhotoManager } from './asset-photos';
+import { assetPageAction } from './custody-actions';
 import { bookValueText, doneText, holderText, moneyText, quantityText, warrantyText, yearsText } from './assets';
 import { AssetQr, DetailRow, StatusBadge } from './ui';
 
 // An asset's page (owner, 21 October 2026: "i want to add this module with a special permission to the system"; the
 // spec's asset detail at /assets/[code]: "Photos, QR code, all fields, values table, custody history, maintenance log,
 // actions"; "This is the URL inside the QR code"): its photos, its QR code, every field its group has, the values for
-// the CEO, Finance and a Super Admin alone (the API leaves them out for everyone else), the places for its custody
-// history and maintenance log (later steps), and what the caller may do now: Edit, Edit values, Print label, and a
+// the CEO, Finance and a Super Admin alone (the API leaves them out for everyone else), its custody history and
+// maintenance log, and what the caller may do now: Edit, Edit values, Print label, and a
 // Super Admin's Delete (never for one that was in custody: it is disposed of instead). The site's page and the phone
-// pages' show it alike (`surface`).
+// pages' show it alike (`surface`). Since step 3 (custody, 21 October 2026): its custody history and maintenance log
+// (`history`, GET /assets/:code/history; null when it couldn't be read), and for a custodian or a manager Hand over,
+// Send to repair and Back from repair, Mark lost and Mark found, each while its status allows it.
 
 function Card({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
@@ -94,6 +100,8 @@ export function AssetDetail({
   today,
   done,
   photosFailed,
+  history = null,
+  values = false,
 }: {
   asset: AssetView;
   surface: 'site' | 'app';
@@ -101,10 +109,16 @@ export function AssetDetail({
   today: string;
   done?: string | null;
   photosFailed?: number | null;
+  /** Its custody history, maintenance log and actions (step 3); null: not read (an API from before it). */
+  history?: AssetHistoryView | null;
+  /** Whether the caller sees the values (a repair's cost). */
+  values?: boolean;
 }) {
   const fields = assetFieldsOf(asset.group);
   const said = doneText(done, asset.code, photosFailed);
   const site = surface === 'site';
+  const handOverHref = (site ? CUSTODY_PATHS : APP_CUSTODY_PATHS).newWith({ asset: asset.code });
+  const act = (kind: 'repair' | 'back' | 'lost' | 'found') => assetPageAction.bind(null, asset.code, kind, values);
   return (
     <div className="space-y-4">
       {said && (
@@ -117,6 +131,11 @@ export function AssetDetail({
         {asset.can.edit && (
           <Link href={ASSET_PATHS.edit(asset.code)} className="btn btn-primary">
             Edit
+          </Link>
+        )}
+        {history?.can.hand_over && (
+          <Link href={handOverHref} className="btn btn-secondary">
+            Hand over
           </Link>
         )}
         {asset.can.values && site && (
@@ -187,10 +206,19 @@ export function AssetDetail({
           </Card>
 
           <Card title="Custody History">
-            <p className="text-sm text-muted">Hand-overs and returns show here once custody is set up, a later step of Assets.</p>
+            {history ? <CustodyHistoryList history={history} surface={surface} /> : <p className="text-sm text-muted">The custody history could not be loaded.</p>}
           </Card>
           <Card title="Maintenance Log">
-            <p className="text-sm text-muted">Repairs, services and inspections show here once repairs are set up, a later step of Assets.</p>
+            <div className="space-y-4">
+              {history ? <MaintenanceList history={history} surface={surface} /> : <p className="text-sm text-muted">The maintenance log could not be loaded.</p>}
+              {history && (
+                <AssetActions
+                  can={history.can}
+                  values={values}
+                  actions={{ send_to_repair: act('repair'), back_from_repair: act('back'), mark_lost: act('lost'), mark_found: act('found') }}
+                />
+              )}
+            </div>
           </Card>
         </div>
 

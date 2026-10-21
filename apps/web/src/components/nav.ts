@@ -3,7 +3,7 @@
 import { assetsCan, type AssetsAccessView, type Role } from '@trendlix/shared';
 import { ATTENDANCE_PATH, ATTENDANCE_SECTIONS } from '../app/(app)/attendance/sections';
 import { PAYROLL_SECTIONS } from '../app/(app)/payroll/sections';
-import { ASSET_PATHS } from '../lib/asset-paths';
+import { ASSET_PATHS, CUSTODY_PATHS } from '../lib/asset-paths';
 import { KPI_PATHS } from '../lib/kpi-paths';
 import { hasRole, isSelfService } from '../lib/roles';
 
@@ -79,7 +79,9 @@ export const KPIS_NAV: NavItem = {
  * threshold) for a manager or those who see the values. Without access, none of them: the heading is left out (and the
  * API answers 403). In both sidebars: an employee-only custodian sees it too. Step 2 (owner, 21 October 2026: "the
  * connection method"): Drafts From Claude for a custodian or a manager (who confirm them), Connect Claude for anyone
- * with access (the connector reads at their level).
+ * with access (the connector reads at their level). Step 3 (custody, 21 October 2026): Custody, the custody records,
+ * and Holdings, what each person holds, after All Assets, for anyone with access (a custodian or a manager hands over and
+ * receives back from them).
  */
 export const ASSETS_NAV: NavItem = {
   href: ASSET_PATHS.list,
@@ -87,6 +89,8 @@ export const ASSETS_NAV: NavItem = {
   section: ASSET_PATHS.list,
   items: [
     { href: ASSET_PATHS.list, label: 'All Assets', section: ASSET_PATHS.list, audience: 'assets' },
+    { href: CUSTODY_PATHS.list, label: 'Custody', section: CUSTODY_PATHS.list, audience: 'assets' },
+    { href: CUSTODY_PATHS.holders, label: 'Holdings', section: CUSTODY_PATHS.holders, audience: 'assets' },
     { href: ASSET_PATHS.new, label: 'Add Asset', section: ASSET_PATHS.new, audience: 'assets-register' },
     { href: ASSET_PATHS.drafts, label: 'Drafts From Claude', section: ASSET_PATHS.drafts, audience: 'assets-register' },
     { href: ASSET_PATHS.needsValues, label: 'Needs Values', section: ASSET_PATHS.needsValues, audience: 'asset-values' },

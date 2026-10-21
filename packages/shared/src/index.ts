@@ -461,3 +461,8 @@ export * from './asset-drafts.js';
 // Emp code, add contract status"; "State + end date"): signed and when it ends, the probation, a draft, the notice of an
 // approved ending, ended, none, the agreements of trainees and interns, freelance; an end within 30 days in amber
 export * from './contract-status.js';
+
+// Assets, step 3: custody (owner, 21 October 2026: "Yes, My custody"; "Record it; HR decides a deduction"): shoots and
+// long-term assignments on CUS-0042 records, received back good, damaged or missing, overdue and not signed, the terms
+// printed on the form, the kit quick-add, what each person holds, an asset's repairs and its lost and found
+export * from './custody.js';

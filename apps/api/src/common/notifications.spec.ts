@@ -26,10 +26,10 @@ import {
 
 const MIGRATION = new URL('../../prisma/migrations/20261020140000_notifications/migration.sql', import.meta.url);
 /**
- * The work from home migration (21 October 2026), which gave the notifications the two work from home kinds after the
- * KPIs' three: the kinds as they are now.
+ * The custody migration (Assets step 3, 21 October 2026), which gave the notifications the four custody kinds after the
+ * work from home ones: the kinds as they are now.
  */
-const KINDS_NOW = new URL('../../prisma/migrations/20261021180000_wfh_days/migration.sql', import.meta.url);
+const KINDS_NOW = new URL('../../prisma/migrations/20261021230000_asset_custody/migration.sql', import.meta.url);
 
 describe('notifications (shared)', () => {
   it('has the kinds the database allows, each labelled', () => {

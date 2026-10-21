@@ -380,6 +380,9 @@ function recordLookups(p: PrismaService): Readonly<Record<string, Lookup>> {
       (await p.assetPhoto.findMany({ ...by(ids), select: { id: true, assetId: true, asset: { select: { code: true } } } })).map((r) => [r.id, { parentId: r.assetId, reference: r.asset.code }]),
     asset_room: async (ids) => (await p.assetRoom.findMany({ ...by(ids), select: { id: true, name: true } })).map((r) => [r.id, { reference: r.name }]),
     asset_kit: async (ids) => (await p.assetKit.findMany({ ...by(ids), select: { id: true, code: true, name: true } })).map((r) => [r.id, { reference: `${r.code} · ${r.name}` }]),
+    // custody (Assets step 3, 21 October 2026): a record's person and code
+    custody_record: async (ids) =>
+      (await p.custodyRecord.findMany({ ...by(ids), select: { id: true, code: true, employeeId: true } })).map((r) => [r.id, { employeeId: r.employeeId, reference: r.code }]),
     grade: async (ids) => (await p.grade.findMany({ ...by(ids), select: { id: true, code: true, levelEn: true } })).map((r) => [r.id, { reference: `${r.code} · ${r.levelEn}` }]),
     shift: async (ids) => (await p.shift.findMany({ ...by(ids), select: { id: true, code: true } })).map((r) => [r.id, { reference: `Shift ${r.code}` }]),
     allowance_type: async (ids) => named(await p.allowanceType.findMany({ ...by(ids), select: { id: true, nameEn: true } })),

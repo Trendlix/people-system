@@ -13,7 +13,9 @@ import {
   type OverdueReturnView,
   type StockLevelView,
 } from '@trendlix/shared';
+import type { SessionUser } from '../auth/session-user.js';
 import { dayInCairo, fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -22,7 +24,10 @@ import { PrismaService } from '../prisma/prisma.service.js';
 // what (by the person's name or code, only people who hold something), the shoots' custody past its return date, the
 // consumables' stock and what needs reordering, and the counts due by group (spec §2.2: every so many days). No values:
 // the money is never in these answers (a custody item's value stays the CEO's, Finance's and a Super Admin's). Disposed
-// assets aside, as from every total. Custody and counts are recorded by later steps: until then these lists are empty.
+// assets aside, as from every total. Since step 3 (custody, 21 October 2026) who holds what and the overdue returns are
+// the custody records the handovers make; C-level people's are left out for anyone who doesn't see them (owner, 19
+// October 2026: "make C level Employees details not visible to HR"), as the custody pages leave them out. The counts
+// are recorded by a later step: until then they are all due.
 
 const BRIEF = {
   code: true,
@@ -54,16 +59,21 @@ const MAX_PEOPLE = 10;
 
 @Injectable()
 export class AssetReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly confidential: ConfidentialService,
+  ) {}
 
   /** GET /assets/reports/holders?q=: the people matching who hold assets or have custody open, and what (10 at most). */
-  async holders(q: string | undefined): Promise<AssetHolderReport[]> {
+  async holders(q: string | undefined, user: SessionUser): Promise<AssetHolderReport[]> {
     const text = q?.trim() ?? '';
     if (text.length < 2) throw new BadRequestException(['Enter at least 2 letters of the person’s name, or their employee code.']);
     const contains = { contains: text, mode: 'insensitive' as const };
+    const hidden = await this.confidential.hiddenFrom(user);
     const people = await this.prisma.employee.findMany({
       where: {
         AND: [
+          hidden.length ? { id: { notIn: hidden } } : {},
           { OR: [{ fullNameEn: contains }, { fullNameAr: contains }, { employeeCode: contains }] },
           { OR: [{ assetsHeld: { some: { status: { not: 'disposed' } } } }, { custodyRecords: { some: { status: { in: OPEN_CUSTODY } } } }] },
         ],
@@ -84,10 +94,11 @@ export class AssetReportsService {
   }
 
   /** GET /assets/reports/overdue: a shoot's custody still out past its return date, most overdue first. */
-  async overdue(): Promise<OverdueReturnView[]> {
+  async overdue(user: SessionUser): Promise<OverdueReturnView[]> {
     const today = todayInCairo();
+    const hidden = await this.confidential.hiddenFrom(user);
     const rows = await this.prisma.custodyRecord.findMany({
-      where: { kind: 'shoot', status: { in: OPEN_CUSTODY }, dueDate: { lt: toDateOnly(today) } },
+      where: { kind: 'shoot', status: { in: OPEN_CUSTODY }, dueDate: { lt: toDateOnly(today) }, ...(hidden.length && { employeeId: { notIn: hidden } }) },
       select: {
         code: true,
         purpose: true,

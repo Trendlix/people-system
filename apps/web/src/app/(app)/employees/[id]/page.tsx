@@ -6,6 +6,8 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { canSeeAuditLog, historyHref } from '../../audit/audit';
+import { loadMyCustody } from '../../assets/custody-data';
+import { MyCustody } from '../../assets/custody/my-custody';
 import { loadProfileOrCard } from '../data';
 import { askedTab, BackLink, Loading, PROFILE_TABS, profileHref, seesEveryone, todayInCairo, type ProfileTabKey } from '../ui';
 import { BasicTab, EducationTab } from './details-tabs';
@@ -27,7 +29,8 @@ import { ProfileTabs } from './profile-tabs';
 // separate records: someone who leaves keeps their profile. A C-level person (owner, 19 October 2026: "make C level
 // Employees details not visible to HR") is their directory card alone for those who may not see them, with no tabs and
 // no actions; the CEO, the Super Admin and the person themself get the profile, marked C-level, and the CEO or a Super
-// Admin (not HR) decides their change requests.
+// Admin (not HR) decides their change requests. Custody (Assets step 3; owner, 21 October 2026: "Yes, My custody"): on
+// the person's own profile only, once they have a custody record, what they hold and their records, read only.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -48,7 +51,12 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
   // The employee file is HR's and the CEO's, exactly those who may see the national ID. Social Insurance is HR's and
   // Admin's (owner, 17 October 2026: "Social Insurance tab to be by HR - Admin users"; a Super Admin counts as an Admin);
   // what is restricted on it (the wages) is still left out for those who don't see salaries.
-  const tabs = PROFILE_TABS.filter((t) => (t.key !== 'documents' || p.access.identity) && (t.key !== 'insurance' || hasRole(user, 'hr', 'admin')));
+  // their own custody (GET /me/custody), on their own profile only
+  const mine = user.employeeId === p.id ? await loadMyCustody() : null;
+  const custody = mine?.kind === 'ok' && mine.value.records.length > 0 ? mine.value : null;
+  const tabs = PROFILE_TABS.filter(
+    (t) => (t.key !== 'documents' || p.access.identity) && (t.key !== 'insurance' || hasRole(user, 'hr', 'admin')) && (t.key !== 'custody' || custody !== null),
+  );
   const visible = new Set<ProfileTabKey>(tabs.map((t) => t.key));
   const asked = askedTab(one(query.tab));
   const tab: ProfileTabKey = asked && visible.has(asked) ? asked : 'basic';
@@ -81,6 +89,8 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
             <EmploymentTab profile={p} linkPeople={linkPeople} sub={one(query.sub)} justAdded={one(query.added) === '1'} leaveYear={one(query.leaveYear)} />
           ) : tab === 'insurance' ? (
             <InsuranceTab profile={p} />
+          ) : tab === 'custody' && custody ? (
+            <MyCustody view={custody} />
           ) : tab === 'documents' ? (
             // loads on its own, so a slow file list doesn't hold up the profile
             <Suspense fallback={<EmployeeFileLoading />}>

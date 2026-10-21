@@ -1591,6 +1591,10 @@ model PayrollAdjustment {
   advance       PayrollAdvance?     @relation(fields: [advanceId], references: [id], onDelete: Restrict)
   recurringId   String?             @map("recurring_id") @db.Uuid // a Recurring deduction: the recurring deduction it is that month's of
   recurring     RecurringDeduction? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  // a Damage or loss deduction HR made from an asset returned damaged or missing (Assets step 3, owner, 21 October
+  // 2026: "Record it; HR decides a deduction"): the custody item, for tracing it
+  custodyItemId String?             @map("custody_item_id") @db.Uuid
+  custodyItem   CustodyItem?        @relation(fields: [custodyItemId], references: [id], onDelete: SetNull)
   status        String              @default("pending") // ADJUSTMENT_STATUSES: pending, applied, cancelled
   lineId        String?             @map("line_id") @db.Uuid // applied: the run line it was paid on
   line          PayrollLine?        @relation(fields: [lineId], references: [id], onDelete: SetNull)
@@ -1610,6 +1614,7 @@ model PayrollAdjustment {
   @@index([employeeId])
   @@index([advanceId])
   @@index([lineId])
+  @@index([custodyItemId])
   @@map("payroll_adjustments")
 }
 
@@ -2586,6 +2591,9 @@ model KpiScorecardStep {
 model AssetSettings {
   id                      Int      @id @default(1) // always 1
   capitalizationThreshold Decimal  @default(0) @map("capitalization_threshold") @db.Decimal(14, 2)
+  // the terms printed on the custody forms (step 3), as an Assets manager wrote them; none: the standard wording
+  // (packages/shared custody.ts CUSTODY_TERMS_STANDARD). Each record keeps the terms it was printed with.
+  custodyTerms            String[] @default([]) @map("custody_terms")
   updatedAt               DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   updatedById             String?  @map("updated_by") @db.Uuid
   updatedBy               User?    @relation("AssetSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
@@ -2740,11 +2748,17 @@ model CustodyRecord {
   issuedBy       User?         @relation("CustodyIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
   handedOverById String?       @map("handed_over_by") @db.Uuid // the employee who handed it over
   handedOverBy   Employee?     @relation("CustodyHandedOverBy", fields: [handedOverById], references: [id], onDelete: SetNull)
+  // who handed it over, as written on the form (step 3: the signed-in person unless changed)
+  handedOverByName String?     @map("handed_over_by_name")
   outNotes       String?       @map("out_notes")
   terms          String[] // the terms printed on its form, as they were
   status         String        @default("open") // open, partial, closed
   outAt          DateTime      @default(now()) @map("out_at") @db.Timestamptz
   closedAt       DateTime?     @map("closed_at") @db.Timestamptz
+  // the daily check (step 3): the last day the employee and the custodians were told it is overdue (once a day), and
+  // when the custodians were told its signed copy is still not attached 3 days on (once)
+  overdueNoticeOn  DateTime?   @map("overdue_notice_on") @db.Date
+  unsignedNoticeAt DateTime?   @map("unsigned_notice_at") @db.Timestamptz
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
   items          CustodyItem[]
@@ -2774,6 +2788,8 @@ model CustodyItem {
   receivedBy      User?              @relation("CustodyReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
   returnNotes     String?            @map("return_notes")
   maintenance     AssetMaintenance[]
+  // the deductions HR made from it, damaged or missing (owner, 21 October 2026: "Record it; HR decides a deduction")
+  deductions      PayrollAdjustment[]
 
   @@unique([custodyId, assetId])
   @@index([assetId])
@@ -2806,6 +2822,8 @@ model AssetMaintenance {
   asset         Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
   on            DateTime     @map("on_date") @db.Date
   kind          String // repair, service, inspection, warranty_claim, upgrade
+  // what made it, when the register did (step 3): sent_to_repair, back_from_repair, returned_damaged; none: by hand
+  event         String?
   vendor        String?
   cost          Decimal?     @db.Decimal(14, 2)
   notes         String?

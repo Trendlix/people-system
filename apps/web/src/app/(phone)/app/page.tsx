@@ -18,6 +18,7 @@ import { permissionDayText, permissionHoursLine, permissionInDaysText, upcomingP
 import { LeaveStatusBadge } from '../../(app)/leave/ui';
 import { approveCount } from './approve-count';
 import { AssetsCard } from './assets-card';
+import { MyCustodyCard } from './custody-card';
 import { FingerprintOffer } from './fingerprint-offer';
 import { MyKpiCard } from './kpi-card';
 import { PushOffer } from './push-offer';
@@ -276,6 +277,12 @@ async function Home() {
       {profile && (
         <Suspense fallback={null}>
           <MyKpiCard user={user} />
+        </Suspense>
+      )}
+      {/* what they hold (Assets step 3, 21 October 2026: "Yes, My custody"), only while they hold something */}
+      {profile && (
+        <Suspense fallback={null}>
+          <MyCustodyCard />
         </Suspense>
       )}
       {profile && (

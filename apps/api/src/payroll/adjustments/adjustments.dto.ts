@@ -103,6 +103,13 @@ export class CreateAdjustmentDto {
   /** An advance's recovery or a loan's installment: the advance or loan. */
   @TrimOrNull() @IsOptional() @IsUUID('all', { message: ADVANCE_MESSAGE })
   advanceId?: string | null;
+
+  /**
+   * A Damage or loss deduction made from an asset returned damaged or missing (Assets step 3; owner, 21 October 2026:
+   * "Record it; HR decides a deduction"): the custody item, linked for tracing it.
+   */
+  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose the custody item it is for.' })
+  custodyItemId?: string | null;
 }
 
 /** A pending one's changes: its month, type (of the same kind), whether taxed (Other), amount, reason and advance. */

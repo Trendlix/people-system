@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
+import { CustodySchedulerService } from './assets/custody-scheduler.service.js';
 import { KpiSchedulerService } from './kpis/kpi-scheduler.service.js';
 import { RemindersService } from './notifications/reminders.service.js';
 
@@ -14,5 +15,8 @@ async function bootstrap() {
   // the KPI scorecards' clock (owner, 21 October 2026: "Last month's KPI, this pay"): last month's opened on the 1st,
   // the deadlines gone by applied, the reminders the day before each; the tests' apps don't start it either
   app.get(KpiSchedulerService).start();
+  // custody's daily check (Assets step 3, 21 October 2026): overdue shoots told once a day, records not signed after
+  // 3 days told once; the tests' apps don't start it either
+  app.get(CustodySchedulerService).start();
 }
 await bootstrap();

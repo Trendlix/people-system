@@ -270,13 +270,21 @@ describe('the reports', () => {
     const { run } = setup('viewer', {
       'GET /assets/reports/holders?q=Mona': () => ({
         status: 200,
-        body: [{ employee: { id: 'e1', employeeCode: 'EMP-0042', fullNameEn: 'Mona Hassan' }, assets: [{ code: 'IT-LAP-0001', name: 'MacBook', group: 'it', type: 'LAP', status: 'custody', serial: null, room: null, kit: null }], custody: [] }],
+        body: [
+          {
+            employee: { id: 'e1', employeeCode: 'EMP-0042', fullNameEn: 'Mona Hassan' },
+            assets: [{ code: 'IT-LAP-0001', name: 'MacBook', group: 'it', type: 'LAP', status: 'custody', serial: null, room: null, kit: null }],
+            custody: [{ code: 'CUS-0007', kind: 'assignment', dueDate: null }],
+          },
+        ],
       }),
       'GET /assets/reports/holders?q=Nobody': () => ({ status: 200, body: [] }),
     });
     const text = textOf(await run('who_holds', { employee: 'Mona' }));
     expect(text).toContain('"employee":"Mona Hassan (EMP-0042)"');
     expect(text).toContain(`${ORIGIN}/assets/IT-LAP-0001`);
+    // the custody record's page too (Assets step 3, 21 October 2026)
+    expect(text).toContain(`${ORIGIN}/assets/custody/CUS-0007`);
     expect(textOf(await run('who_holds', { employee: 'Nobody' }))).toBe('Nobody matching "Nobody" holds any asset.');
   });
 
@@ -296,6 +304,30 @@ describe('the reports', () => {
     expect(textOf(await run('stock_levels', { reorder_only: true }))).toContain('1 consumable; 1 to reorder.');
     expect(textOf(await run('counts_due'))).toContain('No group is overdue a count.');
     expect(calls.map((c) => c.path)).toEqual(['/assets/reports/overdue', '/assets/reports/stock?reorder=1', '/assets/reports/counts-due']);
+  });
+
+  it('overdue_returns lists each shoot past its return date with its custody record’s page (Assets step 3, 21 October 2026)', async () => {
+    const { run } = setup('viewer', {
+      'GET /assets/reports/overdue': () => ({
+        status: 200,
+        body: [
+          {
+            code: 'CUS-0042',
+            employee: { id: 'e1', employeeCode: 'EMP-0042', fullNameEn: 'Mona Hassan' },
+            purpose: 'Ad shoot',
+            outAt: '2026-10-15T07:00:00.000Z',
+            dueDate: '2026-10-18',
+            daysOverdue: 3,
+            items: [{ code: 'PK-CAM-0001', name: 'Camera', group: 'kit', type: 'CAM', status: 'custody', serial: null, room: null, kit: null }],
+          },
+        ],
+      }),
+    });
+    const text = textOf(await run('overdue_returns'));
+    expect(text).toContain('1 custody record is overdue.');
+    expect(text).toContain(`${ORIGIN}/assets/custody/CUS-0042`);
+    expect(text).toContain(`${ORIGIN}/assets/PK-CAM-0001`);
+    expect(text).toContain('"employee":"Mona Hassan (EMP-0042)"');
   });
 
   it('list_rooms leaves archived rooms out unless asked; list_kits lists the kits', async () => {

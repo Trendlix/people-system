@@ -9,7 +9,7 @@ import { sendAndRefresh, typedValues, UUID } from '../actions-common';
 import { isMonth } from '../list';
 import { adjustmentBody } from './adjustments';
 
-const FIELDS = ['employeeId', 'kind', 'month', 'type', 'taxed', 'amount', 'days', 'reason', 'advanceId'] as const;
+const FIELDS = ['employeeId', 'kind', 'month', 'type', 'taxed', 'amount', 'days', 'reason', 'advanceId', 'custodyItemId'] as const;
 const NOT_FOUND: FormState = { errors: ['This addition or deduction was not found.'] };
 
 export async function createAdjustment(_prev: FormState, fd: FormData): Promise<FormState> {

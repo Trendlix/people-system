@@ -8,13 +8,16 @@
  * day (owner: "there is no point of adding employment then adding contract and no active employment without a contract,
  * its like a loop for me"): the job, its contract, the documents generated from the templates and the payslips are all
  * on Employment, in its sub-tabs (below). Education is on Basic Data, under its other sections (owner, 17 October 2026:
- * "add the education table under the basic data instead of a separate tab").
+ * "add the education table under the basic data instead of a separate tab"). Custody (Assets step 3; owner, 21 October
+ * 2026: "Yes, My custody"): what the person holds of the company's assets and their custody records, read only, on
+ * their own profile alone (the profile page shows it there, once they have a record).
  */
 export const PROFILE_TABS = [
   { key: 'basic', label: 'Basic Data' },
   { key: 'employment', label: 'Employment' },
   { key: 'insurance', label: 'Social Insurance' },
   { key: 'documents', label: 'Documents' },
+  { key: 'custody', label: 'Custody' },
 ] as const;
 
 export type ProfileTabKey = (typeof PROFILE_TABS)[number]['key'];

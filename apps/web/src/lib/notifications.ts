@@ -31,13 +31,18 @@ const isUnder = (href: string, base: string) => {
  * payslip's, "/app/payslips/<lineId>"); the two reminders on Home (its check-in); My Attendance as the phone's
  * Attendance (its month kept); a request's page as the same request's in To Approve (what waits for the person) or in
  * their own requests (lib/surface.ts toAppHref), any other page as that section's list. A link that isn't one address on
- * this site (not starting with a single "/") opens nothing: null, as for no link.
+ * this site (not starting with a single "/") opens nothing: null, as for no link. Custody (Assets step 3, 21 October
+ * 2026): My custody ("/my-custody") as the phone's My Custody, and a custody record ("/assets/custody/CUS-0042") as the
+ * same record in the phone layout.
  */
 export function notificationHref(link: string | null | undefined, kind: string, surface: InboxSurface): string | null {
   if (surface === 'app' && isReminder(kind)) return APP_PATHS.home;
   const safe = safeNotificationLink(link);
   if (!safe) return null;
   if (surface === 'site' || isUnder(safe, APP_PATHS.home)) return safe;
+  if (isUnder(safe, '/my-custody')) return '/app/custody';
+  const custody = /^\/assets\/custody\/(CUS-\d{4,})(?:[?#]|$)/i.exec(safe);
+  if (custody) return `/app/assets/custody/${custody[1].toUpperCase()}`;
   if (isUnder(safe, '/my-attendance')) {
     const at = safe.indexOf('?');
     const month = at < 0 ? null : new URLSearchParams(safe.slice(at + 1).split('#', 1)[0]).get('month');

@@ -87,6 +87,87 @@ export const ASSET_API = {
   },
 } as const;
 
+/** What the Custody list is asked for (step 3): its filter, the search, the page. */
+export interface CustodyQuery {
+  filter?: string | null;
+  q?: string | null;
+  page?: number | null;
+}
+
+const custodyQueryOf = (query: CustodyQuery) =>
+  q({ filter: query.filter && query.filter !== 'active' ? query.filter : null, q: query.q?.trim() || null, page: query.page && query.page > 1 ? query.page : null });
+
+/**
+ * The custody endpoints (Assets step 3, owner, 21 October 2026; packages/shared custody.ts has every answer's shape):
+ * a viewer and up reads, a custodian or a manager hands over, receives back and attaches the signed copy; My custody is
+ * anyone's own.
+ */
+export const CUSTODY_API = {
+  /** GET CustodyListView (?filter=active|overdue|unsigned|closed|all &q= &page=); POST HandoverDto → HandoverResult. */
+  list: (query: CustodyQuery = {}) => `/assets/custody${custodyQueryOf(query)}`,
+  handOver: '/assets/custody',
+  /** GET HandoverChoices (custodian or manager). */
+  choices: '/assets/custody/choices',
+  /** GET HolderCardView[]: ?q= a name or an employee code; none: everyone holding something now. */
+  people: (search?: string | null) => `/assets/custody/people${q({ q: search?.trim() || null })}`,
+  /** GET HoldingsView. */
+  person: (employeeId: string) => `/assets/custody/people/${encodeURIComponent(employeeId)}`,
+  /** GET CustodyRecordView. */
+  record: (code: string) => `/assets/custody/${at(code)}`,
+  /** POST { lines: [{ itemId, condition, notes }] } → CustodyRecordView. */
+  receive: (code: string) => `/assets/custody/${at(code)}/return`,
+  /** POST multipart `file` (a photo or a PDF) → CustodyRecordView. */
+  signed: (code: string) => `/assets/custody/${at(code)}/signed`,
+  /** GET the signed copy's file. */
+  signedFile: (code: string, fileId: string) => `/assets/custody/${at(code)}/signed/${encodeURIComponent(fileId)}`,
+  /** GET AssetHistoryView: an asset's custody history and maintenance log. */
+  history: (code: string) => `/assets/${at(code)}/history`,
+  /** POST { on, vendor, notes } → AssetView: sent to repair; …/back with { cost } too (the values' people). */
+  repair: (code: string) => `/assets/${at(code)}/repair`,
+  repairBack: (code: string) => `/assets/${at(code)}/repair/back`,
+  /** POST { notes } → AssetView. */
+  lost: (code: string) => `/assets/${at(code)}/lost`,
+  found: (code: string) => `/assets/${at(code)}/found`,
+  /** PATCH { terms } or { standard: true } → AssetSettingsView (an Assets manager). */
+  terms: '/assets/settings/terms',
+  /** GET MyCustodyView: the signed-in person's own. */
+  mine: '/me/custody',
+  /** GET their own signed form's file. */
+  myFile: (code: string, fileId: string) => `/me/custody/${at(code)}/files/${encodeURIComponent(fileId)}`,
+} as const;
+
+/** The site's custody pages (step 3). */
+export const CUSTODY_PATHS = {
+  /** The Custody list: Active, Overdue, Not signed, Closed, All. */
+  list: '/assets/custody',
+  listWith: (query: CustodyQuery) => `/assets/custody${custodyQueryOf(query)}`,
+  /** New handover; ?employee= and ?asset= choose them to start with. */
+  new: '/assets/custody/new',
+  newWith: (start: { employee?: string | null; asset?: string | null }) => `/assets/custody/new${q({ employee: start.employee, asset: start.asset })}`,
+  /** A custody record's page, its form to print, and a signed copy (served by the website with the caller's session). */
+  record: (code: string) => `/assets/custody/${at(code)}`,
+  form: (code: string) => `/assets/custody/${at(code)}/form`,
+  signedFile: (code: string, fileId: string) => `/assets/custody/${at(code)}/signed/${encodeURIComponent(fileId)}`,
+  /** Holdings: "Type a name or code to see what they hold". */
+  holders: '/assets/holders',
+  holdersWith: (search: string | null) => `/assets/holders${q({ q: search?.trim() || null })}`,
+  /** A person's holdings, and their custody statement to print. */
+  person: (employeeId: string) => `/assets/holders/${encodeURIComponent(employeeId)}`,
+  statement: (employeeId: string) => `/assets/holders/${encodeURIComponent(employeeId)}/statement`,
+  /** My custody (owner, 21 October 2026: "Yes, My custody"): opens the person's own profile on its Custody tab. */
+  mine: '/my-custody',
+  /** Their own signed form, served by the website with their session. */
+  myFile: (code: string, fileId: string) => `/my-custody/${at(code)}/files/${encodeURIComponent(fileId)}`,
+} as const;
+
+/** The phone pages' custody pages (/app): My custody, and for a custodian a handover and a record. */
+export const APP_CUSTODY_PATHS = {
+  mine: '/app/custody',
+  new: '/app/assets/custody/new',
+  newWith: (start: { employee?: string | null; asset?: string | null }) => `/app/assets/custody/new${q({ employee: start.employee, asset: start.asset })}`,
+  record: (code: string) => `/app/assets/custody/${at(code)}`,
+} as const;
+
 /** The site's Assets pages. */
 export const ASSET_PATHS = {
   /** The register. */

@@ -38,7 +38,7 @@ import {
 } from '@trendlix/shared';
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { ASSET_API, ASSET_PATHS } from '../asset-paths';
+import { ASSET_API, ASSET_PATHS, CUSTODY_PATHS } from '../asset-paths';
 import type { ApiAnswer, AssetsApi } from './assets-api';
 
 // The Claude connector's tools (owner, 21 October 2026: "i might link a claude account for the assets section only to
@@ -101,6 +101,8 @@ const levelOf = (name: ConnectorToolName) => CONNECTOR_TOOLS.find((t) => t.name 
 // ---------- in words ----------
 
 const assetLink = (ctx: ToolContext, code: string) => `${ctx.origin}${ASSET_PATHS.asset(code)}`;
+/** A custody record's page on the site (Assets step 3, 21 October 2026): who_holds and overdue_returns link each. */
+const custodyLink = (ctx: ToolContext, code: string) => `${ctx.origin}${CUSTODY_PATHS.record(code)}`;
 const draftLink = (ctx: ToolContext, id: string) => `${ctx.origin}${assetDraftPath(id)}`;
 
 /** A row of the register for Claude: the keys as the API has them, the room, kit and holder in words, its page. */
@@ -433,7 +435,7 @@ export const ASSET_TOOLS: ConnectorTool[] = [
       const people = found.body.map((h) => ({
         employee: `${h.employee.fullNameEn} (${h.employee.employeeCode})`,
         assets: h.assets.map((a) => ({ ...a, room: a.room?.name ?? null, kit: a.kit ? `${a.kit.code} ${a.kit.name}` : null, link: assetLink(ctx, a.code) })),
-        custody: h.custody,
+        custody: h.custody.map((c) => ({ ...c, link: custodyLink(ctx, c.code) })),
       }));
       return said(`${people.length} ${people.length === 1 ? 'person matches' : 'people match'}.`, people);
     },
@@ -451,6 +453,7 @@ export const ASSET_TOOLS: ConnectorTool[] = [
       if (!found.body.length) return said('Nothing is overdue.');
       const late = found.body.map((o) => ({
         ...o,
+        link: custodyLink(ctx, o.code),
         employee: `${o.employee.fullNameEn} (${o.employee.employeeCode})`,
         items: o.items.map((a) => ({ code: a.code, name: a.name, link: assetLink(ctx, a.code) })),
       }));

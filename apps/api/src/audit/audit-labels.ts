@@ -29,6 +29,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   company: 'Company',
   contract: 'Contract',
   contract_settings: 'Contract defaults',
+  // Assets, step 3 (21 October 2026): a custody record, CUS-0042, handed over, received back and its signed copy attached
+  custody_record: 'Custody record',
   department: 'Department',
   employee: 'Employee',
   employment: 'Employment',
@@ -112,6 +114,15 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   delete: 'Deleted',
   // an asset draft from Claude set aside (step 2, 21 October 2026)
   discard: 'Discarded',
+  // custody (Assets step 3, 21 October 2026): a custody record's signed copy attached; assets handed over and received
+  // back (on the record and on each asset); an asset sent to repair and back, marked lost and found
+  attach_signed: 'Attached the signed copy',
+  back_from_repair: 'Back from repair',
+  hand_over: 'Handed over',
+  mark_found: 'Marked found',
+  mark_lost: 'Marked lost',
+  receive_back: 'Received back',
+  send_to_repair: 'Sent to repair',
   // fingerprint sign-in in the app (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first password
   // sign-in"); never the secret
   device_add: 'Turned on fingerprint sign-in',
@@ -255,6 +266,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   marketValue: 'Market value',
   priceHigh: 'Market value (high)',
   priceNote: 'Market value note',
+  // custody (Assets step 3, 21 October 2026)
+  custodyTerms: 'Custody terms',
+  custodyItemId: 'Custody item',
+  dueDate: 'Return date',
+  handedOverBy: 'Handed over by',
+  valueAtOut: 'Value when handed over',
 };
 
 /**

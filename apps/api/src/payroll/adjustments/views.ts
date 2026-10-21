@@ -28,6 +28,8 @@ const USER = { select: { id: true, email: true } } as const;
 export const ADJUSTMENT_INCLUDE = {
   employee: PERSON,
   advance: { select: { id: true, kind: true, givenOn: true, amount: true } },
+  // a Damage or loss deduction made from a custody item (Assets step 3, 21 October 2026): its record and asset
+  custodyItem: { select: { id: true, custody: { select: { code: true } }, asset: { select: { code: true } } } },
   createdBy: USER,
   cancelledBy: USER,
 } satisfies Prisma.PayrollAdjustmentInclude;
@@ -64,6 +66,11 @@ export interface AdjustmentView {
   reason: string;
   /** The advance or loan an advance's recovery or a loan's installment recovers. */
   advance: { id: string; kind: AdvanceKind; givenOn: string; amount: number } | null;
+  /**
+   * A Damage or loss deduction HR made from an asset returned damaged or missing (Assets step 3; owner, 21 October 2026:
+   * "Record it; HR decides a deduction"): the custody item, its record's code and the asset's.
+   */
+  custody: { itemId: string; recordCode: string; assetCode: string } | null;
   status: AdjustmentStatus;
   /** Applied: the run line it was paid on. */
   lineId: string | null;
@@ -94,6 +101,7 @@ export function adjustmentView(a: AdjustmentRow, names: ReadonlyMap<string, User
     days: a.days?.toNumber() ?? null,
     reason: a.reason,
     advance: a.advance && { id: a.advance.id, kind: a.advance.kind as AdvanceKind, givenOn: fromDateOnly(a.advance.givenOn), amount: a.advance.amount.toNumber() },
+    custody: a.custodyItem && { itemId: a.custodyItem.id, recordCode: a.custodyItem.custody.code, assetCode: a.custodyItem.asset.code },
     status: a.status as AdjustmentStatus,
     lineId: a.lineId,
     appliedAt: a.appliedAt,

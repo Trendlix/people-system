@@ -2,7 +2,7 @@ import { ASSET_STATUS_LABELS } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { APP_ASSET_PATHS } from '@/lib/asset-paths';
+import { APP_ASSET_PATHS, APP_CUSTODY_PATHS } from '@/lib/asset-paths';
 import { APP_PATHS } from '@/lib/surface';
 import { appListHref, countText, holderText, pagesOf, placeText, readAssetQuery, statusTone } from '../../../(app)/assets/assets';
 import { assetsCaller, assetsNotLoaded, loadAssets } from '../../../(app)/assets/data';
@@ -39,9 +39,15 @@ async function List({ searchParams }: { searchParams: PageProps<'/app/assets'>['
         </button>
       </form>
       {can.register && (
-        <Link href={APP_ASSET_PATHS.new} className="btn btn-primary min-h-12 w-full">
-          Add asset
-        </Link>
+        <div className="grid grid-cols-2 gap-2">
+          <Link href={APP_ASSET_PATHS.new} className="btn btn-primary min-h-12">
+            Add asset
+          </Link>
+          {/* custody (step 3, 21 October 2026): a handover in the phone layout */}
+          <Link href={APP_CUSTODY_PATHS.new} className="btn btn-secondary min-h-12">
+            Hand over
+          </Link>
+        </div>
       )}
       {loaded.kind !== 'ok' ? (
         <PhoneCard>

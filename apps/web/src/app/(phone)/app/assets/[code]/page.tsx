@@ -8,6 +8,7 @@ import { titleCase } from '@/lib/format';
 import { todayInCairo } from '../../../../(app)/employees/ui';
 import { AssetDetail } from '../../../../(app)/assets/asset-detail';
 import { codeFromParam } from '../../../../(app)/assets/assets';
+import { loadAssetHistory } from '../../../../(app)/assets/custody-data';
 import { assetsCaller, assetsNotLoaded, loadAsset } from '../../../../(app)/assets/data';
 import { StatusBadge } from '../../../../(app)/assets/ui';
 import { PhoneCard, PhoneLoading, Quiet } from '../../ui';
@@ -15,7 +16,9 @@ import { PhoneCard, PhoneLoading, Quiet } from '../../ui';
 // An asset in the phone layout (owner's brief, 21 October 2026: "/app/assets/[code] showing the same detail in the phone
 // layout, so a QR scanned in the app or the phone's camera opens nicely"): the site's asset page inside the app opens
 // here (its web view says so in its user agent). The same photos (Take photo to add one), QR code, fields and values
-// (the CEO, Finance and a Super Admin) as the site's; Edit opens the site's form.
+// (the CEO, Finance and a Super Admin) as the site's; Edit opens the site's form. Since step 3 (custody, 21 October
+// 2026): its custody history and maintenance log, and for a custodian Hand over (the phone pages' handover) and the
+// repairs, lost and found.
 
 export const metadata: Metadata = { title: 'Asset · Trendlix People' };
 
@@ -34,7 +37,7 @@ async function Detail({ params, searchParams }: { params: Props['params']; searc
       </PhoneCard>
     );
   }
-  const loaded = await loadAsset(code);
+  const [loaded, history] = await Promise.all([loadAsset(code), loadAssetHistory(code)]);
   if (loaded.kind === 'unavailable') notFound();
   if (loaded.kind !== 'ok') {
     return (
@@ -55,7 +58,15 @@ async function Detail({ params, searchParams }: { params: Props['params']; searc
           {ASSET_GROUP_LABELS[asset.group]} · {ASSET_TYPE_LABELS[asset.type] ?? asset.type}
         </p>
       </div>
-      <AssetDetail asset={asset} surface="app" today={todayInCairo()} done={typeof query.done === 'string' ? query.done : null} photosFailed={Number.isFinite(failed) ? failed : 0} />
+      <AssetDetail
+        asset={asset}
+        surface="app"
+        today={todayInCairo()}
+        done={typeof query.done === 'string' ? query.done : null}
+        photosFailed={Number.isFinite(failed) ? failed : 0}
+        history={history.kind === 'ok' ? history.value : null}
+        values={can.values}
+      />
     </>
   );
 }

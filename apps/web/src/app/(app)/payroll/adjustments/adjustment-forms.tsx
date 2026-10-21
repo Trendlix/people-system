@@ -24,7 +24,9 @@ import {
 // month, and changes or cancels a pending one while the month's run is still a draft. The form asks only what the type
 // needs: whether an Other addition is taxed, for an advance's recovery or a loan's installment which one, and for a
 // Bonus (days) or a Penalty (days) its days in place of an amount (owner, 17 October 2026: the run's grid columns moved
-// here), the month's run working the amount out. The API checks everything again.
+// here), the month's run working the amount out. The API checks everything again. "Create a deduction" on a custody
+// record (Assets step 3; owner, 21 October 2026: "Record it; HR decides a deduction") opens the new one's form as a Damage
+// or loss deduction for the person, its reason filled in and the custody item linked; HR types the amount.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -39,6 +41,7 @@ function Fields({
   row,
   months,
   month,
+  start,
 }: {
   state: FormState;
   kind: AdjustmentKind;
@@ -48,10 +51,12 @@ function Fields({
   /** Changing one: the months it can be moved to. */
   months: { value: string; label: string }[] | null;
   month: string;
+  /** A new one's type and reason to start with (a deduction from a custody item). */
+  start?: { type: string; reason: string } | null;
 }) {
   const fid = useFieldIds();
   const types = typeChoices(kind);
-  const [type, setType] = useState(valueOf(state, 'type', row?.type ?? types[0].value));
+  const [type, setType] = useState(valueOf(state, 'type', row?.type ?? start?.type ?? types[0].value));
   // a type of the other kind (the kind was switched) reads as the kind's first
   const chosen = types.some((t) => t.value === type) ? type : types[0].value;
   const advanceKind = linksAdvance(kind, chosen);
@@ -166,7 +171,7 @@ function Fields({
         <label htmlFor={fid('reason')} className="label">
           Reason
         </label>
-        <input id={fid('reason')} name="reason" required maxLength={500} autoComplete="off" defaultValue={valueOf(state, 'reason', row?.reason)} className="input" />
+        <input id={fid('reason')} name="reason" required maxLength={500} autoComplete="off" defaultValue={valueOf(state, 'reason', row?.reason ?? start?.reason)} className="input" />
       </div>
     </div>
   );
@@ -174,13 +179,26 @@ function Fields({
 
 /**
  * A new addition or deduction for the month; emptied once it is added, for the next one. `employeeId`: the person whose
- * month is shown (opened from the run's grid), chosen to start with and kept for the next one.
+ * month is shown (opened from the run's grid), chosen to start with and kept for the next one. `custody`: opened from a
+ * custody record's damaged or missing item (Assets step 3): a Damage or loss deduction with its reason, the item linked,
+ * until it is added.
  */
-export function AddAdjustmentForm({ action, choices, employeeId: shown = null }: { action: Action; choices: AdjustmentChoices; employeeId?: string | null }) {
+export function AddAdjustmentForm({
+  action,
+  choices,
+  employeeId: shown = null,
+  custody = null,
+}: {
+  action: Action;
+  choices: AdjustmentChoices;
+  employeeId?: string | null;
+  custody?: { custodyItemId: string; reason: string } | null;
+}) {
   const { state, pending, form } = useKeptForm(action);
   const ref = useRef<HTMLFormElement>(null);
   const fid = useFieldIds();
-  const [kind, setKind] = useState<AdjustmentKind>(valueOf(state, 'kind', 'addition') === 'deduction' ? 'deduction' : 'addition');
+  const [linked, setLinked] = useState(custody);
+  const [kind, setKind] = useState<AdjustmentKind>(valueOf(state, 'kind', custody ? 'deduction' : 'addition') === 'deduction' ? 'deduction' : 'addition');
   const [employeeId, setEmployeeId] = useState(valueOf(state, 'employeeId', shown ?? ''));
   // the fields start afresh after each one added
   const [round, setRound] = useState(0);
@@ -190,6 +208,7 @@ export function AddAdjustmentForm({ action, choices, employeeId: shown = null }:
     if (state.message) {
       setEmployeeId(shown ?? '');
       setRound((n) => n + 1);
+      setLinked(null);
     }
   }
   useEffect(() => {
@@ -226,7 +245,24 @@ export function AddAdjustmentForm({ action, choices, employeeId: shown = null }:
           </div>
         </fieldset>
       </div>
-      <Fields key={`${kind}-${round}`} state={state} kind={kind} employeeId={employeeId} advances={choices.advances} row={null} months={null} month={choices.month} />
+      {linked && kind === 'deduction' && (
+        <p role="note" className="rounded-lg bg-accent-soft px-3 py-2 text-sm">
+          A deduction for an asset returned damaged or missing: it is linked to its custody record. Enter the amount; the month&apos;s damage or loss deductions
+          are checked against 5 days&apos; wage (Labour Law Art. 151).
+          <input type="hidden" name="custodyItemId" value={linked.custodyItemId} />
+        </p>
+      )}
+      <Fields
+        key={`${kind}-${round}`}
+        state={state}
+        kind={kind}
+        employeeId={employeeId}
+        advances={choices.advances}
+        row={null}
+        months={null}
+        month={choices.month}
+        start={linked && kind === 'deduction' ? { type: 'damage_loss', reason: linked.reason } : null}
+      />
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton busy={pending} pendingText="Adding…">
           Add {kind}

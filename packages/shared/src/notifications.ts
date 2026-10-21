@@ -43,6 +43,12 @@ export const NOTIFICATION_KINDS = [
   // and the employee's own decided (or cancelled by HR)
   'wfh_waiting',
   'wfh_decided',
+  // custody (Assets, step 3, 21 October 2026: custody.ts): the employee's handover and returns, a shoot's return
+  // overdue (the employee and the custodians, once a day), a record still not signed after 3 days (the custodians)
+  'custody_handover',
+  'custody_return',
+  'custody_overdue',
+  'custody_unsigned',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -89,6 +95,10 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   kpi_ready_to_sign: 'KPI',
   wfh_waiting: 'Work from home',
   wfh_decided: 'Work from home',
+  custody_handover: 'Custody',
+  custody_return: 'Custody',
+  custody_overdue: 'Custody',
+  custody_unsigned: 'Custody',
 };
 
 // ---------- the reminders and the person's switches ----------

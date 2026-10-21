@@ -180,3 +180,27 @@ export const TEXT_KINDS: readonly NotificationKind[] = [
   'wfh_waiting',
   'wfh_decided',
 ];
+
+// ---------- custody (Assets, step 3, 21 October 2026) ----------
+
+const items = (n: number) => `${n} ${n === 1 ? 'item' : 'items'}`;
+
+/** The employee received assets on a custody record (the brief: "You received 3 items: CUS-0042"). */
+export function custodyHandoverText(count: number, code: string, dueDate: string | null, link: string): NotificationInput {
+  return { kind: 'custody_handover', title: `You received ${items(count)}: ${code}`, body: dueDate ? `To return by ${shownDate(dueDate)}` : 'A long-term assignment', link };
+}
+
+/** Items of the employee's custody received back; `left`: how many are still with them. */
+export function custodyReturnText(count: number, code: string, left: number, link: string): NotificationInput {
+  return { kind: 'custody_return', title: `${items(count)} received back: ${code}`, body: left ? `${items(left)} still with you` : 'All items are back', link };
+}
+
+/** A shoot's return is overdue: to the employee (`name` null), and to the custodians with their name. */
+export function custodyOverdueText(code: string, dueDate: string, name: string | null, link: string): NotificationInput {
+  return { kind: 'custody_overdue', title: `Return overdue: ${code}`, body: name ? `${name}, due ${shownDate(dueDate)}` : `It was due ${shownDate(dueDate)}`, link };
+}
+
+/** A record's signed copy still not attached 3 days after the handover, to the custodians. */
+export function custodyUnsignedText(code: string, name: string, outOn: string, link: string): NotificationInput {
+  return { kind: 'custody_unsigned', title: `Signed copy not attached: ${code}`, body: `${name}, handed over ${shownDate(outOn)}`, link };
+}

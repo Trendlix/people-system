@@ -21,6 +21,7 @@ import {
   byEmployee,
   canSeeAdjustments,
   changeable,
+  custodyText,
   daysNotWorkedOut,
   deductionsTaxNote,
   enteredText,
@@ -33,6 +34,7 @@ import {
   monthTotals,
   netText,
   pendingIds,
+  readCustodyPrefill,
   readEmployee,
   readMonth,
   RUN_NOTE,
@@ -56,7 +58,9 @@ import {
 // month (?employee=), with the form set to them. A person whose damage or loss deductions in the month pass 5 days'
 // wage is warned of under their name (owner, 18 October 2026, after reading the law; Labour Law Art. 151: a warning
 // only), and an advance's recovery or a loan's installment past 10% of the wage is refused by the API ("Block above
-// 10%"), its reason shown on the form.
+// 10%"), its reason shown on the form. "Create a deduction" on a custody record (Assets step 3; owner, 21 October 2026:
+// "Record it; HR decides a deduction") opens the person's month here, the form filled in (?custodyItem=, ?reason=); a
+// deduction made from a custody item says which.
 
 export const metadata: Metadata = { title: 'Additions / Deductions · People System' };
 
@@ -185,6 +189,7 @@ function AdjustmentsTable({ rows, choices, hr, today }: { rows: AdjustmentRow[];
                         {ADVANCE_KIND_LABELS[r.advance.kind]} of {formatEgp(r.advance.amount)}, given {formatDate(r.advance.givenOn)}
                       </div>
                     )}
+                    {custodyText(r) && <div className="text-xs text-muted">{custodyText(r)}</div>}
                   </td>
                   <td className="whitespace-nowrap">{taxText(r)}</td>
                   <td className={`text-right whitespace-nowrap tabular-nums ${r.status === 'cancelled' ? 'line-through' : ''}`}>{signedAmount(r)}</td>
@@ -273,8 +278,9 @@ async function MonthView({ searchParams }: { searchParams: Promise<Query> }) {
   if (!canSeeAdjustments(user)) return <Empty>Only HR, Finance and the CEO can see the additions and deductions.</Empty>;
   const today = todayInCairo();
   const month = readMonth(query, today);
-  // one person's month, opened from the run's grid (17 October 2026)
+  // one person's month, opened from the run's grid (17 October 2026), or from a custody record's damaged item (step 3)
   const employeeId = readEmployee(query);
+  const custody = employeeId ? readCustodyPrefill(query) : null;
   const [list, options] = await Promise.all([
     loadJson<AdjustmentRow[]>(`/payroll/adjustments?month=${month}${employeeId ? `&employeeId=${employeeId}` : ''}`),
     loadJson<AdjustmentChoices>(`/payroll/adjustments/choices?month=${month}`),
@@ -335,7 +341,7 @@ async function MonthView({ searchParams }: { searchParams: Promise<Query> }) {
             New Addition or Deduction
           </h2>
           {choices.people.length ? (
-            <AddAdjustmentForm action={createAdjustment} choices={choices} employeeId={person && 'department' in person ? person.id : null} />
+            <AddAdjustmentForm action={createAdjustment} choices={choices} employeeId={person && 'department' in person ? person.id : null} custody={custody} />
           ) : (
             <p className="text-sm text-muted">Nobody is employed in {monthName(month)}.</p>
           )}

@@ -554,7 +554,7 @@ describe('Assets (owner, 21 October 2026: "i want to add this module with a spec
   const assets = (user: Parameters<typeof navFor>[0]) => navFor(user).find((n) => n.label === 'Assets') ?? null;
   const pages = (user: Parameters<typeof navFor>[0]) => assets(user)?.items?.map((i) => i.label) ?? null;
 
-  it('is a heading after the KPIs with All Assets, Add Asset, Drafts From Claude, Needs Values, Kits, Rooms, Settings and Connect Claude, for no role as such', () => {
+  it('is a heading after the KPIs with All Assets, Custody, Holdings, Add Asset, Drafts From Claude, Needs Values, Kits, Rooms, Settings and Connect Claude, for no role as such', () => {
     const labels = NAV.map((n) => n.label);
     expect(labels.indexOf('Assets')).toBe(labels.indexOf('KPIs') + 1);
     expect(NAV).toContain(ASSETS_NAV);
@@ -562,6 +562,8 @@ describe('Assets (owner, 21 October 2026: "i want to add this module with a spec
     expect(ASSETS_NAV.roles).toBeUndefined();
     expect(ASSETS_NAV.items?.map((i) => [i.label, i.href])).toEqual([
       ['All Assets', '/assets'],
+      ['Custody', '/assets/custody'],
+      ['Holdings', '/assets/holders'],
       ['Add Asset', '/assets/new'],
       ['Drafts From Claude', '/assets/drafts'],
       ['Needs Values', '/assets/needs-values'],
@@ -583,16 +585,28 @@ describe('Assets (owner, 21 October 2026: "i want to add this module with a spec
   });
 
   it('shows each page for its level: a viewer reads, a custodian adds, a manager has the rooms and settings', () => {
-    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('viewer') })).toEqual(['All Assets', 'Kits', 'Connect Claude']);
-    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('custodian') })).toEqual(['All Assets', 'Add Asset', 'Drafts From Claude', 'Kits', 'Connect Claude']);
-    expect(pages({ roles: ['hr'], employeeId: ME, assets: at('manager') })).toEqual(['All Assets', 'Add Asset', 'Drafts From Claude', 'Kits', 'Rooms', 'Settings', 'Connect Claude']);
+    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('viewer') })).toEqual(['All Assets', 'Custody', 'Holdings', 'Kits', 'Connect Claude']);
+    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('custodian') })).toEqual(['All Assets', 'Custody', 'Holdings', 'Add Asset', 'Drafts From Claude', 'Kits', 'Connect Claude']);
+    expect(pages({ roles: ['hr'], employeeId: ME, assets: at('manager') })).toEqual(['All Assets', 'Custody', 'Holdings', 'Add Asset', 'Drafts From Claude', 'Kits', 'Rooms', 'Settings', 'Connect Claude']);
   });
 
   it('shows Needs Values and Settings to those who see the values ("CEO and Finance"), whatever their level', () => {
-    expect(pages({ roles: ['finance'], employeeId: ME, assets: at('viewer', true) })).toEqual(['All Assets', 'Needs Values', 'Kits', 'Settings', 'Connect Claude']);
-    expect(pages({ roles: ['ceo'], employeeId: ME, assets: at('custodian', true) })).toEqual(['All Assets', 'Add Asset', 'Drafts From Claude', 'Needs Values', 'Kits', 'Settings', 'Connect Claude']);
+    expect(pages({ roles: ['finance'], employeeId: ME, assets: at('viewer', true) })).toEqual(['All Assets', 'Custody', 'Holdings', 'Needs Values', 'Kits', 'Settings', 'Connect Claude']);
+    expect(pages({ roles: ['ceo'], employeeId: ME, assets: at('custodian', true) })).toEqual([
+      'All Assets',
+      'Custody',
+      'Holdings',
+      'Add Asset',
+      'Drafts From Claude',
+      'Needs Values',
+      'Kits',
+      'Settings',
+      'Connect Claude',
+    ]);
     expect(pages({ roles: ['super_admin'], employeeId: ME, assets: at('manager', true) })).toEqual([
       'All Assets',
+      'Custody',
+      'Holdings',
       'Add Asset',
       'Drafts From Claude',
       'Needs Values',
@@ -618,6 +632,10 @@ describe('Assets (owner, 21 October 2026: "i want to add this module with a spec
     expect(activeSubItem(ASSETS_NAV, '/assets/needs-values')?.label).toBe('Needs Values');
     expect(activeSubItem(ASSETS_NAV, '/assets/drafts')?.label).toBe('Drafts From Claude');
     expect(activeSubItem(ASSETS_NAV, '/assets/connect-claude')?.label).toBe('Connect Claude');
+    // custody (step 3): a record, its form and a new handover under Custody; a person's holdings under Holdings
+    expect(activeSubItem(ASSETS_NAV, '/assets/custody/CUS-0042/form')?.label).toBe('Custody');
+    expect(activeSubItem(ASSETS_NAV, '/assets/custody/new')?.label).toBe('Custody');
+    expect(activeSubItem(ASSETS_NAV, '/assets/holders/3f1c2a9e-5b7d-4e1f-9a2b-6c8d0e4f1a2b')?.label).toBe('Holdings');
     expect(isActive(ASSETS_NAV, '/asset-photo/PK-CAM-0001/x')).toBe(false);
   });
 });

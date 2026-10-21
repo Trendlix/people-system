@@ -6,6 +6,7 @@ import {
   adjustmentTaxed,
   damageLimitWarning,
   adjustmentTypeLabel,
+  custodyDeductionProblem,
   ENTERED_TYPES,
   isAdjustmentType,
   isDaysType,
@@ -227,6 +228,7 @@ export class AdjustmentsService {
     await this.assertUnlocked(dto.month);
     const advanceId = await this.checkedAdvance({ employee, month: dto.month, kind: dto.kind, type: dto.type, amount: amount ?? 0, advanceId: dto.advanceId ?? null });
     if (advanceId) await assertInstallmentLimit(this.prisma, employee.id, [], [{ month: dto.month, amount: amount ?? 0 }], RECOVERY_INSTEAD);
+    const custody = await this.checkedCustodyItem(dto, employee.id);
 
     const row = await this.prisma.payrollAdjustment.create({
       data: {
@@ -239,6 +241,7 @@ export class AdjustmentsService {
         days,
         reason: dto.reason,
         advanceId,
+        custodyItemId: custody?.id ?? null,
         createdById: user.id,
       },
     });
@@ -257,6 +260,7 @@ export class AdjustmentsService {
         ...(days === null ? { amount: 'set' } : { days }),
         reason: dto.reason,
         ...(advanceId && { advanceId }),
+        ...(custody && { custodyItemId: custody.id, custody: custody.recordCode, asset: custody.assetCode }),
       },
     });
     await this.runs.syncDrafts([dto.month], [employee.id], user);
@@ -410,6 +414,22 @@ export class AdjustmentsService {
   }
 
   // ---------- helpers ----------
+
+  /**
+   * The custody item a Damage or loss deduction is made from (Assets step 3; owner, 21 October 2026: "Record it; HR
+   * decides a deduction"): one of the employee's, returned damaged or missing; none when none is sent. The law's limit on
+   * damage deductions applies as for any (Art. 151: a warning past 5 days' wage, damageWarnings).
+   */
+  private async checkedCustodyItem(dto: CreateAdjustmentDto, employeeId: string): Promise<{ id: string; recordCode: string; assetCode: string } | null> {
+    if (!dto.custodyItemId) return null;
+    const item = await this.prisma.custodyItem.findUnique({
+      where: { id: dto.custodyItemId },
+      select: { id: true, returnCondition: true, custody: { select: { code: true, employeeId: true } }, asset: { select: { code: true } } },
+    });
+    const problem = custodyDeductionProblem(dto, item && { returnCondition: item.returnCondition, employeeId: item.custody.employeeId }, employeeId);
+    if (problem) throw new BadRequestException(problem);
+    return { id: item!.id, recordCode: item!.custody.code, assetCode: item!.asset.code };
+  }
 
   private async row(id: string): Promise<AdjustmentRow> {
     const row = await this.prisma.payrollAdjustment.findUnique({ where: { id }, include: ADJUSTMENT_INCLUDE });

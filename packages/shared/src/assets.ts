@@ -699,6 +699,12 @@ export interface AssetKitView {
 export interface AssetSettingsView {
   /** EGP: an asset cheaper than this is Expensed (book value 0). 0: none is. */
   capitalizationThreshold: number;
+  /**
+   * The terms the custody forms print (step 3): those an Assets manager wrote, else the standard wording (custody.ts).
+   * `custodyTermsStandard`: none were written, the standard wording is printed.
+   */
+  custodyTerms: string[];
+  custodyTermsStandard: boolean;
   updatedAt: string | null;
   updatedBy: AssetUserRef | null;
 }

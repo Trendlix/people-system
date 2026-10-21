@@ -43,6 +43,7 @@ import {
   UpdateRoomDto,
 } from './assets.dto.js';
 import { AssetsService } from './assets.service.js';
+import { CustodyTermsDto } from './custody.dto.js';
 
 // The Assets routes (owner, 21 October 2026: the Assets module, step 1; packages/shared assets.ts has every answer's
 // shape). Each names the Assets access it needs, checked by AssetsGuard after the sign-in: anyone with access (a viewer
@@ -133,6 +134,16 @@ export class AssetSettingsController {
   update(@Body() dto: AssetSettingsDto, @CurrentAssetsCaller() caller: AssetsCaller) {
     return this.settings.update(dto, caller.user);
   }
+
+  /**
+   * The terms the custody forms print (step 3, the brief: "editable text, managers only"): { terms } one a term, or
+   * { standard: true } for the standard wording again.
+   */
+  @AssetsLevel('manager')
+  @Patch('terms')
+  updateTerms(@Body() dto: CustodyTermsDto, @CurrentAssetsCaller() caller: AssetsCaller) {
+    return this.settings.updateTerms(dto.standard ? null : (dto.terms ?? []), caller.user);
+  }
 }
 
 /**
@@ -196,15 +207,15 @@ export class AssetReportsController {
   @ConnectorScope()
   @AssetsLevel('viewer')
   @Get('holders')
-  holders(@Query() query: AssetHoldersQueryDto) {
-    return this.reports.holders(query.q);
+  holders(@Query() query: AssetHoldersQueryDto, @CurrentAssetsCaller() caller: AssetsCaller) {
+    return this.reports.holders(query.q, caller.user);
   }
 
   @ConnectorScope()
   @AssetsLevel('viewer')
   @Get('overdue')
-  overdue() {
-    return this.reports.overdue();
+  overdue(@CurrentAssetsCaller() caller: AssetsCaller) {
+    return this.reports.overdue(caller.user);
   }
 
   /** ?reorder=1: only those at or under their reorder level. */

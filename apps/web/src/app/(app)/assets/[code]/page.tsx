@@ -9,6 +9,7 @@ import { BackLink } from '../../organization/ui';
 import { todayInCairo } from '../../employees/ui';
 import { AssetDetail } from '../asset-detail';
 import { codeFromParam, keptQuery } from '../assets';
+import { loadAssetHistory } from '../custody-data';
 import { assetsCaller, assetsNotLoaded, loadAsset } from '../data';
 import { Empty, Loading, NoAccess, StatusBadge } from '../ui';
 
@@ -28,7 +29,8 @@ async function Detail({ params, searchParams }: { params: PageProps<'/assets/[co
   if (code !== raw) redirect(ASSET_PATHS.asset(code));
   const { can } = await assetsCaller();
   if (!can.view) return <NoAccess />;
-  const loaded = await loadAsset(code);
+  // its custody history and maintenance log (step 3), beside it
+  const [loaded, history] = await Promise.all([loadAsset(code), loadAssetHistory(code)]);
   if (loaded.kind === 'unavailable') notFound();
   if (loaded.kind !== 'ok') return <Empty>{assetsNotLoaded(loaded, 'asset')}</Empty>;
   const asset = loaded.value;
@@ -46,7 +48,15 @@ async function Detail({ params, searchParams }: { params: PageProps<'/assets/[co
           {asset.brand || asset.model ? ` · ${[asset.brand, asset.model].filter(Boolean).join(' ')}` : ''}
         </p>
       </div>
-      <AssetDetail asset={asset} surface="site" today={todayInCairo()} done={typeof query.done === 'string' ? query.done : null} photosFailed={Number.isFinite(failed) ? failed : 0} />
+      <AssetDetail
+        asset={asset}
+        surface="site"
+        today={todayInCairo()}
+        done={typeof query.done === 'string' ? query.done : null}
+        photosFailed={Number.isFinite(failed) ? failed : 0}
+        history={history.kind === 'ok' ? history.value : null}
+        values={can.values}
+      />
     </>
   );
 }

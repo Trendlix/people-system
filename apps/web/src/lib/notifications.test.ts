@@ -59,6 +59,14 @@ describe('where a notification opens', () => {
     expect(notificationHref('/appendix', 'leave_decided', 'app')).toBe('/app/requests');
   });
 
+  it('opens My custody and a custody record in the phone layout (Assets step 3, 21 October 2026)', () => {
+    expect(notificationHref('/my-custody', 'custody_handover', 'app')).toBe('/app/custody');
+    expect(notificationHref('/my-custody', 'custody_overdue', 'site')).toBe('/my-custody');
+    expect(notificationHref('/assets/custody/CUS-0042', 'custody_overdue', 'app')).toBe('/app/assets/custody/CUS-0042');
+    expect(notificationHref('/assets/custody/cus-0042?x=1', 'custody_unsigned', 'app')).toBe('/app/assets/custody/CUS-0042');
+    expect(notificationHref('/assets/custody/CUS-0042', 'custody_unsigned', 'site')).toBe('/assets/custody/CUS-0042');
+  });
+
   it('opens the reminders on Home, where the check-in is', () => {
     expect(notificationHref('/my-attendance', 'check_in_reminder', 'app')).toBe('/app');
     expect(notificationHref(null, 'check_out_reminder', 'app')).toBe('/app');

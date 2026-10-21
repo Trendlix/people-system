@@ -79,6 +79,12 @@ export interface AdjustmentRow {
   days?: number | null;
   reason: string;
   advance: { id: string; kind: AdvanceKind; givenOn: string; amount: number } | null;
+  /**
+   * A Damage or loss deduction made from an asset returned damaged or missing (Assets step 3; owner, 21 October 2026:
+   * "Record it; HR decides a deduction"): the custody item, its record's code and the asset's. Left out by an API from
+   * before it.
+   */
+  custody?: { itemId: string; recordCode: string; assetCode: string } | null;
   status: AdjustmentStatus;
   lineId: string | null;
   appliedAt: string | null;
@@ -169,6 +175,21 @@ export function readEmployee(query: Query): string | null {
   const id = one(query.employee);
   return UUID.test(id) ? id : null;
 }
+
+/**
+ * "Create a deduction" from a custody record or a person's holdings (Assets step 3; owner, 21 October 2026: "Record it;
+ * HR decides a deduction"): ?custodyItem= (the item returned damaged or missing) and ?reason= ("Damage: PK-CAM-0003 on
+ * CUS-0042"), the form opened as a Damage or loss deduction for the person with that reason, HR typing the amount; the
+ * item linked when it is added. Null when the address asks for none.
+ */
+export function readCustodyPrefill(query: Query): { custodyItemId: string; reason: string } | null {
+  const id = one(query.custodyItem);
+  if (!UUID.test(id)) return null;
+  return { custodyItemId: id, reason: one(query.reason).slice(0, 500) };
+}
+
+/** What a row made from a custody item says: "From CUS-0042 · PK-CAM-0003". */
+export const custodyText = (row: Pick<AdjustmentRow, 'custody'>): string | null => (row.custody ? `From ${row.custody.recordCode} · ${row.custody.assetCode}` : null);
 
 /** The page's address for a month (plain for this month), and one person's month (the run's grid's Earnings and Deductions). */
 export function adjustmentsHref(month: string, today: string, employeeId: string | null = null): string {
@@ -401,6 +422,9 @@ export function adjustmentBody(fd: FormData, entering: boolean): { body: Record<
   } else if (!entering) {
     body.advanceId = null;
   }
+  // a Damage or loss deduction made from a custody item (Assets step 3, 21 October 2026): the item, linked for tracing
+  const custodyItemId = entering ? text('custodyItemId') : '';
+  if (custodyItemId) body.custodyItemId = custodyItemId;
   return { body, errors };
 }
 

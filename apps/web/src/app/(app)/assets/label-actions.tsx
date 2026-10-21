@@ -6,9 +6,15 @@ import type { FormState } from '@/lib/types';
 
 // The label page's buttons (spec §5: "after printing set labeled_at"): Print label prints the label's own document
 // (label.ts) from a frame in the page, so nothing else of the page prints; once it is stuck on, Mark as labelled (a
-// custodian's or a manager's) records when.
+// custodian's or a manager's) records when. Since step 3 (custody, 21 October 2026) the same button prints the custody
+// form and the custody statement (custody-form.ts): PrintDocumentButton, with what it says.
 
 export function PrintLabelButton({ document: html, title }: { document: string; title: string }) {
+  return <PrintDocumentButton document={html} title={title} label="Print label" what="label" />;
+}
+
+/** Prints a document of its own (`document`: a whole HTML page) from a frame in the page, so nothing else prints. */
+export function PrintDocumentButton({ document: html, title, label, what }: { document: string; title: string; label: string; what: string }) {
   const [problem, setProblem] = useState<string | null>(null);
   const frame = useRef<HTMLIFrameElement | null>(null);
 
@@ -29,7 +35,7 @@ export function PrintLabelButton({ document: html, title }: { document: string; 
         f.contentWindow?.focus();
         f.contentWindow?.print();
       } catch {
-        setProblem('The label could not be printed from here. Try another browser, or print this page.');
+        setProblem(`The ${what} could not be printed from here. Try another browser, or print this page.`);
       }
     };
     f.srcdoc = html;
@@ -40,7 +46,7 @@ export function PrintLabelButton({ document: html, title }: { document: string; 
   return (
     <span className="inline-flex flex-col gap-1">
       <button type="button" onClick={print} className="btn btn-primary">
-        Print label
+        {label}
       </button>
       {problem && (
         <span role="alert" className="text-xs text-danger">

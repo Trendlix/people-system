@@ -17,6 +17,8 @@ import {
   monthChoices,
   monthTotals,
   netText,
+  custodyText,
+  readCustodyPrefill,
   readEmployee,
   readMonth,
   runAdjustments,
@@ -229,6 +231,24 @@ describe('the form', () => {
     expect(other.body.taxed).toBe(false);
     const loan = adjustmentBody(form({ employeeId: 'e1', kind: 'deduction', month: '2026-10', type: 'loan_installment', amount: '1000', reason: 'x', advanceId: 'l1' }), true);
     expect(loan.body.advanceId).toBe('l1');
+  });
+
+  it('links a Damage or loss deduction to its custody item (Assets step 3, 21 October 2026: "Record it; HR decides a deduction")', () => {
+    const item = '1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d';
+    expect(
+      adjustmentBody(form({ employeeId: 'e1', kind: 'deduction', month: '2026-10', type: 'damage_loss', amount: '1500', reason: 'Damage: PK-CAM-0003 on CUS-0042', custodyItemId: item }), true),
+    ).toEqual({
+      body: { employeeId: 'e1', kind: 'deduction', month: '2026-10', type: 'damage_loss', amount: 1500, reason: 'Damage: PK-CAM-0003 on CUS-0042', custodyItemId: item },
+      errors: [],
+    });
+    // only when a new one is entered
+    expect(adjustmentBody(form({ currentKind: 'deduction', month: '2026-10', type: 'damage_loss', amount: '10', reason: 'x', custodyItemId: item }), false).body).not.toHaveProperty('custodyItemId');
+    expect(readCustodyPrefill({ custodyItem: item, reason: ' Damage: PK-CAM-0003 on CUS-0042 ' })).toEqual({ custodyItemId: item, reason: 'Damage: PK-CAM-0003 on CUS-0042' });
+    expect(readCustodyPrefill({ custodyItem: 'nope', reason: 'x' })).toBeNull();
+    expect(readCustodyPrefill({})).toBeNull();
+    expect(custodyText({ custody: { itemId: item, recordCode: 'CUS-0042', assetCode: 'PK-CAM-0003' } })).toBe('From CUS-0042 · PK-CAM-0003');
+    expect(custodyText({ custody: null })).toBeNull();
+    expect(custodyText({})).toBeNull();
   });
 
   it('says what is missing before sending', () => {

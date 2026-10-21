@@ -426,6 +426,9 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return { href: '/assets/kits', label: 'Open kits', roles: ASSETS };
     case 'asset_settings':
       return { href: '/assets/settings', label: 'Open asset settings', roles: ASSETS };
+    // custody (Assets step 3, 21 October 2026): the record's page by its code
+    case 'custody_record':
+      return record?.reference ? { href: `/assets/custody/${encodeURIComponent(record.reference)}`, label: 'Open custody record', roles: ASSETS } : null;
     case 'ocr_correction':
       return { href: '/employees/card-corrections', label: 'Open card reading fixes', roles: ['hr'] };
     default:
