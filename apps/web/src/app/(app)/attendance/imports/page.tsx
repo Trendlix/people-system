@@ -2,13 +2,16 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { formatDateTime } from '@/lib/format';
+import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
+import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
 import { Empty, Loading } from '../../organization/ui';
 import { StaffOnly } from '../../staff-only';
 import { monthName, runHref } from '../../payroll/list';
 import { PayrollStatusBadge } from '../../payroll/ui';
-import { attendanceReviewHref } from '../../payroll/[id]/attendance/attendance';
-import { canSeeAttendance, dailyHref, importCountsText, importHref, importStateText, importsAttendance, reviewsImports } from '../attendance';
+import { deleteAttendanceImport } from '../../payroll/[id]/attendance/actions';
+import { attendanceReviewHref, deleteImportBlocked, deleteImportConfirmText, deleteImportLabel, undoesBeforeDelete } from '../../payroll/[id]/attendance/attendance';
+import { canSeeAttendance, dailyHref, deletedImportNotice, importCountsText, importHref, importStateText, importsAttendance, reviewsImports } from '../attendance';
 import { loadImportHistory } from '../data';
 import { notLoaded } from '../not-loaded';
 
@@ -16,19 +19,29 @@ import { notLoaded } from '../not-loaded';
 // attendance across the payroll runs, the latest first: its month (its days on Daily Attendance) and run (where it
 // stands), when it was read and by whom, its files, how many people are matched, to confirm or not found, and whether it
 // is applied, by whom and when, or undone; each opening its review on the run (HR and the CEO, who review imports).
-// Import opens the Import page (HR). HR, the CEO and Finance; the API checks it again.
+// Import opens the Import page (HR). HR, the CEO and Finance; the API checks it again. A Super Admin deletes one on a
+// draft payroll (asked, 21 October 2026: "how to delete previous imports"; only a Super Admin deletes: owner, 15 October
+// 2026): Delete, or Undo and delete for one applied, each asking first and saying what happens; afterwards the list says
+// what went.
 
 export const metadata: Metadata = { title: 'Attendance Imports · People System' };
 
-async function History() {
+async function History({ searchParams }: { searchParams: PageProps<'/attendance/imports'>['searchParams'] }) {
   const user = await getCurrentUser();
   if (!canSeeAttendance(user)) return <Empty>Only HR, Finance and the CEO see the attendance imports.</Empty>;
-  const loaded = await loadImportHistory();
+  const [loaded, query] = await Promise.all([loadImportHistory(), searchParams]);
   if (loaded.kind !== 'ok') return <Empty>{notLoaded(loaded, 'imports')}</Empty>;
   const rows = loaded.value;
   const reviews = reviewsImports(user);
+  const deletes = canDelete(user);
+  const notice = deletedImportNotice(query);
   return (
     <div className="space-y-4">
+      {notice && (
+        <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
+          {notice}
+        </p>
+      )}
       {importsAttendance(user) && (
         <Link href={importHref()} className="btn btn-primary no-underline">
           Import attendance
@@ -49,6 +62,11 @@ async function History() {
                 {reviews && (
                   <th scope="col">
                     <span className="sr-only">Review</span>
+                  </th>
+                )}
+                {deletes && (
+                  <th scope="col">
+                    <span className="sr-only">Delete</span>
                   </th>
                 )}
               </tr>
@@ -92,6 +110,21 @@ async function History() {
                       </Link>
                     </td>
                   )}
+                  {deletes && (
+                    <td className="max-w-44 text-right">
+                      <ActionButton
+                        action={deleteAttendanceImport.bind(null, r.runId, r.id, undoesBeforeDelete(r))}
+                        pendingText="Deleting…"
+                        variant="danger"
+                        confirmText={deleteImportConfirmText(r)}
+                        disabled={deleteImportBlocked(r.runStatus) !== null}
+                        disabledNote={deleteImportBlocked(r.runStatus) ?? undefined}
+                      >
+                        {deleteImportLabel(r)}
+                        <span className="sr-only"> the {monthName(r.month)} import read {formatDateTime(r.createdAt)}</span>
+                      </ActionButton>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -105,7 +138,7 @@ async function History() {
   );
 }
 
-export default function AttendanceImportsPage() {
+export default function AttendanceImportsPage({ searchParams }: PageProps<'/attendance/imports'>) {
   return (
     <StaffOnly>
       <div className="max-w-6xl space-y-6">
@@ -117,7 +150,7 @@ export default function AttendanceImportsPage() {
           </p>
         </div>
         <Suspense fallback={<Loading />}>
-          <History />
+          <History searchParams={searchParams} />
         </Suspense>
       </div>
     </StaffOnly>

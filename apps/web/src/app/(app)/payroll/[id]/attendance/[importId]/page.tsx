@@ -6,7 +6,9 @@ import { formatHours } from '@trendlix/shared';
 import { CLevelBadge } from '@/components/c-level-badge';
 import type { AttendancePersonView } from '@/lib/attendance-types';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
+import { ActionButton } from '../../../../employees/[id]/contracts/contract-buttons';
 import { profileHref } from '../../../../employees/tab-list';
 import { recordLeaveHref } from '../../../../leave/list';
 import { weekdayOf } from '../../../../organization/holidays/holidays';
@@ -14,7 +16,7 @@ import { BackLink, Empty, Loading, UUID } from '../../../../organization/ui';
 import { loadRun } from '../../../data';
 import { canSeePayroll, monthName, preparesPayroll, runHref, runTitle } from '../../../list';
 import { notLoadedText } from '../../../load';
-import { applyAttendance, choosePerson, undoAttendance } from '../actions';
+import { applyAttendance, choosePerson, deleteAttendanceImport, undoAttendance } from '../actions';
 import {
   applyConfirmText,
   attendanceUploadHref,
@@ -24,6 +26,9 @@ import {
   daysCount,
   dayStatusText,
   dayTone,
+  deleteImportBlocked,
+  deleteImportConfirmText,
+  deleteImportLabel,
   fileMonthsNote,
   MATCH_TEXT,
   notAppliedReason,
@@ -31,6 +36,7 @@ import {
   placeText,
   reviewSections,
   undoConfirmText,
+  undoesBeforeDelete,
 } from '../attendance';
 import { loadImport } from '../data';
 import { ApplyButton, ChoiceButton, PickPerson, UndoButton } from './person-forms';
@@ -49,7 +55,9 @@ import { ApplyButton, ChoiceButton, PickPerson, UndoButton } from './person-form
 // the lines the user fills back to what they had before it, and its days go. Read only once the run isn't a draft. The
 // API decides every choice and what Apply and Undo change. Someone who checks in on the system this month (owner, 19
 // October 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace
-// Zoho") is said so: their Zoho days count before their first check-in, and their line is filled from their days.
+// Zoho") is said so: their Zoho days count before their first check-in, and their line is filled from their days. At
+// the bottom, a Super Admin deletes the import on a draft (asked, 21 October 2026: "how to delete previous imports"; only
+// a Super Admin deletes: owner, 15 October 2026), undoing it first when it is applied, after saying what happens.
 
 export const metadata: Metadata = { title: 'Attendance Review · People System' };
 
@@ -148,6 +156,9 @@ async function Review({ params }: { params: PageProps<'/payroll/[id]/attendance/
   // the payroll's people, for choosing who someone of the files is: Apply fills lines on this payroll only
   const options = run.lines.map((l) => ({ id: l.employeeId, label: `${l.name} · ${l.employeeCode}` })).sort((a, b) => a.label.localeCompare(b.label));
   const title = runTitle(run.month);
+  const deletes = canDelete(user);
+  const undoesFirst = undoesBeforeDelete(view);
+  const blocked = deleteImportBlocked(run.status);
 
   return (
     <div className="space-y-8">
@@ -378,6 +389,30 @@ async function Review({ params }: { params: PageProps<'/payroll/[id]/attendance/
             permission hours typed before it was applied (empty if none were), and the days it kept for them are removed.
           </p>
           <UndoButton action={undoAttendance.bind(null, id, importId)} confirmText={undoConfirmText(view)} />
+        </section>
+      )}
+
+      {deletes && (
+        <section aria-labelledby="delete-heading" className="card space-y-3 p-6">
+          <h2 id="delete-heading" className="font-semibold">
+            Delete This Import
+          </h2>
+          <p className="text-sm text-muted">
+            {undoesFirst
+              ? `It is applied, so it is undone first on every line it filled on ${title}, whoever fills them (the C-level people's too): the worked hours, no-show days and permission hours go back to what was typed before it (empty if none were), and the days it kept are removed. Then the import and its files are deleted.`
+              : `It isn't applied: the import and its files are deleted, and nothing on ${title} changes.`}{' '}
+            This can&apos;t be undone.
+          </p>
+          <ActionButton
+            action={deleteAttendanceImport.bind(null, id, importId, undoesFirst)}
+            pendingText="Deleting…"
+            variant="danger"
+            confirmText={deleteImportConfirmText(view)}
+            disabled={blocked !== null}
+            disabledNote={blocked ?? undefined}
+          >
+            {deleteImportLabel(view)}
+          </ActionButton>
         </section>
       )}
     </div>

@@ -13,6 +13,8 @@ import {
   dailyHref,
   dayFlagTexts,
   daySourceText,
+  deletedImportHref,
+  deletedImportNotice,
   extraHoursText,
   figureTiles,
   filledText,
@@ -371,6 +373,16 @@ describe('Import History', () => {
       'Undo this import on 2 lines? The worked hours, no-show days and permission hours go back to what was typed before it was applied (empty if nothing was), and the days it kept are removed.',
     );
     expect(undoConfirmText({ undoable: 1 })).toContain('on 1 line?');
+  });
+
+  it('says what a Super Admin deleted, once back on the list (asked, 21 October 2026: "how to delete previous imports")', () => {
+    expect(deletedImportHref('2026-09', false)).toBe('/attendance/imports?deleted=2026-09');
+    expect(deletedImportHref('2026-09', true)).toBe('/attendance/imports?deleted=2026-09&undone=1');
+    expect(deletedImportNotice({ deleted: '2026-09' })).toBe('Deleted the September 2026 import.');
+    expect(deletedImportNotice({ deleted: '2026-09', undone: '1' })).toBe(
+      'Undid and deleted the September 2026 import: the lines it filled are back to the figures typed before it, and its days are removed.',
+    );
+    for (const deleted of [undefined, '', 'yes', '2026-13', '<b>9</b>', ['2026-09']]) expect(deletedImportNotice({ deleted })).toBeNull();
   });
 });
 

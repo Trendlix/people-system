@@ -9,6 +9,10 @@ import {
   checkTimesText,
   countChips,
   dayTone,
+  deleteImportBlocked,
+  deleteImportConfirmText,
+  deleteImportLabel,
+  deleteImportPath,
   fileMonthsNote,
   notAppliedReason,
   permissionText,
@@ -16,6 +20,7 @@ import {
   placeText,
   refreshesFromAttendance,
   reviewSections,
+  undoesBeforeDelete,
   uploadProblems,
 } from './attendance';
 
@@ -161,5 +166,47 @@ describe('checking in on the system (owner, 19 October 2026: "Check-in through t
 
   it('says of someone who checks in that their line is filled from their attendance days', () => {
     expect(CHECKS_IN_NOTE).toBe("Checks in on the system this month: Zoho's days count before their first check-in, and their line is filled from their attendance days.");
+  });
+});
+
+describe('deleting an import (asked, 21 October 2026: "how to delete previous imports"; a Super Admin only)', () => {
+  const RUN = '0b8f2c1e-1111-4222-8333-444455556666';
+  const IMPORT = '1c9f3d2f-2222-4333-8444-555566667777';
+  const notApplied = { month: '2026-09', files: [{ name: 'Presence hours break-up_902.xlsx' }], appliedAt: null, kept: { lines: 0, days: 0 } };
+  const applied = { month: '2026-09', files: [{ name: 'a.xlsx' }, { name: 'b.xlsx' }], appliedAt: '2026-10-19T15:00:00.000Z', kept: { lines: 26, days: 640 } };
+
+  it('undoes it first when anything on its payroll is still from it, by what is kept (applied, for an API from before)', () => {
+    expect(undoesBeforeDelete(notApplied)).toBe(false);
+    expect(undoesBeforeDelete(applied)).toBe(true);
+    // applied once, but a later import replaced everything it filled
+    expect(undoesBeforeDelete({ ...applied, kept: { lines: 0, days: 0 } })).toBe(false);
+    // only days kept: someone who checks in on the system, their line filled from the days
+    expect(undoesBeforeDelete({ appliedAt: null, kept: { lines: 0, days: 3 } })).toBe(true);
+    expect(undoesBeforeDelete({ appliedAt: applied.appliedAt })).toBe(true);
+    expect(undoesBeforeDelete({ appliedAt: null })).toBe(false);
+    expect([deleteImportLabel(notApplied), deleteImportLabel(applied)]).toEqual(['Delete', 'Undo and delete']);
+  });
+
+  it('asks the API to undo it first only for Undo and delete', () => {
+    expect(deleteImportPath(RUN, IMPORT, false)).toBe(`/payroll/runs/${RUN}/attendance-imports/${IMPORT}`);
+    expect(deleteImportPath(RUN, IMPORT, true)).toBe(`/payroll/runs/${RUN}/attendance-imports/${IMPORT}?undo=1`);
+  });
+
+  it('says what happens before deleting', () => {
+    expect(deleteImportConfirmText(notApplied)).toBe(
+      "Delete the September 2026 import (Presence hours break-up_902.xlsx)? It isn't applied, so nothing on the payroll changes. This can't be undone.",
+    );
+    expect(deleteImportConfirmText(applied)).toBe(
+      "Undo and delete the September 2026 import (2 files)? The 26 lines it filled, whoever fills them, go back to the worked hours, no-show days and permission hours typed before it (empty if none were). The 640 days of attendance it kept are removed, and the lines filled from the attendance days are filled again without them. Then the import is deleted. This can't be undone.",
+    );
+    expect(deleteImportConfirmText({ ...applied, kept: { lines: 1, days: 0 } })).toContain('(2 files)? The line it filled, whoever fills it, goes back');
+    expect(deleteImportConfirmText({ ...applied, kept: { lines: 0, days: 1 } })).toContain('(2 files)? The day of attendance it kept is removed');
+    // an API from before Delete: what it says without the counts
+    expect(deleteImportConfirmText({ ...applied, kept: undefined })).toContain('The lines it filled, whoever fills them, go back');
+  });
+
+  it('is only on a draft payroll, as the API says', () => {
+    expect(deleteImportBlocked('draft')).toBeNull();
+    for (const status of ['pending_ceo', 'approved', 'paid'] as const) expect(deleteImportBlocked(status)).toBe("Kept: its payroll isn't a draft any more.");
   });
 });

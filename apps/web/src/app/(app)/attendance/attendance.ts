@@ -26,7 +26,7 @@ import { googleMapsHref } from '../../../lib/map-point';
 import { hasRole } from '../../../lib/roles';
 import { cairoTime } from '../payroll/[id]/attendance/attendance';
 import { addMonths, monthName, monthOf, runHref } from '../payroll/list';
-import { ATTENDANCE_IMPORT_PATH, ATTENDANCE_PATH, ATTENDANCE_SUMMARY_PATH } from './sections';
+import { ATTENDANCE_IMPORT_PATH, ATTENDANCE_IMPORTS_PATH, ATTENDANCE_PATH, ATTENDANCE_SUMMARY_PATH } from './sections';
 
 // The Attendance section (owner, 19 October 2026: "is the attendance module active?", then "the attendance is not active
 // in the side menu"): the days kept from Zoho People's imports, for HR, the CEO and Finance (Daily Attendance, a
@@ -534,4 +534,19 @@ export function importCountsText(row: Pick<AttendanceImportRow, 'people' | 'coun
     c.skipped ? `${c.skipped} skipped` : null,
   ].filter(Boolean);
   return `${row.people} ${row.people === 1 ? 'person' : 'people'}: ${parts.join(', ')}`;
+}
+
+/**
+ * Where a Super Admin's Delete brings the browser back to (asked, 21 October 2026: "how to delete previous imports"):
+ * Import History, saying which month's import went and whether it was undone first.
+ */
+export const deletedImportHref = (month: string, undone: boolean) => withParams(ATTENDANCE_IMPORTS_PATH, { deleted: month, undone: undone ? '1' : null });
+
+/** What Import History says after an import was deleted (?deleted=YYYY-MM, &undone=1); null otherwise. */
+export function deletedImportNotice(query: Query): string | null {
+  const month = one(query.deleted);
+  if (!isAttendanceMonth(month)) return null;
+  return one(query.undone) === '1'
+    ? `Undid and deleted the ${monthName(month)} import: the lines it filled are back to the figures typed before it, and its days are removed.`
+    : `Deleted the ${monthName(month)} import.`;
 }

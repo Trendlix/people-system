@@ -1,9 +1,9 @@
-import { ArgumentsHost, Body, Catch, Controller, ExceptionFilter, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, PayloadTooLargeException, Post, UploadedFiles, UseFilters, UseInterceptors } from '@nestjs/common';
+import { ArgumentsHost, Body, Catch, Controller, Delete, ExceptionFilter, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, PayloadTooLargeException, Post, Query, UploadedFiles, UseFilters, UseInterceptors } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { CurrentUser, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { AttendancePersonDto } from './attendance-imports.dto.js';
+import { AttendanceImportDeleteQueryDto, AttendancePersonDto } from './attendance-imports.dto.js';
 import { AttendanceImportsService } from './attendance-imports.service.js';
 import { ZOHO_MAX_BYTES, ZOHO_MAX_FILES, ZOHO_TOO_LARGE } from './zoho-file.js';
 
@@ -12,7 +12,8 @@ import { ZOHO_MAX_BYTES, ZOHO_MAX_FILES, ZOHO_TOO_LARGE } from './zoho-file.js';
 // by the system's rules, confirms or picks those not matched, and applies it to the run's lines; the CEO sees the
 // review and applies the C-level people's lines (the CEO fills them: owner, 19 October 2026), who HR doesn't see. What an
 // import filled can't be typed over on the run (owner, 19 October 2026: "imported data shouldn't be editable"): HR imports
-// the month again, or undoes the import here.
+// the month again, or undoes the import here. A Super Admin deletes one (asked, 21 October 2026: "how to delete previous
+// imports"), undoing it first when it is applied.
 
 // The files (each .xlsx of up to 5 MB, at most 60): one more than the most is let through so the service can say so in
 // words HR understand, rather than the upload library's.
@@ -77,5 +78,17 @@ export class AttendanceImportsController {
   @HttpCode(200)
   undo(@Param('id', ParseUUIDPipe) id: string, @Param('importId', ParseUUIDPipe) importId: string, @CurrentUser() user: SessionUser) {
     return this.imports.undo(id, importId, user);
+  }
+
+  /**
+   * Deletes the import (asked, 21 October 2026: "how to delete previous imports"; a Super Admin only, like every deletion:
+   * owner's decision, 15 October 2026), on a draft run. One applied is refused unless `?undo=1`: then it is undone first
+   * on every line it filled, whoever fills it, and its days go with it.
+   */
+  @DeletesRecords()
+  @Delete(':importId')
+  @HttpCode(200)
+  remove(@Param('id', ParseUUIDPipe) id: string, @Param('importId', ParseUUIDPipe) importId: string, @Query() query: AttendanceImportDeleteQueryDto, @CurrentUser() user: SessionUser) {
+    return this.imports.remove(id, importId, query.undo === '1' || query.undo === 'true', user);
   }
 }

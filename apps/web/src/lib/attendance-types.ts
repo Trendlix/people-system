@@ -89,6 +89,27 @@ export interface AttendanceImportView {
    * October 2026: "imported data shouldn't be editable"); left out by an API from before it.
    */
   undoable?: number;
+  /** What is still on the run from it, whoever fills the lines (21 October 2026); left out by an API from before Delete. */
+  kept?: AttendanceImportKept;
+}
+
+/**
+ * The run's lines still filled from an import (the C-level people's too) and the days kept from it: what a Super Admin's
+ * Delete undoes first (asked, 21 October 2026: "how to delete previous imports").
+ */
+export interface AttendanceImportKept {
+  lines: number;
+  days: number;
+}
+
+/** DELETE /payroll/runs/:id/attendance-imports/:importId(?undo=1): what it did. */
+export interface AttendanceImportDeleted {
+  id: string;
+  runId: string;
+  month: string;
+  undone: boolean;
+  lines: number;
+  days: number;
 }
 
 /** GET /payroll/runs/:id/attendance-imports: the run's imports, the latest first. */
@@ -227,6 +248,8 @@ export interface AttendanceImportRow {
   appliedAt: string | null;
   appliedBy: string | null;
   undoneAt: string | null;
+  /** What is still on its run from it (21 October 2026); left out by an API from before Delete. */
+  kept?: AttendanceImportKept;
 }
 
 // ---------- checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the

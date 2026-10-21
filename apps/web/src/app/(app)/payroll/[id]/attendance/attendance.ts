@@ -9,7 +9,7 @@ import {
   type PayrollStatus,
   type Role,
 } from '@trendlix/shared';
-import type { AttendanceImportFile, AttendanceImportView, AttendancePersonView, PersonMatch } from '../../../../../lib/attendance-types';
+import type { AttendanceImportFile, AttendanceImportKept, AttendanceImportView, AttendancePersonView, PersonMatch } from '../../../../../lib/attendance-types';
 import { formatTime } from '../../../../../lib/format';
 import { hasRole } from '../../../../../lib/roles';
 import { monthName } from '../../list';
@@ -122,6 +122,49 @@ export function undoConfirmText(view: Pick<AttendanceImportView, 'undoable'>): s
   const n = view.undoable ?? 0;
   return `Undo this import on ${n} ${n === 1 ? 'line' : 'lines'}? The worked hours, no-show days and permission hours go back to what was typed before it was applied (empty if nothing was), and the days it kept are removed.`;
 }
+
+// ---------- deleting an import (asked, 21 October 2026: "how to delete previous imports"; a Super Admin only, like
+// every deletion: owner's decision, 15 October 2026) ----------
+
+/** An import as Delete words it: its month, its files, whether it is applied and what of it is still on its run. */
+export interface ImportToDelete {
+  month: string;
+  files: readonly { name: string }[];
+  appliedAt: string | null;
+  /** Left out by an API from before Delete: applied then means undone first. */
+  kept?: AttendanceImportKept | null;
+}
+
+/** Whether Delete undoes the import first: a line of its run still filled from it, or a day still kept from it. */
+export const undoesBeforeDelete = (i: Pick<ImportToDelete, 'appliedAt' | 'kept'>): boolean => (i.kept ? i.kept.lines > 0 || i.kept.days > 0 : i.appliedAt !== null);
+
+/** The button: Delete, or Undo and delete for an import applied. */
+export const deleteImportLabel = (i: Pick<ImportToDelete, 'appliedAt' | 'kept'>): string => (undoesBeforeDelete(i) ? 'Undo and delete' : 'Delete');
+
+/** The API's address: `?undo=1` to undo it first (the API refuses an applied import without it). */
+export const deleteImportPath = (runId: string, importId: string, undo: boolean) => `${importPath(runId, importId)}${undo ? '?undo=1' : ''}`;
+
+const filesText = (files: readonly { name: string }[]) => (files.length === 1 ? files[0].name : `${files.length} files`);
+
+/** The confirmation Delete asks first, saying what happens to the payroll. */
+export function deleteImportConfirmText(i: ImportToDelete): string {
+  const what = `the ${monthName(i.month)} import (${filesText(i.files)})`;
+  if (!undoesBeforeDelete(i)) return `Delete ${what}? It isn't applied, so nothing on the payroll changes. This can't be undone.`;
+  const k = i.kept;
+  const parts: string[] = [];
+  if (!k || k.lines) {
+    const lines = !k ? 'The lines it filled, whoever fills them, go' : k.lines === 1 ? 'The line it filled, whoever fills it, goes' : `The ${k.lines} lines it filled, whoever fills them, go`;
+    parts.push(`${lines} back to the worked hours, no-show days and permission hours typed before it (empty if none were).`);
+  }
+  if (!k || k.days) {
+    const days = !k ? 'The days' : k.days === 1 ? 'The day' : `The ${k.days} days`;
+    parts.push(`${days} of attendance it kept ${k?.days === 1 ? 'is' : 'are'} removed, and the lines filled from the attendance days are filled again without them.`);
+  }
+  return `Undo and delete ${what}? ${parts.join(' ')} Then the import is deleted. This can't be undone.`;
+}
+
+/** Why an import can't be deleted now (the API refuses it): its payroll isn't a draft any more. Null on a draft. */
+export const deleteImportBlocked = (status: PayrollStatus): string | null => (status === 'draft' ? null : "Kept: its payroll isn't a draft any more.");
 
 /**
  * What the review says of someone who checks in on the system this month (owner, 19 October 2026: "Check-in through the

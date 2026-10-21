@@ -13,6 +13,7 @@ import {
   type AttendanceMonthResult,
   type ImportedDay,
   type ImportedInput,
+  type LawRates,
   type MatchKind,
   type PayrollInputs,
   type PayrollRules,
@@ -20,6 +21,7 @@ import {
   type PayrollTerms,
 } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
+import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
@@ -126,6 +128,27 @@ export interface AttendanceImportView {
    * draft.
    */
   undoable: number;
+  /**
+   * What is still on the run from it, whoever fills the lines (asked, 21 October 2026: "how to delete previous imports"):
+   * the lines still marked from it and the days kept from it. Anything there: a Super Admin's Delete undoes it first.
+   */
+  kept: ImportKept;
+}
+
+/** The run's lines still filled from an import (marked from it, the C-level people's too) and the days kept from it. */
+export interface ImportKept {
+  lines: number;
+  days: number;
+}
+
+/** What deleting an import did: its month, whether it was undone first, the lines put back and the days removed. */
+export interface AttendanceImportDeleted {
+  id: string;
+  runId: string;
+  month: string;
+  undone: boolean;
+  lines: number;
+  days: number;
 }
 
 /** An import as the Attendance section's Imports lists it. */
@@ -143,6 +166,8 @@ export interface AttendanceImportHistoryRow {
   appliedBy: string | null;
   /** Undone (Undo this import) and not applied since: when, last. */
   undoneAt: string | null;
+  /** What is still on its run from it (21 October 2026): a Super Admin's Delete undoes it first when anything is. */
+  kept: ImportKept;
 }
 
 /** Whether a match names the employee: by Zoho's id, by name, or by HR's choice. */
@@ -162,7 +187,8 @@ const hoursToMinutes = (n: number) => Math.round(n * 60) / 60;
 // Super Admin: changesPayrollLine), replacing what was typed: the worked hours, the no-show days (the absent ones) and
 // the permission hours, marked from Zoho; keeps each day (AttendanceDay, that month's Zoho days replaced); and remembers
 // each person's Zoho ID on the employee. Every upload, choice and apply is in the audit log, each line changed too. The
-// C-level people HR may not see are one row of the review, without their figures.
+// C-level people HR may not see are one row of the review, without their figures. A Super Admin deletes an import on a
+// draft run (asked, 21 October 2026: "how to delete previous imports"), undoing it first when it is applied (remove).
 @Injectable()
 export class AttendanceImportsService {
   constructor(
@@ -280,6 +306,7 @@ export class AttendanceImportsService {
       },
     });
     const names = await userNames(this.prisma, rows.flatMap((r) => [r.createdBy, r.appliedBy]));
+    const kept = await this.keptOf(rows);
     // the employees a person of the files may be, by month, as the review takes them
     const candidates = new Map<string, { id: string; fullNameEn: string; zohoPeopleId: string | null }[]>();
     for (const m of new Set(rows.map((r) => fromDateOnly(r.month).slice(0, 7)))) {
@@ -321,6 +348,7 @@ export class AttendanceImportsService {
         appliedAt: r.appliedAt?.toISOString() ?? null,
         appliedBy: r.appliedBy ? (names.get(r.appliedBy.id)?.name ?? r.appliedBy.email) : null,
         undoneAt: !r.appliedAt && undone.length ? undone.map((u) => u.at).sort().at(-1)! : null,
+        kept: kept.get(r.id) ?? { lines: 0, days: 0 },
       };
     });
   }
@@ -472,17 +500,7 @@ export class AttendanceImportsService {
     const undoneKeys = new Set(view.people.filter((p) => p.employee && employees.has(p.employee.id)).map((p) => p.key));
 
     await this.prisma.$transaction(async (tx) => {
-      for (const line of due) {
-        const mark = line.attendanceImport as unknown as AttendanceImportMark;
-        const was = savedInputs(line.inputs);
-        const back = Object.fromEntries(mark.fields.map((f) => [f, mark.before?.[f] ?? null])) as Partial<PayrollInputs>;
-        const inputs: PayrollInputs = { ...EMPTY_PAYROLL_INPUTS, ...was, ...back };
-        await tx.payrollLine.update({
-          where: { id: line.id },
-          data: { inputs: json(inputs), attendanceImport: Prisma.DbNull, ...worked(line.terms as unknown as PayrollTerms, inputs, rules, law) },
-        });
-        audits.push({ lineId: line.id, employeeCode: line.employeeCode, diff: { ...changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>), source: 'zoho', importId, undone: true } });
-      }
+      for (const line of due) audits.push(await putBack(tx, line, importId, rules, law));
       days = (await tx.attendanceDay.deleteMany({ where: { importId, employeeId: { in: [...employees] } } })).count;
       for (const p of people) {
         if (!undoneKeys.has(p.key) || !p.applied) continue;
@@ -509,7 +527,93 @@ export class AttendanceImportsService {
     return this.view(runId, importId, user);
   }
 
+  /**
+   * Deletes an import (asked, 21 October 2026: "how to delete previous imports"; a Super Admin only, like every deletion:
+   * owner's decision, 15 October 2026), on a draft run, as Undo is. Not applied (no line of the run filled from it, no day
+   * kept from it): the import goes, with the files and people it read. Applied: refused (409) unless `undo` (Undo and
+   * delete): then, in one transaction, every line of the run filled from it is put back as Undo this import puts it back
+   * and every day kept from it goes, for everyone at once, since a Super Admin acts for all (Undo itself is by the
+   * caller: undoableLines). The C-level people's lines too, which the CEO fills (owner, 19 October 2026): a Super Admin
+   * sees C-level people, and those lines get back the CEO's own figures from before the import (its mark's `before`),
+   * so no one's figures are typed over. Then, as after Undo, the corrected days over its days are made again, and the
+   * lines filled from the attendance days take the days left. One delete entry in the audit log (the month, the files,
+   * their rows, whether it was undone first), and each line put back.
+   */
+  async remove(runId: string, importId: string, undo: boolean, user: SessionUser): Promise<AttendanceImportDeleted> {
+    assertDeletes(user);
+    const imp = await this.row(runId, importId);
+    const run = await this.draftRun(runId, "its attendance import can't be deleted");
+    const month = fromDateOnly(run.month).slice(0, 7);
+    // every line still marked from it, whoever fills it, and everyone with days kept from it
+    const filled = linesFilledFrom(run.lines, importId);
+    const dayCounts = await this.prisma.attendanceDay.groupBy({ by: ['employeeId'], where: { importId }, _count: { _all: true } });
+    const kept: ImportKept = { lines: filled.length, days: dayCounts.reduce((n, d) => n + d._count._all, 0) };
+    const applied = kept.lines > 0 || kept.days > 0;
+    if (applied && !undo) throw new ConflictException(`The ${monthName(month)} import is applied: ${keptText(kept)}. Undo it first, or undo and delete it.`);
+
+    const files = imp.files as unknown as StoredFile[];
+    const rules = run.rules as unknown as PayrollRules;
+    const law = runLawRates(run);
+    const dayPeople = new Set(dayCounts.map((d) => d.employeeId));
+    const employees = [...new Set([...filled.map((l) => l.employeeId), ...dayPeople])];
+    // those whose line is filled from the attendance days with its days in them (19 October 2026): filled again after
+    const viaAttendance = run.lines.filter((l) => (l.attendanceImport as unknown as AttendanceImportMark | null)?.source === 'attendance' && dayPeople.has(l.employeeId));
+    const audits: { lineId: string; employeeCode: string; diff: Record<string, unknown> }[] = [];
+    let days = 0;
+    await this.prisma.$transaction(async (tx) => {
+      for (const line of filled) audits.push(await putBack(tx, line, importId, rules, law));
+      days = (await tx.attendanceDay.deleteMany({ where: { importId } })).count;
+      await tx.attendanceImport.delete({ where: { id: importId } });
+    });
+    for (const a of audits) {
+      await this.audit.record({ userId: user.id, action: 'update', entityType: LINE, entityId: a.lineId, diff: { runId, month, employeeCode: a.employeeCode, ...a.diff } });
+    }
+    const lines = filled.length + viaAttendance.length;
+    await this.audit.record({
+      userId: user.id,
+      action: 'delete',
+      entityType: IMPORT,
+      entityId: importId,
+      diff: {
+        runId,
+        month,
+        files: files.map((f) => f.name),
+        rows: files.reduce((n, f) => n + f.rows, 0),
+        people: (imp.people as unknown as StoredPerson[]).length,
+        undone: applied,
+        ...(applied && { lines, days }),
+      },
+    });
+    if (applied) {
+      await this.correctionDays.rebuildMonth(employees, month, user);
+      await this.fill.fillRun(runId, user, employees);
+    }
+    return { id: importId, runId, month, undone: applied, lines, days };
+  }
+
   // ---------- helpers ----------
+
+  /** What is still on the runs from these imports: the lines marked from each (anyone's) and the days kept from each. */
+  private async keptOf(imports: readonly { id: string; runId: string }[]): Promise<Map<string, ImportKept>> {
+    const out = new Map(imports.map((i) => [i.id, { lines: 0, days: 0 }]));
+    if (!imports.length) return out;
+    const [lines, days] = await Promise.all([
+      this.prisma.payrollLine.findMany({
+        where: { runId: { in: [...new Set(imports.map((i) => i.runId))] }, attendanceImport: { path: ['source'], equals: 'zoho' } },
+        select: { attendanceImport: true },
+      }),
+      this.prisma.attendanceDay.groupBy({ by: ['importId'], where: { importId: { in: imports.map((i) => i.id) } }, _count: { _all: true } }),
+    ]);
+    for (const l of lines) {
+      const kept = out.get((l.attendanceImport as unknown as AttendanceImportMark).importId ?? '');
+      if (kept) kept.lines++;
+    }
+    for (const d of days) {
+      const kept = d.importId ? out.get(d.importId) : undefined;
+      if (kept) kept.days = d._count._all;
+    }
+    return out;
+  }
 
   /**
    * The run's lines filled from the attendance days (19 October 2026: someone who checks in on the system) whose month
@@ -660,6 +764,7 @@ export class AttendanceImportsService {
       },
       canApply: run.status === 'draft' && shown.some((p) => isMatched(p.match) && !p.duplicate && p.lineId && p.editable),
       undoable: run.status === 'draft' ? undoableLines(run.lines, importId, user, confidential).length + (await this.filledFromAttendance(run.lines, importId, user, confidential)).length : 0,
+      kept: { lines: linesFilledFrom(run.lines, importId).length, days: await this.prisma.attendanceDay.count({ where: { importId } }) },
     };
     return { view, imp, people };
   }
@@ -763,8 +868,50 @@ function dayRow(employeeId: string, d: AttendanceDayResult, importId: string, us
  * HR with Super Admin: changesPayrollLine); none hidden from them.
  */
 function undoableLines<L extends { employeeId: string; attendanceImport: Prisma.JsonValue | null }>(lines: readonly L[], importId: string, user: SessionUser, confidential: ConfidentialView): L[] {
-  return lines.filter((l) => {
-    const mark = l.attendanceImport as unknown as AttendanceImportMark | null;
-    return mark?.importId === importId && !confidential.hidden.has(l.employeeId) && changesPayrollLine(user, confidential.all.has(l.employeeId));
+  return linesFilledFrom(lines, importId).filter((l) => !confidential.hidden.has(l.employeeId) && changesPayrollLine(user, confidential.all.has(l.employeeId)));
+}
+
+/** The run's lines filled from an import, still marked from it, whoever fills them (the C-level people's too). */
+function linesFilledFrom<L extends { attendanceImport: Prisma.JsonValue | null }>(lines: readonly L[], importId: string): L[] {
+  return lines.filter((l) => (l.attendanceImport as unknown as AttendanceImportMark | null)?.importId === importId);
+}
+
+/** A line filled from an import, as it is put back. */
+interface FilledLine {
+  id: string;
+  employeeCode: string;
+  terms: Prisma.JsonValue;
+  inputs: Prisma.JsonValue;
+  attendanceImport: Prisma.JsonValue | null;
+}
+
+/**
+ * Puts a line filled from an import back, as Undo this import does (owner, 19 October 2026: "imported data shouldn't be
+ * editable"): the inputs it filled get back what they had before it was applied (HR's figures; those of an earlier
+ * import, and from a mark without them, empty), no longer marked, and the line is worked out again. Answers its audit
+ * entry, written once the transaction is done.
+ */
+async function putBack(tx: Prisma.TransactionClient, line: FilledLine, importId: string, rules: PayrollRules, law: LawRates) {
+  const mark = line.attendanceImport as unknown as AttendanceImportMark;
+  const was = savedInputs(line.inputs);
+  const back = Object.fromEntries(mark.fields.map((f) => [f, mark.before?.[f] ?? null])) as Partial<PayrollInputs>;
+  const inputs: PayrollInputs = { ...EMPTY_PAYROLL_INPUTS, ...was, ...back };
+  await tx.payrollLine.update({
+    where: { id: line.id },
+    data: { inputs: json(inputs), attendanceImport: Prisma.DbNull, ...worked(line.terms as unknown as PayrollTerms, inputs, rules, law) },
   });
+  return {
+    lineId: line.id,
+    employeeCode: line.employeeCode,
+    diff: { ...changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>), source: 'zoho', importId, undone: true } as Record<string, unknown>,
+  };
+}
+
+/** "2 lines of the payroll are filled from it and 14 days of attendance are kept from it", the counts of none left out. */
+function keptText(kept: ImportKept): string {
+  const parts = [
+    kept.lines ? `${kept.lines} ${kept.lines === 1 ? 'line of the payroll is' : 'lines of the payroll are'} filled from it` : null,
+    kept.days ? `${kept.days} ${kept.days === 1 ? 'day of attendance is' : 'days of attendance are'} kept from it` : null,
+  ].filter(Boolean);
+  return parts.join(' and ');
 }
