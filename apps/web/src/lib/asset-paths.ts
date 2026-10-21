@@ -74,6 +74,13 @@ export const ASSET_API = {
   draftConfirm: (id: string) => `/assets/drafts/${encodeURIComponent(id)}/confirm`,
   /** POST → AssetDraftView: set aside (the website only). */
   draftDiscard: (id: string) => `/assets/drafts/${encodeURIComponent(id)}/discard`,
+  /**
+   * A draft's product images (21 October 2026: "let the mcp connector fetch the product photo and add it"): POST
+   * multipart `image` + imageUrl, sourcePageUrl, caption → AssetDraftImageView[] (the connector's alone).
+   */
+  draftImages: (id: string) => `/assets/drafts/${encodeURIComponent(id)}/product-images`,
+  /** GET the image; DELETE (custodian or manager, while the draft is open) → 204. */
+  draftImage: (id: string, imageId: string) => `/assets/drafts/${encodeURIComponent(id)}/product-images/${encodeURIComponent(imageId)}`,
   /** What the connector reads besides the register (anyone with Assets access). */
   reports: {
     /** GET AssetHolderReport[]: who matches the name or code, and what they hold. */
@@ -201,3 +208,6 @@ export const APP_ASSET_PATHS = {
 
 /** A photo of an asset, served by the website with the caller's session (app/asset-photo). */
 export const assetPhotoSrc = (code: string, photoId: string) => `/asset-photo/${at(code)}/${encodeURIComponent(photoId)}`;
+
+/** A draft's product image, served by the website with the caller's session (app/asset-draft-image). */
+export const draftImageSrc = (draftId: string, imageId: string) => `/asset-draft-image/${encodeURIComponent(draftId)}/${encodeURIComponent(imageId)}`;

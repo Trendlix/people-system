@@ -8,7 +8,7 @@ import { todayInCairo } from '../../employees/ui';
 import { AssetForm } from '../asset-form';
 import { draftDefaults, draftedText, valuesDefaults } from '../assets';
 import { assetsCaller, assetsNotLoaded, listOrEmpty, loadDraft, loadKits, loadRooms } from '../data';
-import { DiscardDraftButton } from '../drafts-ui';
+import { DiscardDraftButton, DraftProductImages } from '../drafts-ui';
 import { Empty, Loading, NoAccess } from '../ui';
 
 // Add asset (owner, 21 October 2026: "i want to add this module with a special permission to the system"): for an
@@ -17,7 +17,9 @@ import { Empty, Loading, NoAccess } from '../ui';
 // given when it is saved. Since step 2 (owner, 21 October 2026: "the connection method"), ?draft= fills it in from a
 // draft from Claude, the link the connector gives: the person reviews it, adds the photos (they can't come through
 // Claude) and confirms it, when it joins the register and its code is given (the spec: "nothing is saved until a person
-// presses Save"); or discards it.
+// presses Save"); or discards it. The maker's product images Claude added (owner, 21 October 2026: "let the mcp connector
+// fetch the product photo and add it") show with the draft, labelled as such, and become the asset's photos when it is
+// confirmed (they count towards its 6); a real photo added here goes before them, as the main one.
 
 export const metadata: Metadata = { title: 'Add Asset · People System' };
 
@@ -69,6 +71,7 @@ async function NewAsset({ searchParams }: { searchParams: PageProps<'/assets/new
           {draft.valuesSet && !can.values && (
             <p className="text-sm text-muted">Values were drafted by someone who sees them: they are kept when you confirm it.</p>
           )}
+          <DraftProductImages draftId={draft.id} images={draft.productImages ?? []} />
           <DiscardDraftButton id={draft.id} name={draft.fields.name} back={ASSET_PATHS.drafts} />
         </section>
         <AssetForm
@@ -78,6 +81,7 @@ async function NewAsset({ searchParams }: { searchParams: PageProps<'/assets/new
           rooms={listOrEmpty(rooms)}
           kits={listOrEmpty(kits)}
           today={todayInCairo()}
+          photosHad={draft.productImages?.length ?? 0}
           ai={access.ai}
           draftId={draft.id}
           surface="site"

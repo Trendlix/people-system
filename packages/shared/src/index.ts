@@ -432,6 +432,11 @@ export * from './kpis.js';
 // title, then its department), the leadership metric for those who lead people, and linking metrics to the JD's duties
 export * from './kpi-library.js';
 
+// the KPI framework (owner, 21 October 2026: "am i able to edit the pillars of the KPIs?", "Fully flexible"): pillars
+// HR adds, removes, renames and weighs (1 to 8, adding up to 100%) and the Attendance metric's pillar, from next month;
+// templates placing their metrics in them by name, the old pillars kept by the versions published with them
+export * from './kpi-framework.js';
+
 // Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system"; "use the main ERP
 // system specs .. dont stick to the MD file"): the Assets access per user (none, viewer, custodian, manager; a Super Admin
 // always a manager) and the values rule ("CEO and Finance"), the five groups, the type codes, the statuses and conditions,
@@ -457,17 +462,16 @@ export * from './connector.js';
 // besides the register: who holds what, overdue returns, stock levels and the counts due
 export * from './asset-drafts.js';
 
-// the contract status the Employees list shows in place of the employee code (owner, 21 October 2026: "instead of the
-// Emp code, add contract status"; "State + end date"): signed and when it ends, the probation, a draft, the notice of an
-// approved ending, ended, none, the agreements of trainees and interns, freelance; an end within 30 days in amber
-export * from './contract-status.js';
+// the product images Claude adds to a draft from a link (owner, 21 October 2026: "let the mcp connector fetch the
+// product photo and add it / yes build it"): at most 3, each marked as the maker's image, checked by its bytes
+export * from './product-images.js';
 
 // Assets, step 3: custody (owner, 21 October 2026: "Yes, My custody"; "Record it; HR decides a deduction"): shoots and
 // long-term assignments on CUS-0042 records, received back good, damaged or missing, overdue and not signed, the terms
 // printed on the form, the kit quick-add, what each person holds, an asset's repairs and its lost and found
 export * from './custody.js';
 
-// the KPI framework (owner, 21 October 2026: "am i able to edit the pillars of the KPIs?", "Fully flexible"): pillars
-// HR adds, removes, renames and weighs (1 to 8, adding up to 100%) and the Attendance metric's pillar, from next month;
-// templates placing their metrics in them by name, the old pillars kept by the versions published with them
-export * from './kpi-framework.js';
+// the contract status the Employees list shows in place of the employee code (owner, 21 October 2026: "instead of the
+// Emp code, add contract status"; "State + end date"): signed and when it ends, the probation, a draft, the notice of an
+// approved ending, ended, none, the agreements of trainees and interns, freelance; an end within 30 days in amber
+export * from './contract-status.js';

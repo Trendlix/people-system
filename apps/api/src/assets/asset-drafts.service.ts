@@ -18,6 +18,8 @@ import { todayInCairo } from '../common/date-only.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { AssetDraftImagesService, DRAFT_IMAGES, draftImageView, type MovedImage } from './asset-draft-images.service.js';
+import { PHOTO_ENTITY } from './asset-photos.service.js';
 import type { AssetsCaller } from './assets-access.js';
 import type { CreateAssetDto, UpdateAssetDto } from './assets.dto.js';
 import { AssetsService, editedAssetInput, maskedValues, mergeValues, newAssetInput, NO_VALUES, sentForAnotherGroup } from './assets.service.js';
@@ -29,6 +31,9 @@ import { AssetsService, editedAssetInput, maskedValues, mergeValues, newAssetInp
 // is in no total or list but Drafts from Claude. A custodian or a manager confirms it in the system, from the Add form
 // filled in with it (its code given then, in the transaction that marks it confirmed, so it is confirmed once), or
 // discards it. Kept either way, for the audit log ('asset_draft'; the values only as set or changed, as on assets).
+// Its product images (owner, 21 October 2026: "let the mcp connector fetch the product photo and add it / yes build
+// it"; asset-draft-images.service.ts) become the asset's photos when it is confirmed, and are deleted when it is
+// discarded.
 
 export const DRAFT_ENTITY = 'asset_draft';
 const DRAFT_NOT_FOUND = 'Draft not found.';
@@ -51,6 +56,7 @@ const VIEW = {
   confirmedBy: { select: { id: true, email: true } },
   discardedBy: { select: { id: true, email: true } },
   asset: { select: { code: true } },
+  images: DRAFT_IMAGES,
 } as const satisfies Prisma.AssetDraftSelect;
 
 type Row = Prisma.AssetDraftGetPayload<{ select: typeof VIEW }>;
@@ -107,6 +113,7 @@ export class AssetDraftsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly assets: AssetsService,
+    private readonly images: AssetDraftImagesService,
   ) {}
 
   /** GET /assets/drafts: the drafts waiting for a person, newest first. */
@@ -170,12 +177,15 @@ export class AssetDraftsService {
    * Confirm (POST /assets/drafts/:id/confirm, the website only): the Add form filled in from the draft, as the person
    * reviewed it, registered as any asset is (its code given now), and the draft marked confirmed in the same transaction:
    * once only, whoever presses it at the same moment. The values: those on the form from someone who sees them; else the
-   * draft's own, kept as drafted (they were drafted by the CEO, Finance or a Super Admin).
+   * draft's own, kept as drafted (they were drafted by the CEO, Finance or a Super Admin). Its product images become the
+   * asset's photos in the same transaction, still marked as product images, with their source.
    */
   async confirm(id: string, dto: CreateAssetDto, caller: AssetsCaller): Promise<AssetView> {
     const draft = await this.open(id);
     const kept = draftValues(draft.values);
     const now = new Date();
+    let moved: MovedImage[] = [];
+    let assetId = '';
     const asset = await this.assets.create(dto, caller, {
       values: caller.values || !kept ? undefined : kept,
       audit: { draftId: id },
@@ -185,21 +195,50 @@ export class AssetDraftsService {
           data: { status: 'confirmed', confirmedAt: now, confirmedById: caller.user.id, assetId: created.id },
         });
         if (!count) throw new ConflictException(alreadyDone('confirmed'));
+        assetId = created.id;
+        moved = await this.images.moveToAsset(tx, id, created.id);
       },
     });
-    await this.audit.record({ userId: caller.user.id, action: 'confirm', entityType: DRAFT_ENTITY, entityId: id, diff: { code: asset.code, name: asset.name } });
+    await this.audit.record({
+      userId: caller.user.id,
+      action: 'confirm',
+      entityType: DRAFT_ENTITY,
+      entityId: id,
+      diff: { code: asset.code, name: asset.name, ...(moved.length > 0 && { productImages: moved.length }) },
+    });
+    for (const p of moved) {
+      await this.audit.record({
+        userId: caller.user.id,
+        action: 'create',
+        entityType: PHOTO_ENTITY,
+        entityId: p.id,
+        diff: { assetId, code: asset.code, kind: 'product', fileName: p.fileName, sizeBytes: p.sizeBytes, sourcePageUrl: p.sourcePageUrl, imageUrl: p.imageUrl, draftId: id },
+      });
+    }
     return asset;
   }
 
-  /** Discard (POST /assets/drafts/:id/discard, the website only): set aside, kept for the audit log. */
+  /**
+   * Discard (POST /assets/drafts/:id/discard, the website only): set aside, kept for the audit log; its product images
+   * deleted in the same transaction.
+   */
   async discard(id: string, caller: AssetsCaller): Promise<AssetDraftView> {
     const draft = await this.open(id);
-    const { count } = await this.prisma.assetDraft.updateMany({
-      where: { id, status: 'open' },
-      data: { status: 'discarded', discardedAt: new Date(), discardedById: caller.user.id },
+    const removed = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.assetDraft.updateMany({
+        where: { id, status: 'open' },
+        data: { status: 'discarded', discardedAt: new Date(), discardedById: caller.user.id },
+      });
+      if (!count) throw new ConflictException(alreadyDone((await tx.assetDraft.findUnique({ where: { id }, select: { status: true } }))?.status ?? 'discarded'));
+      return this.images.removeAll(tx, id);
     });
-    if (!count) throw new ConflictException(alreadyDone((await this.prisma.assetDraft.findUnique({ where: { id }, select: { status: true } }))?.status ?? 'discarded'));
-    await this.audit.record({ userId: caller.user.id, action: 'discard', entityType: DRAFT_ENTITY, entityId: id, diff: { name: draftFields(draft.fields).name } });
+    await this.audit.record({
+      userId: caller.user.id,
+      action: 'discard',
+      entityType: DRAFT_ENTITY,
+      entityId: id,
+      diff: { name: draftFields(draft.fields).name, ...(removed > 0 && { productImagesRemoved: removed }) },
+    });
     return this.get(id, caller);
   }
 
@@ -219,7 +258,7 @@ export class AssetDraftsService {
     const [rooms, kits, names] = await Promise.all([
       roomIds.length ? this.prisma.assetRoom.findMany({ where: { id: { in: roomIds } }, select: { id: true, name: true } }) : [],
       kitIds.length ? this.prisma.assetKit.findMany({ where: { id: { in: kitIds } }, select: { id: true, code: true, name: true } }) : [],
-      userNames(this.prisma, rows.flatMap((r) => [r.createdBy, r.confirmedBy, r.discardedBy])),
+      userNames(this.prisma, rows.flatMap((r) => [r.createdBy, r.confirmedBy, r.discardedBy, ...r.images.map((i) => i.addedBy)])),
     ]);
     const roomOf = new Map(rooms.map((r) => [r.id, r]));
     const kitOf = new Map(kits.map((k) => [k.id, k]));
@@ -243,6 +282,7 @@ export class AssetDraftsService {
         asset: r.asset ? { code: r.asset.code } : null,
         discardedAt: r.discardedAt?.toISOString() ?? null,
         discardedBy: person(r.discardedBy),
+        productImages: r.images.map((i) => draftImageView(i, person)),
       };
       if (caller.values) view.values = values ?? NO_VALUES;
       return view;

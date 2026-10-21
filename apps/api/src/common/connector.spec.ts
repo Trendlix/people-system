@@ -103,10 +103,14 @@ describe('the consent page’s words', () => {
     for (const level of ['viewer', 'custodian', 'manager'] as const) {
       expect(connectorAbilities(level, false).cannot.join(' ')).toMatch(/Delete, dispose of, hand over or receive/);
       expect(connectorAbilities(level, false).cannot.join(' ')).toMatch(/outside Assets/);
+      expect(connectorAbilities(level, false).cannot.join(' ')).toMatch(/Add photos of the item itself/);
     }
+    // the maker's product image from a link (21 October 2026: "let the mcp connector fetch the product photo"), with drafting
+    expect(connectorAbilities('custodian', false).can.some((c) => c.startsWith('Add the maker’s product image'))).toBe(true);
+    expect(connectorAbilities('viewer', false).can.join(' ')).not.toMatch(/product image/);
   });
 
-  it('offers twelve tools: the reads for anyone with access, the drafts for a custodian or manager', () => {
+  it('offers thirteen tools: the reads for anyone with access, the drafts and their product images for a custodian or manager', () => {
     expect(CONNECTOR_TOOLS.map((t) => t.name)).toEqual([
       'search_assets',
       'get_asset',
@@ -120,8 +124,9 @@ describe('the consent page’s words', () => {
       'list_asset_drafts',
       'create_asset_draft',
       'update_asset_draft',
+      'add_product_image',
     ]);
-    expect(CONNECTOR_TOOLS.filter((t) => t.level === 'custodian').map((t) => t.name)).toEqual(['list_asset_drafts', 'create_asset_draft', 'update_asset_draft']);
+    expect(CONNECTOR_TOOLS.filter((t) => t.level === 'custodian').map((t) => t.name)).toEqual(['list_asset_drafts', 'create_asset_draft', 'update_asset_draft', 'add_product_image']);
     expect(CONNECTOR_TOOLS.map((t) => t.name).join(' ')).not.toMatch(/delete|dispose|handover|count_assets|settings/);
   });
 });

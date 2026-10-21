@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Header,
   HttpCode,
@@ -19,9 +20,11 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ASSET_PHOTOS_MAX } from '@trendlix/shared';
-import { ConnectorScope, DeletesRecords } from '../auth/decorators.js';
+import { ConnectorScope, CurrentActiveSession, DeletesRecords } from '../auth/decorators.js';
+import type { ActiveSession } from '../auth/sessions.service.js';
 import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
 import { PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
+import { AssetDraftImagesService } from './asset-draft-images.service.js';
 import { AssetDraftsService } from './asset-drafts.service.js';
 import { AssetKitsService } from './asset-kits.service.js';
 import { AssetPhotosService } from './asset-photos.service.js';
@@ -38,6 +41,7 @@ import {
   CreateKitDto,
   CreateRoomDto,
   ListAssetsQueryDto,
+  ProductImageDto,
   UpdateAssetDto,
   UpdateKitDto,
   UpdateRoomDto,
@@ -57,11 +61,18 @@ import { CustodyTermsDto } from './custody.dto.js';
 // Step 2, the Claude connector (owner, 21 October 2026: "the connection method"): its token reaches only the routes
 // marked @ConnectorScope: the register's list and an asset's page, the rooms and kits, the reports, and the drafts
 // (listing, reading, making and changing them). Confirming and discarding a draft, and everything else, stay the
-// website's: a person does them.
+// website's: a person does them. Then (owner, 21 October 2026: "let the mcp connector fetch the product photo and add
+// it / yes build it") a draft's product images: added by the connector alone (the website's MCP endpoint fetched them),
+// seen and removed on the website by a custodian or a manager.
 
 // File names are read as UTF-8, so Arabic names arrive intact; each photo at most 10 MB, as the employee file's papers.
 const PHOTOS = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: ASSET_PHOTOS_MAX, fields: 5 }, defParamCharset: 'utf8' };
 const ONE_PHOTO = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 5 }, defParamCharset: 'utf8' };
+// a product image: one file (5 MB at most, checked by the service in its words), its link, source page and caption
+const PRODUCT_IMAGE = { limits: { fileSize: PAPERWORK_MAX_BYTES, files: 1, fields: 3 }, defParamCharset: 'utf8' };
+
+/** What a website session is told on the product images' add: only the connector adds them. */
+export const PRODUCT_IMAGES_CONNECTOR_ONLY = 'Product images are added by Claude through the connector. Add a photo of the item itself on the draft’s page.';
 
 @Controller('assets/rooms')
 export class AssetRoomsController {
@@ -153,7 +164,10 @@ export class AssetSettingsController {
  */
 @Controller('assets/drafts')
 export class AssetDraftsController {
-  constructor(private readonly drafts: AssetDraftsService) {}
+  constructor(
+    private readonly drafts: AssetDraftsService,
+    private readonly images: AssetDraftImagesService,
+  ) {}
 
   @ConnectorScope()
   @AssetsLevel('custodian')
@@ -195,6 +209,46 @@ export class AssetDraftsController {
   @HttpCode(200)
   discard(@Param('id', ParseUUIDPipe) id: string, @CurrentAssetsCaller() caller: AssetsCaller) {
     return this.drafts.discard(id, caller);
+  }
+
+  /**
+   * A product image (the connector's alone): the bytes the website's MCP endpoint fetched from the link Claude found
+   * (the field `image`), with `imageUrl`, `sourcePageUrl` and `caption`; at most 3 a draft still waiting. The draft's
+   * product images after.
+   */
+  @ConnectorScope()
+  @AssetsLevel('custodian')
+  @Post(':id/product-images')
+  @UseFilters(FileTooLargeFilter)
+  @UseInterceptors(FileInterceptor('image', PRODUCT_IMAGE))
+  addProductImage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() dto: ProductImageDto,
+    @CurrentAssetsCaller() caller: AssetsCaller,
+    @CurrentActiveSession() session: ActiveSession,
+  ) {
+    if (session?.kind !== 'connector') throw new ForbiddenException(PRODUCT_IMAGES_CONNECTOR_ONLY);
+    return this.images.add(id, file, dto, caller);
+  }
+
+  /** A product image, for the draft's page (kept by the browser for ten minutes, as an asset's photos). */
+  @AssetsLevel('custodian')
+  @Get(':id/product-images/:imageId')
+  @Header('Cache-Control', 'private, max-age=600')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Content-Security-Policy', "default-src 'none'")
+  async productImage(@Param('id', ParseUUIDPipe) id: string, @Param('imageId', ParseUUIDPipe) imageId: string): Promise<StreamableFile> {
+    const { data, type } = await this.images.file(id, imageId);
+    return new StreamableFile(data, { type, length: data.length });
+  }
+
+  /** Remove on the draft's page (a custodian or a manager): taken off a draft still waiting; not a record's delete. */
+  @AssetsLevel('custodian')
+  @Delete(':id/product-images/:imageId')
+  @HttpCode(204)
+  removeProductImage(@Param('id', ParseUUIDPipe) id: string, @Param('imageId', ParseUUIDPipe) imageId: string, @CurrentAssetsCaller() caller: AssetsCaller) {
+    return this.images.remove(id, imageId, caller);
   }
 }
 

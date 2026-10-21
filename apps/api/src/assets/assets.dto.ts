@@ -10,6 +10,7 @@ import {
   ASSET_TEXT_LIMITS,
   ASSET_TYPE_CODES,
   ASSET_USEFUL_LIFE_MAX,
+  PRODUCT_IMAGE_RULES,
   type AssetClass,
   type AssetCondition,
   type AssetGroup,
@@ -227,4 +228,20 @@ export class UpdateKitDto {
 export class AssetSettingsDto {
   @apply(money('capitalization threshold'))
   capitalizationThreshold!: number;
+}
+
+/**
+ * A product image's details (owner, 21 October 2026: "let the mcp connector fetch the product photo and add it"), sent by
+ * the website's MCP endpoint with the image it fetched (multipart `image`): the link it came from, its source page (both
+ * https, checked by the service with productImageUrlProblem) and Claude's caption.
+ */
+export class ProductImageDto {
+  @Trim() @IsString({ message: 'Send the image link.' }) @keep(PRODUCT_IMAGE_RULES.urlMax, 'image link')
+  imageUrl!: string;
+
+  @Trim() @IsString({ message: 'Send the page the image came from.' }) @keep(PRODUCT_IMAGE_RULES.urlMax, 'source page link')
+  sourcePageUrl!: string;
+
+  @IsOptional() @TrimOrNull() @IsString() @keep(PRODUCT_IMAGE_RULES.captionMax, 'caption')
+  caption?: string | null;
 }

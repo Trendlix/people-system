@@ -7,6 +7,8 @@
 // and the API's answers. Step 1 of 5: the register (owner's build order: foundation + assets, Claude, custody, kits /
 // stock / repairs / disposal, counts / labels / dashboard / phone / exports).
 
+import type { ProductImageSource } from './product-images.js';
+
 // ---------- who may do what ----------
 
 /**
@@ -600,10 +602,15 @@ export interface AssetHolderRef {
   fullNameEn: string;
 }
 
-/** A photo, served at GET /assets/:code/photos/:id. */
+/**
+ * A photo, served at GET /assets/:code/photos/:id. `product`: only on the maker's product image a draft from Claude
+ * brought (owner, 21 October 2026: "let the mcp connector fetch the product photo and add it"), where it came from; it
+ * shows the model, not the item itself, so it is badged "Product image" wherever it shows.
+ */
 export interface AssetPhotoRef {
   id: string;
   position: number;
+  product?: ProductImageSource;
 }
 
 export interface AssetUserRef {

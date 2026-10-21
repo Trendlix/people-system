@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { ASSETS_REFUSALS, CONNECTOR_TOOLS, type AssetDraftView, type AssetRowView, type AssetsAccess, type AssetView, type ConnectorMe } from '@trendlix/shared';
+import {
+  ASSETS_REFUSALS,
+  CONNECTOR_TOOLS,
+  type AssetDraftImageView,
+  type AssetDraftView,
+  type AssetRowView,
+  type AssetsAccess,
+  type AssetView,
+  type ConnectorMe,
+} from '@trendlix/shared';
 import { assetsApi, type ConnectorCall } from './assets-api';
+import { fetchProductImage, type ImageFetchDeps } from './image-guard';
+import { jpegOf, pngOf, SVG } from './test-images';
 import { ASSET_TOOLS, draftBody, RECONNECT, resolvePlace, type ToolContext } from './tools';
 
 // The Claude connector's tools (owner, 21 October 2026: "the connection method"), with the API mocked: each checks the
@@ -102,6 +113,7 @@ const draft = (over: Partial<AssetDraftView> = {}): AssetDraftView => ({
   asset: null,
   discardedAt: null,
   discardedBy: null,
+  productImages: [],
   ...over,
 });
 
@@ -112,7 +124,7 @@ function fakeApi(routes: Record<string, Route>) {
   const calls: { method: string; path: string; token: string; body: unknown }[] = [];
   const call: ConnectorCall = async (path, token, init = {}) => {
     const method = init.method ?? 'GET';
-    const body = typeof init.body === 'string' ? JSON.parse(init.body) : undefined;
+    const body = typeof init.body === 'string' ? JSON.parse(init.body) : init.body instanceof FormData ? init.body : undefined;
     calls.push({ method, path, token, body });
     const route = routes[`${method} ${path}`];
     const answer = route ? route(body) : { status: 404, body: { statusCode: 404, message: 'Not found.' } };
@@ -137,9 +149,9 @@ const BASE: Record<string, Route> = {
   'GET /assets/kits': () => ({ status: 200, body: KITS }),
 };
 
-function setup(access: AssetsAccess, routes: Record<string, Route> = {}, values = false) {
+function setup(access: AssetsAccess, routes: Record<string, Route> = {}, values = false, images?: ToolContext['images']) {
   const fake = fakeApi({ ...BASE, ...routes });
-  const ctx: ToolContext = { api: fake.api, me: me(access, values), origin: ORIGIN };
+  const ctx: ToolContext = { api: fake.api, me: me(access, values), origin: ORIGIN, images };
   const run = (name: string, args: Record<string, unknown> = {}) => ASSET_TOOLS.find((t) => t.name === name)!.run(args, ctx);
   return { ...fake, run };
 }
@@ -147,7 +159,7 @@ function setup(access: AssetsAccess, routes: Record<string, Route> = {}, values 
 const textOf = (result: { content: { type: string; text?: string }[] }) => result.content.map((c) => c.text ?? '').join('\n');
 
 describe('the tools', () => {
-  it('are the twelve the shared list names, each with a strict schema refusing unknown arguments', () => {
+  it('are the thirteen the shared list names, each with a strict schema refusing unknown arguments', () => {
     expect(ASSET_TOOLS.map((t) => t.name)).toEqual(CONNECTOR_TOOLS.map((t) => t.name));
     for (const tool of ASSET_TOOLS) {
       expect(tool.description.length).toBeGreaterThan(40);
@@ -174,7 +186,7 @@ describe('the tools', () => {
 
   it('keep the drafts for a custodian or a manager: a viewer is refused, in the API’s words', async () => {
     const { run, calls } = setup('viewer');
-    for (const name of ['list_asset_drafts', 'create_asset_draft', 'update_asset_draft']) {
+    for (const name of ['list_asset_drafts', 'create_asset_draft', 'update_asset_draft', 'add_product_image']) {
       const result = await run(name, { name: 'X', group: 'kit', type: 'CAM', draft_id: DRAFT });
       expect(result.isError).toBe(true);
       expect(textOf(result)).toBe(ASSETS_REFUSALS.custodian);
@@ -433,5 +445,161 @@ describe('rooms and kits by what Claude says', () => {
       values: { invoiceNo: 'INV-1' },
     });
     expect(draftBody({}, {})).toEqual({});
+  });
+});
+
+// ---------- add_product_image (owner, 21 October 2026: "let the mcp connector fetch the product photo and add it") ----------
+
+describe('add_product_image', () => {
+  const PUBLIC = '93.184.216.34';
+  const IMG = 'https://www.sony.com/images/fx3-front.png';
+  const PAGE = 'https://www.sony.com/en/electronics/fx3';
+  const POST_IMAGES = `POST /assets/drafts/${DRAFT}/product-images`;
+
+  const kept = (over: Partial<AssetDraftImageView> = {}): AssetDraftImageView => ({
+    id: 'i1',
+    position: 0,
+    mimeType: 'image/png',
+    sizeBytes: 1234,
+    width: 800,
+    height: 600,
+    sourcePageUrl: PAGE,
+    sourceHost: 'sony.com',
+    imageUrl: IMG,
+    caption: 'Sony FX3, front',
+    addedAt: '2026-10-21T10:00:00Z',
+    addedBy: { email: 'mona@trendlix.com', name: 'Mona Hassan' },
+    ...over,
+  });
+
+  /** The internet mocked: its hosts and links; every lookup and request kept. The guard's own rules, unchanged. */
+  function web(dns: Record<string, string[]>, links: Record<string, () => Response>) {
+    const lookups: string[] = [];
+    const requests: string[] = [];
+    const deps: ImageFetchDeps = {
+      lookup: async (host) => {
+        lookups.push(host);
+        if (!dns[host]) throw new Error(`ENOTFOUND ${host}`);
+        return dns[host].map((address) => ({ address, family: address.includes(':') ? 6 : 4 }));
+      },
+      get: async (url) => {
+        requests.push(url.href);
+        return links[url.href]?.() ?? new Response('Not found', { status: 404 });
+      },
+    };
+    return { images: (url: string) => fetchProductImage(url, deps), lookups, requests };
+  }
+
+  const routes = (over: Record<string, Route> = {}): Record<string, Route> => ({
+    [`GET /assets/drafts/${DRAFT}`]: () => ({ status: 200, body: draft() }),
+    [POST_IMAGES]: () => ({ status: 201, body: [kept()] }),
+    ...over,
+  });
+
+  const ARGS = { draftId: DRAFT, imageUrl: IMG, sourcePageUrl: PAGE, caption: 'Sony FX3, front' };
+
+  it('fetches a good image itself and sends its bytes to the API with the link, the source page and the caption', async () => {
+    const internet = web({ 'www.sony.com': [PUBLIC] }, { [IMG]: () => new Response(pngOf(800, 600), { status: 200, headers: { 'content-type': 'image/png' } }) });
+    const { run, calls } = setup('custodian', routes(), false, internet.images);
+    const result = await run('add_product_image', ARGS);
+    expect(result.isError).toBeUndefined();
+    const text = textOf(result);
+    expect(text).toContain('Product image added to the draft of Sony FX3 (1 of 3), labelled "Product image · from sony.com"');
+    expect(text).toContain('It shows the model, not the item itself');
+    expect(text).toContain(`${ORIGIN}/assets/new?draft=${DRAFT}`);
+    expect(internet.requests).toEqual([IMG]);
+
+    const post = calls.find((c) => c.method === 'POST')!;
+    expect(post.path).toBe(`/assets/drafts/${DRAFT}/product-images`);
+    expect(post.token).toBe(TOKEN);
+    const form = post.body as FormData;
+    expect(form.get('imageUrl')).toBe(IMG);
+    expect(form.get('sourcePageUrl')).toBe(PAGE);
+    expect(form.get('caption')).toBe('Sony FX3, front');
+    const file = form.get('image') as File;
+    expect(file.type).toBe('image/png');
+    expect([...new Uint8Array(await file.arrayBuffer()).subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+
+  it('refuses an SVG, and sends nothing to the API', async () => {
+    const internet = web({ 'www.sony.com': [PUBLIC] }, { [IMG]: () => new Response(SVG, { status: 200, headers: { 'content-type': 'image/svg+xml' } }) });
+    const { run, calls } = setup('custodian', routes(), false, internet.images);
+    const result = await run('add_product_image', ARGS);
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/^The image wasn’t added: The image is an SVG/);
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
+  });
+
+  it('refuses a host on a private address without connecting to it', async () => {
+    const internet = web({ 'www.sony.com': ['10.0.0.12'] }, { [IMG]: () => new Response(pngOf(800, 600), { status: 200 }) });
+    const { run, calls } = setup('manager', routes(), false, internet.images);
+    const result = await run('add_product_image', ARGS);
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('www.sony.com points to a private or reserved address (10.0.0.12)');
+    expect(internet.requests).toEqual([]);
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
+
+    const literal = web({}, {});
+    const metadata = await setup('manager', routes(), false, literal.images).run('add_product_image', { ...ARGS, imageUrl: 'https://169.254.169.254/latest/meta-data/' });
+    expect(textOf(metadata)).toContain('private or reserved address (169.254.169.254)');
+    expect(literal.lookups).toEqual([]);
+  });
+
+  it('refuses a redirect to a private address', async () => {
+    const internet = web(
+      { 'www.sony.com': [PUBLIC], 'images.internal': ['192.168.1.20'] },
+      { [IMG]: () => new Response(null, { status: 302, headers: { location: 'https://images.internal/fx3.png' } }) },
+    );
+    const { run, calls } = setup('custodian', routes(), false, internet.images);
+    const result = await run('add_product_image', ARGS);
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('It redirected to https://images.internal/fx3.png: images.internal points to a private or reserved address (192.168.1.20)');
+    expect(internet.requests).toEqual([IMG]);
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
+  });
+
+  it('refuses an image larger than 5 MB, cut off while it arrives', async () => {
+    let sent = 0;
+    const huge = () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            sent++;
+            controller.enqueue(sent === 1 ? jpegOf(2000, 2000) : new Uint8Array(1024 * 1024));
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'image/jpeg' } },
+      );
+    const internet = web({ 'www.sony.com': [PUBLIC] }, { [IMG]: huge });
+    const { run, calls } = setup('custodian', routes(), false, internet.images);
+    const result = await run('add_product_image', ARGS);
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('The image is larger than 5 MB.');
+    expect(sent).toBeLessThanOrEqual(8);
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
+  });
+
+  it('checks the draft first: a full, confirmed or unknown one is never fetched for; the page must be https', async () => {
+    const internet = web({ 'www.sony.com': [PUBLIC] }, {});
+    const full = setup('custodian', routes({ [`GET /assets/drafts/${DRAFT}`]: () => ({ status: 200, body: draft({ productImages: [kept({ imageUrl: 'a' }), kept({ imageUrl: 'b' }), kept({ imageUrl: 'c' })] }) }) }), false, internet.images);
+    expect(textOf(await full.run('add_product_image', ARGS))).toMatch(/has 3 product images already/);
+    const done = setup('custodian', routes({ [`GET /assets/drafts/${DRAFT}`]: () => ({ status: 200, body: draft({ status: 'confirmed' }) }) }), false, internet.images);
+    expect(textOf(await done.run('add_product_image', ARGS))).toBe('This draft was already confirmed: it is in the register.');
+    const unknown = setup('custodian', { [`GET /assets/drafts/${DRAFT}`]: () => ({ status: 404, body: { statusCode: 404, message: 'Draft not found.' } }) }, false, internet.images);
+    expect(textOf(await unknown.run('add_product_image', ARGS))).toBe('No draft has that id.');
+    const twice = setup('custodian', routes({ [`GET /assets/drafts/${DRAFT}`]: () => ({ status: 200, body: draft({ productImages: [kept()] }) }) }), false, internet.images);
+    expect(textOf(await twice.run('add_product_image', ARGS))).toMatch(/^This image is already on the draft of Sony FX3/);
+    const plain = await setup('custodian', routes(), false, internet.images).run('add_product_image', { ...ARGS, sourcePageUrl: 'http://www.sony.com/fx3' });
+    expect(textOf(plain)).toBe('sourcePageUrl must be an https:// link.');
+    expect(internet.requests).toEqual([]);
+  });
+
+  it('says the API’s refusal in its words, and says when nothing can fetch here', async () => {
+    const internet = web({ 'www.sony.com': [PUBLIC] }, { [IMG]: () => new Response(pngOf(800, 600), { status: 200 }) });
+    const refusedByApi = setup('custodian', routes({ [POST_IMAGES]: () => ({ status: 409, body: { statusCode: 409, message: 'A draft has at most 3 product images.' } }) }), false, internet.images);
+    expect(textOf(await refusedByApi.run('add_product_image', ARGS))).toBe('A draft has at most 3 product images.');
+    const offline = await setup('custodian', routes()).run('add_product_image', ARGS);
+    expect(offline.isError).toBe(true);
+    expect(textOf(offline)).toMatch(/can’t be fetched here/);
   });
 });

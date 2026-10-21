@@ -1,4 +1,13 @@
-import { ASSET_GROUP_LABELS, ASSET_STATUS_LABELS, ASSET_TYPE_LABELS, type AssetListView, type AssetPhotoRef, type AssetRowView, type AssetStatus } from '@trendlix/shared';
+import {
+  ASSET_GROUP_LABELS,
+  ASSET_STATUS_LABELS,
+  ASSET_TYPE_LABELS,
+  productImageLabel,
+  type AssetListView,
+  type AssetPhotoRef,
+  type AssetRowView,
+  type AssetStatus,
+} from '@trendlix/shared';
 import Link from 'next/link';
 import { assetPhotoSrc } from '@/lib/asset-paths';
 import { assetQrSvg } from '@/lib/asset-qr';
@@ -15,7 +24,10 @@ export function StatusBadge({ status }: { status: AssetStatus }) {
   return <span className={`badge ${statusTone(status)}`}>{ASSET_STATUS_LABELS[status]}</span>;
 }
 
-/** The photo the lists show (the asset's first), or a camera outline when it has none. */
+/**
+ * The photo the lists show (the asset's first), or a camera outline when it has none. The maker's product image (from a
+ * draft from Claude, 21 October 2026) carries a small "Product image" badge: it shows the model, not the item itself.
+ */
 export function AssetThumb({ code, photo, size = 'size-12' }: { code: string; photo: AssetPhotoRef | null; size?: string }) {
   if (!photo) {
     return (
@@ -24,6 +36,15 @@ export function AssetThumb({ code, photo, size = 'size-12' }: { code: string; ph
           <path d="M4 8h3l2-2.5h6L17 8h3v11H4z" />
           <circle cx="12" cy="13.5" r="3.5" />
         </svg>
+      </span>
+    );
+  }
+  if (photo.product) {
+    return (
+      <span className="inline-flex shrink-0 flex-col items-center gap-0.5" title={productImageLabel(photo.product.sourceHost)}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- served by the website with the caller's session (app/asset-photo) */}
+        <img src={assetPhotoSrc(code, photo.id)} alt="" loading="lazy" className={`${size} rounded-lg border border-line bg-white object-contain`} />
+        <span className="badge max-w-16 px-1.5 py-0 text-center text-[10px] leading-tight whitespace-normal">Product image</span>
       </span>
     );
   }

@@ -6,6 +6,7 @@ import { detectLogoType, type LogoType } from '../company/logo-type.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { safeFileName } from '../paperwork/paperwork-file.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { PHOTO_REF, photoRef } from './asset-views.js';
 import type { AssetsCaller } from './assets-access.js';
 import { AssetsService } from './assets.service.js';
 
@@ -15,6 +16,12 @@ import { AssetsService } from './assets.service.js';
 // 10 MB (the upload limit, as the papers'), in order: the first is the one the lists show. Anyone with Assets access sees
 // them; a custodian or manager adds them, replaces one and makes one the first; only a Super Admin deletes one (the
 // system's rule). Each change in the audit log ('asset_photo'), its name and size, never the picture.
+//
+// Product images (owner, 21 October 2026: "let the mcp connector fetch the product photo and add it / yes build it"):
+// the maker's image a draft from Claude brought becomes one of the asset's photos when the draft is confirmed (kind
+// 'product', with where it came from: asset-draft-images.service.ts), badged as such wherever it shows. It is the main
+// photo only while the asset has no real one: photos added to an asset that has only product images go before them.
+// Replacing a product image's file makes it a real photo.
 
 export const PHOTO_ENTITY = 'asset_photo';
 const PHOTO_NOT_FOUND = 'Photo not found.';
@@ -47,7 +54,7 @@ export class AssetPhotosService {
 
   /** The asset's photos in order. */
   private async listOf(db: PrismaService | Prisma.TransactionClient, assetId: string): Promise<AssetPhotoRef[]> {
-    return db.assetPhoto.findMany({ where: { assetId }, select: { id: true, position: true }, orderBy: ORDER });
+    return (await db.assetPhoto.findMany({ where: { assetId }, select: PHOTO_REF, orderBy: ORDER })).map(photoRef);
   }
 
   /** Numbers the photos 0, 1, 2 … in the order given. */
@@ -57,7 +64,8 @@ export class AssetPhotosService {
 
   /**
    * Adds photos after the ones it has, up to 6 in all: refused (409) when they would be more, none of them added. Two
-   * uploads at once wait for each other (the asset's row is locked), so together they never pass 6 either.
+   * uploads at once wait for each other (the asset's row is locked), so together they never pass 6 either. An asset
+   * with only product images gets them before those, so its main photo is one of the item itself.
    */
   async add(code: string, files: Express.Multer.File[] | undefined, caller: AssetsCaller): Promise<AssetPhotoRef[]> {
     const asset = await this.assets.idOf(code);
@@ -67,6 +75,7 @@ export class AssetPhotosService {
       await tx.$queryRaw`SELECT id FROM assets WHERE id = ${asset.id}::uuid FOR UPDATE`;
       const have = await this.listOf(tx, asset.id);
       if (have.length + uploads.length > ASSET_PHOTOS_MAX) throw new ConflictException(TOO_MANY);
+      const onlyProduct = have.length > 0 && have.every((p) => p.product);
       const next = have.length ? Math.max(...have.map((p) => p.position)) + 1 : 0;
       const out: { id: string; fileName: string; sizeBytes: number }[] = [];
       for (const [i, u] of uploads.entries()) {
@@ -76,6 +85,7 @@ export class AssetPhotosService {
         });
         out.push(row);
       }
+      if (onlyProduct) await this.renumber(tx, [...out.map((p) => p.id), ...have.map((p) => p.id)]);
       return out;
     });
     for (const p of added) {
@@ -84,18 +94,21 @@ export class AssetPhotosService {
     return this.listOf(this.prisma, asset.id);
   }
 
-  /** A photo's file replaced by another (a better one), in its place. */
+  /** A photo's file replaced by another (a better one), in its place; a product image's, it becomes a real photo. */
   async replace(code: string, photoId: string, file: Express.Multer.File | undefined, caller: AssetsCaller): Promise<AssetPhotoRef[]> {
     const asset = await this.assets.idOf(code);
     const photo = await this.photoOf(asset.id, photoId);
     const u = photoOf(file);
-    await this.prisma.assetPhoto.update({ where: { id: photo.id }, data: { fileName: u.fileName, mimeType: u.type, sizeBytes: u.data.length, data: new Uint8Array(u.data), uploadedById: caller.user.id, uploadedAt: new Date() } });
+    await this.prisma.assetPhoto.update({
+      where: { id: photo.id },
+      data: { fileName: u.fileName, mimeType: u.type, sizeBytes: u.data.length, data: new Uint8Array(u.data), uploadedById: caller.user.id, uploadedAt: new Date(), kind: 'photo', sourcePageUrl: null, imageUrl: null, caption: null },
+    });
     await this.audit.record({
       userId: caller.user.id,
       action: 'replace',
       entityType: PHOTO_ENTITY,
       entityId: photo.id,
-      diff: { assetId: asset.id, code: asset.code, file: 'replaced', fileName: u.fileName, sizeBytes: u.data.length },
+      diff: { assetId: asset.id, code: asset.code, file: 'replaced', fileName: u.fileName, sizeBytes: u.data.length, ...(photo.kind === 'product' && { kind: 'photo' }) },
     });
     return this.listOf(this.prisma, asset.id);
   }
@@ -134,8 +147,8 @@ export class AssetPhotosService {
     return { data: Buffer.from(row.data.buffer, row.data.byteOffset, row.data.byteLength), type: row.mimeType };
   }
 
-  private async photoOf(assetId: string, photoId: string): Promise<{ id: string; fileName: string }> {
-    const row = await this.prisma.assetPhoto.findFirst({ where: { id: photoId, assetId }, select: { id: true, fileName: true } });
+  private async photoOf(assetId: string, photoId: string): Promise<{ id: string; fileName: string; kind: string }> {
+    const row = await this.prisma.assetPhoto.findFirst({ where: { id: photoId, assetId }, select: { id: true, fileName: true, kind: true } });
     if (!row) throw new NotFoundException(PHOTO_NOT_FOUND);
     return row;
   }

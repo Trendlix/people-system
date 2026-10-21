@@ -163,6 +163,21 @@ export async function discardDraft(id: string, back: string | null): Promise<For
   return { message: 'Draft discarded.' };
 }
 
+/**
+ * Takes a product image off a draft still waiting (a custodian or a manager; owner, 21 October 2026: "let the mcp
+ * connector fetch the product photo and add it"): it never reaches the asset. Not a record's delete, so not only a
+ * Super Admin's; the audit log keeps where it came from.
+ */
+export async function removeDraftImage(draftId: string, imageId: string): Promise<FormState> {
+  try {
+    await apiSend('DELETE', ASSET_API.draftImage(draftId, imageId));
+  } catch (err) {
+    return { errors: messages(err) };
+  }
+  refresh();
+  return { message: 'Product image removed.' };
+}
+
 // ---------- rooms ----------
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();

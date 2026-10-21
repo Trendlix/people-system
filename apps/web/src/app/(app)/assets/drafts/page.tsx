@@ -6,14 +6,16 @@ import { ASSET_PATHS } from '@/lib/asset-paths';
 import { titleCase } from '@/lib/format';
 import { draftedText, placeText, quantityText } from '../assets';
 import { assetsCaller, assetsNotLoaded, loadDrafts } from '../data';
-import { DiscardDraftButton } from '../drafts-ui';
+import { DiscardDraftButton, DraftProductImages } from '../drafts-ui';
 import { Empty, Loading, NoAccess } from '../ui';
 
 // Drafts from Claude (step 2, owner, 21 October 2026: "i might link a claude account for the assets section only to fetch
 // data and help in the data entry"; "the connection method"): the assets Claude drafted through the connector, waiting
 // for a person. None is an asset yet: none is in any total or list but this one (the spec: "nothing is saved until a
 // person presses Save"). For an Assets custodian or manager: Review and confirm opens the Add form filled in from it (the
-// photos are added there, as they can't come through Claude), where saving gives its code; Discard sets it aside.
+// photos are added there, as they can't come through Claude), where saving gives its code; Discard sets it aside. The
+// maker's product images Claude added (owner, 21 October 2026: "let the mcp connector fetch the product photo and add
+// it") show on each, labelled "Product image · from <host>", with Remove.
 
 export const metadata: Metadata = { title: 'Drafts From Claude · People System' };
 
@@ -63,6 +65,7 @@ async function Drafts() {
               </div>
               <span className="badge bg-accent-soft text-accent">Draft</span>
             </div>
+            <DraftProductImages draftId={d.id} images={d.productImages ?? []} />
             <div className="flex flex-wrap items-start gap-3">
               <Link href={assetDraftPath(d.id)} className="btn btn-primary">
                 Review and confirm

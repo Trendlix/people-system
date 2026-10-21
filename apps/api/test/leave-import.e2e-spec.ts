@@ -438,6 +438,9 @@ describe('Leave import (e2e)', () => {
     let first: string;
     let second: string;
     let secondFile: Buffer;
+    // the first file's very bytes: ExcelJS stamps each workbook it writes with the time, so building it again would
+    // make another file
+    let firstFile: Buffer;
     const zara = () => `Zara Zoho ${TAG} ${ZARA_ZOHO}`;
     let leaves: ZohoLeaveIn[];
     let picks: Record<string, string>;
@@ -477,7 +480,8 @@ describe('Leave import (e2e)', () => {
     });
 
     it('is told by its headings; its types mapped by default; its five statuses; half days and holidays or weekends; names matched', async () => {
-      const v = (await upload(await zohoLeaveWorkbook(leaves), `Leave View ${TAG}.xlsx`)).body as View;
+      firstFile = await zohoLeaveWorkbook(leaves);
+      const v = (await upload(firstFile, `Leave View ${TAG}.xlsx`)).body as View;
       first = v.id;
       expect(v).toMatchObject({ source: 'zoho', sourceLabel: 'Zoho People leave export' });
       const typeOf = (t: string) => v.types.find((x) => x.zohoType === t)!;
@@ -565,7 +569,7 @@ describe('Leave import (e2e)', () => {
     });
 
     it('re-importing the same file adds nothing; a second file overlapping the first applies only its new rows', async () => {
-      const again = (await upload(await zohoLeaveWorkbook(leaves), `Leave View ${TAG} again.xlsx`)).body as View;
+      const again = (await upload(firstFile, `Leave View ${TAG} again.xlsx`)).body as View;
       expect(again.sameFile).not.toBeNull();
       expect(again.canApply).toBe(false);
       expect(again.leaves.filter((r) => r.status === 'ready')).toEqual([]);

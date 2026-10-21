@@ -115,6 +115,10 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   delete: 'Deleted',
   // an asset draft from Claude set aside (step 2, 21 October 2026)
   discard: 'Discarded',
+  // a product image Claude found added to a draft through the connector, and one a person took off it (21 October 2026:
+  // "let the mcp connector fetch the product photo and add it"), with its source page, never the picture
+  add_product_image: 'Added a product image',
+  remove_product_image: 'Removed a product image',
   // custody (Assets step 3, 21 October 2026): a custody record's signed copy attached; assets handed over and received
   // back (on the record and on each asset); an asset sent to repair and back, marked lost and found
   attach_signed: 'Attached the signed copy',
@@ -267,6 +271,11 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   marketValue: 'Market value',
   priceHigh: 'Market value (high)',
   priceNote: 'Market value note',
+  // a product image's (21 October 2026)
+  sourcePageUrl: 'Source page',
+  imageUrl: 'Image link',
+  productImages: 'Product images',
+  productImagesRemoved: 'Product images removed',
   // custody (Assets step 3, 21 October 2026)
   custodyTerms: 'Custody terms',
   custodyItemId: 'Custody item',

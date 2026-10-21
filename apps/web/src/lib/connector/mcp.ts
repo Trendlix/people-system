@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { assetsApi, type ConnectorCall } from './assets-api';
 import { mcpOriginAllowed, originOfRequest } from './site';
-import { ASSET_TOOLS, SERVER_INSTRUCTIONS, type ToolContext } from './tools';
+import { ASSET_TOOLS, SERVER_INSTRUCTIONS, type ProductImageFetcher, type ToolContext } from './tools';
 
 // The MCP endpoint of the Claude connector (owner, 21 October 2026: "the connection method": Claude reads and drafts in
 // Assets on the owner's own Claude account), POST /api/mcp over Streamable HTTP, stateless: each request gets a server
@@ -20,6 +20,8 @@ import { ASSET_TOOLS, SERVER_INSTRUCTIONS, type ToolContext } from './tools';
 export interface McpDeps {
   /** A request to the API (`path` under /api) with the connector's token. */
   call: ConnectorCall;
+  /** Fetches a product image by the guard's rules (21 October 2026: "let the mcp connector fetch the product photo"). */
+  images?: ProductImageFetcher;
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -118,7 +120,7 @@ export async function handleMcp(request: Request, deps: McpDeps): Promise<Respon
   if ('refusal' in connection) return connection.refusal;
   const { me } = connection;
 
-  const server = assetsServer({ api: assetsApi(deps.call, token), me, origin });
+  const server = assetsServer({ api: assetsApi(deps.call, token), me, origin, images: deps.images });
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   await server.connect(transport);
   try {

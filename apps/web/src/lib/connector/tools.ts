@@ -8,6 +8,7 @@ import {
   ASSET_GROUP_RULES,
   ASSET_GROUPS,
   ASSET_MONEY_MAX,
+  ASSET_PRODUCT_IMAGES_MAX,
   ASSET_QUANTITY_MAX,
   ASSET_STATUS_LABELS,
   ASSET_STATUSES,
@@ -22,6 +23,10 @@ import {
   CONNECTOR_TOOLS,
   isAssetCode,
   normalAssetCode,
+  PRODUCT_IMAGE_RULES,
+  productImageHost,
+  productImageUrlProblem,
+  type AssetDraftImageView,
   type AssetDraftView,
   type AssetHolderReport,
   type AssetKitView,
@@ -40,6 +45,7 @@ import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/
 import { z } from 'zod';
 import { ASSET_API, ASSET_PATHS, CUSTODY_PATHS } from '../asset-paths';
 import type { ApiAnswer, AssetsApi } from './assets-api';
+import type { FetchedImage, ImageRefusal } from './image-guard';
 
 // The Claude connector's tools (owner, 21 October 2026: "i might link a claude account for the assets section only to
 // fetch data and help in the data entry"; then "the connection method"): reading the register, who holds what, overdue
@@ -49,13 +55,23 @@ import type { ApiAnswer, AssetsApi } from './assets-api';
 // with the connector's token, so the API checks the level and the values rule ("CEO and Finance") again and leaves the
 // money out for everyone else. Not offered at all: disposal, deleting, custody handover and return, counts, settings,
 // and anything outside Assets. Photos can't come through the connector: a draft's link is where the person adds them.
+// The maker's product image can (owner, 21 October 2026: "i want claude to add product image from its specs", then
+// "let the mcp connector fetch the product photo and add it / yes build it"): Claude gives the link it found with its
+// web search, this website fetches it (image-guard.ts) and the API keeps it on the draft, marked as a product image.
 // Pure code (no "@/" imports): tested with a mocked API.
 
-/** What a tool call has at hand: the API with the connector's token, whose connection it is, and the site's origin. */
+/** Fetches a product image by the guard's rules (image-guard.ts with the server's lookups; mocked in the tests). */
+export type ProductImageFetcher = (url: string) => Promise<FetchedImage | ImageRefusal>;
+
+/**
+ * What a tool call has at hand: the API with the connector's token, whose connection it is, the site's origin, and the
+ * product image fetch (none: add_product_image says it can't fetch here).
+ */
 export interface ToolContext {
   api: AssetsApi;
   me: ConnectorMe;
   origin: string;
+  images?: ProductImageFetcher;
 }
 
 export interface ConnectorTool {
@@ -157,6 +173,16 @@ export function assetFor(a: AssetView, ctx: ToolContext) {
   };
 }
 
+/** A product image on a draft, for Claude: where it came from, never its bytes. */
+export const productImageFor = (i: AssetDraftImageView) => ({
+  position: i.position + 1,
+  from: i.sourceHost,
+  source_page: i.sourcePageUrl,
+  image_link: i.imageUrl,
+  caption: i.caption,
+  size: `${i.width} × ${i.height}`,
+});
+
 /** A draft for Claude: its fields, the room and kit by name, the values when the API sent them, and its page. */
 export function draftFor(d: AssetDraftView, ctx: ToolContext) {
   return {
@@ -165,6 +191,7 @@ export function draftFor(d: AssetDraftView, ctx: ToolContext) {
     fields: { ...d.fields, roomId: undefined, kitId: undefined, room: d.room?.name ?? null, kit: d.kit ? `${d.kit.code} ${d.kit.name}` : null },
     ...(d.values && { values: d.values }),
     values_drafted: d.valuesSet,
+    product_images: (d.productImages ?? []).map(productImageFor),
     drafted: { at: d.createdAt, by: d.createdBy?.name ?? d.createdBy?.email ?? null },
     updated_at: d.updatedAt,
     ...(d.asset && { asset: { code: d.asset.code, link: assetLink(ctx, d.asset.code) } }),
@@ -328,7 +355,10 @@ const DRAFT: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, id
 
 const CANT = 'It can’t delete, dispose of, hand over or receive assets, count them or change settings.';
 
-const PHOTOS_NOTE = 'Photos can’t be sent through Claude: the person adds them on the draft’s page before confirming it.';
+const PHOTOS_NOTE =
+  'Photos can’t be sent through Claude: the person adds photos of the item itself on the draft’s page before confirming it. The maker’s product image can be added from a link with add_product_image.';
+
+const PRODUCT_IMAGE_NOTE = 'It shows the model, not the item itself: the person still adds a real photo on the draft’s page for its condition and serial number.';
 
 // ---------- the tools ----------
 
@@ -619,6 +649,58 @@ export const ASSET_TOOLS: ConnectorTool[] = [
       return said(`Draft changed: ${changed.body.fields.name}. A person confirms it at ${draftLink(ctx, changed.body.id)}. ${PHOTOS_NOTE}`, draftFor(changed.body, ctx));
     },
   }),
+
+  // owner, 21 October 2026: "let the mcp connector fetch the product photo and add it / yes build it"
+  tool({
+    name: 'add_product_image',
+    title: 'Add a product image to a draft',
+    description:
+      'Add the maker’s product image to a draft from Claude, from a link (Assets custodians and managers only). Use your web search to find the official image on the maker’s product page, or else a reputable store’s, then give the direct link to the image file itself (JPEG, PNG or WebP: never SVG, never a web page) and the page it is on. Trendlix People fetches it itself (https only, at most 5 MB, 100 to 8000 pixels a side) and keeps it on the draft, labelled "Product image · from <host>" with a link to that page; at most ' +
+      `${ASSET_PRODUCT_IMAGES_MAX} a draft. ` +
+      PRODUCT_IMAGE_NOTE +
+      ' Always give the person the draft’s link from the answer.',
+    shape: {
+      draftId: z.uuid().describe('The draft’s id, from create_asset_draft or list_asset_drafts.'),
+      imageUrl: z.string().trim().min(1).max(PRODUCT_IMAGE_RULES.urlMax).describe('The direct https link to the image file (…/fx3-front.jpg), as found with web search; not a web page.'),
+      sourcePageUrl: z.string().trim().min(1).max(PRODUCT_IMAGE_RULES.urlMax).describe('The https page the image is on, e.g. the maker’s product page.'),
+      caption: z.string().trim().min(1).max(PRODUCT_IMAGE_RULES.captionMax).optional().describe('What it shows, e.g. "Sony FX3, front".'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    run: async (args, ctx) => {
+      const page = productImageUrlProblem(args.sourcePageUrl, 'sourcePageUrl');
+      if (page) return refused(page);
+      if (!ctx.images) return refused('Product images can’t be fetched here right now. The person can add photos on the draft’s page.');
+
+      // the draft first: a confirmed, discarded or full one isn't worth the fetch (the API checks again)
+      const found = await ctx.api.get<AssetDraftView>(ASSET_API.draft(args.draftId));
+      if (!found.ok || !found.body) return apiRefusal(found, 'No draft has that id.');
+      const d = found.body;
+      if (d.status !== 'open') return refused(d.status === 'confirmed' ? 'This draft was already confirmed: it is in the register.' : 'This draft was discarded.');
+      const have = d.productImages ?? [];
+      if (have.some((i) => i.imageUrl === args.imageUrl)) return said(`This image is already on the draft of ${d.fields.name}.`, draftFor(d, ctx));
+      if (have.length >= ASSET_PRODUCT_IMAGES_MAX) {
+        return refused(`The draft of ${d.fields.name} has ${ASSET_PRODUCT_IMAGES_MAX} product images already, the most a draft has. The person can remove one on ${draftLink(ctx, d.id)}.`);
+      }
+
+      const image = await ctx.images(args.imageUrl);
+      if (!image.ok) return refused(`The image wasn’t added: ${image.reason}`, 'Find another link: the image file itself, on the maker’s page or a reputable store’s.');
+
+      const form = new FormData();
+      form.append('imageUrl', args.imageUrl);
+      form.append('sourcePageUrl', args.sourcePageUrl);
+      if (args.caption) form.append('caption', args.caption);
+      form.append('image', new Blob([image.bytes], { type: image.type }), `product-image.${image.type.split('/')[1]}`);
+      const sent = await ctx.api.upload<AssetDraftImageView[]>(ASSET_API.draftImages(d.id), form);
+      if (!sent.ok || !sent.body) return apiRefusal(sent, 'No draft has that id.');
+
+      const host = productImageHost(args.sourcePageUrl) ?? args.sourcePageUrl;
+      const link = draftLink(ctx, d.id);
+      return said(
+        `Product image added to the draft of ${d.fields.name} (${sent.body.length} of ${ASSET_PRODUCT_IMAGES_MAX}), labelled "Product image · from ${host}". ${PRODUCT_IMAGE_NOTE} The draft: ${link}.`,
+        { draft_id: d.id, product_images: sent.body.map(productImageFor), ...(image.note !== null && { note: image.note }), link },
+      );
+    },
+  }),
 ];
 
 /** What the server tells Claude about itself, once, when it connects. */
@@ -626,6 +708,7 @@ export const SERVER_INSTRUCTIONS = [
   'Trendlix People’s Assets section: the studio’s asset register (cameras, lenses, lights, IT, furniture, consumables), read with the signed-in person’s own Assets access.',
   'Read with search_assets, get_asset, who_holds, overdue_returns, stock_levels, counts_due, list_rooms, list_kits and asset_catalog.',
   'To help with data entry, an Assets custodian or manager can draft assets (create_asset_draft, update_asset_draft): call asset_catalog first to fill the group, type and fields correctly. A draft is not an asset: a person confirms it in Trendlix People, where its code is given and its photos are added. Always share the draft’s link.',
+  'You can add the maker’s product image to a draft (add_product_image, up to 3): find the official image with your web search and give the direct link to the image file and the page it is on; Trendlix People fetches it. It shows the model, not the item itself, so the person still adds a real photo.',
   'Money (purchase cost, market value, book value) is only for the CEO, Finance and a Super Admin: never ask anyone else for it.',
   'Nothing else is possible through this connector: no deleting, disposal, custody handover or return, counts, settings, or anything outside Assets.',
 ].join(' ');

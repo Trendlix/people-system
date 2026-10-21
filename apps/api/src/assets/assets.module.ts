@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AssetDraftImagesService } from './asset-draft-images.service.js';
 import { AssetDraftsService } from './asset-drafts.service.js';
 import { AssetKitsService } from './asset-kits.service.js';
 import { AssetPhotosService } from './asset-photos.service.js';
@@ -21,7 +22,8 @@ import { CustodyService } from './custody.service.js';
  * their photos), the rooms, the kits and the settings. Custody, stock, repairs, disposal, counts, labels and the AI are
  * the later steps. The rooms', kits' and settings' controllers first, so their paths are matched before an asset's code.
  * Step 2 (owner, 21 October 2026: "the connection method"): the drafts from Claude and the reports the connector reads,
- * their controllers before the assets' one too. Step 3, custody: handing over and receiving back, the signed copies, the
+ * their controllers before the assets' one too; a draft's product images (21 October 2026: "let the mcp connector
+ * fetch the product photo and add it"), moved to the asset on confirm. Step 3, custody: handing over and receiving back, the signed copies, the
  * holdings, My custody, an asset's history and its repairs, lost and found, and the daily check (started by main.ts);
  * the custody controller before the assets' one, so /assets/custody is never read as an asset's code.
  */
@@ -45,6 +47,7 @@ import { CustodyService } from './custody.service.js';
     AssetRoomsService,
     AssetKitsService,
     AssetDraftsService,
+    AssetDraftImagesService,
     AssetReportsService,
     CustodyService,
     CustodyFilesService,

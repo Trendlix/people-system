@@ -206,11 +206,13 @@ export function connectorAbilities(access: AssetsAccess, values: boolean): { can
         ? 'Draft new assets, with their values, for you to review: nothing joins the register until someone confirms the draft here'
         : 'Draft new assets for you to review: nothing joins the register until someone confirms the draft here',
     );
+    // owner, 21 October 2026: "let the mcp connector fetch the product photo and add it / yes build it"
+    can.push('Add the maker’s product image to a draft from a link it finds, marked as a product image (up to 3)');
   }
   const cannot = [
     'Delete, dispose of, hand over or receive assets',
     'Count assets, or change the rooms or the Assets settings',
-    'Add photos: you add them here when you confirm a draft',
+    'Add photos of the item itself: you add them here when you confirm a draft',
     'See or change anything outside Assets',
   ];
   if (access === 'viewer') cannot.unshift('Draft or change assets: your access is view only');
@@ -248,6 +250,7 @@ export const CONNECTOR_TOOLS = [
   { name: 'list_asset_drafts', level: 'custodian', summary: 'The drafts from Claude waiting to be confirmed' },
   { name: 'create_asset_draft', level: 'custodian', summary: 'Draft a new asset for a person to review and confirm' },
   { name: 'update_asset_draft', level: 'custodian', summary: 'Change a draft that is still waiting' },
+  { name: 'add_product_image', level: 'custodian', summary: 'Add the maker’s product image to a draft, from a link (up to 3)' },
 ] as const satisfies readonly { name: string; level: 'viewer' | 'custodian'; summary: string }[];
 
 export type ConnectorToolName = (typeof CONNECTOR_TOOLS)[number]['name'];

@@ -2,11 +2,13 @@
 // help in the data entry"; then "the connection method"): what the Claude connector reads besides the register, and the
 // drafts it writes. A draft is never an asset: it has no code, it is in no total or list but Drafts from Claude, and it
 // joins the register only when a person confirms it in the system (the spec: "nothing is saved until a person presses
-// Save"), when its code is given; Discard sets it aside. The connector can't add photos: the person adds them while
-// confirming. Pure code; the API's answers.
+// Save"), when its code is given; Discard sets it aside. The connector can't send photos: the person adds them while
+// confirming. It can add the maker's product image from a link, fetched by the website (product-images.ts; owner, 21
+// October 2026: "let the mcp connector fetch the product photo and add it / yes build it"). Pure code; the API's answers.
 
 import type { AssetGroup, AssetHolderRef, AssetInput, AssetKitRef, AssetRoomRef, AssetStatus, AssetType, AssetUserRef, AssetValuesInput } from './assets.js';
 import { ASSET_GROUP_RULES } from './assets.js';
+import type { ProductImageSource, ProductImageType } from './product-images.js';
 
 // ---------- drafts ----------
 
@@ -46,6 +48,24 @@ export interface AssetDraftView {
   asset: { code: string } | null;
   discardedAt: string | null;
   discardedBy: AssetUserRef | null;
+  /** The maker's product images Claude added (at most 3), in order; they become the asset's photos when it is confirmed. */
+  productImages: AssetDraftImageView[];
+}
+
+/**
+ * A product image on a draft (owner, 21 October 2026: "let the mcp connector fetch the product photo and add it"),
+ * served at GET /assets/drafts/:id/product-images/:imageId; never its bytes in the audit log.
+ */
+export interface AssetDraftImageView extends ProductImageSource {
+  id: string;
+  position: number;
+  mimeType: ProductImageType;
+  sizeBytes: number;
+  width: number;
+  height: number;
+  /** ISO moment it was added. */
+  addedAt: string;
+  addedBy: AssetUserRef | null;
 }
 
 // ---------- what the connector reads ----------

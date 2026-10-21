@@ -106,7 +106,8 @@ async function Connect() {
         {can.register && (
           <p className="text-sm text-muted">
             A draft is not an asset: it waits on <Link href={ASSET_PATHS.drafts}>Drafts from Claude</Link> until someone reviews it on the Add form, adds its
-            photos (they can’t come through Claude) and confirms it, when its code is given.
+            photos (they can’t come through Claude) and confirms it, when its code is given. Claude can add the maker’s product image from a link it finds,
+            up to 3 a draft, labelled as a product image: it shows the model, not the item itself.
           </p>
         )}
       </section>

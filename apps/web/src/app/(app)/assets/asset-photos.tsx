@@ -1,6 +1,6 @@
 'use client';
 
-import { ASSET_PHOTOS_MAX, type AssetPhotoRef } from '@trendlix/shared';
+import { ASSET_PHOTOS_MAX, productImageLabel, type AssetPhotoRef } from '@trendlix/shared';
 import { useEffect, useId, useRef, useState, useTransition } from 'react';
 import { CameraButton } from '@/components/camera-button';
 import { DocumentViewer } from '@/components/document-viewer';
@@ -14,7 +14,9 @@ import { ASSET_PHOTO_ACCEPT, isAssetPhoto, shrinkAssetPhoto } from './photo-file
 // the asset is saved (PhotoPicker); on the asset's page, its photos with View, and for a custodian or a manager Add
 // photos, Replace and Make main photo, and for a Super Admin Delete (PhotoManager). Each photo is made smaller first and
 // sent in a request of its own (photo-files.ts). "Take photo" opens the phone's camera in a phone's browser, the app's
-// own camera inside the app (components/camera-button.tsx), a computer's file chooser elsewhere.
+// own camera inside the app (components/camera-button.tsx), a computer's file chooser elsewhere. A product image (owner,
+// 21 October 2026: "let the mcp connector fetch the product photo and add it"), the maker's, brought by a draft from
+// Claude, is badged "Product image" with its source page linked, so it is never taken for a photo of the item itself.
 
 /** A photo chosen, with a key of its own and its address in the page for the thumbnail. */
 export interface ChosenPhoto {
@@ -158,16 +160,29 @@ function PhotoTile({ code, photo, index, total, canChange, canDelete }: { code: 
   const [pending, start] = useTransition();
   const replaceId = useId();
   const src = assetPhotoSrc(code, photo.id);
-  const name = `Photo ${index + 1}${index === 0 ? ' (main)' : ''}`;
+  const name = `${photo.product ? 'Product image' : 'Photo'} ${index + 1}${index === 0 ? ' (main)' : ''}`;
+  const title = photo.product ? `${code} · ${productImageLabel(photo.product.sourceHost)}` : `${code} · ${name}`;
 
   return (
     <li className="space-y-1">
-      <DocumentViewer title={`${code} · ${name}`} files={[{ alt: name, src, mimeType: 'image/jpeg' }]} className="block w-full cursor-pointer rounded-lg">
+      <DocumentViewer title={title} files={[{ alt: name, src, mimeType: 'image/jpeg' }]} className="block w-full cursor-pointer rounded-lg">
         <span className="sr-only">View {name.toLowerCase()}</span>
         {/* eslint-disable-next-line @next/next/no-img-element -- served by the website with the caller's session */}
-        <img src={src} alt="" loading="lazy" className={thumb} />
+        <img src={src} alt="" loading="lazy" className={photo.product ? `${thumb} bg-white object-contain` : thumb} />
       </DocumentViewer>
       {index === 0 && total > 1 && <span className="badge">Main photo</span>}
+      {photo.product && (
+        <p className="text-xs">
+          <span className="badge">Product image</span>{' '}
+          <span className="text-muted">
+            · from{' '}
+            <a href={photo.product.sourcePageUrl} target="_blank" rel="noopener noreferrer nofollow" className="font-semibold text-accent hover:underline">
+              {photo.product.sourceHost}
+              <span className="sr-only"> (its source page, opens in a new tab)</span>
+            </a>
+          </span>
+        </p>
+      )}
       {(canChange || canDelete) && (
         <div className="flex flex-wrap gap-x-3 text-xs">
           {canChange && index > 0 && (

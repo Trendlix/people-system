@@ -1,9 +1,11 @@
 import {
   bookValue,
   needsReorder,
+  productImageHost,
   type AssetClass,
   type AssetCondition,
   type AssetGroup,
+  type AssetPhotoRef,
   type AssetRowView,
   type AssetStatus,
   type AssetType,
@@ -21,6 +23,20 @@ import type { AssetsCaller } from './assets-access.js';
 // capitalization threshold.
 
 const money = (d: Prisma.Decimal | null): number | null => (d === null ? null : d.toNumber());
+
+/** What a photo's answer reads: its place, and a product image's source (21 October 2026: product images from Claude). */
+export const PHOTO_REF = { id: true, position: true, kind: true, sourcePageUrl: true, imageUrl: true, caption: true } as const satisfies Prisma.AssetPhotoSelect;
+
+type PhotoRow = Prisma.AssetPhotoGetPayload<{ select: typeof PHOTO_REF }>;
+
+/** A photo as the API answers it: `product` only on a product image, with where it came from. */
+export function photoRef(r: PhotoRow): AssetPhotoRef {
+  const ref: AssetPhotoRef = { id: r.id, position: r.position };
+  if (r.kind === 'product' && r.sourcePageUrl && r.imageUrl) {
+    ref.product = { sourcePageUrl: r.sourcePageUrl, sourceHost: productImageHost(r.sourcePageUrl) ?? r.sourcePageUrl, imageUrl: r.imageUrl, caption: r.caption };
+  }
+  return ref;
+}
 
 /** What a list row reads. */
 export const ASSET_ROW = {
@@ -45,7 +61,7 @@ export const ASSET_ROW = {
   room: { select: { id: true, name: true } },
   kit: { select: { id: true, code: true, name: true } },
   holder: { select: { id: true, employeeCode: true, fullNameEn: true } },
-  photos: { select: { id: true, position: true }, orderBy: [{ position: 'asc' }, { uploadedAt: 'asc' }], take: 1 },
+  photos: { select: PHOTO_REF, orderBy: [{ position: 'asc' }, { uploadedAt: 'asc' }], take: 1 },
 } as const satisfies Prisma.AssetSelect;
 
 /** What an asset's page reads: every field but the photos' files. */
@@ -63,7 +79,7 @@ export const ASSET_DETAIL = {
   createdAt: true,
   updatedAt: true,
   createdBy: { select: { id: true, email: true } },
-  photos: { select: { id: true, position: true }, orderBy: [{ position: 'asc' }, { uploadedAt: 'asc' }] },
+  photos: { select: PHOTO_REF, orderBy: [{ position: 'asc' }, { uploadedAt: 'asc' }] },
   _count: { select: { custodyItems: true } },
 } as const satisfies Prisma.AssetSelect;
 
@@ -106,7 +122,7 @@ function common(r: AssetRow) {
 
 /** A row of the register; `values` only for those who see them. */
 export function rowView(r: AssetRow, caller: Pick<AssetsCaller, 'values'>, ctx: ValueContext): AssetRowView {
-  const view: AssetRowView = { ...common(r), photo: r.photos[0] ?? null };
+  const view: AssetRowView = { ...common(r), photo: r.photos[0] ? photoRef(r.photos[0]) : null };
   if (caller.values) {
     const book = bookOf(r, ctx);
     view.values = { purchasePrice: money(r.purchasePrice), marketValue: money(r.marketValue), bookValue: book.amount, expensed: book.expensed };
@@ -120,7 +136,7 @@ export function detailView(r: AssetDetail, caller: AssetsCaller, ctx: ValueConte
   const register = caller.access === 'custodian' || caller.access === 'manager';
   const view: AssetView = {
     ...common(r),
-    photo: r.photos[0] ?? null,
+    photo: r.photos[0] ? photoRef(r.photos[0]) : null,
     assetClass: r.assetClass as AssetClass,
     reorderLevel: quantity(r.reorderLevel),
     purchaseDate: fromDateOnly(r.purchaseDate),
@@ -128,7 +144,7 @@ export function detailView(r: AssetDetail, caller: AssetsCaller, ctx: ValueConte
     warrantyEnd: fromDateOnly(r.warrantyEnd),
     notes: r.notes,
     labeledAt: r.labeledAt?.toISOString() ?? null,
-    photos: r.photos,
+    photos: r.photos.map(photoRef),
     everInCustody,
     createdAt: r.createdAt.toISOString(),
     createdBy: r.createdBy ? { email: r.createdBy.email, name: createdByName } : null,

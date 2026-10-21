@@ -18,6 +18,8 @@ export interface ApiAnswer<T> {
 export interface AssetsApi {
   get<T>(path: string): Promise<ApiAnswer<T>>;
   send<T>(method: 'POST' | 'PATCH', path: string, body: unknown): Promise<ApiAnswer<T>>;
+  /** A multipart POST: a draft's product image (21 October 2026), fetched by this website. */
+  upload<T>(path: string, form: FormData): Promise<ApiAnswer<T>>;
 }
 
 export const UNREACHABLE = 'Trendlix People can’t be reached right now. Please try again in a moment.';
@@ -54,5 +56,7 @@ export function assetsApi(call: ConnectorCall, token: string): AssetsApi {
     get: <T>(path: string) => answer<T>(call(path, token, { method: 'GET' })),
     send: <T>(method: 'POST' | 'PATCH', path: string, body: unknown) =>
       answer<T>(call(path, token, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })),
+    // fetch sets the multipart content type, with its boundary
+    upload: <T>(path: string, form: FormData) => answer<T>(call(path, token, { method: 'POST', body: form })),
   };
 }

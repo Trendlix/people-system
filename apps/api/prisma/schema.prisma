@@ -124,6 +124,7 @@ model User {
   assetDraftsMade       AssetDraft[]               @relation("AssetDraftCreation") // the asset drafts made in this user's name, through the Claude connector
   assetDraftsConfirmed  AssetDraft[]               @relation("AssetDraftConfirmation") // the asset drafts this user confirmed into assets
   assetDraftsDiscarded  AssetDraft[]               @relation("AssetDraftDiscard") // the asset drafts this user discarded
+  assetDraftImagesAdded AssetDraftImage[]          @relation("AssetDraftImageAdd") // the product images Claude added to drafts in this user's name
 
   @@map("users")
 }
@@ -2753,19 +2754,25 @@ model Asset {
 }
 
 // An asset's photo, up to 6 an asset, kept in the database as the employee file's papers are (the daily backup has it),
-// in order: the first is the one the lists show. Served by the API to those with Assets access.
+// in order: the first is the one the lists show. Served by the API to those with Assets access. Its kind (owner, 21
+// October 2026: "let the mcp connector fetch the product photo and add it"): a photo of the item itself, or the maker's
+// product image a draft from Claude brought, with where it came from (badged "Product image" wherever it shows).
 model AssetPhoto {
-  id           String   @id @default(uuid()) @db.Uuid
-  assetId      String   @map("asset_id") @db.Uuid
-  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  position     Int
-  fileName     String   @map("file_name")
-  mimeType     String   @map("mime_type")
-  sizeBytes    Int      @map("size_bytes")
-  data         Bytes
-  uploadedById String?  @map("uploaded_by") @db.Uuid
-  uploadedBy   User?    @relation("AssetPhotoUpload", fields: [uploadedById], references: [id], onDelete: SetNull)
-  uploadedAt   DateTime @default(now()) @map("uploaded_at") @db.Timestamptz
+  id            String   @id @default(uuid()) @db.Uuid
+  assetId       String   @map("asset_id") @db.Uuid
+  asset         Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  position      Int
+  fileName      String   @map("file_name")
+  mimeType      String   @map("mime_type")
+  sizeBytes     Int      @map("size_bytes")
+  data          Bytes
+  uploadedById  String?  @map("uploaded_by") @db.Uuid
+  uploadedBy    User?    @relation("AssetPhotoUpload", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedAt    DateTime @default(now()) @map("uploaded_at") @db.Timestamptz
+  kind          String   @default("photo") // ASSET_PHOTO_KINDS: photo (of the item itself), product (the maker's image)
+  sourcePageUrl String?  @map("source_page_url") // a product image's: the page it came from
+  imageUrl      String?  @map("image_url") // a product image's: the link it was fetched from
+  caption       String? // a product image's caption, from Claude
 
   @@index([assetId, position])
   @@map("asset_photos")
@@ -2955,7 +2962,36 @@ model AssetDraft {
   discardedAt   DateTime? @map("discarded_at") @db.Timestamptz
   discardedById String?   @map("discarded_by") @db.Uuid
   discardedBy   User?     @relation("AssetDraftDiscard", fields: [discardedById], references: [id], onDelete: SetNull)
+  images        AssetDraftImage[] // the maker's product images Claude added, up to 3 (moved to the asset on confirm)
 
   @@index([status, createdAt(sort: Desc)])
   @@map("asset_drafts")
+}
+
+// A product image on a draft from Claude (owner, 21 October 2026: "i want claude to add product image from its specs";
+// "let the mcp connector fetch the product photo and add it / yes build it"; packages/shared product-images.ts): the
+// maker's image (or a reputable store's) at a link Claude found, fetched by the website's MCP endpoint and kept here, up
+// to 3 a draft, a JPEG, PNG or WebP of 100 to 8000 pixels a side, at most 5 MB, with the link and its source page.
+// Confirmed, each becomes one of the asset's photos (kind 'product', its source kept) and leaves here; discarded, it is
+// deleted with the draft's discard.
+model AssetDraftImage {
+  id            String     @id @default(uuid()) @db.Uuid
+  draftId       String     @map("draft_id") @db.Uuid
+  draft         AssetDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  position      Int
+  fileName      String     @map("file_name")
+  mimeType      String     @map("mime_type")
+  sizeBytes     Int        @map("size_bytes")
+  width         Int
+  height        Int
+  data          Bytes
+  sourcePageUrl String     @map("source_page_url") // the page it came from, e.g. the maker's product page
+  imageUrl      String     @map("image_url") // the link it was fetched from
+  caption       String?
+  addedById     String?    @map("added_by") @db.Uuid
+  addedBy       User?      @relation("AssetDraftImageAdd", fields: [addedById], references: [id], onDelete: SetNull)
+  addedAt       DateTime   @default(now()) @map("added_at") @db.Timestamptz
+
+  @@index([draftId, position])
+  @@map("asset_draft_images")
 }
