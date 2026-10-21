@@ -2,18 +2,18 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import {
   KPI_LEVEL_LABELS,
   KPI_LEVELS,
-  KPI_PILLARS,
   KPI_SCORER_LABELS,
   KPI_STATUS_LABELS,
   KPI_STATUSES,
   kpiMonthAdd,
   kpiMonthName,
+  kpiPercentsByName,
+  kpiPillarColumns,
   kpiScored,
   kpiScorecardMonthOn,
   type KpiHeatmap,
   type KpiLevel,
   type KpiOverview,
-  type KpiPillarId,
   type KpiScorer,
   type KpiStatus,
 } from '@trendlix/shared';
@@ -28,7 +28,7 @@ import { firstDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { isScorer, kpiShown, seesEveryScorecard, type KpiCaller } from './kpi-access.js';
 import { KpiScorecardsService } from './kpi-scorecards.service.js';
-import { keptPillars, monthOfCard } from './kpi-views.js';
+import { keptPillars, monthOfCard, pillarSetOf } from './kpi-views.js';
 
 // HR's, the CEO's and the Super Admin's view of the KPIs (the brief: "All KPIs (HR, the CEO, Super Admin): every
 // scorecard by month with its step, calibration, pillar averages by department, and an Excel export"), and the team
@@ -37,6 +37,8 @@ import { keptPillars, monthOfCard } from './kpi-views.js';
 // before's, the level distribution and each department's pillar averages (its teams in it), the scored scorecards only;
 // the heatmap of people × months, each cell the final % as the caller may see it (a manager their people's, those they
 // score). C-level people are left out for HR, and the overview says how many. The Excel export is in the audit log.
+// The pillars (owner, 21 October 2026: "Fully flexible"): each scorecard's are its template version's; the department
+// averages and the Excel's columns are by pillar name, saying when the month's scorecards don't all have the same.
 
 const ROW_SELECT = {
   id: true,
@@ -57,7 +59,7 @@ const ROW_SELECT = {
   employee: { select: { id: true, employeeCode: true, fullNameEn: true } },
   manager: { select: { fullNameEn: true } },
   department: { select: { id: true, nameEn: true, parent: { select: { id: true, nameEn: true } } } },
-  template: { select: { version: true, jobTitle: { select: { titleEn: true } } } },
+  template: { select: { version: true, pillars: true, attendancePillar: true, publishedAt: true, jobTitle: { select: { titleEn: true } } } },
   scores: { where: { hrChoice: { not: null } }, select: { metricId: true } },
 } as const satisfies Prisma.KpiScorecardSelect;
 
@@ -67,6 +69,17 @@ const round1 = (n: number) => Math.round((n + Number.EPSILON) * 10) / 10;
 const average = (values: readonly number[]) => (values.length ? round1(values.reduce((a, b) => a + b, 0) / values.length) : null);
 const isScoredRow = (r: Pick<Row, 'status' | 'finalPercent'>) => kpiScored(r.status) && r.finalPercent !== null;
 const emptyLevels = () => Object.fromEntries(KPI_LEVELS.map((l) => [l, 0])) as Record<KpiLevel, number>;
+
+/**
+ * A month's scorecards' pillars as columns, by name (owner's brief, 21 October 2026: "Where scorecards with different
+ * frameworks are mixed in one month's overview, group the averages by pillar name"), each scorecard with its template
+ * version's own, and whether they differ; as many scorecards with each, the newest version's pillars first.
+ */
+const columnsOf = (rows: readonly Row[]) =>
+  kpiPillarColumns([...rows].sort((a, b) => (b.template.publishedAt?.getTime() ?? 0) - (a.template.publishedAt?.getTime() ?? 0)).map((r) => pillarSetOf(r.template)));
+
+/** A scorecard's kept pillar percents by its pillars' names (the columns' keys). */
+const percentsOf = (r: Row) => kpiPercentsByName(pillarSetOf(r.template), keptPillars(r.pillars));
 
 @Injectable()
 export class KpiOverviewService {
@@ -102,6 +115,7 @@ export class KpiOverviewService {
       entry.rows.push(r);
       departments.set(key, entry);
     }
+    const { columns, changed } = columnsOf(rows);
     return {
       month: chosen,
       months,
@@ -113,17 +127,20 @@ export class KpiOverviewService {
       average: average(scored.map((r) => r.finalPercent!.toNumber())),
       previousAverage: average(previous.filter(isScoredRow).map((r) => r.finalPercent!.toNumber())),
       distribution,
+      pillars: columns,
+      pillarsChanged: changed,
       departments: [...departments.values()]
         .sort((a, b) => a.name.localeCompare(b.name))
-        .map((d) => ({
-          id: d.id,
-          name: d.name,
-          scored: d.rows.length,
-          average: average(d.rows.map((r) => r.finalPercent!.toNumber())),
-          pillars: Object.fromEntries(
-            KPI_PILLARS.map((p) => [p.id, average(d.rows.map((r) => keptPillars(r.pillars)[p.id]).filter((v): v is number => v !== null))]),
-          ) as Record<KpiPillarId, number | null>,
-        })),
+        .map((d) => {
+          const percents = d.rows.map(percentsOf);
+          return {
+            id: d.id,
+            name: d.name,
+            scored: d.rows.length,
+            average: average(d.rows.map((r) => r.finalPercent!.toNumber())),
+            pillars: Object.fromEntries(columns.map((c) => [c.key, average(percents.map((p) => p[c.key]).filter((v): v is number => typeof v === 'number'))])),
+          };
+        }),
       hidden: hiddenCount,
     };
   }
@@ -188,6 +205,9 @@ export class KpiOverviewService {
     const rows = await this.rows({ month: toDateOnly(firstDay(month)), ...(hidden.length && { employeeId: { notIn: hidden } }) });
     rows.sort((a, b) => (placeName(a.department) ?? '').localeCompare(placeName(b.department) ?? '') || a.employee.fullNameEn.localeCompare(b.employee.fullNameEn));
     const day = (d: Date | null) => (d ? shownDate(dayInCairo(d)) : null);
+    // each scorecard's own pillars, by name: a weight in the header when every scorecard with the pillar has the same
+    const { columns: pillars } = columnsOf(rows);
+    const percents = new Map(rows.map((r) => [r.id, percentsOf(r)]));
     const columns: Column<Row>[] = [
       { header: 'Employee code', width: 14, value: (r) => r.employee.employeeCode },
       { header: 'Employee', width: 28, value: (r) => r.employee.fullNameEn },
@@ -199,7 +219,14 @@ export class KpiOverviewService {
       { header: 'Self-rating', width: 14, value: (r) => (r.selfSubmittedAt ? 'Sent' : r.selfMissed ? 'Missed' : 'Not yet') },
       { header: 'Final %', width: 10, numFmt: '0.0', value: (r) => (isScoredRow(r) ? r.finalPercent!.toNumber() : null) },
       { header: 'Level', width: 20, value: (r) => (isScoredRow(r) ? KPI_LEVEL_LABELS[r.level as KpiLevel] : null) },
-      ...KPI_PILLARS.map((p): Column<Row> => ({ header: `${p.name} (${p.weight}%)`, width: 16, numFmt: '0.0', value: (r) => (isScoredRow(r) ? keptPillars(r.pillars)[p.id] : null) })),
+      ...pillars.map(
+        (c): Column<Row> => ({
+          header: c.weight !== null ? `${c.name} (${c.weight}%)` : c.name,
+          width: 16,
+          numFmt: '0.0',
+          value: (r) => (isScoredRow(r) ? (percents.get(r.id)?.[c.key] ?? null) : null),
+        }),
+      ),
       { header: 'Picks changed by HR', width: 12, value: (r) => r.scores.length },
       { header: 'Signed by the employee', width: 14, value: (r) => (r.employeeSignedAt ? 'Yes' : 'No') },
       { header: 'Signed by the manager', width: 14, value: (r) => (r.managerSignedAt ? 'Yes' : 'No') },

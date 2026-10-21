@@ -15,46 +15,71 @@
 //   HR); a C-level person's is the CEO's, never HR's. Deadlines in the KPI settings (self-rating by the 3rd, manager by
 //   the 6th, HR by the 8th, sign-off by the 10th of the next month): a missed self-rating doesn't block the manager
 //   (noted), and a scorecard not signed by the sign-off day is final anyway (noted).
-// - Attendance "Yes, as the sheet": every template's Discipline & Growth pillar has an automatic Attendance metric,
+// - Attendance "Yes, as the sheet": every template's Discipline & Growth pillar (or the pillar the KPI framework chose
+//   for it) has an automatic Attendance metric,
 //   worth points set on the template (20 by default), achieved = those points × the month's attendance score as payroll
 //   works it out for the person and month, capped at 1, rounded to whole points. Nobody picks it.
 // - Timing "Last month's KPI, this pay": a month's scorecard opens on the 1st of the next month and counts in that
 //   month's payroll: the payroll of month M reads the final scorecard of M − 1.
 // - Templates "HR": HR (and the Super Admin) build them, a draft and published versions; a version published in a month
 //   is used by the scorecards opened from the 1st of the next month, and a scorecard keeps the version it opened with.
+// - The pillars "Fully flexible" (owner, 21 October 2026: "am i able to edit the pillars of the KPIs?"): HR adds,
+//   removes and renames pillars and sets their weights (total 100%), from next month, in a versioned KPI framework
+//   (kpi-framework.ts). The four above are its first version, and the default. Each template version keeps the pillars
+//   it was published with (a KpiPillarSet), its metrics in their keys, and its scorecards are scored with those: past
+//   scorecards never change.
 // Pure code: the API enforces these rules, the web shows them live. Tested in apps/api/src/common/kpis.spec.ts.
 
 import type { EmploymentType } from './index.js';
 
 // ---------- the framework: pillars, weights, levels ----------
 
-export const KPI_PILLAR_IDS = [1, 2, 3, 4] as const;
-export type KpiPillarId = (typeof KPI_PILLAR_IDS)[number];
-
 export interface KpiPillar {
-  id: KpiPillarId;
+  /**
+   * Its key, which the metrics placed in it keep (e.g. "delivery"): unique among a framework's pillars, kept when it is
+   * renamed or reweighted.
+   */
+  key: string;
   /** Title Case, as the framework names it. */
   name: string;
-  /** A short name for narrow columns (the heatmap, the department table). */
+  /** A short name for narrow columns (the score's tiles, the department table). */
   short: string;
-  /** Its weight in the final %, in percent: the four add up to 100. */
+  /** Its weight in the final %, in whole percent: a framework's add up to 100. */
   weight: number;
 }
 
-/** The four pillars every template shares, with their fixed weights (owner, 21 October 2026). */
+/**
+ * Pillars as a framework has them, and as a template version keeps them (its snapshot): in their order, and the pillar
+ * the automatic Attendance metric counts in (its key).
+ */
+export interface KpiPillarSet {
+  pillars: readonly KpiPillar[];
+  attendancePillar: string;
+}
+
+/**
+ * The four pillars of the plan (owner, 21 October 2026: "Full framework per role"): the KPI framework's first version,
+ * which the migration put in force, and the pillars the samples and the role library are written for.
+ */
 export const KPI_PILLARS: readonly KpiPillar[] = [
-  { id: 1, name: 'Delivery & Timeliness', short: 'Delivery', weight: 30 },
-  { id: 2, name: 'Quality of Work', short: 'Quality', weight: 25 },
-  { id: 3, name: 'Clients & Teamwork', short: 'Clients', weight: 25 },
-  { id: 4, name: 'Discipline & Growth', short: 'Discipline', weight: 20 },
+  { key: 'delivery', name: 'Delivery & Timeliness', short: 'Delivery', weight: 30 },
+  { key: 'quality', name: 'Quality of Work', short: 'Quality', weight: 25 },
+  { key: 'clients', name: 'Clients & Teamwork', short: 'Clients', weight: 25 },
+  { key: 'discipline', name: 'Discipline & Growth', short: 'Discipline', weight: 20 },
 ];
 
-export const isKpiPillarId = (value: unknown): value is KpiPillarId => (KPI_PILLAR_IDS as readonly unknown[]).includes(value);
+/** The default pillar the automatic Attendance metric counts in: Discipline & Growth. */
+export const KPI_ATTENDANCE_PILLAR = 'discipline';
 
-export const kpiPillar = (id: KpiPillarId): KpiPillar => KPI_PILLARS.find((p) => p.id === id)!;
+/** The four pillars with the Attendance metric in Discipline & Growth: the framework's first version, and the default. */
+export const KPI_DEFAULT_PILLAR_SET: KpiPillarSet = { pillars: KPI_PILLARS, attendancePillar: KPI_ATTENDANCE_PILLAR };
 
-/** The pillar the automatic Attendance metric is in: Discipline & Growth. */
-export const KPI_ATTENDANCE_PILLAR: KpiPillarId = 4;
+/** A pillar of a set by its key; null when it has none. */
+export const kpiPillarOf = (set: Pick<KpiPillarSet, 'pillars'>, key: string | null | undefined): KpiPillar | null => set.pillars.find((p) => p.key === key) ?? null;
+
+/** The default pillars by their number in the plan (1 Delivery & Timeliness … 4 Discipline & Growth), as the samples and the library are written. */
+export type KpiDefaultPillarNo = 1 | 2 | 3 | 4;
+export const kpiDefaultPillarKey = (no: KpiDefaultPillarNo): string => KPI_PILLARS[no - 1].key;
 
 /** The most a final % can be: a criterion may be worth more than its metric's target, up to here. */
 export const KPI_FINAL_CAP = 110;
@@ -128,7 +153,13 @@ export interface KpiCriterion {
  */
 export interface KpiMetric {
   id?: string;
-  pillar: KpiPillarId;
+  /**
+   * The key of its pillar in the template's pillars; null: a draft's metric in Unplaced, its pillar gone from the KPI
+   * framework (kpi-framework.ts kpiPlaceMetrics), to be placed before the draft is published.
+   */
+  pillar: string | null;
+  /** In Unplaced: the name of the pillar it was in; null otherwise. */
+  wasIn?: string | null;
   name: string;
   definition: string | null;
   howMeasured: string | null;
@@ -143,7 +174,7 @@ export interface KpiTemplateContent {
   metrics: KpiMetric[];
 }
 
-/** The automatic metric's name, in Discipline & Growth on every template. */
+/** The automatic metric's name, on every template in the pillar the framework chose (Discipline & Growth by default). */
 export const KPI_ATTENDANCE_METRIC = 'Attendance';
 
 /** The Attendance metric's points on a new template (owner's brief, 21 October 2026: "default 20"). */
@@ -168,12 +199,14 @@ export const topCriterionPoints = (metric: Pick<KpiMetric, 'criteria'>): number 
 const isWholePoints = (n: unknown, min: number): n is number => typeof n === 'number' && Number.isInteger(n) && n >= min && n <= KPI_TEMPLATE_LIMITS.points;
 
 /**
- * What is wrong with a template's content, each in words (none: it can be saved). `publishing`: also what stops it
- * being published: a metric in each of the first three pillars (Discipline & Growth always has Attendance), and each
- * metric's best criterion reaching its target.
+ * What is wrong with a template's content, each in words (none: it can be saved), its metrics placed in `pillars` (the
+ * KPI framework's; the default four unless sent). A metric in Unplaced (no pillar) may be saved. `publishing`: also
+ * what stops it being published: Unplaced emptied, a metric in each pillar but the Attendance metric's (which always
+ * has Attendance), and each metric's best criterion reaching its target.
  */
-export function kpiTemplateProblems(content: KpiTemplateContent, options: { publishing?: boolean } = {}): string[] {
+export function kpiTemplateProblems(content: KpiTemplateContent, options: { publishing?: boolean; pillars?: KpiPillarSet } = {}): string[] {
   const L = KPI_TEMPLATE_LIMITS;
+  const set = options.pillars ?? KPI_DEFAULT_PILLAR_SET;
   const problems: string[] = [];
   if (!isWholePoints(content.attendancePoints, 1)) problems.push(`Give the Attendance metric whole points from 1 to ${L.points}.`);
   const metrics = Array.isArray(content.metrics) ? content.metrics : [];
@@ -182,7 +215,12 @@ export function kpiTemplateProblems(content: KpiTemplateContent, options: { publ
   metrics.forEach((m, i) => {
     const name = typeof m.name === 'string' ? m.name.trim() : '';
     const which = name ? `Metric ${i + 1} (${name})` : `Metric ${i + 1}`;
-    if (!isKpiPillarId(m.pillar)) problems.push(`${which}: choose its pillar.`);
+    if (m.pillar === null || m.pillar === undefined) {
+      if (options.publishing) {
+        const was = typeof m.wasIn === 'string' && m.wasIn.trim() ? `its pillar, ${m.wasIn.trim()}, is no longer in the KPI framework` : 'it has no pillar';
+        problems.push(`${which} is in Unplaced: ${was}. Move it into a pillar, or remove it, before publishing.`);
+      }
+    } else if (!kpiPillarOf(set, m.pillar)) problems.push(`${which}: choose one of the framework’s pillars.`);
     if (!name) problems.push(`${which}: give it a name.`);
     else if (name.length > L.name) problems.push(`${which}: its name can be at most ${L.name} characters.`);
     else if (name.toLowerCase() === KPI_ATTENDANCE_METRIC.toLowerCase()) problems.push(`${which}: Attendance is filled in by the system already; name this metric otherwise.`);
@@ -216,8 +254,8 @@ export function kpiTemplateProblems(content: KpiTemplateContent, options: { publ
     }
   });
   if (options.publishing) {
-    for (const pillar of KPI_PILLARS.filter((p) => p.id !== KPI_ATTENDANCE_PILLAR)) {
-      if (!metrics.some((m) => m.pillar === pillar.id)) problems.push(`Add a metric to ${pillar.name}: every pillar is scored.`);
+    for (const pillar of set.pillars.filter((p) => p.key !== set.attendancePillar)) {
+      if (!metrics.some((m) => m.pillar === pillar.key)) problems.push(`Add a metric to ${pillar.name}: every pillar is scored.`);
     }
   }
   return problems;
@@ -230,8 +268,10 @@ export type KpiScoredMetric = Pick<KpiMetric, 'pillar' | 'targetPoints' | 'crite
 
 /** One pillar's score: its points achieved of its max (the targets added up), and its percent. */
 export interface KpiPillarScore {
-  pillar: KpiPillarId;
+  /** The pillar's key. */
+  key: string;
   name: string;
+  short: string;
   weight: number;
   achieved: number;
   max: number;
@@ -253,7 +293,8 @@ export interface KpiScoreResult {
 }
 
 /**
- * The automatic Attendance metric's points (owner, 21 October 2026: "Attendance: Yes, as the sheet"): its points × the
+ * The automatic Attendance metric's points (owner, 21 October 2026: "Attendance: Yes, as the sheet"), in the pillar the
+ * template's pillars chose for it (Discipline & Growth by default): its points × the
  * month's attendance score as payroll works it out (1 at or above the attendance grace, else worked ÷ expected hours),
  * capped at 1, rounded to whole points. With no score (attendance not counted for the month: no worked hours, no shift,
  * paid by the hour) the score is 1, as payroll counts it then.
@@ -265,34 +306,37 @@ export function kpiAttendanceAchieved(points: number, score: number | null | und
 
 /**
  * The score of a template's metrics with the criteria picked (`choices`: by metric id, the criterion's index; missing
- * or null: not picked) and the Attendance metric's points achieved. Pillar % = achieved ÷ max points (the targets added
- * up, Attendance's in Discipline & Growth); final % = Σ pillar % × weight, at most 110 (owner, 21 October 2026).
+ * or null: not picked) and the Attendance metric's points achieved, in the template's pillars (`pillars`: the pillars
+ * its version was published with; the default four unless sent). Pillar % = achieved ÷ max points (the targets added
+ * up, Attendance's in its pillar); final % = Σ pillar % × that pillar's weight, at most 110 (owner, 21 October 2026).
+ * A metric in no pillar of the set counts nowhere.
  */
 export function kpiScore(
   metrics: readonly KpiScoredMetric[],
   choices: Readonly<Record<string, number | null | undefined>>,
   attendance: { points: number; achieved: number },
+  set: KpiPillarSet = KPI_DEFAULT_PILLAR_SET,
 ): KpiScoreResult {
   let total = 0;
-  const pillars = KPI_PILLARS.map((p): KpiPillarScore => {
+  const pillars = set.pillars.map((p): KpiPillarScore => {
     let achieved = 0;
     let max = 0;
     let complete = true;
     for (const m of metrics) {
-      if (m.pillar !== p.id) continue;
+      if (m.pillar !== p.key) continue;
       max += m.targetPoints;
       const choice = choices[m.id];
       const criterion = typeof choice === 'number' ? m.criteria[choice] : undefined;
       if (criterion) achieved += criterion.points;
       else complete = false;
     }
-    if (p.id === KPI_ATTENDANCE_PILLAR) {
+    if (p.key === set.attendancePillar) {
       max += attendance.points;
       achieved += attendance.achieved;
     }
     const fraction = max > 0 ? achieved / max : 0;
     total += fraction * p.weight;
-    return { pillar: p.id, name: p.name, weight: p.weight, achieved, max, percent: round1(fraction * 100), complete };
+    return { key: p.key, name: p.name, short: p.short, weight: p.weight, achieved, max, percent: round1(fraction * 100), complete };
   });
   const capped = total > KPI_FINAL_CAP;
   const finalPercent = round1(Math.min(KPI_FINAL_CAP, total));
@@ -613,6 +657,17 @@ export interface KpiTemplateView {
   scorecards: number;
   /** A draft: what stops it being published (kpiTemplateProblems with publishing); none for a published version. */
   problems: string[];
+  /**
+   * Its pillars, in order, with the Attendance metric's: a published version's own, as it was published (its
+   * scorecards are scored with them); a draft's, the KPI framework's newest, which it is published with, its metrics
+   * placed in them by name (kpiPlaceMetrics), those whose pillar is gone in Unplaced (`pillar` null).
+   */
+  pillars: KpiPillar[];
+  attendancePillar: string;
+  /** A draft whose metrics were written for other pillars than the framework's newest: placed in them by name, to check. */
+  pillarsChanged: boolean;
+  /** A published version whose pillars aren't the KPI framework's newest: "Uses the old pillars". */
+  oldPillars: boolean;
 }
 
 /** A job title on the KPI Templates list. */
@@ -627,6 +682,11 @@ export interface KpiTemplateRow {
   versions: number;
   /** Current employees under this job title who get a scorecard (not freelancers or unpaid interns). */
   people: number;
+  /**
+   * Its newest published version uses other pillars than the KPI framework's newest: "Uses the old pillars: update
+   * it". Its scorecards keep opening on that version, with its pillars, until a version on the new ones applies.
+   */
+  oldPillars: boolean;
 }
 
 /** GET /kpis/templates/job-titles/:jobTitleId: the builder's page. */
@@ -742,7 +802,10 @@ export interface KpiScorecardAttendance {
 /** GET /kpis/scorecards/:id. */
 export interface KpiScorecardView extends KpiScorecardSummary {
   template: { id: string; version: number; jobTitleId: string };
+  /** Its template version's pillars, as it was published: the scorecard is scored with them. */
   pillars: KpiScorecardPillar[];
+  /** The key of the pillar the Attendance metric counts in. */
+  attendancePillar: string;
   attendance: KpiScorecardAttendance;
   /** The scorecard's score as the caller sees it (the manager's picks, calibrated): null when hidden from them or not scored. */
   score: KpiScoreResult | null;
@@ -797,10 +860,27 @@ export interface KpiOverview {
   /** The month before's, to compare; null with none. */
   previousAverage: number | null;
   distribution: Record<KpiLevel, number>;
-  /** The average pillar % of each department's scored scorecards (teams under their department). */
-  departments: { id: string | null; name: string; scored: number; average: number | null; pillars: Record<KpiPillarId, number | null> }[];
+  /**
+   * The pillars the departments' averages are by: those of the month's scored scorecards (their template versions'), by
+   * name (kpi-framework.ts kpiPillarColumns); a weight null when it differs between them.
+   */
+  pillars: KpiPillarColumn[];
+  /** The month's scored scorecards have different pillars (the framework changed): "Pillars changed this month: averages by name". */
+  pillarsChanged: boolean;
+  /** The average pillar % of each department's scored scorecards (teams under their department), by the columns' keys. */
+  departments: { id: string | null; name: string; scored: number; average: number | null; pillars: Record<string, number | null> }[];
   /** C-level people left out for the caller. */
   hidden: number;
+}
+
+/** A pillar as a column of the month's overview and its Excel, by its name. */
+export interface KpiPillarColumn {
+  /** Its name in lower case, single-spaced: the departments' averages are by it. */
+  key: string;
+  name: string;
+  short: string;
+  /** Its weight when every scorecard with it has the same; null when they differ. */
+  weight: number | null;
 }
 
 /** POST /kpis/open: the month whose scorecards were opened, and how many. */
@@ -914,10 +994,13 @@ export const KPI_SAMPLE_TEMPLATES: readonly KpiSampleView[] = [
   },
 ];
 
-/** A sample's metric, its target its best criterion's points. */
-function sample(pillar: KpiPillarId, name: string, definition: string, howMeasured: string, jdDuty: string, criteria: [string, number][]): KpiMetric {
+/**
+ * A sample's metric in one of the four pillars it is written for (by their number: their keys in KPI_PILLARS), its
+ * target its best criterion's points. A draft from it is placed in the framework's pillars by name.
+ */
+function sample(pillar: KpiDefaultPillarNo, name: string, definition: string, howMeasured: string, jdDuty: string, criteria: [string, number][]): KpiMetric {
   const scale = criteria.map(([label, points]) => ({ label, points }));
-  return { pillar, name, definition, howMeasured, jdDuty, targetPoints: topCriterionPoints({ criteria: scale }), criteria: scale };
+  return { pillar: kpiDefaultPillarKey(pillar), name, definition, howMeasured, jdDuty, targetPoints: topCriterionPoints({ criteria: scale }), criteria: scale };
 }
 
 /** A sample by its code (FE-SR v2, MED-VP v1, HR-SP v3); none for another. */

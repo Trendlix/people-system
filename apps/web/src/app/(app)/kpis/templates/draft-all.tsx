@@ -4,13 +4,15 @@ import Link from 'next/link';
 import { useActionState } from 'react';
 import { FormErrors, useFieldIds } from '@/components/form';
 import { KPI_PATHS } from '@/lib/kpi-paths';
-import { draftAllSummary, madeDraftRole, type DraftAllState } from './templates';
+import { draftAllSummary, madeDraftRole, madeDraftUnplaced, type DraftAllState } from './templates';
 
 // "Draft templates for every job title" (owner, 21 October 2026: "can you add templetes for all departments and job
 // roles"): one press makes a draft for each job title with no KPI template yet, from the closest role in the KPI role
 // library (its title, then its department, else the universal template), its metrics linked to the job title's duties.
 // Nothing is published and no other template changes. Asks first; then says what it made, each job title with the role
-// it used and why, and the job titles it left and why. The list below then shows them as drafts.
+// it used and why, and the job titles it left and why. The list below then shows them as drafts. The library is written
+// for the plan's four pillars (owner, 21 October 2026: "Fully flexible"): a draft's metrics whose pillar the framework
+// no longer has are in Unplaced, said on it.
 
 export function DraftAllForm({
   action,
@@ -76,6 +78,7 @@ export function DraftAllForm({
                       {madeDraftRole(m)}
                     </span>
                     <span className="block text-xs text-muted">{m.reason}</span>
+                    {madeDraftUnplaced(m) && <span className="block text-xs text-warn">{madeDraftUnplaced(m)}</span>}
                   </li>
                 ))}
               </ul>

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { KPI_PILLARS, KPI_STATUSES, kpiMonthName, kpiScorecardMonthOn, type KpiOverview, type KpiStatus } from '@trendlix/shared';
+import { KPI_STATUSES, kpiMonthName, kpiScorecardMonthOn, type KpiOverview, type KpiStatus } from '@trendlix/shared';
 import { Select } from '@/components/select';
 import { titleCase } from '@/lib/format';
 import { KPI_PATHS } from '@/lib/kpi-paths';
@@ -17,6 +17,7 @@ import {
   KPI_STEP_NAMES,
   kpiExcelHref,
   percentText,
+  PILLARS_CHANGED_THIS_MONTH,
   readDepartment,
   readMonth,
   readStatus,
@@ -32,7 +33,8 @@ import { OpenScorecardsForm } from './open-form';
 // levels, each department's average by pillar, everyone's heatmap over six months, and the month's scorecards filtered
 // by step and department, with the month's workbook. HR opens last month's scorecards now rather than on the 1st. The
 // C-level people are left out for HR (owner, 19 October 2026: "make C level Employees details not visible to HR"): the
-// page says so. The API checks the roles again.
+// page says so. The API checks the roles again. The pillars (owner, 21 October 2026: "Fully flexible"): each scorecard's
+// are its template version's; the department averages are by pillar name, the page saying so when the month's differ.
 
 export const metadata: Metadata = { title: 'All KPIs · People System' };
 
@@ -127,11 +129,16 @@ function ByStep({ overview: o }: { overview: KpiOverview }) {
   );
 }
 
-/** Each department's average final % and pillar %, of its scored scorecards (its teams' with it). */
+/** Each department's average final % and pillar %, of its scored scorecards (its teams' with it), by pillar name. */
 function Departments({ overview: o }: { overview: KpiOverview }) {
   if (!o.departments.length) return <p className="px-5 pb-5 text-sm text-muted">None scored yet.</p>;
   return (
     <div className="overflow-x-auto">
+      {o.pillarsChanged && (
+        <p role="note" className="mx-5 mb-3 rounded-lg bg-warn-soft px-4 py-2 text-sm text-warn">
+          {PILLARS_CHANGED_THIS_MONTH}
+        </p>
+      )}
       <table className="table">
         <thead>
           <tr>
@@ -142,9 +149,9 @@ function Departments({ overview: o }: { overview: KpiOverview }) {
             <th scope="col" className="text-right">
               Average
             </th>
-            {KPI_PILLARS.map((p) => (
-              <th key={p.id} scope="col" className="text-right" title={p.name}>
-                {p.short} <span className="font-normal normal-case">{p.weight}%</span>
+            {o.pillars.map((p) => (
+              <th key={p.key} scope="col" className="text-right" title={p.name}>
+                {p.short} {p.weight !== null && <span className="font-normal normal-case">{p.weight}%</span>}
               </th>
             ))}
           </tr>
@@ -155,9 +162,9 @@ function Departments({ overview: o }: { overview: KpiOverview }) {
               <td className="font-medium">{d.name}</td>
               <td className="text-right tabular-nums">{d.scored}</td>
               <td className="text-right font-semibold tabular-nums">{percentText(d.average)}</td>
-              {KPI_PILLARS.map((p) => (
-                <td key={p.id} className="text-right tabular-nums">
-                  {percentText(d.pillars[p.id])}
+              {o.pillars.map((p) => (
+                <td key={p.key} className="text-right tabular-nums">
+                  {percentText(d.pillars[p.key] ?? null)}
                 </td>
               ))}
             </tr>

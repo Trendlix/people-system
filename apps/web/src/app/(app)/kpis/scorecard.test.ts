@@ -53,7 +53,7 @@ import {
 const ID = '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed';
 const MONA = { id: 'e-mona', employeeCode: 'EMP-0042', fullNameEn: 'Mona Adel' };
 
-const metric = (id: string, pillar: 1 | 2 | 3 | 4, name: string, targetPoints: number, criteria: [string, number][], picks: Partial<KpiScorecardMetric> = {}): KpiScorecardMetric => ({
+const metric = (id: string, pillar: string, name: string, targetPoints: number, criteria: [string, number][], picks: Partial<KpiScorecardMetric> = {}): KpiScorecardMetric => ({
   id,
   pillar,
   name,
@@ -69,13 +69,13 @@ const metric = (id: string, pillar: 1 | 2 | 3 | 4, name: string, targetPoints: n
   ...picks,
 });
 
-const delivery = metric('m1', 1, 'Sprint tasks on time', 35, [['95–100%', 35], ['85–94%', 25], ['Below 85%', 10]], {
+const delivery = metric('m1', 'delivery', 'Sprint tasks on time', 35, [['95–100%', 35], ['85–94%', 25], ['Below 85%', 10]], {
   self: { choice: 0, comment: 'Every sprint closed' },
   manager: { choice: 1, comment: null },
 });
-const quality = metric('m2', 2, 'Reopened bugs', 35, [['0', 35], ['1–2', 25], ['3 or more', 10]], { self: { choice: 0, comment: null }, manager: { choice: 0, comment: null } });
-const clients = metric('m3', 3, 'PM feedback', 30, [['4.5 – 5', 30], ['4.0 – 4.4', 20], ['Below 4', 10], ['Beyond', 40]], { manager: { choice: 1, comment: null } });
-const growth = metric('m4', 4, 'Development plan', 25, [['2 courses', 25], ['1 course', 20], ['None', 0]]);
+const quality = metric('m2', 'quality', 'Reopened bugs', 35, [['0', 35], ['1–2', 25], ['3 or more', 10]], { self: { choice: 0, comment: null }, manager: { choice: 0, comment: null } });
+const clients = metric('m3', 'clients', 'PM feedback', 30, [['4.5 – 5', 30], ['4.0 – 4.4', 20], ['Below 4', 10], ['Beyond', 40]], { manager: { choice: 1, comment: null } });
+const growth = metric('m4', 'discipline', 'Development plan', 25, [['2 courses', 25], ['1 course', 20], ['None', 0]]);
 
 const pillar = (id: 1 | 2 | 3 | 4, metrics: KpiScorecardMetric[]) => ({ ...KPI_PILLARS[id - 1], metrics, achieved: 0, max: 0, percent: 0, complete: false });
 
@@ -105,6 +105,7 @@ const view = (over: Partial<KpiScorecardView> = {}): KpiScorecardView => ({
   ...summary(),
   template: { id: 't1', version: 2, jobTitleId: 'j1' },
   pillars: [pillar(1, [delivery]), pillar(2, [quality]), pillar(3, [clients]), pillar(4, [growth])],
+  attendancePillar: 'discipline',
   attendance: { points: 25, achieved: 24, ratio: 0.96, score: 0.96, source: 'payroll' },
   score: null,
   selfScore: null,
@@ -260,6 +261,27 @@ describe('the picks a form starts from, and the live score', () => {
     // a criterion worth more than its target
     expect(liveScore(v, { m1: 0, m2: 0, m3: 3, m4: 0 }).level).toBe('above');
     expect(unpicked([delivery, quality, clients, growth], { m1: 0, m3: 2 })).toEqual(['Reopened bugs', 'Development plan']);
+  });
+
+  it('works the score out in the scorecard’s own pillars (owner, 21 October 2026: "Fully flexible"), Attendance in the chosen one', () => {
+    // three pillars: Delivery 50%, Quality 30%, Growth 20% with the Attendance metric
+    const three = view({
+      pillars: [
+        { key: 'delivery', name: 'Delivery', short: 'Delivery', weight: 50, metrics: [delivery], achieved: 0, max: 0, percent: 0, complete: false },
+        { key: 'quality', name: 'Quality', short: 'Quality', weight: 30, metrics: [quality], achieved: 0, max: 0, percent: 0, complete: false },
+        { key: 'growth', name: 'Growth', short: 'Growth', weight: 20, metrics: [{ ...growth, pillar: 'growth' }], achieved: 0, max: 0, percent: 0, complete: false },
+      ],
+      attendancePillar: 'growth',
+    });
+    const s = liveScore(three, { m1: 1, m2: 0, m4: 0 });
+    expect(s.pillars.map((p) => [p.key, p.max, p.percent])).toEqual([
+      ['delivery', 35, 71.4],
+      ['quality', 35, 100],
+      ['growth', 50, 98],
+    ]);
+    // 50 × 25/35 + 30 + 20 × 49/50 = 35.71 + 30 + 19.6
+    expect(s.finalPercent).toBe(85.3);
+    expect(s.complete).toBe(true);
   });
 
   it('marks the target and words a pick', () => {

@@ -15,6 +15,8 @@ export const KPI_API = {
   counts: '/kpis/counts',
   /** GET (everyone) and PATCH (HR, Super Admin): KpiSettingsView. */
   settings: '/kpis/settings',
+  /** GET (everyone): KpiFrameworkView, the pillars in force and the next ones; PUT KpiFrameworkInput (HR, Super Admin). */
+  framework: '/kpis/framework',
   /** GET: KpiTemplateRow[] (HR, the CEO, Admin, Super Admin). */
   templates: '/kpis/templates',
   /** GET: KpiSampleView[] (HR, Super Admin). */

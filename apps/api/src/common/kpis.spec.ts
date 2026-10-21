@@ -1,6 +1,7 @@
 import {
   EMPTY_PAYROLL_INPUTS,
   KPI_ATTENDANCE_POINTS_DEFAULT,
+  KPI_DEFAULT_PILLAR_SET,
   KPI_FINAL_CAP,
   KPI_PILLARS,
   KPI_SAMPLE_TEMPLATES,
@@ -40,22 +41,23 @@ import {
 
 /** A small template: one metric a pillar, targets 30 / 25 / 25 / 20, Attendance worth 20 in Discipline & Growth. */
 const metrics: KpiScoredMetric[] = [
-  { id: 'd', pillar: 1, targetPoints: 30, criteria: [{ label: 'All on time', points: 30 }, { label: '1 late', points: 20 }, { label: 'Way ahead', points: 36 }] },
-  { id: 'q', pillar: 2, targetPoints: 25, criteria: [{ label: 'No errors', points: 25 }, { label: 'Some', points: 10 }] },
-  { id: 'c', pillar: 3, targetPoints: 25, criteria: [{ label: 'Great', points: 25 }, { label: 'Fine', points: 15 }, { label: 'Poor', points: 0 }] },
-  { id: 'g', pillar: 4, targetPoints: 20, criteria: [{ label: '2 courses', points: 20 }, { label: 'None', points: 0 }] },
+  { id: 'd', pillar: 'delivery', targetPoints: 30, criteria: [{ label: 'All on time', points: 30 }, { label: '1 late', points: 20 }, { label: 'Way ahead', points: 36 }] },
+  { id: 'q', pillar: 'quality', targetPoints: 25, criteria: [{ label: 'No errors', points: 25 }, { label: 'Some', points: 10 }] },
+  { id: 'c', pillar: 'clients', targetPoints: 25, criteria: [{ label: 'Great', points: 25 }, { label: 'Fine', points: 15 }, { label: 'Poor', points: 0 }] },
+  { id: 'g', pillar: 'discipline', targetPoints: 20, criteria: [{ label: '2 courses', points: 20 }, { label: 'None', points: 0 }] },
 ];
 const fullAttendance = { points: 20, achieved: 20 };
 
 describe('the framework', () => {
-  it('has the four pillars with fixed weights adding up to 100', () => {
-    expect(KPI_PILLARS.map((p) => [p.name, p.weight])).toEqual([
-      ['Delivery & Timeliness', 30],
-      ['Quality of Work', 25],
-      ['Clients & Teamwork', 25],
-      ['Discipline & Growth', 20],
+  it('has the plan’s four pillars as the default, their weights adding up to 100, Attendance in Discipline & Growth', () => {
+    expect(KPI_PILLARS.map((p) => [p.key, p.name, p.short, p.weight])).toEqual([
+      ['delivery', 'Delivery & Timeliness', 'Delivery', 30],
+      ['quality', 'Quality of Work', 'Quality', 25],
+      ['clients', 'Clients & Teamwork', 'Clients', 25],
+      ['discipline', 'Discipline & Growth', 'Discipline', 20],
     ]);
     expect(KPI_PILLARS.reduce((sum, p) => sum + p.weight, 0)).toBe(100);
+    expect(KPI_DEFAULT_PILLAR_SET).toEqual({ pillars: KPI_PILLARS, attendancePillar: 'discipline' });
   });
 
   it('names the levels at their edges: each band from its lower edge, 100% exactly meeting expectations', () => {
@@ -112,9 +114,9 @@ describe('scoring', () => {
 
   it('caps the final % at 110', () => {
     const generous: KpiScoredMetric[] = [
-      { id: 'a', pillar: 1, targetPoints: 10, criteria: [{ label: 'Way over', points: 20 }, { label: 'Target', points: 10 }] },
-      { id: 'b', pillar: 2, targetPoints: 10, criteria: [{ label: 'Way over', points: 20 }, { label: 'Target', points: 10 }] },
-      { id: 'c', pillar: 3, targetPoints: 10, criteria: [{ label: 'Target', points: 10 }, { label: 'None', points: 0 }] },
+      { id: 'a', pillar: 'delivery', targetPoints: 10, criteria: [{ label: 'Way over', points: 20 }, { label: 'Target', points: 10 }] },
+      { id: 'b', pillar: 'quality', targetPoints: 10, criteria: [{ label: 'Way over', points: 20 }, { label: 'Target', points: 10 }] },
+      { id: 'c', pillar: 'clients', targetPoints: 10, criteria: [{ label: 'Target', points: 10 }, { label: 'None', points: 0 }] },
     ];
     // 30 × 2 + 25 × 2 + 25 + 20 = 155 → 110
     const s = kpiScore(generous, { a: 0, b: 0, c: 0 }, fullAttendance);
@@ -160,7 +162,7 @@ describe('the Attendance metric', () => {
 
 describe('templates', () => {
   const metric = (over: Partial<KpiMetric> = {}): KpiMetric => ({
-    pillar: 1,
+    pillar: 'delivery',
     name: 'On time',
     definition: null,
     howMeasured: null,
@@ -172,7 +174,7 @@ describe('templates', () => {
     ],
     ...over,
   });
-  const full = [metric(), metric({ pillar: 2, name: 'Quality' }), metric({ pillar: 3, name: 'Clients' })];
+  const full = [metric(), metric({ pillar: 'quality', name: 'Quality' }), metric({ pillar: 'clients', name: 'Clients' })];
 
   it('saves a draft with any pillars, but publishes one only with a metric in each of the first three', () => {
     expect(kpiTemplateProblems({ attendancePoints: 20, metrics: [metric()] })).toEqual([]);

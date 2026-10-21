@@ -152,7 +152,7 @@ export default function MyKpisPage() {
     <div className="max-w-5xl">
       <h1 className="text-2xl font-semibold">My KPIs</h1>
       <p className="mt-1 text-muted">
-        Your monthly scorecard, built from your job description: four pillars, each with its metrics. You rate yourself first, then your manager
+        Your monthly scorecard, built from your job description: its pillars, each with its weight and its metrics. You rate yourself first, then your manager
         scores the month, HR calibrates it, and you both sign that you have read it. A month&apos;s scorecard opens on the 1st of the next month,
         and its final % counts in that month&apos;s payroll.
       </p>

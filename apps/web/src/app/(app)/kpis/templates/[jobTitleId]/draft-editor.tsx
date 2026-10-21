@@ -1,6 +1,6 @@
 'use client';
 
-import { KPI_ATTENDANCE_PILLAR, KPI_PILLARS, KPI_TEMPLATE_LIMITS, kpiTemplateProblems, type KpiPillarId, type KpiTemplateView } from '@trendlix/shared';
+import { KPI_TEMPLATE_LIMITS, kpiTemplateProblems, type KpiPillarSet, type KpiTemplateView } from '@trendlix/shared';
 import { startTransition, useActionState, useEffect, useRef, useState } from 'react';
 import { DeleteForm, FormErrors, useFieldIds } from '@/components/form';
 import { Select } from '@/components/select';
@@ -19,8 +19,11 @@ import {
   formOf,
   moveMetric,
   onlyForPublishing,
+  PILLARS_CHANGED_NOTE,
   removeCriterion,
   removeMetric,
+  UNPLACED_NOTE,
+  UNPLACED_TITLE,
   updateCriterion,
   updateMetric,
   type DraftForm,
@@ -29,13 +32,16 @@ import {
 } from './builder';
 
 // A job title's KPI template draft, as HR (or the Super Admin) builds it (owner, 21 October 2026: "Full framework per
-// role"; "Templates: HR"): the four pillars with their weights and max points, the automatic Attendance metric's points
-// in Discipline & Growth (it can't be removed), and the metrics, each with its pillar, name, definition, how it's
+// role"; "Templates: HR"): the pillars with their weights and max points, the automatic Attendance metric's points
+// in its pillar (it can't be removed), and the metrics, each with its pillar, name, definition, how it's
 // measured, the JD duty it is linked to (one of the JD's duty rows, beside the builder, or typed), its target points and
 // its criteria scale, 2 to 6 rows, a criterion allowed to give more than the target ("above target": a final % may
 // reach 110%). Metrics are added, removed and moved within their pillar. What stops it being saved, and what stops it
 // being published, show as it is typed (kpiTemplateProblems). Save draft keeps it; Publish saves it and publishes it,
 // asking first, as it applies from the next month's scorecards; a Super Admin may discard it.
+// The pillars (owner, 21 October 2026: "Fully flexible"): the KPI framework's newest, with their weights, the Attendance
+// metric in the pillar the framework chose; a draft written for other pillars is said so, its metrics placed in these
+// by name, those whose pillar is gone in Unplaced, last, each to be given a pillar or removed before publishing.
 
 type SetForm = (change: (form: DraftForm) => DraftForm) => void;
 
@@ -124,6 +130,7 @@ function MetricEditor({
   metric,
   number,
   duties,
+  pillars,
   fid,
   setForm,
   newKey,
@@ -133,6 +140,7 @@ function MetricEditor({
   metric: MetricForm;
   number: number;
   duties: readonly string[];
+  pillars: KpiPillarSet;
   fid: (name: string) => string;
   setForm: SetForm;
   newKey: () => string;
@@ -140,7 +148,7 @@ function MetricEditor({
   canDown: boolean;
 }) {
   const id = (field: string) => fid(`${metric.key}-${field}`);
-  const update = (patch: Partial<Omit<MetricForm, 'key' | 'id' | 'criteria'>>) => setForm((f) => updateMetric(f, metric.key, patch));
+  const update = (patch: Partial<Omit<MetricForm, 'key' | 'id' | 'criteria' | 'wasIn'>>) => setForm((f) => updateMetric(f, metric.key, patch));
   const choice = dutyChoice(metric, duties);
   return (
     <li className="space-y-4 rounded-lg border border-line p-4">
@@ -188,13 +196,15 @@ function MetricEditor({
           <label htmlFor={id('pillar')} className="label">
             Pillar
           </label>
-          <Select id={id('pillar')} value={String(metric.pillar)} onChange={(e) => update({ pillar: Number(e.target.value) as KpiPillarId })} className="input">
-            {KPI_PILLARS.map((p) => (
-              <option key={p.id} value={p.id}>
+          <Select id={id('pillar')} value={metric.pillar ?? ''} onChange={(e) => update({ pillar: e.target.value || null })} className="input">
+            {metric.pillar === null && <option value="">Choose a pillar</option>}
+            {pillars.pillars.map((p) => (
+              <option key={p.key} value={p.key}>
                 {p.name} ({p.weight}%)
               </option>
             ))}
           </Select>
+          {metric.pillar === null && metric.wasIn && <p className="hint text-warn">It was in {metric.wasIn}, which the framework no longer has.</p>}
         </div>
       </div>
 
@@ -345,19 +355,21 @@ function PillarEditor({
   setForm: SetForm;
   newKey: () => string;
 }) {
-  const { pillar, metrics, max } = group;
-  const heading = fid(`pillar-${pillar.id}`);
-  const attendance = pillar.id === KPI_ATTENDANCE_PILLAR;
+  const { pillar, metrics, max, attendance } = group;
+  const heading = fid(`pillar-${pillar?.key ?? 'unplaced'}`);
   return (
-    <section aria-labelledby={heading} className="space-y-3">
+    <section aria-labelledby={heading} className={pillar ? 'space-y-3' : 'space-y-3 rounded-lg border border-warn/40 bg-warn-soft/40 p-4'}>
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line pb-2">
-        <h3 id={heading} className="font-semibold">
-          {pillar.name}
+        <h3 id={heading} className={pillar ? 'font-semibold' : 'font-semibold text-warn'}>
+          {pillar ? pillar.name : UNPLACED_TITLE}
         </h3>
-        <p className="text-sm text-muted tabular-nums">
-          Weight {pillar.weight}% · max {max} points
-        </p>
+        {pillar && (
+          <p className="text-sm text-muted tabular-nums">
+            Weight {pillar.weight}% · max {max} points
+          </p>
+        )}
       </div>
+      {!pillar && <p className="max-w-3xl text-sm text-warn">{UNPLACED_NOTE}</p>}
       {attendance && <AttendanceEditor value={form.attendancePoints} fid={fid} setForm={setForm} />}
       {metrics.length > 0 ? (
         <ol className="space-y-3">
@@ -367,6 +379,7 @@ function PillarEditor({
               metric={m.form}
               number={m.number}
               duties={duties}
+              pillars={form.pillars}
               fid={fid}
               setForm={setForm}
               newKey={newKey}
@@ -378,16 +391,18 @@ function PillarEditor({
       ) : (
         !attendance && <p className="text-sm text-muted">No metric yet. Every pillar is scored: add one before publishing.</p>
       )}
-      <button
-        type="button"
-        onClick={() => {
-          const key = newKey();
-          setForm((f) => addMetric(f, pillar.id, key));
-        }}
-        className="btn btn-secondary"
-      >
-        Add a metric to {pillar.name}
-      </button>
+      {pillar && (
+        <button
+          type="button"
+          onClick={() => {
+            const key = newKey();
+            setForm((f) => addMetric(f, pillar.key, key));
+          }}
+          className="btn btn-secondary"
+        >
+          Add a metric to {pillar.name}
+        </button>
+      )}
     </section>
   );
 }
@@ -428,7 +443,7 @@ export function DraftEditor({
   discard,
   confirmPublish,
 }: {
-  draft: Pick<KpiTemplateView, 'version' | 'updatedAt' | 'attendancePoints' | 'metrics'>;
+  draft: Pick<KpiTemplateView, 'version' | 'updatedAt' | 'attendancePoints' | 'metrics' | 'pillars' | 'attendancePillar' | 'pillarsChanged'>;
   /** The JD's duty rows, to link a metric to. */
   duties: readonly string[];
   /** Saves the draft, or (`intent` publish) saves and publishes it. */
@@ -439,9 +454,11 @@ export function DraftEditor({
   confirmPublish: string;
 }) {
   const fid = useFieldIds();
-  const [form, setFormState] = useState<DraftForm>(() => formOf(draft, duties));
-  // the draft as saved, to say when there are changes not saved yet
-  const [saved] = useState(() => JSON.stringify(contentOf(formOf(draft, duties))));
+  // the KPI framework's newest pillars, which the API placed the draft's metrics in
+  const [pillars] = useState<KpiPillarSet>(() => ({ pillars: draft.pillars, attendancePillar: draft.attendancePillar }));
+  const [form, setFormState] = useState<DraftForm>(() => formOf(draft, duties, pillars));
+  // the draft as saved, to say when there are changes not saved yet (placed in new pillars: not saved so yet)
+  const [saved] = useState(() => (draft.pillarsChanged ? '' : JSON.stringify(contentOf(formOf(draft, duties, pillars)))));
   const [state, dispatch, pending] = useActionState(action, {});
   const [intent, setIntent] = useState<'save' | 'publish'>('save');
   const counter = useRef(0);
@@ -453,8 +470,8 @@ export function DraftEditor({
   const setForm: SetForm = (change) => setFormState(change);
 
   const content = contentOf(form);
-  const saving = kpiTemplateProblems(content);
-  const publishing = onlyForPublishing(kpiTemplateProblems(content, { publishing: true }), saving);
+  const saving = kpiTemplateProblems(content, { pillars });
+  const publishing = onlyForPublishing(kpiTemplateProblems(content, { publishing: true, pillars }), saving);
   const dirty = JSON.stringify(content) !== saved;
 
   // leaving the page (closing it, reloading) with changes not saved asks first
@@ -471,6 +488,7 @@ export function DraftEditor({
     const fd = new FormData();
     fd.set('intent', which);
     fd.set('content', JSON.stringify(content));
+    fd.set('pillars', JSON.stringify(pillars));
     startTransition(() => dispatch(fd));
   }
 
@@ -487,6 +505,11 @@ export function DraftEditor({
         <p className="mt-1 max-w-3xl text-sm text-muted">
           Last saved {formatDateTime(draft.updatedAt)}. Nothing changes until it is published; then it applies to the scorecards opened from the next month on.
         </p>
+        {draft.pillarsChanged && (
+          <p role="status" className="mt-3 max-w-3xl rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+            {PILLARS_CHANGED_NOTE}
+          </p>
+        )}
       </div>
       <form
         noValidate
@@ -498,7 +521,7 @@ export function DraftEditor({
       >
         <FormErrors errors={state.errors} />
         {formGroups(form).map((g) => (
-          <PillarEditor key={g.pillar.id} group={g} form={form} duties={duties} fid={fid} setForm={setForm} newKey={newKey} />
+          <PillarEditor key={g.pillar?.key ?? 'unplaced'} group={g} form={form} duties={duties} fid={fid} setForm={setForm} newKey={newKey} />
         ))}
         <Problems saving={saving} publishing={publishing} />
         <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-5">

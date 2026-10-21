@@ -106,6 +106,8 @@ model User {
   kpiCalibrated         KpiScorecard[]     @relation("KpiScorecardCalibratedBy") // KPI scorecards this user calibrated as HR
   kpiManagerSigned      KpiScorecard[]     @relation("KpiScorecardManagerSignedBy") // KPI scorecards this user signed as the manager
   kpiSteps              KpiScorecardStep[] @relation("KpiScorecardStepActor") // steps of KPI scorecards this user took
+  kpiFrameworksMade     KpiFramework[]     @relation("KpiFrameworkCreation") // KPI framework versions (the pillars) this user made
+  kpiFrameworksChanged  KpiFramework[]     @relation("KpiFrameworkChange") // KPI framework versions this user changed last
   assetSettingsChanged  AssetSettings[]            @relation("AssetSettingsBy") // the asset settings, when this user changed them last (21 October 2026)
   assetsCreated         Asset[]                    @relation("AssetCreation") // the assets this user registered
   assetsDisposed        Asset[]                    @relation("AssetDisposal") // the assets this user recorded the disposal of
@@ -2431,18 +2433,47 @@ model KpiSettings {
   @@map("kpi_settings")
 }
 
+// A version of the KPI framework (owner, 21 October 2026: "am i able to edit the pillars of the KPIs?", "Fully
+// flexible"; packages/shared kpi-framework.ts): its pillars, in order, [{ key, name, short, weight }] (1 to 8, the
+// weights adding up to 100), the key of the pillar the Attendance metric counts in, and the first month whose
+// scorecards it scores (applies_from, the 1st of it: they open on the 1st of the month after). The one in force is the
+// newest whose month's scorecards have opened; the next (one at most, from this month on) is changed until then. The
+// migration made version 1, the plan's four pillars, in force. Template versions keep the pillars they were published
+// with, so a framework never changes a scorecard.
+model KpiFramework {
+  id               String        @id @default(uuid()) @db.Uuid
+  version          Int           @unique // 1, 2 …
+  appliesFrom      DateTime      @unique @map("applies_from") @db.Date // the 1st of its first scorecard month
+  pillars          Json // [{ key, name, short, weight }], in order
+  attendancePillar String        @map("attendance_pillar") // the key of the Attendance metric's pillar
+  createdById      String?       @map("created_by") @db.Uuid
+  createdBy        User?         @relation("KpiFrameworkCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedById      String?       @map("updated_by") @db.Uuid
+  updatedBy        User?         @relation("KpiFrameworkChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  templates        KpiTemplate[] // the template versions published with its pillars
+
+  @@map("kpi_frameworks")
+}
+
 // A version of a job title's KPI template: its metrics and the Attendance metric's points. HR edits a draft (one a job
 // title at most) and publishes it; a published version is never changed, and the scorecards opened from the 1st of the
 // month after it was published use it (opens_from), each keeping the version it opened with. The versions stay, as its
 // history. Only a Super Admin deletes a draft.
+// Its pillars (owner, 21 October 2026: "Fully flexible"): a published version keeps those of the KPI framework it was
+// published with (framework_id; pillars and attendance_pillar, a copy), and its scorecards are scored with them; it
+// opens no earlier than that framework's first month's scorecards. A draft keeps the pillars its metrics were written
+// for (the framework's when saved, a copied version's, the plan's four for a sample or a role of the library), and is
+// placed in the newest framework's by name when opened and published.
 model KpiTemplate {
   id               String         @id @default(uuid()) @db.Uuid
   jobTitleId       String         @map("job_title_id") @db.Uuid
   jobTitle         JobTitle       @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
   version          Int // 1, 2 … a job title's own, the draft's the next
   status           String // draft, published
-  attendancePoints Int            @default(20) @map("attendance_points") // the automatic Attendance metric's points, in Discipline & Growth
-  opensFrom        DateTime?      @map("opens_from") @db.Date // published: the 1st of the month after it was published, from which scorecards open with it
+  attendancePoints Int            @default(20) @map("attendance_points") // the automatic Attendance metric's points, in its pillar (attendance_pillar)
+  opensFrom        DateTime?      @map("opens_from") @db.Date // published: the 1st of the month after it was published (or its framework's first opening), from which scorecards open with it
   publishedAt      DateTime?      @map("published_at") @db.Timestamptz
   publishedById    String?        @map("published_by") @db.Uuid
   publishedBy      User?          @relation("KpiTemplatePublication", fields: [publishedById], references: [id], onDelete: SetNull)
@@ -2450,15 +2481,21 @@ model KpiTemplate {
   createdBy        User?          @relation("KpiTemplateCreation", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  frameworkId      String?        @map("framework_id") @db.Uuid // published: the KPI framework it was published with
+  framework        KpiFramework?  @relation(fields: [frameworkId], references: [id], onDelete: Restrict)
+  pillars          Json // its pillars, [{ key, name, short, weight }], in order
+  attendancePillar String         @map("attendance_pillar") // the key of the Attendance metric's pillar
   metrics          KpiMetric[]
   scorecards       KpiScorecard[]
 
   @@unique([jobTitleId, version])
   @@index([jobTitleId, status])
+  @@index([frameworkId])
   @@map("kpi_templates")
 }
 
-// A metric of a template version, in its order: its pillar (1–4: KPI_PILLARS), name, definition, how it's measured, the
+// A metric of a template version, in its order: its pillar (the key of one of its version's pillars; a draft's in
+// Unplaced: none, with the name of the pillar it was in), name, definition, how it's measured, the
 // JD duty it is linked to (its words, as the duty rows are read again from the JD when it changes), the points that count
 // as its target, and its criteria scale, [{ label, points }], one picked a month (by its index).
 model KpiMetric {
@@ -2466,7 +2503,8 @@ model KpiMetric {
   templateId   String      @map("template_id") @db.Uuid
   template     KpiTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   position     Int
-  pillar       Int
+  pillar       String? // a key of its version's pillars; none: in Unplaced (a draft's only)
+  wasIn        String?     @map("was_in") // in Unplaced: the name of the pillar it was in
   name         String
   definition   String?
   howMeasured  String?     @map("how_measured")
@@ -2527,7 +2565,7 @@ model KpiScorecard {
   finalAt             DateTime?          @map("final_at") @db.Timestamptz
   finalPercent        Decimal?           @map("final_percent") @db.Decimal(5, 1)
   level               String? // KPI_LEVELS
-  pillars             Json? // the four pillars' percents, { "1": 92.5, … }, with the final %
+  pillars             Json? // its template version's pillars' percents by their keys, { "delivery": 92.5, … }, with the final %
   remindersSent       String[]           @default([]) @map("reminders_sent") // KPI_REMINDERS sent
   createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz

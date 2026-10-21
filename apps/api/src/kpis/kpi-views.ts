@@ -1,6 +1,6 @@
 import {
-  isKpiPillarId,
-  KPI_PILLARS,
+  isKpiPillarKey,
+  KPI_DEFAULT_PILLAR_SET,
   KPI_STEP_LABELS,
   kpiDeadlines,
   kpiPayrollMonth,
@@ -11,7 +11,8 @@ import {
   type KpiLevel,
   type KpiMetricView,
   type KpiPickView,
-  type KpiPillarId,
+  type KpiPillar,
+  type KpiPillarSet,
   type KpiScorecardMetric,
   type KpiScorecardSummary,
   type KpiScorecardView,
@@ -28,10 +29,31 @@ import { kpiActionFor, kpiCan, kpiShown, type KpiCaller } from './kpi-access.js'
 
 // A KPI scorecard as the pages read it (owner, 21 October 2026: "Self, manager, HR, sign-off"; packages/shared kpis.ts
 // KpiScorecardSummary and KpiScorecardView): who, the month, where it is, its scorer, the score as the caller may see it
-// (the employee only from the sign-off on), the 4 pillars with their metrics and the picks the caller may see, the
+// (the employee only from the sign-off on), its pillars with their metrics and the picks the caller may see, the
 // automatic Attendance metric, each step's comments, the steps logged, the deadlines and what the caller may do. Pure.
+// The pillars are its template version's, as it was published (owner, 21 October 2026: "Fully flexible"; packages/shared
+// kpi-framework.ts): a scorecard is scored with them whatever the KPI framework has become since.
 
 export const SCORECARD_ENTITY = 'kpi_scorecard';
+
+/** A set of pillars as kept ([{ key, name, short, weight }]): those well formed; anything else none. */
+export function pillarsOf(value: Prisma.JsonValue | null | undefined): KpiPillar[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((p) => {
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return [];
+    const { key, name, short, weight } = p as Record<string, unknown>;
+    return isKpiPillarKey(key) && typeof name === 'string' && typeof weight === 'number' ? [{ key, name, short: typeof short === 'string' ? short : name, weight }] : [];
+  });
+}
+
+/** A template version's (or a framework's) pillars with the Attendance metric's; the plan's four when none are kept. */
+export function pillarSetOf(row: { pillars: Prisma.JsonValue; attendancePillar: string }): KpiPillarSet & { pillars: KpiPillar[] } {
+  const pillars = pillarsOf(row.pillars);
+  return pillars.length ? { pillars, attendancePillar: row.attendancePillar } : { pillars: [...KPI_DEFAULT_PILLAR_SET.pillars], attendancePillar: KPI_DEFAULT_PILLAR_SET.attendancePillar };
+}
+
+/** A set of pillars as saved. */
+export const pillarsJsonOf = (set: Pick<KpiPillarSet, 'pillars'>): Prisma.InputJsonValue => set.pillars.map((p) => ({ key: p.key, name: p.name, short: p.short, weight: p.weight }));
 
 /** What a scorecard is read with, in a list and on its page. */
 export const CARD_INCLUDE = {
@@ -44,6 +66,8 @@ export const CARD_INCLUDE = {
       version: true,
       jobTitleId: true,
       attendancePoints: true,
+      pillars: true,
+      attendancePillar: true,
       jobTitle: { select: { titleEn: true } },
       metrics: { orderBy: { position: 'asc' } },
     },
@@ -56,11 +80,22 @@ export type CardRow = Prisma.KpiScorecardGetPayload<{ include: typeof CARD_INCLU
 
 export const monthOfCard = (row: { month: Date }) => fromDateOnly(row.month).slice(0, 7);
 
-/** A saved metric as the pages read it. */
-export function metricView(m: { id: string; pillar: number; name: string; definition: string | null; howMeasured: string | null; jdDuty: string | null; targetPoints: number; criteria: Prisma.JsonValue }): KpiMetricView {
+/** A saved metric as the pages read it: its pillar's key (none: in Unplaced, with the pillar it was in). */
+export function metricView(m: {
+  id: string;
+  pillar: string | null;
+  wasIn?: string | null;
+  name: string;
+  definition: string | null;
+  howMeasured: string | null;
+  jdDuty: string | null;
+  targetPoints: number;
+  criteria: Prisma.JsonValue;
+}): KpiMetricView {
   return {
     id: m.id,
-    pillar: (isKpiPillarId(m.pillar) ? m.pillar : 1) as KpiPillarId,
+    pillar: m.pillar,
+    ...(m.pillar === null && { wasIn: m.wasIn ?? null }),
     name: m.name,
     definition: m.definition,
     howMeasured: m.howMeasured,
@@ -87,20 +122,19 @@ export function choicesOf(row: Pick<CardRow, 'scores'>, step: 'self' | 'manager'
   return out;
 }
 
-/** The score of a scorecard's picks at a step, with its Attendance metric. */
+/** The score of a scorecard's picks at a step, with its Attendance metric, in its template version's pillars. */
 export function scoreOf(row: Pick<CardRow, 'scores' | 'template' | 'attendanceAchieved'>, step: 'self' | 'manager' | 'final'): KpiScoreResult {
   const metrics = row.template.metrics.map(metricView);
-  return kpiScore(metrics, choicesOf(row, step), { points: row.template.attendancePoints, achieved: row.attendanceAchieved });
+  return kpiScore(metrics, choicesOf(row, step), { points: row.template.attendancePoints, achieved: row.attendanceAchieved }, pillarSetOf(row.template));
 }
 
-/** The pillars' percents kept with the score, for the departments' averages: { "1": 92.5, … }. */
-export const pillarsJson = (score: KpiScoreResult) => Object.fromEntries(score.pillars.map((p) => [String(p.pillar), p.percent]));
+/** The pillars' percents kept with the score, for the departments' averages, by the pillars' keys: { "delivery": 92.5, … }. */
+export const pillarsJson = (score: KpiScoreResult) => Object.fromEntries(score.pillars.map((p) => [p.key, p.percent]));
 
-/** The four pillars' percents kept with a score (none kept: null each). */
-export function keptPillars(value: Prisma.JsonValue | null): Record<KpiPillarId, number | null> {
+/** The pillars' percents kept with a score, by their keys (those kept as numbers). */
+export function keptPillars(value: Prisma.JsonValue | null): Record<string, number | null> {
   const v = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  const at = (id: KpiPillarId) => (typeof v[String(id)] === 'number' ? (v[String(id)] as number) : null);
-  return { 1: at(1), 2: at(2), 3: at(3), 4: at(4) };
+  return Object.fromEntries(Object.entries(v).map(([k, n]) => [k, typeof n === 'number' ? n : null]));
 }
 
 /** The deadlines of the scorecard's month. */
@@ -167,15 +201,17 @@ export function scorecardView(row: CardRow, caller: KpiCaller, settings: KpiSett
       points: counted !== null ? (view.criteria[counted]?.points ?? null) : null,
     };
   });
-  const score = official ?? kpiScore(metrics, {}, { points: row.template.attendancePoints, achieved: row.attendanceAchieved });
-  const pillars = KPI_PILLARS.map((p) => {
-    const s = score.pillars.find((x) => x.pillar === p.id)!;
-    return { ...p, metrics: metrics.filter((m) => m.pillar === p.id), achieved: s.achieved, max: s.max, percent: s.percent, complete: s.complete };
+  const set = pillarSetOf(row.template);
+  const score = official ?? kpiScore(metrics, {}, { points: row.template.attendancePoints, achieved: row.attendanceAchieved }, set);
+  const pillars = set.pillars.map((p) => {
+    const s = score.pillars.find((x) => x.key === p.key)!;
+    return { ...p, metrics: metrics.filter((m) => m.pillar === p.key), achieved: s.achieved, max: s.max, percent: s.percent, complete: s.complete };
   });
   return {
     ...summary,
     template: { id: row.template.id, version: row.template.version, jobTitleId: row.template.jobTitleId },
     pillars,
+    attendancePillar: set.attendancePillar,
     attendance: {
       points: row.template.attendancePoints,
       achieved: row.attendanceAchieved,

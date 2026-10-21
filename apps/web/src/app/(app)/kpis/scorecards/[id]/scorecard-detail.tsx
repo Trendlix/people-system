@@ -28,8 +28,8 @@ import { ScorecardForm, ScorecardView, SignForm } from './scorecard-forms';
 // A KPI scorecard (owner, 21 October 2026: "Full framework per role"; "Self, manager, HR, sign-off"; "Last month's KPI,
 // this pay"), for its employee, its scorer, HR (never a C-level person's), the CEO and a Super Admin (anyone else gets
 // the 404 page: the API says it isn't there): who and which month, the template's version, who scores it, the step it
-// is at and by when, and the payroll it counts in; the final % with its level and the four pillars with their metrics
-// (the automatic Attendance metric in Discipline & Growth); the comments of each step and every step taken. While it
+// is at and by when, and the payroll it counts in; the final % with its level and its pillars with their metrics
+// (its template version's, the automatic Attendance metric in the pillar they chose); the comments of each step and every step taken. While it
 // waits for the caller, their step's form: the self-rating, the scoring, HR's calibration or the sign-off. What was
 // just done shows at the top (?done=). Shown on the site and on the phone pages (owner, 20 October 2026: the employee
 // app), where the back link goes to the section's list and what is done on it comes back there.

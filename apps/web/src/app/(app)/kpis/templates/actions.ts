@@ -7,7 +7,9 @@
 // again, so calling these directly can't bypass them; the rules are checked here first only to save a round trip.
 // The KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles"): a draft from
 // one of its roles, "Draft templates for every job title" and "Publish selected drafts", each saying what it did.
-import { kpiSettingsProblems, kpiTemplateProblems, type KpiDraftAllResult, type KpiPublishDraftsResult } from '@trendlix/shared';
+// The KPI pillars (owner, 21 October 2026: "Fully flexible"): HR and the Super Admin save the next ones; a draft is
+// checked first in the pillars it is placed in (the framework's newest, as the page had them).
+import { kpiSettingsProblems, kpiTemplateProblems, type KpiDraftAllResult, type KpiFrameworkInput, type KpiPublishDraftsResult } from '@trendlix/shared';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
@@ -15,7 +17,8 @@ import { KPI_API, KPI_PATHS } from '@/lib/kpi-paths';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 import { shown } from '../../organization/payroll/replies';
-import { contentFromJson } from './[jobTitleId]/builder';
+import { contentFromJson, pillarsFromJson } from './[jobTitleId]/builder';
+import { frameworkSavedText } from './framework';
 import { draftSourceOf, SETTING_KEYS, settingsOf, settingsSummary, templateIdsOf, type DraftAllState, type PublishDraftsState } from './templates';
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -45,6 +48,29 @@ export async function updateKpiSettings(_prev: FormState, fd: FormData): Promise
   return { message: `Saved: ${settingsSummary(settings)} of the month after the scorecard's.` };
 }
 
+/**
+ * The next KPI pillars (PUT /kpis/framework), as the form sent them (JSON: KpiFrameworkInput, with the next framework it
+ * changed, none: null). The page checked them as typed; the API checks them again.
+ */
+export async function saveKpiFramework(_prev: FormState, fd: FormData): Promise<FormState> {
+  let input: (KpiFrameworkInput & { nextId: string | null }) | null = null;
+  try {
+    const value: unknown = JSON.parse(String(fd.get('framework') ?? ''));
+    if (value && typeof value === 'object' && !Array.isArray(value)) input = value as KpiFrameworkInput & { nextId: string | null };
+  } catch {
+    input = null;
+  }
+  if (!input || !Array.isArray(input.pillars) || typeof input.appliesFrom !== 'string') return { errors: ['The pillars could not be read. Please try again.'] };
+  const nextId = typeof input.nextId === 'string' && UUID.test(input.nextId) ? input.nextId : null;
+  try {
+    await apiSend('PUT', KPI_API.framework, { appliesFrom: input.appliesFrom, attendancePillar: String(input.attendancePillar ?? ''), pillars: input.pillars, nextId });
+  } catch (err) {
+    return refused(err);
+  }
+  refresh();
+  return { message: frameworkSavedText(input.appliesFrom) };
+}
+
 /** A new draft for the job title, from what the form chose (POST /kpis/templates/job-titles/:id/draft). */
 export async function startKpiDraft(jobTitleId: string, _prev: FormState, fd: FormData): Promise<FormState> {
   if (!UUID.test(jobTitleId)) return { errors: [NOT_FOUND] };
@@ -67,7 +93,9 @@ export async function sendKpiDraft(jobTitleId: string, templateId: string, _prev
   const content = contentFromJson(fd.get('content'));
   if (!content) return { errors: ['The draft could not be read. Please try again.'] };
   const publish = fd.get('intent') === 'publish';
-  const problems = kpiTemplateProblems(content, { publishing: publish });
+  // checked first in the pillars the page placed it in, when it sent them; the API checks it in the framework's newest
+  const pillars = pillarsFromJson(fd.get('pillars'));
+  const problems = pillars ? kpiTemplateProblems(content, { publishing: publish, pillars }) : [];
   if (problems.length) return { errors: problems };
   try {
     await apiSend('PUT', KPI_API.template(templateId), content);

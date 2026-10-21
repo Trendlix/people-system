@@ -1,6 +1,6 @@
-import { KPI_PILLARS, KPI_SETTING_LABELS, type KpiSettingsView, type KpiTemplateRow } from '@trendlix/shared';
+import { KPI_SETTING_LABELS, kpiPillarOf, type KpiFrameworkVersionView, type KpiFrameworkView, type KpiSettingsView, type KpiTemplateRow } from '@trendlix/shared';
 import type { Metadata } from 'next';
-import { Fragment, Suspense } from 'react';
+import { Suspense } from 'react';
 import { KPI_API } from '@/lib/kpi-paths';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
@@ -8,9 +8,11 @@ import { todayInCairo } from '../../employees/ui';
 import { NotLoaded, SettingRow } from '../../organization/payroll/section';
 import { dayOfMonth } from '../../organization/payroll/settings';
 import { Empty, Loading } from '../../organization/ui';
-import { draftAllKpiTemplates, publishKpiDrafts, updateKpiSettings } from './actions';
+import { draftAllKpiTemplates, publishKpiDrafts, saveKpiFramework, updateKpiSettings } from './actions';
 import { loadKpi } from './data';
 import { DraftAllForm } from './draft-all';
+import { frameworkChangedText, inForceText, nextText, oldPillarsBanner, pillarsLabel } from './framework';
+import { KpiFrameworkForm } from './framework-form';
 import { KpiSettingsForm } from './settings-form';
 import { TemplatesTable } from './templates-table';
 import {
@@ -32,13 +34,18 @@ import {
 // an Admin, whom the API answers too, may read it. The API checks every request again.
 // The KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles"): for HR and
 // the Super Admin, "Draft templates for every job title" above the list, and "Publish selected drafts" on it.
+// The KPI pillars (owner, 21 October 2026: "am i able to edit the pillars of the KPIs?", "Fully flexible"): in KPI
+// Settings, the pillars in force and the next ones, HR's and the Super Admin's to change; over the list, how many
+// templates use the old pillars, each marked, and that their scorecards keep opening on their old version until then.
 
 export const metadata: Metadata = { title: 'KPI Templates · People System' };
 
 /** The job titles and, for those who build templates, drafting them all and publishing the drafts chosen. */
 async function JobTitles({ user }: { user: SessionUser }) {
-  const loaded = await loadKpi<KpiTemplateRow[]>(KPI_API.templates);
+  const [loaded, framework] = await Promise.all([loadKpi<KpiTemplateRow[]>(KPI_API.templates), loadKpi<KpiFrameworkView>(KPI_API.framework)]);
   const builds = buildsKpiTemplates(user);
+  // the pillars coming, if any: what a template published now is held back to, and the banner's month
+  const next = framework.kind === 'ok' ? framework.value.next : null;
   const heading = (
     <h2 id="kpi-job-titles" className="text-lg font-semibold">
       Job Titles
@@ -54,8 +61,14 @@ async function JobTitles({ user }: { user: SessionUser }) {
   }
   const rows = loaded.value;
   const counts = templateCounts(rows);
+  const banner = oldPillarsBanner(counts.oldPillars, next);
   return (
     <>
+      {banner && (
+        <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+          <span className="font-semibold">{banner.head}</span> {banner.body}
+        </p>
+      )}
       {builds && rows.length > 0 && <DraftAllForm action={draftAllKpiTemplates} confirmText={draftAllConfirmText(counts.none)} withoutTemplate={counts.none} />}
       <section aria-labelledby="kpi-job-titles" className="space-y-3">
         {heading}
@@ -67,11 +80,99 @@ async function JobTitles({ user }: { user: SessionUser }) {
               {jobTitlesLabel(counts.jobTitles)}: {counts.inForce} with a version in force, {counts.upcoming} with one opening next month, {counts.drafts} with a draft
               {counts.none ? `, ${counts.none} without a template yet` : ''}.
             </p>
-            <TemplatesTable groups={groupTemplateRows(rows)} publish={builds ? publishKpiDrafts : null} today={todayInCairo()} />
+            <TemplatesTable groups={groupTemplateRows(rows)} publish={builds ? publishKpiDrafts : null} today={todayInCairo()} pillarsFrom={next?.appliesFrom ?? null} />
           </>
         )}
       </section>
     </>
+  );
+}
+
+// ---------- the KPI pillars ----------
+
+/** A version's pillars, read only: each with its short name and weight, the Attendance metric's marked. */
+function PillarsList({ version: v }: { version: KpiFrameworkVersionView }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-line">
+      <table className="table">
+        <thead>
+          <tr>
+            <th scope="col">Pillar</th>
+            <th scope="col">Short name</th>
+            <th scope="col" className="text-right">
+              Weight
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {v.pillars.map((p) => (
+            <tr key={p.key}>
+              <td className="font-medium">
+                {p.name}
+                {p.key === v.attendancePillar && <span className="badge ml-2 bg-line-soft text-muted">Attendance counts here</span>}
+              </td>
+              <td className="text-muted">{p.short}</td>
+              <td className="text-right tabular-nums">{p.weight}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function FrameworkVersion({ title, version: v, note }: { title: string; version: KpiFrameworkVersionView; note: string }) {
+  const changed = frameworkChangedText(v);
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 className="font-semibold">{title}</h3>
+        <span className="text-sm text-muted">
+          Version {v.version} · {pillarsLabel(v.pillars.length)} · Attendance in {kpiPillarOf(v, v.attendancePillar)?.name ?? '—'}
+        </span>
+      </div>
+      <p className="text-sm text-muted">
+        {note}
+        {changed ? ` ${changed}.` : ''}
+      </p>
+      <PillarsList version={v} />
+    </div>
+  );
+}
+
+const FRAMEWORK_INTRO =
+  'The pillars every template places its metrics in, and their weights in the final %: final % = Σ pillar % × its weight. Changed pillars apply from a month whose scorecards aren’t open yet, next month unless chosen. Each template keeps the pillars it was published with, so the scorecards opened already never change; a template on the old pillars keeps opening its scorecards with them until it is updated.';
+
+async function KpiFrameworkSection({ user }: { user: SessionUser }) {
+  const loaded = await loadKpi<KpiFrameworkView>(KPI_API.framework);
+  return (
+    <section id="kpi-framework" aria-labelledby="kpi-framework-heading" className="card scroll-mt-6 space-y-5 p-6">
+      <div>
+        <h2 id="kpi-framework-heading" className="text-lg font-semibold">
+          KPI Pillars
+        </h2>
+        <p className="mt-1 max-w-3xl text-sm text-muted">{FRAMEWORK_INTRO}</p>
+      </div>
+      {loaded.kind !== 'ok' ? (
+        <NotLoaded what="the KPI pillars" loaded={loaded} />
+      ) : (
+        <>
+          <div className="grid items-start gap-6 lg:grid-cols-2">
+            <FrameworkVersion title="In Force" version={loaded.value.inForce} note={inForceText(loaded.value.inForce)} />
+            {loaded.value.next ? (
+              <FrameworkVersion title="Next" version={loaded.value.next} note={nextText(loaded.value.next)} />
+            ) : (
+              <p className="text-sm text-muted lg:pt-8">No change of the pillars is coming.</p>
+            )}
+          </div>
+          {buildsKpiTemplates(user) && (
+            <div className="border-t border-line-soft pt-5">
+              <KpiFrameworkForm view={loaded.value} action={saveKpiFramework} today={todayInCairo()} />
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -118,24 +219,20 @@ async function KpiTemplates() {
     <div className="space-y-8">
       <div className="space-y-2">
         <p className="max-w-3xl text-sm text-muted">
-          Every job title gets its own KPI template, built from its job description: metrics in four pillars with fixed weights, each with a points scale, one
-          criterion picked a month. A version published applies to the scorecards opened from the next month on; a scorecard keeps the version it opened
-          with.
+          Every job title gets its own KPI template, built from its job description: metrics in the KPI pillars, each pillar with its weight, each metric
+          with a points scale, one criterion picked a month. A version published applies to the scorecards opened from the next month on; a scorecard keeps
+          the version it opened with.
           {buildsKpiTemplates(user)
             ? ' Draft every job title at once from the KPI role library, or open a job title to build its template, from a library role, a sample or another job title’s.'
-            : ''}
-        </p>
-        <p className="text-sm">
-          {KPI_PILLARS.map((p, i) => (
-            <Fragment key={p.id}>
-              {i > 0 && <span className="text-muted"> · </span>}
-              <span className="font-medium">{p.name}</span> <span className="text-muted tabular-nums">{p.weight}%</span>
-            </Fragment>
-          ))}
+            : ''}{' '}
+          <a href="#kpi-framework">The pillars</a> are under KPI Pillars, below.
         </p>
       </div>
       <Suspense fallback={<Loading />}>
         <JobTitles user={user} />
+      </Suspense>
+      <Suspense fallback={<Loading />}>
+        <KpiFrameworkSection user={user} />
       </Suspense>
       <Suspense fallback={<Loading />}>
         <KpiSettingsSection user={user} />

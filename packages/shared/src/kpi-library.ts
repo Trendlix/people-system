@@ -2,7 +2,7 @@
 // titles live on the live system, so the library is a feature HR runs there: ready KPI templates for the roles of a
 // digital and creative agency like TrendLIX (developers, designers, video, content, marketing, accounts, projects,
 // sales, HR, finance, the office), one general template for each kind of department, and a universal one. Each follows
-// the framework of kpis.ts as the three samples do (kpi-framework.json): metrics in the four pillars with their fixed
+// the framework of kpis.ts as the three samples do (kpi-framework.json): metrics in the plan's four pillars with their
 // weights (Delivery & Timeliness 30, Quality of Work 25, Clients & Teamwork 25, Discipline & Growth 20), each with its
 // definition, how it's measured, the kind of JD duty it measures and a criteria scale whose "100%" criterion is its
 // target; Discipline & Growth also has the automatic Attendance metric (20 or 25 points, as the samples).
@@ -12,9 +12,12 @@
 //   development" in Clients & Teamwork.
 // - Each metric is linked to the job title's JD duty row it measures, by the words they share (linkJdDuty), else left
 //   for HR to link.
+// - The pillars are HR's to change (owner, 21 October 2026: "Fully flexible"; kpi-framework.ts): the library stays
+//   written for the four of the plan, and a draft from it is placed in the framework's pillars by name, a metric whose
+//   pillar the framework hasn't going to Unplaced, said on the draft.
 // Pure code, tested in apps/api/src/common/kpi-library.spec.ts.
 
-import { KPI_TEMPLATE_LIMITS, kpiSample, topCriterionPoints, type KpiMetric, type KpiPillarId, type KpiTemplateContent } from './kpis.js';
+import { KPI_PILLARS, KPI_TEMPLATE_LIMITS, kpiDefaultPillarKey, kpiSample, topCriterionPoints, type KpiDefaultPillarNo, type KpiMetric, type KpiTemplateContent } from './kpis.js';
 
 // ---------- the kinds of role ----------
 
@@ -66,10 +69,14 @@ export interface KpiLibraryRole {
 
 type Scale = readonly (readonly [label: string, points: number])[];
 
-/** A library metric: its target the points of its "100%" criterion, `target` (when a better one is a stretch), else its best. */
-function metric(pillar: KpiPillarId, name: string, definition: string, howMeasured: string, duty: string, scale: Scale, target?: number): KpiMetric {
+/**
+ * A library metric in one of the plan's four pillars (by their number: 1 Delivery & Timeliness … 4 Discipline & Growth,
+ * kept as their keys), its target the points of its "100%" criterion, `target` (when a better one is a stretch), else
+ * its best.
+ */
+function metric(pillar: KpiDefaultPillarNo, name: string, definition: string, howMeasured: string, duty: string, scale: Scale, target?: number): KpiMetric {
   const criteria = scale.map(([label, points]) => ({ label, points }));
-  return { pillar, name, definition, howMeasured, jdDuty: duty, targetPoints: target ?? topCriterionPoints({ criteria }), criteria };
+  return { pillar: kpiDefaultPillarKey(pillar), name, definition, howMeasured, jdDuty: duty, targetPoints: target ?? topCriterionPoints({ criteria }), criteria };
 }
 
 // the scales several roles share, as the samples write them
@@ -912,7 +919,9 @@ export function kpiLibraryDraft(key: string, job: { title: string; duties?: read
   const leadership = kpiLeadershipWord(job.title);
   const metrics = template.metrics.map((m) => ({ ...m, criteria: m.criteria.map((c) => ({ ...c })) }));
   if (leadership && !metrics.some((m) => m.name === KPI_LIBRARY_LEADERSHIP_METRIC.name)) {
-    const at = metrics.findLastIndex((m) => m.pillar <= KPI_LIBRARY_LEADERSHIP_METRIC.pillar) + 1;
+    // after the last of its pillar's, or of a pillar before it (the plan's order)
+    const order = (key: string | null) => KPI_PILLARS.findIndex((p) => p.key === key);
+    const at = metrics.findLastIndex((m) => order(m.pillar) <= order(KPI_LIBRARY_LEADERSHIP_METRIC.pillar)) + 1;
     metrics.splice(at, 0, { ...KPI_LIBRARY_LEADERSHIP_METRIC, criteria: KPI_LIBRARY_LEADERSHIP_METRIC.criteria.map((c) => ({ ...c })) });
   }
   const duties = job.duties ?? [];
@@ -938,6 +947,11 @@ export interface KpiDraftAllResult {
     /** It leads people: "Team delivery and development" was added. */
     leadership: boolean;
     reason: string;
+    /**
+     * Its metrics in Unplaced: those of the plan's pillars the KPI framework no longer has (owner, 21 October 2026:
+     * "Fully flexible"), to place before it is published.
+     */
+    unplaced: number;
   }[];
   skipped: { jobTitleId: string; title: string; department: string; why: string }[];
 }

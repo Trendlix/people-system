@@ -3,12 +3,10 @@
 import { startTransition, useActionState, useState } from 'react';
 import {
   KPI_ATTENDANCE_METRIC,
-  KPI_ATTENDANCE_PILLAR,
   KPI_COMMENT_MAX,
   KPI_LEVEL_LABELS,
   kpiPast,
   kpiPercentText,
-  kpiPillar,
   type KpiPillarScore,
   type KpiScorecardMetric,
   type KpiScorecardPillar,
@@ -42,9 +40,10 @@ import {
 import { LevelBadge } from '../../ui';
 
 // A KPI scorecard's pillars and metrics, and the forms of its steps (owner, 21 October 2026: "Full framework per role";
-// "Self, manager, HR, sign-off"): the four pillars with their weights, each metric with its definition, how it is
-// measured, the JD duty it comes from and its criteria scale (the target marked), and the automatic Attendance metric
-// read-only in Discipline & Growth. Read as it stands, or as the caller's step: the employee's self-rating, the scorer's
+// "Self, manager, HR, sign-off"): its pillars with their weights (its template version's, as it was published: owner,
+// 21 October 2026, "Fully flexible"), each metric with its definition, how it is measured, the JD duty it comes from and
+// its criteria scale (the target marked), and the automatic Attendance metric read-only in its pillar (Discipline &
+// Growth unless the framework chose another). Read as it stands, or as the caller's step: the employee's self-rating, the scorer's
 // scoring with the self-rating beside each metric, HR's calibration (the manager's pick preselected, a reason required
 // for each change), each as radio choices with the final %, the pillars' % and the level worked out live as they are
 // picked (shared kpiScore). The sign-off is "I've read it", with an optional comment. The API checks everything again.
@@ -92,11 +91,11 @@ function ScoreSummary({ title, score, notes }: { title: string; score: KpiScoreR
           ))}
         </div>
         {score && (
-          <dl className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:grid-cols-4">
+          <dl className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
             {score.pillars.map((p) => (
-              <div key={p.pillar} className="rounded-lg bg-canvas px-3 py-2 sm:min-w-28">
+              <div key={p.key} className="rounded-lg bg-canvas px-3 py-2 sm:min-w-28">
                 <dt className="text-xs text-muted" title={p.name}>
-                  {kpiPillar(p.pillar).short} · {p.weight}%
+                  {p.short} · {p.weight}%
                 </dt>
                 <dd className="text-lg font-semibold tabular-nums">{kpiPercentText(p.percent)}</dd>
                 <dd className="text-[11px] text-muted tabular-nums">
@@ -283,7 +282,7 @@ function MetricRow({
   );
 }
 
-/** The automatic Attendance metric, read-only in Discipline & Growth (owner, 21 October 2026: "Attendance: Yes, as the sheet"). */
+/** The automatic Attendance metric, read-only in its pillar (owner, 21 October 2026: "Attendance: Yes, as the sheet"). */
 function AttendanceRow({ view }: { view: Pick<KpiScorecardView, 'attendance'> }) {
   const a = view.attendance;
   const t = attendanceText(a);
@@ -309,26 +308,29 @@ function AttendanceRow({ view }: { view: Pick<KpiScorecardView, 'attendance'> })
   );
 }
 
-/** A pillar: its weight, its points and %, and its metrics (Discipline & Growth with the Attendance metric). */
+/** A pillar: its number, weight, points and %, and its metrics (the Attendance metric's pillar with it). */
 function PillarCard({
   pillar,
+  number,
   score,
   view,
   children,
 }: {
   pillar: KpiScorecardPillar;
+  number: number;
   score: KpiPillarScore | null;
-  view: Pick<KpiScorecardView, 'attendance'>;
+  view: Pick<KpiScorecardView, 'attendance' | 'attendancePillar'>;
   children: React.ReactNode;
 }) {
+  const attendance = pillar.key === view.attendancePillar;
   return (
-    <section aria-labelledby={`kpi-pillar-${pillar.id}`} className="card overflow-hidden">
+    <section aria-labelledby={`kpi-pillar-${pillar.key}`} className="card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 bg-canvas/60 px-5 py-4">
         <div>
           <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-            Pillar {pillar.id} · weight {pillar.weight}%
+            Pillar {number} · weight {pillar.weight}%
           </p>
-          <h2 id={`kpi-pillar-${pillar.id}`} className="mt-0.5 font-semibold">
+          <h2 id={`kpi-pillar-${pillar.key}`} className="mt-0.5 font-semibold">
             {pillar.name}
           </h2>
         </div>
@@ -338,8 +340,8 @@ function PillarCard({
         </div>
       </div>
       {children}
-      {pillar.id === KPI_ATTENDANCE_PILLAR && <AttendanceRow view={view} />}
-      {pillar.metrics.length === 0 && pillar.id !== KPI_ATTENDANCE_PILLAR && <p className="border-t border-line-soft px-5 py-4 text-sm text-muted">No metrics in this pillar.</p>}
+      {attendance && <AttendanceRow view={view} />}
+      {pillar.metrics.length === 0 && !attendance && <p className="border-t border-line-soft px-5 py-4 text-sm text-muted">No metrics in this pillar.</p>}
     </section>
   );
 }
@@ -378,8 +380,8 @@ export function ScorecardView({ view, own }: { view: KpiScorecardView; own: bool
   return (
     <div className="space-y-4">
       <ScoreSummary {...summary} />
-      {view.pillars.map((p) => (
-        <PillarCard key={p.id} pillar={p} view={view} score={shownPillars?.find((s) => s.pillar === p.id) ?? null}>
+      {view.pillars.map((p, i) => (
+        <PillarCard key={p.key} pillar={p} number={i + 1} view={view} score={shownPillars?.find((s) => s.key === p.key) ?? null}>
           {p.metrics.map((m) => (
             <MetricRow key={m.id} metric={m} mode="view" pick={countedChoice(m)} fid={fid} />
           ))}
@@ -456,8 +458,8 @@ export function ScorecardForm({ view, mode, action, today }: { view: KpiScorecar
         score={score}
         notes={['Worked out as you pick.', ...scoreNotes]}
       />
-      {view.pillars.map((p) => (
-        <PillarCard key={p.id} pillar={p} view={view} score={score.pillars.find((s) => s.pillar === p.id) ?? null}>
+      {view.pillars.map((p, i) => (
+        <PillarCard key={p.key} pillar={p} number={i + 1} view={view} score={score.pillars.find((s) => s.key === p.key) ?? null}>
           {p.metrics.map((m) => (
             <MetricRow
               key={m.id}

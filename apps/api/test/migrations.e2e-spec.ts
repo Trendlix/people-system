@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { ENDING_RULE_DEFAULTS, ENDING_RULES } from '@trendlix/shared';
+import { ENDING_RULE_DEFAULTS, ENDING_RULES, KPI_PILLARS } from '@trendlix/shared';
 import pg from 'pg';
 import { dutiesFromHtml, dutyRow, htmlFromLines } from '../src/organisation/job-titles/jd-html.js';
 import { assertTestDatabase } from './test-env.js';
@@ -634,5 +634,62 @@ describe('Migrations (e2e)', () => {
       await db.query(`DELETE FROM check_in_locations WHERE id = '00000000-0000-4000-8000-0000000000c1'`);
       expect((await db.query('SELECT 1 FROM check_in_location_people')).rows).toEqual([]);
     });
+  });
+
+  // the KPI framework (owner, 21 October 2026: "am i able to edit the pillars of the KPIs?", "Fully flexible"): the plan's
+  // four pillars become version 1, in force from the start; every template version keeps them, a published one with
+  // version 1; the metrics' pillars (1–4) become their keys, and the scorecards' kept percents are by key
+  it('the KPI framework: the plan’s four pillars are version 1, every version keeps them, the pillars become keys (owner, 21 October 2026)', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_kpi_framework'))!;
+    await migratedUpTo(migration);
+    const criteria = `'[{"label": "Yes", "points": 10}, {"label": "No", "points": 0}]'`;
+    await db.query(`
+      INSERT INTO departments (id, name_en, updated_at) VALUES ('00000000-0000-4000-8000-0000000000d1', 'Web', now());
+      INSERT INTO job_titles (id, department_id, title_en, updated_at) VALUES ('00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000d1', 'Developer', now());
+      INSERT INTO employees (id, employee_code, full_name_en, full_name_ar, updated_at) VALUES ('00000000-0000-4000-8000-0000000000e1', 'EMP-0001', 'Omar', 'عمر', now());
+      INSERT INTO employments (id, employee_id, employment_type, job_title_id, join_date, updated_at)
+        VALUES ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000e1', 'full_time', '00000000-0000-4000-8000-0000000000a1', '2026-01-01', now());
+      INSERT INTO kpi_templates (id, job_title_id, version, status, opens_from, published_at, updated_at) VALUES
+        ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', 1, 'published', '2026-10-01', now(), now()),
+        ('00000000-0000-4000-8000-0000000000b2', '00000000-0000-4000-8000-0000000000a1', 2, 'draft', NULL, NULL, now());
+      INSERT INTO kpi_metrics (id, template_id, position, pillar, name, target_points, criteria) VALUES
+        (gen_random_uuid(), '00000000-0000-4000-8000-0000000000b1', 1, 1, 'On time', 10, ${criteria}),
+        (gen_random_uuid(), '00000000-0000-4000-8000-0000000000b1', 2, 2, 'Accurate', 10, ${criteria}),
+        (gen_random_uuid(), '00000000-0000-4000-8000-0000000000b1', 3, 3, 'Liked', 10, ${criteria}),
+        (gen_random_uuid(), '00000000-0000-4000-8000-0000000000b1', 4, 4, 'Learning', 10, ${criteria}),
+        (gen_random_uuid(), '00000000-0000-4000-8000-0000000000b2', 1, 3, 'Liked', 10, ${criteria});
+      INSERT INTO kpi_scorecards (id, employee_id, employment_id, month, template_id, status, scorer, attendance_achieved, attendance_source, final_percent, level, pillars, updated_at)
+        VALUES ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-000000000001', '2026-09-01',
+          '00000000-0000-4000-8000-0000000000b1', 'sign_off', 'hr', 20, 'none', 85, 'needs_improvement', '{"1": 50, "2": 100, "3": 100, "4": 90.5}', now());
+    `);
+
+    await db.query(sql(migration));
+
+    const { rows: frameworks } = await db.query(`SELECT version, applies_from::text AS "appliesFrom", attendance_pillar AS "attendancePillar", pillars FROM kpi_frameworks`);
+    expect(frameworks).toEqual([{ version: 1, appliesFrom: '2000-01-01', attendancePillar: 'discipline', pillars: KPI_PILLARS }]);
+    const { rows: templates } = await db.query(`
+      SELECT t.version, t.status, f.version AS framework, t.attendance_pillar AS "attendancePillar", t.pillars = f2.pillars AS "planPillars"
+      FROM kpi_templates t LEFT JOIN kpi_frameworks f ON f.id = t.framework_id CROSS JOIN kpi_frameworks f2 ORDER BY t.version`);
+    expect(templates).toEqual([
+      { version: 1, status: 'published', framework: 1, attendancePillar: 'discipline', planPillars: true },
+      // a draft keeps the pillars its metrics are in, and gets its framework when published
+      { version: 2, status: 'draft', framework: null, attendancePillar: 'discipline', planPillars: true },
+    ]);
+    const { rows: metrics } = await db.query<{ pillar: string; wasIn: string | null }>(`
+      SELECT m.pillar, m.was_in AS "wasIn" FROM kpi_metrics m JOIN kpi_templates t ON t.id = m.template_id ORDER BY t.version, m.position`);
+    expect(metrics).toEqual(['delivery', 'quality', 'clients', 'discipline', 'clients'].map((pillar) => ({ pillar, wasIn: null })));
+    const { rows: cards } = await db.query(`SELECT pillars FROM kpi_scorecards`);
+    expect(cards).toEqual([{ pillars: { delivery: 50, quality: 100, clients: 100, discipline: 90.5 } }]);
+
+    // a key as keys are written; only a metric in Unplaced says where it was; a published version has its framework; the
+    // Attendance metric's pillar one of the pillars
+    await expect(db.query(`UPDATE kpi_metrics SET pillar = 'Not A Key'`)).rejects.toThrow(/kpi_metrics_pillar_check/);
+    await expect(db.query(`UPDATE kpi_metrics SET was_in = 'Clients & Teamwork'`)).rejects.toThrow(/kpi_metrics_was_in_check/);
+    await db.query(`UPDATE kpi_metrics SET pillar = NULL, was_in = 'Clients & Teamwork' WHERE template_id = '00000000-0000-4000-8000-0000000000b2'`);
+    await expect(db.query(`UPDATE kpi_templates SET framework_id = NULL WHERE status = 'published'`)).rejects.toThrow(/kpi_templates_framework_check/);
+    await expect(db.query(`UPDATE kpi_frameworks SET attendance_pillar = 'growth'`)).rejects.toThrow(/kpi_frameworks_attendance_pillar_check/);
+    await expect(
+      db.query(`INSERT INTO kpi_frameworks (id, version, applies_from, pillars, attendance_pillar, updated_at) VALUES (gen_random_uuid(), 2, '2026-11-15', '[{"key": "all"}]', 'all', now())`),
+    ).rejects.toThrow(/kpi_frameworks_applies_from_check/);
   });
 });

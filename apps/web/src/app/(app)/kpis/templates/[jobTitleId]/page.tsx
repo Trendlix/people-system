@@ -3,6 +3,7 @@ import {
   kpiLibraryMatchOf,
   kpiLibraryRoles,
   kpiMonthName,
+  type KpiFrameworkView,
   type KpiJobTitleTemplates,
   type KpiLibraryRole,
   type KpiSampleView,
@@ -24,6 +25,7 @@ import { getOrNull } from '../../../approvals/data';
 import { todayInCairo } from '../../../employees/ui';
 import { BackLink, Empty, Loading, UUID } from '../../../organization/ui';
 import { discardKpiDraft, sendKpiDraft, startKpiDraft } from '../actions';
+import { OLD_PILLARS_BADGE } from '../framework';
 import { TemplateView } from '../template-view';
 import { copyChoices, libraryChoices, librarySuggestion, metricsLabel, publishConfirmText, readsKpiTemplates, sampleLabel, userName } from '../templates';
 import { DraftEditor } from './draft-editor';
@@ -39,6 +41,8 @@ import { StartDraft } from './start-draft';
 // them those alone, and says whether the caller builds (`canEdit`). A draft may also start from the KPI role library
 // (owner, 21 October 2026: "can you add templetes for all departments and job roles"), the role matching the job title
 // suggested as "Draft templates for every job title" would pick it.
+// The pillars (owner, 21 October 2026: "Fully flexible"): each version shown in its own; the newest marked when it uses
+// the old ones, with how to update it; the draft in the KPI framework's newest, published from their first month.
 
 export const metadata: Metadata = { title: 'KPI Template · People System' };
 
@@ -101,12 +105,15 @@ function Versions({ versions, today, openInForce }: { versions: KpiTemplateView[
         <ul className="space-y-3">
           {versions.map((v) => {
             const upcoming = !v.inForce && !!v.opensFrom && v.opensFrom > today;
+            // the newest only: an older version is replaced by it anyway
+            const old = v.oldPillars && v.id === versions[0].id;
             return (
               <li key={v.id} className="card p-5">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-semibold">Version {v.version}</h3>
                   {v.inForce && <span className="badge bg-ok-soft text-ok">In force</span>}
                   {upcoming && <span className="badge">Upcoming</span>}
+                  {old && <span className="badge bg-warn-soft text-warn">{OLD_PILLARS_BADGE}</span>}
                 </div>
                 <p className="mt-1 text-sm text-muted">{versionFacts(v)}</p>
                 <details open={openInForce && v.inForce} className="mt-3">
@@ -163,6 +170,9 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
   const [samples, rows, roles] = starting
     ? await Promise.all([getOrNull<KpiSampleView[]>(KPI_API.samples), getOrNull<KpiTemplateRow[]>(KPI_API.templates), getOrNull<KpiLibraryRole[]>(KPI_API.library)])
     : [null, null, null];
+  // the KPI pillars coming, if any: a version published now applies from their first month (read quietly)
+  const framework = canEdit && draft ? await getOrNull<KpiFrameworkView>(KPI_API.framework) : null;
+  const oldNewest = versions[0]?.oldPillars ? versions[0] : null;
   // the API's roles; when they can't be read, the same from the shared library (their keys are the API's)
   const libraryRoles = roles ?? kpiLibraryRoles();
   const match = kpiLibraryMatchOf(jobTitle);
@@ -206,10 +216,18 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
               action={sendKpiDraft.bind(null, jobTitleId, draft.id)}
               // only a Super Admin deletes (owner's decision, 15 October 2026)
               discard={canDelete(user) ? discardKpiDraft.bind(null, jobTitleId, draft.id) : null}
-              confirmPublish={publishConfirmText(draft.version, today)}
+              confirmPublish={publishConfirmText(draft.version, today, framework?.next?.appliesFrom ?? null)}
             />
           )}
           {draft && !canEdit && <DraftReadOnly draft={draft} />}
+          {oldNewest && !draft && (
+            <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+              <span className="font-semibold">Version {oldNewest.version} uses the old pillars.</span>{' '}
+              {canEdit
+                ? `Start a draft from a copy of it to place its metrics in the new pillars, then publish it. Until a version on the new pillars applies, its scorecards keep opening on version ${oldNewest.version} and its pillars.`
+                : `HR updates it to the new pillars. Until then, its scorecards keep opening on version ${oldNewest.version} and its pillars.`}
+            </p>
+          )}
           {starting && (
             <StartDraft
               start={startKpiDraft.bind(null, jobTitleId)}

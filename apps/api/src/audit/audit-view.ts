@@ -414,6 +414,8 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return record?.parentId ? { href: `/kpis/templates/${record.parentId}`, label: 'Open KPI template', roles: KPI_TEMPLATES } : null;
     case 'kpi_settings':
       return { href: '/kpis/templates', label: 'Open KPI templates', roles: KPI_TEMPLATES };
+    case 'kpi_framework':
+      return { href: '/kpis/templates#kpi-framework', label: 'Open KPI pillars', roles: KPI_TEMPLATES };
     case 'kpi_report':
       return { href: '/kpis/all', label: 'Open all KPIs', roles: KPIS };
     // Assets (21 October 2026): an asset's page by its code (a photo's, its asset's); the rooms, kits and settings pages

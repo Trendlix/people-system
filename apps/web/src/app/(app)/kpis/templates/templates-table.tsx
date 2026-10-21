@@ -6,6 +6,7 @@ import { Fragment, useActionState, useState } from 'react';
 import { FormErrors } from '@/components/form';
 import { titleCase } from '@/lib/format';
 import { KPI_PATHS } from '@/lib/kpi-paths';
+import { OLD_PILLARS_BADGE } from './framework';
 import {
   draftIdsOf,
   jobTitlesLabel,
@@ -23,7 +24,9 @@ import {
 // version in force, the one opening next month, its draft, its versions and its people, each opening its builder. For
 // HR and the Super Admin, "Publish selected drafts" (owner, 21 October 2026: "can you add templetes for all departments
 // and job roles"): a box on each draft, one to choose them all, a confirm, then what was published and what stopped the
-// others (each stays a draft). Publishing now applies from next month's scorecards, those for this month.
+// others (each stays a draft). Publishing now applies from next month's scorecards, those for this month, or, while new
+// KPI pillars are coming (owner, 21 October 2026: "Fully flexible"), from their first month's. A job title whose
+// newest version uses the old pillars is marked.
 
 const none = <span className="text-muted">—</span>;
 
@@ -51,6 +54,7 @@ function TemplateRow({ row, choice }: { row: KpiTemplateRow; choice?: { checked:
           {row.jobTitle.titleEn}
         </Link>
         {nothing && <span className="block text-xs text-muted">No KPI template yet</span>}
+        {row.oldPillars && <span className="badge mt-1 bg-warn-soft text-warn">{OLD_PILLARS_BADGE}</span>}
       </td>
       <td className="min-w-48 text-sm">
         {text.inForce ? (
@@ -92,12 +96,15 @@ export function TemplatesTable({
   groups,
   publish,
   today,
+  pillarsFrom,
 }: {
   groups: TemplateGroup[];
   /** "Publish selected drafts" (HR, the Super Admin); null: the list only. */
   publish: ((prev: PublishDraftsState, fd: FormData) => Promise<PublishDraftsState>) | null;
   /** Today in Cairo, YYYY-MM-DD: when what is published now applies. */
   today: string;
+  /** The month the next KPI pillars apply from (YYYY-MM); null: none coming. */
+  pillarsFrom: string | null;
 }) {
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [state, formAction, pending] = useActionState(publish ?? (async (prev: PublishDraftsState) => prev), {});
@@ -122,7 +129,7 @@ export function TemplatesTable({
           <form
             action={formAction}
             onSubmit={(e) => {
-              if (!selected.length || !window.confirm(publishDraftsConfirmText(selected.length, today))) e.preventDefault();
+              if (!selected.length || !window.confirm(publishDraftsConfirmText(selected.length, today, pillarsFrom))) e.preventDefault();
             }}
             className="flex flex-wrap items-center gap-x-4 gap-y-2"
           >
@@ -134,7 +141,7 @@ export function TemplatesTable({
             </button>
             <p className="max-w-2xl text-sm text-muted">
               {drafts.length ? 'Tick the drafts to publish, or all of them in the header. ' : 'No job title has a draft to publish. '}
-              {publishTimingNote(today)}
+              {publishTimingNote(today, pillarsFrom)}
             </p>
           </form>
           <FormErrors errors={state.errors} />

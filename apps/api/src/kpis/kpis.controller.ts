@@ -3,6 +3,7 @@ import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
+import { KpiFrameworkService } from './kpi-framework.service.js';
 import { KpiOverviewService } from './kpi-overview.service.js';
 import { KpiSchedulerService } from './kpi-scheduler.service.js';
 import { KpiScorecardsService } from './kpi-scorecards.service.js';
@@ -12,6 +13,7 @@ import {
   KpiCalibrateDto,
   KpiDraftDto,
   KpiExportQueryDto,
+  KpiFrameworkDto,
   KpiHeatmapQueryDto,
   KpiListQueryDto,
   KpiMonthQueryDto,
@@ -30,7 +32,8 @@ import {
 // Admin read every one (HR not a C-level person's), with the month's overview and its Excel; HR opens last month's
 // scorecards at once. The role library (owner, 21 October 2026: "can you add templetes for all departments and job
 // roles"): HR and a Super Admin list its roles, start a draft from one, draft every job title without a template from
-// its matched role, and publish the drafts they choose at once.
+// its matched role, and publish the drafts they choose at once. The KPI framework (owner, 21 October 2026: "Fully
+// flexible"): everyone reads the pillars in force and the next ones; HR and a Super Admin change the next ones.
 
 @Controller('kpis/settings')
 export class KpiSettingsController {
@@ -45,6 +48,24 @@ export class KpiSettingsController {
   @Patch()
   update(@Body() dto: KpiSettingsDto, @CurrentUser() user: SessionUser) {
     return this.settings.update(dto, user);
+  }
+}
+
+@Controller('kpis/framework')
+export class KpiFrameworkController {
+  constructor(private readonly framework: KpiFrameworkService) {}
+
+  /** { inForce, next, defaultMonth, earliestMonth, latestMonth, oldTemplates, canEdit, usedKeys }. */
+  @Get()
+  view(@CurrentUser() user: SessionUser) {
+    return this.framework.view(user);
+  }
+
+  /** The next pillars: { appliesFrom: YYYY-MM, attendancePillar, pillars: [{ key, name, short, weight }], nextId? }. */
+  @Roles('hr', 'super_admin')
+  @Put()
+  save(@Body() dto: KpiFrameworkDto, @CurrentUser() user: SessionUser) {
+    return this.framework.save(dto, user);
   }
 }
 

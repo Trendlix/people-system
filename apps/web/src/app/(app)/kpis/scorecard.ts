@@ -227,6 +227,12 @@ export function sheetMode(can: Pick<KpiScorecardView['can'], 'selfRate' | 'score
   return 'view';
 }
 
+/**
+ * Over the department averages when the month's scorecards don't all have the same pillars (owner's brief, 21 October
+ * 2026: "say 'Pillars changed this month: averages by name'").
+ */
+export const PILLARS_CHANGED_THIS_MONTH = 'Pillars changed this month: averages by name. A pillar’s weight shows when every scorecard with it has the same.';
+
 /** Every metric the caller may pick, in the order of the pillars (never the Attendance metric: the system's). */
 export const allMetrics = (view: Pick<KpiScorecardView, 'pillars'>): KpiScorecardMetric[] => view.pillars.flatMap((p) => p.metrics);
 
@@ -268,9 +274,12 @@ export function startingComment(view: Pick<KpiScorecardView, 'comments'>, mode: 
   return '';
 }
 
-/** The score of the picks so far, live as the radios change (shared kpiScore, with the Attendance metric's points). */
-export function liveScore(view: Pick<KpiScorecardView, 'pillars' | 'attendance'>, picks: Readonly<Record<string, number | null>>): KpiScoreResult {
-  return kpiScore(allMetrics(view), picks, { points: view.attendance.points, achieved: view.attendance.achieved });
+/**
+ * The score of the picks so far, live as the radios change (shared kpiScore, with the Attendance metric's points), in
+ * the scorecard's own pillars (its template version's: owner, 21 October 2026, "Fully flexible").
+ */
+export function liveScore(view: Pick<KpiScorecardView, 'pillars' | 'attendance' | 'attendancePillar'>, picks: Readonly<Record<string, number | null>>): KpiScoreResult {
+  return kpiScore(allMetrics(view), picks, { points: view.attendance.points, achieved: view.attendance.achieved }, { pillars: view.pillars, attendancePillar: view.attendancePillar });
 }
 
 /** The names of the metrics not picked yet, in order. */

@@ -34,7 +34,7 @@ const CONTENT = {
   attendancePoints: 20,
   metrics: [
     {
-      pillar: 1,
+      pillar: 'delivery',
       name: 'Reports on time',
       definition: 'Monthly reports delivered by their date',
       howMeasured: 'Delivered against due dates',
@@ -47,7 +47,7 @@ const CONTENT = {
       ],
     },
     {
-      pillar: 2,
+      pillar: 'quality',
       name: 'Data accuracy',
       definition: null,
       howMeasured: 'Errors found in review',
@@ -60,7 +60,7 @@ const CONTENT = {
       ],
     },
     {
-      pillar: 3,
+      pillar: 'clients',
       name: 'Stakeholder feedback',
       definition: null,
       howMeasured: null,
@@ -262,9 +262,9 @@ describe('KPIs (e2e)', () => {
       ]);
       const saved = (await put(`/kpis/templates/${draft.id}`, sessions.hr, CONTENT).expect(200)).body as KpiTemplateView;
       expect(saved.metrics.map((m) => [m.pillar, m.name, m.targetPoints, m.criteria.length])).toEqual([
-        [1, 'Reports on time', 10, 3],
-        [2, 'Data accuracy', 10, 3],
-        [3, 'Stakeholder feedback', 10, 3],
+        ['delivery', 'Reports on time', 10, 3],
+        ['quality', 'Data accuracy', 10, 3],
+        ['clients', 'Stakeholder feedback', 10, 3],
       ]);
       expect(saved.problems).toEqual([]);
 

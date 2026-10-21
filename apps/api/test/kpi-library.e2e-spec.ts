@@ -21,9 +21,9 @@ const NEXT = monthsLater(todayInCairo().slice(0, 7), 1);
 /** A publishable template: one metric in each of the first three pillars. */
 const CONTENT = {
   attendancePoints: 20,
-  metrics: [1, 2, 3].map((pillar) => ({
+  metrics: ['delivery', 'quality', 'clients'].map((pillar, i) => ({
     pillar,
-    name: `Metric ${pillar}`,
+    name: `Metric ${i + 1}`,
     definition: null,
     howMeasured: null,
     jdDuty: null,
@@ -155,7 +155,7 @@ describe('KPI role library (e2e)', () => {
     expect(duty['Development plan']).toBeNull();
     expect(Object.values(duty)).not.toContain('Keep the office plants watered');
     const head = (await get(`/kpis/templates/${made('head')!.templateId}`, sessions.hr).expect(200)).body as KpiTemplateView;
-    expect(head.metrics.filter((m) => m.pillar === 3).map((m) => m.name)).toContain('Team delivery and development');
+    expect(head.metrics.filter((m) => m.pillar === 'clients').map((m) => m.name)).toContain('Team delivery and development');
     expect(head.metrics.every((m) => m.jdDuty === null)).toBe(true);
     const page = await get(`/kpis/templates/job-titles/${titles.arabic}`, sessions.hr).expect(200);
     expect(page.body.draft).toMatchObject({ status: 'draft', version: 1 });

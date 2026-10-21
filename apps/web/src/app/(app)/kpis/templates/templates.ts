@@ -5,6 +5,7 @@ import {
   kpiMonthAdd,
   kpiMonthName,
   kpiMonthOnly,
+  kpiTemplateOpensFrom,
   type KpiDraftAllResult,
   type KpiDraftSource,
   type KpiLibraryKind,
@@ -30,6 +31,9 @@ import { dayOfMonth } from '../../organization/payroll/settings';
 // The KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles"): "Draft
 // templates for every job title", "From the role library" when starting one job title's draft, and "Publish selected
 // drafts". Pure code, tested; relative imports, as vitest doesn't know the @/ paths. The API checks every request again.
+// The pillars (owner, 21 October 2026: "Fully flexible"; framework.ts): a template on older pillars than the KPI
+// framework's newest is counted and marked; a version published while new pillars are coming applies from their first
+// month's scorecards, not before.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -100,14 +104,15 @@ export function templateRowText(row: KpiTemplateRow): TemplateRowText {
   };
 }
 
-/** The list's figures: the job titles, how many have a version in force, one upcoming, a draft. */
-export function templateCounts(rows: readonly KpiTemplateRow[]): { jobTitles: number; inForce: number; upcoming: number; drafts: number; none: number } {
+/** The list's figures: the job titles, how many have a version in force, one upcoming, a draft, the old pillars. */
+export function templateCounts(rows: readonly KpiTemplateRow[]): { jobTitles: number; inForce: number; upcoming: number; drafts: number; none: number; oldPillars: number } {
   return {
     jobTitles: rows.length,
     inForce: rows.filter((r) => r.inForce).length,
     upcoming: rows.filter((r) => r.upcoming).length,
     drafts: rows.filter((r) => r.draft).length,
     none: rows.filter((r) => !r.inForce && !r.upcoming && !r.draft).length,
+    oldPillars: rows.filter((r) => r.oldPillars).length,
   };
 }
 
@@ -197,20 +202,34 @@ export function draftAllSummary(result: KpiDraftAllResult): string {
   return `${draftsLabel(made)} made${skipped ? `; ${jobTitlesLabel(skipped)} skipped` : ''}. Review each draft, then publish it.`;
 }
 
+/**
+ * A made draft whose metrics the KPI framework's pillars leave in Unplaced (owner's brief, 21 October 2026: "anything
+ * unmatched goes to Unplaced with a note"); null when none.
+ */
+export const madeDraftUnplaced = (made: Pick<KpiDraftAllResult['made'][number], 'unplaced'>): string | null =>
+  made.unplaced > 0
+    ? `${made.unplaced === 1 ? '1 metric is' : `${made.unplaced} metrics are`} in Unplaced: written for pillars the KPI framework no longer has. Place ${made.unplaced === 1 ? 'it' : 'them'} before publishing.`
+    : null;
+
 /** The role a made draft used: "Frontend Developer", "General HR + team leadership". */
 export const madeDraftRole = (made: Pick<KpiDraftAllResult['made'][number], 'libraryName' | 'leadership'>): string => `${made.libraryName}${made.leadership ? ' + team leadership' : ''}`;
 
 // ---------- publishing ----------
 
-/** The 1st of the month after `today` (YYYY-MM-DD), from which a version published today applies. */
-export const opensFromIfPublished = (today: string): string => `${kpiMonthAdd(today.slice(0, 7), 1)}-01`;
+/**
+ * The 1st (YYYY-MM-DD) from which a version published today applies: the 1st of next month, or, while new pillars are
+ * coming (`pillarsFrom`: the month the KPI framework's newest applies from), their first month's opening if later.
+ */
+export const opensFromIfPublished = (today: string, pillarsFrom?: string | null): string =>
+  pillarsFrom ? kpiTemplateOpensFrom(today, pillarsFrom) : `${kpiMonthAdd(today.slice(0, 7), 1)}-01`;
 
 /**
  * What Publish asks first (owner's brief, 21 October 2026: "Publishing applies from the next month; a scorecard keeps the
  * version it opened with"): published on 21 October, it applies to the scorecards opened from 1 November, October's.
  */
-export function publishConfirmText(version: number, today: string): string {
-  return `Publish version ${version}? It applies to the scorecards opened from ${formatDate(opensFromIfPublished(today))}: ${kpiMonthName(today.slice(0, 7))}'s KPIs on. The scorecards opened already keep the version they opened with.`;
+export function publishConfirmText(version: number, today: string, pillarsFrom?: string | null): string {
+  const from = opensFromIfPublished(today, pillarsFrom);
+  return `Publish version ${version}? It applies to the scorecards opened from ${formatDate(from)}: ${kpiMonthName(kpiMonthAdd(from, -1))}'s KPIs on. The scorecards opened already keep the version they opened with.`;
 }
 
 /**
@@ -218,9 +237,10 @@ export function publishConfirmText(version: number, today: string): string {
  * scorecards for October"): "Publishing now applies from November’s scorecards, those for October: 1 November opens
  * October’s scorecards."
  */
-export function publishTimingNote(today: string): string {
-  const opening = kpiMonthOnly(opensFromIfPublished(today));
-  const month = kpiMonthOnly(today);
+export function publishTimingNote(today: string, pillarsFrom?: string | null): string {
+  const from = opensFromIfPublished(today, pillarsFrom);
+  const opening = kpiMonthOnly(from);
+  const month = kpiMonthOnly(kpiMonthAdd(from, -1));
   return `Publishing now applies from ${opening}’s scorecards, those for ${month}: 1 ${opening} opens ${month}’s scorecards.`;
 }
 
@@ -233,8 +253,9 @@ export function templateIdsOf(fd: Pick<FormData, 'getAll'>): string[] {
 }
 
 /** What "Publish selected drafts" asks first. */
-export function publishDraftsConfirmText(count: number, today: string): string {
-  return `Publish ${count === 1 ? 'the selected draft' : `the ${draftsLabel(count)} selected`}? Each one that passes the checks applies to the scorecards opened from ${formatDate(opensFromIfPublished(today))}: ${kpiMonthName(today.slice(0, 7))}'s KPIs on. A draft with problems stays a draft, and you’ll see why.`;
+export function publishDraftsConfirmText(count: number, today: string, pillarsFrom?: string | null): string {
+  const from = opensFromIfPublished(today, pillarsFrom);
+  return `Publish ${count === 1 ? 'the selected draft' : `the ${draftsLabel(count)} selected`}? Each one that passes the checks applies to the scorecards opened from ${formatDate(from)}: ${kpiMonthName(kpiMonthAdd(from, -1))}'s KPIs on. A draft with problems stays a draft, and you’ll see why.`;
 }
 
 /** The result's headline: "3 drafts published, applying from 01/11/2026; 1 not published." */

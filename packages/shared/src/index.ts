@@ -466,3 +466,8 @@ export * from './contract-status.js';
 // long-term assignments on CUS-0042 records, received back good, damaged or missing, overdue and not signed, the terms
 // printed on the form, the kit quick-add, what each person holds, an asset's repairs and its lost and found
 export * from './custody.js';
+
+// the KPI framework (owner, 21 October 2026: "am i able to edit the pillars of the KPIs?", "Fully flexible"): pillars
+// HR adds, removes, renames and weighs (1 to 8, adding up to 100%) and the Attendance metric's pillar, from next month;
+// templates placing their metrics in them by name, the old pillars kept by the versions published with them
+export * from './kpi-framework.js';

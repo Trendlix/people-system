@@ -88,12 +88,13 @@ describe('the role library', () => {
     }
   });
 
-  it('follows the framework: metrics in all four pillars, in their order, the fixed weights, Attendance worth 20 to 25', () => {
+  it('follows the plan’s framework: metrics in all four pillars, in their order, their weights, Attendance worth 20 to 25', () => {
     expect(KPI_PILLARS.map((p) => p.weight)).toEqual(Object.values(WEIGHTS));
+    const order = (key: string | null) => KPI_PILLARS.findIndex((p) => p.key === key);
     for (const t of KPI_LIBRARY) {
       const pillars = t.metrics.map((m) => m.pillar);
-      expect([...pillars].sort((a, b) => a - b)).toEqual(pillars);
-      for (const p of KPI_PILLARS) expect({ key: t.key, pillar: p.id, has: pillars.includes(p.id) }).toEqual({ key: t.key, pillar: p.id, has: true });
+      expect([...pillars].sort((a, b) => order(a) - order(b))).toEqual(pillars);
+      for (const p of KPI_PILLARS) expect({ key: t.key, pillar: p.key, has: pillars.includes(p.key) }).toEqual({ key: t.key, pillar: p.key, has: true });
       // Discipline & Growth has the automatic Attendance metric, as the samples, besides its own
       expect(t.attendancePoints).toBeGreaterThanOrEqual(20);
       expect(t.attendancePoints).toBeLessThanOrEqual(25);
@@ -320,9 +321,9 @@ describe('titles that lead people', () => {
     expect(lead.content.metrics).toHaveLength(plain.content.metrics.length + 1);
     const names = lead.content.metrics.map((m) => m.name);
     const at = names.indexOf(KPI_LIBRARY_LEADERSHIP_METRIC.name);
-    expect(lead.content.metrics[at]).toMatchObject({ pillar: 3, targetPoints: 30 });
-    expect(lead.content.metrics[at - 1].pillar).toBe(3);
-    expect(lead.content.metrics[at + 1].pillar).toBe(4);
+    expect(lead.content.metrics[at]).toMatchObject({ pillar: 'clients', targetPoints: 30 });
+    expect(lead.content.metrics[at - 1].pillar).toBe('clients');
+    expect(lead.content.metrics[at + 1].pillar).toBe('discipline');
     expect(names.filter((n) => n === KPI_LIBRARY_LEADERSHIP_METRIC.name)).toHaveLength(1);
     expect(plain.content.metrics.map((m) => m.name)).not.toContain(KPI_LIBRARY_LEADERSHIP_METRIC.name);
   });

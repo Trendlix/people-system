@@ -45,7 +45,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   job_offer: 'Job offer',
   job_title: 'Job title',
   // KPIs (owner, 21 October 2026: "lets start with the KPI's First"): the monthly scorecards, the templates per job title,
-  // the deadlines, and the month's Excel export
+  // the deadlines, and the month's Excel export; the pillars (owner, 21 October 2026: "Fully flexible")
+  kpi_framework: 'KPI pillars',
   kpi_report: 'KPI report',
   kpi_scorecard: 'KPI scorecard',
   kpi_settings: 'KPI settings',

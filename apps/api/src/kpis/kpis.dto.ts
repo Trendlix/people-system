@@ -28,6 +28,26 @@ export class KpiSettingsDto {
 }
 
 /**
+ * The next KPI framework (owner, 21 October 2026: "Fully flexible"): its pillars, in order, the Attendance metric's
+ * pillar and the month they apply from (packages/shared kpiPillarSetProblems and kpiFrameworkMonthProblems check them
+ * together). `nextId`: the next framework the page changed (null: it had none), so a change made meanwhile isn't
+ * overwritten; left out, the next one is changed, or made.
+ */
+export class KpiFrameworkDto {
+  @Matches(MONTH, { message: 'Choose the month the pillars apply from, e.g. 2026-11.' })
+  appliesFrom!: string;
+
+  @IsString({ message: 'Choose the pillar the Attendance metric counts in.' }) @MaxLength(40, { message: 'Choose the pillar the Attendance metric counts in.' })
+  attendancePillar!: string;
+
+  @IsArray({ message: 'Send the pillars as a list.' }) @ArrayMaxSize(20, { message: 'A framework takes at most 8 pillars.' })
+  pillars!: unknown[];
+
+  @IsOptional() @IsUUID('all', { message: 'Reload the page and try again.' })
+  nextId?: string | null;
+}
+
+/**
  * Where a new draft comes from: blank, a copy of the job title's newest published version, a sample, another template,
  * or a role of the KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles").
  */
