@@ -5,7 +5,9 @@
 // month"), and change the KPI settings' deadlines; only a Super Admin discards a draft (only a Super Admin deletes:
 // owner's decision, 15 October 2026). Each forwards to the API, which checks the session, the role and the rules
 // again, so calling these directly can't bypass them; the rules are checked here first only to save a round trip.
-import { kpiSettingsProblems, kpiTemplateProblems } from '@trendlix/shared';
+// The KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles"): a draft from
+// one of its roles, "Draft templates for every job title" and "Publish selected drafts", each saying what it did.
+import { kpiSettingsProblems, kpiTemplateProblems, type KpiDraftAllResult, type KpiPublishDraftsResult } from '@trendlix/shared';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
@@ -14,7 +16,7 @@ import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 import { shown } from '../../organization/payroll/replies';
 import { contentFromJson } from './[jobTitleId]/builder';
-import { draftSourceOf, SETTING_KEYS, settingsOf, settingsSummary } from './templates';
+import { draftSourceOf, SETTING_KEYS, settingsOf, settingsSummary, templateIdsOf, type DraftAllState, type PublishDraftsState } from './templates';
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -80,6 +82,35 @@ export async function sendKpiDraft(jobTitleId: string, templateId: string, _prev
     }
   }
   redirect(doneHref(jobTitleId, publish ? 'published' : 'saved'));
+}
+
+/**
+ * "Draft templates for every job title" (POST /kpis/templates/draft-all): a draft from the matched library role for each
+ * job title with no draft and no published version; what was made and what was left. The list then shows the drafts.
+ */
+export async function draftAllKpiTemplates(): Promise<DraftAllState> {
+  let result: KpiDraftAllResult | undefined;
+  try {
+    result = await apiSend<KpiDraftAllResult>('POST', KPI_API.draftAll);
+  } catch (err) {
+    return refused(err);
+  }
+  refresh();
+  return result ? { result } : { errors: ['The server sent an answer that could not be read. Reload the page to see the drafts.'] };
+}
+
+/** "Publish selected drafts" (POST /kpis/templates/publish-drafts): those that pass are published; what stops the others. */
+export async function publishKpiDrafts(_prev: PublishDraftsState, fd: FormData): Promise<PublishDraftsState> {
+  const templateIds = templateIdsOf(fd);
+  if (!templateIds.length) return { errors: ['Choose the drafts to publish.'] };
+  let result: KpiPublishDraftsResult | undefined;
+  try {
+    result = await apiSend<KpiPublishDraftsResult>('POST', KPI_API.publishDrafts, { templateIds });
+  } catch (err) {
+    return refused(err);
+  }
+  refresh();
+  return result ? { result } : { errors: ['The server sent an answer that could not be read. Reload the page to see what was published.'] };
 }
 
 /** The draft discarded (DELETE /kpis/templates/:id): a Super Admin's only. */

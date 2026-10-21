@@ -3,12 +3,19 @@ import {
   KPI_ATTENDANCE_POINTS_DEFAULT,
   KPI_SAMPLE_TEMPLATES,
   kpiEligibleType,
+  kpiLibraryDraft,
+  kpiLibraryMatchOf,
+  kpiLibraryRoles,
+  kpiLibraryTitleOf,
   kpiMonthAdd,
   kpiMonthName,
   kpiSample,
   kpiTemplateProblems,
+  type KpiDraftAllResult,
   type KpiJobTitleTemplates,
+  type KpiLibraryRole,
   type KpiMetric,
+  type KpiPublishDraftsResult,
   type KpiSampleView,
   type KpiTemplateContent,
   type KpiTemplateRow,
@@ -19,12 +26,12 @@ import { actsAs, assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
-import type { Prisma } from '../generated/prisma/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { firstDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { metricView } from './kpi-views.js';
-import type { KpiDraftDto, KpiTemplateContentDto } from './kpis.dto.js';
+import type { KpiDraftDto, KpiPublishDraftsDto, KpiTemplateContentDto } from './kpis.dto.js';
 
 // KPI templates (owner, 21 October 2026: "Templates: HR"; the brief: "HR (and Super Admin) build and edit templates per
 // job title, with a draft and published versions. Publishing applies from the next month; a scorecard keeps the version
@@ -36,6 +43,11 @@ import type { KpiDraftDto, KpiTemplateContentDto } from './kpis.dto.js';
 // the version in force being the newest published whose opens_from has come. HR, the CEO and Admin read every job
 // title's templates; a manager (or lead) of someone under a job title, and the people under it, its published versions.
 // Only a Super Admin deletes a draft. Every change is in the audit log.
+// The KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles"; packages/shared
+// kpi-library.ts): a draft may start from one of its roles, and "Draft templates for every job title" makes a draft for
+// each job title with no draft and no published version yet, from the role its title (else its department) matches,
+// its metrics linked to the job title's JD duty rows; it never changes or publishes anything. "Publish selected
+// drafts" publishes the drafts chosen that pass the rules, and says what stops the others.
 
 export const TEMPLATE_ENTITY = 'kpi_template';
 
@@ -48,6 +60,12 @@ const TEMPLATE_INCLUDE = {
 type TemplateRow = Prisma.KpiTemplateGetPayload<{ include: typeof TEMPLATE_INCLUDE }>;
 
 const DEPARTMENT = { select: { id: true, nameEn: true, parent: { select: { nameEn: true } } } } as const;
+
+/** "Web Development", or a team as "Web Development › Frontend" (as a payroll line names it). */
+const departmentName = (d: { nameEn: string; parent: { nameEn: string } | null }) => (d.parent ? `${d.parent.nameEn} › ${d.nameEn}` : d.nameEn);
+
+/** Two drafts of a job title made at once: the second's version is taken (kpi_templates' job title and version are unique). */
+const versionTaken = (err: unknown) => err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 
 /** Builds templates: HR and a Super Admin. */
 export const buildsTemplates = (user: SessionUser) => user.roles.includes('hr') || user.roles.includes('super_admin');
@@ -140,6 +158,11 @@ export class KpiTemplatesService {
     return KPI_SAMPLE_TEMPLATES;
   }
 
+  /** The role library's templates to start a draft from: key, name and kind, for the picker. */
+  library(): KpiLibraryRole[] {
+    return kpiLibraryRoles();
+  }
+
   /** A job title's page: its JD, its draft and its published versions, as the caller may see them. */
   async jobTitlePage(jobTitleId: string, user: SessionUser): Promise<KpiJobTitleTemplates> {
     const access = await this.access(jobTitleId, user);
@@ -176,9 +199,16 @@ export class KpiTemplatesService {
     return (await this.views([row]))[0];
   }
 
-  /** A new draft for the job title (one at most): blank, a copy of its newest published version, a sample, or another version. */
+  /**
+   * A new draft for the job title (one at most): blank, a copy of its newest published version, a sample, another
+   * version, or a role of the library (its metrics linked to the job title's JD duty rows, and the leadership metric
+   * for a title that leads people).
+   */
   async createDraft(jobTitleId: string, dto: KpiDraftDto, user: SessionUser): Promise<KpiTemplateView> {
-    const job = await this.prisma.jobTitle.findUnique({ where: { id: jobTitleId }, select: { id: true, titleEn: true } });
+    const job = await this.prisma.jobTitle.findUnique({
+      where: { id: jobTitleId },
+      select: { id: true, titleEn: true, titleAr: true, duties: { orderBy: { position: 'asc' }, select: { duty: true } } },
+    });
     if (!job) throw new NotFoundException('Job title not found.');
     if (await this.prisma.kpiTemplate.count({ where: { jobTitleId, status: 'draft' } })) {
       throw new ConflictException(`${job.titleEn} has a draft already: change it, or publish it first.`);
@@ -200,21 +230,82 @@ export class KpiTemplatesService {
       if (!other) throw new BadRequestException(['Choose a job title’s template to copy.']);
       content = { attendancePoints: other.attendancePoints, metrics: other.metrics.map(metricView).map(withoutId) };
       source = { ...source, templateId: other.id, jobTitle: other.jobTitle.titleEn, version: other.version };
+    } else if (dto.from === 'library') {
+      const drafted = kpiLibraryDraft(dto.libraryKey ?? '', { title: kpiLibraryTitleOf(job), duties: job.duties.map((d) => d.duty) });
+      if (!drafted) throw new BadRequestException(['Choose a role from the library.']);
+      content = drafted.content;
+      source = { ...source, libraryKey: drafted.template.key, library: drafted.template.name, leadership: drafted.leadership !== null };
     }
-    const top = await this.prisma.kpiTemplate.aggregate({ where: { jobTitleId }, _max: { version: true } });
-    const version = (top._max.version ?? 0) + 1;
-    const made = await this.prisma.kpiTemplate.create({
-      data: { jobTitleId, version, status: 'draft', attendancePoints: content.attendancePoints, createdById: user.id, metrics: { create: metricRows(content.metrics) } },
-      select: { id: true },
-    });
+    let made: { id: string };
+    try {
+      made = await this.makeDraft(job, content, source, user);
+    } catch (err) {
+      if (versionTaken(err)) throw new ConflictException(`${job.titleEn} has a draft already: change it, or publish it first.`);
+      throw err;
+    }
+    return this.one(made.id, user);
+  }
+
+  /**
+   * "Draft templates for every job title" (owner, 21 October 2026: "can you add templetes for all departments and job
+   * roles"): a draft for each job title with no draft and no published version, from the library role it matches (its
+   * title, then its department, then the universal template), its metrics linked to its JD duty rows. Never changes or
+   * publishes a template. One audit entry for the run, and one for each draft, as for any draft.
+   */
+  async draftAll(user: SessionUser): Promise<KpiDraftAllResult> {
+    const [titles, templates] = await Promise.all([
+      this.prisma.jobTitle.findMany({
+        orderBy: [{ department: { nameEn: 'asc' } }, { titleEn: 'asc' }],
+        select: { id: true, titleEn: true, titleAr: true, department: DEPARTMENT, duties: { orderBy: { position: 'asc' }, select: { duty: true } } },
+      }),
+      this.prisma.kpiTemplate.findMany({ select: { jobTitleId: true, status: true } }),
+    ]);
+    const result: KpiDraftAllResult = { made: [], skipped: [] };
+    for (const t of titles) {
+      const department = departmentName(t.department);
+      const own = templates.filter((x) => x.jobTitleId === t.id);
+      const skip = (why: string) => result.skipped.push({ jobTitleId: t.id, title: t.titleEn, department, why });
+      if (own.some((x) => x.status === 'draft')) {
+        skip('It has a draft already.');
+        continue;
+      }
+      if (own.length) {
+        skip('It has a published version: start its next draft from that, on its page.');
+        continue;
+      }
+      const match = kpiLibraryMatchOf({ titleEn: t.titleEn, titleAr: t.titleAr, department: { nameEn: t.department.nameEn, parentName: t.department.parent?.nameEn ?? null } });
+      const drafted = kpiLibraryDraft(match.key, { title: kpiLibraryTitleOf(t), duties: t.duties.map((d) => d.duty) })!;
+      const source = { from: 'library', libraryKey: match.key, library: match.name, reason: match.reason, leadership: drafted.leadership !== null, draftAll: true };
+      let made: { id: string };
+      try {
+        made = await this.makeDraft(t, drafted.content, source, user);
+      } catch (err) {
+        if (!versionTaken(err)) throw err;
+        skip('A draft was started for it meanwhile.');
+        continue;
+      }
+      result.made.push({
+        jobTitleId: t.id,
+        templateId: made.id,
+        title: t.titleEn,
+        department,
+        libraryKey: match.key,
+        libraryName: match.name,
+        leadership: drafted.leadership !== null,
+        reason: match.reason,
+      });
+    }
     await this.audit.record({
       userId: user.id,
-      action: 'create',
+      action: 'draft_all',
       entityType: TEMPLATE_ENTITY,
-      entityId: made.id,
-      diff: { jobTitleId, jobTitle: job.titleEn, version, status: 'draft', ...source, attendancePoints: content.attendancePoints, metrics: content.metrics.length },
+      diff: {
+        made: result.made.length,
+        skipped: result.skipped.length,
+        drafts: result.made.map((m) => ({ templateId: m.templateId, jobTitle: m.title, libraryKey: m.libraryKey })),
+      },
     });
-    return this.one(made.id, user);
+    return result;
   }
 
   /** A draft's content replaced (its metrics in the order sent); 400 with every problem; 409 for a published version. */
@@ -247,24 +338,53 @@ export class KpiTemplatesService {
   /** Publishes a draft: used by the scorecards opened from the 1st of next month on; 400 with what stops it. */
   async publish(id: string, user: SessionUser): Promise<KpiTemplateView> {
     const before = await this.draft(id, 'published');
-    const content: KpiTemplateContent = { attendancePoints: before.attendancePoints, metrics: before.metrics.map(metricView) };
-    const problems = kpiTemplateProblems(content, { publishing: true });
+    const problems = publishingProblems(before);
     if (problems.length) throw new BadRequestException(problems);
-    // published this month: the scorecards opened from the 1st of next month use it (the brief: "Publishing applies from the next month")
-    const opensFrom = firstDay(kpiMonthAdd(openingNow(), 1));
-    const { count } = await this.prisma.kpiTemplate.updateMany({
-      where: { id, status: 'draft' },
-      data: { status: 'published', opensFrom: toDateOnly(opensFrom), publishedAt: new Date(), publishedById: user.id },
-    });
-    if (!count) throw new ConflictException('This draft was published or discarded meanwhile. Reload the page.');
+    await this.markPublished(before, user);
+    return this.one(id, user);
+  }
+
+  /**
+   * "Publish selected drafts": each draft sent that passes the rules is published (as Publish does, each audited), and
+   * applies from the scorecards opened on the 1st of next month; the others are left as they are, each with what stops
+   * it (not found, published already, the rules' problems). One audit entry for the run too.
+   */
+  async publishDrafts(dto: KpiPublishDraftsDto, user: SessionUser): Promise<KpiPublishDraftsResult> {
+    const ids = [...new Set(dto.templateIds)];
+    const rows = await this.prisma.kpiTemplate.findMany({ where: { id: { in: ids } }, include: { metrics: { orderBy: { position: 'asc' } }, jobTitle: { select: { titleEn: true } } } });
+    const result: KpiPublishDraftsResult = { published: [], problems: [] };
+    for (const id of ids) {
+      const row = rows.find((r) => r.id === id);
+      const refuse = (problems: string[]) =>
+        result.problems.push({ templateId: id, jobTitleId: row?.jobTitleId ?? null, title: row?.jobTitle.titleEn ?? null, version: row?.version ?? null, problems });
+      if (!row) {
+        refuse(['This KPI template could not be found.']);
+        continue;
+      }
+      if (row.status !== 'draft') {
+        refuse([`Version ${row.version} is published already.`]);
+        continue;
+      }
+      const problems = publishingProblems(row);
+      if (problems.length) {
+        refuse(problems);
+        continue;
+      }
+      try {
+        const opensFrom = await this.markPublished(row, user);
+        result.published.push({ templateId: id, jobTitleId: row.jobTitleId, title: row.jobTitle.titleEn, version: row.version, opensFrom });
+      } catch (err) {
+        if (!(err instanceof ConflictException)) throw err;
+        refuse([err.message]);
+      }
+    }
     await this.audit.record({
       userId: user.id,
-      action: 'publish',
+      action: 'publish_drafts',
       entityType: TEMPLATE_ENTITY,
-      entityId: id,
-      diff: { jobTitleId: before.jobTitleId, version: before.version, status: { from: 'draft', to: 'published' }, opensFrom, firstMonth: kpiMonthName(kpiMonthAdd(opensFrom, -1)), metrics: content.metrics.length },
+      diff: { published: result.published.map((p) => ({ templateId: p.templateId, jobTitle: p.title, version: p.version })), refused: result.problems.length, opensFrom: result.published[0]?.opensFrom },
     });
-    return this.one(id, user);
+    return result;
   }
 
   /** Discards a draft (a Super Admin only, as every deletion: owner's decision, 15 October 2026). */
@@ -277,6 +397,46 @@ export class KpiTemplatesService {
   }
 
   // ---------- helpers ----------
+
+  /** Saves a new draft of the job title, as its next version, and audits it with where it came from. */
+  private async makeDraft(job: { id: string; titleEn: string }, content: KpiTemplateContent, source: Record<string, unknown>, user: SessionUser): Promise<{ id: string; version: number }> {
+    const top = await this.prisma.kpiTemplate.aggregate({ where: { jobTitleId: job.id }, _max: { version: true } });
+    const version = (top._max.version ?? 0) + 1;
+    const made = await this.prisma.kpiTemplate.create({
+      data: { jobTitleId: job.id, version, status: 'draft', attendancePoints: content.attendancePoints, createdById: user.id, metrics: { create: metricRows(content.metrics) } },
+      select: { id: true },
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'create',
+      entityType: TEMPLATE_ENTITY,
+      entityId: made.id,
+      diff: { jobTitleId: job.id, jobTitle: job.titleEn, version, status: 'draft', ...source, attendancePoints: content.attendancePoints, metrics: content.metrics.length },
+    });
+    return { id: made.id, version };
+  }
+
+  /**
+   * Marks a draft published, from the 1st of next month (the brief: "Publishing applies from the next month"), and
+   * audits it; 409 when it was published or discarded meanwhile. The draft's opens-from day, YYYY-MM-DD.
+   */
+  private async markPublished(before: { id: string; jobTitleId: string; version: number; metrics: readonly unknown[] }, user: SessionUser): Promise<string> {
+    // published this month: the scorecards opened from the 1st of next month use it
+    const opensFrom = firstDay(kpiMonthAdd(openingNow(), 1));
+    const { count } = await this.prisma.kpiTemplate.updateMany({
+      where: { id: before.id, status: 'draft' },
+      data: { status: 'published', opensFrom: toDateOnly(opensFrom), publishedAt: new Date(), publishedById: user.id },
+    });
+    if (!count) throw new ConflictException('This draft was published or discarded meanwhile. Reload the page.');
+    await this.audit.record({
+      userId: user.id,
+      action: 'publish',
+      entityType: TEMPLATE_ENTITY,
+      entityId: before.id,
+      diff: { jobTitleId: before.jobTitleId, version: before.version, status: { from: 'draft', to: 'published' }, opensFrom, firstMonth: kpiMonthName(kpiMonthAdd(opensFrom, -1)), metrics: before.metrics.length },
+    });
+    return opensFrom;
+  }
 
   /** A draft, or 409 for a published version (never changed), 404 for none. */
   private async draft(id: string, doing: string) {
@@ -341,6 +501,11 @@ export class KpiTemplatesService {
       };
     });
   }
+}
+
+/** What stops a draft (with its metrics) being published: the shared rules with `publishing`. */
+function publishingProblems(row: { attendancePoints: number; metrics: Parameters<typeof metricView>[0][] }): string[] {
+  return kpiTemplateProblems({ attendancePoints: row.attendancePoints, metrics: row.metrics.map(metricView) }, { publishing: true });
 }
 
 /** A metric copied into a new draft: without the id of the one it was copied from. */

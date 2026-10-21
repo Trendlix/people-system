@@ -1,15 +1,35 @@
-import { KPI_SAMPLE_TEMPLATES, KPI_SETTING_DEFAULTS, kpiSettingsProblems, type KpiTemplateRow } from '@trendlix/shared';
+import {
+  KPI_SAMPLE_TEMPLATES,
+  KPI_SETTING_DEFAULTS,
+  kpiLibraryMatchOf,
+  kpiLibraryRoles,
+  kpiSettingsProblems,
+  type KpiDraftAllResult,
+  type KpiPublishDraftsResult,
+  type KpiTemplateRow,
+} from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
   buildsKpiTemplates,
   copyChoices,
+  draftAllConfirmText,
+  draftAllSummary,
+  draftIdsOf,
+  draftsLabel,
   draftSourceOf,
   groupTemplateRows,
+  libraryChoices,
+  librarySuggestion,
+  madeDraftRole,
   metricsLabel,
   opensFromIfPublished,
   peopleLabel,
   publishConfirmText,
+  publishDraftsConfirmText,
+  publishDraftsSummary,
+  publishTimingNote,
   readsKpiTemplates,
+  refusedDraftName,
   sampleLabel,
   settingsChangedText,
   settingsOf,
@@ -17,6 +37,7 @@ import {
   settingValuesOf,
   templateCounts,
   templateRowText,
+  templateIdsOf,
   wholeOf,
 } from './templates';
 
@@ -134,8 +155,83 @@ describe('starting a draft', () => {
     expect(draftSourceOf(fd({ from: 'template', templateId: id }))).toEqual({ source: { from: 'template', templateId: id } });
     expect(draftSourceOf(fd({ from: 'sample' }))).toEqual({ error: 'Choose the sample to start from.' });
     expect(draftSourceOf(fd({ from: 'template', templateId: 'nope' }))).toEqual({ error: 'Choose the job title’s template to copy.' });
+    expect(draftSourceOf(fd({ from: 'library', libraryKey: 'frontend-developer' }))).toEqual({ source: { from: 'library', libraryKey: 'frontend-developer' } });
+    expect(draftSourceOf(fd({ from: 'library', libraryKey: ' ' }))).toEqual({ error: 'Choose the role to start from.' });
     expect(draftSourceOf(fd({ from: 'scan' }))).toEqual({ error: 'Choose how to start the draft.' });
     expect(draftSourceOf(fd({}))).toEqual({ error: 'Choose how to start the draft.' });
+  });
+});
+
+// owner, 21 October 2026: "can you add templetes for all departments and job roles"
+describe('the role library', () => {
+  it('groups its roles by kind, in its order, each kind’s general template after its roles', () => {
+    const groups = libraryChoices(kpiLibraryRoles());
+    expect(groups.map((g) => g.label)).toEqual(['Development and IT', 'Creative and production', 'Marketing, sales and clients', 'Operations and projects', 'HR', 'Finance', 'Any department']);
+    expect(groups[0].options[0]).toEqual({ value: 'frontend-developer', label: 'Frontend Developer' });
+    expect(groups[0].options.at(-1)).toEqual({ value: 'general-development', label: 'General Development' });
+    expect(groups.at(-1)!.options).toEqual([{ value: 'general', label: 'Universal (Any Role)' }]);
+    expect(groups.flatMap((g) => g.options)).toHaveLength(kpiLibraryRoles().length);
+    expect(libraryChoices([])).toEqual([]);
+  });
+
+  it('suggests the role matching the job title, saying why', () => {
+    const match = kpiLibraryMatchOf({ titleEn: 'Senior Frontend Developer', department: { nameEn: 'Frontend', parentName: 'Web Development' } });
+    expect(librarySuggestion(match)).toBe('Suggested: Frontend Developer. The job title says “frontend developer”.');
+  });
+
+  it('asks before drafting every job title, then says what it made and left', () => {
+    expect(draftAllConfirmText(12)).toBe(
+      'Make a draft for each job title with no KPI template yet (12 job titles)? Each starts from the closest role in the library, its metrics linked to the job title’s duties. Nothing is published, and the job titles with a draft or a published version stay as they are.',
+    );
+    expect(draftAllConfirmText(1)).toContain('(1 job title)');
+    const made = (n: number): KpiDraftAllResult['made'] =>
+      Array.from({ length: n }, (_, i) => ({ jobTitleId: `j${i}`, templateId: `t${i}`, title: `T${i}`, department: 'D', libraryKey: 'general', libraryName: 'Universal (Any Role)', leadership: false, reason: 'R' }));
+    const skipped = (n: number): KpiDraftAllResult['skipped'] => Array.from({ length: n }, (_, i) => ({ jobTitleId: `s${i}`, title: `S${i}`, department: 'D', why: 'It has a draft already.' }));
+    expect(draftAllSummary({ made: made(12), skipped: skipped(3) })).toBe('12 drafts made; 3 job titles skipped. Review each draft, then publish it.');
+    expect(draftAllSummary({ made: made(1), skipped: [] })).toBe('1 draft made. Review each draft, then publish it.');
+    expect(draftAllSummary({ made: [], skipped: skipped(2) })).toBe('No drafts made: each of the 2 job titles has a draft or a published version already.');
+    expect(draftAllSummary({ made: [], skipped: [] })).toBe('No drafts made: there are no job titles yet.');
+    expect(madeDraftRole({ libraryName: 'Frontend Developer', leadership: false })).toBe('Frontend Developer');
+    expect(madeDraftRole({ libraryName: 'General HR', leadership: true })).toBe('General HR + team leadership');
+    expect([draftsLabel(1), draftsLabel(2)]).toEqual(['1 draft', '2 drafts']);
+  });
+});
+
+describe('publishing the drafts chosen', () => {
+  const id1 = '0b8f2c1e-1111-4222-8333-444455556666';
+  const id2 = '0b8f2c1e-1111-4222-8333-777788889999';
+
+  it('offers the job titles’ drafts, and reads the ones ticked, each once', () => {
+    expect(draftIdsOf(ROWS)).toEqual(['t4', 't5']);
+    const fd = (values: string[]) => ({ getAll: (k: string) => (k === 'templateIds' ? values : []) });
+    expect(templateIdsOf(fd([id1, ` ${id2} `, id1, 'nope', '']))).toEqual([id1, id2]);
+    expect(templateIdsOf(fd([]))).toEqual([]);
+  });
+
+  it('says when what is published now applies: 1 November opens October’s scorecards', () => {
+    expect(publishTimingNote('2026-10-21')).toBe('Publishing now applies from November’s scorecards, those for October: 1 November opens October’s scorecards.');
+    expect(publishTimingNote('2026-12-05')).toBe('Publishing now applies from January’s scorecards, those for December: 1 January opens December’s scorecards.');
+    expect(publishDraftsConfirmText(3, '2026-10-21')).toBe(
+      "Publish the 3 drafts selected? Each one that passes the checks applies to the scorecards opened from 01/11/2026: October 2026's KPIs on. A draft with problems stays a draft, and you’ll see why.",
+    );
+    expect(publishDraftsConfirmText(1, '2026-10-21')).toMatch(/^Publish the selected draft\? /);
+  });
+
+  it('says what was published and what stopped the others', () => {
+    const result: KpiPublishDraftsResult = {
+      published: [
+        { templateId: id1, jobTitleId: 'j1', title: 'Frontend Developer', version: 1, opensFrom: '2026-11-01' },
+        { templateId: id2, jobTitleId: 'j2', title: 'Video Producer', version: 2, opensFrom: '2026-11-01' },
+      ],
+      problems: [
+        { templateId: 't9', jobTitleId: 'j9', title: 'Copywriter', version: 1, problems: ['Add a metric to Quality of Work: every pillar is scored.'] },
+        { templateId: 't0', jobTitleId: null, title: null, version: null, problems: ['This KPI template could not be found.'] },
+      ],
+    };
+    expect(publishDraftsSummary(result)).toBe('2 drafts published, applying from 01/11/2026; 2 not published.');
+    expect(publishDraftsSummary({ published: [], problems: result.problems.slice(0, 1) })).toBe('Nothing published; 1 not published.');
+    expect(publishDraftsSummary({ published: result.published.slice(0, 1), problems: [] })).toBe('1 draft published, applying from 01/11/2026.');
+    expect(result.problems.map(refusedDraftName)).toEqual(['Copywriter, version 1', 'A draft']);
   });
 });
 

@@ -99,6 +99,9 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   device_revoke: 'Turned off fingerprint sign-in',
   done: 'Completed',
   download_unprotected: 'Downloaded unprotected',
+  // "Draft templates for every job title" from the KPI role library (owner, 21 October 2026: "can you add templetes for
+  // all departments and job roles"), each draft made also audited as created
+  draft_all: 'Drafted KPI templates for every job title',
   end: 'Ended',
   // a KPI scorecard made final by its sign-off day without every signature (21 October 2026)
   finalize: 'Made final',
@@ -129,6 +132,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   prepare: 'Prepared the raise',
   print: 'Marked printed',
   publish: 'Published',
+  // "Publish selected drafts" of KPI templates (21 October 2026), each draft published also audited as published
+  publish_drafts: 'Published the selected drafts',
   record: 'Recorded by HR',
   record_consent: 'Recorded the signed consent',
   refresh: 'Refreshed',

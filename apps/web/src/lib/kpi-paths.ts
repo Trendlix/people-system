@@ -19,6 +19,12 @@ export const KPI_API = {
   templates: '/kpis/templates',
   /** GET: KpiSampleView[] (HR, Super Admin). */
   samples: '/kpis/templates/samples',
+  /** GET: KpiLibraryRole[], the KPI role library's roles (HR, Super Admin). */
+  library: '/kpis/templates/library',
+  /** POST → KpiDraftAllResult: a draft from the library for every job title without a template (HR, Super Admin). */
+  draftAll: '/kpis/templates/draft-all',
+  /** POST { templateIds } → KpiPublishDraftsResult: publishes the drafts chosen that pass (HR, Super Admin). */
+  publishDrafts: '/kpis/templates/publish-drafts',
   /** GET: KpiJobTitleTemplates. */
   jobTitleTemplates: (jobTitleId: string) => `/kpis/templates/job-titles/${encodeURIComponent(jobTitleId)}`,
   /** POST KpiDraftSource → KpiTemplateView (the new draft). */

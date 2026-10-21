@@ -426,3 +426,8 @@ export * from './sub-locations.js';
 // (self-rating, the manager, HR's calibration, the sign-off), its deadlines and reminders, who scores, the payroll's
 // KPI (last month's final %, in full at 80% or more), the three sample templates, and the API's views
 export * from './kpis.js';
+
+// the KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles"): templates
+// for an agency's roles, a general one per kind of department and a universal one; matching a job title to one (its
+// title, then its department), the leadership metric for those who lead people, and linking metrics to the JD's duties
+export * from './kpi-library.js';

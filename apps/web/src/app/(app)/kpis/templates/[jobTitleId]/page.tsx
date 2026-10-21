@@ -1,4 +1,14 @@
-import { KPI_SAMPLE_TEMPLATES, kpiMonthName, type KpiJobTitleTemplates, type KpiSampleView, type KpiTemplateRow, type KpiTemplateView } from '@trendlix/shared';
+import {
+  KPI_SAMPLE_TEMPLATES,
+  kpiLibraryMatchOf,
+  kpiLibraryRoles,
+  kpiMonthName,
+  type KpiJobTitleTemplates,
+  type KpiLibraryRole,
+  type KpiSampleView,
+  type KpiTemplateRow,
+  type KpiTemplateView,
+} from '@trendlix/shared';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -15,7 +25,7 @@ import { todayInCairo } from '../../../employees/ui';
 import { BackLink, Empty, Loading, UUID } from '../../../organization/ui';
 import { discardKpiDraft, sendKpiDraft, startKpiDraft } from '../actions';
 import { TemplateView } from '../template-view';
-import { copyChoices, metricsLabel, publishConfirmText, readsKpiTemplates, sampleLabel, userName } from '../templates';
+import { copyChoices, libraryChoices, librarySuggestion, metricsLabel, publishConfirmText, readsKpiTemplates, sampleLabel, userName } from '../templates';
 import { DraftEditor } from './draft-editor';
 import { StartDraft } from './start-draft';
 
@@ -26,7 +36,9 @@ import { StartDraft } from './start-draft';
 // its metrics and the scorecards that opened with it, the one in force marked. Publishing applies from the next month;
 // a scorecard keeps the version it opened with, and the history is kept. A manager of someone under the job title, or
 // someone under it, may read its published versions ("Managers can view their team's templates"); the API answers
-// them those alone, and says whether the caller builds (`canEdit`).
+// them those alone, and says whether the caller builds (`canEdit`). A draft may also start from the KPI role library
+// (owner, 21 October 2026: "can you add templetes for all departments and job roles"), the role matching the job title
+// suggested as "Draft templates for every job title" would pick it.
 
 export const metadata: Metadata = { title: 'KPI Template · People System' };
 
@@ -146,10 +158,15 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
   const { jobTitle, draft, versions, canEdit } = data;
   const today = todayInCairo();
   const starting = canEdit && !draft;
-  // to start a draft from: the samples and the other job titles' versions, read quietly (none: that choice says so)
-  const [samples, rows] = starting
-    ? await Promise.all([getOrNull<KpiSampleView[]>(KPI_API.samples), getOrNull<KpiTemplateRow[]>(KPI_API.templates)])
-    : [null, null];
+  // to start a draft from: the samples, the library's roles and the other job titles' versions, read quietly (none: that
+  // choice says so)
+  const [samples, rows, roles] = starting
+    ? await Promise.all([getOrNull<KpiSampleView[]>(KPI_API.samples), getOrNull<KpiTemplateRow[]>(KPI_API.templates), getOrNull<KpiLibraryRole[]>(KPI_API.library)])
+    : [null, null, null];
+  // the API's roles; when they can't be read, the same from the shared library (their keys are the API's)
+  const libraryRoles = roles ?? kpiLibraryRoles();
+  const match = kpiLibraryMatchOf(jobTitle);
+  const suggested = libraryRoles.some((r) => r.key === match.key) ? match : null;
   const department = jobTitle.department.parentName ? `${jobTitle.department.parentName} › ${jobTitle.department.nameEn}` : jobTitle.department.nameEn;
   const done = typeof query.done === 'string' ? query.done : null;
   const published = done === 'published' ? (versions[0] ?? null) : null;
@@ -200,6 +217,7 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
               // the API's samples; when they can't be read, the same three from the shared rules (their codes are the API's)
               samples={(samples ?? KPI_SAMPLE_TEMPLATES).map((s) => ({ code: s.code, label: sampleLabel(s) }))}
               copies={rows ? copyChoices(rows, jobTitleId) : null}
+              library={{ groups: libraryChoices(libraryRoles), suggested: suggested?.key ?? null, suggestion: suggested ? librarySuggestion(suggested) : null }}
             />
           )}
           {!canEdit && (

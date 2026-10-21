@@ -8,13 +8,16 @@ import type { CopyGroup } from '../templates';
 // Starting a job title's draft (owner's brief, 21 October 2026: "Offer 'Start from a sample': the 3 samples in
 // kpi-framework.json (Senior Frontend Developer, Video Producer, HR Specialist), and 'Copy from another job title'"):
 // blank, a copy of its newest published version, a sample, or another job title's version. Each is a form of its own,
-// sent to the same action; the draft then opens in the builder.
+// sent to the same action; the draft then opens in the builder. "From the role library" (owner, 21 October 2026: "can
+// you add templetes for all departments and job roles"): any role of the KPI role library, the one matching the job
+// title chosen to start with, saying why.
 
 export function StartDraft({
   start,
   newestVersion,
   samples,
   copies,
+  library,
 }: {
   start: (prev: FormState, fd: FormData) => Promise<FormState>;
   /** The newest published version's number, to edit a copy of; null: none published yet. */
@@ -23,6 +26,8 @@ export function StartDraft({
   samples: { code: string; label: string }[] | null;
   /** Other job titles' versions, by department; null: they couldn't be read. */
   copies: CopyGroup[] | null;
+  /** The role library's roles by kind, the one suggested for this job title and why; null: they couldn't be read. */
+  library: { groups: CopyGroup[]; suggested: string | null; suggestion: string | null } | null;
 }) {
   const { state, pending, form } = useKeptForm(start);
   const fid = useFieldIds();
@@ -58,6 +63,51 @@ export function StartDraft({
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
+        <form {...form} className="space-y-2 lg:col-span-2">
+          <input type="hidden" name="from" value="library" />
+          {library && library.groups.length > 0 ? (
+            <>
+              <label htmlFor={fid('library')} className="label">
+                From the role library
+              </label>
+              <Select
+                id={fid('library')}
+                name="libraryKey"
+                required
+                defaultValue={library.suggested ?? ''}
+                aria-describedby={fid('library-hint')}
+                className="input max-w-xl"
+              >
+                <option value="" disabled>
+                  Choose a role
+                </option>
+                {library.groups.map((g) => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.options.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </Select>
+              <p id={fid('library-hint')} className="hint max-w-3xl">
+                {library.suggestion ? `${library.suggestion} ` : ''}
+                Its metrics are linked to this job title’s duties where they match, and a title that leads people gets a team leadership metric. Change them to fit
+                before publishing.
+              </p>
+              <button type="submit" disabled={pending} className="btn btn-secondary">
+                Start from this role
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="label">From the role library</p>
+              <p className="text-sm text-muted">{library ? 'The role library has no roles.' : 'The role library couldn’t load.'}</p>
+            </>
+          )}
+        </form>
+
         <form {...form} className="space-y-2">
           <input type="hidden" name="from" value="sample" />
           {samples && samples.length > 0 ? (

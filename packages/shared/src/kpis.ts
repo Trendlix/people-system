@@ -660,12 +660,16 @@ export interface KpiSampleView {
   metrics: KpiMetric[];
 }
 
-/** POST /kpis/templates/job-titles/:jobTitleId/draft: where a new draft's content comes from. */
+/**
+ * POST /kpis/templates/job-titles/:jobTitleId/draft: where a new draft's content comes from; `library`: a role of the
+ * KPI role library (kpi-library.ts, owner, 21 October 2026: "can you add templetes for all departments and job roles").
+ */
 export type KpiDraftSource =
   | { from: 'blank' }
   | { from: 'published' }
   | { from: 'sample'; sampleCode: string }
-  | { from: 'template'; templateId: string };
+  | { from: 'template'; templateId: string }
+  | { from: 'library'; libraryKey: string };
 
 /** A scorecard in a list. */
 export interface KpiScorecardSummary {

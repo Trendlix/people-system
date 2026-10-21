@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
-import { Allow, ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
-import { KPI_COMMENT_MAX, KPI_LAST_DEADLINE_DAY, KPI_STATUSES, KPI_TEMPLATE_LIMITS, type KpiStatus } from '@trendlix/shared';
+import { Allow, ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { KPI_COMMENT_MAX, KPI_LAST_DEADLINE_DAY, KPI_LIBRARY, KPI_STATUSES, KPI_TEMPLATE_LIMITS, type KpiStatus } from '@trendlix/shared';
 import { TrimOrNull } from '../common/transforms.js';
 
 // What the KPI pages send (owner, 21 October 2026: "lets start with the KPI's First"; packages/shared kpis.ts
@@ -27,16 +27,31 @@ export class KpiSettingsDto {
   signOffDay?: number;
 }
 
-/** Where a new draft comes from: blank, a copy of the job title's newest published version, a sample, another template. */
+/**
+ * Where a new draft comes from: blank, a copy of the job title's newest published version, a sample, another template,
+ * or a role of the KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles").
+ */
 export class KpiDraftDto {
-  @IsIn(['blank', 'published', 'sample', 'template'], { message: 'Choose how to start the draft: blank, published, sample or template.' })
-  from!: 'blank' | 'published' | 'sample' | 'template';
+  @IsIn(['blank', 'published', 'sample', 'template', 'library'], { message: 'Choose how to start the draft: blank, published, sample, template or library.' })
+  from!: 'blank' | 'published' | 'sample' | 'template' | 'library';
 
   @ValidateIf((o: KpiDraftDto) => o.from === 'sample') @IsString({ message: 'Choose a sample.' }) @MaxLength(40)
   sampleCode?: string;
 
   @ValidateIf((o: KpiDraftDto) => o.from === 'template') @IsUUID('all', { message: 'Choose the template to copy.' })
   templateId?: string;
+
+  @ValidateIf((o: KpiDraftDto) => o.from === 'library') @IsIn(KPI_LIBRARY.map((t) => t.key), { message: 'Choose a role from the library.' })
+  libraryKey?: string;
+}
+
+/** The drafts to publish at once ("Publish selected drafts"), by their ids. */
+export class KpiPublishDraftsDto {
+  @IsArray({ message: 'Send the drafts to publish as a list.' })
+  @ArrayMinSize(1, { message: 'Choose the drafts to publish.' })
+  @ArrayMaxSize(1000, { message: 'Publish at most 1,000 drafts at once.' })
+  @IsUUID('all', { each: true, message: 'Choose the drafts to publish.' })
+  templateIds!: string[];
 }
 
 /** A draft's content: the Attendance metric's points and the metrics (checked by kpiTemplateProblems). */

@@ -1,9 +1,16 @@
 import {
+  KPI_LIBRARY_KIND_LABELS,
   KPI_SETTING_DEFAULTS,
   KPI_SETTING_LABELS,
   kpiMonthAdd,
   kpiMonthName,
+  kpiMonthOnly,
+  type KpiDraftAllResult,
   type KpiDraftSource,
+  type KpiLibraryKind,
+  type KpiLibraryMatch,
+  type KpiLibraryRole,
+  type KpiPublishDraftsResult,
   type KpiSampleView,
   type KpiSettings,
   type KpiSettingsView,
@@ -20,7 +27,9 @@ import { dayOfMonth } from '../../organization/payroll/settings';
 // published versions", a version published applying from the next month and a scorecard keeping the version it opened
 // with; "Offer 'Start from a sample' … and 'Copy from another job title'". The deadlines, "self-rating by the 3rd,
 // manager by the 6th, HR by the 8th of the next month" and the sign-off by the 10th, in "a small KPI settings section".
-// Pure code, tested; relative imports, as vitest doesn't know the @/ paths. The API checks every request again.
+// The KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles"): "Draft
+// templates for every job title", "From the role library" when starting one job title's draft, and "Publish selected
+// drafts". Pure code, tested; relative imports, as vitest doesn't know the @/ paths. The API checks every request again.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -38,6 +47,9 @@ export const peopleLabel = (n: number): string => `${n} ${n === 1 ? 'person' : '
 
 /** "1 job title", "12 job titles". */
 export const jobTitlesLabel = (n: number): string => `${n} ${n === 1 ? 'job title' : 'job titles'}`;
+
+/** "1 draft", "12 drafts". */
+export const draftsLabel = (n: number): string => `${n} ${n === 1 ? 'draft' : 'drafts'}`;
 
 /** Who did something, as the pages name them: their name, else their email. */
 export const userName = (who: KpiUserRef | null | undefined): string | null => (who ? who.name || who.email : null);
@@ -135,12 +147,17 @@ export function copyChoices(rows: readonly KpiTemplateRow[], jobTitleId: string)
 const UUID = /^[0-9a-f-]{36}$/i;
 
 /**
- * Where a new draft comes from, as the form sent it (`from`, and `sampleCode` or `templateId`), or what is wrong with it.
+ * Where a new draft comes from, as the form sent it (`from`, and `sampleCode`, `templateId` or `libraryKey`), or what is
+ * wrong with it.
  */
 export function draftSourceOf(fd: Pick<FormData, 'get'>): { source: KpiDraftSource } | { error: string } {
   const from = fd.get('from');
   if (from === 'blank') return { source: { from: 'blank' } };
   if (from === 'published') return { source: { from: 'published' } };
+  if (from === 'library') {
+    const key = String(fd.get('libraryKey') ?? '').trim();
+    return key ? { source: { from: 'library', libraryKey: key } } : { error: 'Choose the role to start from.' };
+  }
   if (from === 'sample') {
     const code = String(fd.get('sampleCode') ?? '').trim();
     return code ? { source: { from: 'sample', sampleCode: code } } : { error: 'Choose the sample to start from.' };
@@ -151,6 +168,37 @@ export function draftSourceOf(fd: Pick<FormData, 'get'>): { source: KpiDraftSour
   }
   return { error: 'Choose how to start the draft.' };
 }
+
+// ---------- the role library ----------
+
+/** "From the role library": the library's roles by kind, in its order (each kind's general template after its roles). */
+export function libraryChoices(roles: readonly KpiLibraryRole[]): CopyGroup[] {
+  const groups = new Map<KpiLibraryKind, CopyGroup['options']>();
+  for (const r of roles) groups.set(r.kind, [...(groups.get(r.kind) ?? []), { value: r.key, label: r.name }]);
+  return [...groups].map(([kind, options]) => ({ label: KPI_LIBRARY_KIND_LABELS[kind] ?? kind, options }));
+}
+
+/** Under the role picker: the role suggested for the job title, and why ("Suggested: Frontend Developer. The job title says …"). */
+export const librarySuggestion = (match: Pick<KpiLibraryMatch, 'name' | 'reason'>): string => `Suggested: ${match.name}. ${match.reason}`;
+
+/**
+ * What "Draft templates for every job title" asks first: how many job titles have no template yet, that nothing is
+ * published, and that the others stay as they are.
+ */
+export function draftAllConfirmText(withoutTemplate: number): string {
+  return `Make a draft for each job title with no KPI template yet (${jobTitlesLabel(withoutTemplate)})? Each starts from the closest role in the library, its metrics linked to the job title’s duties. Nothing is published, and the job titles with a draft or a published version stay as they are.`;
+}
+
+/** The result's headline: "12 drafts made; 3 job titles skipped. Review each draft, then publish it." */
+export function draftAllSummary(result: KpiDraftAllResult): string {
+  const made = result.made.length;
+  const skipped = result.skipped.length;
+  if (!made) return skipped ? `No drafts made: each of the ${jobTitlesLabel(skipped)} has a draft or a published version already.` : 'No drafts made: there are no job titles yet.';
+  return `${draftsLabel(made)} made${skipped ? `; ${jobTitlesLabel(skipped)} skipped` : ''}. Review each draft, then publish it.`;
+}
+
+/** The role a made draft used: "Frontend Developer", "General HR + team leadership". */
+export const madeDraftRole = (made: Pick<KpiDraftAllResult['made'][number], 'libraryName' | 'leadership'>): string => `${made.libraryName}${made.leadership ? ' + team leadership' : ''}`;
 
 // ---------- publishing ----------
 
@@ -163,6 +211,57 @@ export const opensFromIfPublished = (today: string): string => `${kpiMonthAdd(to
  */
 export function publishConfirmText(version: number, today: string): string {
   return `Publish version ${version}? It applies to the scorecards opened from ${formatDate(opensFromIfPublished(today))}: ${kpiMonthName(today.slice(0, 7))}'s KPIs on. The scorecards opened already keep the version they opened with.`;
+}
+
+/**
+ * When a version published today applies (owner's brief, 21 October 2026: "publishing now applies from November's
+ * scorecards for October"): "Publishing now applies from November’s scorecards, those for October: 1 November opens
+ * October’s scorecards."
+ */
+export function publishTimingNote(today: string): string {
+  const opening = kpiMonthOnly(opensFromIfPublished(today));
+  const month = kpiMonthOnly(today);
+  return `Publishing now applies from ${opening}’s scorecards, those for ${month}: 1 ${opening} opens ${month}’s scorecards.`;
+}
+
+/** The job titles' drafts: what "Publish selected drafts" can choose from. */
+export const draftIdsOf = (rows: readonly KpiTemplateRow[]): string[] => rows.flatMap((r) => (r.draft ? [r.draft.id] : []));
+
+/** The drafts chosen in the form, each once (only ids). */
+export function templateIdsOf(fd: Pick<FormData, 'getAll'>): string[] {
+  return [...new Set(fd.getAll('templateIds').map((v) => String(v).trim()))].filter((id) => UUID.test(id));
+}
+
+/** What "Publish selected drafts" asks first. */
+export function publishDraftsConfirmText(count: number, today: string): string {
+  return `Publish ${count === 1 ? 'the selected draft' : `the ${draftsLabel(count)} selected`}? Each one that passes the checks applies to the scorecards opened from ${formatDate(opensFromIfPublished(today))}: ${kpiMonthName(today.slice(0, 7))}'s KPIs on. A draft with problems stays a draft, and you’ll see why.`;
+}
+
+/** The result's headline: "3 drafts published, applying from 01/11/2026; 1 not published." */
+export function publishDraftsSummary(result: KpiPublishDraftsResult): string {
+  const published = result.published.length;
+  const refused = result.problems.length;
+  const from = result.published[0]?.opensFrom;
+  const head = published ? `${draftsLabel(published)} published${from ? `, applying from ${formatDate(from)}` : ''}` : 'Nothing published';
+  return `${head}${refused ? `; ${refused} not published` : ''}.`;
+}
+
+/** A draft that wasn't published, as the result names it: "Copywriter, version 1", or "A draft" when it couldn't be found. */
+export const refusedDraftName = (p: Pick<KpiPublishDraftsResult['problems'][number], 'title' | 'version'>): string =>
+  p.title ? `${p.title}${p.version !== null ? `, version ${p.version}` : ''}` : 'A draft';
+
+// ---------- the forms' answers ----------
+
+/** "Draft templates for every job title": the API's refusal, or what it made and left. */
+export interface DraftAllState {
+  errors?: string[];
+  result?: KpiDraftAllResult;
+}
+
+/** "Publish selected drafts": the API's refusal, or what it published and what stopped the others. */
+export interface PublishDraftsState {
+  errors?: string[];
+  result?: KpiPublishDraftsResult;
 }
 
 // ---------- the KPI settings: the deadlines ----------

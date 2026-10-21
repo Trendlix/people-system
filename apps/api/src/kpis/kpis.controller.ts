@@ -16,6 +16,7 @@ import {
   KpiListQueryDto,
   KpiMonthQueryDto,
   KpiPicksDto,
+  KpiPublishDraftsDto,
   KpiSettingsDto,
   KpiSignDto,
   KpiTemplateContentDto,
@@ -27,7 +28,9 @@ import {
 // versions (checked by the service). The scorecards: everyone signed in reaches their own, those they score and what
 // waits for them, each checked by the service (anyone else is told a scorecard isn't there); HR, the CEO and a Super
 // Admin read every one (HR not a C-level person's), with the month's overview and its Excel; HR opens last month's
-// scorecards at once.
+// scorecards at once. The role library (owner, 21 October 2026: "can you add templetes for all departments and job
+// roles"): HR and a Super Admin list its roles, start a draft from one, draft every job title without a template from
+// its matched role, and publish the drafts they choose at once.
 
 @Controller('kpis/settings')
 export class KpiSettingsController {
@@ -61,12 +64,35 @@ export class KpiTemplatesController {
     return this.templates.samples();
   }
 
+  /** The role library: [{ key, name, kind }], for "From the role library". */
+  @Roles('hr', 'super_admin')
+  @Get('library')
+  library() {
+    return this.templates.library();
+  }
+
+  /** "Draft templates for every job title": { made: [{ jobTitleId, templateId, title, department, libraryKey, … reason }], skipped: [{ jobTitleId, title, why }] }. */
+  @Roles('hr', 'super_admin')
+  @Post('draft-all')
+  @HttpCode(200)
+  draftAll(@CurrentUser() user: SessionUser) {
+    return this.templates.draftAll(user);
+  }
+
+  /** "Publish selected drafts": { templateIds } → { published: [...], problems: [{ templateId, title, problems }] }. */
+  @Roles('hr', 'super_admin')
+  @Post('publish-drafts')
+  @HttpCode(200)
+  publishDrafts(@Body() dto: KpiPublishDraftsDto, @CurrentUser() user: SessionUser) {
+    return this.templates.publishDrafts(dto, user);
+  }
+
   @Get('job-titles/:jobTitleId')
   jobTitle(@Param('jobTitleId', ParseUUIDPipe) jobTitleId: string, @CurrentUser() user: SessionUser) {
     return this.templates.jobTitlePage(jobTitleId, user);
   }
 
-  /** { from: blank | published | sample (sampleCode) | template (templateId) } → the new draft. */
+  /** { from: blank | published | sample (sampleCode) | template (templateId) | library (libraryKey) } → the new draft. */
   @Roles('hr', 'super_admin')
   @Post('job-titles/:jobTitleId/draft')
   createDraft(@Param('jobTitleId', ParseUUIDPipe) jobTitleId: string, @Body() dto: KpiDraftDto, @CurrentUser() user: SessionUser) {

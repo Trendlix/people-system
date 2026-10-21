@@ -1,27 +1,27 @@
 import { KPI_PILLARS, KPI_SETTING_LABELS, type KpiSettingsView, type KpiTemplateRow } from '@trendlix/shared';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { Fragment, Suspense } from 'react';
-import { titleCase } from '@/lib/format';
-import { KPI_API, KPI_PATHS } from '@/lib/kpi-paths';
+import { KPI_API } from '@/lib/kpi-paths';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
+import { todayInCairo } from '../../employees/ui';
 import { NotLoaded, SettingRow } from '../../organization/payroll/section';
 import { dayOfMonth } from '../../organization/payroll/settings';
 import { Empty, Loading } from '../../organization/ui';
-import { updateKpiSettings } from './actions';
+import { draftAllKpiTemplates, publishKpiDrafts, updateKpiSettings } from './actions';
 import { loadKpi } from './data';
+import { DraftAllForm } from './draft-all';
 import { KpiSettingsForm } from './settings-form';
+import { TemplatesTable } from './templates-table';
 import {
   buildsKpiTemplates,
+  draftAllConfirmText,
   groupTemplateRows,
   jobTitlesLabel,
-  peopleLabel,
   readsKpiTemplates,
   SETTING_KEYS,
   settingsChangedText,
   templateCounts,
-  templateRowText,
 } from './templates';
 
 // KPI Templates, under KPIs in the sidebar (owner, 21 October 2026: "Templates: HR"; "Full framework per role"): every
@@ -30,117 +30,48 @@ import {
 // get a scorecard; each opening its builder. Below, the KPI settings: the deadlines of each month's steps ("a small KPI
 // settings section"), HR's and the Super Admin's to change. HR and the Super Admin have it in the sidebar; the CEO and
 // an Admin, whom the API answers too, may read it. The API checks every request again.
+// The KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles"): for HR and
+// the Super Admin, "Draft templates for every job title" above the list, and "Publish selected drafts" on it.
 
 export const metadata: Metadata = { title: 'KPI Templates · People System' };
 
-const none = <span className="text-muted">—</span>;
-const SPAN = 6;
-
-function TemplateRow({ row }: { row: KpiTemplateRow }) {
-  const text = templateRowText(row);
-  const nothing = !text.inForce && !text.upcoming && !text.draft;
-  return (
-    <tr>
-      <td className="min-w-56">
-        <Link href={KPI_PATHS.template(row.jobTitle.id)} className="font-semibold">
-          {row.jobTitle.titleEn}
-        </Link>
-        {nothing && <span className="block text-xs text-muted">No KPI template yet</span>}
-      </td>
-      <td className="min-w-48 text-sm">
-        {text.inForce ? (
-          <>
-            <span className="badge bg-ok-soft text-ok">In force</span>
-            <span className="mt-1 block">{text.inForce}</span>
-          </>
-        ) : (
-          none
-        )}
-      </td>
-      <td className="min-w-44 text-sm">
-        {text.upcoming ? (
-          <>
-            <span className="badge">Upcoming</span>
-            <span className="mt-1 block">{text.upcoming}</span>
-          </>
-        ) : (
-          none
-        )}
-      </td>
-      <td className="min-w-40 text-sm">
-        {text.draft ? (
-          <>
-            <span className="badge bg-warn-soft text-warn">Draft</span>
-            <span className="mt-1 block">{text.draft}</span>
-          </>
-        ) : (
-          none
-        )}
-      </td>
-      <td className="text-right tabular-nums">{row.versions}</td>
-      <td className="text-right whitespace-nowrap tabular-nums">{peopleLabel(row.people)}</td>
-    </tr>
-  );
-}
-
-async function TemplatesList() {
+/** The job titles and, for those who build templates, drafting them all and publishing the drafts chosen. */
+async function JobTitles({ user }: { user: SessionUser }) {
   const loaded = await loadKpi<KpiTemplateRow[]>(KPI_API.templates);
-  if (loaded.kind !== 'ok') return <NotLoaded what="the KPI templates" loaded={loaded} />;
+  const builds = buildsKpiTemplates(user);
+  const heading = (
+    <h2 id="kpi-job-titles" className="text-lg font-semibold">
+      Job Titles
+    </h2>
+  );
+  if (loaded.kind !== 'ok') {
+    return (
+      <section aria-labelledby="kpi-job-titles" className="space-y-3">
+        {heading}
+        <NotLoaded what="the KPI templates" loaded={loaded} />
+      </section>
+    );
+  }
   const rows = loaded.value;
-  if (rows.length === 0) return <Empty>No job titles yet: add them on Organization → Departments &amp; Job Titles.</Empty>;
   const counts = templateCounts(rows);
-  const groups = groupTemplateRows(rows);
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted">
-        {jobTitlesLabel(counts.jobTitles)}: {counts.inForce} with a version in force, {counts.upcoming} with one opening next month, {counts.drafts} with a draft
-        {counts.none ? `, ${counts.none} without a template yet` : ''}.
-      </p>
-      <div className="card overflow-x-auto">
-        <table className="table">
-          <thead>
-            <tr>
-              <th scope="col">Job title</th>
-              <th scope="col">In force</th>
-              <th scope="col">Upcoming</th>
-              <th scope="col">Draft</th>
-              <th scope="col" className="text-right">
-                Versions
-              </th>
-              <th scope="col" className="text-right">
-                People
-              </th>
-            </tr>
-          </thead>
-          {groups.map((g) => (
-            <tbody key={g.department}>
-              <tr>
-                <th colSpan={SPAN} scope="colgroup" className="bg-canvas py-2.5 text-left text-sm tracking-normal text-ink normal-case">
-                  <span className="sticky left-4 inline-flex flex-wrap items-baseline gap-x-2">
-                    {titleCase(g.department)}
-                    <span className="text-xs font-normal text-muted">{jobTitlesLabel(g.count)}</span>
-                  </span>
-                </th>
-              </tr>
-              {g.teams.map((t) => (
-                <Fragment key={t.team ?? ''}>
-                  {t.team !== null && (
-                    <tr>
-                      <th colSpan={SPAN} scope="colgroup" className="bg-card py-2 text-left text-sm font-medium tracking-normal text-muted normal-case">
-                        <span className="sticky left-4 inline-flex pl-4">{titleCase(t.team)}</span>
-                      </th>
-                    </tr>
-                  )}
-                  {t.rows.map((r) => (
-                    <TemplateRow key={r.jobTitle.id} row={r} />
-                  ))}
-                </Fragment>
-              ))}
-            </tbody>
-          ))}
-        </table>
-      </div>
-    </div>
+    <>
+      {builds && rows.length > 0 && <DraftAllForm action={draftAllKpiTemplates} confirmText={draftAllConfirmText(counts.none)} withoutTemplate={counts.none} />}
+      <section aria-labelledby="kpi-job-titles" className="space-y-3">
+        {heading}
+        {rows.length === 0 ? (
+          <Empty>No job titles yet: add them on Organization → Departments &amp; Job Titles.</Empty>
+        ) : (
+          <>
+            <p className="text-sm text-muted">
+              {jobTitlesLabel(counts.jobTitles)}: {counts.inForce} with a version in force, {counts.upcoming} with one opening next month, {counts.drafts} with a draft
+              {counts.none ? `, ${counts.none} without a template yet` : ''}.
+            </p>
+            <TemplatesTable groups={groupTemplateRows(rows)} publish={builds ? publishKpiDrafts : null} today={todayInCairo()} />
+          </>
+        )}
+      </section>
+    </>
   );
 }
 
@@ -189,7 +120,10 @@ async function KpiTemplates() {
         <p className="max-w-3xl text-sm text-muted">
           Every job title gets its own KPI template, built from its job description: metrics in four pillars with fixed weights, each with a points scale, one
           criterion picked a month. A version published applies to the scorecards opened from the next month on; a scorecard keeps the version it opened
-          with.{buildsKpiTemplates(user) ? ' Open a job title to build its template, from a sample or another job title’s if you like.' : ''}
+          with.
+          {buildsKpiTemplates(user)
+            ? ' Draft every job title at once from the KPI role library, or open a job title to build its template, from a library role, a sample or another job title’s.'
+            : ''}
         </p>
         <p className="text-sm">
           {KPI_PILLARS.map((p, i) => (
@@ -200,14 +134,9 @@ async function KpiTemplates() {
           ))}
         </p>
       </div>
-      <section aria-labelledby="kpi-job-titles" className="space-y-3">
-        <h2 id="kpi-job-titles" className="text-lg font-semibold">
-          Job Titles
-        </h2>
-        <Suspense fallback={<Loading />}>
-          <TemplatesList />
-        </Suspense>
-      </section>
+      <Suspense fallback={<Loading />}>
+        <JobTitles user={user} />
+      </Suspense>
       <Suspense fallback={<Loading />}>
         <KpiSettingsSection user={user} />
       </Suspense>
