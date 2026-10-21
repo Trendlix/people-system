@@ -1,8 +1,21 @@
 import { NO_WEB_KEY_TEXT, SIGNED_IP_PROBLEM_TEXT, type Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  addedText,
   addressesBody,
+  chipsOf,
   coordinateFrom,
+  faintCircles,
+  linkButtonText,
+  linkOptions,
+  mainAndSubs,
+  makeMainConfirm,
+  moreText,
+  radiusHint,
+  removeConfirm,
+  shownAsText,
+  withChosen,
+  withinText,
   locationBody,
   locationFrom,
   locationRuleBody,
@@ -159,6 +172,72 @@ describe('check-ins without a location (owner, 20 October 2026: "Company switch 
       'Saved. Check-ins and check-outs without a location are refused from now on.',
       'Saved. Check-ins without a location are kept as location unknown again.',
     ]);
+  });
+});
+
+describe('the main office and its sub-locations (owner, 20 October 2026: "main office location is the hero and other locations are like sub locations")', () => {
+  const MAIN = { id: 'm', name: 'Trendlix Al Mahrouki', latitude: 30.082812, longitude: 31.323006, radiusMetres: 20, isMain: true };
+  const STUDIO = { id: 's', name: 'Studio', latitude: 30.0841, longitude: 31.3245, radiusMetres: 50, isMain: false };
+  const CLIENT = { id: 'c', name: 'Client X', latitude: 29.9792, longitude: 31.1342, radiusMetres: 200, isMain: false };
+
+  it('lays out the main office apart from the sub-locations, in the API’s order', () => {
+    expect(mainAndSubs([MAIN, STUDIO, CLIENT])).toEqual({ main: MAIN, subs: [STUDIO, CLIENT] });
+    expect(mainAndSubs([STUDIO, MAIN])).toEqual({ main: MAIN, subs: [STUDIO] });
+    expect(mainAndSubs([])).toEqual({ main: null, subs: [] });
+    // no main among them (never through the API): every one a sub-location
+    expect(mainAndSubs([STUDIO])).toEqual({ main: null, subs: [STUDIO] });
+    // an API from before sub-locations: the first was the office
+    const old: { id: string; name: string; isMain?: boolean }[] = [{ id: 'a', name: 'Office' }, { id: 'b', name: 'Annex' }];
+    expect(mainAndSubs(old)).toEqual({ main: old[0], subs: [old[1]] });
+  });
+
+  it('says the radius, hints a wider one under 50 m, and how a sub-location shows', () => {
+    expect([withinText(20), withinText(1500)]).toEqual(['Within 20 m', 'Within 1,500 m']);
+    expect(radiusHint(20)).toBe('Phones are often 10–30 m off; 50–80 m is safer.');
+    expect(radiusHint(49)).not.toBeNull();
+    expect([radiusHint(50), radiusHint(150)]).toEqual([null, null]);
+    expect(shownAsText(' Client  X ')).toBe('Remote - Client X');
+    expect(faintCircles([STUDIO])).toEqual([{ latitude: STUDIO.latitude, longitude: STUDIO.longitude, radiusMetres: 50, name: 'Studio (sub-location)' }]);
+  });
+
+  it('shows the first five linked people as chips, then “+N more”', () => {
+    const people = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+    expect(chipsOf(people)).toEqual({ shown: ['a', 'b', 'c', 'd', 'e'], more: 2 });
+    expect(chipsOf(people.slice(0, 5))).toEqual({ shown: people.slice(0, 5), more: 0 });
+    expect(chipsOf([])).toEqual({ shown: [], more: 0 });
+    expect(moreText(2)).toBe('+2 more');
+  });
+
+  it('offers to link those not linked nor chosen yet, by name, code and department; each chosen once', () => {
+    const candidates = [
+      { id: '1', fullNameEn: 'Walid Wahba', employeeCode: 'EMP-0003', department: 'Design' },
+      { id: '2', fullNameEn: 'Lina Linked', employeeCode: 'EMP-0001', department: null },
+      { id: '3', fullNameEn: 'Omar Office', employeeCode: 'EMP-0002', department: 'Sales' },
+    ];
+    expect(linkOptions(candidates, ['3'])).toEqual([
+      { value: '2', label: 'Lina Linked · EMP-0001' },
+      { value: '1', label: 'Walid Wahba · EMP-0003 · Design' },
+    ]);
+    expect(linkOptions(candidates, ['1', '2', '3'])).toEqual([]);
+    expect(withChosen(['1'], '2')).toEqual(['1', '2']);
+    expect(withChosen(['1', '2'], '1')).toEqual(['1', '2']);
+    expect(withChosen(['1'], '')).toEqual(['1']);
+    expect([linkButtonText(1), linkButtonText(3)]).toEqual(['Link 1 person', 'Link 3 people']);
+  });
+
+  it('asks before Make main and removing, and says what was added', () => {
+    expect(makeMainConfirm('Studio', 'Head office')).toBe(
+      'Make Studio the main office? Check-ins within it will count as Office for everyone, and Head office becomes a sub-location: check-ins there will show as Remote - Head office.',
+    );
+    expect(makeMainConfirm('Studio', null)).toBe('Make Studio the main office? Check-ins within it will count as Office for everyone.');
+    expect(removeConfirm('Studio', false)).toContain('Its people are unlinked');
+    expect(removeConfirm('Head office', true)).toContain('every check-in on the system is kept as location unknown');
+    expect(addedText('Head office', true)).toBe('Added Head office, the main office: check-ins within it count as Office.');
+    expect(addedText('Studio', false)).toBe('Added Studio: check-ins within it show as Remote - Studio.');
+  });
+
+  it('says the lock lets Office staff check in at a sub-location they are linked to', () => {
+    expect(lockText({ lock: true, inForce: true, serverKey: true, networks: [{ label: 'Main office line', range: '41.33.10.0/24' }] })).toContain('or at a sub-location they are linked to');
   });
 });
 

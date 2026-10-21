@@ -97,9 +97,13 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   import: 'Imported',
   issue_payslip: 'Issued the payslip',
   learn: 'Learned a fix',
+  // a person linked to a sub-location, or unlinked, and a location made the main office (owner, 20 October 2026: "main
+  // office location is the hero and other locations are like sub locations. shown with their name and linked users")
+  link_person: 'Linked a person',
   login: 'Signed in',
   login_failed: 'Sign-in failed',
   logout: 'Signed out',
+  make_main: 'Made it the main office',
   move: 'Moved to another month',
   paid: 'Marked paid',
   paid_out: 'Paid out held pay',
@@ -135,6 +139,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   stop: 'Stopped',
   submit: 'Sent for approval',
   undo: 'Undid',
+  unlink_person: 'Unlinked a person',
   unsign: 'Undid the signing',
   unused_leave_paid: 'Paid unused leave',
   update: 'Updated',
@@ -186,6 +191,9 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   checkInWithoutLocation: 'Can check in without a location',
   // home locations (20 October 2026)
   radiusMetres: 'Radius (metres)',
+  // the main office and its sub-locations (20 October 2026)
+  isMain: 'Main office',
+  formerMainId: 'Former main office',
 };
 
 /**

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
-import { LOCATION_NEEDED_TEXT, NETWORK_NEEDED_TEXT } from '@trendlix/shared';
+import { LOCATION_NEEDED_TEXT } from '@trendlix/shared';
 import type { CheckInTodayView, PunchResultView } from '@/lib/attendance-types';
 import { getPosition } from '@/lib/native';
 import { useNativeApp } from '@/lib/use-native';
@@ -12,14 +12,15 @@ import { CheckInCounter } from './check-in-counter';
 import {
   buttonLabel,
   dayHoursText,
+  dayPlaceLabel,
   dayTimesText,
   flagLabels,
   latestView,
   locationHelpText,
   LOCATION_NOTE,
   LOCATION_NOTE_IN_APP,
+  networkNote,
   OFFICE_NOT_SET_TEXT,
-  placeLabel,
   punchBody,
   punchRows,
   type PunchPhase,
@@ -113,7 +114,7 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   return (
     <div className="space-y-4">
       {view.expectedText && <p className="text-sm">{view.expectedText}</p>}
-      {view.network?.locked && <p className="text-sm">{NETWORK_NEEDED_TEXT}</p>}
+      {view.network?.locked && <p className="text-sm">{networkNote(view)}</p>}
       {/* on the website, when the company refuses presses without a location for them (inside the app it is always needed) */}
       {view.location?.required && !inApp && <p className="text-sm">{LOCATION_NEEDED_TEXT}</p>}
 
@@ -169,7 +170,7 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
           <div>
             <dt className="text-xs text-muted">Today so far</dt>
             <dd className="font-semibold tabular-nums">{dayTimesText(day)}</dd>
-            {day.place && <dd className="text-xs text-muted">{placeLabel(day.place)}</dd>}
+            {day.place && <dd className="text-xs text-muted">{dayPlaceLabel(day, view.punches)}</dd>}
           </div>
           {/* with a check-in, the counter above says the hours */}
           {!day.checkIn && (

@@ -16,6 +16,16 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 | 3 · Contracts: versions per employment (fixed term only, 3-month probation once per employer), monthly or hourly pay, days a week, allowances, ending rules, endings approved by HR then the CEO (Labour Law 14/2025), undo signing (Super Admin), salary calculator | Done |
 | Job offers: drafted by HR, filled in from the offer template, sent by email (SMTP) or as a link, accepted or declined by the candidate on a public page; accepting makes the profile, employment and draft contract | Done. HR; CEO views. Email needs the SMTP settings (DEPLOY.md) |
 | Templates: the document library (23 slots), Word templates in Arabic, English or both, their {{tags}} checked against the tag list, published versions, tag reference; documents filled in for each employee | Done (Super Admin only: uploads, edits, publishes) |
+| Sessions: server-side sessions; HR, Admin and Super Admin signed out after 15 minutes without activity (a warning a minute before); one website and one app session a person, the newest of a kind wins; Your Sessions; View as (Super Admin) | Done |
+| Employment types by Labour Law 14/2025 (full-time with commission, part-time by the hour, trainee renewed once, unpaid internship, freelance outside the law), department heads and team leads (default manager, approve when there is none) | Done |
+| Raises: asked by HR, decided by the CEO, amendment or new contract from the 1st; Raise Requests, Salary Raises report | Done. Hidden from employees and managers for now (one switch, `EMPLOYEE_LEVEL_SEES_RAISES`) |
+| 4 · Leave: every leave of the law, balances by calendar year, Year Closing (carry over or pay), permission requests (4 hours a month, 2 a day), manager then HR | Done |
+| 5 · Attendance: Zoho People import, check-in on the system (website and app) with a live counter, the spot of each press with a Map link (HR, CEO, Super Admin and the person), corrections, Daily Attendance, Summary; make-up hours within the month counted until a shift's limit (8 PM on MORNING) | Done |
+| Check-in Setup: check-in locations on a map, the office network lock (WEB_KEY), refusing presses without a location, home locations approved by HR then the CEO | Done. The lock needs `deploy/web-key.sh` and WEB_KEY in Vercel (DEPLOY.md) |
+| 6 · Payroll: monthly runs approved by the CEO, tax and social insurance, CIB and ACH bank files, additions and deductions, loans and installments, recurring deductions, reimbursements (manager, HR, Finance), final settlements, reports, Payroll Setup, payslips (PDF, English and Arabic) | Done |
+| Notifications: the bell and inbox, push to the phone (FCM), the check-in reminder every 10 minutes for 2 hours with a popup, "Still checked in?" | Done. Push needs the FCM settings (DEPLOY.md) |
+| The employee mobile app **Trendlix People** (`apps/mobile`, Capacitor): the phone pages at `/app`, native location with fake-GPS flag, camera, fingerprint sign-in, push; debug APKs from GitHub Actions | Phases 0–5 done; iPhone after an Apple Developer account ([plan](apps/mobile/README.md)) |
+| Not built yet | Offboarding's clearance checklist, exit interview and leavers log; KPIs; recruitment beyond job offers; projects and timesheets; an attendance device; email notifications |
 
 ## Layout
 
@@ -29,10 +39,12 @@ Deployment: see [DEPLOY.md](DEPLOY.md).
 | `services/ocr` | OCR service (Python, PaddleOCR): reads national ID cards and scanned documents for the API; internal only, port 8000 on the Docker network ([README](services/ocr/README.md)) |
 | `deploy/` | What the server runs: Docker Compose (PostgreSQL, API, OCR, PDF converter, daily backup), `deploy.sh`, `ci-key.sh` ([DEPLOY.md](DEPLOY.md)) |
 | `.github/workflows/backend.yml` | CI/CD: deploys the API to the server on every push to `main` that touches it |
+| `apps/mobile` | The employee app, Trendlix People (Capacitor 8 over the phone pages at `/app`); its plan and guide: [README](apps/mobile/README.md) |
+| `.github/workflows/mobile-android.yml` | Builds the Android APK on every change to the app (kept 30 days as an artifact; a `mobile-v*` tag makes a release) |
 
 ## Conventions
 
-- **Dates and times on screen:** every date is DD/MM/YYYY (14/10/2026) and every time is 12-hour (9:00 AM), on every screen. Show them with the helpers in `apps/web/src/lib/format.ts` (`formatDate`, `formatTime`, `formatDateTime`) and take them in forms with `DateInput` / `TimeInput` from `apps/web/src/components/date-time-inputs.tsx` (plain text fields: the browser's own pickers follow the computer's region). Server actions read them with `dateFrom` / `timeFrom` from `apps/web/src/lib/form-data.ts`.
+- **Dates and times on screen:** every date is DD/MM/YYYY (14/10/2026) and every time is 12-hour (9:00 AM), on every screen. Show them with the helpers in `apps/web/src/lib/format.ts` (`formatDate`, `formatTime`, `formatDateTime`) and take them in forms with `DateInput` (a field with a mini calendar) / `TimeInput` (hour, minutes in quarters and AM/PM selectors) from `apps/web/src/components/date-time-inputs.tsx` (never the browser's own pickers, which follow the computer's region). Server actions read them with `dateFrom` / `timeFrom` from `apps/web/src/lib/form-data.ts`.
 - **The API** sends and accepts dates as YYYY-MM-DD and times as HH:mm (24-hour); only the web app converts.
 - **Moments** (created at, updated at) are shown in Cairo time.
 - Titles and headings are Title Case; labels, buttons and messages are sentence case.

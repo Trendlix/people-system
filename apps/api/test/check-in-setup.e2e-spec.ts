@@ -17,7 +17,9 @@ import { APP_USER_AGENT, createApp, createUser, signIn } from './helpers.js';
 
 // Attendance → Check-in Setup (owner, 20 October 2026: "i cant find in the system where to add the eligable check in
 // locations", then "Own page, several locations"): several check-in locations, HR's and Admin's, removed by a Super Admin,
-// each change audited; a check-in within any one's radius is at the office. Check-ins locked to the office network (owner,
+// each change audited; the first the main office, within which a check-in is at the office, and the second a sub-location,
+// within which it is remote with its name (owner, 20 October 2026: "main office location is the hero and other locations
+// are like sub locations"; the rest in sub-locations.e2e-spec.ts). Check-ins locked to the office network (owner,
 // the same day: "allow me to lock checkin's to wifi name or ip, whatever is right"; "Off the office network: refuse it",
 // "Office staff, plus exceptions", check-in and check-out both): the networks and the switch, HR's and Admin's; the
 // address trusted only as the website signed it (WEB_KEY, set for the tests in vitest.config.e2e.ts), a forged or plain
@@ -146,11 +148,12 @@ describe('Check-in Setup and the office network (e2e)', () => {
       }
       const head = (await api().post('/api/attendance/check-in-setup/locations').set('Cookie', hr).send(HEAD).expect(201)).body;
       locations.push(head.id);
-      expect(head).toMatchObject(HEAD);
-      // 150 metres unless sent; an Admin adds too
+      // the first added is the main office
+      expect(head).toMatchObject({ ...HEAD, isMain: true, people: [] });
+      // 150 metres unless sent; an Admin adds too; a sub-location
       const studio = (await api().post('/api/attendance/check-in-setup/locations').set('Cookie', admin).send({ ...STUDIO, radiusMetres: undefined }).expect(201)).body;
       locations.push(studio.id);
-      expect(studio.radiusMetres).toBe(150);
+      expect(studio).toMatchObject({ radiusMetres: 150, isMain: false, people: [] });
       expect(said(await api().post('/api/attendance/check-in-setup/locations').set('Cookie', hr).send({ ...HEAD, name: HEAD.name.toUpperCase() }).expect(400))[0]).toContain(
         'There is a location named',
       );
@@ -179,10 +182,10 @@ describe('Check-in Setup and the office network (e2e)', () => {
       expect(await prisma.auditLog.count({ where: { entityType: 'check_in_location', entityId: spare.id, action: 'delete' } })).toBe(1);
     });
 
-    it('count a check-in within the second one as at the office, its name kept', async () => {
+    it('count a check-in within the second one, a sub-location, as remote with its name, flagged for someone not linked to it', async () => {
       const res = (await punch(sessions.walid, { kind: 'in', ...AT_STUDIO }).expect(200)).body;
-      expect(res.punches.at(-1)).toMatchObject({ place: 'office', accuracyMetres: 12, locationName: STUDIO.name, officeNetwork: null });
-      expect(res.messages[0]).toContain('at the office');
+      expect(res.punches.at(-1)).toMatchObject({ place: 'remote', accuracyMetres: 12, locationName: STUDIO.name, officeNetwork: null, flags: ['not_their_location'] });
+      expect(res.messages[0]).toContain(`remote at ${STUDIO.name}`);
       expect(res.officeLocationSet).toBe(true);
     });
   });
@@ -306,7 +309,7 @@ describe('Check-in Setup and the office network (e2e)', () => {
       expect(said(await punch(sessions.ayaApp, { kind: 'in' }).expect(409))).toEqual([APP_LOCATION_NEEDED_MESSAGE]);
       expect(await prisma.attendancePunch.count({ where: { employeeId: ids.aya } })).toBe(0);
       const app = (await punch(sessions.ayaApp, { kind: 'in', ...AT_STUDIO }).expect(200)).body;
-      expect(app.punches.at(-1)).toMatchObject({ place: 'office', locationName: STUDIO.name });
+      expect(app.punches.at(-1)).toMatchObject({ place: 'remote', locationName: STUDIO.name });
       const web = (await punch(sessions.aya, { kind: 'out', locationError: 'denied' }).expect(200)).body;
       expect(web.punches.at(-1)).toMatchObject({ kind: 'out', place: 'unknown', accuracyMetres: null });
     });

@@ -4,7 +4,9 @@ import {
   CAIRO,
   CAIRO_ZOOM,
   circleBounds,
+  fittedCircles,
   googleMapsHref,
+  HERO_CONTEXT_METRES,
   isLink,
   isShortMapLink,
   mapHref,
@@ -124,6 +126,18 @@ describe('fitting the map to a location', () => {
     expect(east).toBe(circleBounds(b)[1][1]);
     expect(boundsOf([a])).toEqual(circleBounds(a));
     expect(boundsOf([])).toBeNull();
+  });
+
+  it('fits the main office with the sub-locations near it, the far ones drawn out of view (20 October 2026)', () => {
+    const main = { latitude: 30.082812, longitude: 31.323006, radiusMetres: 20, name: 'Trendlix Al Mahrouki' };
+    const nextDoor = { latitude: 30.0841, longitude: 31.3245, radiusMetres: 50, name: 'Studio' }; // about 200 m away
+    const acrossTown = { latitude: 29.9792, longitude: 31.1342, radiusMetres: 200, name: 'Client X' }; // about 21 km away
+    expect(fittedCircles([main], [nextDoor, acrossTown])).toEqual([main, nextDoor]);
+    expect(fittedCircles([main], [])).toEqual([main]);
+    expect(fittedCircles([], [nextDoor])).toEqual([]);
+    // the reach counts from the circles' edges
+    expect(fittedCircles([main], [acrossTown], 25_000)).toEqual([main, acrossTown]);
+    expect(HERO_CONTEXT_METRES).toBe(2000);
   });
 
   it("starts a form's map on its point, else on the locations there are, else on Cairo", () => {

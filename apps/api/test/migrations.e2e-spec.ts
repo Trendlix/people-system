@@ -583,4 +583,56 @@ describe('Migrations (e2e)', () => {
     ]);
     await expect(db.query(`UPDATE reminders_sent SET count = 0 WHERE kind = 'check_in_reminder'`)).rejects.toThrow(/reminders_sent_count_check/);
   });
+
+  // the main office and its sub-locations (owner, 20 October 2026: "main office location is the hero and other locations
+  // are like sub locations. shown with their name and linked users"): the oldest location becomes the main, by when it
+  // was added then by name, as Check-in Setup listed them; never two mains; links one a location and person; the flag
+  describe('sub-locations', () => {
+    const migration = () => readdirSync(MIGRATIONS).find((m) => m.endsWith('_sub_locations'))!;
+    const mains = async () => (await db.query<{ name: string; main: boolean }>('SELECT name, is_main AS main FROM check_in_locations ORDER BY name')).rows;
+
+    it('makes the oldest location the main office, the others sub-locations; a second main is refused', async () => {
+      await migratedUpTo(migration());
+      await db.query(`
+        INSERT INTO check_in_locations (id, name, latitude, longitude, radius_metres, created_at, updated_at) VALUES
+          ('00000000-0000-4000-8000-0000000000c1', 'Studio', 30.0444, 31.2357, 100, '2026-10-20T10:00:00Z', now()),
+          ('00000000-0000-4000-8000-0000000000c2', 'Office', 30.0596, 31.3462, 150, '2026-10-20T08:30:00Z', now()),
+          ('00000000-0000-4000-8000-0000000000c3', 'Annex', 30.0601, 31.3465, 150, '2026-10-20T08:30:00Z', now());
+      `);
+      await db.query(sql(migration()));
+      // Annex and Office added at the same moment: Annex first by its name
+      expect(await mains()).toEqual([
+        { name: 'Annex', main: true },
+        { name: 'Office', main: false },
+        { name: 'Studio', main: false },
+      ]);
+      await expect(db.query(`UPDATE check_in_locations SET is_main = true WHERE name = 'Studio'`)).rejects.toThrow(/check_in_locations_one_main/);
+      // a new location is a sub-location unless the API says otherwise
+      await db.query(`INSERT INTO check_in_locations (id, name, latitude, longitude, updated_at) VALUES (gen_random_uuid(), 'Client', 30.01, 31.2, now())`);
+      expect((await mains()).find((l) => l.name === 'Client')).toEqual({ name: 'Client', main: false });
+    });
+
+    it('makes no main without locations; links each person to a location once, gone with either; allows the new flag', async () => {
+      await migratedUpTo(migration());
+      await db.query(sql(migration()));
+      expect(await mains()).toEqual([]);
+      await db.query(`
+        INSERT INTO check_in_locations (id, name, latitude, longitude, updated_at) VALUES ('00000000-0000-4000-8000-0000000000c1', 'Studio', 30.0444, 31.2357, now());
+        INSERT INTO employees (id, employee_code, full_name_en, full_name_ar, updated_at) VALUES ('00000000-0000-4000-8000-0000000000e1', 'EMP-0001', 'Omar', 'عمر', now());
+        INSERT INTO check_in_location_people (location_id, employee_id) VALUES ('00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000e1');
+      `);
+      await expect(
+        db.query(`INSERT INTO check_in_location_people (location_id, employee_id) VALUES ('00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000e1')`),
+      ).rejects.toThrow(/check_in_location_people_pkey/);
+      await db.query(`
+        INSERT INTO attendance_punches (id, employee_id, date, kind, place, expected, flags, location_name)
+          VALUES (gen_random_uuid(), '00000000-0000-4000-8000-0000000000e1', '2026-10-20', 'in', 'remote', 'anywhere', ARRAY['not_their_location'], 'Studio');
+      `);
+      await expect(
+        db.query(`INSERT INTO attendance_punches (id, employee_id, date, kind, place, expected, flags) VALUES (gen_random_uuid(), '00000000-0000-4000-8000-0000000000e1', '2026-10-20', 'in', 'remote', 'anywhere', ARRAY['made_up'])`),
+      ).rejects.toThrow(/attendance_punches_flags_check/);
+      await db.query(`DELETE FROM check_in_locations WHERE id = '00000000-0000-4000-8000-0000000000c1'`);
+      expect((await db.query('SELECT 1 FROM check_in_location_people')).rows).toEqual([]);
+    });
+  });
 });

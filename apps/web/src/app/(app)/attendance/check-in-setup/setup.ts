@@ -1,15 +1,19 @@
 import {
   checkInLocationProblems,
+  LINKED_PEOPLE_SHOWN,
   NO_WEB_KEY_TEXT,
   OFFICE_RADIUS_DEFAULT,
   officeAddressesProblems,
   officeNetworksFrom,
   SIGNED_IP_PROBLEM_TEXT,
+  SMALL_RADIUS_HINT,
+  SMALL_RADIUS_METRES,
+  subLocationLabel,
   type OfficeNetwork,
   type Role,
   type SignedIpProblem,
 } from '@trendlix/shared';
-import { latin, roundCoordinate } from '../../../../lib/map-point';
+import { latin, roundCoordinate, type MapCircle } from '../../../../lib/map-point';
 import { canDelete, hasRole } from '../../../../lib/roles';
 import type { ViewAs } from '../../../../lib/view-as';
 
@@ -20,7 +24,9 @@ import type { ViewAs } from '../../../../lib/view-as';
 // "allow me to lock checkin's to wifi name or ip, whatever is right"); and Zoho People's check-in addresses, moved here
 // from Your Rules. HR and Admin (a Super Admin as an Admin); a Super Admin removes a location. Pure code, tested: who
 // sees it, each form read into what the API takes, and what the page says. Relative imports: the tests run without the
-// "@/" alias.
+// "@/" alias. The main office and its sub-locations (owner, 20 October 2026: "main office location is the hero and other
+// locations are like sub locations. shown with their name and linked users"): the page laid out by them, the hero's
+// words, the people's chips, the picker's choices, and what Make main and Remove ask first.
 
 type WithRoles = { roles: readonly Role[]; viewAs?: ViewAs | null };
 
@@ -84,6 +90,85 @@ export const locationBody = (fd: FormData) =>
 export const locationText = (l: { latitude: number; longitude: number; radiusMetres: number }): string =>
   `${l.latitude.toFixed(6)}, ${l.longitude.toFixed(6)} · within ${l.radiusMetres.toLocaleString('en-US')} m`;
 
+// ---------- the main office and its sub-locations (owner, 20 October 2026: "for this part, it looks unarranged to me,
+// it needs to be more handsome. main office location is the hero and other locations are like sub locations. shown with
+// their name and linked users") ----------
+
+/** What of a location the page lays out by: whether it is the main office (left out by an API from before sub-locations). */
+interface Located {
+  isMain?: boolean;
+}
+
+/**
+ * The main office (none yet) and the sub-locations, in the API's order. From an API from before sub-locations (no
+ * `isMain`), every location was the office: the first is shown as the main.
+ */
+export function mainAndSubs<L extends Located>(locations: readonly L[]): { main: L | null; subs: L[] } {
+  const known = locations.some((l) => typeof l.isMain === 'boolean');
+  const main = known ? (locations.find((l) => l.isMain === true) ?? null) : (locations[0] ?? null);
+  return { main, subs: locations.filter((l) => l !== main) };
+}
+
+/** A radius in words: "Within 20 m". */
+export const withinText = (metres: number): string => `Within ${metres.toLocaleString('en-US')} m`;
+
+/** The gentle hint on a main office of a small radius (under 50 m): phones are often that far off. None otherwise. */
+export const radiusHint = (metres: number): string | null => (metres < SMALL_RADIUS_METRES ? SMALL_RADIUS_HINT : null);
+
+/** How a check-in within a sub-location shows on the attendance pages: "Remote - Studio". */
+export const shownAsText = (name: string): string => subLocationLabel(name);
+
+/** The sub-locations as the main office's map draws them faintly: each its point, radius and name. */
+export const faintCircles = (subs: readonly { name: string; latitude: number; longitude: number; radiusMetres: number }[]): MapCircle[] =>
+  subs.map((l) => ({ latitude: l.latitude, longitude: l.longitude, radiusMetres: l.radiusMetres, name: `${l.name} (sub-location)` }));
+
+/** A sub-location's linked people as its card shows them: the first five as chips, and how many more ("+N more"). */
+export function chipsOf<P>(people: readonly P[], shown = LINKED_PEOPLE_SHOWN): { shown: P[]; more: number } {
+  return { shown: people.slice(0, shown), more: Math.max(0, people.length - shown) };
+}
+
+/** "+3 more". */
+export const moreText = (count: number): string => `+${count} more`;
+
+/** Someone "Link people" offers, as the API sends them. */
+export interface LinkCandidate {
+  id: string;
+  fullNameEn: string;
+  employeeCode: string;
+  department: string | null;
+}
+
+/** Whom "Link people" offers: everyone not linked yet nor chosen already, by name: "Lina Hassan · EMP-0012 · Design". */
+export function linkOptions(candidates: readonly LinkCandidate[], taken: readonly string[]): { value: string; label: string }[] {
+  const out = new Set(taken);
+  return candidates
+    .filter((c) => !out.has(c.id))
+    .map((c) => ({ value: c.id, label: [c.fullNameEn, c.employeeCode, c.department].filter(Boolean).join(' · ') }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'en'));
+}
+
+/** The people chosen in the picker, in the order chosen, each once. */
+export const withChosen = (chosen: readonly string[], id: string): string[] => (id && !chosen.includes(id) ? [...chosen, id] : [...chosen]);
+
+/** The picker's button: "Link 1 person", "Link 3 people". */
+export const linkButtonText = (count: number): string => (count === 1 ? 'Link 1 person' : `Link ${count} people`);
+
+/** What Make main asks first. */
+export const makeMainConfirm = (name: string, main: string | null): string =>
+  `Make ${name} the main office? Check-ins within it will count as Office for everyone${
+    main ? `, and ${main} becomes a sub-location: check-ins there will show as ${subLocationLabel(main)}` : ''
+  }.`;
+
+/** What removing a location asks first: the main office (only once it is the last), or a sub-location with its people. */
+export const removeConfirm = (name: string, isMain: boolean): string =>
+  isMain
+    ? `Remove the main office ${name}? With no check-in location left, every check-in on the system is kept as location unknown.`
+    : `Remove the sub-location ${name}? Its people are unlinked, and check-ins within it will be plain Remote.`;
+
+/** What a location added says: the first is the main office, every later one a sub-location. */
+export const addedText = (name: string, isMain: boolean): string =>
+  isMain ? `Added ${name}, the main office: check-ins within it count as Office.` : `Added ${name}: check-ins within it show as ${subLocationLabel(name)}.`;
+
 // ---------- the office networks ----------
 
 /** The networks' form: the switch (a hidden "false", then the checkbox's "true"), and each row's name and address (a row with both empty is left out). */
@@ -124,7 +209,7 @@ export function networkStatus(state: NetworksState, webKey: boolean): { ready: b
 
 /** The lock as it stands, in a sentence. */
 export function lockText(state: Pick<NetworksState, 'lock' | 'inForce' | 'serverKey' | 'networks'>): string {
-  if (state.inForce) return 'On: Office staff check in and out on the office network only, unless HR lets them check in from anywhere.';
+  if (state.inForce) return 'On: Office staff check in and out on the office network only, or at a sub-location they are linked to, unless HR lets them check in from anywhere.';
   if (state.lock && !state.serverKey) return 'Switched on, but not in force: the server has no key, so no one is refused.';
   if (state.lock && !state.networks.length) return 'Switched on, but not in force: there is no office network.';
   return 'Off: everyone checks in from anywhere; a check-in on an office network still counts as at the office.';

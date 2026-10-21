@@ -10,6 +10,7 @@ import {
   isAttendanceFilter,
   isCheckInFlag,
   PAYROLL_STATUS_LABELS,
+  pressPlaceLabel,
   type AttendanceFigures,
   type AttendanceFilter,
   type AttendanceSource as DaySource,
@@ -320,13 +321,17 @@ export interface PlaceBadge {
 
 /**
  * Where a press (or, without one, a day: Zoho's, a correction's) was, as a badge: Office, Home, Remote, Location
- * unknown; at the office, the location's or the office network's name as its title. None without a place.
+ * unknown; at the office, the location's or the office network's name as its title. Within a sub-location (a remote
+ * press with its location's name; owner, 20 October 2026: "named with the location name (Remote - Location name)"),
+ * "Remote - Studio". None without a place.
  */
 export function placeBadge(place: string | null | undefined, press?: Pick<PunchRow, 'locationName' | 'officeNetwork'> | null): PlaceBadge | null {
   if (!place) return null;
-  const label = CHECK_IN_PLACE_LABELS[place as CheckInPlace] ?? place;
+  const sub = place === 'remote' ? press?.locationName?.trim() || null : null;
+  const label = sub ? pressPlaceLabel(place, sub) : (CHECK_IN_PLACE_LABELS[place as CheckInPlace] ?? place);
   const tone = place === 'office' ? 'ok' : place === 'unknown' ? 'muted' : 'accent';
-  const title = place === 'office' ? (press?.locationName ?? (press?.officeNetwork ? `On the office network: ${press.officeNetwork}` : null)) : null;
+  const title =
+    place === 'office' ? (press?.locationName ?? (press?.officeNetwork ? `On the office network: ${press.officeNetwork}` : null)) : sub ? `Remote, at the sub-location ${sub}` : null;
   return { label, tone, title };
 }
 

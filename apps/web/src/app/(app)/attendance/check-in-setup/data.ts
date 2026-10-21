@@ -2,7 +2,7 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
-import type { CheckInLocationView, LocationRuleView, OfficeNetworksView } from '@/lib/attendance-types';
+import type { CheckInLocationView, LinkablePersonView, LocationRuleView, OfficeNetworksView } from '@/lib/attendance-types';
 import type { PayrollSettingsView } from '@/lib/types';
 import { loadJson, type Loaded } from '../../payroll/load';
 
@@ -10,8 +10,11 @@ import { loadJson, type Loaded } from '../../payroll/load';
 // The networks are read with the visitor's address signed (lib/api.ts, signIp), so the API can say whether the lock is
 // ready from this very page. An API from before a part answers 404: that section says it isn't there yet.
 
-/** GET /attendance/check-in-setup/locations. */
+/** GET /attendance/check-in-setup/locations: the main office first, then the sub-locations with their people. */
 export const loadLocations = cache(() => loadJson<CheckInLocationView[]>('/attendance/check-in-setup/locations'));
+
+/** GET /attendance/check-in-setup/people: whom a sub-location's "Link people" offers (owner, 20 October 2026: "shown with their name and linked users"). */
+export const loadLinkable = cache(() => loadJson<LinkablePersonView[]>('/attendance/check-in-setup/people'));
 
 /** GET /attendance/check-in-setup/networks, the visitor's address signed. */
 export const loadNetworks = cache(async (): Promise<Loaded<OfficeNetworksView>> => {

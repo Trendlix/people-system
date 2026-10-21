@@ -4,7 +4,7 @@ import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useEffectEvent, useRef } from 'react';
 import { OFFICE_RADIUS_DEFAULT } from '@trendlix/shared';
-import { boundsOf, CAIRO, CAIRO_ZOOM, circleBounds, roundCoordinate, startView, type MapCircle, type MapView, type Point } from '@/lib/map-point';
+import { boundsOf, CAIRO, CAIRO_ZOOM, circleBounds, fittedCircles, roundCoordinate, startView, type MapCircle, type MapView, type Point } from '@/lib/map-point';
 
 // The check-in locations on a map (owner, 20 October 2026: "let me view location on map and add location from map"),
 // drawn with Leaflet on OpenStreetMap's tiles (no key; their attribution stays on the map). Loaded only in the browser,
@@ -14,7 +14,9 @@ import { boundsOf, CAIRO, CAIRO_ZOOM, circleBounds, roundCoordinate, startView, 
 // a page of maps, scrolling past one doesn't zoom it: the mouse wheel zooms a map only once it is clicked, until the
 // pointer leaves it; on a phone one finger scrolls the page until the map is tapped. The keyboard pans (arrows) and
 // zooms (+ and -) a map once it has the focus. Shared since 20 October 2026 with the home locations' maps (owner: "allow
-// other users to request to add their home locations when working from home").
+// other users to request to add their home locations when working from home"). The main office's map (owner, 20 October
+// 2026: "main office location is the hero and other locations are like sub locations"): the sub-locations drawn faintly
+// around it, each a small grey pin and a dashed circle, fitted with it when near (lib/map-point.ts fittedCircles).
 
 /** OpenStreetMap's own tiles, on the address its tile policy names (one host, no a/b/c subdomains). */
 const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -35,6 +37,14 @@ const PIN_SVG =
   '<circle cx="15" cy="14" r="5" fill="#fff"/></svg>';
 
 const pinIcon = () => L.divIcon({ className: 'location-pin', html: PIN_SVG, iconSize: [30, 42], iconAnchor: [15, 41], tooltipAnchor: [0, -34] });
+
+/** A smaller grey pin, half seen, for the places drawn faintly around a map's own (the main office's sub-locations). */
+const FAINT_PIN_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 42" width="20" height="28" aria-hidden="true" focusable="false" style="opacity:.75">' +
+  `<path d="M15 1C7.8 1 2 6.8 2 14c0 9.6 13 27 13 27s13-17.4 13-27C28 6.8 22.2 1 15 1z" fill="${MUTED}" stroke="#fff" stroke-width="2.5"/>` +
+  '<circle cx="15" cy="14" r="5" fill="#fff"/></svg>';
+
+const faintPinIcon = () => L.divIcon({ className: 'location-pin', html: FAINT_PIN_SVG, iconSize: [20, 28], iconAnchor: [10, 27], tooltipAnchor: [0, -22] });
 
 /** A name as a tooltip's text: as text, never as HTML (Leaflet sets a string as HTML, and names are typed by people). */
 function textOf(name: string): HTMLElement {
@@ -73,19 +83,30 @@ function createMap(el: HTMLElement, view: MapView): L.Map {
   return map;
 }
 
+/** None drawn faintly. */
+const NONE: readonly MapCircle[] = [];
+
 /**
  * A map of locations, each a pin and its radius's circle, fitted to them all; a location with a name has it in a
- * tooltip over its pin and circle. With none, Cairo.
+ * tooltip over its pin and circle. With none, Cairo. `around`: places drawn faintly for context (a small grey pin and a
+ * dashed circle, named in tooltips), fitted too when near the first location.
  */
-export function LeafletLocations({ circles, label }: { circles: readonly MapCircle[]; label: string }) {
+export function LeafletLocations({ circles, around = NONE, label }: { circles: readonly MapCircle[]; around?: readonly MapCircle[]; label: string }) {
   const box = useRef<HTMLDivElement>(null);
-  const drawn = JSON.stringify(circles);
+  const drawn = JSON.stringify({ circles, around });
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const list = JSON.parse(drawn) as MapCircle[];
-    const all = boundsOf(list);
+    const { circles: list, around: faint } = JSON.parse(drawn) as { circles: MapCircle[]; around: MapCircle[] };
+    const all = boundsOf(fittedCircles(list, faint));
     const map = createMap(el, all ? { bounds: all } : { centre: CAIRO, zoom: CAIRO_ZOOM });
+    // context only: named on the pin's hover, never a stop for the keyboard
+    for (const c of faint) {
+      const at: L.LatLngTuple = [c.latitude, c.longitude];
+      L.circle(at, { radius: c.radiusMetres, ...OTHER_CIRCLE, interactive: false }).addTo(map);
+      const pin = L.marker(at, { icon: faintPinIcon(), keyboard: false, interactive: Boolean(c.name) }).addTo(map);
+      if (c.name) pin.bindTooltip(textOf(c.name), { direction: 'top' });
+    }
     for (const c of list) {
       const at: L.LatLngTuple = [c.latitude, c.longitude];
       const named = Boolean(c.name);

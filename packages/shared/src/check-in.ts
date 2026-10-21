@@ -192,6 +192,15 @@ export const CHECK_IN_LOCATION_ERROR_LABELS: Record<CheckInLocationError, string
 export type HomePoint = Pick<OfficeLocation, 'latitude' | 'longitude' | 'radiusMetres'>;
 
 /**
+ * The sub-location a check-in was within (owner, 20 October 2026: "main office location is the hero and other
+ * locations are like sub locations"; sub-locations.ts): its name, and whether the person checking in is linked to it.
+ */
+export interface SubLocationAt {
+  name: string;
+  linked: boolean;
+}
+
+/**
  * Where a check-in was (owner's brief, 19 October 2026): within an office location's radius the office, outside them all
  * remote; no reading (refused or unavailable), a reading that isn't a point, or no location with its point set: unknown.
  * Several locations since 20 October 2026 (owner: "Own page, several locations"): within ANY of them is the office, and
@@ -244,8 +253,10 @@ export function expectedPlace(arrangement: string, officeDays: readonly number[]
  * apps/mobile/README.md Phase 2, owner, 20 October 2026: "Android mock location → mock: true on the punch → flagged
  * ("Fake GPS suspected") on Daily Attendance"). And a remote check-in by someone with an approved home, outside every
  * office location and their home (owner, 20 October 2026: "Label Home, flag elsewhere"): "Not at home or the office".
+ * And a check-in within a sub-location the person isn't linked to (owner, 20 October 2026: "will check it and shows
+ * remote too"; sub-locations.ts): "Not their location", for HR to check.
  */
-export const CHECK_IN_FLAGS = ['outside_office', 'location_unknown', 'fake_gps', 'not_home_or_office'] as const;
+export const CHECK_IN_FLAGS = ['outside_office', 'location_unknown', 'fake_gps', 'not_home_or_office', 'not_their_location'] as const;
 export type CheckInFlag = (typeof CHECK_IN_FLAGS)[number];
 
 export const CHECK_IN_FLAG_LABELS: Record<CheckInFlag, string> = {
@@ -253,6 +264,7 @@ export const CHECK_IN_FLAG_LABELS: Record<CheckInFlag, string> = {
   location_unknown: 'Location unknown on an office day',
   fake_gps: 'Fake GPS suspected',
   not_home_or_office: 'Not at home or the office',
+  not_their_location: 'Checked in at a sub-location they aren’t linked to',
 };
 
 /**
@@ -264,6 +276,7 @@ export const CHECK_IN_FLAG_SHORT_LABELS: Record<CheckInFlag, string> = {
   location_unknown: 'No location',
   fake_gps: 'Fake GPS suspected',
   not_home_or_office: 'Not at home or the office',
+  not_their_location: 'Not their location',
 };
 
 export const isCheckInFlag = (v: unknown): v is CheckInFlag => (CHECK_IN_FLAGS as readonly unknown[]).includes(v);
@@ -274,23 +287,37 @@ export const isCheckInFlag = (v: unknown): v is CheckInFlag => (CHECK_IN_FLAGS a
  * employee app on Android) is fake GPS suspected, whatever the arrangement; the place is still read from it as from any
  * other. Someone with an approved home (`hasHome`; owner, 20 October 2026: "Label Home, flag elsewhere") checking in
  * remote, outside every office location and their home, is not at home or the office, whatever the arrangement; nothing
- * is refused for it.
+ * is refused for it. Within a sub-location (`subLocation`, a remote check-in; owner, 20 October 2026: "own sublocation
+ * shows the sub location name", "will check it and shows remote too"; sub-locations.ts): at their own (linked) one, it
+ * is their place, so it isn't outside the office on an office day, nor away from home and the office; at one they
+ * aren't linked to, it is outside the office on an office day as any remote check-in, and not their location, for HR
+ * to check (one flag for it: not "not at home or the office" too).
  */
-export function checkInFlags(expected: ExpectedPlace, place: CheckInPlace, mock = false, hasHome = false): CheckInFlag[] {
+export function checkInFlags(expected: ExpectedPlace, place: CheckInPlace, mock = false, hasHome = false, subLocation: SubLocationAt | null = null): CheckInFlag[] {
   const flags: CheckInFlag[] = [];
-  if (expected === 'office' && countsAsRemote(place)) flags.push('outside_office');
+  const at = place === 'remote' ? subLocation : null;
+  if (expected === 'office' && countsAsRemote(place) && !at?.linked) flags.push('outside_office');
   if (expected === 'office' && place === 'unknown') flags.push('location_unknown');
   if (mock) flags.push('fake_gps');
-  if (hasHome && place === 'remote') flags.push('not_home_or_office');
+  if (hasHome && place === 'remote' && !at) flags.push('not_home_or_office');
+  if (at && !at.linked) flags.push('not_their_location');
   return flags;
 }
 
 /**
  * The flags of a press: a check-in's as checkInFlags; a check-out's place breaks no rule (only check-ins are held to the
- * arrangement and to the home), but a mock location on it is fake GPS suspected all the same.
+ * arrangement, to the home and to the sub-location's people), but a mock location on it is fake GPS suspected all the
+ * same.
  */
-export function punchFlags(kind: PunchKind, expected: ExpectedPlace, place: CheckInPlace, mock = false, hasHome = false): CheckInFlag[] {
-  return kind === 'in' ? checkInFlags(expected, place, mock, hasHome) : mock ? ['fake_gps'] : [];
+export function punchFlags(
+  kind: PunchKind,
+  expected: ExpectedPlace,
+  place: CheckInPlace,
+  mock = false,
+  hasHome = false,
+  subLocation: SubLocationAt | null = null,
+): CheckInFlag[] {
+  return kind === 'in' ? checkInFlags(expected, place, mock, hasHome, subLocation) : mock ? ['fake_gps'] : [];
 }
 
 /** What the employee is told of where today's check-in is expected. */
@@ -395,15 +422,18 @@ export function shiftDayOf(moment: Date | string | number, shift: ShiftWindowTim
  * What the employee is told once a punch is kept (owner's brief, 19 October 2026: "Checking out without checking in, or
  * a second check-in, is handled plainly"), from the day's punches before it (`earlier`) and the punch itself: the time
  * and the place, a check-out without a check-in (to ask for a correction), a second check-in (the day still starting at
- * the first), and a flag (kept, and shown to the manager and HR).
+ * the first), and a flag (kept, and shown to the manager and HR). Within a sub-location (a remote punch with its
+ * `locationName`; owner, 20 October 2026: "named with the location name"), "remote at Studio".
  */
 export function punchMessages(
-  punch: PunchLike & { flags: readonly CheckInFlag[] },
+  punch: PunchLike & { flags: readonly CheckInFlag[]; locationName?: string | null },
   earlier: readonly PunchLike[],
   why: { locationError?: CheckInLocationError | null; officeSet?: boolean } = {},
 ): string[] {
   const time = cairoClock(punch.at);
-  const where = punch.place === 'unknown' ? 'location unknown' : punch.place === 'office' ? 'at the office' : punch.place === 'home' ? 'at home' : 'remote';
+  const sub = punch.place === 'remote' ? punch.locationName?.trim() || null : null;
+  const where =
+    punch.place === 'unknown' ? 'location unknown' : punch.place === 'office' ? 'at the office' : punch.place === 'home' ? 'at home' : sub ? `remote at ${sub}` : 'remote';
   const ins = earlier.filter((p) => p.kind === 'in').sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const messages: string[] = [];
   if (punch.kind === 'in') {
@@ -432,7 +462,9 @@ export function punchMessages(
           ? `${CHECK_IN_FLAG_LABELS[f]}: your phone said this location comes from an app that sets a made-up one. The ${punch.kind === 'in' ? 'check-in' : 'check-out'} is kept, and your manager and HR see it flagged. Turn such an app off before you check in.`
           : f === 'not_home_or_office'
             ? `${CHECK_IN_FLAG_LABELS[f]}: you checked in away from the office and from your approved home. It is kept, and your manager and HR see it flagged.`
-            : `${CHECK_IN_FLAG_LABELS[f]}: it is kept, and your manager and HR see it flagged. Allow the location next time.`,
+            : f === 'not_their_location'
+              ? `${CHECK_IN_FLAG_SHORT_LABELS[f]}: you checked in at ${sub ?? 'a sub-location'}, which isn’t one of your check-in places. It is kept, and your manager and HR see it flagged.`
+              : `${CHECK_IN_FLAG_LABELS[f]}: it is kept, and your manager and HR see it flagged. Allow the location next time.`,
     );
   }
   return messages;

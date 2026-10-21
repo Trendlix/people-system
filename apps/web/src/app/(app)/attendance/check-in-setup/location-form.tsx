@@ -14,8 +14,10 @@ import { locationFrom } from './setup';
 
 // A check-in location's form (Attendance → Check-in Setup; owner, 20 October 2026: "Own page, several locations"): its
 // name, its point (latitude and longitude) and the radius around it in metres (150 to start with). A check-in on the
-// system within the radius of any location is at the office; only that is kept (and the location's name), never the
-// coordinates. Use my current location fills the point from this device, for HR standing in the place (the employee
+// system within the main office's radius is Office, within a sub-location's remote with its name ("Remote - Studio";
+// owner, 20 October 2026: "main office location is the hero and other locations are like sub locations"); the punch
+// keeps the place and the location's name, and the spot where it was pressed (the same day: "Yes, keep the spot"). Use
+// my current location fills the point from this device, for HR standing in the place (the employee
 // app's own location when it has it, else the browser's). The shared checks run as it is typed, and again on saving
 // (setup.ts locationFrom, then the API). Adding: the fields empty again once added; changing: closed once saved.
 // The point from a map too (owner, the same day: "let me view location on map and add location from map"): a click on
@@ -32,6 +34,7 @@ export function LocationForm({
   location,
   around = NONE,
   submitLabel,
+  namePlaceholder = 'Head office',
   onSaved,
   onCancel,
 }: {
@@ -41,7 +44,10 @@ export function LocationForm({
   /** The locations there are, drawn faintly on the map, which starts on them while there is no point. */
   around?: readonly MapCircle[];
   submitLabel: string;
-  onSaved?: () => void;
+  /** The name's example: "Head office" for the main office, "Studio" for a sub-location. */
+  namePlaceholder?: string;
+  /** Once saved, with what the save said. */
+  onSaved?: (message: string) => void;
   onCancel?: () => void;
 }) {
   const fid = useFieldIds();
@@ -82,7 +88,7 @@ export function LocationForm({
         setNote(null);
         setAdded((n) => n + 1);
       }
-      onSaved?.();
+      onSaved?.(result.message);
     }
     return result;
   });
@@ -128,7 +134,7 @@ export function LocationForm({
           <label htmlFor={fid('name')} className="label">
             Name
           </label>
-          <input id={fid('name')} name="name" required autoComplete="off" placeholder="Head office" value={name} onChange={typed(setName)} className="input" />
+          <input id={fid('name')} name="name" required autoComplete="off" placeholder={namePlaceholder} value={name} onChange={typed(setName)} className="input" />
         </div>
         <div>
           <label htmlFor={fid('latitude')} className="label">

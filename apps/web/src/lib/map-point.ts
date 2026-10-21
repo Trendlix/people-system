@@ -1,4 +1,4 @@
-import { OFFICE_RADIUS_DEFAULT } from '@trendlix/shared';
+import { distanceMetres, OFFICE_RADIUS_DEFAULT } from '@trendlix/shared';
 
 // The check-in locations on a map (owner, 20 October 2026: "let me view location on map and add location from map"):
 // the pure part, tested. A point read from what is pasted (a Google Maps or OpenStreetMap link, "30.0457, 31.1923", or
@@ -160,6 +160,23 @@ export function boundsOf(circles: readonly Pick<MapCircle, 'latitude' | 'longitu
 }
 
 export type MapView = { bounds: Bounds } | { centre: Point; zoom: number };
+
+/**
+ * How near the main office a sub-location's circle comes for the hero map to fit it too (owner, 20 October 2026: "main
+ * office location is the hero and other locations are like sub locations"): a studio round the corner is in view; a
+ * client's site across the city is drawn, but out of view, so the main office stays large.
+ */
+export const HERO_CONTEXT_METRES = 2000;
+
+/**
+ * The circles a map fits: its own, and those drawn faintly around them (`around`) whose circle comes within `within`
+ * metres of the first one's. Without circles of its own, none.
+ */
+export function fittedCircles(circles: readonly MapCircle[], around: readonly MapCircle[], within = HERO_CONTEXT_METRES): MapCircle[] {
+  const first = circles[0];
+  if (!first) return [];
+  return [...circles, ...around.filter((c) => distanceMetres(first, c) - c.radiusMetres - first.radiusMetres <= within)];
+}
 
 /**
  * Where a location's form map starts: on its point, fitted to its circle (150 m while the radius isn't a number); with

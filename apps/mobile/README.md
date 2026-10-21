@@ -712,8 +712,9 @@ npm run open:android -w @trendlix/mobile       # opens the project in Android St
   - Since (20 Oct 2026): the **home location** request among the phone pages (`/app/requests/new/home`, its page under
     Requests and To Approve; see the Phase 1 contract's table): pages only, no new plugin; "Use my current location"
     reads through the Phase 2 bridge (`getPosition()`).
-- [ ] Phase 4 — Notifications — **built 20 Oct 2026, pending CI** (the "Mobile (Android)" run with the Push Notifications
-  plugin and google-services.json from the secret; see "Phase 4 contract — what was built" above).
+- [x] Phase 4 — Notifications — **done 20 Oct 2026**: the "Mobile (Android)" run trendlix-people-0.1.7 built the APK with
+  the Push Notifications plugin and google-services.json from the secret (no "built without push" notice); see "Phase 4
+  contract — what was built" above. On a phone the owner tries the list under "Only CI and a phone can prove".
   - Done: the API's notifications (tables, the emitter called from leave, permission, corrections, reimbursements, raise
     requests and raises, payslips; the FCM sender; the two reminders on a 5-minute scheduler with an advisory lock; the
     inbox, settings and push-device endpoints), the shell's plugin, `TrendlixPush` and manifest, the CI secret step, the
@@ -725,8 +726,8 @@ npm run open:android -w @trendlix/mobile       # opens the project in Android St
   - Only CI and a phone can prove: see the end of "Phase 4 contract — what was built".
   - Left for the owner: nothing; the secret and the server's three values are set. After the deploy, the API's log
     should not say "Push notifications are off".
-- [ ] Phase 5 — Polish and offline — **built 20 Oct 2026, pending CI** (the "Mobile (Android)" run with the App plugin,
-  the icons and the splash; see "Phase 5 contract — what was built" above).
+- [x] Phase 5 — Polish and offline — **done 20 Oct 2026**: the "Mobile (Android)" run trendlix-people-0.1.8 built the APK
+  with the App plugin, the icons and the splash; see "Phase 5 contract — what was built" above.
   - Done: the name "Trendlix People" (the user agent's mark kept), the icons, notification icon, splash and bundled
     pages from the owner's logos (`assets/`), the back button (`@capacitor/app`), pull to refresh, the skeleton loading
     states, the phone pages' focus ring, tap targets, labels and badges.

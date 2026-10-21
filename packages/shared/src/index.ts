@@ -415,3 +415,8 @@ export * from './home-locations.js';
 // reminder)"): what each one is about, the inbox's page, the two reminders and the person's switches, the phones' push
 // tokens and the Android channel
 export * from './notifications.js';
+
+// the main office and its sub-locations (owner, 20 October 2026: "main office location is the hero and other locations
+// are like sub locations. shown with their name and linked users"; "(Remote - Location name)"): where a press was read in
+// order, a sub-location's people, its words, and the office network's lock waived at one's own sub-location
+export * from './sub-locations.js';

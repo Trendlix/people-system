@@ -286,6 +286,12 @@ export interface CheckInTodayView {
    */
   network?: { locked: boolean };
   /**
+   * The sub-locations they are linked to, by name (owner, 20 October 2026: "own sublocation shows the sub location
+   * name"): their own check-in places, where a locked Office person may check in off the office network. Left out by an
+   * API from before them.
+   */
+  ownPlaces?: string[];
+  /**
    * Whether their presses on the website need a location (owner, 20 October 2026: "Company switch + exceptions"): Check-in
    * Setup's switch on, and HR hasn't let them check in without one. Left out by an API from before it.
    */
@@ -307,15 +313,40 @@ export interface PunchResultView extends CheckInTodayView {
 // ---------- Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations") ----------
 // As GET /attendance/check-in-setup/locations and /networks send them (apps/api/src/attendance/check-in-setup.service.ts).
 
-/** A place check-ins count as the office at: within its radius of its point. */
+/**
+ * A check-in location: within its radius of its point a check-in is at the main office (`isMain`), or, at a
+ * sub-location, remote with its name ("Remote - Studio"; owner, 20 October 2026: "main office location is the hero and
+ * other locations are like sub locations. shown with their name and linked users"). Left out by an API from before them:
+ * `isMain` (every location then was the office) and `people`.
+ */
 export interface CheckInLocationView {
   id: string;
   name: string;
   latitude: number;
   longitude: number;
   radiusMetres: number;
+  isMain?: boolean;
+  /** A sub-location's linked people the caller may see (a C-level person only the CEO and the Super Admin), by name; none on the main office. */
+  people?: LinkedPersonView[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** A person linked to a sub-location, as its card names them. */
+export interface LinkedPersonView {
+  id: string;
+  fullNameEn: string;
+  employeeCode: string;
+}
+
+/** Someone a sub-location's "Link people" offers (GET /attendance/check-in-setup/people): a current employee the caller may see. */
+export interface LinkablePersonView extends LinkedPersonView {
+  department: string | null;
+}
+
+/** GET /employees/:id/check-in-places: the sub-locations a person is linked to, by name (their profile). */
+export interface CheckInPlacesView {
+  places: { id: string; name: string }[];
 }
 
 /**

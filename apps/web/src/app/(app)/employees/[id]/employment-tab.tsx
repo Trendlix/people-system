@@ -37,6 +37,7 @@ import { loadContracts } from './contracts/data';
 import { ProbationBanner } from './contracts/probation-banner';
 import { GeneratedDocuments, GeneratedDocumentsLoading } from './documents/document-rows';
 import { EndingPanel } from './ending/ending-panel';
+import { CheckInPlacesLine } from './check-in-places';
 import { HomeLocationLine } from './home-location';
 import { DeleteRowButton } from './inline-forms';
 import { LeaveSection } from './leave/leave-section';
@@ -413,6 +414,10 @@ async function DetailsSubTab({
             {/* their approved home (20 October 2026), for HR, the CEO and the Super Admin; loads on its own */}
             <Suspense fallback={null}>
               <HomeLocationLine employee={p} user={user} />
+            </Suspense>
+            {/* the sub-locations they are linked to (20 October 2026), for HR, Admin, the CEO and themself; loads on its own */}
+            <Suspense fallback={null}>
+              <CheckInPlacesLine employee={p} user={user} />
             </Suspense>
             <p className="text-sm text-muted">
               The social insurance forms are on the <Link href={profileHref(p.id, 'insurance')}>Social Insurance tab</Link>.

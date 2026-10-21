@@ -307,11 +307,13 @@ export interface PunchNetwork {
 /**
  * A punch's network verdict: the address signed by the website (null: none, or not signed right; a call made straight
  * to the API carries none) against the networks. Signed and on one of them: that network, kept at the office whatever
- * the location says. Locked and not on one (an unsigned address counts as not on one): refused.
+ * the location says. Locked and not on one (an unsigned address counts as not on one): refused, unless the press is
+ * within one of the person's own sub-locations (`atOwnSubLocation`; sub-locations.ts waivesNetworkLock: Claude's default
+ * of 20 October 2026, which the owner can change), their place, where it is kept as remote there.
  */
-export function punchNetwork(setting: NetworkLockSetting, person: NetworkLockPerson, signedIp: string | null): PunchNetwork {
+export function punchNetwork(setting: NetworkLockSetting, person: NetworkLockPerson, signedIp: string | null, atOwnSubLocation = false): PunchNetwork {
   const on = setting.serverKey && signedIp ? matchOfficeNetwork(signedIp, setting.networks) : null;
-  return { network: on?.label ?? null, refused: lockedToOfficeNetwork(setting, person) && !on };
+  return { network: on?.label ?? null, refused: lockedToOfficeNetwork(setting, person) && !on && !atOwnSubLocation };
 }
 
 /** The answer to a punch refused off the office network: 409 Conflict, with this message. */

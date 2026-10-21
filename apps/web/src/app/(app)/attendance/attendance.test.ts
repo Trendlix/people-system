@@ -134,6 +134,19 @@ describe('a day’s check-in and check-out, with the place and the Map (20 Octob
     expect(placeBadge(null)).toBeNull();
   });
 
+  it('says a press within a sub-location as “Remote - Studio” (owner, 20 October 2026: "(Remote - Location name)")', () => {
+    expect(placeBadge('remote', { locationName: 'Studio', officeNetwork: null })).toEqual({ label: 'Remote - Studio', tone: 'accent', title: 'Remote, at the sub-location Studio' });
+    expect(placeBadge('remote', { locationName: '  ', officeNetwork: null })).toEqual({ label: 'Remote', tone: 'accent', title: null });
+    // an office press keeps its word, the main office's name as the title
+    expect(placeBadge('office', { locationName: 'Trendlix Al Mahrouki', officeNetwork: null })?.label).toBe('Office');
+    // the day's row: the check-in's own press says it
+    const sub = press('in', '09:05', 'remote', { locationName: 'Client X', flags: ['not_their_location'] });
+    const row = dayRow({ date: sub.date, checkIn: sub.at, checkOut: null, place: 'remote', flags: ['not_their_location'] }, [sub]);
+    expect(row.checkIn.badge?.label).toBe('Remote - Client X');
+    expect(row.checkIn.flags).toEqual(['not_their_location']);
+    expect(flagBadges(['not_their_location'])).toEqual([{ key: 'not_their_location', label: 'Not their location', title: 'Checked in at a sub-location they aren’t linked to' }]);
+  });
+
   it('opens where a press was on Google Maps, the accuracy as the title; none without its spot', () => {
     expect(punchMap(presses[3])).toEqual({ href: 'https://www.google.com/maps?q=30.060100,31.346500', title: 'Within 12 m' });
     expect(punchMap({ ...presses[3], accuracyMetres: null })?.title).toBe('Accuracy not known');

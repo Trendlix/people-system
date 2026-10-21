@@ -165,8 +165,8 @@ export function NetworksForm({
           Lock check-ins to the office network
         </label>
         <p id={fid('lock-hint')} className="hint max-w-3xl">
-          On: Office staff check in and out only on these networks; off them the press is refused, and they ask for an attendance correction (or HR
-          records the time). Hybrid, Outdoor, Indoor and outdoor and Work from home staff, and anyone HR lets check in from anywhere on their profile,
+          On: Office staff check in and out only on these networks, or at a sub-location they are linked to; anywhere else the press is refused, and
+          they ask for an attendance correction (or HR records the time). Hybrid, Outdoor, Indoor and outdoor and Work from home staff, and anyone HR lets check in from anywhere on their profile,
           check in from anywhere. A check-in on an office network counts as at the office either way.
           {!ready && (lock ? ' It can’t stay on until the key is ready: saving now switches it off.' : ' It can be turned on once the key is ready (above).')}
         </p>

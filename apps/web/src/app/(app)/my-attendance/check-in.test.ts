@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkInRefusal, dayFromPunches } from '@trendlix/shared';
+import { checkInRefusal, dayFromPunches, NETWORK_NEEDED_TEXT } from '@trendlix/shared';
 import type { CheckInTodayView, PunchView } from '../../../lib/attendance-types';
 import {
   accuracyText,
@@ -22,6 +22,8 @@ import {
   mockRefused,
   noteServerTime,
   placeLabel,
+  dayPlaceLabel,
+  networkNote,
   PLAIN_COUNT,
   punchBody,
   punchBodyFrom,
@@ -219,6 +221,19 @@ describe('the panel', () => {
     });
     expect([placeLabel('office'), placeLabel(null)]).toEqual(['Office', '—']);
     expect(flagLabels(['location_unknown', 'location_unknown', 'other'])).toEqual(['Location unknown on an office day']);
+  });
+
+  it('names a sub-location: "Remote - Studio" on the press and the day, and where a locked person may check in (20 October 2026)', () => {
+    const punches: PunchView[] = [
+      { kind: 'in', at: '2026-10-19T06:05:00.000Z', place: 'remote', accuracyMetres: 11, flags: [], locationName: 'Studio' },
+      { kind: 'out', at: '2026-10-19T14:10:00.000Z', place: 'remote', accuracyMetres: 20, flags: [], locationName: null },
+    ];
+    expect(punchRows(punches).map((r) => r.place)).toEqual(['Remote - Studio', 'Remote']);
+    expect([placeLabel('remote', 'Client X'), placeLabel('office', 'Head office'), placeLabel('remote', ' ')]).toEqual(['Remote - Client X', 'Office', 'Remote']);
+    expect(dayPlaceLabel({ place: 'remote' }, [...punches].reverse())).toBe('Remote - Studio');
+    expect(dayPlaceLabel({ place: 'office' }, [])).toBe('Office');
+    expect(networkNote({ ownPlaces: ['Studio'] })).toBe(`${NETWORK_NEEDED_TEXT} At your own check-in place (Studio) you can check in off it.`);
+    expect([networkNote({}), networkNote({ ownPlaces: [] })]).toEqual([NETWORK_NEEDED_TEXT, NETWORK_NEEDED_TEXT]);
   });
 
   it('tells the employee the spot is kept, on the website and in the app (owner, 20 October 2026: "Yes, keep the spot")', () => {

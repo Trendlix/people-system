@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException, Injectable } from '@nestjs/commo
 import {
   APP_LOCATION_NEEDED_MESSAGE,
   checkInLocationsSet,
-  checkInPlace,
+  checkInPlaceAt,
   checkInRefusal,
   dayFromPunches,
   expectedPlace,
@@ -17,8 +17,10 @@ import {
   punchMessages,
   punchNetwork,
   shiftDayOf,
+  waivesNetworkLock,
   type CheckInFlag,
   type CheckInPlace,
+  type CheckInPlaces,
   type ExpectedPlace,
   type LocationRule,
   type NetworkLockSetting,
@@ -65,6 +67,11 @@ export interface CheckInTodayView {
   officeLocationSet: boolean;
   /** Whether their check-ins and check-outs need the office network (owner, 20 October 2026): the lock, for them. */
   network: { locked: boolean };
+  /**
+   * The sub-locations they are linked to, by name (owner, 20 October 2026: "own sublocation shows the sub location
+   * name"): their own check-in places, where they aren't flagged and, when locked, may check in off the office network.
+   */
+  ownPlaces: string[];
   /**
    * Whether their presses on the website need a location (owner, 20 October 2026: "Company switch + exceptions"): the
    * switch on and HR hasn't exempted them. Inside the app a location is always needed.
@@ -138,7 +145,13 @@ export interface PunchContext {
 // Attendance pages show it to HR, the CEO and the Super Admin (punch-views.ts). Refusing presses without a location
 // (owner, the same day: "Company switch + exceptions", "Allow as Office"): with Check-in Setup's switch on, a website
 // press without a reading is refused (409) unless HR exempts the person or it comes from an office network the website
-// signed (it is Office), in the audit log as check_in_refused, no_location, never with a point.
+// signed (it is Office), in the audit log as check_in_refused, no_location, never with a point. The main office and
+// its sub-locations (owner, 20 October 2026: "main office location is the hero and other locations are like sub
+// locations"; "any checkin rather than the office location counts remote and named with the location name (Remote -
+// Location name)"): a press is read against the main office, then the person's own sub-locations, then any, then their
+// home (packages/shared checkInPlaceAt); within a sub-location it is kept as remote with the sub-location's name, and
+// flagged "Not their location" for someone not linked to it. A locked Office person may press off the office network
+// within their own sub-location (Claude's default, which the owner can change), never on a mock location.
 @Injectable()
 export class CheckInService {
   constructor(
@@ -152,21 +165,33 @@ export class CheckInService {
 
   async today(user: SessionUser): Promise<CheckInTodayView> {
     const { employeeId, employment, refusal } = await this.who(user);
-    const [locations, lock, rule] = await Promise.all([this.setup.officeLocations(), this.setup.lockSetting(), this.setup.locationRule()]);
-    return this.view(this.prisma, employeeId, employment, refusal, { locations, lock, rule }, new Date());
+    const [locations, places, lock, rule] = await Promise.all([this.setup.officeLocations(), this.setup.checkInPlaces(employeeId), this.setup.lockSetting(), this.setup.locationRule()]);
+    return this.view(this.prisma, employeeId, employment, refusal, { locations, places, lock, rule }, new Date());
   }
 
   async punch(dto: PunchDto, user: SessionUser, context: PunchContext): Promise<PunchResultView> {
     const { employeeId, employment, refusal } = await this.who(user);
     if (refusal || !employeeId || !employment) throw new ForbiddenException(refusal ?? 'You can’t check in on the system.');
     const reading = typeof dto.latitude === 'number' && typeof dto.longitude === 'number' ? { latitude: dto.latitude, longitude: dto.longitude, accuracy: dto.accuracy ?? null } : null;
-    // their approved home, if any (20 October 2026): read against it after the office, its point never kept with the punch
-    const [locations, lock, rule, home] = await Promise.all([this.setup.officeLocations(), this.setup.lockSetting(), this.setup.locationRule(), this.homes.homePoint(employeeId)]);
+    // their approved home, if any (20 October 2026): read against it after the office and the sub-locations, its point
+    // never kept with the punch; the main office and the sub-locations, with theirs (20 October 2026)
+    const [locations, places, lock, rule, home] = await Promise.all([
+      this.setup.officeLocations(),
+      this.setup.checkInPlaces(employeeId),
+      this.setup.lockSetting(),
+      this.setup.locationRule(),
+      this.homes.homePoint(employeeId),
+    ]);
     const now = new Date();
     const shift = shiftOf(employment);
     const date = shiftDayOf(now, shift);
-    // the office network (20 October 2026): refused off it when locked; on it, at the office
-    const network = punchNetwork(lock, employment, context.signedIp.ip ?? null);
+    const mock = dto.mock === true;
+    // the place read from the point: the main office (Office), their own sub-location, any sub-location (remote, its
+    // name kept), their home, remote, or unknown (20 October 2026)
+    const read = checkInPlaceAt(reading, places, home);
+    // the office network (20 October 2026): refused off it when locked, unless within their own sub-location on a
+    // location that isn't a mock one; on it, at the office
+    const network = punchNetwork(lock, employment, context.signedIp.ip ?? null, waivesNetworkLock(read, mock));
     // without a location: in the app always refused, read at the press and never tracked (owner, 20 October 2026: "App
     // only"); on the website when the company refuses it for them, unless from an office network ("Allow as Office")
     const withoutLocation = locationRefusal({ session: context.session, reading: reading !== null, rule, person: employment, officeNetwork: network.network !== null });
@@ -187,18 +212,20 @@ export class CheckInService {
       await this.audit.record({ userId: user.id, action: 'check_in_refused', entityType: 'employee', entityId: employeeId, diff: { kind: dto.kind, date, reason: 'no_location' } });
       throw new ConflictException(NO_LOCATION_MESSAGE);
     }
-    // the place read from the point (office, home, remote or unknown) with the location's name; the point itself kept
-    // with the press, to 6 decimals (owner, 20 October 2026: "Yes, keep the spot"), a mock one too
-    const read = checkInPlace(reading, locations, home);
-    const place: CheckInPlace = network.network ? 'office' : read.place;
-    const { accuracyMetres } = read;
-    const locationName = read.location ?? null;
+    // on an office network it is Office whatever the location says (the networks mean the main office), the main
+    // office's name kept when it was within it; else the place read, with the main office's or the sub-location's name.
+    // The point itself kept with the press, to 6 decimals (owner, 20 October 2026: "Yes, keep the spot"), a mock one too
     const officeNetwork = network.network;
+    const place: CheckInPlace = officeNetwork ? 'office' : read.place;
+    const { accuracyMetres } = read;
+    const locationName = (officeNetwork ? (read.place === 'office' ? read.location : null) : read.location) ?? null;
+    const subLocation = officeNetwork ? null : (read.subLocation ?? null);
     const point = reading ? { latitude: coordinate(reading.latitude), longitude: coordinate(reading.longitude) } : { latitude: null, longitude: null };
     const expected = expectedPlace(employment.workArrangement, employment.officeDays, weekday(date));
-    // a check-in breaking the arrangement's rule, and any press on a location the phone said is a mock one (fake GPS); a
-    // remote check-in by someone with an approved home, away from it and the office (not at home or the office)
-    const flags = punchFlags(dto.kind, expected, place, dto.mock === true, home !== null);
+    // a check-in breaking the arrangement's rule (not at their own sub-location), and any press on a location the phone
+    // said is a mock one (fake GPS); a remote check-in by someone with an approved home, away from it, the office and
+    // the sub-locations (not at home or the office); one within a sub-location they aren't linked to (not their location)
+    const flags = punchFlags(dto.kind, expected, place, mock, home !== null, subLocation);
 
     const { kept, earlier } = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;
@@ -233,9 +260,12 @@ export class CheckInService {
       await this.corrections.rebuildIfCorrected(employeeId, date, user);
       await this.fill.fillMonth(employeeId, date.slice(0, 7), user);
     }
-    const view = await this.view(this.prisma, employeeId, employment, null, { locations, lock, rule }, now);
+    const view = await this.view(this.prisma, employeeId, employment, null, { locations, places, lock, rule }, now);
     const messages = kept
-      ? punchMessages({ kind: dto.kind, at: now.toISOString(), place, flags }, earlier.map(asPunch), { locationError: dto.locationError ?? null, officeSet: checkInLocationsSet(locations) })
+      ? punchMessages({ kind: dto.kind, at: now.toISOString(), place, flags, locationName }, earlier.map(asPunch), {
+          locationError: dto.locationError ?? null,
+          officeSet: checkInLocationsSet(locations),
+        })
       : [`Already ${dto.kind === 'in' ? 'checked in' : 'checked out'} a moment ago: that press is kept once.`];
     return { ...view, messages, kept };
   }
@@ -254,10 +284,10 @@ export class CheckInService {
     employeeId: string | null,
     employment: CheckInEmploymentRow | null,
     refusal: string | null,
-    setup: { locations: readonly OfficeLocation[]; lock: NetworkLockSetting; rule: LocationRule },
+    setup: { locations: readonly OfficeLocation[]; places: CheckInPlaces; lock: NetworkLockSetting; rule: LocationRule },
     now: Date,
   ): Promise<CheckInTodayView> {
-    const { locations, lock, rule } = setup;
+    const { locations, places, lock, rule } = setup;
     const shift = employment ? shiftOf(employment) : null;
     const date = shiftDayOf(now, shift);
     const punches: PunchRow[] = employeeId ? await db.attendancePunch.findMany({ where: { employeeId, date: toDateOnly(date) }, orderBy: { at: 'asc' }, select: PUNCH_SELECT }) : [];
@@ -274,6 +304,7 @@ export class CheckInService {
       expectedText: employment && expected ? expectedPlaceText(employment.workArrangement, expected) : null,
       officeLocationSet: checkInLocationsSet(locations),
       network: { locked: !!employment && lockedToOfficeNetwork(lock, employment) },
+      ownPlaces: places.subLocations.filter((l) => l.linked).map((l) => l.name),
       location: { required: !!employment && needsLocation(rule, employment) },
       shift: shift && { startTime: shift.startTime, endTime: shift.endTime, hoursPerDay: shift.hoursPerDay ?? null, graceMinutes: shift.graceMinutes ?? 0, countUntil: shift.countUntil },
     };

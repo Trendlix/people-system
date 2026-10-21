@@ -8,6 +8,8 @@ import {
   isCheckInFlag,
   isPunchKind,
   makesUpHours,
+  networkNeededText,
+  pressPlaceLabel,
   PUNCH_KIND_LABELS,
   shiftWindowOn,
   shiftWorkHours,
@@ -191,8 +193,25 @@ export function accuracyText(metres: number | null | undefined): string | null {
   return `±${Math.round(metres).toLocaleString('en-US')} m`;
 }
 
-/** A place in words: Office, Remote, Location unknown. */
-export const placeLabel = (place: CheckInPlace | null | undefined): string => (place ? (CHECK_IN_PLACE_LABELS[place] ?? place) : '—');
+/**
+ * A place in words: Office, Home, Remote, Location unknown; within a sub-location (its name with the press; owner, 20
+ * October 2026: "(Remote - Location name)"), "Remote - Studio".
+ */
+export const placeLabel = (place: CheckInPlace | null | undefined, locationName?: string | null): string =>
+  place ? (place === 'remote' && locationName?.trim() ? pressPlaceLabel(place, locationName) : (CHECK_IN_PLACE_LABELS[place] ?? place)) : '—';
+
+/** The day's place in words: its first check-in's (else its last check-out's), with the sub-location's name it was within. */
+export function dayPlaceLabel(day: Pick<PunchedDayView, 'place'>, punches: readonly Pick<PunchView, 'kind' | 'at' | 'place' | 'locationName'>[]): string {
+  const sorted = [...punches].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const shown = sorted.find((p) => p.kind === 'in') ?? sorted.filter((p) => p.kind === 'out').at(-1);
+  return shown && shown.place === day.place ? placeLabel(shown.place, shown.locationName) : placeLabel(day.place);
+}
+
+/**
+ * What the panel says when their check-ins are locked to the office network: the network, and (for someone linked to
+ * sub-locations) that at their own check-in places they may check in off it (20 October 2026).
+ */
+export const networkNote = (view: Pick<CheckInTodayView, 'ownPlaces'>): string => networkNeededText(view.ownPlaces ?? []);
 
 /** The flags' words, the known ones once each ("Checked in outside the office on an office day"). */
 export const flagLabels = (flags: readonly string[] | null | undefined): string[] => [...new Set((flags ?? []).filter(isCheckInFlag))].map((f) => CHECK_IN_FLAG_LABELS[f]);
@@ -217,7 +236,7 @@ export function punchRows(punches: readonly PunchView[]): PunchRow[] {
       key: `${i}-${p.kind}-${p.at}`,
       label: PUNCH_KIND_LABELS[p.kind] ?? p.kind,
       time: cairoClock(p.at),
-      place: placeLabel(p.place),
+      place: placeLabel(p.place, p.locationName),
       accuracy: accuracyText(p.accuracyMetres),
       flags: flagLabels(p.flags),
       map: punchMap(p),

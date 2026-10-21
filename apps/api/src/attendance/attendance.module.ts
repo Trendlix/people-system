@@ -5,7 +5,7 @@ import { AttendanceFillService } from './attendance-fill.service.js';
 import { AttendanceImportsController } from './attendance-imports.controller.js';
 import { AttendanceImportsService } from './attendance-imports.service.js';
 import { AttendanceService } from './attendance.service.js';
-import { CheckInSetupController } from './check-in-setup.controller.js';
+import { CheckInSetupController, EmployeeCheckInPlacesController } from './check-in-setup.controller.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
 import { CheckInController } from './check-in.controller.js';
 import { CheckInService } from './check-in.service.js';
@@ -27,7 +27,9 @@ import { HomeLocationsService } from './home-locations.service.js';
 // over the day it corrects. Check-in Setup (owner, 20 October 2026: "Own page, several locations"): the check-in locations
 // and the office networks with the lock on check-ins (CheckInSetupService). Home locations (owner, 20 October 2026: "allow
 // other users to request to add their home locations when working from home"): asked by anyone, decided by HR then the
-// CEO; a check-in within the person's approved home is Home (HomeLocationsService).
+// CEO; a check-in within the person's approved home is Home (HomeLocationsService). The main office and its
+// sub-locations (owner, 20 October 2026: "main office location is the hero and other locations are like sub locations"),
+// each sub-location's people, and a person's check-in places on their profile (EmployeeCheckInPlacesController).
 @Global()
 @Module({
   controllers: [
@@ -35,6 +37,7 @@ import { HomeLocationsService } from './home-locations.service.js';
     AttendanceImportsController,
     CheckInController,
     CheckInSetupController,
+    EmployeeCheckInPlacesController,
     MyCorrectionsController,
     AttendanceCorrectionsController,
     MyHomeLocationsController,

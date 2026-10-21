@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsObject, IsString, MaxLength, ValidateIf } from 'class-validator';
-import { OFFICE_RADIUS_DEFAULT, OFFICE_RADIUS_MAX, OFFICE_RADIUS_MIN } from '@trendlix/shared';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsNumber, IsObject, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator';
+import { LINK_PEOPLE_MAX, OFFICE_RADIUS_DEFAULT, OFFICE_RADIUS_MAX, OFFICE_RADIUS_MIN } from '@trendlix/shared';
 
 // Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"; check-ins locked to the office
 // network, the same day). The types here; what is wrong in words, from the shared checks (checkInLocationProblems,
@@ -66,4 +66,16 @@ export class UpdateOfficeNetworksDto {
 export class UpdateLocationRuleDto {
   @IsBoolean({ message: 'Send whether check-ins and check-outs without a location are refused as true or false.' })
   refuseWithoutLocation: boolean;
+}
+
+/**
+ * The people linked to a sub-location in one go (owner, 20 October 2026: "shown with their name and linked users"): their
+ * employee ids, 1 to 100; those already linked are left as they are.
+ */
+export class LinkPeopleDto {
+  @IsArray({ message: 'Send the people to link as a list of their ids.' })
+  @ArrayMinSize(1, { message: 'Choose at least one person to link.' })
+  @ArrayMaxSize(LINK_PEOPLE_MAX, { message: `Link at most ${LINK_PEOPLE_MAX} people at a time.` })
+  @IsUUID('all', { each: true, message: 'Send each person as their employee id.' })
+  employeeIds: string[];
 }

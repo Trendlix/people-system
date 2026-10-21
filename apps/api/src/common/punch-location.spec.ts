@@ -119,6 +119,8 @@ describe('the flags in a word or two', () => {
       location_unknown: 'No location',
       fake_gps: 'Fake GPS suspected',
       not_home_or_office: 'Not at home or the office',
+      // a sub-location the person isn't linked to (20 October 2026: "will check it")
+      not_their_location: 'Not their location',
     });
   });
 });

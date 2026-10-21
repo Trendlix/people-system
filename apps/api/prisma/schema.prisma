@@ -502,6 +502,7 @@ model Employee {
   leaveAdjustments           LeaveAdjustment[] // HR's changes to the annual leave balance
   leading                    Department[]           @relation("DepartmentHead") // the departments this person heads and the teams they lead
   homeLocations              HomeLocationRequest[] // the home locations this person asked for (20 October 2026): one approved at most, its point only while decided or in force
+  checkInPlaces              CheckInLocationPerson[] // the sub-locations this person is linked to (20 October 2026): their own check-in places
 
   @@map("employees")
 }
@@ -1246,16 +1247,40 @@ model PayrollSettings {
 // add the eligable check in locations", then "Own page, several locations"): Attendance → Check-in Setup, HR and Admin.
 // Within any one's radius a check-in is at the office, outside them all remote, no reading: unknown (packages/shared
 // check-in.ts checkInPlace). The first, "Office", is the point Payroll Setup → Your Rules had (the migration copied it).
+// The main office and its sub-locations (owner, 20 October 2026: "main office location is the hero and other locations
+// are like sub locations. shown with their name and linked users"): one is the main (isMain), within which a check-in is
+// Office; within any other, a sub-location, it is remote, kept with its name ("Remote - Studio"), and flagged for anyone
+// not linked to it (packages/shared sub-locations.ts). At most one main, by a partial unique index (the migration's
+// "check_in_locations_one_main"); the API keeps one while there are any.
 model CheckInLocation {
-  id           String   @id @default(uuid()) @db.Uuid
+  id           String                  @id @default(uuid()) @db.Uuid
   name         String
-  latitude     Decimal  @db.Decimal(9, 6)
-  longitude    Decimal  @db.Decimal(9, 6)
-  radiusMetres Int      @default(150) @map("radius_metres") // 20 to 5,000
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  latitude     Decimal                 @db.Decimal(9, 6)
+  longitude    Decimal                 @db.Decimal(9, 6)
+  radiusMetres Int                     @default(150) @map("radius_metres") // 20 to 5,000
+  isMain       Boolean                 @default(false) @map("is_main") // the main office; the oldest when sub-locations came (20 October 2026)
+  people       CheckInLocationPerson[] // the people linked to it, while it is a sub-location
+  createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime                @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("check_in_locations")
+}
+
+// A person linked to a sub-location (owner, 20 October 2026: "shown with their name and linked users", "own sublocation
+// shows the sub location name"): their own check-in place, where they aren't flagged, and where a locked Office person may
+// check in off the office network. Linked and unlinked by HR and Admin, each in the audit log; a C-level person only by
+// those who see them. Links to the main office don't count while it is the main (kept, so they count again if it is a
+// sub-location again).
+model CheckInLocationPerson {
+  locationId String          @map("location_id") @db.Uuid
+  location   CheckInLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  employeeId String          @map("employee_id") @db.Uuid
+  employee   Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  @@id([locationId, employeeId])
+  @@index([employeeId])
+  @@map("check_in_location_people")
 }
 
 // The year's official holidays (owner's request, 16 October 2026, Payroll Setup): one day each, a holiday of several
