@@ -265,6 +265,9 @@ async function Home() {
           <TodayCheckIn big />
         </Suspense>
       )}
+      {/* Assets, for those with Assets access (owner, 21 October 2026: "an 'Assets' entry for people with access"), right
+          under the check-in: lower down it was missed ("i cant find the assets in the app version") */}
+      <AssetsCard assets={user.assets} />
       {decidesSomething(user) && (
         <Suspense fallback={null}>
           <Waiting user={user} />
@@ -280,8 +283,6 @@ async function Home() {
           <Shortcuts profile={profile} today={today} />
         </Suspense>
       )}
-      {/* Assets, for those with Assets access (owner, 21 October 2026: "an 'Assets' entry for people with access") */}
-      <AssetsCard assets={user.assets} />
       {profile?.employment && underLabourLaw(profile.employment.employmentType) && (
         <Suspense fallback={<CardLoading title="Balances" />}>
           <Balances today={today} />
