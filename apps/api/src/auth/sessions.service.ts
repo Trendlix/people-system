@@ -34,6 +34,8 @@ export interface SessionView {
   lastActiveAt: Date;
   expiresAt: Date;
   userAgent: string | null;
+  /** A Claude connector's (kind 'connector', 21 October 2026): the client's name, "Claude"; null for the other kinds. */
+  client: string | null;
   /** The session the request was made with: "This device". */
   current: boolean;
 }
@@ -50,7 +52,7 @@ export interface SessionStatus {
   idleMsLeft: number | null;
 }
 
-const VIEW = { id: true, kind: true, createdAt: true, lastActiveAt: true, expiresAt: true, userAgent: true } as const;
+const VIEW = { id: true, kind: true, createdAt: true, lastActiveAt: true, expiresAt: true, userAgent: true, client: { select: { name: true } } } as const;
 
 const SUPER_ADMIN_ACCOUNT_ONLY = "Only a Super Admin can change a Super Admin's account.";
 
@@ -139,7 +141,7 @@ export class SessionsService {
       select: VIEW,
       orderBy: { createdAt: 'desc' },
     });
-    return rows.map((r) => ({ ...r, kind: r.kind as SessionKind, current: r.id === currentId }));
+    return rows.map(({ client, ...r }) => ({ ...r, kind: r.kind as SessionKind, client: r.kind === 'connector' ? (client?.name ?? 'Claude') : null, current: r.id === currentId }));
   }
 
   /** The Users page: a user's sessions still open; `currentId`: the Admin's own request's (when it is their account). */

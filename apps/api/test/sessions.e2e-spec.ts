@@ -252,8 +252,8 @@ describe('Sessions (e2e)', () => {
     const phone = await signIn(app, email, APP_USER_AGENT);
     const list = await api().get('/api/auth/sessions').set('Cookie', web).expect(200);
     expect(list.body).toEqual([
-      { id: sidOf(phone), kind: 'app', createdAt: expect.any(String), lastActiveAt: expect.any(String), expiresAt: expect.any(String), userAgent: APP_USER_AGENT, current: false },
-      { id: sidOf(web), kind: 'web', createdAt: expect.any(String), lastActiveAt: expect.any(String), expiresAt: expect.any(String), userAgent: BROWSER, current: true },
+      { id: sidOf(phone), kind: 'app', createdAt: expect.any(String), lastActiveAt: expect.any(String), expiresAt: expect.any(String), userAgent: APP_USER_AGENT, client: null, current: false },
+      { id: sidOf(web), kind: 'web', createdAt: expect.any(String), lastActiveAt: expect.any(String), expiresAt: expect.any(String), userAgent: BROWSER, client: null, current: true },
     ]);
 
     await api().post(`/api/auth/sessions/${sidOf(phone)}/end`).set('Cookie', web).expect(204);

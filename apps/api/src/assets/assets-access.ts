@@ -33,8 +33,11 @@ export async function assetsCallerOf(prisma: PrismaService, user: SessionUser): 
   return { user, access: assetsAccessOf({ roles: user.roles, assetsAccess: row?.assetsAccess }), values: seesAssetValues(user) };
 }
 
-/** GET /auth/me's `assets`. `ai`: the Assets AI (step 2: a Claude connector, owner, 21 October 2026) isn't built yet, so false. */
-export const assetsMe = (caller: Pick<AssetsCaller, 'access' | 'values'>): AssetsAccessView => ({ access: caller.access, values: caller.values, ai: false });
+/**
+ * GET /auth/me's `assets`. `ai`: the Claude connector (step 2; owner, 21 October 2026: "the connection method") is
+ * offered to them: anyone with Assets access (it reads at their level and drafts for a custodian or manager).
+ */
+export const assetsMe = (caller: Pick<AssetsCaller, 'access' | 'values'>): AssetsAccessView => ({ access: caller.access, values: caller.values, ai: caller.access !== 'none' });
 
 /** Why the caller can't, or null when they can: no access at all first, then the level, then the values. */
 export function assetsRefusal(caller: Pick<AssetsCaller, 'access' | 'values'>, need: { level: AssetsAccess; values?: boolean; settings?: boolean }): string | null {

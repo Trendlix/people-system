@@ -60,6 +60,15 @@ describe('who did it', () => {
     expect(who.user?.email).toBe('mona@trendlix.com');
   });
 
+  it('says "Y via Claude connector" for what the user’s Claude did through the connector (21 October 2026)', () => {
+    const who = whoOf(row({ via: 'claude_connector' }), refs().users);
+    expect(who.text).toBe('Mona Hassan via Claude connector');
+    expect(who.via).toBe('claude_connector');
+    expect(whoOf(row({}), refs().users).via).toBeNull();
+    // anything else the column might hold is not shown as the connector
+    expect(whoOf(row({ via: 'something' }), refs().users).text).toBe('Mona Hassan');
+  });
+
   it('says who it was when nobody signed in did it', () => {
     expect(whoOf(row({ userId: null }), refs().users).text).toBe('System');
     expect(whoOf(row({ userId: null, action: 'login_failed', entityType: 'user' }), refs().users).text).toBe('Not signed in');

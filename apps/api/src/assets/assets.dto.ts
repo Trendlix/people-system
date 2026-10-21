@@ -164,12 +164,28 @@ export class ListAssetsQueryDto {
   @IsOptional() @IsUUID('all', { message: 'Choose a kit.' })
   kitId?: string;
 
+  /** Who holds it: part of their name or employee code (step 2, 21 October 2026: the Claude connector's search). */
+  @IsOptional() @Trim() @IsString() @MaxLength(100, { message: 'Keep the holder’s name to 100 characters or fewer.' })
+  holder?: string;
+
   /** The "Needs values" list: no purchase cost, not disposed (the CEO, Finance and a Super Admin only). */
   @IsOptional() @Transform(yes) @IsBoolean()
   needsValues?: boolean;
 
   @IsOptional() @Type(() => Number) @IsInt({ message: 'Choose a page.' }) @Min(1, { message: 'Choose a page.' }) @Max(100_000)
   page?: number;
+}
+
+/** GET /assets/reports/holders: a person's name or employee code (step 2, the Claude connector's who_holds). */
+export class AssetHoldersQueryDto {
+  @IsOptional() @Trim() @IsString() @MaxLength(100, { message: 'Keep the name to 100 characters or fewer.' })
+  q?: string;
+}
+
+/** GET /assets/reports/stock: ?reorder=1 for only those at or under their reorder level. */
+export class AssetStockQueryDto {
+  @IsOptional() @Transform(yes) @IsBoolean()
+  reorder?: boolean;
 }
 
 export class CreateRoomDto {

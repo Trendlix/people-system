@@ -92,6 +92,7 @@ export function AssetForm({
   today,
   photosHad = 0,
   ai,
+  draftId = null,
   surface,
   cancelHref,
 }: {
@@ -107,8 +108,10 @@ export function AssetForm({
   kits: AssetKitView[];
   today: string;
   photosHad?: number;
-  /** Whether the Assets AI is set up (GET /auth/me's assets.ai): always false in step 1. */
+  /** Whether the Claude connector is offered to them (GET /auth/me's assets.ai: anyone with Assets access, since step 2). */
   ai: boolean;
+  /** Add only: the draft from Claude it is filled in from; saving confirms it (step 2). */
+  draftId?: string | null;
   surface: Surface;
   cancelHref: string;
 }) {
@@ -146,7 +149,7 @@ export function AssetForm({
     setErrors([]);
     start(async () => {
       setProgress('Saving…');
-      const result = await saveAsset(mode === 'edit' ? code : null, mode === 'edit' ? from : null, fd);
+      const result = await saveAsset(mode === 'edit' ? code : null, mode === 'edit' ? from : null, fd, mode === 'add' ? draftId : null);
       if (result.errors?.length || !result.code) {
         setErrors(result.errors?.length ? result.errors : ['The asset could not be saved. Please try again.']);
         setProgress(null);
@@ -170,18 +173,18 @@ export function AssetForm({
       <FormErrors errors={errors} />
 
       {/* Step 2 (owner, 21 October 2026: "i might link a claude account for the assets section only to fetch data and
-          help in the data entry"; then "the connection method", a connector on their own Claude account): "Fill from
-          photos" (identify the asset from photos) and "Scan label" (read a serial label). Shown only once the AI is set
-          up (GET /auth/me's assets.ai, always false in step 1): the form works by hand without it. */}
-      {ai && (
-        <section aria-label="Fill in with AI" className="flex flex-wrap gap-2 rounded-lg border border-dashed border-line p-3">
-          <button type="button" disabled className="btn btn-secondary" data-assets-ai="fill-from-photos">
-            Fill from photos
-          </button>
-          <button type="button" disabled className="btn btn-secondary" data-assets-ai="scan-label">
-            Scan label
-          </button>
-        </section>
+          help in the data entry"; then "the connection method", a connector on their own Claude account): photos and
+          labels are read in Claude, which drafts the asset through the connector; the draft is confirmed on this form.
+          On the site's Add form, for anyone the connector is offered to (GET /auth/me's assets.ai); the form works by
+          hand without it. */}
+      {ai && mode === 'add' && !draftId && surface === 'site' && (
+        <p className="rounded-lg border border-dashed border-line p-3 text-sm text-muted">
+          Have photos or a label? Ask Claude to draft it with the Trendlix People connector:{' '}
+          <Link href={ASSET_PATHS.connectClaude} className="font-semibold">
+            Connect Claude
+          </Link>
+          .
+        </p>
       )}
 
       <Section title="What It Is">
@@ -385,7 +388,7 @@ export function AssetForm({
 
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={busy} className="btn btn-primary">
-          {progress ?? (shrinking ? 'Preparing the photos…' : mode === 'add' ? 'Add asset' : 'Save changes')}
+          {progress ?? (shrinking ? 'Preparing the photos…' : mode === 'add' ? (draftId ? 'Confirm and add' : 'Add asset') : 'Save changes')}
         </button>
         <Link href={cancelHref} className={`btn btn-secondary ${saving ? 'pointer-events-none opacity-60' : ''}`} aria-disabled={saving || undefined}>
           Cancel

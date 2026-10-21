@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
+import { ConnectorTokensService } from '../connector/connector-tokens.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
@@ -20,6 +21,7 @@ import { ViewAsService } from './view-as.service.js';
     }),
   ],
   controllers: [AuthController, ViewAsController, UserSessionsController, UserDevicesController],
-  providers: [AuthService, SessionsService, DeviceCredentialsService, ViewAsService, { provide: APP_GUARD, useClass: AuthGuard }],
+  // the Claude connector's tokens, checked by the guard (21 October 2026)
+  providers: [AuthService, SessionsService, DeviceCredentialsService, ViewAsService, ConnectorTokensService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AuthModule {}

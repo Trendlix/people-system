@@ -118,6 +118,10 @@ model User {
   assetStockMoves       AssetStockMove[]           @relation("AssetStockMoveBy") // the stock moves this user made
   assetCounts           AssetCount[]               @relation("AssetCountBy") // the asset counts this user made
   assetsMarkedLost      AssetCountLine[]           @relation("AssetCountLostBy") // the missing assets this user marked lost after a count
+  connectorCodes        ConnectorCode[] // the Claude connector's sign-in codes this user allowed (21 October 2026)
+  assetDraftsMade       AssetDraft[]               @relation("AssetDraftCreation") // the asset drafts made in this user's name, through the Claude connector
+  assetDraftsConfirmed  AssetDraft[]               @relation("AssetDraftConfirmation") // the asset drafts this user confirmed into assets
+  assetDraftsDiscarded  AssetDraft[]               @relation("AssetDraftDiscard") // the asset drafts this user discarded
 
   @@map("users")
 }
@@ -230,9 +234,80 @@ model Session {
   endReason    String?   @map("end_reason") // SESSION_END_REASONS: signed_out, replaced, idle, expired, revoked
   userAgent    String?   @map("user_agent") // the browser's or the app's, up to 300 characters
   ip           String?
+  // a Claude connector's (kind 'connector', owner, 21 October 2026: "the connection method"): the client it was allowed
+  // for, its scope (assets), the MCP address its tokens are for (RFC 8707), and its tokens; null on the other kinds
+  clientId     String?          @map("client_id")
+  client       ConnectorClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  scope        String?
+  resource     String?
+  tokens       ConnectorToken[]
+  codes        ConnectorCode[]
 
   @@index([userId, endedAt])
+  @@index([clientId])
   @@map("sessions")
+}
+
+// The Claude connector's OAuth clients (owner, 21 October 2026: "the connection method"; packages/shared connector.ts):
+// one Claude registered by dynamic client registration (RFC 7591; its id "tlxcl_…"), or read from a Client ID Metadata
+// Document on Claude's own hosts (its id that address). Its return addresses are only Claude's documented ones; a
+// client registered with a secret keeps only the secret's SHA-256. One never used is removed a day after registering.
+model ConnectorClient {
+  id           String          @id
+  kind         String // dcr, cimd
+  name         String // client_name, e.g. "Claude"
+  redirectUris String[]        @map("redirect_uris")
+  authMethod   String          @default("none") @map("auth_method") // none, client_secret_post, client_secret_basic
+  secretHash   String?         @map("secret_hash")
+  ip           String? // where it registered from, as the website saw it
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  usedAt       DateTime?       @map("used_at") @db.Timestamptz // the last time a person allowed it
+  fetchedAt    DateTime?       @map("fetched_at") @db.Timestamptz // a metadata document's: when it was read
+  codes        ConnectorCode[]
+  sessions     Session[]
+
+  @@index([createdAt])
+  @@map("connector_clients")
+}
+
+// A sign-in code (RFC 6749 §4.1, with PKCE): given when a person presses Allow, redeemed once within 5 minutes by the
+// client it was given to, at the return address it was given for, with the verifier of its S256 challenge. Kept only as
+// its SHA-256; the session its tokens started is kept, so a code used twice ends that session.
+model ConnectorCode {
+  id            String          @id @default(uuid()) @db.Uuid
+  codeHash      String          @unique @map("code_hash")
+  clientId      String          @map("client_id")
+  client        ConnectorClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId        String          @map("user_id") @db.Uuid
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri   String          @map("redirect_uri")
+  codeChallenge String          @map("code_challenge")
+  scope         String
+  resource      String
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt     DateTime        @map("expires_at") @db.Timestamptz
+  usedAt        DateTime?       @map("used_at") @db.Timestamptz
+  sessionId     String?         @map("session_id") @db.Uuid
+  session       Session?        @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
+  @@map("connector_codes")
+}
+
+// A connector session's tokens: access tokens for an hour, refresh tokens rotated on every use (the old one marked
+// rotated: used again, the session ends). Kept only as their SHA-256 (the token is given once); they end with the session.
+model ConnectorToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  sessionId String    @map("session_id") @db.Uuid
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  kind      String // access, refresh
+  tokenHash String    @unique @map("token_hash")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  rotatedAt DateTime? @map("rotated_at") @db.Timestamptz // a refresh token: when it was used for a new one
+
+  @@index([sessionId, kind])
+  @@map("connector_tokens")
 }
 
 model UserRole {
@@ -1083,6 +1158,9 @@ model AuditLog {
   entityId     String?  @map("entity_id") @db.Uuid
   diff         Json?
   at           DateTime @default(now()) @db.Timestamptz
+  // How it was done, when not on the website or the app: 'claude_connector' (owner, 21 October 2026: "the connection
+  // method"), the user's own Claude through the connector; null otherwise.
+  via          String?
 
   @@index([entityType, entityId])
   @@map("audit_log")
@@ -2618,6 +2696,7 @@ model Asset {
   maintenance        AssetMaintenance[]
   stockMoves         AssetStockMove[]
   countLines         AssetCountLine[]
+  drafts             AssetDraft[] // the draft it was confirmed from (step 2, the Claude connector)
 
   @@index([group, status])
   @@index([status])
@@ -2795,4 +2874,32 @@ model AssetCountLine {
   @@unique([countId, assetId])
   @@index([assetId])
   @@map("asset_count_lines")
+}
+
+// An asset drafted by Claude through the connector (step 2; owner, 21 October 2026: "help in the data entry"; the spec:
+// "nothing is saved until a person presses Save"): never an asset, so in no total or list but Drafts from Claude. Its
+// fields as the Add form takes them (packages/shared AssetInput), its values only from the CEO, Finance or a Super Admin
+// (AssetValuesInput, shown only to them). A custodian or manager confirms it in the system (its code given then, the
+// asset it became kept) or discards it; both kept, for the audit log.
+model AssetDraft {
+  id            String    @id @default(uuid()) @db.Uuid
+  status        String    @default("open") // ASSET_DRAFT_STATUSES: open, confirmed, discarded
+  source        String    @default("claude") // ASSET_DRAFT_SOURCES
+  fields        Json
+  values        Json?
+  createdById   String?   @map("created_by") @db.Uuid
+  createdBy     User?     @relation("AssetDraftCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  confirmedAt   DateTime? @map("confirmed_at") @db.Timestamptz
+  confirmedById String?   @map("confirmed_by") @db.Uuid
+  confirmedBy   User?     @relation("AssetDraftConfirmation", fields: [confirmedById], references: [id], onDelete: SetNull)
+  assetId       String?   @map("asset_id") @db.Uuid
+  asset         Asset?    @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  discardedAt   DateTime? @map("discarded_at") @db.Timestamptz
+  discardedById String?   @map("discarded_by") @db.Uuid
+  discardedBy   User?     @relation("AssetDraftDiscard", fields: [discardedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@map("asset_drafts")
 }

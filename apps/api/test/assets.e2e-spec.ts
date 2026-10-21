@@ -94,15 +94,15 @@ describe('Assets (e2e)', () => {
     await setAccess('none', 'manager', 'manager').expect(403);
   });
 
-  it('GET /auth/me says each one’s access in effect and whether they see the values; the AI is off in step 1', async () => {
+  it('GET /auth/me says each one’s access in effect, whether they see the values, and that the Claude connector is offered to anyone with access (step 2)', async () => {
     const me = async (key: string) => (await api().get('/api/auth/me').set('Cookie', sessions[key]).expect(200)).body.assets;
     expect(await me('none')).toEqual({ access: 'none', values: false, ai: false });
-    expect(await me('viewer')).toEqual({ access: 'viewer', values: false, ai: false });
-    expect(await me('custodian')).toEqual({ access: 'custodian', values: false, ai: false });
-    expect(await me('manager')).toEqual({ access: 'manager', values: false, ai: false });
-    expect(await me('finance')).toEqual({ access: 'viewer', values: true, ai: false });
-    expect(await me('ceo')).toEqual({ access: 'viewer', values: true, ai: false });
-    expect(await me('superAdmin')).toEqual({ access: 'manager', values: true, ai: false });
+    expect(await me('viewer')).toEqual({ access: 'viewer', values: false, ai: true });
+    expect(await me('custodian')).toEqual({ access: 'custodian', values: false, ai: true });
+    expect(await me('manager')).toEqual({ access: 'manager', values: false, ai: true });
+    expect(await me('finance')).toEqual({ access: 'viewer', values: true, ai: true });
+    expect(await me('ceo')).toEqual({ access: 'viewer', values: true, ai: true });
+    expect(await me('superAdmin')).toEqual({ access: 'manager', values: true, ai: true });
   });
 
   it('without access the module answers 403 everywhere', async () => {

@@ -738,6 +738,8 @@ export interface OpenSession {
   expiresAt: string;
   /** The browser's or the app's, as it said at signing in; null when it said nothing. */
   userAgent: string | null;
+  /** A Claude connector's (owner, 21 October 2026: "the connection method"): the client's name, "Claude"; else null. */
+  client?: string | null;
   /** The session this page was asked with: "This device". */
   current: boolean;
 }

@@ -3,8 +3,8 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { Select } from '@/components/select';
 import { ASSET_PATHS } from '@/lib/asset-paths';
-import { asQuery, groupChips, isFiltered, readAssetQuery, statusChips, type ChipLink } from './assets';
-import { assetsCaller, assetsNotLoaded, listOrEmpty, loadAssets, loadKits, loadRooms } from './data';
+import { asQuery, draftsLinkText, groupChips, isFiltered, readAssetQuery, statusChips, type ChipLink } from './assets';
+import { assetsCaller, assetsNotLoaded, listOrEmpty, loadAssets, loadDrafts, loadKits, loadRooms } from './data';
 import { AssetTable, Empty, Loading, NoAccess, Pages } from './ui';
 
 // The asset register (owner, 21 October 2026: "i want to add this module with a special permission to the system"; the
@@ -37,7 +37,10 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
   const [{ access, can }, params] = await Promise.all([assetsCaller(), searchParams]);
   if (!can.view) return <NoAccess />;
   const query = readAssetQuery(params);
-  const [loaded, rooms, kits] = await Promise.all([loadAssets(asQuery(query)), loadRooms(), loadKits()]);
+  // the drafts from Claude waiting (step 2, owner, 21 October 2026: "the connection method"), for those who confirm them
+  const [loaded, rooms, kits, drafts] = await Promise.all([loadAssets(asQuery(query)), loadRooms(), loadKits(), can.register ? loadDrafts() : null]);
+  const openDrafts = drafts?.kind === 'ok' ? drafts.value.length : 0;
+  const draftsText = draftsLinkText(openDrafts);
   const deleted = typeof params.deleted === 'string' ? params.deleted : null;
   const counts = loaded.kind === 'ok' ? loaded.value.counts : null;
   const roomList = listOrEmpty(rooms);
@@ -94,8 +97,14 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
             Clear
           </Link>
         )}
+        {draftsText && (
+          <Link href={ASSET_PATHS.drafts} aria-label={draftsText} className="btn btn-secondary sm:ml-auto">
+            Drafts from Claude
+            <span className="badge bg-accent-soft text-accent tabular-nums">{openDrafts}</span>
+          </Link>
+        )}
         {can.register && (
-          <Link href={ASSET_PATHS.new} className="btn btn-primary sm:ml-auto">
+          <Link href={ASSET_PATHS.new} className={`btn btn-primary ${draftsText ? '' : 'sm:ml-auto'}`}>
             Add asset
           </Link>
         )}

@@ -117,7 +117,7 @@ function valuesOf(r: Row): AssetValuesInput {
   };
 }
 
-const NO_VALUES: AssetValuesInput = { purchasePrice: null, supplier: null, invoiceNo: null, priceLow: null, marketValue: null, priceHigh: null, priceNote: null };
+export const NO_VALUES: AssetValuesInput = { purchasePrice: null, supplier: null, invoiceNo: null, priceLow: null, marketValue: null, priceHigh: null, priceNote: null };
 
 /** The asset's fields as the database keeps them. */
 function fieldData(a: AssetInput) {
@@ -146,14 +146,14 @@ function fieldData(a: AssetInput) {
 const valueData = (v: AssetValuesInput) => ({ ...v });
 
 /** The values in the audit log: each one there as 'set' or 'changed', never its amount or words. */
-function maskedValues(diff: Record<string, unknown>, mark: 'set' | 'changed'): Record<string, unknown> {
+export function maskedValues(diff: Record<string, unknown>, mark: 'set' | 'changed'): Record<string, unknown> {
   const out = { ...diff };
   for (const key of ASSET_VALUE_FIELDS) if (key in out) out[key] = mark;
   return out;
 }
 
 /** The fields a request sends for a group that doesn't have them: refused rather than dropped. */
-function sentForAnotherGroup(dto: { kitId?: string | null; quantity?: number | null; reorderLevel?: number | null; unit?: string | null }, group: AssetGroup): string[] {
+export function sentForAnotherGroup(dto: { kitId?: string | null; quantity?: number | null; reorderLevel?: number | null; unit?: string | null }, group: AssetGroup): string[] {
   const out: string[] = [];
   if (dto.kitId && group !== 'kit') out.push('Only a production kit asset goes in a kit.');
   if ((dto.quantity != null || dto.reorderLevel != null || dto.unit != null) && group !== 'consumable') out.push('Only consumables are kept by quantity.');
@@ -168,7 +168,7 @@ function searchWhere(q: string | undefined): Prisma.AssetWhereInput {
 }
 
 /** "A value given": the values sent, with what isn't sent left as it was. */
-function mergeValues(before: AssetValuesInput, sent: AssetValuesDto | undefined): AssetValuesInput {
+export function mergeValues(before: AssetValuesInput, sent: AssetValuesDto | undefined): AssetValuesInput {
   const out = { ...before };
   if (!sent) return out;
   for (const key of ASSET_VALUE_FIELDS) {
@@ -176,6 +176,78 @@ function mergeValues(before: AssetValuesInput, sent: AssetValuesDto | undefined)
     if (value !== undefined) (out as Record<string, unknown>)[key] = value;
   }
   return out;
+}
+
+/**
+ * A new asset's fields from what Add sends (a draft's too): its class and useful life default to its group's (owner's
+ * spec §2.2: 8, 5, 3, 7 years; none for consumables), fitted to its group.
+ */
+export function newAssetInput(dto: CreateAssetDto): AssetInput {
+  const rule = ASSET_GROUP_RULES[dto.group];
+  return fitToGroup<AssetInput>({
+    name: dto.name,
+    group: dto.group,
+    type: dto.type,
+    assetClass: dto.assetClass ?? rule.defaultClass,
+    brand: dto.brand ?? null,
+    model: dto.model ?? null,
+    serial: dto.serial ?? null,
+    condition: dto.condition ?? null,
+    roomId: dto.roomId ?? null,
+    kitId: dto.kitId ?? null,
+    quantity: dto.quantity ?? null,
+    unit: dto.unit ?? null,
+    reorderLevel: dto.reorderLevel ?? null,
+    purchaseDate: dto.purchaseDate ?? null,
+    usefulLifeYears: dto.usefulLifeYears ?? rule.usefulLifeYears,
+    warrantyEnd: dto.warrantyEnd ?? null,
+    notes: dto.notes ?? null,
+  });
+}
+
+/**
+ * An asset's fields after an edit (a draft's too): only what is sent changes (null clears it); a new group brings its
+ * class and, when it had none, its useful life, unless they are sent; an asset becoming a consumable is one of it unless
+ * a quantity is sent; fitted to its group, so nothing of the old group stays.
+ */
+export function editedAssetInput(before: AssetInput, dto: UpdateAssetDto): AssetInput {
+  const group = dto.group ?? before.group;
+  const groupChanged = group !== before.group;
+  const rule = ASSET_GROUP_RULES[group];
+  const sent = <K extends keyof AssetInput>(key: K, value: AssetInput[K] | undefined): AssetInput[K] => (value === undefined ? before[key] : value);
+  const merged: AssetInput = {
+    name: dto.name ?? before.name,
+    group,
+    type: dto.type ?? before.type,
+    assetClass: dto.assetClass ?? (groupChanged ? rule.defaultClass : before.assetClass),
+    brand: sent('brand', dto.brand),
+    model: sent('model', dto.model),
+    serial: sent('serial', dto.serial),
+    condition: sent('condition', dto.condition),
+    roomId: sent('roomId', dto.roomId),
+    kitId: sent('kitId', dto.kitId),
+    quantity: sent('quantity', dto.quantity),
+    unit: sent('unit', dto.unit),
+    reorderLevel: sent('reorderLevel', dto.reorderLevel),
+    purchaseDate: sent('purchaseDate', dto.purchaseDate),
+    usefulLifeYears: dto.usefulLifeYears !== undefined ? dto.usefulLifeYears : groupChanged && before.usefulLifeYears === null ? rule.usefulLifeYears : before.usefulLifeYears,
+    warrantyEnd: sent('warrantyEnd', dto.warrantyEnd),
+    notes: sent('notes', dto.notes),
+  };
+  if (groupChanged && group === 'consumable' && merged.quantity === null) merged.quantity = 1;
+  return fitToGroup(merged);
+}
+
+/**
+ * What else registering an asset does (step 2: confirming a draft from Claude): `values`, the draft's values, kept when
+ * the person confirming can't see them (they were drafted by someone who can); `within`, run in the transaction that
+ * saves the asset with its code (a draft marked confirmed: when it can't be, nothing is saved and the code isn't used);
+ * `audit`, more for the asset's entry.
+ */
+export interface CreateOptions {
+  values?: AssetValuesInput;
+  within?: (tx: Prisma.TransactionClient, created: { id: string; code: string }) => Promise<void>;
+  audit?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -201,6 +273,8 @@ export class AssetsService {
         q.group ? { group: q.group } : {},
         q.roomId ? { roomId: q.roomId } : {},
         q.kitId ? { kitId: q.kitId } : {},
+        // who holds it, by their name or employee code (step 2: the Claude connector's search)
+        q.holder ? { holder: { is: { OR: [{ fullNameEn: { contains: q.holder, mode: 'insensitive' } }, { employeeCode: { contains: q.holder, mode: 'insensitive' } }] } } } : {},
         q.needsValues ? { purchasePrice: null, status: { not: 'disposed' } } : {},
       ],
     };
@@ -242,31 +316,11 @@ export class AssetsService {
    * transaction that saves it, from the counter of its prefix and type (race-safe). The values only from those who see
    * them.
    */
-  async create(dto: CreateAssetDto, caller: AssetsCaller): Promise<AssetView> {
+  async create(dto: CreateAssetDto, caller: AssetsCaller, options: CreateOptions = {}): Promise<AssetView> {
     if (dto.values && !caller.values) throw new ForbiddenException(ASSETS_REFUSALS.values);
-    const rule = ASSET_GROUP_RULES[dto.group];
-    const input = fitToGroup<AssetInput>({
-      name: dto.name,
-      group: dto.group,
-      type: dto.type,
-      assetClass: dto.assetClass ?? rule.defaultClass,
-      brand: dto.brand ?? null,
-      model: dto.model ?? null,
-      serial: dto.serial ?? null,
-      condition: dto.condition ?? null,
-      roomId: dto.roomId ?? null,
-      kitId: dto.kitId ?? null,
-      quantity: dto.quantity ?? null,
-      unit: dto.unit ?? null,
-      reorderLevel: dto.reorderLevel ?? null,
-      purchaseDate: dto.purchaseDate ?? null,
-      // left empty: the group's (owner's spec §2.2: 8, 5, 3, 7 years; none for consumables)
-      usefulLifeYears: dto.usefulLifeYears ?? rule.usefulLifeYears,
-      warrantyEnd: dto.warrantyEnd ?? null,
-      notes: dto.notes ?? null,
-    });
+    const input = newAssetInput(dto);
     const status: AssetStatus = dto.status ?? 'available';
-    const values = mergeValues(NO_VALUES, dto.values);
+    const values = options.values ?? mergeValues(NO_VALUES, dto.values);
     const problems = [
       ...sentForAnotherGroup(dto, dto.group),
       ...assetProblems(input, todayInCairo()),
@@ -280,14 +334,22 @@ export class AssetsService {
     const created = await this.prisma.$transaction(async (tx) => {
       const prefix = assetCodePrefix(input.group, input.type);
       const code = assetCode(prefix, await nextCodeNumber(tx, prefix));
-      return tx.asset.create({
+      const row = await tx.asset.create({
         data: { code, ...fieldData(input), status, ...valueData(values), priceUpdatedAt: marketSet ? new Date() : null, createdById: caller.user.id },
         select: { id: true, code: true },
       });
+      if (options.within) await options.within(tx, row);
+      return row;
     });
 
     const given = Object.fromEntries(Object.entries({ ...input, status, ...values }).filter(([, v]) => v !== null));
-    await this.audit.record({ userId: caller.user.id, action: 'create', entityType: ASSET_ENTITY, entityId: created.id, diff: maskedValues({ code: created.code, ...given }, 'set') });
+    await this.audit.record({
+      userId: caller.user.id,
+      action: 'create',
+      entityType: ASSET_ENTITY,
+      entityId: created.id,
+      diff: maskedValues({ code: created.code, ...given, ...options.audit }, 'set'),
+    });
     return this.get(created.code, caller);
   }
 
@@ -301,32 +363,8 @@ export class AssetsService {
     if (dto.values && !caller.values) throw new ForbiddenException(ASSETS_REFUSALS.values);
     const row = await this.full(code);
     const before = fieldsOf(row);
-    const group = dto.group ?? before.group;
-    const groupChanged = group !== before.group;
-    const rule = ASSET_GROUP_RULES[group];
-    const sent = <K extends keyof AssetInput>(key: K, value: AssetInput[K] | undefined): AssetInput[K] => (value === undefined ? before[key] : value);
-    const merged: AssetInput = {
-      name: dto.name ?? before.name,
-      group,
-      type: dto.type ?? before.type,
-      assetClass: dto.assetClass ?? (groupChanged ? rule.defaultClass : before.assetClass),
-      brand: sent('brand', dto.brand),
-      model: sent('model', dto.model),
-      serial: sent('serial', dto.serial),
-      condition: sent('condition', dto.condition),
-      roomId: sent('roomId', dto.roomId),
-      kitId: sent('kitId', dto.kitId),
-      quantity: sent('quantity', dto.quantity),
-      unit: sent('unit', dto.unit),
-      reorderLevel: sent('reorderLevel', dto.reorderLevel),
-      purchaseDate: sent('purchaseDate', dto.purchaseDate),
-      usefulLifeYears: dto.usefulLifeYears !== undefined ? dto.usefulLifeYears : groupChanged && before.usefulLifeYears === null ? rule.usefulLifeYears : before.usefulLifeYears,
-      warrantyEnd: sent('warrantyEnd', dto.warrantyEnd),
-      notes: sent('notes', dto.notes),
-    };
-    // an asset becoming a consumable is one of it, unless a quantity is sent
-    if (groupChanged && group === 'consumable' && merged.quantity === null) merged.quantity = 1;
-    const after = fitToGroup(merged);
+    const after = editedAssetInput(before, dto);
+    const group = after.group;
 
     const beforeStatus = row.status as AssetStatus;
     const status = dto.status ?? beforeStatus;
@@ -422,8 +460,8 @@ export class AssetsService {
     return row;
   }
 
-  /** The room and the kit it names exist; a room newly chosen isn't archived. */
-  private async checkPlaces(after: AssetInput, before: AssetInput | null): Promise<void> {
+  /** The room and the kit it names exist; a room newly chosen isn't archived (a draft's too). */
+  async checkPlaces(after: AssetInput, before: AssetInput | null): Promise<void> {
     const problems: string[] = [];
     if (after.roomId && after.roomId !== before?.roomId) {
       const room = await this.prisma.assetRoom.findUnique({ where: { id: after.roomId }, select: { archivedAt: true } });

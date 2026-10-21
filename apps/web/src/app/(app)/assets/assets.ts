@@ -32,9 +32,10 @@ import {
   type AssetValuesInput,
   type BookValue,
   normalAssetCode,
+  type AssetDraftView,
 } from '@trendlix/shared';
 import { ASSET_PATHS, APP_ASSET_PATHS, type AssetQuery } from '../../../lib/asset-paths';
-import { formatDate, parseDate } from '../../../lib/format';
+import { formatDate, formatDateTime, parseDate } from '../../../lib/format';
 import { formatEgp } from '../employees/[id]/contracts/salary';
 
 // ---------- the register's address ----------
@@ -404,6 +405,31 @@ export function valuesDefaults(values: AssetValuesInput | null | undefined): Rec
     priceNote: values?.priceNote ?? '',
   };
 }
+
+// ---------- drafts from Claude ----------
+
+/**
+ * A draft from Claude's fields for the Add form (step 2, owner, 21 October 2026: "the connection method"; the spec:
+ * "nothing is saved until a person presses Save"): dates as DD/MM/YYYY, numbers as typed, empty for none, its room and
+ * kit chosen. The person reviews them, adds the photos and confirms.
+ */
+export function draftDefaults(fields: AssetInput): Record<string, string> {
+  return editDefaults({
+    ...fields,
+    status: 'available',
+    room: fields.roomId ? { id: fields.roomId } : null,
+    kit: fields.kitId ? { id: fields.kitId } : null,
+  });
+}
+
+/** Who drafted it and when: "Drafted with Claude by Mona Hassan on 21/10/2026, 5:42 PM". */
+export function draftedText(draft: Pick<AssetDraftView, 'createdAt' | 'createdBy'>): string {
+  const who = draft.createdBy ? ` by ${draft.createdBy.name ?? draft.createdBy.email}` : '';
+  return `Drafted with Claude${who} on ${formatDateTime(draft.createdAt)}`;
+}
+
+/** What the register's link to the drafts says: "Drafts from Claude (3)"; null when none is waiting. */
+export const draftsLinkText = (open: number): string | null => (open > 0 ? `Drafts from Claude (${open})` : null);
 
 // ---------- photos ----------
 

@@ -292,6 +292,7 @@ describe('Audit Log (e2e)', () => {
         text: `Super Admin ${superEmail} as ${hrEmail}`,
         user: { id: hrId, email: hrEmail, name: null },
         by: { id: superId, email: superEmail, name: null },
+        via: null,
       });
       expect((await log({ userId: superId, q: `Omar Acted ${RUN}` })).total).toBe(1);
     });

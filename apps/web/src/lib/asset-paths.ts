@@ -18,6 +18,8 @@ export interface AssetQuery {
   status?: string | null;
   roomId?: string | null;
   kitId?: string | null;
+  /** Who holds it: their name or employee code (the Claude connector's search, step 2). */
+  holder?: string | null;
   needsValues?: boolean;
   page?: number | null;
 }
@@ -29,6 +31,7 @@ const queryOf = (query: AssetQuery) =>
     status: query.status,
     roomId: query.roomId,
     kitId: query.kitId,
+    holder: query.holder?.trim() || null,
     needsValues: query.needsValues ? '1' : null,
     page: query.page && query.page > 1 ? query.page : null,
   });
@@ -60,6 +63,28 @@ export const ASSET_API = {
   kit: (id: string) => `/assets/kits/${encodeURIComponent(id)}`,
   /** GET and PATCH AssetSettingsView (a manager, or the CEO, Finance, a Super Admin). */
   settings: '/assets/settings',
+  /**
+   * The drafts from Claude (step 2, owner, 21 October 2026: "the connection method"): GET AssetDraftView[] (the open
+   * ones), POST a draft (custodian or manager).
+   */
+  drafts: '/assets/drafts',
+  /** GET AssetDraftView; PATCH while it is open. */
+  draft: (id: string) => `/assets/drafts/${encodeURIComponent(id)}`,
+  /** POST the reviewed Add form → AssetView: the asset made, its code given now (the website only). */
+  draftConfirm: (id: string) => `/assets/drafts/${encodeURIComponent(id)}/confirm`,
+  /** POST → AssetDraftView: set aside (the website only). */
+  draftDiscard: (id: string) => `/assets/drafts/${encodeURIComponent(id)}/discard`,
+  /** What the connector reads besides the register (anyone with Assets access). */
+  reports: {
+    /** GET AssetHolderReport[]: who matches the name or code, and what they hold. */
+    holders: (q: string) => `/assets/reports/holders${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+    /** GET OverdueReturnView[]. */
+    overdue: '/assets/reports/overdue',
+    /** GET StockLevelView[]; only those to reorder with `reorderOnly`. */
+    stock: (reorderOnly = false) => `/assets/reports/stock${reorderOnly ? '?reorder=1' : ''}`,
+    /** GET CountDueView[]. */
+    countsDue: '/assets/reports/counts-due',
+  },
 } as const;
 
 /** The site's Assets pages. */
@@ -74,6 +99,10 @@ export const ASSET_PATHS = {
   kits: '/assets/kits',
   rooms: '/assets/rooms',
   settings: '/assets/settings',
+  /** Drafts from Claude: the open drafts, each reviewed and confirmed on the Add form (assetDraftPath). */
+  drafts: '/assets/drafts',
+  /** Connect Claude: the connector's address and the steps in Claude. */
+  connectClaude: '/assets/connect-claude',
   /** An asset's page: the address inside its QR label (https://people.trendlix.com/assets/{code}). */
   asset: (code: string) => `/assets/${at(code)}`,
   edit: (code: string) => `/assets/${at(code)}/edit`,

@@ -77,7 +77,9 @@ export const KPIS_NAV: NavItem = {
  * register) and Kits for anyone with access, Add Asset for a custodian or a manager, Needs Values for those who see the
  * values (the CEO, Finance and a Super Admin: "CEO and Finance"), Rooms for a manager, Settings (the capitalization
  * threshold) for a manager or those who see the values. Without access, none of them: the heading is left out (and the
- * API answers 403). In both sidebars: an employee-only custodian sees it too.
+ * API answers 403). In both sidebars: an employee-only custodian sees it too. Step 2 (owner, 21 October 2026: "the
+ * connection method"): Drafts From Claude for a custodian or a manager (who confirm them), Connect Claude for anyone
+ * with access (the connector reads at their level).
  */
 export const ASSETS_NAV: NavItem = {
   href: ASSET_PATHS.list,
@@ -86,10 +88,12 @@ export const ASSETS_NAV: NavItem = {
   items: [
     { href: ASSET_PATHS.list, label: 'All Assets', section: ASSET_PATHS.list, audience: 'assets' },
     { href: ASSET_PATHS.new, label: 'Add Asset', section: ASSET_PATHS.new, audience: 'assets-register' },
+    { href: ASSET_PATHS.drafts, label: 'Drafts From Claude', section: ASSET_PATHS.drafts, audience: 'assets-register' },
     { href: ASSET_PATHS.needsValues, label: 'Needs Values', section: ASSET_PATHS.needsValues, audience: 'asset-values' },
     { href: ASSET_PATHS.kits, label: 'Kits', section: ASSET_PATHS.kits, audience: 'assets' },
     { href: ASSET_PATHS.rooms, label: 'Rooms', section: ASSET_PATHS.rooms, audience: 'assets-manager' },
     { href: ASSET_PATHS.settings, label: 'Settings', section: ASSET_PATHS.settings, audience: 'assets-settings' },
+    { href: ASSET_PATHS.connectClaude, label: 'Connect Claude', section: ASSET_PATHS.connectClaude, audience: 'assets' },
   ],
 };
 

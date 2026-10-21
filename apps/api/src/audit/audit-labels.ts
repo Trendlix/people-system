@@ -10,6 +10,9 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   // Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system"): the register's
   // assets, their photos, the rooms they are kept in, the production kits and the settings (the capitalization threshold)
   asset: 'Asset',
+  // an asset drafted by Claude through the connector (step 2, 21 October 2026: "the connection method"), confirmed into
+  // an asset or discarded by a person
+  asset_draft: 'Asset draft',
   asset_kit: 'Production kit',
   asset_photo: 'Asset photo',
   asset_room: 'Asset room',
@@ -98,10 +101,17 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   complete: 'Completed',
   confirm: 'Confirmed',
   confirm_probation: 'Confirmed after probation',
+  // the Claude connector (owner, 21 October 2026: "the connection method"): Allow on its consent page, the connection
+  // made (its session started), and a connection ended because a used refresh token came again; never a token
+  connector_allow: 'Allowed the Claude connector',
+  connector_connect: 'Connected Claude',
+  connector_refused: 'Claude connection ended for safety',
   correct: 'Corrected',
   create: 'Created',
   decline: 'Declined',
   delete: 'Deleted',
+  // an asset draft from Claude set aside (step 2, 21 October 2026)
+  discard: 'Discarded',
   // fingerprint sign-in in the app (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first password
   // sign-in"); never the secret
   device_add: 'Turned on fingerprint sign-in',

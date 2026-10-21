@@ -9,6 +9,9 @@ import {
   codeFromParam,
   countText,
   doneText,
+  draftDefaults,
+  draftedText,
+  draftsLinkText,
   editDefaults,
   groupChips,
   holderText,
@@ -65,6 +68,22 @@ describe('the addresses', () => {
     expect(ASSET_PATHS.label('IT-LAP-0012')).toBe('/assets/IT-LAP-0012/label');
     expect(APP_ASSET_PATHS.asset('OF-CHR-0007')).toBe('/app/assets/OF-CHR-0007');
     expect(assetPhotoSrc('PK-CAM-0001', 'p1')).toBe('/asset-photo/PK-CAM-0001/p1');
+  });
+
+  it('names the drafts from Claude, the connector’s reports and the holder search (step 2)', () => {
+    const id = '7d1e2f3a-4b5c-4d6e-8f9a-0b1c2d3e4f5a';
+    expect(ASSET_API.drafts).toBe('/assets/drafts');
+    expect(ASSET_API.draft(id)).toBe(`/assets/drafts/${id}`);
+    expect(ASSET_API.draftConfirm(id)).toBe(`/assets/drafts/${id}/confirm`);
+    expect(ASSET_API.draftDiscard(id)).toBe(`/assets/drafts/${id}/discard`);
+    expect(ASSET_API.reports.holders('Mona Hassan')).toBe('/assets/reports/holders?q=Mona%20Hassan');
+    expect(ASSET_API.reports.overdue).toBe('/assets/reports/overdue');
+    expect(ASSET_API.reports.stock()).toBe('/assets/reports/stock');
+    expect(ASSET_API.reports.stock(true)).toBe('/assets/reports/stock?reorder=1');
+    expect(ASSET_API.reports.countsDue).toBe('/assets/reports/counts-due');
+    expect(ASSET_API.list({ holder: ' EMP-0042 ' })).toBe('/assets?holder=EMP-0042');
+    expect(ASSET_PATHS.drafts).toBe('/assets/drafts');
+    expect(ASSET_PATHS.connectClaude).toBe('/assets/connect-claude');
   });
 
   it('reads an asset page’s code as kept, and nothing that isn’t one', () => {
@@ -275,6 +294,53 @@ describe('the Add and Edit forms', () => {
     ).toMatchObject({ brand: 'Sony', model: '', roomId: ROOM, kitId: '', purchaseDate: '01/03/2026', usefulLifeYears: '5', warrantyEnd: '' });
     expect(valuesDefaults(null)).toEqual({ purchasePrice: '', supplier: '', invoiceNo: '', priceLow: '', marketValue: '', priceHigh: '', priceNote: '' });
     expect(valuesDefaults({ purchasePrice: 45000.5, supplier: 'Samy', invoiceNo: null, priceLow: null, marketValue: 40000, priceHigh: null, priceNote: null })).toMatchObject({ purchasePrice: '45000.5', marketValue: '40000' });
+  });
+});
+
+describe('drafts from Claude (step 2, owner, 21 October 2026: "the connection method")', () => {
+  const fields = {
+    name: 'Sony FX3',
+    group: 'kit' as const,
+    type: 'CAM' as const,
+    assetClass: 'fixed' as const,
+    brand: 'Sony',
+    model: 'FX3',
+    serial: 'SN-1',
+    condition: 'good' as const,
+    roomId: ROOM,
+    kitId: null,
+    quantity: null,
+    unit: null,
+    reorderLevel: null,
+    purchaseDate: '2026-03-01',
+    usefulLifeYears: 5,
+    warrantyEnd: null,
+    notes: 'With two batteries',
+  };
+
+  it('fills the Add form in from a draft, the dates as DD/MM/YYYY and its room chosen', () => {
+    expect(draftDefaults(fields)).toMatchObject({
+      name: 'Sony FX3',
+      group: 'kit',
+      type: 'CAM',
+      serial: 'SN-1',
+      condition: 'good',
+      roomId: ROOM,
+      kitId: '',
+      purchaseDate: '01/03/2026',
+      usefulLifeYears: '5',
+      warrantyEnd: '',
+      notes: 'With two batteries',
+    });
+  });
+
+  it('says who drafted it and when, and how many wait', () => {
+    expect(draftedText({ createdAt: '2026-10-21T14:42:00Z', createdBy: { email: 'mona@trendlix.com', name: 'Mona Hassan' } })).toBe(
+      'Drafted with Claude by Mona Hassan on 21/10/2026, 5:42 PM',
+    );
+    expect(draftedText({ createdAt: '2026-10-21T14:42:00Z', createdBy: null })).toBe('Drafted with Claude on 21/10/2026, 5:42 PM');
+    expect(draftsLinkText(3)).toBe('Drafts from Claude (3)');
+    expect(draftsLinkText(0)).toBeNull();
   });
 });
 

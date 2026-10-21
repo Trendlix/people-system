@@ -1,6 +1,15 @@
 import 'server-only';
 import { cache } from 'react';
-import { assetsCan, type AssetKitView, type AssetListView, type AssetRoomView, type AssetSettingsView, type AssetsAccessView, type AssetView } from '@trendlix/shared';
+import {
+  assetsCan,
+  type AssetDraftView,
+  type AssetKitView,
+  type AssetListView,
+  type AssetRoomView,
+  type AssetSettingsView,
+  type AssetsAccessView,
+  type AssetView,
+} from '@trendlix/shared';
 import { ASSET_API, type AssetQuery } from '@/lib/asset-paths';
 import { getCurrentUser } from '@/lib/session';
 import { loadJson, type Loaded } from '../payroll/load';
@@ -37,6 +46,14 @@ export const loadKits = cache((): Promise<Loaded<AssetKitView[]>> => loadJson<As
 export function loadAssetSettings(): Promise<Loaded<AssetSettingsView>> {
   return loadJson<AssetSettingsView>(ASSET_API.settings);
 }
+
+/**
+ * The drafts from Claude still open (step 2, owner, 21 October 2026: "the connection method"), for a custodian or a
+ * manager; and one draft, any status (a 404 here is "unavailable": a draft that isn't there, or an API from before).
+ */
+export const loadDrafts = cache((): Promise<Loaded<AssetDraftView[]>> => loadJson<AssetDraftView[]>(ASSET_API.drafts));
+
+export const loadDraft = cache((id: string): Promise<Loaded<AssetDraftView>> => loadJson<AssetDraftView>(ASSET_API.draft(id)));
 
 /** What an Assets page says in place of what it couldn't load. */
 export function assetsNotLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {

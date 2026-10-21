@@ -66,8 +66,9 @@ export function assetsAccessOf(user: { roles: readonly string[]; assetsAccess?: 
  * GET /auth/me's `assets`: the access in effect, whether they see the values, and whether the Assets AI is set up
  * (owner, 21 October 2026: "i might link a claude account for the assets section only to fetch data and help in the
  * data entry"; then, asked how without paying extra, "the connection method": a connector on their own Claude account,
- * step 2). Always false in step 1: the Add asset form keeps the places for "Fill from photos" and "Scan label" hidden
- * until step 2 decides what they become.
+ * step 2). Since step 2, `ai` says the Claude connector is offered to them: true for anyone with Assets access (it reads
+ * at their level, and drafts for a custodian or a manager). The Add asset form then points to Connect Claude: photos
+ * and labels are read in Claude, which drafts the asset (connector.ts, asset-drafts.ts).
  */
 export interface AssetsAccessView {
   access: AssetsAccess;

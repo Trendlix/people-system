@@ -154,18 +154,21 @@ export class UsersService {
   /**
    * An admin sets a new temporary password, e.g. when someone has forgotten theirs; a Super Admin's, only a Super Admin.
    * Their phones' fingerprint sign-in stops too ('password_reset'; README Phase 3, 20 October 2026): the new password
-   * first. Their open sessions stay: the Users page's End all sessions is beside it.
+   * first; and so does their Claude connector (21 October 2026: it ends as the fingerprint does, 'revoked'). Their
+   * website and app sessions stay: the Users page's End all sessions is beside it.
    */
   async setPassword(id: string, dto: SetPasswordDto, actor: SessionUser): Promise<void> {
     const user = await this.get(id);
     if (isSuperAdmin(user) && !isSuperAdmin(actor)) throw new ForbiddenException(SUPER_ADMIN_ACCOUNT_ONLY);
     const passwordHash = await hashPassword(dto.password);
-    const devicesRevoked = await this.prisma.$transaction(async (tx) => {
+    const { devicesRevoked, connectorsEnded } = await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
       await tx.user.update({ where: { id }, data: { passwordHash } });
-      const { count } = await tx.deviceCredential.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date(), revokeReason: 'password_reset' } });
-      return count;
+      const { count } = await tx.deviceCredential.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: now, revokeReason: 'password_reset' } });
+      const connectors = await tx.session.updateMany({ where: { userId: id, kind: 'connector', endedAt: null }, data: { endedAt: now, endReason: 'revoked' } });
+      return { devicesRevoked: count, connectorsEnded: connectors.count };
     });
-    await this.audit.record({ userId: actor.id, action: 'password_reset', entityType: ENTITY, entityId: id, diff: { devicesRevoked } });
+    await this.audit.record({ userId: actor.id, action: 'password_reset', entityType: ENTITY, entityId: id, diff: { devicesRevoked, ...(connectorsEnded && { connectorsEnded }) } });
   }
 
   private async roleRows(keys: Role[]) {

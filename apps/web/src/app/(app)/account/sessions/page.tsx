@@ -83,7 +83,8 @@ export default function YourSessionsPage() {
         <p className="mt-1 text-muted">
           You can be signed in once on the website and once in the app. Signing in again on another device signs the older
           one out. Sign out of any you don’t recognise, then change your password: that signs out your other sessions and
-          turns off fingerprint sign-in on your phones.
+          turns off fingerprint sign-in on your phones. A Claude connector you allowed (Assets → Connect Claude) shows here
+          too, as Claude connector.
         </p>
       </div>
       <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>

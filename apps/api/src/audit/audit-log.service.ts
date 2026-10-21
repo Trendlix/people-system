@@ -173,7 +173,7 @@ export class AuditLogService {
   private rows(where: Prisma.Sql, limit: number, offset: number): Promise<AuditRow[]> {
     // newest first by when it was written: the id follows the order of writing (audit_log.at is now() then too)
     return this.prisma.$queryRaw<AuditRow[]>`
-      SELECT a.id, a.user_id AS "userId", a.on_behalf_by AS "onBehalfById", a.action, a.entity_type AS "entityType",
+      SELECT a.id, a.user_id AS "userId", a.on_behalf_by AS "onBehalfById", a.via, a.action, a.entity_type AS "entityType",
         a.entity_id AS "entityId", a.diff, a.at
       FROM audit_log a
       ${where}

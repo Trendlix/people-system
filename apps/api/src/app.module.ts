@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.module.js';
 import { AuditLogModule } from './audit/audit-log.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CompanyModule } from './company/company.module.js';
+import { ConnectorModule } from './connector/connector.module.js';
 import { ConfirmationsModule } from './confirmations/confirmations.module.js';
 import { ContractsModule } from './contracts/contracts.module.js';
 import { DocumentsModule } from './documents/documents.module.js';
@@ -67,6 +68,8 @@ import { WfhModule } from './wfh/wfh.module.js';
     KpisModule,
     // Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system")
     AssetsModule,
+    // the Claude connector's sign-in (owner, 21 October 2026: "the connection method"), Assets' step 2
+    ConnectorModule,
     UsersModule,
     AuditLogModule,
   ],

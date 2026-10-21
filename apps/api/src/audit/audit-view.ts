@@ -1,4 +1,4 @@
-import type { Role } from '@trendlix/shared';
+import { AUDIT_VIA_CONNECTOR, type Role } from '@trendlix/shared';
 import { actsAs } from '../auth/roles.js';
 import { monthName } from '../payroll/months.js';
 import { actionLabel, entityLabel, fieldLabel } from './audit-labels.js';
@@ -15,6 +15,8 @@ export interface AuditRow {
   id: bigint | string;
   userId: string | null;
   onBehalfById: string | null;
+  /** 'claude_connector': done through the Claude connector (21 October 2026); null or left out otherwise. */
+  via?: string | null;
   action: string;
   entityType: string;
   entityId: string | null;
@@ -91,6 +93,8 @@ export interface AuditEntryView {
     user: AuditPerson | null;
     /** The Super Admin who did it viewing as `user` (audit_log.on_behalf_by), or null. */
     by: AuditPerson | null;
+    /** 'claude_connector': the user's own Claude did it through the connector (audit_log.via); null otherwise. */
+    via: 'claude_connector' | null;
   };
   action: string;
   actionLabel: string;
@@ -212,8 +216,11 @@ export function changeText(c: AuditChange): string {
 
 const personText = (p: AuditPerson | null | undefined) => p?.name ?? p?.email ?? 'A user no longer on record';
 
-/** Who did it, in words; a Super Admin who viewed as someone with Act as them on: "Super Admin X as Y". */
-export function whoOf(row: Pick<AuditRow, 'userId' | 'onBehalfById' | 'action' | 'entityType'>, users: ReadonlyMap<string, AuditPerson>): AuditEntryView['who'] {
+/**
+ * Who did it, in words; a Super Admin who viewed as someone with Act as them on: "Super Admin X as Y"; through the Claude
+ * connector (owner, 21 October 2026: "the connection method"): "Y via Claude connector".
+ */
+export function whoOf(row: Pick<AuditRow, 'userId' | 'onBehalfById' | 'via' | 'action' | 'entityType'>, users: ReadonlyMap<string, AuditPerson>): AuditEntryView['who'] {
   const user = row.userId ? (users.get(row.userId) ?? null) : null;
   const by = row.onBehalfById ? (users.get(row.onBehalfById) ?? null) : null;
   let text: string;
@@ -222,7 +229,9 @@ export function whoOf(row: Pick<AuditRow, 'userId' | 'onBehalfById' | 'action' |
   else if (row.entityType === 'job_offer' && row.action === 'answer') text = 'The candidate, online';
   else text = 'System';
   if (row.onBehalfById) text = `Super Admin ${personText(by)} as ${text}`;
-  return { text, user, by };
+  const via = row.via === AUDIT_VIA_CONNECTOR ? AUDIT_VIA_CONNECTOR : null;
+  if (via) text = `${text} via Claude connector`;
+  return { text, user, by, via };
 }
 
 const stringAt = (diff: unknown, key: string): string | null => {

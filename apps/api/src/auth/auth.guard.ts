@@ -1,12 +1,13 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
-import { BACKGROUND_HEADER, type Role, type SessionKind } from '@trendlix/shared';
+import { BACKGROUND_HEADER, isConnectorAccessToken, type Role, type SessionKind } from '@trendlix/shared';
 import type { Request } from 'express';
+import { ConnectorTokensService } from '../connector/connector-tokens.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { FORBIDDEN_MESSAGE, IS_PUBLIC, REQUIRED_ROLES, VIEW_AS_CONTROL } from './decorators.js';
+import { CONNECTOR_NOT_OPEN, CONNECTOR_SCOPE_KEY, FORBIDDEN_MESSAGE, IS_PUBLIC, REQUIRED_ROLES, VIEW_AS_CONTROL } from './decorators.js';
 import { actsAs, isSuperAdmin } from './roles.js';
-import { idleTimeoutFor, sessionVerdict, signedOutBody } from './session-rules.js';
+import { ACTIVITY_THROTTLE_MS, idleTimeoutFor, sessionVerdict, signedOutBody } from './session-rules.js';
 import { SESSION_COOKIE, sessionUserOf, WITH_ROLES, type SessionUser } from './session-user.js';
 import { SessionsService, type ActiveSession } from './sessions.service.js';
 import { changesData, sessionClaims, viewOnlyMessage, type SessionClaims } from './view-as.js';
@@ -30,6 +31,11 @@ export type SessionRequest = Request & { user?: SessionUser; sessionClaims?: Ses
 // Admin and Super Admin (the person signed in: the Super Admin while viewing as someone), 15 minutes since the last
 // activity end it ('idle'). Every request counts as activity but the ones the web makes by itself (the x-background
 // header: the sidebar's counts, the idle warning's checks), kept at most every 30 seconds. The rules: session-rules.ts.
+//
+// A Claude connector's access token (owner, 21 October 2026: "the connection method"; "tlxa_…", not a signed token) is
+// checked apart (connectorRequest): its session must be on, and the route open to the connector (@ConnectorScope: the
+// Assets reads and the drafts); every other route refuses it with a 403. Its person is never viewed as, and the 15
+// minutes are never for it.
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -37,6 +43,7 @@ export class AuthGuard implements CanActivate {
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
     private readonly sessions: SessionsService,
+    private readonly connector: ConnectorTokensService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -46,6 +53,7 @@ export class AuthGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest<SessionRequest>();
     const token = readToken(req);
     if (!token) throw new UnauthorizedException('Please sign in.');
+    if (isConnectorAccessToken(token)) return this.connectorRequest(req, token, targets);
 
     let payload: object;
     try {
@@ -109,6 +117,33 @@ export class AuthGuard implements CanActivate {
     const viewOnly = req.user.viewAs && !req.user.viewAs.act;
     if (viewOnly && changesData(req.method) && !this.reflector.getAllAndOverride<boolean>(VIEW_AS_CONTROL, targets)) {
       throw new ForbiddenException(viewOnlyMessage(await this.nameOf(req.user.email)));
+    }
+    return true;
+  }
+
+  /**
+   * A request with a Claude connector's access token: refused (401) when the token or its session is no good, refused
+   * (403) on a route not open to the connector; else the request is the person's, as on the website, with their roles.
+   */
+  private async connectorRequest(req: SessionRequest, token: string, targets: Parameters<Reflector['getAllAndOverride']>[1]): Promise<boolean> {
+    const now = new Date();
+    const { session } = await this.connector.verifyAccess(token, now);
+    if (this.reflector.getAllAndOverride<string | undefined>(CONNECTOR_SCOPE_KEY, targets) !== session.scope) throw new ForbiddenException(CONNECTOR_NOT_OPEN);
+    const touch = now.getTime() - session.lastActiveAt.getTime() >= ACTIVITY_THROTTLE_MS;
+    if (touch) await this.sessions.touch(session.id, now);
+    req.activeSession = {
+      id: session.id,
+      kind: 'connector',
+      createdAt: session.createdAt,
+      lastActiveAt: touch ? now : session.lastActiveAt,
+      expiresAt: session.expiresAt,
+      idleTimeoutMs: null,
+    };
+    req.user = { ...sessionUserOf(session.user), viewAs: null };
+    const required = this.reflector.getAllAndOverride<Role[] | undefined>(REQUIRED_ROLES, targets);
+    if (required?.length && !actsAs(req.user.roles, required)) {
+      const message = this.reflector.getAllAndOverride<string | undefined>(FORBIDDEN_MESSAGE, targets);
+      throw new ForbiddenException(message ?? 'You do not have permission to do this.');
     }
     return true;
   }

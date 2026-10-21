@@ -28,9 +28,11 @@ const messages = (err: unknown): string[] => {
 /**
  * Registers an asset (`code` null) or edits one: its fields read and checked as the API will (readAssetForm), the
  * values only from those who see them, the status by hand only on Edit (`from`: its status now). Answers the code; the
- * form sends the photos chosen after it, then opens the asset's page.
+ * form sends the photos chosen after it, then opens the asset's page. `draftId`: the Add form filled in from a draft
+ * from Claude (step 2, owner, 21 October 2026: "the connection method"): saving confirms it, the asset made and its code
+ * given in the same step, the draft then confirmed; the values drafted are kept for someone who doesn't see them.
  */
-export async function saveAsset(code: string | null, from: AssetStatus | null, fd: FormData): Promise<AssetSaveState> {
+export async function saveAsset(code: string | null, from: AssetStatus | null, fd: FormData, draftId: string | null = null): Promise<AssetSaveState> {
   const { can } = await assetsCaller();
   const fields = can.values ? [...ASSET_FORM_FIELDS, ...VALUE_FORM_FIELDS] : [...ASSET_FORM_FIELDS];
   const typed = typedValues(fd, fields);
@@ -40,7 +42,9 @@ export async function saveAsset(code: string | null, from: AssetStatus | null, f
   if (problems.length) return { errors: problems, values: typed };
   const body = assetBody(form, code ? 'edit' : 'add', values?.values ?? null);
   try {
-    const saved = code ? await apiSend<AssetView>('PATCH', ASSET_API.asset(code), body) : await apiSend<AssetView>('POST', ASSET_API.create, body);
+    const saved = code
+      ? await apiSend<AssetView>('PATCH', ASSET_API.asset(code), body)
+      : await apiSend<AssetView>('POST', draftId ? ASSET_API.draftConfirm(draftId) : ASSET_API.create, body);
     return { code: saved?.code ?? code ?? undefined };
   } catch (err) {
     return { errors: messages(err), values: typed };
@@ -140,6 +144,23 @@ export async function deleteAsset(code: string): Promise<FormState> {
     return { errors: messages(err) };
   }
   redirect(`${ASSET_PATHS.list}?deleted=${encodeURIComponent(code)}`);
+}
+
+// ---------- drafts from Claude ----------
+
+/**
+ * Discards a draft from Claude (a custodian or a manager): it is set aside, never an asset, and leaves Drafts from
+ * Claude; the audit log keeps it. Not a delete, so not only a Super Admin's. `back`: where to go after (the list).
+ */
+export async function discardDraft(id: string, back: string | null): Promise<FormState> {
+  try {
+    await apiSend('POST', ASSET_API.draftDiscard(id));
+  } catch (err) {
+    return { errors: messages(err) };
+  }
+  if (back) redirect(back);
+  refresh();
+  return { message: 'Draft discarded.' };
 }
 
 // ---------- rooms ----------

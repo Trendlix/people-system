@@ -12,6 +12,20 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: '25mb',
   },
   partialPrefetching: true,
+  // The Claude connector's sign-in and consent page (owner, 21 October 2026: "the connection method") is never shown in
+  // another site's frame (no clickjacking of Allow), and its address (the OAuth request) is never sent on as a referrer.
+  async headers() {
+    return [
+      {
+        source: '/oauth/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+      },
+    ];
+  },
   // Old addresses keep working (checked in order; the first match wins). Query values are passed through.
   async redirects() {
     const old = '/:org(organisation|organization)';

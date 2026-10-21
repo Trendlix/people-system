@@ -9,6 +9,8 @@ import type { OpenSession } from '@/lib/types';
 // The sessions still open (owner, 20 October 2026: one on the website and one in the app a user, kept on the server):
 // where each was signed in (the website or the app, the browser and system it said), since when, its last activity, and
 // a button to end it. Your Sessions (one's own: Sign out) and the Users page (an Admin's: End session) both list them.
+// A Claude connector's session (owner, 21 October 2026: "the connection method") shows as Claude connector, with its
+// client's name, and ends the same way.
 
 export interface SessionListProps {
   sessions: OpenSession[];
@@ -47,7 +49,8 @@ export function SessionList({ sessions, end, endLabel, currentAction, empty }: S
             <div className="min-w-0 flex-1">
               <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
                 {SESSION_KIND_LABELS[s.kind] ?? s.kind}
-                <span className="font-normal text-muted">· {deviceOf(s.userAgent)}</span>
+                {/* a Claude connector (21 October 2026: "the connection method"): the client, not a browser */}
+                <span className="font-normal text-muted">· {s.kind === 'connector' ? (s.client ?? 'Claude') : deviceOf(s.userAgent)}</span>
                 {s.current && <span className="badge bg-ok-soft text-ok">This device</span>}
               </p>
               <p className="text-xs text-muted">

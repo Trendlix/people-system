@@ -7,11 +7,16 @@
 
 import type { Role } from './index.js';
 
-/** Where a session was signed in: the website (any browser) or the TrendLIX People app. One of each at a time. */
-export const SESSION_KINDS = ['web', 'app'] as const;
+/**
+ * Where a session was signed in: the website (any browser) or the TrendLIX People app, one of each at a time; or the
+ * Claude connector (owner, 21 October 2026: "the connection method": Claude reads and drafts in Assets on the person's
+ * own Claude account), one a person, the newest winning too, reaching the Assets endpoints only, long-lived (no 15
+ * minutes; 90 days without a refresh end it: connector.ts).
+ */
+export const SESSION_KINDS = ['web', 'app', 'connector'] as const;
 export type SessionKind = (typeof SESSION_KINDS)[number];
 
-export const SESSION_KIND_LABELS: Record<SessionKind, string> = { web: 'Website', app: 'App' };
+export const SESSION_KIND_LABELS: Record<SessionKind, string> = { web: 'Website', app: 'App', connector: 'Claude connector' };
 
 /**
  * Why a session ended: signing out (the menu's Sign out, or Sign out beside a session on Your Sessions), a newer sign-in
