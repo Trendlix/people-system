@@ -285,10 +285,12 @@ const nextDay = (ymd: string) => new Date(Date.parse(`${ymd}T00:00:00Z`) + 86_40
  * check-in on the system on (`checkInFrom`), within the month and their employment, up to yesterday, each date with
  * none: an official holiday, a rest day of their shift, a day of approved leave, or else an absent day (a working day
  * gone by without a check-in), as source 'system'. Someone who never checked in on the system has only what Zoho's
- * import kept, as before. In date order.
+ * import kept, as before. A day Zoho's import kept is read against the approved leave as it is now (withLeaveNow). In
+ * date order.
  */
 export function monthDays<D extends SourcedDay>(rows: readonly D[], ctx: MonthDaysContext): (D | SourcedDay)[] {
-  const days: (D | SourcedDay)[] = daysByPrecedence(rows.filter((r) => r.date.startsWith(ctx.month)));
+  const onLeave = new Set(ctx.leaveDays);
+  const days: (D | SourcedDay)[] = daysByPrecedence(rows.filter((r) => r.date.startsWith(ctx.month))).map((d) => withLeaveNow(d, onLeave.has(d.date)));
   if (!ctx.checkInFrom) return days;
   const first = `${ctx.month}-01`;
   const last = new Date(Date.UTC(Number(ctx.month.slice(0, 4)), Number(ctx.month.slice(5, 7)), 0)).toISOString().slice(0, 10);
@@ -307,6 +309,20 @@ export function monthDays<D extends SourcedDay>(rows: readonly D[], ctx: MonthDa
     days.push({ date, status, checkIn: null, checkOut: null, place: null, zohoStatus: null, permissionHours: 0, hoursCounted: 0, source: 'system', flags: [] });
   }
   return days.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * A day Zoho's import kept, read against the approved leave as it is now (owner, 21 October 2026, after importing leave:
+ * Zoho's attendance counts a day absent when its leave wasn't in it, and "a day covered by an approved leave … is never a
+ * no-show, whatever the source"): a day without a check-in that was absent (or present without a check-in, or Zoho's own
+ * leave) is leave once leave is approved on it, a half day's too (its other half has no hours: short hours, as any day
+ * short, never a no-show). Once that leave is gone again (cancelled, or its import undone) the day is what it was kept as.
+ * A day with a check-in, a holiday or a rest day, a day kept as leave, and every other source's day stay as they are: the
+ * system's own days are worked out with the leave already (monthDays).
+ */
+export function withLeaveNow<D extends SourcedDay>(day: D, onLeave: boolean): D {
+  if (!onLeave || day.source !== 'zoho' || day.checkIn) return day;
+  return day.status === 'absent' || day.status === 'no_check_in' || day.status === 'zoho_leave' ? { ...day, status: 'leave' } : day;
 }
 
 /** Whether a source is one of the system's check-ins (CHECK_IN_SOURCES): from someone's first one on, missing days are absent. */

@@ -1,4 +1,4 @@
-import { ROLES } from '@trendlix/shared';
+import { ASSETS_ACCESS_HINTS, ASSETS_ACCESS_LABELS, ROLES } from '@trendlix/shared';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { apiGet } from '@/lib/api';
@@ -10,9 +10,10 @@ import { assignableRoles, canChangeAccount, isSuperAdmin } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { FingerprintDevice, OpenSession, UserAccount } from '@/lib/types';
 import { loadJson } from '../../payroll/load';
-import { endUserSession, endUserSessions, setActive, setPassword, signOutUserDevice, signOutUserDevices, updateRoles } from '../actions';
+import { accessInEffectText, ASSETS_VALUES_NOTE } from '../../assets/assets';
+import { endUserSession, endUserSessions, setActive, setPassword, signOutUserDevice, signOutUserDevices, updateAssetsAccess, updateRoles } from '../actions';
 import { BackLink, LINKED_BY_WORK_EMAIL, Loading, ONLY_SUPER_ADMIN_CHANGES, RequireAdmin, RoleBadges, StatusBadge } from '../ui';
-import { EndSessionsForm, PasswordForm, RolesForm, SignOutDevicesForm, StatusForm } from '../user-forms';
+import { AssetsAccessForm, EndSessionsForm, PasswordForm, RolesForm, SignOutDevicesForm, StatusForm } from '../user-forms';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -79,6 +80,27 @@ async function EditUser({ params }: { params: Promise<{ id: string }> }) {
             <p className="text-sm text-muted">{ONLY_SUPER_ADMIN_CHANGES}</p>
           </section>
         )}
+
+        {/* Assets access (owner, 21 October 2026: "i want to add this module with a special permission to the system",
+            "3 levels per user"): an Admin or a Super Admin sets it, audited; an API from before Assets sends none */}
+        {user.assetsAccess !== undefined &&
+          (mayChange ? (
+            <AssetsAccessForm
+              action={updateAssetsAccess.bind(null, id)}
+              saved={user.assetsAccess}
+              inEffectNote={accessInEffectText(user.assetsAccess, user.assetsAccessInEffect ?? user.assetsAccess, user.roles)}
+            />
+          ) : (
+            <section className="card max-w-xl space-y-3 p-6">
+              <h3 className="font-semibold">Assets Access</h3>
+              <p className="text-sm">
+                <span className="font-medium">{ASSETS_ACCESS_LABELS[user.assetsAccessInEffect ?? user.assetsAccess]}</span>
+                <span className="block text-muted">{ASSETS_ACCESS_HINTS[user.assetsAccessInEffect ?? user.assetsAccess]}</span>
+              </p>
+              <p className="hint">{ASSETS_VALUES_NOTE}</p>
+              <p className="text-sm text-muted">{ONLY_SUPER_ADMIN_CHANGES}</p>
+            </section>
+          ))}
 
         {mayChange && (
           <section className="card max-w-xl space-y-3 p-6">

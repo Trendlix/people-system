@@ -1,5 +1,7 @@
 import type {
   ApproverRole,
+  AssetsAccess,
+  AssetsAccessView,
   AttendanceImportMark,
   ChangeRequestStatus,
   ContractForm,
@@ -74,6 +76,12 @@ export interface SessionUser {
    * who have no direct manager, so they get My Team even without the manager role. Left out by an API from before it.
    */
   leads?: boolean;
+  /**
+   * Their Assets access in effect, whether they see the asset values, and whether the Assets AI is set up (owner, 21
+   * October 2026: "i want to add this module with a special permission to the system"; "3 levels per user"; values for
+   * the "CEO and Finance"). Left out by an API from before the Assets module: no access.
+   */
+  assets?: AssetsAccessView | null;
 }
 
 /**
@@ -758,6 +766,13 @@ export interface UserAccount {
   lastSignInAt: string | null;
   /** The employee whose work email is this user's email (linked by work email, nothing else). */
   employee: { id: string; employeeCode: string; fullNameEn: string } | null;
+  /**
+   * The Assets access set on the Users page (owner, 21 October 2026: "3 levels per user"), and the one in effect: a
+   * Super Admin is always a manager, the CEO and Finance at least viewers. Left out by an API from before the Assets
+   * module.
+   */
+  assetsAccess?: AssetsAccess;
+  assetsAccessInEffect?: AssetsAccess;
 }
 
 // ---------- employee file: scanned paperwork ----------

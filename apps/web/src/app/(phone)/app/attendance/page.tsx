@@ -19,7 +19,8 @@ import { DayList } from './day-list';
 // enable them to check in and out, and apply for their requests"; first version: "My attendance and payslips"): My
 // Attendance's month (GET /attendance/me, the API's for the caller alone), its figures as tiles and its days as a list,
 // with the month before and after; each day's Ask for a correction, or the correction being decided. A C-level person
-// sees their own as everyone does.
+// sees their own as everyone does. A work from home day approved for them shows "Working from home" (owner, 21 October
+// 2026: "think about how should we handle the working from home in out erp").
 
 export const metadata: Metadata = { title: 'Attendance · Trendlix People' };
 
@@ -61,7 +62,7 @@ async function Month({ searchParams }: { searchParams: PageProps<'/app/attendanc
             <h2 id="phone-days-heading" className="font-semibold">
               Your Days
             </h2>
-            <DayList days={p.days} punches={view.punches ?? []} corrections={view.corrections} correctable={view.correctable} today={today} />
+            <DayList days={p.days} punches={view.punches ?? []} corrections={view.corrections} correctable={view.correctable} today={today} wfhDays={p.wfhDays} />
           </section>
           <p className="text-xs text-muted">
             {imported && `Days from Zoho People imported by HR on ${formatDate(imported)}. `}

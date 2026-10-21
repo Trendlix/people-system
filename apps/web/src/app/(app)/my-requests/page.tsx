@@ -28,6 +28,9 @@ import { CorrectionsTable } from '../attendance/corrections/ui';
 import { loadMyHomes } from '../home-locations/data';
 import { approvedHomeOf, asksHome, homeProgressText, MY_HOME_ID, NEW_HOME_PATH } from '../home-locations/home-locations';
 import { HomeMap, MyHomesTable } from '../home-locations/ui';
+import { loadMyWfh, loadWfhAllowance } from '../attendance/wfh/data';
+import { NEW_WFH_PATH, wfhAllowanceLine } from '../attendance/wfh/wfh';
+import { WfhTable } from '../attendance/wfh/ui';
 import {
   askedByManager,
   filterRequests,
@@ -68,6 +71,9 @@ import {
 // Home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from
 // home"): a section of their own, with the home in force on a small map, their requests newest first, each opening its
 // page (every step, Withdraw while it is being decided, Remove once approved), and Home location to ask for one.
+// Working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp"): a
+// section of its own, their requests the latest day first, each opening its page, and Work from home to ask for a day,
+// hidden when their work arrangement never needs one (Work from home, Outdoor, Indoor and outdoor; a freelancer).
 
 export const metadata: Metadata = { title: 'My Requests · People System' };
 
@@ -405,6 +411,52 @@ async function Corrections() {
 }
 
 /**
+ * Their work from home days (owner, 21 October 2026: "think about how should we handle the working from home in out
+ * erp"; GET /me/wfh): the day, how it came and where each stands, the latest day first, each opening its page (every
+ * step, Cancel while it is being decided); "x of 2 this month · next possible from DD/MM/YYYY" and Work from home to ask
+ * for a day, both only when their arrangement needs one (GET /me/wfh/allowance: offered, no refusal). Nothing from an
+ * API from before it, nor without a profile of their own; a section with no requests and nothing to ask for is left out.
+ */
+async function WorkFromHome() {
+  const user = await getCurrentUser();
+  const profile = await loadOwnProfile(user);
+  if (!profile) return null;
+  const [requests, allowance] = await Promise.all([loadMyWfh(), loadWfhAllowance()]);
+  if (requests.kind === 'unavailable') return null;
+  const asks = allowance.kind === 'ok' && allowance.value.offered && !allowance.value.refusal && allowance.value.daysPerMonth > 0;
+  const list = requests.kind === 'ok' ? requests.value : [];
+  if (!asks && requests.kind === 'ok' && list.length === 0) return null;
+  return (
+    <section id="my-wfh" aria-labelledby="my-wfh-heading" className="mt-10 scroll-mt-6 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="my-wfh-heading" className="text-lg font-semibold">
+            Work From Home
+          </h2>
+          <p className="text-sm text-muted">
+            A working day from home instead of the office, asked a day before at the latest. Your direct manager decides it first, then HR; it is not
+            leave, you check in from home as on any day.
+          </p>
+        </div>
+        {asks && (
+          <Link href={NEW_WFH_PATH} className="btn btn-secondary">
+            Work from home
+          </Link>
+        )}
+      </div>
+      {asks && allowance.kind === 'ok' && <p className="card px-5 py-4 text-sm font-semibold tabular-nums">{wfhAllowanceLine(allowance.value)}</p>}
+      {requests.kind !== 'ok' ? (
+        <div className="card px-6 py-6 text-sm text-muted">Your work from home requests couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : list.length === 0 ? (
+        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t asked to work from home. Ask with Work from home.</div>
+      ) : (
+        <WfhTable requests={list} note="the latest day first." />
+      )}
+    </section>
+  );
+}
+
+/**
  * Their home location (owner, 20 October 2026: "allow other users to request to add their home locations when working
  * from home"; GET /me/home-locations): the home in force, on a small map, and their requests, newest first, each opening
  * its page; Home location to ask for one while none is being decided. Nothing from an API from before them, nor without
@@ -470,6 +522,9 @@ export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests
       </Suspense>
       <Suspense fallback={null}>
         <Corrections />
+      </Suspense>
+      <Suspense fallback={null}>
+        <WorkFromHome />
       </Suspense>
       <Suspense fallback={null}>
         <HomeLocation />

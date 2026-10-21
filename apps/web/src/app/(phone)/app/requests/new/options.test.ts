@@ -1,6 +1,6 @@
 import { seesRaiseRequests } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { askOptions, offersRaise } from './options';
+import { askOptions, offersRaise, offersWfh } from './options';
 
 const keys = (p: Parameters<typeof askOptions>[0]) => askOptions(p).map((o) => o.key);
 const hours = { hoursPerMonth: 4 };
@@ -37,6 +37,33 @@ describe('what the phone pages offer to ask for', () => {
       '/app/requests/new/raise',
       '/app/requests/new/home',
     ]);
+  });
+});
+
+describe('working from home on New Request (owner, 21 October 2026: "think about how should we handle the working from home in out erp")', () => {
+  const allowance = { offered: true, refusal: null, daysPerMonth: 2 };
+
+  it('is offered after permission when their month says their arrangement needs it', () => {
+    expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: false, asksWfh: offersWfh(allowance) })).toEqual([
+      'leave',
+      'permission',
+      'wfh',
+      'reimbursement',
+      'correction',
+      'home',
+    ]);
+    expect(askOptions({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: false, asksWfh: true }).find((o) => o.key === 'wfh')).toMatchObject({
+      label: 'Work from home',
+      href: '/app/requests/new/wfh',
+    });
+  });
+
+  it('is hidden for an arrangement that never needs it, when refused or turned off, unread, or without an employment', () => {
+    expect(offersWfh({ offered: false, refusal: 'You work from home already: no work from home day is needed.', daysPerMonth: 2 })).toBe(false);
+    expect(offersWfh({ ...allowance, refusal: 'You work freelance, outside the labour law and its working hours: no work from home day is needed.' })).toBe(false);
+    expect(offersWfh({ ...allowance, daysPerMonth: 0 })).toBe(false);
+    expect(offersWfh(null)).toBe(false);
+    expect(keys({ employment: null, permissionMonth: null, asksRaise: false, asksWfh: true })).toEqual(['reimbursement', 'home']);
   });
 });
 

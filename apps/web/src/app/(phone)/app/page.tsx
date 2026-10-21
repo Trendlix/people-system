@@ -17,9 +17,11 @@ import { loadHolidayYears, loadMyBalances, loadMyLeave, loadMyPermissionMonth, l
 import { permissionDayText, permissionHoursLine, permissionInDaysText, upcomingPermissions } from '../../(app)/leave/permissions';
 import { LeaveStatusBadge } from '../../(app)/leave/ui';
 import { approveCount } from './approve-count';
+import { AssetsCard } from './assets-card';
 import { FingerprintOffer } from './fingerprint-offer';
 import { MyKpiCard } from './kpi-card';
 import { PushOffer } from './push-offer';
+import { WfhToday } from './wfh-today';
 import { askOptions } from './requests/new/options';
 import { decidesSomething } from './tabs';
 import { PhoneCard, PhoneLoading, Quiet, RowLink, RowList, SkeletonRows } from './ui';
@@ -32,7 +34,8 @@ import { PhoneCard, PhoneLoading, Quiet, RowLink, RowList, SkeletonRows } from '
 // permission hours; and what is coming up: their leave and permission, and the official holidays. Each opens its page
 // on the phone pages. Confirming their details stays on the site (its review page), linked from here. Their own KPI
 // scorecard when it waits for them (owner's brief, 21 October 2026: "a card on Home and Requests for the employee's
-// self-rating and sign-off").
+// self-rating and sign-off"). Assets for those with Assets access (owner's brief, 21 October 2026: "an 'Assets' entry for
+// people with access"): a search of the register and Add asset.
 
 export const metadata: Metadata = { title: 'Home · Trendlix People' };
 
@@ -250,6 +253,12 @@ async function Home() {
       {/* notifications on this phone (owner, 20 October 2026: "Push notifications: yes"): offered the same way, when the
           phone hasn't been asked yet */}
       {!user.viewAs && user.session?.kind === 'app' && <PushOffer />}
+      {/* a work from home day approved for today (owner, 21 October 2026), above the check-in */}
+      {profile?.employment && (
+        <Suspense fallback={null}>
+          <WfhToday today={today} />
+        </Suspense>
+      )}
       {/* checking in (19 October 2026), the first thing on the phone: a current employment's */}
       {profile?.employment && (
         <Suspense fallback={<CardLoading title="Today" />}>
@@ -271,6 +280,8 @@ async function Home() {
           <Shortcuts profile={profile} today={today} />
         </Suspense>
       )}
+      {/* Assets, for those with Assets access (owner, 21 October 2026: "an 'Assets' entry for people with access") */}
+      <AssetsCard assets={user.assets} />
       {profile?.employment && underLabourLaw(profile.employment.employmentType) && (
         <Suspense fallback={<CardLoading title="Balances" />}>
           <Balances today={today} />

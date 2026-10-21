@@ -22,10 +22,14 @@ import { AttendanceDaysService } from './attendance-days.service.js';
 
 const LINE = 'payroll_line';
 
-/** What a fill of a run did: the lines filled from the attendance days, and those put back (no days left). */
+/**
+ * What a fill of a run did: the lines filled from the attendance days, those put back (no days left), and the lines Zoho's
+ * import filled whose no-show days changed with the leave approved since (21 October 2026).
+ */
 export interface AttendanceFillResult {
   filled: number;
   cleared: number;
+  leaveCounted: number;
 }
 
 // A draft payroll run's lines filled from the month's attendance days (owner's brief, 19 October 2026: "a draft run's
@@ -36,7 +40,9 @@ export interface AttendanceFillResult {
 // counted), the no-show days (the absent days) and the permission hours (Zoho's within the allowance for a month without
 // the system's requests, else left to the requests on the line's terms) are replaced, the line worked out again and
 // marked from attendance (its figures before kept, HR's typed ones or an import's before them, as an import keeps them);
-// someone with only Zoho's days keeps what Zoho's import filled (undone on its review). A line marked from attendance
+// someone with only Zoho's days keeps what Zoho's import filled (undone on its review), but for its no-show days, counted
+// again from its days as they are now: a day of approved leave is never a no-show (owner, 21 October 2026, after
+// importing leave: "whatever the source, Zoho attendance included"; packages/shared withLeaveNow). A line marked from attendance
 // whose days are gone gets back what it had before. Done when a run is made or refreshed, on Refresh from attendance,
 // after each check-in on the system and each correction approved (the month's draft only: a run sent to the CEO never
 // changes). Every line changed is in the audit log. C-level lines too: the figures are the attendance's, nobody types
@@ -52,7 +58,7 @@ export class AttendanceFillService {
   /** Fills the person's line on the month's draft run (YYYY-MM), if there is one. */
   async fillMonth(employeeId: string, month: string, user: SessionUser | null): Promise<AttendanceFillResult> {
     const run = await this.prisma.payrollRun.findUnique({ where: { month: toDateOnly(firstDay(month)) }, select: { id: true, status: true } });
-    if (!run || run.status !== 'draft') return { filled: 0, cleared: 0 };
+    if (!run || run.status !== 'draft') return { filled: 0, cleared: 0, leaveCounted: 0 };
     return this.fillRun(run.id, user, [employeeId]);
   }
 
@@ -75,7 +81,7 @@ export class AttendanceFillService {
         },
       },
     });
-    if (!run || run.status !== 'draft' || !run.lines.length) return { filled: 0, cleared: 0 };
+    if (!run || run.status !== 'draft' || !run.lines.length) return { filled: 0, cleared: 0, leaveCounted: 0 };
     const month = fromDateOnly(run.month).slice(0, 7);
     const ids = run.lines.map((l) => l.employeeId);
     const [people, permissions, setup] = await Promise.all([
@@ -91,7 +97,7 @@ export class AttendanceFillService {
     const rules = run.rules as unknown as PayrollRules;
     const law = runLawRates(run);
     const at = new Date().toISOString();
-    const result: AttendanceFillResult = { filled: 0, cleared: 0 };
+    const result: AttendanceFillResult = { filled: 0, cleared: 0, leaveCounted: 0 };
 
     for (const line of run.lines) {
       const mark = line.attendanceImport as unknown as AttendanceImportMark | null;
@@ -118,6 +124,15 @@ export class AttendanceFillService {
         inputs = { ...EMPTY_PAYROLL_INPUTS, ...was, ...back };
         next = null;
         result.cleared++;
+      } else if (mark?.source === 'zoho' && mark.fields.includes('noShowDays') && person) {
+        // a line Zoho's import filled (owner, 21 October 2026, after importing leave: "A day covered by an approved leave
+        // … is never a no-show, whatever the source, Zoho attendance included"): its no-show days are its kept days absent
+        // as they are now, a day of approved leave read as leave (withLeaveNow), the leave on the line's terms
+        const noShowDays = person.days.filter((d) => d.status === 'absent').length;
+        if ((was.noShowDays ?? 0) === noShowDays) continue;
+        inputs = { ...EMPTY_PAYROLL_INPUTS, ...was, noShowDays };
+        next = mark;
+        result.leaveCounted++;
       } else continue;
 
       await this.prisma.payrollLine.update({
@@ -134,8 +149,8 @@ export class AttendanceFillService {
           month,
           employeeCode: line.employeeCode,
           ...changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>),
-          source: 'attendance',
-          ...(next ? { sources: next.sources } : { cleared: true }),
+          source: next?.source ?? 'attendance',
+          ...(next?.source === 'zoho' ? { importId: next.importId, leaveCounted: true } : next ? { sources: next.sources } : { cleared: true }),
         },
       });
     }

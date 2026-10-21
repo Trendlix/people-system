@@ -2,6 +2,7 @@ import { BadRequestException, HttpException, HttpStatus, Injectable, Unauthorize
 import { JwtService } from '@nestjs/jwt';
 import { sessionKindOf, type SessionKind } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
+import { assetsCallerOf, assetsMe } from '../assets/assets-access.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { DeviceCredentialsService } from './device-credentials.service.js';
 import { isCredentialId } from './device-rules.js';
@@ -109,7 +110,12 @@ export class AuthService {
    * someone, that user, with who is viewing (see view-as.ts).
    */
   async me(user: SessionUser, session: Pick<ActiveSession, 'id' | 'kind' | 'idleTimeoutMs'>): Promise<Me> {
-    const own = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true, fullNameEn: true } });
+    // their Assets access in effect and whether they see the values (owner, 21 October 2026: "3 levels per user";
+    // "CEO and Finance"), for the sidebar and the pages; the API checks each request itself
+    const [own, assets] = await Promise.all([
+      this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true, fullNameEn: true } }),
+      assetsCallerOf(this.prisma, user),
+    ]);
     // in charge of a department or team, while a current employee (owner, 19 October 2026: the person in charge)
     const leading = own ? await this.prisma.department.count({ where: { headId: own.id, head: { employments: { some: { endDate: null } } } } }) : 0;
     return {
@@ -118,6 +124,7 @@ export class AuthService {
       employeeId: own?.id ?? null,
       name: own?.fullNameEn ?? null,
       leads: leading > 0,
+      assets: assetsMe(assets),
       session: { id: session.id, kind: session.kind, idleTimeoutMs: session.idleTimeoutMs },
     };
   }

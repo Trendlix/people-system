@@ -32,6 +32,9 @@ import {
   yearClosingHref,
 } from './setup';
 import { closingYear } from './year-closing';
+import { saveWfhSettings } from '../../attendance/wfh/actions';
+import { loadWfhSettings } from '../../attendance/wfh/data';
+import { WfhSettingsForm } from '../../attendance/wfh/wfh-forms';
 
 // Organization → Leave, beside Holidays (owner, 18 October 2026: "can you apply the leaves according to the law?", "make
 // it with decision with the year closing"): the Leave Setup, in three sections. 1 Annual Leave: its days by Labour Law
@@ -44,6 +47,9 @@ import { closingYear } from './year-closing';
 // HR changes it; the other staff read it (the API checks every request again). Permission (owner, 19 October 2026: "4
 // hours per month with a maximum 2 hours per day", asked where its limits live, "Yes, in Leave Setup") is in the first
 // section, Annual Leave and Permission: its hours a month and most hours a day, saved with the annual leave's days.
+// Working from home (owner, 21 October 2026: "its 2 days per month with a gap of 1 week between each record
+// (Biweekly)", the limits in Leave Setup) has a section of its own after it: the days a month and the days between two,
+// HR's to change, read by the other staff.
 
 export const metadata: Metadata = { title: 'Leave Setup · People System' };
 
@@ -186,6 +192,29 @@ async function LeaveTypes({ user }: { user: SessionUser }) {
   );
 }
 
+/**
+ * Working from home (owner, 21 October 2026: "its 2 days per month with a gap of 1 week between each record
+ * (Biweekly)"): the days a calendar month someone may work from home and the fewest days between two, HR's to change
+ * (GET and PATCH /wfh/settings). Nothing from an API from before it.
+ */
+async function WorkFromHome({ user }: { user: SessionUser }) {
+  const loaded = await loadWfhSettings();
+  if (loaded.kind === 'unavailable') return null;
+  return (
+    <SetupSection
+      id="work-from-home"
+      title="Work From Home"
+      intro="A working day from home instead of the office, not leave: no balance, no pay effect, its hours counted as any day's. Asked a day before at the latest by someone expected at the office that day, decided by their manager, then HR. At most these days a calendar month, any two at least these days apart, across months too; HR may record a day past them, with a warning."
+    >
+      {loaded.kind === 'ok' ? (
+        <WfhSettingsForm action={saveWfhSettings} settings={loaded.value} canEdit={editsLeaveSetup(user)} />
+      ) : (
+        <NotLoaded what="the work from home limits" loaded={{ kind: 'failed', message: loaded.kind === 'failed' ? loaded.messages.join(' ') : 'Only staff can see it.' }} />
+      )}
+    </SetupSection>
+  );
+}
+
 function YearClosingSection({ user }: { user: SessionUser }) {
   const year = closingYear({}, todayInCairo());
   return (
@@ -219,6 +248,9 @@ async function LeaveSetup() {
       </p>
       <Section>
         <AnnualLeave user={user} />
+      </Section>
+      <Section>
+        <WorkFromHome user={user} />
       </Section>
       <Section>
         <LeaveTypes user={user} />

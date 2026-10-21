@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PERMISSION_RULE_DEFAULTS, type LeavePay, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
+import { AttendanceFillService } from '../attendance/attendance-fill.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly } from '../common/date-only.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { json, savedInputs, worked } from '../payroll/line-work.js';
 import { firstDay, lastDay } from '../payroll/months.js';
@@ -17,12 +19,16 @@ const LINE = 'payroll_line';
 // Leave days and Unpaid leave days as they are (unless HR typed others, which win). From the CEO's step on a run never
 // changes. Permission requests (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day", counted as
 // worked) the same way: a draft's line takes the month's approved permission hours again whenever one is approved,
-// recorded or cancelled (its Permission hours, unless HR typed others).
+// recorded or cancelled (its Permission hours, unless HR typed others). A day of approved leave is never a no-show
+// (owner, 21 October 2026, after importing leave: Zoho's attendance counts a day absent when its leave wasn't in it): the
+// draft's line is filled again from its attendance days, Zoho's included, so such a day moves from its No-show days to its
+// Leave days (or Unpaid leave days), out of the expected hours once (attendance-fill.service.ts).
 @Injectable()
 export class LeavePayrollService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly fill: AttendanceFillService,
   ) {}
 
   /**
@@ -38,34 +44,46 @@ export class LeavePayrollService {
     for (const run of runs) {
       const line = run.lines[0];
       if (!line) continue;
-      const month = fromDateOnly(run.month).slice(0, 7);
-      const before = line.terms as unknown as PayrollTerms;
-      const leave = before.payBasis === 'monthly' ? await this.monthLeave(line.employmentId, month, before) : null;
-      const permissionHours = before.payBasis === 'monthly' ? await this.monthPermission(line.employmentId, month, before) : null;
-      const sameLeave = JSON.stringify(before.leave ?? null) === JSON.stringify(leave);
-      const samePermission = (before.permissionHours ?? null) === permissionHours;
-      if (sameLeave && samePermission) continue;
-      const terms: PayrollTerms = { ...before };
-      delete terms.leave;
-      delete terms.permissionHours;
-      if (leave) terms.leave = leave;
-      if (permissionHours !== null) terms.permissionHours = permissionHours;
-      const rules = run.rules as unknown as PayrollRules;
-      await this.prisma.payrollLine.update({ where: { id: line.id }, data: { terms: json(terms), ...worked(terms, savedInputs(line.inputs), rules, runLawRates(run)) } });
-      await this.audit.record({
-        userId: user?.id ?? null,
-        action: 'update',
-        entityType: LINE,
-        entityId: line.id,
-        diff: {
-          runId: run.id,
-          month,
-          employeeCode: line.employeeCode,
-          ...(!sameLeave && { leave: { from: before.leave ?? null, to: leave } }),
-          ...(!samePermission && { permissionHours: { from: before.permissionHours ?? null, to: permissionHours } }),
-        },
-      });
+      await this.syncLine(run, line, user);
+      // then its no-show days as its attendance days are now, the leave read with them (21 October 2026): a day of
+      // approved leave is never a no-show
+      await this.fill.fillRun(run.id, user, [employeeId]);
     }
+  }
+
+  /** A draft line's leave and permission hours taken again; a line with the same ones is left as it is. */
+  private async syncLine(
+    run: Prisma.PayrollRunGetPayload<{ include: { lines: true } }>,
+    line: Prisma.PayrollLineGetPayload<object>,
+    user: SessionUser | null,
+  ): Promise<void> {
+    const month = fromDateOnly(run.month).slice(0, 7);
+    const before = line.terms as unknown as PayrollTerms;
+    const leave = before.payBasis === 'monthly' ? await this.monthLeave(line.employmentId, month, before) : null;
+    const permissionHours = before.payBasis === 'monthly' ? await this.monthPermission(line.employmentId, month, before) : null;
+    const sameLeave = JSON.stringify(before.leave ?? null) === JSON.stringify(leave);
+    const samePermission = (before.permissionHours ?? null) === permissionHours;
+    if (sameLeave && samePermission) return;
+    const terms: PayrollTerms = { ...before };
+    delete terms.leave;
+    delete terms.permissionHours;
+    if (leave) terms.leave = leave;
+    if (permissionHours !== null) terms.permissionHours = permissionHours;
+    const rules = run.rules as unknown as PayrollRules;
+    await this.prisma.payrollLine.update({ where: { id: line.id }, data: { terms: json(terms), ...worked(terms, savedInputs(line.inputs), rules, runLawRates(run)) } });
+    await this.audit.record({
+      userId: user?.id ?? null,
+      action: 'update',
+      entityType: LINE,
+      entityId: line.id,
+      diff: {
+        runId: run.id,
+        month,
+        employeeCode: line.employeeCode,
+        ...(!sameLeave && { leave: { from: before.leave ?? null, to: leave } }),
+        ...(!samePermission && { permissionHours: { from: before.permissionHours ?? null, to: permissionHours } }),
+      },
+    });
   }
 
   /**

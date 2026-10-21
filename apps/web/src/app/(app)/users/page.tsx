@@ -5,6 +5,7 @@ import { formatDateTime } from '@/lib/format';
 import { canChangeAccount } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { UserAccount } from '@/lib/types';
+import { accessShort } from '../assets/assets';
 import { LINKED_BY_WORK_EMAIL, Loading, RequireAdmin, RoleBadges, StatusBadge } from './ui';
 
 async function UsersList() {
@@ -28,6 +29,7 @@ async function UsersList() {
               <th>Roles</th>
               <th>Status</th>
               <th>Employee</th>
+              <th>Assets</th>
               <th>Last Sign-In</th>
               <th>
                 <span className="sr-only">Actions</span>
@@ -56,6 +58,8 @@ async function UsersList() {
                     <span className="text-muted">—</span>
                   )}
                 </td>
+                {/* the Assets access in effect (owner, 21 October 2026: "3 levels per user") */}
+                <td className="whitespace-nowrap">{accessShort(u.assetsAccessInEffect)}</td>
                 <td className="whitespace-nowrap tabular-nums">
                   {u.lastSignInAt ? formatDateTime(u.lastSignInAt) : <span className="text-muted">Never</span>}
                 </td>

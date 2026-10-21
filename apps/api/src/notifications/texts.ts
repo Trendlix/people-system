@@ -7,13 +7,17 @@ import type { NotificationInput } from './notifications.service.js';
 // a check-in reminder)"; apps/mobile/README.md, Phase 4). Short and general, as a locked phone may show them: who and
 // when, never a salary, an amount, a reason or a comment. Dates DD/MM/YYYY, times on the 12-hour clock. Pure, tested.
 
-/** The kinds of request decided as leave is (the direct manager or the person in charge, then HR). */
-export type LeaveLikeKind = 'leave' | 'permission' | 'correction';
+/**
+ * The kinds of request decided as leave is (the direct manager or the person in charge, then HR), working from home
+ * among them (owner, 21 October 2026: "Manager, then HR").
+ */
+export type LeaveLikeKind = 'leave' | 'permission' | 'correction' | 'wfh';
 
 const NAMES: Record<LeaveLikeKind | 'reimbursement', { waiting: string; noun: string }> = {
   leave: { waiting: 'A leave request is waiting for you', noun: 'Leave request' },
   permission: { waiting: 'A permission request is waiting for you', noun: 'Permission request' },
   correction: { waiting: 'An attendance correction is waiting for you', noun: 'Attendance correction' },
+  wfh: { waiting: 'A work from home request is waiting for you', noun: 'Work from home request' },
   reimbursement: { waiting: 'A reimbursement claim is waiting for you', noun: 'Reimbursement claim' },
 };
 
@@ -33,9 +37,15 @@ export function decidedText(kind: LeaveLikeKind, decision: 'approved' | 'rejecte
   return { kind: `${kind}_decided`, title: `${NAMES[kind].noun} ${decision}`, body: when, link };
 }
 
-/** HR cancelled the employee's approved leave or permission. */
-export function cancelledByHrText(kind: 'leave' | 'permission', when: string, link: string): NotificationInput {
-  return { kind: `${kind}_decided`, title: kind === 'leave' ? 'Leave cancelled by HR' : 'Permission cancelled by HR', body: when, link };
+const CANCELLED_BY_HR: Record<'leave' | 'permission' | 'wfh', string> = {
+  leave: 'Leave cancelled by HR',
+  permission: 'Permission cancelled by HR',
+  wfh: 'Work from home day cancelled by HR',
+};
+
+/** HR cancelled the employee's approved leave, permission or work from home day. */
+export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh', when: string, link: string): NotificationInput {
+  return { kind: `${kind}_decided`, title: CANCELLED_BY_HR[kind], body: when, link };
 }
 
 /** The employee's claim approved by Finance (to be paid with a month's payroll), or rejected at a step. */
@@ -167,4 +177,6 @@ export const TEXT_KINDS: readonly NotificationKind[] = [
   'kpi_self_rating',
   'kpi_waiting',
   'kpi_ready_to_sign',
+  'wfh_waiting',
+  'wfh_decided',
 ];

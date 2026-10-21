@@ -75,6 +75,8 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/my-attendance'
                 days={p.days}
                 name="you"
                 punches={view.punches ?? []}
+                // working from home (21 October 2026): those days say so
+                wfhDays={p.wfhDays ?? []}
                 action={
                   corrections
                     ? (d) => <DayCorrectionCell day={d} corrections={corrections} correctable={view.correctable} today={today} href={askCorrectionHref} label="Ask for a correction" />

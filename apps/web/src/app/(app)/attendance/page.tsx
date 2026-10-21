@@ -29,6 +29,7 @@ import { notLoaded } from './not-loaded';
 import { PeopleTable } from './people-table';
 import { ATTENDANCE_PATH } from './sections';
 import { FigureTiles, MonthNav, SourcesNote } from './ui';
+import { seesAllWfh, WFH_PATH } from './wfh/wfh';
 
 // Daily Attendance (owner, 19 October 2026: "is the attendance module active?", then "the attendance is not active in the
 // side menu"): a month (this month unless the address asks for another, a click to the month before or after) of
@@ -42,7 +43,9 @@ import { FigureTiles, MonthNav, SourcesNote } from './ui';
 // the CEO and Finance (Finance read only: nothing here changes anything); the API checks it again. Checking in on the
 // system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location check, or a
 // device) to replace Zoho"): the days of those who check in come from their check-ins (a working day gone by without
-// one absent), with the flagged ones for HR to see ("Only with flagged check-ins").
+// one absent), with the flagged ones for HR to see ("Only with flagged check-ins"). Working from home (owner, 21 October
+// 2026: "think about how should we handle the working from home in out erp"): a day worked from home shows so, and HR
+// and the CEO reach every request and day from Work from home.
 
 export const metadata: Metadata = { title: 'Daily Attendance · People System' };
 
@@ -129,11 +132,18 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <MonthNav month={month} hrefFor={(m) => dailyHref(m, chosen)} />
-        {importsAttendance(user) && !none && (
-          <Link href={way.href} className="btn btn-secondary no-underline">
-            Import attendance
-          </Link>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {seesAllWfh(user) && (
+            <Link href={WFH_PATH} className="btn btn-secondary no-underline">
+              Work from home
+            </Link>
+          )}
+          {importsAttendance(user) && !none && (
+            <Link href={way.href} className="btn btn-secondary no-underline">
+              Import attendance
+            </Link>
+          )}
+        </div>
       </div>
 
       {none ? (

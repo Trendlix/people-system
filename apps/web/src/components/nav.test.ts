@@ -1,8 +1,9 @@
-import type { Role } from '@trendlix/shared';
+import type { AssetsAccess, Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import { hasRole } from '../lib/roles';
 import {
   activeSubItem,
+  ASSETS_NAV,
   AUDIT_LOG_PATH,
   decidesForTeam,
   DETAILS_CHANGES_PATH,
@@ -147,6 +148,8 @@ describe('the sidebar', () => {
         ['Summary', '/attendance/summary'],
         // the days asked to be corrected (19 October 2026: "Attendance corrections with approval")
         ['Corrections', '/attendance/corrections'],
+        // the work-from-home days (21 October 2026: "Manager, then HR")
+        ['Work From Home', '/attendance/wfh'],
         // the check-in locations and the office network's lock (20 October 2026: "Own page, several locations")
         ['Check-in Setup', '/attendance/check-in-setup'],
       ]);
@@ -155,6 +158,7 @@ describe('the sidebar', () => {
         ['Import History', '/attendance/imports'],
         ['Summary', '/attendance/summary'],
         ['Corrections', '/attendance/corrections'],
+        ['Work From Home', '/attendance/wfh'],
       ]);
       expect(pagesFor('finance')).toEqual([
         ['Daily Attendance', '/attendance'],
@@ -541,6 +545,67 @@ describe('the KPIs (owner, 21 October 2026: "lets start with the KPI’s First")
     navFor({ roles: ['employee'], employeeId: ME });
     expect(KPIS_NAV.href).toBe('/kpis');
     expect(KPIS_NAV.items).toHaveLength(4);
+  });
+});
+
+describe('Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system")', () => {
+  const ME = '3f1c2a9e-5b7d-4e1f-9a2b-6c8d0e4f1a2b';
+  const at = (access: AssetsAccess, values = false) => ({ access, values, ai: false });
+  const assets = (user: Parameters<typeof navFor>[0]) => navFor(user).find((n) => n.label === 'Assets') ?? null;
+  const pages = (user: Parameters<typeof navFor>[0]) => assets(user)?.items?.map((i) => i.label) ?? null;
+
+  it('is a heading after the KPIs with All Assets, Add Asset, Needs Values, Kits, Rooms and Settings, for no role as such', () => {
+    const labels = NAV.map((n) => n.label);
+    expect(labels.indexOf('Assets')).toBe(labels.indexOf('KPIs') + 1);
+    expect(NAV).toContain(ASSETS_NAV);
+    expect(ASSETS_NAV).toMatchObject({ href: '/assets', section: '/assets' });
+    expect(ASSETS_NAV.roles).toBeUndefined();
+    expect(ASSETS_NAV.items?.map((i) => [i.label, i.href])).toEqual([
+      ['All Assets', '/assets'],
+      ['Add Asset', '/assets/new'],
+      ['Needs Values', '/assets/needs-values'],
+      ['Kits', '/assets/kits'],
+      ['Rooms', '/assets/rooms'],
+      ['Settings', '/assets/settings'],
+    ]);
+    // the Assets access decides, never a role
+    expect(ASSETS_NAV.items?.every((i) => !i.roles && i.audience)).toBe(true);
+  });
+
+  it('is hidden without Assets access, whatever the roles, and from an API from before it', () => {
+    for (const roles of [['hr'], ['ceo'], ['admin'], ['employee'], ['employee', 'manager']] as Role[][]) {
+      expect(assets({ roles, employeeId: ME, assets: at('none') })).toBeNull();
+      expect(assets({ roles, employeeId: ME })).toBeNull();
+      expect(assets({ roles, employeeId: ME, assets: null })).toBeNull();
+    }
+  });
+
+  it('shows each page for its level: a viewer reads, a custodian adds, a manager has the rooms and settings', () => {
+    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('viewer') })).toEqual(['All Assets', 'Kits']);
+    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('custodian') })).toEqual(['All Assets', 'Add Asset', 'Kits']);
+    expect(pages({ roles: ['hr'], employeeId: ME, assets: at('manager') })).toEqual(['All Assets', 'Add Asset', 'Kits', 'Rooms', 'Settings']);
+  });
+
+  it('shows Needs Values and Settings to those who see the values ("CEO and Finance"), whatever their level', () => {
+    expect(pages({ roles: ['finance'], employeeId: ME, assets: at('viewer', true) })).toEqual(['All Assets', 'Needs Values', 'Kits', 'Settings']);
+    expect(pages({ roles: ['ceo'], employeeId: ME, assets: at('custodian', true) })).toEqual(['All Assets', 'Add Asset', 'Needs Values', 'Kits', 'Settings']);
+    expect(pages({ roles: ['super_admin'], employeeId: ME, assets: at('manager', true) })).toEqual(['All Assets', 'Add Asset', 'Needs Values', 'Kits', 'Rooms', 'Settings']);
+    // a manager who isn't the CEO, Finance or a Super Admin: no values
+    expect(pages({ roles: ['hr'], employeeId: ME, assets: at('manager') })).not.toContain('Needs Values');
+  });
+
+  it('is in an employee’s own sidebar too, after the KPIs, for an employee-only custodian', () => {
+    const labels = navFor({ roles: ['employee'], employeeId: ME, assets: at('custodian') }).map((n) => n.label);
+    expect(labels).toContain('Assets');
+    expect(labels.indexOf('Assets')).toBe(labels.indexOf('KPIs') + 1);
+    expect(assets({ roles: ['employee'], employeeId: ME, assets: at('custodian') })?.href).toBe('/assets');
+  });
+
+  it('highlights the page it is on, an asset’s page under All Assets', () => {
+    expect(activeSubItem(ASSETS_NAV, '/assets/new')?.label).toBe('Add Asset');
+    expect(activeSubItem(ASSETS_NAV, '/assets/PK-CAM-0001')?.label).toBe('All Assets');
+    expect(activeSubItem(ASSETS_NAV, '/assets/needs-values')?.label).toBe('Needs Values');
+    expect(isActive(ASSETS_NAV, '/asset-photo/PK-CAM-0001/x')).toBe(false);
   });
 });
 

@@ -35,6 +35,7 @@ import { toDateOnly, weekday } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { approvedWfhOn } from '../wfh/wfh-days.js';
 import { AttendanceFillService } from './attendance-fill.service.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
 import type { PunchDto } from './check-in.dto.js';
@@ -65,8 +66,16 @@ export interface CheckInTodayView {
   expectedText: string | null;
   /** Whether a check-in location is set (Attendance → Check-in Setup): without one every check-in is location unknown. */
   officeLocationSet: boolean;
-  /** Whether their check-ins and check-outs need the office network (owner, 20 October 2026): the lock, for them. */
+  /**
+   * Whether their check-ins and check-outs need the office network (owner, 20 October 2026): the lock, for them; never on
+   * a work from home day approved for them (21 October 2026).
+   */
   network: { locked: boolean };
+  /**
+   * Whether the day is a work from home day approved for them (owner, 21 October 2026: "think about how should we handle
+   * the working from home in out erp"; packages/shared wfh.ts): expected anywhere, the office network's lock waived.
+   */
+  workingFromHome: boolean;
   /**
    * The sub-locations they are linked to, by name (owner, 20 October 2026: "own sublocation shows the sub location
    * name"): their own check-in places, where they aren't flagged and, when locked, may check in off the office network.
@@ -186,12 +195,14 @@ export class CheckInService {
     const shift = shiftOf(employment);
     const date = shiftDayOf(now, shift);
     const mock = dto.mock === true;
+    // a work from home day approved for them (owner, 21 October 2026): expected anywhere, the network's lock waived
+    const workingFromHome = await approvedWfhOn(this.prisma, employeeId, date);
     // the place read from the point: the main office (Office), their own sub-location, any sub-location (remote, its
     // name kept), their home, remote, or unknown (20 October 2026)
     const read = checkInPlaceAt(reading, places, home);
     // the office network (20 October 2026): refused off it when locked, unless within their own sub-location on a
-    // location that isn't a mock one; on it, at the office
-    const network = punchNetwork(lock, employment, context.signedIp.ip ?? null, waivesNetworkLock(read, mock));
+    // location that isn't a mock one, or on a work from home day approved for them (21 October 2026); on it, at the office
+    const network = punchNetwork(lock, employment, context.signedIp.ip ?? null, waivesNetworkLock(read, mock) || workingFromHome);
     // without a location: in the app always refused, read at the press and never tracked (owner, 20 October 2026: "App
     // only"); on the website when the company refuses it for them, unless from an office network ("Allow as Office")
     const withoutLocation = locationRefusal({ session: context.session, reading: reading !== null, rule, person: employment, officeNetwork: network.network !== null });
@@ -221,7 +232,7 @@ export class CheckInService {
     const locationName = (officeNetwork ? (read.place === 'office' ? read.location : null) : read.location) ?? null;
     const subLocation = officeNetwork ? null : (read.subLocation ?? null);
     const point = reading ? { latitude: coordinate(reading.latitude), longitude: coordinate(reading.longitude) } : { latitude: null, longitude: null };
-    const expected = expectedPlace(employment.workArrangement, employment.officeDays, weekday(date));
+    const expected = expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), workingFromHome);
     // a check-in breaking the arrangement's rule (not at their own sub-location), and any press on a location the phone
     // said is a mock one (fake GPS); a remote check-in by someone with an approved home, away from it, the office and
     // the sub-locations (not at home or the office); one within a sub-location they aren't linked to (not their location)
@@ -290,8 +301,10 @@ export class CheckInService {
     const { locations, places, lock, rule } = setup;
     const shift = employment ? shiftOf(employment) : null;
     const date = shiftDayOf(now, shift);
-    const punches: PunchRow[] = employeeId ? await db.attendancePunch.findMany({ where: { employeeId, date: toDateOnly(date) }, orderBy: { at: 'asc' }, select: PUNCH_SELECT }) : [];
-    const expected = employment ? expectedPlace(employment.workArrangement, employment.officeDays, weekday(date)) : null;
+    const [punches, workingFromHome]: [PunchRow[], boolean] = employeeId
+      ? await Promise.all([db.attendancePunch.findMany({ where: { employeeId, date: toDateOnly(date) }, orderBy: { at: 'asc' }, select: PUNCH_SELECT }), approvedWfhOn(db, employeeId, date)])
+      : [[], false];
+    const expected = employment ? expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), workingFromHome) : null;
     return {
       refusal,
       date,
@@ -301,9 +314,10 @@ export class CheckInService {
       punches: punches.map((p) => punchView(p, true, locations)),
       day: punches.length ? dayFromPunches(date, punches.map(asPunch), shift) : null,
       expected,
-      expectedText: employment && expected ? expectedPlaceText(employment.workArrangement, expected) : null,
+      expectedText: employment && expected ? expectedPlaceText(employment.workArrangement, expected, workingFromHome) : null,
       officeLocationSet: checkInLocationsSet(locations),
-      network: { locked: !!employment && lockedToOfficeNetwork(lock, employment) },
+      network: { locked: !!employment && lockedToOfficeNetwork(lock, employment) && !workingFromHome },
+      workingFromHome,
       ownPlaces: places.subLocations.filter((l) => l.linked).map((l) => l.name),
       location: { required: !!employment && needsLocation(rule, employment) },
       shift: shift && { startTime: shift.startTime, endTime: shift.endTime, hoursPerDay: shift.hoursPerDay ?? null, graceMinutes: shift.graceMinutes ?? 0, countUntil: shift.countUntil },

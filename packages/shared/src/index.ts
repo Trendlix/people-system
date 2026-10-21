@@ -431,3 +431,19 @@ export * from './kpis.js';
 // for an agency's roles, a general one per kind of department and a universal one; matching a job title to one (its
 // title, then its department), the leadership metric for those who lead people, and linking metrics to the JD's duties
 export * from './kpi-library.js';
+
+// Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system"; "use the main ERP
+// system specs .. dont stick to the MD file"): the Assets access per user (none, viewer, custodian, manager; a Super Admin
+// always a manager) and the values rule ("CEO and Finance"), the five groups, the type codes, the statuses and conditions,
+// the asset, kit and custody codes, the book value, the fields each group shows, the status rules and the API's answers
+export * from './assets.js';
+
+// importing leave in bulk (owner, 21 October 2026: "how to import bulk leaves?", "Both" and "Our Excel template"; Zoho
+// People's leave export too, and "make sure there will be no duplicates from the previous imported files"): the template's
+// sheets, reading a cell's text and Zoho's columns, matching people, a row's checks and statuses, and the review's words
+export * from './leave-import.js';
+
+// working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp"): a
+// working day in another place, not leave; "Manager, then HR", "its 2 days per month with a gap of 1 week between each
+// record (Biweekly)" and "A day before"; who needs it by work arrangement, the limits in Leave Setup, HR recording one
+export * from './wfh.js';

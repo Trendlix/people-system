@@ -157,6 +157,12 @@ export class LeaveBalancesService {
     return (await db.employment.findMany({ where: { id: { in: [...ids] } }, select: EMPLOYMENT_SELECT })).map(leaveEmployment);
   }
 
+  /** Every employment of these people, as the balances read them: a leave import's rows find the one their days are in. */
+  async employmentsOfPeople(employeeIds: readonly string[], db: Db = this.prisma): Promise<LeaveEmployment[]> {
+    if (!employeeIds.length) return [];
+    return (await db.employment.findMany({ where: { employeeId: { in: [...employeeIds] } }, orderBy: { joinDate: 'desc' }, select: EMPLOYMENT_SELECT })).map(leaveEmployment);
+  }
+
   /** The employments current at a year's end (joined by 31 December, not ended by then): those a Year Closing decides. */
   async employedAtYearEnd(year: number): Promise<LeaveEmployment[]> {
     const end = toDateOnly(`${year}-12-31`);

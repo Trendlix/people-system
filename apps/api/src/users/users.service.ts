@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { ROLES, type Role } from '@trendlix/shared';
+import { assetsAccessOf, isAssetsAccess, ROLES, type AssetsAccess, type Role } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { hashPassword } from '../auth/password.js';
 import { actsAs, isSuperAdmin } from '../auth/roles.js';
@@ -14,6 +14,7 @@ const USER = {
   id: true,
   email: true,
   isActive: true,
+  assetsAccess: true,
   createdAt: true,
   roles: { select: { role: { select: { key: true } } } },
 } as const satisfies Prisma.UserSelect;
@@ -26,6 +27,10 @@ export interface UserView {
   email: string;
   isActive: boolean;
   roles: Role[];
+  /** Their Assets access as set on the Users page (owner, 21 October 2026: "3 levels per user"). */
+  assetsAccess: AssetsAccess;
+  /** The Assets access in effect: a Super Admin always a manager, the CEO and Finance at least viewers (assetsAccessOf). */
+  assetsAccessInEffect: AssetsAccess;
   createdAt: Date;
   /** The latest successful sign-in (with the password or the fingerprint), from the audit log. */
   lastSignInAt: Date | null;
@@ -92,8 +97,11 @@ export class UsersService {
 
   async update(id: string, dto: UpdateUserDto, actor: SessionUser): Promise<UserView> {
     const before = await this.get(id);
-    const after = { roles: dto.roles ? inOrder(dto.roles) : before.roles, isActive: dto.isActive ?? before.isActive };
-    const diff = changes({ roles: before.roles, isActive: before.isActive }, { roles: dto.roles && after.roles, isActive: dto.isActive });
+    const after = { roles: dto.roles ? inOrder(dto.roles) : before.roles, isActive: dto.isActive ?? before.isActive, assetsAccess: dto.assetsAccess ?? before.assetsAccess };
+    const diff = changes(
+      { roles: before.roles, isActive: before.isActive, assetsAccess: before.assetsAccess },
+      { roles: dto.roles && after.roles, isActive: dto.isActive, assetsAccess: dto.assetsAccess },
+    );
     if (!isSuperAdmin(actor)) {
       if (before.roles.includes('super_admin') !== after.roles.includes('super_admin')) throw new ForbiddenException(SUPER_ADMIN_ROLE_ONLY);
       if (isSuperAdmin(before)) throw new ForbiddenException(SUPER_ADMIN_ACCOUNT_ONLY);
@@ -127,6 +135,8 @@ export class UsersService {
         await tx.userRole.createMany({ data: roleRows.map((r) => ({ userId: id, roleId: r.id })) });
       }
       if (diff.isActive) await tx.user.update({ where: { id }, data: { isActive: after.isActive } });
+      // their Assets access (21 October 2026), audited with the rest of the change
+      if (diff.assetsAccess) await tx.user.update({ where: { id }, data: { assetsAccess: after.assetsAccess } });
       // deactivating signs them out at once: their open sessions end (sessions kept on the server, 20 October 2026), so
       // reactivating the account doesn't bring an old one back; nor does their phones' fingerprint sign-in (README
       // Phase 3, 20 October 2026: revoked, 'deactivated'). The update's entry records it.
@@ -181,14 +191,20 @@ export class UsersService {
     ]);
     const lastSignIn = new Map(signIns.map((s) => [s.entityId, s._max.at]));
     const employeeByEmail = new Map(employees.map(({ workEmail, ...e }) => [workEmail, e]));
-    return users.map((u) => ({
-      id: u.id,
-      email: u.email,
-      isActive: u.isActive,
-      roles: inOrder(u.roles.map((r) => r.role.key)),
-      createdAt: u.createdAt,
-      lastSignInAt: lastSignIn.get(u.id) ?? null,
-      employee: employeeByEmail.get(u.email) ?? null,
-    }));
+    return users.map((u) => {
+      const roles = inOrder(u.roles.map((r) => r.role.key));
+      const assetsAccess: AssetsAccess = isAssetsAccess(u.assetsAccess) ? u.assetsAccess : 'none';
+      return {
+        id: u.id,
+        email: u.email,
+        isActive: u.isActive,
+        roles,
+        assetsAccess,
+        assetsAccessInEffect: assetsAccessOf({ roles, assetsAccess }),
+        createdAt: u.createdAt,
+        lastSignInAt: lastSignIn.get(u.id) ?? null,
+        employee: employeeByEmail.get(u.email) ?? null,
+      };
+    });
   }
 }

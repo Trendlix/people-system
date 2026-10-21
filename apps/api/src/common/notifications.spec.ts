@@ -25,8 +25,11 @@ import {
 // someone, a check-in reminder)"; packages/shared notifications.ts): the API keeps and sends them, the web shows them.
 
 const MIGRATION = new URL('../../prisma/migrations/20261020140000_notifications/migration.sql', import.meta.url);
-/** The KPIs' migration (21 October 2026), which gave the notifications the three KPI kinds: the kinds as they are now. */
-const KINDS_NOW = new URL('../../prisma/migrations/20261021100000_kpis/migration.sql', import.meta.url);
+/**
+ * The work from home migration (21 October 2026), which gave the notifications the two work from home kinds after the
+ * KPIs' three: the kinds as they are now.
+ */
+const KINDS_NOW = new URL('../../prisma/migrations/20261021180000_wfh_days/migration.sql', import.meta.url);
 
 describe('notifications (shared)', () => {
   it('has the kinds the database allows, each labelled', () => {

@@ -17,6 +17,7 @@ export const ATTENDANCE_IMPORTS_PATH = '/attendance/imports';
 export const ATTENDANCE_SUMMARY_PATH = '/attendance/summary';
 export const ATTENDANCE_CORRECTIONS_PATH = '/attendance/corrections';
 export const CHECK_IN_SETUP_PATH = '/attendance/check-in-setup';
+export const ATTENDANCE_WFH_PATH = '/attendance/wfh';
 
 /** Who reads the attendance itself: HR, the CEO and Finance (an Admin sees Check-in Setup alone). */
 const READERS: Role[] = ['hr', 'ceo', 'finance'];
@@ -30,6 +31,8 @@ export const ATTENDANCE_SECTIONS: readonly { key: string; href: string; label: s
   // the days employees asked to correct (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to
   // check out")"): HR decides them after the manager, the CEO a C-level person's; the waiting count beside it
   { key: 'corrections', href: ATTENDANCE_CORRECTIONS_PATH, label: 'Corrections', roles: ['hr', 'ceo'] },
+  // the work-from-home days asked for and recorded (owner, 21 October 2026: "Manager, then HR", 2 a month a week apart)
+  { key: 'wfh', href: ATTENDANCE_WFH_PATH, label: 'Work From Home', roles: ['hr', 'ceo'] },
   // where check-ins count as the office, and the office network's lock (owner, 20 October 2026)
   { key: 'check-in-setup', href: CHECK_IN_SETUP_PATH, label: 'Check-in Setup', roles: ['hr', 'admin'] },
 ];

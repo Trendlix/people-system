@@ -259,7 +259,7 @@ export class AuditLogService {
     if (!ids.size) return out;
     const p = this.prisma;
     const where = (part: string[]) => ({ where: { id: { in: part } } });
-    const [departments, jobTitles, grades, shifts, runs, allowances, leaveTypes, reimbursementTypes] = await Promise.all([
+    const [departments, jobTitles, grades, shifts, runs, allowances, leaveTypes, reimbursementTypes, assets, rooms, kits] = await Promise.all([
       chunked(ids, (part) => p.department.findMany({ ...where(part), select: { id: true, nameEn: true } })),
       chunked(ids, (part) => p.jobTitle.findMany({ ...where(part), select: { id: true, titleEn: true } })),
       chunked(ids, (part) => p.grade.findMany({ ...where(part), select: { id: true, code: true, levelEn: true } })),
@@ -268,8 +268,15 @@ export class AuditLogService {
       chunked(ids, (part) => p.allowanceType.findMany({ ...where(part), select: { id: true, nameEn: true } })),
       chunked(ids, (part) => p.leaveType.findMany({ ...where(part), select: { id: true, nameEn: true } })),
       chunked(ids, (part) => p.reimbursementType.findMany({ ...where(part), select: { id: true, nameEn: true } })),
+      // Assets (21 October 2026): a photo's asset, an asset's room and kit
+      chunked(ids, (part) => p.asset.findMany({ ...where(part), select: { id: true, code: true, name: true } })),
+      chunked(ids, (part) => p.assetRoom.findMany({ ...where(part), select: { id: true, name: true } })),
+      chunked(ids, (part) => p.assetKit.findMany({ ...where(part), select: { id: true, code: true, name: true } })),
     ]);
     for (const d of departments) out.set(d.id, d.nameEn);
+    for (const a of assets) out.set(a.id, `${a.code} · ${a.name}`);
+    for (const r of rooms) out.set(r.id, r.name);
+    for (const k of kits) out.set(k.id, `${k.code} · ${k.name}`);
     for (const j of jobTitles) out.set(j.id, j.titleEn);
     for (const g of grades) out.set(g.id, `${g.code} · ${g.levelEn}`);
     for (const s of shifts) out.set(s.id, `Shift ${s.code}`);
@@ -328,6 +335,7 @@ function recordLookups(p: PrismaService): Readonly<Record<string, Lookup>> {
     recurring_deduction: async (ids) => owned(await p.recurringDeduction.findMany({ ...by(ids), select: owner })),
     leave_request: async (ids) => owned(await p.leaveRequest.findMany({ ...by(ids), select: owner })),
     permission_request: async (ids) => owned(await p.permissionRequest.findMany({ ...by(ids), select: owner })),
+    wfh_request: async (ids) => owned(await p.wfhRequest.findMany({ ...by(ids), select: owner })),
     attendance_correction: async (ids) => owned(await p.attendanceCorrection.findMany({ ...by(ids), select: owner })),
     attendance_day: async (ids) => owned(await p.attendanceDay.findMany({ ...by(ids), select: owner })),
     leave_adjustment: async (ids) => owned(await p.leaveAdjustment.findMany({ ...by(ids), select: owner })),
@@ -366,6 +374,12 @@ function recordLookups(p: PrismaService): Readonly<Record<string, Lookup>> {
         r.id,
         { parentId: r.jobTitleId, reference: `${r.jobTitle.titleEn} v${r.version}` },
       ]),
+    // Assets (21 October 2026): an asset's code; a photo's asset (its code); a room's name; a kit's code and name
+    asset: async (ids) => (await p.asset.findMany({ ...by(ids), select: { id: true, code: true } })).map((r) => [r.id, { reference: r.code }]),
+    asset_photo: async (ids) =>
+      (await p.assetPhoto.findMany({ ...by(ids), select: { id: true, assetId: true, asset: { select: { code: true } } } })).map((r) => [r.id, { parentId: r.assetId, reference: r.asset.code }]),
+    asset_room: async (ids) => (await p.assetRoom.findMany({ ...by(ids), select: { id: true, name: true } })).map((r) => [r.id, { reference: r.name }]),
+    asset_kit: async (ids) => (await p.assetKit.findMany({ ...by(ids), select: { id: true, code: true, name: true } })).map((r) => [r.id, { reference: `${r.code} · ${r.name}` }]),
     grade: async (ids) => (await p.grade.findMany({ ...by(ids), select: { id: true, code: true, levelEn: true } })).map((r) => [r.id, { reference: `${r.code} · ${r.levelEn}` }]),
     shift: async (ids) => (await p.shift.findMany({ ...by(ids), select: { id: true, code: true } })).map((r) => [r.id, { reference: `Shift ${r.code}` }]),
     allowance_type: async (ids) => named(await p.allowanceType.findMany({ ...by(ids), select: { id: true, nameEn: true } })),

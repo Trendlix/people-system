@@ -42,6 +42,7 @@ const OWNED: readonly (readonly [entityType: string, table: string])[] = [
   ['recurring_deduction', 'recurring_deductions'],
   ['leave_request', 'leave_requests'],
   ['permission_request', 'permission_requests'],
+  ['wfh_request', 'wfh_requests'],
   ['attendance_correction', 'attendance_corrections'],
   ['attendance_day', 'attendance_days'],
   ['leave_adjustment', 'leave_adjustments'],

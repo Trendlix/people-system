@@ -4,6 +4,7 @@ import type { AttendanceCorrectionView } from '../../../../lib/correction-types'
 import type { HomeLocationView } from '../../../../lib/home-location-types';
 import type { PendingRaise, RaiseRequest } from '../../../../lib/raise-types';
 import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } from '../../../../lib/types';
+import type { WfhRequestView } from '../../../../lib/wfh-types';
 import { waitingSections, waitingTotal } from './waiting';
 
 // The phone pages' To Approve (owner, 20 October 2026: the employee app, "managers and team leads approve from the
@@ -111,6 +112,18 @@ describe('what waits for the caller', () => {
     expect(waitingSections({ kpis: [] })).toEqual([]);
     // the other sections' rows say Decide
     expect(waitingSections({ claims: [claim] })[0].rows[0].action).toBeUndefined();
+  });
+
+  // owner, 21 October 2026: "Manager, then HR"
+  it('lists the work from home requests waiting for the caller after leave, opening each under To Approve', () => {
+    const wfh = { id: ID(11), kind: 'wfh', employee: nour, date: '2026-11-02', status: 'with_manager' } as unknown as WfhRequestView;
+    const sections = waitingSections({ leave: [leave], permissions: [], wfh: [wfh], claims: [claim] });
+    expect(sections.map((s) => s.key)).toEqual(['leave', 'wfh', 'reimbursement']);
+    expect(sections[1]).toMatchObject({ title: 'Work From Home', failed: false });
+    expect(sections[1].rows.map((r) => [r.href, r.name, r.line, r.action])).toEqual([[`/app/approve/wfh/${ID(11)}`, 'Nour Adel', 'Work from home · Monday 02/11/2026', undefined]]);
+    expect(waitingTotal(sections)).toBe(3);
+    expect(waitingSections({ wfh: null })).toMatchObject([{ key: 'wfh', failed: true }]);
+    expect(waitingSections({ wfh: [] })).toEqual([]);
   });
 
   it('leaves out what is empty or not the caller’s, and says what couldn’t be read', () => {

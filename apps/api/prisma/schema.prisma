@@ -29,6 +29,10 @@ model User {
   passwordHash       String?                    @map("password_hash")
   mfaEnabled         Boolean                    @default(false) @map("mfa_enabled")
   isActive           Boolean                    @default(true) @map("is_active")
+  // the Assets access (owner, 21 October 2026: "3 levels per user"): none, viewer, custodian, manager (ASSETS_ACCESS_LEVELS),
+  // set on the Users page by an Admin or a Super Admin; a Super Admin is always a manager, the CEO and Finance always
+  // at least viewers (assetsAccessOf, packages/shared assets.ts)
+  assetsAccess          String                     @default("none") @map("assets_access")
   createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime                   @updatedAt @map("updated_at") @db.Timestamptz
   roles              UserRole[]
@@ -74,11 +78,16 @@ model User {
   leaveClosings      LeaveYearClosing[]         @relation("LeaveYearClosingBy") // the years this user closed the leave balances of
   leaveYearsClosed   LeaveBalanceYear[]         @relation("LeaveBalanceClosedBy") // the balances this user closed: at a Year Closing, or paid on leaving
   leaveSetupChanged  LeaveSettings[]            @relation("LeaveSettingsBy") // the Leave Setup, when this user changed it last
+  leaveImports       LeaveImport[]              @relation("LeaveImportBy") // leave files this user uploaded (21 October 2026)
+  leaveImportApplied LeaveImport[]              @relation("LeaveImportAppliedBy") // leave imports this user applied last
+  leaveImportsUndone LeaveImport[]              @relation("LeaveImportUndoneBy") // leave imports this user undid last
   permissionsMade    PermissionRequest[]        @relation("PermissionRequestCreation") // permission requests this user sent, or recorded for an employee as HR
   attendanceImports  AttendanceImport[]         @relation("AttendanceImportBy") // attendance files this user uploaded on a payroll run
   attendanceApplied  AttendanceImport[]         @relation("AttendanceImportAppliedBy") // attendance imports this user applied to a run's lines last
   attendanceDays     AttendanceDay[]            @relation("AttendanceDayImportedBy") // days of attendance this user's apply kept
   permissionSteps    PermissionRequestStep[]    @relation("PermissionStepActor") // steps of permission requests this user took
+  wfhRequestsMade    WfhRequest[]               @relation("WfhRequestCreation") // work from home days this user asked for, recorded as HR or imported (21 October 2026)
+  wfhSteps           WfhRequestStep[]           @relation("WfhStepActor") // steps of work from home requests this user took
   attendancePunches  AttendancePunch[]          @relation("AttendancePunchBy") // the presses of Check in and Check out this user made
   correctionsMade    AttendanceCorrection[]     @relation("AttendanceCorrectionCreation") // attendance corrections this user asked for, or made directly as HR
   correctionSteps    AttendanceCorrectionStep[] @relation("AttendanceCorrectionStepActor") // steps of attendance corrections this user took
@@ -97,6 +106,18 @@ model User {
   kpiCalibrated         KpiScorecard[]     @relation("KpiScorecardCalibratedBy") // KPI scorecards this user calibrated as HR
   kpiManagerSigned      KpiScorecard[]     @relation("KpiScorecardManagerSignedBy") // KPI scorecards this user signed as the manager
   kpiSteps              KpiScorecardStep[] @relation("KpiScorecardStepActor") // steps of KPI scorecards this user took
+  assetSettingsChanged  AssetSettings[]            @relation("AssetSettingsBy") // the asset settings, when this user changed them last (21 October 2026)
+  assetsCreated         Asset[]                    @relation("AssetCreation") // the assets this user registered
+  assetsDisposed        Asset[]                    @relation("AssetDisposal") // the assets this user recorded the disposal of
+  assetPhotosUploaded   AssetPhoto[]               @relation("AssetPhotoUpload") // the asset photos this user added
+  assetKitsCreated      AssetKit[]                 @relation("AssetKitCreation") // the production kits this user made
+  custodyIssued         CustodyRecord[]            @relation("CustodyIssuedBy") // the custody records this user recorded
+  custodyReceived       CustodyItem[]              @relation("CustodyReceivedBy") // the custody items this user received back
+  custodyFilesUploaded  CustodyFile[]              @relation("CustodyFileUpload") // the signed custody forms this user attached
+  assetMaintenanceMade  AssetMaintenance[]         @relation("AssetMaintenanceBy") // the maintenance entries this user made
+  assetStockMoves       AssetStockMove[]           @relation("AssetStockMoveBy") // the stock moves this user made
+  assetCounts           AssetCount[]               @relation("AssetCountBy") // the asset counts this user made
+  assetsMarkedLost      AssetCountLine[]           @relation("AssetCountLostBy") // the missing assets this user marked lost after a count
 
   @@map("users")
 }
@@ -507,6 +528,8 @@ model Employee {
   attendanceCorrections      AttendanceCorrection[] @relation("AttendanceCorrectionRequester") // the days this person asked to correct, or HR corrected
   correctionsToDecide        AttendanceCorrection[] @relation("AttendanceCorrectionManager") // the corrections this person decided, or decides, as the requester's direct manager
   permissionsToDecide        PermissionRequest[]    @relation("PermissionManager") // the permission requests this person decided, or decides, as the requester's direct manager
+  wfhDays                    WfhRequest[]           @relation("WfhRequester") // the work from home days this person asked for, or HR recorded for them (21 October 2026)
+  wfhToDecide                WfhRequest[]           @relation("WfhManager") // the work from home requests this person decided, or decides, as the approver in charge
   leaveBalances              LeaveBalanceYear[] // each year's annual leave: carried in, closed
   leaveAdjustments           LeaveAdjustment[] // HR's changes to the annual leave balance
   leading                    Department[]           @relation("DepartmentHead") // the departments this person heads and the teams they lead
@@ -514,6 +537,9 @@ model Employee {
   checkInPlaces              CheckInLocationPerson[] // the sub-locations this person is linked to (20 October 2026): their own check-in places
   kpiScorecards              KpiScorecard[]         @relation("KpiScorecardOf") // this person's KPI scorecards, one a month (21 October 2026)
   kpiToScore                 KpiScorecard[]         @relation("KpiScorecardManager") // the KPI scorecards this person scores, or scored, as the manager in charge
+  assetsHeld                 Asset[]                 @relation("AssetHolder") // the assets this person holds in custody now (21 October 2026)
+  custodyRecords             CustodyRecord[]         @relation("CustodyEmployee") // the assets handed over to this person, record by record
+  custodyHandedOver          CustodyRecord[]         @relation("CustodyHandedOverBy") // the custody records this person handed over
 
   @@map("employees")
 }
@@ -572,6 +598,7 @@ model Employment {
   finalSettlement  FinalSettlement? // its final dues, once settled (open until then)
   leaveRequests    LeaveRequest[] // the leave taken under it
   permissions      PermissionRequest[] // the permission hours taken under it
+  wfhDays          WfhRequest[] // the work from home days under it (21 October 2026)
   corrections      AttendanceCorrection[] // the attendance corrections of its days
   leaveBalances    LeaveBalanceYear[] // each year's annual leave under it
   leaveAdjustments LeaveAdjustment[]
@@ -1788,6 +1815,10 @@ model LeaveSettings {
   // hours a month someone may be away for (0: none) and the most of one day, in half hours
   permissionHoursPerMonth  Decimal  @default(4) @map("permission_hours_per_month") @db.Decimal(4, 1)
   permissionMaxHoursPerDay Decimal  @default(2) @map("permission_max_hours_per_day") @db.Decimal(3, 1)
+  // working from home (owner, 21 October 2026: "its 2 days per month with a gap of 1 week between each record
+  // (Biweekly)"): the days a calendar month someone may work from home (0: none), and the fewest days between two
+  wfhDaysPerMonth          Int      @default(2) @map("wfh_days_per_month")
+  wfhMinGapDays            Int      @default(7) @map("wfh_min_gap_days")
   updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz
   updatedById              String?  @map("updated_by") @db.Uuid
   updatedBy                User?    @relation("LeaveSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
@@ -1828,11 +1859,18 @@ model LeaveRequest {
   updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz
   steps         LeaveRequestStep[]
   documents     LeaveDocument[]
+  // imported from a file (owner, 21 October 2026: "how to import bulk leaves?"): the import that made it, which Undo
+  // removes it with; and a Zoho People row's ZOHO_LINK_ID, once only ("make sure there will be no duplicates from the
+  // previous imported files": undoing deletes the leave, so the row can be imported again)
+  importId      String?            @map("import_id") @db.Uuid
+  leaveImport   LeaveImport?       @relation(fields: [importId], references: [id], onDelete: Restrict)
+  zohoLinkId    String?            @unique @map("zoho_link_id")
 
   @@index([employeeId, startDate])
   @@index([status])
   @@index([managerId])
   @@index([typeId])
+  @@index([importId])
   @@map("leave_requests")
 }
 
@@ -1904,6 +1942,60 @@ model PermissionRequestStep {
 
   @@index([requestId])
   @@map("permission_request_steps")
+}
+
+// A work from home day (owner, 21 October 2026: "think about how should we handle the working from home in out erp"): one
+// working day of someone expected at the office, worked from home: not leave (no balance, no pay effect, its hours counted
+// as any day's). Asked a day before at the latest ("A day before"), at most the Leave Setup's days a calendar month (2),
+// any two at least its days apart (7: "its 2 days per month with a gap of 1 week between each record (Biweekly)");
+// decided as leave is (LEAVE_STATUSES) by the approver in charge (approverRole), then HR, a C-level person's HR stage by
+// the CEO ("Manager, then HR"); recorded by HR for someone on any day, past the limits too, with a reason and the
+// warnings it was recorded past, approved at once; or brought over from Zoho People's history (source zoho). One a person
+// and day while being decided or approved (a partial unique index). Rules: packages/shared wfh.ts.
+model WfhRequest {
+  id            String           @id @default(uuid()) @db.Uuid
+  employeeId    String           @map("employee_id") @db.Uuid
+  employee      Employee         @relation("WfhRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId  String           @map("employment_id") @db.Uuid
+  employment    Employment       @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  date          DateTime         @db.Date
+  reason        String?
+  status        String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
+  managerId     String?          @map("manager_id") @db.Uuid
+  manager       Employee?        @relation("WfhManager", fields: [managerId], references: [id], onDelete: Restrict)
+  approverRole  String?          @map("approver_role") // APPROVER_ROLES, set exactly when managerId is
+  rejectedStage String?          @map("rejected_stage") // LEAVE_STAGES: manager, hr
+  rejectReason  String?          @map("reject_reason")
+  recordedByHr  Boolean          @default(false) @map("recorded_by_hr")
+  source        String           @default("system") // WFH_SOURCES: system, zoho
+  warnings      String[]         @default([]) // what HR recorded it past (no day's notice, the limits), as said then
+  createdById   String?          @map("created_by") @db.Uuid
+  createdBy     User?            @relation("WfhRequestCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  steps         WfhRequestStep[]
+
+  @@index([employeeId, date])
+  @@index([status])
+  @@index([managerId])
+  @@index([date])
+  @@map("wfh_requests")
+}
+
+// Each step of a work from home request, in the order taken (WFH_STEP_KINDS): leave's, and imported from Zoho People.
+model WfhRequestStep {
+  id        BigInt     @id @default(autoincrement())
+  requestId String     @map("request_id") @db.Uuid
+  request   WfhRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind      String
+  decision  String? // LEAVE_DECISIONS, on the stages' decisions only
+  comment   String?
+  actorId   String?    @map("actor_id") @db.Uuid
+  actor     User?      @relation("WfhStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  at        DateTime   @default(now()) @db.Timestamptz
+
+  @@index([requestId])
+  @@map("wfh_request_steps")
 }
 
 // Attendance files read on a draft payroll run (owner, 19 October 2026: attendance runs in Zoho People today, "Import
@@ -2173,9 +2265,46 @@ model LeaveAdjustment {
   createdById  String?    @map("created_by") @db.Uuid
   createdBy    User?      @relation("LeaveAdjustmentBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  // an opening balance from a leave import (owner, 21 October 2026): the import, which Undo removes it with
+  importId     String?      @map("import_id") @db.Uuid
+  leaveImport  LeaveImport? @relation(fields: [importId], references: [id], onDelete: Restrict)
 
   @@index([employmentId, year])
+  @@index([importId])
   @@map("leave_adjustments")
+}
+
+// A leave file imported (owner, 21 October 2026: "how to import bulk leaves?"; asked, he chose "Both": the leave already
+// taken and each person's balance, and "Our Excel template"; Zoho People's leave export is read too): the file as it was
+// uploaded, its fingerprint (the same file again is told: "make sure there will be no duplicates from the previous
+// imported files"), where it comes from (LEAVE_IMPORT_SOURCES), its rows as read, who each person of it is (HR's choices),
+// a Zoho file's leave types as HR mapped them, and when it was applied and undone last. What it made is on the leave and
+// the balance changes themselves (their importId); Undo removes them, and only then may a Super Admin delete it.
+// `rows`: [{ sheet, row, personKey, … applied }]; `people`: [{ key, code, name, zohoId, pick, skipped }]; `typeMap`:
+// { "<Zoho type>": type id | "skip" }.
+model LeaveImport {
+  id          String            @id @default(uuid()) @db.Uuid
+  fileName    String            @map("file_name")
+  fileHash    String            @map("file_hash") // SHA-256 of the file's content
+  fileData    Bytes             @map("file_data")
+  source      String // LEAVE_IMPORT_SOURCES: template, zoho
+  rows        Json
+  people      Json
+  typeMap     Json              @default("{}") @map("type_map")
+  createdById String?           @map("created_by") @db.Uuid
+  createdBy   User?             @relation("LeaveImportBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  appliedById String?           @map("applied_by") @db.Uuid
+  appliedBy   User?             @relation("LeaveImportAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+  appliedAt   DateTime?         @map("applied_at") @db.Timestamptz // the last time it was applied
+  undoneById  String?           @map("undone_by") @db.Uuid
+  undoneBy    User?             @relation("LeaveImportUndoneBy", fields: [undoneById], references: [id], onDelete: SetNull)
+  undoneAt    DateTime?         @map("undone_at") @db.Timestamptz // once nothing it made is left
+  leaves      LeaveRequest[]
+  adjustments LeaveAdjustment[]
+
+  @@index([fileHash])
+  @@map("leave_imports")
 }
 
 // A year whose annual leave balances HR closed (owner, 18 October 2026: "make it with decision with the year closing"):
@@ -2356,4 +2485,307 @@ model KpiScorecardStep {
 
   @@index([scorecardId])
   @@map("kpi_scorecard_steps")
+}
+
+// ---------- assets (owner, 21 October 2026: "i want to add this module with a special permission to the system") ----------
+// The studio's assets, who holds them, their counts and their values, from the owner's "Asset Register" spec, built the
+// People System's way ("use the main ERP system specs .. dont stick to the MD file"): the system's employees, users,
+// audit log and file storage. The whole data model of the module's five steps, made at once in step 1 so the later steps
+// don't change it much: the register (step 1), custody (step 3), kits, stock, repairs and disposal (step 4), counts and
+// labels (step 5). The rules: packages/shared assets.ts; the module: apps/api/src/assets. Who may do what is each user's
+// Assets access (users.assets_access: none, viewer, custodian, manager; a Super Admin always a manager); the values (the
+// purchase cost, supplier and invoice, market value, disposal amounts, a custody item's value) are the CEO's, Finance's
+// and a Super Admin's only ("CEO and Finance"). All money in EGP, numeric(14,2).
+
+// The asset settings (one row, id 1): the capitalization threshold, under which an asset is Expensed (its book value 0).
+model AssetSettings {
+  id                      Int      @id @default(1) // always 1
+  capitalizationThreshold Decimal  @default(0) @map("capitalization_threshold") @db.Decimal(14, 2)
+  updatedAt               DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById             String?  @map("updated_by") @db.Uuid
+  updatedBy               User?    @relation("AssetSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("asset_settings")
+}
+
+// A room an asset is kept in (the spec's "locations"): Studio A, the storeroom, Office 2 … Called rooms so they don't
+// clash with Check-in Setup's check-in locations. Archived: no longer offered, kept on the assets and counts that name it.
+// Its name is unique whatever its case. Only a Super Admin deletes one, and only while no asset or count names it.
+model AssetRoom {
+  id         String       @id @default(uuid()) @db.Uuid
+  name       String
+  notes      String?
+  archivedAt DateTime?    @map("archived_at") @db.Timestamptz
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  assets     Asset[]
+  counts     AssetCount[]
+
+  @@map("asset_rooms")
+}
+
+// A production kit (spec §2.3: PK-KIT-A, PK-KIT-B …): production kit assets packed together, handed over and counted as
+// one. Its code never changes and is never given again.
+model AssetKit {
+  id          String       @id @default(uuid()) @db.Uuid
+  code        String       @unique
+  name        String
+  notes       String?
+  createdById String?      @map("created_by") @db.Uuid
+  createdBy   User?        @relation("AssetKitCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  assets      Asset[]
+  counts      AssetCount[]
+
+  @@map("asset_kits")
+}
+
+// The last number given for each code prefix (spec §2.3): an asset's group and type ("PK-CAM-"), the kits ("PK-KIT-"),
+// the custody records ("CUS-"). Raised in the transaction that gives the code (INSERT … ON CONFLICT … RETURNING), so two
+// people saving at once never get the same number; never lowered, so a number is never given again.
+model AssetCodeCounter {
+  prefix String @id
+  last   Int
+
+  @@map("asset_code_counters")
+}
+
+// An asset (spec §2–3): its code, never changed; its group (how it is managed), type and accounting class; what it is;
+// where it stands (its status: custody only through a custody record, with its holder; a consumable always available,
+// kept by quantity); its room and, for a production kit asset, its kit; when it was bought and its useful life, the
+// warranty; its values (the CEO's, Finance's and a Super Admin's only): the purchase cost, supplier and invoice, the
+// market value (low, mid, high, a note, when it last changed); when its label was printed; its disposal (method, day,
+// amount received, who approved it, the book value then, notes; a manager's, step 4). Disposed assets stay, out of every
+// total. Deleted only by a Super Admin, and only if it was never in custody.
+model Asset {
+  id                 String             @id @default(uuid()) @db.Uuid
+  code               String             @unique // PK-CAM-0003
+  name               String
+  group              String             @map("asset_group") // ASSET_GROUPS: studio, kit, it, office, consumable
+  type               String             @map("asset_type") // ASSET_TYPES' codes: CAM, LEN …
+  assetClass         String             @map("asset_class") // ASSET_CLASSES: fixed, current
+  brand              String?
+  model              String?
+  serial             String?
+  condition          String? // ASSET_CONDITIONS: new, excellent, good, used, needs_repair; none for a consumable
+  status             String             @default("available") // ASSET_STATUSES: available, custody, repair, lost, disposed
+  roomId             String?            @map("room_id") @db.Uuid
+  room               AssetRoom?         @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  kitId              String?            @map("kit_id") @db.Uuid // a production kit asset's only
+  kit                AssetKit?          @relation(fields: [kitId], references: [id], onDelete: SetNull)
+  holderId           String?            @map("holder_id") @db.Uuid // in custody: who holds it
+  holder             Employee?          @relation("AssetHolder", fields: [holderId], references: [id], onDelete: Restrict)
+  custodyId          String?            @map("custody_id") @db.Uuid // in custody: the record it went out on
+  custody            CustodyRecord?     @relation("AssetCustodyNow", fields: [custodyId], references: [id], onDelete: Restrict)
+  quantity           Decimal?           @db.Decimal(12, 2) // a consumable's only
+  unit               String? // a consumable's: roll, pack, sheet …
+  reorderLevel       Decimal?           @map("reorder_level") @db.Decimal(12, 2) // reorder when the quantity is at or under it
+  purchaseDate       DateTime?          @map("purchase_date") @db.Date
+  usefulLifeYears    Int?               @map("useful_life_years") // none for a consumable
+  warrantyEnd        DateTime?          @map("warranty_end") @db.Date
+  purchasePrice      Decimal?           @map("purchase_price") @db.Decimal(14, 2)
+  supplier           String?
+  invoiceNo          String?            @map("invoice_no")
+  priceLow           Decimal?           @map("price_low") @db.Decimal(14, 2)
+  marketValue        Decimal?           @map("market_value") @db.Decimal(14, 2)
+  priceHigh          Decimal?           @map("price_high") @db.Decimal(14, 2)
+  priceNote          String?            @map("price_note")
+  priceUpdatedAt     DateTime?          @map("price_updated_at") @db.Timestamptz
+  labeledAt          DateTime?          @map("labeled_at") @db.Timestamptz
+  disposalMethod     String?            @map("disposal_method") // sold, scrapped, written_off, donated (step 4)
+  disposedOn         DateTime?          @map("disposed_on") @db.Date
+  disposalAmount     Decimal?           @map("disposal_amount") @db.Decimal(14, 2)
+  disposalBookValue  Decimal?           @map("disposal_book_value") @db.Decimal(14, 2)
+  disposalApprovedBy String?            @map("disposal_approved_by") // who approved it, as written
+  disposalNotes      String?            @map("disposal_notes")
+  disposedById       String?            @map("disposed_by") @db.Uuid
+  disposedBy         User?              @relation("AssetDisposal", fields: [disposedById], references: [id], onDelete: SetNull)
+  notes              String?
+  createdById        String?            @map("created_by") @db.Uuid
+  createdBy          User?              @relation("AssetCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  photos             AssetPhoto[]
+  custodyItems       CustodyItem[]
+  maintenance        AssetMaintenance[]
+  stockMoves         AssetStockMove[]
+  countLines         AssetCountLine[]
+
+  @@index([group, status])
+  @@index([status])
+  @@index([roomId])
+  @@index([kitId])
+  @@index([holderId])
+  @@map("assets")
+}
+
+// An asset's photo, up to 6 an asset, kept in the database as the employee file's papers are (the daily backup has it),
+// in order: the first is the one the lists show. Served by the API to those with Assets access.
+model AssetPhoto {
+  id           String   @id @default(uuid()) @db.Uuid
+  assetId      String   @map("asset_id") @db.Uuid
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  position     Int
+  fileName     String   @map("file_name")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  data         Bytes
+  uploadedById String?  @map("uploaded_by") @db.Uuid
+  uploadedBy   User?    @relation("AssetPhotoUpload", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedAt   DateTime @default(now()) @map("uploaded_at") @db.Timestamptz
+
+  @@index([assetId, position])
+  @@map("asset_photos")
+}
+
+// A custody record (spec §3, step 3): CUS-0042, assets handed over to an employee, for a shoot (with its return date) or
+// as a long-term assignment (back at clearance); its purpose, who recorded it and who handed it over, the notes, the
+// terms printed on its form (a snapshot), open, partly returned or closed. Its signed form is attached (CustodyFile).
+model CustodyRecord {
+  id             String        @id @default(uuid()) @db.Uuid
+  code           String        @unique // CUS-0042
+  kind           String // shoot, assignment
+  employeeId     String        @map("employee_id") @db.Uuid
+  employee       Employee      @relation("CustodyEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  purpose        String?
+  dueDate        DateTime?     @map("due_date") @db.Date // a shoot's only
+  issuedById     String?       @map("issued_by") @db.Uuid // who recorded it
+  issuedBy       User?         @relation("CustodyIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+  handedOverById String?       @map("handed_over_by") @db.Uuid // the employee who handed it over
+  handedOverBy   Employee?     @relation("CustodyHandedOverBy", fields: [handedOverById], references: [id], onDelete: SetNull)
+  outNotes       String?       @map("out_notes")
+  terms          String[] // the terms printed on its form, as they were
+  status         String        @default("open") // open, partial, closed
+  outAt          DateTime      @default(now()) @map("out_at") @db.Timestamptz
+  closedAt       DateTime?     @map("closed_at") @db.Timestamptz
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  items          CustodyItem[]
+  files          CustodyFile[]
+  assetsNow      Asset[]       @relation("AssetCustodyNow")
+
+  @@index([employeeId, status])
+  @@index([status])
+  @@map("custody_records")
+}
+
+// An asset on a custody record (step 3): its value when it went out (a value: the CEO's, Finance's and a Super Admin's
+// only), its condition and accessories then; when it came back, in what state (good, damaged, missing), received by
+// whom, with notes. An asset is out on one record at a time.
+model CustodyItem {
+  id              String             @id @default(uuid()) @db.Uuid
+  custodyId       String             @map("custody_id") @db.Uuid
+  custody         CustodyRecord      @relation(fields: [custodyId], references: [id], onDelete: Restrict)
+  assetId         String             @map("asset_id") @db.Uuid
+  asset           Asset              @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  valueAtOut      Decimal?           @map("value_at_out") @db.Decimal(14, 2)
+  conditionOut    String?            @map("condition_out")
+  accessories     String?
+  returnedAt      DateTime?          @map("returned_at") @db.Timestamptz
+  returnCondition String?            @map("return_condition") // good, damaged, missing
+  receivedById    String?            @map("received_by") @db.Uuid
+  receivedBy      User?              @relation("CustodyReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  returnNotes     String?            @map("return_notes")
+  maintenance     AssetMaintenance[]
+
+  @@unique([custodyId, assetId])
+  @@index([assetId])
+  @@map("custody_items")
+}
+
+// A custody record's signed form, photographed or scanned (step 3), kept in the database as the other files are.
+model CustodyFile {
+  id           String        @id @default(uuid()) @db.Uuid
+  custodyId    String        @map("custody_id") @db.Uuid
+  custody      CustodyRecord @relation(fields: [custodyId], references: [id], onDelete: Restrict)
+  fileName     String        @map("file_name")
+  mimeType     String        @map("mime_type")
+  sizeBytes    Int           @map("size_bytes")
+  data         Bytes
+  uploadedById String?       @map("uploaded_by") @db.Uuid
+  uploadedBy   User?         @relation("CustodyFileUpload", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedAt   DateTime      @default(now()) @map("uploaded_at") @db.Timestamptz
+
+  @@index([custodyId])
+  @@map("custody_files")
+}
+
+// An asset's maintenance log (spec §3, step 4): a repair, service, inspection, warranty claim or upgrade on a day, its
+// vendor, its cost (a value: the CEO's, Finance's and a Super Admin's only) and notes; one made by a damaged return
+// names the custody item it came back on ("Returned damaged on CUS-0042 by …").
+model AssetMaintenance {
+  id            String       @id @default(uuid()) @db.Uuid
+  assetId       String       @map("asset_id") @db.Uuid
+  asset         Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  on            DateTime     @map("on_date") @db.Date
+  kind          String // repair, service, inspection, warranty_claim, upgrade
+  vendor        String?
+  cost          Decimal?     @db.Decimal(14, 2)
+  notes         String?
+  custodyItemId String?      @map("custody_item_id") @db.Uuid
+  custodyItem   CustodyItem? @relation(fields: [custodyItemId], references: [id], onDelete: SetNull)
+  createdById   String?      @map("created_by") @db.Uuid
+  createdBy     User?        @relation("AssetMaintenanceBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([assetId, on])
+  @@map("asset_maintenance")
+}
+
+// A consumable's stock moving (spec §3, step 4): used (−) or restocked (+), the quantity after it (never below 0), a
+// note, by whom and when.
+model AssetStockMove {
+  id            String   @id @default(uuid()) @db.Uuid
+  assetId       String   @map("asset_id") @db.Uuid
+  asset         Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  delta         Decimal  @db.Decimal(12, 2)
+  quantityAfter Decimal  @map("quantity_after") @db.Decimal(12, 2)
+  note          String?
+  byId          String?  @map("by_user") @db.Uuid
+  by            User?    @relation("AssetStockMoveBy", fields: [byId], references: [id], onDelete: SetNull)
+  at            DateTime @default(now()) @db.Timestamptz
+
+  @@index([assetId, at])
+  @@map("asset_stock_moves")
+}
+
+// A count (spec §3, step 5): of a group, a room or a kit, its words as counted, when and by whom, notes, and how many
+// were expected; each asset's result on its lines.
+model AssetCount {
+  id          String           @id @default(uuid()) @db.Uuid
+  scopeKind   String           @map("scope_kind") // group, room, kit
+  scopeGroup  String?          @map("scope_group") // a group's: ASSET_GROUPS
+  scopeRoomId String?          @map("scope_room_id") @db.Uuid
+  scopeRoom   AssetRoom?       @relation(fields: [scopeRoomId], references: [id], onDelete: Restrict)
+  scopeKitId  String?          @map("scope_kit_id") @db.Uuid
+  scopeKit    AssetKit?        @relation(fields: [scopeKitId], references: [id], onDelete: Restrict)
+  scopeLabel  String           @map("scope_label")
+  countedAt   DateTime         @default(now()) @map("counted_at") @db.Timestamptz
+  countedById String?          @map("counted_by") @db.Uuid
+  countedBy   User?            @relation("AssetCountBy", fields: [countedById], references: [id], onDelete: SetNull)
+  notes       String?
+  expected    Int
+  lines       AssetCountLine[]
+
+  @@index([scopeKind, countedAt(sort: Desc)])
+  @@map("asset_counts")
+}
+
+// An asset's result in a count (step 5): found, missing (unticked) or out (in custody); "Mark lost" on a missing one
+// is a deliberate step of its own, kept here (spec §6.5).
+model AssetCountLine {
+  id             String     @id @default(uuid()) @db.Uuid
+  countId        String     @map("count_id") @db.Uuid
+  count          AssetCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  assetId        String     @map("asset_id") @db.Uuid
+  asset          Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  result         String // found, missing, out
+  lostMarkedAt   DateTime?  @map("lost_marked_at") @db.Timestamptz
+  lostMarkedById String?    @map("lost_marked_by") @db.Uuid
+  lostMarkedBy   User?      @relation("AssetCountLostBy", fields: [lostMarkedById], references: [id], onDelete: SetNull)
+
+  @@unique([countId, assetId])
+  @@index([assetId])
+  @@map("asset_count_lines")
 }

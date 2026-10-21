@@ -39,6 +39,10 @@ export const NOTIFICATION_KINDS = [
   'kpi_self_rating',
   'kpi_waiting',
   'kpi_ready_to_sign',
+  // working from home (owner, 21 October 2026: "Manager, then HR"; wfh.ts): a request waiting for its approver's step,
+  // and the employee's own decided (or cancelled by HR)
+  'wfh_waiting',
+  'wfh_decided',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -55,6 +59,7 @@ export const WAITING_KINDS = [
   'pay_raise_decided',
   'home_location_waiting',
   'kpi_waiting',
+  'wfh_waiting',
 ] as const satisfies readonly NotificationKind[];
 
 /** Where the phone pages open a notification's request: To approve for what the person decides, else their own requests. */
@@ -82,6 +87,8 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   kpi_self_rating: 'KPI',
   kpi_waiting: 'KPI',
   kpi_ready_to_sign: 'KPI',
+  wfh_waiting: 'Work from home',
+  wfh_decided: 'Work from home',
 };
 
 // ---------- the reminders and the person's switches ----------

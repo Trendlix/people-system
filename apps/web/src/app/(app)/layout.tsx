@@ -29,6 +29,8 @@ import { canSeeReimbursements, CLAIM_COUNTS } from './reimbursements/list';
 import { CORRECTION_COUNTS, CORRECTIONS_PATH, seesCorrections } from './attendance/corrections/corrections';
 import { HOME_COUNTS, seesHomes } from './home-locations/home-locations';
 import { readsChangeRequests, waitingForYou } from './requests/details-changes/list';
+import { WFH_COUNTS } from './attendance/wfh/wfh';
+import type { WfhCounts } from '@/lib/wfh-types';
 
 /**
  * The sidebar links for the signed-in user: an employee's or a manager's own (Dashboard, My Profile, My Requests, and
@@ -70,7 +72,10 @@ async function MainNav() {
   // the sidebar and on Approvals"): their own to rate or sign beside My KPIs, their people's to score or sign beside
   // Team KPIs, HR's to calibrate (a C-level person's for the CEO) beside All KPIs; for those who see Approvals, the team's
   // and HR's in its count too, as it lists them.
-  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes, kpis] = await Promise.all([
+  // The work from home requests waiting for the user (owner, 21 October 2026: "Manager, then HR"): beside Approvals for
+  // those who see it (HR, the CEO, Admin), which lists them, and in My Team's for a manager or a lead.
+  const wfhCounted = hasRole({ roles }, 'hr', 'ceo', 'admin') || manager;
+  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes, kpis, wfh] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS, bg) : null,
     readsChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS, bg) : null,
     followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES, bg) : null,
@@ -80,11 +85,13 @@ async function MainNav() {
     seesCorrections({ roles }) || manager ? getOrNull<CorrectionCounts>(CORRECTION_COUNTS, bg) : null,
     seesHomes({ roles }) ? getOrNull<HomeLocationCounts>(HOME_COUNTS, bg) : null,
     user ? getOrNull<KpiCounts>(KPI_API.counts, bg) : null,
+    user && wfhCounted ? getOrNull<WfhCounts>(WFH_COUNTS, bg) : null,
   ]);
   const changes = pendingChanges && waitingForYou({ roles }, pendingChanges);
   const raiseRequests = requests ? waitingForYouCount({ roles }, requests) : 0;
   const kpiApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (kpis?.team ?? 0) + (kpis?.hr ?? 0) : 0;
-  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0) + (homes?.waiting ?? 0) + kpiApprovals;
+  const wfhApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (wfh?.waiting ?? 0) : 0;
+  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0) + (homes?.waiting ?? 0) + kpiApprovals + wfhApprovals;
   const counts: Record<string, number> = {};
   if (waiting) counts['/approvals'] = waiting;
   if (kpis?.self) counts[KPI_PATHS.mine] = kpis.self;
@@ -93,7 +100,7 @@ async function MainNav() {
   if (raiseRequests) counts[RAISE_REQUESTS_PATH] = raiseRequests;
   if (changes?.length) counts[DETAILS_CHANGES_PATH] = changes.length;
   if (self) {
-    const team = (claims?.waiting ?? 0) + (leave?.waiting ?? 0) + (corrections?.waiting ?? 0);
+    const team = (claims?.waiting ?? 0) + (leave?.waiting ?? 0) + (corrections?.waiting ?? 0) + (manager ? (wfh?.waiting ?? 0) : 0);
     if (team) counts[MY_TEAM] = team;
   } else {
     if (claims?.waiting) counts[REIMBURSEMENTS_PATH] = claims.waiting;

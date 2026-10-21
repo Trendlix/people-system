@@ -13,7 +13,9 @@ import { getOrNull } from '../approvals/data';
 import { todayInCairo } from '../employees/ui';
 import { Empty, Loading } from '../organization/ui';
 import { notLoadedText } from '../payroll/load';
-import { calendarDays, calendarPeople, readDepartment, readMonth } from './calendar';
+import { loadWfhCalendar } from '../attendance/wfh/data';
+import { calendarDays, calendarPeople, monthRange, readDepartment, readMonth } from './calendar';
+import { importsLeave, LEAVE_IMPORT_PATH } from './import/import';
 import { LeaveCalendar } from './calendar-view';
 import { loadHolidaysOf, loadLeaveCalendar, loadLeaveRequests, loadPermissions, type Loaded } from './data';
 import {
@@ -61,7 +63,8 @@ import { LeaveProgress, LeaveStatusBadge, RequestWhen } from './ui';
 // 2026: "this is an option given by us .. 4 hours per month with a maximum 2 hours per day", asked "In the system, like
 // leave") are listed with the leave, decided the same way: a second filter, All · Leave · Permissions (?kind=, kept with
 // the status by each link), each permission with its day and hours, opening its own page; Record permission for HR beside
-// Record leave, New permission beside New leave; the calendar shows them as hours.
+// Record leave, New permission beside New leave; the calendar shows them as hours. Import leaves (owner, 21 October 2026:
+// "how to import bulk leaves?") opens Import Leave for HR and the CEO: the template or Zoho People's leave export.
 
 export const metadata: Metadata = { title: 'Leave Requests · People System' };
 
@@ -240,21 +243,26 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
   );
 }
 
-/** The month's calendar of who is off, for a department or everyone, with the holidays. */
+/**
+ * The month's calendar of who is off, for a department or everyone, with the holidays; and the work from home days, a
+ * distinct style from leave (owner, 21 October 2026), none from an API from before them.
+ */
 async function Calendar({ query, hr }: { query: Query; hr: boolean }) {
   const today = todayInCairo();
   const month = readMonth(query, today);
   const departmentId = readDepartment(query);
-  const [entries, holidays, departments] = await Promise.all([
+  const { from, to } = monthRange(month);
+  const [entries, holidays, departments, wfh] = await Promise.all([
     loadLeaveCalendar(month, departmentId),
     loadHolidaysOf(Number(month.slice(0, 4))),
     getOrNull<Department[]>('/departments'),
+    loadWfhCalendar(from, to, departmentId),
   ]);
   if (entries.kind !== 'ok') {
     return <Empty>{entries.kind === 'unavailable' ? 'Not available yet: the server does not have the leave calendar yet.' : notLoadedText(entries, 'calendar')}</Empty>;
   }
   const days = calendarDays(month, holidays.kind === 'ok' ? holidays.value : [], today);
-  const people = calendarPeople(entries.value, days);
+  const people = calendarPeople([...entries.value, ...(wfh.kind === 'ok' ? wfh.value : [])], days);
   return (
     <LeaveCalendar
       month={month}
@@ -297,6 +305,12 @@ async function LeaveRequests({ searchParams }: { searchParams: PageProps<'/leave
           {recordsPermission(user) && (
             <Link href={RECORD_PERMISSION_PATH} className="btn btn-primary">
               Record permission
+            </Link>
+          )}
+          {/* importing leave in bulk (owner, 21 October 2026: "how to import bulk leaves?"): the template or Zoho's export */}
+          {importsLeave(user) && (
+            <Link href={LEAVE_IMPORT_PATH} className="btn btn-secondary">
+              Import leaves
             </Link>
           )}
           {user.employeeId && (

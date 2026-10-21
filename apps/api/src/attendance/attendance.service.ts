@@ -8,6 +8,7 @@ import {
   attendanceSummary,
   averageHoursADay,
   confidentialPeople,
+  flagsOnWfhDay,
   matchesAttendanceFilter,
   monthRange,
   NO_ATTENDANCE_FIGURES,
@@ -31,6 +32,7 @@ import { employedIn, placeName, userNames } from '../payroll/adjustments/people.
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { actsAs } from '../auth/roles.js';
+import { approvedWfhDays } from '../wfh/wfh-days.js';
 import { AttendanceDaysService, DAY_SELECT, type DayRow } from './attendance-days.service.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
 import { AttendanceCorrectionsService, type MonthCorrectable, type MonthCorrection } from './corrections.service.js';
@@ -84,6 +86,12 @@ export interface AttendancePersonMonth {
   checksIn: boolean;
   /** Each day, one a date from its source (AttendanceDayView.source), with the import it came from. */
   days: (AttendanceDayView & { importId: string | null })[];
+  /**
+   * The month's work from home days approved for them (owner, 21 October 2026: "think about how should we handle the
+   * working from home in out erp"; packages/shared wfh.ts), in date order: shown "Working from home" on those days, which
+   * are expected anywhere (their office day's flags left out).
+   */
+  wfhDays: string[];
   /**
    * Daily Attendance and the team view (owner, 20 October 2026: "location link"): every press of the month on the
    * system, in order, the spot only for those who see it (punch-views.ts). Left out elsewhere (the Summary).
@@ -250,7 +258,7 @@ export class AttendanceService {
     const locations = pressed.length ? await this.setup.officeLocations() : [];
     for (const p of people) {
       const sees = seesPunchPoints(user, { self: p.employee.id === me, confidential: confidential.all.has(p.employee.id) });
-      p.punches = pressed.filter((x) => x.employeeId === p.employee.id).map((x) => punchView(x, sees, locations));
+      p.punches = pressed.filter((x) => x.employeeId === p.employee.id).map((x) => onWfhDay(punchView(x, sees, locations), p.wfhDays));
     }
     return {
       month,
@@ -389,6 +397,7 @@ export class AttendanceService {
         permissionFrom: null,
         checksIn: false,
         days: [],
+        wfhDays: [],
       };
     }
     const payroll = seesEveryonesAttendance(user);
@@ -413,7 +422,7 @@ export class AttendanceService {
       corrections,
       correctable,
       canCorrect,
-      punches: punches.map((p) => punchView(p, sees, locations)),
+      punches: punches.map((p) => onWfhDay(punchView(p, sees, locations), person.wfhDays)),
     };
   }
 
@@ -427,7 +436,7 @@ export class AttendanceService {
     const people = new Map<string, AttendancePersonMonth>();
     const places = new Map<string, AttendancePlace | null>();
     if (!ids.length) return { people, places };
-    const [employees, months, permissions, setup] = await Promise.all([
+    const [employees, months, permissions, setup, wfh] = await Promise.all([
       this.prisma.employee.findMany({ where: { id: { in: [...ids] } }, select: { id: true, employeeCode: true, fullNameEn: true } }),
       this.attendanceDays.monthOf(month, ids, days),
       this.prisma.permissionRequest.findMany({
@@ -435,6 +444,7 @@ export class AttendanceService {
         select: { employeeId: true, date: true, hours: true },
       }),
       this.prisma.leaveSettings.findUnique({ where: { id: 1 }, select: { permissionHoursPerMonth: true } }),
+      approvedWfhDays(this.prisma, ids, firstDay(month), lastDay(month)),
     ]);
     const allowance = setup?.permissionHoursPerMonth.toNumber() ?? PERMISSION_RULE_DEFAULTS.hoursPerMonth;
 
@@ -448,9 +458,18 @@ export class AttendanceService {
       const system = new Map<string, number>();
       for (const r of requests) system.set(fromDateOnly(r.date), (system.get(fromDateOnly(r.date)) ?? 0) + r.hours.toNumber());
       const fromSystem = requests.length > 0;
+      // their work from home days (21 October 2026): expected anywhere, so without the office day's flags
+      const wfhDays = wfh.get(e.id) ?? [];
       const dayViews = m.days.map((d) => ({
         // Zoho's column on its days (and on a day corrected over one of them, which carries it)
-        ...attendanceDayView({ ...d, permissionHours: fromSystem ? (system.get(d.date) ?? 0) : d.source === 'zoho' || d.source === 'correction' ? d.permissionHours : 0 }, hoursADay),
+        ...attendanceDayView(
+          {
+            ...d,
+            permissionHours: fromSystem ? (system.get(d.date) ?? 0) : d.source === 'zoho' || d.source === 'correction' ? d.permissionHours : 0,
+            ...(wfhDays.includes(d.date) && { flags: flagsOnWfhDay(d.flags) }),
+          },
+          hoursADay,
+        ),
         importId: d.importId,
       }));
       const systemHours = [...system.values()].reduce((a, b) => a + b, 0);
@@ -472,6 +491,7 @@ export class AttendanceService {
         permissionFrom: fromSystem ? 'system' : figures.permissionHours > 0 ? 'zoho' : null,
         checksIn: m.sources.some((x) => x === 'system' || x === 'device'),
         days: dayViews,
+        wfhDays,
       });
     }
     return { people, places };
@@ -522,6 +542,9 @@ export class AttendanceService {
     return run ? { id: run.id, status: run.status as PayrollStatus } : null;
   }
 }
+
+/** A press on a work from home day approved for them (21 October 2026): expected anywhere, without the office day's flags. */
+const onWfhDay = (p: PunchView, wfhDays: readonly string[]): PunchView => (wfhDays.includes(p.date) ? { ...p, flags: flagsOnWfhDay(p.flags) } : p);
 
 /** The days of a month, as a date filter. */
 const monthDays = (month: string) => ({ gte: toDateOnly(firstDay(month)), lte: toDateOnly(lastDay(month)) });

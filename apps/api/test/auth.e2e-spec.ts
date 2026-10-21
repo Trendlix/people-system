@@ -83,6 +83,7 @@ describe('Sign-in and access (e2e)', () => {
     // nobody viewing as them: their own session (see view-as.e2e-spec.ts)
     // `leads`: in charge of no department or team (see department-leads.e2e-spec.ts)
     // `session`: the session kept on the server, and no 15 minutes without activity for an employee (see sessions.e2e-spec.ts)
+    // `assets`: no Assets access until one is set on the Users page (21 October 2026; see assets.e2e-spec.ts)
     expect(before.body).toEqual({
       id: expect.any(String),
       email,
@@ -90,6 +91,7 @@ describe('Sign-in and access (e2e)', () => {
       employeeId: null,
       name: null,
       leads: false,
+      assets: { access: 'none', values: false, ai: false },
       viewAs: null,
       session: { id: expect.any(String), kind: 'web', idleTimeoutMs: null },
     });

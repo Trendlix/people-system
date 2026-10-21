@@ -82,6 +82,8 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
                 days={p.days}
                 name={p.employee.fullNameEn}
                 punches={view.punches ?? []}
+                // working from home (21 October 2026): those days say so
+                wfhDays={p.wfhDays ?? []}
                 action={
                   corrections
                     ? (d) => (

@@ -53,6 +53,8 @@ export const REQUEST_LINKS = {
   payslip: (lineId: string) => `/app/payslips/${lineId}`,
   myAttendance: '/my-attendance',
   homeLocation: (id: string) => `/home-locations/${id}`,
+  // working from home (owner, 21 October 2026): under Attendance, as the corrections are
+  wfh: (id: string) => `/attendance/wfh/${id}`,
 } as const;
 
 /** A request as the notices read it: whose it is, who it was sent to, where it stands, its name and its days. */
@@ -100,6 +102,16 @@ export class NoticesService {
       if (!r) return;
       const day = fromDateOnly(r.date);
       await this.leaveLike('permission', { ...r, name: r.employee.fullNameEn, when: daysText(day, day), link: REQUEST_LINKS.permission(id) }, event);
+    });
+  }
+
+  /** A work from home request (owner, 21 October 2026: "Manager, then HR"): told as a permission's is. */
+  async wfh(id: string, event: RequestEvent): Promise<void> {
+    await this.safely('work from home', async () => {
+      const r = await this.prisma.wfhRequest.findUnique({ where: { id }, select: { employeeId: true, managerId: true, status: true, date: true, employee: { select: { fullNameEn: true } } } });
+      if (!r) return;
+      const day = fromDateOnly(r.date);
+      await this.leaveLike('wfh', { ...r, name: r.employee.fullNameEn, when: daysText(day, day), link: REQUEST_LINKS.wfh(id) }, event);
     });
   }
 

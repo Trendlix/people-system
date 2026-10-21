@@ -40,6 +40,15 @@ export async function updateRoles(id: string, _prev: FormState, fd: FormData): P
   });
 }
 
+/**
+ * The user's Assets access (owner, 21 October 2026: "3 levels per user"): none, viewer, custodian or manager. Audited by
+ * the API; a Super Admin's account is a Super Admin's to change (403 for an Admin).
+ */
+export async function updateAssetsAccess(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const assetsAccess = text(fd, 'assetsAccess');
+  return change(() => apiSend('PATCH', `/users/${id}`, { assetsAccess }), 'Assets access saved. It applies straight away.', { assetsAccess });
+}
+
 export async function setActive(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const isActive = text(fd, 'isActive') === 'true';
   return change(

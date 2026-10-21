@@ -1,4 +1,4 @@
-import type { Role, SessionKind } from '@trendlix/shared';
+import type { AssetsAccessView, Role, SessionKind } from '@trendlix/shared';
 
 export const SESSION_COOKIE = 'ps_session';
 export const SESSION_HOURS = 8;
@@ -42,6 +42,11 @@ export interface Me extends SessionUser {
   employeeId: string | null;
   name: string | null;
   leads: boolean;
+  /**
+   * Their Assets access in effect, whether they see the asset values, and whether the Assets AI is set up (owner, 21
+   * October 2026: "3 levels per user"; "CEO and Finance"): the web shows the Assets pages with it.
+   */
+  assets: AssetsAccessView;
   viewAs: ViewAs | null;
   session: MeSession;
 }

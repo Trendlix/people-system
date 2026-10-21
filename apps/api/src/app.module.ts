@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AllowancesModule } from './allowances/allowances.module.js';
+import { AssetsModule } from './assets/assets.module.js';
 import { AttendanceModule } from './attendance/attendance.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { AuditLogModule } from './audit/audit-log.module.js';
@@ -30,6 +31,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { ReimbursementsModule } from './reimbursements/reimbursements.module.js';
 import { TemplatesModule } from './templates/templates.module.js';
 import { UsersModule } from './users/users.module.js';
+import { WfhModule } from './wfh/wfh.module.js';
 
 @Module({
   imports: [
@@ -59,8 +61,12 @@ import { UsersModule } from './users/users.module.js';
     ReimbursementsModule,
     LeaveModule,
     AttendanceModule,
+    // working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp")
+    WfhModule,
     // KPIs (owner, 21 October 2026: "lets start with the KPI's First")
     KpisModule,
+    // Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system")
+    AssetsModule,
     UsersModule,
     AuditLogModule,
   ],

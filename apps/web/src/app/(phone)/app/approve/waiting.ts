@@ -13,6 +13,8 @@ import { daysText, periodText } from '../../../(app)/leave/list';
 import { isPermission, mergeRequests, permissionWhenText } from '../../../(app)/leave/permissions';
 import { effectiveFromText, reasonText } from '../../../(app)/raise-requests/list';
 import { currentAmount } from '../../../(app)/reimbursements/list';
+import { wfhDayText } from '../../../(app)/attendance/wfh/wfh';
+import type { WfhRequestView } from '../../../../lib/wfh-types';
 
 // The phone pages' To Approve (owner, 20 October 2026: the employee app, "managers and team leads approve from the
 // phone"): what waits for the caller, in sections as My Team and Approvals have them: leave and permission, the claims,
@@ -21,7 +23,8 @@ import { currentAmount } from '../../../(app)/reimbursements/list';
 // page under To Approve, with the decision form. Pure code, tested; relative imports, as vitest doesn't know "@/". Home
 // locations at HR's step or the CEO's (owner, 20 October 2026: "then approved by the HR and CEO"), for those who decide
 // them. KPI scorecards (owner, 21 October 2026: "Self, manager, HR, sign-off") waiting for the caller's step on someone
-// else's: the manager's scoring and sign-off, HR's calibration.
+// else's: the manager's scoring and sign-off, HR's calibration. Work from home requests (owner, 21 October 2026:
+// "Manager, then HR") at the approver's step or HR's (a C-level person's HR step the CEO's).
 
 export interface WaitingRow {
   key: string;
@@ -35,7 +38,7 @@ export interface WaitingRow {
 }
 
 export interface WaitingSection {
-  key: 'leave' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise' | 'home' | 'kpi';
+  key: 'leave' | 'wfh' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise' | 'home' | 'kpi';
   /** Title Case. */
   title: string;
   rows: WaitingRow[];
@@ -52,6 +55,8 @@ type List<T> = readonly T[] | null;
 export function waitingSections(from: {
   leave?: List<LeaveRequestView>;
   permissions?: List<PermissionRequestView>;
+  /** Work from home requests waiting for the caller (21 October 2026). */
+  wfh?: List<WfhRequestView>;
   claims?: List<ReimbursementClaimView>;
   corrections?: List<AttendanceCorrectionView>;
   raiseRequests?: List<RaiseRequest>;
@@ -75,6 +80,19 @@ export function waitingSections(from: {
           ? { key: `permission:${r.id}`, href: appItemHref('approve', 'permission', r.id), name: r.employee.fullNameEn, line: `Permission · ${permissionWhenText(r)}` }
           : { key: `leave:${r.id}`, href: appItemHref('approve', 'leave', r.id), name: r.employee.fullNameEn, line: `${r.type.nameEn} · ${periodText(r)} · ${daysText(r.days)}` },
       ),
+    );
+  }
+  if (from.wfh !== undefined) {
+    add(
+      'wfh',
+      'Work From Home',
+      from.wfh === null,
+      (from.wfh ?? []).map((r) => ({
+        key: `wfh:${r.id}`,
+        href: appItemHref('approve', 'wfh', r.id),
+        name: r.employee.fullNameEn,
+        line: `Work from home · ${wfhDayText(r)}`,
+      })),
     );
   }
   if (from.claims !== undefined) {

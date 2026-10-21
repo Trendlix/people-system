@@ -6,6 +6,7 @@ import { addMonths, monthName } from '../payroll/list';
 import { attendanceReviewHref, dayStatusText, dayTone } from '../payroll/[id]/attendance/attendance';
 import { correctedNote, dayRow, daySourceText, extraHoursText, hoursText, sourceText, type FigureTile, type PunchRow } from './attendance';
 import { AllPresses, DayEndView } from './punch-ui';
+import { WFH_DAY_BADGE } from './wfh/wfh';
 
 // The Attendance pages' parts (owner, 19 October 2026: "the attendance is not active in the side menu"): the month with
 // the one before and after, a month's figures as tiles, a person's days, and where the days came from. No hooks and
@@ -17,7 +18,8 @@ import { AllPresses, DayEndView } from './punch-ui';
 // Simpler rows (owner, 20 October 2026: "simplify this, i want to view if it is remote or office, and location link"):
 // the check-in and the check-out each with its place as a badge and Map (punch-ui.tsx), the flags in a word or two by
 // them, "What It Was" the day's status with every press collapsed under it, and no Where column (the badges say it: a
-// day from Zoho People has its place on the check-in).
+// day from Zoho People has its place on the check-in). A day worked from home (owner, 21 October 2026: "think about how
+// should we handle the working from home in out erp"): "Working from home" by its status, a dashed badge, not leave's.
 
 const LINK = 'btn btn-secondary min-h-9 px-3 no-underline';
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
@@ -59,17 +61,25 @@ export function FigureTiles({ tiles, label }: { tiles: FigureTile[]; label: stri
 
 const NONE = <span className="text-muted">—</span>;
 
+/** The badge of a day worked from home (approved for them), a distinct style from leave: a dashed outline. */
+export function WfhDayBadge({ className = '' }: { className?: string }) {
+  return <span className={`badge border border-dashed border-accent bg-card text-accent ${className}`}>{WFH_DAY_BADGE}</span>;
+}
+
 /** Every day kept of a person's month, read only: where each came from, its flags. */
 export function DaysTable({
   days,
   name,
   punches = [],
+  wfhDays = [],
   action,
 }: {
   days: readonly AttendanceDay[];
   name: string;
   /** Every press of the month: each day's check-in and check-out are among them, the rest collapsed under the day. */
   punches?: readonly PunchRow[];
+  /** The month's work from home days approved for them (21 October 2026): each says "Working from home". */
+  wfhDays?: readonly string[];
   /**
    * A day's correction (owner, 19 October 2026: "Attendance corrections with approval"): Ask for a correction on the
    * employee's own month, HR's Correct on a person's, or the correction being decided; none: no column.
@@ -113,6 +123,7 @@ export function DaysTable({
                 </td>
                 <td className="min-w-32">
                   <span className={tone ? `font-medium ${TONE[tone]}` : undefined}>{dayStatusText(d.status)}</span>
+                  {wfhDays.includes(d.date) && <WfhDayBadge className="mt-1 block w-fit" />}
                   {corrected && <span className="mt-0.5 block text-xs text-muted">{corrected}</span>}
                   {row.more && <AllPresses presses={row.presses} />}
                 </td>

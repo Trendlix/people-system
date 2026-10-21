@@ -1,4 +1,4 @@
-import { ROLES, type Role } from '@trendlix/shared';
+import { ASSETS_ACCESS_LEVELS, ROLES, type AssetsAccess, type Role } from '@trendlix/shared';
 import { Transform } from 'class-transformer';
 import { ArrayNotEmpty, ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, MaxLength } from 'class-validator';
 import { NewPassword } from '../auth/password.dto.js';
@@ -36,6 +36,14 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /**
+   * Their Assets access (owner, 21 October 2026: "3 levels per user"): none, viewer, custodian or manager. A Super Admin
+   * is a manager whatever is set; the CEO and Finance are at least viewers (packages/shared assetsAccessOf).
+   */
+  @IsOptional()
+  @IsIn(ASSETS_ACCESS_LEVELS, { message: `Choose the Assets access: ${ASSETS_ACCESS_LEVELS.join(', ')}.` })
+  assetsAccess?: AssetsAccess;
 }
 
 export class SetPasswordDto {

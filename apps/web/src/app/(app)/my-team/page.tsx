@@ -10,7 +10,7 @@ import { NoProfile } from '../dashboard/cards';
 import { inDaysText } from '../dashboard/dashboard';
 import { MY_TEAM } from '@/components/nav';
 import { Empty, employeeRaiseRequestsHref, Loading, reportStanding, StandingBadge, todayInCairo } from '../employees/ui';
-import { calendarDays, calendarPeople, readMonth } from '../leave/calendar';
+import { calendarDays, calendarPeople, monthRange, readMonth } from '../leave/calendar';
 import { LeaveCalendar } from '../leave/calendar-view';
 import { loadHolidaysOf, loadLeaveCalendar, loadWaitingLeave, loadWaitingPermissions } from '../leave/data';
 import { leaveCalendarHref, requestsLabel } from '../leave/list';
@@ -26,6 +26,9 @@ import { WaitingClaimsTable } from '../reimbursements/ui';
 import { TEAM_ATTENDANCE_PATH } from '../attendance/attendance';
 import { loadWaitingCorrections } from '../attendance/corrections/data';
 import { CorrectionsTable } from '../attendance/corrections/ui';
+import { loadWaitingWfh, loadWfhCalendar, loadWfhOnDay } from '../attendance/wfh/data';
+import { WfhTable } from '../attendance/wfh/ui';
+import { homeOn } from '../attendance/wfh/wfh';
 import { loadTeam } from './data';
 import { askedByText, latestRaise, myTeamIntro, probationOf } from './team';
 
@@ -51,7 +54,10 @@ import { askedByText, latestRaise, myTeamIntro, probationOf } from './team';
 // corrections with approval ("I forgot to check out")"): the days the team asked to correct, waiting for the manager.
 // Raise requests (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from
 // managers too"): a manager who doesn't see them (seesRaiseRequests, packages/shared raises.ts) gets no Raise Requests
-// column, no Request a raise and no See the requests; their team without them.
+// column, no Request a raise and no See the requests; their team without them. Working from home (owner, 21 October
+// 2026: "think about how should we handle the working from home in out erp"; asked, "Manager, then HR"): the requests
+// waiting for the manager, who decides them first, then HR; who of the team is working from home today; and their days
+// on the team's calendar, a distinct style from leave.
 
 export const metadata: Metadata = { title: 'My Team · People System' };
 
@@ -244,12 +250,77 @@ async function CorrectionsToApprove() {
   );
 }
 
+/**
+ * The work from home requests waiting for the manager (owner, 21 October 2026: "Manager, then HR"; GET
+ * /wfh?status=waiting): who and the day, each with Decide. Nothing from an API from before them.
+ */
+async function WfhToApprove() {
+  const waiting = await loadWaitingWfh();
+  if (waiting.kind === 'unavailable' || waiting.kind === 'forbidden') return null;
+  return (
+    <section aria-labelledby="wfh-to-approve" className="space-y-3">
+      <div>
+        <h2 id="wfh-to-approve" className="text-lg font-semibold">
+          Work From Home to Approve
+        </h2>
+        <p className="text-sm text-muted">
+          Days your direct reports asked to work from home, and those of people without a direct manager in a team you lead or a department you
+          head. Approve one, or reject it with a comment; HR decides it after you.
+        </p>
+      </div>
+      {waiting.kind === 'failed' ? (
+        <div className="card px-6 py-6 text-sm text-muted">The work from home requests waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : waiting.value.length === 0 ? (
+        <div className="card px-6 py-6 text-sm text-muted">No work from home requests are waiting for you.</div>
+      ) : (
+        <WfhTable requests={waiting.value} who note="waiting for you" />
+      )}
+    </section>
+  );
+}
+
+/** Who of the team works from home today (owner's brief, 21 October 2026: "My Team shows who's home today"). */
+async function HomeToday() {
+  // the signed-in user first (the request's own data), then the clock: Next reads the clock only after it
+  await getCurrentUser();
+  const today = todayInCairo();
+  const loaded = await loadWfhOnDay(today);
+  if (loaded.kind !== 'ok') return null;
+  const people = homeOn(loaded.value, today);
+  return (
+    <section aria-labelledby="home-today" className="space-y-3">
+      <div>
+        <h2 id="home-today" className="text-lg font-semibold">
+          Home Today
+        </h2>
+        <p className="text-sm text-muted">Who in your team works from home today, on an approved day: they check in from home.</p>
+      </div>
+      {people.length === 0 ? (
+        <div className="card px-6 py-6 text-sm text-muted">No one in your team works from home today.</div>
+      ) : (
+        <ul className="card divide-y divide-line-soft">
+          {people.map((e) => (
+            <li key={e.id} className="flex flex-wrap items-baseline justify-between gap-x-3 px-4 py-3 text-sm">
+              <Link href={`/employees/${e.id}`} className="font-semibold">
+                {e.fullNameEn}
+              </Link>
+              <span className="text-xs text-muted">{[e.department, e.team].filter(Boolean).join(' › ') || 'Working from home'}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /** The team's month of who is off (GET /leave/calendar: a manager's own team), with the official holidays. */
 async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-team'>['searchParams'] }) {
   const query = await searchParams;
   const today = todayInCairo();
   const month = readMonth(query, today);
-  const [entries, holidays] = await Promise.all([loadLeaveCalendar(month), loadHolidaysOf(Number(month.slice(0, 4)))]);
+  const { from, to } = monthRange(month);
+  // the team's work from home days too, a distinct style from leave (owner, 21 October 2026)
+  const [entries, holidays, wfh] = await Promise.all([loadLeaveCalendar(month), loadHolidaysOf(Number(month.slice(0, 4))), loadWfhCalendar(from, to)]);
   if (entries.kind === 'unavailable' || entries.kind === 'forbidden') return null;
   const days = calendarDays(month, holidays.kind === 'ok' ? holidays.value : [], today);
   return (
@@ -259,7 +330,8 @@ async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-tea
           Team Calendar
         </h2>
         <p className="text-sm text-muted">
-          Who in your team is off each day of the month: approved leave, and the hours of approved permission, with the official holidays.
+          Who in your team is off each day of the month: approved leave, the hours of approved permission and the days working from home, with
+          the official holidays.
         </p>
       </div>
       {entries.kind === 'failed' ? (
@@ -268,7 +340,7 @@ async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-tea
         <LeaveCalendar
           month={month}
           days={days}
-          people={calendarPeople(entries.value, days)}
+          people={calendarPeople([...entries.value, ...(wfh.kind === 'ok' ? wfh.value : [])], days)}
           hrefFor={(m) => `${leaveCalendarHref(m, null, MY_TEAM)}#team-calendar`}
           departments={null}
           departmentId={null}
@@ -323,10 +395,16 @@ export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
           <CorrectionsToApprove />
         </Suspense>
         <Suspense fallback={null}>
+          <WfhToApprove />
+        </Suspense>
+        <Suspense fallback={null}>
           <ToApprove />
         </Suspense>
         <Suspense fallback={<Loading />}>
           <Team />
+        </Suspense>
+        <Suspense fallback={null}>
+          <HomeToday />
         </Suspense>
         <TeamAttendance />
         <Suspense fallback={<Loading />}>

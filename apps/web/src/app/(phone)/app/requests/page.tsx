@@ -6,6 +6,7 @@ import { getCurrentUser } from '@/lib/session';
 import { APP_PATHS, appRequestsHref } from '@/lib/surface';
 import { NoProfile } from '../../../(app)/dashboard/cards';
 import { loadMyCorrections } from '../../../(app)/attendance/corrections/data';
+import { loadMyWfh } from '../../../(app)/attendance/wfh/data';
 import { loadMyHomes } from '../../../(app)/home-locations/data';
 import { HomeStatusBadge } from '../../../(app)/home-locations/ui';
 import { loadMyLeave, loadMyPermissions } from '../../../(app)/leave/data';
@@ -42,7 +43,8 @@ import {
 // (seesRaiseRequests): not read, listed or offered as a chip otherwise. Their home location requests too (owner, 20
 // October 2026: "allow other users to request to add their home locations when working from home"). Their own KPI
 // scorecard when it waits for them to rate themself or to sign (owner's brief, 21 October 2026: "a card on Home and
-// Requests for the employee's self-rating and sign-off"), above the list.
+// Requests for the employee's self-rating and sign-off"), above the list. Their work from home days (owner, 21 October
+// 2026: "think about how should we handle the working from home in out erp"): asked, recorded by HR or imported.
 
 export const metadata: Metadata = { title: 'My Requests · Trendlix People' };
 
@@ -58,13 +60,14 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
   const profile = await loadOwnProfile(user);
   if (!profile) return <NoProfile user={user} />;
   const seesRaises = seesRaiseRequests(user);
-  const [leave, permissions, claims, corrections, raises, homes] = await Promise.all([
+  const [leave, permissions, claims, corrections, raises, homes, wfh] = await Promise.all([
     loadMyLeave(),
     loadMyPermissions(),
     loadMyClaims(),
     loadMyCorrections(),
     seesRaises ? loadEmployeeRaiseRequests(profile.id) : null,
     loadMyHomes(),
+    loadMyWfh(),
   ]);
   const rows = appRequestRows({
     leave: leave.kind === 'ok' ? leave.value : undefined,
@@ -73,8 +76,9 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
     corrections: corrections.kind === 'ok' ? corrections.value : undefined,
     raises: raises?.kind === 'ok' ? raises.value.requests : undefined,
     homes: homes.kind === 'ok' ? homes.value : undefined,
+    wfh: wfh.kind === 'ok' ? wfh.value : undefined,
   });
-  const failed = [leave, permissions, claims, corrections, raises, homes].some((l) => l?.kind === 'failed');
+  const failed = [leave, permissions, claims, corrections, raises, homes, wfh].some((l) => l?.kind === 'failed');
   const kinds = appRequestKindsFor(seesRaises);
   const f = readAppRequestFilters(query, kinds);
   const shown = filterAppRequests(rows, f);

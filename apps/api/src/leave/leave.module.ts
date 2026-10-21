@@ -8,6 +8,8 @@ import {
   MyLeaveController,
   YearClosingController,
 } from './leave.controller.js';
+import { LeaveImportController } from './leave-import.controller.js';
+import { LeaveImportService } from './leave-import.service.js';
 import { LeaveBalancesService } from './leave-balances.service.js';
 import { LeavePayrollService } from './leave-payroll.service.js';
 import { LeaveRequestsService } from './leave-requests.service.js';
@@ -23,7 +25,8 @@ import { YearClosingService } from './year-closing.service.js';
 // year closing"), the unused leave paid on leaving and the month's leave on the draft payroll lines. Global, as the final
 // settlements (Unsettled) list the unused leave and record it paid (LeaveSettlementService). Permission requests (owner,
 // 19 October 2026: "4 hours per month with a maximum 2 hours per day", asked "In the system, like leave"), decided as
-// leave is, their hours counted as worked on the draft payroll lines.
+// leave is, their hours counted as worked on the draft payroll lines. Importing leave in bulk (owner, 21 October 2026:
+// "how to import bulk leaves?"): the leave taken and the balances from the template or Zoho People's leave export.
 @Global()
 @Module({
   controllers: [
@@ -37,8 +40,9 @@ import { YearClosingService } from './year-closing.service.js';
     MyPermissionsController,
     PermissionRequestsController,
     EmployeePermissionsController,
+    LeaveImportController,
   ],
-  providers: [LeaveTypesService, LeaveBalancesService, LeaveRequestsService, LeavePayrollService, YearClosingService, LeaveSettlementService, PermissionRequestsService],
+  providers: [LeaveTypesService, LeaveBalancesService, LeaveRequestsService, LeavePayrollService, YearClosingService, LeaveSettlementService, PermissionRequestsService, LeaveImportService],
   exports: [LeaveBalancesService, LeaveSettlementService],
 })
 export class LeaveModule {}

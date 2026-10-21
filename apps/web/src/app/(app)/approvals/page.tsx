@@ -8,6 +8,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { KPI_API } from '@/lib/kpi-paths';
 import { loadLawRates } from '@/lib/law-rates';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
+import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { HomeLocationView } from '@/lib/home-location-types';
 import type { ChangeRequest, EndingSummary, SessionUser } from '@/lib/types';
@@ -37,6 +38,9 @@ import { DecisionForm } from './decision-form';
 import { kpiApprovalRows, kpiScorecardsLabel, seesKpiApprovals } from './kpis';
 import { PayRaiseCard } from './pay-raise-card';
 import { decidesRaises, followsRaises, PENDING_RAISES, raisesLabel } from './raises';
+import { loadWaitingWfh } from '../attendance/wfh/data';
+import { WfhTable } from '../attendance/wfh/ui';
+import { seesAllWfh, WFH_PATH } from '../attendance/wfh/wfh';
 
 // What waits for a decision, in three sections:
 // - Endings HR has recorded and approved, waiting for the CEO (owner's decision of 15 October 2026: HR approves, then
@@ -61,6 +65,9 @@ import { decidesRaises, followsRaises, PENDING_RAISES, raisesLabel } from './rai
 // - KPI scorecards (owner, 21 October 2026: "The KPI items waiting for someone are counted in the sidebar and on
 //   Approvals"): those waiting for the user to score, calibrate (HR; a C-level person's the CEO's) or sign as the
 //   manager, never their own (on My KPIs), the nearest deadline first, each opening the scorecard, where it is done.
+// - Work from home requests (owner, 21 October 2026: "think about how should we handle the working from home in out
+//   erp"; asked, "Manager, then HR"): those waiting for the user, at the approver's step (a manager or lead who sees
+//   Approvals) and at HR's (HR; a C-level person's the CEO's), the latest day first, each opening its page to decide.
 
 const DONE: Record<string, string> = {
   approved: 'Ending approved.',
@@ -365,6 +372,23 @@ async function PendingKpis({ user }: { user: SessionUser }) {
   );
 }
 
+// ---------- work from home ----------
+
+async function PendingWfh({ all }: { all: boolean }) {
+  // read quietly, like the change requests: an API from before working from home must not take the endings down with it
+  const waiting = await loadWaitingWfh();
+  if (waiting.kind === 'unavailable') return <Empty>Work from home requests aren&apos;t available yet.</Empty>;
+  if (waiting.kind !== 'ok') return <Empty>Work from home requests couldn&apos;t load.</Empty>;
+  const every = all && <Link href={WFH_PATH}>See every request and day</Link>;
+  if (waiting.value.length === 0) return <Empty>No work from home requests are waiting for you. {every}</Empty>;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">Waiting for your decision: approve each, or reject it with a comment the employee sees. {every}</p>
+      <WfhTable requests={waiting.value} who note="waiting for you, the latest day first." />
+    </div>
+  );
+}
+
 // ---------- the page ----------
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -387,7 +411,9 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
   const homes = seesHomes(user);
   // HR, the CEO, Admin and the Super Admin (21 October 2026)
   const kpis = seesKpiApprovals(user);
-  if (!endings && !raises && !changes && !homes && !kpis) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
+  // HR and the CEO (21 October 2026), and an Admin for those they decide as someone's manager; a manager's are on My Team
+  const wfh = seesAllWfh(user) || hasRole(user, 'admin');
+  if (!endings && !raises && !changes && !homes && !kpis && !wfh) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
 
   return (
@@ -421,6 +447,11 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
       {kpis && (
         <Section title="KPI Scorecards" id="kpi-scorecards">
           <PendingKpis user={user} />
+        </Section>
+      )}
+      {wfh && (
+        <Section title="Work From Home" id="work-from-home">
+          <PendingWfh all={seesAllWfh(user)} />
         </Section>
       )}
     </div>

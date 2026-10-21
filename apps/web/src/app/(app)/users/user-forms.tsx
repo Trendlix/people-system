@@ -1,11 +1,12 @@
 'use client';
 
-import type { Role } from '@trendlix/shared';
+import { ASSETS_ACCESS_HINTS, ASSETS_ACCESS_LABELS, ASSETS_ACCESS_LEVELS, type AssetsAccess, type Role } from '@trendlix/shared';
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
 import { ROLE_LABELS } from '@/lib/roles';
 import type { FormState } from '@/lib/types';
+import { ASSETS_VALUES_NOTE } from '../assets/assets';
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -271,3 +272,47 @@ export function SignOutDevicesForm({ action, email }: { action: Action; email: s
     </form>
   );
 }
+
+/**
+ * The user's Assets access (owner, 21 October 2026: "i want to add this module with a special permission to the system",
+ * "3 levels per user"): one of the four levels, each with what it allows; the level in effect when it differs (a Super
+ * Admin is always a manager; the CEO and Finance always at least viewers), and who sees the values ("CEO and Finance").
+ */
+export function AssetsAccessForm({ action, saved, inEffectNote }: { action: Action; saved: AssetsAccess; inEffectNote: string | null }) {
+  const [state, formAction] = useActionState(action, {});
+  const typed = state.values?.assetsAccess;
+  const checked = typeof typed === 'string' ? typed : saved;
+  return (
+    <form action={formAction} className="card max-w-xl space-y-5 p-6">
+      <div>
+        <h3 className="font-semibold">Assets Access</h3>
+        <p className="mt-1 text-sm text-muted">What they may do in Assets, the studio&apos;s asset register.</p>
+      </div>
+      <FormErrors errors={state.errors} />
+      <fieldset>
+        <legend className="sr-only">Assets access</legend>
+        <div className="space-y-2">
+          {ASSETS_ACCESS_LEVELS.map((level) => (
+            <label
+              key={level}
+              className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-line bg-white px-3 py-2.5 text-sm has-checked:border-accent has-checked:bg-accent-soft"
+            >
+              <input type="radio" name="assetsAccess" value={level} defaultChecked={checked === level} className="mt-0.5 size-4 accent-accent" />
+              <span>
+                <span className="block font-medium">{ASSETS_ACCESS_LABELS[level]}</span>
+                <span className="block text-xs text-muted">{ASSETS_ACCESS_HINTS[level]}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {inEffectNote && <p className="rounded-lg bg-canvas px-3 py-2 text-sm">{inEffectNote}</p>}
+      <p className="hint">{ASSETS_VALUES_NOTE}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <SubmitButton>Save Assets access</SubmitButton>
+        <Saved state={state} />
+      </div>
+    </form>
+  );
+}
+

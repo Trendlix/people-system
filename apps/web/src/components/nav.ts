@@ -1,8 +1,9 @@
 // Sidebar items. Kept out of the 'use client' file so server components can read them. Relative imports: the tests run
 // without the "@/" alias.
-import type { Role } from '@trendlix/shared';
+import { assetsCan, type AssetsAccessView, type Role } from '@trendlix/shared';
 import { ATTENDANCE_PATH, ATTENDANCE_SECTIONS } from '../app/(app)/attendance/sections';
 import { PAYROLL_SECTIONS } from '../app/(app)/payroll/sections';
+import { ASSET_PATHS } from '../lib/asset-paths';
 import { KPI_PATHS } from '../lib/kpi-paths';
 import { hasRole, isSelfService } from '../lib/roles';
 
@@ -38,13 +39,17 @@ export interface NavSubItem {
    * Shown also to these users, whatever their roles (alone, without `roles`: to them only): `profile`, those with an
    * employee profile of their own; `team`, those who decide for a team (decidesForTeam: a direct manager, a department's
    * head or a team's lead). For pages that are about the user's own work rather than a role's (owner, 21 October 2026:
-   * My KPIs and Team KPIs). A word, not a function: the sidebar's items go to the browser as they are.
+   * My KPIs and Team KPIs). The Assets pages (owner, 21 October 2026: "i want to add this module with a special
+   * permission to the system"; "3 levels per user") go by the user's Assets access, not their roles: `assets`, any
+   * access (viewer and up); `assets-register`, a custodian or manager; `assets-manager`, a manager; `asset-values`, those
+   * who see the values (the CEO, Finance, a Super Admin: "CEO and Finance"); `assets-settings`, a manager or one of
+   * them. A word, not a function: the sidebar's items go to the browser as they are.
    */
   audience?: NavAudience;
 }
 
 /** Who a sub-item is for besides its roles (NavSubItem.audience). */
-export type NavAudience = 'profile' | 'team';
+export type NavAudience = 'profile' | 'team' | 'assets' | 'assets-register' | 'assets-manager' | 'asset-values' | 'assets-settings';
 
 /**
  * The KPIs (owner, 21 October 2026: "lets start with the KPI's First", "Full framework per role"): a heading with its
@@ -63,6 +68,28 @@ export const KPIS_NAV: NavItem = {
     { href: KPI_PATHS.team, label: 'Team KPIs', section: KPI_PATHS.team, roles: ['ceo'], audience: 'team' },
     { href: KPI_PATHS.all, label: 'All KPIs', section: KPI_PATHS.all, roles: ['hr', 'ceo', 'super_admin'] },
     { href: KPI_PATHS.templates, label: 'KPI Templates', section: KPI_PATHS.templates, roles: ['hr', 'super_admin'] },
+  ],
+};
+
+/**
+ * Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system"; "3 levels per
+ * user"), after the KPIs: a heading with its pages, each for the Assets access it needs, never a role: All Assets (the
+ * register) and Kits for anyone with access, Add Asset for a custodian or a manager, Needs Values for those who see the
+ * values (the CEO, Finance and a Super Admin: "CEO and Finance"), Rooms for a manager, Settings (the capitalization
+ * threshold) for a manager or those who see the values. Without access, none of them: the heading is left out (and the
+ * API answers 403). In both sidebars: an employee-only custodian sees it too.
+ */
+export const ASSETS_NAV: NavItem = {
+  href: ASSET_PATHS.list,
+  label: 'Assets',
+  section: ASSET_PATHS.list,
+  items: [
+    { href: ASSET_PATHS.list, label: 'All Assets', section: ASSET_PATHS.list, audience: 'assets' },
+    { href: ASSET_PATHS.new, label: 'Add Asset', section: ASSET_PATHS.new, audience: 'assets-register' },
+    { href: ASSET_PATHS.needsValues, label: 'Needs Values', section: ASSET_PATHS.needsValues, audience: 'asset-values' },
+    { href: ASSET_PATHS.kits, label: 'Kits', section: ASSET_PATHS.kits, audience: 'assets' },
+    { href: ASSET_PATHS.rooms, label: 'Rooms', section: ASSET_PATHS.rooms, audience: 'assets-manager' },
+    { href: ASSET_PATHS.settings, label: 'Settings', section: ASSET_PATHS.settings, audience: 'assets-settings' },
   ],
 };
 
@@ -151,6 +178,8 @@ export const NAV: NavItem[] = [
   },
   // the KPIs, after Attendance (owner, 21 October 2026)
   KPIS_NAV,
+  // Assets, after the KPIs, for those with Assets access (owner, 21 October 2026)
+  ASSETS_NAV,
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
   {
     href: '/templates',
@@ -182,10 +211,11 @@ export const MY_TEAM = '/my-team';
 export const MY_ATTENDANCE = '/my-attendance';
 
 /**
- * Who the sidebar is for: their roles, their own employee profile (none: null; an API from before it: left out), and
- * whether they lead a department or a team (`leads`; left out by an API from before it).
+ * Who the sidebar is for: their roles, their own employee profile (none: null; an API from before it: left out),
+ * whether they lead a department or a team (`leads`; left out by an API from before it), and their Assets access
+ * (`assets`, 21 October 2026; left out by an API from before it: none).
  */
-type NavUser = { roles: readonly Role[]; employeeId?: string | null; leads?: boolean };
+type NavUser = { roles: readonly Role[]; employeeId?: string | null; leads?: boolean; assets?: AssetsAccessView | null };
 
 /**
  * Whether someone decides others' leave and reimbursement claims first, on My Team: a direct manager, or the person in
@@ -219,6 +249,8 @@ function selfServiceNav(user: NavUser): NavItem[] {
     ...(profile ? [{ href: MY_ATTENDANCE, label: 'My Attendance', section: MY_ATTENDANCE }] : []),
     // their KPIs (owner, 21 October 2026): My KPIs with their profile, Team KPIs for whoever scores a team's
     ...shownWithItems(user, KPIS_NAV),
+    // Assets, with an Assets access given on the Users page (owner, 21 October 2026: "3 levels per user")
+    ...shownWithItems(user, ASSETS_NAV),
     // a department's head or a team's lead too (19 October 2026), for what waits for them there
     ...(decidesForTeam(user) ? [{ href: MY_TEAM, label: 'My Team', section: MY_TEAM }] : []),
   ];
@@ -228,7 +260,20 @@ function selfServiceNav(user: NavUser): NavItem[] {
 function inAudience(user: NavUser, audience: NavAudience | undefined): boolean {
   if (audience === 'profile') return !!user.employeeId;
   if (audience === 'team') return decidesForTeam(user);
-  return false;
+  if (audience === undefined) return false;
+  const can = assetsCan(user.assets ?? { access: 'none', values: false, ai: false });
+  switch (audience) {
+    case 'assets':
+      return can.view;
+    case 'assets-register':
+      return can.register;
+    case 'assets-manager':
+      return can.manage;
+    case 'asset-values':
+      return can.values;
+    case 'assets-settings':
+      return can.settings;
+  }
 }
 
 /**

@@ -9,6 +9,8 @@ import { correctionDayText, correctionKindName } from '../../../(app)/attendance
 import { homeProgressText, homeWhatText, isOpenHomeRequest } from '../../../(app)/home-locations/home-locations';
 import { daysText, leaveProgressText, periodText } from '../../../(app)/leave/list';
 import { permissionWhenText } from '../../../(app)/leave/permissions';
+import { wfhDayText, wfhProgressText } from '../../../(app)/attendance/wfh/wfh';
+import type { WfhRequestView } from '../../../../lib/wfh-types';
 import { isOpenRaise } from '../../../(app)/my-requests/requests';
 import { effectiveFromText, progressText as raiseProgressText } from '../../../(app)/raise-requests/list';
 import { formatEgp } from '../../../(app)/employees/[id]/contracts/salary';
@@ -31,7 +33,8 @@ export type AppRequestRow =
   | { kind: 'reimbursement'; id: string; at: string; open: boolean; request: ReimbursementClaimView }
   | { kind: 'correction'; id: string; at: string; open: boolean; request: AttendanceCorrectionView }
   | { kind: 'raise'; id: string; at: string; open: boolean; request: RaiseRequest }
-  | { kind: 'home'; id: string; at: string; open: boolean; request: HomeLocationView };
+  | { kind: 'home'; id: string; at: string; open: boolean; request: HomeLocationView }
+  | { kind: 'wfh'; id: string; at: string; open: boolean; request: WfhRequestView };
 
 /** The filter chips' words, the kinds in the order the New buttons are. */
 export const APP_REQUEST_KIND_LABELS: Record<AppRequestKind, string> = {
@@ -41,6 +44,7 @@ export const APP_REQUEST_KIND_LABELS: Record<AppRequestKind, string> = {
   correction: 'Corrections',
   raise: 'Raises',
   home: 'Home locations',
+  wfh: 'Work from home',
 };
 
 /** Still being decided: with the manager or HR (leave, permission, a correction); a claim or a raise being decided. */
@@ -54,6 +58,7 @@ export function appRequestRows(from: {
   corrections?: readonly AttendanceCorrectionView[];
   raises?: readonly RaiseRequest[];
   homes?: readonly HomeLocationView[];
+  wfh?: readonly WfhRequestView[];
 }): AppRequestRow[] {
   const rows: AppRequestRow[] = [
     ...(from.leave ?? []).map((r) => ({ kind: 'leave' as const, id: r.id, at: r.createdAt, open: deciding(r.status), request: r })),
@@ -62,6 +67,8 @@ export function appRequestRows(from: {
     ...(from.corrections ?? []).map((r) => ({ kind: 'correction' as const, id: r.id, at: r.createdAt, open: deciding(r.status), request: r })),
     ...(from.raises ?? []).map((r) => ({ kind: 'raise' as const, id: r.id, at: r.createdAt, open: isOpenRaise(r), request: r })),
     ...(from.homes ?? []).map((r) => ({ kind: 'home' as const, id: r.id, at: r.createdAt, open: isOpenHomeRequest(r), request: r })),
+    // working from home (21 October 2026)
+    ...(from.wfh ?? []).map((r) => ({ kind: 'wfh' as const, id: r.id, at: r.createdAt, open: deciding(r.status), request: r })),
   ];
   const seen = new Set<string>();
   return rows
@@ -104,7 +111,7 @@ export const filterAppRequests = (rows: readonly AppRequestRow[], f: AppRequestF
 /** How many each kind's chip lists, within the status chosen ('' for All). */
 export function appRequestCounts(rows: readonly AppRequestRow[], f: Pick<AppRequestFilters, 'status'>): Record<AppRequestKind | '', number> {
   const shown = rows.filter((r) => !f.status || r.open);
-  const counts: Record<AppRequestKind | '', number> = { '': shown.length, leave: 0, permission: 0, reimbursement: 0, correction: 0, raise: 0, home: 0 };
+  const counts: Record<AppRequestKind | '', number> = { '': shown.length, leave: 0, permission: 0, reimbursement: 0, correction: 0, raise: 0, home: 0, wfh: 0 };
   for (const r of shown) counts[r.kind] += 1;
   return counts;
 }
@@ -126,6 +133,8 @@ export function appRequestTitle(row: AppRequestRow): string {
       return 'Raise request';
     case 'home':
       return 'Home location';
+    case 'wfh':
+      return 'Work from home';
   }
 }
 
@@ -144,6 +153,8 @@ export function appRequestWhen(row: AppRequestRow): string {
       return `Effective from ${effectiveFromText(row.request)}`;
     case 'home':
       return homeWhatText(row.request);
+    case 'wfh':
+      return wfhDayText(row.request);
   }
 }
 
@@ -156,6 +167,8 @@ export function appRequestProgress(row: AppRequestRow): string {
       return raiseProgressText(row.request).text;
     case 'home':
       return homeProgressText(row.request).text;
+    case 'wfh':
+      return wfhProgressText(row.request).text;
     default:
       return leaveProgressText(row.request).text;
   }

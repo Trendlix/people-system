@@ -121,8 +121,8 @@ describe('the filters', () => {
   });
 
   it('counts each chip within the status chosen', () => {
-    expect(appRequestCounts(all, { status: '' })).toEqual({ '': 5, leave: 1, permission: 1, reimbursement: 1, correction: 1, raise: 1, home: 0 });
-    expect(appRequestCounts(all, { status: 'open' })).toEqual({ '': 3, leave: 1, permission: 0, reimbursement: 1, correction: 0, raise: 1, home: 0 });
+    expect(appRequestCounts(all, { status: '' })).toEqual({ '': 5, leave: 1, permission: 1, reimbursement: 1, correction: 1, raise: 1, home: 0, wfh: 0 });
+    expect(appRequestCounts(all, { status: 'open' })).toEqual({ '': 3, leave: 1, permission: 0, reimbursement: 1, correction: 0, raise: 1, home: 0, wfh: 0 });
   });
 });
 
@@ -157,8 +157,9 @@ describe('a row', () => {
 
 describe('raise requests kept from the employee level (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from managers too")', () => {
   it('offers the Raises chip only to someone who sees raise requests, by the shared helper', () => {
-    expect(appRequestKindsFor(true)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home']);
-    expect(appRequestKindsFor(false)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'home']);
+    // working from home among them (21 October 2026)
+    expect(appRequestKindsFor(true)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home', 'wfh']);
+    expect(appRequestKindsFor(false)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'home', 'wfh']);
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['employee'] }))).not.toContain('raise');
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['manager'] }))).not.toContain('raise');
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['ceo'] }))).toContain('raise');

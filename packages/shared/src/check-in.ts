@@ -239,9 +239,11 @@ export type ExpectedPlace = 'office' | 'anywhere';
 /**
  * Where an employment's work arrangement expects them on a weekday (0 = Sunday … 6 = Saturday; owner's brief, 19 October
  * 2026): office at the office every day; hybrid at the office on its office days; work from home, outdoor and indoor
- * and outdoor anywhere.
+ * and outdoor anywhere. On a work from home day approved for them (`workingFromHome`; owner, 21 October 2026: "think
+ * about how should we handle the working from home in out erp", wfh.ts): anywhere, whatever the arrangement.
  */
-export function expectedPlace(arrangement: string, officeDays: readonly number[], weekday: number): ExpectedPlace {
+export function expectedPlace(arrangement: string, officeDays: readonly number[], weekday: number, workingFromHome = false): ExpectedPlace {
+  if (workingFromHome) return 'anywhere';
   if (arrangement === 'office') return 'office';
   if (arrangement === 'hybrid') return officeDays.includes(weekday) ? 'office' : 'anywhere';
   return 'anywhere';
@@ -320,8 +322,9 @@ export function punchFlags(
   return kind === 'in' ? checkInFlags(expected, place, mock, hasHome, subLocation) : mock ? ['fake_gps'] : [];
 }
 
-/** What the employee is told of where today's check-in is expected. */
-export function expectedPlaceText(arrangement: string, expected: ExpectedPlace): string {
+/** What the employee is told of where today's check-in is expected; on an approved work from home day (wfh.ts), so. */
+export function expectedPlaceText(arrangement: string, expected: ExpectedPlace, workingFromHome = false): string {
+  if (workingFromHome) return 'Today is your approved work from home day: check in from home.';
   if (expected === 'office') return arrangement === 'hybrid' ? 'Today is one of your office days: check in at the office.' : 'You work at the office: check in there.';
   if (arrangement === 'hybrid') return 'Today is a home day: check in wherever you work from.';
   return 'You may check in wherever you work today.';

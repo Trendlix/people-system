@@ -17,7 +17,9 @@ import { DaysTable } from './ui';
 // system (phone or web with the office location check, or a device) to replace Zoho"): the check-outs without a
 // check-in under the missing check-outs, and the days whose check-in was flagged for the manager and HR. Each day's
 // check-in and check-out with its place and, for HR and the CEO, a Map link to where it was pressed (owner, 20 October
-// 2026: "location link"; a manager gets the place only: the API leaves the spot out).
+// 2026: "location link"; a manager gets the place only: the API leaves the spot out). A day worked from home (owner, 21
+// October 2026: "think about how should we handle the working from home in out erp") says so, and the month's are
+// counted under the remote days.
 
 const COLUMNS = 11;
 
@@ -118,7 +120,10 @@ export function PeopleTable({ groups, month, link, hidden }: { groups: Departmen
                             {filledText(f) && <div className="text-xs font-normal whitespace-nowrap text-ok">{filledText(f)}</div>}
                           </td>
                           <td className="text-right tabular-nums">{hoursText(f.permissionHours, true)}</td>
-                          <td className="text-right tabular-nums">{f.remoteDays}</td>
+                          <td className="text-right tabular-nums">
+                            {f.remoteDays}
+                            {(p.wfhDays?.length ?? 0) > 0 && <div className="text-xs whitespace-nowrap text-muted">{p.wfhDays!.length} working from home</div>}
+                          </td>
                           <td className="text-right tabular-nums">
                             {f.leaveDays}
                             {f.zohoLeaveDays > 0 && <div className="text-xs text-warn">+{f.zohoLeaveDays} in Zoho only</div>}
@@ -148,7 +153,7 @@ export function PeopleTable({ groups, month, link, hidden }: { groups: Departmen
                         {shown && (
                           <tr id={`attendance-days-${id}`}>
                             <td colSpan={COLUMNS} className="bg-canvas px-2 py-3">
-                              {p.days.length ? <DaysTable days={p.days} name={name} punches={p.punches ?? []} /> : <p className="px-2 text-sm text-muted">No days kept.</p>}
+                              {p.days.length ? <DaysTable days={p.days} name={name} punches={p.punches ?? []} wfhDays={p.wfhDays ?? []} /> : <p className="px-2 text-sm text-muted">No days kept.</p>}
                             </td>
                           </tr>
                         )}

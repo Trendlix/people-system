@@ -160,6 +160,11 @@ export interface AttendancePersonMonth {
    * and location link"): every press of the month, the spot only for those who see it. Left out by an API from before it.
    */
   punches?: AttendancePunchRow[];
+  /**
+   * The month's work from home days approved for them (owner, 21 October 2026: "think about how should we handle the
+   * working from home in out erp"), in date order: those days show "Working from home". Left out by an API from before it.
+   */
+  wfhDays?: string[];
 }
 
 /**
@@ -319,6 +324,11 @@ export interface CheckInTodayView {
    * Setup's switch on, and HR hasn't let them check in without one. Left out by an API from before it.
    */
   location?: { required: boolean };
+  /**
+   * Whether today is a work from home day approved for them (owner, 21 October 2026): expected anywhere, the office
+   * network's lock waived. Left out by an API from before it.
+   */
+  workingFromHome?: boolean;
   /**
    * Their shift: its window (HH:MM), hours a day, grace minutes and the time it counts hours until (HH:MM; owner, 20
    * October 2026: make-up hours; null, or left out by an API from before it: none).

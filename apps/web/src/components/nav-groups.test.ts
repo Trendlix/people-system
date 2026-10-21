@@ -28,8 +28,9 @@ describe('the headings that open and close', () => {
       ['Payroll', 'payroll'],
       ['Requests', 'requests'],
       ['Attendance', 'attendance'],
-      // owner, 21 October 2026: the KPIs
+      // owner, 21 October 2026: the KPIs, then Assets (for those with Assets access)
       ['KPIs', 'kpis'],
+      ['Assets', 'assets'],
       ['Templates', 'templates'],
     ]);
     expect(NAV.filter((item) => !isGroup(item)).map((item) => item.label)).toEqual(['Home', 'Organization', 'Approvals', 'Users', 'Audit Log']);

@@ -5,6 +5,7 @@ import { formatDate } from '@/lib/format';
 import { appCorrectionHref, appItemHref } from '@/lib/surface';
 import { correctedNote, dayRow, daySourceText, extraHoursText, hoursText, type PunchRow } from '../../../(app)/attendance/attendance';
 import { dayCorrection } from '../../../(app)/attendance/corrections/corrections';
+import { isWfhDay, WFH_DAY_BADGE } from '../../../(app)/attendance/wfh/wfh';
 import { leaveStatusLabel } from '../../../(app)/leave/list';
 import { AllPresses, DayEndView } from '../../../(app)/attendance/punch-ui';
 import { weekdayOf } from '../../../(app)/organization/holidays/holidays';
@@ -18,7 +19,9 @@ import { dayStatusText, dayTone } from '../../../(app)/payroll/[id]/attendance/a
 // being decided.
 // Simpler (owner, 20 October 2026: "simplify this, i want to view if it is remote or office, and location link"): the
 // check-in and the check-out each with its place as a badge, a Map link to where it was pressed (their own spot) and the
-// flags in a word or two, and every press of the day collapsed in "All presses (14)" (punch-ui.tsx).
+// flags in a word or two, and every press of the day collapsed in "All presses (14)" (punch-ui.tsx). A work from home day
+// approved for them (owner, 21 October 2026: "think about how should we handle the working from home in out erp") says
+// "Working from home" beside what the day was.
 
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
 
@@ -55,6 +58,7 @@ export function DayList({
   corrections,
   correctable,
   today,
+  wfhDays,
 }: {
   days: readonly AttendanceDay[];
   punches: readonly PunchRow[];
@@ -62,6 +66,8 @@ export function DayList({
   corrections: readonly MonthCorrection[] | undefined;
   correctable: MonthCorrectable | null | undefined;
   today: string;
+  /** The month's work from home days approved for them; none (an API from before them): none shown. */
+  wfhDays?: readonly string[];
 }) {
   return (
     <ol aria-label="Your days" className="space-y-2">
@@ -75,7 +81,10 @@ export function DayList({
               <h3 className="font-semibold tabular-nums">
                 {weekdayOf(d.date)} {formatDate(d.date)}
               </h3>
-              <span className={`text-sm font-medium ${tone ? TONE[tone] : 'text-muted'}`}>{dayStatusText(d.status)}</span>
+              <span className="flex flex-wrap items-baseline justify-end gap-2">
+                {isWfhDay({ wfhDays }, d.date) && <span className="badge bg-accent-soft text-accent">{WFH_DAY_BADGE}</span>}
+                <span className={`text-sm font-medium ${tone ? TONE[tone] : 'text-muted'}`}>{dayStatusText(d.status)}</span>
+              </span>
             </div>
             <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
               <Figure label="Check-in">

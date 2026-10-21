@@ -77,6 +77,10 @@ describe('where a notification opens', () => {
     expect(notificationHref(`/leave/permissions/${ID}`, 'permission_decided', 'app')).toBe(`/app/requests/permission/${ID}`);
     expect(notificationHref(`/reimbursements/${ID}`, 'reimbursement_paid', 'app')).toBe(`/app/requests/reimbursement/${ID}`);
     expect(notificationHref(`/attendance/corrections/${ID}`, 'correction_waiting', 'app')).toBe(`/app/approve/correction/${ID}`);
+    // working from home (owner, 21 October 2026: "Manager, then HR"): waiting for the approver, decided for the employee
+    expect(notificationHref(`/attendance/wfh/${ID}`, 'wfh_waiting', 'app')).toBe(`/app/approve/wfh/${ID}`);
+    expect(notificationHref(`/attendance/wfh/${ID}`, 'wfh_decided', 'app')).toBe(`/app/requests/wfh/${ID}`);
+    expect(notificationHref(`/attendance/wfh/${ID}`, 'wfh_waiting', 'site')).toBe(`/attendance/wfh/${ID}`);
     expect(notificationHref('/raise-requests?status=with_hr', 'raise_request_waiting', 'app')).toBe('/app/approve');
     expect(notificationHref('/approvals', 'pay_raise_waiting', 'app')).toBe('/app/approve');
     // a kind from a newer API: the person's own requests

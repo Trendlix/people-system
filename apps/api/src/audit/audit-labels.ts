@@ -7,6 +7,13 @@
 /** Each kind of record, in sentence case, as the page names it ("Contract CON-2026-0007"). */
 export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   allowance_type: 'Allowance type',
+  // Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system"): the register's
+  // assets, their photos, the rooms they are kept in, the production kits and the settings (the capitalization threshold)
+  asset: 'Asset',
+  asset_kit: 'Production kit',
+  asset_photo: 'Asset photo',
+  asset_room: 'Asset room',
+  asset_settings: 'Asset settings',
   attendance_correction: 'Attendance correction',
   attendance_day: 'Attendance day',
   attendance_import: 'Attendance import',
@@ -40,6 +47,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   kpi_template: 'KPI template',
   leave_adjustment: 'Leave balance change',
   leave_document: 'Leave document',
+  // a leave file imported (owner, 21 October 2026: "how to import bulk leaves?"): uploaded, its choices, applied, undone, deleted
+  leave_import: 'Leave import',
   leave_request: 'Leave request',
   leave_settings: 'Leave setup',
   leave_type: 'Leave type',
@@ -66,6 +75,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   shift: 'Shift',
   template_version: 'Template version',
   user: 'User account',
+  // working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp")
+  wfh_request: 'Work from home request',
 };
 
 /** Each action, in the past tense and sentence case ("Updated", "Sent for approval"). */
@@ -115,8 +126,12 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // office location is the hero and other locations are like sub locations. shown with their name and linked users")
   link_person: 'Linked a person',
   login: 'Signed in',
+  // an asset's label printed (21 October 2026)
+  label: 'Marked the label printed',
   login_failed: 'Sign-in failed',
   logout: 'Signed out',
+  // an asset's photo made the one its lists show (21 October 2026)
+  make_first: 'Made it the main photo',
   make_main: 'Made it the main office',
   move: 'Moved to another month',
   // last month's KPI scorecards opened at once by HR (21 October 2026)
@@ -165,6 +180,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   unsign: 'Undid the signing',
   unused_leave_paid: 'Paid unused leave',
   update: 'Updated',
+  // an asset's values set by the CEO, Finance or a Super Admin (21 October 2026: "CEO and Finance"), as the fact only
+  update_values: 'Updated the values',
   verify: 'Verified',
   view_as_act: 'Turned Act as them on or off',
   view_as_start: 'Started viewing as',
@@ -216,6 +233,18 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   // the main office and its sub-locations (20 October 2026)
   isMain: 'Main office',
   formerMainId: 'Former main office',
+  // Assets (21 October 2026): a user's Assets access, and an asset's fields and values
+  assetsAccess: 'Assets access',
+  assetClass: 'Class',
+  roomId: 'Room',
+  kitId: 'Kit',
+  usefulLifeYears: 'Useful life (years)',
+  labeledAt: 'Label printed',
+  purchasePrice: 'Purchase cost',
+  priceLow: 'Market value (low)',
+  marketValue: 'Market value',
+  priceHigh: 'Market value (high)',
+  priceNote: 'Market value note',
 };
 
 /**

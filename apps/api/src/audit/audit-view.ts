@@ -286,6 +286,10 @@ const USERS: Role[] = ['admin'];
 const TEMPLATES: Role[] = ['super_admin'];
 const KPIS: Role[] = ['hr', 'ceo', 'super_admin']; // All KPIs and its scorecards (21 October 2026)
 const KPI_TEMPLATES: Role[] = ['hr', 'ceo', 'admin']; // the KPI templates' pages
+// the Assets pages (21 October 2026): by each user's Assets access, not a role; of the Audit Log's readers, a Super Admin
+// is always an Assets manager and the CEO at least a viewer who sets the values; the Rooms page is a manager's
+const ASSETS: Role[] = ['super_admin', 'ceo'];
+const ASSET_ROOMS: Role[] = ['super_admin'];
 
 interface Target {
   href: string;
@@ -345,6 +349,8 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return record?.parentId ? { href: `/leave/${record.parentId}`, label: 'Open leave request', roles: LEAVE } : null;
     case 'permission_request':
       return id ? own(`/leave/permissions/${id}`, 'Open permission request', LEAVE) : null;
+    case 'wfh_request':
+      return id ? own(`/attendance/wfh/${id}`, 'Open work from home request', LEAVE) : null;
     case 'attendance_correction':
       return id ? own(`/attendance/corrections/${id}`, 'Open attendance correction', LEAVE) : null;
     case 'attendance_day':
@@ -401,6 +407,16 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return { href: '/kpis/templates', label: 'Open KPI templates', roles: KPI_TEMPLATES };
     case 'kpi_report':
       return { href: '/kpis/all', label: 'Open all KPIs', roles: KPIS };
+    // Assets (21 October 2026): an asset's page by its code (a photo's, its asset's); the rooms, kits and settings pages
+    case 'asset':
+    case 'asset_photo':
+      return record?.reference ? { href: `/assets/${encodeURIComponent(record.reference)}`, label: 'Open asset', roles: ASSETS } : null;
+    case 'asset_room':
+      return { href: '/assets/rooms', label: 'Open rooms', roles: ASSET_ROOMS };
+    case 'asset_kit':
+      return { href: '/assets/kits', label: 'Open kits', roles: ASSETS };
+    case 'asset_settings':
+      return { href: '/assets/settings', label: 'Open asset settings', roles: ASSETS };
     case 'ocr_correction':
       return { href: '/employees/card-corrections', label: 'Open card reading fixes', roles: ['hr'] };
     default:

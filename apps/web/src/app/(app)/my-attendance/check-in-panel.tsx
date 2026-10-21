@@ -48,7 +48,10 @@ import { appLocationRefusal, correctionLinkFor } from './network-lock';
 // Setup's switch refusing presses without a location for the person (owner, 20 October 2026: "Company switch +
 // exceptions"), they are told before pressing to allow it when the browser asks, and a press refused for it says how to
 // allow it in the browser and links to ask for a correction of the day. The spot is kept with each press (owner, the
-// same day: "Yes, keep the spot"): the note under the button says so, and today's list opens each on a map.
+// same day: "Yes, keep the spot"): the note under the button says so, and today's list opens each on a map. A work from
+// home day approved for them (owner, 21 October 2026: "think about how should we handle the working from home in out
+// erp"): "Working from home today" above it on the site (the phone pages' Home says it on its own), and the office
+// network's lock waived.
 
 export function CheckInPanel({ initial, compact = false, big = false }: { initial: CheckInTodayView; compact?: boolean; big?: boolean }) {
   const [pressed, setPressed] = useState<PunchResultView | null>(null);
@@ -113,6 +116,9 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
 
   return (
     <div className="space-y-4">
+      {view.workingFromHome && !big && (
+        <p className="w-fit rounded-full border border-dashed border-accent px-3 py-1 text-sm font-semibold text-accent">Working from home today</p>
+      )}
       {view.expectedText && <p className="text-sm">{view.expectedText}</p>}
       {view.network?.locked && <p className="text-sm">{networkNote(view)}</p>}
       {/* on the website, when the company refuses presses without a location for them (inside the app it is always needed) */}
