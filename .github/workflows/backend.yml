@@ -60,7 +60,21 @@ jobs:
           printf '%s\n' "$KEY" > ~/.ssh/deploy
           printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
           # the key is tied on the server to deploy.sh: whatever is asked for here, that script is what runs
-          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30 "$USER_NAME@$HOST" deploy
+          # a long build keeps the connection open: 30 s keep-alives, given up only after 10 unanswered (5 minutes); a
+          # dropped connection (ssh's exit 255, 21 October 2026) is tried once more after a minute, deploy.sh being safe
+          # to run again
+          run_deploy() { ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "$USER_NAME@$HOST" deploy; }
+          set +e
+          run_deploy
+          code=$?
+          if [ "$code" -eq 255 ]; then
+            echo "::warning::The connection to the server dropped (ssh exit 255); trying the deploy once more in a minute."
+            sleep 60
+            run_deploy
+            code=$?
+          fi
+          set -e
+          [ "$code" -eq 0 ] || exit "$code"
           rm -f ~/.ssh/deploy
       # the API's certificate comes from its own private authority (deploy/Caddyfile): curl trusts exactly that one
       - name: Trust the API's certificate
