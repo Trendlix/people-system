@@ -26,6 +26,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds } from '@/components/form';
+import { RegisterWithClaude } from '@/components/register-with-claude';
 import { Select } from '@/components/select';
 import { APP_ASSET_PATHS, ASSET_PATHS } from '@/lib/asset-paths';
 import { saveAsset } from './actions';
@@ -177,15 +178,8 @@ export function AssetForm({
           labels are read in Claude, which drafts the asset through the connector; the draft is confirmed on this form.
           On the site's Add form, for anyone the connector is offered to (GET /auth/me's assets.ai); the form works by
           hand without it. */}
-      {ai && mode === 'add' && !draftId && surface === 'site' && (
-        <p className="rounded-lg border border-dashed border-line p-3 text-sm text-muted">
-          Have photos or a label? Ask Claude to draft it with the Trendlix People connector:{' '}
-          <Link href={ASSET_PATHS.connectClaude} className="font-semibold">
-            Connect Claude
-          </Link>
-          .
-        </p>
-      )}
+      {/* "Register with Claude" (owner, 21 October 2026: "add register with claude"), on the site and in the app */}
+      {ai && mode === 'add' && !draftId && <RegisterWithClaude />}
 
       <Section title="What It Is">
         <Field id={fid('group')} label="Group" hint={`${rule.examples}. Its code starts ${rule.prefix}-.`}>
