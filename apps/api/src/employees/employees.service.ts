@@ -51,6 +51,7 @@ import {
 import { birthDateFromNationalId, maskTail } from './checks.js';
 import { completeness, papersOf, topGradeRank } from './completeness.js';
 import { ConfidentialService } from './confidential.service.js';
+import { contractFactsOf, STATUS_CONTRACTS, STATUS_ENDING } from './contract-facts.js';
 import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
 import { INSURED_VERSION, insuredContractPay, insuredVersionOf, insuredWageOfEmployee } from './insured-wage.js';
 import { withOccupation } from './occupation-view.js';
@@ -284,10 +285,15 @@ export class EmployeesService {
    * The people this user may see, each with their current employment, or how their last one ended. A C-level person
    * hidden from the caller (owner, 19 October 2026: "make C level Employees details not visible to HR") is their
    * directory card only (`restricted`): name, photo, job title, department or team, work email, code and where they
-   * stand. `confidential`: C-level, for everyone.
+   * stand. `confidential`: C-level, for everyone. With the current employment, what its contract status is worked out
+   * from (owner, 21 October 2026: "instead of the Emp code, add contract status"): its probation end, its contract in
+   * force else its latest draft (contractFactsOf), and its approved ending's last working day for those who see endings
+   * (HR, Admin, the CEO; null for the others); never on a card.
    */
   async list(user: SessionUser) {
     const confidential = await this.confidential.view(user);
+    const salary = seesSalary(user);
+    const endings = seesEndings(user);
     const rows = await this.prisma.employee.findMany({
       where: await this.visibleTo(user),
       select: {
@@ -311,6 +317,10 @@ export class EmployeesService {
             gradeId: true,
             grade: GRADE,
             manager: { select: { id: true, fullNameEn: true } },
+            // the contract status (21 October 2026)
+            probationEnd: true,
+            contracts: STATUS_CONTRACTS,
+            endings: STATUS_ENDING,
           },
         },
       },
@@ -351,6 +361,9 @@ export class EmployeesService {
           gradeId: current.gradeId,
           grade: current.grade,
           manager: current.manager,
+          probationEnd: fromDateOnly(current.probationEnd),
+          contract: contractFactsOf(current.contracts, salary),
+          endingOn: endings ? fromDateOnly(current.endings[0]?.lastWorkingDay ?? null) : null,
         },
         lastEnded: ended && { endDate: fromDateOnly(ended.endDate), endReason: ended.endReason },
       };

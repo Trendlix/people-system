@@ -4,6 +4,7 @@ import type {
   AssetsAccessView,
   AttendanceImportMark,
   ChangeRequestStatus,
+  ContractFacts,
   ContractForm,
   ContractKind,
   ContractStatus,
@@ -409,6 +410,15 @@ export interface EmployeeSummaryEmployment {
   gradeId: string | null;
   grade: GradeRef | null;
   manager: { id: string; fullNameEn: string } | null;
+  /**
+   * What the Employees list's contract status is worked out from (owner, 21 October 2026: "instead of the Emp code, add
+   * contract status"; contractStatusOf, @trendlix/shared): the probation end, the contract in force else the latest draft
+   * (null: none), and the approved ending's last working day (null: none, or the caller doesn't see endings). Left out by
+   * an API from before them.
+   */
+  probationEnd?: string | null;
+  contract?: ContractFacts | null;
+  endingOn?: string | null;
 }
 
 /** What the directory card keeps of the current employment. */

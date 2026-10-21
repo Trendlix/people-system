@@ -456,3 +456,8 @@ export * from './connector.js';
 // Assets, step 2: the drafts from Claude (never an asset until a person confirms one) and what the connector reads
 // besides the register: who holds what, overdue returns, stock levels and the counts due
 export * from './asset-drafts.js';
+
+// the contract status the Employees list shows in place of the employee code (owner, 21 October 2026: "instead of the
+// Emp code, add contract status"; "State + end date"): signed and when it ends, the probation, a draft, the notice of an
+// approved ending, ended, none, the agreements of trainees and interns, freelance; an end within 30 days in amber
+export * from './contract-status.js';

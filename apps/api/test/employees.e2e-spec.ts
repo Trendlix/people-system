@@ -324,6 +324,11 @@ describe('Employees (e2e)', () => {
           gradeId: null,
           grade: null,
           manager: null,
+          // what the contract status is worked out from (owner, 21 October 2026: "instead of the Emp code, add contract
+          // status"): no contract yet, no ending
+          probationEnd: '2026-04-14',
+          contract: null,
+          endingOn: null,
         },
         lastEnded: null,
       });

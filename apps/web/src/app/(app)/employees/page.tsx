@@ -16,7 +16,8 @@ import { StaffOnly } from '../staff-only';
 import { directorySections } from './directory-groups';
 import { CARD_FIXES_PATH } from './paperwork';
 import { canSeeSalaryRaises, RAISES_PATH } from '../payroll/reports/salary-raises/salary-raises';
-import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge } from './ui';
+import { CONTRACT_TONE_STYLE, directoryContractStatus } from './contract-status';
+import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge, todayInCairo } from './ui';
 
 // Not an employee's: someone who is only an employee and/or a direct manager is sent to their dashboard, which links
 // their own profile, and a manager's My Team their direct reports' (owner's decisions, 17 October 2026).
@@ -26,8 +27,9 @@ import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, g
 // a former employee, and someone added before being hired is not employed yet (their standing). The team, job title,
 // grade and manager are the current employment's, and so are the department and grade filters. A C-level person (owner,
 // 19 October 2026: "make C level Employees details not visible to HR") is marked so; for those who see only their card
-// (`restricted`), the row has its name, photo, work email, code, job title, department or team and standing, the grade and
-// the manager a dash, and the name opens the card.
+// (`restricted`), the row has its name, photo, work email, job title, department or team and standing, the contract, the
+// grade and the manager a dash, and the name opens the card. The Contract column is where the employee code was (owner,
+// 21 October 2026: "instead of the Emp code, add contract status"); the search still finds a code.
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -107,7 +109,18 @@ function Placement({ employee: e }: { employee: EmployeeSummary }) {
   );
 }
 
-/** Employee, Code, Job Title, Grade, Manager and Standing: what a group's heading spans. */
+/**
+ * The contract status, in place of the employee code (owner, 21 October 2026: "instead of the Emp code, add contract
+ * status"; "State + end date"): "Signed · ends 31/12/2026", "On probation until 15/01/2027", "Draft, not signed" …, in
+ * amber within 30 days of an end. A dash on a C-level person's card, which has none of it.
+ */
+function ContractCell({ employee, today }: { employee: EmployeeSummary; today: string }) {
+  const status = directoryContractStatus(employee, today);
+  if (!status) return <td>{dash}</td>;
+  return <td className={`tabular-nums ${CONTRACT_TONE_STYLE[status.tone]}`}>{status.text}</td>;
+}
+
+/** Employee, Contract, Job Title, Grade, Manager and Standing: what a group's heading spans. */
 const COLUMN_COUNT = 6;
 
 async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
@@ -120,6 +133,8 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   ]);
   const f = readFilters(query);
   const canAdd = canAddEmployees(user);
+  // after the data has loaded: it reads the clock
+  const today = todayInCairo();
 
   if (everyone.length === 0) {
     return seesEveryone(user) || canAdd ? (
@@ -220,7 +235,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
             <thead>
               <tr>
                 <th>Employee</th>
-                <th>Code</th>
+                <th>Contract</th>
                 <th>Job Title</th>
                 <th>Grade</th>
                 <th>Manager</th>
@@ -251,7 +266,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                                 </div>
                               </div>
                             </td>
-                            <td className="whitespace-nowrap text-muted tabular-nums">{e.employeeCode}</td>
+                            <ContractCell employee={e} today={today} />
                             <Placement employee={e} />
                             <td>
                               <StandingBadge standing={e.standing} />
