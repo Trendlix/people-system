@@ -28,13 +28,15 @@ describe('the headings that open and close', () => {
       ['Payroll', 'payroll'],
       ['Requests', 'requests'],
       ['Attendance', 'attendance'],
+      // owner, 21 October 2026: the KPIs
+      ['KPIs', 'kpis'],
       ['Templates', 'templates'],
     ]);
     expect(NAV.filter((item) => !isGroup(item)).map((item) => item.label)).toEqual(['Home', 'Organization', 'Approvals', 'Users', 'Audit Log']);
     expect(groupListId('requests')).toBe('nav-group-requests');
     expect(groupKey({ label: ' Leave & Attendance ' })).toBe('leave-attendance');
-    // an employee's own sidebar has none
-    expect(sidebar('employee', 'manager').filter(isGroup)).toEqual([]);
+    // an employee's own sidebar has the KPIs' alone (owner, 21 October 2026)
+    expect(sidebar('employee', 'manager').filter(isGroup).map((item) => item.label)).toEqual(['KPIs']);
   });
 
   it('keep the page each heading linked to reachable as its first item, for everyone', () => {
@@ -61,6 +63,10 @@ describe('the headings that open and close', () => {
     expect(groupHolding(items, CORRECTIONS_PATH)).toBe('attendance');
     for (const page of ['/', '/organization/company', '/approvals', '/leaves', '/raise-requestsx', '/my-requests']) expect(groupHolding(items, page)).toBeNull();
     expect(groupHolding(sidebar('super_admin'), '/templates/tags')).toBe('templates');
+    // the KPI templates are the KPIs', not the document templates'
+    expect(groupHolding(sidebar('super_admin'), '/kpis/templates')).toBe('kpis');
+    expect(groupHolding(items, '/kpis/scorecards/0b8f2c1e-1111-4222-8333-444455556666')).toBe('kpis');
+    expect(groupHolding(sidebar('employee'), '/kpis')).toBe('kpis');
     expect(groupHolding(sidebar('employee'), MY_REQUESTS)).toBeNull();
   });
 });
@@ -150,6 +156,13 @@ describe('the count a closed heading shows', () => {
     expect(of('Requests', 'finance')).toBe(2);
     expect(of('Attendance', 'finance')).toBe(0);
     expect(of('Requests', 'admin')).toBe(6);
+    // the KPIs (owner, 21 October 2026): their own, their team's and HR's, as each sees them
+    const kpis = { '/kpis': 1, '/kpis/team': 2, '/kpis/all': 4 };
+    const kpisOf = (...roles: Role[]) => groupCount(sidebar(...roles).find((item) => item.label === 'KPIs')!, kpis);
+    expect(kpisOf('hr')).toBe(5);
+    expect(kpisOf('employee', 'manager')).toBe(3);
+    expect(kpisOf('ceo')).toBe(7);
+    expect(kpisOf('employee')).toBe(1);
   });
 
   it('is nothing without counts', () => {

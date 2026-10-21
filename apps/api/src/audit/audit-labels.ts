@@ -32,6 +32,12 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   home_location: 'Home location',
   job_offer: 'Job offer',
   job_title: 'Job title',
+  // KPIs (owner, 21 October 2026: "lets start with the KPI's First"): the monthly scorecards, the templates per job title,
+  // the deadlines, and the month's Excel export
+  kpi_report: 'KPI report',
+  kpi_scorecard: 'KPI scorecard',
+  kpi_settings: 'KPI settings',
+  kpi_template: 'KPI template',
   leave_adjustment: 'Leave balance change',
   leave_document: 'Leave document',
   leave_request: 'Leave request',
@@ -69,6 +75,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   approve: 'Approved',
   attendance_summary_file: 'Downloaded the attendance summary',
   audit_log_file: 'Downloaded the audit log',
+  // HR's calibration of a KPI scorecard (owner, 21 October 2026: "Self, manager, HR, sign-off"), each pick changed with its reason
+  calibrate: 'Calibrated',
   cancel: 'Cancelled',
   change: 'Changed the amount',
   change_installment: 'Changed the installments',
@@ -92,10 +100,13 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   done: 'Completed',
   download_unprotected: 'Downloaded unprotected',
   end: 'Ended',
+  // a KPI scorecard made final by its sign-off day without every signature (21 October 2026)
+  finalize: 'Made final',
   generate: 'Generated',
   hire: 'Hired from the offer',
   import: 'Imported',
   issue_payslip: 'Issued the payslip',
+  kpi_file: 'Downloaded the KPIs',
   learn: 'Learned a fix',
   // a person linked to a sub-location, or unlinked, and a location made the main office (owner, 20 October 2026: "main
   // office location is the hero and other locations are like sub locations. shown with their name and linked users")
@@ -105,6 +116,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   logout: 'Signed out',
   make_main: 'Made it the main office',
   move: 'Moved to another month',
+  // last month's KPI scorecards opened at once by HR (21 October 2026)
+  open: 'Opened the scorecards',
   paid: 'Marked paid',
   paid_out: 'Paid out held pay',
   password_change: 'Changed the password',
@@ -129,6 +142,10 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   restore_attendance: 'Restored the attendance cut',
   return: 'Returned',
   salary_raises_file: 'Downloaded the salary raises',
+  // a KPI scorecard's scoring sent by its manager, HR or the CEO (21 October 2026)
+  score: 'Scored',
+  // an employee's KPI self-rating sent (21 October 2026)
+  self_rate: 'Sent the self-rating',
   send: 'Sent',
   // sessions kept on the server (owner, 20 October 2026)
   session_idle: 'Signed out after 15 minutes without activity',

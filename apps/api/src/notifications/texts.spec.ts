@@ -10,6 +10,11 @@ import {
   decidedText,
   homeDecidedText,
   homeWaitingText,
+  kpiManagerSignText,
+  kpiOpenText,
+  kpiReadyToSignText,
+  kpiReminderText,
+  kpiWaitingText,
   payRaiseDecidedText,
   payRaiseWaitingText,
   payslipText,
@@ -22,6 +27,16 @@ import {
 // and general, names and dates (DD/MM/YYYY, 12-hour times), never a salary, an amount, a reason or a comment.
 
 describe('notification texts', () => {
+  it('says a KPI step in a few words, never a score (21 October 2026)', () => {
+    expect(kpiOpenText('2026-10', '2026-11-03', '/k')).toMatchObject({ kind: 'kpi_self_rating', title: 'Your October KPI is open', body: 'Rate yourself by 03/11/2026' });
+    expect(kpiReadyToSignText('2026-10', '2026-11-10', '/k')).toMatchObject({ kind: 'kpi_ready_to_sign', title: 'Your October KPI is ready to sign', body: 'Sign by 10/11/2026' });
+    expect(kpiWaitingText('Mona Adel', '2026-10', '/k')).toMatchObject({ kind: 'kpi_waiting', title: 'A KPI scorecard is waiting for you', body: 'Mona Adel, October 2026' });
+    expect(kpiManagerSignText('Mona Adel', '2026-10', '/k')).toMatchObject({ kind: 'kpi_waiting', title: 'A KPI scorecard is ready for you to sign' });
+    expect(kpiReminderText('manager', { own: false, count: 1 }, '2026-11-06', '/k').title).toBe('A KPI scorecard to score by tomorrow');
+    expect(kpiReminderText('hr', { own: false, count: 4 }, '2026-11-08', '/k').title).toBe('4 KPI scorecards to calibrate by tomorrow');
+    expect(kpiReminderText('self_rating', { own: true, month: '2026-10' }, '2026-11-03', '/k')).toMatchObject({ kind: 'kpi_self_rating', title: 'Your October KPI: rate yourself by tomorrow', body: 'Due 03/11/2026' });
+  });
+
   it('says the days of a request', () => {
     expect(daysText('2026-10-22', '2026-10-23')).toBe('22/10/2026–23/10/2026');
     expect(daysText('2026-10-22', '2026-10-22')).toBe('22/10/2026');
@@ -110,6 +125,13 @@ describe('notification texts', () => {
       homeWaitingText('A Very Long Name '.repeat(20), '2026-10-20', '/home-locations/h1'),
       homeDecidedText('first_step', '2026-10-20', '/home-locations/h1', 'the CEO'),
       checkInReminderText('21:30', '/my-attendance'),
+      // KPIs (21 October 2026): no score in them
+      kpiOpenText('2026-10', '2026-11-03', '/kpis/scorecards/k1'),
+      kpiWaitingText('A Very Long Name '.repeat(20), '2026-10', '/kpis/scorecards/k1'),
+      kpiReadyToSignText('2026-10', '2026-11-10', '/kpis/scorecards/k1'),
+      kpiManagerSignText('Mona Adel', '2026-10', '/kpis/scorecards/k1'),
+      kpiReminderText('manager', { own: false, count: 3 }, '2026-11-06', '/kpis/team'),
+      kpiReminderText('sign_off', { own: true, month: '2026-10' }, '2026-11-10', '/kpis/scorecards/k1'),
     ];
     for (const n of all) {
       const kept = keptNotification(n)!;

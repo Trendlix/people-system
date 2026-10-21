@@ -698,3 +698,32 @@ describe('payslipContent: the month’s permission hours', () => {
     expect(c.thisMonth!.cells.map((x) => x.label)).toEqual(['Hours worked']);
   });
 });
+
+describe('payslipContent: last month’s KPI (owner, 21 October 2026: "Last month\'s KPI, this pay")', () => {
+  const kpi = (finalPercent: number, level: 'needs_improvement' | 'meets') => ({ month: '2026-09', scorecardId: 'k1', finalPercent, level });
+
+  it('says the scorecard’s month, final %, level and what it paid, and when it is from', () => {
+    const c = payslipContent(payslipSource('monthly', { terms: { kpi: kpi(86, 'needs_improvement') } }), 'en');
+    const cell = c.thisMonth!.cells.find((x) => x.label.startsWith('KPI'))!;
+    expect(cell).toEqual({ label: 'KPI (September 2026)', value: '86%', note: 'Needs improvement · paid in full (80%+)' });
+    expect(c.thisMonth!.line).toBe("Last month's KPI counts in this month's pay.");
+    // its KPI inputs of before left aside: no KPI average
+    expect(c.thisMonth!.cells.map((x) => x.label)).not.toContain('KPI average');
+  });
+
+  it('says the variable paid in proportion below the grace, and none cut without a final scorecard', () => {
+    const low = payslipContent(payslipSource('monthly', { terms: { kpi: kpi(70, 'needs_improvement') } }), 'en');
+    expect(low.thisMonth!.cells.find((x) => x.label.startsWith('KPI'))).toMatchObject({ value: '70%', note: 'Needs improvement · variable paid at 70.00%' });
+    expect(low.earnings!.rows.find((r) => r.label === 'Performance adjustment')).toMatchObject({ note: 'Variable paid at 70.00%' });
+    const none = payslipContent(payslipSource('monthly', { terms: { kpi: null } }), 'en');
+    expect(none.thisMonth!.cells.find((x) => x.label.startsWith('KPI'))).toEqual({ label: 'KPI (September 2026)', value: '—', note: 'No final scorecard: the variable part isn’t cut' });
+  });
+
+  it('in Arabic', () => {
+    const c = payslipContent(payslipSource('monthly', { terms: { kpi: kpi(86, 'needs_improvement') } }), 'ar');
+    const cell = c.thisMonth!.cells.find((x) => x.label.startsWith('مؤشرات'))!;
+    expect(cell.label).toBe('مؤشرات الأداء (سبتمبر ٢٠٢٦)');
+    expect(cell.note).toContain('يحتاج إلى تحسين');
+    expect(c.thisMonth!.line).toBe('مؤشرات أداء الشهر الماضي تُحتسب في أجر هذا الشهر.');
+  });
+});

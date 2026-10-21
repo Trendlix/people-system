@@ -43,8 +43,12 @@ export const APP_PATHS = {
   approve: '/app/approve',
 } as const;
 
-/** The kinds of item a section opens: a request of the employee's, or one waiting for the caller (a pay raise: the CEO's). */
-export const APP_ITEM_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'pay-raise', 'home'] as const;
+/**
+ * The kinds of item a section opens: a request of the employee's, or one waiting for the caller (a pay raise: the CEO's).
+ * A KPI scorecard (owner, 21 October 2026: "Self, manager, HR, sign-off"): the employee's to rate and sign under My
+ * Requests, the manager's and HR's steps under To Approve.
+ */
+export const APP_ITEM_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'pay-raise', 'home', 'kpi'] as const;
 export type AppItemKind = (typeof APP_ITEM_KINDS)[number];
 
 /** An item's page in a section: "/app/requests/leave/<id>", "/app/approve/reimbursement/<id>". */
@@ -100,6 +104,8 @@ const ITEM_PAGES: readonly [RegExp, AppItemKind][] = [
   [new RegExp(`^/reimbursements/${ID}$`), 'reimbursement'],
   [new RegExp(`^/attendance/corrections/${ID}$`), 'correction'],
   [new RegExp(`^/home-locations/${ID}$`), 'home'],
+  // a KPI scorecard (21 October 2026), also as the KPI notifications link it
+  [new RegExp(`^/kpis/scorecards/${ID}$`), 'kpi'],
 ];
 
 /** What an address says of what was just done, kept on the way: ?done= (decided, cancelled, moved on) and ?sent=. */

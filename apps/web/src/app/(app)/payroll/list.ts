@@ -159,7 +159,9 @@ export function rulesSummary(r: PayrollRules): string[] {
   return [
     `A month counts as ${r.dayDivisor} days, for day rates and part months.`,
     `Attendance counts in full from ${r.attendanceGracePercent}%; below it, the fixed part follows it.`,
-    `The KPI average counts in full from ${r.kpiGracePercent}%; below it, the variable part follows it. With no KPI given, it isn't cut.`,
+    // the KPI: last month's final scorecard (owner, 21 October 2026: "Last month's KPI, this pay"; "As the sheet: full at
+    // 80%+"); a line made before the KPIs module, the KPIs it was given, averaged with the attendance
+    `The KPI (last month's final scorecard) counts in full from ${r.kpiGracePercent}%; below it, the variable part follows it. With none, it isn't cut.`,
     paysOvertime(r) ? `Overtime is paid for attendance above ${r.overtimeAbovePercent}%, at ${r.overtimeRate}×.` : 'Overtime: not paid.',
     `A no-show day costs ${r.noShowDayMultiplier} ${r.noShowDayMultiplier === 1 ? "day's" : "days'"} pay; its hours come out of the expected hours, so attendance doesn't count it again.`,
   ];

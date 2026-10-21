@@ -3,6 +3,7 @@
 import type { Role } from '@trendlix/shared';
 import { ATTENDANCE_PATH, ATTENDANCE_SECTIONS } from '../app/(app)/attendance/sections';
 import { PAYROLL_SECTIONS } from '../app/(app)/payroll/sections';
+import { KPI_PATHS } from '../lib/kpi-paths';
 import { hasRole, isSelfService } from '../lib/roles';
 
 export interface NavItem {
@@ -33,7 +34,37 @@ export interface NavSubItem {
    * sub-items all have roles is shown to whoever sees at least one of them, and links to the first they see.
    */
   roles?: Role[];
+  /**
+   * Shown also to these users, whatever their roles (alone, without `roles`: to them only): `profile`, those with an
+   * employee profile of their own; `team`, those who decide for a team (decidesForTeam: a direct manager, a department's
+   * head or a team's lead). For pages that are about the user's own work rather than a role's (owner, 21 October 2026:
+   * My KPIs and Team KPIs). A word, not a function: the sidebar's items go to the browser as they are.
+   */
+  audience?: NavAudience;
 }
+
+/** Who a sub-item is for besides its roles (NavSubItem.audience). */
+export type NavAudience = 'profile' | 'team';
+
+/**
+ * The KPIs (owner, 21 October 2026: "lets start with the KPI's First", "Full framework per role"): a heading with its
+ * pages, each for whoever it concerns. My KPIs, their own scorecards, for anyone with an employee profile; Team KPIs,
+ * the scorecards they score, for a direct manager, a department's head or a team's lead (the person in charge scores:
+ * "The manager is the approver in charge") and the CEO, who scores the C-level people ("For C-level people the CEO
+ * scores"); All KPIs, every scorecard by month, for HR, the CEO and the Super Admin; KPI Templates for HR and the Super
+ * Admin ("Templates: HR"). In both sidebars, each with the pages its user sees.
+ */
+export const KPIS_NAV: NavItem = {
+  href: KPI_PATHS.mine,
+  label: 'KPIs',
+  section: '/kpis',
+  items: [
+    { href: KPI_PATHS.mine, label: 'My KPIs', section: KPI_PATHS.mine, audience: 'profile' },
+    { href: KPI_PATHS.team, label: 'Team KPIs', section: KPI_PATHS.team, roles: ['ceo'], audience: 'team' },
+    { href: KPI_PATHS.all, label: 'All KPIs', section: KPI_PATHS.all, roles: ['hr', 'ceo', 'super_admin'] },
+    { href: KPI_PATHS.templates, label: 'KPI Templates', section: KPI_PATHS.templates, roles: ['hr', 'super_admin'] },
+  ],
+};
 
 /** The Raise Requests page (app/(app)/raise-requests), under Requests. */
 export const RAISE_REQUESTS_PATH = '/raise-requests';
@@ -118,6 +149,8 @@ export const NAV: NavItem[] = [
     roles: ['hr', 'ceo', 'finance', 'admin'],
     items: ATTENDANCE_SECTIONS.map((s) => ({ href: s.href, label: s.label, section: s.href, ...(s.roles && { roles: [...s.roles] }) })),
   },
+  // the KPIs, after Attendance (owner, 21 October 2026)
+  KPIS_NAV,
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
   {
     href: '/templates',
@@ -172,7 +205,8 @@ export const myAttendanceInMenu = (user: NavUser): boolean => !!user.employeeId 
  * The sidebar of someone who is only an employee and/or a direct manager (isSelfService), as the owner suggested it (17
  * October 2026: "my suggestion for the employee side bar is 1- Dashboard 2- My Profile 3- My Requests"): their
  * dashboard (the home page), their own profile (when they have one) and their requests; their own attendance with
- * their profile (owner, 19 October 2026: "the attendance is not active in the side menu"); a manager also My Team, their
+ * their profile (owner, 19 October 2026: "the attendance is not active in the side menu"); their KPIs (21 October 2026:
+ * My KPIs, and Team KPIs for whoever scores a team's); a manager also My Team, their
  * direct reports, so they can reach their profiles (and their month's attendance). Nothing else: not Organization (the
  * owner: "dont show him the organization tab"), nor the Employees list or any HR page.
  */
@@ -183,9 +217,38 @@ function selfServiceNav(user: NavUser): NavItem[] {
     ...(profile ? [{ href: profile, label: 'My Profile', section: profile }] : []),
     { href: MY_REQUESTS, label: 'My Requests', section: MY_REQUESTS },
     ...(profile ? [{ href: MY_ATTENDANCE, label: 'My Attendance', section: MY_ATTENDANCE }] : []),
+    // their KPIs (owner, 21 October 2026): My KPIs with their profile, Team KPIs for whoever scores a team's
+    ...shownWithItems(user, KPIS_NAV),
     // a department's head or a team's lead too (19 October 2026), for what waits for them there
     ...(decidesForTeam(user) ? [{ href: MY_TEAM, label: 'My Team', section: MY_TEAM }] : []),
   ];
+}
+
+/** Whether the user is among a sub-item's audience (NavSubItem.audience). */
+function inAudience(user: NavUser, audience: NavAudience | undefined): boolean {
+  if (audience === 'profile') return !!user.employeeId;
+  if (audience === 'team') return decidesForTeam(user);
+  return false;
+}
+
+/**
+ * Whether the user sees an item or a sub-item: with neither roles nor an audience, yes; else when they have one of its
+ * roles or are among its audience.
+ */
+function sees(user: NavUser, entry: { roles?: Role[]; audience?: NavAudience }): boolean {
+  if (!entry.roles && !entry.audience) return true;
+  return (!!entry.roles && hasRole(user, ...entry.roles)) || inAudience(user, entry.audience);
+}
+
+/**
+ * An item as the user sees it: as it is without sub-items; with them, with those the user sees and linking to the first
+ * of them (its href the page the heading linked to until it opened and closed them, 20 October 2026), or left out
+ * when they see none.
+ */
+function shownWithItems(user: NavUser, item: NavItem): NavItem[] {
+  if (!item.items) return [item];
+  const items = item.items.filter((sub) => sees(user, sub));
+  return items.length ? [{ ...item, href: items[0].href, items }] : [];
 }
 
 /**
@@ -197,16 +260,9 @@ function selfServiceNav(user: NavUser): NavItem[] {
 export function navFor(user: NavUser | null): NavItem[] {
   if (!user) return NAV.filter((item) => item.href === '/');
   if (isSelfService(user)) return selfServiceNav(user);
-  const sees = (entry: { roles?: Role[] }) => !entry.roles || hasRole(user, ...entry.roles);
-  return NAV.filter(sees).flatMap((item) => {
-    if (!item.items) return [item];
-    const items = item.items.filter(sees);
-    if (!items.length) return [];
-    // its href the first of its pages the user sees, the page the heading linked to until it opened and closed them (20
-    // October 2026), its first item: Payroll's, Attendance's, Templates' and People's first is their own page; Requests
-    // has none
-    return [{ ...item, href: items[0].href, items }];
-  });
+  // a heading's href the first of its pages the user sees (shownWithItems): Payroll's, Attendance's, Templates' and
+  // People's first is their own page; Requests has none; the KPIs' first is My KPIs for those with a profile
+  return NAV.filter((item) => sees(user, item)).flatMap((item) => shownWithItems(user, item));
 }
 
 /**

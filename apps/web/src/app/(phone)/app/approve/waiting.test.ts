@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { KpiScorecardSummary } from '@trendlix/shared';
 import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
 import type { HomeLocationView } from '../../../../lib/home-location-types';
 import type { PendingRaise, RaiseRequest } from '../../../../lib/raise-types';
@@ -94,6 +95,22 @@ describe('what waits for the caller', () => {
     ]);
     expect(waitingSections({ homes: null })).toMatchObject([{ key: 'home', failed: true }]);
     expect(waitingSections({ homes: [] })).toEqual([]);
+  });
+
+  // owner, 21 October 2026: "Self, manager, HR, sign-off": the manager's scoring and sign-off, HR's calibration
+  it('lists the KPI scorecards waiting for the caller’s step, opening each under To Approve', () => {
+    const scorecard = (id: string, action: KpiScorecardSummary['action'], deadline: string) =>
+      ({ id, month: '2026-10', employee: { id: 'e1', employeeCode: 'EMP-0001', fullNameEn: 'Mona Adel' }, status: action === 'calibrate' ? 'hr' : 'manager', action, deadline }) as unknown as KpiScorecardSummary;
+    const [kpis] = waitingSections({ kpis: [scorecard(ID(9), 'score', '2026-11-06'), scorecard(ID(10), 'calibrate', '2026-11-08')] });
+    expect(kpis).toMatchObject({ key: 'kpi', title: 'KPI Scorecards', failed: false });
+    expect(kpis.rows.map((r) => [r.href, r.name, r.line, r.action])).toEqual([
+      [`/app/approve/kpi/${ID(9)}`, 'Mona Adel', 'October 2026 · Score by 06/11/2026', 'Score'],
+      [`/app/approve/kpi/${ID(10)}`, 'Mona Adel', 'October 2026 · Calibrate by 08/11/2026', 'Calibrate'],
+    ]);
+    expect(waitingSections({ kpis: null })).toMatchObject([{ key: 'kpi', failed: true }]);
+    expect(waitingSections({ kpis: [] })).toEqual([]);
+    // the other sections' rows say Decide
+    expect(waitingSections({ claims: [claim] })[0].rows[0].action).toBeUndefined();
   });
 
   it('leaves out what is empty or not the caller’s, and says what couldn’t be read', () => {

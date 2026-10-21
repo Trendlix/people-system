@@ -284,6 +284,8 @@ const OFFERS: Role[] = ['hr', 'ceo'];
 const ORG: Role[] = ['hr', 'finance', 'ceo', 'admin'];
 const USERS: Role[] = ['admin'];
 const TEMPLATES: Role[] = ['super_admin'];
+const KPIS: Role[] = ['hr', 'ceo', 'super_admin']; // All KPIs and its scorecards (21 October 2026)
+const KPI_TEMPLATES: Role[] = ['hr', 'ceo', 'admin']; // the KPI templates' pages
 
 interface Target {
   href: string;
@@ -390,6 +392,15 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
     case 'payroll_settings':
     case 'payroll_law_rates':
       return { href: '/organization/payroll', label: 'Open payroll setup', roles: ORG };
+    // KPIs (owner, 21 October 2026: "lets start with the KPI's First")
+    case 'kpi_scorecard':
+      return id ? own(`/kpis/scorecards/${id}`, 'Open KPI scorecard', KPIS) : { href: '/kpis/all', label: 'Open all KPIs', roles: KPIS };
+    case 'kpi_template':
+      return record?.parentId ? { href: `/kpis/templates/${record.parentId}`, label: 'Open KPI template', roles: KPI_TEMPLATES } : null;
+    case 'kpi_settings':
+      return { href: '/kpis/templates', label: 'Open KPI templates', roles: KPI_TEMPLATES };
+    case 'kpi_report':
+      return { href: '/kpis/all', label: 'Open all KPIs', roles: KPIS };
     case 'ocr_correction':
       return { href: '/employees/card-corrections', label: 'Open card reading fixes', roles: ['hr'] };
     default:

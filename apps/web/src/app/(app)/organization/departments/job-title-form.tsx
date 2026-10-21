@@ -172,7 +172,7 @@ export function JobTitleForm({
           label="Duties & responsibilities"
           rows={7}
           defaultValue={valueOf(state, 'jdDuties', jobTitle?.jdDuties)}
-          hint="Format it as in an email: bold for headings, bullets or numbers for points, indent to nest. KPIs will be linked to these duties later."
+          hint="Format it as in an email: bold for headings, bullets or numbers for points, indent to nest. Its KPI template's metrics link to these duties (KPIs → KPI Templates)."
         />
         <RichTextEditor name="jdRequirements" label="Requirements" rows={4} defaultValue={valueOf(state, 'jdRequirements', jobTitle?.jdRequirements)} />
         {jobTitle && (

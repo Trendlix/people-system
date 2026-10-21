@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { EMPTY_PAYROLL_INPUTS } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import { loadPlaces } from '@/lib/places';
+import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { PayrollLineView, PayrollRunView, SessionUser } from '@/lib/types';
 import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
@@ -436,6 +437,9 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
             waive={can.waiveAttendance ? setAttendanceWaiver.bind(null, run.id) : null}
             places={places}
             hidden={hidden}
+            month={run.month}
+            // a line's KPI links to its scorecard (21 October 2026), which HR, the CEO and the Super Admin may open
+            scorecardLinks={hasRole(user, 'hr', 'ceo', 'super_admin')}
           />
         </section>
       )}

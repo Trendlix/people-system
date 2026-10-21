@@ -16,6 +16,7 @@ import { justSent } from '../../../(app)/raise-requests/list';
 import { RaiseRequestStatusBadge, RequestSent } from '../../../(app)/raise-requests/ui';
 import { loadMyClaims } from '../../../(app)/reimbursements/data';
 import { ClaimStatusBadge } from '../../../(app)/reimbursements/ui';
+import { MyKpiCard } from '../kpi-card';
 import { Chip, PageTitle, PhoneLoading, Quiet, RowLink, RowList } from '../ui';
 import {
   APP_REQUEST_KIND_LABELS,
@@ -39,7 +40,9 @@ import {
 // on the site. Changes to their details stay on the site's profile. Raise requests (owner, 20 October 2026: "raises not
 // to be visible to employee level for now", then "Hide from managers too") only for someone who sees them
 // (seesRaiseRequests): not read, listed or offered as a chip otherwise. Their home location requests too (owner, 20
-// October 2026: "allow other users to request to add their home locations when working from home").
+// October 2026: "allow other users to request to add their home locations when working from home"). Their own KPI
+// scorecard when it waits for them to rate themself or to sign (owner's brief, 21 October 2026: "a card on Home and
+// Requests for the employee's self-rating and sign-off"), above the list.
 
 export const metadata: Metadata = { title: 'My Requests · Trendlix People' };
 
@@ -83,6 +86,9 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
       <Link href={APP_PATHS.newRequest} className="btn btn-primary min-h-12 w-full">
         New request
       </Link>
+      <Suspense fallback={null}>
+        <MyKpiCard user={user} />
+      </Suspense>
       {failed && <Quiet>Some of your requests couldn&apos;t be loaded. Please try again in a moment.</Quiet>}
       <nav aria-label="Filter by kind" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
         <Chip href={appRequestsHref('', f.status)} label="All" count={counts['']} active={!f.kind} />

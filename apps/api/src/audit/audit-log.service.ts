@@ -358,6 +358,14 @@ function recordLookups(p: PrismaService): Readonly<Record<string, Lookup>> {
     user: async (ids) => (await p.user.findMany({ ...by(ids), select: { id: true, email: true } })).map((r) => [r.id, { reference: r.email }]),
     department: async (ids) => named(await p.department.findMany({ ...by(ids), select: { id: true, nameEn: true } })),
     job_title: async (ids) => (await p.jobTitle.findMany({ ...by(ids), select: { id: true, titleEn: true } })).map((r) => [r.id, { reference: r.titleEn }]),
+    // KPIs (owner, 21 October 2026): a scorecard's person and month; a template's job title and version
+    kpi_scorecard: async (ids) =>
+      (await p.kpiScorecard.findMany({ ...by(ids), select: { id: true, employeeId: true, month: true } })).map((r) => [r.id, { employeeId: r.employeeId, reference: monthOf(r.month) }]),
+    kpi_template: async (ids) =>
+      (await p.kpiTemplate.findMany({ ...by(ids), select: { id: true, jobTitleId: true, version: true, jobTitle: { select: { titleEn: true } } } })).map((r) => [
+        r.id,
+        { parentId: r.jobTitleId, reference: `${r.jobTitle.titleEn} v${r.version}` },
+      ]),
     grade: async (ids) => (await p.grade.findMany({ ...by(ids), select: { id: true, code: true, levelEn: true } })).map((r) => [r.id, { reference: `${r.code} · ${r.levelEn}` }]),
     shift: async (ids) => (await p.shift.findMany({ ...by(ids), select: { id: true, code: true } })).map((r) => [r.id, { reference: `Shift ${r.code}` }]),
     allowance_type: async (ids) => named(await p.allowanceType.findMany({ ...by(ids), select: { id: true, nameEn: true } })),

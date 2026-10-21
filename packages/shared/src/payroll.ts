@@ -84,7 +84,15 @@
 // Lines worked out before then, and every other shift's, are as they were; a run with the CEO, approved or paid keeps
 // its terms, so its figures never change.
 
+// The KPIs module (owner, 21 October 2026: "lets start with the KPI's First"; kpis.ts): the variable part follows the
+// final % of last month's scorecard ("Last month's KPI, this pay"), taken with the line's terms (PayrollTerms.kpi): at
+// or above the KPI grace percent (80) it is paid in full, below it in proportion ("As the sheet: full at 80%+"), and with
+// no final scorecard it isn't cut. The scorecard has the month's attendance in it already (its Attendance metric), so it
+// isn't averaged with the attendance again. Lines made before then keep their KPI inputs and are worked out as they were;
+// pay by the hour has no KPI cut, as before.
+
 import type { AllowanceTerms } from './contracts.js';
+import { kpiPayScore, type PayrollKpi } from './kpis.js';
 import { adjustmentSums, DAYS_TYPE_OF, isDaysType, mayBeBeforeTax, sumAmounts, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
 import type { PayBasis } from './contracts.js';
 import { lawRatesFor, type LawRates } from './law-rates.js';
@@ -255,6 +263,13 @@ export interface PayrollTerms {
    * (permissionHoursOf). Missing on lines without any, for pay by the hour, and on lines made before then.
    */
   permissionHours?: number | null;
+  /**
+   * The KPI the variable part follows (owner, 21 October 2026: "Last month's KPI, this pay"; "As the sheet: full at
+   * 80%+"): the final scorecard of the month before the payroll's (kpis.ts PayrollKpi), taken when the run is made or
+   * refreshed; null: none is final, so the variable part isn't cut. Missing on lines made before the KPIs module, which
+   * keep their KPI inputs (soft skills, performance, client satisfaction) as they were.
+   */
+  kpi?: PayrollKpi | null;
 }
 
 /** A month's approved leave as a line's terms keep it: the paid days and the unpaid days, whole, half or in shares. */
@@ -907,6 +922,8 @@ export function payrollLine(
             permissionHours: permissionHoursOf(terms, i),
             // a long day fills the month's short hours (owner, 20 October 2026)
             makeUpHours: terms.makeUpHours === true,
+            // last month's final scorecard (owner, 21 October 2026); missing on lines made before the KPIs module
+            ...(terms.kpi !== undefined && { kpi: terms.kpi }),
           },
           warnings,
         );
@@ -1055,6 +1072,11 @@ function monthlyPart(
     permissionHours?: number | null;
     /** The shift counts hours until a time (PayrollTerms.makeUpHours, 20 October 2026). */
     makeUpHours?: boolean;
+    /**
+     * Last month's final scorecard (PayrollTerms.kpi, 21 October 2026): null when none is final (not cut); missing on a
+     * line made before the KPIs module, worked out with its KPI inputs.
+     */
+    kpi?: PayrollKpi | null;
   },
   warnings: string[],
 ): SalaryPart {
@@ -1102,9 +1124,13 @@ function monthlyPart(
   }
   const attendanceScore = attendanceRatio === null || attendanceRatio >= rules.attendanceGracePercent / 100 ? 1 : attendanceRatio;
 
+  // the KPI (owner, 21 October 2026: "Last month's KPI, this pay"; "As the sheet: full at 80%+"): last month's final
+  // scorecard's final %, its attendance in it already; none final, not cut. A line made before the KPIs module: the KPI
+  // inputs given, averaged with the attendance score, as the sheet did
   const kpis = [i.softSkills, i.performance, i.clientSatisfaction].filter((v): v is number => v !== null).map((v) => v / 100);
   const kpiAverage = fraction([attendanceScore, ...kpis].reduce((sum, v) => sum + v, 0) / (kpis.length + 1));
-  const kpiScore = kpis.length === 0 || kpiAverage >= rules.kpiGracePercent / 100 ? 1 : kpiAverage;
+  const kpiScore =
+    pay.kpi !== undefined ? kpiPayScore(pay.kpi, rules.kpiGracePercent) : kpis.length === 0 || kpiAverage >= rules.kpiGracePercent / 100 ? 1 : kpiAverage;
 
   const workedOut = piasters(fixed * Math.max(0, 1 - attendanceScore));
   const kpiCut = piasters(variable * Math.max(0, 1 - kpiScore));

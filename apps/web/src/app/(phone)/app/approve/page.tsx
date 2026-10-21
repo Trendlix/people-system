@@ -9,6 +9,8 @@ import { decidesRaises, PENDING_RAISES } from '../../../(app)/approvals/raises';
 import { loadWaitingCorrections } from '../../../(app)/attendance/corrections/data';
 import { loadWaitingHomes } from '../../../(app)/home-locations/data';
 import { seesHomes } from '../../../(app)/home-locations/home-locations';
+import { loadWaitingScorecards } from '../../../(app)/kpis/data';
+import { othersWaiting } from '../../../(app)/kpis/scorecard';
 import { loadWaitingLeave, loadWaitingPermissions } from '../../../(app)/leave/data';
 import { loadRaiseRequests } from '../../../(app)/raise-requests/data';
 import { ceoDoneMessage, countsRaiseRequests, waitsForYou } from '../../../(app)/raise-requests/list';
@@ -25,7 +27,9 @@ import { waitingSections, waitingTotal } from './waiting';
 // API answers for them alone: a C-level person's HR stage to the CEO, as on the site); the raise requests at HR's step
 // for HR (a C-level person's for the CEO); the raises with the CEO for the CEO. Endings and details changes are decided
 // on the site's Approvals: said here, with the way there, when any wait. Home locations (owner, 20 October 2026: "then
-// approved by the HR and CEO") at the caller's step, for HR, the CEO and the Super Admin.
+// approved by the HR and CEO") at the caller's step, for HR, the CEO and the Super Admin. KPI scorecards (owner, 21
+// October 2026: "Self, manager, HR, sign-off") at the caller's step on someone else's: the scoring, HR's calibration, the
+// manager's sign-off (their own are on Home and My Requests).
 
 export const metadata: Metadata = { title: 'To Approve · Trendlix People' };
 
@@ -59,7 +63,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
   if (!decidesSomething(user)) {
     return <div className="card px-4 py-8 text-center text-sm text-muted">Nothing here is yours to decide: requests wait here for those who decide them.</div>;
   }
-  const [leave, permissions, claims, corrections, withHr, payRaises, homes] = await Promise.all([
+  const [leave, permissions, claims, corrections, withHr, payRaises, homes, scorecards] = await Promise.all([
     loadWaitingLeave(),
     loadWaitingPermissions(),
     loadWaitingClaims(),
@@ -67,7 +71,9 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
     countsRaiseRequests(user) ? loadRaiseRequests('with_hr') : null,
     decidesRaises(user) ? getOrNull<PendingRaise[]>(PENDING_RAISES) : undefined,
     seesHomes(user) ? loadWaitingHomes() : null,
+    loadWaitingScorecards(),
   ]);
+  const kpis = listOf(scorecards);
   const sections = waitingSections({
     leave: listOf(leave),
     permissions: listOf(permissions),
@@ -76,6 +82,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
     raiseRequests: withHr === null ? undefined : withHr.kind === 'ok' ? withHr.value.filter((r: RaiseRequest) => waitsForYou(user, r)) : withHr.kind === 'failed' ? null : [],
     payRaises,
     homes: homes === null ? undefined : listOf(homes),
+    kpis: kpis === null ? null : othersWaiting(kpis, user.employeeId),
   });
   const total = waitingTotal(sections);
   return (
@@ -99,7 +106,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
                 <div className="mt-2">
                   <RowList label={s.title}>
                     {s.rows.map((r) => (
-                      <RowLink key={r.key} href={r.href} title={r.name} line={<span className="tabular-nums">{r.line}</span>} aside={<span className="badge">Decide</span>} />
+                      <RowLink key={r.key} href={r.href} title={r.name} line={<span className="tabular-nums">{r.line}</span>} aside={<span className="badge">{r.action ?? 'Decide'}</span>} />
                     ))}
                   </RowList>
                 </div>

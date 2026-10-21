@@ -90,6 +90,13 @@ model User {
   pushDevices          PushDevice[] // the phones this user's notifications are pushed to
   notificationSettings NotificationSettings? // this user's reminder switches; none: both on
   remindersSent        ReminderSent[] // the reminders sent to this user, one a day of each kind
+  kpiSettingsChanged    KpiSettings[]      @relation("KpiSettingsBy") // the KPI deadlines, when this user changed them last
+  kpiTemplatesMade      KpiTemplate[]      @relation("KpiTemplateCreation") // KPI template versions this user started as drafts
+  kpiTemplatesPublished KpiTemplate[]      @relation("KpiTemplatePublication") // KPI template versions this user published
+  kpiScored             KpiScorecard[]     @relation("KpiScorecardScoredBy") // KPI scorecards this user scored (as the manager, HR or the CEO)
+  kpiCalibrated         KpiScorecard[]     @relation("KpiScorecardCalibratedBy") // KPI scorecards this user calibrated as HR
+  kpiManagerSigned      KpiScorecard[]     @relation("KpiScorecardManagerSignedBy") // KPI scorecards this user signed as the manager
+  kpiSteps              KpiScorecardStep[] @relation("KpiScorecardStepActor") // steps of KPI scorecards this user took
 
   @@map("users")
 }
@@ -279,6 +286,7 @@ model Department {
   jobTitles   JobTitle[]
   employments Employment[]
   offers      JobOffer[]
+  kpiScorecards KpiScorecard[] // the KPI scorecards of people who worked here when they opened (21 October 2026)
 
   @@unique([parentId, nameEn])
   @@index([headId])
@@ -337,6 +345,7 @@ model JobTitle {
   employments    Employment[]
   offers         JobOffer[]
   promotions     Contract[]     @relation("RaiseJobTitle") // raises that promote to this job title
+  kpiTemplates   KpiTemplate[] // its KPI template's versions (21 October 2026): a draft and the published ones
 
   @@unique([departmentId, titleEn])
   @@map("job_titles")
@@ -503,6 +512,8 @@ model Employee {
   leading                    Department[]           @relation("DepartmentHead") // the departments this person heads and the teams they lead
   homeLocations              HomeLocationRequest[] // the home locations this person asked for (20 October 2026): one approved at most, its point only while decided or in force
   checkInPlaces              CheckInLocationPerson[] // the sub-locations this person is linked to (20 October 2026): their own check-in places
+  kpiScorecards              KpiScorecard[]         @relation("KpiScorecardOf") // this person's KPI scorecards, one a month (21 October 2026)
+  kpiToScore                 KpiScorecard[]         @relation("KpiScorecardManager") // the KPI scorecards this person scores, or scored, as the manager in charge
 
   @@map("employees")
 }
@@ -564,6 +575,7 @@ model Employment {
   corrections      AttendanceCorrection[] // the attendance corrections of its days
   leaveBalances    LeaveBalanceYear[] // each year's annual leave under it
   leaveAdjustments LeaveAdjustment[]
+  kpiScorecards    KpiScorecard[] // the KPI scorecards opened under it (21 October 2026)
 
   @@index([employeeId])
   @@index([departmentId])
@@ -2175,4 +2187,173 @@ model LeaveYearClosing {
   closedBy   User?    @relation("LeaveYearClosingBy", fields: [closedById], references: [id], onDelete: SetNull)
 
   @@map("leave_year_closings")
+}
+
+// ---------- KPIs ----------
+// The owner, 21 October 2026: "lets start with the KPI's First", then "Full framework per role" (four pillars with fixed
+// weights; every job title a template of metrics built from its JD, each with a criteria scale, one criterion picked a
+// month), "Self, manager, HR, sign-off", "Attendance: Yes, as the sheet", "Last month's KPI, this pay", "As the sheet:
+// full at 80%+" and "Templates: HR". The rules: packages/shared kpis.ts; the module: apps/api/src/kpis.
+
+// The KPI settings (one row, id 1): the days of the next month each step of a month's scorecard is due by: the
+// self-rating by the 3rd, the manager's scoring by the 6th, HR's calibration by the 8th, the sign-off by the 10th. A
+// reminder goes the day before each; a missed self-rating is noted and the manager goes on, and a scorecard not signed
+// by the sign-off day is final anyway. HR (or a Super Admin) changes them.
+model KpiSettings {
+  id            Int      @id @default(1) // always 1
+  selfRatingDay Int      @default(3) @map("self_rating_day")
+  managerDay    Int      @default(6) @map("manager_day")
+  hrDay         Int      @default(8) @map("hr_day")
+  signOffDay    Int      @default(10) @map("sign_off_day")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById   String?  @map("updated_by") @db.Uuid
+  updatedBy     User?    @relation("KpiSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("kpi_settings")
+}
+
+// A version of a job title's KPI template: its metrics and the Attendance metric's points. HR edits a draft (one a job
+// title at most) and publishes it; a published version is never changed, and the scorecards opened from the 1st of the
+// month after it was published use it (opens_from), each keeping the version it opened with. The versions stay, as its
+// history. Only a Super Admin deletes a draft.
+model KpiTemplate {
+  id               String         @id @default(uuid()) @db.Uuid
+  jobTitleId       String         @map("job_title_id") @db.Uuid
+  jobTitle         JobTitle       @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  version          Int // 1, 2 … a job title's own, the draft's the next
+  status           String // draft, published
+  attendancePoints Int            @default(20) @map("attendance_points") // the automatic Attendance metric's points, in Discipline & Growth
+  opensFrom        DateTime?      @map("opens_from") @db.Date // published: the 1st of the month after it was published, from which scorecards open with it
+  publishedAt      DateTime?      @map("published_at") @db.Timestamptz
+  publishedById    String?        @map("published_by") @db.Uuid
+  publishedBy      User?          @relation("KpiTemplatePublication", fields: [publishedById], references: [id], onDelete: SetNull)
+  createdById      String?        @map("created_by") @db.Uuid
+  createdBy        User?          @relation("KpiTemplateCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  metrics          KpiMetric[]
+  scorecards       KpiScorecard[]
+
+  @@unique([jobTitleId, version])
+  @@index([jobTitleId, status])
+  @@map("kpi_templates")
+}
+
+// A metric of a template version, in its order: its pillar (1–4: KPI_PILLARS), name, definition, how it's measured, the
+// JD duty it is linked to (its words, as the duty rows are read again from the JD when it changes), the points that count
+// as its target, and its criteria scale, [{ label, points }], one picked a month (by its index).
+model KpiMetric {
+  id           String      @id @default(uuid()) @db.Uuid
+  templateId   String      @map("template_id") @db.Uuid
+  template     KpiTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  position     Int
+  pillar       Int
+  name         String
+  definition   String?
+  howMeasured  String?     @map("how_measured")
+  jdDuty       String?     @map("jd_duty")
+  targetPoints Int         @map("target_points")
+  criteria     Json
+  scores       KpiScore[]
+
+  @@unique([templateId, position])
+  @@map("kpi_metrics")
+}
+
+// A person's KPI scorecard for a month (its first day), opened on the 1st of the next month under their employment's
+// job title's template in force then (kept: the version it opened with), and where they worked. Its steps: the
+// employee's self-rating, the scoring (by the manager in charge kept in manager_id; HR when nobody is in charge; the CEO
+// for a C-level person; a Super Admin for the CEO's own: KPI_SCORERS), HR's calibration (after a manager's scoring
+// only), the sign-off by the employee and the manager, then final and locked. The automatic Attendance metric's points
+// achieved, from the month's attendance score as payroll works it out, refreshed until it is scored. The score (final %,
+// level, the pillars) is the manager's picks', calibrated, kept for the lists; the payroll of the next month reads the
+// final % of a final one. reminders_sent: the steps whose reminder (the day before their deadline) went.
+model KpiScorecard {
+  id                  String             @id @default(uuid()) @db.Uuid
+  employeeId          String             @map("employee_id") @db.Uuid
+  employee            Employee           @relation("KpiScorecardOf", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId        String             @map("employment_id") @db.Uuid
+  employment          Employment         @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  month               DateTime           @db.Date
+  templateId          String             @map("template_id") @db.Uuid
+  template            KpiTemplate        @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  departmentId        String?            @map("department_id") @db.Uuid
+  department          Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  status              String // KPI_STATUSES: self_rating, manager, hr, sign_off, final
+  scorer              String // KPI_SCORERS: manager, hr, ceo, super_admin
+  managerId           String?            @map("manager_id") @db.Uuid // scorer manager: the person in charge when it opened
+  manager             Employee?          @relation("KpiScorecardManager", fields: [managerId], references: [id], onDelete: Restrict)
+  approverRole        String?            @map("approver_role") // APPROVER_ROLES, set exactly when manager_id is
+  attendanceRatio     Decimal?           @map("attendance_ratio") @db.Decimal(8, 4)
+  attendanceScore     Decimal?           @map("attendance_score") @db.Decimal(8, 4)
+  attendanceAchieved  Int                @map("attendance_achieved")
+  attendanceSource    String             @map("attendance_source") // payroll, attendance, none
+  selfComment         String?            @map("self_comment")
+  selfSubmittedAt     DateTime?          @map("self_submitted_at") @db.Timestamptz
+  selfMissed          Boolean            @default(false) @map("self_missed")
+  managerComment      String?            @map("manager_comment")
+  scoredAt            DateTime?          @map("scored_at") @db.Timestamptz
+  scoredById          String?            @map("scored_by") @db.Uuid
+  scoredBy            User?              @relation("KpiScorecardScoredBy", fields: [scoredById], references: [id], onDelete: SetNull)
+  hrComment           String?            @map("hr_comment")
+  calibratedAt        DateTime?          @map("calibrated_at") @db.Timestamptz
+  calibratedById      String?            @map("calibrated_by") @db.Uuid
+  calibratedBy        User?              @relation("KpiScorecardCalibratedBy", fields: [calibratedById], references: [id], onDelete: SetNull)
+  employeeSignedAt    DateTime?          @map("employee_signed_at") @db.Timestamptz
+  employeeSignComment String?            @map("employee_sign_comment")
+  managerSignedAt     DateTime?          @map("manager_signed_at") @db.Timestamptz
+  managerSignedById   String?            @map("manager_signed_by") @db.Uuid
+  managerSignedBy     User?              @relation("KpiScorecardManagerSignedBy", fields: [managerSignedById], references: [id], onDelete: SetNull)
+  managerSignComment  String?            @map("manager_sign_comment")
+  finalAt             DateTime?          @map("final_at") @db.Timestamptz
+  finalPercent        Decimal?           @map("final_percent") @db.Decimal(5, 1)
+  level               String? // KPI_LEVELS
+  pillars             Json? // the four pillars' percents, { "1": 92.5, … }, with the final %
+  remindersSent       String[]           @default([]) @map("reminders_sent") // KPI_REMINDERS sent
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  scores              KpiScore[]
+  steps               KpiScorecardStep[]
+
+  @@unique([employeeId, month])
+  @@index([month])
+  @@index([status])
+  @@index([managerId])
+  @@index([templateId])
+  @@map("kpi_scorecards")
+}
+
+// A metric's picks on a scorecard (one row a metric of its version): the employee's, the manager's, each with its
+// comment, and HR's calibration of the manager's pick with its reason; a criterion by its index.
+model KpiScore {
+  scorecardId    String       @map("scorecard_id") @db.Uuid
+  scorecard      KpiScorecard @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
+  metricId       String       @map("metric_id") @db.Uuid
+  metric         KpiMetric    @relation(fields: [metricId], references: [id], onDelete: Restrict)
+  selfChoice     Int?         @map("self_choice")
+  selfComment    String?      @map("self_comment")
+  managerChoice  Int?         @map("manager_choice")
+  managerComment String?      @map("manager_comment")
+  hrChoice       Int?         @map("hr_choice")
+  hrReason       String?      @map("hr_reason")
+
+  @@id([scorecardId, metricId])
+  @@index([metricId])
+  @@map("kpi_scores")
+}
+
+// A step of a scorecard, logged on it in the order taken (KPI_STEP_KINDS), in the transaction the step is taken in:
+// who (none: the system, on its deadline) and their comment.
+model KpiScorecardStep {
+  id          BigInt       @id @default(autoincrement())
+  scorecardId String       @map("scorecard_id") @db.Uuid
+  scorecard   KpiScorecard @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
+  kind        String
+  comment     String?
+  actorId     String?      @map("actor_id") @db.Uuid
+  actor       User?        @relation("KpiScorecardStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  at          DateTime     @default(now()) @db.Timestamptz
+
+  @@index([scorecardId])
+  @@map("kpi_scorecard_steps")
 }

@@ -3,6 +3,11 @@ import {
   adjustmentTypeLabelAr,
   formatHours,
   isBeforeTax,
+  KPI_LEVEL_LABELS,
+  KPI_LEVEL_LABELS_AR,
+  KPI_PAY_TIMING_NOTE,
+  kpiMonthForPayroll,
+  kpiPercentText,
   LABELS,
   leaveDaysOf,
   lineDays,
@@ -476,15 +481,33 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     cells.push({ label: t(L.permissionHours), value: num(formatHours(permission)), note: ar ? 'تُحتسب ضمن ساعات العمل في الحضور' : 'Counted as worked in attendance' });
   }
 
-  // the KPI average, as payrollLine takes it: the attendance score and the KPIs given
+  // last month's KPI (owner, 21 October 2026: "Last month's KPI, this pay"; "Say this on the payroll line and the
+  // payslip"): the final scorecard's final %, its level and what it paid of the variable part, and when it is from; with
+  // none final, not cut. Lines made before the KPIs module: the KPI average below, as they were
+  let kpiLine: string | null = null;
+  if (!hourly && terms.kpi !== undefined) {
+    const month = terms.kpi?.month ?? kpiMonthForPayroll(run.month);
+    const label = ar ? `مؤشرات الأداء (${monthArabic(month)})` : `KPI (${monthName(month)})`;
+    const grace = percentOf(rules.kpiGracePercent);
+    if (terms.kpi) {
+      const level = ar ? KPI_LEVEL_LABELS_AR[terms.kpi.level] : KPI_LEVEL_LABELS[terms.kpi.level];
+      const pay =
+        result.kpiScore < 1 ? (ar ? `يُصرف المتغير بنسبة ${percent2(result.kpiScore)}` : `variable paid at ${percent2(result.kpiScore)}`) : ar ? `يُصرف المتغير كاملاً (${grace} فأكثر)` : `paid in full (${grace}+)`;
+      cells.push({ label: num(label), value: num(kpiPercentText(terms.kpi.finalPercent)), note: num(`${level} · ${pay}`) });
+    } else {
+      cells.push({ label: num(label), value: '—', note: ar ? 'لا توجد بطاقة أداء نهائية: لا يُخصم من المتغير' : 'No final scorecard: the variable part isn’t cut' });
+    }
+    kpiLine = ar ? 'مؤشرات أداء الشهر الماضي تُحتسب في أجر هذا الشهر.' : KPI_PAY_TIMING_NOTE;
+  }
+
+  // the KPI average, as payrollLine takes it: the attendance score and the KPIs given (lines made before the KPIs module)
   const typed: [Words, number | null][] = [
     [L.softSkills, inputs.softSkills],
     [L.performance, inputs.performance],
     [L.clientSatisfaction, inputs.clientSatisfaction],
   ];
   const kpis = typed.filter((k): k is [Words, number] => k[1] !== null);
-  let kpiLine: string | null = null;
-  if (!hourly && kpis.length) {
+  if (!hourly && terms.kpi === undefined && kpis.length) {
     const scores = [result.attendanceScore, ...kpis.map(([, v]) => v / 100)];
     const average = Math.round((scores.reduce((sum, v) => sum + v, 0) / scores.length) * 1e10) / 1e10;
     const grace = percentOf(rules.kpiGracePercent);

@@ -40,6 +40,7 @@ import { achWorkbook, cibWorkbook } from './bank-files.js';
 import { ExpectedHoursService } from './expected-hours.service.js';
 import { HolidaysService } from './holidays.service.js';
 import { LawRatesService } from './law-rates/law-rates.service.js';
+import { finalKpis, withKpi } from './kpi-terms.js';
 import { json, savedInputs, withAdjustments, worked } from './line-work.js';
 import { firstDay, lastDay, monthName, monthShort, monthsLater } from './months.js';
 import type { AttendanceWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
@@ -72,8 +73,8 @@ const LINE = 'payroll_line';
  */
 const MONEY_INPUTS: readonly (keyof PayrollInputs)[] = ['released'];
 
-/** The employments that may be on a month's run, with what the roster needs of them. */
-const rosterSelect = (from: Date, to: Date) =>
+/** The employments that may be on a month's run, with what the roster needs of them (the KPIs' attendance score too). */
+export const rosterSelect = (from: Date, to: Date) =>
   ({
     id: true,
     employmentType: true,
@@ -120,9 +121,9 @@ const rosterSelect = (from: Date, to: Date) =>
     },
   }) satisfies Prisma.EmploymentSelect;
 
-type EmploymentRow = Prisma.EmploymentGetPayload<{ select: ReturnType<typeof rosterSelect> }>;
+export type EmploymentRow = Prisma.EmploymentGetPayload<{ select: ReturnType<typeof rosterSelect> }>;
 
-function rosterEmployment(e: EmploymentRow): RosterEmployment {
+export function rosterEmployment(e: EmploymentRow): RosterEmployment {
   return {
     id: e.id,
     employmentType: e.employmentType,
@@ -216,6 +217,9 @@ const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto
 // register, the bank files and the payslips without them; the CEO fills their inputs while the run is a draft (HR with
 // Super Admin too; packages/shared changesPayrollLine), and approves the run as now. HR still makes, refreshes and sends
 // the whole run.
+// The KPIs (owner, 21 October 2026: "Last month's KPI, this pay"; "As the sheet: full at 80%+"): a run made or refreshed
+// takes each person's final scorecard of the month before (kpi-terms.ts) with their terms, so its variable part follows
+// that final %; none final, not cut. Once with the CEO, approved or paid a run keeps its figures.
 @Injectable()
 export class PayrollService {
   constructor(
@@ -292,13 +296,15 @@ export class PayrollService {
     // with each person's terms
     await this.recurring.addToMonth(month, user);
     const pending = await this.adjustments.pendingByEmployee(month);
+    // last month's final scorecards (owner, 21 October 2026: "Last month's KPI, this pay")
+    const kpis = await finalKpis(this.prisma, month, lines.map((l) => l.employeeId));
     const run = await this.prisma.$transaction(async (tx) => {
       const made = await tx.payrollRun.create({
         data: { month: toDateOnly(firstDay(month)), rules: json(rules), lawRates: json(law), exclusions: json(exclusions), createdById: user.id },
       });
       await tx.payrollLine.createMany({
         data: lines.map((l) => {
-          const terms = withAdjustments(l.terms, pending.get(l.employeeId));
+          const terms = withKpi(withAdjustments(l.terms, pending.get(l.employeeId)), kpis.get(l.employeeId));
           return { runId: made.id, employeeId: l.employeeId, ...fromRoster(l), terms: json(terms), inputs: json(EMPTY_PAYROLL_INPUTS), ...worked(terms, EMPTY_PAYROLL_INPUTS, rules, law) };
         }),
       });
@@ -340,6 +346,8 @@ export class PayrollService {
     const { lines, exclusions } = await this.roster(month, rules, law);
     await this.recurring.addToMonth(month, user);
     const pending = await this.adjustments.pendingByEmployee(month);
+    // last month's final scorecards as they are now (owner's brief, 21 October 2026: "Drafts take the KPI on refresh")
+    const kpis = await finalKpis(this.prisma, month, lines.map((l) => l.employeeId));
     const kept = new Map(run.lines.map((l) => [l.employeeId, l]));
     const staying = new Set(lines.map((l) => l.employeeId));
     const removed = run.lines.filter((l) => !staying.has(l.employeeId));
@@ -350,7 +358,7 @@ export class PayrollService {
       ...lines.map((l) => {
         const before = kept.get(l.employeeId);
         const inputs = before ? savedInputs(before.inputs) : EMPTY_PAYROLL_INPUTS;
-        const terms = withAdjustments(l.terms, pending.get(l.employeeId));
+        const terms = withKpi(withAdjustments(l.terms, pending.get(l.employeeId)), kpis.get(l.employeeId));
         const data = { ...fromRoster(l), terms: json(terms), inputs: json(inputs), ...worked(terms, inputs, rules, law) };
         return before
           ? this.prisma.payrollLine.update({ where: { id: before.id }, data })

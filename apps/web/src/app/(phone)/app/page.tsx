@@ -18,6 +18,7 @@ import { permissionDayText, permissionHoursLine, permissionInDaysText, upcomingP
 import { LeaveStatusBadge } from '../../(app)/leave/ui';
 import { approveCount } from './approve-count';
 import { FingerprintOffer } from './fingerprint-offer';
+import { MyKpiCard } from './kpi-card';
 import { PushOffer } from './push-offer';
 import { askOptions } from './requests/new/options';
 import { decidesSomething } from './tabs';
@@ -29,7 +30,9 @@ import { PhoneCard, PhoneLoading, Quiet, RowLink, RowList, SkeletonRows } from '
 // since checking in; what waits for them to decide, for those who decide something; the ways to ask (Leave, Permission,
 // Reimbursement, Correction), each only where it applies as on the site; the annual leave left and this month's
 // permission hours; and what is coming up: their leave and permission, and the official holidays. Each opens its page
-// on the phone pages. Confirming their details stays on the site (its review page), linked from here.
+// on the phone pages. Confirming their details stays on the site (its review page), linked from here. Their own KPI
+// scorecard when it waits for them (owner's brief, 21 October 2026: "a card on Home and Requests for the employee's
+// self-rating and sign-off").
 
 export const metadata: Metadata = { title: 'Home · Trendlix People' };
 
@@ -256,6 +259,11 @@ async function Home() {
       {decidesSomething(user) && (
         <Suspense fallback={null}>
           <Waiting user={user} />
+        </Suspense>
+      )}
+      {profile && (
+        <Suspense fallback={null}>
+          <MyKpiCard user={user} />
         </Suspense>
       )}
       {profile && (

@@ -1,4 +1,4 @@
-import { PAY_CHANGE_LABELS } from '@trendlix/shared';
+import { PAY_CHANGE_LABELS, type KpiScorecardSummary } from '@trendlix/shared';
 import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
 import { formatDate } from '../../../../lib/format';
 import type { HomeLocationView } from '../../../../lib/home-location-types';
@@ -8,6 +8,7 @@ import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } 
 import { correctionDayText, correctionKindName } from '../../../(app)/attendance/corrections/corrections';
 import { formatEgp } from '../../../(app)/employees/[id]/contracts/salary';
 import { homeWhatText } from '../../../(app)/home-locations/home-locations';
+import { actionButton, waitingLine } from '../../../(app)/kpis/scorecard';
 import { daysText, periodText } from '../../../(app)/leave/list';
 import { isPermission, mergeRequests, permissionWhenText } from '../../../(app)/leave/permissions';
 import { effectiveFromText, reasonText } from '../../../(app)/raise-requests/list';
@@ -19,7 +20,8 @@ import { currentAmount } from '../../../(app)/reimbursements/list';
 // with the CEO. The lists are the API's (each "waiting" read answers for the caller alone); each row opens the item's
 // page under To Approve, with the decision form. Pure code, tested; relative imports, as vitest doesn't know "@/". Home
 // locations at HR's step or the CEO's (owner, 20 October 2026: "then approved by the HR and CEO"), for those who decide
-// them.
+// them. KPI scorecards (owner, 21 October 2026: "Self, manager, HR, sign-off") waiting for the caller's step on someone
+// else's: the manager's scoring and sign-off, HR's calibration.
 
 export interface WaitingRow {
   key: string;
@@ -28,10 +30,12 @@ export interface WaitingRow {
   name: string;
   /** What and when, in a line. */
   line: string;
+  /** What the row's badge says; none: Decide. */
+  action?: string;
 }
 
 export interface WaitingSection {
-  key: 'leave' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise' | 'home';
+  key: 'leave' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise' | 'home' | 'kpi';
   /** Title Case. */
   title: string;
   rows: WaitingRow[];
@@ -53,6 +57,8 @@ export function waitingSections(from: {
   raiseRequests?: List<RaiseRequest>;
   payRaises?: List<PendingRaise>;
   homes?: List<HomeLocationView>;
+  /** Other people's scorecards waiting for the caller (not their own: those are on Home and My Requests). */
+  kpis?: List<KpiScorecardSummary>;
 }): WaitingSection[] {
   const sections: WaitingSection[] = [];
   const add = (key: WaitingSection['key'], title: string, failed: boolean, rows: WaitingRow[]) => {
@@ -133,6 +139,21 @@ export function waitingSections(from: {
         href: appItemHref('approve', 'home', h.id),
         name: h.employee.fullNameEn,
         line: `${h.stage === 'ceo' ? 'The CEO’s step' : 'HR’s step'} · ${homeWhatText(h)}`,
+      })),
+    );
+  }
+  if (from.kpis !== undefined) {
+    add(
+      'kpi',
+      'KPI Scorecards',
+      from.kpis === null,
+      (from.kpis ?? []).map((s) => ({
+        key: `kpi:${s.id}`,
+        href: appItemHref('approve', 'kpi', s.id),
+        name: s.employee.fullNameEn,
+        // "October 2026 · Score by 06/11/2026"
+        line: waitingLine(s),
+        action: actionButton(s),
       })),
     );
   }

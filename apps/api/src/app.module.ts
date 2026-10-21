@@ -12,6 +12,7 @@ import { DocumentsModule } from './documents/documents.module.js';
 import { ConfidentialModule } from './employees/confidential.module.js';
 import { EmployeesModule } from './employees/employees.module.js';
 import { HealthController } from './health/health.controller.js';
+import { KpisModule } from './kpis/kpis.module.js';
 import { LeaveModule } from './leave/leave.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
@@ -58,6 +59,8 @@ import { UsersModule } from './users/users.module.js';
     ReimbursementsModule,
     LeaveModule,
     AttendanceModule,
+    // KPIs (owner, 21 October 2026: "lets start with the KPI's First")
+    KpisModule,
     UsersModule,
     AuditLogModule,
   ],

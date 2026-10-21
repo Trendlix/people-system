@@ -33,6 +33,12 @@ export const NOTIFICATION_KINDS = [
   'home_location_decided',
   'check_in_reminder',
   'check_out_reminder',
+  // KPIs (owner, 21 October 2026: "Self, manager, HR, sign-off"; kpis.ts): the employee's scorecard open for their
+  // self-rating (and its reminder), a scorecard waiting for its manager's scoring, HR's calibration or the manager's
+  // sign-off (and their reminders), and the employee's ready to sign (and its reminder); never a score
+  'kpi_self_rating',
+  'kpi_waiting',
+  'kpi_ready_to_sign',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -48,6 +54,7 @@ export const WAITING_KINDS = [
   'pay_raise_waiting',
   'pay_raise_decided',
   'home_location_waiting',
+  'kpi_waiting',
 ] as const satisfies readonly NotificationKind[];
 
 /** Where the phone pages open a notification's request: To approve for what the person decides, else their own requests. */
@@ -72,6 +79,9 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   home_location_decided: 'Home location',
   check_in_reminder: 'Reminder',
   check_out_reminder: 'Reminder',
+  kpi_self_rating: 'KPI',
+  kpi_waiting: 'KPI',
+  kpi_ready_to_sign: 'KPI',
 };
 
 // ---------- the reminders and the person's switches ----------

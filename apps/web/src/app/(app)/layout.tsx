@@ -1,4 +1,4 @@
-import type { Role } from '@trendlix/shared';
+import type { KpiCounts, Role } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
@@ -11,7 +11,8 @@ import { SessionWatch } from '@/components/session-watch';
 import { UserMenu } from '@/components/user-menu';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
-import { isSelfService } from '@/lib/roles';
+import { KPI_API, KPI_PATHS } from '@/lib/kpi-paths';
+import { hasRole, isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import type { CorrectionCounts } from '@/lib/correction-types';
@@ -65,7 +66,11 @@ async function MainNav() {
   const bg = { background: true };
   // Beside Approvals too: the home locations at the user's step (owner, 20 October 2026: "then approved by the HR and
   // CEO"), for HR, the CEO and the Super Admin.
-  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes] = await Promise.all([
+  // The KPI scorecards waiting for the user (owner, 21 October 2026: "The KPI items waiting for someone are counted in
+  // the sidebar and on Approvals"): their own to rate or sign beside My KPIs, their people's to score or sign beside
+  // Team KPIs, HR's to calibrate (a C-level person's for the CEO) beside All KPIs; for those who see Approvals, the team's
+  // and HR's in its count too, as it lists them.
+  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes, kpis] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS, bg) : null,
     readsChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS, bg) : null,
     followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES, bg) : null,
@@ -74,12 +79,17 @@ async function MainNav() {
     canSeeLeaveRequests({ roles }) || manager ? getOrNull<LeaveCounts>(LEAVE_COUNTS, bg) : null,
     seesCorrections({ roles }) || manager ? getOrNull<CorrectionCounts>(CORRECTION_COUNTS, bg) : null,
     seesHomes({ roles }) ? getOrNull<HomeLocationCounts>(HOME_COUNTS, bg) : null,
+    user ? getOrNull<KpiCounts>(KPI_API.counts, bg) : null,
   ]);
   const changes = pendingChanges && waitingForYou({ roles }, pendingChanges);
   const raiseRequests = requests ? waitingForYouCount({ roles }, requests) : 0;
-  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0) + (homes?.waiting ?? 0);
+  const kpiApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (kpis?.team ?? 0) + (kpis?.hr ?? 0) : 0;
+  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0) + (homes?.waiting ?? 0) + kpiApprovals;
   const counts: Record<string, number> = {};
   if (waiting) counts['/approvals'] = waiting;
+  if (kpis?.self) counts[KPI_PATHS.mine] = kpis.self;
+  if (kpis?.team) counts[KPI_PATHS.team] = kpis.team;
+  if (kpis?.hr) counts[KPI_PATHS.all] = kpis.hr;
   if (raiseRequests) counts[RAISE_REQUESTS_PATH] = raiseRequests;
   if (changes?.length) counts[DETAILS_CHANGES_PATH] = changes.length;
   if (self) {

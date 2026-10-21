@@ -5,6 +5,11 @@ import {
   EMPTY_PAYROLL_INPUTS,
   formatHours,
   isBeforeTax,
+  KPI_PAY_TIMING_NOTE,
+  kpiMonthForPayroll,
+  kpiMonthName,
+  kpiPayText,
+  kpiPercentText,
   lawRatesFor,
   leaveDaysOf,
   measuredExpectedHours,
@@ -16,12 +21,14 @@ import {
   type LawRates,
   type PayrollAllowance,
   type PayrollInputs,
+  type PayrollKpi,
   type PayrollPart,
   type PayrollResult,
   type PayrollRules,
   type PayrollSegment,
   type PayrollTerms,
 } from '@trendlix/shared';
+import { KPI_PATHS } from '../../../../lib/kpi-paths';
 import type { PayrollLineView } from '../../../../lib/types';
 import { formatEgp, formatPercent } from '../../employees/[id]/contracts/salary';
 import { monthName } from '../list';
@@ -55,8 +62,12 @@ import { contractLabel, dayRange } from './grid';
 // lowers the taxable pay", and the taxable pay says what it was lowered by (less when the year's limit or the pay held
 // it back). Make-up hours (owner, 20 October 2026: "within the same month with no working hours to be counted after 8 PM
 // even if the check out was 11 PM"): a line on a shift that counts hours until a time counts at most the expected hours
-// while overtime isn't paid, and Hours worked says what above them wasn't counted. Pure code, tested; relative imports,
-// as vitest doesn't know the @/ paths.
+// while overtime isn't paid, and Hours worked says what above them wasn't counted. The KPIs module (owner, 21 October
+// 2026: "Last month's KPI, this pay", "As the sheet: full at 80%+"): a line made since takes the final % of last
+// month's scorecard (PayrollTerms.kpi), and its KPI step says it, "KPI (September 2026): 86% · Needs improvement · paid
+// in full (80%+)", with the scorecard's link and that last month's KPI counts in this month's pay; with no final
+// scorecard, "no final scorecard · not cut". A line made before then keeps its KPI inputs, averaged with attendance,
+// as it was worked out. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 export interface BreakdownRow {
   key: string;
@@ -65,6 +76,8 @@ export interface BreakdownRow {
   /** How it reads: an amount added, taken off, a subtotal, or a figure that explains the next step. */
   kind: 'add' | 'cut' | 'total' | 'info';
   note?: string;
+  /** A page that explains it further: the KPI's scorecard (21 October 2026). */
+  link?: { href: string; label: string };
 }
 
 const percent = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
@@ -197,8 +210,27 @@ function grossSteps({ terms: t, result: r }: Line, rules: PayrollRules, split: S
   ];
 }
 
+/**
+ * The KPI step of a line made since the KPIs module (`terms.kpi` set; owner, 21 October 2026: "Last month's KPI, this
+ * pay"): the final % of the scorecard of the month before the run's (`month`, YYYY-MM), what it does to the variable
+ * part, and the scorecard's link; with no final scorecard, not cut.
+ */
+export function kpiStep(kpi: PayrollKpi | null, rules: Pick<PayrollRules, 'kpiGracePercent'>, month?: string | null): BreakdownRow {
+  // the month before the run's: the scorecard's own month too
+  const scored = month ? kpiMonthForPayroll(month) : (kpi?.month ?? null);
+  const text = scored ? kpiPayText(scored, kpi, rules.kpiGracePercent) : 'KPI: no final scorecard · not cut';
+  return {
+    key: 'kpi',
+    label: 'KPI score',
+    value: kpi ? kpiPercentText(kpi.finalPercent) : 'None',
+    kind: 'info',
+    note: `${text}. ${KPI_PAY_TIMING_NOTE}`,
+    ...(kpi && { link: { href: KPI_PATHS.scorecard(kpi.scorecardId), label: `Open the ${kpiMonthName(kpi.month)} scorecard` } }),
+  };
+}
+
 /** The steps of a line on monthly pay: the gross's parts, the hours, the cuts and what is added. */
-function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null): BreakdownRow[] {
+function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null, month?: string | null): BreakdownRow[] {
   const { inputs: i, result: r } = line;
   // the attendance deduction the CEO waived (17 October 2026): none on a line worked out before then
   const waived = typeof r.attendanceWaived === 'number' && r.attendanceWaived > 0 ? r.attendanceWaived : 0;
@@ -274,18 +306,21 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
       kind: 'cut',
       ...(waived > 0 && { note: `Attendance deduction of ${formatEgp(waived)} waived by the CEO` }),
     },
-    {
-      key: 'kpi',
-      label: 'KPI score',
-      value: percentText(r.kpiScore),
-      kind: 'info',
-      note: kpis.length
-        ? `The average of ${listed([...kpis, `attendance ${percentText(r.attendanceScore)}`])}; at or above ${rules.kpiGracePercent}% counts in full`
-        : // a line worked out before 16 October 2026 took the attendance alone
-          r.kpiScore < 1
-          ? 'No KPIs given: the attendance alone'
-          : "No KPIs given: the variable part isn't cut",
-    },
+    // last month's final scorecard on a line made since the KPIs module (21 October 2026); before it, the KPIs given
+    line.terms.kpi !== undefined
+      ? kpiStep(line.terms.kpi, rules, month)
+      : {
+          key: 'kpi',
+          label: 'KPI score',
+          value: percentText(r.kpiScore),
+          kind: 'info',
+          note: kpis.length
+            ? `The average of ${listed([...kpis, `attendance ${percentText(r.attendanceScore)}`])}; at or above ${rules.kpiGracePercent}% counts in full`
+            : // a line worked out before 16 October 2026 took the attendance alone
+              r.kpiScore < 1
+              ? 'No KPIs given: the attendance alone'
+              : "No KPIs given: the variable part isn't cut",
+        },
     { key: 'kpiCut', label: 'KPI cut', value: cutText(r.kpiCut), kind: 'cut' },
     {
       key: 'noShowCut',
@@ -409,8 +444,11 @@ export function taxableNote(r: Pick<PayrollResult, 'annualNetIncome' | 'beforeTa
   return `${lowered}; a ${year}`;
 }
 
-/** Every step of a line, in order, as its row in the results table opens it. */
-export function breakdown(given: Line, rules: PayrollRules, law?: LawRates): BreakdownRow[] {
+/**
+ * Every step of a line, in order, as its row in the results table opens it. `month`: the run's (YYYY-MM), whose month
+ * before is the KPI's (21 October 2026).
+ */
+export function breakdown(given: Line, rules: PayrollRules, law?: LawRates, month?: string | null): BreakdownRow[] {
   // inputs saved before a field existed (the leave days, 17 October 2026) read as not given
   const line: Line = { ...given, inputs: { ...EMPTY_PAYROLL_INPUTS, ...given.inputs } };
   const { terms: t, result: r } = line;
@@ -435,7 +473,7 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates): Bre
       }))
     : [{ key: 'allowances', label: 'Allowances', value: formatEgp(r.allowances), kind: 'add', note: allowanceNames(t.allowances) }];
   return [
-    ...(line.payBasis === 'hourly' ? hourlySteps(line) : monthlySteps(line, rules, split)),
+    ...(line.payBasis === 'hourly' ? hourlySteps(line) : monthlySteps(line, rules, split, month)),
     ...typed.additions,
     ...adjustmentRows(line, 'addition', true),
     { key: 'earned', label: 'Earned', value: formatEgp(r.earned), kind: 'total' },

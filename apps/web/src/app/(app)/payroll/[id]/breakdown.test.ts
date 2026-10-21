@@ -12,7 +12,7 @@ import {
 } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
-import { breakdown, cutText, expectedHoursNote, percentText, shiftHoursNote, waivedByCeo, waiverOf } from './breakdown';
+import { breakdown, cutText, expectedHoursNote, kpiStep, percentText, shiftHoursNote, waivedByCeo, waiverOf } from './breakdown';
 
 // An invented employee's month, worked out by hand. The shift: 22 working days in the month less 1 holiday, at 8:00 to
 // work a day, 168:00 scheduled; a no-show day and a leave day come out of them, a day of the shift each (owner,
@@ -663,5 +663,62 @@ describe('a line’s breakdown with make-up hours (owner, 20 October 2026: "with
     );
     // not on such a shift: as before
     expect(stepOf(lineOf(terms, { ...inputs, workedHours: 160 }), 'hours')).toEqual({ key: 'hours', label: 'Hours worked', value: '160:00 of 152:00', kind: 'info' });
+  });
+});
+
+describe('a line’s KPI from the KPIs module (owner, 21 October 2026: "Last month’s KPI, this pay")', () => {
+  // the October run reads September's final scorecard; the line's KPI inputs (a performance of 65%) don't count then
+  const kpiOf = (finalPercent: number, level: 'needs_improvement' | 'meets' | 'unsatisfactory') => ({ month: '2026-09', scorecardId: 'sc-1', finalPercent, level });
+  const step = (t: PayrollTerms, key = 'kpi') => breakdown(lineOf(t, inputs), PAYROLL_RULE_DEFAULTS, undefined, '2026-10').find((s) => s.key === key);
+
+  it('says the final %, the level and what it does to the variable part, with the scorecard’s link ("As the sheet: full at 80%+")', () => {
+    expect(step({ ...terms, kpi: kpiOf(86, 'needs_improvement') })).toEqual({
+      key: 'kpi',
+      label: 'KPI score',
+      value: '86%',
+      kind: 'info',
+      note: "KPI (September 2026): 86% · Needs improvement · paid in full (80%+). Last month's KPI counts in this month's pay.",
+      link: { href: '/kpis/scorecards/sc-1', label: 'Open the September 2026 scorecard' },
+    });
+    // in full: nothing off the variable 2,000
+    expect(step({ ...terms, kpi: kpiOf(86, 'needs_improvement') }, 'kpiCut')?.value).toBe('EGP 0.00');
+    // below 80%: the variable part at 70%, 600 off it
+    expect(step({ ...terms, kpi: kpiOf(70, 'needs_improvement') })).toMatchObject({
+      value: '70%',
+      note: "KPI (September 2026): 70% · Needs improvement · variable paid at 70%. Last month's KPI counts in this month's pay.",
+    });
+    expect(step({ ...terms, kpi: kpiOf(70, 'needs_improvement') }, 'kpiCut')?.value).toBe('−EGP 600.00');
+    expect(step({ ...terms, kpi: kpiOf(55.5, 'unsatisfactory') })?.note).toBe(
+      "KPI (September 2026): 55.5% · Unsatisfactory · variable paid at 55.5%. Last month's KPI counts in this month's pay.",
+    );
+  });
+
+  it('isn’t cut with no final scorecard, and has no link then', () => {
+    expect(step({ ...terms, kpi: null })).toEqual({
+      key: 'kpi',
+      label: 'KPI score',
+      value: 'None',
+      kind: 'info',
+      note: "KPI (September 2026): no final scorecard · not cut. Last month's KPI counts in this month's pay.",
+    });
+    expect(step({ ...terms, kpi: null }, 'kpiCut')?.value).toBe('EGP 0.00');
+  });
+
+  it('takes the month before the run’s, else the scorecard’s own', () => {
+    expect(kpiStep(kpiOf(92, 'meets'), PAYROLL_RULE_DEFAULTS, '2027-01').note).toBe(
+      "KPI (December 2026): 92% · Meets expectations · paid in full (80%+). Last month's KPI counts in this month's pay.",
+    );
+    expect(kpiStep(kpiOf(92, 'meets'), PAYROLL_RULE_DEFAULTS).note?.startsWith('KPI (September 2026): 92%')).toBe(true);
+    expect(kpiStep(null, { kpiGracePercent: 80 }).note).toBe("KPI: no final scorecard · not cut. Last month's KPI counts in this month's pay.");
+  });
+
+  it('keeps a line from before the module as it was: the KPI inputs averaged with attendance', () => {
+    expect(step(terms)).toMatchObject({ value: '76.25%', note: 'The average of performance 65% and attendance 87.5%; at or above 80% counts in full' });
+    expect(step(terms)?.link).toBeUndefined();
+  });
+
+  it('has no KPI step on pay by the hour, which has no KPI cut', () => {
+    const hourly = { ...terms, payBasis: 'hourly' as const, hourlyRate: 100, expectedHours: null, expectedDays: null, kpi: kpiOf(60, 'unsatisfactory') };
+    expect(breakdown(lineOf(hourly, { ...EMPTY_PAYROLL_INPUTS, workedHours: 100 }), PAYROLL_RULE_DEFAULTS, undefined, '2026-10').find((s) => s.key === 'kpi')).toBeUndefined();
   });
 });

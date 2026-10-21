@@ -22,7 +22,9 @@ import { breakdown, cutText, waivedByCeo, waiverOf, type BreakdownRow } from './
 // allow the CEO to wave the deduction by ticking a box"); unticking takes it again. HR and Finance, and everyone once
 // it is approved, see "Waived by the CEO" on such a line. The C-level people's lines (owner, 19 October 2026: "make C
 // level Employees details not visible to HR") are marked C-level for the CEO and the Super Admin; for those they are
-// hidden from, one row before the totals stands for them, with no figures, and the totals leave them out.
+// hidden from, one row before the totals stands for them, with no figures, and the totals leave them out. A line's KPI
+// (owner, 21 October 2026: "Last month's KPI, this pay") links to its scorecard for those who may open it (HR, the CEO,
+// the Super Admin; not Finance, whom the scorecard isn't shown to).
 
 /** The CEO's waiver of a line's attendance deduction: saves it as it is ticked or unticked (POST …/attendance-waiver). */
 type Waive = (lineId: string, waived: boolean) => Promise<FormState>;
@@ -72,8 +74,8 @@ const TONE: Record<BreakdownRow['kind'], string> = {
   info: 'text-muted',
 };
 
-function Breakdown({ line, rules, lawRates }: { line: PayrollLineView; rules: PayrollRules; lawRates?: LawRates }) {
-  const steps = breakdown(line, rules, lawRates);
+function Breakdown({ line, rules, lawRates, month, links }: { line: PayrollLineView; rules: PayrollRules; lawRates?: LawRates; month?: string; links: boolean }) {
+  const steps = breakdown(line, rules, lawRates, month);
   return (
     <div className="space-y-4 bg-canvas px-4 py-4">
       {line.result.warnings.length > 0 && (
@@ -89,6 +91,12 @@ function Breakdown({ line, rules, lawRates }: { line: PayrollLineView; rules: Pa
             <dt className="text-sm">
               <span className={s.kind === 'total' ? 'font-semibold' : undefined}>{s.label}</span>
               {s.note && <span className="block text-xs text-muted">{s.note}</span>}
+              {s.link && links && (
+                <Link href={s.link.href} className="block text-xs font-semibold">
+                  {s.link.label}
+                  <span className="sr-only"> of {line.name}</span>
+                </Link>
+              )}
             </dt>
             <dd className={`text-sm whitespace-nowrap tabular-nums ${TONE[s.kind]}`}>{s.value}</dd>
           </div>
@@ -131,6 +139,8 @@ export function ResultsTable({
   waive = null,
   places = [],
   hidden = null,
+  month,
+  scorecardLinks = false,
 }: {
   lines: PayrollLineView[];
   /** The departments and teams in Organization's order, for the groups to follow it (owner, 19 October 2026). */
@@ -145,6 +155,10 @@ export function ResultsTable({
   waive?: Waive | null;
   /** The row standing for the C-level people's lines hidden from the caller ("C-level (2 people) — hidden"); null for none. */
   hidden?: string | null;
+  /** The run's month (YYYY-MM): the KPI is the month before's (21 October 2026). */
+  month?: string;
+  /** Whether a line's KPI links to its scorecard: for those who may open it (HR, the CEO, the Super Admin). */
+  scorecardLinks?: boolean;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = (id: string) =>
@@ -238,7 +252,7 @@ export function ResultsTable({
                         {expanded && (
                           <tr id={panel}>
                             <td colSpan={span} className="p-0">
-                              <Breakdown line={l} rules={rules} lawRates={lawRates} />
+                              <Breakdown line={l} rules={rules} lawRates={lawRates} month={month} links={scorecardLinks} />
                               <p className="px-4 pb-3 text-xs text-muted">
                                 <Link href={contractHref(l.employeeId)}>Open {l.name}&apos;s contract</Link>
                               </p>

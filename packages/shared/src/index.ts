@@ -420,3 +420,9 @@ export * from './notifications.js';
 // are like sub locations. shown with their name and linked users"; "(Remote - Location name)"): where a press was read in
 // order, a sub-location's people, its words, and the office network's lock waived at one's own sub-location
 export * from './sub-locations.js';
+
+// KPIs (owner, 21 October 2026: "lets start with the KPI's First"): the four pillars and their weights, the levels, the
+// templates' metrics and criteria, scoring (capped at 110%), the automatic Attendance metric, the scorecard's steps
+// (self-rating, the manager, HR's calibration, the sign-off), its deadlines and reminders, who scores, the payroll's
+// KPI (last month's final %, in full at 80% or more), the three sample templates, and the API's views
+export * from './kpis.js';

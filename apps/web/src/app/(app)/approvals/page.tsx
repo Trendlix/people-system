@@ -1,9 +1,11 @@
-import { ENDING_STATUS_LABELS } from '@trendlix/shared';
+import { ENDING_STATUS_LABELS, type KpiScorecardSummary } from '@trendlix/shared';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { CLevelBadge } from '@/components/c-level-badge';
 import { apiGet } from '@/lib/api';
 import { decidesChangeOfDetails } from '@/lib/confidential';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { KPI_API } from '@/lib/kpi-paths';
 import { loadLawRates } from '@/lib/law-rates';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import { getCurrentUser } from '@/lib/session';
@@ -32,6 +34,7 @@ import { HomeMap, HomeStatusBadge } from '../home-locations/ui';
 import { decideChangeRequest, decideEnding } from './actions';
 import { decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
 import { DecisionForm } from './decision-form';
+import { kpiApprovalRows, kpiScorecardsLabel, seesKpiApprovals } from './kpis';
 import { PayRaiseCard } from './pay-raise-card';
 import { decidesRaises, followsRaises, PENDING_RAISES, raisesLabel } from './raises';
 
@@ -55,6 +58,9 @@ import { decidesRaises, followsRaises, PENDING_RAISES, raisesLabel } from './rai
 //   home"; then "then approved by the HR and CEO"), at the user's step: HR's, with the point on a small map and the radius
 //   to approve it with (its circle following what is typed), or the CEO's; a C-level person's both by the CEO. Approve or
 //   reject with a comment; for HR, the CEO and the Super Admin only (never managers or Finance).
+// - KPI scorecards (owner, 21 October 2026: "The KPI items waiting for someone are counted in the sidebar and on
+//   Approvals"): those waiting for the user to score, calibrate (HR; a C-level person's the CEO's) or sign as the
+//   manager, never their own (on My KPIs), the nearest deadline first, each opening the scorecard, where it is done.
 
 const DONE: Record<string, string> = {
   approved: 'Ending approved.',
@@ -306,6 +312,59 @@ async function PendingHomes() {
   );
 }
 
+// ---------- KPI scorecards ----------
+
+async function PendingKpis({ user }: { user: SessionUser }) {
+  // read quietly, like the change requests: an API from before the KPIs must not take the endings down with it
+  const waiting = await getOrNull<KpiScorecardSummary[]>(KPI_API.waiting);
+  if (waiting === null) return <Empty>KPI scorecards couldn&apos;t load.</Empty>;
+  const rows = kpiApprovalRows(waiting, user);
+  if (rows.length === 0) return <Empty>No KPI scorecards are waiting for you.</Empty>;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">{kpiScorecardsLabel(rows.length)} waiting for you, the nearest deadline first. Each opens on its scorecard.</p>
+      <div className="card overflow-x-auto">
+        <table className="table">
+          <thead>
+            <tr>
+              <th scope="col">Employee</th>
+              <th scope="col">Month</th>
+              <th scope="col">Step</th>
+              <th scope="col">Deadline</th>
+              <th scope="col">
+                <span className="sr-only">Action</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td className="min-w-48">
+                  <span className="font-semibold">{r.person}</span>
+                  <span className="text-muted"> · {r.employeeCode}</span>
+                  {r.confidential && <CLevelBadge className="ml-2" />}
+                  {r.jobTitle && <span className="block text-xs text-muted">{r.jobTitle}</span>}
+                </td>
+                <td className="whitespace-nowrap">{r.month}</td>
+                <td className="whitespace-nowrap">{r.step}</td>
+                <td className="whitespace-nowrap tabular-nums">{r.deadline ?? <span className="text-muted">—</span>}</td>
+                <td className="text-right whitespace-nowrap">
+                  <Link href={r.href} className="font-semibold">
+                    {r.action}
+                    <span className="sr-only">
+                      : {r.person}, {r.month}
+                    </span>
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ---------- the page ----------
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -326,7 +385,9 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
   const changes = readsChangeRequests(user);
   // HR, the CEO and the Super Admin, at their step (20 October 2026)
   const homes = seesHomes(user);
-  if (!endings && !raises && !changes && !homes) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
+  // HR, the CEO, Admin and the Super Admin (21 October 2026)
+  const kpis = seesKpiApprovals(user);
+  if (!endings && !raises && !changes && !homes && !kpis) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
 
   return (
@@ -355,6 +416,11 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
       {homes && (
         <Section title="Home Locations" id={APPROVALS_HOME_ID}>
           <PendingHomes />
+        </Section>
+      )}
+      {kpis && (
+        <Section title="KPI Scorecards" id="kpi-scorecards">
+          <PendingKpis user={user} />
         </Section>
       )}
     </div>

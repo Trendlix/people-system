@@ -354,6 +354,8 @@ describe('Payroll (e2e)', () => {
             allowances: [{ name: `Transport ${RUN}`, amount: 1000, taxable: true, insured: false }],
           },
         ],
+        // last month's final KPI scorecard (owner, 21 October 2026: "Last month's KPI, this pay"): none, so not cut
+        kpi: null,
       });
       expect(r.inputs).toEqual({
         workedHours: null,

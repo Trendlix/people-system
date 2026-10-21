@@ -1,4 +1,4 @@
-import { cairoClock, timeOfDayText, type NotificationKind } from '@trendlix/shared';
+import { cairoClock, kpiMonthName, kpiMonthOnly, timeOfDayText, type KpiReminder, type NotificationKind } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import { monthName } from '../payroll/months.js';
 import type { NotificationInput } from './notifications.service.js';
@@ -99,6 +99,52 @@ export function checkOutReminderText(checkedInAt: Date | string, link: string): 
   return { kind: 'check_out_reminder', title: 'Still checked in?', body: `You checked in at ${cairoClock(checkedInAt)}. Check out when you leave.`, link };
 }
 
+// ---------- KPIs (owner, 21 October 2026: "Self, manager, HR, sign-off") ----------
+// No score in them (the brief: "The texts are short: no scores in the push, just "Your October KPI is ready to sign"").
+
+/** The employee's scorecard opened for their self-rating: "Your October KPI is open", "Rate yourself by 03/11/2026". */
+export function kpiOpenText(month: string, deadline: string, link: string): NotificationInput {
+  return { kind: 'kpi_self_rating', title: `Your ${kpiMonthOnly(month)} KPI is open`, body: `Rate yourself by ${shownDate(deadline)}`, link };
+}
+
+/** A scorecard waiting for its scoring or HR's calibration: "A KPI scorecard is waiting for you", "Mona Adel, October 2026". */
+export function kpiWaitingText(name: string, month: string, link: string): NotificationInput {
+  return { kind: 'kpi_waiting', title: 'A KPI scorecard is waiting for you', body: `${name}, ${kpiMonthName(month)}`, link };
+}
+
+/** The employee's scorecard ready to sign: "Your October KPI is ready to sign", "Sign by 10/11/2026". */
+export function kpiReadyToSignText(month: string, deadline: string, link: string): NotificationInput {
+  return { kind: 'kpi_ready_to_sign', title: `Your ${kpiMonthOnly(month)} KPI is ready to sign`, body: `Sign by ${shownDate(deadline)}`, link };
+}
+
+/** The manager's side of the sign-off: "A KPI scorecard is ready for you to sign", "Mona Adel, October 2026". */
+export function kpiManagerSignText(name: string, month: string, link: string): NotificationInput {
+  return { kind: 'kpi_waiting', title: 'A KPI scorecard is ready for you to sign', body: `${name}, ${kpiMonthName(month)}`, link };
+}
+
+/**
+ * The reminder the day before a step's deadline (the brief: "one reminder the day before each deadline"), one a person:
+ * the employee's own ("Your October KPI: rate yourself by tomorrow"), or the scorecards waiting for them ("3 KPI
+ * scorecards to score by tomorrow").
+ */
+export function kpiReminderText(
+  step: KpiReminder,
+  who: { own: true; month: string } | { own: false; count: number },
+  deadline: string,
+  link: string,
+): NotificationInput {
+  const due = `Due ${shownDate(deadline)}`;
+  if (who.own) {
+    const month = kpiMonthOnly(who.month);
+    return step === 'self_rating'
+      ? { kind: 'kpi_self_rating', title: `Your ${month} KPI: rate yourself by tomorrow`, body: due, link }
+      : { kind: 'kpi_ready_to_sign', title: `Your ${month} KPI: sign it by tomorrow`, body: due, link };
+  }
+  const what = step === 'hr' ? 'calibrate' : step === 'sign_off' ? 'sign' : 'score';
+  const n = who.count;
+  return { kind: 'kpi_waiting', title: `${n === 1 ? 'A KPI scorecard' : `${n} KPI scorecards`} to ${what} by tomorrow`, body: due, link };
+}
+
 /** The kinds the texts above make, for the tests. */
 export const TEXT_KINDS: readonly NotificationKind[] = [
   'leave_waiting',
@@ -118,4 +164,7 @@ export const TEXT_KINDS: readonly NotificationKind[] = [
   'home_location_decided',
   'check_in_reminder',
   'check_out_reminder',
+  'kpi_self_rating',
+  'kpi_waiting',
+  'kpi_ready_to_sign',
 ];

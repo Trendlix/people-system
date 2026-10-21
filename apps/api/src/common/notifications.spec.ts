@@ -25,11 +25,13 @@ import {
 // someone, a check-in reminder)"; packages/shared notifications.ts): the API keeps and sends them, the web shows them.
 
 const MIGRATION = new URL('../../prisma/migrations/20261020140000_notifications/migration.sql', import.meta.url);
+/** The KPIs' migration (21 October 2026), which gave the notifications the three KPI kinds: the kinds as they are now. */
+const KINDS_NOW = new URL('../../prisma/migrations/20261021100000_kpis/migration.sql', import.meta.url);
 
 describe('notifications (shared)', () => {
   it('has the kinds the database allows, each labelled', () => {
     const sql = readFileSync(MIGRATION, 'utf8');
-    const listed = /"notifications_kind_check" CHECK \("kind" IN \(([^)]*)\)\)/.exec(sql)?.[1] ?? '';
+    const listed = /"notifications_kind_check" CHECK \("kind" IN \(([^)]*)\)\)/.exec(readFileSync(KINDS_NOW, 'utf8'))?.[1] ?? '';
     expect([...listed.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual([...NOTIFICATION_KINDS]);
     expect(Object.keys(NOTIFICATION_KIND_LABELS).sort()).toEqual([...NOTIFICATION_KINDS].sort());
     expect(isNotificationKind('leave_waiting')).toBe(true);

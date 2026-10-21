@@ -44,6 +44,8 @@ describe('the phone pages’ addresses', () => {
   it('opens an item in its section', () => {
     expect(appItemHref('requests', 'leave', ID)).toBe(`/app/requests/leave/${ID}`);
     expect(appItemHref('approve', 'pay-raise', ID)).toBe(`/app/approve/pay-raise/${ID}`);
+    expect(appItemHref('requests', 'kpi', ID)).toBe(`/app/requests/kpi/${ID}`);
+    expect(appItemHref('approve', 'kpi', ID)).toBe(`/app/approve/kpi/${ID}`);
   });
 
   it('goes back to the section’s list', () => {
@@ -79,6 +81,13 @@ describe('where an action sends someone on to from the phone pages', () => {
     expect(toAppHref(`/home-locations/${ID}?done=sent`, 'requests')).toBe(`/app/requests/home/${ID}?done=sent`);
     expect(toAppHref(`/home-locations/${ID}?done=ceo_approve`, 'approve')).toBe(`/app/approve/home/${ID}?done=ceo_approve`);
     expect(toAppHref('/home-locations/new', 'requests')).toBe('/app/requests');
+    // a KPI scorecard (21 October 2026): the employee's under My Requests, the manager's and HR's under To Approve
+    expect(toAppHref(`/kpis/scorecards/${ID}?done=self_sent`, 'requests')).toBe(`/app/requests/kpi/${ID}?done=self_sent`);
+    expect(toAppHref(`/kpis/scorecards/${ID}?done=calibrated`, 'approve')).toBe(`/app/approve/kpi/${ID}?done=calibrated`);
+    expect(toAppHref(`/kpis/scorecards/${ID}`, 'approve')).toBe(`/app/approve/kpi/${ID}`);
+    // the KPI lists aren't phone pages: the section's list
+    expect(toAppHref('/kpis/team', 'approve')).toBe('/app/approve');
+    expect(toAppHref('/kpis/scorecards/not-an-id', 'requests')).toBe('/app/requests');
   });
 
   it('sends everything else to the section’s list, keeping only done and sent', () => {
@@ -95,5 +104,8 @@ describe('where an action sends someone on to from the phone pages', () => {
     expect(afterAction(form({}), `/leave/${ID}?done=sent`)).toBe(`/leave/${ID}?done=sent`);
     expect(afterAction(undefined, '/my-requests')).toBe('/my-requests');
     expect(afterAction(form({ [SURFACE_FIELD]: 'requests' }), `/leave/${ID}?done=sent`)).toBe(`/app/requests/leave/${ID}?done=sent`);
+    // a KPI step sent from the phone pages comes back to the scorecard there
+    expect(afterAction(form({ [SURFACE_FIELD]: 'approve' }), `/kpis/scorecards/${ID}?done=score_sent`)).toBe(`/app/approve/kpi/${ID}?done=score_sent`);
+    expect(afterAction(form({}), `/kpis/scorecards/${ID}?done=signed`)).toBe(`/kpis/scorecards/${ID}?done=signed`);
   });
 });

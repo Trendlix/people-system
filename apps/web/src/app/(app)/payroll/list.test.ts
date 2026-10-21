@@ -121,7 +121,7 @@ describe('the rules in words', () => {
     expect(rulesSummary({ ...PAYROLL_RULE_DEFAULTS, payOvertime: true })).toEqual([
       'A month counts as 30 days, for day rates and part months.',
       'Attendance counts in full from 90%; below it, the fixed part follows it.',
-      "The KPI average counts in full from 80%; below it, the variable part follows it. With no KPI given, it isn't cut.",
+      "The KPI (last month's final scorecard) counts in full from 80%; below it, the variable part follows it. With none, it isn't cut.",
       'Overtime is paid for attendance above 110%, at 1.5×.',
       "A no-show day costs 2 days' pay; its hours come out of the expected hours, so attendance doesn't count it again.",
     ]);
