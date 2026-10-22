@@ -13,6 +13,8 @@ import type { SessionUser } from '../auth/session-user.js';
 interface AuditContext {
   onBehalfById: string | null;
   via: string | null;
+  /** A developer's request (22 October 2026): what they look at is logged as seen with the values hidden. */
+  developer?: boolean;
 }
 
 const store = new AsyncLocalStorage<AuditContext>();
@@ -22,6 +24,9 @@ export const onBehalfById = (): string | null => store.getStore()?.onBehalfById 
 
 /** How the request being handled came, when not from the website or the app: 'claude_connector'; else null. */
 export const auditVia = (): string | null => store.getStore()?.via ?? null;
+
+/** Whether the request being handled is a developer's (owner, 22 October 2026: "not showing the real numbers"). */
+export const auditByDeveloper = (): boolean => store.getStore()?.developer === true;
 
 /**
  * Global: runs each request a Super Admin makes while viewing as someone with their id at hand, and each request with a
@@ -36,7 +41,8 @@ export class AuditContextInterceptor implements NestInterceptor {
     const req = ctx.switchToHttp().getRequest<{ user?: SessionUser; activeSession?: { kind?: string } }>();
     const by = req.user?.viewAs?.by.id ?? null;
     const via = req.activeSession?.kind === 'connector' ? AUDIT_VIA_CONNECTOR : null;
-    if (!by && !via) return next.handle();
-    return new Observable((subscriber) => store.run({ onBehalfById: by, via }, () => next.handle().subscribe(subscriber)));
+    const developer = req.user?.developer === true;
+    if (!by && !via && !developer) return next.handle();
+    return new Observable((subscriber) => store.run({ onBehalfById: by, via, developer }, () => next.handle().subscribe(subscriber)));
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { auditVia, onBehalfById } from './audit-context.js';
+import { auditByDeveloper, auditVia, onBehalfById } from './audit-context.js';
 
 export interface AuditEntry {
   userId: string | null;
@@ -22,6 +22,11 @@ export class AuditService {
 
   async record(entry: AuditEntry): Promise<void> {
     const by = onBehalfById();
+    // a developer is answered with the restricted values masked (22 October 2026): what they opened is logged, but never
+    // as the values seen ('view_hidden', not 'view_restricted')
+    if (auditByDeveloper() && entry.action === 'view_restricted') {
+      entry = { ...entry, action: 'view_hidden', diff: { ...(entry.diff && typeof entry.diff === 'object' ? (entry.diff as Record<string, unknown>) : {}), hidden: true } };
+    }
     await this.prisma.auditLog.create({
       data: {
         userId: entry.userId,

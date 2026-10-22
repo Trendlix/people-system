@@ -15,7 +15,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
@@ -76,6 +76,7 @@ export class DocumentsController {
    */
   @ConfidentialOf('document')
   @Roles('hr', 'ceo')
+  @NotForDevelopers()
   @Get(':id/file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -97,6 +98,7 @@ export class DocumentsController {
    */
   @ConfidentialOf('document')
   @Roles('hr')
+  @NotForDevelopers()
   @Get(':id/esign-file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -128,6 +130,7 @@ export class DocumentsController {
   /** The scan of the signed copy, shown in the browser (a photo or a PDF). */
   @ConfidentialOf('document')
   @Roles('hr', 'ceo')
+  @NotForDevelopers()
   @Get(':id/signed-file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')

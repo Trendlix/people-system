@@ -1,14 +1,14 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
-import { BACKGROUND_HEADER, isConnectorAccessToken, type Role, type SessionKind } from '@trendlix/shared';
+import { BACKGROUND_HEADER, DEVELOPER_READ_ONLY, isConnectorAccessToken, type Role, type SessionKind } from '@trendlix/shared';
 import type { Request } from 'express';
 import { ConnectorTokensService } from '../connector/connector-tokens.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { CONNECTOR_NOT_OPEN, CONNECTOR_SCOPE_KEY, FORBIDDEN_MESSAGE, IS_PUBLIC, REQUIRED_ROLES, VIEW_AS_CONTROL } from './decorators.js';
+import { CONNECTOR_NOT_OPEN, CONNECTOR_SCOPE_KEY, DEVELOPER_MAY_CALL, FORBIDDEN_MESSAGE, IS_PUBLIC, REQUIRED_ROLES, VIEW_AS_CONTROL } from './decorators.js';
 import { actsAs, isSuperAdmin } from './roles.js';
 import { ACTIVITY_THROTTLE_MS, idleTimeoutFor, sessionVerdict, signedOutBody } from './session-rules.js';
-import { SESSION_COOKIE, sessionUserOf, WITH_ROLES, type SessionUser } from './session-user.js';
+import { answeredAs, SESSION_COOKIE, sessionUserOf, WITH_ROLES, type SessionUser } from './session-user.js';
 import { SessionsService, type ActiveSession } from './sessions.service.js';
 import { changesData, sessionClaims, viewOnlyMessage, type SessionClaims } from './view-as.js';
 
@@ -36,6 +36,13 @@ export type SessionRequest = Request & { user?: SessionUser; sessionClaims?: Ses
 // checked apart (connectorRequest): its session must be on, and the route open to the connector (@ConnectorScope: the
 // Assets reads and the drafts); every other route refuses it with a 403. Its person is never viewed as, and the 15
 // minutes are never for it.
+//
+// A developer (owner, 22 October 2026: "act as super admin with numbers hidden and real sensitve numbers as national ids
+// hidden changing nothing, and no act as") is answered as a Super Admin who is also HR, the CEO and Finance
+// (answeredAs), read only: every request but a read is refused here, save the few marked @DeveloperMayCall (signing
+// out, ending one's own session, changing one's own password), through the connector too. Never viewed as by anyone's
+// switch nor viewing as anyone (the switcher is a change, and their database roles hold no Super Admin). The money and
+// personal IDs are masked in every answer (developer.interceptor.ts). Their 15 minutes are those of HR and Super Admin.
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -78,8 +85,9 @@ export class AuthGuard implements CanActivate {
     ]);
     const signedIn = users.find((u) => u.id === claims.sub);
 
-    // the session first: ended, past its 8 hours, or 15 minutes without activity for HR, Admin and Super Admin
-    const roles = signedIn ? sessionUserOf(signedIn).roles : [];
+    // the session first: ended, past its 8 hours, or 15 minutes without activity for HR, Admin and Super Admin (a
+    // developer counts as one: answeredAs)
+    const roles = signedIn ? answeredAs(sessionUserOf(signedIn)).roles : [];
     const now = new Date();
     const verdict = sessionVerdict(session, claims.sub, roles, now, req.headers[BACKGROUND_HEADER] === '1');
     if (!verdict.ok) {
@@ -102,9 +110,9 @@ export class AuthGuard implements CanActivate {
       // role since, or is viewing as a user deactivated since, is signed out, as a deactivated user is.
       const viewed = users.find((u) => u.id === claims.viewAs);
       if (!isSuperAdmin(sessionUserOf(signedIn)) || !viewed?.isActive) throw new UnauthorizedException('Please sign in.');
-      req.user = { ...sessionUserOf(viewed), viewAs: { by: { id: signedIn.id, email: signedIn.email }, act: claims.act } };
+      req.user = { ...answeredAs(sessionUserOf(viewed)), viewAs: { by: { id: signedIn.id, email: signedIn.email }, act: claims.act } };
     } else {
-      req.user = { ...sessionUserOf(signedIn), viewAs: null };
+      req.user = { ...answeredAs(sessionUserOf(signedIn)), viewAs: null };
     }
     req.sessionClaims = claims;
 
@@ -112,6 +120,11 @@ export class AuthGuard implements CanActivate {
     if (required?.length && !actsAs(req.user.roles, required)) {
       const message = this.reflector.getAllAndOverride<string | undefined>(FORBIDDEN_MESSAGE, targets);
       throw new ForbiddenException(message ?? 'You do not have permission to do this.');
+    }
+
+    // a developer looks and changes nothing (22 October 2026)
+    if (req.user.developer && changesData(req.method) && !this.reflector.getAllAndOverride<boolean>(DEVELOPER_MAY_CALL, targets)) {
+      throw new ForbiddenException(DEVELOPER_READ_ONLY);
     }
 
     const viewOnly = req.user.viewAs && !req.user.viewAs.act;
@@ -139,7 +152,9 @@ export class AuthGuard implements CanActivate {
       expiresAt: session.expiresAt,
       idleTimeoutMs: null,
     };
-    req.user = { ...sessionUserOf(session.user), viewAs: null };
+    req.user = { ...answeredAs(sessionUserOf(session.user)), viewAs: null };
+    // a developer's Claude reads and drafts nothing (22 October 2026)
+    if (req.user.developer && changesData(req.method)) throw new ForbiddenException(DEVELOPER_READ_ONLY);
     const required = this.reflector.getAllAndOverride<Role[] | undefined>(REQUIRED_ROLES, targets);
     if (required?.length && !actsAs(req.user.roles, required)) {
       const message = this.reflector.getAllAndOverride<string | undefined>(FORBIDDEN_MESSAGE, targets);

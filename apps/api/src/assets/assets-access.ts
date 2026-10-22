@@ -30,7 +30,8 @@ type AssetsRequest = SessionRequest & { assets?: AssetsCaller };
 /** The caller's Assets access in effect and the values rule, read from the database (their level as set). */
 export async function assetsCallerOf(prisma: PrismaService, user: SessionUser): Promise<AssetsCaller> {
   const row = await prisma.user.findUnique({ where: { id: user.id }, select: { assetsAccess: true } });
-  return { user, access: assetsAccessOf({ roles: user.roles, assetsAccess: row?.assetsAccess }), values: seesAssetValues(user) };
+  // a developer sees every asset as a manager would, never their values (owner, 22 October 2026: "Money … hidden")
+  return { user, access: assetsAccessOf({ roles: user.roles, assetsAccess: row?.assetsAccess }), values: !user.developer && seesAssetValues(user) };
 }
 
 /**

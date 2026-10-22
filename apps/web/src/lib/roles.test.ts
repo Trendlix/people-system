@@ -108,6 +108,12 @@ describe('isAdmin, isSuperAdmin and canDelete', () => {
     expect(canDelete({ ...hr, viewAs: { by, act: true } })).toBe(false);
   });
 
+  // a developer is answered with a Super Admin's sight but changes nothing (owner, 22 October 2026)
+  it('offers a developer no delete, though they see as a Super Admin', () => {
+    expect(canDelete({ ...superAdmin, developer: true })).toBe(false);
+    expect(canDelete({ ...superAdmin, developer: false })).toBe(true);
+  });
+
   it('refuses with the words the API uses', () => {
     expect(ONLY_SUPER_ADMIN_DELETES).toBe('Only a Super Admin can delete records.');
   });
@@ -118,10 +124,13 @@ describe('assignableRoles', () => {
     expect(assignableRoles(superAdmin, ROLES)).toEqual([...ROLES]);
   });
 
-  it('offers an Admin every role but Super Admin', () => {
+  it('offers an Admin every role but Super Admin and Developer', () => {
     const offered = assignableRoles(admin, ROLES);
     expect(offered).not.toContain('super_admin');
-    expect(offered).toEqual(ROLES.filter((r) => r !== 'super_admin'));
+    // the Developer role a Super Admin's to give (owner, 22 October 2026)
+    expect(offered).not.toContain('developer');
+    expect(offered).toEqual(ROLES.filter((r) => r !== 'super_admin' && r !== 'developer'));
+    expect(assignableRoles(superAdmin, ROLES)).toContain('developer');
     // whatever the shared list holds when the tests run
     expect(assignableRoles(admin, ['employee', 'admin', 'super_admin'])).toEqual(['employee', 'admin']);
     expect(assignableRoles(superAdmin, ['employee', 'admin', 'super_admin'])).toEqual(['employee', 'admin', 'super_admin']);

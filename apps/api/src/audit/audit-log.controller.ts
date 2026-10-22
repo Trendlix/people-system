@@ -1,5 +1,5 @@
 import { Controller, Get, Header, Query, StreamableFile } from '@nestjs/common';
-import { CurrentUser, Roles } from '../auth/decorators.js';
+import { CurrentUser, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
@@ -32,6 +32,7 @@ export class AuditLogController {
 
   /** The same entries as an Excel workbook, newest first, up to 10,000: "Audit log 2026-10-19.xlsx". */
   @Roles('super_admin', 'ceo')
+  @NotForDevelopers()
   @Get('export')
   @Header('Cache-Control', 'private, no-store')
   async workbook(@Query() query: AuditQueryDto, @CurrentUser() user: SessionUser): Promise<StreamableFile> {

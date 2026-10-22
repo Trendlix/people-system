@@ -54,3 +54,21 @@ export const CurrentSession = createParamDecorator(
 export const CurrentActiveSession = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): ActiveSession => ctx.switchToHttp().getRequest().activeSession,
 );
+
+// The Developer role (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real numbers"):
+// read only, the money and personal IDs never sent (developer.interceptor.ts).
+export const DEVELOPER_MAY_CALL = 'developerMayCall';
+export const DEVELOPER_MAY_SEE = 'developerMaySee';
+export const NOT_FOR_DEVELOPERS = 'notForDevelopers';
+
+/** A change a developer may still make: signing out, ending their own session, changing their own password. */
+export const DeveloperMayCall = () => SetMetadata(DEVELOPER_MAY_CALL, true);
+
+/** A file a developer may receive as it is: a picture with no pay or personal ID in it (the logo, a photo). */
+export const DeveloperMaySee = () => SetMetadata(DEVELOPER_MAY_SEE, true);
+
+/**
+ * A file (or a read) never given to a developer: refused before it runs, so nothing is made or logged as seen (payslips,
+ * bank files, exports, generated documents, scans).
+ */
+export const NotForDevelopers = () => SetMetadata(NOT_FOR_DEVELOPERS, true);

@@ -13,7 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { CurrentUser, DeletesRecords, Public, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, DeveloperMaySee, Public, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { UpdateCompanyDto } from './company.dto.js';
 import { CompanyService } from './company.service.js';
@@ -60,6 +60,7 @@ export class CompanyController {
   // The web app asks for them with the image's version in the address, so the five minutes' caching never shows an old one.
 
   @Public()
+  @DeveloperMaySee()
   @Get('logo')
   @ImageHeaders()
   async logo(): Promise<StreamableFile> {
@@ -81,6 +82,7 @@ export class CompanyController {
   }
 
   @Public()
+  @DeveloperMaySee()
   @Get('thumbnail')
   @ImageHeaders()
   async thumbnail(): Promise<StreamableFile> {

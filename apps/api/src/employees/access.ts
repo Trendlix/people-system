@@ -11,14 +11,17 @@ const has = (user: SessionUser, roles: Role[]) => actsAs(user.roles, roles);
 /** HR, CEO and Finance see every employee. Managers see themselves and their direct reports; anyone else, themselves. */
 export const seesEveryone = (user: SessionUser) => has(user, ['hr', 'ceo', 'finance']);
 
-/** National ID: HR and CEO. */
-export const seesIdentity = (user: SessionUser) => has(user, ['hr', 'ceo']);
+/**
+ * National ID: HR and CEO; never a developer (owner, 22 October 2026: "real sensitve numbers as national ids hidden"),
+ * who is answered with HR's and the CEO's roles but lacks every restricted right.
+ */
+export const seesIdentity = (user: SessionUser) => !user.developer && has(user, ['hr', 'ceo']);
 
 /** The employee file (the scanned paperwork, the personal photo among it): HR and CEO (owner's decision, 15 October 2026). */
 export const seesEmployeeFile = (user: SessionUser) => has(user, ['hr', 'ceo']);
 
-/** Bank and payment: HR, Finance and CEO. */
-export const seesBank = (user: SessionUser) => has(user, ['hr', 'finance', 'ceo']);
+/** Bank and payment: HR, Finance and CEO; never a developer (22 October 2026: "Money and personal IDs" hidden). */
+export const seesBank = (user: SessionUser) => !user.developer && has(user, ['hr', 'finance', 'ceo']);
 
 /** Salaries (contracts): HR, Finance and CEO, like bank details (owner's decisions, 15 October 2026). */
 export const seesSalary = seesBank;

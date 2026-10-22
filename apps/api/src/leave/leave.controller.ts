@@ -18,7 +18,7 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { LEAVE_DOCUMENTS_MAX } from '@trendlix/shared';
-import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { contentDisposition } from '../paperwork/paperwork-file.js';
@@ -159,6 +159,7 @@ export class LeaveRequestsController {
     return this.requests.one(id, user);
   }
 
+  @NotForDevelopers()
   @Get(':id/documents/:documentId')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')

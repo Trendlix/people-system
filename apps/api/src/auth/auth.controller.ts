@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, Res }
 import type { Request, Response } from 'express';
 import { readToken } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
-import { CurrentActiveSession, CurrentUser, Public } from './decorators.js';
+import { CurrentActiveSession, CurrentUser, DeveloperMayCall, Public } from './decorators.js';
 import { DeviceCredentialsService, type DeviceView, type NewDevice } from './device-credentials.service.js';
 import { CreateDeviceDto, DeviceSignInDto } from './device.dto.js';
 import { LoginDto } from './login.dto.js';
@@ -34,6 +34,7 @@ export class AuthController {
   // Signing out also ends viewing as someone: the switched session is the Super Admin's own (see view-as.ts). It ends
   // the session on the server too (20 October 2026). Public, so a session already over can still sign out.
   @Public()
+  @DeveloperMayCall()
   @Post('logout')
   @HttpCode(204)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<void> {
@@ -64,6 +65,7 @@ export class AuthController {
   }
 
   /** Sign out beside one of one's own sessions: it ends ('signed_out'), on whichever device it is. */
+  @DeveloperMayCall()
   @Post('sessions/:id/end')
   @HttpCode(204)
   end(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<void> {
@@ -71,6 +73,7 @@ export class AuthController {
   }
 
   /** Changing one's password also ends one's other sessions and stops fingerprint sign-in on one's phones. */
+  @DeveloperMayCall()
   @Post('change-password')
   @HttpCode(204)
   changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<void> {

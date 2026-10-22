@@ -18,7 +18,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
-import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, DeveloperMaySee, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { FileTooLargeFilter } from './file-too-large.filter.js';
@@ -119,6 +119,7 @@ export class PaperworkController {
 
   @ConfidentialOf('paperwork', 'itemId')
   @Roles('hr', 'ceo')
+  @NotForDevelopers()
   @Get(':itemId/file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -133,6 +134,7 @@ export class PaperworkController {
    * minutes, so a list of people doesn't load every photo on every visit; a photo adjusted since shows within that.
    */
   @Roles('hr', 'ceo')
+  @DeveloperMaySee()
   @Get(':itemId/photo')
   @Header('Cache-Control', 'private, max-age=600')
   @Header('X-Content-Type-Options', 'nosniff')

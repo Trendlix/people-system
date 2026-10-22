@@ -20,7 +20,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ASSET_PHOTOS_MAX } from '@trendlix/shared';
-import { ConnectorScope, CurrentActiveSession, DeletesRecords } from '../auth/decorators.js';
+import { ConnectorScope, CurrentActiveSession, DeletesRecords, DeveloperMaySee } from '../auth/decorators.js';
 import type { ActiveSession } from '../auth/sessions.service.js';
 import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
 import { PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
@@ -242,6 +242,7 @@ export class AssetDraftsController {
 
   /** A product image, for the draft's page (kept by the browser for ten minutes, as an asset's photos). */
   @AssetsLevel('custodian')
+  @DeveloperMaySee()
   @Get(':id/product-images/:imageId')
   @Header('Cache-Control', 'private, max-age=600')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -356,6 +357,7 @@ export class AssetsController {
 
   /** A photo, kept by the browser for ten minutes (a list of assets doesn't load every photo on every visit). */
   @AssetsLevel('viewer')
+  @DeveloperMaySee()
   @Get(':code/photos/:photoId')
   @Header('Cache-Control', 'private, max-age=600')
   @Header('X-Content-Type-Options', 'nosniff')

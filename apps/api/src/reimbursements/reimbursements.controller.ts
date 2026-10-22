@@ -17,7 +17,7 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { REIMBURSEMENT_RECEIPTS_MAX } from '@trendlix/shared';
-import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { contentDisposition } from '../paperwork/paperwork-file.js';
 import { RECEIPT_UPLOAD, ReceiptUploadFilter } from './receipts.js';
@@ -122,6 +122,7 @@ export class ReimbursementsController {
     return this.claims.one(id, user);
   }
 
+  @NotForDevelopers()
   @Get(':id/receipts/:receiptId')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')

@@ -8,6 +8,7 @@ import { AssetExportsService } from './asset-exports.service.js';
 import { AssetLabelsService } from './asset-labels.service.js';
 import { AssetsLevel, CurrentAssetsCaller, type AssetsCaller } from './assets-access.js';
 import { AssetCountDto, AssetCountScopeDto, AssetCountsQueryDto, AssetLabelledDto, AssetLabelsQueryDto, MarkLostFromCountDto } from './asset-counts.dto.js';
+import { NotForDevelopers } from '../auth/decorators.js';
 
 // The Assets step 5 routes (owner, 22 October 2026: "Assets step 5 (stock counts, label sheets, the Assets dashboard,
 // exports) … work on this"; packages/shared asset-counts.ts has every answer's shape). Each names the Assets access it
@@ -73,6 +74,7 @@ export class AssetExportsController {
 
   /** An Excel workbook: register, custody, stock, maintenance or counts. */
   @AssetsLevel('viewer')
+  @NotForDevelopers()
   @Get(':kind')
   @Header('Cache-Control', 'private, no-store')
   async download(@Param('kind') kind: string, @CurrentAssetsCaller() caller: AssetsCaller): Promise<StreamableFile> {

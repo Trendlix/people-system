@@ -16,7 +16,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, DeveloperMaySee, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { todayInCairo } from '../common/date-only.js';
 import { attachment } from '../templates/template-file.js';
@@ -51,6 +51,7 @@ export class HolidaysController {
    * Until, Name (English), Name (Arabic), an example row in ?year= (this year without it) and a sheet on the formats.
    */
   @Roles('hr', 'admin')
+  @DeveloperMaySee()
   @Get('template.xlsx')
   @Header('Cache-Control', 'private, no-store')
   async template(@Query() query: HolidaysQueryDto): Promise<StreamableFile> {

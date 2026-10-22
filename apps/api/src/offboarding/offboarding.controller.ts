@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, StreamableFile } from '@nestjs/common';
-import { CurrentUser, Roles } from '../auth/decorators.js';
+import { CurrentUser, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
@@ -141,6 +141,7 @@ export class OffboardingController {
 
   /** The year's turnover as an Excel workbook: "Turnover 2026.xlsx". */
   @Roles(...MANAGERS)
+  @NotForDevelopers()
   @Get('turnover/export')
   @Header('Cache-Control', 'private, no-store')
   async export(@Query() query: TurnoverQueryDto, @CurrentUser() user: SessionUser): Promise<StreamableFile> {

@@ -89,6 +89,12 @@ export interface SessionUser {
    * shows them My Hiring. Left out by an API from before it.
    */
   hiring?: boolean;
+  /**
+   * A developer's session (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real
+   * numbers"): `roles` are a Super Admin's sight, every change is refused by the API and every amount and personal ID
+   * comes masked; the banner says so. Left out for anyone else.
+   */
+  developer?: boolean;
 }
 
 /**

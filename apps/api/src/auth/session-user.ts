@@ -1,4 +1,4 @@
-import type { AssetsAccessView, Role, SessionKind } from '@trendlix/shared';
+import { DEVELOPER_ACTS_AS, isDeveloperRole, type AssetsAccessView, type Role, type SessionKind } from '@trendlix/shared';
 
 export const SESSION_COOKIE = 'ps_session';
 export const SESSION_HOURS = 8;
@@ -21,6 +21,12 @@ export interface SessionUser {
   email: string;
   roles: Role[];
   viewAs?: ViewAs | null;
+  /**
+   * A developer's request (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real
+   * numbers"): answered with DEVELOPER_ACTS_AS as `roles` (what a Super Admin sees), read only, the money and personal
+   * IDs masked (auth.guard.ts, developer.interceptor.ts; packages/shared developer.ts). Left out for anyone else.
+   */
+  developer?: boolean;
 }
 
 /** A user as the database has them (with their roles), for a session. */
@@ -28,6 +34,15 @@ export const WITH_ROLES = { roles: { include: { role: true } } } as const;
 
 export function sessionUserOf(user: { id: string; email: string; roles: { role: { key: string } }[] }): SessionUser {
   return { id: user.id, email: user.email, roles: user.roles.map((r) => r.role.key as Role) };
+}
+
+/**
+ * The user a request is answered as: a developer (the Developer role in the database) with a Super Admin's sight
+ * (DEVELOPER_ACTS_AS) and `developer` set, so every check that reads `roles` opens what it opens to the owner, and every
+ * change is refused by the guard; anyone else as they are.
+ */
+export function answeredAs(user: SessionUser): SessionUser {
+  return isDeveloperRole(user.roles) ? { ...user, roles: [...DEVELOPER_ACTS_AS], developer: true } : user;
 }
 
 /**

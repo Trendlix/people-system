@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, StreamableFile } from '@nestjs/common';
-import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
@@ -224,6 +224,7 @@ export class KpiScorecardsController {
 
   /** The month's scorecards as an Excel workbook: "KPIs October 2026.xlsx". */
   @Roles('hr', 'ceo', 'super_admin')
+  @NotForDevelopers()
   @Get('export')
   @Header('Cache-Control', 'private, no-store')
   async export(@Query() query: KpiExportQueryDto, @CurrentUser() user: SessionUser): Promise<StreamableFile> {

@@ -6,7 +6,9 @@
  * (owner's decision, 15 October 2026). It does not bring the HR, CEO, Finance or manager powers: someone who needs
  * those holds those roles too.
  */
-export const ROLES = ['employee', 'manager', 'hr', 'finance', 'ceo', 'admin', 'super_admin'] as const;
+// 'developer' (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real numbers"): sees what
+// a Super Admin sees, changes nothing, never the money or personal IDs (developer.ts)
+export const ROLES = ['employee', 'manager', 'hr', 'finance', 'ceo', 'admin', 'super_admin', 'developer'] as const;
 export type Role = (typeof ROLES)[number];
 
 /** Role names as the screens show them, and as the database seed stores them (apps/api/prisma/seed.ts). */
@@ -18,6 +20,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   ceo: 'CEO',
   admin: 'Admin',
   super_admin: 'Super Admin',
+  developer: 'Developer',
 };
 
 /**
@@ -504,3 +507,7 @@ export * from './recruitment.js';
 // hiring manager's feedback, the rejection email and the analytics; onboarding, offboarding's mirror
 export * from './recruitment-hiring.js';
 export * from './onboarding.js';
+
+// the Developer role (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real numbers"):
+// read only, money and personal IDs masked by the API
+export * from './developer.js';

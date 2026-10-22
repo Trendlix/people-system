@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, StreamableFile, UploadedFile, UseFilters, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
-import { CurrentUser, DeletesRecords, Public, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, NotForDevelopers, Public, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { contentDisposition } from '../paperwork/paperwork-file.js';
 import { wantsDownload } from '../pdf/pdf-file.js';
@@ -157,6 +157,7 @@ export class ApplicationsController {
   }
 
   /** The CV as sent: shown in the browser, or saved with ?download=1. For those who may open the applicant. */
+  @NotForDevelopers()
   @Get(':id/cv')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -285,6 +286,7 @@ export class RecruitmentAnalyticsController {
   }
 
   @Roles(...READS)
+  @NotForDevelopers()
   @Get('export')
   @Header('Cache-Control', 'private, no-store')
   async export(@Query() query: AnalyticsQueryDto, @CurrentUser() user: SessionUser): Promise<StreamableFile> {

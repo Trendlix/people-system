@@ -19,7 +19,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { TEMPLATE_TAGS } from '@trendlix/shared';
-import { CurrentUser, DeletesRecords, FORBIDDEN_MESSAGE, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, DeveloperMaySee, FORBIDDEN_MESSAGE, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
@@ -62,6 +62,7 @@ export class TemplatesController {
    * The Fields Guide (owner's request, 15 October 2026): how to use the tags, every tag by group and the library's
    * templates, as a Word file to download, or (?format=pdf) a PDF to open in the browser. Before :slot.
    */
+  @DeveloperMaySee()
   @Get('fields-guide')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -138,6 +139,7 @@ export class TemplatesController {
    * Unprotected: it holds no one's data.
    */
   @Roles('hr', 'admin', 'ceo')
+  @NotForDevelopers()
   @Post('versions/:id/fields/sample')
   @HttpCode(200)
   @Header('Cache-Control', 'private, no-store')
@@ -157,6 +159,7 @@ export class TemplatesController {
   }
 
   @Roles('hr', 'admin', 'ceo')
+  @DeveloperMaySee()
   @Get('versions/:id/file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')

@@ -1,5 +1,5 @@
 import { BadRequestException, Controller, Get, Header, Param, ParseUUIDPipe, Query, StreamableFile } from '@nestjs/common';
-import { CurrentUser, Roles } from '../auth/decorators.js';
+import { CurrentUser, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { pdfFile, wantsDownload } from '../pdf/pdf-file.js';
@@ -19,6 +19,7 @@ export class PayslipsController {
 
   /** The run's English payslips (.zip): "Payslips 2026-10.zip", one "Payslip 2026-10 EMP-0007.pdf" each. */
   @Roles('hr', 'finance', 'ceo')
+  @NotForDevelopers()
   @Get('payroll/runs/:id/payslips')
   @Header('Cache-Control', 'private, no-store')
   async run(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
@@ -29,6 +30,7 @@ export class PayslipsController {
   /** A line's payslip, en or ar, as a protected PDF shown in the browser (saved with ?download=1). */
   @ConfidentialOf('payrollLine', 'lineId')
   @Roles('hr', 'finance', 'ceo')
+  @NotForDevelopers()
   @Get('payroll/lines/:lineId/payslip/:language')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -67,6 +69,7 @@ export class MyPayslipsController {
   }
 
   /** Their own line's payslip, en or ar, as the HR route gives it: a protected PDF shown in the browser (saved with ?download=1). */
+  @NotForDevelopers()
   @Get(':lineId/:language')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')

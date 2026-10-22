@@ -254,6 +254,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   view_as_start: 'Started viewing as',
   view_as_stop: 'Stopped viewing as',
   view_restricted: 'Viewed restricted data',
+  // a developer's look at it, the values hidden (22 October 2026)
+  view_hidden: 'Viewed with amounts and IDs hidden',
   waive_attendance: 'Waived the attendance cut',
   withdraw: 'Withdrew',
   // offboarding (22 October 2026): a case opened (or opened again after a withdrawn ending), a clearance item cleared or

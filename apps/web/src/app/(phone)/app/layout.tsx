@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { brandMetadata } from '@/components/brand';
 import { CheckInReminder } from '@/components/check-in-reminder';
 import { SessionWatch } from '@/components/session-watch';
+import { DeveloperBanner } from '@/components/developer-banner';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
@@ -56,6 +57,7 @@ export default function PhoneLayout({ children }: LayoutProps<'/app'>) {
       <div className="sticky top-0 z-30" data-phone-header="">
         <Suspense fallback={null}>
           <ViewAsBanner />
+          <DeveloperBanner />
         </Suspense>
         <header className={`on-dark bg-sidebar pt-[env(safe-area-inset-top)] text-white ${SIDES}`}>
           <div className="mx-auto flex min-h-14 max-w-xl items-center">

@@ -1,5 +1,5 @@
 import { Controller, Get, Header, Param, ParseUUIDPipe, Query, StreamableFile } from '@nestjs/common';
-import { CurrentUser, Roles } from '../auth/decorators.js';
+import { CurrentUser, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
@@ -44,6 +44,7 @@ export class AttendanceController {
 
   /** The Summary as an Excel workbook: "Attendance 2026-10.xlsx". */
   @Roles('hr', 'ceo', 'finance')
+  @NotForDevelopers()
   @Get('summary.xlsx')
   @Header('Cache-Control', 'private, no-store')
   async workbook(@Query() query: AttendanceSummaryQueryDto, @CurrentUser() user: SessionUser): Promise<StreamableFile> {

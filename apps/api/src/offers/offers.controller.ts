@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { CurrentUser, DeletesRecords, Public, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, NotForDevelopers, Public, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { pdfFile, pdfOnly, wantsDownload } from '../pdf/pdf-file.js';
 import { AcceptOfferDto, AnswerOfferDto, CreateOfferDto, DeclineOfferDto, ListOffersDto, OfferDocumentQueryDto, SendOfferDto, UpdateOfferDto, WithdrawOfferDto } from './offers.dto.js';
@@ -55,6 +55,7 @@ export class OffersController {
    * X-Template-Draft: <its version>.
    */
   @Roles('hr', 'ceo')
+  @NotForDevelopers()
   @Get(':id/document')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -120,6 +121,7 @@ export class PublicOffersController {
   }
 
   /** The offer as sent, as a protected PDF: shown in the browser, or saved with ?download=1. */
+  @NotForDevelopers()
   @Get(':token/document')
   @Header('Cache-Control', 'no-store')
   @Header('Referrer-Policy', 'no-referrer')

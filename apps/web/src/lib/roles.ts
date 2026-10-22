@@ -13,6 +13,8 @@ export const ROLE_LABELS: Record<Role, string> = {
   ceo: 'CEO',
   admin: 'Admin',
   super_admin: 'Super Admin',
+  // read only, money and personal IDs hidden (owner, 22 October 2026: "i want to create a role for develoeprs")
+  developer: 'Developer',
 };
 
 type WithRoles = { roles: readonly Role[] };
@@ -58,16 +60,20 @@ export function isSuperAdmin(user: WithRoles): boolean {
  * (owner's decision, 15 October 2026). Cancel, withdraw, reject and deactivate stay with whoever has them. Viewing as a
  * Super Admin view only, there is none either (owner's decision, 17 October 2026): the API refuses every change then.
  */
-export function canDelete(user: WithRoles & { viewAs?: ViewAs | null }): boolean {
-  return isSuperAdmin(user) && (!user.viewAs || user.viewAs.act);
+export function canDelete(user: WithRoles & { viewAs?: ViewAs | null; developer?: boolean }): boolean {
+  // a developer looks and changes nothing (22 October 2026)
+  return isSuperAdmin(user) && !user.developer && (!user.viewAs || user.viewAs.act);
 }
 
 /** What the API answers a delete from anyone else; server actions refuse with it before asking. */
 export const ONLY_SUPER_ADMIN_DELETES = 'Only a Super Admin can delete records.';
 
-/** The roles this user may tick on someone's account: every one for a Super Admin, all but Super Admin for an Admin. */
+/**
+ * The roles this user may tick on someone's account: every one for a Super Admin, all but Super Admin and Developer
+ * for an Admin (owner, 22 October 2026: the Developer role a Super Admin's to give).
+ */
 export function assignableRoles<R extends Role>(user: WithRoles, roles: readonly R[]): R[] {
-  return isSuperAdmin(user) ? [...roles] : roles.filter((r) => r !== 'super_admin');
+  return isSuperAdmin(user) ? [...roles] : roles.filter((r) => r !== 'super_admin' && r !== 'developer');
 }
 
 /**

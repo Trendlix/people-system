@@ -1,6 +1,6 @@
 import { Controller, Get, Header, Param, ParseUUIDPipe, Query, Res, StreamableFile } from '@nestjs/common';
 import type { Response } from 'express';
-import { CurrentUser, Roles } from '../auth/decorators.js';
+import { CurrentUser, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { pdfFile, pdfOnly, wantsDownload } from '../pdf/pdf-file.js';
 import { TemplatePreviewService } from './template-preview.service.js';
@@ -32,6 +32,7 @@ export class TemplatePreviewController {
    * X-Preview-Offer says whose data it is.
    */
   @Roles('hr', 'admin', 'ceo')
+  @NotForDevelopers()
   @Get('versions/:id/preview')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')

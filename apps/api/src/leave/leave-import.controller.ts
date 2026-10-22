@@ -21,7 +21,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, DeveloperMaySee, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
@@ -52,6 +52,7 @@ export class LeaveImportController {
 
   /** The template: Leaves taken, Balances and How to fill, with the leave types on and the employees the caller sees. */
   @Roles('hr', 'ceo')
+  @DeveloperMaySee()
   @Get('template')
   @Header('Cache-Control', 'private, no-store')
   async template(@CurrentUser() user: SessionUser): Promise<StreamableFile> {

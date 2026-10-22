@@ -9,6 +9,7 @@ import { BellLink, NotificationBell } from '@/components/notification-bell';
 import { CheckInReminder } from '@/components/check-in-reminder';
 import { SessionWatch } from '@/components/session-watch';
 import { UserMenu } from '@/components/user-menu';
+import { DeveloperBanner } from '@/components/developer-banner';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { KPI_API, KPI_PATHS } from '@/lib/kpi-paths';
@@ -148,6 +149,7 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
     <div className="flex min-h-screen flex-col">
       <Suspense fallback={null}>
         <ViewAsBanner />
+        <DeveloperBanner />
       </Suspense>
       <Suspense fallback={null}>
         <SessionWatch />

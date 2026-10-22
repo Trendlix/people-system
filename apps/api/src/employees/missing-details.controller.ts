@@ -1,5 +1,5 @@
 import { Controller, Get, Header, StreamableFile } from '@nestjs/common';
-import { CurrentUser, Roles } from '../auth/decorators.js';
+import { CurrentUser, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
@@ -20,6 +20,7 @@ export class MissingDetailsController {
 
   /** The same report as an Excel workbook: "Missing details YYYY-MM-DD.xlsx". */
   @Roles('hr', 'ceo')
+  @NotForDevelopers()
   @Get('missing.xlsx')
   @Header('Cache-Control', 'private, no-store')
   async workbook(@CurrentUser() user: SessionUser): Promise<StreamableFile> {

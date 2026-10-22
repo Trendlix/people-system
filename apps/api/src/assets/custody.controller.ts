@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Query, Res, StreamableFile, UploadedFile, UseFilters, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { CurrentUser } from '../auth/decorators.js';
+import { CurrentUser, NotForDevelopers } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { FileTooLargeFilter } from '../paperwork/file-too-large.filter.js';
 import { contentDisposition, PAPERWORK_MAX_BYTES } from '../paperwork/paperwork-file.js';
@@ -96,6 +96,7 @@ export class CustodyController {
   }
 
   @AssetsLevel('viewer')
+  @NotForDevelopers()
   @Get(':code/signed/:fileId')
   async signed(
     @Param('code') code: string,
@@ -121,6 +122,7 @@ export class MyCustodyController {
   }
 
   /** Their own signed form. */
+  @NotForDevelopers()
   @Get(':code/files/:fileId')
   async file(@Param('code') code: string, @Param('fileId', ParseUUIDPipe) fileId: string, @CurrentUser() user: SessionUser, @Res({ passthrough: true }) res: Response): Promise<StreamableFile> {
     return sent(res, await this.files.myFile(code, fileId, user));

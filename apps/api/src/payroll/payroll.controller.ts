@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, StreamableFile } from '@nestjs/common';
-import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { attachment } from '../templates/template-file.js';
 import type { BankFileKind } from './bank.js';
@@ -138,6 +138,7 @@ export class PayrollController {
 
   /** The payroll register (.xlsx), whatever the status. */
   @Roles('hr', 'finance', 'ceo')
+  @NotForDevelopers()
   @Get(':id/files/register')
   @Header('Cache-Control', 'private, no-store')
   async register(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
@@ -146,6 +147,7 @@ export class PayrollController {
 
   /** CIB's payroll system file, once approved; ?valueDate=YYYY-MM-DD, today unless sent. */
   @Roles('hr', 'finance', 'ceo')
+  @NotForDevelopers()
   @Get(':id/files/cib')
   @Header('Cache-Control', 'private, no-store')
   async cib(@Param('id', ParseUUIDPipe) id: string, @Query() query: CibFileQueryDto, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
@@ -154,6 +156,7 @@ export class PayrollController {
 
   /** The ACH file, once approved. */
   @Roles('hr', 'finance', 'ceo')
+  @NotForDevelopers()
   @Get(':id/files/ach')
   @Header('Cache-Control', 'private, no-store')
   async ach(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
