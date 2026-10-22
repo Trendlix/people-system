@@ -67,7 +67,7 @@ const LIST_SELECT = {
   mobile: true,
   yearsExperience: true,
   departmentId: true,
-  department: { select: { nameEn: true } },
+  department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
   areaOther: true,
   source: true,
   referrer: true,
@@ -80,7 +80,7 @@ const LIST_SELECT = {
 type ListRow = Prisma.GeneralCvGetPayload<{ select: typeof LIST_SELECT }>;
 
 const DETAIL_INCLUDE = {
-  department: { select: { nameEn: true } },
+  department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
   createdBy: { select: { id: true, email: true } },
   consentBy: { select: { id: true, email: true } },
   application: { select: { id: true, number: true, vacancy: { select: { id: true, title: true } } } },
@@ -106,7 +106,14 @@ function senderIp(named: string | null, origin: ApplyOrigin, key: string | undef
   return signed.problem === 'no_server_key' ? (named ?? origin.ip) : origin.ip;
 }
 
-const areaOf = (r: { department: { nameEn: string } | null; areaOther: string | null }) => r.department?.nameEn ?? r.areaOther ?? 'Other';
+/** A team as an area: "Video · Production"; a department as itself. */
+const areaName = (d: { nameEn: string; parent?: { nameEn: string } | null }) => (d.parent ? `${d.nameEn} · ${d.parent.nameEn}` : d.nameEn);
+
+const areaOf = (r: { department: { nameEn: string; parent?: { nameEn: string } | null } | null; areaOther: string | null }) =>
+  r.department ? areaName(r.department) : (r.areaOther ?? 'Other');
+
+/** C-level (owner, 22 October 2026: "C Level isn't an option for any user or even HR"): every job title for a confidential grade, as G9 Executive. */
+const cLevel = (titles: readonly { minGrade: { confidential: boolean } | null }[]) => titles.length > 0 && titles.every((t) => t.minGrade?.confidential === true);
 
 @Injectable()
 export class GeneralCvsService {
@@ -122,13 +129,33 @@ export class GeneralCvsService {
 
   // ---------- the careers page ----------
 
-  /** The general form: the company, and the departments (not teams) to choose an area from. */
+  /** The general form: the company, and the areas to choose from (areas()). */
   async publicForm(): Promise<PublicGeneralForm> {
-    const [company, areas] = await Promise.all([
-      this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true, nameAr: true } }),
-      this.prisma.department.findMany({ where: { parentId: null }, select: { id: true, nameEn: true }, orderBy: [{ sortOrder: 'asc' }, { nameEn: 'asc' }] }),
-    ]);
-    return { company: { nameEn: company?.nameEn ?? '', nameAr: company?.nameAr ?? null }, areas: areas.map((a) => ({ id: a.id, name: a.nameEn })) };
+    const [company, areas] = await Promise.all([this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true, nameAr: true } }), this.areas()]);
+    return { company: { nameEn: company?.nameEn ?? '', nameAr: company?.nameAr ?? null }, areas };
+  }
+
+  /**
+   * The areas a CV may be for (owner, 22 October 2026: "from my POV, it should be related to teams not departments"; "C
+   * Level isn't an option for any user or even HR, how will someone apply for a c-level"), in the organisation's order:
+   * each team, named with its department ("Video · Production"); a department as itself when it has no teams, or job
+   * titles of its own besides its teams'. Never a C-level one (cLevel): a department whose job titles, its teams' too,
+   * are all for a confidential grade is left out with its teams, and so is such a team.
+   */
+  private async areas(): Promise<{ id: string; name: string }[]> {
+    const titles = { select: { minGrade: { select: { confidential: true } } } } as const;
+    const order = [{ sortOrder: 'asc' as const }, { nameEn: 'asc' as const }];
+    const rows = await this.prisma.department.findMany({
+      where: { parentId: null },
+      orderBy: order,
+      select: { id: true, nameEn: true, jobTitles: titles, children: { orderBy: order, select: { id: true, nameEn: true, jobTitles: titles } } },
+    });
+    return rows.flatMap((d) => {
+      if (cLevel([...d.jobTitles, ...d.children.flatMap((t) => t.jobTitles)])) return [];
+      const own = !d.children.length || (d.jobTitles.length > 0 && !cLevel(d.jobTitles)) ? [{ id: d.id, name: d.nameEn }] : [];
+      const teams = d.children.filter((t) => !cLevel(t.jobTitles)).map((t) => ({ id: t.id, name: areaName({ nameEn: t.nameEn, parent: { nameEn: d.nameEn } }) }));
+      return [...own, ...teams];
+    });
   }
 
   /**
@@ -411,10 +438,10 @@ export class GeneralCvsService {
     };
   }
 
-  /** The area chosen: a department (not a team) when one is. */
+  /** The area chosen, when one is: one of areas() (a team, or a department without teams; never a C-level one). */
   private async areaProblems(departmentId: string | null | undefined): Promise<string[]> {
     if (!departmentId) return [];
-    const ok = /^[0-9a-f-]{36}$/i.test(departmentId) && (await this.prisma.department.count({ where: { id: departmentId, parentId: null } })) > 0;
+    const ok = /^[0-9a-f-]{36}$/i.test(departmentId) && (await this.areas()).some((a) => a.id === departmentId);
     return ok ? [] : ['Choose one of the areas, or Other and write it.'];
   }
 

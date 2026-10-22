@@ -39,6 +39,8 @@ describe('General CVs and the bulk upload (e2e)', () => {
   const sessions: Record<string, string> = {};
   const users: Record<string, string> = {};
   let departmentId: string;
+  let boardId: string;
+  let boardTitleId: string;
   let teamId: string;
   let jobTitleId: string;
   let vacancy: VacancyView;
@@ -99,6 +101,10 @@ describe('General CVs and the bulk upload (e2e)', () => {
     await account('outsider', ['employee']);
     departmentId = (await prisma.department.create({ data: { nameEn: `Studio ${RUN}` }, select: { id: true } })).id;
     teamId = (await prisma.department.create({ data: { nameEn: `Video ${RUN}`, parentId: departmentId }, select: { id: true } })).id;
+    // a C-level department: its only job title for G9 · Executive, a confidential grade (22 October 2026)
+    const g9 = (await prisma.grade.findFirstOrThrow({ where: { code: 'G9' }, select: { id: true } })).id;
+    boardId = (await prisma.department.create({ data: { nameEn: `Board ${RUN}` }, select: { id: true } })).id;
+    boardTitleId = (await prisma.jobTitle.create({ data: { departmentId: boardId, titleEn: `Chief Officer ${RUN}`, minGradeId: g9 }, select: { id: true } })).id;
     jobTitleId = (await prisma.jobTitle.create({ data: { departmentId, titleEn: `Editor ${RUN}`, jdPurpose: '<p>Edit the studio’s videos.</p>' }, select: { id: true } })).id;
     const made = (await post('hr', '/recruitment/vacancies', { jobTitleId, employmentType: 'full_time', headcount: 2, closingDate: addDays(TODAY, 30) }).expect(201)).body as VacancyView;
     await post('hr', `/recruitment/vacancies/${made.id}/submit`).expect(200);
@@ -112,17 +118,21 @@ describe('General CVs and the bulk upload (e2e)', () => {
     await prisma.jobApplication.deleteMany({ where: { vacancy: { jobTitleId } } });
     await prisma.vacancy.deleteMany({ where: { jobTitleId } });
     await prisma.jobTitle.deleteMany({ where: { id: jobTitleId } });
-    await prisma.department.deleteMany({ where: { id: teamId } });
+    await prisma.jobTitle.deleteMany({ where: { id: boardTitleId } });
+    await prisma.department.deleteMany({ where: { id: { in: [teamId, boardId] } } });
     await prisma.department.deleteMany({ where: { id: departmentId } });
     await prisma.notification.deleteMany({ where: { userId: { in: Object.values(users) } } });
     await app.close();
   });
 
   describe('“Send us your CV” on the careers page', () => {
-    it('offers the departments (not their teams) as areas', async () => {
+    // owner, 22 October 2026: "from my POV, it should be related to teams not departments"; "C Level isn't an option for
+    // any user or even HR, how will someone apply for a c-level"
+    it('offers each team with its department, a department with job titles of its own, and never a C-level one', async () => {
       const form = (await api().get('/api/public/general-cvs/form').expect(200)).body as PublicGeneralForm;
       expect(form.areas).toContainEqual({ id: departmentId, name: `Studio ${RUN}` });
-      expect(form.areas.map((a) => a.id)).not.toContain(teamId);
+      expect(form.areas).toContainEqual({ id: teamId, name: `Video ${RUN} · Studio ${RUN}` });
+      expect(form.areas.map((a) => a.id)).not.toContain(boardId);
     });
 
     it('names every problem, wants a CV, and refuses a robot', async () => {
@@ -134,7 +144,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
         'Tick that we may keep your details and CV to consider you for jobs.',
       ]);
       expect(said(await send(person('Nocv', '10.6.0.1'), null).expect(400))).toEqual(['Attach your CV, as a PDF or a Word file.']);
-      expect(said(await send({ ...person('Team', '10.6.0.1'), departmentId: teamId }).expect(400))).toEqual(['Choose one of the areas, or Other and write it.']);
+      expect(said(await send({ ...person('Board', '10.6.0.1'), departmentId: boardId }).expect(400))).toEqual(['Choose one of the areas, or Other and write it.']);
       expect(said(await send({ ...person('Robot', '10.6.0.1'), website: 'spam' }).expect(400))).toEqual(["Your CV couldn't be sent. Please try again."]);
     });
 
