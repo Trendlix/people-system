@@ -18,6 +18,7 @@ import {
 import { Prisma } from '../generated/prisma/client.js';
 import { OcrClient } from '../paperwork/ocr.client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { CandidatesService } from './candidates.service.js';
 import { DOCX, PDF } from './cv-file.js';
 import { cvText } from './cv-text.js';
 
@@ -66,6 +67,7 @@ export class CvReadingsService implements OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ocr: OcrClient,
+    private readonly candidates: CandidatesService,
   ) {}
 
   /** Starts the round every minute (main.ts, once the API listens). The timer never keeps the process alive. */
@@ -229,6 +231,9 @@ export class CvReadingsService implements OnModuleDestroy {
     if (!count) return;
     if (row.applicationId) await this.rescoreApplication(row.applicationId);
     if (row.uploadId && status === 'read') await this.fillUpload(row.uploadId, kept);
+    // the contacts read from the CV may suggest a match (candidate profiles, 22 October 2026): its candidate worked out again
+    if (status === 'read' && row.applicationId) await this.candidates.refreshFor({ applicationId: row.applicationId });
+    if (status === 'read' && row.generalCvId) await this.candidates.refreshFor({ generalCvId: row.generalCvId });
   }
 
   /** The OCR service down or failing: tried again at its next try, or failed for good after the last. */

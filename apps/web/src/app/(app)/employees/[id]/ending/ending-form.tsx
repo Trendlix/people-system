@@ -124,7 +124,8 @@ function Preview({
     lines.push(
       <>
         <span className="font-semibold">{ART_154_NOTE}.</span>
-        {lastDay && ` ${art154Text(art154Estimate(art154.joinDate, lastDay, art154.monthlyWage))}`}
+        {/* a developer gets no join date (owner, 22 October 2026: "Hide per-person details"): no estimate */}
+        {lastDay && art154.joinDate && ` ${art154Text(art154Estimate(art154.joinDate, lastDay, art154.monthlyWage))}`}
       </>,
     );
   }

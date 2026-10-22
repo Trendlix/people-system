@@ -158,8 +158,11 @@ export class PaperworkController {
     return this.paperwork.cropPhoto(itemId, dto.crop, user, dto.size);
   }
 
+  // never a developer's: what was read from a paper is the paper (an ID card, the social insurance print; owner, 22 October
+  // 2026: "and the social insurance")
   @ConfidentialOf('paperwork', 'itemId')
   @Roles('hr', 'ceo')
+  @NotForDevelopers()
   @Get(':itemId/text')
   @Header('Cache-Control', 'private, no-store')
   text(@Param('itemId', ParseUUIDPipe) itemId: string, @CurrentUser() user: SessionUser) {

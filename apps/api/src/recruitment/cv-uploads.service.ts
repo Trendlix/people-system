@@ -23,6 +23,7 @@ import { dayInCairo, shownDate } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { nextApplicationNumber } from './application-numbers.js';
+import { attachCandidate, candidateIdsOf, findCandidates, foundIds, refreshCandidate } from './candidate-links.js';
 import { cvFileName, cvProblem, cvTypeOf, type CvType } from './cv-file.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { cvText } from './cv-text.js';
@@ -202,22 +203,26 @@ export class CvUploadsService {
           await this.audit.record({ userId: user.id, action: 'create', entityType: APPLICATION_ENTITY, entityId: made.id, diff: { number: made.number, vacancy: vacancy.number, source, via: 'bulk upload' } });
           result.saved.push({ id: u.id, reference: made.number, fullName: r.fullName.trim() });
         } else {
-          const recent = await this.prisma.generalCv.findFirst({
-            where: { email, createdAt: { gte: new Date(Date.now() - GENERAL_CV_LIMITS.perEmailDays * DAY) } },
-            orderBy: { createdAt: 'desc' },
-            select: { number: true, createdAt: true },
-          });
-          if (recent && !r.keep) {
-            result.skipped.push({ id: u.id, fileName: u.fileName, reason: `${email} sent a CV on ${shownDate(dayInCairo(recent.createdAt))} (${recent.number}): tick Keep to save it anyway.` });
-            continue;
-          }
           const source = r.source as GeneralCvSource;
           const label = GENERAL_CV_SOURCE_LABELS[source];
+          const recentSaid = (recent: { number: string; createdAt: Date }) => `${email} sent a CV on ${shownDate(dayInCairo(recent.createdAt))} (${recent.number}): tick Keep to save it anyway.`;
           const made = await this.prisma.$transaction(async (tx) => {
+            // its candidate (22 October 2026): the candidates' lock first; one in the last 30 days from the same person
+            // (their email, or their candidate) skipped unless HR keeps it
+            const found = await findCandidates(tx, { email, mobile: keptMobile(r.mobile) });
+            const ids = foundIds(found);
+            const recent = await tx.generalCv.findFirst({
+              where: { createdAt: { gte: new Date(Date.now() - GENERAL_CV_LIMITS.perEmailDays * DAY) }, OR: [{ email }, ...(ids.length ? [{ candidateId: { in: ids } }] : [])] },
+              orderBy: { createdAt: 'desc' },
+              select: { number: true, createdAt: true },
+            });
+            if (recent && !r.keep) return { skipped: recentSaid(recent), row: null };
+            const candidate = await attachCandidate(tx, { fullName: r.fullName, email, mobile: keptMobile(r.mobile) }, found);
             const number = await nextApplicationNumber(tx);
             const row = await tx.generalCv.create({
               data: {
                 number,
+                candidateId: candidate.id,
                 fullName: r.fullName.trim().replace(/\s+/g, ' '),
                 email,
                 mobile: keptMobile(r.mobile),
@@ -236,11 +241,16 @@ export class CvUploadsService {
             });
             await this.readings.carry(tx, { uploadId: u.id }, { generalCvId: row.id });
             await tx.cvUpload.delete({ where: { id: u.id } });
-            return row;
+            await refreshCandidate(tx, candidate.id);
+            return { skipped: null, row };
           });
+          if (!made.row) {
+            result.skipped.push({ id: u.id, fileName: u.fileName, reason: made.skipped ?? 'Skipped.' });
+            continue;
+          }
           this.readings.kick();
-          await this.audit.record({ userId: user.id, action: 'create', entityType: GENERAL_CV_ENTITY, entityId: made.id, diff: { number: made.number, source, via: 'bulk upload' } });
-          result.saved.push({ id: u.id, reference: made.number, fullName: r.fullName.trim() });
+          await this.audit.record({ userId: user.id, action: 'create', entityType: GENERAL_CV_ENTITY, entityId: made.row.id, diff: { number: made.row.number, source, via: 'bulk upload' } });
+          result.saved.push({ id: u.id, reference: made.row.number, fullName: r.fullName.trim() });
         }
         emails.add(email);
       } catch (err) {
@@ -292,6 +302,18 @@ export class CvUploadsService {
     const guesses = rows.map((r) => guessOf(r.guess));
     const emails = [...new Set(guesses.map((g) => g.email).filter((e): e is string => !!e))];
     const there = new Map<string, { reference: string; date: string }>();
+    // the same person by their mobile (candidate profiles, 22 October 2026): there already through their candidate
+    const byMobile = new Map<number, { reference: string; date: string }>();
+    for (const [i, g] of guesses.entries()) {
+      if (!g.mobile) continue;
+      const ids = await candidateIdsOf(this.prisma, { email: '', mobile: g.mobile });
+      if (!ids.length) continue;
+      const since = new Date(Date.now() - GENERAL_CV_LIMITS.perEmailDays * DAY);
+      const hit = target.vacancyId
+        ? await this.prisma.jobApplication.findFirst({ where: { vacancyId: target.vacancyId, candidateId: { in: ids } }, select: { number: true, createdAt: true } })
+        : await this.prisma.generalCv.findFirst({ where: { candidateId: { in: ids }, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, select: { number: true, createdAt: true } });
+      if (hit) byMobile.set(i, { reference: hit.number, date: dayInCairo(hit.createdAt) });
+    }
     if (emails.length) {
       if (target.vacancyId) {
         const apps = await this.prisma.jobApplication.findMany({ where: { vacancyId: target.vacancyId, email: { in: emails } }, select: { email: true, number: true, createdAt: true } });
@@ -309,7 +331,7 @@ export class CvUploadsService {
     const batch = await this.prisma.cvUpload.findMany({ where: { createdById: userId, vacancyId: target.vacancyId, id: { notIn: rows.map((r) => r.id) } }, select: { guess: true, createdAt: true } });
     return rows.map((r, i) => {
       const g = guesses[i];
-      const found = g.email ? there.get(g.email) : undefined;
+      const found = (g.email ? there.get(g.email) : undefined) ?? byMobile.get(i);
       const earlier =
         !!g.email &&
         (guesses.slice(0, i).some((x) => x.email === g.email) || batch.some((b) => b.createdAt < r.createdAt && guessOf(b.guess).email === g.email));

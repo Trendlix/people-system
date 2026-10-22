@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { EMPLOYMENT_TYPES, LABELS, WORK_PATTERN_LABELS } from '@trendlix/shared';
+import { Shown } from '@/components/hidden';
 import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
+import { isHidden, labelOf } from '@/lib/hidden';
 import type { ContractListItem } from '@/lib/types';
 import { ContractStatusBadge, termLabel } from '../employees/[id]/contracts/contract-section';
 import { allowancesLabel, formatEgp, hourlyTerms, payLabel } from '../employees/[id]/contracts/salary';
@@ -126,7 +128,8 @@ function SalaryLines({ contract: c }: { contract: ContractListItem }) {
 const employmentNotes = (c: ContractListItem) =>
   [
     c.paidByCommission && 'Paid by commission',
-    c.workNature && c.workNature !== 'regular' && workNatureLabel(c.workNature),
+    // hidden from a developer (owner, 22 October 2026: "Hide per-person details"): left out
+    c.workNature && c.workNature !== 'regular' && !isHidden(c.workNature) && workNatureLabel(c.workNature),
     c.workPattern && c.workPattern !== 'on_site' && WORK_PATTERN_LABELS[c.workPattern],
   ]
     .filter(Boolean)
@@ -153,18 +156,22 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
         </div>
       </td>
       <td>
-        <span className="whitespace-nowrap">{LABELS.employmentType[c.employmentType] ?? c.employmentType}</span>
+        <span className="whitespace-nowrap">
+          <Shown text={labelOf(LABELS.employmentType, c.employmentType) ?? c.employmentType} />
+        </span>
         {/* by the labour law (18 October 2026): paid by commission, as Sales was; a nature of the work other than regular;
             remote work (Art. 96(1)) */}
         {employmentNotes(c) && <div className="text-xs text-muted">{employmentNotes(c)}</div>}
       </td>
       <td>
-        {c.jobTitleEn ?? dash}
-        {c.departmentName && <div className="text-xs text-muted">{c.departmentName}</div>}
+        <Shown text={c.jobTitleEn} empty={dash} />
+        {c.departmentName && !isHidden(c.departmentName) && <div className="text-xs text-muted">{c.departmentName}</div>}
       </td>
       <td>
         <div className="text-xs text-muted">{c.traineeMonths ? trainingLengthText(c.traineeMonths) : contractLengthText(c)}</div>
-        <span className="whitespace-nowrap tabular-nums">{termLabel(c)}</span>
+        <span className="whitespace-nowrap tabular-nums">
+          <Shown text={termLabel(c)} />
+        </span>
         {/* the hourly rate is with the salary */}
         <div className="text-xs text-muted">{payLabel({ ...c, salaryHidden: true })}</div>
       </td>

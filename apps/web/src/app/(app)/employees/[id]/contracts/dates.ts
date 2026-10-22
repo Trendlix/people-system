@@ -1,6 +1,7 @@
 import type { NoticeUnit } from '@trendlix/shared';
 import { NOTICE_UNIT_LABELS } from '@trendlix/shared';
 import { formatDate } from '../../../../../lib/format';
+import { HIDDEN_LABEL } from '../../../../../lib/hidden';
 
 // The dates the contract and ending forms preview while HR types: a contract's end, the probation end, and the last
 // working day after a notice. Dates are YYYY-MM-DD, as the API sends them, counted in whole days (no time zone). The
@@ -42,7 +43,9 @@ export function daysBetween(from: string, to: string): number {
 }
 
 /** A version's term as the screens show it: "01/11/2026 – 31/10/2027", or "From 01/11/2026" when the end isn't known. */
-export function termLabel(c: { startDate: string; endDate: string | null }): string {
+export function termLabel(c: { startDate: string | null; endDate: string | null }): string {
+  // a developer gets no contract dates (owner, 22 October 2026: "Hide per-person details")
+  if (!c.startDate) return HIDDEN_LABEL;
   return c.endDate ? `${formatDate(c.startDate)} – ${formatDate(c.endDate)}` : `From ${formatDate(c.startDate)}`;
 }
 

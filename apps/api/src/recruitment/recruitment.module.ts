@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { ApplicationsService } from './applications.service.js';
+import { CandidatesController } from './candidates.controller.js';
+import { CandidatesService } from './candidates.service.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { CvUploadsService } from './cv-uploads.service.js';
 import { ApplicantsSummaryController, CvUploadsController, GeneralCvsController, PublicGeneralCvsController } from './general-cvs.controller.js';
@@ -43,6 +45,8 @@ import { VacanciesService } from './vacancies.service.js';
     ApplicantsSummaryController,
     CvUploadsController,
     PublicGeneralCvsController,
+    // candidate profiles (owner, 22 October 2026: "how to make like a profile for each candidate …")
+    CandidatesController,
   ],
   providers: [
     VacanciesService,
@@ -58,7 +62,9 @@ import { VacanciesService } from './vacancies.service.js';
     // every CV read and analysed in the background (22 October 2026: "make the OCR egine reads the CV and analyse it")
     CvReadingsService,
     OcrClient,
+    // one profile per candidate, the backfill started by main.ts (22 October 2026)
+    CandidatesService,
   ],
-  exports: [RecruitmentOffersService, InterviewsService, RecruitmentSchedulerService, CvReadingsService],
+  exports: [RecruitmentOffersService, InterviewsService, RecruitmentSchedulerService, CvReadingsService, CandidatesService],
 })
 export class RecruitmentModule {}

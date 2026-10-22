@@ -4,17 +4,19 @@ import { END_REASON_LABELS, STANDING_LABELS, STANDINGS, type Standing } from '@t
 import { CLevelBadge } from '@/components/c-level-badge';
 import { DepartmentOptions } from '@/components/department-options';
 import { GroupHeading } from '@/components/group-heading';
+import { Hidden, Shown } from '@/components/hidden';
 import { Select } from '@/components/select';
 import { apiGet } from '@/lib/api';
 import { cLevelTitle } from '@/lib/confidential';
 import { withTeams } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
+import { employmentHidden, filtersByJob } from '@/lib/hidden';
 import { placeOrder, showsDepartment } from '@/lib/place-groups';
 import { ACCESS_FILTERS, accessBadgeClass, accessLabel, invitableIds, matchesAccess, readAccessFilter, WITHOUT_CONTRACT_LABEL, type AccessFilter } from '@/lib/access';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary, Grade } from '@/lib/types';
 import { StaffOnly } from '../staff-only';
-import { directorySections } from './directory-groups';
+import { directorySections, hiddenPlace } from './directory-groups';
 import { CARD_FIXES_PATH } from './paperwork';
 import { canSeeSalaryRaises, RAISES_PATH } from '../payroll/reports/salary-raises/salary-raises';
 import { CONTRACT_TONE_STYLE, directoryContractStatus } from './contract-status';
@@ -42,9 +44,13 @@ type Filters = { q: string; departmentId: string; gradeId: string; standing: Sta
 
 const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '');
 
-function readFilters(query: Query): Filters {
-  const departmentId = one(query.departmentId);
-  const gradeId = one(query.gradeId);
+/**
+ * The filters in the address. A developer's never narrow by department or grade (owner, 22 October 2026: "Hide per-person
+ * details"): those are hidden from them, so filtering by them would say who is where.
+ */
+function readFilters(query: Query, byJob = true): Filters {
+  const departmentId = byJob ? one(query.departmentId) : '';
+  const gradeId = byJob ? one(query.gradeId) : '';
   // ?status= is how the filter was named before standings (Active, Probation, On leave and Notice period kept their names)
   const standing = one(query.standing) || one(query.status);
   return {
@@ -101,15 +107,15 @@ function Placement({ employee: e }: { employee: EmployeeSummary }) {
   if (!job && e.lastEnded) {
     return (
       <td colSpan={3} className="text-muted">
-        Left <span className="tabular-nums">{formatDate(e.lastEnded.endDate)}</span>
+        Left {e.lastEnded.endDate && <span className="tabular-nums">{formatDate(e.lastEnded.endDate)}</span>}
         {e.lastEnded.endReason && ` · ${END_REASON_LABELS[e.lastEnded.endReason]}`}
       </td>
     );
   }
   return (
     <>
-      <td>{job?.jobTitle?.titleEn ?? dash}</td>
-      <td className="whitespace-nowrap">{job?.grade ? gradeLabel(job.grade) : dash}</td>
+      <td>{job?.jobTitle ? <Shown text={job.jobTitle.titleEn} /> : dash}</td>
+      <td className="whitespace-nowrap">{job?.grade ? <Shown text={gradeLabel(job.grade)} /> : dash}</td>
       <td>{job?.manager?.fullNameEn ?? dash}</td>
     </>
   );
@@ -121,6 +127,13 @@ function Placement({ employee: e }: { employee: EmployeeSummary }) {
  * amber within 30 days of an end. A dash on a C-level person's card, which has none of it.
  */
 function ContractCell({ employee, today }: { employee: EmployeeSummary; today: string }) {
+  // a developer gets no contract dates (22 October 2026: "Hide per-person details")
+  if (employmentHidden(employee.employment))
+    return (
+      <td>
+        <Hidden />
+      </td>
+    );
   const status = directoryContractStatus(employee, today);
   if (!status) return <td>{dash}</td>;
   return <td className={`tabular-nums ${CONTRACT_TONE_STYLE[status.tone]}`}>{status.text}</td>;
@@ -154,7 +167,8 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
     apiGet<EmployeeSummary[]>('/employees'),
     searchParams,
   ]);
-  const f = readFilters(query);
+  const byJob = filtersByJob(user);
+  const f = readFilters(query, byJob);
   const canAdd = canAddEmployees(user);
   // after the data has loaded: it reads the clock
   const today = todayInCairo();
@@ -180,7 +194,8 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   );
   const rows = f.standing ? base.filter((e) => e.standing === f.standing) : base;
   // departments and teams in the order set on Organization (owner, 19 October 2026)
-  const sections = directorySections(rows, placeOrder(departments));
+  // a developer's in one group: where each works is hidden (22 October 2026)
+  const sections = directorySections(rows, placeOrder(departments), byJob ? undefined : hiddenPlace);
   const counts = new Map<Standing, number>();
   for (const e of base) counts.set(e.standing, (counts.get(e.standing) ?? 0) + 1);
   const standings = STANDINGS.filter((s) => counts.has(s) || s === f.standing);
@@ -206,28 +221,32 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
             className="input"
           />
         </div>
-        <div>
-          <label htmlFor="employee-department" className="label">
-            Department
-          </label>
-          <Select id="employee-department" name="departmentId" defaultValue={f.departmentId} className="input min-w-56">
-            <option value="">All departments</option>
-            <DepartmentOptions departments={departments} />
-          </Select>
-        </div>
-        <div>
-          <label htmlFor="employee-grade" className="label">
-            Grade
-          </label>
-          <Select id="employee-grade" name="gradeId" defaultValue={f.gradeId} className="input min-w-44">
-            <option value="">All grades</option>
-            {grades.map((g) => (
-              <option key={g.id} value={g.id}>
-                {gradeLabel(g)}
-              </option>
-            ))}
-          </Select>
-        </div>
+        {byJob && (
+          <>
+            <div>
+              <label htmlFor="employee-department" className="label">
+                Department
+              </label>
+              <Select id="employee-department" name="departmentId" defaultValue={f.departmentId} className="input min-w-56">
+                <option value="">All departments</option>
+                <DepartmentOptions departments={departments} />
+              </Select>
+            </div>
+            <div>
+              <label htmlFor="employee-grade" className="label">
+                Grade
+              </label>
+              <Select id="employee-grade" name="gradeId" defaultValue={f.gradeId} className="input min-w-44">
+                <option value="">All grades</option>
+                {grades.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {gradeLabel(g)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </>
+        )}
         {showAccess && (
           <div>
             <label htmlFor="employee-access" className="label">

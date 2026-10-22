@@ -52,13 +52,30 @@ describe('what a developer receives', () => {
     expect(line.result.gross).toBe(20000);
   });
 
-  it('personal IDs as ••••, wherever they are; an email pseudonymous; dates as they are', () => {
+  it('personal IDs as ••••, wherever they are; an email pseudonymous; dates of activity as they are', () => {
     expect(
       maskForDeveloper(
-        { nationalId: '29503121234567', printedNo: 'KX1234567', mobile: '+201012345678', email: 'omar@mail.test', bank: { accountNo: '1234567890', iban: 'EG3800190005000000001234', bankName: 'CIB' }, joinDate: '2024-01-01' },
+        {
+          nationalId: '29503121234567',
+          printedNo: 'KX1234567',
+          mobile: '+201012345678',
+          email: 'omar@mail.test',
+          bank: { accountNo: '1234567890', iban: 'EG3800190005000000001234', bankName: 'CIB' },
+          joinDate: '2024-01-01',
+          createdAt: '2026-10-22T10:00:00.000Z',
+        },
         '/api/employees/1',
       ),
-    ).toEqual({ nationalId: HIDDEN, printedNo: HIDDEN, mobile: HIDDEN, email: unknownEmail('omar@mail.test'), bank: { accountNo: HIDDEN, iban: HIDDEN, bankName: 'CIB' }, joinDate: '2024-01-01' });
+    ).toEqual({
+      nationalId: HIDDEN,
+      printedNo: HIDDEN,
+      mobile: HIDDEN,
+      email: unknownEmail('omar@mail.test'),
+      bank: { accountNo: HIDDEN, iban: HIDDEN, bankName: 'CIB' },
+      // the hire date is an employment's (22 October 2026: "Hide per-person details")
+      joinDate: null,
+      createdAt: '2026-10-22T10:00:00.000Z',
+    });
   });
 
   it('an audit change of money or an ID: from and to hidden; of anything else as it is', () => {
@@ -67,13 +84,16 @@ describe('what a developer receives', () => {
       { field: 'bank.accountNo', label: 'Bank · Account number', from: '111', to: '222' },
       { field: 'values.purchasePrice', label: 'Purchase price', from: 30000, to: 32000 },
       { field: 'jobTitle', label: 'Job title', from: 'Editor', to: 'Senior Editor' },
+      { field: 'shiftId', label: 'Shift', from: 'Shift A', to: 'Shift B' },
     ];
     expect(maskForDeveloper({ changes }, '/api/audit')).toEqual({
       changes: [
         { field: 'grossSalary', label: 'Gross salary', from: '0', to: '0' },
         { field: 'bank.accountNo', label: 'Bank · Account number', from: HIDDEN, to: HIDDEN },
         { field: 'values.purchasePrice', label: 'Purchase price', from: 0, to: 0 },
-        { field: 'jobTitle', label: 'Job title', from: 'Editor', to: 'Senior Editor' },
+        // a person's job title (22 October 2026: "Hide per-person details")
+        { field: 'jobTitle', label: 'Job title', from: HIDDEN, to: HIDDEN },
+        { field: 'shiftId', label: 'Shift', from: 'Shift A', to: 'Shift B' },
       ],
     });
   });
@@ -179,7 +199,8 @@ describe('no real personal data for a developer', () => {
       photoId: null,
       notes: HIDDEN,
       status: 'active',
-      joinDate: '2024-01-01',
+      // an employment's date (22 October 2026: "Hide per-person details")
+      joinDate: null,
     });
   });
 
@@ -199,8 +220,9 @@ describe('no real personal data for a developer', () => {
       approvedBy: { id: '9a9a9a9a-1111-4222-8333-444455556666', email: 'emp-0182@hidden.invalid', name: 'Employee EMP-0182' },
       outsider: { by: { id: '8b8b8b8b-1111-4222-8333-444455556666', email: `user-${personTag('8b8b8b8b-1111-4222-8333-444455556666')}@hidden.invalid`, name: `User ${personTag('8b8b8b8b-1111-4222-8333-444455556666')}` } },
       holderName: 'Employee EMP-0007',
-      // not people: as they are
-      department: { id: 'd', name: 'Production' },
+      // not people: their names as they are; a department on a page about people is where someone works, hidden
+      // (22 October 2026: "Hide per-person details")
+      department: { id: null, name: HIDDEN },
       asset: { code: 'PK-CAM-0003', name: 'Sony FX6' },
     });
   });
@@ -283,7 +305,9 @@ describe('no real personal data for a developer', () => {
       nameEn: 'TrendLIX',
       addressAr: '15 شارع المحروقي',
       city: 'مدينة نصر',
-      repName: 'Employee EMP-0182',
+      // a company page cuts its people off, even their pseudonym: "Employee EMP-0182" signing as the CEO would say who
+      // EMP-0182 is (22 October 2026: "Hide per-person details")
+      repName: HIDDEN,
       repTitle: 'CEO',
     });
     expect(maskForDeveloper({ repName: 'Someone Outside' }, '/api/company', people)).toEqual({ repName: HIDDEN });
@@ -293,5 +317,26 @@ describe('no real personal data for a developer', () => {
     expect(personTag('8b8b8b8b-1111-4222-8333-444455556666')).toBe(personTag('8b8b8b8b-1111-4222-8333-444455556666'));
     expect(personTag('8b8b8b8b-1111-4222-8333-444455556666')).toMatch(/^[0-9a-f]{6}$/);
     expect(unknownEmail('Someone@Mail.test')).toBe(unknownEmail('someone@mail.test'));
+  });
+});
+
+// Two gaps found with candidate profiles (22 October 2026): a CV's file name written with underscores, and a list of
+// email objects.
+describe('names in file names and lists of email objects', () => {
+  const people = developerPeople({ ...NONE, applicants: [{ id: '7c7c7c7c-1111-4222-8333-444455556666', number: 'APP-2026-0001', fullName: 'Salma Ahmed', email: 'salma@mail.test' }] });
+
+  it('a real name in a file name, its words apart by _ . or -, is hidden', () => {
+    expect(scrubText('Salma_Ahmed_CV.pdf', people)).toBe(`${HIDDEN}_CV.pdf`);
+    expect(scrubText('cv-salma.ahmed-2026.pdf', people)).toBe(`cv-${HIDDEN}-2026.pdf`);
+    expect(scrubText('Salma Ahmed', people)).toBe('Applicant APP-2026-0001');
+  });
+
+  it('every email in a list of objects under an emails key is hidden', () => {
+    const masked = maskForDeveloper({ emails: [{ email: 'salma@mail.test', firstSeen: '2026-10-01' }, { email: 'other@mail.test' }] }, '/api/recruitment/candidates/1', people) as {
+      emails: { email: string; firstSeen?: string }[];
+    };
+    expect(masked.emails[0]).toEqual({ email: 'app-2026-0001@hidden.invalid', firstSeen: '2026-10-01' });
+    expect(masked.emails[1].email).toBe(unknownEmail('other@mail.test'));
+    expect(JSON.stringify(masked)).not.toContain('@mail.test');
   });
 });

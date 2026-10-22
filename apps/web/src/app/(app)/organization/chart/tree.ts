@@ -1,5 +1,5 @@
 import type { OrgChart, OrgChartDepartment, OrgChartJobTitle, OrgChartTeam } from '@/lib/types';
-import { leadLine } from '../../../../lib/department-leads';
+import { leadHidden, leadLine } from '../../../../lib/department-leads';
 import { FIT, FONTS, truncate, wrapText, type FontName, type Measure } from './text';
 
 // Where everything on the org chart goes (owner's request, 15 October 2026: the company's org chart from the Departments
@@ -246,7 +246,7 @@ function unitBox(c: Ctx, kind: 'department' | 'team', unit: OrgChartTeam, people
     const tone = dept ? 'paleOnDark' : 'muted';
     const room = (at >= pill.y + pill.h ? w - 2 * PAD_X : textW) * FIT;
     at = addLines(lines, [truncate(lead, room, 'lead', measure)], 'lead', x + PAD_X, at + LEAD_GAP, 'start', tone);
-    if (options.arabic && unit.head.fullNameAr) {
+    if (options.arabic && unit.head.fullNameAr && !leadHidden(unit.head)) {
       at = addLines(lines, [truncate(unit.head.fullNameAr, (w - 2 * PAD_X) * FIT, 'leadAr', measure)], 'leadAr', x + w - PAD_X, at, 'end', tone);
     }
   }

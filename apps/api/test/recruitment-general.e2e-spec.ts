@@ -22,6 +22,13 @@ import { createApp, createUser, signIn } from './helpers.js';
 const RUN = `gc${Date.now().toString(36)}`;
 const TODAY = todayInCairo();
 const YEAR = TODAY.slice(0, 4);
+/** Each person's own mobile (candidate profiles, 22 October 2026: the same mobile is one person's, joined as one): +2010 and 8 digits. */
+const mobileOf = (who: string) => {
+  const key = `${who}|${RUN}`;
+  let h = 7;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(h, 31) + key.charCodeAt(i)) >>> 0;
+  return `+2010${String(h % 100_000_000).padStart(8, '0')}`;
+};
 
 /** A PDF with these lines of text (none: a scanned one, no text). */
 async function pdfOf(lines: string[] = []): Promise<Buffer> {
@@ -75,7 +82,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
   const person = (who: string, ip: string, extra: Record<string, string> = {}) => ({
     fullName: `${who} Person ${RUN}`,
     email: email(who),
-    mobile: '+20 100 123 4567',
+    mobile: mobileOf(who),
     departmentId: teamId,
     consent: 'true',
     ip,
@@ -217,13 +224,13 @@ describe('General CVs and the bulk upload (e2e)', () => {
     let added: GeneralCvView;
 
     it('HR (and a Super Admin) add one that came by email, the person’s agreement ticked; the CEO reads; nobody else', async () => {
-      const fields = { fullName: `Omar Added ${RUN}`, email: email('omar'), mobile: '01001234567', departmentId: teamId, source: 'email', consent: 'true', notes: 'Sent to hr@', noticePeriod: '1 month' };
+      const fields = { fullName: `Omar Added ${RUN}`, email: email('omar'), mobile: '01001234568', departmentId: teamId, source: 'email', consent: 'true', notes: 'Sent to hr@', noticePeriod: '1 month' };
       expect(said(await add('hr', { ...fields, consent: '' }).expect(400))).toEqual(['Tick that the person agreed to be considered.']);
       expect(said(await add('hr', { ...fields, source: 'referral' }).expect(400))).toEqual(['Write who referred them.']);
       await add('ceo', fields).expect(403);
       await add('outsider', fields).expect(403);
       added = (await add('hr', fields).expect(201)).body as GeneralCvView;
-      expect(added).toMatchObject({ status: 'new', source: 'email', area: `Video ${RUN} · Studio ${RUN}`, mobile: '+201001234567', noticePeriod: '1 month', notes: 'Sent to hr@', consentNote: 'Agreed to be considered (recorded by HR)', can: { review: true, archive: true, move: true } });
+      expect(added).toMatchObject({ status: 'new', source: 'email', area: `Video ${RUN} · Studio ${RUN}`, mobile: '+201001234568', noticePeriod: '1 month', notes: 'Sent to hr@', consentNote: 'Agreed to be considered (recorded by HR)', can: { review: true, archive: true, move: true } });
       // HR's too: a department with teams is no longer an area
       expect(said(await add('hr', { ...fields, departmentId }).expect(400))).toEqual(['Choose one of the areas, or Other and write it.']);
       expect(added.consentBy?.email).toBeTruthy();
@@ -284,7 +291,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
     it('can’t move one whose email applied for the vacancy already', async () => {
       const again = (await add('hr', { fullName: `Omar Again ${RUN}`, email: email('sara'), mobile: '01001234567', departmentId: teamId, source: 'whatsapp', consent: 'true' }).expect(409)).body;
       expect(said({ body: again } as request.Response)[0]).toMatch(/sent a CV on/);
-      const other = (await add('hr', { fullName: `Lina Twice ${RUN}`, email: email('lina'), mobile: '01001234567', departmentId: teamId, source: 'whatsapp', consent: 'true' }).expect(201)).body as GeneralCvView;
+      const other = (await add('hr', { fullName: `Lina Twice ${RUN}`, email: email('lina'), mobile: '01001234569', departmentId: teamId, source: 'whatsapp', consent: 'true' }).expect(201)).body as GeneralCvView;
       await post('hr', `/recruitment/general-cvs/${other.id}/move`, { vacancyId: vacancy.id }).expect(200);
       const third = await prisma.generalCv.create({
         data: { number: `APP-${YEAR}-9${String(Date.now()).slice(-4)}`, fullName: 'Lina Again', email: email('lina'), mobile: '01001234567', areaOther: 'Other', source: 'email', consentAt: new Date(), createdAt: new Date(Date.now() - 40 * 24 * 3600 * 1000) },
@@ -354,7 +361,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
     it('to the general CVs: the area wanted; one sent in the last 30 days skipped unless kept', async () => {
       const recent = (await upload('hr', await pdfOf(['Sara Repeat Person', email('sara'), '01001234567']), 'sara.pdf').expect(201)).body as CvUploadView;
       expect(recent.duplicate).toMatchObject({ inBatch: false, reference: expect.stringMatching(/^APP-/) });
-      const fresh = (await upload('hr', await pdfOf(['Nour Fresh Person', email('nour'), '01001234567']), 'nour.pdf').expect(201)).body as CvUploadView;
+      const fresh = (await upload('hr', await pdfOf(['Nour Fresh Person', email('nour'), '01001234571']), 'nour.pdf').expect(201)).body as CvUploadView;
       const row = (r: CvUploadView, extra: object = {}) => ({ id: r.id, fullName: r.guess.fullName ?? '', email: r.guess.email ?? '', mobile: r.guess.mobile ?? '', source: 'linkedin', ...extra });
       const first = (await post('hr', '/recruitment/cv-uploads/save', { rows: [row(recent, { departmentId: teamId }), row(fresh)] }).expect(200)).body as CvSaveResult;
       expect(first.saved).toEqual([]);

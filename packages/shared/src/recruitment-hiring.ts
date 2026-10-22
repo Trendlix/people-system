@@ -16,6 +16,7 @@
 
 import { APPLICATION_STAGE_LABELS, offerable, stageMoveProblem, type ApplicationSource, type ApplicationStage, type HandStage, type RecruitmentUserRef } from './recruitment.js';
 import type { GeneralCvSource } from './general-cvs.js';
+import type { CandidateBadge } from './candidates.js';
 
 // ---------- who looks ----------
 
@@ -607,6 +608,8 @@ export interface BoardCard {
   /** Interviews still to come. */
   upcomingInterviews: number;
   suggestion: HiringSuggestion | null;
+  /** Their candidate profile, for the badges (22 October 2026): HR, the CEO and a Super Admin only; null for a hiring manager. */
+  candidate?: CandidateBadge | null;
 }
 
 /** GET /recruitment/vacancies/:id/board. */

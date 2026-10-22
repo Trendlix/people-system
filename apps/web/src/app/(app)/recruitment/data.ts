@@ -3,6 +3,8 @@ import type {
   ApplicantsSummary,
   ApplicationListItem,
   ApplicationView,
+  CandidateListItem,
+  CandidateView,
   CvBatchTarget,
   CvTextView,
   CvUploadView,
@@ -10,6 +12,7 @@ import type {
   GeneralCvView,
   InterviewView,
   MyHiring,
+  PossibleMatches,
   PublicGeneralForm,
   RecruitmentAnalytics,
   RecruitmentSettingsView,
@@ -23,6 +26,7 @@ import { generalApiPath, uploadsApiPath, type GeneralQuery } from './general';
 import { applicantCvTextApiPath, generalCvTextApiPath } from './cv-reading';
 import { analyticsSearch, type AnalyticsQuery } from './hiring';
 import { applicantsApiPath, vacanciesApiPath, type ApplicantsQuery, type VacancyFilter } from './recruitment';
+import { candidatesApiPath } from './candidates';
 
 // Reading recruitment (owner, 22 October 2026: "where will we include the ATS?"): the vacancies, a vacancy, the
 // applicants (a vacancy's or all) and an applicant, as the API allows the caller. An API from before them answers 404:
@@ -76,6 +80,15 @@ export async function loadGeneralAreas(): Promise<{ id: string; name: string }[]
 export const loadApplicantCvText = (id: string): Promise<Loaded<CvTextView>> => loadJson(applicantCvTextApiPath(id));
 
 export const loadGeneralCvText = (id: string): Promise<Loaded<CvTextView>> => loadJson(generalCvTextApiPath(id));
+
+// Candidate profiles (22 October 2026: "how to make like a profile for each candidate …"): the list, a profile, and the
+// possible matches HR hasn't decided (refused to a hiring manager or an interviewer: 403).
+
+export const loadCandidates = (f: { q: string }): Promise<Loaded<CandidateListItem[]>> => loadJson(candidatesApiPath(f));
+
+export const loadCandidate = (id: string): Promise<Loaded<CandidateView>> => loadJson(`/recruitment/candidates/${encodeURIComponent(id)}`);
+
+export const loadPossibleMatches = (): Promise<Loaded<PossibleMatches>> => loadJson('/recruitment/candidates/matches');
 
 /** What a page says in place of what it couldn't load. */
 export function recruitmentNotLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {

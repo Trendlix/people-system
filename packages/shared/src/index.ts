@@ -538,3 +538,9 @@ export * from './employee-access.js';
 // as a developer (owner, 22 October 2026: "when a developer signin, give hin a switched to use the account as the main
 // role assigned to him or as a developer, to not confuse him"): kept on the session
 export * from './session-modes.js';
+
+// candidate profiles (owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent
+// duplication? even if the same candidate applied for 2 jobs"; "Email or mobile", "Link and show rehire"; "HR decides
+// from suggested match"): one profile per person, CAN-0001, joined by the same email or mobile, the other signs only
+// suggested to HR, a former employee linked with their rehire eligibility
+export * from './candidates.js';

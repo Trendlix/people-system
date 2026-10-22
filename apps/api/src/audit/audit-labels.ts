@@ -49,6 +49,9 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   job_application: 'Job application',
   // a CV sent or added without a posted job (22 October 2026: "what came out of the posted jobs and what cam on randomly")
   general_cv: 'General CV',
+  // a candidate's profile (22 October 2026: "how to make like a profile for each candidate to store history and prevent
+  // duplication?"): merged, a merge undone, a pair dismissed, an application split off, the backfill of those from before
+  candidate: 'Candidate',
   job_offer: 'Job offer',
   job_title: 'Job title',
   // KPIs (owner, 21 October 2026: "lets start with the KPI's First"): the monthly scorecards, the templates per job title,
@@ -302,6 +305,14 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   rejection_email: 'Emailed the rejection',
   analytics_file: 'Downloaded the recruitment analytics',
   open_onboarding: 'Opened the onboarding checklist',
+  // candidate profiles (22 October 2026): two candidates merged ("Merge with…", or a suggested match confirmed), a merge
+  // undone by a Super Admin, a pair dismissed ("Not the same person"), an application moved to a new candidate, and the
+  // applications and general CVs from before joined to theirs
+  merge: 'Merged',
+  undo_merge: 'Undid the merge',
+  dismiss_match: 'Marked not the same person',
+  split: 'Moved to a new candidate',
+  backfill: 'Joined the earlier ones to their candidates',
   mark_onboarding_item: 'Changed an onboarding item',
   add_onboarding_item: 'Added an onboarding item',
 };

@@ -141,6 +141,8 @@ export const RECRUITMENT_NAV: NavItem = {
   items: [
     { href: '/recruitment/vacancies', label: 'Vacancies', section: '/recruitment/vacancies', roles: ['hr', 'ceo', 'super_admin'] },
     { href: '/recruitment/applicants', label: 'Applicants', section: '/recruitment/applicants', roles: ['hr', 'ceo', 'super_admin'] },
+    // one profile per candidate (22 October 2026: "how to make like a profile for each candidate to store history and prevent duplication?")
+    { href: '/recruitment/candidates', label: 'Candidates', section: '/recruitment/candidates', roles: ['hr', 'ceo', 'super_admin'] },
     { href: '/recruitment/interviews', label: 'Interviews', section: '/recruitment/interviews', roles: ['hr', 'ceo', 'super_admin'] },
     { href: '/recruitment/my-hiring', label: 'My Hiring', section: '/recruitment/my-hiring', audience: 'hiring' },
     { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },

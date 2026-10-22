@@ -6,6 +6,7 @@ import { DocumentViewer } from '@/components/document-viewer';
 import { cLevelTitle } from '@/lib/confidential';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
+import { employmentHidden } from '@/lib/hidden';
 import type { EmployeeProfile, ProfileGap } from '@/lib/types';
 import { confirmationStatus, pendingRequest } from '../confirmation';
 import { Avatar, gradeLabel, photoHref, PROFILE_TABS, profileHref, standingOf, StandingBadge, tabShowing, type ProfileTabKey } from '../ui';
@@ -153,6 +154,8 @@ export function ProfileHeader({
   const grade = e?.grade; // the person's own grade in their current employment
   // "Graphic Designer · G4 · Senior · Marketing › Content Team"
   const role = e && [e.jobTitle?.titleEn, grade && gradeLabel(grade), e.department && departmentName(e.department)].filter(Boolean).join(' · ');
+  // a developer gets none of the job's details (owner, 22 October 2026: "Hide per-person details"), end dates included
+  const hidden = employmentHidden(e ?? p.employments[0]);
 
   return (
     <section className="card space-y-5 p-6">
@@ -182,21 +185,25 @@ export function ProfileHeader({
               {p.fullNameAr}
             </span>
             <StandingBadge standing={standing} />
-            {e && <span className="badge bg-line-soft text-ink">{LABELS.employmentType[e.employmentType]}</span>}
+            {e && !hidden && <span className="badge bg-line-soft text-ink">{LABELS.employmentType[e.employmentType]}</span>}
             {p.confidential && <CLevelBadge title={cLevelTitle(false)} />}
           </div>
           <p className="text-muted">
-            {e
-              ? role || 'No job title yet'
-              : lastEnded?.endDate
-                ? [
-                    lastEnded.jobTitle && `Was ${lastEnded.jobTitle.titleEn}`,
-                    `Left ${formatDate(lastEnded.endDate)}`,
-                    lastEnded.endReason && END_REASON_LABELS[lastEnded.endReason],
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')
-                : 'Not employed yet'}
+            {hidden
+              ? e
+                ? 'Job details hidden'
+                : 'No current employment · job details hidden'
+              : e
+                ? role || 'No job title yet'
+                : lastEnded?.endDate
+                  ? [
+                      lastEnded.jobTitle && `Was ${lastEnded.jobTitle.titleEn}`,
+                      `Left ${formatDate(lastEnded.endDate)}`,
+                      lastEnded.endReason && END_REASON_LABELS[lastEnded.endReason],
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  : 'Not employed yet'}
           </p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
             <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-white tabular-nums">{p.employeeCode}</span>
@@ -205,7 +212,7 @@ export function ProfileHeader({
                 Reports to {linkPeople ? <Link href={`/employees/${e.manager.id}`}>{e.manager.fullNameEn}</Link> : e.manager.fullNameEn}
               </span>
             )}
-            {e && <span>Joined {formatDate(e.joinDate)}</span>}
+            {e && e.joinDate && <span>Joined {formatDate(e.joinDate)}</span>}
           </div>
         </div>
       </div>

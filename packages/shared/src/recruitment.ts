@@ -25,6 +25,7 @@ import type { CvReadingView } from './cv-analysis.js';
 import type { GeneralCvSource } from './general-cvs.js';
 import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } from './recruitment-hiring.js';
 import { phoneOk, phoneTidy } from './phone.js';
+import type { ApplicationCandidate, CandidateBadge } from './candidates.js';
 
 // ---------- the limits ----------
 
@@ -822,6 +823,11 @@ export interface ApplicationListItem {
   /** Moved from a general CV: where that CV came from ("General CV (Email)"); null otherwise. */
   generalSource: GeneralCvSource | null;
   appliedAt: string;
+  /**
+   * Their candidate profile, for the badges ("2 applications", "Former employee"; 22 October 2026): HR, the CEO and a
+   * Super Admin only; null (or left out by an API from before it) for anyone else, or before the backfill reached it.
+   */
+  candidate?: CandidateBadge | null;
 }
 
 /** An answer as the applicant's page shows it, with how it did. */
@@ -900,6 +906,11 @@ export interface ApplicationView extends ApplicationListItem {
     durationMonths: number | null;
   };
   can: ApplicationCan;
+  /**
+   * Their candidate profile (22 October 2026): "Candidate CAN-0001", their other applications, general CVs, the employee
+   * they are and the possible matches; HR, the CEO and a Super Admin only (null for a hiring manager or an interviewer).
+   */
+  candidateProfile?: ApplicationCandidate | null;
 }
 
 /** A question as the careers page asks it: no points, no must-have rules, a choice's options by their words. */

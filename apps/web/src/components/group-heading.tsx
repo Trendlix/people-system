@@ -1,4 +1,5 @@
 import { titleCase } from '@/lib/format';
+import { isHidden } from '@/lib/hidden';
 import { peopleCount } from '@/lib/place-groups';
 
 const LOOK = {
@@ -16,7 +17,8 @@ export function GroupHeading({ level, name, count, span, note }: { level: keyof 
     <tr>
       <th colSpan={span} scope="colgroup" className={`text-left tracking-normal normal-case ${LOOK[level]}`}>
         <span className={`sticky left-4 inline-flex flex-wrap items-baseline gap-x-2 ${level === 'team' ? 'pl-4' : ''}`}>
-          {name === null ? 'No Department' : titleCase(name)}
+          {/* a developer isn't shown where people work (owner, 22 October 2026: "Hide per-person details") */}
+          {name === null ? 'No Department' : isHidden(name) ? 'Hidden' : titleCase(name)}
           <span className="text-xs font-normal text-muted">
             {peopleCount(count)}
             {note && ` · ${note}`}

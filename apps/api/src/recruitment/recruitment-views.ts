@@ -110,6 +110,8 @@ export const APPLICATION_LIST_SELECT = {
   createdAt: true,
   // moved from a general CV (22 October 2026): where that CV came from
   generalCv: { select: { source: true } },
+  // the candidate's profile, for the badges (22 October 2026)
+  candidateId: true,
 } satisfies Prisma.JobApplicationSelect;
 
 export type ApplicationListRow = Prisma.JobApplicationGetPayload<{ select: typeof APPLICATION_LIST_SELECT }>;

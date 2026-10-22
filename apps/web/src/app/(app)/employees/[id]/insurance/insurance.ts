@@ -1,5 +1,6 @@
 import { LABELS, paperworkType, requiredPaperwork } from '@trendlix/shared';
 import { formatDate } from '../../../../../lib/format';
+import { employmentHidden } from '../../../../../lib/hidden';
 import type { Contract, DocumentItem, DocumentsTab, EmployeeProfile, Employment, PaperworkItem } from '../../../../../lib/types';
 import { monthName } from '../../../payroll/list';
 import { contractDocumentsHref, profileHref } from '../../tab-list';
@@ -39,11 +40,19 @@ export function hasInsuranceCopy(tab: Pick<DocumentsTab, 'sections'>): boolean {
 /** Where the contract's social insurance copy is: with the contract's documents, on the Employment tab's Issued Documents. */
 export const insuranceCopyHref = (employeeId: string) => contractDocumentsHref(employeeId);
 
-/** Why a form isn't listed: none without an employment or for one that isn't full time, Form 6 only once there is an ending. */
-export type FormsGap = { kind: 'not_employed' | 'not_full_time' | 'no_ending'; text: string };
+/**
+ * Why a form isn't listed: none without an employment or for one that isn't full time, Form 6 only once there is an
+ * ending. For a developer, who gets no employment type (owner, 22 October 2026: "Hide per-person details"), only that
+ * it is hidden, when no form is listed.
+ */
+export type FormsGap = { kind: 'not_employed' | 'not_full_time' | 'no_ending' | 'hidden'; text: string };
+
+/** Why a developer sees no forms: the employment's type, which says whether they apply, is hidden. */
+export const FORMS_HIDDEN = 'The employment’s details are hidden, so whether Forms 1 and 6 apply isn’t shown.';
 
 export function formsGap(employment: Pick<Employment, 'employmentType'> | null, forms: readonly Pick<DocumentItem, 'slotKey'>[]): FormsGap | null {
   if (!employment) return { kind: 'not_employed', text: 'Not employed yet: Form 1 comes once they are hired full time.' };
+  if (employmentHidden(employment)) return forms.length ? null : { kind: 'hidden', text: FORMS_HIDDEN };
   if (employment.employmentType !== 'full_time') {
     return { kind: 'not_full_time', text: `Forms 1 and 6 are for full-time employments. This one is ${LABELS.employmentType[employment.employmentType].toLowerCase()}.` };
   }

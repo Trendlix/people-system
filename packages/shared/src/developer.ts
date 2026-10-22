@@ -36,7 +36,7 @@ export const DEVELOPER_READ_ONLY = 'Developers can look but not change anything.
 export const DEVELOPER_NO_FILES = 'Files with pay or personal IDs aren’t open to developers.';
 
 /** The banner on every page of a developer's. */
-export const DEVELOPER_BANNER = 'Developer view: names are pseudonyms, amounts and personal data are hidden, and nothing can be changed.';
+export const DEVELOPER_BANNER = 'Developer view: names are pseudonyms; amounts, personal data, job details and social insurance are hidden; nothing can be changed.';
 
 /** A hidden personal ID, or a hidden text. */
 export const HIDDEN = '••••';
@@ -77,6 +77,11 @@ export const DEVELOPER_MONEY_FIELDS: ReadonlySet<string> = new Set([
   'variableSalary',
   'insuredSalary',
   'insuredWage',
+  // the social insurance wages Form 1 prints (22 October 2026: "and the social insurance"); a developer's profile
+  // leaves them out anyway, as they lack the salary right
+  'insuranceBasicWage',
+  'insuranceComprehensiveWage',
+  'insuranceBasicDefault',
   'lastMonthlyWage',
   'hourlyRate',
   'netHourly',
@@ -213,6 +218,9 @@ export const DEVELOPER_ID_FIELDS: ReadonlySet<string> = new Set([
   'repNationalId',
   'repNationalIdMasked',
   'cibDebitAccount',
+  // the number printed on a paper of the employee file: a card's, a passport's, the social insurance print's (22 October
+  // 2026: "and the social insurance")
+  'documentNo',
 ]);
 
 /** Texts that may carry amounts in words (a payroll line's warnings): their digits hidden. */
@@ -321,6 +329,8 @@ export interface DeveloperPeopleRows {
   applicants: readonly { id: string; number: string; fullName: string; email: string }[];
   /** Job offers (OFF-…). */
   offers: readonly { id: string; number: string; fullNameEn: string; fullNameAr: string | null; email: string }[];
+  /** Candidate profiles (CAN-…; 22 October 2026: one profile per candidate): "Candidate CAN-0001". */
+  candidates?: readonly { id: string; code: string; fullName: string }[];
 }
 
 /** The people, ready for masking: by id, email and real name, with the scrub of every real name in a text. */
@@ -398,13 +408,21 @@ export function developerPeople(rows: DeveloperPeopleRows): DeveloperPeople {
     email(a.email, label);
     name(a.fullName, label.en);
   }
+  // a candidate's profile, by its CAN- code (its name is its applications' already, so theirs is scrubbed first)
+  for (const c of rows.candidates ?? []) {
+    const label = candidateLabel(c.code);
+    byId.set(c.id, label);
+    name(c.fullName, label.en);
+  }
   for (const u of rows.users) {
     const label = byEmail.get(u.email.trim().toLowerCase()) ?? otherLabel(u.id);
     byId.set(u.id, label);
     email(u.email, label);
   }
   for (const e of rows.employees) name(e.emergencyName, HIDDEN);
-  const all = [...byName.keys()].sort((a, b) => b.length - a.length).map(escapeRe);
+  // the words of a name apart by spaces, or by _ . - as in a file name ("Ahmed_Ali_CV.pdf"); one so found, not kept as
+  // written, is hidden ("••••")
+  const all = [...byName.keys()].sort((a, b) => b.length - a.length).map((n) => escapeRe(n).replace(/\s+/g, '[\\s_.\\-]+'));
   const names = all.length ? new RegExp(`(?<![\\p{L}\\p{N}])(?:${all.join('|')})(?![\\p{L}\\p{N}])`, 'giu') : null;
   return { byId, byEmail, byName, names };
 }
@@ -456,6 +474,13 @@ export const DEVELOPER_HIDDEN_TEXT_FIELDS: ReadonlySet<string> = new Set([
   'linkedin',
   'portfolio',
   'cvText',
+  // a candidate's CV's file name, often their own name (candidate profiles, 22 October 2026), and why they left
+  'cvFileName',
+  'endReasonLabel',
+  // what was read from a paper of the employee file (an ID card, the social insurance print), and a search's quote of it
+  // (22 October 2026: "and the social insurance")
+  'ocrText',
+  'snippet',
   'signature',
   'referrer',
   'zohoName',
@@ -568,6 +593,8 @@ const BY_KEY = /[a-z]By$/;
 const NOT_PERSON_KEYS = new Set(['orderBy', 'sortBy', 'groupBy', 'filterBy', 'splitBy']);
 const APP_NUMBER = /^APP-\d{4}-\d+$/;
 const OFF_NUMBER = /^OFF-\d{4}-\d+$/;
+/** A candidate profile's code (22 October 2026): CAN-0001. A developer's code search finds by it (DEVELOPER_CODE_SEARCH). */
+const CAN_CODE = /^CAN-\d{4,}$/;
 
 /** Whether an object is a person: it has an employee code, a full name, a work or personal email, or an email and a name. */
 function personLike(obj: Record<string, unknown>): boolean {
@@ -583,6 +610,8 @@ function labelOf(obj: Record<string, unknown>, people: DeveloperPeople): PersonL
   const number = str('number');
   if (number && APP_NUMBER.test(number)) return applicantLabel(number);
   if (number && OFF_NUMBER.test(number)) return candidateLabel(number);
+  const candidate = str('code');
+  if (candidate && CAN_CODE.test(candidate)) return candidateLabel(candidate);
   for (const k of ['employeeId', 'userId', 'id']) {
     const id = str(k);
     if (id && people.byId.has(id)) return people.byId.get(id)!;
@@ -636,7 +665,9 @@ function hiddenPersonal(value: unknown): unknown {
  * - every person a pseudonym: their name fields, a person object's name, a person's email; every real name, email,
  *   phone number and national ID in any text replaced;
  * - addresses, birth, education, the emergency contact, photos and free text about a person hidden;
- * - an audit change's from and to hidden when its field is money, an ID or a person's data.
+ * - an audit change's from and to hidden when its field is money, an ID or a person's data;
+ * - and a person's employment and social insurance details hidden, company pages readable with their people cut off
+ *   (hideJobForDeveloper, 22 October 2026).
  * A new value: the answer itself is never changed.
  */
 export function maskForDeveloper(body: unknown, apiPath: string, people: DeveloperPeople = NO_PEOPLE): unknown {
@@ -687,7 +718,8 @@ export function maskForDeveloper(body: unknown, apiPath: string, people: Develop
       if (DEVELOPER_EMAIL_FIELDS.has(k) && (typeof v === 'string' || Array.isArray(v))) {
         const one = (e: unknown) =>
           typeof e === 'string' && e ? (isPerson && label && k !== 'emails' && k !== 'cvEmails' ? label.email : (people.byEmail.get(e.trim().toLowerCase())?.email ?? unknownEmail(e))) : e;
-        out[k] = Array.isArray(v) ? v.map(one) : one(v);
+        // a list of objects ([{ email, … }]) is walked, so each email in it is hidden too
+        out[k] = Array.isArray(v) ? v.map((e) => (e && typeof e === 'object' ? walk(e, false) : one(e))) : one(v);
         continue;
       }
       if ((DEVELOPER_PERSON_KEYS.has(k) || BY_KEY.test(k)) && !NOT_PERSON_KEYS.has(k)) {
@@ -699,7 +731,7 @@ export function maskForDeveloper(body: unknown, apiPath: string, people: Develop
     }
     return out;
   };
-  return walk(body, false);
+  return hideJobForDeveloper(walk(body, false), apiPath);
 }
 
 // ---------- searches (22 October 2026) ----------
@@ -713,12 +745,21 @@ const PERSON_PARAMS = new Set(['name', 'fullName', 'email', 'nationalId', 'mobil
 
 /**
  * A developer's query, made safe (null: as it is): a search finds by a code only, never by a name, so a real name can't be
- * confirmed by searching for it; a person's name, email, national ID or phone as a filter finds nothing.
+ * confirmed by searching for it; a person's name, email, national ID or phone as a filter finds nothing. With the API's
+ * path (22 October 2026: "Hide per-person details"), a filter by department, team, job title, grade or employment type
+ * is dropped from a list of people, so it lists everyone rather than say who is where (DEVELOPER_JOB_PARAMS); a company
+ * page keeps them (its job titles by department).
  */
-export function developerQuery(query: Readonly<Record<string, unknown>>): Record<string, unknown> | null {
+export function developerQuery(query: Readonly<Record<string, unknown>>, apiPath?: string): Record<string, unknown> | null {
   let changed = false;
   const out: Record<string, unknown> = { ...query };
+  const people = apiPath !== undefined && !isDeveloperCompanyPath(apiPath);
   for (const [k, v] of Object.entries(query)) {
+    if (people && (DEVELOPER_JOB_PARAMS.has(k) || (k === 'type' && EMPLOYMENT_TYPE_PARAM_PATH.test(apiPath)))) {
+      delete out[k];
+      changed = true;
+      continue;
+    }
     if (typeof v !== 'string' || !v.trim()) continue;
     if (SEARCH_PARAMS.has(k) && !DEVELOPER_CODE_SEARCH.test(v)) {
       out[k] = DEVELOPER_NO_MATCH;
@@ -729,4 +770,356 @@ export function developerQuery(query: Readonly<Record<string, unknown>>): Record
     }
   }
   return changed ? out : null;
+}
+
+// ---------- employment and social insurance details (22 October 2026) ----------
+// The owner, 22 October 2026: "why is the employment data can be viewed by developer access". A job title, a department
+// and a hire date can point to one real person in a small company, even under a pseudonym; they chose "Hide per-person
+// details", then added "and the social insurance". So on anything about a person (every page but the company's setup,
+// DEVELOPER_COMPANY_PATHS) a developer gets none of a person's employment details nor their social insurance:
+// - job title, department, team, grade, employment type, work arrangement, nature of work, pay basis, and the social
+//   insurance occupation, office and sector: "••••" (DEVELOPER_JOB_TEXT_FIELDS; an object naming one, a department or a
+//   job title, has every text in it hidden and its ids and numbers null);
+// - the hire date, the probation's end, the last working day, the social insurance start and registration, the years of
+//   service: null (DEVELOPER_JOB_DATE_FIELDS), so pages show nothing rather than break; an employment's or a contract's
+//   own start, end and signing too (DEVELOPER_EMPLOYMENT_DATE_FIELDS), while a leave's, a request's, an attendance day's
+//   and a scorecard's dates stay, as they are activity;
+// - the ids pointing at a department, team, job title or grade (DEVELOPER_JOB_ID_FIELDS): null, so they can't be mapped
+//   back through the company pages; whether registered with social insurance, paid by commission and the like: null;
+// - an audit change of any of them: from and to hidden;
+// - a filter by any of them doesn't narrow a list of people (developerQuery with the API's path).
+// Company setup pages stay readable (departments and teams, job titles, grades, KPI templates and pillars, payroll and
+// leave settings, Check-in Setup's locations…), with the people on them cut off: no name, code, email or id, as a
+// department's head would otherwise say which department a pseudonym works in. Aggregates stay (headcount, turnover or
+// raises by department: DEVELOPER_AGGREGATE_KEYS) as long as no row of them is a person.
+
+/**
+ * The company's setup pages, by the API's path: their departments, job titles and grades are the company's, not a
+ * person's, and stay. Everything else is about people. The org chart's job titles name nobody to a developer
+ * (OrgChartService); a vacancy's board lists applicants, so it is a page about people.
+ */
+export const DEVELOPER_COMPANY_PATHS: readonly RegExp[] = [
+  /^\/api\/company(\/|$)/,
+  /^\/api\/(departments|job-titles|grades|shifts|org-chart|allowance-types|contract-settings|ending-rules|reimbursement-types)(\/|$)/,
+  /^\/api\/kpis\/(templates|framework|settings)(\/|$)/,
+  /^\/api\/payroll\/(settings|law-rates|holidays)(\/|$)/,
+  /^\/api\/leave\/(types|settings)(\/|$)/,
+  /^\/api\/wfh\/settings$/,
+  /^\/api\/attendance\/check-in-setup\/(locations|networks|location-rule)(\/|$)/,
+  /^\/api\/(onboarding|offboarding)\/checklist$/,
+  /^\/api\/recruitment\/(vacancies(\/[^/]+)?|settings)$/,
+  /^\/api\/public\/careers(\/|$)/,
+  /^\/api\/templates(\/(?!versions\/[^/]+\/preview-people)|$)/,
+];
+
+/** Whether the API's path is one of the company's setup pages (DEVELOPER_COMPANY_PATHS). */
+export const isDeveloperCompanyPath = (apiPath: string): boolean => DEVELOPER_COMPANY_PATHS.some((re) => re.test(apiPath));
+
+/**
+ * Where a person works and on what terms, as text: "••••" on a page about people. An object under one of these names (an
+ * employment's department with its parent, its job title, its grade) has every text in it "••••" and its ids and
+ * numbers null; a list, each of it; a count under one of them ("team": 3 waiting) stays.
+ */
+export const DEVELOPER_JOB_TEXT_FIELDS: ReadonlySet<string> = new Set([
+  'jobTitle',
+  'jobTitleEn',
+  'jobTitleAr',
+  'jobTitleName',
+  'newJobTitle',
+  'newJobTitleEn',
+  'newJobTitleAr',
+  'previousJobTitle',
+  'department',
+  'departmentName',
+  'departmentNameEn',
+  'departmentNameAr',
+  'departmentEn',
+  'departmentAr',
+  'team',
+  'teamName',
+  'grade',
+  'gradeCode',
+  'gradeName',
+  'gradeLevel',
+  'gradeLevelEn',
+  'gradeLevelAr',
+  'newGrade',
+  'previousGrade',
+  'employmentType',
+  'employmentTypes',
+  'convertsTo',
+  'workArrangement',
+  'workNature',
+  'workPattern',
+  'payBasis',
+  // social insurance (22 October 2026: "and the social insurance"): the occupation, and the office and sector Form 1
+  // prints; the company's own, on its page, stay
+  'occupationCode',
+  'occupationName',
+  'insuranceOffice',
+  'insuranceSectorCode',
+  'insuranceEmployerNo',
+]);
+
+/** A person's dates of employment and social insurance, and their service: null on a page about people. */
+export const DEVELOPER_JOB_DATE_FIELDS: ReadonlySet<string> = new Set([
+  'joinDate',
+  'hireDate',
+  'hiredOn',
+  'hiredAt',
+  'probationEnd',
+  'lastWorkingDay',
+  'endingOn',
+  'leftOn',
+  'contractStart',
+  'contractEnd',
+  'contractStartDate',
+  'contractEndDate',
+  'nonRenewalNoticeBy',
+  'serviceYears',
+  'serviceMonths',
+  'yearsOfService',
+  'tenureMonths',
+  'priorServiceMonths',
+  'traineeMonths',
+  // social insurance: the subscription's start, the contract's registration with the office, Form 2's date, and from
+  // when the insured wage follows a raise
+  'insuranceStartDate',
+  'insuranceFiledOn',
+  'labourOfficeFiledOn',
+  'form2From',
+  'insuredWageFrom',
+  'insuredWageAsBefore',
+  // when a trainee's or an intern's last agreement ended, and a new one may start
+  'nextTraining',
+]);
+
+/** The ids pointing at a department, team, job title or grade: null (a list of them empty) on a page about people. */
+export const DEVELOPER_JOB_ID_FIELDS: ReadonlySet<string> = new Set([
+  'departmentId',
+  'teamId',
+  'jobTitleId',
+  'gradeId',
+  'newJobTitleId',
+  'newGradeId',
+  'parentDepartmentId',
+  'departmentIds',
+  'teamIds',
+  'jobTitleIds',
+  'gradeIds',
+]);
+
+/** A person's terms as a yes or no (registered with social insurance, paid by commission…): null on a page about people. */
+export const DEVELOPER_JOB_FLAG_FIELDS: ReadonlySet<string> = new Set([
+  'socialInsured',
+  'paidByCommission',
+  'underLabourLaw',
+  'hazardousWork',
+  'training',
+  // C-level (G9 Executive): a grade, and one that points to very few people; the grades page keeps its own mark
+  'confidential',
+]);
+
+/**
+ * An employment's or a contract's own dates (its start, its end, its signing, the end a warning dates from): null within
+ * one, an object with an employment's or a contract's marks (EMPLOYMENT_MARKS) or under EMPLOYMENT_KEYS. A leave's start
+ * and end are the same names, and stay.
+ */
+export const DEVELOPER_EMPLOYMENT_DATE_FIELDS: ReadonlySet<string> = new Set(['startDate', 'endDate', 'signedOn', 'effectiveDate', 'since', 'renewAt']);
+const EMPLOYMENT_MARKS = [
+  'joinDate',
+  'employmentType',
+  'probationEnd',
+  'signedOn',
+  'lastWorkingDay',
+  'endReason',
+  'insuranceFiledOn',
+  'jobTitleEn',
+  'gradeCode',
+  'departmentName',
+  'leaverKind',
+  'tenureMonths',
+  'contractNumber',
+] as const;
+const EMPLOYMENT_KEYS = new Set(['employment', 'employments', 'contract', 'contracts', 'lastEnded', 'ending', 'endings', 'pay', 'versions']);
+
+/**
+ * Aggregates (headcount by department, turnover or raises by department, the department rows of a dashboard): a row that
+ * is no person, and has none in it, stays as it is.
+ */
+export const DEVELOPER_AGGREGATE_KEYS: ReadonlySet<string> = new Set(['byDepartment', 'byTeam', 'byJobTitle', 'byGrade', 'byEmploymentType', 'departments', 'teams', 'jobTitles', 'grades']);
+
+/**
+ * The template tags whose values are a person's job, terms or social insurance (a document's check or preview answering
+ * by tag): "••••" on a page about people. Their manager (a pseudonym), shift and contract number stay.
+ */
+export const DEVELOPER_JOB_TAG_FIELDS: ReadonlySet<string> = new Set([
+  ...TEMPLATE_TAGS.filter((t) => t.group === 'job_contract' && !/^(manager_name|shift|contract_number|duration$)/.test(t.tag)).map((t) => t.tag),
+  'contract_date',
+  'last_working_day',
+  'new_job_title',
+  'new_job_title_ar',
+  'new_job_title_en',
+  'new_grade',
+  'amended_contract_date',
+  'raise_effective_date',
+  'insured_wage_from',
+  'insurance_office',
+  'insurance_sector_code',
+  'insurance_employer_no',
+]);
+
+/** The filters a list of people takes that would say who is where: dropped for a developer (developerQuery). */
+export const DEVELOPER_JOB_PARAMS: ReadonlySet<string> = new Set([
+  'departmentId',
+  'departmentIds',
+  'teamId',
+  'jobTitleId',
+  'jobTitleIds',
+  'gradeId',
+  'gradeIds',
+  'department',
+  'team',
+  'jobTitle',
+  'grade',
+  'employmentType',
+  'workArrangement',
+]);
+/** Where `type` is the employment type (the contracts list), not a leave's or an adjustment's. */
+const EMPLOYMENT_TYPE_PARAM_PATH = /^\/api\/(contracts|employees|employments)(\/|$)/;
+
+/**
+ * Audit entries about the company's setup (a vacancy among them): their job details stay, but a department's head, a
+ * vacancy's hiring manager and interviewers are people (PERSON_CHANGES).
+ */
+const COMPANY_AUDIT_ENTITIES = new Set([
+  'company',
+  'department',
+  'job_title',
+  'grade',
+  'shift',
+  'allowance_type',
+  'contract_settings',
+  'ending_rule',
+  'holiday',
+  'payroll_settings',
+  'payroll_law_rates',
+  'template_version',
+  'leave_type',
+  'leave_settings',
+  'reimbursement_type',
+  'kpi_template',
+  'kpi_framework',
+  'kpi_settings',
+  'vacancy',
+]);
+/** Audit entries whose start and end dates are an employment's or a contract's (a leave request's stay). */
+const EMPLOYMENT_AUDIT_ENTITIES = new Set(['employment', 'contract', 'employment_ending', 'job_offer', 'offboarding_case']);
+/** Changes naming a person on a company entry (a department's head, a team's lead). */
+const PERSON_CHANGES = new Set(['headId', 'leadId', 'teamLeadId', 'departmentHeadId', 'hiringManagerId', 'interviewerIds', 'interviewers']);
+
+/** A date written in a text ("ended on 12/07/2027", "since 2026-07-13", "13 July 2026"), within an employment's texts. */
+const DATE_IN_TEXT = /\b\d{1,2}\/\d{1,2}\/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2} (January|February|March|April|May|June|July|August|September|October|November|December) \d{4}\b/g;
+
+/** A value naming where a person works, hidden: its texts "••••", its ids, numbers and flags null, as deep as it goes. */
+function hiddenJob(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') return value ? HIDDEN : value;
+  if (Array.isArray(value)) return value.map(hiddenJob);
+  if (typeof value === 'object' && !(value instanceof Date)) {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, k === 'id' || k.endsWith('Id') ? (v === undefined ? v : null) : k.endsWith('Ids') && Array.isArray(v) ? [] : hiddenJob(v)]));
+  }
+  return null;
+}
+
+/** Whether an audit change's field (on an entry of `entity`) is a person's job, terms or social insurance. */
+function jobChange(field: string, entity: string | null): boolean {
+  const parts = field.split(/[.[\]]+/).filter(Boolean);
+  if (entity !== null && COMPANY_AUDIT_ENTITIES.has(entity)) return parts.some((p) => PERSON_CHANGES.has(p));
+  return parts.some(
+    (p) =>
+      DEVELOPER_JOB_TEXT_FIELDS.has(p) ||
+      DEVELOPER_JOB_DATE_FIELDS.has(p) ||
+      DEVELOPER_JOB_ID_FIELDS.has(p) ||
+      DEVELOPER_JOB_FLAG_FIELDS.has(p) ||
+      PERSON_CHANGES.has(p) ||
+      p === 'officeDays' ||
+      (entity !== null && EMPLOYMENT_AUDIT_ENTITIES.has(entity) && DEVELOPER_EMPLOYMENT_DATE_FIELDS.has(p)),
+  );
+}
+
+/** Whether a value is a person or has one in it: a person-like object, or a row about one (its employeeId). */
+function containsPerson(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(containsPerson);
+  if (value === null || typeof value !== 'object' || value instanceof Date) return false;
+  const obj = value as Record<string, unknown>;
+  if (personLike(obj) || typeof obj.employeeId === 'string' || typeof obj.employmentId === 'string') return true;
+  return Object.entries(obj).some(([k, v]) => (DEVELOPER_PERSON_KEYS.has(k) && v !== null && typeof v === 'object') || containsPerson(v));
+}
+
+/** A page about people: every person's employment and social insurance details hidden, aggregates as they are. */
+function hiddenJobs(value: unknown, employment: boolean, entity: string | null): unknown {
+  if (value === null || typeof value !== 'object' || value instanceof Date) return value;
+  if (Array.isArray(value)) return value.map((v) => hiddenJobs(v, employment, entity));
+  if (isDecimalLike(value)) return value;
+  const obj = value as Record<string, unknown>;
+  const inEmployment = employment || EMPLOYMENT_MARKS.some((m) => m in obj);
+  const at = typeof obj.entityType === 'string' ? obj.entityType : entity;
+  // an audit change: { field, from, to }
+  const change = typeof obj.field === 'string' && ('from' in obj || 'to' in obj) && jobChange(obj.field, at);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined) out[k] = v;
+    else if (change && (k === 'from' || k === 'to')) out[k] = hiddenPersonal(v);
+    else if (DEVELOPER_AGGREGATE_KEYS.has(k) && Array.isArray(v)) out[k] = v.map((row) => (containsPerson(row) ? hiddenJobs(row, false, at) : row));
+    else if (DEVELOPER_JOB_TEXT_FIELDS.has(k) || DEVELOPER_JOB_TAG_FIELDS.has(k)) out[k] = typeof v === 'number' || typeof v === 'boolean' ? v : hiddenJob(v);
+    else if (DEVELOPER_JOB_DATE_FIELDS.has(k)) out[k] = null;
+    else if (DEVELOPER_JOB_ID_FIELDS.has(k)) out[k] = Array.isArray(v) ? [] : null;
+    else if (DEVELOPER_JOB_FLAG_FIELDS.has(k) && typeof v === 'boolean') out[k] = null;
+    // a payroll line's terms: whether the person is registered with social insurance
+    else if (k === 'insured' && typeof v === 'boolean' && 'insuredWage' in obj) out[k] = null;
+    // a hybrid employment's office days say its work arrangement
+    else if (k === 'officeDays' && Array.isArray(v)) out[k] = [];
+    else if (inEmployment && DEVELOPER_EMPLOYMENT_DATE_FIELDS.has(k)) out[k] = null;
+    // a text of an employment's (a law warning's message): the dates written in it
+    else if (inEmployment && typeof v === 'string') out[k] = DATE_LIKE.test(v) || UUID.test(v) ? v : v.replace(DATE_IN_TEXT, HIDDEN);
+    else out[k] = hiddenJobs(v, EMPLOYMENT_KEYS.has(k), at);
+  }
+  return out;
+}
+
+/** A pseudonym ("Employee EMP-0182", "User 3f9a2c") or a pseudonymous email in a text. */
+const PSEUDONYM_IN_TEXT = /(?:Employee|موظف|Applicant|متقدم|Candidate|مرشح|User|مستخدم|Person|شخص) (?:[A-Z]{2,4}-[A-Za-z0-9-]*[A-Za-z0-9]|[0-9a-f]{6})/g;
+const PSEUDONYM_EMAIL_IN_TEXT = /[A-Za-z0-9._%+-]+@hidden\.invalid/gi;
+/** Keys holding the id of a person, besides `id` within one: the employee's, the head's, who did something. */
+const PERSON_ID_KEY = /^(employee|user|manager|head|lead|teamLead|departmentHead|hiringManager|holder|custodian|approver|requester|owner|interviewer|scorer|member|person|signer|author|recipient)Ids?$|[a-z]By(User)?Ids?$/;
+const PERSON_CODE_KEYS = new Set(['employeeCode', 'number']);
+
+/** A company page: its people cut off (no name, code, email or id), so none of them can be placed by it. */
+function cutOff(value: unknown, person: boolean): unknown {
+  if (typeof value === 'string') return value.replace(PSEUDONYM_IN_TEXT, HIDDEN).replace(PSEUDONYM_EMAIL_IN_TEXT, HIDDEN);
+  if (value === null || typeof value !== 'object' || value instanceof Date) return value;
+  if (Array.isArray(value)) return value.map((v) => cutOff(v, person));
+  if (isDecimalLike(value)) return value;
+  const obj = value as Record<string, unknown>;
+  const isPerson = person || personLike(obj);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined) out[k] = v;
+    else if (PERSON_ID_KEY.test(k) || (isPerson && k === 'id')) out[k] = Array.isArray(v) ? [] : null;
+    else if (isPerson && PERSON_CODE_KEYS.has(k) && typeof v === 'string') out[k] = v ? HIDDEN : v;
+    else if ((DEVELOPER_PERSON_KEYS.has(k) || BY_KEY.test(k)) && !NOT_PERSON_KEYS.has(k)) out[k] = cutOff(v, true);
+    else out[k] = cutOff(v, false);
+  }
+  return out;
+}
+
+/**
+ * A developer's answer without the employment and social insurance details of anyone in it (22 October 2026: "Hide
+ * per-person details", "and the social insurance"): on a company page (DEVELOPER_COMPANY_PATHS) its departments, job
+ * titles and grades as they are and its people cut off; on any other page each person's job, terms, employment dates and
+ * social insurance hidden, aggregates kept. maskForDeveloper ends with it. A new value: the answer is never changed.
+ */
+export function hideJobForDeveloper(body: unknown, apiPath: string): unknown {
+  return isDeveloperCompanyPath(apiPath) ? cutOff(body, false) : hiddenJobs(body, false, null);
 }

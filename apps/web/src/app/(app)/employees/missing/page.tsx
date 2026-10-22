@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { DepartmentOptions } from '@/components/department-options';
+import { Shown } from '@/components/hidden';
 import { Select } from '@/components/select';
 import { ApiError, apiGet } from '@/lib/api';
 import { departmentName, withTeams } from '@/lib/departments';
 import { formatDateTime } from '@/lib/format';
+import { filtersByJob } from '@/lib/hidden';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, ProfileGap } from '@/lib/types';
 import { StaffOnly } from '../../staff-only';
@@ -46,7 +48,7 @@ const choice =
   'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 const gapChip = 'inline-block rounded-full bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn no-underline hover:text-warn hover:underline';
 
-function Filters({ filters: f, departments }: { filters: MissingFilters; departments: Department[] }) {
+function Filters({ filters: f, departments, byJob }: { filters: MissingFilters; departments: Department[]; byJob: boolean }) {
   return (
     // keyed by the filters, so following a link to other filters (Clear) shows them, not what was typed before
     <form key={missingHref(f)} className="flex flex-wrap items-end gap-3 p-4">
@@ -56,15 +58,18 @@ function Filters({ filters: f, departments }: { filters: MissingFilters; departm
         </label>
         <input id="missing-search" name="q" type="search" maxLength={100} defaultValue={f.q} placeholder="Name or employee code" className="input" />
       </div>
-      <div>
-        <label htmlFor="missing-department" className="label">
-          Department
-        </label>
-        <Select id="missing-department" name="departmentId" defaultValue={f.departmentId} className="input min-w-56">
-          <option value="">All departments</option>
-          <DepartmentOptions departments={departments} />
-        </Select>
-      </div>
+      {/* not for a developer, who isn't shown where people work (owner, 22 October 2026: "Hide per-person details") */}
+      {byJob && (
+        <div>
+          <label htmlFor="missing-department" className="label">
+            Department
+          </label>
+          <Select id="missing-department" name="departmentId" defaultValue={f.departmentId} className="input min-w-56">
+            <option value="">All departments</option>
+            <DepartmentOptions departments={departments} />
+          </Select>
+        </div>
+      )}
       <div>
         <label htmlFor="missing-what" className="label">
           What is missing
@@ -136,8 +141,8 @@ function PersonRow({ row: r }: { row: MissingDetailsRow }) {
           </div>
         )}
       </td>
-      <td className="align-top">{r.department ? departmentName(r.department) : dash}</td>
-      <td className="align-top">{r.jobTitle?.titleEn ?? dash}</td>
+      <td className="align-top">{r.department ? <Shown text={departmentName(r.department)} /> : dash}</td>
+      <td className="align-top">{r.jobTitle ? <Shown text={r.jobTitle.titleEn} /> : dash}</td>
       <td className="align-top">
         <Completeness percent={r.percent} />
       </td>
@@ -176,7 +181,9 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
     throw err;
   }
 
-  const f = readFilters(query);
+  // a developer's list is never narrowed by department: it is hidden from them (22 October 2026)
+  const byJob = filtersByJob(user);
+  const f = byJob ? readFilters(query) : { ...readFilters(query), departmentId: '' };
   const people = inView(report.rows, f, f.departmentId ? withTeams(departments, f.departmentId) : null);
   const rows = listed(people, f.what);
   const summary = summaryText(people);
@@ -200,7 +207,7 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
       </section>
 
       <section className="card">
-        <Filters filters={f} departments={departments} />
+        <Filters filters={f} departments={departments} byJob={byJob} />
         {people.length === 0 ? (
           <p className={quiet}>
             {isFiltered(f) ? (

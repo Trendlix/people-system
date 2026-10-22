@@ -22,6 +22,13 @@ import { createApp, createUser, signIn } from './helpers.js';
 const RUN = `cv${Date.now().toString(36)}`;
 const TODAY = todayInCairo();
 const MINUTE = 60_000;
+/** Each person's own mobile (candidate profiles, 22 October 2026: the same mobile is one person's, joined as one): +2010 and 8 digits. */
+const mobileOf = (who: string) => {
+  const key = `${who}|${RUN}`;
+  let h = 7;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(h, 31) + key.charCodeAt(i)) >>> 0;
+  return `+2010${String(h % 100_000_000).padStart(8, '0')}`;
+};
 
 /** A PDF with these lines of text. */
 async function pdfOf(lines: string[]): Promise<Buffer> {
@@ -127,7 +134,7 @@ describe('CV reading and analysis (e2e)', () => {
       .set(CLIENT_IP_HEADER, ip)
       .set(CLIENT_IP_AT_HEADER, at)
       .set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, careersIpToken(vacancy.slug)));
-    const fields = { fullName: `${who} Applicant ${RUN}`, email: email(who), mobile: '+20 100 123 4567', answers: '{}', consent: 'true', ip };
+    const fields = { fullName: `${who} Applicant ${RUN}`, email: email(who), mobile: mobileOf(who), answers: '{}', consent: 'true', ip };
     let r = req;
     for (const [k, v] of Object.entries(fields)) r = r.field(k, v);
     await r.attach('cv', file, `${who}.pdf`).expect(201);

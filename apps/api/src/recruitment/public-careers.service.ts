@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
+  ALREADY_APPLIED,
   applyProblems,
   isVacancySlug,
   keptMobile,
@@ -20,12 +21,13 @@ import {
 } from '@trendlix/shared';
 import { verifySignedIp } from '../attendance/signed-ip.js';
 import { AuditService } from '../audit/audit.service.js';
-import { dayInCairo, fromDateOnly, shownDate, todayInCairo, toDateOnly } from '../common/date-only.js';
+import { dayInCairo, fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { nextApplicationNumber } from './application-numbers.js';
+import { attachCandidate, findCandidates, foundIds, refreshCandidate } from './candidate-links.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { cvFileName, cvProblem, cvTypeOf } from './cv-file.js';
 import { APPLICATION_ENTITY, publicSummaryOf, questionsOf } from './recruitment-views.js';
@@ -128,7 +130,7 @@ export class PublicCareersService {
 
   /**
    * An application (a multipart form with the CV as `cv`). Refused: the honeypot filled (400), the job not open (404),
-   * too many from the address this hour (429), the form's problems in words (400), the CV's (400), the email having
+   * too many from the address this hour (429), the form's problems in words (400), the CV's (400), the same person (by email or mobile) having
    * applied already (409). Scored with the vacancy's questions; one failing a must-have is kept, filtered out.
    */
   async apply(slug: string, dto: ApplyDto, file: Express.Multer.File | undefined, origin: ApplyOrigin): Promise<ApplyResult> {
@@ -180,7 +182,8 @@ export class PublicCareersService {
     if (problems.length) throw new BadRequestException(problems);
     const email = normalEmail(input.email);
     const before = await this.prisma.jobApplication.findUnique({ where: { vacancyId_email: { vacancyId: v.id, email } }, select: { createdAt: true } });
-    if (before) throw new ConflictException(`You applied for this job on ${shownDate(dayInCairo(before.createdAt))} already. HR will be in touch.`);
+    // the same person again, by their email (or, below, their mobile: candidate profiles, 22 October 2026)
+    if (before) throw new ConflictException(ALREADY_APPLIED);
 
     const answers = tidyAnswers(questions, answersSent);
     const match = scoreAnswers(questions, answers);
@@ -189,12 +192,20 @@ export class PublicCareersService {
     const source = sourceOf(text(dto.source));
     const now = new Date();
     const made = await this.prisma.$transaction(async (tx) => {
+      // their candidate profile (owner, 22 October 2026: "how to make like a profile for each candidate …"; "Email or
+      // mobile"): the candidates' lock first; the same person (by email or mobile) applying for this job again refused
+      const found = await findCandidates(tx, { email, mobile: input.mobile });
+      const ids = foundIds(found);
+      const again = await tx.jobApplication.findFirst({ where: { vacancyId: v.id, OR: [{ email }, ...(ids.length ? [{ candidateId: { in: ids } }] : [])] }, select: { id: true } });
+      if (again) throw new ConflictException(ALREADY_APPLIED);
+      const candidate = await attachCandidate(tx, { fullName: input.fullName, email, mobile: input.mobile, linkedin: input.linkedin, portfolio: input.portfolio, at: now }, found);
       // the applications' and general CVs' one series (application-numbers.ts)
       const number = await nextApplicationNumber(tx);
       const row = await tx.jobApplication.create({
         data: {
           number,
           vacancyId: v.id,
+          candidateId: candidate.id,
           fullName: input.fullName.trim().replace(/\s+/g, ' '),
           email,
           mobile: input.mobile,
@@ -223,14 +234,24 @@ export class PublicCareersService {
         },
         select: { id: true, number: true },
       });
-      return row;
+      // its keys, possible matches and employee worked out with it in
+      await refreshCandidate(tx, candidate.id);
+      return { ...row, candidate };
     });
     await this.audit.record({
       userId: null,
       action: 'apply',
       entityType: APPLICATION_ENTITY,
       entityId: made.id,
-      diff: { number: made.number, vacancy: v.number, source, matchPercent: match.matchPercent, filteredOut },
+      diff: {
+        number: made.number,
+        vacancy: v.number,
+        source,
+        matchPercent: match.matchPercent,
+        filteredOut,
+        candidate: made.candidate.code,
+        ...(made.candidate.possibleDuplicateOf && { possibleDuplicateOf: made.candidate.possibleDuplicateOf.code }),
+      },
     });
     // the CV read in the background (22 October 2026)
     this.readings.kick();

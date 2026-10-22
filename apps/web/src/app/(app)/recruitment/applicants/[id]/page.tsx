@@ -17,6 +17,9 @@ import {
 import { formatDate, formatDateTime } from '@/lib/format';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { RehireWarning } from '../../../offboarding/rehire-warning';
+import { splitApplication } from '../../candidate-actions';
+import { CandidateApplicationsTable, EmployeeCard, MatchesCard } from '../../candidate-ui';
+import { candidateHref } from '../../candidates';
 import { FromTheCv } from '../../cv-card';
 import { cancelInterview, giveFeedback, markInterview, moveApplicant, rescheduleInterview, restoreApplicant, saveApplicantNotes, scheduleInterview, suggestNext } from '../../actions';
 import { loadApplicant, recruitmentNotLoaded } from '../../data';
@@ -77,6 +80,44 @@ function Actions({ a }: { a: ApplicationView }) {
         />
       )}
     </div>
+  );
+}
+
+/** Their candidate's other applications and general CVs, the possible matches, and "Move to a new candidate" (22 October 2026). */
+function OtherApplications({ a }: { a: ApplicationView }) {
+  const c = a.candidateProfile!;
+  const others = c.generalCvs.filter((g) => g.movedTo?.applicationId !== a.id);
+  return (
+    <>
+      <MatchesCard matches={c.matches} selfId={c.id} manages={a.viewer === 'manages'} />
+      {(c.otherApplications.length > 0 || others.length > 0 || c.canSplit) && (
+        <section aria-labelledby="applicant-other" className="card space-y-3 overflow-hidden pt-5">
+          <div className="flex flex-wrap items-start justify-between gap-2 px-6">
+            <h2 id="applicant-other" className="text-lg font-semibold">
+              Other Applications
+            </h2>
+            {c.canSplit && (
+              <ActionButton
+                action={splitApplication.bind(null, a.id)}
+                label="Move to a new candidate"
+                pendingLabel="Moving…"
+                confirm={`Move ${a.number} to a new candidate? It leaves ${c.code}, with the email and mobile used only on it; the two won’t be suggested as one person.`}
+              />
+            )}
+          </div>
+          {c.otherApplications.length > 0 ? (
+            <CandidateApplicationsTable rows={c.otherApplications} />
+          ) : (
+            <p className="px-6 text-sm text-muted">No other application.</p>
+          )}
+          {others.length > 0 && (
+            <p className="px-6 pb-5 text-sm text-muted">
+              Also {others.length} general {others.length === 1 ? 'CV' : 'CVs'}: <Link href={candidateHref(c.id)}>see the candidate</Link>.
+            </p>
+          )}
+        </section>
+      )}
+    </>
   );
 }
 
@@ -196,10 +237,19 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
         </div>
         <p className="text-sm text-muted">
           {a.number} · applied {formatDateTime(a.appliedAt)} · {applicationSourceText(a)}
+          {/* their candidate profile (22 October 2026: "how to make like a profile for each candidate …"); HR, the CEO and a Super Admin only */}
+          {a.candidateProfile && (
+            <>
+              {' · '}
+              <Link href={candidateHref(a.candidateProfile.id)}>Candidate {a.candidateProfile.code}</Link>
+            </>
+          )}
         </p>
       </div>
 
-      {a.stage !== 'hired' && !participant && <RehireWarning email={a.email} />}
+      {a.stage !== 'hired' && !participant && !a.candidateProfile?.employee && <RehireWarning email={a.email} />}
+
+      {a.candidateProfile?.employee && <EmployeeCard link={a.candidateProfile.employee} />}
 
       {a.suggestion && (
         <div role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
@@ -224,6 +274,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
       )}
 
       <Actions a={a} />
+
+      {a.candidateProfile && <OtherApplications a={a} />}
 
       <section aria-labelledby="applicant-details" className="card space-y-4 p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

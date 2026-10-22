@@ -120,9 +120,12 @@ export function listPaths(f: ContractFilters): string[] {
   return [withQuery('/contracts', queryOf(f, f.status === 'all' ? '' : f.status))];
 }
 
-/** Newest start first, then the higher number: how the API orders ended and replaced contracts. */
+/**
+ * Newest start first, then the higher number: how the API orders ended and replaced contracts. A developer gets no start
+ * dates (owner, 22 October 2026: "Hide per-person details"): by number then.
+ */
 function newestFirst(a: ContractListItem, b: ContractListItem): number {
-  return b.startDate.localeCompare(a.startDate) || b.number.localeCompare(a.number);
+  return (b.startDate ?? '').localeCompare(a.startDate ?? '') || b.number.localeCompare(a.number);
 }
 
 /**
@@ -149,10 +152,11 @@ export const PROBATION_WITHIN = 30;
 export const APPROVED_ENDINGS = '/endings?status=approved';
 
 /** Rows by a date (YYYY-MM-DD), soonest first; null stays null (it couldn't load). */
-export function byDate<T>(rows: T[], date: (row: T) => string): T[];
-export function byDate<T>(rows: T[] | null, date: (row: T) => string): T[] | null;
-export function byDate<T>(rows: T[] | null, date: (row: T) => string): T[] | null {
-  return rows && [...rows].sort((a, b) => date(a).localeCompare(date(b)));
+export function byDate<T>(rows: T[], date: (row: T) => string | null): T[];
+export function byDate<T>(rows: T[] | null, date: (row: T) => string | null): T[] | null;
+export function byDate<T>(rows: T[] | null, date: (row: T) => string | null): T[] | null {
+  // a developer gets none of these dates (owner, 22 October 2026: "Hide per-person details"): as they came then
+  return rows && [...rows].sort((a, b) => (date(a) ?? '').localeCompare(date(b) ?? ''));
 }
 
 /** The endings still going, by last working day: waiting for the CEO, and approved (in notice). Null when either couldn't load. */

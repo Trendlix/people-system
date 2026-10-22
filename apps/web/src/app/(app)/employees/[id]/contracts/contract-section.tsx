@@ -95,6 +95,9 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
   // a trainee's training agreement (18 October 2026)
   const stages = c.traineeStages?.length ? c.traineeStages : null;
   const position = [c.jobTitleEn, c.gradeCode, c.departmentName, c.shiftCode && `Shift ${c.shiftCode}`].filter(Boolean).join(' · ');
+  // a developer gets none of the contract's dates and terms (owner, 22 October 2026: "Hide per-person details", "and the
+  // social insurance"): a signed contract always has a start, so none says it was hidden; each shows Hidden
+  const hidden = !c.startDate;
   const fields: GridField[] = [
     { key: 'contract-number', label: 'Contract number', value: c.number, note: `Version ${c.version}` },
     stages
@@ -136,14 +139,16 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
       key: 'contract-probation',
       label: 'Probation end date',
       value: c.probationEnd ? formatDate(c.probationEnd) : <span className="text-muted">No probation</span>,
+      hidden,
     },
-    { key: 'contract-signed', label: 'Signed on', value: formatDate(c.signedOn) },
-    { key: 'contract-insurance', label: 'Filed with social insurance', value: c.insuranceFiledOn ? formatDate(c.insuranceFiledOn) : notYet },
-    { key: 'contract-labour-office', label: 'Filed with the labour office', value: c.labourOfficeFiledOn ? formatDate(c.labourOfficeFiledOn) : notYet },
+    { key: 'contract-signed', label: 'Signed on', value: formatDate(c.signedOn), hidden },
+    { key: 'contract-insurance', label: 'Filed with social insurance', value: c.insuranceFiledOn ? formatDate(c.insuranceFiledOn) : notYet, hidden },
+    { key: 'contract-labour-office', label: 'Filed with the labour office', value: c.labourOfficeFiledOn ? formatDate(c.labourOfficeFiledOn) : notYet, hidden },
     {
       key: 'contract-position',
       label: 'Position as signed',
       value: position,
+      hidden,
       note: c.jobTitleAr && (
         <span lang="ar" dir="rtl">
           {c.jobTitleAr}
@@ -154,6 +159,7 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
       key: 'contract-pay-basis',
       label: 'Pay basis',
       value: PAY_BASIS_LABELS[c.payBasis] ?? PAY_BASIS_LABELS.monthly,
+      hidden,
       // by the hour: the rate (for those who see the salary) and the hours a week, then the net per hour it comes to
       note: [hourlyTerms(c), hourlyNetTerms(c)].filter(Boolean).join(' · ') || null,
       protected: hourly && !c.salaryHidden,

@@ -9,6 +9,7 @@ import {
   type SalarySummary,
 } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '../../../../../lib/format';
+import { HIDDEN_LABEL } from '../../../../../lib/hidden';
 import type { ContractRaise } from '../../../../../lib/raise-types';
 import { decisionText, insuredFromText } from '../contracts/raise';
 import { formatEgp } from '../contracts/salary';
@@ -173,8 +174,12 @@ export function eventView(e: PayEvent, raise: VersionRaise | null = null): Event
     stage: e.stage,
     stageLabel: PAY_STAGE_LABELS[e.stage] ?? e.stage,
     signed: isSignedStage(e.stage),
-    effective:
-      e.endDate && e.change !== 'amendment' ? `${formatDate(e.effectiveDate)} – ${formatDate(e.endDate)}` : `From ${formatDate(e.effectiveDate)}`,
+    // a developer gets no contract dates (owner, 22 October 2026: "Hide per-person details")
+    effective: !e.effectiveDate
+      ? HIDDEN_LABEL
+      : e.endDate && e.change !== 'amendment'
+        ? `${formatDate(e.effectiveDate)} – ${formatDate(e.endDate)}`
+        : `From ${formatDate(e.effectiveDate)}`,
     gross: fromToText(e.from?.gross ?? null, e.to.gross),
     change: e.from === null ? null : e.samePay ? 'Same pay' : changeText(e.difference),
     allowances: fromToText(e.from?.allowances ?? null, e.to.allowances),
@@ -286,10 +291,12 @@ const MARGIN = { left: 44, right: 16, top: 16, bottom: 28 };
  * Null until a version is signed.
  */
 export function stepChart(
-  input: { events: readonly PayEvent[]; joinDate: string; endDate: string | null; today: string },
+  input: { events: readonly PayEvent[]; joinDate: string | null; endDate: string | null; today: string },
   size: { width: number; height: number } = SIZE,
 ): StepChart | null {
   const { joinDate, endDate, today } = input;
+  // a developer gets no employment or contract dates (owner, 22 October 2026: "Hide per-person details"): no chart
+  if (!joinDate || input.events.some((e) => !e.effectiveDate)) return null;
   // signed versions by effective date; of two from the same day, the later version
   const sorted = input.events
     .filter((e) => isSignedStage(e.stage))

@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { LABELS, type EmploymentType } from '@trendlix/shared';
+import { LABELS } from '@trendlix/shared';
 import { formatDate, titleCase } from '@/lib/format';
+import { HIDDEN_LABEL, labelOf } from '@/lib/hidden';
 import type { EmploymentSalaryHistory, PayEventDocument, SalaryEvent } from '@/lib/raise-types';
 import type { EmployeeProfile, GeneratedDocumentStatus } from '@/lib/types';
 import { recordForm2 } from '../../raise-actions';
@@ -261,7 +262,9 @@ function EmploymentPay({
 
 /** "Full-time · Senior Designer", for a past employment's heading. */
 function employmentName(h: EmploymentSalaryHistory): string {
-  const type = LABELS.employmentType[h.employmentType as EmploymentType] ?? h.employmentType;
+  const type = labelOf(LABELS.employmentType, h.employmentType) ?? h.employmentType;
+  // a developer isn't shown the job (owner, 22 October 2026: "Hide per-person details")
+  if (type === HIDDEN_LABEL) return `Employment · ${HIDDEN_LABEL}`;
   return titleCase([type, h.jobTitle].filter(Boolean).join(' · '));
 }
 
@@ -296,7 +299,7 @@ export async function SalaryHistorySection({ employee }: { employee: Employee })
   }
 
   return (
-    <Title note={current ? `Since ${formatDate(current.joinDate)}` : undefined}>
+    <Title note={current?.joinDate ? `Since ${formatDate(current.joinDate)}` : undefined}>
       {current ? (
         <EmploymentPay employee={employee} history={current} raises={raises} today={today} level={3} />
       ) : (

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { ApiError, apiGet } from '@/lib/api';
 import { formatDate, titleCase } from '@/lib/format';
+import { isHidden } from '@/lib/hidden';
 import { PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
@@ -116,7 +117,7 @@ const typedAmount = (n: number | null | undefined) => (typeof n === 'number' ? n
  * wage (the wages for those who may see salaries), and the contract's filing dates. HR changes the employee's own in
  * place.
  */
-function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
+function InsuranceDetails({ profile: p, hidden }: { profile: EmployeeProfile; hidden: boolean }) {
   const e = insuredEmployment(p);
   const c = e?.contract ?? null;
   // HR changes the employee's own; the wages only come with the right to see salaries (HR has it)
@@ -133,6 +134,7 @@ function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
           {p.occupationCode ? <OccupationText code={p.occupationCode} name={p.occupationName} /> : <span className="text-muted">Not set</span>}
         </OccupationDetail>
       ),
+      hidden: hidden || isHidden(p.occupationCode),
     },
     {
       key: 'insuranceStartDate',
@@ -142,10 +144,12 @@ function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
           <PrintedText printed={startPrinted(p, e)} none="Not yet" />
         </StartDateDetail>
       ),
+      hidden,
     },
   ];
   // whether payroll deducts social insurance (owner's decision, 16 October 2026): HR turns it, everyone else sees it
-  if (typeof p.socialInsured === 'boolean') {
+  if (hidden) fields.push({ key: 'socialInsured', label: 'Registered with social insurance', value: null, hidden });
+  else if (typeof p.socialInsured === 'boolean') {
     fields.push({
       key: 'socialInsured',
       label: 'Registered with social insurance',
@@ -211,11 +215,12 @@ function InsuranceDetails({ profile: p }: { profile: EmployeeProfile }) {
     );
   }
   fields.push(
-    { key: 'insurance-filed', label: 'Contract filed with social insurance', value: c ? (c.insuranceFiledOn ? formatDate(c.insuranceFiledOn) : notYet) : noContract },
+    { key: 'insurance-filed', label: 'Contract filed with social insurance', value: c ? (c.insuranceFiledOn ? formatDate(c.insuranceFiledOn) : notYet) : noContract, hidden: hidden && !!c },
     {
       key: 'insurance-labour-office',
       label: 'Contract filed with the labour office',
       value: c ? (c.labourOfficeFiledOn ? formatDate(c.labourOfficeFiledOn) : notYet) : noContract,
+      hidden: hidden && !!c,
     },
   );
 
@@ -411,8 +416,9 @@ export async function InsuranceTab({ profile: p }: { profile: EmployeeProfile })
   const user = await getCurrentUser();
   return (
     <div className="space-y-8">
-      {/* from the profile itself; each part below loads on its own, so a slow one doesn't hold up the others */}
-      <InsuranceDetails profile={p} />
+      {/* from the profile itself; each part below loads on its own, so a slow one doesn't hold up the others. A developer
+          gets none of it (owner, 22 October 2026: "and the social insurance"): each detail shows Hidden */}
+      <InsuranceDetails profile={p} hidden={user.developer === true} />
       {canSeeEmployeeFiles(user) && (
         <Suspense fallback={<SectionLoading title="Forms" />}>
           <InsuranceForms profile={p} can={{ act: p.access.edit, delete: canDelete(user), templates: seesTemplates(user) }} />

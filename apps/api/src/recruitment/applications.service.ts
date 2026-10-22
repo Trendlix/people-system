@@ -14,6 +14,7 @@ import {
   stageMoveProblem,
   stageSince,
   type ApplicationCan,
+  type CandidateBadge,
   type BoardCard,
   type HiringSuggestion,
   type VacancyBoard,
@@ -34,6 +35,7 @@ import { MailService } from '../mail/mail.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { CandidatesService } from './candidates.service.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { InterviewsService } from './interviews.service.js';
 import { isConfidentialVacancy, vacancyWhere } from './recruitment-access.js';
@@ -106,6 +108,7 @@ export class ApplicationsService {
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
     private readonly readings: CvReadingsService,
+    private readonly candidates: CandidatesService,
   ) {}
 
   /** The applications the caller may see on the lists: those of the vacancies they see (HR, the CEO, a Super Admin). */
@@ -154,7 +157,12 @@ export class ApplicationsService {
           : [{ matchPercent: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: LIST_CAP,
     });
-    return rows.map(applicationListView);
+    // their candidates' badges: "2 applications", "Former employee" (22 October 2026)
+    const badges = await this.candidates.badges(
+      rows.map((r) => r.candidateId),
+      user,
+    );
+    return rows.map((r) => ({ ...applicationListView(r), candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null }));
   }
 
   /** An applicant, as the caller may see them: HR, the CEO and a Super Admin in full; their hiring manager and interviewers without the expected salary and HR's notes; 404 for anyone else. */
@@ -236,6 +244,8 @@ export class ApplicationsService {
       feedback,
       feedbackHidden: allFeedback.length - feedback.length,
       suggestion,
+      // their candidate profile (22 October 2026): HR, the CEO and a Super Admin only, never a hiring manager or an interviewer
+      candidateProfile: c.reads ? await this.candidates.ofApplication({ id: a.id, candidateId: a.candidateId }, c.user) : null,
       position: {
         jobTitleId: a.vacancy.jobTitleId,
         departmentId: a.vacancy.departmentId,
@@ -364,10 +374,18 @@ export class ApplicationsService {
         steps: { select: { stage: true, at: true }, orderBy: { at: 'asc' } },
         offers: { where: OPEN_OFFER, select: { id: true } },
         interviews: { where: { status: 'scheduled', startsAt: { gte: now } }, select: { id: true } },
+        candidateId: true,
       },
       orderBy: [{ matchPercent: { sort: 'desc', nulls: 'last' } }, { createdAt: 'asc' }],
     });
     const filteredOut = c.reads ? await this.prisma.jobApplication.count({ where: { vacancyId, filteredOut: true } }) : 0;
+    // the candidates' badges (22 October 2026), for HR, the CEO and a Super Admin: a hiring manager keeps what they saw
+    const badges = c.reads
+      ? await this.candidates.badges(
+          rows.map((r) => r.candidateId),
+          user,
+        )
+      : new Map<string, CandidateBadge>();
     const stages = viewer === 'hiring_manager' ? BOARD_STAGES.filter((s) => s !== 'applied') : [...BOARD_STAGES];
     const cards = rows.map(
       (r): BoardCard => ({
@@ -383,6 +401,7 @@ export class ApplicationsService {
         openOffer: r.offers.length > 0,
         upcomingInterviews: r.interviews.length,
         suggestion: (r.suggestion as HiringSuggestion | null) ?? null,
+        candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null,
       }),
     );
     return {

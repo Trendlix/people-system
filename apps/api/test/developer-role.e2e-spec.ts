@@ -3,7 +3,7 @@ import { DEVELOPER_NO_FILES, DEVELOPER_READ_ONLY, HIDDEN } from '@trendlix/share
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { todayInCairo } from '../src/common/date-only.js';
-import { firstDay, monthsLater } from '../src/payroll/months.js';
+import { monthsLater } from '../src/payroll/months.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, PASSWORD, signIn } from './helpers.js';
 
@@ -13,13 +13,16 @@ import { createApp, createUser, PASSWORD, signIn } from './helpers.js';
 // opens what a Super Admin opens, but every amount comes 0 and every personal ID "••••", across an employee's profile,
 // identity and bank, a payroll run, a loan, a claim, an offer, a vacancy and an asset; every change is refused, and every
 // file with pay or IDs; never views as anyone; never told of what waits for HR or the CEO; what they open is logged with
-// the values hidden. Distinctive amounts, so every answer can be searched for them. Every name is invented; the test
-// deletes what it made.
+// the values hidden. Distinctive amounts, so every answer can be searched for them. Since "Hide per-person details" and
+// "and the social insurance" (22 October 2026), no page about people carries the person's job title, department, grade,
+// hire or contract dates, or social insurance; the company's setup pages still name its departments, job titles and
+// grades, without their people. Every name is invented; the test deletes what it made.
 
 const RUN = `dv${Date.now().toString(36)}`;
 const CURRENT = todayInCairo().slice(0, 7);
 const MONTH = monthsLater(CURRENT, -1);
-const JOINED = firstDay(monthsLater(CURRENT, -3));
+// the 13th, so the hire date, the probation's end and the contract's end are no month's first or last day
+const JOINED = `${monthsLater(CURRENT, -3)}-13`;
 const NATIONAL_ID = `2870723${String(Date.now() % 10_000_000).padStart(7, '0')}`; // born 23 July 1987, as BIRTH below
 const ACCOUNT = '100099887766';
 const MOBILE = '+201098765432';
@@ -48,7 +51,25 @@ const LOAN_REASON = `Invented loan ${RUN}`;
 const CLAIM_TEXT = `Invented taxi ${RUN}`;
 const OFFER_NAME = `Offer Person ${RUN}`;
 const OFFER_EMAIL = `offer.${RUN}@mail.test`;
+// a candidate's profile (candidate profiles, 22 October 2026): a general CV HR added, its person invented
+const CANDIDATE_NAME = `Cand Person ${RUN}`;
+const CANDIDATE_EMAIL = `cand.${RUN}@mail.test`;
+const CANDIDATE_MOBILE = `+2011${String(Date.now() % 100_000_000).padStart(8, '0')}`;
 const PERSONAL = [FULL_EN, FULL_AR, DISPLAY, WORK_EMAIL, PERSONAL_EMAIL, ADDRESS, CITY, BIRTH, EMERGENCY, UNIVERSITY, LOAN_REASON, CLAIM_TEXT, OFFER_NAME, OFFER_EMAIL];
+// the person's job and social insurance (owner, 22 October 2026: "why is the employment data can be viewed by developer
+// access"; "Hide per-person details", "and the social insurance"): invented and distinctive, so every answer about people
+// can be searched for them. The company's own insurance office is set in the database, so no audit entry of the company
+// carries it (the company's page shows it)
+const DEPARTMENT = `Developer test ${RUN}`;
+const JOB_TITLE = `Editor ${RUN}`;
+const GRADE_CODE = `GD${RUN}`;
+const GRADE_LEVEL = `Level ${RUN}`;
+const INSURANCE_NO = `8${String(Date.now()).slice(-8)}`;
+const INSURANCE_START = `${monthsLater(CURRENT, -3)}-14`;
+const FILED_ON = `${monthsLater(CURRENT, -3)}-16`;
+const OFFICE = `مكتب ${AR_TAG}`;
+/** A date as the API sends it and as the audit log writes it (DD/MM/YYYY). */
+const written = (date: string) => [date, date.split('-').reverse().join('/')];
 
 /** The answer as text, and whether any of the real numbers is in it, however written. */
 function leaks(body: unknown): string[] {
@@ -63,6 +84,13 @@ function leaks(body: unknown): string[] {
 function personalLeaks(body: unknown, emails: readonly string[] = []): string[] {
   const text = JSON.stringify(body);
   return [...PERSONAL, ...emails].filter((v) => text.includes(JSON.stringify(v).slice(1, -1)));
+}
+
+/** The person's job, employment dates and social insurance found in an answer (`dates`: the contract's, once made). */
+function jobLeaks(body: unknown, dates: readonly string[]): string[] {
+  const text = JSON.stringify(body);
+  const values = [DEPARTMENT, JOB_TITLE, GRADE_CODE, GRADE_LEVEL, OFFICE, INSURANCE_NO, ...[JOINED, INSURANCE_START, FILED_ON, ...dates].flatMap(written)];
+  return values.filter((v) => text.includes(JSON.stringify(v).slice(1, -1)));
 }
 
 describe('The Developer role (e2e)', () => {
@@ -99,8 +127,18 @@ describe('The Developer role (e2e)', () => {
   let assetCode: string;
   let departmentId: string;
   let jobTitleId: string;
+  /** The vacancy's job title, in the other department: the company's, never the person's. */
+  let vacancyTitleId: string;
   let employeeCode: string;
   let offerNumber: string;
+  let generalCvId: string;
+  let candidateId: string;
+  let ownGradeId: string;
+  let otherDepartmentId: string;
+  let contractId: string;
+  /** The contract's start, end and probation's end, as the API sends them. */
+  let contractDates: string[] = [];
+  let officeBefore: string | null = null;
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
@@ -112,8 +150,15 @@ describe('The Developer role (e2e)', () => {
     const devEmail = await account('developer', ['employee']);
     await prisma.payrollRun.deleteMany({ where: { month: new Date(`${MONTH}-01`) } });
 
-    departmentId = (await as('hr').post('/departments', { nameEn: `Developer test ${RUN}` }).expect(201)).body.id;
-    jobTitleId = (await prisma.jobTitle.create({ data: { departmentId, titleEn: `Editor ${RUN}` }, select: { id: true } })).id;
+    // the department, a second one with nobody in it, the person's own grade and the company's insurance office: in the
+    // database, so no audit entry of the company's setup names them (22 October 2026: "Hide per-person details")
+    departmentId = (await prisma.department.create({ data: { nameEn: DEPARTMENT }, select: { id: true } })).id;
+    otherDepartmentId = (await prisma.department.create({ data: { nameEn: `Developer empty ${RUN}` }, select: { id: true } })).id;
+    jobTitleId = (await prisma.jobTitle.create({ data: { departmentId, titleEn: JOB_TITLE }, select: { id: true } })).id;
+    vacancyTitleId = (await prisma.jobTitle.create({ data: { departmentId: otherDepartmentId, titleEn: `Writer ${RUN}` }, select: { id: true } })).id;
+    ownGradeId = (await prisma.grade.create({ data: { code: GRADE_CODE, rank: 500 + (Date.now() % 400), levelEn: GRADE_LEVEL }, select: { id: true } })).id;
+    officeBefore = (await prisma.company.findUnique({ where: { id: 1 }, select: { insuranceOffice: true } }))?.insuranceOffice ?? null;
+    await prisma.company.update({ where: { id: 1 }, data: { insuranceOffice: OFFICE } });
     const shiftId = (await prisma.shift.findFirstOrThrow({ where: { code: 'A' }, select: { id: true } })).id;
     const gradeId = (await prisma.grade.findFirstOrThrow({ where: { code: 'G3' }, select: { id: true } })).id;
 
@@ -140,11 +185,26 @@ describe('The Developer role (e2e)', () => {
     ).body;
     employeeId = person.id;
     employeeCode = person.employeeCode;
-    employmentId = (await as('hr').post(`/employees/${employeeId}/employments`, { employmentType: 'full_time', joinDate: JOINED, departmentId, shiftId, jobTitleId }).expect(201)).body.employment.id;
+    employmentId = (
+      await as('hr').post(`/employees/${employeeId}/employments`, { employmentType: 'full_time', joinDate: JOINED, departmentId, shiftId, jobTitleId, gradeId: ownGradeId }).expect(201)
+    ).body.employment.id;
     await as('hr').patch(`/employees/${employeeId}/identity`, { nationalId: NATIONAL_ID, printedNo: 'KX7654321' }).expect(200);
     await as('hr').patch(`/employees/${employeeId}/bank`, { bankName: 'CIB', accountNo: ACCOUNT }).expect(200);
-    const draft = (await as('hr').post(`/employees/${employeeId}/employments/${employmentId}/contracts`, { grossSalary: GROSS }).expect(201)).body as { id: string; startDate: string };
+    // the Social Insurance tab's: the number, the subscription start, registered, the occupation
+    await as('hr').patch(`/employees/${employeeId}`, { insuranceNo: INSURANCE_NO, insuranceStartDate: INSURANCE_START, socialInsured: true, occupationCode: '194200' }).expect(200);
+    const draft = (await as('hr').post(`/employees/${employeeId}/employments/${employmentId}/contracts`, { grossSalary: GROSS }).expect(201)).body as {
+      id: string;
+      startDate: string;
+      endDate: string;
+      probationEnd: string;
+    };
+    contractId = draft.id;
+    contractDates = [draft.startDate, draft.endDate, draft.probationEnd].filter(Boolean);
     await as('hr').post(`/contracts/${draft.id}/sign`, { signedOn: draft.startDate }).expect(200);
+    // filed with social insurance (its registration date)
+    await as('hr').patch(`/contracts/${draft.id}`, { insuranceFiledOn: FILED_ON }).expect(200);
+    // the head of their department: the departments page would say where they work
+    await prisma.department.update({ where: { id: departmentId }, data: { headId: employeeId } });
 
     // last month's payroll, a loan, a claim, an offer, a vacancy and an asset with its cost
     runId = (await as('hr').post('/payroll/runs', { month: MONTH }).expect(201)).body.id;
@@ -164,10 +224,25 @@ describe('The Developer role (e2e)', () => {
     offerId = offer.id;
     offerNumber = offer.number;
     vacancyId = (
-      await as('hr').post('/recruitment/vacancies', { jobTitleId, employmentType: 'full_time', headcount: 1, salaryMin: SALARY_MIN, salaryMax: SALARY_MIN + 1000, about: '<p>Edits our videos.</p>' }).expect(201)
+      await as('hr').post('/recruitment/vacancies', { jobTitleId: vacancyTitleId, employmentType: 'full_time', headcount: 1, salaryMin: SALARY_MIN, salaryMax: SALARY_MIN + 1000, about: '<p>Edits our videos.</p>' }).expect(201)
     ).body.id;
     // sent for approval: the CEO is told, never the developer
     await as('hr').post(`/recruitment/vacancies/${vacancyId}/submit`).expect(200);
+    // a candidate (22 October 2026): HR's Add a CV makes their profile
+    generalCvId = (
+      await api()
+        .post('/api/recruitment/general-cvs')
+        .set('Cookie', sessions.hr)
+        .field('fullName', CANDIDATE_NAME)
+        .field('email', CANDIDATE_EMAIL)
+        .field('mobile', CANDIDATE_MOBILE)
+        .field('areaOther', 'Video')
+        .field('source', 'email')
+        .field('consent', 'true')
+        .attach('cv', Buffer.from(`%PDF-1.4\n% ${RUN}\n%%EOF\n`), 'cv.pdf')
+        .expect(201)
+    ).body.id;
+    candidateId = (await prisma.generalCv.findUniqueOrThrow({ where: { id: generalCvId }, select: { candidateId: true } })).candidateId!;
     assetCode = (await as('superAdmin').post('/assets', { name: `Camera ${RUN}`, group: 'kit', type: 'CAM', condition: 'good', values: { purchasePrice: PURCHASE } }).expect(201)).body.code;
 
     // the role, given by the Super Admin; a new sign-in after it
@@ -182,12 +257,16 @@ describe('The Developer role (e2e)', () => {
     await prisma.reimbursementType.deleteMany({ where: { id: claimTypeId } });
     await prisma.jobOffer.deleteMany({ where: { id: offerId } });
     await prisma.vacancy.deleteMany({ where: { id: vacancyId } });
+    await prisma.generalCv.deleteMany({ where: { id: generalCvId } });
+    await prisma.candidate.deleteMany({ where: { id: candidateId } });
     await prisma.asset.deleteMany({ where: { code: assetCode } });
     if (!(await prisma.asset.count({ where: { code: { startsWith: 'PK-CAM-' } } }))) await prisma.assetCodeCounter.deleteMany({ where: { prefix: 'PK-CAM-' } });
     await prisma.contract.deleteMany({ where: { employmentId } });
     await prisma.employee.deleteMany({ where: { id: employeeId } });
-    await prisma.jobTitle.deleteMany({ where: { id: jobTitleId } });
-    await prisma.department.deleteMany({ where: { id: departmentId } });
+    await prisma.jobTitle.deleteMany({ where: { id: { in: [jobTitleId, vacancyTitleId] } } });
+    await prisma.department.deleteMany({ where: { id: { in: [departmentId, otherDepartmentId] } } });
+    await prisma.grade.deleteMany({ where: { id: ownGradeId } });
+    await prisma.company.update({ where: { id: 1 }, data: { insuranceOffice: officeBefore } });
     await prisma.notification.deleteMany({ where: { userId: { in: Object.values(users) } } });
     await app.close();
   });
@@ -264,6 +343,11 @@ describe('The Developer role (e2e)', () => {
       `/recruitment/vacancies/${vacancyId}`,
       '/recruitment/applications',
       '/recruitment/general-cvs',
+      // candidate profiles (22 October 2026)
+      `/recruitment/general-cvs/${generalCvId}`,
+      '/recruitment/candidates',
+      '/recruitment/candidates/matches',
+      `/recruitment/candidates/${candidateId}`,
       '/assets',
       `/assets/${assetCode}`,
       '/assets/custody',
@@ -277,7 +361,27 @@ describe('The Developer role (e2e)', () => {
       '/audit',
       `/audit?entityType=employee&entityId=${employeeId}`,
       '/me/notifications',
+      // more pages about the person's job and social insurance (22 October 2026: "Hide per-person details")
+      `/employees/${employeeId}/documents`,
+      `/employees/${employeeId}/paperwork`,
+      `/employees/${employeeId}/leave`,
+      `/employees/${employeeId}/raise-requests`,
+      `/employees/${employeeId}/check-in-places`,
+      `/attendance/employees/${employeeId}`,
+      '/contracts/expiring',
+      '/contracts/law-warnings',
+      '/employments/probation-ending',
+      '/leave/calendar',
+      '/wfh',
+      '/wfh/calendar',
+      '/reports/salary-raises',
+      `/offboarding/employees/${employeeId}`,
+      `/onboarding/employees/${employeeId}`,
+      `/audit?entityType=employment&entityId=${employmentId}`,
+      `/audit?entityType=contract&entityId=${contractId}`,
     ];
+    // the company's setup pages: their departments and job titles are the company's (checked by the test below)
+    const company = new Set(['/org-chart', '/departments', '/recruitment/vacancies', `/recruitment/vacancies/${vacancyId}`]);
     const answered: string[] = [];
     for (const path of paths) {
       const res = await as('developer').get(path);
@@ -285,12 +389,125 @@ describe('The Developer role (e2e)', () => {
       if (res.status === 200) answered.push(path);
       expect(personalLeaks(res.body, Object.values(emails)), path).toEqual([]);
       expect(leaks(res.body), path).toEqual([]);
+      // the person's job title, department, grade, hire and contract dates, insurance office, registration and number
+      if (!company.has(path)) expect(jobLeaks(res.body, contractDates), path).toEqual([]);
     }
     expect(answered.length, answered.join(' ')).toBeGreaterThan(paths.length * 0.6);
     // the person shows by their pseudonym in the list, the same as on their page
     expect(JSON.stringify((await as('developer').get('/employees').expect(200)).body)).toContain(`Employee ${employeeCode}`);
     // and HR's list has them by name
     expect(JSON.stringify((await as('hr').get('/employees').expect(200)).body)).toContain(FULL_EN);
+  });
+
+  // 22 October 2026: "why is the employment data can be viewed by developer access" → "Hide per-person details", "and the
+  // social insurance"
+  it('a profile’s employment and social insurance: "••••" or null for a developer; HR sees them', async () => {
+    const dev = (await as('developer').get(`/employees/${employeeId}`).expect(200)).body;
+    expect(dev.employment).toMatchObject({
+      employmentType: HIDDEN,
+      departmentId: null,
+      jobTitleId: null,
+      gradeId: null,
+      joinDate: null,
+      probationEnd: null,
+      department: { id: null, nameEn: HIDDEN },
+      jobTitle: { id: null, titleEn: HIDDEN },
+      grade: { id: null, code: HIDDEN, levelEn: HIDDEN },
+    });
+    expect(dev.employment.contract).toMatchObject({ startDate: null, endDate: null, signedOn: null, insuranceFiledOn: null, jobTitleEn: HIDDEN, departmentName: HIDDEN, gradeCode: HIDDEN });
+    expect(dev).toMatchObject({ insuranceNo: HIDDEN, occupationCode: HIDDEN, insuranceStartDate: null, socialInsured: null });
+    // statuses stay, for debugging
+    expect(['active', 'probation']).toContain(dev.employment.status);
+    expect(jobLeaks(dev, contractDates)).toEqual([]);
+    // HR sees them all
+    const hr = (await as('hr').get(`/employees/${employeeId}`).expect(200)).body;
+    expect(hr.employment).toMatchObject({
+      employmentType: 'full_time',
+      departmentId,
+      jobTitleId,
+      gradeId: ownGradeId,
+      joinDate: JOINED,
+      department: { id: departmentId, nameEn: DEPARTMENT },
+      jobTitle: { id: jobTitleId, titleEn: JOB_TITLE },
+      grade: { id: ownGradeId, code: GRADE_CODE, levelEn: GRADE_LEVEL },
+    });
+    expect(hr.employment.contract).toMatchObject({ insuranceFiledOn: FILED_ON, jobTitleEn: JOB_TITLE, gradeCode: GRADE_CODE });
+    expect(hr).toMatchObject({ insuranceNo: INSURANCE_NO, occupationCode: '194200', insuranceStartDate: INSURANCE_START, socialInsured: true });
+    expect(jobLeaks(hr, contractDates)).toEqual(expect.arrayContaining([DEPARTMENT, JOB_TITLE, GRADE_CODE, GRADE_LEVEL, INSURANCE_NO, JOINED, INSURANCE_START, FILED_ON]));
+    expect(jobLeaks((await as('hr').get('/contracts').expect(200)).body, contractDates)).toEqual(expect.arrayContaining([JOB_TITLE, FILED_ON, ...contractDates]));
+  });
+
+  it('the company’s setup pages: departments, job titles, grades and the org chart named, their people cut off', async () => {
+    const departments = (await as('developer').get('/departments').expect(200)).body as { id: string; nameEn: string; headId: string | null; head: object | null }[];
+    expect(departments.find((d) => d.id === departmentId)).toMatchObject({ nameEn: DEPARTMENT, headId: null, head: { id: null, employeeCode: HIDDEN, fullNameEn: HIDDEN } });
+    expect(JSON.stringify(departments)).not.toContain(employeeCode);
+    expect(JSON.stringify(departments)).not.toContain(employeeId);
+    expect(JSON.stringify((await as('developer').get('/job-titles').expect(200)).body)).toContain(JOB_TITLE);
+    expect(JSON.stringify((await as('developer').get(`/job-titles/${jobTitleId}`).expect(200)).body)).toContain(DEPARTMENT);
+    const grades = JSON.stringify((await as('developer').get('/grades').expect(200)).body);
+    expect(grades).toContain(GRADE_CODE);
+    expect(grades).toContain(GRADE_LEVEL);
+    // the org chart: its departments and job titles with their headcount, nobody named
+    const chart = (await as('developer').get('/org-chart').expect(200)).body;
+    expect(chart.showsPeople).toBe(false);
+    const drawn = JSON.stringify(chart);
+    expect(drawn).toContain(DEPARTMENT);
+    expect(drawn).toContain(JOB_TITLE);
+    expect(drawn).not.toContain(employeeCode);
+    expect(drawn).not.toContain(employeeId);
+    // the company's own social insurance registration stays readable
+    expect((await as('developer').get('/company').expect(200)).body.insuranceOffice).toBe(OFFICE);
+    // HR: the head named, the people on the org chart
+    const theirs = (await as('hr').get('/departments').expect(200)).body as { id: string; head: { employeeCode: string } | null }[];
+    expect(theirs.find((d) => d.id === departmentId)?.head?.employeeCode).toBe(employeeCode);
+    expect(JSON.stringify((await as('hr').get('/org-chart').expect(200)).body)).toContain(employeeCode);
+  });
+
+  it('a filter by department doesn’t narrow a developer’s list of people; HR’s it does', async () => {
+    const lists = (body: unknown) => JSON.stringify(body).includes(employeeCode);
+    expect(lists((await as('hr').get('/attendance').expect(200)).body)).toBe(true);
+    expect(lists((await as('hr').get(`/attendance?departmentId=${otherDepartmentId}`).expect(200)).body)).toBe(false);
+    const dev = (await as('developer').get(`/attendance?departmentId=${otherDepartmentId}`).expect(200)).body;
+    expect(lists(dev)).toBe(true);
+    // the employees list: everyone, whatever the department
+    const everyone = (await as('developer').get('/employees').expect(200)).body as unknown[];
+    const filtered = (await as('developer').get(`/employees?departmentId=${otherDepartmentId}`).expect(200)).body as unknown[];
+    expect(filtered.length).toBe(everyone.length);
+    expect(lists(filtered)).toBe(true);
+  });
+
+  it('the social insurance forms, the employee file and what was read from its papers: refused', async () => {
+    const unknown = '00000000-0000-4000-8000-000000000000';
+    for (const path of [`/documents/${unknown}/file`, `/documents/${unknown}/signed-file`, `/documents/${unknown}/esign-file`, `/paperwork/${unknown}/file`, `/paperwork/${unknown}/text`]) {
+      const res = await as('developer').get(path);
+      expect(res.status, path).toBe(403);
+      expect(res.body.message, path).toBe(DEVELOPER_NO_FILES);
+    }
+    // generating Form 1 is a change, refused as every change
+    const made = await as('developer').post(`/employees/${employeeId}/documents`, { slotKey: 'insurance_form_1' });
+    expect(made.status).toBe(403);
+    expect(made.body.message).toBe(DEVELOPER_READ_ONLY);
+  });
+
+  // candidate profiles (22 October 2026: "how to make like a profile for each candidate …")
+  it('a candidate: "Candidate CAN-…", no name, email or mobile; found by the code only; nothing merged', async () => {
+    const profile = (await as('developer').get(`/recruitment/candidates/${candidateId}`).expect(200)).body;
+    expect(profile.code).toMatch(/^CAN-\d+$/);
+    expect(profile.fullName).toBe(`Candidate ${profile.code}`);
+    const answers = JSON.stringify([
+      profile,
+      (await as('developer').get('/recruitment/candidates').expect(200)).body,
+      (await as('developer').get('/recruitment/candidates/matches').expect(200)).body,
+      (await as('developer').get(`/recruitment/general-cvs/${generalCvId}`).expect(200)).body,
+    ]);
+    for (const v of [CANDIDATE_NAME, CANDIDATE_EMAIL, CANDIDATE_MOBILE, CANDIDATE_MOBILE.slice(3)]) expect(answers).not.toContain(v);
+    expect((await as('developer').get(`/recruitment/candidates?q=${encodeURIComponent(CANDIDATE_NAME)}`).expect(200)).body).toEqual([]);
+    expect(((await as('developer').get(`/recruitment/candidates?q=${profile.code}`).expect(200)).body as { id: string }[]).map((c) => c.id)).toEqual([candidateId]);
+    const merge = await as('developer').post(`/recruitment/candidates/${candidateId}/merge`, { otherId: candidateId });
+    expect(merge.status).toBe(403);
+    expect(merge.body.message).toBe(DEVELOPER_READ_ONLY);
+    // HR sees them as they are
+    expect((await as('hr').get(`/recruitment/candidates/${candidateId}`).expect(200)).body.fullName).toBe(CANDIDATE_NAME);
   });
 
   it('a search by name finds nothing for a developer; by a code it does; HR finds by name', async () => {

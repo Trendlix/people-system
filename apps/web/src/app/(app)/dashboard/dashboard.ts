@@ -24,7 +24,9 @@ function ymd(date: string): [number, number, number] | null {
  * month, or the month's last day when it is shorter (joined 31/01: a month on 28/02). Null for a join date still to come
  * or one that can't be read.
  */
-export function serviceLength(joinDate: string, today: string): string | null {
+export function serviceLength(joinDate: string | null, today: string): string | null {
+  // a developer gets no join date (owner, 22 October 2026: "Hide per-person details")
+  if (!joinDate) return null;
   const from = ymd(joinDate);
   const to = ymd(today);
   if (!from || !to) return null;

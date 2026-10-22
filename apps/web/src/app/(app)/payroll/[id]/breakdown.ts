@@ -456,9 +456,13 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates, mont
   // the employee's share as the run's copy of the rates set by law has it (owner's request, 16 October 2026); a run from
   // an API before them: the built-in rates of its year
   const share = (law ?? lawRatesFor(t.year)).employeeInsuranceRate;
+  // whether the person is registered with social insurance is hidden from a developer (owner, 22 October 2026: "and the
+  // social insurance"): null
   const insuranceNote = !t.statutory
     ? 'Freelance: no social insurance, tax or Martyrs’ fund'
-    : !t.insured
+    : (t.insured as boolean | null) === null
+      ? 'Whether registered with social insurance is hidden'
+      : !t.insured
       ? 'Not registered with social insurance: nothing deducted'
       : `${formatPercent(share)} of the insured wage`;
   // a month split between contracts: each one's part (owner, 17 October 2026); never by the hour

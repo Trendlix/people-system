@@ -1,6 +1,7 @@
-import { APPLICATION_STAGE_LABELS, applicationSourceText, VACANCY_STATUS_LABELS, type ApplicationListItem, type ApplicationStage, type VacancyStatus } from '@trendlix/shared';
+import { APPLICATION_STAGE_LABELS, applicationSourceText, VACANCY_STATUS_LABELS, type ApplicationListItem, type ApplicationStage, type CandidateBadge, type VacancyStatus } from '@trendlix/shared';
 import Link from 'next/link';
 import { formatDate } from '@/lib/format';
+import { candidateBadges } from './candidates';
 import { applicantHref, matchText, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
 
 // Recruitment's pieces (owner, 22 October 2026: "where will we include the ATS?"): the badges of a vacancy's status and an
@@ -15,6 +16,21 @@ export function StageBadge({ stage, filteredOut }: { stage: ApplicationStage; fi
     <span className="inline-flex flex-wrap gap-1">
       <span className={`badge ${STAGE_STYLE[stage]}`}>{APPLICATION_STAGE_LABELS[stage]}</span>
       {filteredOut && <span className="badge bg-danger-soft text-danger">Filtered out</span>}
+    </span>
+  );
+}
+
+/** An applicant's candidate badges ("2 applications", "Applied before", "Former employee"; 22 October 2026). */
+export function CandidateBadges({ candidate }: { candidate: CandidateBadge | null | undefined }) {
+  const badges = candidateBadges(candidate);
+  if (!badges.length) return null;
+  return (
+    <span className="mt-1 inline-flex flex-wrap gap-1">
+      {badges.map((b) => (
+        <span key={b} className={`badge ${b === 'Applied before' || b.endsWith('applications') ? 'bg-canvas text-ink' : 'bg-warn-soft text-warn'}`}>
+          {b}
+        </span>
+      ))}
     </span>
   );
 }
@@ -49,6 +65,7 @@ export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: App
                 <span className="block text-xs text-muted">
                   {a.number} · {a.email}
                 </span>
+                <CandidateBadges candidate={a.candidate} />
               </td>
               {withVacancy && <td className="text-sm">{a.vacancy.title}</td>}
               <td className="text-right tabular-nums">{matchText(a.matchPercent)}</td>

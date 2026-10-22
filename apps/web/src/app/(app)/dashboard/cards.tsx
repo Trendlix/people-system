@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { isOpenReimbursement, LABELS, seesRaiseRequests } from '@trendlix/shared';
+import { Shown } from '@/components/hidden';
 import { decidesForTeam, MY_REQUESTS, MY_TEAM } from '@/components/nav';
 import { departmentName } from '@/lib/departments';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { employmentHidden, labelOf } from '@/lib/hidden';
 import { hasRole } from '@/lib/roles';
 import { shiftTimesText } from '@/lib/shifts';
 import type { EmployeeProfile, Holiday } from '@/lib/types';
@@ -129,13 +131,18 @@ function YourJob({ profile: p, user, today }: { profile: EmployeeProfile; user: 
         </Fact>
         {e ? (
           <>
-            <Fact label="Job title" note={LABELS.employmentType[e.employmentType]}>
-              {e.jobTitle?.titleEn ?? dash}
+            {/* a developer's own job is hidden from them too (owner, 22 October 2026: "Hide per-person details") */}
+            <Fact label="Job title" note={employmentHidden(e) ? undefined : labelOf(LABELS.employmentType, e.employmentType)}>
+              {e.jobTitle ? <Shown text={e.jobTitle.titleEn} /> : dash}
             </Fact>
-            <Fact label={e.department?.parent ? 'Department › team' : 'Department'}>{e.department ? departmentName(e.department) : dash}</Fact>
+            <Fact label={employmentHidden(e) ? 'Department' : e.department?.parent ? 'Department › team' : 'Department'}>
+              {e.department ? <Shown text={departmentName(e.department)} /> : dash}
+            </Fact>
             <Fact label="Direct manager">{manager || dash}</Fact>
             <Fact label="Joined" note={service}>
-              <span className="tabular-nums">{formatDate(e.joinDate)}</span>
+              <span className="tabular-nums">
+                <Shown text={e.joinDate ? formatDate(e.joinDate) : employmentHidden(e) ? 'Hidden' : ''} />
+              </span>
             </Fact>
             <Fact label="Shift" note={arrangementLabel(e)}>
               {e.shift ? `${shiftTimesText(e.shift)}${days?.length ? ` · ${workingDaysText(days)}` : ''}` : dash}

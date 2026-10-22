@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { OPEN_OFFER } from './applications.service.js';
+import { CandidatesService } from './candidates.service.js';
 import { vacancyWhere } from './recruitment-access.js';
 import { APPLICATION_ENTITY, VACANCY_ENTITY } from './recruitment-views.js';
 
@@ -24,6 +25,7 @@ export class RecruitmentOffersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly onboarding: OnboardingService,
+    private readonly candidates: CandidatesService,
   ) {}
 
   /**
@@ -79,6 +81,8 @@ export class RecruitmentOffersService {
           this.prisma.jobApplicationStep.create({ data: { applicationId: a.id, event: 'hired', stage: 'hired', note: o.number, byId: userId } }),
         ]);
         await this.audit.record({ userId, action: 'stage', entityType: APPLICATION_ENTITY, entityId: a.id, diff: { number: a.number, stage: { from: a.stage, to: 'hired' }, offer: o.number } });
+        // their candidate linked to the profile made from the offer (candidate profiles, 22 October 2026)
+        if (employeeId) await this.candidates.refreshFor({ applicationId: a.id });
         await this.fillIfDone(a.vacancyId, userId);
         // their onboarding checklist (Phase 2): opened with the profile made from the offer
         if (employeeId) await this.onboarding.openForHire(employeeId, a.id, userId);
@@ -104,6 +108,7 @@ export class RecruitmentOffersService {
       const a = await this.prisma.jobApplication.findFirst({ where: { offers: { some: { id: offerId } }, stage: 'hired', employeeId: null }, select: { id: true } });
       if (!a) return;
       await this.prisma.jobApplication.update({ where: { id: a.id }, data: { employeeId } });
+      await this.candidates.refreshFor({ applicationId: a.id });
       await this.onboarding.openForHire(employeeId, a.id, null);
     } catch (err) {
       this.logger.warn(`Keeping the profile on the application failed: ${(err as Error).message}`);

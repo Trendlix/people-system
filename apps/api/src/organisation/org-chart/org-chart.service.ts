@@ -74,7 +74,9 @@ export class OrgChartService {
   constructor(private readonly prisma: PrismaService) {}
 
   async get(user: SessionUser): Promise<OrgChart> {
-    const showsPeople = seesEveryone(user);
+    // never to a developer (owner, 22 October 2026: "Hide per-person details"): a job title's people would say who does
+    // what; its headcount stays
+    const showsPeople = seesEveryone(user) && !user.developer;
     const current = { endDate: null, jobTitleId: { not: null } } as const; // an employment without an end date is current
     const [company, departments, titles, counts, holders] = await Promise.all([
       // the logo's bytes are never loaded: it has an update time exactly when there is one (see CompanyService.setLogo)

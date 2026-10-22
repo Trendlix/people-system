@@ -90,7 +90,8 @@ export function decisionFigures(r: PendingRaise, rates: readonly LawRates[]): Fi
     allowancesAfter: r.allowances,
     hoursAfter: r.hoursPerWeek,
     rates,
-    year: Number(r.startDate.slice(0, 4)),
+    // a developer gets no contract dates (owner, 22 October 2026: "Hide per-person details"): this year's rates then
+    year: r.startDate ? Number(r.startDate.slice(0, 4)) : new Date().getFullYear(),
     note: figuresNote(false),
   };
 }

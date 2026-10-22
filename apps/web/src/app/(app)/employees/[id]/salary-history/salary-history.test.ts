@@ -295,6 +295,13 @@ describe('the chart', () => {
     expect(stepChart({ events: [event({ version: 1, stage: 'draft' })], joinDate: '2026-01-01', endDate: null, today: '2026-10-16' })).toBeNull();
   });
 
+  // a developer gets no employment or contract dates (owner, 22 October 2026: "Hide per-person details")
+  it('is nothing, and an event’s dates Hidden, without the dates', () => {
+    const undated = event({ version: 1, effectiveDate: null as unknown as string, endDate: null });
+    expect(stepChart({ events: [undated], joinDate: null, endDate: null, today: '2026-10-16' })).toBeNull();
+    expect(eventView(undated).effective).toBe('Hidden');
+  });
+
   it('steps at each signed effective date, to scale from the join date to today', () => {
     const chart = stepChart(
       {

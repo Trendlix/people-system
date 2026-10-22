@@ -18,10 +18,13 @@ import type { SessionUser } from './session-user.js';
 //   a filter finds nothing (packages/shared developerQuery), so a real name can't be confirmed by searching for it;
 // - every other answer is masked by packages/shared maskForDeveloper: money 0, personal IDs "••••", every person a
 //   pseudonym ("Employee EMP-0182"), personal data and free text about people hidden, every real name, email, phone and
-//   national ID in any text replaced. The pseudonyms come from the people the API knows (employees, accounts,
-//   applicants, general CVs, offers), read a minute at a time; if they can't be read, the answer is refused rather than
-//   given unmasked. Where a module has its own rights (the salary, bank and identity rights, the asset values) a
-//   developer lacks them too (employees/access.ts, assets-access.ts), so those answers hide them before this masks.
+//   national ID in any text replaced; and, since the owner's "Hide per-person details" and "and the social insurance"
+//   (22 October 2026), every person's job, terms, employment dates and social insurance hidden, the company's setup pages
+//   readable with their people cut off (hideJobForDeveloper). The pseudonyms come from the people the API knows
+//   (employees, accounts, applicants, general CVs, offers), read a minute at a time; if they can't be read, the answer is
+//   refused rather than given unmasked. Where a module has its own rights (the salary, bank and identity rights, the
+//   asset values) a developer lacks them too (employees/access.ts, assets-access.ts), so those answers hide them before
+//   this masks.
 // Anyone else's requests pass untouched.
 
 /** Whether an answer is a file rather than data. */
@@ -48,8 +51,9 @@ export class DeveloperInterceptor implements NestInterceptor {
     if (this.reflector.getAllAndOverride<boolean>(NOT_FOR_DEVELOPERS, targets)) throw new ForbiddenException(DEVELOPER_NO_FILES);
     const maySee = this.reflector.getAllAndOverride<boolean>(DEVELOPER_MAY_SEE, targets) === true;
     const path = (req.originalUrl ?? req.url ?? '').split('?')[0];
-    // a name search finds nothing: the query the handler reads (its @Query() is read after this)
-    const safer = developerQuery(req.query as Record<string, unknown>);
+    // a name search finds nothing, and a list of people isn't narrowed by department, job title, grade or employment type
+    // (22 October 2026: "Hide per-person details"): the query the handler reads (its @Query() is read after this)
+    const safer = developerQuery(req.query as Record<string, unknown>, path);
     if (safer) Object.defineProperty(req, 'query', { value: safer, writable: true, configurable: true, enumerable: true });
     return next.handle().pipe(
       switchMap((body: unknown) => {
@@ -78,7 +82,7 @@ export class DeveloperInterceptor implements NestInterceptor {
   }
 
   private async readPeople(): Promise<DeveloperPeople> {
-    const [employees, users, applications, generalCvs, offers] = await Promise.all([
+    const [employees, users, applications, generalCvs, offers, candidates] = await Promise.all([
       this.prisma.employee.findMany({
         select: { id: true, employeeCode: true, fullNameEn: true, fullNameAr: true, displayName: true, workEmail: true, personalEmail: true, emergencyName: true },
       }),
@@ -86,7 +90,9 @@ export class DeveloperInterceptor implements NestInterceptor {
       this.prisma.jobApplication.findMany({ select: { id: true, number: true, fullName: true, email: true } }),
       this.prisma.generalCv.findMany({ select: { id: true, number: true, fullName: true, email: true } }),
       this.prisma.jobOffer.findMany({ select: { id: true, number: true, fullNameEn: true, fullNameAr: true, email: true } }),
+      // candidate profiles (22 October 2026): "Candidate CAN-0001"
+      this.prisma.candidate.findMany({ select: { id: true, code: true, fullName: true } }),
     ]);
-    return developerPeople({ employees, users, applicants: [...applications, ...generalCvs], offers });
+    return developerPeople({ employees, users, applicants: [...applications, ...generalCvs], offers, candidates });
   }
 }

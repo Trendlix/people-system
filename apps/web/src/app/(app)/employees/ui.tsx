@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { LABELS, STANDING_LABELS, type EmployeeStatus, type EmploymentType, type ShiftTimes, type Standing } from '@trendlix/shared';
+import { Hidden } from '@/components/hidden';
 import { formatDate } from '@/lib/format';
+import { HIDDEN_LABEL, isHidden, labelOf, readsHidden } from '@/lib/hidden';
 import { shiftTimesText } from '@/lib/shifts';
 import { hasRole } from '@/lib/roles';
 import type { EmployeeProfile, SessionUser } from '@/lib/types';
@@ -64,6 +66,8 @@ export function StandingBadge({ standing }: { standing: Standing }) {
 
 /** "G4 · Senior": an employee's grade (each employment has its own, within the job title's range if it has one). */
 export function gradeLabel(grade: { code: string; levelEn: string }): string {
+  // hidden from a developer (22 October 2026: "Hide per-person details"): "Hidden"
+  if (isHidden(grade.code)) return HIDDEN_LABEL;
   return `${grade.code} · ${grade.levelEn}`;
 }
 
@@ -74,13 +78,15 @@ export function shiftLabel(shift: { code: string } & ShiftTimes): string {
 
 /** "Hybrid · in the office on Sun, Tue" */
 export function arrangementLabel(e: { workArrangement: keyof typeof LABELS.workArrangement; officeDays: number[] }): string {
-  if (e.workArrangement !== 'hybrid' || e.officeDays.length === 0) return LABELS.workArrangement[e.workArrangement];
+  // hidden from a developer (22 October 2026: "Hide per-person details"): "Hidden"
+  if (e.workArrangement !== 'hybrid' || e.officeDays.length === 0) return labelOf(LABELS.workArrangement, e.workArrangement) ?? '';
   const days = [...e.officeDays].sort((a, b) => a - b).map((d) => DAY_NAMES[d]);
   return `${LABELS.workArrangement.hybrid} · in the office on ${days.join(', ')}`;
 }
 
-/** "01/03/2024 – now" or "01/03/2024 – 30/06/2026" */
-export function periodLabel(e: { joinDate: string; endDate: string | null }): string {
+/** "01/03/2024 – now" or "01/03/2024 – 30/06/2026"; "Hidden" when a developer gets no join date (22 October 2026). */
+export function periodLabel(e: { joinDate: string | null; endDate: string | null }): string {
+  if (!e.joinDate) return HIDDEN_LABEL;
   return `${formatDate(e.joinDate)} – ${e.endDate ? formatDate(e.endDate) : 'now'}`;
 }
 
@@ -124,6 +130,11 @@ export type GridField = {
   ar?: boolean;
   /** A note under the value, e.g. "Viewing this is recorded." */
   note?: React.ReactNode;
+  /**
+   * Hidden from a developer (owner, 22 October 2026: "Hide per-person details"): shown as Hidden, never as not captured,
+   * without its note. A value the API sent as "••••" is Hidden anyway.
+   */
+  hidden?: boolean;
 };
 
 const isEmpty = (v: React.ReactNode) => v === null || v === undefined || v === '' || v === false;
@@ -136,7 +147,8 @@ export function FieldGrid({ fields }: { fields: GridField[] }) {
   return (
     <dl className="grid grid-cols-[repeat(auto-fill,minmax(13.5rem,1fr))] overflow-hidden rounded-lg border border-line bg-card">
       {fields.map((f) => {
-        const empty = isEmpty(f.value);
+        const hidden = f.hidden === true || readsHidden(f.value);
+        const empty = !hidden && isEmpty(f.value);
         const missing = empty && f.required;
         return (
           <div
@@ -150,7 +162,9 @@ export function FieldGrid({ fields }: { fields: GridField[] }) {
               {f.protected && <Tag>Protected</Tag>}
             </dt>
             <dd className="mt-1 text-sm break-words">
-              {empty ? (
+              {hidden ? (
+                <Hidden />
+              ) : empty ? (
                 f.required ? (
                   <span className="text-muted italic">Not captured</span>
                 ) : (
@@ -164,7 +178,7 @@ export function FieldGrid({ fields }: { fields: GridField[] }) {
                 f.value
               )}
             </dd>
-            {f.note && <div className="mt-1 text-xs text-muted">{f.note}</div>}
+            {f.note && !hidden && <div className="mt-1 text-xs text-muted">{f.note}</div>}
           </div>
         );
       })}

@@ -39,6 +39,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { nextApplicationNumber } from './application-numbers.js';
+import { attachCandidate, findCandidates, foundIds, lockCandidates, refreshCandidate } from './candidate-links.js';
 import { cvFileName, cvProblem, cvTypeOf } from './cv-file.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { createHrApplication } from './hr-applications.js';
@@ -192,11 +193,12 @@ export class GeneralCvsService {
     problems.push(...(await this.areaProblems(input.departmentId)));
     if (problems.length) throw new BadRequestException(problems);
     const email = normalEmail(input.email);
-    const recent = await this.recent(email);
-    if (recent) throw new ConflictException(`You sent us your CV on ${shownDate(dayInCairo(recent.createdAt))} already. HR will be in touch.`);
     const userAgent = (text(dto.userAgent) ?? origin.userAgent)?.slice(0, 500) ?? null;
-    const made = await this.create(input, file!, { source: 'careers', consentById: null, consentNote: null, createdById: null, ip, userAgent, note: null });
-    await this.audit.record({ userId: null, action: 'apply', entityType: GENERAL_CV_ENTITY, entityId: made.id, diff: { number: made.number, source: 'careers', area: made.area } });
+    // one CV every 30 days by the same person: their email, or their candidate (candidate profiles, 22 October 2026)
+    const made = await this.create(input, file!, { source: 'careers', consentById: null, consentNote: null, createdById: null, ip, userAgent, note: null }, (recent) =>
+      new ConflictException(`You sent us your CV on ${shownDate(dayInCairo(recent.createdAt))} already. HR will be in touch.`),
+    );
+    await this.audit.record({ userId: null, action: 'apply', entityType: GENERAL_CV_ENTITY, entityId: made.id, diff: { number: made.number, source: 'careers', area: made.area, candidate: made.candidate } });
     await this.tellHr();
     await this.confirm(email, input.fullName, made.number);
     return { reference: made.number };
@@ -214,19 +216,27 @@ export class GeneralCvsService {
     problems.push(...(await this.areaProblems(input.departmentId)));
     if (problems.length) throw new BadRequestException(problems);
     const email = normalEmail(input.email);
-    const recent = await this.recent(email);
-    if (recent) throw new ConflictException(`${email} sent a CV on ${shownDate(dayInCairo(recent.createdAt))} already (${recent.number}): open it instead.`);
     const source = input.source as GeneralCvSource;
-    const made = await this.create(input, file!, {
-      source,
-      consentById: user.id,
-      consentNote: 'Agreed to be considered (recorded by HR)',
-      createdById: user.id,
-      ip: null,
-      userAgent: null,
-      note: `Added by HR (${GENERAL_CV_SOURCE_LABELS[source]})`,
-    });
-    await this.audit.record({ userId: user.id, action: 'create', entityType: GENERAL_CV_ENTITY, entityId: made.id, diff: { number: made.number, source, area: made.area } });
+    const made = await this.create(
+      input,
+      file!,
+      {
+        source,
+        consentById: user.id,
+        consentNote: 'Agreed to be considered (recorded by HR)',
+        createdById: user.id,
+        ip: null,
+        userAgent: null,
+        note: `Added by HR (${GENERAL_CV_SOURCE_LABELS[source]})`,
+      },
+      (recent) =>
+        new ConflictException(
+          recent.email === email
+            ? `${email} sent a CV on ${shownDate(dayInCairo(recent.createdAt))} already (${recent.number}): open it instead.`
+            : `The same person (by their mobile) sent a CV on ${shownDate(dayInCairo(recent.createdAt))} already (${recent.number}): open it instead.`,
+        ),
+    );
+    await this.audit.record({ userId: user.id, action: 'create', entityType: GENERAL_CV_ENTITY, entityId: made.id, diff: { number: made.number, source, area: made.area, candidate: made.candidate } });
     return this.get(made.id, user);
   }
 
@@ -335,6 +345,8 @@ export class GeneralCvsService {
     if (v.status !== 'open' && v.status !== 'on_hold') throw new BadRequestException(['Choose an open vacancy (or one on hold).']);
     const stage: MoveStage = dto.stage ?? 'applied';
     const done = await this.prisma.$transaction(async (tx) => {
+      // the candidates' lock before any row's (candidate-links.ts: never a deadlock with a merge)
+      await lockCandidates(tx);
       await tx.$queryRaw`SELECT id FROM general_cvs WHERE id = ${id}::uuid FOR UPDATE`;
       const r = await tx.generalCv.findUnique({ where: { id }, include: { file: true } });
       if (!r) throw new NotFoundException(NOT_FOUND);
@@ -361,6 +373,9 @@ export class GeneralCvsService {
         cv: { fileName: r.file.fileName, mimeType: r.file.mimeType, sizeBytes: r.file.sizeBytes, data: r.file.data },
         note: `Moved from a general CV (${GENERAL_CV_SOURCE_LABELS[source]})`,
         byId: user.id,
+        // the general CV's candidate: a general CV then an application, one candidate (22 October 2026)
+        candidateId: r.candidateId,
+        sentAt: r.createdAt,
       });
       // its CV's reading goes with it, so it isn't read again (22 October 2026)
       await this.readings.carry(tx, { generalCvId: id }, { applicationId: app.id });
@@ -460,24 +475,40 @@ export class GeneralCvsService {
     return (await isArea(this.prisma, departmentId)) ? [] : ['Choose one of the areas, or Other and write it.'];
   }
 
-  /** A general CV from the email in the last 30 days. */
-  private async recent(email: string) {
+  /** A general CV in the last 30 days from the email, or from the same person (their candidate, by email or mobile; 22 October 2026). */
+  private async recent(db: Prisma.TransactionClient, email: string, candidateIds: readonly string[]) {
     const since = new Date(Date.now() - GENERAL_CV_LIMITS.perEmailDays * 24 * HOUR);
-    const r = await this.prisma.generalCv.findFirst({ where: { email, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, select: { number: true, createdAt: true } });
+    const r = await db.generalCv.findFirst({
+      where: { createdAt: { gte: since }, OR: [{ email }, ...(candidateIds.length ? [{ candidateId: { in: [...candidateIds] } }] : [])] },
+      orderBy: { createdAt: 'desc' },
+      select: { number: true, createdAt: true, email: true },
+    });
     return r && withinDays(r.createdAt, GENERAL_CV_LIMITS.perEmailDays) ? r : null;
   }
 
+  /**
+   * The general CV made, with its candidate (candidate profiles, 22 October 2026: the email's, else the mobile's, else a
+   * new one): the candidates' lock first; one from the same person in the last 30 days refused with `refuseRecent`'s
+   * error.
+   */
   private async create(
     input: GeneralCvInput,
     file: Express.Multer.File,
     how: { source: GeneralCvSource; consentById: string | null; consentNote: string | null; createdById: string | null; ip: string | null; userAgent: string | null; note: string | null },
-  ): Promise<{ id: string; number: string; area: string }> {
+    refuseRecent: (recent: { number: string; createdAt: Date; email: string }) => Error,
+  ): Promise<{ id: string; number: string; area: string; candidate: string }> {
     const type = cvTypeOf(file.buffer)!;
     return this.prisma.$transaction(async (tx) => {
+      const email = normalEmail(input.email);
+      const found = await findCandidates(tx, { email, mobile: input.mobile });
+      const recent = await this.recent(tx, email, foundIds(found));
+      if (recent) throw refuseRecent(recent);
+      const candidate = await attachCandidate(tx, { fullName: input.fullName, email, mobile: input.mobile, linkedin: input.linkedin ?? null, portfolio: input.portfolio ?? null }, found);
       const number = await nextApplicationNumber(tx);
       const row = await tx.generalCv.create({
         data: {
           number,
+          candidateId: candidate.id,
           fullName: input.fullName.trim().replace(/\s+/g, ' '),
           email: normalEmail(input.email),
           mobile: input.mobile,
@@ -502,7 +533,8 @@ export class GeneralCvsService {
         },
         select: { id: true, number: true, department: { select: { nameEn: true } }, areaOther: true },
       });
-      return { id: row.id, number: row.number, area: areaOf(row) };
+      await refreshCandidate(tx, candidate.id);
+      return { id: row.id, number: row.number, area: areaOf(row), candidate: candidate.code };
     }).finally(() => this.readings.kick());
   }
 

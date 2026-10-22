@@ -1,4 +1,5 @@
 import { APPROVER_ROLE_LABELS, approverInCharge, isApproverRole, leadTitle, placeLeads, suggestedManager, type ApproverRole } from '@trendlix/shared';
+import { HIDDEN_LABEL, isHidden, personCutOff } from './hidden';
 import type { Department, EmployeeSummary, Employment, LeadPerson, RequestApprover } from './types';
 
 // Department heads and team leads (owner, 19 October 2026: "i want to add department lead person, the person in
@@ -25,8 +26,12 @@ export const leadShortLabel = (isTeam: boolean) => (isTeam ? 'Team lead' : 'Head
  * Ali" for a team (`isTeam`); null without one.
  */
 export function leadLine(isTeam: boolean, head: LeadPerson | null | undefined): string | null {
-  return head ? `${leadShortLabel(isTeam)}: ${head.fullNameEn}` : null;
+  // cut off for a developer on the company's pages (owner, 22 October 2026: "Hide per-person details")
+  return head ? `${leadShortLabel(isTeam)}: ${leadHidden(head) ? HIDDEN_LABEL : head.fullNameEn}` : null;
 }
+
+/** A department's head or a team's lead the API cut off for a developer: no id, no name. */
+export const leadHidden = (head: Pick<LeadPerson, 'id' | 'fullNameEn'>): boolean => personCutOff(head) || isHidden(head.fullNameEn);
 
 /** Someone with a current employment (not a former employee, nor one not employed yet): who can lead, or be a manager. */
 export const isCurrentEmployee = (p: Pick<EmployeeSummary, 'standing'>) => p.standing !== 'former' && p.standing !== 'not_employed';

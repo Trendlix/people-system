@@ -7,6 +7,7 @@ import { useState, useTransition } from 'react';
 import { APPLICATION_SOURCE_LABELS, APPLICATION_STAGE_LABELS, HIRING_SUGGESTION_LABELS, RECRUITMENT_LIMITS, type ApplicationStage, type BoardCard, type VacancyBoard } from '@trendlix/shared';
 import { FormErrors, useFieldIds } from '@/components/form';
 import type { FormState } from '@/lib/types';
+import { candidateBadges } from './candidates';
 import { daysText, dropOn } from './hiring';
 import { applicantHref, makeOfferHref, matchText, STAGE_STYLE } from './recruitment';
 
@@ -135,6 +136,12 @@ export function PipelineBoard({ board, move }: { board: VacancyBoard; move: Move
                     {card.upcomingInterviews > 0 && <span className={`badge ${STAGE_STYLE.interview}`}>Interview booked</span>}
                     {card.openOffer && <span className={`badge ${STAGE_STYLE.offer}`}>Offer open</span>}
                     {card.suggestion && <span className="badge bg-warn-soft text-warn">Suggested: {HIRING_SUGGESTION_LABELS[card.suggestion]}</span>}
+                    {/* their candidate profile (22 October 2026): "2 applications", "Former employee"; HR, the CEO and a Super Admin only */}
+                    {candidateBadges(card.candidate).map((b) => (
+                      <span key={b} className={`badge ${b === 'Former employee' || b.startsWith('Employee') ? 'bg-warn-soft text-warn' : 'bg-canvas text-ink'}`}>
+                        {b}
+                      </span>
+                    ))}
                   </div>
                   {board.canMove && (
                     <label className="block text-xs">

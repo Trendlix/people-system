@@ -1,3 +1,4 @@
+import { HIDDEN } from '@trendlix/shared';
 import { departmentName } from '../../../lib/departments';
 import { groupByPlace, type DepartmentGroup, type PlaceOrder } from '../../../lib/place-groups';
 import type { EmployeeSummary } from '../../../lib/types';
@@ -19,15 +20,25 @@ export interface DirectorySection<T> {
 const placeNow = (e: Pick<EmployeeSummary, 'employment'>) => (e.employment?.department ? departmentName(e.employment.department) : null);
 
 /**
+ * Where someone works, for a developer, who isn't shown it (owner, 22 October 2026: "Hide per-person details"): hidden
+ * for everyone employed, so they are in one group, with no teams, and the grouping says nothing of who is where.
+ */
+export const hiddenPlace = (e: Pick<EmployeeSummary, 'employment'>): string | null => (e.employment ? HIDDEN : null);
+
+/**
  * The sections that have someone in them, Active first, each grouped by department and team, in Organization's order
  * when `order` is given (owner, 19 October 2026: "sort the employees as the department sorting in the organization").
  */
-export function directorySections<T extends Pick<EmployeeSummary, 'employment'>>(rows: readonly T[], order?: PlaceOrder): DirectorySection<T>[] {
+export function directorySections<T extends Pick<EmployeeSummary, 'employment'>>(
+  rows: readonly T[],
+  order?: PlaceOrder,
+  place: (row: T) => string | null = placeNow,
+): DirectorySection<T>[] {
   const sections = [
     { key: 'active' as const, label: 'Active', note: 'Employed now: on probation, active, trainees and interns, on notice or on leave', rows: rows.filter((e) => e.employment !== null) },
     { key: 'inactive' as const, label: 'Inactive', note: 'Not employed yet, or left', rows: rows.filter((e) => e.employment === null) },
   ];
   return sections
     .filter((s) => s.rows.length > 0)
-    .map(({ rows: people, ...s }) => ({ ...s, count: people.length, groups: groupByPlace(people, placeNow, order) }));
+    .map(({ rows: people, ...s }) => ({ ...s, count: people.length, groups: groupByPlace(people, place, order) }));
 }

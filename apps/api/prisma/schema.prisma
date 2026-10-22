@@ -164,6 +164,10 @@ model User {
   offboardingRehireSet  OffboardingCase[]          @relation("OffboardingRehire") // the rehire decisions this user made
   offboardingItemsDone  OffboardingItem[]          @relation("OffboardingItemDone") // the clearance items this user cleared
   exitInterviewsMade    ExitInterview[]            @relation("ExitInterviewRecording") // the exit interviews this user sent or recorded
+  // candidate profiles (22 October 2026): the possible matches this user decided, the merges they made and undid
+  candidateMatchesDecided CandidateMatch[]         @relation("CandidateMatchDecision")
+  candidateMergesMade     CandidateMerge[]         @relation("CandidateMergeBy")
+  candidateMergesUndone   CandidateMerge[]         @relation("CandidateMergeUndo")
 
   @@map("users")
 }
@@ -648,6 +652,7 @@ model Employee {
   interviewing               InterviewInterviewer[] // the interviews they sit on (22 October 2026)
   interviewFeedback          InterviewFeedback[] // their scorecards
   applications               JobApplication[] // the applications they were hired from
+  candidates                 Candidate[] // the candidate profiles linked to them: matched by email or mobile, or hired from an offer (22 October 2026)
   payrollLines               PayrollLine[] // the person's pay, month by month
   payrollAdjustments         PayrollAdjustment[] // one-off additions and deductions on a month's pay
   payrollAdvances            PayrollAdvance[] // advances and loans given, recovered from the pay
@@ -1490,6 +1495,12 @@ model JobApplication {
   consentById     String?              @map("consent_by") @db.Uuid
   consentBy       User?                @relation("ApplicationConsent", fields: [consentById], references: [id], onDelete: SetNull)
   consentNote     String?              @map("consent_note")
+  // the candidate's profile (owner, 22 October 2026: "how to make like a profile for each candidate to store history and
+  // prevent duplication?"; packages/shared candidates.ts): set by every path that makes an application, those from
+  // before by the backfill (candidates.service.ts), so kept nullable; one candidate an application a vacancy (checked
+  // by the API under the candidates' lock, the email's unique below kept)
+  candidateId     String?              @map("candidate_id") @db.Uuid
+  candidate       Candidate?           @relation(fields: [candidateId], references: [id], onDelete: Restrict)
   generalCv       GeneralCv? // the general CV it was moved from
   cv              JobApplicationCv?
   cvReading       CvReading? // its CV read and analysed (22 October 2026)
@@ -1501,6 +1512,8 @@ model JobApplication {
   @@unique([vacancyId, email])
   @@index([stage])
   @@index([ip, createdAt])
+  @@index([candidateId])
+  @@index([vacancyId, candidateId])
   @@map("job_applications")
 }
 
@@ -1513,6 +1526,9 @@ model JobApplicationCv {
   mimeType      String         @map("mime_type")
   sizeBytes     Int            @map("size_bytes")
   data          Bytes
+  // the file's SHA-256 (candidate profiles, 22 October 2026: "the same CV file" suggests a match): worked out by the
+  // database itself (a generated column), never written
+  sha256        String?
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz
 
   @@map("job_application_cvs")
@@ -1573,6 +1589,9 @@ model GeneralCv {
   applicationId   String?          @unique @map("application_id") @db.Uuid // moved: the application made from it
   application     JobApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
   movedAt         DateTime?        @map("moved_at") @db.Timestamptz
+  // the candidate's profile (22 October 2026), as an application's: the 30 days between CVs count by it
+  candidateId     String?          @map("candidate_id") @db.Uuid
+  candidate       Candidate?       @relation(fields: [candidateId], references: [id], onDelete: Restrict)
   file            GeneralCvFile?
   cvReading       CvReading? // its CV read and analysed (22 October 2026)
   events          GeneralCvEvent[]
@@ -1580,6 +1599,7 @@ model GeneralCv {
   @@index([email, createdAt])
   @@index([status])
   @@index([ip, createdAt])
+  @@index([candidateId, createdAt])
   @@map("general_cvs")
 }
 
@@ -1591,6 +1611,8 @@ model GeneralCvFile {
   mimeType    String    @map("mime_type")
   sizeBytes   Int       @map("size_bytes")
   data        Bytes
+  // the file's SHA-256 (22 October 2026), as an application's CV's: a generated column, never written
+  sha256      String?
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   @@map("general_cv_files")
@@ -1661,6 +1683,125 @@ model CvReading {
 
   @@index([status, nextTryAt])
   @@map("cv_readings")
+}
+
+// ---------- candidate profiles ----------
+// The owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent duplication?
+// even if the same candidate applied for 2 jobs"; asked, "Email or mobile" (the same email, or the same mobile with its
+// country code, joins a profile by itself; HR merges what slips through and splits a wrong match) and "Link and show
+// rehire" (a former employee who applies is linked to their employee record); then "and their is a possible match from
+// other fields, HR decides from suggested match". The rules: packages/shared candidates.ts; the matching:
+// apps/api/src/recruitment/candidate-links.ts.
+
+// A candidate: one person, CAN-0001 in its own series, with the latest name and links they sent, the employee they are
+// (matched by email or mobile, or hired from an accepted offer), when they last applied, and the profile it was merged
+// into (kept, never deleted, so a merge can be undone).
+model Candidate {
+  id            String             @id @default(uuid()) @db.Uuid
+  code          String             @unique // CAN-0001
+  fullName      String             @map("full_name") // the latest they sent
+  linkedin      String?
+  portfolio     String?
+  employeeId    String?            @map("employee_id") @db.Uuid
+  employee      Employee?          @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  mergedIntoId  String?            @map("merged_into_id") @db.Uuid
+  mergedInto    Candidate?         @relation("CandidateMerged", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom    Candidate[]        @relation("CandidateMerged")
+  mergedAt      DateTime?          @map("merged_at") @db.Timestamptz
+  lastAppliedAt DateTime?          @map("last_applied_at") @db.Timestamptz // their newest application or general CV
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  contacts      CandidateContact[]
+  keys          CandidateKey[]
+  applications  JobApplication[]
+  generalCvs    GeneralCv[]
+  matchesA      CandidateMatch[]   @relation("CandidateMatchA")
+  matchesB      CandidateMatch[]   @relation("CandidateMatchB")
+  mergesKept    CandidateMerge[]   @relation("CandidateMergeKept")
+  mergesMerged  CandidateMerge[]   @relation("CandidateMergeMerged")
+
+  @@index([mergedIntoId])
+  @@index([employeeId])
+  @@index([lastAppliedAt])
+  @@map("candidates")
+}
+
+// An email or a mobile of a candidate's, as compared: the email trimmed and in lower case, the mobile as the system keeps
+// phones (+201012345678). One email or mobile belongs to one candidate (the unique below), so the same one joins them.
+// When it was first and last seen on an application or a general CV.
+model CandidateContact {
+  id          String    @id @default(uuid()) @db.Uuid
+  candidateId String    @map("candidate_id") @db.Uuid
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  kind        String // email, mobile
+  value       String
+  firstSeenAt DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz
+  lastSeenAt  DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz
+
+  @@unique([kind, value])
+  @@index([candidateId])
+  @@map("candidate_contacts")
+}
+
+// What a candidate is compared by for the suggested matches (CANDIDATE_KEY_KINDS: the emails and mobiles, the LinkedIn
+// and portfolio links normalized, the CV files' SHA-256, the name normalized, the contacts read from the CVs …), worked
+// out again from their applications, general CVs and CV readings whenever they change; never shown.
+model CandidateKey {
+  candidateId String    @map("candidate_id") @db.Uuid
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  kind        String
+  value       String
+
+  @@id([candidateId, kind, value])
+  @@index([value])
+  @@map("candidate_keys")
+}
+
+// Two candidates who may be one person (the smaller id first): a possible duplicate (the same email or mobile on both)
+// or a suggestion from the other signs, with the signs (MATCH_SIGNALS) and their score. Open until HR merges them, or
+// dismisses the pair ("Not the same person"): a dismissed pair is never suggested again.
+model CandidateMatch {
+  id           String    @id @default(uuid()) @db.Uuid
+  candidateAId String    @map("candidate_a_id") @db.Uuid
+  candidateA   Candidate @relation("CandidateMatchA", fields: [candidateAId], references: [id], onDelete: Cascade)
+  candidateBId String    @map("candidate_b_id") @db.Uuid
+  candidateB   Candidate @relation("CandidateMatchB", fields: [candidateBId], references: [id], onDelete: Cascade)
+  kind         String // duplicate, suggested
+  signals      String[]  @default([])
+  score        Int       @default(0)
+  status       String    @default("open") // open, dismissed, merged
+  decidedById  String?   @map("decided_by") @db.Uuid
+  decidedBy    User?     @relation("CandidateMatchDecision", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt    DateTime? @map("decided_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([candidateAId, candidateBId])
+  @@index([candidateBId])
+  @@index([status])
+  @@map("candidate_matches")
+}
+
+// A merge (HR's "Merge with…", or a suggestion confirmed): the candidate kept, the one merged into it, and what moved
+// (the applications, general CVs, contacts, the employee link, the links, the dismissed pairs carried over), so a Super
+// Admin can undo it.
+model CandidateMerge {
+  id         String    @id @default(uuid()) @db.Uuid
+  keptId     String    @map("kept_id") @db.Uuid
+  kept       Candidate @relation("CandidateMergeKept", fields: [keptId], references: [id], onDelete: Cascade)
+  mergedId   String    @map("merged_id") @db.Uuid
+  merged     Candidate @relation("CandidateMergeMerged", fields: [mergedId], references: [id], onDelete: Cascade)
+  moved      Json
+  byId       String?   @map("by_id") @db.Uuid
+  by         User?     @relation("CandidateMergeBy", fields: [byId], references: [id], onDelete: SetNull)
+  at         DateTime  @default(now()) @db.Timestamptz
+  undoneAt   DateTime? @map("undone_at") @db.Timestamptz
+  undoneById String?   @map("undone_by") @db.Uuid
+  undoneBy   User?     @relation("CandidateMergeUndo", fields: [undoneById], references: [id], onDelete: SetNull)
+
+  @@index([keptId, at])
+  @@index([mergedId])
+  @@map("candidate_merges")
 }
 
 // An interview (Phase 2, owner, 22 October 2026: "interview invites go by email through the owner's SMTP settings"):

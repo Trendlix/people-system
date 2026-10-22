@@ -394,10 +394,10 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     const recruitmentFor = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).find((n) => n.label === 'Recruitment') ?? null;
     const pages = (...roles: Role[]) => recruitmentFor(...roles)?.items?.map((i) => i.label) ?? null;
 
-    it('has Vacancies, Applicants, Interviews, Offers, Onboarding, Analytics and Settings for HR and the CEO (Offers not for a Super Admin), nothing for anyone else', () => {
-      expect(pages('hr')).toEqual(['Vacancies', 'Applicants', 'Interviews', 'Offers', 'Onboarding', 'Analytics', 'Settings']);
-      expect(pages('ceo')).toEqual(['Vacancies', 'Applicants', 'Interviews', 'Offers', 'Onboarding', 'Analytics', 'Settings']);
-      expect(pages('super_admin')).toEqual(['Vacancies', 'Applicants', 'Interviews', 'Onboarding', 'Analytics', 'Settings']);
+    it('has Vacancies, Applicants, Candidates, Interviews, Offers, Onboarding, Analytics and Settings for HR and the CEO (Offers not for a Super Admin), nothing for anyone else', () => {
+      expect(pages('hr')).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'Offers', 'Onboarding', 'Analytics', 'Settings']);
+      expect(pages('ceo')).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'Offers', 'Onboarding', 'Analytics', 'Settings']);
+      expect(pages('super_admin')).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'Onboarding', 'Analytics', 'Settings']);
       for (const role of ['finance', 'admin', 'manager', 'employee'] as const) expect(recruitmentFor(role)).toBeNull();
       expect(recruitmentFor('hr')?.href).toBe('/recruitment/vacancies');
     });
@@ -408,7 +408,7 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       expect(withHiring('employee')?.items?.map((i) => i.label)).toEqual(['My Hiring']);
       expect(withHiring('employee')?.href).toBe('/recruitment/my-hiring');
       expect(withHiring('employee', 'manager')?.items?.map((i) => i.label)).toEqual(['My Hiring']);
-      expect(withHiring('hr')?.items?.map((i) => i.label)).toEqual(['Vacancies', 'Applicants', 'Interviews', 'My Hiring', 'Offers', 'Onboarding', 'Analytics', 'Settings']);
+      expect(withHiring('hr')?.items?.map((i) => i.label)).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'My Hiring', 'Offers', 'Onboarding', 'Analytics', 'Settings']);
       expect(navFor({ roles: ['employee'], employeeId: 'x', hiring: false }).find((n) => n.label === 'Recruitment')).toBeUndefined();
     });
 
@@ -419,6 +419,8 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       expect(activeSubItem(recruitment, '/recruitment/applicants/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')?.label).toBe('Applicants');
       expect(activeSubItem(recruitment, '/offers/new')?.label).toBe('Offers');
       expect(activeSubItem(recruitment, '/recruitment/interviews')?.label).toBe('Interviews');
+      expect(activeSubItem(recruitment, '/recruitment/candidates/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')?.label).toBe('Candidates');
+      expect(activeSubItem(recruitment, '/recruitment/candidates/matches')?.label).toBe('Candidates');
       expect(activeSubItem(recruitment, '/recruitment/my-hiring')?.label).toBe('My Hiring');
       expect(activeSubItem(recruitment, '/onboarding/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')?.label).toBe('Onboarding');
       expect(activeSubItem(recruitment, '/recruitment/analytics')?.label).toBe('Analytics');

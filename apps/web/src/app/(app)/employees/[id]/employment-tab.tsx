@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { CONTRACT_STATUS_LABELS, END_REASON_LABELS, LABELS, seesRaiseRequests } from '@trendlix/shared';
 import { ApiError, apiGet } from '@/lib/api';
+import { Shown } from '@/components/hidden';
 import { DECIDES_NOTE, leadRows } from '@/lib/department-leads';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
+import { employmentHidden, isHidden, labelOf } from '@/lib/hidden';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { Contract, EmployeeProfile, Employment, Grade, SessionUser } from '@/lib/types';
@@ -85,7 +87,7 @@ const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
 
 /** "Marketing › Content Team", or a department itself (e.g. for Head of Marketing, a title of the department's own). */
-const placeLabel = (e: Employment) => (e.department && !e.department.parent ? 'Department' : 'Team');
+const placeLabel = (e: Employment) => (employmentHidden(e) ? 'Department or team' : e.department && !e.department.parent ? 'Department' : 'Team');
 
 /**
  * The current employment's details, in the profile's field grid. Its team, job title, grade, shift and manager count in
@@ -96,11 +98,13 @@ const placeLabel = (e: Employment) => (e.department && !e.department.parent ? 'D
  */
 function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean): GridField[] {
   const grade = e.grade; // the person's own grade in this employment (within the job title's range, if it has one)
+  // a developer gets none of the job's details (owner, 22 October 2026: "Hide per-person details"): each shows Hidden
+  const hidden = employmentHidden(e);
   return [
     {
       key: 'employmentType',
       label: 'Employment type',
-      value: LABELS.employmentType[e.employmentType],
+      value: labelOf(LABELS.employmentType, e.employmentType),
       // by the labour law (18 October 2026): Sales became Full-time paid by commission; freelance is outside the law, and
       // the unpaid internship (19 October 2026)
       note: e.paidByCommission ? 'Paid by commission' : outsideLawShort(e.employmentType),
@@ -113,7 +117,7 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
       label: 'Job title',
       value: e.jobTitle?.titleEn,
       required: true,
-      note: e.jobTitle?.titleAr && (
+      note: e.jobTitle?.titleAr && !isHidden(e.jobTitle.titleAr) && (
         <span lang="ar" dir="rtl">
           {e.jobTitle.titleAr}
         </span>
@@ -124,7 +128,7 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
       label: 'Grade',
       value: grade && gradeLabel(grade),
       required: true,
-      note: grade?.levelAr && (
+      note: grade?.levelAr && !isHidden(grade.levelAr) && (
         <span lang="ar" dir="rtl">
           {grade.levelAr}
         </span>
@@ -144,15 +148,16 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
         note: row.decides ? DECIDES_NOTE : undefined,
       }),
     ),
-    { key: 'joinDate', label: 'Join date', value: formatDate(e.joinDate) },
-    { key: 'probationEnd', label: 'Probation end date', value: formatDate(e.probationEnd) },
-    { key: 'workArrangement', label: 'Work arrangement', value: arrangementLabel(e), note: workPatternNote(e.workArrangement) },
+    { key: 'joinDate', label: 'Join date', value: formatDate(e.joinDate), hidden },
+    { key: 'probationEnd', label: 'Probation end date', value: formatDate(e.probationEnd), hidden },
+    { key: 'workArrangement', label: 'Work arrangement', value: arrangementLabel(e), note: workPatternNote(e.workArrangement), hidden },
     // the nature of the work (Labour Law Art. 1(6–8)), from an API that has it, with casual work past its 6 months warned
     ...(e.workNature !== undefined
       ? [
           {
             key: 'workNature',
             label: 'Nature of the work',
+            hidden,
             value: (
               <span className="flex flex-wrap items-center gap-1.5">
                 {workNatureLabel(e.workNature)} <LawWarningBadges of={{ casualTooLong: e.casualTooLong }} />
@@ -164,7 +169,7 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
     { key: 'shift', label: 'Shift', value: e.shift && shiftLabel(e.shift), required: true },
     // 7 more days of annual leave (18 October 2026; Labour Law Art. 124), from an API that has it
     ...(e.hazardousWork !== undefined
-      ? [{ key: 'hazardousWork', label: 'Hazardous work', value: e.hazardousWork ? 'Yes' : 'No', note: e.hazardousWork ? '7 more days of annual leave (Art. 124)' : undefined }]
+      ? [{ key: 'hazardousWork', label: 'Hazardous work', value: e.hazardousWork ? 'Yes' : 'No', note: e.hazardousWork ? '7 more days of annual leave (Art. 124)' : undefined, hidden }]
       : []),
     // where they check in from (20 October 2026: check-ins locked to the office network, "Office staff, plus exceptions")
     ...(e.checkInAnywhere !== undefined
@@ -173,6 +178,7 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
             key: 'checkInAnywhere',
             label: 'Checks in from',
             value: e.checkInAnywhere || e.workArrangement !== 'office' ? 'Anywhere' : 'The office network, when check-ins are locked to it',
+            hidden,
             note: e.checkInAnywhere ? 'Can check in from anywhere (HR’s exception)' : undefined,
           },
         ]
@@ -192,7 +198,7 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
       key: 'jdAcknowledgedAt',
       label: 'Job description acknowledged',
       value: e.jdAcknowledgedAt ? formatDate(e.jdAcknowledgedAt) : <span className="text-muted">Not yet</span>,
-      note: e.jobTitle && `Version ${e.jobTitle.jdVersion}`,
+      note: e.jobTitle && !hidden && `Version ${e.jobTitle.jdVersion}`,
     },
   ];
 }
@@ -202,6 +208,7 @@ export const endingInProgress = (e: Employment) => e.ending?.status === 'pending
 
 /** What an employment was, for a confirmation: "the Full-time employment as Senior Designer, 01/03/2024 – now". */
 function described(e: Employment): string {
+  if (employmentHidden(e)) return 'the employment';
   return `the ${typeWord(e.employmentType)} employment${e.jobTitle ? ` as ${e.jobTitle.titleEn}` : ''}, ${periodLabel(e)}`;
 }
 
@@ -274,16 +281,19 @@ function History({ profile: p }: { profile: EmployeeProfile }) {
           {p.employments.map((e) => (
             <tr key={e.id}>
               <td className="whitespace-nowrap tabular-nums">
-                {periodLabel(e)}
-                {!e.endDate && <span className="badge ml-2 align-middle">Current</span>}
+                <Shown text={periodLabel(e)} />
+                {/* the profile's current one: a developer gets no end dates (22 October 2026: "Hide per-person details") */}
+                {e.id === p.employment?.id && <span className="badge ml-2 align-middle">Current</span>}
               </td>
-              <td className="whitespace-nowrap">{LABELS.employmentType[e.employmentType]}</td>
-              <td>{e.department ? departmentName(e.department) : dash}</td>
-              <td>{e.jobTitle?.titleEn ?? dash}</td>
-              <td className="whitespace-nowrap">{e.grade ? gradeLabel(e.grade) : dash}</td>
+              <td className="whitespace-nowrap">
+                <Shown text={labelOf(LABELS.employmentType, e.employmentType)} />
+              </td>
+              <td>{e.department ? <Shown text={departmentName(e.department)} /> : dash}</td>
+              <td>{e.jobTitle ? <Shown text={e.jobTitle.titleEn} /> : dash}</td>
+              <td className="whitespace-nowrap">{e.grade ? <Shown text={gradeLabel(e.grade)} /> : dash}</td>
               {contracts && (
                 <td className="min-w-48 whitespace-nowrap">
-                  {e.endDate ? (
+                  {e.id !== p.employment?.id ? (
                     <Suspense fallback={<span className="text-xs text-muted">Loading…</span>}>
                       <PastContracts employeeId={p.id} employment={e} />
                     </Suspense>
@@ -296,7 +306,7 @@ function History({ profile: p }: { profile: EmployeeProfile }) {
                 </td>
               )}
               <td>
-                {e.endDate ? (
+                {e.id !== p.employment?.id ? (
                   <span className="badge bg-line-soft text-muted">{e.endReason ? END_REASON_LABELS[e.endReason] : LABELS.status[e.status]}</span>
                 ) : (
                   <StatusBadge status={e.status} employmentType={e.employmentType} />
@@ -342,7 +352,7 @@ function DirectReports({ profile: p }: { profile: EmployeeProfile }) {
               </Link>
               <p className="text-xs text-muted">
                 {r.employeeCode}
-                {r.jobTitle && ` · ${r.jobTitle.titleEn}`}
+                {r.jobTitle && !isHidden(r.jobTitle.titleEn) && ` · ${r.jobTitle.titleEn}`}
               </p>
             </div>
             <StandingBadge standing={reportStanding(r)} />
@@ -370,7 +380,8 @@ async function DetailsSubTab({
 }) {
   const e = p.employment;
   const base = `/employees/${p.id}`;
-  const lastEnded = e ? null : p.employments.find((x) => x.endDate);
+  // a developer gets no end dates (22 October 2026: "Hide per-person details"): then the newest, all of them ended
+  const lastEnded = e ? null : (p.employments.find((x) => x.endDate) ?? (employmentHidden(p.employments[0]) ? p.employments[0] : undefined));
   // the top grade (the highest rank in the grades table, as the API counts it) has no manager to fill in
   const rank = e?.grade?.rank;
   const topGrade = rank !== undefined && (await apiGet<Grade[]>('/grades')).every((g) => g.rank <= rank);
@@ -393,7 +404,7 @@ async function DetailsSubTab({
         <>
           <ProfileSection
             title="Current Employment"
-            note={`Since ${formatDate(e.joinDate)}`}
+            note={e.joinDate ? `Since ${formatDate(e.joinDate)}` : undefined}
             actions={
               p.access.edit && (
                 <>
@@ -437,9 +448,11 @@ async function DetailsSubTab({
           <ProfileSection title="Current Employment">
             <div className="card space-y-4 px-6 py-8 text-center">
               <p className="text-sm text-muted">
-                {lastEnded?.endDate
-                  ? `No current employment. ${p.fullNameEn} left on ${formatDate(lastEnded.endDate)}${lastEnded.endReason ? ` (${END_REASON_LABELS[lastEnded.endReason].toLowerCase()})` : ''}. The profile and the employment history are kept.`
-                  : `${p.fullNameEn} is not employed yet. Add the employment once they are hired: the job and the terms of its contract, in one form.`}
+                {lastEnded && !lastEnded.endDate
+                  ? 'No current employment. The profile and the employment history are kept.'
+                  : lastEnded?.endDate
+                    ? `No current employment. ${p.fullNameEn} left on ${formatDate(lastEnded.endDate)}${lastEnded.endReason ? ` (${END_REASON_LABELS[lastEnded.endReason].toLowerCase()})` : ''}. The profile and the employment history are kept.`
+                    : `${p.fullNameEn} is not employed yet. Add the employment once they are hired: the job and the terms of its contract, in one form.`}
               </p>
               {p.access.edit && (
                 <Link href={`${base}/employment/new`} className="btn btn-primary">

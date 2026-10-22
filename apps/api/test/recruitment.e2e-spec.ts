@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER, careersIpToken } from '@trendlix/shared';
+import { ALREADY_APPLIED, CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER, careersIpToken } from '@trendlix/shared';
 import type { ApplicationListItem, ApplicationView, PublicCareers, PublicVacancyView, Role, VacancyListItem, VacancyQuestion, VacancyView } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
@@ -20,6 +20,13 @@ import { createApp, createUser, signIn } from './helpers.js';
 const RUN = `rc${Date.now().toString(36)}`;
 const TODAY = todayInCairo();
 const YEAR = TODAY.slice(0, 4);
+/** Each person's own mobile (candidate profiles, 22 October 2026: the same mobile is one person's, joined as one): +2010 and 8 digits. */
+const mobileOf = (who: string) => {
+  const key = `${who}|${RUN}`;
+  let h = 7;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(h, 31) + key.charCodeAt(i)) >>> 0;
+  return `+2010${String(h % 100_000_000).padStart(8, '0')}`;
+};
 
 const QUESTIONS: VacancyQuestion[] = [
   { key: 'q1', kind: 'yes_no', text: 'Do you live in Cairo?', required: true, knockout: true, wanted: 'yes', points: 5 },
@@ -86,7 +93,7 @@ describe('Recruitment (e2e)', () => {
   const applicant = (name: string, ip: string, answers: object = { q1: 'yes', q2: '5', q3: 'Premiere Pro' }, extra: Record<string, string> = {}) => ({
     fullName: `${name} ${RUN}`,
     email: `${name.toLowerCase().replace(/\s+/g, '.')}.${RUN}@mail.test`,
-    mobile: '+20 100 123 4567',
+    mobile: mobileOf(name),
     yearsExperience: '4',
     answers: JSON.stringify(answers),
     consent: 'true',
@@ -282,7 +289,8 @@ describe('Recruitment (e2e)', () => {
     });
 
     it('refuses duplicates, the honeypot, a bad or missing CV, missing answers and a closed job', async () => {
-      expect(said(await apply(v.slug, applicant('Sara Strong', '10.1.0.4')).expect(409))[0]).toMatch(/^You applied for this job on .+ already\. HR will be in touch\.$/);
+      // the same person again (by email or mobile: candidate profiles, 22 October 2026)
+      expect(said(await apply(v.slug, applicant('Sara Strong', '10.1.0.4')).expect(409))).toEqual([ALREADY_APPLIED]);
       expect(said(await apply(v.slug, { ...applicant('Robo Bot', '10.1.0.5'), website: 'http://spam.test' }).expect(400))).toEqual(["Your application couldn't be sent. Please try again."]);
       expect(said(await apply(v.slug, applicant('No Cv', '10.1.0.6'), null).expect(400))).toEqual(['Attach your CV, as a PDF or a Word file.']);
       expect(said(await apply(v.slug, applicant('Svg Cv', '10.1.0.7'), { data: Buffer.from('<svg onload="x()"/>'), name: 'cv.pdf' }).expect(400))).toEqual([
