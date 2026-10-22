@@ -18,7 +18,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
-import { CurrentUser, DeletesRecords, DeveloperMaySee, NotForDevelopers, Roles } from '../auth/decorators.js';
+import { CurrentUser, DeletesRecords, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { FileTooLargeFilter } from './file-too-large.filter.js';
@@ -133,8 +133,10 @@ export class PaperworkController {
    * The picture beside the employee's name (HR and the CEO, who see the employee file). Kept by the browser for ten
    * minutes, so a list of people doesn't load every photo on every visit; a photo adjusted since shows within that.
    */
+  // never a developer's: a face is personal data (owner, 22 October 2026: "make all real employees data encrypted for
+  // developer role"); their pages show the initials of the pseudonym instead
   @Roles('hr', 'ceo')
-  @DeveloperMaySee()
+  @NotForDevelopers()
   @Get(':itemId/photo')
   @Header('Cache-Control', 'private, max-age=600')
   @Header('X-Content-Type-Options', 'nosniff')

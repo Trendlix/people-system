@@ -20,7 +20,7 @@ const RUN = `dv${Date.now().toString(36)}`;
 const CURRENT = todayInCairo().slice(0, 7);
 const MONTH = monthsLater(CURRENT, -1);
 const JOINED = firstDay(monthsLater(CURRENT, -3));
-const NATIONAL_ID = `2950312${String(Date.now() % 10_000_000).padStart(7, '0')}`;
+const NATIONAL_ID = `2870723${String(Date.now() % 10_000_000).padStart(7, '0')}`; // born 23 July 1987, as BIRTH below
 const ACCOUNT = '100099887766';
 const MOBILE = '+201098765432';
 const GROSS = 123457;
@@ -30,6 +30,25 @@ const PURCHASE = 456781;
 const LOAN = 56789;
 const CLAIM = 6789.5;
 const AMOUNTS = [GROSS, OFFER_GROSS, SALARY_MIN, PURCHASE, LOAN, CLAIM];
+// the person's own data (owner, 22 October 2026: "make all real employees data encrypted for developer role"): invented,
+// each distinctive, so every answer can be searched for it
+const FULL_EN = `Omar Masked ${RUN}`;
+/** The run's tag in Arabic letters, for the Arabic fields (which take Arabic letters only). */
+const AR_TAG = RUN.split('').map((c) => 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي'[c.charCodeAt(0) % 28]).join('');
+const FULL_AR = `عمر مستتر ${AR_TAG}`;
+const DISPLAY = `Omar Display ${RUN}`;
+const WORK_EMAIL = `omar.${RUN}@trendlix.com`;
+const PERSONAL_EMAIL = `omar.home.${RUN}@mail.test`;
+const ADDRESS = `شارع ${AR_TAG}`;
+const CITY = `مدينة ${AR_TAG}`;
+const BIRTH = '1987-07-23';
+const EMERGENCY = `Mona Contact ${RUN}`;
+const UNIVERSITY = `University ${RUN}`;
+const LOAN_REASON = `Invented loan ${RUN}`;
+const CLAIM_TEXT = `Invented taxi ${RUN}`;
+const OFFER_NAME = `Offer Person ${RUN}`;
+const OFFER_EMAIL = `offer.${RUN}@mail.test`;
+const PERSONAL = [FULL_EN, FULL_AR, DISPLAY, WORK_EMAIL, PERSONAL_EMAIL, ADDRESS, CITY, BIRTH, EMERGENCY, UNIVERSITY, LOAN_REASON, CLAIM_TEXT, OFFER_NAME, OFFER_EMAIL];
 
 /** The answer as text, and whether any of the real numbers is in it, however written. */
 function leaks(body: unknown): string[] {
@@ -40,12 +59,19 @@ function leaks(body: unknown): string[] {
   return found;
 }
 
+/** The person's own data found in an answer, and the accounts' emails (`emails`): none may reach a developer. */
+function personalLeaks(body: unknown, emails: readonly string[] = []): string[] {
+  const text = JSON.stringify(body);
+  return [...PERSONAL, ...emails].filter((v) => text.includes(JSON.stringify(v).slice(1, -1)));
+}
+
 describe('The Developer role (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   const api = () => request(app.getHttpServer());
   const sessions: Record<string, string> = {};
   const users: Record<string, string> = {};
+  const emails: Record<string, string> = {};
   const as = (key: string) => ({
     get: (path: string) => api().get(`/api${path}`).set('Cookie', sessions[key]),
     post: (path: string, body: object = {}) => api().post(`/api${path}`).set('Cookie', sessions[key]).send(body),
@@ -56,6 +82,7 @@ describe('The Developer role (e2e)', () => {
 
   async function account(key: string, roles: Parameters<typeof createUser>[1]) {
     const email = await createUser(prisma, roles);
+    emails[key] = email;
     users[key] = (await prisma.user.findUniqueOrThrow({ where: { email } })).id;
     sessions[key] = await signIn(app, email);
     return email;
@@ -72,6 +99,8 @@ describe('The Developer role (e2e)', () => {
   let assetCode: string;
   let departmentId: string;
   let jobTitleId: string;
+  let employeeCode: string;
+  let offerNumber: string;
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
@@ -89,8 +118,28 @@ describe('The Developer role (e2e)', () => {
     const gradeId = (await prisma.grade.findFirstOrThrow({ where: { code: 'G3' }, select: { id: true } })).id;
 
     // a person with their national ID, bank details, mobile and a signed contract
-    const person = (await as('hr').post('/employees', { fullNameEn: `Omar Masked ${RUN}`, fullNameAr: 'عمر خالد محمود', mobile: MOBILE }).expect(201)).body;
+    const person = (
+      await as('hr')
+        .post('/employees', {
+          fullNameEn: FULL_EN,
+          fullNameAr: FULL_AR,
+          displayName: DISPLAY,
+          workEmail: WORK_EMAIL,
+          personalEmail: PERSONAL_EMAIL,
+          mobile: MOBILE,
+          addressAr: ADDRESS,
+          city: CITY,
+          dateOfBirth: BIRTH,
+          emergencyName: EMERGENCY,
+          emergencyRelation: 'Sister',
+          university: UNIVERSITY,
+        })
+        .expect((r) => {
+          if (r.status !== 201) throw new Error(`The person wasn't made: ${JSON.stringify(r.body)}`);
+        })
+    ).body;
     employeeId = person.id;
+    employeeCode = person.employeeCode;
     employmentId = (await as('hr').post(`/employees/${employeeId}/employments`, { employmentType: 'full_time', joinDate: JOINED, departmentId, shiftId, jobTitleId }).expect(201)).body.employment.id;
     await as('hr').patch(`/employees/${employeeId}/identity`, { nationalId: NATIONAL_ID, printedNo: 'KX7654321' }).expect(200);
     await as('hr').patch(`/employees/${employeeId}/bank`, { bankName: 'CIB', accountNo: ACCOUNT }).expect(200);
@@ -99,19 +148,21 @@ describe('The Developer role (e2e)', () => {
 
     // last month's payroll, a loan, a claim, an offer, a vacancy and an asset with its cost
     runId = (await as('hr').post('/payroll/runs', { month: MONTH }).expect(201)).body.id;
-    loanId = (await as('hr').post('/payroll/advances', { employeeId, kind: 'loan', amount: LOAN, givenOn: `${MONTH}-15`, reason: `Invented loan ${RUN}`, plan: 'Monthly' }).expect(201)).body.id;
+    loanId = (await as('hr').post('/payroll/advances', { employeeId, kind: 'loan', amount: LOAN, givenOn: `${MONTH}-15`, reason: LOAN_REASON, plan: 'Monthly' }).expect(201)).body.id;
     claimTypeId = (await prisma.reimbursementType.create({ data: { nameEn: `Taxi ${RUN}`, nameAr: 'تاكسي' }, select: { id: true } })).id;
     claimId = (
       await prisma.reimbursementClaim.create({
-        data: { employeeId, employmentId, typeId: claimTypeId, expenseDate: new Date(`${MONTH}-10`), amount: CLAIM, description: `Invented taxi ${RUN}`, status: 'with_hr' },
+        data: { employeeId, employmentId, typeId: claimTypeId, expenseDate: new Date(`${MONTH}-10`), amount: CLAIM, description: CLAIM_TEXT, status: 'with_hr' },
         select: { id: true },
       })
     ).id;
-    offerId = (
+    const offer = (
       await as('hr')
-        .post('/offers', { fullNameEn: `Offer Person ${RUN}`, fullNameAr: 'مرشح', email: `offer.${RUN}@mail.test`, employmentType: 'full_time', joinDate: `${CURRENT}-28`, jobTitleId, gradeId, shiftId, grossSalary: OFFER_GROSS })
+        .post('/offers', { fullNameEn: OFFER_NAME, fullNameAr: 'مرشح', email: OFFER_EMAIL, employmentType: 'full_time', joinDate: `${CURRENT}-28`, jobTitleId, gradeId, shiftId, grossSalary: OFFER_GROSS })
         .expect(201)
-    ).body.id;
+    ).body;
+    offerId = offer.id;
+    offerNumber = offer.number;
     vacancyId = (
       await as('hr').post('/recruitment/vacancies', { jobTitleId, employmentType: 'full_time', headcount: 1, salaryMin: SALARY_MIN, salaryMax: SALARY_MIN + 1000, about: '<p>Edits our videos.</p>' }).expect(201)
     ).body.id;
@@ -156,10 +207,13 @@ describe('The Developer role (e2e)', () => {
     expect((await as('superAdmin').get(`/users/${users.developer}`).expect(200)).body.roles).toEqual(['employee', 'developer']);
   });
 
-  it('an employee’s profile, national ID and bank: names as they are, the numbers hidden', async () => {
+  it('an employee’s profile, national ID and bank: a pseudonym for the name, the numbers and personal data hidden', async () => {
     const profile = (await as('developer').get(`/employees/${employeeId}`).expect(200)).body;
-    expect(profile.fullNameEn).toBe(`Omar Masked ${RUN}`);
+    expect(profile.fullNameEn).toBe(`Employee ${employeeCode}`);
+    expect(profile.fullNameAr).toBe(`موظف ${employeeCode}`);
+    expect(profile.employeeCode).toBe(employeeCode);
     expect(leaks(profile)).toEqual([]);
+    expect(personalLeaks(profile, Object.values(emails))).toEqual([]);
     const identity = (await as('developer').get(`/employees/${employeeId}/identity`).expect(200)).body;
     expect(identity).toMatchObject({ nationalId: HIDDEN, printedNo: HIDDEN });
     const bank = (await as('developer').get(`/employees/${employeeId}/bank`).expect(200)).body;
@@ -168,6 +222,91 @@ describe('The Developer role (e2e)', () => {
     expect(leaks([identity, bank])).toEqual([]);
     // HR still sees them
     expect((await as('hr').get(`/employees/${employeeId}/identity`).expect(200)).body.nationalId).toBe(NATIONAL_ID);
+    const real = (await as('hr').get(`/employees/${employeeId}`).expect(200)).body;
+    expect(real).toMatchObject({ fullNameEn: FULL_EN, fullNameAr: FULL_AR, workEmail: WORK_EMAIL, addressAr: ADDRESS });
+    expect(personalLeaks(real)).toEqual(expect.arrayContaining([FULL_EN, WORK_EMAIL, ADDRESS, EMERGENCY, UNIVERSITY]));
+  });
+
+  // 22 October 2026: "make all real employees data encrypted for developer role"
+  it('no real personal data on any page: names pseudonyms, emails pseudonymous, addresses, birth, education, notes hidden', async () => {
+    const paths = [
+      '/auth/me',
+      '/employees',
+      `/employees/${employeeId}`,
+      `/employees/${employeeId}/identity`,
+      `/employees/${employeeId}/bank`,
+      `/employees/${employeeId}/employments/${employmentId}/contracts`,
+      `/employees/${employeeId}/salary-history`,
+      '/employees/missing',
+      '/org-chart',
+      '/departments',
+      '/users',
+      `/users/${users.hr}`,
+      '/attendance',
+      '/attendance/summary',
+      '/attendance/check-in-setup/people',
+      '/leave/requests',
+      '/change-requests',
+      '/contracts',
+      '/endings',
+      '/raise-requests',
+      '/payroll/runs',
+      `/payroll/runs/${runId}`,
+      '/payroll/advances',
+      `/payroll/advances/${loanId}`,
+      '/payroll/adjustments',
+      '/payroll/unsettled',
+      '/reimbursements',
+      `/reimbursements/${claimId}`,
+      '/offers',
+      `/offers/${offerId}`,
+      '/recruitment/vacancies',
+      `/recruitment/vacancies/${vacancyId}`,
+      '/recruitment/applications',
+      '/recruitment/general-cvs',
+      '/assets',
+      `/assets/${assetCode}`,
+      '/assets/custody',
+      '/assets/custody/people',
+      '/assets/reports/holders',
+      '/kpis/overview',
+      '/kpis/scorecards',
+      '/offboarding/cases',
+      '/offboarding/former',
+      '/onboarding',
+      '/audit',
+      `/audit?entityType=employee&entityId=${employeeId}`,
+      '/me/notifications',
+    ];
+    const answered: string[] = [];
+    for (const path of paths) {
+      const res = await as('developer').get(path);
+      expect([200, 400, 403, 404], `${path}: ${res.status}`).toContain(res.status);
+      if (res.status === 200) answered.push(path);
+      expect(personalLeaks(res.body, Object.values(emails)), path).toEqual([]);
+      expect(leaks(res.body), path).toEqual([]);
+    }
+    expect(answered.length, answered.join(' ')).toBeGreaterThan(paths.length * 0.6);
+    // the person shows by their pseudonym in the list, the same as on their page
+    expect(JSON.stringify((await as('developer').get('/employees').expect(200)).body)).toContain(`Employee ${employeeCode}`);
+    // and HR's list has them by name
+    expect(JSON.stringify((await as('hr').get('/employees').expect(200)).body)).toContain(FULL_EN);
+  });
+
+  it('a search by name finds nothing for a developer; by a code it does; HR finds by name', async () => {
+    const byName = (await as('developer').get(`/offers?q=${encodeURIComponent(OFFER_NAME)}`).expect(200)).body;
+    expect(JSON.stringify(byName)).not.toContain(offerNumber);
+    const byCode = (await as('developer').get(`/offers?q=${encodeURIComponent(offerNumber)}`).expect(200)).body;
+    expect(JSON.stringify(byCode)).toContain(offerNumber);
+    expect(JSON.stringify(byCode)).toContain(`Candidate ${offerNumber}`);
+    expect(personalLeaks(byCode)).toEqual([]);
+    expect(JSON.stringify((await as('hr').get(`/offers?q=${encodeURIComponent(OFFER_NAME)}`).expect(200)).body)).toContain(offerNumber);
+  });
+
+  it('an employee’s photo: refused to a developer', async () => {
+    const res = await as('developer').get('/paperwork/00000000-0000-4000-8000-000000000000/photo');
+    expect(res.status).toBe(403);
+    expect(res.body.message).toBe(DEVELOPER_NO_FILES);
   });
 
   it('a payroll run and its lines: every amount 0, the days and hours as they are', async () => {
