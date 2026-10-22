@@ -76,13 +76,13 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
           <label htmlFor={fid('linkedin')} className="label">
             LinkedIn <span className="font-normal text-muted">(optional)</span>
           </label>
-          <input id={fid('linkedin')} name="linkedin" type="url" maxLength={L.link} placeholder="https://linkedin.com/in/…" defaultValue={v('linkedin')} className="input" />
+          <input id={fid('linkedin')} name="linkedin" type="text" inputMode="url" autoCapitalize="none" spellCheck={false} maxLength={L.link} placeholder="linkedin.com/in/your-name" defaultValue={v('linkedin')} className="input" />
         </div>
         <div>
           <label htmlFor={fid('portfolio')} className="label">
             Portfolio <span className="font-normal text-muted">(optional)</span>
           </label>
-          <input id={fid('portfolio')} name="portfolio" type="url" maxLength={L.link} placeholder="https://…" defaultValue={v('portfolio')} className="input" />
+          <input id={fid('portfolio')} name="portfolio" type="text" inputMode="url" autoCapitalize="none" spellCheck={false} maxLength={L.link} placeholder="behance.net/your-name" defaultValue={v('portfolio')} className="input" />
         </div>
         <div>
           <label htmlFor={fid('yearsExperience')} className="label">

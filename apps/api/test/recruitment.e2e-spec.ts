@@ -300,6 +300,16 @@ describe('Recruitment (e2e)', () => {
       await api().get('/api/public/careers/no-such-job-vac-2026-9999').expect(404);
     });
 
+    // 22 October 2026: an applicant typed "www.linkedin.com/in/…" and the form wanted https://
+    it('takes a link typed without https://, keeping it whole', async () => {
+      await apply(v.slug, applicant('Link Typer', '10.7.0.1', undefined, { linkedin: 'www.linkedin.com/in/link-typer-1', portfolio: 'behance.net/link-typer' })).expect(201);
+      const kept = await prisma.jobApplication.findFirstOrThrow({ where: { email: `link.typer.${RUN}@mail.test` }, select: { linkedin: true, portfolio: true } });
+      expect(kept).toEqual({ linkedin: 'https://www.linkedin.com/in/link-typer-1', portfolio: 'https://behance.net/link-typer' });
+      expect(said(await apply(v.slug, applicant('Bad Link', '10.7.0.2', undefined, { linkedin: 'not a link' })).expect(400))).toEqual([
+        'Write your LinkedIn link, e.g. linkedin.com/in/your-name, or leave it empty.',
+      ]);
+    });
+
     it('refuses more than 5 an hour from one address', async () => {
       for (let i = 1; i <= 5; i++) await apply(v.slug, applicant(`Busy Person${i}`, '10.9.9.9')).expect(201);
       expect(said(await apply(v.slug, applicant('Busy Person6', '10.9.9.9')).expect(429))).toEqual(['You have sent several applications in the last hour. Please try again later.']);

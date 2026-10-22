@@ -1,4 +1,4 @@
-import { applyProblems, sourceOf, type ApplicationSource, type ApplyInput, type PublicQuestion, type VacancyQuestion } from '@trendlix/shared';
+import { applyProblems, sourceOf, webLinkOf, type ApplicationSource, type ApplyInput, type PublicQuestion, type VacancyQuestion } from '@trendlix/shared';
 
 // The careers page (owner, 22 October 2026: "where will we include the ATS?"; people.trendlix.com/careers: "i dont know
 // how to decide it for now"): reading its application form and passing it on to the API. Pure code (relative imports),
@@ -50,8 +50,8 @@ export function applyInputOf(fd: FormData, questions: readonly PublicQuestion[])
     fullName: text(fd, 'fullName'),
     email: text(fd, 'email'),
     mobile: text(fd, 'mobile'),
-    linkedin: text(fd, 'linkedin') || null,
-    portfolio: text(fd, 'portfolio') || null,
+    linkedin: webLinkOf(text(fd, 'linkedin')) || null,
+    portfolio: webLinkOf(text(fd, 'portfolio')) || null,
     yearsExperience: numberOf(text(fd, 'yearsExperience')),
     noticePeriod: text(fd, 'noticePeriod') || null,
     expectedSalary: numberOf(text(fd, 'expectedSalary')),

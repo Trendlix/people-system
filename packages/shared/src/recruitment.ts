@@ -444,6 +444,16 @@ const MOBILE = /^\+?[0-9 ()-]{7,30}$/;
 /** Whether a text is a web link: http(s), a host with a dot, no spaces. */
 export const isWebLink = (value: string): boolean => value.length <= RECRUITMENT_LIMITS.link && /^https?:\/\/[^\s/]+\.[^\s]+$/i.test(value);
 
+/**
+ * A link as typed, made whole (22 October 2026: an applicant's "www.linkedin.com/in/…" was refused for wanting https://):
+ * trimmed, and https:// put in front when it has no http(s):// of its own; empty as ''.
+ */
+export function webLinkOf(value: unknown): string {
+  const t = typeof value === 'string' ? value.trim() : '';
+  if (!t) return '';
+  return /^https?:\/\//i.test(t) ? t : `https://${t.replace(/^\/+/, '')}`;
+}
+
 /** An email as kept and compared: trimmed and in lower case. */
 export const normalEmail = (value: string): string => value.trim().toLowerCase();
 
@@ -462,8 +472,8 @@ export function applyProblems(input: Partial<ApplyInput>, questions: readonly Va
     ['linkedin', 'LinkedIn'],
     ['portfolio', 'portfolio'],
   ] as const) {
-    const link = textOf(input[field]);
-    if (link && !isWebLink(link)) problems.push(`Write your ${label} link in full, starting with https://, or leave it empty.`);
+    const link = webLinkOf(input[field]);
+    if (link && !isWebLink(link)) problems.push(`Write your ${label} link, e.g. linkedin.com/in/your-name, or leave it empty.`);
   }
   const years = input.yearsExperience;
   if (years !== undefined && years !== null && !(Number.isFinite(years) && years >= 0 && years <= L.yearsExperience && Math.round(years * 2) === years * 2)) {

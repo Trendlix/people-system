@@ -22,7 +22,7 @@ import {
   applicationNumber,
   type VacancyQuestion,
 } from '@trendlix/shared';
-import { CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER, careersIpToken } from '@trendlix/shared';
+import { CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER, careersIpToken, webLinkOf } from '@trendlix/shared';
 import { signatureOf } from '../attendance/signed-ip.js';
 import { applicantIp } from '../recruitment/public-careers.service.js';
 import { cvFileName, cvProblem, cvTypeOf, DOCX, PDF } from '../recruitment/cv-file.js';
@@ -196,7 +196,7 @@ describe('applying', () => {
       'Write your full name.',
       'Write your email address, e.g. name@example.com.',
       'Write your mobile number, e.g. +20 100 123 4567.',
-      'Write your LinkedIn link in full, starting with https://, or leave it empty.',
+      'Write your LinkedIn link, e.g. linkedin.com/in/your-name, or leave it empty.',
       'Give your years of experience as a number from 0 to 60 (halves allowed).',
       'Give your expected salary in EGP a month, or leave it empty.',
       'Tick that we may keep your application and CV to consider you for this job.',
@@ -281,5 +281,17 @@ describe('the applicant\'s address for the hourly limit', () => {
   it('takes the named address while the server has no key yet, as before', () => {
     expect(applicantIp('editor', '10.0.0.9', { ip: '1.1.1.1', userAgent: null }, undefined, AT)).toBe('10.0.0.9');
     expect(applicantIp('editor', null, { ip: '1.1.1.1', userAgent: null }, undefined, AT)).toBe('1.1.1.1');
+  });
+});
+
+// A link typed without https:// (22 October 2026: an applicant's "www.linkedin.com/in/…" was refused).
+describe('a link as typed, made whole', () => {
+  it('puts https:// in front when it has none; keeps http(s) links; empty as empty', () => {
+    expect(webLinkOf('www.linkedin.com/in/salma-ahmed-1')).toBe('https://www.linkedin.com/in/salma-ahmed-1');
+    expect(webLinkOf(' linkedin.com/in/x ')).toBe('https://linkedin.com/in/x');
+    expect(webLinkOf('http://portfolio.example')).toBe('http://portfolio.example');
+    expect(webLinkOf('HTTPS://Behance.net/a')).toBe('HTTPS://Behance.net/a');
+    expect(webLinkOf('')).toBe('');
+    expect(webLinkOf(undefined)).toBe('');
   });
 });
