@@ -247,7 +247,7 @@ export class TemplatesService {
     if (problem) throw new BadRequestException(problem);
     const sample = pdfSample(plainPdfFields(sent), v.language);
     // as the documents print it: a social insurance form's numbers in ٠-٩ (owner, 16 October 2026)
-    const data = await fillPdfTemplate(v.data, withSlotDigits(v.slotKey, sample.fields), sample.values, v.language);
+    const data = await fillPdfTemplate(v.data, withSlotDigits(v.slotKey, sample.fields, v.language), sample.values, v.language);
     const name = SLOTS.get(v.slotKey)?.name ?? 'Template';
     return { data, fileName: templateFileName(`${name} v${v.version} - sample.pdf`, 'pdf') };
   }

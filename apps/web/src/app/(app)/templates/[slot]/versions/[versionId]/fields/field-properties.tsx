@@ -124,8 +124,8 @@ function Check({
  * Whether the field prints ٠-٩: its own setting, unless the template's slot decides it (a social insurance form prints
  * every number in ٠-٩ but an email's, owner 16 October 2026), when it shows the rule, locked, and why.
  */
-function DigitsCheck({ field, slotKey, onChange }: { field: PdfField; slotKey: string | null | undefined; onChange: Update }) {
-  const { checked, locked } = digitsSetting(field, slotKey);
+function DigitsCheck({ field, slotKey, language, onChange }: { field: PdfField; slotKey: string | null | undefined; language: TemplateLanguage; onChange: Update }) {
+  const { checked, locked } = digitsSetting(field, slotKey, language);
   return (
     <Check
       label="Arabic digits"
@@ -345,7 +345,7 @@ export function FieldProperties({
             checked={!!field.shrinkToFit}
             onChange={(shrinkToFit) => set({ shrinkToFit })}
           />
-          <DigitsCheck field={field} slotKey={slotKey} onChange={onChange} />
+          <DigitsCheck field={field} slotKey={slotKey} language={language} onChange={onChange} />
         </>
       )}
 
@@ -407,7 +407,7 @@ export function FieldProperties({
               </Select>
             </div>
           )}
-          <DigitsCheck field={field} slotKey={slotKey} onChange={onChange} />
+          <DigitsCheck field={field} slotKey={slotKey} language={language} onChange={onChange} />
           <div className="space-y-2">
             <p className="text-xs text-muted">
               {box !== null

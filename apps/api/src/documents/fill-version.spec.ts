@@ -3,7 +3,8 @@ import { formPdf, shownGlyphs, shownLines } from '../../test/fixtures/pdf-form.j
 import { docx, p, r } from '../../test/fixtures/docx.js';
 import { isPdf } from '../pdf/pdf-file.js';
 import { readZip } from '../templates/zip.js';
-import { filledFileName, fillVersion, requiredTags } from './fill-version.js';
+import { arabicDocument, arabicNumberText, slotArabicDigits } from '@trendlix/shared';
+import { arabicDigitValues, filledFileName, fillVersion, requiredTags } from './fill-version.js';
 
 // Every fill goes through one helper, which picks the engine by the version's format (owner's decision, 15 October 2026).
 
@@ -46,12 +47,15 @@ describe('fillVersion', () => {
       { id: 'email', kind: 'text', tag: 'personal_email', page: 1, x: 100, y: 400, width: 200, height: 16, fontSize: 12, align: 'left', arabicDigits: true },
     ];
     const values = { insurance_no: '1234567', insurance_insured_salary: '14,500.50', personal_email: 'omar2026@mail.test' };
-    const printed = async (slotKey: string) =>
-      shownLines(await shownGlyphs(await fillVersion({ slotKey, format: 'pdf', data: await formPdf(), pdfFields: fields as never, language: 'ar' }, values)));
+    const printed = async (slotKey: string, language = 'ar') =>
+      shownLines(await shownGlyphs(await fillVersion({ slotKey, format: 'pdf', data: await formPdf(), pdfFields: fields as never, language }, values)));
     expect(await printed('insurance_form_1')).toEqual(['١٢٣٤٥٦٧', '١٤٥٠٠', '١٢ ةدام', 'omar2026@mail.test']);
-    expect(await printed('insurance_form_6')).toEqual(['١٢٣٤٥٦٧', '١٤٥٠٠', '١٢ ةدام', 'omar2026@mail.test']);
-    // anywhere else, each field as saved
-    expect(await printed('nda')).toEqual(['1234567', '14500', '12 ةدام', 'omar٢٠٢٦@mail.test']);
+    expect(await printed('insurance_form_6', 'en')).toEqual(['١٢٣٤٥٦٧', '١٤٥٠٠', '١٢ ةدام', 'omar2026@mail.test']);
+    // any other form in Arabic too (owner, 22 October 2026: "make sure this in any arabic document")
+    expect(await printed('nda')).toEqual(['١٢٣٤٥٦٧', '١٤٥٠٠', '١٢ ةدام', 'omar2026@mail.test']);
+    // in English or both languages, each field as saved
+    expect(await printed('nda', 'en')).toEqual(['1234567', '14500', '12 ةدام', 'omar٢٠٢٦@mail.test']);
+    expect(await printed('nda', 'bilingual')).toEqual(['1234567', '14500', '12 ةدام', 'omar٢٠٢٦@mail.test']);
   });
 
   it('every tag stops a document while it has no value but those only optional fields of a PDF form print', () => {
@@ -67,5 +71,68 @@ describe('fillVersion', () => {
   it('names the filled file after what it is', () => {
     expect(filledFileName('Form 1 - E-0001 - Omar A. Ali', 'pdf')).toBe('Form 1 - E-0001 - Omar A. Ali.pdf');
     expect(filledFileName('Contract - E-0001 - Omar', 'docx')).toBe('Contract - E-0001 - Omar.docx');
+  });
+});
+
+// The owner, 22 October 2026: "in contracts, i need the dates and numbers in arabic ٠-٩", then "make sure this in any
+// arabic document".
+describe('an Arabic document’s numbers in ٠-٩', () => {
+  it('turns digits, thousands separators, decimal points and percent signs; keeps an email or a web address', () => {
+    expect(arabicNumberText('15/07/2025')).toBe('١٥/٠٧/٢٠٢٥');
+    expect(arabicNumberText('10,500')).toBe('١٠٬٥٠٠');
+    expect(arabicNumberText('1,250,000.75')).toBe('١٬٢٥٠٬٠٠٠٫٧٥');
+    expect(arabicNumberText('20%')).toBe('٢٠٪');
+    expect(arabicNumberText('02/2025')).toBe('٠٢/٢٠٢٥');
+    expect(arabicNumberText('عشرة آلاف وخمسمائة جنيه')).toBe('عشرة آلاف وخمسمائة جنيه');
+    expect(arabicNumberText('omar2@mail.test')).toBe('omar2@mail.test');
+    expect(arabicNumberText('https://trendlix.com/2025')).toBe('https://trendlix.com/2025');
+    // word by word: a code with Latin letters keeps its digits, the rest of the text doesn't
+    expect(arabicNumberText('KX1234567')).toBe('KX1234567');
+    expect(arabicNumberText('CON-2026-0044 / CON-2026-0044-A1: 10,500')).toBe('CON-2026-0044 / CON-2026-0044-A1: ١٠٬٥٠٠');
+    expect(arabicNumberText('15 شارع عباس العقاد')).toBe('١٥ شارع عباس العقاد');
+    expect(arabicNumberText('للتواصل omar2@mail.test أو 01012345678')).toBe('للتواصل omar2@mail.test أو ٠١٠١٢٣٤٥٦٧٨');
+  });
+
+  it('applies to every document in Arabic, never to an English or a bilingual one', () => {
+    expect(arabicDocument('ar')).toBe(true);
+    expect(arabicDocument('en')).toBe(false);
+    expect(arabicDocument('bilingual')).toBe(false);
+    expect(arabicDocument(null)).toBe(false);
+    // a PDF form in Arabic: every field but a check box, an email's and an English tag's
+    expect(slotArabicDigits('nda', { kind: 'text', tag: 'start_date' }, 'ar')).toBe(true);
+    expect(slotArabicDigits('nda', { kind: 'fixed', tag: null }, 'ar')).toBe(true);
+    expect(slotArabicDigits('nda', { kind: 'text', tag: 'personal_email' }, 'ar')).toBe(false);
+    expect(slotArabicDigits('nda', { kind: 'text', tag: 'full_name_en' }, 'ar')).toBe(false);
+    expect(slotArabicDigits('nda', { kind: 'check', tag: null }, 'ar')).toBeNull();
+    expect(slotArabicDigits('nda', { kind: 'text', tag: 'start_date' }, 'en')).toBeNull();
+    expect(slotArabicDigits('nda', { kind: 'text', tag: 'start_date' })).toBeNull();
+  });
+
+  it('keeps an email’s and an English tag’s digits; a formatted value’s text only, never its tags or entities', () => {
+    expect(
+      arabicDigitValues({
+        start_date: '15/07/2025',
+        gross_salary: '10,500',
+        personal_email: 'omar2@mail.test',
+        gross_salary_en: '10,500',
+        jd_duties: { html: '<p data-indent="2">Edit 3 videos &amp; 2 reels&#8203;</p>' },
+      }),
+    ).toEqual({
+      start_date: '١٥/٠٧/٢٠٢٥',
+      gross_salary: '١٠٬٥٠٠',
+      personal_email: 'omar2@mail.test',
+      gross_salary_en: '10,500',
+      jd_duties: { html: '<p data-indent="2">Edit ٣ videos &amp; ٢ reels&#8203;</p>' },
+    });
+  });
+
+  it('fills an Arabic contract and an Arabic letter with ٠-٩, and an English letter with 0-9', async () => {
+    const body = p(r('اعتبارا من {{start_date}} براتب {{gross_salary}}'));
+    const ar = await fillVersion({ slotKey: 'contract_full_time', format: 'docx', data: docx({ body }), language: 'ar' }, { start_date: '15/07/2025', gross_salary: '10,500' });
+    expect(readZip(ar).read('word/document.xml')!.toString('utf8')).toContain('اعتبارا من ١٥/٠٧/٢٠٢٥ براتب ١٠٬٥٠٠');
+    const letter = await fillVersion({ slotKey: 'hr_letter_ar', format: 'docx', data: docx({ body: p(r('تحريرا في {{date}}')) }), language: 'ar' }, { date: '22/10/2026' });
+    expect(readZip(letter).read('word/document.xml')!.toString('utf8')).toContain('تحريرا في ٢٢/١٠/٢٠٢٦');
+    const en = await fillVersion({ slotKey: 'hr_letter_en', format: 'docx', data: docx({ body: p(r('From {{start_date}}')) }), language: 'en' }, { start_date: '15/07/2025' });
+    expect(readZip(en).read('word/document.xml')!.toString('utf8')).toContain('From 15/07/2025');
   });
 });

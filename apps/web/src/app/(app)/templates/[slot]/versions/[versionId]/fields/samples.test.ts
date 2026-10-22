@@ -242,9 +242,13 @@ describe('the digits a field prints', () => {
   it('shows a fixed text’s digits in ٠-٩ on a social insurance form, an email’s label as it is', () => {
     const office = field({ kind: 'fixed', tag: null, text: 'مكتب 12' });
     expect(sampleText(office, 'ar', FORM_1)).toBe('مكتب ١٢');
-    expect(sampleText(office, 'ar', 'nda')).toBe('مكتب 12');
-    expect(sampleText(office, 'ar')).toBe('مكتب 12');
-    expect(sampleText({ ...office, arabicDigits: true }, 'ar')).toBe('مكتب ١٢');
+    // any form in Arabic prints ٠-٩ too (owner, 22 October 2026: "make sure this in any arabic document"); in English or
+    // both languages the field's own setting stands
+    expect(sampleText(office, 'ar', 'nda')).toBe('مكتب ١٢');
+    expect(sampleText(office, 'ar')).toBe('مكتب ١٢');
+    expect(sampleText(office, 'en', 'nda')).toBe('مكتب 12');
+    expect(sampleText(office, 'bilingual', 'nda')).toBe('مكتب 12');
+    expect(sampleText({ ...office, arabicDigits: true }, 'en')).toBe('مكتب ١٢');
     expect(sampleText(field({ tag: 'personal_email' }), 'en', FORM_1)).toBe(sampleText(field({ tag: 'personal_email' }), 'en'));
   });
 });

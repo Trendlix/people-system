@@ -18,9 +18,10 @@ describe('how values are printed', () => {
     expect(printedMoney(null)).toBe('');
   });
 
-  it('an Egyptian mobile as dialled in Egypt, another country’s as kept', () => {
-    expect(printedPhone('+201012345678')).toBe('01012345678');
-    expect(printedPhone('+20223456789')).toBe('0223456789');
+  // the owner, 22 October 2026: "the phone number is without the country code"
+  it('a phone number with its country code, as kept', () => {
+    expect(printedPhone('+201012345678')).toBe('+201012345678');
+    expect(printedPhone('+20223456789')).toBe('+20223456789');
     expect(printedPhone('+447700900123')).toBe('+447700900123');
     expect(printedPhone(null)).toBe('');
   });

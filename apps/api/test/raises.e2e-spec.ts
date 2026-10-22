@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { firstJanuaryFrom, insuredSalary, lawRatesFor, nextFirstOfMonth, type PayrollTerms } from '@trendlix/shared';
+import { arabicNumberText, firstJanuaryFrom, insuredSalary, lawRatesFor, nextFirstOfMonth, type PayrollTerms } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, addMonths, todayInCairo } from '../src/common/date-only.js';
@@ -376,7 +376,8 @@ describe('Pay raises (e2e)', () => {
       );
       const made = await api().post(`/api/employees/${amy.id}/documents`).set('Cookie', hr).send({ slotKey: 'contract_amendment', contractId: raise.id }).expect(201);
       const data = Buffer.from((await prisma.generatedDocument.findUniqueOrThrow({ where: { id: made.body.id }, select: { data: true } })).data);
-      expect(textOf(data)).toBe(`${amyV1.number} / ${raise.number}: 10,000 → 12,000 من ${shown(EFFECTIVE)} (Promotion) Senior Accountant G5`);
+      // an Arabic letter: its numbers in ٠-٩, the contracts' codes and the English words as they are (22 October 2026)
+      expect(textOf(data)).toBe(`${amyV1.number} / ${raise.number}: ١٠٬٠٠٠ → ١٢٬٠٠٠ من ${arabicNumberText(shown(EFFECTIVE))} (Promotion) Senior Accountant G5`);
     });
 
     it('signing replaces the version in force from the effective date and applies the promotion to the employment', async () => {

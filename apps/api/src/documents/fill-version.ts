@@ -1,4 +1,4 @@
-import { withSlotDigits, type PdfField } from '@trendlix/shared';
+import { arabicDocument, arabicNumberText, keepsLatinDigits, withSlotDigits, type PdfField } from '@trendlix/shared';
 import type { Prisma } from '../generated/prisma/client.js';
 import { pdfOptionalTags } from '../templates/pdf-fields.js';
 import { formatOf, templateFileName } from '../templates/template-file.js';
@@ -10,6 +10,9 @@ import { fillPdfTemplate } from './pdf-engine/index.js';
 // (pdf-engine/, owner's decision, 15 October 2026). Either way the result leaves the system only as a protected PDF.
 // A social insurance form prints every number in ٠-٩ but an email's, whatever its fields were saved with (owner, 16
 // October 2026): the rule is applied here, so every way a form is filled (generated, previewed) follows it.
+// Every document in Arabic (a Word template or a PDF form) prints its tags' numbers in ٠-٩ too, an email's and an
+// English tag's (_en) kept (owner, 22 October 2026: "in contracts, i need the dates and numbers in arabic ٠-٩", then
+// "make sure this in any arabic document").
 
 /** What filling a version in reads of it, beside its tags. */
 export const FILLED_FROM = { slotKey: true, format: true, data: true, pdfFields: true, language: true } satisfies Prisma.TemplateVersionSelect;
@@ -43,10 +46,24 @@ export function requiredTags(version: { tags: readonly string[]; pdfFields?: Pri
 export async function fillVersion(version: FillableVersion, values: Readonly<Record<string, TagValue>>, blank: ReadonlySet<string> = new Set()): Promise<Buffer> {
   if (formatOf(version.format) === 'pdf') {
     const left = (f: PdfField) => f.optional === true && (f.kind === 'text' || f.kind === 'boxes') && f.tag !== null && blank.has(f.tag);
-    const fields = withSlotDigits(version.slotKey, pdfFieldsOf(version.pdfFields)).map((f) => (left(f) ? { ...f, tag: null } : f));
+    const fields = withSlotDigits(version.slotKey, pdfFieldsOf(version.pdfFields), version.language).map((f) => (left(f) ? { ...f, tag: null } : f));
     return fillPdfTemplate(version.data, fields, values, version.language);
   }
-  return fillTemplate(Buffer.from(version.data), values);
+  return fillTemplate(Buffer.from(version.data), arabicDocument(version.language) ? arabicDigitValues(values) : values);
+}
+
+/**
+ * The values with their numbers in ٠-٩ (packages/shared arabicNumberText), but an email's and an English tag's; a value
+ * with formatting (a job description's HTML) in its text only, never inside its tags or entities.
+ */
+export function arabicDigitValues(values: Readonly<Record<string, TagValue>>): Record<string, TagValue> {
+  const out: Record<string, TagValue> = {};
+  for (const [tag, value] of Object.entries(values)) {
+    if (keepsLatinDigits(tag)) out[tag] = value;
+    else if (typeof value === 'string') out[tag] = arabicNumberText(value);
+    else out[tag] = { ...value, html: value.html.split(/(<[^>]*>)/).map((part) => (part.startsWith('<') ? part : part.replace(/&#?\w+;|[^&]+/g, (t) => (t.startsWith('&') ? t : arabicNumberText(t))))).join('') };
+  }
+  return out;
 }
 
 /** A filled document's file name: the stem, cleaned, with the extension of what the version fills in (.docx or .pdf). */

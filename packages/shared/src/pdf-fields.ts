@@ -140,6 +140,25 @@ const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 /** 0-9 as ٠-٩. */
 export const toArabicDigits = (text: string): string => text.replace(/[0-9]/g, (d) => ARABIC_DIGITS[Number(d)]);
 
+/**
+ * A text's numbers in Arabic digits, as an Arabic document prints them (owner, 22 October 2026: "in contracts, i need
+ * the dates and numbers in arabic ٠-٩"): ٠-٩, a thousands separator between digits as ٬ (10,500 → ١٠٬٥٠٠), a decimal
+ * point between digits as ٫ and a percent sign after a digit as ٪. Word by word: a word with a Latin letter (a code such
+ * as CON-2026-0044 or an ID card's KX1234567), an email or a web address keeps its own digits.
+ */
+export function arabicNumberText(text: string): string {
+  return text.replace(/\S+/g, (word) =>
+    /[A-Za-z@]|:\/\//.test(word)
+      ? word
+      : toArabicDigits(
+          word
+            .replace(/(\d),(?=\d{3}(?!\d))/g, '$1٬')
+            .replace(/(\d)\.(?=\d)/g, '$1٫')
+            .replace(/(\d)%/g, '$1٪'),
+        ),
+  );
+}
+
 /** ٠-٩ (and Persian ۰-۹) as 0-9. */
 const toLatinDigits = (text: string): string =>
   text.replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
@@ -190,23 +209,37 @@ export function pdfCheckTicked(field: Pick<PdfField, 'tag' | 'equals'>, value: s
  */
 export const ARABIC_DIGIT_FOLDERS: readonly TemplateFolder[] = ['social_insurance'];
 
+/**
+ * Whether a document in this language prints its tags' numbers in ٠-٩: one in Arabic, whatever its folder (owner, 22
+ * October 2026: "in contracts, i need the dates and numbers in arabic ٠-٩", then "make sure this in any arabic
+ * document"). A bilingual one keeps 0-9, as its English half needs them.
+ */
+export const arabicDocument = (language: string | null | undefined): boolean => language === 'ar';
+
+/** A tag that keeps 0-9 on such a template: an email's, and an English one's (its name ending in _en). */
+export const keepsLatinDigits = (tag: string): boolean => isEmailTag(tag) || /_en$/.test(tag);
+
 /** A tag that prints an email address, which keeps its own digits. */
 export const isEmailTag = (tag: string | null | undefined): boolean => !!tag && /(^|_)email$/.test(tag);
 
 /**
  * Whether a field prints ٠-٩ by its slot's rule: on a social insurance form, yes for every text, boxes and fixed text
- * but one printing an email, no for that one. Null elsewhere, and for a check box: the field's own setting stands.
+ * but one printing an email, no for that one; on any form in Arabic (`language`; 22 October 2026: "any arabic
+ * document"), yes but for an email's or an English tag's (keepsLatinDigits). Null elsewhere, and for a check box: the
+ * field's own setting stands.
  */
-export function slotArabicDigits(slotKey: string | null | undefined, field: Pick<PdfField, 'kind' | 'tag'>): boolean | null {
+export function slotArabicDigits(slotKey: string | null | undefined, field: Pick<PdfField, 'kind' | 'tag'>, language?: string | null): boolean | null {
+  if (field.kind === 'check') return null;
   const folder = TEMPLATE_SLOTS.find((s) => s.key === slotKey)?.folder;
-  if (!folder || !ARABIC_DIGIT_FOLDERS.includes(folder) || field.kind === 'check') return null;
-  return !isEmailTag(field.tag);
+  if (folder && ARABIC_DIGIT_FOLDERS.includes(folder)) return !isEmailTag(field.tag);
+  if (arabicDocument(language)) return !(field.tag && keepsLatinDigits(field.tag));
+  return null;
 }
 
-/** The fields as they print on the slot's template: the slot's digit rule over what each field was saved with. */
-export function withSlotDigits<F extends PdfField>(slotKey: string | null | undefined, fields: readonly F[]): F[] {
+/** The fields as they print on the slot's template in `language`: the digit rule over what each field was saved with. */
+export function withSlotDigits<F extends PdfField>(slotKey: string | null | undefined, fields: readonly F[], language?: string | null): F[] {
   return fields.map((f) => {
-    const rule = slotArabicDigits(slotKey, f);
+    const rule = slotArabicDigits(slotKey, f, language);
     return rule === null || (f.arabicDigits === true) === rule ? f : { ...f, arabicDigits: rule };
   });
 }

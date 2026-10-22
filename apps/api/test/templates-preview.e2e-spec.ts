@@ -1,6 +1,6 @@
 import { PDFDocument } from '@cantoo/pdf-lib';
 import type { INestApplication } from '@nestjs/common';
-import { TEMPLATE_TAGS, type EmploymentType } from '@trendlix/shared';
+import { TEMPLATE_TAGS, toArabicDigits, type EmploymentType } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import type { MockInstance } from 'vitest';
@@ -322,8 +322,9 @@ describe('Template preview with data (e2e)', () => {
 
   it('a contract copy prints the signed contract; a document not offered yet prints its empty tags as labels', async () => {
     const contractText = await previewText(contractV.id, { employeeId: aaron.id });
-    expect(contractText).toContain(NATIONAL_ID);
-    expect(contractText).toContain('20,000');
+    // an Arabic contract prints its numbers in ٠-٩ (owner, 22 October 2026)
+    expect(contractText).toContain(toArabicDigits(NATIONAL_ID));
+    expect(contractText).toContain('٢٠٬٠٠٠');
 
     const resigned = await previewText(resignation.id, { employeeId: adam.id });
     expect(resigned).toContain('عمر خالد محمود');
@@ -398,7 +399,7 @@ describe('Template preview with data (e2e)', () => {
       expect(textOf(Buffer.from(convert.mock.lastCall![0])).split('\n')).toEqual([
         `Amira Complete ${RUN} — عمر خالد محمود — Account Manager`,
         `Gross 20,000; allowances Housing ${RUN}: 1,500; total 21,500`,
-        `Mobile 01012345678; IBAN [IBAN]; ${amira.number}`,
+        `Mobile +201012345678; IBAN [IBAN]; ${amira.number}`,
       ]);
       const views = await viewsOf(offerV.id);
       expect(views).toHaveLength(1);
@@ -428,7 +429,7 @@ describe('Template preview with data (e2e)', () => {
       expect(masked.split('\n')).toEqual([
         `Amira Complete ${RUN} — عمر خالد محمود — Account Manager`,
         `Gross ${MASK}; allowances ${MASK}; total ${MASK}`,
-        `Mobile 01012345678; IBAN ${MASK}; ${amira.number}`,
+        `Mobile +201012345678; IBAN ${MASK}; ${amira.number}`,
       ]);
       expect(masked).not.toContain('20,000');
       expect((await viewsOf(offerV.id)).filter((v) => v.userId === adminId)).toEqual([]);

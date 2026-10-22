@@ -90,7 +90,7 @@ export const FieldBox = memo(function FieldBox({
         <i key={at} aria-hidden="true" className="pointer-events-none absolute inset-x-0 border-t border-dashed border-ink/20" style={{ top: at * scale }} />
       ))}
       {field.kind === 'boxes' ? (
-        <BoxesInside field={field} scale={scale} samples={samples} box={box} font={font} dashed={optional} slotKey={slotKey} />
+        <BoxesInside field={field} scale={scale} samples={samples} box={box} font={font} dashed={optional} slotKey={slotKey} language={language} />
       ) : (
         text &&
         (rows > 1 ? (
@@ -129,6 +129,7 @@ function BoxesInside({
   font,
   dashed,
   slotKey,
+  language,
 }: {
   field: PdfField;
   scale: number;
@@ -137,9 +138,10 @@ function BoxesInside({
   font: React.CSSProperties;
   dashed: boolean;
   slotKey?: string | null;
+  language?: TemplateLanguage | null;
 }) {
   const rects = pdfFieldBoxes(field);
-  const chars = samples ? boxSamples(field, slotKey) : [];
+  const chars = samples ? boxSamples(field, slotKey, language) : [];
   return rects.map((r, i) => (
     <span
       key={i}

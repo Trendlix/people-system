@@ -1,4 +1,4 @@
-import { EMPLOYMENT_TYPE_LABELS_AR, isFlexibleShift, phoneSplit, shiftWorkHours, type EmploymentType, type Governorate, type TemplateLanguage, type TraineeStage } from '@trendlix/shared';
+import { EMPLOYMENT_TYPE_LABELS_AR, isFlexibleShift, shiftWorkHours, type EmploymentType, type Governorate, type TemplateLanguage, type TraineeStage } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import { arabicDayName, arabicMonths } from './engine/index.js';
 
@@ -22,13 +22,11 @@ export function printedMoney(amount: number | null): string {
 }
 
 /**
- * A phone number as printed: an Egyptian one as it is dialled in Egypt (+201012345678 → 01012345678), one from
- * another country as it is kept (+447700900123).
+ * A phone number as printed: with its country code, as kept (+201012345678, +447700900123). An Egyptian one used to
+ * print as dialled in Egypt (01012345678); the owner, 22 October 2026: "the phone number is without the country code".
  */
 export function printedPhone(kept: string | null): string {
-  if (!kept) return '';
-  const { cc, n } = phoneSplit(kept);
-  return cc === '20' && n ? `0${n}` : kept;
+  return kept ?? '';
 }
 
 /** The governorates in Arabic, as the address prints them (the profile keeps them in English). */

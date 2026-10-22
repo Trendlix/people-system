@@ -1,5 +1,6 @@
 import { PDFDocument } from '@cantoo/pdf-lib';
 import type { INestApplication } from '@nestjs/common';
+import { arabicNumberText, toArabicDigits } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import type { MockInstance } from 'vitest';
@@ -324,18 +325,21 @@ describe('Documents (e2e)', () => {
       expect(filled.length).toBe(contractDoc.sizeBytes);
       expect(readDocx(filled)).toEqual({ tags: [], unknownTags: [], broken: [] }); // no tag left
       const text = textOf(filled);
-      expect(text).toContain('إنه في يوم الخميس الموافق 15/10/2026');
+      // an Arabic document's numbers in ٠-٩, a code with Latin letters as it is (owner, 22 October 2026: "in contracts, i
+      // need the dates and numbers in arabic ٠-٩"); the phone with its country code ("the phone number is without the
+      // country code")
+      expect(text).toContain('إنه في يوم الخميس الموافق ١٥/١٠/٢٠٢٦');
       expect(text).toContain('السيد/ عمر خالد محمود');
-      expect(text).toContain('المقيم في: 15 شارع عباس العقاد، مدينة نصر، القاهرة');
-      expect(text).toContain('تليفون: 01012345678');
-      expect(text).toContain(`رقم قومي: ${NATIONAL_ID}`);
+      expect(text).toContain('المقيم في: ١٥ شارع عباس العقاد، مدينة نصر، القاهرة');
+      expect(text).toContain('تليفون: +٢٠١٠١٢٣٤٥٦٧٨');
+      expect(text).toContain(`رقم قومي: ${toArabicDigits(NATIONAL_ID)}`);
       expect(text).toContain('KX1234567');
-      expect(text).toContain('03/2021');
+      expect(text).toContain('٠٣/٢٠٢١');
       expect(text).toContain('بكالوريوس تجارة');
-      expect(text).toContain('في وظيفة مدير حسابات وذلك لمدة سنة ميلادية واحدة اعتبارا من 15/01/2026 وحتى 14/01/2027');
-      expect(text).toContain(`راتب شامل وقدره 20,000 جنيهاً مصريا (${arabicAmountInWords(20000)})`);
+      expect(text).toContain('في وظيفة مدير حسابات وذلك لمدة سنة ميلادية واحدة اعتبارا من ١٥/٠١/٢٠٢٦ وحتى ١٤/٠١/٢٠٢٧');
+      expect(text).toContain(`راتب شامل وقدره ٢٠٬٠٠٠ جنيهاً مصريا (${arabicAmountInWords(20000)})`);
       expect(arabicAmountInWords(20000)).toMatch(/عشرون ألف جنيه/); // the gross in Arabic words (the engine's wording)
-      expect(text).toContain('17,250.50');
+      expect(text).toContain('١٧٬٢٥٠٫٥٠');
       expect(text).toContain(arabicAmountInWords(17250.5));
 
       const audit = await auditOf(contractDoc.id);
@@ -349,7 +353,8 @@ describe('Documents (e2e)', () => {
       const res = await generate(ft.id, { slotKey: 'contract_full_time_insurance', contractId: ft.contractId }).expect(201);
       const text = textOf(await docxOf(res.body.id));
       // 20,000 capped at 2026's maximum insurable wage
-      expect(text).toContain(`راتب شامل وقدره 16,700 جنيهاً مصريا (${arabicAmountInWords(16700)})`);
+      expect(text).toContain(`راتب شامل وقدره ١٦٬٧٠٠ جنيهاً مصريا (${arabicAmountInWords(16700)})`);
+      expect(text).not.toContain('٢٠٬٠٠٠');
       expect(text).not.toContain('20,000');
       expect(res.body.documentDate).toBe(new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date()));
     });
@@ -561,15 +566,15 @@ describe('Documents (e2e)', () => {
       const resignation = await generate(ft.id, { slotKey: 'resignation_request', documentDate: '2026-10-01' }).expect(201);
       const text = textOf(await docxOf(resignation.body.id));
       expect(text).toContain('أنا عمر خالد محمود');
-      expect(text).toContain('من العمل داخل الشركة لأسباب شخصية وذلك اعتبارا من اليوم الموافق:  01/10/2026');
+      expect(text).toContain('من العمل داخل الشركة لأسباب شخصية وذلك اعتبارا من اليوم الموافق:  ٠١/١٠/٢٠٢٦');
       expect(resignation.body.hasRestricted).toBe(false);
 
       const clearance = await generate(ft.id, { slotKey: 'clearance_dues', documentDate: '2026-10-15' }).expect(201);
       const cleared = textOf(await docxOf(clearance.body.id));
-      expect(cleared).toContain('إنه في يوم الخميس الموافق 15/10/2026');
+      expect(cleared).toContain('إنه في يوم الخميس الموافق ١٥/١٠/٢٠٢٦');
       expect(cleared).toContain('أحمد علي');
-      expect(cleared).toContain(REP_NATIONAL_ID);
-      expect(cleared).toContain(`الرقم القومي: ${NATIONAL_ID}`);
+      expect(cleared).toContain(toArabicDigits(REP_NATIONAL_ID));
+      expect(cleared).toContain(`الرقم القومي: ${toArabicDigits(NATIONAL_ID)}`);
 
       const leaving = section(await tabOf(ft.id), 'leaving');
       expect(leaving.map((i) => i.documents.map((d) => d.id))).toEqual([[resignation.body.id], [clearance.body.id]]);
@@ -667,11 +672,12 @@ describe('Documents (e2e)', () => {
         expect(textOf(await docxOf(res.body.id))).toBe(
           [
             `hala.${RUN}@mail.test | منى عادل | Mona Manager ${RUN}`,
-            'من 9:00 ص إلى 6:00 م، من الأحد إلى الخميس | 9:00 AM – 6:00 PM, Sunday to Thursday',
+            // the Arabic tags in ٠-٩, the English ones (_en) and the email as they are
+            'من ٩:٠٠ ص إلى ٦:٠٠ م، من الأحد إلى الخميس | 9:00 AM – 6:00 PM, Sunday to Thursday',
             'ميداني (خارج المكتب) | Outdoor (field work)',
             'شهران | 2 months',
             'أول | Senior',
-            '100 | 86.54 | 75%',
+            '١٠٠ | ٨٦٫٥٤ | ٧٥٪',
           ].join('\n'),
         );
         // the net per hour and the basic share are restricted like the salary
@@ -745,11 +751,11 @@ describe('Documents (e2e)', () => {
         expect(paragraphLines(await docxOf(res.body.id))).toEqual([
           ['عمر خالد محمود'],
           [
-            'قرض (Laptop): المتبقي 3,000 جنيه، مخصوم من المستحقات',
-            'سلفة (Rent): المتبقي 1,000 جنيه، تم التنازل عنها',
-            'سلفة (Fuel): المتبقي 500 جنيه، مخصوم من المستحقات',
-            `رصيد الإجازة السنوية غير المستنفد: ${printedDayCount(leave.days, 'ar')} × ${printedMoney(leave.dayRate)} جنيه = ${printedMoney(leave.amount)} جنيه`,
-            'إجمالي المخصوم: 3,500 جنيه',
+            'قرض (Laptop): المتبقي ٣٬٠٠٠ جنيه، مخصوم من المستحقات',
+            'سلفة (Rent): المتبقي ١٬٠٠٠ جنيه، تم التنازل عنها',
+            'سلفة (Fuel): المتبقي ٥٠٠ جنيه، مخصوم من المستحقات',
+            arabicNumberText(`رصيد الإجازة السنوية غير المستنفد: ${printedDayCount(leave.days, 'ar')} × ${printedMoney(leave.dayRate)} جنيه = ${printedMoney(leave.amount)} جنيه`),
+            'إجمالي المخصوم: ٣٬٥٠٠ جنيه',
           ],
           [
             'Loan (Laptop): EGP 3,000 still owed, deducted',
@@ -758,7 +764,7 @@ describe('Documents (e2e)', () => {
             `Unused leave: ${printedDayCount(leave.days, 'en')} × EGP ${printedMoney(leave.dayRate)} = EGP ${printedMoney(leave.amount)}`,
             'Total deducted: EGP 3,500',
           ],
-          ['المجموع: 3,500'],
+          ['المجموع: ٣٬٥٠٠'],
         ]);
         // printing it settles nothing: the loan is HR's to settle on Unsettled
         expect((await prisma.payrollAdvance.findUniqueOrThrow({ where: { id: laptop }, select: { status: true } })).status).toBe('open');

@@ -1,4 +1,5 @@
 import {
+  isEmailTag,
   pdfBoxCharacters,
   slotArabicDigits,
   TAG_GROUP_LABELS,
@@ -73,20 +74,25 @@ export function sampleValue(tag: string | null | undefined, length = 10): string
  * Whether a field prints ٠-٩: as its template's slot says (a social insurance form, owner 16 October 2026: every
  * number in ٠-٩ but an email's), else as the field is set. `slotKey`: the template's, e.g. insurance_form_1.
  */
-export function printsArabicDigits(field: Pick<PdfField, 'kind' | 'tag' | 'arabicDigits'>, slotKey?: string | null): boolean {
-  return slotArabicDigits(slotKey, field) ?? !!field.arabicDigits;
+export function printsArabicDigits(field: Pick<PdfField, 'kind' | 'tag' | 'arabicDigits'>, slotKey?: string | null, language?: TemplateLanguage | null): boolean {
+  return slotArabicDigits(slotKey, field, language) ?? !!field.arabicDigits;
 }
 
 /** What the Arabic digits setting shows: ticked or not, and, when the slot decides it, locked and why (else null). */
-export function digitsSetting(field: Pick<PdfField, 'kind' | 'tag' | 'arabicDigits'>, slotKey?: string | null): { checked: boolean; locked: string | null } {
-  const rule = slotArabicDigits(slotKey, field);
+export function digitsSetting(
+  field: Pick<PdfField, 'kind' | 'tag' | 'arabicDigits'>,
+  slotKey?: string | null,
+  language?: TemplateLanguage | null,
+): { checked: boolean; locked: string | null } {
+  const rule = slotArabicDigits(slotKey, field, language);
   if (rule === null) return { checked: !!field.arabicDigits, locked: null };
-  return { checked: rule, locked: rule ? 'Social insurance forms always print ٠-٩.' : 'Emails keep their own digits.' };
+  if (rule) return { checked: true, locked: slotArabicDigits(slotKey, field) ? 'Social insurance forms always print ٠-٩.' : 'Documents in Arabic always print ٠-٩.' };
+  return { checked: false, locked: isEmailTag(field.tag) ? 'Emails keep their own digits.' : 'English fields keep their own digits.' };
 }
 
 /** The characters a boxes field shows in its boxes, from its tag's sample value, as the filled PDF would print them. */
-export function boxSamples(field: PdfField, slotKey?: string | null): string[] {
-  return pdfBoxCharacters({ ...field, arabicDigits: printsArabicDigits(field, slotKey) }, sampleValue(field.tag, boxCount(field)));
+export function boxSamples(field: PdfField, slotKey?: string | null, language?: TemplateLanguage | null): string[] {
+  return pdfBoxCharacters({ ...field, arabicDigits: printsArabicDigits(field, slotKey, language) }, sampleValue(field.tag, boxCount(field)));
 }
 
 /** The mark a check field prints: ✓ unless it says another. */
@@ -100,7 +106,7 @@ export function sampleText(field: PdfField, language: TemplateLanguage, slotKey?
   if (field.kind === 'check') return checkMark(field);
   const t = tagInfo(field.tag);
   const text = field.kind === 'fixed' ? (field.text ?? '') : !t ? (field.tag ?? '') : language === 'en' ? t.labelEn : t.labelAr;
-  return printsArabicDigits(field, slotKey) ? toArabicDigits(text) : text;
+  return printsArabicDigits(field, slotKey, language) ? toArabicDigits(text) : text;
 }
 
 /**
