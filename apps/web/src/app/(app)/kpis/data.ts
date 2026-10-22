@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import type { KpiHeatmap, KpiOverview, KpiScorecardSummary, KpiScorecardView } from '@trendlix/shared';
+import type { KpiHeatmap, KpiOverview, KpiPracticeChoices, KpiPracticeRow, KpiScorecardSummary, KpiScorecardView } from '@trendlix/shared';
 import { KPI_API } from '@/lib/kpi-paths';
 import { loadJson, type Loaded } from '../payroll/load';
 
@@ -35,6 +35,16 @@ export function loadHeatmap(params: Parameters<typeof KPI_API.heatmap>[0]): Prom
 /** GET /kpis/overview: a month's figures for HR, the CEO and a Super Admin (default: the latest with scorecards). */
 export function loadOverview(month: string | null): Promise<Loaded<KpiOverview>> {
   return loadJson<KpiOverview>(KPI_API.overview(month));
+}
+
+/** GET /kpis/practice: the practice scorecards (owner, 22 October 2026: "Practice scorecards"), for HR and a Super Admin. */
+export function loadPracticeRows(): Promise<Loaded<KpiPracticeRow[]>> {
+  return loadJson<KpiPracticeRow[]>(KPI_API.practice);
+}
+
+/** GET /kpis/practice/choices: whom a practice scorecard may be started for, with their months and versions. */
+export function loadPracticeChoices(): Promise<Loaded<KpiPracticeChoices>> {
+  return loadJson<KpiPracticeChoices>(KPI_API.practiceChoices);
 }
 
 /** What a KPI page says in place of what it couldn't load. */

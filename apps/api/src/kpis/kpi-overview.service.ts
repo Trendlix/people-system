@@ -39,6 +39,8 @@ import { keptPillars, monthOfCard, pillarSetOf } from './kpi-views.js';
 // score). C-level people are left out for HR, and the overview says how many. The Excel export is in the audit log.
 // The pillars (owner, 21 October 2026: "Fully flexible"): each scorecard's are its template version's; the department
 // averages and the Excel's columns are by pillar name, saying when the month's scorecards don't all have the same.
+// Practice scorecards (owner, 22 October 2026: "never reaches payroll, reports or exports") are in none of these: the
+// overview, its months and counts, the heatmap (team or all) and the Excel read the real ones only.
 
 const ROW_SELECT = {
   id: true,
@@ -99,7 +101,7 @@ export class KpiOverviewService {
     const [rows, previous, hiddenCount] = await Promise.all([
       this.rows({ ...visible, month: toDateOnly(firstDay(chosen)) }),
       this.rows({ ...visible, month: toDateOnly(firstDay(kpiMonthAdd(chosen, -1))) }),
-      hidden.length ? this.prisma.kpiScorecard.count({ where: { month: toDateOnly(firstDay(chosen)), employeeId: { in: hidden } } }) : 0,
+      hidden.length ? this.prisma.kpiScorecard.count({ where: { month: toDateOnly(firstDay(chosen)), employeeId: { in: hidden }, practice: false } }) : 0,
     ]);
     const scored = rows.filter(isScoredRow);
     const byStatus = Object.fromEntries(KPI_STATUSES.map((s) => [s, 0])) as Record<KpiStatus, number>;
@@ -247,13 +249,14 @@ export class KpiOverviewService {
     return this.scorecards.caller(user);
   }
 
+  /** The real scorecards only: never a practice one. */
   private rows(where: Prisma.KpiScorecardWhereInput): Promise<Row[]> {
-    return this.prisma.kpiScorecard.findMany({ where, select: ROW_SELECT });
+    return this.prisma.kpiScorecard.findMany({ where: { AND: [where, { practice: false }] }, select: ROW_SELECT });
   }
 
   /** The months with scorecards, newest first. */
   private async months(where: Prisma.KpiScorecardWhereInput): Promise<string[]> {
-    const rows = await this.prisma.kpiScorecard.findMany({ where, distinct: ['month'], orderBy: { month: 'desc' }, select: { month: true } });
+    const rows = await this.prisma.kpiScorecard.findMany({ where: { AND: [where, { practice: false }] }, distinct: ['month'], orderBy: { month: 'desc' }, select: { month: true } });
     return rows.map(monthOfCard);
   }
 }

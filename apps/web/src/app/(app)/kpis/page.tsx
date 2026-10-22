@@ -7,14 +7,15 @@ import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../organization/ui';
 import { kpiNotLoaded, loadMyScorecards } from './data';
 import { actionButton, ownCardText, percentText, scorecardsLabel } from './scorecard';
-import { LevelBadge, ScoreBar, StatusBadge } from './ui';
+import { LevelBadge, PracticeBadge, ScoreBar, StatusBadge } from './ui';
 
 // My KPIs (owner's brief, 21 October 2026: "My KPIs: this month's scorecard to self-rate, and the history with level and
 // final % by month"): the caller's own scorecards waiting for them (to rate themself, or to sign), each with the way in,
 // and every month's scorecard, newest first, with its final % and level once they are shown to the employee (from the
 // sign-off: until then a dash and the step it is at). Each opens the scorecard's page. A month's scorecard opens on the
 // 1st of the next month (owner, 21 October 2026: "Last month's KPI, this pay"). Someone without an employee profile has
-// none.
+// none. A practice scorecard (owner, 22 October 2026: "Practice scorecards") shows here only to a Super Admin viewing as
+// the person, marked Practice.
 
 export const metadata: Metadata = { title: 'My KPIs · People System' };
 
@@ -76,6 +77,7 @@ function History({ scorecards }: { scorecards: KpiScorecardSummary[] }) {
                   <Link href={KPI_PATHS.scorecard(s.id)} className="font-semibold">
                     {kpiMonthName(s.month)}
                   </Link>
+                  {s.practice && <PracticeBadge className="ml-1.5" />}
                   <span className="block text-xs text-muted">Template version {s.templateVersion}</span>
                 </td>
                 <td>

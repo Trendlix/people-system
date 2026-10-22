@@ -57,7 +57,8 @@ export class KpiOpeningService {
         jobTitleId: { not: null },
         // not freelancers or unpaid interns; trainees yes (packages/shared kpiEligibleType)
         employmentType: { notIn: ['freelance', 'intern'] },
-        employee: { kpiScorecards: { none: { month: monthDay } } },
+        // a real one: a practice scorecard of the month never stands in its way (owner, 22 October 2026: "Practice scorecards")
+        employee: { kpiScorecards: { none: { month: monthDay, practice: false } } },
       },
       orderBy: { joinDate: 'desc' },
       select: { id: true, employeeId: true, managerId: true, departmentId: true, jobTitleId: true, employee: { select: { employeeCode: true, workEmail: true } } },

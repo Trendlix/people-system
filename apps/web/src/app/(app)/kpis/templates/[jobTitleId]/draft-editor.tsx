@@ -8,6 +8,7 @@ import { Select } from '@/components/select';
 import { formatDateTime } from '@/lib/format';
 import { KPI_PATHS } from '@/lib/kpi-paths';
 import type { FormState } from '@/lib/types';
+import { discardPracticeText, draftPracticeWarning, publishPracticeText } from '../../practice';
 import {
   aboveTarget,
   addCriterion,
@@ -500,8 +501,8 @@ export function DraftEditor({
   confirmPublish,
 }: {
   draft: Pick<KpiTemplateView, 'version' | 'updatedAt' | 'attendancePoints' | 'metrics' | 'pillars' | 'attendancePillar' | 'pillarsChanged'> &
-    // an API from before department pillars sends none of these
-    Partial<Pick<KpiTemplateView, 'pillarsFrom' | 'baseWeights' | 'ownWeights' | 'weightsReset'>>;
+    // an API from before department pillars sends none of these (nor, before practice scorecards, their count)
+    Partial<Pick<KpiTemplateView, 'pillarsFrom' | 'baseWeights' | 'ownWeights' | 'weightsReset' | 'practiceScorecards'>>;
   /** The JD's duty rows, to link a metric to. */
   duties: readonly string[];
   /** Saves the draft, or (`intent` publish) saves and publishes it. */
@@ -535,6 +536,10 @@ export function DraftEditor({
   const total = draftWeightTotal(form);
   const publishing = onlyForPublishing(kpiTemplateProblems(content, { publishing: true, pillars }), saving);
   const dirty = JSON.stringify(content) !== saved;
+  // the practice scorecards trying this draft (owner, 22 October 2026: "Practice scorecards"): started again when it is
+  // saved changed, carried on when it is published, deleted with it when it is discarded
+  const practice = draft.practiceScorecards ?? 0;
+  const practiceWarning = draftPracticeWarning(practice);
 
   // leaving the page (closing it, reloading) with changes not saved asks first
   useEffect(() => {
@@ -545,7 +550,10 @@ export function DraftEditor({
   }, [dirty]);
 
   function submit(which: 'save' | 'publish') {
-    if (which === 'publish' && !window.confirm(confirmPublish)) return;
+    // saving a change starts the practice scorecards again (asked first); publishing carries them on
+    const practiceNote = practice && dirty ? ` ${practiceWarning}` : '';
+    if (which === 'save' && practiceNote && !window.confirm(`${practiceWarning} Save the draft?`)) return;
+    if (which === 'publish' && !window.confirm(`${confirmPublish}${practiceNote}${publishPracticeText(practice)}`)) return;
     setIntent(which);
     const fd = new FormData();
     fd.set('intent', which);
@@ -575,6 +583,11 @@ export function DraftEditor({
         {draft.weightsReset && (
           <p role="status" className="mt-3 max-w-3xl rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
             {weightsResetNote(draft.pillarsFrom)}
+          </p>
+        )}
+        {practiceWarning && (
+          <p role="status" className="mt-3 max-w-3xl rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+            {practiceWarning} <Link href={KPI_PATHS.practice}>Open the practice scorecards</Link>
           </p>
         )}
       </div>
@@ -618,7 +631,7 @@ export function DraftEditor({
         <div className="border-t border-line-soft pt-5">
           <DeleteForm
             action={discard}
-            confirmText={`Discard the draft of version ${draft.version}? What it has is lost; the published versions stay as they are.`}
+            confirmText={`Discard the draft of version ${draft.version}? What it has is lost; the published versions stay as they are.${discardPracticeText(practice)}`}
             label="Discard draft"
           />
         </div>

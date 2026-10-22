@@ -3,9 +3,15 @@ import {
   KPI_DEFAULT_PILLAR_SET,
   KPI_STEP_LABELS,
   kpiDeadlines,
+  kpiOwnWeights,
   kpiPayrollMonth,
+  kpiPillarOf,
+  kpiPracticeSteps,
   kpiScore,
+  kpiStandsIn,
   kpiStepDeadline,
+  kpiStoodInText,
+  kpiWithWeights,
   type KpiCriterion,
   type KpiDeadlines,
   type KpiLevel,
@@ -13,6 +19,7 @@ import {
   type KpiPickView,
   type KpiPillar,
   type KpiPillarSet,
+  type KpiPracticeInfo,
   type KpiScorecardMetric,
   type KpiScorecardSummary,
   type KpiScorecardView,
@@ -25,7 +32,7 @@ import {
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { placeName, type UserRef } from '../payroll/adjustments/people.js';
-import { kpiActionFor, kpiCan, kpiShown, type KpiCaller } from './kpi-access.js';
+import { kpiActionFor, kpiCan, kpiShown, takesOwnSteps, type KpiCaller } from './kpi-access.js';
 
 // A KPI scorecard as the pages read it (owner, 21 October 2026: "Self, manager, HR, sign-off"; packages/shared kpis.ts
 // KpiScorecardSummary and KpiScorecardView): who, the month, where it is, its scorer, the score as the caller may see it
@@ -33,6 +40,11 @@ import { kpiActionFor, kpiCan, kpiShown, type KpiCaller } from './kpi-access.js'
 // automatic Attendance metric, each step's comments, the steps logged, the deadlines and what the caller may do. Pure.
 // The pillars are its template version's, as it was published (owner, 21 October 2026: "Fully flexible"; packages/shared
 // kpi-framework.ts): a scorecard is scored with them whatever the KPI framework has become since.
+// A practice scorecard (owner, 22 October 2026: "Practice scorecards"; packages/shared kpi-practice.ts): marked so, with
+// who started it and when; on a draft, scored with the draft's pillars and the job title's own weights as it would be
+// published, its metrics in Unplaced left out. In one's own session nobody takes its steps as themself (no `can`, no
+// action), its starter and a Super Admin see every pick and stand in for each step (`standIn`), and a step taken
+// standing in says for whom ("Hazem Magdy for the manager").
 
 export const SCORECARD_ENTITY = 'kpi_scorecard';
 
@@ -68,12 +80,16 @@ export const CARD_INCLUDE = {
       attendancePoints: true,
       pillars: true,
       attendancePillar: true,
+      // a practice scorecard's draft: scored with the job title's own weights, as it would be published
+      status: true,
+      ownWeights: true,
       jobTitle: { select: { titleEn: true } },
       metrics: { orderBy: { position: 'asc' } },
     },
   },
+  practiceBy: { select: { id: true, email: true } },
   scores: true,
-  steps: { orderBy: { id: 'asc' }, select: { kind: true, comment: true, at: true, actor: { select: { id: true, email: true } } } },
+  steps: { orderBy: { id: 'asc' }, select: { kind: true, comment: true, at: true, stoodInFor: true, actor: { select: { id: true, email: true } } } },
 } as const satisfies Prisma.KpiScorecardInclude;
 
 export type CardRow = Prisma.KpiScorecardGetPayload<{ include: typeof CARD_INCLUDE }>;
@@ -122,10 +138,29 @@ export function choicesOf(row: Pick<CardRow, 'scores'>, step: 'self' | 'manager'
   return out;
 }
 
+/**
+ * The pillars a scorecard is scored with: its template version's, as it was published; a draft's (a practice
+ * scorecard's) with the job title's own weights when they fit, as it would be published with them.
+ */
+export function cardPillarSet(template: Pick<CardRow['template'], 'pillars' | 'attendancePillar' | 'status' | 'ownWeights'>): KpiPillarSet & { pillars: KpiPillar[] } {
+  const set = pillarSetOf(template);
+  return template.status === 'draft' ? kpiWithWeights(set, kpiOwnWeights(set, template.ownWeights)) : set;
+}
+
+/**
+ * The metrics a scorecard is scored on: every one of its version's; a practice scorecard's on a draft, those in one of
+ * its pillars (a draft's metrics in Unplaced are left out until placed).
+ */
+export function scoredMetrics(row: Pick<CardRow, 'practice' | 'template'>): CardRow['template']['metrics'] {
+  if (!row.practice) return row.template.metrics;
+  const set = cardPillarSet(row.template);
+  return row.template.metrics.filter((m) => !!kpiPillarOf(set, m.pillar));
+}
+
 /** The score of a scorecard's picks at a step, with its Attendance metric, in its template version's pillars. */
 export function scoreOf(row: Pick<CardRow, 'scores' | 'template' | 'attendanceAchieved'>, step: 'self' | 'manager' | 'final'): KpiScoreResult {
   const metrics = row.template.metrics.map(metricView);
-  return kpiScore(metrics, choicesOf(row, step), { points: row.template.attendancePoints, achieved: row.attendanceAchieved }, pillarSetOf(row.template));
+  return kpiScore(metrics, choicesOf(row, step), { points: row.template.attendancePoints, achieved: row.attendanceAchieved }, cardPillarSet(row.template));
 }
 
 /** The pillars' percents kept with the score, for the departments' averages, by the pillars' keys: { "delivery": 92.5, … }. */
@@ -148,12 +183,38 @@ const parties = (row: CardRow) => ({
   selfSubmittedAt: row.selfSubmittedAt,
   employeeSignedAt: row.employeeSignedAt,
   managerSignedAt: row.managerSignedAt,
+  practice: row.practice,
 });
 
-/** A scorecard in a list, as the caller sees it. */
-export function summaryOf(row: CardRow, caller: KpiCaller, settings: KpiSettings, today: string): KpiScorecardSummary {
+/** Nothing the caller may do: a practice scorecard in one's own session (its steps are stood in for). */
+const CAN_NOTHING = { selfRate: false, score: false, calibrate: false, signAsEmployee: false, signAsManager: false };
+
+/**
+ * What of it the caller sees: as kpiShown says; every pick on a practice scorecard in one's own session (HR and a Super
+ * Admin trying the flow: nothing of it is anyone's yet).
+ */
+const shownOf = (row: CardRow, caller: KpiCaller) => (takesOwnSteps(row, caller) ? kpiShown(parties(row), caller) : { self: true, manager: true });
+
+/** A practice scorecard's facts (null for a real one): who started it, when, and whether it is on a draft. */
+export function practiceOf(row: Pick<CardRow, 'practice' | 'practiceBy' | 'practiceAt' | 'template'>, names?: ReadonlyMap<string, UserRef>): KpiPracticeInfo | null {
+  if (!row.practice) return null;
+  const by = row.practiceBy;
+  return {
+    startedBy: by ? { email: by.email, name: names?.get(by.id)?.name ?? null } : null,
+    startedAt: (row.practiceAt ?? new Date(0)).toISOString(),
+    draft: row.template.status === 'draft',
+  };
+}
+
+/** Whether the caller stands in on it now: a practice scorecard's starter or a Super Admin, in their own session. */
+export const standsIn = (row: Pick<CardRow, 'practice' | 'practiceById'>, caller: KpiCaller): boolean =>
+  kpiStandsIn(row, { userId: caller.user.id, roles: caller.user.roles, viewingAs: !!caller.user.viewAs });
+
+/** A scorecard in a list, as the caller sees it. `names`: a practice scorecard's starter's. */
+export function summaryOf(row: CardRow, caller: KpiCaller, settings: KpiSettings, today: string, names?: ReadonlyMap<string, UserRef>): KpiScorecardSummary {
   const deadlines = deadlinesOf(row, settings);
-  const shown = kpiShown(parties(row), caller);
+  const shown = shownOf(row, caller);
+  const own = takesOwnSteps(row, caller);
   const scored = shown.manager && row.finalPercent !== null;
   return {
     id: row.id,
@@ -171,9 +232,10 @@ export function summaryOf(row: CardRow, caller: KpiCaller, settings: KpiSettings
     calibrated: shown.manager ? row.scores.filter((s) => s.hrChoice !== null).length : 0,
     signed: { employee: !!row.employeeSignedAt, manager: !!row.managerSignedAt },
     unsigned: row.status === 'final' && (!row.employeeSignedAt || !row.managerSignedAt),
-    action: kpiActionFor(parties(row), caller, deadlines, today),
+    action: own ? kpiActionFor(parties(row), caller, deadlines, today) : null,
     deadline: kpiStepDeadline(row.status, deadlines),
     confidential: caller.confidential.all.has(row.employeeId),
+    ...(row.practice && { practice: practiceOf(row, names) }),
   };
 }
 
@@ -181,8 +243,8 @@ const pick = (choice: number | null, comment: string | null): KpiPickView | null
 
 /** A scorecard on its page, as the caller sees it. `names`: who took its steps. */
 export function scorecardView(row: CardRow, caller: KpiCaller, settings: KpiSettings, today: string, names: ReadonlyMap<string, UserRef>): KpiScorecardView {
-  const summary = summaryOf(row, caller, settings, today);
-  const shown = kpiShown(parties(row), caller);
+  const summary = summaryOf(row, caller, settings, today, names);
+  const shown = shownOf(row, caller);
   const scores = new Map(row.scores.map((s) => [s.metricId, s]));
   // the score that counts as the caller sees it: the manager's picks, calibrated (the scorer's own while scoring)
   const official = shown.manager && row.scores.some((s) => s.managerChoice !== null) ? scoreOf(row, 'final') : null;
@@ -201,7 +263,7 @@ export function scorecardView(row: CardRow, caller: KpiCaller, settings: KpiSett
       points: counted !== null ? (view.criteria[counted]?.points ?? null) : null,
     };
   });
-  const set = pillarSetOf(row.template);
+  const set = cardPillarSet(row.template);
   const score = official ?? kpiScore(metrics, {}, { points: row.template.attendancePoints, achieved: row.attendanceAchieved }, set);
   const pillars = set.pillars.map((p) => {
     const s = score.pillars.find((x) => x.key === p.key)!;
@@ -232,12 +294,23 @@ export function scorecardView(row: CardRow, caller: KpiCaller, settings: KpiSett
       kind: s.kind as KpiStepKind,
       label: KPI_STEP_LABELS[s.kind as KpiStepKind] ?? s.kind,
       at: s.at.toISOString(),
-      by: s.actor ? (names.get(s.actor.id)?.name ?? s.actor.email) : null,
+      by: stepBy(s, row, names),
       // a step's comment as the caller may see it: the self-rating's with the self-rating, the scoring's and HR's with the scoring
       comment: (s.kind === 'self_rated' && !shown.self) || ((s.kind === 'scored' || s.kind === 'calibrated') && !shown.manager) ? null : s.comment,
     })),
     deadlines: deadlinesOf(row, settings),
-    can: kpiCan(parties(row), caller),
+    can: takesOwnSteps(row, caller) ? kpiCan(parties(row), caller) : CAN_NOTHING,
     payrollMonth: kpiPayrollMonth(monthOfCard(row)),
+    ...(row.practice && {
+      standIn: standsIn(row, caller) ? kpiPracticeSteps(row) : null,
+      unplaced: row.template.metrics.length - scoredMetrics(row).length,
+    }),
   };
+}
+
+/** Who took a step: their name (else their email); standing in on a practice scorecard, for whom ("… for the manager"). */
+function stepBy(s: CardRow['steps'][number], row: CardRow, names: ReadonlyMap<string, UserRef>): string | null {
+  if (!s.actor) return null;
+  const name = names.get(s.actor.id)?.name ?? s.actor.email;
+  return s.stoodInFor ? kpiStoodInText(name, s.stoodInFor, { employeeName: row.employee.fullNameEn, scorer: row.scorer }) : name;
 }

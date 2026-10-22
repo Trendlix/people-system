@@ -13,11 +13,23 @@ import { monthOfCard } from './kpi-views.js';
 // the scorecard as it is now, and never throws into the flow. The scorer's side: the manager in charge, every HR user
 // for one HR scores, the CEO for a C-level person's, a Super Admin for the CEO's own, never the person themself; HR's
 // calibration: those NoticesService.stageDeciders names (HR; never told of a C-level person's, which has no such step).
+// A practice scorecard tells nobody (owner, 22 October 2026: "notifies nobody"): no notice, push or email, whoever calls.
 
 /** Where a scorecard opens on the site (the phone pages open their own page for it: lib/surface.ts). */
 export const scorecardLink = (id: string) => `/kpis/scorecards/${id}`;
 
-const CARD = { id: true, month: true, status: true, employeeId: true, scorer: true, managerId: true, employeeSignedAt: true, managerSignedAt: true, employee: { select: { fullNameEn: true } } } as const;
+const CARD = {
+  id: true,
+  month: true,
+  status: true,
+  employeeId: true,
+  scorer: true,
+  managerId: true,
+  employeeSignedAt: true,
+  managerSignedAt: true,
+  practice: true,
+  employee: { select: { fullNameEn: true } },
+} as const;
 
 @Injectable()
 export class KpiNoticesService {
@@ -33,7 +45,7 @@ export class KpiNoticesService {
   async opened(ids: readonly string[], settings: KpiSettings): Promise<void> {
     await this.safely('opened', async () => {
       if (!ids.length) return;
-      const cards = await this.prisma.kpiScorecard.findMany({ where: { id: { in: [...ids] } }, select: CARD });
+      const cards = await this.prisma.kpiScorecard.findMany({ where: { id: { in: [...ids] }, practice: false }, select: CARD });
       const users = await this.notices.usersOf(cards.map((c) => c.employeeId));
       for (const c of cards) {
         const month = monthOfCard(c);
@@ -47,7 +59,7 @@ export class KpiNoticesService {
   async toScorer(id: string): Promise<void> {
     await this.safely('scoring', async () => {
       const c = await this.prisma.kpiScorecard.findUnique({ where: { id }, select: CARD });
-      if (!c || c.status !== 'manager') return;
+      if (!c || c.practice || c.status !== 'manager') return;
       await this.notifications.notify(await this.scorerUsers(c), kpiWaitingText(c.employee.fullNameEn, monthOfCard(c), scorecardLink(c.id)));
     });
   }
@@ -56,7 +68,7 @@ export class KpiNoticesService {
   async toHr(id: string): Promise<void> {
     await this.safely('calibration', async () => {
       const c = await this.prisma.kpiScorecard.findUnique({ where: { id }, select: CARD });
-      if (!c || c.status !== 'hr') return;
+      if (!c || c.practice || c.status !== 'hr') return;
       await this.notifications.notify(await this.notices.stageDeciders('hr', c.employeeId), kpiWaitingText(c.employee.fullNameEn, monthOfCard(c), scorecardLink(c.id)));
     });
   }
@@ -65,7 +77,7 @@ export class KpiNoticesService {
   async readyToSign(id: string, settings: KpiSettings): Promise<void> {
     await this.safely('sign-off', async () => {
       const c = await this.prisma.kpiScorecard.findUnique({ where: { id }, select: CARD });
-      if (!c || c.status !== 'sign_off') return;
+      if (!c || c.practice || c.status !== 'sign_off') return;
       const month = monthOfCard(c);
       const link = scorecardLink(c.id);
       const own = (await this.notices.usersOf([c.employeeId])).get(c.employeeId);
@@ -82,7 +94,7 @@ export class KpiNoticesService {
     let sent = 0;
     await this.safely('reminder', async () => {
       if (!due.length) return;
-      const cards = new Map((await this.prisma.kpiScorecard.findMany({ where: { id: { in: due.map((d) => d.id) } }, select: CARD })).map((c) => [c.id, c]));
+      const cards = new Map((await this.prisma.kpiScorecard.findMany({ where: { id: { in: due.map((d) => d.id) }, practice: false }, select: CARD })).map((c) => [c.id, c]));
       const own = await this.notices.usersOf([...cards.values()].map((c) => c.employeeId));
       // the employee's own reminders, and each other person's scorecards by step
       const theirs = new Map<string, { step: KpiReminder; ids: string[]; deadline: string }>();

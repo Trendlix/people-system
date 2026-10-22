@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { KPI_LEVEL_LABELS, type KpiHeatmap, type KpiLevel, type KpiScorecardSummary, type KpiStatus, type KpiScorer } from '@trendlix/shared';
+import { KPI_LEVEL_LABELS, KPI_PRACTICE_BADGE, KPI_PRACTICE_BANNER, type KpiHeatmap, type KpiLevel, type KpiScorecardSummary, type KpiStatus, type KpiScorer } from '@trendlix/shared';
 import { CLevelBadge } from '@/components/c-level-badge';
 import { formatDate } from '@/lib/format';
 import { KPI_PATHS } from '@/lib/kpi-paths';
@@ -22,6 +22,43 @@ export function LevelBadge({ level, className = '' }: { level: KpiLevel | null |
 /** Where a scorecard stands: "Self-rating", "With the manager" (or HR, the CEO), "With HR", "Sign-off", "Final". */
 export function StatusBadge({ status, scorer }: { status: KpiStatus; scorer: KpiScorer }) {
   return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{statusText(status, scorer)}</span>;
+}
+
+/**
+ * A practice scorecard's badge, in every list it appears in (owner, 22 October 2026: "It's marked Practice
+ * everywhere"): its title says it counts nowhere.
+ */
+export function PracticeBadge({ className = '' }: { className?: string }) {
+  return (
+    <span className={`badge bg-warn-soft text-warn ${className}`.trim()} title={KPI_PRACTICE_BANNER}>
+      {KPI_PRACTICE_BADGE}
+    </span>
+  );
+}
+
+/**
+ * All KPIs' tabs for HR and the Super Admin: the month's scorecards, and the practice scorecards (owner, 22 October
+ * 2026: "Practice scorecards"). Links, each page its own address.
+ */
+export function AllKpisTabs({ current }: { current: 'scorecards' | 'practice' }) {
+  const tabs = [
+    { key: 'scorecards', href: KPI_PATHS.all, label: 'Scorecards' },
+    { key: 'practice', href: KPI_PATHS.practice, label: 'Practice' },
+  ] as const;
+  return (
+    <nav aria-label="All KPIs" className="flex gap-1 overflow-x-auto border-b border-line">
+      {tabs.map((t) => (
+        <Link
+          key={t.key}
+          href={t.href}
+          aria-current={t.key === current ? 'page' : undefined}
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold whitespace-nowrap no-underline ${t.key === current ? 'border-accent text-ink' : 'border-transparent text-muted hover:text-ink'}`}
+        >
+          {t.label}
+        </Link>
+      ))}
+    </nav>
+  );
 }
 
 /** A final % and its level; a dash until it is scored, or shown to the caller (the employee: from the sign-off). */
@@ -183,6 +220,7 @@ export function ScorecardsTable({ scorecards, showMonth = false }: { scorecards:
                     {s.employee.fullNameEn}
                   </Link>
                   {s.confidential && <CLevelBadge className="ml-1.5" title="A C-level person: the CEO scores their KPI, and HR doesn't see it." />}
+                  {s.practice && <PracticeBadge className="ml-1.5" />}
                   <span className="block text-xs text-muted">{[s.jobTitle, s.department].filter(Boolean).join(' · ') || s.employee.employeeCode}</span>
                 </td>
                 {showMonth && <td className="whitespace-nowrap">{monthShort(s.month)}</td>}

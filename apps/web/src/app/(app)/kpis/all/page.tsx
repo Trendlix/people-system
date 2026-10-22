@@ -11,6 +11,7 @@ import { todayInCairo } from '../../employees/ui';
 import { Empty, Loading } from '../../organization/ui';
 import { openScorecards } from '../actions';
 import { kpiNotLoaded, loadHeatmap, loadOverview, loadScorecards } from '../data';
+import { seesKpiPractice } from '../practice';
 import {
   allKpisHref,
   averageChangeText,
@@ -24,7 +25,7 @@ import {
   scorecardsLabel,
   seesAllKpis,
 } from '../scorecard';
-import { Heatmap, LevelDistribution, ScorecardsTable } from '../ui';
+import { AllKpisTabs, Heatmap, LevelDistribution, ScorecardsTable } from '../ui';
 import { OpenScorecardsForm } from './open-form';
 
 // All KPIs (owner's brief, 21 October 2026: "All KPIs (HR, the CEO, Super Admin): every scorecard by month with its
@@ -35,6 +36,8 @@ import { OpenScorecardsForm } from './open-form';
 // C-level people are left out for HR (owner, 19 October 2026: "make C level Employees details not visible to HR"): the
 // page says so. The API checks the roles again. The pillars (owner, 21 October 2026: "Fully flexible"): each scorecard's
 // are its template version's; the department averages are by pillar name, the page saying so when the month's differ.
+// Practice scorecards (owner, 22 October 2026: "Practice scorecards") are never among them: HR and the Super Admin have
+// them on the Practice tab.
 
 export const metadata: Metadata = { title: 'All KPIs · People System' };
 
@@ -184,9 +187,11 @@ async function All({ searchParams }: { searchParams: PageProps<'/kpis/all'>['sea
   // HR opens last month's scorecards now, rather than on the 1st (owner's brief, 21 October 2026)
   const openMonth = kpiScorecardMonthOn(todayInCairo());
   const opener = hasRole(user, 'hr') && <OpenScorecardsForm action={openScorecards} monthName={kpiMonthName(openMonth)} />;
+  const tabs = seesKpiPractice(user) && <AllKpisTabs current="scorecards" />;
   if (loaded.kind !== 'ok') {
     return (
       <div className="space-y-4">
+        {tabs}
         {opener}
         <Empty>{kpiNotLoaded(loaded, 'KPI figures')}</Empty>
       </div>
@@ -201,6 +206,7 @@ async function All({ searchParams }: { searchParams: PageProps<'/kpis/all'>['sea
 
   return (
     <div className="space-y-6">
+      {tabs}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <Filters overview={o} status={status} department={department} />
         <div className="flex flex-wrap items-start gap-3">

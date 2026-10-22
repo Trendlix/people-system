@@ -369,7 +369,11 @@ function recordLookups(p: PrismaService): Readonly<Record<string, Lookup>> {
     job_title: async (ids) => (await p.jobTitle.findMany({ ...by(ids), select: { id: true, titleEn: true } })).map((r) => [r.id, { reference: r.titleEn }]),
     // KPIs (owner, 21 October 2026): a scorecard's person and month; a template's job title and version
     kpi_scorecard: async (ids) =>
-      (await p.kpiScorecard.findMany({ ...by(ids), select: { id: true, employeeId: true, month: true } })).map((r) => [r.id, { employeeId: r.employeeId, reference: monthOf(r.month) }]),
+      // a practice one marked so (22 October 2026: "It's marked Practice everywhere")
+      (await p.kpiScorecard.findMany({ ...by(ids), select: { id: true, employeeId: true, month: true, practice: true } })).map((r) => [
+        r.id,
+        { employeeId: r.employeeId, reference: r.practice ? `${monthOf(r.month)} · Practice` : monthOf(r.month) },
+      ]),
     kpi_template: async (ids) =>
       (await p.kpiTemplate.findMany({ ...by(ids), select: { id: true, jobTitleId: true, version: true, jobTitle: { select: { titleEn: true } } } })).map((r) => [
         r.id,

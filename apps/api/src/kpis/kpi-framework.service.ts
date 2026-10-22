@@ -379,7 +379,8 @@ export class KpiFrameworkService {
           next ? 'Someone saved other pillars meanwhile. Reload the page to see them.' : 'The pillars you were changing apply now, so they can’t be changed. Reload the page.',
         );
       }
-      const open = await tx.kpiScorecard.findFirst({ where: { month: { gte: month } }, orderBy: { month: 'desc' }, select: { month: true } });
+      // the real ones: a practice scorecard of the month never holds the pillars back (22 October 2026)
+      const open = await tx.kpiScorecard.findFirst({ where: { month: { gte: month }, practice: false }, orderBy: { month: 'desc' }, select: { month: true } });
       if (open) throw new BadRequestException([`The scorecards of ${kpiMonthName(monthOfCard(open))} are open already: choose a later month.`]);
       if (!next) {
         if (!scope) {

@@ -44,7 +44,8 @@ import { userNames } from '../payroll/adjustments/people.js';
 import { firstDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { FRAMEWORK_LOCK, KpiFrameworkService, type PillarsBase } from './kpi-framework.service.js';
-import { metricView, pillarSetOf, pillarsJsonOf } from './kpi-views.js';
+import { KpiPracticeService } from './kpi-practice.service.js';
+import { criteriaOf, metricView, pillarSetOf, pillarsJsonOf } from './kpi-views.js';
 import type { KpiDraftDto, KpiPublishDraftsDto, KpiTemplateContentDto } from './kpis.dto.js';
 
 // KPI templates (owner, 21 October 2026: "Templates: HR"; the brief: "HR (and Super Admin) build and edit templates per
@@ -75,13 +76,19 @@ import type { KpiDraftDto, KpiPublishDraftsDto, KpiTemplateContentDto } from './
 // own weights for them (own_weights, by pillar key; packages/shared kpiWeightsProblems), dropped once they no longer fit
 // (the department's pillars gained or lost one); publishing gives the version's pillars those weights. A version
 // copied from another keeps its own weights when they fit.
+// Practice scorecards on a draft (owner, 22 October 2026: "Practice scorecards"; the brief: "a practice card on a draft
+// keeps working when the draft is edited"): saving it changed starts them again (their picks cleared, back to the
+// self-rating, on its new metrics); saved as it was (Publish from the editor saves first), they are kept; published,
+// they carry on on the published version (its metrics are the same rows); discarded, they are deleted with it. Each is
+// in the audit log. A version's count of scorecards is of the real ones, its practice ones counted apart.
 
 export const TEMPLATE_ENTITY = 'kpi_template';
 
 const TEMPLATE_INCLUDE = {
   metrics: { orderBy: { position: 'asc' } },
   publishedBy: { select: { id: true, email: true } },
-  _count: { select: { scorecards: true } },
+  // the real scorecards: a practice one is counted apart (practiceScorecards)
+  _count: { select: { scorecards: { where: { practice: false } } } },
   jobTitle: { select: { departmentId: true } },
   framework: { select: { pillars: true, attendancePillar: true, followsCompany: true, department: { select: { id: true, nameEn: true } } } },
 } as const satisfies Prisma.KpiTemplateInclude;
@@ -172,6 +179,7 @@ export class KpiTemplatesService {
     private readonly audit: AuditService,
     private readonly confidential: ConfidentialService,
     private readonly framework: KpiFrameworkService,
+    private readonly practice: KpiPracticeService,
   ) {}
 
   /** Every job title, by department then title, with its version in force, the next one, its draft and its people. */
@@ -388,14 +396,23 @@ export class KpiTemplatesService {
     if (dto.weights !== undefined && dto.weights !== null) problems.push(...kpiWeightsProblems(set, dto.weights));
     if (problems.length) throw new BadRequestException(problems);
     const weights = kpiOwnWeights(set, dto.weights === undefined ? before.ownWeights : dto.weights);
-    await this.prisma.$transaction(async (tx) => {
+    const restarted = await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.kpiTemplate.updateMany({
         where: { id, status: 'draft' },
         data: { attendancePoints: content.attendancePoints, pillars: pillarsJsonOf(set), attendancePillar: set.attendancePillar, ownWeights: weightsData(weights), updatedAt: new Date() },
       });
       if (!count) throw new ConflictException('This draft was published or discarded meanwhile. Reload the page.');
+      // its practice scorecards: kept when nothing of its content changed, else started again on its new metrics
+      const practice = await this.practice.onTemplate(tx, id);
+      if (practice.length && sameContent(before, content)) return [];
+      await this.practice.detach(tx, practice.map((c) => c.id));
       await tx.kpiMetric.deleteMany({ where: { templateId: id } });
       await tx.kpiMetric.createMany({ data: metricRows(content.metrics).map((m) => ({ ...m, templateId: id })) });
+      if (practice.length) {
+        const made = await tx.kpiMetric.findMany({ where: { templateId: id }, orderBy: { position: 'asc' }, select: { id: true } });
+        await this.practice.restartOnDraft(tx, practice, made.map((m) => m.id), content.attendancePoints, before.version, user.id);
+      }
+      return practice;
     });
     const names = (ms: readonly { name: string }[]) => ms.map((m) => m.name);
     const unplaced = content.metrics.filter((m) => m.pillar === null).length;
@@ -412,8 +429,10 @@ export class KpiTemplatesService {
           { attendancePoints: content.attendancePoints, metrics: names(content.metrics), ownWeights: weightsWords(base, weights) },
         ),
         ...(unplaced && { unplaced }),
+        ...(restarted.length && { practiceRestarted: restarted.length }),
       },
     });
+    await this.practice.recordDraftChange('restart', restarted, { id, version: before.version }, user.id);
     return this.one(id, user);
   }
 
@@ -463,13 +482,27 @@ export class KpiTemplatesService {
     return result;
   }
 
-  /** Discards a draft (a Super Admin only, as every deletion: owner's decision, 15 October 2026). */
+  /**
+   * Discards a draft (a Super Admin only, as every deletion: owner's decision, 15 October 2026), and the practice
+   * scorecards on it with it (22 October 2026), each in the audit log.
+   */
   async remove(id: string, user: SessionUser): Promise<void> {
     assertDeletes(user);
     const before = await this.draft(id, 'deleted');
-    const { count } = await this.prisma.kpiTemplate.deleteMany({ where: { id, status: 'draft' } });
-    if (!count) throw new ConflictException('This draft was published meanwhile. Reload the page.');
-    await this.audit.record({ userId: user.id, action: 'delete', entityType: TEMPLATE_ENTITY, entityId: id, diff: { jobTitleId: before.jobTitleId, version: before.version, status: 'draft', metrics: before.metrics.length } });
+    const removed = await this.prisma.$transaction(async (tx) => {
+      const practice = await this.practice.removeOnDraft(tx, id);
+      const { count } = await tx.kpiTemplate.deleteMany({ where: { id, status: 'draft' } });
+      if (!count) throw new ConflictException('This draft was published meanwhile. Reload the page.');
+      return practice;
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'delete',
+      entityType: TEMPLATE_ENTITY,
+      entityId: id,
+      diff: { jobTitleId: before.jobTitleId, version: before.version, status: 'draft', metrics: before.metrics.length, ...(removed.length && { practiceDeleted: removed.length }) },
+    });
+    await this.practice.recordDraftChange('remove', removed, { id, version: before.version }, user.id);
   }
 
   // ---------- helpers ----------
@@ -613,7 +646,8 @@ export class KpiTemplatesService {
           OR: [{ employeeId: me }, { managerId: me }, { department: { headId: me } }, { department: { parent: { headId: me } } }],
         },
       });
-      if (theirs || (await this.prisma.kpiScorecard.count({ where: { managerId: me, template: { jobTitleId } } }))) return 'published';
+      // a real scorecard they scored: a practice one is never theirs to see (22 October 2026)
+      if (theirs || (await this.prisma.kpiScorecard.count({ where: { managerId: me, practice: false, template: { jobTitleId } } }))) return 'published';
     }
     throw new NotFoundException(message);
   }
@@ -638,6 +672,13 @@ export class KpiTemplatesService {
     ]);
     for (const f of forced) if (!inForce.has(f.jobTitleId)) inForce.set(f.jobTitleId, f.id);
     const names = await userNames(this.prisma, rows.map((r) => r.publishedBy));
+    // the practice scorecards on each version (22 October 2026)
+    const practice = new Map(
+      (await this.prisma.kpiScorecard.groupBy({ by: ['templateId'], where: { templateId: { in: rows.map((r) => r.id) }, practice: true }, _count: { _all: true } })).map((g) => [
+        g.templateId,
+        g._count._all,
+      ]),
+    );
     return rows.map((r) => {
       const own = pillarSetOf(r);
       const draft = r.status === 'draft';
@@ -663,6 +704,7 @@ export class KpiTemplatesService {
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
         scorecards: r._count.scorecards,
+        practiceScorecards: practice.get(r.id) ?? 0,
         problems: draft ? kpiTemplateProblems({ attendancePoints: r.attendancePoints, metrics }, { publishing: true, pillars: set }) : [],
         pillars: [...pillars.pillars],
         attendancePillar: pillars.attendancePillar,
@@ -687,6 +729,32 @@ export class KpiTemplatesService {
 /** A metric as the page shows it: the pillar it was in only when it is in Unplaced. */
 function shownMetric<M extends { pillar: string | null; wasIn?: string | null }>({ wasIn, ...m }: M): Omit<M, 'wasIn'> & { wasIn?: string | null } {
   return m.pillar === null ? { ...m, wasIn: wasIn ?? null } : m;
+}
+
+/**
+ * Whether a draft's content as sent is what it has: the Attendance metric's points and every metric as it would be
+ * saved, in order. Its practice scorecards are kept then (their picks are of the same metrics).
+ */
+function sameContent(
+  before: {
+    attendancePoints: number;
+    metrics: readonly { pillar: string | null; wasIn: string | null; name: string; definition: string | null; howMeasured: string | null; jdDuty: string | null; targetPoints: number; criteria: Prisma.JsonValue }[];
+  },
+  content: KpiTemplateContent,
+): boolean {
+  if (before.attendancePoints !== content.attendancePoints) return false;
+  const kept = before.metrics.map((m, i) => ({
+    position: i + 1,
+    pillar: m.pillar,
+    wasIn: m.pillar === null ? m.wasIn : null,
+    name: m.name,
+    definition: m.definition,
+    howMeasured: m.howMeasured,
+    jdDuty: m.jdDuty,
+    targetPoints: m.targetPoints,
+    criteria: criteriaOf(m.criteria),
+  }));
+  return JSON.stringify(kept) === JSON.stringify(metricRows(content.metrics));
 }
 
 /** A metric copied into a new draft: without the id of the one it was copied from. */

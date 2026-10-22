@@ -32,6 +32,7 @@ import {
   WAITING_HOMES,
 } from '../home-locations/home-locations';
 import { HomeMap, HomeStatusBadge } from '../home-locations/ui';
+import { PracticeBadge } from '../kpis/ui';
 import { decideChangeRequest, decideEnding } from './actions';
 import { decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
 import { DecisionForm } from './decision-form';
@@ -350,6 +351,7 @@ async function PendingKpis({ user }: { user: SessionUser }) {
                   <span className="font-semibold">{r.person}</span>
                   <span className="text-muted"> · {r.employeeCode}</span>
                   {r.confidential && <CLevelBadge className="ml-2" />}
+                  {r.practice && <PracticeBadge className="ml-2" />}
                   {r.jobTitle && <span className="block text-xs text-muted">{r.jobTitle}</span>}
                 </td>
                 <td className="whitespace-nowrap">{r.month}</td>

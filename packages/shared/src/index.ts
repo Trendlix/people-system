@@ -440,6 +440,12 @@ export * from './kpi-library.js';
 // templates placing their metrics in them by name, the old pillars kept by the versions published with them
 export * from './kpi-framework.js';
 
+// practice KPI scorecards (owner, 22 October 2026: "i want to test the KPI's .. and it is locked to dates, HR and
+// Admin.. how?", "Practice scorecards"): started by HR or a Super Admin for anyone and any month, from a draft or a
+// published version; no deadline holds a step back; its starter or a Super Admin stands in for each step, or a Super
+// Admin views as the person; marked Practice everywhere, never in payroll, the reports, the exports or a notification
+export * from './kpi-practice.js';
+
 // Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system"; "use the main ERP
 // system specs .. dont stick to the MD file"): the Assets access per user (none, viewer, custodian, manager; a Super Admin
 // always a manager) and the values rule ("CEO and Finance"), the five groups, the type codes, the statuses and conditions,

@@ -223,6 +223,10 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   payslip_file: 'Downloaded payslips',
   postpone_installment: 'Postponed an installment',
   prepare: 'Prepared the raise',
+  // practice KPI scorecards (owner, 22 October 2026: "Practice scorecards"): one started, and one started again as its
+  // draft was saved changed; each step on one is marked practice, with for whom it was stood in
+  practice_reset: 'Started the practice scorecard again',
+  practice_start: 'Started a practice scorecard',
   print: 'Marked printed',
   publish: 'Published',
   // "Publish selected drafts" of KPI templates (21 October 2026), each draft published also audited as published
@@ -381,6 +385,8 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   filledBy: 'Filled in by',
   // the email an employee signs in with, as HR chose it (22 October 2026)
   signInEmail: 'Sign-in email',
+  // a practice KPI scorecard's step taken standing in (22 October 2026)
+  stoodInFor: 'Stood in for',
 };
 
 /**

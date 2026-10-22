@@ -27,6 +27,11 @@ export interface KpiApprovalRow {
   action: string;
   href: string;
   confidential: boolean;
+  /**
+   * A practice scorecard (owner, 22 October 2026: "It's marked Practice everywhere"), seen by a Super Admin viewing as
+   * the person; left out for a real one.
+   */
+  practice?: true;
 }
 
 /**
@@ -47,6 +52,7 @@ export function kpiApprovalRows(waiting: readonly KpiScorecardSummary[], user: {
       action: (s.action && KPI_ACTION_LABELS[s.action]) ?? 'Open',
       href: KPI_PATHS.scorecard(s.id),
       confidential: s.confidential,
+      ...(s.practice && { practice: true as const }),
     }));
 }
 

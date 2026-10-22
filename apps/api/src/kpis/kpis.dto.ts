@@ -133,6 +133,35 @@ export class KpiSignDto {
   comment?: string | null;
 }
 
+/**
+ * A practice scorecard to start (owner, 22 October 2026: "Practice scorecards"; packages/shared KpiPracticeStartInput):
+ * whom, the month (default: this one) and the version (default: the job title's newest, a draft when it has one).
+ */
+export class KpiPracticeStartDto {
+  @IsUUID('all', { message: 'Choose the employee.' })
+  employeeId!: string;
+
+  @IsOptional() @Matches(MONTH, { message: MONTH_MESSAGE })
+  month?: string | null;
+
+  @IsOptional() @IsUUID('all', { message: 'Choose a version of the job title’s KPI template.' })
+  templateId?: string | null;
+}
+
+/** A practice scorecard's sign-off, standing in for the employee or for the scorer's side: "I've read it". */
+export class KpiPracticeSignDto extends KpiSignDto {
+  @IsIn(['employee', 'manager'], { message: 'Choose whom you sign for: the employee or the manager.' })
+  as!: 'employee' | 'manager';
+}
+
+/** DELETE /kpis/practice?mine=true: only the practice scorecards the caller started; left out, every one. */
+export class KpiPracticeDeleteQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' || value === '1' ? true : value === 'false' || value === '0' ? false : value))
+  @IsBoolean({ message: 'Say whether to delete only yours: mine=true or mine=false.' })
+  mine?: boolean;
+}
+
 /** ?scope=team|all&month=&status=&departmentId=. */
 export class KpiListQueryDto {
   @IsIn(['team', 'all'], { message: 'Choose the scope: team or all.' })

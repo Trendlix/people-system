@@ -62,6 +62,24 @@ export const KPI_API = {
   export: (month: string) => `/kpis/export${q({ month })}`,
   /** POST → KpiOpenResult: opens last month's scorecards now (HR). */
   open: '/kpis/open',
+  /**
+   * Practice scorecards (owner, 22 October 2026: "Practice scorecards"; packages/shared kpi-practice.ts): GET
+   * KpiPracticeRow[] (HR, Super Admin); POST KpiPracticeStartInput → KpiScorecardView (the new one).
+   */
+  practice: '/kpis/practice',
+  /** DELETE → KpiPracticeDeleted: every practice scorecard, or only the caller's (`mine`); a Super Admin only. */
+  practiceAll: (mine: boolean) => `/kpis/practice${q({ mine: mine ? 'true' : null })}`,
+  /** GET: KpiPracticeChoices, whom a practice scorecard may be started for, with their months and versions. */
+  practiceChoices: '/kpis/practice/choices',
+  /** DELETE → 204: one practice scorecard (a Super Admin only; never a real one). */
+  practiceCard: (id: string) => `/kpis/practice/${encodeURIComponent(id)}`,
+  /** The steps stood in for on a practice scorecard (its starter, a Super Admin): POST KpiPicksInput → KpiScorecardView. */
+  practiceSelf: (id: string) => `/kpis/practice/${encodeURIComponent(id)}/self`,
+  practiceScore: (id: string) => `/kpis/practice/${encodeURIComponent(id)}/score`,
+  /** POST KpiCalibrateInput → KpiScorecardView. */
+  practiceCalibrate: (id: string) => `/kpis/practice/${encodeURIComponent(id)}/calibrate`,
+  /** POST KpiPracticeSignInput → KpiScorecardView. */
+  practiceSign: (id: string) => `/kpis/practice/${encodeURIComponent(id)}/sign`,
 } as const;
 
 /** The site's KPI pages. */
@@ -85,4 +103,9 @@ export const KPI_PATHS = {
   departmentPillars: (departmentId: string) => `/kpis/pillars/${encodeURIComponent(departmentId)}`,
   /** A scorecard. */
   scorecard: (id: string) => `/kpis/scorecards/${encodeURIComponent(id)}`,
+  /**
+   * Practice scorecards (owner, 22 October 2026: "Practice scorecards"): a tab of All KPIs for HR and the Super Admin,
+   * so the sidebar keeps All KPIs lit.
+   */
+  practice: '/kpis/all/practice',
 } as const;

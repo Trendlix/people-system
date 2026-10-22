@@ -9,6 +9,7 @@ import { firstDay } from './months.js';
 // November's run), its final % and level, kept with the line's terms when a run is made or refreshed (a draft takes the
 // KPI on refresh; a run with the CEO, approved or paid keeps its figures). Someone with none final: null, so the variable
 // part isn't cut ("with no KPI given it isn't cut"). packages/shared payroll.ts kpiPayScore works the score out.
+// Never a practice scorecard (owner, 22 October 2026: "never reaches payroll"): the real one only, so the payslips too.
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -18,7 +19,7 @@ export async function finalKpis(db: Db, payrollMonth: string, employeeIds: reado
   if (!employeeIds.length) return out;
   const month = kpiMonthForPayroll(payrollMonth);
   const rows = await db.kpiScorecard.findMany({
-    where: { month: toDateOnly(firstDay(month)), status: 'final', employeeId: { in: [...employeeIds] } },
+    where: { month: toDateOnly(firstDay(month)), status: 'final', practice: false, employeeId: { in: [...employeeIds] } },
     select: { id: true, employeeId: true, month: true, finalPercent: true, level: true },
   });
   for (const r of rows) {

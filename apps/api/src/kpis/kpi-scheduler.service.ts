@@ -20,6 +20,8 @@ import { monthOfCard, SCORECARD_ENTITY } from './kpi-views.js';
 // scorecard's reminders_sent). One process at a time: a Postgres advisory lock held for the transaction; another
 // process finding it held does nothing that round. HR's "Open now" waits for it, then opens the same way. Started by
 // main.ts, so the tests' apps don't run it by themselves: they call runOnce with a moment of their own.
+// Practice scorecards (owner, 22 October 2026: "Practice scorecards"; packages/shared kpi-practice.ts) are never
+// touched: never self-missed, never final unsigned, no reminder; the opening ignores them.
 
 /** The advisory lock's name: hashtext() of it is the key every process takes. */
 const LOCK_NAME = 'people-system kpi scorecards';
@@ -150,7 +152,7 @@ export class KpiSchedulerService implements OnModuleDestroy {
   /** The self-ratings not sent by their day, moved on to the scorer (noted); the sign-offs not done by theirs, final (noted). */
   private async deadlines(tx: Tx, settings: KpiSettings, today: string, now: Date) {
     const open = await tx.kpiScorecard.findMany({
-      where: { status: { in: ['self_rating', 'sign_off'] } },
+      where: { status: { in: ['self_rating', 'sign_off'] }, practice: false },
       select: { id: true, month: true, status: true, employeeSignedAt: true, managerSignedAt: true, employee: { select: { employeeCode: true } } },
     });
     const missed: { id: string; month: string; employeeCode: string }[] = [];
@@ -177,7 +179,7 @@ export class KpiSchedulerService implements OnModuleDestroy {
 
   /** The reminders due today, each claimed on its scorecard so it goes once. */
   private async claimReminders(tx: Tx, settings: KpiSettings, today: string): Promise<{ id: string; step: KpiReminder }[]> {
-    const open = await tx.kpiScorecard.findMany({ where: { status: { not: 'final' } }, select: { id: true, month: true, status: true, remindersSent: true } });
+    const open = await tx.kpiScorecard.findMany({ where: { status: { not: 'final' }, practice: false }, select: { id: true, month: true, status: true, remindersSent: true } });
     const out: { id: string; step: KpiReminder }[] = [];
     for (const c of open) {
       const step = kpiReminderDue(c.status, kpiDeadlines(monthOfCard(c), settings), today, c.remindersSent);

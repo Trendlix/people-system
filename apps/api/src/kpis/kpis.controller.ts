@@ -5,6 +5,7 @@ import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
 import { KpiFrameworkService } from './kpi-framework.service.js';
 import { KpiOverviewService } from './kpi-overview.service.js';
+import { KpiPracticeService } from './kpi-practice.service.js';
 import { KpiSchedulerService } from './kpi-scheduler.service.js';
 import { KpiScorecardsService } from './kpi-scorecards.service.js';
 import { KpiSettingsService } from './kpi-settings.service.js';
@@ -18,6 +19,9 @@ import {
   KpiListQueryDto,
   KpiMonthQueryDto,
   KpiPicksDto,
+  KpiPracticeDeleteQueryDto,
+  KpiPracticeSignDto,
+  KpiPracticeStartDto,
   KpiPublishDraftsDto,
   KpiSettingsDto,
   KpiSignDto,
@@ -34,6 +38,9 @@ import {
 // roles"): HR and a Super Admin list its roles, start a draft from one, draft every job title without a template from
 // its matched role, and publish the drafts they choose at once. The KPI framework (owner, 21 October 2026: "Fully
 // flexible"): everyone reads the pillars in force and the next ones; HR and a Super Admin change the next ones.
+// Practice scorecards (owner, 22 October 2026: "Practice scorecards"; packages/shared kpi-practice.ts): HR and a Super
+// Admin list them, see whom one may be started for and start one; its starter or a Super Admin takes its steps standing
+// in for each person in it (checked by the service); only a Super Admin deletes them, one or all, never a real one.
 
 @Controller('kpis/settings')
 export class KpiSettingsController {
@@ -241,3 +248,74 @@ export class KpiScorecardsController {
   }
 }
 
+
+@Controller('kpis/practice')
+export class KpiPracticeController {
+  constructor(
+    private readonly practice: KpiPracticeService,
+    private readonly scorecards: KpiScorecardsService,
+  ) {}
+
+  /** The practice scorecards, newest started first (HR not a C-level person's). */
+  @Roles('hr', 'super_admin')
+  @Get()
+  list(@CurrentUser() user: SessionUser) {
+    return this.practice.list(user);
+  }
+
+  /** { month, people: [{ employee, jobTitle, department, joinDate, months, templates, confidential }] }. */
+  @Roles('hr', 'super_admin')
+  @Get('choices')
+  choices(@CurrentUser() user: SessionUser) {
+    return this.practice.choices(user);
+  }
+
+  /** { employeeId, month?, templateId? } → the practice scorecard, as its page reads it. */
+  @Roles('hr', 'super_admin')
+  @Post()
+  start(@Body() dto: KpiPracticeStartDto, @CurrentUser() user: SessionUser) {
+    return this.practice.start(dto, user);
+  }
+
+  /** The self-rating, for the employee: { picks, comment, submit }. */
+  @Post(':id/self')
+  @HttpCode(200)
+  selfRate(@Param('id', ParseUUIDPipe) id: string, @Body() dto: KpiPicksDto, @CurrentUser() user: SessionUser) {
+    return this.scorecards.selfRate(id, dto, user, true);
+  }
+
+  /** The scoring, for the scorer: { picks, comment, submit }. */
+  @Post(':id/score')
+  @HttpCode(200)
+  score(@Param('id', ParseUUIDPipe) id: string, @Body() dto: KpiPicksDto, @CurrentUser() user: SessionUser) {
+    return this.scorecards.score(id, dto, user, true);
+  }
+
+  /** HR's calibration, for HR: { changes, comment }. */
+  @Post(':id/calibrate')
+  @HttpCode(200)
+  calibrate(@Param('id', ParseUUIDPipe) id: string, @Body() dto: KpiCalibrateDto, @CurrentUser() user: SessionUser) {
+    return this.scorecards.calibrate(id, dto, user, true);
+  }
+
+  /** "I've read it", for the employee or the manager: { as: employee | manager, comment }. */
+  @Post(':id/sign')
+  @HttpCode(200)
+  sign(@Param('id', ParseUUIDPipe) id: string, @Body() dto: KpiPracticeSignDto, @CurrentUser() user: SessionUser) {
+    return this.scorecards.sign(id, dto, user, dto.as);
+  }
+
+  /** "Delete all practice scorecards" (?mine=true: only yours) → { deleted }. */
+  @DeletesRecords()
+  @Delete()
+  removeAll(@Query() query: KpiPracticeDeleteQueryDto, @CurrentUser() user: SessionUser) {
+    return this.practice.removeAll(query.mine === true, user);
+  }
+
+  @DeletesRecords()
+  @Delete(':id')
+  @HttpCode(204)
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.practice.remove(id, user);
+  }
+}

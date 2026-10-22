@@ -24,6 +24,7 @@ import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import { getOrNull } from '../../../approvals/data';
 import { todayInCairo } from '../../../employees/ui';
 import { BackLink, Empty, Loading, UUID } from '../../../organization/ui';
+import { practiceLabel } from '../../practice';
 import { discardKpiDraft, sendKpiDraft, startKpiDraft } from '../actions';
 import { OLD_PILLARS_BADGE, pillarRowsOf, pillarsMonthOf } from '../framework';
 import { TemplateView } from '../template-view';
@@ -92,6 +93,8 @@ function versionFacts(v: KpiTemplateView): string {
     v.publishedAt ? `published${userName(v.publishedBy) ? ` by ${userName(v.publishedBy)}` : ''} on ${formatDateTime(v.publishedAt)}` : null,
     metricsLabel(v.metrics.length),
     `${v.scorecards} ${v.scorecards === 1 ? 'scorecard' : 'scorecards'}`,
+    // the practice ones, counted apart (owner, 22 October 2026: "Practice scorecards")
+    v.practiceScorecards ? practiceLabel(v.practiceScorecards) : null,
   ];
   return parts.filter(Boolean).join(' · ');
 }

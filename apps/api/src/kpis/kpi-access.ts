@@ -15,6 +15,10 @@ import type { ConfidentialView } from '../employees/confidential.service.js';
 // - HR sees every scorecard but a C-level person's and calibrates after a manager's scoring; the CEO and a Super Admin
 //   see every one (C-level too), and HR's step of a C-level person's is the CEO's (there is none: the CEO scores it).
 // Nobody takes a step of their own scorecard but the employee's.
+// A practice scorecard (owner, 22 October 2026: "Practice scorecards"; packages/shared kpi-practice.ts): HR (never a
+// C-level person's) and a Super Admin see it; the people in it, signed in themselves, never do. A Super Admin viewing as
+// someone sees it as that person would see a real one, and with Act as them on takes their step as them; in one's own
+// session nobody takes its steps as themself: its starter or a Super Admin stands in for each person (kpiStandsIn).
 
 /** The caller: their session, their own employee profile (none: null), and the C-level people. */
 export interface KpiCaller {
@@ -32,6 +36,8 @@ export interface KpiParties {
   selfSubmittedAt?: Date | string | null;
   employeeSignedAt?: Date | string | null;
   managerSignedAt?: Date | string | null;
+  /** A practice scorecard (22 October 2026); left out: a real one. */
+  practice?: boolean;
 }
 
 export const isOwnScorecard = (card: Pick<KpiParties, 'employeeId'>, caller: KpiCaller) => caller.employeeId !== null && caller.employeeId === card.employeeId;
@@ -63,6 +69,25 @@ export function seesScorecard(card: KpiParties, caller: KpiCaller): boolean {
   if (isOwnScorecard(card, caller) || isScorer(card, caller)) return true;
   return seesEveryScorecard(caller.user) && !caller.confidential.hidden.has(card.employeeId);
 }
+
+/**
+ * Who sees a practice scorecard: a Super Admin, HR (not a C-level person's); and, while a Super Admin views as someone,
+ * whoever would see it were it real (the employee, their scorer), so they see the screens those people will see.
+ */
+export function seesPractice(card: KpiParties, caller: KpiCaller): boolean {
+  if (caller.user.roles.includes('super_admin')) return true;
+  if (actsAs(caller.user.roles, ['hr']) && !caller.confidential.hidden.has(card.employeeId)) return true;
+  return !!caller.user.viewAs && seesScorecard(card, caller);
+}
+
+/** Who sees a scorecard, a real one or a practice one. */
+export const sees = (card: KpiParties, caller: KpiCaller): boolean => (card.practice ? seesPractice(card, caller) : seesScorecard(card, caller));
+
+/**
+ * Whether the caller's own steps count on it: always on a real one; on a practice one only while a Super Admin views as
+ * someone (as that person). In one's own session a practice scorecard's steps are stood in for (kpiStandsIn).
+ */
+export const takesOwnSteps = (card: Pick<KpiParties, 'practice'>, caller: KpiCaller): boolean => !card.practice || !!caller.user.viewAs;
 
 /** Whether the caller takes HR's calibration of it now: HR (a C-level person's, the CEO or HR with Super Admin), never their own. */
 export function calibrates(card: KpiParties, caller: KpiCaller): boolean {

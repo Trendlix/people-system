@@ -31,6 +31,7 @@
 // Pure code: the API enforces these rules, the web shows them live. Tested in apps/api/src/common/kpis.spec.ts.
 
 import type { EmploymentType } from './index.js';
+import type { KpiPracticeInfo, KpiPracticeStep } from './kpi-practice.js';
 
 // ---------- the framework: pillars, weights, levels ----------
 
@@ -659,8 +660,13 @@ export interface KpiTemplateView {
   publishedBy: KpiUserRef | null;
   createdAt: string;
   updatedAt: string;
-  /** How many scorecards opened with it. */
+  /** How many scorecards opened with it (the real ones: never a practice one). */
   scorecards: number;
+  /**
+   * The practice scorecards on it (owner, 22 October 2026: "Practice scorecards"): a draft's are started again when it
+   * is saved changed, and deleted with it when it is discarded.
+   */
+  practiceScorecards?: number;
   /** A draft: what stops it being published (kpiTemplateProblems with publishing); none for a published version. */
   problems: string[];
   /**
@@ -779,6 +785,11 @@ export interface KpiScorecardSummary {
   /** The deadline of the step it is at (YYYY-MM-DD); null once final. */
   deadline: string | null;
   confidential: boolean;
+  /**
+   * A practice scorecard (owner, 22 October 2026: "Practice scorecards"; kpi-practice.ts): who started it and when, and
+   * whether its template version is a draft; null or left out for a real one.
+   */
+  practice?: KpiPracticeInfo | null;
 }
 
 /** A pick at a step: the criterion's index (null: not picked) and its comment. */
@@ -835,6 +846,13 @@ export interface KpiScorecardView extends KpiScorecardSummary {
   can: { selfRate: boolean; score: boolean; calibrate: boolean; signAsEmployee: boolean; signAsManager: boolean };
   /** The payroll it counts in: "November 2026", YYYY-MM. */
   payrollMonth: string;
+  /**
+   * A practice scorecard's steps the caller may take now standing in for the people in it (its starter or a Super
+   * Admin, in their own session: kpi-practice.ts kpiStandsIn); null or left out for anyone else, and for a real one.
+   */
+  standIn?: Record<KpiPracticeStep, boolean> | null;
+  /** A practice scorecard on a draft: its metrics in Unplaced (no pillar), left out of it until placed. */
+  unplaced?: number;
 }
 
 /** GET /kpis/counts: what waits for the caller. */

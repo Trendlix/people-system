@@ -17,6 +17,7 @@ import { FormErrors, useFieldIds, useKeptForm } from '@/components/form';
 import { SurfaceField } from '@/components/surface';
 import { formatDate, titleCase } from '@/lib/format';
 import type { FormState } from '@/lib/types';
+import { standInTitle } from '../../practice';
 import {
   allMetrics,
   attendanceText,
@@ -282,8 +283,12 @@ function MetricRow({
   );
 }
 
-/** The automatic Attendance metric, read-only in its pillar (owner, 21 October 2026: "Attendance: Yes, as the sheet"). */
-function AttendanceRow({ view }: { view: Pick<KpiScorecardView, 'attendance'> }) {
+/**
+ * The automatic Attendance metric, read-only in its pillar (owner, 21 October 2026: "Attendance: Yes, as the sheet").
+ * `soFar`: a practice scorecard of this month, its attendance the month's so far (owner, 22 October 2026: "Practice
+ * scorecards").
+ */
+function AttendanceRow({ view, soFar = false }: { view: Pick<KpiScorecardView, 'attendance'>; soFar?: boolean }) {
   const a = view.attendance;
   const t = attendanceText(a);
   return (
@@ -298,6 +303,7 @@ function AttendanceRow({ view }: { view: Pick<KpiScorecardView, 'attendance'> })
         <div className="min-w-0 space-y-1 text-sm">
           <p>{t.detail}</p>
           <p className="text-xs text-muted">{t.source}</p>
+          {soFar && <p className="text-xs text-warn">So far: the month isn&apos;t over, so its attendance is the days until today.</p>}
         </div>
         <div className="text-left md:text-right">
           <span className="text-xl font-semibold tabular-nums">{a.achieved}</span>
@@ -314,12 +320,14 @@ function PillarCard({
   number,
   score,
   view,
+  soFar,
   children,
 }: {
   pillar: KpiScorecardPillar;
   number: number;
   score: KpiPillarScore | null;
   view: Pick<KpiScorecardView, 'attendance' | 'attendancePillar'>;
+  soFar?: boolean;
   children: React.ReactNode;
 }) {
   const attendance = pillar.key === view.attendancePillar;
@@ -340,7 +348,7 @@ function PillarCard({
         </div>
       </div>
       {children}
-      {attendance && <AttendanceRow view={view} />}
+      {attendance && <AttendanceRow view={view} soFar={soFar} />}
       {pillar.metrics.length === 0 && !attendance && <p className="border-t border-line-soft px-5 py-4 text-sm text-muted">No metrics in this pillar.</p>}
     </section>
   );
@@ -372,8 +380,8 @@ function shownSummary(view: KpiScorecardView, own: boolean): { title: string; sc
   return { title: 'Score', score: null, notes: [own ? 'The score that counts shows here from the sign-off.' : 'Not scored yet.'] };
 }
 
-/** The scorecard's pillars as it stands, with its score: no form. */
-export function ScorecardView({ view, own }: { view: KpiScorecardView; own: boolean }) {
+/** The scorecard's pillars as it stands, with its score: no form. `soFar`: its attendance is this month's so far. */
+export function ScorecardView({ view, own, soFar = false }: { view: KpiScorecardView; own: boolean; soFar?: boolean }) {
   const fid = useFieldIds();
   const summary = shownSummary(view, own);
   const shownPillars = view.score?.pillars ?? null;
@@ -381,7 +389,7 @@ export function ScorecardView({ view, own }: { view: KpiScorecardView; own: bool
     <div className="space-y-4">
       <ScoreSummary {...summary} />
       {view.pillars.map((p, i) => (
-        <PillarCard key={p.key} pillar={p} number={i + 1} view={view} score={shownPillars?.find((s) => s.key === p.key) ?? null}>
+        <PillarCard key={p.key} pillar={p} number={i + 1} view={view} soFar={soFar} score={shownPillars?.find((s) => s.key === p.key) ?? null}>
           {p.metrics.map((m) => (
             <MetricRow key={m.id} metric={m} mode="view" pick={countedChoice(m)} fid={fid} />
           ))}
@@ -404,7 +412,26 @@ const COMMENT_LABELS: Record<Exclude<SheetMode, 'view'>, { label: string; hint: 
  * it for sign-off with only the changed picks. `today` (YYYY-MM-DD, Cairo): a scorer sends once the self-rating is in,
  * or its day has passed.
  */
-export function ScorecardForm({ view, mode, action, today }: { view: KpiScorecardView; mode: Exclude<SheetMode, 'view'>; action: Action; today: string }) {
+export function ScorecardForm({
+  view,
+  mode,
+  action,
+  today,
+  standIn = null,
+  soFar = false,
+}: {
+  view: KpiScorecardView;
+  mode: Exclude<SheetMode, 'view'>;
+  action: Action;
+  today: string;
+  /**
+   * A practice scorecard's step stood in for by its starter or a Super Admin (owner, 22 October 2026: "Practice
+   * scorecards"): whom they act for ("Omar Ali", "the manager", "HR"); null: the caller's own step.
+   */
+  standIn?: string | null;
+  /** Its attendance is this month's so far (a practice scorecard of this month). */
+  soFar?: boolean;
+}) {
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   const [picks, setPicks] = useState(() => startingPicks(view, mode));
@@ -418,8 +445,9 @@ export function ScorecardForm({ view, mode, action, today }: { view: KpiScorecar
   const managerPicks = Object.fromEntries(metrics.map((m) => [m.id, m.manager?.choice ?? null]));
   const changes = mode === 'calibrate' ? metrics.filter((m) => isChange(managerPicks[m.id], picks[m.id])) : [];
   const reasonsLeft = changes.filter((m) => !notes[m.id]?.trim()).map((m) => m.name);
-  // the scorer may save while the self-rating is open, and send once it is in or its day has passed (the API's rule)
-  const waitsForSelf = mode === 'score' && view.status === 'self_rating' && !kpiPast(view.deadlines.selfRating, today);
+  // the scorer may save while the self-rating is open, and send once it is in or its day has passed (the API's rule); a
+  // practice scorecard waits for no day (owner, 22 October 2026: "Deadlines aren't enforced")
+  const waitsForSelf = mode === 'score' && view.status === 'self_rating' && !view.practice && !kpiPast(view.deadlines.selfRating, today);
   const canSend = mode === 'calibrate' ? reasonsLeft.length === 0 : left.length === 0 && !waitsForSelf;
   const c = COMMENT_LABELS[mode];
 
@@ -451,15 +479,20 @@ export function ScorecardForm({ view, mode, action, today }: { view: KpiScorecar
   ];
 
   return (
-    <form action={formAction} onSubmit={onSubmit} aria-label={mode === 'self' ? 'Your self-rating' : mode === 'score' ? 'Your scoring' : 'HR’s calibration'} className="space-y-4">
+    <form
+      action={formAction}
+      onSubmit={onSubmit}
+      aria-label={standIn ? standInTitle(mode, standIn) : mode === 'self' ? 'Your self-rating' : mode === 'score' ? 'Your scoring' : 'HR’s calibration'}
+      className="space-y-4"
+    >
       <SurfaceField />
       <ScoreSummary
-        title={mode === 'self' ? 'Your Self-rating' : mode === 'score' ? 'Your Scoring' : 'Calibrated Score'}
+        title={standIn ? titleCase(standInTitle(mode, standIn)) : mode === 'self' ? 'Your Self-rating' : mode === 'score' ? 'Your Scoring' : 'Calibrated Score'}
         score={score}
         notes={['Worked out as you pick.', ...scoreNotes]}
       />
       {view.pillars.map((p, i) => (
-        <PillarCard key={p.key} pillar={p} number={i + 1} view={view} score={score.pillars.find((s) => s.key === p.key) ?? null}>
+        <PillarCard key={p.key} pillar={p} number={i + 1} view={view} soFar={soFar} score={score.pillars.find((s) => s.key === p.key) ?? null}>
           {p.metrics.map((m) => (
             <MetricRow
               key={m.id}
@@ -544,7 +577,18 @@ export function ScorecardForm({ view, mode, action, today }: { view: KpiScorecar
  * The sign-off (owner's brief, 21 October 2026: "Sign-off by both, the employee and the manager: a digital "I've read
  * it" with an optional comment"). `as`: whose side the caller signs.
  */
-export function SignForm({ action, as, deadline }: { action: Action; as: 'employee' | 'manager'; deadline: string }) {
+export function SignForm({
+  action,
+  as,
+  deadline,
+  practice = false,
+}: {
+  action: Action;
+  as: 'employee' | 'manager';
+  deadline: string;
+  /** A practice scorecard (owner, 22 October 2026: "Deadlines aren't enforced"): no day makes it final. */
+  practice?: boolean;
+}) {
   // the comment typed stays when the API refuses the signature
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
@@ -555,7 +599,7 @@ export function SignForm({ action, as, deadline }: { action: Action; as: 'employ
         {as === 'employee'
           ? 'Read the scorecard above: the score, the picks and the comments. Signing says you have read it.'
           : 'Read the scorecard as it goes to the employee. Signing says you have read it, as their manager.'}{' '}
-        Not signed by {formatDate(deadline)}, it is final anyway, and that is noted.
+        {practice ? 'A practice scorecard is final once both sides have signed: no day makes it final.' : `Not signed by ${formatDate(deadline)}, it is final anyway, and that is noted.`}
       </p>
       <div>
         <label htmlFor={fid('sign-comment')} className="label">

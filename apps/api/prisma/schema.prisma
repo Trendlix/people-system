@@ -138,6 +138,7 @@ model User {
   kpiCalibrated         KpiScorecard[]     @relation("KpiScorecardCalibratedBy") // KPI scorecards this user calibrated as HR
   kpiManagerSigned      KpiScorecard[]     @relation("KpiScorecardManagerSignedBy") // KPI scorecards this user signed as the manager
   kpiSteps              KpiScorecardStep[] @relation("KpiScorecardStepActor") // steps of KPI scorecards this user took
+  kpiPracticeStarted    KpiScorecard[]     @relation("KpiScorecardPracticeBy") // practice KPI scorecards this user started (22 October 2026)
   kpiFrameworksMade     KpiFramework[]     @relation("KpiFrameworkCreation") // KPI framework versions (the pillars) this user made
   kpiFrameworksChanged  KpiFramework[]     @relation("KpiFrameworkChange") // KPI framework versions this user changed last
   assetSettingsChanged  AssetSettings[]            @relation("AssetSettingsBy") // the asset settings, when this user changed them last (21 October 2026)
@@ -3034,6 +3035,11 @@ model KpiMetric {
 // achieved, from the month's attendance score as payroll works it out, refreshed until it is scored. The score (final %,
 // level, the pillars) is the manager's picks', calibrated, kept for the lists; the payroll of the next month reads the
 // final % of a final one. reminders_sent: the steps whose reminder (the day before their deadline) went.
+// A practice one (owner, 22 October 2026: "i want to test the KPI's .. and it is locked to dates", "Practice
+// scorecards"; packages/shared kpi-practice.ts): started by HR or a Super Admin (practice_by, practice_at) for anyone and
+// any month, on a draft or a published version; no deadline moves it on, nobody is told, and it never reaches payroll,
+// the reports or the exports. One real scorecard a person and month: a partial unique index (the migration's
+// "kpi_scorecards_one_real_a_month", WHERE NOT practice), so practice ones never stand in the way of the real opening.
 model KpiScorecard {
   id                  String             @id @default(uuid()) @db.Uuid
   employeeId          String             @map("employee_id") @db.Uuid
@@ -3076,12 +3082,16 @@ model KpiScorecard {
   level               String? // KPI_LEVELS
   pillars             Json? // its template version's pillars' percents by their keys, { "delivery": 92.5, … }, with the final %
   remindersSent       String[]           @default([]) @map("reminders_sent") // KPI_REMINDERS sent
+  practice            Boolean            @default(false) // a practice scorecard (22 October 2026): not counted anywhere
+  practiceById        String?            @map("practice_by") @db.Uuid // practice: who started it
+  practiceBy          User?              @relation("KpiScorecardPracticeBy", fields: [practiceById], references: [id], onDelete: SetNull)
+  practiceAt          DateTime?          @map("practice_at") @db.Timestamptz // practice: when it was started
   createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz
   scores              KpiScore[]
   steps               KpiScorecardStep[]
 
-  @@unique([employeeId, month])
+  @@index([employeeId, month])
   @@index([month])
   @@index([status])
   @@index([managerId])
@@ -3109,7 +3119,8 @@ model KpiScore {
 }
 
 // A step of a scorecard, logged on it in the order taken (KPI_STEP_KINDS), in the transaction the step is taken in:
-// who (none: the system, on its deadline) and their comment.
+// who (none: the system, on its deadline) and their comment. On a practice scorecard, for whom its starter or a Super
+// Admin stood in (KPI_STAND_INS: the employee, the scorer's side, HR; 22 October 2026), the step being theirs.
 model KpiScorecardStep {
   id          BigInt       @id @default(autoincrement())
   scorecardId String       @map("scorecard_id") @db.Uuid
@@ -3118,6 +3129,7 @@ model KpiScorecardStep {
   comment     String?
   actorId     String?      @map("actor_id") @db.Uuid
   actor       User?        @relation("KpiScorecardStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  stoodInFor  String?      @map("stood_in_for") // a practice scorecard's step taken standing in: employee, scorer, hr
   at          DateTime     @default(now()) @db.Timestamptz
 
   @@index([scorecardId])

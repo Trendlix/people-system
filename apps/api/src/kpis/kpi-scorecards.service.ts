@@ -2,9 +2,11 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import {
   KPI_COMMENT_MAX,
   KPI_STATUS_LABELS,
-  kpiPast,
+  kpiDeadlinePassed,
+  kpiStandInWho,
   kpiStatusAfterScoring,
   type KpiCounts,
+  type KpiStandIn,
   type KpiScorecardSummary,
   type KpiScorecardView,
   type KpiStatus,
@@ -17,11 +19,11 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { firstDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { isOwnScorecard, isScorer, kpiCan, seesEveryScorecard, seesScorecard, type KpiCaller } from './kpi-access.js';
+import { isOwnScorecard, isScorer, kpiCan, sees, seesEveryScorecard, takesOwnSteps, type KpiCaller } from './kpi-access.js';
 import { KpiNoticesService } from './kpi-notices.service.js';
 import { KpiOpeningService } from './kpi-opening.service.js';
 import { KpiSettingsService } from './kpi-settings.service.js';
-import { CARD_INCLUDE, criteriaOf, deadlinesOf, monthOfCard, pillarsJson, SCORECARD_ENTITY, scoreOf, scorecardView, summaryOf, type CardRow } from './kpi-views.js';
+import { CARD_INCLUDE, criteriaOf, deadlinesOf, monthOfCard, pillarsJson, SCORECARD_ENTITY, scoredMetrics, scoreOf, scorecardView, standsIn, summaryOf, type CardRow } from './kpi-views.js';
 import type { KpiCalibrateDto, KpiListQueryDto, KpiPicksDto, KpiSignDto } from './kpis.dto.js';
 
 // KPI scorecards and their steps (owner, 21 October 2026: "Self, manager, HR, sign-off"; the brief: "1. The employee's
@@ -34,8 +36,17 @@ import type { KpiCalibrateDto, KpiListQueryDto, KpiPicksDto, KpiSignDto } from '
 // the calibration; the Attendance metric is read again at both (the month's attendance as payroll has it then). A
 // scorecard final, the next month's payroll takes its final % (payroll/kpi-terms.ts). C-level people's (owner, 19
 // October 2026: "make C level Employees details not visible to HR"): the CEO scores them and HR never sees them.
+// Practice scorecards (owner, 22 October 2026: "Practice scorecards"; packages/shared kpi-practice.ts): left out of
+// everyone's own lists, what waits for them and the counts, unless a Super Admin views as someone (then as that person
+// would see them, marked); never in All KPIs. Their steps: the real routes only while a Super Admin views as someone (as
+// them, Act as them on); in one's own session, the practice routes (`standIn`), by its starter or a Super Admin, each
+// step kept as theirs for whom they stood in. No deadline holds one back, and nobody is ever told of one.
 
 const NOT_FOUND = 'KPI scorecard not found.';
+const PRACTICE_NOT_FOUND = 'Practice scorecard not found.';
+
+/** A practice scorecard's step asked of a real route in one's own session (403). */
+export const PRACTICE_OWN_STEPS = 'This is a practice scorecard: take its steps with its practice buttons, or view as the person and act as them.';
 
 /** Another step was taken on it while the page was open (409). */
 const movedMeanwhile = () => new ConflictException('This scorecard moved on meanwhile. Reload the page to see where it is.');
@@ -55,6 +66,13 @@ interface Pick {
 
 const asObject = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const commentOf = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+/** A step's column for whom it was stood in, on a practice scorecard's step taken standing in. */
+const stoodIn = (standIn: boolean, who: KpiStandIn) => (standIn ? { stoodInFor: who } : {});
+
+/** What the audit log adds for a practice scorecard: marked practice, and for whom its step was stood in. */
+const practiceDiff = (row: CardRow, standIn: KpiStandIn | null) =>
+  row.practice ? { practice: true, ...(standIn && { stoodInFor: kpiStandInWho(standIn, { employeeName: row.employee.fullNameEn, scorer: row.scorer }) }) } : {};
 
 /** The picks sent, each a metric of the scorecard (once) with one of its criteria or none, and a comment within the limit. */
 export function checkedPicks(raw: readonly unknown[], metrics: readonly { id: string; name: string; criteria: Prisma.JsonValue }[]): Pick[] {
@@ -97,14 +115,14 @@ export class KpiScorecardsService {
   async mine(user: SessionUser): Promise<KpiScorecardSummary[]> {
     const caller = await this.caller(user);
     if (!caller.employeeId) return [];
-    const rows = await this.prisma.kpiScorecard.findMany({ where: { employeeId: caller.employeeId }, orderBy: { month: 'desc' }, include: CARD_INCLUDE });
+    const rows = await this.prisma.kpiScorecard.findMany({ where: { employeeId: caller.employeeId, ...this.realOnly(user) }, orderBy: { month: 'desc' }, include: CARD_INCLUDE });
     return this.summaries(rows, caller);
   }
 
   /** The scorecards waiting for the caller (their own too), the nearest deadline first. */
   async waiting(user: SessionUser): Promise<KpiScorecardSummary[]> {
     const caller = await this.caller(user);
-    const rows = await this.prisma.kpiScorecard.findMany({ where: { AND: [{ status: { not: 'final' } }, this.involving(caller)] }, include: CARD_INCLUDE });
+    const rows = await this.prisma.kpiScorecard.findMany({ where: { AND: [{ status: { not: 'final' } }, this.involving(caller), this.realOnly(user)] }, include: CARD_INCLUDE });
     const out = (await this.summaries(rows, caller)).filter((s) => s.action !== null);
     return out.sort((a, b) => (a.deadline ?? '').localeCompare(b.deadline ?? '') || a.employee.fullNameEn.localeCompare(b.employee.fullNameEn));
   }
@@ -137,7 +155,9 @@ export class KpiScorecardsService {
       if (!seesEveryScorecard(user)) throw new ForbiddenException('Only HR, the CEO and a Super Admin see every KPI scorecard.');
       const hidden = [...caller.confidential.hidden];
       if (hidden.length) filters.push({ employeeId: { notIn: hidden } });
-    } else filters.push(this.scoredBy(caller));
+      // All KPIs is the month's figures: never a practice scorecard (those are on its Practice tab)
+      filters.push({ practice: false });
+    } else filters.push(this.scoredBy(caller), this.realOnly(user));
     const rows = await this.prisma.kpiScorecard.findMany({ where: { AND: filters }, orderBy: [{ month: 'desc' }, { employee: { fullNameEn: 'asc' } }], include: CARD_INCLUDE });
     return this.summaries(rows.filter((r) => query.scope === 'all' || isScorer(r, caller)), caller);
   }
@@ -146,17 +166,21 @@ export class KpiScorecardsService {
   async one(id: string, user: SessionUser): Promise<KpiScorecardView> {
     const caller = await this.caller(user);
     const row = await this.visible(id, caller);
-    const [settings, names] = await Promise.all([this.settings.read(), userNames(this.prisma, row.steps.map((s) => s.actor))]);
+    const [settings, names] = await Promise.all([this.settings.read(), userNames(this.prisma, [...row.steps.map((s) => s.actor), row.practiceBy])]);
     return scorecardView(row, caller, settings, todayInCairo(), names);
   }
 
   // ---------- the steps ----------
 
-  /** The employee's self-rating: saved, or sent (every metric picked) on to the scorer. */
-  async selfRate(id: string, dto: KpiPicksDto, user: SessionUser): Promise<KpiScorecardView> {
+  /**
+   * The employee's self-rating: saved, or sent (every metric picked) on to the scorer. `standIn`: a practice
+   * scorecard's, taken for the employee by its starter or a Super Admin.
+   */
+  async selfRate(id: string, dto: KpiPicksDto, user: SessionUser, standIn = false): Promise<KpiScorecardView> {
     const caller = await this.caller(user);
     const before = await this.visible(id, caller);
-    if (!isOwnScorecard(before, caller)) throw new ForbiddenException('Only the employee rates themself on their scorecard.');
+    this.practiceGuard(before, caller, standIn);
+    if (!standIn && !isOwnScorecard(before, caller)) throw new ForbiddenException('Only the employee rates themself on their scorecard.');
     if (before.status !== 'self_rating') throw this.moved(before, 'rated');
     const picks = checkedPicks(dto.picks, before.template.metrics);
     const merged = this.merged(before, picks, 'self');
@@ -170,28 +194,38 @@ export class KpiScorecardsService {
       });
       if (!count) throw movedMeanwhile();
       await this.savePicks(tx, id, picks, 'self');
-      if (dto.submit) await tx.kpiScorecardStep.create({ data: { scorecardId: id, kind: 'self_rated', actorId: user.id, comment } });
+      if (dto.submit) await tx.kpiScorecardStep.create({ data: { scorecardId: id, kind: 'self_rated', actorId: user.id, comment, ...stoodIn(standIn, 'employee') } });
     });
     await this.audit.record({
       userId: user.id,
       action: dto.submit ? 'self_rate' : 'update',
       entityType: SCORECARD_ENTITY,
       entityId: id,
-      diff: { month: monthOfCard(before), employeeCode: before.employee.employeeCode, step: 'self_rating', picked: Object.values(merged).filter((c) => c !== null).length, ...(dto.submit && { status: { from: 'self_rating', to: 'manager' } }) },
+      diff: {
+        month: monthOfCard(before),
+        employeeCode: before.employee.employeeCode,
+        step: 'self_rating',
+        picked: Object.values(merged).filter((c) => c !== null).length,
+        ...(dto.submit && { status: { from: 'self_rating', to: 'manager' } }),
+        ...practiceDiff(before, standIn ? 'employee' : null),
+      },
     });
-    if (dto.submit) await this.notices.toScorer(id);
+    // a practice scorecard tells nobody (owner, 22 October 2026: "notifies nobody")
+    if (dto.submit && !before.practice) await this.notices.toScorer(id);
     return this.one(id, user);
   }
 
   /**
    * The scorer's scoring: saved at any time from the opening; sent (every metric picked, with the comments) once the
    * self-rating is sent or its day has gone by (then noted as missed), on to HR's calibration after a manager's scoring,
-   * else straight to the sign-off.
+   * else straight to the sign-off. `standIn`: a practice scorecard's, taken for the scorer by its starter or a Super
+   * Admin; a practice one is sent whenever it is ready, the self-rating in or not (no day holds it back).
    */
-  async score(id: string, dto: KpiPicksDto, user: SessionUser): Promise<KpiScorecardView> {
+  async score(id: string, dto: KpiPicksDto, user: SessionUser, standIn = false): Promise<KpiScorecardView> {
     const caller = await this.caller(user);
     const before = await this.visible(id, caller);
-    if (!isScorer(before, caller)) {
+    this.practiceGuard(before, caller, standIn);
+    if (!standIn && !isScorer(before, caller)) {
       throw new ForbiddenException(caller.confidential.all.has(before.employeeId) ? "A C-level person's scorecard is scored by the CEO." : 'Only the manager in charge scores this scorecard.');
     }
     if (before.status !== 'self_rating' && before.status !== 'manager') throw this.moved(before, 'scored');
@@ -199,7 +233,7 @@ export class KpiScorecardsService {
     const month = monthOfCard(before);
     const today = todayInCairo();
     const selfDeadline = deadlinesOf(before, settings).selfRating;
-    if (dto.submit && before.status === 'self_rating' && !kpiPast(selfDeadline, today)) {
+    if (dto.submit && before.status === 'self_rating' && !kpiDeadlinePassed(before.practice, selfDeadline, today)) {
       throw new ConflictException(`${before.employee.fullNameEn} can rate themself until ${shownDate(selfDeadline)}: save your scoring now, and send it once they have, or after that day.`);
     }
     const picks = checkedPicks(dto.picks, before.template.metrics);
@@ -222,14 +256,17 @@ export class KpiScorecardsService {
       if (!count) throw movedMeanwhile();
       await this.savePicks(tx, id, picks, 'manager');
       if (!dto.submit) return;
-      if (missed) await tx.kpiScorecardStep.create({ data: { scorecardId: id, kind: 'self_missed', comment: `Not sent by ${shownDate(selfDeadline)}` } });
+      if (missed) {
+        const why = before.practice ? 'Not sent: the scoring was sent without it (practice)' : `Not sent by ${shownDate(selfDeadline)}`;
+        await tx.kpiScorecardStep.create({ data: { scorecardId: id, kind: 'self_missed', comment: why } });
+      }
       const row = await tx.kpiScorecard.findUniqueOrThrow({ where: { id }, include: CARD_INCLUDE });
       const score = scoreOf(row, 'final');
       await tx.kpiScorecard.update({
         where: { id },
         data: { status: to, scoredAt: now, scoredById: user.id, finalPercent: score.finalPercent, level: score.level, pillars: pillarsJson(score) },
       });
-      await tx.kpiScorecardStep.create({ data: { scorecardId: id, kind: 'scored', actorId: user.id, comment } });
+      await tx.kpiScorecardStep.create({ data: { scorecardId: id, kind: 'scored', actorId: user.id, comment, ...stoodIn(standIn, 'scorer') } });
     });
     await this.audit.record({
       userId: user.id,
@@ -242,9 +279,10 @@ export class KpiScorecardsService {
         step: 'manager',
         picked: Object.values(merged).filter((c) => c !== null).length,
         ...(dto.submit && { status: { from: before.status, to }, ...(before.status === 'self_rating' && { selfMissed: true }) }),
+        ...practiceDiff(before, standIn ? 'scorer' : null),
       },
     });
-    if (dto.submit) {
+    if (dto.submit && !before.practice) {
       if (to === 'hr') await this.notices.toHr(id);
       else await this.notices.readyToSign(id, settings);
     }
@@ -253,12 +291,16 @@ export class KpiScorecardsService {
 
   /**
    * HR's calibration: the manager's picks changed (each with its reason, in the audit log with what it was and became),
-   * HR's comment, then on to the sign-off. With no change it is confirmed as scored.
+   * HR's comment, then on to the sign-off. With no change it is confirmed as scored. `standIn`: a practice scorecard's,
+   * taken for HR by its starter or a Super Admin.
    */
-  async calibrate(id: string, dto: KpiCalibrateDto, user: SessionUser): Promise<KpiScorecardView> {
+  async calibrate(id: string, dto: KpiCalibrateDto, user: SessionUser, standIn = false): Promise<KpiScorecardView> {
     const caller = await this.caller(user);
     const before = await this.visible(id, caller);
-    if (!kpiCan(before, caller).calibrate) {
+    this.practiceGuard(before, caller, standIn);
+    if (standIn) {
+      if (before.status !== 'hr') throw this.moved(before, 'calibrated');
+    } else if (!kpiCan(before, caller).calibrate) {
       if (before.status !== 'hr') throw this.moved(before, 'calibrated');
       throw new ForbiddenException(isOwnScorecard(before, caller) ? 'Someone else in HR calibrates your own scorecard.' : 'Only HR calibrates a KPI scorecard.');
     }
@@ -299,7 +341,7 @@ export class KpiScorecardsService {
         data: { status: 'sign_off', calibratedAt: now, calibratedById: user.id, finalPercent: score.finalPercent, level: score.level, pillars: pillarsJson(score) },
       });
       const note = changesMade.length ? `${changesMade.length} ${changesMade.length === 1 ? 'pick' : 'picks'} changed` : 'Confirmed as scored';
-      await tx.kpiScorecardStep.create({ data: { scorecardId: id, kind: 'calibrated', actorId: user.id, comment: comment ? `${note}. ${comment}` : note } });
+      await tx.kpiScorecardStep.create({ data: { scorecardId: id, kind: 'calibrated', actorId: user.id, comment: comment ? `${note}. ${comment}` : note, ...stoodIn(standIn, 'hr') } });
     });
     await this.audit.record({
       userId: user.id,
@@ -312,19 +354,32 @@ export class KpiScorecardsService {
         status: { from: 'hr', to: 'sign_off' },
         changes: changesMade.map((c) => ({ metric: c.name, from: c.from, to: c.to, reason: c.reason })),
         ...(comment && { comment }),
+        ...practiceDiff(before, standIn ? 'hr' : null),
       },
     });
-    await this.notices.readyToSign(id, settings);
+    if (!before.practice) await this.notices.readyToSign(id, settings);
     return this.one(id, user);
   }
 
-  /** "I've read it": the employee's signature, or the manager's; both signed, it is final and locked. */
-  async sign(id: string, dto: KpiSignDto, user: SessionUser): Promise<KpiScorecardView> {
+  /**
+   * "I've read it": the employee's signature, or the manager's; both signed, it is final and locked. `standIn`: a
+   * practice scorecard's, signed for the employee or for the scorer's side by its starter or a Super Admin.
+   */
+  async sign(id: string, dto: KpiSignDto, user: SessionUser, standIn: 'employee' | 'manager' | null = null): Promise<KpiScorecardView> {
     const caller = await this.caller(user);
     const before = await this.visible(id, caller);
+    this.practiceGuard(before, caller, !!standIn);
     if (before.status !== 'sign_off') throw this.moved(before, 'signed');
-    const can = kpiCan(before, caller);
-    const as = can.signAsEmployee ? 'employee' : can.signAsManager ? 'manager' : null;
+    let as: 'employee' | 'manager' | null;
+    if (standIn) {
+      if (standIn === 'employee' ? before.employeeSignedAt : before.managerSignedAt) {
+        throw new ConflictException(standIn === 'employee' ? 'The employee has signed this scorecard already.' : 'The manager has signed this scorecard already.');
+      }
+      as = standIn;
+    } else {
+      const can = kpiCan(before, caller);
+      as = can.signAsEmployee ? 'employee' : can.signAsManager ? 'manager' : null;
+    }
     if (!as) {
       if (isOwnScorecard(before, caller) || isScorer(before, caller)) throw new ConflictException('You have signed this scorecard already.');
       throw new ForbiddenException('Only the employee and their manager sign a KPI scorecard.');
@@ -337,7 +392,9 @@ export class KpiScorecardsService {
         data: as === 'employee' ? { employeeSignedAt: now, employeeSignComment: comment } : { managerSignedAt: now, managerSignedById: user.id, managerSignComment: comment },
       });
       if (!count) throw movedMeanwhile();
-      await tx.kpiScorecardStep.create({ data: { scorecardId: id, kind: as === 'employee' ? 'signed_employee' : 'signed_manager', actorId: user.id, comment } });
+      await tx.kpiScorecardStep.create({
+        data: { scorecardId: id, kind: as === 'employee' ? 'signed_employee' : 'signed_manager', actorId: user.id, comment, ...stoodIn(!!standIn, as === 'employee' ? 'employee' : 'scorer') },
+      });
       const { count: done } = await tx.kpiScorecard.updateMany({ where: { id, status: 'sign_off', employeeSignedAt: { not: null }, managerSignedAt: { not: null } }, data: { status: 'final', finalAt: now } });
       if (done) await tx.kpiScorecardStep.create({ data: { scorecardId: id, kind: 'final' } });
       return done > 0;
@@ -347,7 +404,14 @@ export class KpiScorecardsService {
       action: 'sign',
       entityType: SCORECARD_ENTITY,
       entityId: id,
-      diff: { month: monthOfCard(before), employeeCode: before.employee.employeeCode, signedAs: as, ...(comment && { comment }), ...(final && { status: { from: 'sign_off', to: 'final' } }) },
+      diff: {
+        month: monthOfCard(before),
+        employeeCode: before.employee.employeeCode,
+        signedAs: as,
+        ...(comment && { comment }),
+        ...(final && { status: { from: 'sign_off', to: 'final' } }),
+        ...practiceDiff(before, standIn ? (as === 'employee' ? 'employee' : 'scorer') : null),
+      },
     });
     return this.one(id, user);
   }
@@ -358,6 +422,31 @@ export class KpiScorecardsService {
   async caller(user: SessionUser): Promise<KpiCaller> {
     const [employeeId, confidential] = await Promise.all([this.confidential.selfId(user), this.confidential.view(user)]);
     return { user, employeeId, confidential };
+  }
+
+  /**
+   * Real scorecards only, in one's own session (owner, 22 October 2026: the people in a practice scorecard never see it);
+   * while a Super Admin views as someone, the practice ones that person would see too, marked: the screens they'll see.
+   */
+  private realOnly(user: SessionUser): Prisma.KpiScorecardWhereInput {
+    return user.viewAs ? {} : { practice: false };
+  }
+
+  /**
+   * Who takes a practice scorecard's steps: standing in (the practice routes), on a practice one only, its starter or a
+   * Super Admin in their own session; the real routes, a practice one only while a Super Admin views as someone.
+   */
+  private practiceGuard(row: CardRow, caller: KpiCaller, standIn: boolean) {
+    if (standIn) {
+      if (!row.practice) throw new NotFoundException(PRACTICE_NOT_FOUND);
+      if (!standsIn(row, caller)) {
+        throw new ForbiddenException(
+          caller.user.viewAs
+            ? 'Viewing as someone, you take their steps as them: switch on Act as them and use their buttons.'
+            : 'Only the person who started this practice scorecard, or a Super Admin, takes its steps.',
+        );
+      }
+    } else if (!takesOwnSteps(row, caller)) throw new ForbiddenException(PRACTICE_OWN_STEPS);
   }
 
   /** The scorecards the caller may be waited for on: their own, those they score, and (HR, the CEO) those at HR's step. */
@@ -382,7 +471,7 @@ export class KpiScorecardsService {
   /** A scorecard the caller may see; otherwise it isn't there. */
   private async visible(id: string, caller: KpiCaller): Promise<CardRow> {
     const row = await this.prisma.kpiScorecard.findUnique({ where: { id }, include: CARD_INCLUDE });
-    if (!row || !seesScorecard(row, caller)) throw new NotFoundException(NOT_FOUND);
+    if (!row || !sees(row, caller)) throw new NotFoundException(NOT_FOUND);
     return row;
   }
 
@@ -390,7 +479,10 @@ export class KpiScorecardsService {
     if (!rows.length) return [];
     const settings = await this.settings.read();
     const today = todayInCairo();
-    return rows.filter((r) => seesScorecard(r, caller)).map((r) => summaryOf(r, caller, settings, today));
+    const seen = rows.filter((r) => sees(r, caller));
+    // a practice scorecard's starter, by name
+    const names = seen.some((r) => r.practice) ? await userNames(this.prisma, seen.map((r) => r.practiceBy)) : undefined;
+    return seen.map((r) => summaryOf(r, caller, settings, today, names));
   }
 
   /** The step's picks after this change: the ones sent replace what was saved. */
@@ -402,7 +494,7 @@ export class KpiScorecardsService {
   }
 
   private assertAllPicked(row: CardRow, merged: Record<string, number | null>, message: string) {
-    const missing = row.template.metrics.filter((m) => merged[m.id] === null || merged[m.id] === undefined).map((m) => m.name);
+    const missing = scoredMetrics(row).filter((m) => merged[m.id] === null || merged[m.id] === undefined).map((m) => m.name);
     if (missing.length) throw new BadRequestException([message, ...missing.map((name) => `${name}: choose one of its criteria.`)]);
   }
 

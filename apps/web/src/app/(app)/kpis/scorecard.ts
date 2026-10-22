@@ -1,12 +1,14 @@
 import {
   KPI_ACTION_LABELS,
   KPI_COMMENT_MAX,
+  KPI_PRACTICE_BADGE,
   KPI_STATUS_LABELS,
   kpiMonthAdd,
   kpiMonthName,
   kpiPercentText,
   kpiScore,
   kpiStepDeadline,
+  startsKpiPractice,
   type KpiCalibrateInput,
   type KpiLevel,
   type KpiPicksInput,
@@ -146,8 +148,9 @@ export function actionText(s: Pick<KpiScorecardSummary, 'action' | 'status' | 'd
  * The employee's own card on the phone's Home and My Requests: "Your October 2026 KPI: rate yourself by 03/11/2026",
  * "Your October 2026 KPI: ready to sign by 10/11/2026".
  */
-export function ownCardText(s: Pick<KpiScorecardSummary, 'action' | 'month' | 'deadline'>): string {
-  const head = `Your ${kpiMonthName(s.month)} KPI`;
+export function ownCardText(s: Pick<KpiScorecardSummary, 'action' | 'month' | 'deadline' | 'practice'>): string {
+  // a practice scorecard, seen by a Super Admin viewing as the employee (owner, 22 October 2026: "marked Practice everywhere")
+  const head = `Your ${kpiMonthName(s.month)} KPI${s.practice ? ' (practice)' : ''}`;
   const by = s.deadline ? ` by ${formatDate(s.deadline)}` : '';
   if (s.action === 'self_rate') return `${head}: rate yourself${by}`;
   if (s.action === 'sign') return `${head}: ready to sign${by}`;
@@ -155,8 +158,8 @@ export function ownCardText(s: Pick<KpiScorecardSummary, 'action' | 'month' | 'd
 }
 
 /** A scorecard in a list, in a line: "October 2026 · Score by 06/11/2026" (To Approve's rows). */
-export function waitingLine(s: Pick<KpiScorecardSummary, 'action' | 'status' | 'deadline' | 'month'>): string {
-  return [kpiMonthName(s.month), actionText(s)].filter(Boolean).join(' · ');
+export function waitingLine(s: Pick<KpiScorecardSummary, 'action' | 'status' | 'deadline' | 'month' | 'practice'>): string {
+  return [s.practice ? KPI_PRACTICE_BADGE : null, kpiMonthName(s.month), actionText(s)].filter(Boolean).join(' · ');
 }
 
 /** The button on a row waiting for the caller: Rate yourself, Score, Calibrate, Sign; Open otherwise. */
@@ -186,9 +189,14 @@ export const payrollText = (payrollMonth: string) => `Counts in the ${kpiMonthNa
 
 /**
  * Where a scorecard's page goes back to on the site: My KPIs for the caller's own; All KPIs for HR, the CEO and a Super
- * Admin; Team KPIs for the manager.
+ * Admin; Team KPIs for the manager. A practice one, for HR and a Super Admin in their own session: the Practice list
+ * (owner, 22 October 2026: "Practice scorecards").
  */
-export function scorecardBack(user: { roles: readonly Role[]; employeeId?: string | null }, s: Pick<KpiScorecardSummary, 'employee'>): { href: string; label: string } {
+export function scorecardBack(
+  user: { roles: readonly Role[]; employeeId?: string | null; viewAs?: unknown },
+  s: Pick<KpiScorecardSummary, 'employee'> & Partial<Pick<KpiScorecardSummary, 'practice'>>,
+): { href: string; label: string } {
+  if (s.practice && !user.viewAs && startsKpiPractice(user)) return { href: KPI_PATHS.practice, label: 'Practice scorecards' };
   if (isOwn(s, user.employeeId)) return { href: KPI_PATHS.mine, label: 'My KPIs' };
   if (hasRole(user, 'hr', 'ceo') || user.roles.includes('super_admin')) return { href: KPI_PATHS.all, label: 'All KPIs' };
   return { href: KPI_PATHS.team, label: 'Team KPIs' };
