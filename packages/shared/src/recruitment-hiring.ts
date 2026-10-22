@@ -15,6 +15,7 @@
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/recruitment-hiring.spec.ts.
 
 import { APPLICATION_STAGE_LABELS, offerable, stageMoveProblem, type ApplicationSource, type ApplicationStage, type HandStage, type RecruitmentUserRef } from './recruitment.js';
+import type { GeneralCvSource } from './general-cvs.js';
 
 // ---------- who looks ----------
 
@@ -524,6 +525,11 @@ export interface RecruitmentAnalytics {
   departments: { id: string | null; name: string; hires: number; timeToHireDays: number | null }[];
   /** C-level vacancies left out for the caller. */
   hidden: number;
+  /**
+   * General CVs received in the year (22 October 2026: general-cvs.ts), by source and by month, and how many of them were
+   * moved to a vacancy. Not by department (they aren't a vacancy's).
+   */
+  generalCvs: { received: number; moved: number; bySource: { source: GeneralCvSource; count: number }[]; byMonth: { month: string; count: number }[] };
 }
 
 // ---------- the API's answers ----------

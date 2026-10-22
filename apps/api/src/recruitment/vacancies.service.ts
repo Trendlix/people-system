@@ -127,6 +127,8 @@ export class VacanciesService {
 
   private async view(v: VacancyRow, user: SessionUser): Promise<VacancyView> {
     const counts = (await this.counts([v.id])).get(v.id) ?? emptyCounts();
+    // its applicants by source (22 October 2026: the posted links apart from the careers page reached directly)
+    const bySource = await this.prisma.jobApplication.groupBy({ by: ['source'], where: { vacancyId: v.id }, _count: { _all: true } });
     const names = await userNames(this.prisma, [v.submittedBy, v.decidedBy, v.createdBy]);
     const status = v.status as VacancyStatus;
     const manages = managesRecruitment(user);
@@ -158,6 +160,7 @@ export class VacanciesService {
       questions: questionsOf(v.questions),
       stageCounts: counts.byStage,
       filteredOut: counts.filteredOut,
+      sourceCounts: Object.fromEntries(bySource.map((g) => [g.source, g._count._all])),
       submittedAt: v.submittedAt?.toISOString() ?? null,
       submittedBy: userRef(v.submittedBy, names),
       decidedAt: v.decidedAt?.toISOString() ?? null,

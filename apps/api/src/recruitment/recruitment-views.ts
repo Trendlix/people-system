@@ -1,11 +1,11 @@
 import {
   APPLICATION_STAGES,
-  sourceOf,
+  applicationSourceOf,
+  isGeneralCvSource,
   tidyQuestions,
   vacancyQuestionsProblems,
   type AnswerValue,
   type ApplicationListItem,
-  type ApplicationSource,
   type ApplicationStage,
   type EmploymentType,
   type PublicVacancySummary,
@@ -94,7 +94,7 @@ export function vacancyListView(v: VacancyRow, counts: VacancyCounts): VacancyLi
 export const APPLICATION_LIST_SELECT = {
   id: true,
   number: true,
-  vacancy: { select: { id: true, number: true, title: true } },
+  vacancy: { select: { id: true, number: true, title: true, status: true } },
   fullName: true,
   email: true,
   mobile: true,
@@ -106,6 +106,8 @@ export const APPLICATION_LIST_SELECT = {
   yearsExperience: true,
   source: true,
   createdAt: true,
+  // moved from a general CV (22 October 2026): where that CV came from
+  generalCv: { select: { source: true } },
 } satisfies Prisma.JobApplicationSelect;
 
 export type ApplicationListRow = Prisma.JobApplicationGetPayload<{ select: typeof APPLICATION_LIST_SELECT }>;
@@ -113,7 +115,7 @@ export type ApplicationListRow = Prisma.JobApplicationGetPayload<{ select: typeo
 export const applicationListView = (a: ApplicationListRow): ApplicationListItem => ({
   id: a.id,
   number: a.number,
-  vacancy: a.vacancy,
+  vacancy: { id: a.vacancy.id, number: a.vacancy.number, title: a.vacancy.title, status: a.vacancy.status as VacancyStatus },
   fullName: a.fullName,
   email: a.email,
   mobile: a.mobile,
@@ -123,7 +125,8 @@ export const applicationListView = (a: ApplicationListRow): ApplicationListItem 
   points: a.points,
   maxPoints: a.maxPoints,
   yearsExperience: money(a.yearsExperience),
-  source: sourceOf(a.source) as ApplicationSource,
+  source: applicationSourceOf(a.source),
+  generalSource: a.generalCv && isGeneralCvSource(a.generalCv.source) ? a.generalCv.source : null,
   appliedAt: a.createdAt.toISOString(),
 });
 

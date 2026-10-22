@@ -4,6 +4,8 @@ import {
   APPLICATION_SOURCE_LABELS,
   APPLICATION_SOURCES,
   APPLICATION_STAGE_LABELS,
+  GENERAL_CV_SOURCE_LABELS,
+  GENERAL_CV_SOURCES,
   averageDays,
   cairoDay,
   funnelOf,
@@ -135,6 +137,15 @@ export class RecruitmentAnalyticsService {
       if (!e.endDate || fromDateOnly(e.endDate) > end) passed++;
     }
 
+    // general CVs received in the year (22 October 2026): by source and month, and those moved to a vacancy
+    const cvs = await this.prisma.generalCv.findMany({ where: { createdAt: { gte: from, lt: to } }, select: { source: true, status: true, createdAt: true } });
+    const generalCvs = {
+      received: cvs.length,
+      moved: cvs.filter((c) => c.status === 'moved').length,
+      bySource: GENERAL_CV_SOURCES.map((source) => ({ source, count: cvs.filter((c) => c.source === source).length })).filter((x) => x.count > 0),
+      byMonth: months.map((month) => ({ month, count: cvs.filter((c) => cairoDay(c.createdAt).slice(0, 7) === month).length })),
+    };
+
     return {
       year,
       departmentId: query.departmentId ?? null,
@@ -152,6 +163,7 @@ export class RecruitmentAnalyticsService {
       sources,
       departments: [...byDepartment.values()].map((d) => ({ id: d.id, name: d.name, hires: d.pairs.length, timeToHireDays: averageDays(d.pairs) })).sort((a, b) => b.hires - a.hires || a.name.localeCompare(b.name)),
       hidden,
+      generalCvs,
     };
   }
 
@@ -222,6 +234,15 @@ export class RecruitmentAnalyticsService {
         { header: 'Time to hire, days', width: 16, numFmt: '0.0', value: (d) => d.timeToHireDays },
       ],
       r.departments,
+    );
+    addSheet<RecruitmentAnalytics['generalCvs']['bySource'][number]>(
+      wb,
+      'General CVs',
+      [
+        { header: 'Source', width: 18, value: (x) => GENERAL_CV_SOURCE_LABELS[x.source] },
+        { header: 'CVs', width: 10, numFmt: '0', value: (x) => x.count },
+      ],
+      r.generalCvs.bySource,
     );
     const data = Buffer.from(await wb.xlsx.writeBuffer());
     await this.audit.record({ userId: user.id, action: 'analytics_file', entityType: REPORT_ENTITY, diff: { year: r.year, departmentId: r.departmentId, hires: r.hires } });

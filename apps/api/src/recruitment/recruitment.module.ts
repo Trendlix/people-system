@@ -1,5 +1,8 @@
 import { Global, Module } from '@nestjs/common';
 import { ApplicationsService } from './applications.service.js';
+import { CvUploadsService } from './cv-uploads.service.js';
+import { ApplicantsSummaryController, CvUploadsController, GeneralCvsController, PublicGeneralCvsController } from './general-cvs.controller.js';
+import { GeneralCvsService } from './general-cvs.service.js';
 import { PublicCareersService } from './public-careers.service.js';
 import { RecruitmentOffersService } from './recruitment-offers.service.js';
 import { InterviewsService } from './interviews.service.js';
@@ -33,6 +36,11 @@ import { VacanciesService } from './vacancies.service.js';
     RecruitmentSettingsController,
     RecruitmentAnalyticsController,
     PublicCareersController,
+    // general CVs, the Applicants page's summary and the bulk upload (22 October 2026)
+    GeneralCvsController,
+    ApplicantsSummaryController,
+    CvUploadsController,
+    PublicGeneralCvsController,
   ],
   providers: [
     VacanciesService,
@@ -43,6 +51,8 @@ import { VacanciesService } from './vacancies.service.js';
     RecruitmentSettingsService,
     RecruitmentAnalyticsService,
     RecruitmentSchedulerService,
+    GeneralCvsService,
+    CvUploadsService,
   ],
   exports: [RecruitmentOffersService, InterviewsService, RecruitmentSchedulerService],
 })

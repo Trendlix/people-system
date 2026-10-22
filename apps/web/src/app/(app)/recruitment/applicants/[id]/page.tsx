@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import {
   APPLICATION_EVENT_LABELS,
-  APPLICATION_SOURCE_LABELS,
+  applicationSourceText,
   FEEDBACK_CRITERIA,
   FEEDBACK_CRITERION_LABELS,
   HIRING_SUGGESTION_LABELS,
@@ -194,7 +194,7 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
         </div>
         <p className="text-sm text-muted">
-          {a.number} · applied {formatDateTime(a.appliedAt)} · {APPLICATION_SOURCE_LABELS[a.source]}
+          {a.number} · applied {formatDateTime(a.appliedAt)} · {applicationSourceText(a)}
         </p>
       </div>
 

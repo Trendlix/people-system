@@ -72,6 +72,13 @@ model User {
   onboardingOpened       OnboardingChecklist[]  @relation("OnboardingOpening")
   onboardingCompleted    OnboardingChecklist[]  @relation("OnboardingCompletion")
   onboardingItemsDone    OnboardingItem[]       @relation("OnboardingItemDone")
+  // general CVs and the bulk upload (22 October 2026): the consents this user recorded, the CVs they added, what they did
+  // to them, and the CVs waiting in their batch
+  applicationConsents    JobApplication[]       @relation("ApplicationConsent")
+  generalCvConsents      GeneralCv[]            @relation("GeneralCvConsent")
+  generalCvsAdded        GeneralCv[]            @relation("GeneralCvCreation")
+  generalCvEvents        GeneralCvEvent[]
+  cvUploads              CvUpload[]
   payrollsCreated    PayrollRun[]               @relation("PayrollCreation") // payroll runs this user started
   payrollsApproved   PayrollRun[]               @relation("PayrollApproval") // payroll runs this user approved as CEO
   payslipsDrawn      Payslip[]                  @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
@@ -412,6 +419,7 @@ model Department {
   vacancies   Vacancy[] // the vacancies of its job titles (22 October 2026)
   kpiScorecards KpiScorecard[] // the KPI scorecards of people who worked here when they opened (21 October 2026)
   kpiFrameworks KpiFramework[] // its own KPI pillars' versions (22 October 2026)
+  generalCvs  GeneralCv[] // the general CVs of people who would like to work in it (22 October 2026)
 
   @@unique([parentId, nameEn])
   @@index([headId])
@@ -1410,6 +1418,7 @@ model Vacancy {
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
   applications     JobApplication[]
+  cvUploads        CvUpload[] // the bulk upload's CVs waiting for it (22 October 2026)
 
   @@index([status])
   @@index([jobTitleId])
@@ -1458,6 +1467,12 @@ model JobApplication {
   suggestedById   String?              @map("suggested_by") @db.Uuid
   suggestedBy     User?                @relation("ApplicationSuggestion", fields: [suggestedById], references: [id], onDelete: SetNull)
   suggestedAt     DateTime?            @map("suggested_at") @db.Timestamptz
+  // the consent HR recorded (22 October 2026: a bulk upload's CV, a general CV moved here): who, and why ("LinkedIn
+  // Easy Apply"); none: the applicant's own on the careers page
+  consentById     String?              @map("consent_by") @db.Uuid
+  consentBy       User?                @relation("ApplicationConsent", fields: [consentById], references: [id], onDelete: SetNull)
+  consentNote     String?              @map("consent_note")
+  generalCv       GeneralCv? // the general CV it was moved from
   cv              JobApplicationCv?
   steps           JobApplicationStep[]
   offers          JobOffer[]
@@ -1500,6 +1515,102 @@ model JobApplicationStep {
 
   @@index([applicationId, at])
   @@map("job_application_steps")
+}
+
+// A general CV (owner, 22 October 2026: "what came out of the posted jobs and what cam on randomly"; "Both"; packages/
+// shared general-cvs.ts): someone who sent a CV without applying for a posted vacancy ("Send us your CV" on the careers
+// page), or whose CV HR added (email, WhatsApp, LinkedIn, in person, referral, other; a referral with who referred
+// them). The area they would like to work in (a department, or Other in words), the consent (theirs, or HR's with who
+// and why), a reference in the applications' series. New, reviewed, moved to a vacancy (the application made from it),
+// archived. HR, the CEO and a Super Admin read them; HR and a Super Admin change them.
+model GeneralCv {
+  id              String           @id @default(uuid()) @db.Uuid
+  number          String           @unique // APP-2026-0007: the applications' series
+  status          String           @default("new") // GENERAL_CV_STATUSES
+  fullName        String           @map("full_name")
+  email           String // trimmed, in lower case
+  mobile          String
+  linkedin        String?
+  portfolio       String?
+  yearsExperience Decimal?         @map("years_experience") @db.Decimal(4, 1)
+  noticePeriod    String?          @map("notice_period")
+  expectedSalary  Decimal?         @map("expected_salary") @db.Decimal(12, 2)
+  departmentId    String?          @map("department_id") @db.Uuid // the area of interest; none: area_other
+  department      Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  areaOther       String?          @map("area_other")
+  source          String // GENERAL_CV_SOURCES
+  referrer        String?
+  notes           String? // HR's
+  consentAt       DateTime         @map("consent_at") @db.Timestamptz
+  consentById     String?          @map("consent_by") @db.Uuid // HR who recorded the person's agreement; none: theirs on the careers page
+  consentBy       User?            @relation("GeneralCvConsent", fields: [consentById], references: [id], onDelete: SetNull)
+  consentNote     String?          @map("consent_note")
+  ip              String?
+  userAgent       String?          @map("user_agent")
+  createdById     String?          @map("created_by") @db.Uuid // HR who added it; none: sent on the careers page
+  createdBy       User?            @relation("GeneralCvCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  applicationId   String?          @unique @map("application_id") @db.Uuid // moved: the application made from it
+  application     JobApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  movedAt         DateTime?        @map("moved_at") @db.Timestamptz
+  file            GeneralCvFile?
+  events          GeneralCvEvent[]
+
+  @@index([email, createdAt])
+  @@index([status])
+  @@index([ip, createdAt])
+  @@map("general_cvs")
+}
+
+// A general CV's file, apart so the lists never read it: a PDF or a Word file, at most 5 MB, as an application's.
+model GeneralCvFile {
+  generalCvId String    @id @map("general_cv_id") @db.Uuid
+  generalCv   GeneralCv @relation(fields: [generalCvId], references: [id], onDelete: Cascade)
+  fileName    String    @map("file_name")
+  mimeType    String    @map("mime_type")
+  sizeBytes   Int       @map("size_bytes")
+  data        Bytes
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("general_cv_files")
+}
+
+// What happened to a general CV, in order: received, reviewed, archived, restored, moved; a note, who (none: the person
+// on the careers page) and when.
+model GeneralCvEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  generalCvId String    @map("general_cv_id") @db.Uuid
+  generalCv   GeneralCv @relation(fields: [generalCvId], references: [id], onDelete: Cascade)
+  event       String
+  note        String?
+  byId        String?   @map("by_id") @db.Uuid
+  by          User?     @relation(fields: [byId], references: [id], onDelete: SetNull)
+  at          DateTime  @default(now()) @db.Timestamptz
+
+  @@index([generalCvId, at])
+  @@map("general_cv_events")
+}
+
+// A CV of a bulk upload (owner, 22 October 2026: "is there a way to easy apply from linkedin?" … "why not"), waiting for
+// HR to check its row: for a vacancy (none: the general CVs), its file, whether its text could be read and what it told
+// (the name, email and mobile). The uploader's own; gone once saved or discarded, or after a day.
+model CvUpload {
+  id          String   @id @default(uuid()) @db.Uuid
+  createdById String   @map("created_by") @db.Uuid
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  vacancyId   String?  @map("vacancy_id") @db.Uuid
+  vacancy     Vacancy? @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  fileName    String   @map("file_name")
+  mimeType    String   @map("mime_type")
+  sizeBytes   Int      @map("size_bytes")
+  data        Bytes
+  textFound   Boolean  @default(false) @map("text_found")
+  guess       Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([createdById, createdAt])
+  @@map("cv_uploads")
 }
 
 // An interview (Phase 2, owner, 22 October 2026: "interview invites go by email through the owner's SMTP settings"):

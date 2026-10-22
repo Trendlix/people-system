@@ -1,6 +1,5 @@
 import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
-  applicationNumber,
   applyProblems,
   isVacancySlug,
   normalEmail,
@@ -24,6 +23,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { nextApplicationNumber } from './application-numbers.js';
 import { cvFileName, cvProblem, cvTypeOf } from './cv-file.js';
 import { APPLICATION_ENTITY, publicSummaryOf, questionsOf } from './recruitment-views.js';
 import type { ApplyDto } from './recruitment.dto.js';
@@ -182,11 +182,8 @@ export class PublicCareersService {
     const source = sourceOf(text(dto.source));
     const now = new Date();
     const made = await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('people-system:application-number'))`;
-      const year = todayInCairo().slice(0, 4);
-      const [{ max }] = await tx.$queryRaw<{ max: number | null }[]>`
-        SELECT max(substring(number from 10)::int) AS max FROM job_applications WHERE number ~ ${`^APP-${year}-[0-9]+$`}`;
-      const number = applicationNumber(year, (max ?? 0) + 1);
+      // the applications' and general CVs' one series (application-numbers.ts)
+      const number = await nextApplicationNumber(tx);
       const row = await tx.jobApplication.create({
         data: {
           number,

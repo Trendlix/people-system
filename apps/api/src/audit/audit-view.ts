@@ -228,6 +228,7 @@ export function whoOf(row: Pick<AuditRow, 'userId' | 'onBehalfById' | 'via' | 'a
   else if (row.action === 'login_failed') text = 'Not signed in';
   else if (row.entityType === 'job_offer' && row.action === 'answer') text = 'The candidate, online';
   else if (row.entityType === 'job_application' && row.action === 'apply') text = 'The applicant, on the careers page';
+  else if (row.entityType === 'general_cv' && row.action === 'apply') text = 'The person, on the careers page';
   else text = 'System';
   if (row.onBehalfById) text = `Super Admin ${personText(by)} as ${text}`;
   const via = row.via === AUDIT_VIA_CONNECTOR ? AUDIT_VIA_CONNECTOR : null;
@@ -379,6 +380,9 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return id ? own(`/recruitment/vacancies/${id}`, 'Open vacancy', RECRUITMENT) : null;
     case 'job_application':
       return id ? own(`/recruitment/applicants/${id}`, 'Open applicant', RECRUITMENT) : null;
+    // a general CV (22 October 2026)
+    case 'general_cv':
+      return id ? own(`/recruitment/general-cvs/${id}`, 'Open CV', RECRUITMENT) : null;
     // recruitment, Phase 2 (22 October 2026): the interviews' list, Recruitment Settings, the analytics, an onboarding
     // checklist and its defaults
     case 'interview':

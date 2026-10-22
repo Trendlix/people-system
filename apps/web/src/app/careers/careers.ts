@@ -1,4 +1,4 @@
-import { applyProblems, sourceOf, webLinkOf, type ApplicationSource, type ApplyInput, type PublicQuestion, type VacancyQuestion } from '@trendlix/shared';
+import { applyProblems, generalCvProblems, sourceOf, webLinkOf, type ApplicationSource, type ApplyInput, type GeneralCvInput, type PublicQuestion, type VacancyQuestion } from '@trendlix/shared';
 
 // The careers page (owner, 22 October 2026: "where will we include the ATS?"; people.trendlix.com/careers: "i dont know
 // how to decide it for now"): reading its application form and passing it on to the API. Pure code (relative imports),
@@ -92,3 +92,66 @@ export function apiForm(fd: FormData, questions: readonly PublicQuestion[], from
 
 /** "Full-time · Hybrid (office and home) · Production", the job's facts in a line. */
 export const factsLine = (parts: readonly (string | null | undefined)[]) => parts.filter((p): p is string => !!p).join(' · ');
+
+// ---------- "Send us your CV" (22 October 2026: "what came out of the posted jobs and what cam on randomly") ----------
+
+export const GENERAL_PATH = '/careers/general';
+
+/** The general form's area field: a department's id, or OTHER_AREA with the words typed in `areaOther`. */
+export const OTHER_AREA = 'other';
+
+const GENERAL_FIELDS = ['fullName', 'email', 'mobile', 'linkedin', 'portfolio', 'yearsExperience', 'noticePeriod', 'expectedSalary', 'area', 'areaOther'] as const;
+
+/** What was typed on the general form, kept to show again after a refusal (never the CV). */
+export function generalTypedValues(fd: FormData): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of GENERAL_FIELDS) out[name] = text(fd, name);
+  if (fd.get('consent')) out.consent = 'on';
+  return out;
+}
+
+/** The general form as the rules check it. */
+export function generalInputOf(fd: FormData): GeneralCvInput {
+  const area = text(fd, 'area');
+  return {
+    fullName: text(fd, 'fullName'),
+    email: text(fd, 'email'),
+    mobile: text(fd, 'mobile'),
+    linkedin: webLinkOf(text(fd, 'linkedin')) || null,
+    portfolio: webLinkOf(text(fd, 'portfolio')) || null,
+    yearsExperience: numberOf(text(fd, 'yearsExperience')),
+    noticePeriod: text(fd, 'noticePeriod') || null,
+    expectedSalary: numberOf(text(fd, 'expectedSalary')),
+    departmentId: area && area !== OTHER_AREA ? area : null,
+    areaOther: area === OTHER_AREA ? text(fd, 'areaOther') || null : null,
+    consent: fd.get('consent') !== null,
+  };
+}
+
+/** What is wrong with the general form before it is sent, in words (the CV's checks are the API's). */
+export function generalFormProblems(fd: FormData): string[] {
+  const problems = generalCvProblems(generalInputOf(fd), { byHr: false });
+  const cv = fd.get('cv');
+  if (!(cv instanceof Blob) || cv.size === 0) problems.push('Attach your CV, as a PDF or a Word file.');
+  return problems;
+}
+
+/** The general form as the API takes it (POST /public/general-cvs): the fields as text, where it came from, and the CV. */
+export function generalApiForm(fd: FormData, from: { ip?: string; userAgent?: string }): FormData {
+  const input = generalInputOf(fd);
+  const out = new FormData();
+  for (const name of ['fullName', 'email', 'mobile', 'linkedin', 'portfolio', 'yearsExperience', 'noticePeriod', 'expectedSalary'] as const) {
+    const v = text(fd, name);
+    if (v) out.set(name, v);
+  }
+  if (input.departmentId) out.set('departmentId', input.departmentId);
+  if (input.areaOther) out.set('areaOther', input.areaOther);
+  if (input.consent) out.set('consent', 'true');
+  const honeypot = text(fd, HONEYPOT);
+  if (honeypot) out.set(HONEYPOT, honeypot);
+  if (from.ip) out.set('ip', from.ip);
+  if (from.userAgent) out.set('userAgent', from.userAgent);
+  const cv = fd.get('cv');
+  if (cv instanceof Blob && cv.size > 0) out.set('cv', cv, cv instanceof File ? cv.name : 'cv');
+  return out;
+}

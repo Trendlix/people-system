@@ -21,6 +21,7 @@
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/recruitment.spec.ts.
 
 import type { EmploymentType, WorkArrangement } from './index.js';
+import type { GeneralCvSource } from './general-cvs.js';
 import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } from './recruitment-hiring.js';
 
 // ---------- the limits ----------
@@ -199,27 +200,54 @@ export const isVacancySlug = (value: unknown): value is string => typeof value =
 
 // ---------- the channels ----------
 
-/** Where an applicant came from: the careers page itself, or a channel's link (?src=). */
-export const APPLICATION_SOURCES = ['careers', 'linkedin', 'facebook', 'job_board', 'referral', 'other'] as const;
+/**
+ * Where an applicant came from: the careers page itself (reached directly, with no link), a channel's link (?src=), or
+ * a general CV moved to the vacancy (22 October 2026: general-cvs.ts), which only HR's move sets.
+ */
+export const APPLICATION_SOURCES = ['careers', 'linkedin', 'facebook', 'job_board', 'referral', 'other', 'general'] as const;
 export type ApplicationSource = (typeof APPLICATION_SOURCES)[number];
 
+/** The sources a posted link can carry (?src=): every one but a general CV's. */
+export const APPLICATION_CHANNELS = ['careers', 'linkedin', 'facebook', 'job_board', 'referral', 'other'] as const satisfies readonly ApplicationSource[];
+export type ApplicationChannel = (typeof APPLICATION_CHANNELS)[number];
+
+/**
+ * The sources in words; the careers page's says it came without a posted link (owner, 22 October 2026: "what came out
+ * of the posted jobs and what cam on randomly").
+ */
 export const APPLICATION_SOURCE_LABELS: Record<ApplicationSource, string> = {
-  careers: 'Careers page',
+  careers: 'Careers page (direct)',
   linkedin: 'LinkedIn',
   facebook: 'Facebook groups',
   job_board: 'Job boards',
   referral: 'Referral',
   other: 'Other',
+  general: 'General CV',
 };
 
-/** The source a link's ?src= names: one of the channels; none, the careers page; anything else, Other. */
-export function sourceOf(value: unknown): ApplicationSource {
+/** The source a link's ?src= names: one of the channels; none, the careers page; anything else (a general CV's too), Other. */
+export function sourceOf(value: unknown): ApplicationChannel {
   if (value === undefined || value === null || value === '') return 'careers';
-  return (APPLICATION_SOURCES as readonly unknown[]).includes(value) ? (value as ApplicationSource) : 'other';
+  return (APPLICATION_CHANNELS as readonly unknown[]).includes(value) ? (value as ApplicationChannel) : 'other';
+}
+
+/** An application's source as kept (a general CV's too); anything else, Other. */
+export const applicationSourceOf = (value: unknown): ApplicationSource => ((APPLICATION_SOURCES as readonly unknown[]).includes(value) ? (value as ApplicationSource) : 'other');
+
+/**
+ * A vacancy's applicants by source in a line (22 October 2026): each source with its count, in the sources' order, those
+ * with none left out; the careers page's said in full ("Careers page (direct, no link)").
+ */
+export function sourceLine(bySource: Readonly<Record<string, number>>): { source: ApplicationSource; label: string; count: number }[] {
+  return APPLICATION_SOURCES.filter((s) => (bySource[s] ?? 0) > 0).map((source) => ({
+    source,
+    label: source === 'careers' ? 'Careers page (direct, no link)' : APPLICATION_SOURCE_LABELS[source],
+    count: bySource[source] ?? 0,
+  }));
 }
 
 /** The path of a vacancy's page for a channel: the careers page's own has no ?src=. */
-export const careersPath = (slug: string, source: ApplicationSource = 'careers'): string =>
+export const careersPath = (slug: string, source: ApplicationChannel = 'careers'): string =>
   source === 'careers' ? `/careers/${slug}` : `/careers/${slug}?src=${encodeURIComponent(source)}`;
 
 // ---------- screening questions ----------
@@ -611,6 +639,8 @@ export interface VacancyView extends VacancyListItem {
   questions: VacancyQuestion[];
   stageCounts: Record<ApplicationStage, number>;
   filteredOut: number;
+  /** Its applicants by source (22 October 2026: the posted links apart from the careers page reached directly). */
+  sourceCounts: Record<string, number>;
   submittedAt: string | null;
   submittedBy: RecruitmentUserRef | null;
   decidedAt: string | null;
@@ -630,7 +660,8 @@ export interface VacancyView extends VacancyListItem {
 export interface ApplicationListItem {
   id: string;
   number: string;
-  vacancy: { id: string; number: string; title: string };
+  /** Its vacancy, with its status (the Posted Jobs tab groups by it: open first). */
+  vacancy: { id: string; number: string; title: string; status: VacancyStatus };
   fullName: string;
   email: string;
   mobile: string;
@@ -641,6 +672,8 @@ export interface ApplicationListItem {
   maxPoints: number;
   yearsExperience: number | null;
   source: ApplicationSource;
+  /** Moved from a general CV: where that CV came from ("General CV (Email)"); null otherwise. */
+  generalSource: GeneralCvSource | null;
   appliedAt: string;
 }
 

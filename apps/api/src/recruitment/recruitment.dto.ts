@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { Allow, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { Allow, ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import {
   APPLICATION_SOURCES,
   APPLICATION_STAGES,
@@ -23,6 +23,14 @@ import {
   type HiringSuggestion,
   type InterviewKind,
   type Recommendation,
+  CV_BATCH_LIMIT,
+  GENERAL_CV_SOURCES,
+  GENERAL_CV_STATUSES,
+  MOVE_STAGES,
+  type CvSaveRow,
+  type GeneralCvSource,
+  type GeneralCvStatus,
+  type MoveStage,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
@@ -293,4 +301,113 @@ export class ApplyDto {
 
   @IsOptional() @IsString() @MaxLength(500)
   userAgent?: string;
+}
+
+// ---------- general CVs and the bulk upload (owner, 22 October 2026; packages/shared general-cvs.ts) ----------
+
+/** "Send us your CV" on the careers page, as a multipart form: every field a string, read and checked by the service. */
+export class GeneralCvFormDto {
+  @IsOptional() @IsString() @MaxLength(400)
+  fullName?: string;
+
+  @IsOptional() @IsString() @MaxLength(400)
+  email?: string;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  mobile?: string;
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  linkedin?: string;
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  portfolio?: string;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  yearsExperience?: string;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  noticePeriod?: string;
+
+  @IsOptional() @IsString() @MaxLength(30)
+  expectedSalary?: string;
+
+  /** The area of interest: a department's id, or none with `areaOther`. */
+  @IsOptional() @IsString() @MaxLength(40)
+  departmentId?: string;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  areaOther?: string;
+
+  /** "true" when the consent is ticked. */
+  @IsOptional() @IsString() @MaxLength(10)
+  consent?: string;
+
+  /** The honeypot: a field people never see, so never fill in. */
+  @IsOptional() @IsString() @MaxLength(1000)
+  website?: string;
+
+  /** The person's address and browser, as the website saw them. */
+  @IsOptional() @IsString() @MaxLength(100)
+  ip?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  userAgent?: string;
+}
+
+/** HR's Add a CV: the general form's fields, how it came, who referred them and HR's notes. */
+export class AddGeneralCvDto extends GeneralCvFormDto {
+  @IsOptional() @IsString() @MaxLength(40)
+  source?: string;
+
+  @IsOptional() @IsString() @MaxLength(400)
+  referrer?: string;
+
+  @IsOptional() @IsString() @MaxLength(4000)
+  notes?: string;
+}
+
+export class ListGeneralCvsDto {
+  /** A status, or all; none: all but those archived. */
+  @IsOptional() @IsIn([...GENERAL_CV_STATUSES, 'all'], { message: 'Choose a status.' })
+  status?: GeneralCvStatus | 'all';
+
+  @IsOptional() @IsIn(GENERAL_CV_SOURCES, { message: 'Choose a source.' })
+  source?: GeneralCvSource;
+
+  @IsOptional() @IsUUID('all')
+  departmentId?: string;
+
+  @IsOptional() @Trim() @IsString() @MaxLength(100)
+  q?: string;
+}
+
+export class MoveGeneralCvDto {
+  @IsUUID('all', { message: 'Choose the vacancy.' })
+  vacancyId!: string;
+
+  @IsOptional() @IsIn(MOVE_STAGES, { message: 'Choose Applied or Shortlisted.' })
+  stage?: MoveStage;
+}
+
+export class GeneralCvNotesDto {
+  @TrimOrNull() @IsOptional() @IsString() @MaxLength(L.notes, { message: `Keep the notes to ${L.notes} characters or fewer.` })
+  notes?: string | null;
+}
+
+/** A bulk upload's target: a vacancy, or (none) the general CVs. */
+export class CvUploadTargetDto {
+  @IsOptional() @IsUUID('all', { message: 'Choose the vacancy.' })
+  vacancyId?: string;
+}
+
+/** The rows of a bulk upload, as HR checked them: each checked by the service. */
+export class CvSaveDto extends CvUploadTargetDto {
+  @IsArray({ message: 'Send the rows as a list.' }) @ArrayMaxSize(CV_BATCH_LIMIT, { message: `A batch takes at most ${CV_BATCH_LIMIT} CVs.` })
+  rows!: CvSaveRow[];
+}
+
+/** Discarding a batch (or one CV of it, `id`). */
+export class CvDiscardDto extends CvUploadTargetDto {
+  @IsOptional() @IsUUID('all')
+  id?: string;
 }

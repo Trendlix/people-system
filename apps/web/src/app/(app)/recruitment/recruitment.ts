@@ -1,4 +1,5 @@
 import {
+  APPLICATION_CHANNELS,
   APPLICATION_SOURCES,
   APPLICATION_STAGES,
   careersPath,
@@ -7,6 +8,7 @@ import {
   QUESTION_KINDS,
   VACANCY_STATUSES,
   WORK_ARRANGEMENTS,
+  type ApplicationChannel,
   type ApplicationSource,
   type ApplicationStage,
   type ApplicationView,
@@ -272,9 +274,9 @@ export function moved<T>(list: readonly T[], index: number, by: -1 | 1): T[] {
 
 // ---------- the channels ----------
 
-/** The channels' links of a vacancy, each the careers page's address with its ?src=. */
-export function channelLinks(origin: string, slug: string): { source: ApplicationSource; href: string }[] {
-  return APPLICATION_SOURCES.map((source) => ({ source, href: `${origin}${careersPath(slug, source)}` }));
+/** The channels' links of a vacancy, each the careers page's address with its ?src= (never a general CV's: HR's move only). */
+export function channelLinks(origin: string, slug: string): { source: ApplicationChannel; href: string }[] {
+  return APPLICATION_CHANNELS.map((source) => ({ source, href: `${origin}${careersPath(slug, source)}` }));
 }
 
 // ---------- Make offer ----------

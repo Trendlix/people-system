@@ -62,6 +62,7 @@ const DETAIL_INCLUDE = {
       id: true,
       number: true,
       title: true,
+      status: true,
       questions: true,
       grade: { select: { confidential: true } },
       jobTitle: { select: { minGrade: { select: { confidential: true } } } },
@@ -79,6 +80,8 @@ const DETAIL_INCLUDE = {
   steps: { orderBy: { at: 'asc' }, include: { by: { select: { id: true, email: true } } } },
   offers: { orderBy: { createdAt: 'asc' }, select: { id: true, number: true, status: true } },
   suggestedBy: { select: { id: true, email: true } },
+  // moved from a general CV (22 October 2026): where that CV came from
+  generalCv: { select: { source: true } },
 } satisfies Prisma.JobApplicationInclude;
 
 type DetailRow = Prisma.JobApplicationGetPayload<{ include: typeof DETAIL_INCLUDE }>;
@@ -185,7 +188,7 @@ export class ApplicationsService {
         ? { kind: a.suggestion as HiringSuggestion, note: a.suggestionNote, by: userRef(a.suggestedBy, await userNames(this.prisma, [a.suggestedBy])), at: (a.suggestedAt ?? a.updatedAt).toISOString() }
         : null;
     return {
-      ...applicationListView({ ...a, vacancy: { id: a.vacancy.id, number: a.vacancy.number, title: a.vacancy.title } }),
+      ...applicationListView({ ...a, vacancy: { id: a.vacancy.id, number: a.vacancy.number, title: a.vacancy.title, status: a.vacancy.status } }),
       linkedin: a.linkedin,
       portfolio: a.portfolio,
       noticePeriod: a.noticePeriod,

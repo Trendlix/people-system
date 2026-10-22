@@ -1,6 +1,24 @@
 import 'server-only';
-import type { ApplicationListItem, ApplicationView, InterviewView, MyHiring, RecruitmentAnalytics, RecruitmentSettingsView, VacancyBoard, VacancyListItem, VacancyView } from '@trendlix/shared';
+import type {
+  ApplicantsSummary,
+  ApplicationListItem,
+  ApplicationView,
+  CvBatchTarget,
+  CvUploadView,
+  GeneralCvListItem,
+  GeneralCvView,
+  InterviewView,
+  MyHiring,
+  PublicGeneralForm,
+  RecruitmentAnalytics,
+  RecruitmentSettingsView,
+  VacancyBoard,
+  VacancyListItem,
+  VacancyView,
+} from '@trendlix/shared';
+import { publicGet } from '@/lib/public-api';
 import { loadJson, type Loaded } from '../payroll/load';
+import { generalApiPath, uploadsApiPath, type GeneralQuery } from './general';
 import { analyticsSearch, type AnalyticsQuery } from './hiring';
 import { applicantsApiPath, vacanciesApiPath, type ApplicantsQuery, type VacancyFilter } from './recruitment';
 
@@ -29,6 +47,22 @@ export const loadMyHiring = (): Promise<Loaded<MyHiring>> => loadJson('/recruitm
 export const loadRecruitmentSettings = (): Promise<Loaded<RecruitmentSettingsView>> => loadJson('/recruitment/settings');
 
 export const loadAnalytics = (q: AnalyticsQuery): Promise<Loaded<RecruitmentAnalytics>> => loadJson(`/recruitment/analytics${analyticsSearch(q)}`);
+
+// General CVs, the Applicants page's summary and the bulk upload (22 October 2026).
+
+export const loadApplicantsSummary = (): Promise<Loaded<ApplicantsSummary>> => loadJson('/recruitment/applicants/summary');
+
+export const loadGeneralCvs = (q: Partial<GeneralQuery>): Promise<Loaded<GeneralCvListItem[]>> => loadJson(generalApiPath(q));
+
+export const loadGeneralCv = (id: string): Promise<Loaded<GeneralCvView>> => loadJson(`/recruitment/general-cvs/${encodeURIComponent(id)}`);
+
+export const loadCvUploads = (target: CvBatchTarget): Promise<Loaded<CvUploadView[]>> => loadJson(uploadsApiPath(target));
+
+/** The areas a general CV can name: the departments (not teams), as the careers page's form lists them; none when unavailable. */
+export async function loadGeneralAreas(): Promise<PublicGeneralForm['areas']> {
+  const form = await publicGet<PublicGeneralForm>('/general-cvs/form');
+  return form.ok ? form.data.areas : [];
+}
 
 /** What a page says in place of what it couldn't load. */
 export function recruitmentNotLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {

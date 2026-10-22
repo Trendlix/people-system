@@ -506,6 +506,12 @@ export * from './recruitment.js';
 // the owner's SMTP settings"): the pipeline board, interviews with their calendar invitations, the interviewers' and the
 // hiring manager's feedback, the rejection email and the analytics; onboarding, offboarding's mirror
 export * from './recruitment-hiring.js';
+
+// General CVs and the applicants by posted job (owner, 22 October 2026: "i want a proper viweing, what came out of the
+// posted jobs and what cam on randomly"; "Both"): "Send us your CV" on the careers page, the CVs HR adds, moving one to
+// a vacancy, each vacancy's applicants by source, and the bulk upload of CVs ("is there a way to easy apply from
+// linkedin?" … "why not")
+export * from './general-cvs.js';
 export * from './onboarding.js';
 
 // the Developer role (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real numbers"):

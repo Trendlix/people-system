@@ -47,6 +47,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   home_location: 'Home location',
   // recruitment (owner, 22 October 2026: "where will we include the ATS?"): an application from the careers page
   job_application: 'Job application',
+  // a CV sent or added without a posted job (22 October 2026: "what came out of the posted jobs and what cam on randomly")
+  general_cv: 'General CV',
   job_offer: 'Job offer',
   job_title: 'Job title',
   // KPIs (owner, 21 October 2026: "lets start with the KPI's First"): the monthly scorecards, the templates per job title,
@@ -127,6 +129,10 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   stage: 'Moved to a stage',
   restore: 'Restored',
   notes: 'Changed the notes',
+  // a general CV marked reviewed, archived, moved to a vacancy (22 October 2026)
+  review: 'Marked as reviewed',
+  archive: 'Archived',
+  move_to_vacancy: 'Moved to a vacancy',
   complete: 'Completed',
   confirm: 'Confirmed',
   confirm_probation: 'Confirmed after probation',

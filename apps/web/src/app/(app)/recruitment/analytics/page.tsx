@@ -1,7 +1,7 @@
 import { Select } from '@/components/select';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { APPLICATION_SOURCE_LABELS, APPLICATION_STAGE_LABELS, type RecruitmentAnalytics } from '@trendlix/shared';
+import { APPLICATION_SOURCE_LABELS, APPLICATION_STAGE_LABELS, GENERAL_CV_SOURCE_LABELS, type RecruitmentAnalytics } from '@trendlix/shared';
 import { getCurrentUser } from '@/lib/session';
 import { loadPickers } from '../../employees/data';
 import { todayInCairo } from '../../employees/ui';
@@ -148,7 +148,57 @@ async function Report({ q }: { q: AnalyticsQuery }) {
           )}
         </section>
       </div>
+      {r.generalCvs && <GeneralCvs g={r.generalCvs} year={r.year} />}
     </div>
+  );
+}
+
+/** The general CVs of the year (22 October 2026: "what came out of the posted jobs and what cam on randomly"): by source and by month, and how many were added to a vacancy. */
+function GeneralCvs({ g, year }: { g: RecruitmentAnalytics['generalCvs']; year: number }) {
+  const busiest = Math.max(1, ...g.byMonth.map((m) => m.count));
+  return (
+    <section aria-labelledby="general-cvs" className="card space-y-4 p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="general-cvs" className="text-lg font-semibold">
+          General CVs
+        </h2>
+        <p className="text-sm text-muted">
+          <span className="font-semibold text-ink tabular-nums">{g.received}</span> received in {year} ·{' '}
+          <span className="font-semibold text-ink tabular-nums">{g.moved}</span> added to a vacancy
+        </p>
+      </div>
+      {g.received === 0 ? (
+        <p className="text-sm text-muted">No general CVs this year.</p>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th className="text-right">CVs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {g.bySource.map((s) => (
+                <tr key={s.source}>
+                  <td>{GENERAL_CV_SOURCE_LABELS[s.source] ?? s.source}</td>
+                  <td className="text-right tabular-nums">{s.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <ol className="space-y-1" aria-label="General CVs by month">
+            {g.byMonth.map((m) => (
+              <li key={m.month} className="flex items-center gap-3 text-sm">
+                <span className="w-16 shrink-0 tabular-nums text-muted">{m.month}</span>
+                <span className="h-3 rounded bg-accent" style={{ width: `${(m.count / busiest) * 100}%`, minWidth: m.count ? '0.5rem' : 0 }} aria-hidden="true" />
+                <span className="tabular-nums">{m.count}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -1,4 +1,4 @@
-import { APPLICATION_SOURCE_LABELS, APPLICATION_STAGE_LABELS, VACANCY_STATUS_LABELS, type ApplicationListItem, type ApplicationStage, type VacancyStatus } from '@trendlix/shared';
+import { APPLICATION_STAGE_LABELS, applicationSourceText, VACANCY_STATUS_LABELS, type ApplicationListItem, type ApplicationStage, type VacancyStatus } from '@trendlix/shared';
 import Link from 'next/link';
 import { formatDate } from '@/lib/format';
 import { applicantHref, matchText, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
@@ -19,10 +19,13 @@ export function StageBadge({ stage, filteredOut }: { stage: ApplicationStage; fi
   );
 }
 
-/** Applicants in a table: who, their match, stage, experience, source and when they applied; `withVacancy` on All Applicants. */
-export function ApplicantsTable({ rows, withVacancy }: { rows: ApplicationListItem[]; withVacancy: boolean }) {
+/**
+ * Applicants in a table: who, their match, stage, experience, source and when they applied; `withVacancy` on All
+ * Applicants. `bare`: inside a card already (the Applicants page's vacancy groups).
+ */
+export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: ApplicationListItem[]; withVacancy: boolean; bare?: boolean }) {
   return (
-    <div className="card overflow-x-auto">
+    <div className={bare ? 'overflow-x-auto' : 'card overflow-x-auto'}>
       <table className="table">
         <thead>
           <tr>
@@ -52,7 +55,7 @@ export function ApplicantsTable({ rows, withVacancy }: { rows: ApplicationListIt
                 <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
               </td>
               <td className="text-right tabular-nums">{a.yearsExperience === null ? '—' : `${a.yearsExperience} y`}</td>
-              <td className="text-sm">{APPLICATION_SOURCE_LABELS[a.source]}</td>
+              <td className="text-sm">{applicationSourceText(a)}</td>
               <td className="text-sm whitespace-nowrap">{formatDate(a.appliedAt)}</td>
             </tr>
           ))}

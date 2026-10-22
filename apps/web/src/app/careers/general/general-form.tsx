@@ -1,0 +1,164 @@
+'use client';
+
+import { startTransition, useActionState, useState } from 'react';
+import { GENERAL_CV_CONSENT_TEXT, GENERAL_CV_LIMITS, RECRUITMENT_LIMITS, type PublicGeneralForm } from '@trendlix/shared';
+import { FormErrors, useFieldIds } from '@/components/form';
+import { Select } from '@/components/select';
+import { HONEYPOT, OTHER_AREA } from '../careers';
+import type { GeneralState } from './actions';
+
+// "Send us your CV" on the careers page (owner, 22 October 2026: "what came out of the posted jobs and what cam on
+// randomly", "Both"): the person's details, the area they would like to work in (a department, or Other in words), the
+// CV (a PDF or a Word file, at most 5 MB) and the consent; once sent, the reference to keep. A field hidden from people
+// catches robots. Made for a phone first.
+
+type Action = (prev: GeneralState, fd: FormData) => Promise<GeneralState>;
+
+const L = RECRUITMENT_LIMITS;
+
+export function GeneralForm({ action, areas }: { action: Action; areas: PublicGeneralForm['areas'] }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  const fid = useFieldIds();
+  const v = (name: string) => state.values?.[name] ?? '';
+  const [area, setArea] = useState(v('area'));
+
+  if (state.reference !== undefined) {
+    return (
+      <section className="card space-y-3 p-6 sm:p-8" aria-live="polite">
+        <h2 className="text-xl font-semibold">Thank You for Sending Your CV</h2>
+        <p className="text-sm leading-relaxed">
+          We received it
+          {state.reference ? (
+            <>
+              . Its reference is <span className="font-semibold">{state.reference}</span>
+            </>
+          ) : null}
+          . When a job opens that fits what you do, we will contact you.
+        </p>
+      </section>
+    );
+  }
+
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    startTransition(() => formAction(fd));
+  }
+
+  return (
+    <form action={formAction} onSubmit={onSubmit} className="card space-y-5 p-6 sm:p-8" aria-labelledby={fid('heading')}>
+      <div className="space-y-1">
+        <h1 id={fid('heading')} className="text-2xl font-semibold">
+          Send Us Your CV
+        </h1>
+        <p className="text-sm text-muted">No job open for you right now? Tell us what you do, and we will contact you when one fits.</p>
+      </div>
+      <FormErrors errors={state.errors} />
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <label htmlFor={fid('fullName')} className="label">
+            Full name
+          </label>
+          <input id={fid('fullName')} name="fullName" required maxLength={L.name} autoComplete="name" defaultValue={v('fullName')} className="input" />
+        </div>
+        <div>
+          <label htmlFor={fid('email')} className="label">
+            Email
+          </label>
+          <input id={fid('email')} name="email" type="email" required maxLength={L.email} autoComplete="email" defaultValue={v('email')} className="input" />
+        </div>
+        <div>
+          <label htmlFor={fid('mobile')} className="label">
+            Mobile
+          </label>
+          <input id={fid('mobile')} name="mobile" type="tel" required maxLength={L.mobile} autoComplete="tel" placeholder="+20 100 123 4567" defaultValue={v('mobile')} className="input" />
+        </div>
+        <div className={area === OTHER_AREA ? '' : 'sm:col-span-2'}>
+          <label htmlFor={fid('area')} className="label">
+            The area you would like to work in
+          </label>
+          <Select id={fid('area')} name="area" required value={area} onChange={(e) => setArea(e.target.value)} className="input">
+            <option value="">Choose…</option>
+            {areas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+            <option value={OTHER_AREA}>Other</option>
+          </Select>
+        </div>
+        {area === OTHER_AREA && (
+          <div>
+            <label htmlFor={fid('areaOther')} className="label">
+              Which area
+            </label>
+            <input id={fid('areaOther')} name="areaOther" required maxLength={GENERAL_CV_LIMITS.areaOther} defaultValue={v('areaOther')} className="input" />
+          </div>
+        )}
+        <div>
+          <label htmlFor={fid('linkedin')} className="label">
+            LinkedIn <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <input id={fid('linkedin')} name="linkedin" type="text" inputMode="url" autoCapitalize="none" spellCheck={false} maxLength={L.link} placeholder="linkedin.com/in/your-name" defaultValue={v('linkedin')} className="input" />
+        </div>
+        <div>
+          <label htmlFor={fid('portfolio')} className="label">
+            Portfolio <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <input id={fid('portfolio')} name="portfolio" type="text" inputMode="url" autoCapitalize="none" spellCheck={false} maxLength={L.link} placeholder="behance.net/your-name" defaultValue={v('portfolio')} className="input" />
+        </div>
+        <div>
+          <label htmlFor={fid('yearsExperience')} className="label">
+            Years of experience <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <input id={fid('yearsExperience')} name="yearsExperience" inputMode="decimal" maxLength={4} defaultValue={v('yearsExperience')} className="input" />
+        </div>
+        <div>
+          <label htmlFor={fid('noticePeriod')} className="label">
+            Notice period <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <input id={fid('noticePeriod')} name="noticePeriod" maxLength={L.notice} placeholder="e.g. 1 month" defaultValue={v('noticePeriod')} className="input" />
+        </div>
+        <div>
+          <label htmlFor={fid('expectedSalary')} className="label">
+            Expected salary, EGP a month <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <input id={fid('expectedSalary')} name="expectedSalary" inputMode="numeric" maxLength={12} defaultValue={v('expectedSalary')} className="input" />
+        </div>
+      </div>
+
+      <div className="border-t border-line pt-5">
+        <label htmlFor={fid('cv')} className="label">
+          Your CV
+        </label>
+        <input
+          id={fid('cv')}
+          name="cv"
+          type="file"
+          required
+          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          aria-describedby={fid('cv-hint')}
+          className="input"
+        />
+        <p id={fid('cv-hint')} className="hint">
+          A PDF or a Word file (.docx), at most {L.cvMb} MB.
+        </p>
+      </div>
+
+      {/* hidden from people: only a robot fills it in */}
+      <div aria-hidden="true" className="absolute -left-[10000px] h-px w-px overflow-hidden">
+        <label htmlFor={fid(HONEYPOT)}>Leave this empty</label>
+        <input id={fid(HONEYPOT)} name={HONEYPOT} tabIndex={-1} autoComplete="off" />
+      </div>
+
+      <label className="flex items-start gap-3 text-sm leading-relaxed">
+        <input type="checkbox" name="consent" required defaultChecked={v('consent') === 'on'} className="mt-1 size-4 shrink-0" />
+        <span>{GENERAL_CV_CONSENT_TEXT}</span>
+      </label>
+
+      <button type="submit" disabled={pending} className="btn btn-primary w-full sm:w-auto">
+        {pending ? 'Sending…' : 'Send my CV'}
+      </button>
+    </form>
+  );
+}

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { APPLICATION_STAGE_LABELS, GOOD_MATCH_PERCENT, LABELS, QUESTION_KIND_LABELS, questionMaxPoints, type VacancyView } from '@trendlix/shared';
+import { APPLICATION_STAGE_LABELS, GOOD_MATCH_PERCENT, LABELS, QUESTION_KIND_LABELS, questionMaxPoints, sourceLine, type VacancyView } from '@trendlix/shared';
 import { RichText } from '@/components/rich-text';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
@@ -11,6 +11,7 @@ import { deleteVacancy, moveOnBoard, moveVacancy } from '../../actions';
 import { PipelineBoard } from '../../board';
 import { loadApplicants, loadBoard, loadVacancy, recruitmentNotLoaded } from '../../data';
 import { ActionButton, CopyLink, ReasonButton } from '../../forms';
+import { vacancyBulkHref } from '../../general';
 import { boardHref, MY_HIRING_PATH } from '../../hiring';
 import { applicantsHref, channelLinks, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref } from '../../recruitment';
 import { ApplicantsTable, VacancyStatusBadge } from '../../ui';
@@ -66,9 +67,16 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
   const total = Object.values(v.stageCounts).reduce((a, b) => a + b, 0);
   return (
     <section aria-labelledby="vacancy-applicants" className="space-y-3">
-      <h2 id="vacancy-applicants" className="text-lg font-semibold">
-        Applicants
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="vacancy-applicants" className="text-lg font-semibold">
+          Applicants
+        </h2>
+        {v.viewer === 'manages' && (v.status === 'open' || v.status === 'on_hold') && (
+          <Link href={vacancyBulkHref(v.id)} className="btn btn-secondary no-underline">
+            Bulk upload CVs
+          </Link>
+        )}
+      </div>
       <nav aria-label="Applicants by stage" className="flex flex-wrap gap-2">
         <Link href={applicantsHref(base, { ...q, stage: '', filtered: 'hide' })} className={`${chip} ${!q.stage && q.filtered === 'hide' ? ACTIVE : IDLE}`}>
           All ({total - v.filteredOut})
@@ -89,6 +97,20 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
           Match ≥ {GOOD_MATCH_PERCENT}%
         </Link>
       </nav>
+      {/* where they came from (owner, 22 October 2026: "what came out of the posted jobs"): each count lists them */}
+      {sourceLine(v.sourceCounts ?? {}).length > 0 && (
+        <p className="text-sm text-muted">
+          By source:{' '}
+          {sourceLine(v.sourceCounts ?? {}).map((s, i) => (
+            <span key={s.source}>
+              {i > 0 && ' · '}
+              <Link href={applicantsHref(base, { source: s.source, filtered: 'all' })} className="whitespace-nowrap">
+                {s.label} {s.count}
+              </Link>
+            </span>
+          ))}
+        </p>
+      )}
       {loaded.kind !== 'ok' ? (
         <Empty>{recruitmentNotLoaded(loaded, 'applicants')}</Empty>
       ) : loaded.value.length === 0 ? (

@@ -46,6 +46,7 @@
     "dotenv": "^17.4.2",
     "exceljs": "4.4.0",
     "nodemailer": "10.0.13",
+    "pdfjs-dist": "^5.4.624",
     "pg": "^8.23.1",
     "pngjs": "^7.0.0",
     "reflect-metadata": "^0.2.2",

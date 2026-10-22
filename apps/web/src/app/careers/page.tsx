@@ -4,7 +4,7 @@ import { LABELS, type PublicCareers } from '@trendlix/shared';
 import { getBrand } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { publicGet } from '@/lib/public-api';
-import { factsLine, jobHref } from './careers';
+import { factsLine, GENERAL_PATH, jobHref } from './careers';
 import { CompanyHeader, Notice, type CareersBrand } from './ui';
 
 // The careers page's open jobs (owner, 22 October 2026: "where will we include the ATS?"): every vacancy the CEO approved
@@ -41,6 +41,11 @@ async function OpenJobs() {
             ))}
           </ul>
         )}
+        {/* a CV without a posted job (owner, 22 October 2026: "what came out of the posted jobs and what cam on randomly") */}
+        <Link href={GENERAL_PATH} className="card block p-5 text-ink no-underline hover:border-accent hover:text-ink">
+          <span className="block text-lg font-semibold">Don’t See Your Role?</span>
+          <span className="mt-1 block text-sm text-muted">Send us your CV, and we will contact you when a job fits what you do.</span>
+        </Link>
       </div>
     </>
   );
