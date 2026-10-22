@@ -1,0 +1,734 @@
+/*
+ * The careers pages in trendlix.com's design (owner, 22 October 2026: "i will put it in the main website, i need it to
+ * match the UI"; then, giving the new site's source: "make sure to fetch the new design", "i dont want you to clone,
+ * just take the design framework and guidelines"; and its home hero: "this is it"). Only inside .careers-site
+ * (careers/layout.tsx), so the staff site keeps its own look.
+ *
+ * The framework taken from the new site (its tailwind.config.js, index.css, utils/fonts.js, components/new/**):
+ * - Colours: its dark theme's tokens, below as --tl-*: offWhite #f1f1f1 for text, blackMambe #0e0f11 and blackOut
+ *   #1e1e1e for surfaces, ink #131313, gray98 #98989a, the TrendLIX orange (star) #fe7701, and white at 8, 14, 30, 50
+ *   and 64%; a black page.
+ * - Type: Bebas Neue for headings, the navigation and buttons; Roc Grotesk for the copy, labels and pills; Urbanist in
+ *   form fields and form titles; Cairo for Arabic. Roc Grotesk is a paid font (its licence for this site is unknown):
+ *   Inter Tight stands in for it, behind --careers-copy-font, so the real font can replace it in this one place.
+ * - The 90% container, the home hero (a photo under a dark overlay, the headline's faded and bright lines, Scroll to
+ *   explore), the page hero, cards (24px corners, a soft red glow), tab pills (30px corners, a white 8% line), buttons
+ *   (Bebas on a 4px corner; full round light ones; small link buttons), the contact form's fields (a line under them,
+ *   no box), the light Get in touch band and the footer.
+ *
+ * In the components layer, so a page's utilities can still adjust them; the system's own .input, .label, .hint and
+ * .btn-primary, and the form's error box, take the design here by the colour variables they are made of and by the
+ * rules below (more specific than theirs). The forms' fields and rules are unchanged.
+ */
+
+/* the same order as globals.css (Tailwind's), in case this file is read first */
+@layer theme, base, components, utilities;
+
+html:has(.careers-site),
+html:has(.careers-site) body {
+  background: #000;
+  scrollbar-color: #fff #000;
+  scrollbar-width: thin;
+}
+
+html:has(.careers-site) {
+  scroll-behavior: smooth;
+}
+
+.careers-site [lang="ar"] {
+  font-family: var(--careers-arabic-font);
+}
+
+@layer components {
+  .careers-site {
+    --tl-offWhite: #f1f1f1;
+    --tl-blackMambe: #0e0f11;
+    --tl-blackOut: #1e1e1e;
+    --tl-ink: #131313;
+    --tl-gray98: #98989a;
+    --tl-star: #fe7701;
+    --tl-white8: #ffffff14;
+    --tl-white14: #ffffff24;
+    --tl-white30: #ffffff4d;
+    --tl-white50: #ffffff80;
+    --tl-white64: #ffffffa3;
+    --tl-black64: #000000a3;
+    --tl-field-line: #d4d4d8;
+
+    /* the system's colour variables, on this design */
+    --color-ink: var(--tl-offWhite);
+    --color-muted: var(--tl-white64);
+    --color-line: var(--tl-white14);
+    --color-line-soft: var(--tl-white8);
+    --color-canvas: #000000;
+    --color-card: var(--tl-blackOut);
+    --color-accent: var(--tl-star);
+    --color-accent-hover: #ff8f2e;
+    --color-accent-soft: rgb(254 119 1 / 0.14);
+    --color-danger: #ffa3a3;
+    --color-danger-soft: rgb(255 92 92 / 0.12);
+    --color-ok: #8fe3c8;
+    --color-ok-soft: rgb(80 200 160 / 0.12);
+
+    --careers-display-font: var(--font-careers-display), "Bebas Neue", Impact, "Arial Narrow", sans-serif;
+    /* Roc Grotesk on trendlix.com; Inter Tight here until its licence allows it (put the real font's variable first) */
+    --careers-copy-font: var(--font-careers-copy), "Inter Tight", Arial, sans-serif;
+    --careers-field-font: var(--font-careers-field), Urbanist, Arial, sans-serif;
+    --careers-arabic-font: var(--font-careers-arabic), Cairo, Tahoma, sans-serif;
+
+    min-height: 100vh;
+    background: #000;
+    color: #fff;
+    font-family: var(--careers-copy-font);
+  }
+
+  .careers-site ::selection {
+    color: #000;
+    background: #fff;
+  }
+
+  .careers-site :focus-visible {
+    outline: 2px solid var(--tl-star);
+    outline-offset: 3px;
+  }
+
+  /* the new site's .new-container: 90% of the width */
+  .careers-container {
+    width: 90%;
+    margin-inline: auto;
+  }
+
+  .careers-display {
+    font-family: var(--careers-display-font);
+    font-weight: 400;
+    text-transform: uppercase;
+  }
+
+  /* ---------- the home hero ---------- */
+
+  /*
+   * Full height, a photo under a 64% black overlay. The photo is --careers-hero-image (url(...)), set from HERO.image
+   * in site.ts; without one, a dark gradient. It fades into the black page at its foot.
+   */
+  .careers-hero {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background-color: #000;
+    background-image:
+      var(--careers-hero-image, none),
+      radial-gradient(90% 70% at 80% 15%, #2c2d33 0%, transparent 60%),
+      radial-gradient(60% 50% at 0% 100%, rgb(191 49 69 / 0.22) 0%, transparent 70%),
+      linear-gradient(180deg, #17181c 0%, var(--tl-blackMambe) 55%, #000 100%);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+  }
+
+  .careers-hero::before,
+  .careers-hero::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  .careers-hero::before {
+    inset: 0;
+    background: var(--tl-black64);
+  }
+
+  .careers-hero::after {
+    inset: auto 0 0;
+    height: 25%;
+    background: linear-gradient(180deg, transparent, #000);
+  }
+
+  .careers-hero-slogan {
+    max-width: 520px;
+    font-size: 18.9px;
+    line-height: 28px;
+    letter-spacing: -0.4px;
+    color: var(--tl-white64);
+  }
+
+  /* the headline (NewCommonHead "hero"): each line its own, the faded lines first, then the bright ones */
+  .careers-hero-headline {
+    font-family: var(--careers-display-font);
+    font-weight: 400;
+    text-transform: uppercase;
+    font-size: clamp(44px, 9vw, 128px);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+    color: #fff;
+  }
+
+  .careers-hero-headline > span {
+    display: block;
+  }
+
+  .careers-hero-headline .careers-faded {
+    color: var(--tl-white64);
+  }
+
+  /* "Scroll to explore": Roc Grotesk bold, upper case, 14.6px, a chevron bouncing */
+  .careers-scroll {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    font-weight: 700;
+    font-size: 14.6px;
+    line-height: 22.4px;
+    letter-spacing: -0.32px;
+    text-transform: uppercase;
+    color: #fff;
+  }
+
+  .careers-scroll svg {
+    animation: careers-bounce 1s infinite;
+  }
+
+  /* ---------- page heads ---------- */
+
+  /* the breadcrumb (NewCommonPageHero): a dot, Roc Grotesk 18px, upper case */
+  .careers-crumb {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 18px;
+    line-height: 28px;
+    letter-spacing: -0.36px;
+    text-transform: uppercase;
+    color: var(--tl-offWhite);
+  }
+
+  .careers-crumb::before {
+    content: "";
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: var(--tl-star);
+  }
+
+  /* a page's title (NewCommonPageHero) */
+  .careers-page-title {
+    font-family: var(--careers-display-font);
+    font-weight: 400;
+    text-transform: uppercase;
+    font-size: clamp(56px, 10vw, 128px);
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+    color: var(--tl-offWhite);
+    overflow-wrap: break-word;
+  }
+
+  .careers-page-lead {
+    max-width: 42rem;
+    font-size: 18px;
+    line-height: 1.5;
+    color: #ffffffe0;
+  }
+
+  /* the facts of a role (NewCommonMetaList): a spaced label, a Bebas value */
+  .careers-meta-label {
+    font-weight: 500;
+    font-size: 13px;
+    line-height: 1.5;
+    letter-spacing: 0.27em;
+    text-transform: uppercase;
+    /* white 30% on trendlix.com; 50% here, so the small letters can be read (4.5:1) */
+    color: var(--tl-white50);
+  }
+
+  .careers-meta-value {
+    margin-top: 0.5rem;
+    font-family: var(--careers-display-font);
+    font-weight: 400;
+    font-size: clamp(28px, 4vw, 40px);
+    line-height: 1.0865;
+    color: #fff;
+  }
+
+  /* a section's heading in the content (the new site's article h2: Bebas 40px) */
+  .careers-section-title {
+    font-family: var(--careers-display-font);
+    font-weight: 400;
+    text-transform: uppercase;
+    font-size: clamp(30px, 4vw, 40px);
+    line-height: 1.2;
+    color: #fff;
+  }
+
+  /* the content's text (the new site's article p and li: Roc Grotesk 18px, gray98) */
+  .careers-site .careers-rich .rich-text {
+    font-size: 18px;
+    line-height: 1.5;
+    letter-spacing: -0.01em;
+    color: var(--tl-gray98);
+  }
+
+  .careers-site .careers-rich .rich-text :where(ul, ol) {
+    padding-inline-start: 20px;
+  }
+
+  .careers-site .careers-rich .rich-text strong {
+    color: var(--tl-offWhite);
+  }
+
+  .careers-site .careers-rich .rich-text a {
+    color: #fff;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* ---------- buttons ---------- */
+
+  /* outlined, Bebas on a 4px corner (the new site's Contact Us): a white line on dark, filled on hover */
+  .careers-btn-outline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 3.25rem;
+    padding: 0.75rem 1.5rem;
+    border: 1px solid #fff;
+    border-radius: 4px;
+    font-family: var(--careers-display-font);
+    font-size: 18.9px;
+    font-weight: 400;
+    line-height: 28px;
+    letter-spacing: -0.4px;
+    text-transform: uppercase;
+    color: #fff;
+    background: transparent;
+    transition:
+      background-color 300ms ease,
+      color 300ms ease;
+  }
+
+  .careers-btn-outline:hover {
+    background: #fff;
+    color: #000;
+  }
+
+  .careers-btn-outline svg,
+  .careers-btn-round svg,
+  .careers-link svg {
+    transition: transform 300ms ease;
+  }
+
+  .careers-btn-outline:hover .careers-arrow-out,
+  .careers-link:hover .careers-arrow-out,
+  .careers-card:hover .careers-arrow-out {
+    transform: translate(2px, -2px);
+  }
+
+  .careers-btn-outline:hover .careers-arrow-down {
+    transform: translateY(3px);
+  }
+
+  /* full round and light (the new site's card button, "Book an Appointment"): Roc Grotesk on white */
+  .careers-btn-round {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 10px 2rem;
+    border-radius: 9999px;
+    background: #fff;
+    color: var(--tl-ink);
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 26px;
+    letter-spacing: -0.5px;
+    transition:
+      transform 300ms ease,
+      box-shadow 300ms ease;
+  }
+
+  /* a link button (the new site's): Roc Grotesk 13px, upper case, a line drawn in on hover */
+  .careers-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    font-size: 13px;
+    line-height: 13px;
+    letter-spacing: -0.26px;
+    text-transform: uppercase;
+    color: #fff;
+  }
+
+  .careers-link span {
+    position: relative;
+  }
+
+  .careers-link span::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -3px;
+    width: 0;
+    height: 1px;
+    background: currentColor;
+    transition: width 300ms ease;
+  }
+
+  .careers-link:hover span::after {
+    width: 100%;
+  }
+
+  .careers-link:hover .careers-arrow-back {
+    transform: translateX(-4px);
+  }
+
+  /* ---------- the department pills (NewCommonTabs) ---------- */
+
+  .careers-pill {
+    display: inline-block;
+    padding: 6px 40px 6px 25px;
+    border: 1px solid var(--tl-white8);
+    border-radius: 30px;
+    font-size: 15px;
+    line-height: 28px;
+    text-align: center;
+    color: #fff;
+    background: transparent;
+    cursor: pointer;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease,
+      border-color 150ms ease;
+  }
+
+  .careers-pill:hover {
+    border-color: var(--tl-white30);
+  }
+
+  .careers-pill[aria-pressed="true"] {
+    padding: 6px 44px 6px 26px;
+    border-color: #fff;
+    background: #fff;
+    color: var(--tl-blackOut);
+  }
+
+  .careers-pill sup {
+    margin-inline-start: 2px;
+    font-size: 10px;
+  }
+
+  /* ---------- cards (NewCommonCard, dark): 24px corners, a soft red glow from the corner ---------- */
+
+  .careers-card {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    height: 100%;
+    min-height: 300px;
+    padding: 1.5rem;
+    border-radius: 24px;
+    background: var(--tl-blackMambe);
+  }
+
+  .careers-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(70% 70% at 100% 100%, rgb(191 49 69 / 0.35), transparent 70%);
+  }
+
+  @media (min-width: 1024px) {
+    .careers-card {
+      padding: 2.5rem;
+    }
+  }
+
+  .careers-card-title {
+    font-family: var(--careers-display-font);
+    font-weight: 400;
+    text-transform: uppercase;
+    font-size: clamp(28px, 6vw, 48px);
+    line-height: 1.05;
+    letter-spacing: 2px;
+    color: #fff;
+    overflow-wrap: break-word;
+  }
+
+  a.careers-card:hover .careers-btn-round,
+  a.careers-card:focus-visible .careers-btn-round {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  }
+
+  /* ---------- boxes and the forms (the new site's contact form) ---------- */
+
+  .careers-box {
+    border-radius: 24px;
+    padding: 1.5rem;
+    background: var(--tl-blackOut);
+  }
+
+  @media (min-width: 768px) {
+    .careers-box {
+      padding: 2.5rem;
+    }
+  }
+
+  .careers-form-title {
+    font-family: var(--careers-field-font);
+    font-weight: 600;
+    font-size: 1.5rem;
+    line-height: 2rem;
+    color: var(--tl-offWhite);
+  }
+
+  @media (min-width: 768px) {
+    .careers-form-title {
+      font-size: 1.875rem;
+      line-height: 2.25rem;
+    }
+  }
+
+  .careers-site .label {
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.25rem;
+    color: var(--tl-offWhite);
+  }
+
+  /* a field: no box, a line under it, orange while it is in use */
+  .careers-site .input {
+    min-height: 0;
+    padding: 0.25rem 0 0.75rem;
+    border: 0;
+    border-bottom: 1px solid var(--tl-field-line);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--tl-offWhite);
+    font-family: var(--careers-field-font);
+    font-size: 1rem;
+    line-height: 1.5rem;
+    outline: none;
+  }
+
+  .careers-site .input:focus,
+  .careers-site .input:focus-visible {
+    border-bottom-color: var(--tl-star);
+    box-shadow: 0 1px 0 0 var(--tl-star);
+    outline: none;
+  }
+
+  .careers-site .input::placeholder {
+    color: var(--tl-white64);
+  }
+
+  /* a list: the line's look, with a chevron in place of the browser's arrow */
+  .careers-site select.input {
+    appearance: none;
+    padding-inline-end: 2rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffffa3' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0 top 0.25rem;
+    background-repeat: no-repeat;
+    background-size: 1.25rem;
+    cursor: pointer;
+  }
+
+  .careers-site select.input option {
+    background: var(--tl-blackOut);
+    color: var(--tl-offWhite);
+  }
+
+  .careers-site textarea.input {
+    resize: vertical;
+  }
+
+  /* the CV: a drop area, with a round light button */
+  .careers-site input[type="file"].input {
+    padding: 1rem;
+    border: 1px dashed var(--tl-white30);
+    border-radius: 1rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .careers-site input[type="file"].input:hover,
+  .careers-site input[type="file"].input:focus-visible {
+    border-color: var(--tl-star);
+    box-shadow: none;
+  }
+
+  .careers-site input[type="file"].input::file-selector-button {
+    margin-inline-end: 1rem;
+    padding: 0.625rem 1.25rem;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--tl-offWhite);
+    color: var(--tl-blackMambe);
+    font-family: var(--careers-display-font);
+    font-size: 0.875rem;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .careers-site input[type="checkbox"] {
+    accent-color: var(--tl-star);
+  }
+
+  .careers-site .hint {
+    margin-top: 0.5rem;
+    font-size: 13px;
+    color: var(--tl-white64);
+  }
+
+  /* the send button (the contact form's): Bebas, full round, light */
+  .careers-site .btn-primary {
+    min-height: 0;
+    padding: 1rem 2rem;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--tl-offWhite);
+    color: var(--tl-blackMambe);
+    font-family: var(--careers-display-font);
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.25rem;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+  }
+
+  .careers-site .btn-primary:hover:not(:disabled) {
+    background: #fff;
+  }
+
+  .careers-site [role="alert"] {
+    border-radius: 12px;
+  }
+
+  /* ---------- the light band (NewCommonGetinTouch) ---------- */
+
+  .careers-light {
+    --color-ink: #000;
+    --color-muted: var(--tl-black64);
+    background: rgb(255 255 255 / 0.95);
+    color: #000;
+  }
+
+  .careers-light .careers-btn-outline {
+    border-color: #000;
+    color: #000;
+  }
+
+  .careers-light .careers-btn-outline:hover {
+    background: #000;
+    color: #fff;
+  }
+
+  .careers-light :focus-visible {
+    outline-color: #000;
+  }
+
+  /* ---------- the menu (the new site's overlay) ---------- */
+
+  .careers-menu {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: var(--tl-blackMambe);
+    color: var(--tl-offWhite);
+  }
+
+  .careers-menu::backdrop {
+    background: var(--tl-blackMambe);
+  }
+
+  .careers-menu-link {
+    position: relative;
+    display: inline-block;
+    font-family: var(--careers-display-font);
+    font-size: 2.25rem;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    text-transform: uppercase;
+    color: var(--tl-offWhite);
+  }
+
+  @media (min-width: 640px) {
+    .careers-menu-link {
+      font-size: 3rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .careers-menu-link {
+      font-size: 6vw;
+    }
+  }
+
+  .careers-menu-link[aria-current="page"] {
+    color: var(--tl-star);
+  }
+
+  /* a line wiped in under a link on hover (the new site's menu and footer links) */
+  .careers-wipe::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 0;
+    border-bottom: 2px solid currentColor;
+    transition: width 1000ms ease-in-out;
+  }
+
+  .careers-wipe:hover::after,
+  .careers-wipe:focus-visible::after {
+    width: 101%;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .careers-site *,
+    .careers-site *::before,
+    .careers-site *::after {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:has(.careers-site) {
+    scroll-behavior: auto;
+  }
+}
+
+@keyframes careers-bounce {
+  0%,
+  100% {
+    transform: translateY(-25%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+
+  50% {
+    transform: none;
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}

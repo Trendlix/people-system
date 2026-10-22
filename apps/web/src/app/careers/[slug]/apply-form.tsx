@@ -9,7 +9,8 @@ import type { ApplyState } from './actions';
 
 // The application form of a job on the careers page (owner, 22 October 2026: "where will we include the ATS?"): the
 // applicant's details, the job's screening questions, the CV (a PDF or a Word file, at most 5 MB) and the consent;
-// once sent, the reference to keep. A field hidden from people catches robots. Made for a phone first.
+// once sent, the reference to keep. A field hidden from people catches robots. Made for a phone first; in trendlix.com's
+// contact form's look (careers.css, 22 October 2026: "i need it to match the UI"), its fields and rules unchanged.
 
 type Action = (prev: ApplyState, fd: FormData) => Promise<ApplyState>;
 
@@ -26,9 +27,9 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
 
   if (state.reference !== undefined) {
     return (
-      <section className="card space-y-3 p-6 sm:p-8" aria-live="polite">
-        <h2 className="text-xl font-semibold">Thank You for Applying</h2>
-        <p className="text-sm leading-relaxed">
+      <section className="careers-box space-y-4" aria-live="polite">
+        <h2 className="careers-display text-[clamp(36px,5vw,56px)] leading-[0.95] tracking-[-0.035em]">Thank You for Applying</h2>
+        <p className="text-base leading-7 text-white/85">
           We received your application for {title}
           {state.reference ? (
             <>
@@ -48,12 +49,12 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
   }
 
   return (
-    <form action={formAction} onSubmit={onSubmit} className="card space-y-5 p-6 sm:p-8" aria-labelledby={fid('heading')}>
-      <h2 id={fid('heading')} className="text-xl font-semibold">
+    <form action={formAction} onSubmit={onSubmit} className="careers-box space-y-8" aria-labelledby={fid('heading')}>
+      <h2 id={fid('heading')} className="careers-form-title">
         Apply for This Job
       </h2>
       <FormErrors errors={state.errors} />
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid gap-x-6 gap-y-8 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label htmlFor={fid('fullName')} className="label">
             Full name
@@ -105,7 +106,7 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
       </div>
 
       {questions.length > 0 && (
-        <fieldset className="space-y-4 border-t border-line pt-5">
+        <fieldset className="space-y-8 border-t border-line pt-8">
           <legend className="sr-only">Questions</legend>
           {questions.map((q) => {
             const id = fid(answerField(q.key));
@@ -150,7 +151,7 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
         </fieldset>
       )}
 
-      <div className="border-t border-line pt-5">
+      <div className="border-t border-line pt-8">
         <label htmlFor={fid('cv')} className="label">
           Your CV
         </label>
@@ -174,7 +175,7 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
         <input id={fid(HONEYPOT)} name={HONEYPOT} tabIndex={-1} autoComplete="off" />
       </div>
 
-      <label className="flex items-start gap-3 text-sm leading-relaxed">
+      <label className="flex items-start gap-3 text-sm leading-relaxed text-white/85">
         <input type="checkbox" name="consent" required defaultChecked={v('consent') === 'on'} className="mt-1 size-4 shrink-0" />
         <span>{APPLY_CONSENT_TEXT}</span>
       </label>

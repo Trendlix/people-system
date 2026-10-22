@@ -10,7 +10,8 @@ import type { GeneralState } from './actions';
 // "Send us your CV" on the careers page (owner, 22 October 2026: "what came out of the posted jobs and what cam on
 // randomly", "Both"): the person's details, the area they would like to work in (a department, or Other in words), the
 // CV (a PDF or a Word file, at most 5 MB) and the consent; once sent, the reference to keep. A field hidden from people
-// catches robots. Made for a phone first.
+// catches robots. Made for a phone first; in trendlix.com's contact form's look (careers.css, 22 October 2026: "i need it
+// to match the UI"), its fields and rules unchanged.
 
 type Action = (prev: GeneralState, fd: FormData) => Promise<GeneralState>;
 
@@ -24,9 +25,9 @@ export function GeneralForm({ action, areas }: { action: Action; areas: PublicGe
 
   if (state.reference !== undefined) {
     return (
-      <section className="card space-y-3 p-6 sm:p-8" aria-live="polite">
-        <h2 className="text-xl font-semibold">Thank You for Sending Your CV</h2>
-        <p className="text-sm leading-relaxed">
+      <section className="careers-box space-y-4" aria-live="polite">
+        <h2 className="careers-display text-[clamp(36px,5vw,56px)] leading-[0.95] tracking-[-0.035em]">Thank You for Sending Your CV</h2>
+        <p className="text-base leading-7 text-white/85">
           We received it
           {state.reference ? (
             <>
@@ -46,15 +47,13 @@ export function GeneralForm({ action, areas }: { action: Action; areas: PublicGe
   }
 
   return (
-    <form action={formAction} onSubmit={onSubmit} className="card space-y-5 p-6 sm:p-8" aria-labelledby={fid('heading')}>
-      <div className="space-y-1">
-        <h1 id={fid('heading')} className="text-2xl font-semibold">
-          Send Us Your CV
-        </h1>
-        <p className="text-sm text-muted">No job open for you right now? Tell us what you do, and we will contact you when one fits.</p>
-      </div>
+    <form action={formAction} onSubmit={onSubmit} className="careers-box space-y-8" aria-labelledby={fid('heading')}>
+      {/* the page's title and its line are above the form (general/page.tsx) */}
+      <h2 id={fid('heading')} className="careers-form-title">
+        Your Details
+      </h2>
       <FormErrors errors={state.errors} />
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid gap-x-6 gap-y-8 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label htmlFor={fid('fullName')} className="label">
             Full name
@@ -127,7 +126,7 @@ export function GeneralForm({ action, areas }: { action: Action; areas: PublicGe
         </div>
       </div>
 
-      <div className="border-t border-line pt-5">
+      <div className="border-t border-line pt-8">
         <label htmlFor={fid('cv')} className="label">
           Your CV
         </label>
@@ -151,7 +150,7 @@ export function GeneralForm({ action, areas }: { action: Action; areas: PublicGe
         <input id={fid(HONEYPOT)} name={HONEYPOT} tabIndex={-1} autoComplete="off" />
       </div>
 
-      <label className="flex items-start gap-3 text-sm leading-relaxed">
+      <label className="flex items-start gap-3 text-sm leading-relaxed text-white/85">
         <input type="checkbox" name="consent" required defaultChecked={v('consent') === 'on'} className="mt-1 size-4 shrink-0" />
         <span>{GENERAL_CV_CONSENT_TEXT}</span>
       </label>

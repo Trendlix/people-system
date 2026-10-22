@@ -78,6 +78,12 @@ The careers page is at `https://people.trendlix.com/careers` (owner, 22 October 
 
 Each vacancy's page lists its apply links, one per channel (the careers page, LinkedIn, Facebook groups, job boards, referral, other): the same address with `?src=`, kept with each application.
 
+**Its look and trendlix.com** (owner, 22 October 2026: "i will put it in the main website, i need it to match the UI"; then the new site's design, "just take the design framework and guidelines"): the careers pages wear trendlix.com's dark theme and its fonts (Bebas Neue for headings, Urbanist in the forms, Cairo for Arabic; Inter Tight in place of the paid Roc Grotesk for the copy, behind `--careers-copy-font` in `apps/web/src/app/careers/careers.css`), its home hero, header and menu, cards, form fields, Get in touch band and footer, all linking back to trendlix.com. The hero's words, and a team photo under its dark overlay, are set in `HERO` in `apps/web/src/app/careers/site.ts` (the photo as a file in `apps/web/public`, e.g. `image: '/careers-team.jpg'`; without one, a dark gradient). To put them on the main site, link its menu's **Careers** to `https://people.trendlix.com/careers`, or show them in a frame; only `https://www.trendlix.com` and `https://trendlix.com` may frame them (`Content-Security-Policy: frame-ancestors`, set in `apps/web/next.config.ts` for `/careers` and the careers address):
+
+```html
+<iframe src="https://people.trendlix.com/careers" title="Careers at TrendLIX" style="width:100%;min-height:100vh;border:0" loading="lazy"></iframe>
+```
+
 ## Requirements
 
 - Node.js 22 or newer

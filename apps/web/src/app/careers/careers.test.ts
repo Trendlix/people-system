@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PublicQuestion } from '@trendlix/shared';
 import { answerField, apiForm, applyFormProblems, factsLine, generalApiForm, generalFormProblems, generalTypedValues, jobHref, OTHER_AREA, typedValues } from './careers';
+import { CONTACT, CONTACT_HREF, departmentsOf, FOOTER_LINKS, HERO, jobsIn, MAIN_SITE, MENU_LINKS, ROLES_ID, SOCIAL_LINKS } from './site';
 
 // The careers page's application form (owner, 22 October 2026: "where will we include the ATS?").
 
@@ -91,5 +92,41 @@ describe('the general CV form', () => {
     const typed = generalTypedValues(form({ ...person, area: OTHER_AREA, areaOther: 'Photography' }));
     expect(typed).toMatchObject({ fullName: 'Mona Adel', area: OTHER_AREA, areaOther: 'Photography', consent: 'on' });
     expect(typed).not.toHaveProperty('cv');
+  });
+});
+
+// Dressed as trendlix.com (owner, 22 October 2026: "i will put it in the main website, i need it to match the UI").
+describe('the careers pages as trendlix.com', () => {
+  const job = (department: string | null) => ({ department });
+
+  it('offers a pill for each department with an open role, once, alphabetically', () => {
+    expect(departmentsOf([job('Production'), job('Marketing'), job(' Production '), job(null), job('  ')])).toEqual(['Marketing', 'Production']);
+    expect(departmentsOf([])).toEqual([]);
+  });
+
+  it('shows a department’s roles, or all of them', () => {
+    const jobs = [job('Production'), job('Marketing'), job(' Production'), job(null)];
+    expect(jobsIn(jobs, 'Production')).toEqual([job('Production'), job(' Production')]);
+    expect(jobsIn(jobs, null)).toEqual(jobs);
+    expect(jobsIn(jobs, 'Finance')).toEqual([]);
+  });
+
+  it('leads back to trendlix.com, its contact page and its social pages', () => {
+    for (const l of [...MENU_LINKS, ...FOOTER_LINKS, ...SOCIAL_LINKS]) expect(l.href).toMatch(/^https:\/\//);
+    expect(MENU_LINKS.map((l) => l.label)).toEqual(['Home', 'Contact us', 'Our services', 'Portfolio', 'Blogs', 'News']);
+    expect(CONTACT_HREF).toBe(`${MAIN_SITE}/en/contact`);
+    expect(CONTACT.phoneHref).toBe('tel:+201050079822');
+    expect(SOCIAL_LINKS.map((l) => l.label)).toEqual(['Sortlist', 'Behance', 'Facebook', 'Instagram', 'LinkedIn']);
+  });
+
+  it('gives the hero its faded lines first and a bright line last, and an anchor to the roles', () => {
+    expect(HERO.slogan.trim()).not.toBe('');
+    expect(HERO.lines.length).toBeGreaterThan(0);
+    expect(HERO.lines.every((l) => l.text.trim() !== '')).toBe(true);
+    const firstBright = HERO.lines.findIndex((l) => !l.faded);
+    expect(firstBright).toBeGreaterThanOrEqual(0);
+    expect(HERO.lines.slice(firstBright).every((l) => !l.faded)).toBe(true);
+    expect(new Set(HERO.lines.map((l) => l.text)).size).toBe(HERO.lines.length);
+    expect(ROLES_ID).toMatch(/^[a-z][a-z-]*$/);
   });
 });
