@@ -25,6 +25,8 @@ describe('the headings that open and close', () => {
   it('are the items with pages under them, each with its own key and list id; Home and Organization stay links', () => {
     expect(NAV.filter(isGroup).map((item) => [item.label, groupKey(item)])).toEqual([
       ['People', 'people'],
+      // recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"), with the job offers
+      ['Recruitment', 'recruitment'],
       ['Payroll', 'payroll'],
       ['Requests', 'requests'],
       ['Attendance', 'attendance'],
@@ -51,7 +53,8 @@ describe('the headings that open and close', () => {
     expect(groupHolding(items, '/employees')).toBe('people');
     expect(groupHolding(items, '/employees/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')).toBe('people');
     expect(groupHolding(items, '/contracts/calculator')).toBe('people');
-    expect(groupHolding(items, '/offers/new')).toBe('people');
+    expect(groupHolding(items, '/offers/new')).toBe('recruitment');
+    expect(groupHolding(items, '/recruitment/applicants/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')).toBe('recruitment');
     expect(groupHolding(items, '/payroll')).toBe('payroll');
     expect(groupHolding(items, '/payroll/unsettled')).toBe('payroll');
     // an import's review is on its payroll run, under Payroll

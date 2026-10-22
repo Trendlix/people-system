@@ -51,9 +51,10 @@ describe('the sidebar', () => {
     expect(current('/templatesx')).toBeNull();
   });
 
-  it('shows Payroll after People to HR, Finance and the CEO only, and no longer as coming next', () => {
+  it('shows Payroll after People and Recruitment to HR, Finance and the CEO only, and no longer as coming next', () => {
     const labels = NAV.map((n) => n.label);
-    expect(labels.indexOf('Payroll')).toBe(labels.indexOf('People') + 1);
+    expect(labels.indexOf('Recruitment')).toBe(labels.indexOf('People') + 1);
+    expect(labels.indexOf('Payroll')).toBe(labels.indexOf('Recruitment') + 1);
     const payroll = NAV.find((n) => n.href === '/payroll')!;
     expect(payroll.section).toBe('/payroll');
     for (const role of ['hr', 'finance', 'ceo'] as const) expect(hasRole(as(role), ...(payroll.roles ?? []))).toBe(true);
@@ -331,14 +332,15 @@ describe('the sidebar of an employee or a manager', () => {
 describe('the sidebar of HR, Finance, the CEO and Admins', () => {
   const labels = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).map((n) => n.label);
 
-  it('is the sidebar, each item for the roles it names: Employees, Contracts and Offers under People', () => {
-    // the KPIs after Attendance (owner, 21 October 2026), My KPIs at least for everyone with a profile
-    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals']);
+  it('is the sidebar, each item for the roles it names: Employees and Contracts under People, Offers under Recruitment', () => {
+    // the KPIs after Attendance (owner, 21 October 2026), My KPIs at least for everyone with a profile; Recruitment after
+    // People (22 October 2026: "where will we include the ATS?")
+    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals']);
     expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'KPIs']);
-    expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'Audit Log']);
+    expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'Audit Log']);
     // Attendance for Check-in Setup alone (20 October 2026: "Own page, several locations")
     expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'Users']);
-    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'Templates', 'Users', 'Audit Log']);
+    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'Templates', 'Users', 'Audit Log']);
   });
 
   it('shows the Audit Log to the Super Admin, beside Users, and the CEO only (owner, 19 October 2026: "an Audit Log page showing who changed what and when")', () => {
@@ -364,8 +366,8 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     it('has each page for the roles that open it, and links to Employees', () => {
       // Offboarding and Former Employees (owner, 22 October 2026: the full module): the cases for those who handle them
       // and those who clear items on most of them; Former Employees for those who handle them
-      expect(pages('hr')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details', 'Offboarding', 'Former Employees']);
-      expect(pages('ceo')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details', 'Offboarding', 'Former Employees']);
+      expect(pages('hr')).toEqual(['Employees', 'Contracts', 'Missing Details', 'Offboarding', 'Former Employees']);
+      expect(pages('ceo')).toEqual(['Employees', 'Contracts', 'Missing Details', 'Offboarding', 'Former Employees']);
       expect(pages('finance')).toEqual(['Employees', 'Contracts', 'Offboarding']);
       expect(pages('admin')).toEqual(['Employees', 'Offboarding']);
       expect(pages('super_admin')).toEqual(['Employees', 'Offboarding', 'Former Employees']);
@@ -381,10 +383,31 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       expect(activeSubItem(people, '/offboarding/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')?.label).toBe('Offboarding');
       expect(activeSubItem(people, '/offboarding/turnover')?.label).toBe('Offboarding');
       expect(activeSubItem(people, '/contracts/calculator')?.label).toBe('Contracts');
-      expect(activeSubItem(people, '/offers/new')?.label).toBe('Offers');
       // not in the menu (owner, 18 October 2026): under Employees, where they are opened from
       expect(activeSubItem(people, '/employees/documents')?.label).toBe('Employees');
       expect(activeSubItem(people, '/employees/card-corrections')?.label).toBe('Employees');
+    });
+  });
+
+  // recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?")
+  describe('Recruitment', () => {
+    const recruitmentFor = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).find((n) => n.label === 'Recruitment') ?? null;
+    const pages = (...roles: Role[]) => recruitmentFor(...roles)?.items?.map((i) => i.label) ?? null;
+
+    it('has Vacancies, Applicants and Offers for HR and the CEO, the first two for a Super Admin, nothing for anyone else', () => {
+      expect(pages('hr')).toEqual(['Vacancies', 'Applicants', 'Offers']);
+      expect(pages('ceo')).toEqual(['Vacancies', 'Applicants', 'Offers']);
+      expect(pages('super_admin')).toEqual(['Vacancies', 'Applicants']);
+      for (const role of ['finance', 'admin', 'manager', 'employee'] as const) expect(recruitmentFor(role)).toBeNull();
+      expect(recruitmentFor('hr')?.href).toBe('/recruitment/vacancies');
+    });
+
+    it('highlights the page the user is on', () => {
+      const recruitment = NAV.find((n) => n.label === 'Recruitment')!;
+      expect(activeSubItem(recruitment, '/recruitment/vacancies/new')?.label).toBe('Vacancies');
+      expect(activeSubItem(recruitment, '/recruitment/vacancies/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')?.label).toBe('Vacancies');
+      expect(activeSubItem(recruitment, '/recruitment/applicants/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')?.label).toBe('Applicants');
+      expect(activeSubItem(recruitment, '/offers/new')?.label).toBe('Offers');
     });
   });
 

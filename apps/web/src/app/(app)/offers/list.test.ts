@@ -36,8 +36,9 @@ describe('who sees and changes offers', () => {
   });
 
   it('puts Offers in the sidebar for the same people', () => {
-    // under People (owner, 17 October 2026: "employees, contracts and offers need to be grouped")
-    const item = NAV.find((n) => n.label === 'People')?.items?.find((n) => n.href === '/offers');
+    // under People (owner, 17 October 2026: "employees, contracts and offers need to be grouped"), under Recruitment since
+    // 22 October 2026 ("where will we include the ATS?"): the offer stage, after the applicants
+    const item = NAV.find((n) => n.label === 'Recruitment')?.items?.find((n) => n.href === '/offers');
     expect(item?.section).toBe('/offers');
     expect(hasRole(as('hr'), ...(item?.roles ?? []))).toBe(true);
     expect(hasRole(as('ceo'), ...(item?.roles ?? []))).toBe(true);

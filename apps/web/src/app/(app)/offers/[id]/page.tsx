@@ -337,6 +337,13 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
         <p className="text-sm text-muted">
           <span className="tabular-nums">{o.number}</span> · {o.jobTitle?.titleEn ?? LABELS.employmentType[o.employmentType]} · joining{' '}
           {formatDate(o.joinDate)}
+          {/* made from an applicant (recruitment, 22 October 2026: Make offer) */}
+          {o.application && (
+            <>
+              {' '}
+              · from applicant <Link href={`/recruitment/applicants/${o.application.id}`}>{o.application.number}</Link>
+            </>
+          )}
         </p>
       </div>
 

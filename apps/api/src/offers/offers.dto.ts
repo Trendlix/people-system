@@ -186,6 +186,10 @@ export class CreateOfferDto extends OfferFieldsDto {
   /** The expected first day. */
   @IsDateOnly('Enter the expected join date.')
   joinDate: string;
+
+  /** The application it is made from (recruitment, 22 October 2026: Make offer): it moves to Offer. */
+  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'The applicant is missing. Open Make offer from the applicant again.' })
+  applicationId?: string | null;
 }
 
 /** A draft takes any field; a sent offer only its last day and the note (checked by the service). */

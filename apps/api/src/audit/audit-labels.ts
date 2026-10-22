@@ -45,6 +45,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   holiday: 'Holiday',
   // home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home")
   home_location: 'Home location',
+  // recruitment (owner, 22 October 2026: "where will we include the ATS?"): an application from the careers page
+  job_application: 'Job application',
   job_offer: 'Job offer',
   job_title: 'Job title',
   // KPIs (owner, 21 October 2026: "lets start with the KPI's First"): the monthly scorecards, the templates per job title,
@@ -89,6 +91,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   shift: 'Shift',
   template_version: 'Template version',
   user: 'User account',
+  // recruitment (22 October 2026): a vacancy, approved by the CEO before the careers page shows it
+  vacancy: 'Vacancy',
   // working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp")
   wfh_request: 'Work from home request',
 };
@@ -109,6 +113,14 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // day: "Company switch + exceptions"), its reason in the change; never the address, never a point
   check_in_refused: 'Check-in or check-out refused',
   close: 'Closed',
+  // recruitment (owner, 22 October 2026): a vacancy put on hold, sent back by the CEO, filled at its headcount; an
+  // applicant moved to a stage, restored, HR's notes on them
+  hold: 'Put on hold',
+  send_back: 'Sent back',
+  fill: 'Filled',
+  stage: 'Moved to a stage',
+  restore: 'Restored',
+  notes: 'Changed the notes',
   complete: 'Completed',
   confirm: 'Confirmed',
   confirm_probation: 'Confirmed after probation',

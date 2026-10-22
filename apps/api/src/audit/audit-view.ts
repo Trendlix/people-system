@@ -227,6 +227,7 @@ export function whoOf(row: Pick<AuditRow, 'userId' | 'onBehalfById' | 'via' | 'a
   if (row.userId) text = personText(user);
   else if (row.action === 'login_failed') text = 'Not signed in';
   else if (row.entityType === 'job_offer' && row.action === 'answer') text = 'The candidate, online';
+  else if (row.entityType === 'job_application' && row.action === 'apply') text = 'The applicant, on the careers page';
   else text = 'System';
   if (row.onBehalfById) text = `Super Admin ${personText(by)} as ${text}`;
   const via = row.via === AUDIT_VIA_CONNECTOR ? AUDIT_VIA_CONNECTOR : null;
@@ -290,6 +291,7 @@ const LEAVE: Role[] = ['hr', 'ceo'];
 const ATTENDANCE: Role[] = ['hr', 'ceo', 'finance']; // the Attendance section
 const DETAILS: Role[] = ['hr', 'admin', 'ceo'];
 const OFFERS: Role[] = ['hr', 'ceo'];
+const RECRUITMENT: Role[] = ['hr', 'ceo', 'super_admin']; // vacancies and applicants (22 October 2026)
 const ORG: Role[] = ['hr', 'finance', 'ceo', 'admin'];
 const USERS: Role[] = ['admin'];
 const TEMPLATES: Role[] = ['super_admin'];
@@ -372,6 +374,11 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return { href: '/requests/details-changes', label: 'Open details changes', roles: DETAILS };
     case 'job_offer':
       return id ? own(`/offers/${id}`, 'Open job offer', OFFERS) : null;
+    // recruitment (owner, 22 October 2026: "where will we include the ATS?")
+    case 'vacancy':
+      return id ? own(`/recruitment/vacancies/${id}`, 'Open vacancy', RECRUITMENT) : null;
+    case 'job_application':
+      return id ? own(`/recruitment/applicants/${id}`, 'Open applicant', RECRUITMENT) : null;
     case 'user':
       return id ? own(`/users/${id}`, 'Open user account', USERS) : null;
     case 'template_version':

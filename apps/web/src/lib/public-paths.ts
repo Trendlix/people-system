@@ -6,6 +6,8 @@ const PUBLIC_PATHS = new Set([
   '/login',
   '/company-logo',
   '/company-thumbnail',
+  // the careers page's list of open jobs (recruitment, 22 October 2026)
+  '/careers',
   // the Claude connector (owner, 21 October 2026: "the connection method"): Claude calls these from its servers, without
   // the session cookie. The MCP endpoint answers 401 itself (which starts Claude's sign-in), the metadata is public by
   // design, and the token, registration and revocation endpoints authenticate the client themselves. The sign-in and
@@ -23,9 +25,30 @@ const PUBLIC_PATHS = new Set([
  * Everything under these is public too: a candidate's job offer, /offer/<token> and its document, opened from the link
  * HR sends, without an account (owner's request, 15 October 2026). The link's secret is the token; /offers (HR's) is not.
  */
-const PUBLIC_PREFIXES = ['/offer/'];
+const PUBLIC_PREFIXES = [
+  '/offer/',
+  // the careers page (owner, 22 October 2026: "where will we include the ATS?"): open jobs, a job's page and its form
+  '/careers/',
+];
 
 /** Whether a page is open to visitors without a session. */
 export function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.has(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
+/** What the careers address shows besides the careers pages: the company's logo and thumbnail on them. */
+const CAREERS_HOST_KEEPS = ['/careers', '/company-logo', '/company-thumbnail'];
+
+/**
+ * The careers page on its own address, when it gets one (owner, 22 October 2026: "i dont know how to decide it for now";
+ * the page lives at people.trendlix.com/careers, made so careers.trendlix.com can point at it later with a CNAME and
+ * the domain added to the same Vercel project): on a host starting "careers.", every address is the careers pages'
+ * (careers.trendlix.com/ is /careers, careers.trendlix.com/<job> is /careers/<job>), so the staff pages and the sign-in
+ * are never reached there. The path to rewrite to; null to leave the request as it is.
+ */
+export function careersRewrite(host: string | null | undefined, pathname: string): string | null {
+  const name = (host ?? '').toLowerCase().split(':')[0];
+  if (!name.startsWith('careers.')) return null;
+  if (CAREERS_HOST_KEEPS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return null;
+  return pathname === '/' ? '/careers' : `/careers${pathname}`;
 }

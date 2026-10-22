@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPublicPath } from './public-paths';
+import { careersRewrite, isPublicPath } from './public-paths';
 
 describe('pages open without signing in', () => {
   it('are the sign-in page and the company logo and thumbnail', () => {
@@ -35,5 +35,24 @@ describe('pages open without signing in', () => {
     expect(isPublicPath('/api/mcp/other')).toBe(false);
     expect(isPublicPath('/assets/connect-claude')).toBe(false);
     expect(isPublicPath('/.well-known/other')).toBe(false);
+  });
+});
+
+// The careers page (owner, 22 October 2026: "where will we include the ATS?").
+describe('the careers page', () => {
+  it('is open without signing in, its jobs and their forms too', () => {
+    expect(isPublicPath('/careers')).toBe(true);
+    expect(isPublicPath('/careers/video-producer-vac-2026-0003')).toBe(true);
+    expect(isPublicPath('/recruitment/vacancies')).toBe(false);
+  });
+
+  it('answers on careers.<domain> alone, once it points here: everything there is a careers page', () => {
+    expect(careersRewrite('careers.trendlix.com', '/')).toBe('/careers');
+    expect(careersRewrite('careers.trendlix.com', '/video-producer-vac-2026-0003')).toBe('/careers/video-producer-vac-2026-0003');
+    expect(careersRewrite('careers.trendlix.com', '/login')).toBe('/careers/login');
+    expect(careersRewrite('careers.trendlix.com:443', '/careers/x')).toBeNull();
+    expect(careersRewrite('careers.trendlix.com', '/company-logo')).toBeNull();
+    expect(careersRewrite('people.trendlix.com', '/')).toBeNull();
+    expect(careersRewrite(null, '/')).toBeNull();
   });
 });

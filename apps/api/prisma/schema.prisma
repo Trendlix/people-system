@@ -54,6 +54,13 @@ model User {
   offersCreated      JobOffer[]                 @relation("OfferCreation") // job offers this user drafted
   offersSent         JobOffer[]                 @relation("OfferSending") // job offers this user sent last
   offersAnswered     JobOffer[]                 @relation("OfferAnswer") // job offers whose answer this user recorded
+  // recruitment (22 October 2026): the vacancies this user drafted, sent for approval, decided (the CEO) or closed, and
+  // the applicants' steps they took
+  vacanciesCreated   Vacancy[]                  @relation("VacancyCreation")
+  vacanciesSubmitted Vacancy[]                  @relation("VacancySubmission")
+  vacanciesDecided   Vacancy[]                  @relation("VacancyDecision")
+  vacanciesClosed    Vacancy[]                  @relation("VacancyClosing")
+  applicationSteps   JobApplicationStep[]
   payrollsCreated    PayrollRun[]               @relation("PayrollCreation") // payroll runs this user started
   payrollsApproved   PayrollRun[]               @relation("PayrollApproval") // payroll runs this user approved as CEO
   payslipsDrawn      Payslip[]                  @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
@@ -391,6 +398,7 @@ model Department {
   jobTitles   JobTitle[]
   employments Employment[]
   offers      JobOffer[]
+  vacancies   Vacancy[] // the vacancies of its job titles (22 October 2026)
   kpiScorecards KpiScorecard[] // the KPI scorecards of people who worked here when they opened (21 October 2026)
   kpiFrameworks KpiFramework[] // its own KPI pillars' versions (22 October 2026)
 
@@ -422,6 +430,7 @@ model Shift {
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz
   employments  Employment[]
   offers       JobOffer[]
+  vacancies    Vacancy[]
 
   @@map("shifts")
 }
@@ -452,6 +461,7 @@ model JobTitle {
   offers         JobOffer[]
   promotions     Contract[]     @relation("RaiseJobTitle") // raises that promote to this job title
   kpiTemplates   KpiTemplate[] // its KPI template's versions (21 October 2026): a draft and the published ones
+  vacancies      Vacancy[] // the vacancies for it (recruitment, 22 October 2026)
 
   @@unique([departmentId, titleEn])
   @@map("job_titles")
@@ -477,6 +487,7 @@ model Grade {
   highestOf    JobTitle[]   @relation("JobTitleMaxGrade") // job titles whose range ends at this grade
   employments  Employment[]
   offers       JobOffer[]
+  vacancies    Vacancy[]
   promotions   Contract[]   @relation("RaiseGrade") // raises that promote to this grade
 
   @@map("grades")
@@ -598,6 +609,8 @@ model Employee {
   documents                  GeneratedDocument[]
   offers                     JobOffer[]             @relation("OfferPerson") // offers made to this person: as a former employee, or the offer they were hired from
   offersManaging             JobOffer[]             @relation("OfferManager") // offers whose position reports to this person
+  vacanciesManaging          Vacancy[]              @relation("VacancyHiringManager") // the vacancies they hire for (22 October 2026)
+  applications               JobApplication[] // the applications they were hired from
   payrollLines               PayrollLine[] // the person's pay, month by month
   payrollAdjustments         PayrollAdjustment[] // one-off additions and deductions on a month's pay
   payrollAdvances            PayrollAdvance[] // advances and loans given, recovered from the pay
@@ -1312,6 +1325,9 @@ model JobOffer {
   withdrawnAt       DateTime?        @map("withdrawn_at") @db.Timestamptz
   withdrawReason    String?          @map("withdraw_reason")
   hiredAt           DateTime?        @map("hired_at") @db.Timestamptz // the profile, employment and draft contract were made from it
+  // the application it was made from (recruitment, 22 October 2026: Make offer); its answer moves the application on
+  applicationId     String?          @map("application_id") @db.Uuid
+  application       JobApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
   createdById       String?          @map("created_by") @db.Uuid
   createdBy         User?            @relation("OfferCreation", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz
@@ -1319,7 +1335,149 @@ model JobOffer {
 
   @@index([status])
   @@index([employeeId])
+  @@index([applicationId])
   @@map("job_offers")
+}
+
+// ---------- recruitment ----------
+// The ATS, Phase 1 (owner, 22 October 2026: "where will we include the ATS?"; the original plan's spec §12; packages/shared
+// recruitment.ts): vacancies HR drafts and the CEO approves before they are published on the careers page
+// (people.trendlix.com/careers), the applications that page takes with their CV, and each applicant's stages up to the
+// job offer. Applicants are never employees until a job offer to them is accepted (OfferHiringService makes the profile).
+
+// A vacancy: VAC-<year>-<4 digits>, on the careers page at /careers/<slug> while open. Its position (the job title and its
+// department, a grade, the hiring manager, headcount, employment type, arrangement, shift, contract length); the internal
+// salary range (HR, the CEO and a Super Admin only: never on the careers page); the public description, cleaned HTML as
+// job descriptions are, filled in from the job title's JD; the screening questions ([VacancyQuestion], at most 10). Its
+// status: draft, pending (the CEO decides), open, on_hold, closed, filled (its hires reached the headcount). A C-level
+// one (a confidential grade, or a job title only for one) is the CEO's and a Super Admin's only. Only a Super Admin
+// deletes one, and only without applicants.
+model Vacancy {
+  id               String           @id @default(uuid()) @db.Uuid
+  number           String           @unique
+  slug             String           @unique
+  status           String           @default("draft") // VACANCY_STATUSES
+  title            String
+  jobTitleId       String           @map("job_title_id") @db.Uuid
+  jobTitle         JobTitle         @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  departmentId     String?          @map("department_id") @db.Uuid // the job title's department or team
+  department       Department?      @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  gradeId          String?          @map("grade_id") @db.Uuid
+  grade            Grade?           @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  hiringManagerId  String?          @map("hiring_manager_id") @db.Uuid
+  hiringManager    Employee?        @relation("VacancyHiringManager", fields: [hiringManagerId], references: [id], onDelete: SetNull)
+  headcount        Int              @default(1)
+  employmentType   EmploymentType   @map("employment_type")
+  workArrangement  WorkArrangement  @default(office) @map("work_arrangement")
+  shiftId          String?          @map("shift_id") @db.Uuid
+  shift            Shift?           @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  durationMonths   Int?             @map("duration_months")
+  closingDate      DateTime?        @map("closing_date") @db.Date
+  salaryMin        Decimal?         @map("salary_min") @db.Decimal(12, 2) // RESTRICTED: HR, the CEO, a Super Admin
+  salaryMax        Decimal?         @map("salary_max") @db.Decimal(12, 2)
+  about            String? // HTML: the purpose of the role
+  responsibilities String? // HTML: the duties
+  requirements     String? // HTML
+  questions        Json             @default("[]")
+  submittedAt      DateTime?        @map("submitted_at") @db.Timestamptz
+  submittedById    String?          @map("submitted_by") @db.Uuid
+  submittedBy      User?            @relation("VacancySubmission", fields: [submittedById], references: [id], onDelete: SetNull)
+  decidedAt        DateTime?        @map("decided_at") @db.Timestamptz
+  decidedById      String?          @map("decided_by") @db.Uuid
+  decidedBy        User?            @relation("VacancyDecision", fields: [decidedById], references: [id], onDelete: SetNull)
+  sentBackReason   String?          @map("sent_back_reason") // why the CEO sent it back, while it is a draft again
+  publishedAt      DateTime?        @map("published_at") @db.Timestamptz // first approved
+  closedAt         DateTime?        @map("closed_at") @db.Timestamptz
+  closedById       String?          @map("closed_by") @db.Uuid
+  closedBy         User?            @relation("VacancyClosing", fields: [closedById], references: [id], onDelete: SetNull)
+  closeReason      String?          @map("close_reason")
+  createdById      String?          @map("created_by") @db.Uuid
+  createdBy        User?            @relation("VacancyCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  applications     JobApplication[]
+
+  @@index([status])
+  @@index([jobTitleId])
+  @@map("vacancies")
+}
+
+// An application from the careers page: APP-<year>-<4 digits>, one per email a vacancy. What the applicant sent (their
+// details, the answers by question key, their consent), where they came from (?src=), the address it came from (the
+// limit of applications an hour) and the match worked out with the vacancy's questions then: its points, the most
+// possible, the % and whether a must-have filtered them out (kept, restorable). Its stage, HR's notes, the rejection's
+// reason, and the profile made when they were hired.
+model JobApplication {
+  id              String               @id @default(uuid()) @db.Uuid
+  number          String               @unique
+  vacancyId       String               @map("vacancy_id") @db.Uuid
+  vacancy         Vacancy              @relation(fields: [vacancyId], references: [id], onDelete: Restrict)
+  stage           String               @default("applied") // APPLICATION_STAGES
+  rejectedFrom    String?              @map("rejected_from") // the stage it was rejected at: restoring goes back to it
+  filteredOut     Boolean              @default(false) @map("filtered_out")
+  fullName        String               @map("full_name")
+  email           String // trimmed, in lower case
+  mobile          String
+  linkedin        String?
+  portfolio       String?
+  yearsExperience Decimal?             @map("years_experience") @db.Decimal(4, 1)
+  noticePeriod    String?              @map("notice_period")
+  expectedSalary  Decimal?             @map("expected_salary") @db.Decimal(12, 2)
+  answers         Json                 @default("{}")
+  points          Int                  @default(0)
+  maxPoints       Int                  @default(0) @map("max_points")
+  matchPercent    Int?                 @map("match_percent")
+  knockedOut      String[]             @default([]) @map("knocked_out") // the must-have questions not passed, by key
+  source          String               @default("careers") // APPLICATION_SOURCES
+  consentAt       DateTime             @map("consent_at") @db.Timestamptz
+  ip              String?
+  userAgent       String?              @map("user_agent")
+  notes           String? // HR's
+  rejectReason    String?              @map("reject_reason")
+  employeeId      String?              @map("employee_id") @db.Uuid // the profile made from the accepted offer
+  employee        Employee?            @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  cv              JobApplicationCv?
+  steps           JobApplicationStep[]
+  offers          JobOffer[]
+
+  @@unique([vacancyId, email])
+  @@index([stage])
+  @@index([ip, createdAt])
+  @@map("job_applications")
+}
+
+// An application's CV, apart so the lists never read it: a PDF or a Word file, at most 5 MB, its type told by its first
+// bytes, its name cleaned.
+model JobApplicationCv {
+  applicationId String         @id @map("application_id") @db.Uuid
+  application   JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fileName      String         @map("file_name")
+  mimeType      String         @map("mime_type")
+  sizeBytes     Int            @map("size_bytes")
+  data          Bytes
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("job_application_cvs")
+}
+
+// What happened to an application, in order (APPLICATION_EVENTS): applied, filtered out, shortlisted, moved to interview,
+// a job offer drafted, hired, rejected, restored, an offer declined or withdrawn; the stage after it, a note, who (none:
+// the applicant or the system) and when. Ready for Phase 2's pipeline and analytics (time to hire, the funnel).
+model JobApplicationStep {
+  id            String         @id @default(uuid()) @db.Uuid
+  applicationId String         @map("application_id") @db.Uuid
+  application   JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  event         String
+  stage         String
+  note          String?
+  byId          String?        @map("by_id") @db.Uuid
+  by            User?          @relation(fields: [byId], references: [id], onDelete: SetNull)
+  at            DateTime       @default(now()) @db.Timestamptz
+
+  @@index([applicationId, at])
+  @@map("job_application_steps")
 }
 
 // ---------- payroll ----------

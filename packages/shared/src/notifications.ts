@@ -54,6 +54,11 @@ export const NOTIFICATION_KINDS = [
   'offboarding_items',
   'offboarding_cleared',
   'exit_interview',
+  // recruitment (owner, 22 October 2026: "where will we include the ATS?"; recruitment.ts): a vacancy waiting for the
+  // CEO's approval, the CEO's decision for HR, and new applications for HR (once a day a vacancy)
+  'vacancy_waiting',
+  'vacancy_decided',
+  'applications_new',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -107,6 +112,9 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   offboarding_items: 'Offboarding',
   offboarding_cleared: 'Offboarding',
   exit_interview: 'Exit interview',
+  vacancy_waiting: 'Vacancy',
+  vacancy_decided: 'Vacancy',
+  applications_new: 'Applicants',
 };
 
 // ---------- the reminders and the person's switches ----------

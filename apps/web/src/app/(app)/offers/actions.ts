@@ -58,7 +58,10 @@ export async function createOffer(_prev: FormState, fd: FormData): Promise<FormS
   const errors: string[] = [];
   const allowances = allowancesFrom(fd, errors);
   const body = offerBody(fd, errors, { draft: false, allowances });
-  return save(fd, errors, () => apiSend<OfferView>('POST', '/offers', body));
+  // made from an applicant (recruitment, 22 October 2026: Make offer)
+  const applicationId = fd.get('applicationId');
+  const sent = typeof applicationId === 'string' && /^[0-9a-f-]{36}$/i.test(applicationId) ? { ...body, applicationId } : body;
+  return save(fd, errors, () => apiSend<OfferView>('POST', '/offers', sent));
 }
 
 /** Changes a draft: any of its fields. */

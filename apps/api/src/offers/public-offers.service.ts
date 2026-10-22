@@ -5,6 +5,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { OfferDocumentsService } from './offer-documents.service.js';
 import { OfferHiringService, type HireResult } from './offer-hiring.service.js';
+import { RecruitmentOffersService } from '../recruitment/recruitment-offers.service.js';
 import type { AcceptOfferDto, DeclineOfferDto } from './offers.dto.js';
 import { cairoDate, nameMatches, shownStatus, tokenHash } from './rules.js';
 import { publicOfferView } from './views.js';
@@ -61,6 +62,7 @@ export class PublicOffersService {
     private readonly audit: AuditService,
     private readonly hiring: OfferHiringService,
     private readonly documents: OfferDocumentsService,
+    private readonly recruitment: RecruitmentOffersService,
   ) {}
 
   /** The offer as the candidate sees it; the first time records that they opened the link. */
@@ -102,6 +104,8 @@ export class PublicOffersService {
       responseAgent: cut(dto.userAgent ?? from.userAgent, AGENT_MAX),
     });
     const hired: HireResult = await this.hiring.tryHire(o.id, null);
+    // an applicant's offer: they are hired (recruitment, 22 October 2026)
+    await this.recruitment.offerEnded(o.id, 'accepted', 'employeeId' in hired ? hired.employeeId : null, null);
     await this.hiring.notify({ ...o, respondedAt }, 'accepted', { userId: null }, hired);
     return this.view(secret);
   }
@@ -119,6 +123,7 @@ export class PublicOffersService {
       responseIp: cut(dto.ip ?? from.ip, IP_MAX),
       responseAgent: cut(dto.userAgent ?? from.userAgent, AGENT_MAX),
     });
+    await this.recruitment.offerEnded(o.id, 'declined', null, null);
     await this.hiring.notify({ ...o, respondedAt, declineReason }, 'declined', { userId: null }, null);
     return this.view(secret);
   }

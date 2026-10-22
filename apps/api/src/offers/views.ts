@@ -28,6 +28,8 @@ export const OFFER_INCLUDE = {
   sentBy: { select: { email: true } },
   answeredBy: { select: { email: true } },
   createdBy: { select: { email: true } },
+  // the application it was made from (recruitment, 22 October 2026)
+  application: { select: { id: true, number: true } },
 } satisfies Prisma.JobOfferInclude;
 
 /** The filled document is loaded only when it is sent or copied. */
@@ -92,6 +94,7 @@ export function offerView(o: OfferRow, ctx: OfferContext) {
     mobile: o.mobile,
     employeeId: o.employeeId,
     employee: o.employee,
+    application: o.application,
     employmentType: o.employmentType,
     department: o.department,
     jobTitle: o.jobTitle,

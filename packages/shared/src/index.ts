@@ -493,3 +493,8 @@ export * from './contract-status.js';
 // checklist (HR's defaults, Assets returned and Final settlement paid ticked by the system), the exit interview, rehire
 // eligibility, the turnover's figures and the API's answers
 export * from './offboarding.js';
+
+// recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"; Phase 1): vacancies approved by the CEO,
+// the public careers page with its application form, screening questions with must-haves and match points, and the
+// applicants' stages up to the job offer
+export * from './recruitment.js';

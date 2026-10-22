@@ -27,6 +27,7 @@ import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../c
 import { assertTrainingGap } from '../contracts/training.js';
 import { seesSalary } from '../employees/access.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
+import { RecruitmentOffersService } from '../recruitment/recruitment-offers.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { MailService } from '../mail/mail.service.js';
@@ -132,6 +133,7 @@ export class OffersService {
     private readonly mail: MailService,
     private readonly lawRates: LawRatesService,
     private readonly confidential: ConfidentialService,
+    private readonly recruitment: RecruitmentOffersService,
   ) {}
 
   /**
@@ -168,13 +170,16 @@ export class OffersService {
   async create(dto: CreateOfferDto, user: SessionUser) {
     // a C-level grade only from those who see C-level people (owner, 19 October 2026)
     await this.confidential.assertMayGiveGrade(user, dto.gradeId);
+    // made from an applicant (recruitment, 22 October 2026: Make offer): one the caller sees, ready for an offer
+    const applicationId = dto.applicationId ?? null;
+    if (applicationId) await this.recruitment.assertOfferable(applicationId, user);
     const { values, allowances } = await this.checked(null, dto);
     const rows = allowances ?? [];
     const created = await this.prisma.$transaction(async (tx) => {
       // one number at a time
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('people-system:offer-number'))`;
       const number = await nextNumber(tx);
-      const row = await tx.jobOffer.create({ data: { ...toData(values), number, createdById: user.id }, select: { id: true, number: true } });
+      const row = await tx.jobOffer.create({ data: { ...toData(values), number, createdById: user.id, applicationId }, select: { id: true, number: true } });
       if (rows.length) await tx.offerAllowance.createMany({ data: allowanceData(rows).map((a) => ({ ...a, offerId: row.id })) });
       return row;
     });
@@ -183,8 +188,9 @@ export class OffersService {
       action: 'create',
       entityType: ENTITY,
       entityId: created.id,
-      diff: salaryMasked({ number: created.number, ...values, allowances: allowanceNames(rows) }),
+      diff: salaryMasked({ number: created.number, ...values, allowances: allowanceNames(rows), ...(applicationId && { applicationId }) }),
     });
+    if (applicationId) await this.recruitment.offerMade(applicationId, created, user.id);
     return this.get(created.id, user);
   }
 
@@ -234,6 +240,8 @@ export class OffersService {
     assertDeletes(user);
     const o = await this.row(id, user);
     if (o.status === 'accepted') throw new ConflictException(`${o.number} was accepted, so it stays on record with the profile made from it.`);
+    // an applicant's offer gone: they go back to Shortlisted (recruitment, 22 October 2026)
+    if (o.status === 'draft' || o.status === 'sent') await this.recruitment.offerEnded(id, 'withdrawn', null, user.id);
     await this.prisma.jobOffer.delete({ where: { id } });
     await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: id, diff: { number: o.number, status: o.status, fullNameEn: o.fullNameEn } });
   }
@@ -367,6 +375,7 @@ export class OffersService {
     });
     if (!count) throw await this.changedMeanwhile(id);
     await this.audit.record({ userId: user.id, action: 'withdraw', entityType: ENTITY, entityId: id, diff: { number: o.number, status: { from: o.status, to: 'withdrawn' }, reason } });
+    await this.recruitment.offerEnded(id, 'withdrawn', null, user.id);
     return this.get(id, user);
   }
 
@@ -414,6 +423,7 @@ export class OffersService {
 
     let hired: HireResult | null = null;
     if (accepted) hired = await this.hiring.tryHire(id, user.id);
+    await this.recruitment.offerEnded(id, dto.answer, hired && 'employeeId' in hired ? hired.employeeId : null, user.id);
     await this.hiring.notify({ ...o, respondedAt, declineReason: dto.reason ?? null }, dto.answer, { userId: user.id }, hired);
     return { ...(await this.get(id, user)), hireError: hired && 'error' in hired ? hired.error : null };
   }
@@ -423,7 +433,8 @@ export class OffersService {
     const o = await this.row(id, user);
     if (o.status !== 'accepted') throw new ConflictException(`${o.number} isn't accepted, so there is no profile to make from it.`);
     if (o.hiredAt) throw new ConflictException(`The profile was already made from ${o.number}.`);
-    await this.hiring.hire(id, user.id);
+    const made = await this.hiring.hire(id, user.id);
+    await this.recruitment.profileMade(id, made.employeeId);
     return this.get(id, user);
   }
 

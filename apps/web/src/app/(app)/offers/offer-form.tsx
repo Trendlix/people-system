@@ -74,6 +74,7 @@ export function OfferForm({
   lawYears,
   cancelHref,
   submitLabel,
+  applicationId,
 }: {
   action: Action;
   pickers: OfferPickers;
@@ -84,6 +85,8 @@ export function OfferForm({
   lawYears: readonly LawRates[];
   cancelHref: string;
   submitLabel: string;
+  /** Made from an applicant (recruitment, 22 October 2026: Make offer): sent with the new offer. */
+  applicationId?: string;
 }) {
   // Kept form: a refused save leaves everything as typed and chosen.
   const { state, pending, form } = useKeptForm(action);
@@ -133,6 +136,7 @@ export function OfferForm({
   return (
     <form {...form} onChange={track} className="card max-w-3xl space-y-6 p-6">
       <FormErrors errors={state.errors} />
+      {applicationId && <input type="hidden" name="applicationId" value={applicationId} />}
 
       <Section id={fid('candidate')} title="Candidate">
         <div className="grid gap-5 sm:grid-cols-2">

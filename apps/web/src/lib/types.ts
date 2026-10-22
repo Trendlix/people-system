@@ -1557,6 +1557,8 @@ export interface OfferView {
   /** A former employee offered again (or, once accepted, the profile made). */
   employeeId: string | null;
   employee: { id: string; employeeCode: string; fullNameEn: string } | null;
+  /** The applicant it was made from (recruitment, 22 October 2026: Make offer); left out by an API from before. */
+  application?: { id: string; number: string } | null;
   employmentType: EmploymentType;
   /**
    * Full-time only: paid by commission, as Sales was (owner, 18 October 2026), and the nature of the work (Labour Law Art.

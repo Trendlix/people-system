@@ -20,6 +20,7 @@ import { MailModule } from './mail/mail.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { OffersModule } from './offers/offers.module.js';
 import { OffboardingModule } from './offboarding/offboarding.module.js';
+import { RecruitmentModule } from './recruitment/recruitment.module.js';
 import { VersionController } from './health/version.controller.js';
 import { OrganisationModule } from './organisation/organisation.module.js';
 import { PaperworkModule } from './paperwork/paperwork.module.js';
@@ -66,6 +67,8 @@ import { WfhModule } from './wfh/wfh.module.js';
     // working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp")
     WfhModule,
     OffboardingModule,
+    // recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): vacancies, the careers page, applicants
+    RecruitmentModule,
     // KPIs (owner, 21 October 2026: "lets start with the KPI's First")
     KpisModule,
     // Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system")

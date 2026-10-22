@@ -143,8 +143,6 @@ export const NAV: NavItem[] = [
     items: [
       { href: '/employees', label: 'Employees', section: '/employees' },
       { href: '/contracts', label: 'Contracts', section: '/contracts', roles: ['hr', 'ceo', 'finance'] },
-      // job offers: the offer stage, before someone is an employee (owner's request, 15 October 2026)
-      { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
       // what each profile still lacks
       { href: '/employees/missing', label: 'Missing Details', section: '/employees/missing', roles: ['hr', 'ceo'] },
       // offboarding (owner, 22 October 2026: the full module; "where will the data be stored? will it be another tab?"):
@@ -152,6 +150,18 @@ export const NAV: NavItem[] = [
       // direct manager opens theirs from its notification. Former Employees, for those who handle cases
       { href: '/offboarding', label: 'Offboarding', section: '/offboarding', roles: ['hr', 'ceo', 'super_admin', 'admin', 'finance'] },
       { href: '/employees/former', label: 'Former Employees', section: '/employees/former', roles: ['hr', 'ceo', 'super_admin'] },
+    ],
+  },
+  // recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): the vacancies (the CEO approves them
+  // before the careers page shows them), every applicant, and the job offers, moved here from People (the offer stage,
+  // before someone is an employee: owner's request, 15 October 2026)
+  {
+    href: '/recruitment/vacancies',
+    label: 'Recruitment',
+    items: [
+      { href: '/recruitment/vacancies', label: 'Vacancies', section: '/recruitment/vacancies', roles: ['hr', 'ceo', 'super_admin'] },
+      { href: '/recruitment/applicants', label: 'Applicants', section: '/recruitment/applicants', roles: ['hr', 'ceo', 'super_admin'] },
+      { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
     ],
   },
   // the month's pay: HR prepares a run, the CEO approves it, HR marks it paid (owner's decisions, 16 October 2026); a

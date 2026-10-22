@@ -1,9 +1,12 @@
+import Link from 'next/link';
 import { Suspense } from 'react';
 import { loadLawRates } from '@/lib/law-rates';
 import { getCurrentUser } from '@/lib/session';
 import { loadPickers } from '../../employees/data';
 import { todayInCairo } from '../../employees/ui';
 import { BackLink, Empty, Loading } from '../../organization/ui';
+import { loadApplicant } from '../../recruitment/data';
+import { applicantHref, offerFromApplication } from '../../recruitment/recruitment';
 import { createOffer } from '../actions';
 import { loadAllowanceTypes, loadContractSettings } from '../data';
 import { newOfferDefaults } from '../form-body';
@@ -11,27 +14,49 @@ import { managesOffers, WHO_CHANGES } from '../list';
 import { OfferForm } from '../offer-form';
 
 // Drafting a job offer for a candidate (owner's request, 15 October 2026). It is saved as a draft: HR checks its PDF on
-// the offer's page, then sends it by email or copies the link.
+// the offer's page, then sends it by email or copies the link. From an applicant (recruitment, 22 October 2026: Make
+// offer, ?application=), it starts filled in from them and their vacancy, and the applicant moves to Offer once saved.
 
-async function NewOffer() {
-  const user = await getCurrentUser();
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function NewOffer({ searchParams }: { searchParams: PageProps<'/offers/new'>['searchParams'] }) {
+  const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!managesOffers(user)) return <Empty>{WHO_CHANGES}</Empty>;
-  const [pickers, allowanceTypes, settings, lawYears] = await Promise.all([loadPickers(), loadAllowanceTypes(), loadContractSettings(), loadLawRates()]);
+  const applicationId = typeof query.application === 'string' && UUID.test(query.application) ? query.application : null;
+  const [pickers, allowanceTypes, settings, lawYears, applicant] = await Promise.all([
+    loadPickers(),
+    loadAllowanceTypes(),
+    loadContractSettings(),
+    loadLawRates(),
+    applicationId ? loadApplicant(applicationId) : Promise.resolve(null),
+  ]);
   const today = todayInCairo();
+  const base = newOfferDefaults(settings, today);
+  const from = applicant?.kind === 'ok' ? applicant.value : null;
   return (
-    <OfferForm
-      action={createOffer}
-      pickers={{ ...pickers, allowanceTypes }}
-      defaults={newOfferDefaults(settings, today)}
-      today={today}
-      lawYears={lawYears}
-      cancelHref="/offers"
-      submitLabel="Save draft"
-    />
+    <div className="space-y-4">
+      {from && (
+        <p className="max-w-3xl rounded-lg bg-accent-soft px-4 py-3 text-sm text-accent">
+          From applicant <Link href={applicantHref(from.id)}>{from.number}</Link>, {from.fullName}: filled in from them and the vacancy. Type their name in the other
+          language, and the terms.
+        </p>
+      )}
+      {applicationId && !from && <p className="max-w-3xl rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">The applicant could not be read: this offer starts empty.</p>}
+      <OfferForm
+        action={createOffer}
+        pickers={{ ...pickers, allowanceTypes }}
+        defaults={from ? offerFromApplication(base, from) : base}
+        today={today}
+        lawYears={lawYears}
+        cancelHref={from ? applicantHref(from.id) : '/offers'}
+        submitLabel="Save draft"
+        applicationId={from?.id}
+      />
+    </div>
   );
 }
 
-export default function NewOfferPage() {
+export default function NewOfferPage({ searchParams }: PageProps<'/offers/new'>) {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
@@ -42,7 +67,7 @@ export default function NewOfferPage() {
         </p>
       </div>
       <Suspense fallback={<Loading />}>
-        <NewOffer />
+        <NewOffer searchParams={searchParams} />
       </Suspense>
     </div>
   );

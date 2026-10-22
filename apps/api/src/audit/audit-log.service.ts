@@ -360,6 +360,10 @@ function recordLookups(p: PrismaService): Readonly<Record<string, Lookup>> {
         r.id,
         { employeeId: r.claim.employeeId, parentId: r.claimId },
       ]),
+    // recruitment (22 October 2026): a vacancy's and an application's number
+    vacancy: async (ids) => (await p.vacancy.findMany({ ...by(ids), select: { id: true, number: true } })).map((r) => [r.id, { reference: r.number }]),
+    job_application: async (ids) =>
+      (await p.jobApplication.findMany({ ...by(ids), select: { id: true, number: true, employeeId: true } })).map((r) => [r.id, { employeeId: r.employeeId, reference: r.number }]),
     job_offer: async (ids) =>
       (await p.jobOffer.findMany({ ...by(ids), select: { id: true, number: true, employeeId: true } })).map((r) => [r.id, { employeeId: r.employeeId, reference: r.number }]),
     template_version: async (ids) => (await p.templateVersion.findMany({ ...by(ids), select: { id: true, slotKey: true } })).map((r) => [r.id, { slot: r.slotKey, reference: r.slotKey }]),
