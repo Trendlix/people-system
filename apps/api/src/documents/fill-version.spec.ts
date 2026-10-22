@@ -78,11 +78,13 @@ describe('fillVersion', () => {
 // arabic document".
 describe('an Arabic document’s numbers in ٠-٩', () => {
   it('turns digits and percent signs, keeps the comma and the point; keeps an email or a web address', () => {
-    expect(arabicNumberText('15/07/2025')).toBe('١٥/٠٧/٢٠٢٥');
+    // dates year first without zeros (owner, 22 October 2026: "year first then without zeros")
+    expect(arabicNumberText('15/07/2025')).toBe('٢٠٢٥/٧/١٥');
+    expect(arabicNumberText('اعتبارا من 06/05/2026 وحتى 05/05/2027،')).toBe('اعتبارا من ٢٠٢٦/٥/٦ وحتى ٢٠٢٧/٥/٥،');
     expect(arabicNumberText('10,500')).toBe('١٠,٥٠٠');
     expect(arabicNumberText('1,250,000.75')).toBe('١,٢٥٠,٠٠٠.٧٥');
     expect(arabicNumberText('20%')).toBe('٢٠٪');
-    expect(arabicNumberText('02/2025')).toBe('٠٢/٢٠٢٥');
+    expect(arabicNumberText('02/2025')).toBe('٢٠٢٥/٢');
     expect(arabicNumberText('عشرة آلاف وخمسمائة جنيه')).toBe('عشرة آلاف وخمسمائة جنيه');
     expect(arabicNumberText('omar2@mail.test')).toBe('omar2@mail.test');
     expect(arabicNumberText('https://trendlix.com/2025')).toBe('https://trendlix.com/2025');
@@ -118,7 +120,7 @@ describe('an Arabic document’s numbers in ٠-٩', () => {
         jd_duties: { html: '<p data-indent="2">Edit 3 videos &amp; 2 reels&#8203;</p>' },
       }),
     ).toEqual({
-      start_date: '١٥/٠٧/٢٠٢٥',
+      start_date: '٢٠٢٥/٧/١٥',
       gross_salary: '١٠,٥٠٠',
       personal_email: 'omar2@mail.test',
       gross_salary_en: '10,500',
@@ -132,9 +134,9 @@ describe('an Arabic document’s numbers in ٠-٩', () => {
   it('fills an Arabic contract and an Arabic letter with ٠-٩, and an English letter with 0-9', async () => {
     const body = p(r('اعتبارا من {{start_date}} براتب {{gross_salary}}'));
     const ar = await fillVersion({ slotKey: 'contract_full_time', format: 'docx', data: docx({ body }), language: 'ar' }, { start_date: '15/07/2025', gross_salary: '10,500' });
-    expect(readZip(ar).read('word/document.xml')!.toString('utf8')).toContain('اعتبارا من ١٥/٠٧/٢٠٢٥ براتب ١٠,٥٠٠');
+    expect(readZip(ar).read('word/document.xml')!.toString('utf8')).toContain('اعتبارا من ٢٠٢٥/٧/١٥ براتب ١٠,٥٠٠');
     const letter = await fillVersion({ slotKey: 'hr_letter_ar', format: 'docx', data: docx({ body: p(r('تحريرا في {{date}}')) }), language: 'ar' }, { date: '22/10/2026' });
-    expect(readZip(letter).read('word/document.xml')!.toString('utf8')).toContain('تحريرا في ٢٢/١٠/٢٠٢٦');
+    expect(readZip(letter).read('word/document.xml')!.toString('utf8')).toContain('تحريرا في ٢٠٢٦/١٠/٢٢');
     const en = await fillVersion({ slotKey: 'hr_letter_en', format: 'docx', data: docx({ body: p(r('From {{start_date}}')) }), language: 'en' }, { start_date: '15/07/2025' });
     expect(readZip(en).read('word/document.xml')!.toString('utf8')).toContain('From 15/07/2025');
   });

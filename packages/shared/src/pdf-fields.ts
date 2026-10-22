@@ -141,14 +141,25 @@ const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 export const toArabicDigits = (text: string): string => text.replace(/[0-9]/g, (d) => ARABIC_DIGITS[Number(d)]);
 
 /**
+ * A date as an Arabic document writes it (owner, 22 October 2026: "year first then without zeros"): 06/05/2026 →
+ * 2026/5/6, and a month 03/2021 → 2021/3 (before its digits become ٠-٩: ٢٠٢٦/٥/٦). Day/month/year and month/year
+ * only, as the documents print them (format.ts printedDate, printedMonth).
+ */
+export const arabicDateOrder = (text: string): string =>
+  text
+    .replace(/(?<![\d/])(\d{1,2})\/(\d{1,2})\/(\d{4})(?![\d/])/g, (_m, d: string, m: string, y: string) => `${y}/${Number(m)}/${Number(d)}`)
+    .replace(/(?<![\d/])(\d{1,2})\/(\d{4})(?![\d/])/g, (_m, m: string, y: string) => `${y}/${Number(m)}`);
+
+/**
  * A text's numbers in Arabic digits, as an Arabic document prints them (owner, 22 October 2026: "in contracts, i need
- * the dates and numbers in arabic ٠-٩"): ٠-٩, and a percent sign after a digit as ٪. The thousands comma and the
- * decimal point stay as they are (10,500.50 → ١٠,٥٠٠.٥٠): the Arabic separators ٬ and ٫ looked like commas in the
- * documents' fonts, and the converter spread a justified line apart at ٬. Word by word: a word with a Latin letter (a
- * code such as CON-2026-0044 or an ID card's KX1234567), an email or a web address keeps its own digits.
+ * the dates and numbers in arabic ٠-٩"): ٠-٩, a percent sign after a digit as ٪, and dates year first without zeros
+ * (arabicDateOrder). The thousands comma and the decimal point stay as they are (10,500.50 → ١٠,٥٠٠.٥٠): the Arabic
+ * separators ٬ and ٫ looked like commas in the documents' fonts, and the converter spread a justified line apart at ٬.
+ * Word by word: a word with a Latin letter (a code such as CON-2026-0044 or an ID card's KX1234567), an email or a web
+ * address keeps its own digits.
  */
 export function arabicNumberText(text: string): string {
-  return text.replace(/\S+/g, (word) => (/[A-Za-z@]|:\/\//.test(word) ? word : toArabicDigits(word.replace(/(\d)%/g, '$1٪'))));
+  return text.replace(/\S+/g, (word) => (/[A-Za-z@]|:\/\//.test(word) ? word : toArabicDigits(arabicDateOrder(word).replace(/(\d)%/g, '$1٪'))));
 }
 
 /** ٠-٩ (and Persian ۰-۹) as 0-9. */

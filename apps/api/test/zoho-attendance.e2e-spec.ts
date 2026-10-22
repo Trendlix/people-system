@@ -288,7 +288,10 @@ describe('Zoho People attendance import (e2e)', () => {
       expect(rania.month!.missingDays).toEqual(work.slice(6));
       expect(rania.month!.warnings[0]).toBe("1 day is of another month than this payroll's: left out.");
 
-      expect(named(made, OMAR)).toMatchObject({ match: 'close', employee: null, candidates: [{ id: ids.omar, similarity: 1 }], month: null });
+      const omar = named(made, OMAR);
+      expect(omar).toMatchObject({ match: 'close', employee: null, month: null });
+      // the closest is Omar Madeup; other test files' Omars, left in the shared database, may follow (22 October 2026)
+      expect(omar.candidates[0]).toMatchObject({ id: ids.omar, similarity: 1 });
       expect(named(made, L_TEST)).toMatchObject({ match: 'none', employee: null, candidates: [] });
       expect(named(made, STRANGER).match).toBe('none');
       expect(named(made, NADIA)).toMatchObject({ match: 'exact', lineId: null, editable: false });

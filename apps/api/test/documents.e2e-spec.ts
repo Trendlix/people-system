@@ -328,16 +328,16 @@ describe('Documents (e2e)', () => {
       // an Arabic document's numbers in ٠-٩, a code with Latin letters as it is (owner, 22 October 2026: "in contracts, i
       // need the dates and numbers in arabic ٠-٩"); the phone with its country code ("the phone number is without the
       // country code")
-      expect(text).toContain('إنه في يوم الخميس الموافق ١٥/١٠/٢٠٢٦');
+      expect(text).toContain('إنه في يوم الخميس الموافق ٢٠٢٦/١٠/١٥');
       expect(text).toContain('السيد/ عمر خالد محمود');
       expect(text).toContain('المقيم في: ١٥ شارع عباس العقاد، مدينة نصر، القاهرة');
       // the phone kept left to right inside the Arabic text (LRE … PDF), so its + stays in front
       expect(text).toContain('تليفون: \u202A+٢٠١٠١٢٣٤٥٦٧٨\u202C');
       expect(text).toContain(`رقم قومي: ${toArabicDigits(NATIONAL_ID)}`);
       expect(text).toContain('KX1234567');
-      expect(text).toContain('٠٣/٢٠٢١');
+      expect(text).toContain('٢٠٢١/٣');
       expect(text).toContain('بكالوريوس تجارة');
-      expect(text).toContain('في وظيفة مدير حسابات وذلك لمدة سنة ميلادية واحدة اعتبارا من ١٥/٠١/٢٠٢٦ وحتى ١٤/٠١/٢٠٢٧');
+      expect(text).toContain('في وظيفة مدير حسابات وذلك لمدة سنة ميلادية واحدة اعتبارا من ٢٠٢٦/١/١٥ وحتى ٢٠٢٧/١/١٤');
       expect(text).toContain(`راتب شامل وقدره ٢٠,٠٠٠ جنيهاً مصريا (${arabicAmountInWords(20000)})`);
       expect(arabicAmountInWords(20000)).toMatch(/عشرون ألف جنيه/); // the gross in Arabic words (the engine's wording)
       expect(text).toContain('١٧,٢٥٠.٥٠');
@@ -567,12 +567,12 @@ describe('Documents (e2e)', () => {
       const resignation = await generate(ft.id, { slotKey: 'resignation_request', documentDate: '2026-10-01' }).expect(201);
       const text = textOf(await docxOf(resignation.body.id));
       expect(text).toContain('أنا عمر خالد محمود');
-      expect(text).toContain('من العمل داخل الشركة لأسباب شخصية وذلك اعتبارا من اليوم الموافق:  ٠١/١٠/٢٠٢٦');
+      expect(text).toContain('من العمل داخل الشركة لأسباب شخصية وذلك اعتبارا من اليوم الموافق:  ٢٠٢٦/١٠/١');
       expect(resignation.body.hasRestricted).toBe(false);
 
       const clearance = await generate(ft.id, { slotKey: 'clearance_dues', documentDate: '2026-10-15' }).expect(201);
       const cleared = textOf(await docxOf(clearance.body.id));
-      expect(cleared).toContain('إنه في يوم الخميس الموافق ١٥/١٠/٢٠٢٦');
+      expect(cleared).toContain('إنه في يوم الخميس الموافق ٢٠٢٦/١٠/١٥');
       expect(cleared).toContain('أحمد علي');
       expect(cleared).toContain(toArabicDigits(REP_NATIONAL_ID));
       expect(cleared).toContain(`الرقم القومي: ${toArabicDigits(NATIONAL_ID)}`);
