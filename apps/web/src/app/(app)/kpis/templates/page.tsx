@@ -12,7 +12,7 @@ import { Empty, Loading } from '../../organization/ui';
 import { draftAllKpiTemplates, publishKpiDrafts, updateKpiSettings } from './actions';
 import { loadKpi } from './data';
 import { DraftAllForm } from './draft-all';
-import { departmentRowOf, oldPillarsBanner, ownPillarsCountText, pillarsMonthOf } from './framework';
+import { oldPillarsBanner, ownPillarsCountText, pillarRowsOf, pillarsMonthOf } from './framework';
 import { KpiSettingsForm } from './settings-form';
 import { TemplatesTable } from './templates-table';
 import {
@@ -102,7 +102,7 @@ async function JobTitles({ user }: { user: SessionUser }) {
 
 /** Each draft's (by its id) pillars' first month while they are still to come (its department's, or the company's). */
 function draftPillarsMonths(rows: readonly KpiTemplateRow[], view: KpiFrameworkView): Record<string, string | null> {
-  return Object.fromEntries(rows.flatMap((r) => (r.draft ? [[r.draft.id, pillarsMonthOf(view, departmentRowOf(view, r.jobTitle.department))]] : [])));
+  return Object.fromEntries(rows.flatMap((r) => (r.draft ? [[r.draft.id, pillarsMonthOf(view, pillarRowsOf(view, r.jobTitle.department))]] : [])));
 }
 
 /** The pillars, now on their own page: the company's in words, how many departments have their own, the link. */

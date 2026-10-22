@@ -341,7 +341,9 @@ describe('a job title’s own weights', () => {
     expect(pillarsFromText(undefined)).toBeNull();
     expect(pillarsFromText({ nameEn: 'video production' }, (t) => t.toUpperCase())).toBe('VIDEO PRODUCTION’s pillars');
     expect([baseWeightLabel({ nameEn: 'Production' }), baseWeightLabel(null), baseWeightLabel(undefined)]).toEqual(['Production', 'Company', 'Company']);
-    expect(weightsResetNote({ nameEn: 'Production' })).toMatch(/^The department’s pillars changed .* reset to the department’s\. /);
+    expect(weightsResetNote({ nameEn: 'Production' })).toMatch(/^Production’s pillars changed .* reset to Production’s\. /);
+    // a team's own (22 October 2026: "Yes, add team pillars")
+    expect(weightsResetNote({ nameEn: 'Video' })).toMatch(/^Video’s pillars changed .* reset to Video’s\. /);
     expect(weightsResetNote(null)).toMatch(/^The company’s pillars changed .* reset to the company’s\. /);
   });
 });

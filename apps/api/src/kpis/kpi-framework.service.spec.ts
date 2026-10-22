@@ -1,9 +1,9 @@
 import { KPI_DEFAULT_PILLAR_SET, type KpiPillar } from '@trendlix/shared';
-import { ownOn, pillarsResolver, topDepartmentOf, type FrameworkVersion } from './kpi-framework.service.js';
+import { departmentChain, ownOn, pillarsResolver, topDepartmentOf, type FrameworkVersion } from './kpi-framework.service.js';
 
 // Which pillars a job title takes (owner, 22 October 2026: "but i need pillars to each department / wights can be
-// changed for each department and Job title"): its department's newest own pillars (a team's job titles their
-// department's), else the company's newest; a department back on the company's from a later month holds them back to it.
+// changed for each department and Job title", then "Yes, add team pillars"): the newest own pillars of the nearest level
+// that has them, team → department → company; a level back on the one above's from a later month holds them back to it.
 
 const SALES: KpiPillar[] = [
   { key: 'revenue', name: 'Revenue', short: 'Revenue', weight: 60 },
@@ -38,6 +38,15 @@ describe('which pillars a job title takes', () => {
     expect(of('web')).toEqual({ framework: COMPANY[1], appliesFrom: '2026-11', department: null });
   });
 
+  it('reads a team’s line up: itself, its department, nothing unknown', () => {
+    const chainOf = departmentChain(DEPARTMENTS);
+    expect(chainOf('field').map((d) => d.id)).toEqual(['field', 'sales']);
+    expect(chainOf('sales').map((d) => d.id)).toEqual(['sales']);
+    expect(chainOf('nowhere')).toEqual([]);
+    // a loop, which the organisation never has, is cut
+    expect(departmentChain([{ id: 'a', nameEn: 'A', parentId: 'b' }, { id: 'b', nameEn: 'B', parentId: 'a' }])('a').map((d) => d.id)).toEqual(['a', 'b']);
+  });
+
   it('takes its department’s newest own pillars, a team’s job titles too', () => {
     const sales = [
       version({ id: 's1', version: 1, appliesFrom: '2026-11', departmentId: 'sales', set: { pillars: SALES, attendancePillar: 'clients' } }),
@@ -58,6 +67,39 @@ describe('which pillars a job title takes', () => {
     // back on them from before the company's newest: the company's month
     const early = [{ ...ops[1], appliesFrom: '2026-10' }];
     expect(pillarsResolver(COMPANY, early, DEPARTMENTS)('ops')).toEqual({ framework: COMPANY[1], appliesFrom: '2026-11', department: null });
+  });
+});
+
+// Team pillars (owner, 22 October 2026: "where is the pillars for team?", then "Yes, add team pillars").
+describe('which pillars a team’s job title takes', () => {
+  const FIELD: KpiPillar[] = [
+    { key: 'visits', name: 'Visits', short: 'Visits', weight: 70 },
+    { key: 'clients', name: 'Clients & Teamwork', short: 'Clients', weight: 30 },
+  ];
+  const sales = version({ id: 's1', version: 1, appliesFrom: '2026-11', departmentId: 'sales', set: { pillars: SALES, attendancePillar: 'clients' } });
+  const field = version({ id: 'f1', version: 1, appliesFrom: '2026-12', departmentId: 'field', set: { pillars: FIELD, attendancePillar: 'clients' } });
+  const fieldBack = version({ id: 'f2', version: 2, appliesFrom: '2027-02', departmentId: 'field', followsCompany: true, set: { pillars: [], attendancePillar: '' } });
+  const salesBack = version({ id: 's2', version: 2, appliesFrom: '2027-01', departmentId: 'sales', followsCompany: true, set: { pillars: [], attendancePillar: '' } });
+
+  it('its team’s own; the department’s own job titles keep the department’s', () => {
+    const of = pillarsResolver(COMPANY, [sales, field], DEPARTMENTS);
+    expect(of('field')).toEqual({ framework: field, appliesFrom: '2026-12', department: { id: 'field', nameEn: 'Field Sales' } });
+    expect(of('sales')).toEqual({ framework: sales, appliesFrom: '2026-11', department: { id: 'sales', nameEn: 'Sales' } });
+  });
+
+  it('its department’s when the team has none, or goes back to them, from the later month', () => {
+    expect(pillarsResolver(COMPANY, [sales], DEPARTMENTS)('field')).toEqual({ framework: sales, appliesFrom: '2026-11', department: { id: 'sales', nameEn: 'Sales' } });
+    expect(pillarsResolver(COMPANY, [sales, field, fieldBack], DEPARTMENTS)('field')).toEqual({ framework: sales, appliesFrom: '2027-02', department: { id: 'sales', nameEn: 'Sales' } });
+  });
+
+  it('the company’s when neither has its own, or the department goes back to them: the latest month of the line', () => {
+    expect(pillarsResolver(COMPANY, [], DEPARTMENTS)('field')).toEqual({ framework: COMPANY[1], appliesFrom: '2026-11', department: null });
+    expect(pillarsResolver(COMPANY, [sales, salesBack], DEPARTMENTS)('field')).toEqual({ framework: COMPANY[1], appliesFrom: '2027-01', department: null });
+    expect(pillarsResolver(COMPANY, [sales, salesBack, field, fieldBack], DEPARTMENTS)('field')).toEqual({ framework: COMPANY[1], appliesFrom: '2027-02', department: null });
+  });
+
+  it('a team with its own isn’t held back by its department’s change', () => {
+    expect(pillarsResolver(COMPANY, [sales, salesBack, field], DEPARTMENTS)('field')).toEqual({ framework: field, appliesFrom: '2026-12', department: { id: 'field', nameEn: 'Field Sales' } });
   });
 });
 

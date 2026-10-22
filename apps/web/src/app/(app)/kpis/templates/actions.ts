@@ -60,12 +60,12 @@ export async function updateKpiSettings(_prev: FormState, fd: FormData): Promise
 
 /**
  * The next KPI pillars (PUT /kpis/framework), as the form sent them (JSON: KpiFrameworkInput, with the next framework it
- * changed, none: null): the company's, or a department's (`departmentId`, with its name for what the page says), or a
- * department going back to the company's (`followsCompany`, no pillars). The page checked them as typed; the API checks
- * them again.
+ * changed, none: null): the company's, or a department's or a team's (`departmentId`, with its name for what the page
+ * says), or one going back to the pillars above it (`followsCompany`, no pillars; `aboveName`, whose they are). The
+ * page checked them as typed; the API checks them again.
  */
 export async function saveKpiFramework(_prev: FormState, fd: FormData): Promise<FormState> {
-  let input: (KpiFrameworkInput & { nextId: string | null; departmentName?: unknown }) | null = null;
+  let input: (KpiFrameworkInput & { nextId: string | null; departmentName?: unknown; aboveName?: unknown }) | null = null;
   try {
     const value: unknown = JSON.parse(String(fd.get('framework') ?? ''));
     if (value && typeof value === 'object' && !Array.isArray(value)) input = value as KpiFrameworkInput & { nextId: string | null };
@@ -80,6 +80,8 @@ export async function saveKpiFramework(_prev: FormState, fd: FormData): Promise<
   const departmentId = typeof input.departmentId === 'string' ? input.departmentId : null;
   const follows = departmentId !== null && input.followsCompany === true;
   const department = typeof input.departmentName === 'string' && input.departmentName.trim() ? input.departmentName.trim() : 'The department';
+  // whose pillars it went back to: a team's department's ("Production’s"), else the company's (22 October 2026)
+  const above = typeof input.aboveName === 'string' && input.aboveName.trim() ? input.aboveName.trim().slice(0, 140) : undefined;
   try {
     // a department's fields only when it is one, so the company's pillars are sent as they always were
     await apiSend('PUT', KPI_API.framework, {
@@ -94,7 +96,7 @@ export async function saveKpiFramework(_prev: FormState, fd: FormData): Promise<
     return refused(err);
   }
   refresh();
-  if (follows) return { message: followCompanySavedText(department, input.appliesFrom) };
+  if (follows) return { message: followCompanySavedText(department, input.appliesFrom, above) };
   return { message: frameworkSavedText(input.appliesFrom, departmentId ? department : null) };
 }
 

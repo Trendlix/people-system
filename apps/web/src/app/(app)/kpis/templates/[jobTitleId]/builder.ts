@@ -201,8 +201,8 @@ export const resetWeights = (form: DraftForm): DraftForm =>
   form.baseWeights ? { ...form, weights: Object.fromEntries(form.pillars.pillars.map((p) => [p.key, String(form.baseWeights![p.key] ?? p.weight)])) } : form;
 
 /**
- * Whose pillars a template has, in words: "Production’s pillars" (a department's own, its name as headings show it) or
- * "The company’s pillars"; null when the API doesn't say (one from before department pillars).
+ * Whose pillars a template has, in words: "Production’s pillars" (a department's or team's own, its name as headings
+ * show it) or "The company’s pillars"; null when the API doesn't say (one from before department pillars).
  */
 export function pillarsFromText(pillarsFrom: { nameEn: string } | null | undefined, name: (text: string) => string = (t) => t): string | null {
   if (pillarsFrom === undefined) return null;
@@ -213,10 +213,13 @@ export function pillarsFromText(pillarsFrom: { nameEn: string } | null | undefin
 export const baseWeightLabel = (pillarsFrom: { nameEn: string } | null | undefined, name: (text: string) => string = (t) => t): string =>
   pillarsFrom ? name(pillarsFrom.nameEn) : 'Company';
 
-/** Over a draft whose own weights were dropped, its pillars having gained or lost one: the department's, or the company's. */
+/**
+ * Over a draft whose own weights were dropped, its pillars having gained or lost one: the department's or team's (by its
+ * name: "Production’s"), or the company's.
+ */
 export function weightsResetNote(pillarsFrom: { nameEn: string } | null | undefined): string {
-  const whose = pillarsFrom ? 'department’s' : 'company’s';
-  return `The ${whose} pillars changed (a pillar was added or removed), so this job title’s own weights were reset to the ${whose}. Set them again if needed, then save.`;
+  const whose = pillarsFrom ? `${pillarsFrom.nameEn}’s` : 'the company’s';
+  return `${whose.charAt(0).toUpperCase()}${whose.slice(1)} pillars changed (a pillar was added or removed), so this job title’s own weights were reset to ${whose}. Set them again if needed, then save.`;
 }
 
 // ---------- the pillars ----------

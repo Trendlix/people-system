@@ -6,8 +6,9 @@ import {
   canFollowCompany,
   companyNewest,
   departmentPillarsText,
+  allPillarRows,
   departmentRow,
-  departmentRowOf,
+  effectiveNewest,
   followCompanyConfirmText,
   followCompanySavedText,
   frameworkChangedText,
@@ -25,6 +26,7 @@ import {
   nextText,
   oldPillarsBanner,
   ownPillarsCountText,
+  pillarRowsOf,
   pillarsLabel,
   pillarsMonthOf,
   removePillar,
@@ -200,10 +202,12 @@ describe('pillars by department', () => {
   });
   const row = (over: Partial<KpiDepartmentPillarsView> = {}): KpiDepartmentPillarsView => ({
     department: { id: PRODUCTION, nameEn: 'Production' },
+    parent: null,
     inForce: null,
     next: null,
     jobTitles: 4,
     oldTemplates: 0,
+    teams: [],
     ...over,
   });
   const follows = version({ id: 'p2', departmentId: PRODUCTION, version: 2, followsCompany: true, pillars: [], attendancePillar: '', appliesFrom: '2026-12', opensFrom: '2027-01-01' });
@@ -238,9 +242,10 @@ describe('pillars by department', () => {
     expect(departmentRow(view, SALES)?.department.nameEn).toBe('Sales');
     expect(departmentRow(view, 'd0000000-0000-4000-8000-000000000009')).toBeNull();
     expect(departmentRow({ departments: undefined as unknown as KpiDepartmentPillarsView[] }, SALES)).toBeNull();
-    expect(departmentRowOf(view, { id: PRODUCTION, nameEn: 'Production', parentName: null })?.department.id).toBe(PRODUCTION);
-    expect(departmentRowOf(view, { id: 'team-1', nameEn: 'Video', parentName: 'Production' })?.department.id).toBe(PRODUCTION);
-    expect(departmentRowOf(view, { id: 'team-2', nameEn: 'Design', parentName: 'Marketing' })).toBeNull();
+    expect(pillarRowsOf(view, { id: PRODUCTION, nameEn: 'Production', parentName: null }).map((r) => r.department.id)).toEqual([PRODUCTION]);
+    // a team the API sent no row for (from before team pillars): its department's, by name
+    expect(pillarRowsOf(view, { id: 'team-1', nameEn: 'Video', parentName: 'Production' }).map((r) => r.department.id)).toEqual([PRODUCTION]);
+    expect(pillarRowsOf(view, { id: 'team-2', nameEn: 'Design', parentName: 'Marketing' })).toEqual([]);
   });
 
   it('says whether a department has its own pillars, and whether it can go back to the company’s', () => {
@@ -297,6 +302,85 @@ describe('pillars by department', () => {
     );
     expect(followCompanySavedText('Production', '2026-12')).toBe(
       'Saved. Production takes the company’s pillars from December 2026’s scorecards: update each template marked “Uses the old pillars”.',
+    );
+  });
+});
+
+// Team pillars (owner, 22 October 2026: "where is the pillars for team?", then "Yes, add team pillars").
+describe('pillars by team', () => {
+  const PRODUCTION = 'd0000000-0000-4000-8000-000000000001';
+  const VIDEO = 't0000000-0000-4000-8000-000000000001';
+  const DESIGN = 't0000000-0000-4000-8000-000000000002';
+  const pillars = (names: string[]) => names.map((name, i) => ({ key: name.toLowerCase(), name, short: name, weight: i === 0 ? 100 - (names.length - 1) * 20 : 20 }));
+  const prodOwn = version({ id: 'p1', departmentId: PRODUCTION, appliesFrom: '2026-09', pillars: pillars(['Delivery', 'Craft', 'Discipline']), attendancePillar: 'discipline' });
+  const videoOwn = version({ id: 'v1', departmentId: VIDEO, appliesFrom: '2026-12', opensFrom: '2027-01-01', pillars: pillars(['Shoots', 'Discipline']), attendancePillar: 'discipline' });
+  const videoBack = version({ id: 'v2', departmentId: VIDEO, version: 2, followsCompany: true, pillars: [], attendancePillar: '', appliesFrom: '2027-01', opensFrom: '2027-02-01' });
+  const teamRow = (id: string, nameEn: string, over: Partial<KpiDepartmentPillarsView> = {}): KpiDepartmentPillarsView => ({
+    department: { id, nameEn },
+    parent: { id: PRODUCTION, nameEn: 'Production' },
+    inForce: null,
+    next: null,
+    jobTitles: 1,
+    oldTemplates: 0,
+    teams: [],
+    ...over,
+  });
+  const production = (teams: KpiDepartmentPillarsView[], over: Partial<KpiDepartmentPillarsView> = {}): KpiDepartmentPillarsView => ({
+    department: { id: PRODUCTION, nameEn: 'Production' },
+    parent: null,
+    inForce: null,
+    next: null,
+    jobTitles: 3,
+    oldTemplates: 0,
+    teams,
+    ...over,
+  });
+
+  it('lists each department’s teams after it, finds a team’s row and its line up to its department', () => {
+    const view = { ...VIEW, departments: [production([teamRow(VIDEO, 'Video'), teamRow(DESIGN, 'Design')])] };
+    expect(allPillarRows(view).map((r) => r.department.nameEn)).toEqual(['Production', 'Video', 'Design']);
+    expect(departmentRow(view, DESIGN)?.parent?.nameEn).toBe('Production');
+    expect(pillarRowsOf(view, { id: VIDEO, nameEn: 'Video', parentName: 'Production' }).map((r) => r.department.nameEn)).toEqual(['Video', 'Production']);
+  });
+
+  it('a team’s newest pillars: its own, else its department’s, else the company’s', () => {
+    const company = version({ id: 'c2', version: 2, appliesFrom: '2026-11', opensFrom: '2026-12-01' });
+    const view = (video: Partial<KpiDepartmentPillarsView>, prod: Partial<KpiDepartmentPillarsView> = {}) => ({ ...VIEW, next: company, departments: [production([teamRow(VIDEO, 'Video', video)], prod)] });
+    let v = view({ next: videoOwn });
+    expect(effectiveNewest(v, departmentRow(v, VIDEO)!)).toBe(videoOwn);
+    v = view({}, { inForce: prodOwn });
+    expect(effectiveNewest(v, departmentRow(v, VIDEO)!)).toBe(prodOwn);
+    v = view({ inForce: videoOwn, next: videoBack }, { inForce: prodOwn });
+    expect(effectiveNewest(v, departmentRow(v, VIDEO)!)).toBe(prodOwn);
+    v = view({});
+    expect(effectiveNewest(v, departmentRow(v, VIDEO)!)).toBe(company);
+    // the form of a team without its own starts from them
+    const form = frameworkFormOf(v, departmentRow(v, VIDEO)!, prodOwn);
+    expect(form.pillars.map((p) => p.key)).toEqual(['delivery', 'craft', 'discipline']);
+  });
+
+  it('the month a team’s job title’s pillars apply from: the nearest own, held back by a level going back up', () => {
+    const company = { next: version({ appliesFrom: '2026-11' }) };
+    // its own coming
+    expect(pillarsMonthOf(company, [teamRow(VIDEO, 'Video', { next: videoOwn }), production([])])).toBe('2026-12');
+    // none of its own: its department's in force
+    expect(pillarsMonthOf(company, [teamRow(VIDEO, 'Video'), production([], { inForce: prodOwn })])).toBeNull();
+    // going back to its department's own in force: from its month
+    expect(pillarsMonthOf(company, [teamRow(VIDEO, 'Video', { inForce: videoOwn, next: videoBack }), production([], { inForce: prodOwn })])).toBe('2027-01');
+    // neither has its own: the company's next
+    expect(pillarsMonthOf(company, [teamRow(VIDEO, 'Video'), production([])])).toBe('2026-11');
+  });
+
+  it('says a team’s pillars, its going back to its department’s, and counts the teams with their own', () => {
+    expect(departmentPillarsText(teamRow(VIDEO, 'Video'))).toEqual({ now: 'Production’s pillars', next: null });
+    expect(departmentPillarsText(teamRow(VIDEO, 'Video', { inForce: videoOwn, next: videoBack })).next).toBe('Back to Production’s pillars from January 2027’s scorecards.');
+    expect(followCompanyConfirmText('Video', '2027-01', 'Production’s')).toMatch(/^Take Production’s pillars again for Video\? From January 2027’s scorecards, which open on 01\/02\/2027, its job titles take Production’s pillars\. /);
+    expect(followCompanySavedText('Video', '2027-01', 'Production’s')).toBe(
+      'Saved. Video takes Production’s pillars from January 2027’s scorecards: update each template marked “Uses the old pillars”.',
+    );
+    expect(ownPillarsCountText({ departments: [production([teamRow(VIDEO, 'Video', { inForce: videoOwn })])] })).toBe('1 team has its own pillars; the others take the company’s.');
+    expect(ownPillarsCountText({ departments: [production([teamRow(VIDEO, 'Video', { inForce: videoOwn }), teamRow(DESIGN, 'Design', { next: videoOwn })], { inForce: prodOwn })] })).toBe(
+      '1 department and 2 teams have their own pillars; the others take the company’s.',
     );
   });
 });

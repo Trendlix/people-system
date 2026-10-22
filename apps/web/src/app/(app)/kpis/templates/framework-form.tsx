@@ -1,6 +1,6 @@
 'use client';
 
-import { KPI_FRAMEWORK_LIMITS, kpiFrameworkMonthProblems, type KpiDepartmentPillarsView, type KpiFrameworkView } from '@trendlix/shared';
+import { KPI_FRAMEWORK_LIMITS, kpiFrameworkMonthProblems, type KpiDepartmentPillarsView, type KpiFrameworkVersionView, type KpiFrameworkView } from '@trendlix/shared';
 import { startTransition, useActionState, useRef, useState } from 'react';
 import { FormErrors, useFieldIds } from '@/components/form';
 import { Select } from '@/components/select';
@@ -31,18 +31,23 @@ import {
 // changed the same way until they apply.
 // A department's own pillars (owner, 22 October 2026: "but i need pillars to each department"): the same form on the
 // department's page, starting from its own pillars, or from the company's newest when it takes those; and going back
-// to the company's pillars from a month (FollowCompanyForm).
+// to the company's pillars from a month (FollowCompanyForm). A team's (owner, 22 October 2026: "Yes, add team
+// pillars"): the same, starting from its department's when it has none of its own, and going back to its department's.
 
 const small =
   'inline-flex min-h-9 items-center rounded-md px-2.5 text-sm font-semibold text-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
 const smallDanger =
   'inline-flex min-h-9 items-center rounded-md px-2.5 text-sm font-semibold text-danger hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
 
-/** A department whose own pillars the form changes: its id, its name as headings show it, and its row of the view. */
+/**
+ * A department or team whose own pillars the form changes: its id, its name as headings show it, its row of the view,
+ * and for a team, its department's: whose pillars it takes otherwise ("Production’s") and their newest.
+ */
 export interface PillarsDepartment {
   id: string;
   name: string;
   row: KpiDepartmentPillarsView;
+  above?: { possessive: string; newest: KpiFrameworkVersionView } | null;
 }
 
 export function KpiFrameworkForm({
@@ -58,7 +63,7 @@ export function KpiFrameworkForm({
   department?: PillarsDepartment | null;
 }) {
   const fid = useFieldIds();
-  const [form, setForm] = useState<FrameworkForm>(() => frameworkFormOf(view, department?.row ?? null));
+  const [form, setForm] = useState<FrameworkForm>(() => frameworkFormOf(view, department?.row ?? null, department?.above?.newest ?? null));
   const [state, dispatch, pending] = useActionState(action, {});
   const counter = useRef(0);
   const problems = frameworkProblems(form, view.usedKeys, today);
@@ -281,8 +286,8 @@ export function KpiFrameworkForm({
 
 /**
  * A department back to the company's pillars from a month (owner, 22 October 2026: "i need pillars to each
- * department"): its own stop applying then, its job titles taking the company's; a change coming is replaced. Asks
- * first.
+ * department"), or a team back to its department's ("Yes, add team pillars"): its own stop applying then, its job
+ * titles taking those above; a change coming is replaced. Asks first.
  */
 export function FollowCompanyForm({
   view,
@@ -297,6 +302,9 @@ export function FollowCompanyForm({
 }) {
   const fid = useFieldIds();
   const next = department.row.next;
+  // whose pillars it goes back to: a team's department's, a department the company's
+  const above = department.above?.possessive ?? 'the company’s';
+  const aboveTitle = department.above?.possessive ?? 'the Company’s';
   const [appliesFrom, setAppliesFrom] = useState(() => (next?.followsCompany ? next.appliesFrom : view.defaultMonth));
   const [state, dispatch, pending] = useActionState(action, {});
   const problems = kpiFrameworkMonthProblems(appliesFrom, today);
@@ -304,11 +312,20 @@ export function FollowCompanyForm({
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (pending || problems.length) return;
-    if (!window.confirm(followCompanyConfirmText(department.name, appliesFrom))) return;
+    if (!window.confirm(followCompanyConfirmText(department.name, appliesFrom, above))) return;
     const fd = new FormData();
     fd.set(
       'framework',
-      JSON.stringify({ departmentId: department.id, departmentName: department.name, followsCompany: true, appliesFrom, attendancePillar: '', pillars: [], nextId: next?.id ?? null }),
+      JSON.stringify({
+        departmentId: department.id,
+        departmentName: department.name,
+        aboveName: above,
+        followsCompany: true,
+        appliesFrom,
+        attendancePillar: '',
+        pillars: [],
+        nextId: next?.id ?? null,
+      }),
     );
     startTransition(() => dispatch(fd));
   }
@@ -317,10 +334,10 @@ export function FollowCompanyForm({
     <form noValidate onSubmit={submit} aria-labelledby={fid('heading')} className="space-y-4">
       <div>
         <h3 id={fid('heading')} className="font-semibold">
-          {next?.followsCompany ? 'Change When It Goes Back to the Company’s Pillars' : 'Go Back to the Company’s Pillars'}
+          {next?.followsCompany ? `Change When It Goes Back to ${aboveTitle} Pillars` : `Go Back to ${aboveTitle} Pillars`}
         </h3>
         <p className="mt-1 max-w-3xl text-sm text-muted">
-          From the month chosen, {department.name}’s job titles take the company’s pillars again, and its own stop applying.
+          From the month chosen, {department.name}’s job titles take {above} pillars again, and its own stop applying.
           {next && !next.followsCompany ? ' The change coming is replaced.' : ''}
         </p>
       </div>
@@ -356,7 +373,7 @@ export function FollowCompanyForm({
       )}
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={pending || problems.length > 0} className="btn btn-secondary">
-          {pending ? 'Saving…' : next?.followsCompany ? 'Save the month' : 'Use the company’s pillars'}
+          {pending ? 'Saving…' : next?.followsCompany ? 'Save the month' : `Use ${above} pillars`}
         </button>
         {state.message && !pending && (
           <p role="status" className="text-sm text-ok">

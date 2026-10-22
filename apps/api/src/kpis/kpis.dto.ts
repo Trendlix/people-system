@@ -34,12 +34,15 @@ export class KpiSettingsDto {
  * overwritten; left out, the next one is changed, or made.
  */
 export class KpiFrameworkDto {
-  /** A department's own pillars (owner, 22 October 2026: "i need pillars to each department"); null or left out: the company's. */
+  /**
+   * A department's or a team's own pillars (owner, 22 October 2026: "i need pillars to each department", then "Yes, add
+   * team pillars"); null or left out: the company's.
+   */
   @IsOptional() @IsUUID('all', { message: 'Choose a department.' })
   departmentId?: string | null;
 
-  /** A department only: the company's pillars again from `appliesFrom` (no pillars sent). */
-  @IsOptional() @IsBoolean({ message: 'Say whether the department takes the company’s pillars.' })
+  /** A department or a team only: the level above's pillars again from `appliesFrom` (a team its department's; no pillars sent). */
+  @IsOptional() @IsBoolean({ message: 'Say whether it takes the pillars above it again.' })
   followsCompany?: boolean;
 
   @Matches(MONTH, { message: 'Choose the month the pillars apply from, e.g. 2026-11.' })

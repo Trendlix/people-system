@@ -588,7 +588,7 @@ export function DraftEditor({
             Weights total {total}%{total === 100 ? '' : ': they must add up to 100%'}
           </p>
           <button type="button" disabled={weightsAreBase(form)} onClick={() => setForm(resetWeights)} className="btn btn-secondary min-h-9 py-1">
-            {draft.pillarsFrom ? 'Use the department’s weights' : 'Use the company’s weights'}
+            {draft.pillarsFrom ? `Use ${draft.pillarsFrom.nameEn}’s weights` : 'Use the company’s weights'}
           </button>
         </div>
       )}

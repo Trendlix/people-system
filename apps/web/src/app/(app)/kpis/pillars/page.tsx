@@ -1,4 +1,4 @@
-import type { KpiFrameworkView } from '@trendlix/shared';
+import type { KpiDepartmentPillarsView, KpiFrameworkView } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
@@ -18,8 +18,9 @@ import { FrameworkVersion } from './ui';
 // be changed for each department and Job title"): the company's pillars, the default, in force and next, changed here
 // by HR and the Super Admin as they were at the foot of KPI Templates (owner, 21 October 2026: "Fully flexible"); then
 // each department, with the pillars it takes (its own, or the company's) and its next change, opening its own page to
-// set its own or go back to the company's. A team's job titles take their department's. The CEO and an Admin, whom
-// the API answers too, may read it. The API checks every request again.
+// set its own or go back to the company's. Each department's teams under it (owner, 22 October 2026: "where is the
+// pillars for team?", then "Yes, add team pillars"): a team's own pillars, or its department's. The CEO and an Admin,
+// whom the API answers too, may read it. The API checks every request again.
 
 export const metadata: Metadata = { title: 'KPI Pillars · People System' };
 
@@ -27,7 +28,45 @@ const COMPANY_INTRO =
   'The pillars every template places its metrics in, and their weights in the final %: final % = Σ pillar % × its weight. The company’s are every department’s unless it has its own. Changed pillars apply from a month whose scorecards aren’t open yet, next month unless chosen. Each template keeps the pillars it was published with, so the scorecards opened already never change; a template on the old pillars keeps opening its scorecards with them until it is updated.';
 
 const DEPARTMENTS_INTRO =
-  'A department can have its own pillars instead of the company’s: other names, another count, other weights. A team’s job titles take their department’s. Each job title can also weight its pillars its own way, on its KPI template.';
+  'A department can have its own pillars instead of the company’s: other names, another count, other weights. A team can have its own too, else it takes its department’s. Each job title can also weight its pillars its own way, on its KPI template.';
+
+/** A department's row, or a team's under it (indented), with what it takes, its next change and its link. */
+function PillarsRow({ row: d, builds }: { row: KpiDepartmentPillarsView; builds: boolean }) {
+  const text = departmentPillarsText(d);
+  const own = hasOwnPillars(d);
+  const team = d.parent !== null && d.parent !== undefined;
+  return (
+    <tr className="align-top">
+      <td className={team ? 'min-w-40 pl-8' : 'min-w-40'}>
+        {team && <span className="block text-xs text-muted">Team</span>}
+        <span className={team ? 'font-medium' : 'font-semibold'}>{d.department.nameEn}</span>
+        {d.oldTemplates > 0 && (
+          <span className="badge mt-1 bg-warn-soft text-warn">
+            {d.oldTemplates === 1 ? '1 template uses the old pillars' : `${d.oldTemplates} templates use the old pillars`}
+          </span>
+        )}
+      </td>
+      <td className="min-w-56 text-sm">
+        {d.inForce ? (
+          <>
+            <span className="badge bg-accent-soft text-accent">Own</span>
+            <span className="mt-1 block">{text.now}</span>
+          </>
+        ) : (
+          <span className="text-muted">{text.now}</span>
+        )}
+      </td>
+      <td className="min-w-48 text-sm">{text.next ?? <span className="text-muted">—</span>}</td>
+      <td className="text-right whitespace-nowrap tabular-nums">{jobTitlesCount(d.jobTitles)}</td>
+      <td className="text-right whitespace-nowrap">
+        <Link href={KPI_PATHS.departmentPillars(d.department.id)} className="font-semibold">
+          {builds ? (own ? 'Change' : 'Set own pillars') : 'View'}
+          <span className="sr-only"> for {d.department.nameEn}</span>
+        </Link>
+      </td>
+    </tr>
+  );
+}
 
 function CompanyPillars({ view, builds }: { view: KpiFrameworkView; builds: boolean }) {
   return (
@@ -70,7 +109,7 @@ function DepartmentPillars({ view, builds }: { view: KpiFrameworkView; builds: b
           <table className="table">
             <thead>
               <tr>
-                <th scope="col">Department</th>
+                <th scope="col">Department or team</th>
                 <th scope="col">Pillars</th>
                 <th scope="col">Next change</th>
                 <th scope="col" className="text-right">
@@ -82,40 +121,9 @@ function DepartmentPillars({ view, builds }: { view: KpiFrameworkView; builds: b
               </tr>
             </thead>
             <tbody>
-              {departments.map((d) => {
-                const text = departmentPillarsText(d);
-                const own = hasOwnPillars(d);
-                return (
-                  <tr key={d.department.id} className="align-top">
-                    <td className="min-w-40">
-                      <span className="font-semibold">{d.department.nameEn}</span>
-                      {d.oldTemplates > 0 && (
-                        <span className="badge mt-1 bg-warn-soft text-warn">
-                          {d.oldTemplates === 1 ? '1 template uses the old pillars' : `${d.oldTemplates} templates use the old pillars`}
-                        </span>
-                      )}
-                    </td>
-                    <td className="min-w-56 text-sm">
-                      {d.inForce ? (
-                        <>
-                          <span className="badge bg-accent-soft text-accent">Own</span>
-                          <span className="mt-1 block">{text.now}</span>
-                        </>
-                      ) : (
-                        <span className="text-muted">{text.now}</span>
-                      )}
-                    </td>
-                    <td className="min-w-48 text-sm">{text.next ?? <span className="text-muted">—</span>}</td>
-                    <td className="text-right whitespace-nowrap tabular-nums">{jobTitlesCount(d.jobTitles)}</td>
-                    <td className="text-right whitespace-nowrap">
-                      <Link href={KPI_PATHS.departmentPillars(d.department.id)} className="font-semibold">
-                        {builds ? (own ? 'Change' : 'Set own pillars') : 'View'}
-                        <span className="sr-only"> for {d.department.nameEn}</span>
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
+              {departments.flatMap((d) => [d, ...(d.teams ?? [])]).map((d) => (
+                <PillarsRow key={d.department.id} row={d} builds={builds} />
+              ))}
             </tbody>
           </table>
         </div>
@@ -133,7 +141,7 @@ async function KpiPillars() {
   return (
     <div className="space-y-8">
       <p className="max-w-3xl text-sm text-muted">
-        Each job title’s KPI template places its metrics in these pillars: its department’s own, or the company’s. Templates are built on{' '}
+        Each job title’s KPI template places its metrics in these pillars: its team’s own, its department’s, or the company’s. Templates are built on{' '}
         <Link href={KPI_PATHS.templates}>KPI Templates</Link>.
       </p>
       <CompanyPillars view={loaded.value} builds={builds} />

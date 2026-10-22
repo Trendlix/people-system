@@ -11,12 +11,14 @@ import { createApp, createUser, signIn } from './helpers.js';
 
 // KPI pillars by department, weights by job title (owner, 22 October 2026: "but i need pillars to each department /
 // wights can be changed for each department and Job title"; packages/shared kpi-framework.ts): every department is
-// listed, on the company's pillars until it has its own; HR and a Super Admin set a department's own pillars (not a
-// team's), from next month, audited, or take it back to the company's; a job title in the department, or in one of its
+// listed with its teams, on the company's pillars until it has its own; HR and a Super Admin set a department's own
+// pillars, from next month, audited, or take it back to the company's; a job title in the department, or in one of its
 // teams, is drafted and published in its pillars, from their first month; a job title's template gives them its own
 // weights (checked, kept when the draft is saved without them, published with it, its scorecard scored with them), reset
-// once its department's pillars gain a pillar; the company's change marks only the job titles on its pillars. Every name
-// is invented; the test deletes what it made.
+// once its department's pillars gain a pillar; the company's change marks only the job titles on its pillars. A team's
+// own pillars (owner, 22 October 2026: "where is the pillars for team?", then "Yes, add team pillars"): its job titles
+// take them, or its department's when it goes back to them, from the later month; its department's change leaves it be.
+// Every name is invented; the test deletes what it made.
 
 const RUN = Date.now().toString(36).toLowerCase();
 const TODAY = todayInCairo();
@@ -44,6 +46,16 @@ const SALES_THREE = [
   { key: 'revenue', name: 'Revenue', short: 'Revenue', weight: 50 },
   { key: 'clients', name: 'Clients & Teamwork', short: 'Clients', weight: 30 },
   { key: 'growth', name: 'Growth', short: 'Growth', weight: 20 },
+];
+/** The Field team's own pillars. */
+const FIELD_PILLARS = [
+  { key: 'visits', name: 'Visits', short: 'Visits', weight: 70 },
+  { key: 'clients', name: 'Clients & Teamwork', short: 'Clients', weight: 30 },
+];
+/** The Inside team's own pillars. */
+const INSIDE_PILLARS = [
+  { key: 'calls', name: 'Calls', short: 'Calls', weight: 50 },
+  { key: 'clients', name: 'Clients & Teamwork', short: 'Clients', weight: 50 },
 ];
 /** The company's next pillars: the plan's four, reweighted. */
 const COMPANY_NEXT = [
@@ -80,6 +92,8 @@ describe('KPI pillars by department, weights by job title (e2e)', () => {
   let salesRepId: string;
   let fieldRepId: string;
   let webDevId: string;
+  let insideId: string;
+  let insideRepId: string;
   let salesNextId: string;
   let salesRepV1: KpiTemplateView;
   let emailDomainBefore: string | null;
@@ -119,29 +133,31 @@ describe('KPI pillars by department, weights by job title (e2e)', () => {
   afterAll(async () => {
     await app.get(NotificationsService).flush();
     await prisma.kpiScorecard.deleteMany({ where: { employeeId: { in: people } } });
-    const titles = [salesRepId, fieldRepId, webDevId].filter(Boolean);
+    const titles = [salesRepId, fieldRepId, webDevId, insideRepId].filter(Boolean);
     await prisma.kpiTemplate.deleteMany({ where: { jobTitleId: { in: titles } } });
     // the company's pillars back to the first version, as the other tests expect; the departments' go with them
     await prisma.kpiFramework.deleteMany({ where: { departmentId: null, version: { gt: 1 } } });
     await prisma.employment.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.employee.deleteMany({ where: { id: { in: people } } });
     await prisma.jobTitle.deleteMany({ where: { id: { in: titles } } });
-    await prisma.department.deleteMany({ where: { id: { in: [fieldId].filter(Boolean) } } });
+    await prisma.department.deleteMany({ where: { id: { in: [fieldId, insideId].filter(Boolean) } } });
     await prisma.department.deleteMany({ where: { id: { in: [salesId, webId].filter(Boolean) } } });
     await api().patch('/api/company').set('Cookie', sessions.hr).send({ emailDomain: emailDomainBefore ?? '' }).expect(200);
     await app.close();
   });
 
-  it('lists every department (not its teams) on the company’s pillars until it has its own', async () => {
+  it('lists every department with its teams, on the company’s pillars until they have their own', async () => {
     const read = await view(sessions.ann);
     expect(read.canEdit).toBe(false);
     expect(read.departments.find((d) => d.department.id === salesId)).toEqual({
       department: { id: salesId, nameEn: `Pillars Sales ${RUN}` },
+      parent: null,
       inForce: null,
       next: null,
-      // its own and its team's
+      // its own and its team's, the team having none of its own
       jobTitles: 2,
       oldTemplates: 0,
+      teams: [{ department: { id: fieldId, nameEn: `Field ${RUN}` }, parent: { id: salesId, nameEn: `Pillars Sales ${RUN}` }, inForce: null, next: null, jobTitles: 1, oldTemplates: 0, teams: [] }],
     });
     expect(read.departments.find((d) => d.department.id === webId)).toMatchObject({ inForce: null, next: null, jobTitles: 1 });
     expect(read.departments.some((d) => d.department.id === fieldId)).toBe(false);
@@ -150,15 +166,14 @@ describe('KPI pillars by department, weights by job title (e2e)', () => {
   describe('a department’s own pillars', () => {
     const body = (extra: object = {}) => ({ departmentId: salesId, appliesFrom: NEXT, attendancePillar: 'clients', pillars: SALES_PILLARS, ...extra });
 
-    it('only HR and a Super Admin set them; a team, an unknown department and the same pillars as the company’s are refused', async () => {
+    it('only HR and a Super Admin set them; an unknown department and the same pillars as the company’s are refused', async () => {
       for (const key of ['ann', 'ceo', 'admin']) await put('/kpis/framework', sessions[key], body()).expect(403);
-      expect(said(await put('/kpis/framework', sessions.hr, body({ departmentId: fieldId })).expect(400))).toEqual(['Teams take their department’s pillars: choose the department.']);
       await put('/kpis/framework', sessions.hr, body({ departmentId: '00000000-0000-4000-8000-000000000000' })).expect(404);
       expect(said(await put('/kpis/framework', sessions.hr, { departmentId: webId, followsCompany: true, appliesFrom: NEXT }).expect(400))).toEqual([
         `Pillars Web ${RUN} takes the company’s pillars already.`,
       ]);
       expect(said(await put('/kpis/framework', sessions.hr, { followsCompany: true, appliesFrom: NEXT }).expect(400))).toEqual([
-        'Only a department goes back to the company’s pillars: choose the department.',
+        'Only a department or a team goes back to the pillars above it: choose one.',
       ]);
       const company = (await view()).inForce;
       expect(said(await put('/kpis/framework', sessions.hr, body({ attendancePillar: company.attendancePillar, pillars: company.pillars })).expect(400))).toEqual([
@@ -352,6 +367,85 @@ describe('KPI pillars by department, weights by job title (e2e)', () => {
       // Sales back on them from next month instead: the version moves with it
       await put('/kpis/framework', sessions.hr, { departmentId: salesId, followsCompany: true, appliesFrom: NEXT, nextId: sales.next!.id }).expect(200);
       expect(fromDateOnly((await prisma.kpiTemplate.findUniqueOrThrow({ where: { id: field.id } })).opensFrom!)).toBe(`${AFTER}-01`);
+    });
+  });
+  // owner, 22 October 2026: "where is the pillars for team?", then "Yes, add team pillars"
+  describe('a team’s own pillars', () => {
+    const team = (extra: object = {}) => ({ departmentId: fieldId, appliesFrom: NEXT, attendancePillar: 'clients', pillars: FIELD_PILLARS, ...extra });
+    let fieldNextId: string;
+
+    it('only HR and a Super Admin set them; a team already on its department’s, or the same pillars as its department gives, is refused', async () => {
+      for (const key of ['ann', 'ceo', 'admin']) await put('/kpis/framework', sessions[key], team()).expect(403);
+      expect(said(await put('/kpis/framework', sessions.hr, { departmentId: fieldId, followsCompany: true, appliesFrom: NEXT }).expect(400))).toEqual([
+        `Field ${RUN} takes Pillars Sales ${RUN}’s pillars already.`,
+      ]);
+      // Sales goes back to the company's next ones: those are what it gives its teams
+      expect(said(await put('/kpis/framework', sessions.hr, team({ attendancePillar: 'discipline', pillars: COMPANY_NEXT })).expect(400))).toEqual([
+        `These are the pillars Pillars Sales ${RUN} gives its teams: change a pillar, a weight or the Attendance metric’s pillar first, or keep Pillars Sales ${RUN}’s.`,
+      ]);
+      expect(await prisma.kpiFramework.count({ where: { departmentId: fieldId } })).toBe(0);
+    });
+
+    it('HR sets Field’s own pillars, audited; its row under Sales has them, and its job titles count for it alone', async () => {
+      const saved = (await put('/kpis/framework', sessions.hr, team({ nextId: null })).expect(200)).body as KpiFrameworkView;
+      const sales = saved.departments.find((d) => d.department.id === salesId)!;
+      const field = sales.teams.find((t) => t.department.id === fieldId)!;
+      expect(field).toMatchObject({ parent: { id: salesId }, inForce: null, next: { version: 1, departmentId: fieldId, followsCompany: false, appliesFrom: NEXT }, jobTitles: 1, oldTemplates: 1 });
+      expect(field.next!.pillars).toEqual(FIELD_PILLARS);
+      // Sales's own job title alone now
+      expect(sales.jobTitles).toBe(1);
+      fieldNextId = field.next!.id;
+      expect(await lastAudit('kpi_framework', fieldNextId, 'create')).toMatchObject({
+        userId: users.hr,
+        diff: { team: `Field ${RUN}`, department: `Pillars Sales ${RUN}`, departmentId: fieldId, version: 1, pillars: ['Visits 70%', 'Clients & Teamwork 30%'], replaces: { followsCompany: true } },
+      });
+      // a field rep's draft is in Field's pillars
+      const draft = (await post(`/kpis/templates/job-titles/${fieldRepId}/draft`, sessions.hr, { from: 'blank' }).expect(201)).body as KpiTemplateView;
+      expect(draft).toMatchObject({ pillars: FIELD_PILLARS, pillarsFrom: { departmentId: fieldId, nameEn: `Field ${RUN}` }, baseWeights: { visits: 70, clients: 30 } });
+      // the sales rep's still Sales's (the company's, Sales going back to them)
+      expect(((await get(`/kpis/templates/job-titles/${salesRepId}`, sessions.hr).expect(200)).body as KpiJobTitleTemplates).draft).toMatchObject({ pillarsFrom: null });
+    });
+
+    it('Field goes back to Sales’s pillars from a month: its job titles take them, from the later month, and move with it', async () => {
+      const saved = (await put('/kpis/framework', sessions.hr, { departmentId: fieldId, followsCompany: true, appliesFrom: AFTER, nextId: fieldNextId }).expect(200)).body as KpiFrameworkView;
+      const field = saved.departments.find((d) => d.department.id === salesId)!.teams.find((t) => t.department.id === fieldId)!;
+      expect(field).toMatchObject({ inForce: null, next: { id: fieldNextId, followsCompany: true, appliesFrom: AFTER } });
+      const draftId = (await rowOf(fieldRepId)).draft!.id;
+      const draft = (await get(`/kpis/templates/job-titles/${fieldRepId}`, sessions.hr).expect(200)).body as KpiJobTitleTemplates;
+      expect(draft.draft).toMatchObject({ id: draftId, pillarsFrom: null, attendancePillar: 'discipline' });
+      await put(`/kpis/templates/${draftId}`, sessions.hr, {
+        attendancePoints: 20,
+        metrics: [metric('delivery', 'Visits'), metric('quality', 'Reports'), metric('clients', 'Client feedback')],
+      }).expect(200);
+      const published = (await post(`/kpis/templates/${draftId}/publish`, sessions.hr).expect(200)).body as KpiTemplateView;
+      // the company's apply from next month, Sales takes them from next month, Field from the month after: from then
+      expect(published).toMatchObject({ opensFrom: `${monthsLater(AFTER, 1)}-01`, pillarsFrom: null, oldPillars: false });
+      // Field back on them from next month instead: the version moves with it
+      await put('/kpis/framework', sessions.hr, { departmentId: fieldId, followsCompany: true, appliesFrom: NEXT, nextId: fieldNextId }).expect(200);
+      expect(fromDateOnly((await prisma.kpiTemplate.findUniqueOrThrow({ where: { id: draftId } })).opensFrom!)).toBe(`${AFTER}-01`);
+    });
+
+    it('a team with its own pillars in force isn’t marked when its department’s pillars change', async () => {
+      insideId = (await post('/departments', sessions.hr, { nameEn: `Inside ${RUN}`, parentId: salesId }).expect(201)).body.id;
+      insideRepId = (await post('/job-titles', sessions.hr, { departmentId: insideId, titleEn: `Inside Rep ${RUN}` }).expect(201)).body.id;
+      const saved = (await put('/kpis/framework', sessions.superAdmin, { departmentId: insideId, appliesFrom: NEXT, attendancePillar: 'clients', pillars: INSIDE_PILLARS, nextId: null }).expect(200))
+        .body as KpiFrameworkView;
+      const insideNext = saved.departments.find((d) => d.department.id === salesId)!.teams.find((t) => t.department.id === insideId)!.next!;
+      const draft = (await post(`/kpis/templates/job-titles/${insideRepId}/draft`, sessions.hr, { from: 'blank' }).expect(201)).body as KpiTemplateView;
+      await put(`/kpis/templates/${draft.id}`, sessions.hr, { attendancePoints: 20, metrics: [metric('calls', 'Calls made'), metric('clients', 'Client feedback')] }).expect(200);
+      const published = (await post(`/kpis/templates/${draft.id}/publish`, sessions.hr).expect(200)).body as KpiTemplateView;
+      expect(published).toMatchObject({ pillarsFrom: { departmentId: insideId, nameEn: `Inside ${RUN}` }, oldPillars: false });
+      expect(published.pillars).toEqual(INSIDE_PILLARS);
+      // Inside's own in force since last month's
+      await prisma.kpiFramework.update({ where: { id: insideNext.id }, data: { appliesFrom: toDateOnly(firstDay(LAST)) } });
+      // Sales's next change becomes its own pillars again
+      const sales = (await view()).departments.find((d) => d.department.id === salesId)!;
+      await put('/kpis/framework', sessions.hr, { departmentId: salesId, appliesFrom: NEXT, attendancePillar: 'clients', pillars: SALES_PILLARS, nextId: sales.next!.id }).expect(200);
+      expect(await rowOf(insideRepId)).toMatchObject({ oldPillars: false });
+      const after = (await view()).departments.find((d) => d.department.id === salesId)!;
+      expect(after.teams.find((t) => t.department.id === insideId)).toMatchObject({ inForce: { id: insideNext.id }, next: null, jobTitles: 1, oldTemplates: 0 });
+      // Sales's own job title and Field's (on Sales's pillars again) count for Sales; Inside's for Inside alone
+      expect(after.jobTitles).toBe(2);
     });
   });
 });

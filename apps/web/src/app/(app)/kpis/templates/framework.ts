@@ -56,8 +56,12 @@ export interface FrameworkForm {
 export function frameworkFormOf(
   view: Pick<KpiFrameworkView, 'inForce' | 'next' | 'defaultMonth'>,
   department: Pick<KpiDepartmentPillarsView, 'inForce' | 'next'> | null = null,
+  /** What a department or team without its own starts from: the level above's newest (a team's, its department's); the company's unless sent. */
+  above: Pick<KpiFrameworkVersionView, 'pillars' | 'attendancePillar'> | null = null,
 ): FrameworkForm {
-  const base = department ? ((department.next && !department.next.followsCompany ? department.next : null) ?? department.inForce ?? companyNewest(view)) : (view.next ?? view.inForce);
+  const base = department
+    ? ((department.next && !department.next.followsCompany ? department.next : null) ?? department.inForce ?? above ?? companyNewest(view))
+    : (view.next ?? view.inForce);
   const pillars = base.pillars.map((p, i) => ({ rowKey: `p${i}`, key: p.key, name: p.name, short: p.short, weight: String(p.weight) }));
   return {
     pillars,
@@ -185,78 +189,130 @@ export function frameworkConfirmText(appliesFrom: string, changingNext: boolean,
 export const frameworkSavedText = (appliesFrom: string, department: string | null = null): string =>
   `Saved. ${department ? `${department}’s new pillars apply` : 'The new pillars apply'} from ${kpiMonthName(appliesFrom)}’s scorecards: update each template marked “Uses the old pillars”.`;
 
-// ---------- by department ----------
+// ---------- by department and team ----------
+// (owner, 22 October 2026: "but i need pillars to each department", then "where is the pillars for team?" and "Yes, add
+// team pillars"): a row for each department, its teams' rows under it; each its own pillars or the level above's (a
+// team its department's, a department the company's).
 
 /** The company's newest pillars: the next ones when there are some, else those in force. */
 export const companyNewest = (view: Pick<KpiFrameworkView, 'inForce' | 'next'>): KpiFrameworkVersionView => view.next ?? view.inForce;
 
-/** A department's row on KPI Pillars by its id; null when it isn't one (a team, or one the API didn't send). */
-export const departmentRow = (view: Pick<KpiFrameworkView, 'departments'>, departmentId: string): KpiDepartmentPillarsView | null =>
-  (view.departments ?? []).find((d) => d.department.id === departmentId) ?? null;
-
-/**
- * The department row whose pillars a job title's department takes (a team's: its department's, by name, as the
- * department's names are different), or null when it isn't on KPI Pillars.
- */
-export function departmentRowOf(view: Pick<KpiFrameworkView, 'departments'>, department: { id: string; nameEn: string; parentName: string | null }): KpiDepartmentPillarsView | null {
-  const rows = view.departments ?? [];
-  return (department.parentName ? rows.find((d) => d.department.nameEn === department.parentName) : rows.find((d) => d.department.id === department.id)) ?? null;
+/** Every row on KPI Pillars, each department's teams after it. */
+export function allPillarRows(view: Pick<KpiFrameworkView, 'departments'>): KpiDepartmentPillarsView[] {
+  const walk = (rows: readonly KpiDepartmentPillarsView[]): KpiDepartmentPillarsView[] => rows.flatMap((r) => [r, ...walk(r.teams ?? [])]);
+  return walk(view.departments ?? []);
 }
 
-/** Whether a department takes its own pillars, now or from its next change. */
+/** A department's or a team's row on KPI Pillars by its id; null when it isn't one the API sent. */
+export const departmentRow = (view: Pick<KpiFrameworkView, 'departments'>, departmentId: string): KpiDepartmentPillarsView | null =>
+  allPillarRows(view).find((d) => d.department.id === departmentId) ?? null;
+
+/**
+ * The rows whose pillars a job title's department or team takes, nearest first: its team's and its department's (a
+ * department's own job title: its row alone); none when it isn't on KPI Pillars. A team found by its id, else (an API
+ * from before team pillars) its department by name.
+ */
+export function pillarRowsOf(view: Pick<KpiFrameworkView, 'departments'>, department: { id: string; nameEn: string; parentName: string | null }): KpiDepartmentPillarsView[] {
+  const out: KpiDepartmentPillarsView[] = [];
+  let row = departmentRow(view, department.id);
+  if (!row && department.parentName) row = (view.departments ?? []).find((d) => d.department.nameEn === department.parentName) ?? null;
+  while (row && !out.includes(row)) {
+    out.push(row);
+    row = row.parent ? departmentRow(view, row.parent.id) : null;
+  }
+  return out;
+}
+
+/** The level above a row: a team's department's row; null for a department (the company's). */
+export const aboveRow = (view: Pick<KpiFrameworkView, 'departments'>, row: Pick<KpiDepartmentPillarsView, 'parent'>): KpiDepartmentPillarsView | null =>
+  row.parent ? departmentRow(view, row.parent.id) : null;
+
+/** A row's own newest pillars: its next own ones, else its own in force; null when it takes the level above's (now or from its next change). */
+const ownNewest = (row: Pick<KpiDepartmentPillarsView, 'inForce' | 'next'>): KpiFrameworkVersionView | null => (row.next ? (row.next.followsCompany ? null : row.next) : row.inForce);
+
+/** The newest pillars a row's job titles take: its own, else the level above's (a team its department's), else the company's. */
+export function effectiveNewest(view: Pick<KpiFrameworkView, 'inForce' | 'next' | 'departments'>, row: KpiDepartmentPillarsView): KpiFrameworkVersionView {
+  const seen = new Set<string>();
+  let r: KpiDepartmentPillarsView | null = row;
+  while (r && !seen.has(r.department.id)) {
+    seen.add(r.department.id);
+    const own = ownNewest(r);
+    if (own) return own;
+    r = aboveRow(view, r);
+  }
+  return companyNewest(view);
+}
+
+/** Whose pillars a row takes when not its own: "Production’s" for a team, "the company’s" for a department. */
+export const aboveName = (row: Pick<KpiDepartmentPillarsView, 'parent'>): string => (row.parent ? `${row.parent.nameEn}’s` : 'the company’s');
+
+/** Whether a department or team takes its own pillars, now or from its next change. */
 export const hasOwnPillars = (row: Pick<KpiDepartmentPillarsView, 'inForce' | 'next'>): boolean => (row.next ? !row.next.followsCompany : row.inForce !== null);
 
 /**
- * Whether a department can go back to the company's pillars: it has its own in force or a change coming (when it takes
- * the company's with nothing coming, there is nothing to go back from).
+ * Whether a department can go back to the company's pillars, or a team to its department's: it has its own in force or
+ * a change coming (when it takes them with nothing coming, there is nothing to go back from).
  */
 export const canFollowCompany = (row: Pick<KpiDepartmentPillarsView, 'inForce' | 'next'>): boolean => row.inForce !== null || row.next !== null;
-
-/** The later of two months (YYYY-MM), the second maybe none. */
-const laterMonth = (a: string, b: string | null | undefined): string => (b && b > a ? b : a);
-
-/**
- * The month the pillars a job title takes now apply from, while they are still to come (YYYY-MM): a version published
- * now applies from their first month if later than next month; null when they are in force. `row`: its department's
- * (departmentRowOf); none: it takes the company's.
- */
-export function pillarsMonthOf(view: Pick<KpiFrameworkView, 'next'>, row: Pick<KpiDepartmentPillarsView, 'inForce' | 'next'> | null): string | null {
-  if (row?.next) return row.next.followsCompany ? laterMonth(row.next.appliesFrom, view.next?.appliesFrom) : row.next.appliesFrom;
-  if (row?.inForce) return null;
-  return view.next?.appliesFrom ?? null;
-}
 
 /** The latest of the months given (YYYY-MM), none counted out; null when there are none. */
 export const latestMonth = (months: readonly (string | null | undefined)[]): string | null =>
   months.reduce<string | null>((latest, m) => (m && (!latest || m > latest) ? m : latest), null);
 
-/** A department's pillars in words, on KPI Pillars: what it takes now and what changes next. */
-export function departmentPillarsText(row: Pick<KpiDepartmentPillarsView, 'inForce' | 'next'>): { now: string; next: string | null } {
+/**
+ * The month the pillars a job title takes now apply from, while they are still to come (YYYY-MM): a version published
+ * now applies from their first month if later than next month; null when they are in force. `rows`: its team's and
+ * department's (pillarRowsOf), nearest first; none: it takes the company's. A level going back to the one above holds
+ * the pillars above back to its month.
+ */
+export function pillarsMonthOf(
+  view: Pick<KpiFrameworkView, 'next'>,
+  rows: readonly Pick<KpiDepartmentPillarsView, 'inForce' | 'next'>[] | Pick<KpiDepartmentPillarsView, 'inForce' | 'next'> | null,
+): string | null {
+  const line = rows === null ? [] : Array.isArray(rows) ? rows : [rows as Pick<KpiDepartmentPillarsView, 'inForce' | 'next'>];
+  let held: string | null = null;
+  for (const row of line) {
+    if (row.next && !row.next.followsCompany) return latestMonth([row.next.appliesFrom, held]);
+    if (row.next) {
+      held = latestMonth([row.next.appliesFrom, held]);
+      continue;
+    }
+    if (row.inForce) return held;
+  }
+  return latestMonth([view.next?.appliesFrom, held]);
+}
+
+/** A department's or team's pillars in words, on KPI Pillars: what it takes now and what changes next. */
+export function departmentPillarsText(row: Pick<KpiDepartmentPillarsView, 'inForce' | 'next'> & Partial<Pick<KpiDepartmentPillarsView, 'parent'>>): { now: string; next: string | null } {
+  const above = aboveName({ parent: row.parent ?? null });
   const next = row.next
     ? row.next.followsCompany
-      ? `Back to the company’s pillars from ${kpiMonthName(row.next.appliesFrom)}’s scorecards.`
+      ? `Back to ${above} pillars from ${kpiMonthName(row.next.appliesFrom)}’s scorecards.`
       : `Its own from ${kpiMonthName(row.next.appliesFrom)}’s scorecards: ${kpiPillarsText(row.next)}.`
     : null;
-  return { now: row.inForce ? kpiPillarsText(row.inForce) : 'The company’s pillars', next };
+  return { now: row.inForce ? kpiPillarsText(row.inForce) : `${above.charAt(0).toUpperCase()}${above.slice(1)} pillars`, next };
 }
 
-/** What "Go back to the company's pillars" asks first. */
-export function followCompanyConfirmText(department: string, appliesFrom: string): string {
-  return `Take the company’s pillars again for ${department}? From ${kpiMonthName(appliesFrom)}’s scorecards, which open on ${formatDate(kpiFrameworkOpensFrom(appliesFrom))}, its job titles take the company’s pillars. Every template of its job titles must then be updated to place its metrics in them; until it is, its scorecards keep opening on its old version and old pillars. The scorecards opened already keep theirs.`;
+/** What "Go back to the company's pillars" (a team: its department's) asks first; `above`: "Production’s", else the company's. */
+export function followCompanyConfirmText(department: string, appliesFrom: string, above = 'the company’s'): string {
+  return `Take ${above} pillars again for ${department}? From ${kpiMonthName(appliesFrom)}’s scorecards, which open on ${formatDate(kpiFrameworkOpensFrom(appliesFrom))}, its job titles take ${above} pillars. Every template of its job titles must then be updated to place its metrics in them; until it is, its scorecards keep opening on its old version and old pillars. The scorecards opened already keep theirs.`;
 }
 
-/** What the page says once a department goes back to the company's pillars. */
-export const followCompanySavedText = (department: string, appliesFrom: string): string =>
-  `Saved. ${department} takes the company’s pillars from ${kpiMonthName(appliesFrom)}’s scorecards: update each template marked “Uses the old pillars”.`;
+/** What the page says once a department goes back to the company's pillars (a team: its department's). */
+export const followCompanySavedText = (department: string, appliesFrom: string, above = 'the company’s'): string =>
+  `Saved. ${department} takes ${above} pillars from ${kpiMonthName(appliesFrom)}’s scorecards: update each template marked “Uses the old pillars”.`;
 
 /** "1 job title", "4 job titles". */
 export const jobTitlesCount = (n: number): string => `${n} ${n === 1 ? 'job title' : 'job titles'}`;
 
-/** How many departments have their own pillars, now or from their next change: "2 departments have their own". */
+/** How many departments and teams have their own pillars, now or from their next change: "2 departments have their own". */
 export function ownPillarsCountText(view: Pick<KpiFrameworkView, 'departments'>): string {
-  const n = (view.departments ?? []).filter(hasOwnPillars).length;
-  if (!n) return 'Every department takes the company’s pillars.';
-  return n === 1 ? '1 department has its own pillars; the others take the company’s.' : `${n} departments have their own pillars; the others take the company’s.`;
+  const departments = (view.departments ?? []).filter(hasOwnPillars).length;
+  const teams = allPillarRows(view).filter((r) => r.parent && hasOwnPillars(r)).length;
+  if (!departments && !teams) return 'Every department takes the company’s pillars.';
+  const named = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const who = [departments && named(departments, 'department', 'departments'), teams && named(teams, 'team', 'teams')].filter(Boolean).join(' and ');
+  return `${who} ${departments + teams === 1 ? 'has its' : 'have their'} own pillars; the others take the company’s.`;
 }
 
 /** On a template on older pillars than the framework's newest. */

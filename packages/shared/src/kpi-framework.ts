@@ -84,14 +84,17 @@ export interface KpiPillarInput {
 }
 
 /**
- * PUT /kpis/framework: the next pillars of the company, or of a department (`departmentId`), the Attendance metric's
- * pillar and the month they apply from; or, for a department, going back to the company's pillars from that month
- * (`followsCompany`: the pillars are left out).
+ * PUT /kpis/framework: the next pillars of the company, or of a department or a team (`departmentId`), the Attendance
+ * metric's pillar and the month they apply from; or, for a department or a team, going back to the pillars of the level
+ * above from that month (`followsCompany`: the pillars are left out).
  */
 export interface KpiFrameworkInput {
-  /** The department whose pillars these are; null or left out: the company's. */
+  /** The department or team whose pillars these are; null or left out: the company's. */
   departmentId?: string | null;
-  /** A department only: it takes the company's pillars again from `appliesFrom`. */
+  /**
+   * A department or a team only: it takes the pillars of the level above again from `appliesFrom` (a team its
+   * department's, a department the company's). The name is the column's, from when only departments had their own.
+   */
   followsCompany?: boolean;
   /** YYYY-MM: the first month whose scorecards are scored with them. */
   appliesFrom: string;
@@ -282,8 +285,12 @@ export function kpiPercentsByName(set: Pick<KpiPillarSet, 'pillars'>, percents: 
 // title"):
 // - The company's pillars are the default. A department may have its own pillars instead (names, weights, the Attendance
 //   metric's pillar), versioned as the company's are: from a month, one next change at a time, changed until it applies,
-//   past scorecards unchanged; or go back to the company's from a month (a version that `followsCompany`). A team's job
-//   titles take their department's pillars; a job title takes its department's newest own pillars, else the company's.
+//   past scorecards unchanged; or go back to the company's from a month (a version that `followsCompany`).
+// - By team (owner, 22 October 2026: "where is the pillars for team?", then "Yes, add team pillars"): a team may have its
+//   own pillars too, the same way, or go back to its department's (`followsCompany` means "takes the level above": a
+//   team its department's, a department the company's). A job title takes the newest own pillars of the nearest level
+//   that has them, team → department → company; while a level below has gone back to the one above from a month, they
+//   apply from the later month.
 // - A job title's template may give those pillars its own weights (KpiWeights, by pillar key: whole percents from 1 to
 //   100 adding up to 100), kept on the template and published with it, so they apply from next month like any change of
 //   it. They count while its pillars have the same keys; once its department's pillars gain or lose one, they are
@@ -345,16 +352,16 @@ export function kpiOwnWeights(set: Pick<KpiPillarSet, 'pillars'>, weights: unkno
 
 // ---------- the API's answers ----------
 
-/** A version of the KPI framework: the company's, or a department's own. */
+/** A version of the KPI framework: the company's, or a department's or a team's own. */
 export interface KpiFrameworkVersionView extends KpiPillarSet {
   id: string;
-  /** The company's versions are numbered 1, 2 …; each department's own from 1 too. */
+  /** The company's versions are numbered 1, 2 …; each department's and team's own from 1 too. */
   version: number;
-  /** The department whose pillars these are; null: the company's. */
+  /** The department or team whose pillars these are; null: the company's. */
   departmentId: string | null;
   /**
-   * A department's version that takes it back to the company's pillars from its month: it has no pillars of its own
-   * (`pillars` empty, `attendancePillar` empty).
+   * A department's or a team's version that takes it back to the level above's pillars from its month (a team its
+   * department's, a department the company's): it has no pillars of its own (`pillars` empty, `attendancePillar` empty).
    */
   followsCompany: boolean;
   pillars: KpiPillar[];
@@ -368,17 +375,29 @@ export interface KpiFrameworkVersionView extends KpiPillarSet {
   updatedBy: KpiUserRef | null;
 }
 
-/** A department's pillars on KPI Pillars: its own, in force and next, or the company's. */
+/**
+ * A department's or a team's pillars on KPI Pillars: its own, in force and next, or the level above's (a team its
+ * department's, a department the company's). A department's row holds its teams' (owner, 22 October 2026: "Yes, add
+ * team pillars").
+ */
 export interface KpiDepartmentPillarsView {
+  /** The department or team. */
   department: { id: string; nameEn: string };
-  /** Its own pillars in force now; null: it takes the company's (it never had its own, or it went back to them). */
+  /** A team's department; null for a department. */
+  parent: { id: string; nameEn: string } | null;
+  /** Its own pillars in force now; null: it takes the level above's (it never had its own, or it went back to them). */
   inForce: KpiFrameworkVersionView | null;
-  /** Its next change, from a later month: its own pillars, or back to the company's (`followsCompany`); null: none. */
+  /** Its next change, from a later month: its own pillars, or back to the level above's (`followsCompany`); null: none. */
   next: KpiFrameworkVersionView | null;
-  /** The job titles that take its pillars: its own and its teams'. */
+  /**
+   * Its job titles: a team's, its own; a department's, its own and those of its teams that take its pillars (a team
+   * without own pillars of its own). The same job title counts for its team and, when the team has none, its department.
+   */
   jobTitles: number;
   /** Of them, those whose newest published template uses other pillars than they take now: "Uses the old pillars". */
   oldTemplates: number;
+  /** A department's teams, in their order, each its row; none for a team. */
+  teams: KpiDepartmentPillarsView[];
 }
 
 /**
@@ -390,7 +409,7 @@ export interface KpiFrameworkView {
   inForce: KpiFrameworkVersionView;
   /** The company's next ones, from a later month; null: none. Drafts of job titles that take the company's pillars are placed in the newest. */
   next: KpiFrameworkVersionView | null;
-  /** The departments (not teams: a team's job titles take their department's), in their order. */
+  /** The departments, in their order, each with its teams (`teams`). */
   departments: KpiDepartmentPillarsView[];
   /** YYYY-MM: next month, the month a change applies from unless chosen. */
   defaultMonth: string;

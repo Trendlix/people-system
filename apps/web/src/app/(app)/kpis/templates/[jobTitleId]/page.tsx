@@ -25,7 +25,7 @@ import { getOrNull } from '../../../approvals/data';
 import { todayInCairo } from '../../../employees/ui';
 import { BackLink, Empty, Loading, UUID } from '../../../organization/ui';
 import { discardKpiDraft, sendKpiDraft, startKpiDraft } from '../actions';
-import { departmentRowOf, OLD_PILLARS_BADGE, pillarsMonthOf } from '../framework';
+import { OLD_PILLARS_BADGE, pillarRowsOf, pillarsMonthOf } from '../framework';
 import { TemplateView } from '../template-view';
 import { copyChoices, libraryChoices, librarySuggestion, metricsLabel, publishConfirmText, readsKpiTemplates, sampleLabel, userName } from '../templates';
 import { DraftEditor } from './draft-editor';
@@ -219,7 +219,7 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
               action={sendKpiDraft.bind(null, jobTitleId, draft.id)}
               // only a Super Admin deletes (owner's decision, 15 October 2026)
               discard={canDelete(user) ? discardKpiDraft.bind(null, jobTitleId, draft.id) : null}
-              confirmPublish={publishConfirmText(draft.version, today, framework ? pillarsMonthOf(framework, departmentRowOf(framework, jobTitle.department)) : null)}
+              confirmPublish={publishConfirmText(draft.version, today, framework ? pillarsMonthOf(framework, pillarRowsOf(framework, jobTitle.department)) : null)}
             />
           )}
           {draft && !canEdit && <DraftReadOnly draft={draft} />}

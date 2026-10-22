@@ -11,7 +11,7 @@ import { NotLoaded } from '../../../organization/payroll/section';
 import { BackLink, Empty, Loading, UUID } from '../../../organization/ui';
 import { saveKpiFramework } from '../../templates/actions';
 import { loadKpi } from '../../templates/data';
-import { companyNewest, departmentRow, inForceText, jobTitlesCount, nextText } from '../../templates/framework';
+import { aboveRow, companyNewest, departmentRow, effectiveNewest, inForceText, jobTitlesCount, nextText } from '../../templates/framework';
 import { buildsKpiTemplates, readsKpiTemplates } from '../../templates/templates';
 import { DepartmentPillarsChoice } from '../department-choice';
 import { FrameworkVersion, PillarsList } from '../ui';
@@ -20,7 +20,8 @@ import { FrameworkVersion, PillarsList } from '../ui';
 // for each department and Job title"): those it takes now (its own, or the company's) and its next change, then, for HR
 // and the Super Admin, its own pillars to set or change (the same form as the company's, from a month, next month
 // unless chosen) or going back to the company's from a month. Its job titles' templates place their metrics in them;
-// a team's job titles take its pillars. The API checks every request again.
+// a team's job titles take its pillars unless the team has its own. A team's page the same way (owner, 22 October 2026:
+// "Yes, add team pillars"), with its department's pillars in place of the company's. The API checks every request again.
 
 export const metadata: Metadata = { title: 'Department KPI Pillars · People System' };
 
@@ -37,20 +38,26 @@ async function DepartmentPillars({ params }: { params: PageProps<'/kpis/pillars/
     return (
       <div className="space-y-4">
         <BackLink href={KPI_PATHS.pillars}>KPI Pillars</BackLink>
-        <Empty>This department could not be found among the departments. A team takes its department’s pillars.</Empty>
+        <Empty>This department or team could not be found among the departments.</Empty>
       </div>
     );
   }
   const name = titleCase(row.department.nameEn);
-  const company = companyNewest(view);
+  // a team's department (whose pillars it takes otherwise), else none: the company's
+  const parent = aboveRow(view, row);
+  const parentName = row.parent ? titleCase(row.parent.nameEn) : null;
+  const above = parent ? effectiveNewest(view, parent) : companyNewest(view);
+  const aboveInForce = parent ? (parent.inForce ?? view.inForce) : view.inForce;
+  const aboveText = parentName ? `${parentName}’s pillars` : 'the company’s pillars';
   return (
     <div className="space-y-6">
       <BackLink href={KPI_PATHS.pillars}>KPI Pillars</BackLink>
       <div>
-        <p className="text-sm text-muted">KPI pillars</p>
+        <p className="text-sm text-muted">{parentName ? `KPI pillars · a team of ${parentName}` : 'KPI pillars'}</p>
         <h1 className="text-2xl font-semibold">{name}</h1>
         <p className="mt-1 text-sm text-muted">
-          {jobTitlesCount(row.jobTitles)}, its teams’ included
+          {jobTitlesCount(row.jobTitles)}
+          {parentName ? '' : ', those of its teams without their own included'}
           {row.oldTemplates > 0 ? `; ${row.oldTemplates === 1 ? '1 template uses' : `${row.oldTemplates} templates use`} the old pillars` : ''}.{' '}
           <Link href={KPI_PATHS.templates}>KPI Templates</Link>
         </p>
@@ -66,8 +73,8 @@ async function DepartmentPillars({ params }: { params: PageProps<'/kpis/pillars/
           ) : (
             <div className="space-y-2">
               <h3 className="font-semibold">In Force</h3>
-              <p className="text-sm text-muted">The company’s pillars.</p>
-              <PillarsList version={view.inForce} />
+              <p className="text-sm text-muted">{parentName ? `The department’s pillars (${parentName}).` : 'The company’s pillars.'}</p>
+              <PillarsList version={aboveInForce} />
             </div>
           )}
           {row.next ? (
@@ -75,10 +82,10 @@ async function DepartmentPillars({ params }: { params: PageProps<'/kpis/pillars/
               <div className="space-y-2">
                 <h3 className="font-semibold">Next</h3>
                 <p className="text-sm text-muted">
-                  Back to the company’s pillars from {kpiMonthName(row.next.appliesFrom)}’s scorecards, which open on {formatDate(row.next.opensFrom)}. It can be
-                  changed until then.
+                  Back to {aboveText} from {kpiMonthName(row.next.appliesFrom)}’s scorecards, which open on {formatDate(row.next.opensFrom)}. It can be changed
+                  until then.
                 </p>
-                <PillarsList version={company} />
+                <PillarsList version={above} />
               </div>
             ) : (
               <FrameworkVersion title="Next" version={row.next} note={`Its own. ${nextText(row.next)}`} />
@@ -96,11 +103,18 @@ async function DepartmentPillars({ params }: { params: PageProps<'/kpis/pillars/
               Change Its Pillars
             </h2>
             <p className="mt-1 max-w-3xl text-sm text-muted">
-              Its own pillars replace the company’s for its job titles, its teams’ included. Each template of its job titles must then place its metrics in
-              them; until it does, its scorecards keep opening on its old version and old pillars.
+              {parentName
+                ? `Its own pillars replace ${parentName}’s for its job titles.`
+                : 'Its own pillars replace the company’s for its job titles, and its teams’ unless they have their own.'}{' '}
+              Each template of its job titles must then place its metrics in them; until it does, its scorecards keep opening on its old version and old pillars.
             </p>
           </div>
-          <DepartmentPillarsChoice view={view} department={{ id: row.department.id, name, row }} action={saveKpiFramework} today={todayInCairo()} />
+          <DepartmentPillarsChoice
+            view={view}
+            department={{ id: row.department.id, name, row, above: parentName ? { possessive: `${parentName}’s`, newest: above } : null }}
+            action={saveKpiFramework}
+            today={todayInCairo()}
+          />
         </section>
       )}
     </div>
