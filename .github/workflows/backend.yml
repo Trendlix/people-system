@@ -61,18 +61,19 @@ jobs:
           printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
           # the key is tied on the server to deploy.sh: whatever is asked for here, that script is what runs
           # a long build keeps the connection open: 30 s keep-alives, given up only after 10 unanswered (5 minutes); a
-          # dropped connection (ssh's exit 255, 21 October 2026) is tried once more after a minute, deploy.sh being safe
-          # to run again
+          # dropped connection (ssh's exit 255, 21 October 2026) is tried again, deploy.sh being safe to run again: twice
+          # more, after 1 and then 3 minutes (22 October 2026: it dropped twice in a row a minute apart)
           run_deploy() { ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "$USER_NAME@$HOST" deploy; }
           set +e
           run_deploy
           code=$?
-          if [ "$code" -eq 255 ]; then
-            echo "::warning::The connection to the server dropped (ssh exit 255); trying the deploy once more in a minute."
-            sleep 60
+          for wait in 60 180; do
+            [ "$code" -eq 255 ] || break
+            echo "::warning::The connection to the server dropped (ssh exit 255); trying the deploy again in $wait seconds."
+            sleep "$wait"
             run_deploy
             code=$?
-          fi
+          done
           set -e
           [ "$code" -eq 0 ] || exit "$code"
           rm -f ~/.ssh/deploy
