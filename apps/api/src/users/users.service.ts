@@ -1,5 +1,5 @@
-import { ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { assetsAccessOf, isAssetsAccess, ROLES, type AssetsAccess, type Role } from '@trendlix/shared';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { assetsAccessOf, developerRolesProblem, isAssetsAccess, ROLES, type AssetsAccess, type Role } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { hashPassword } from '../auth/password.js';
 import { actsAs, isSuperAdmin } from '../auth/roles.js';
@@ -52,6 +52,16 @@ const isActiveSuperAdmin = (u: { isActive: boolean; roles: Role[] }) => u.isActi
 const SUPER_ADMIN_ROLE_ONLY = 'Only a Super Admin can give or take away the Super Admin role.';
 const SUPER_ADMIN_ACCOUNT_ONLY = "Only a Super Admin can change a Super Admin's account.";
 const LAST_SUPER_ADMIN = 'There must always be at least one active Super Admin.';
+// The Developer role (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real numbers"):
+// given and taken away by a Super Admin only, and held with nothing but Employee beside it.
+const DEVELOPER_ROLE_ONLY = 'Only a Super Admin can give or take away the Developer role.';
+
+/** Refuses a set of roles a developer can't hold, or a Developer role given or taken by anyone but a Super Admin. */
+function checkDeveloper(actor: SessionUser, before: readonly Role[], after: readonly Role[]): void {
+  if (before.includes('developer') !== after.includes('developer') && !isSuperAdmin(actor)) throw new ForbiddenException(DEVELOPER_ROLE_ONLY);
+  const problem = developerRolesProblem(after);
+  if (problem) throw new BadRequestException([problem]);
+}
 
 @Injectable()
 export class UsersService {
@@ -73,6 +83,7 @@ export class UsersService {
   async create(dto: CreateUserDto, actor: SessionUser): Promise<UserView> {
     const roles = inOrder(dto.roles);
     if (roles.includes('super_admin') && !isSuperAdmin(actor)) throw new ForbiddenException(SUPER_ADMIN_ROLE_ONLY);
+    checkDeveloper(actor, [], roles);
     const roleRows = await this.roleRows(roles);
     let id: string;
     try {
@@ -106,6 +117,7 @@ export class UsersService {
       if (before.roles.includes('super_admin') !== after.roles.includes('super_admin')) throw new ForbiddenException(SUPER_ADMIN_ROLE_ONLY);
       if (isSuperAdmin(before)) throw new ForbiddenException(SUPER_ADMIN_ACCOUNT_ONLY);
     }
+    if (diff.roles) checkDeveloper(actor, before.roles, after.roles);
     if (!Object.keys(diff).length) return before;
 
     if (id === actor.id) {
