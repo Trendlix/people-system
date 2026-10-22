@@ -328,6 +328,8 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     full_name_ar: () => text(e.fullNameAr),
     full_name_en: () => text(e.fullNameEn),
     display_name: () => text(e.displayName),
+    // السيد or السيدة by the profile's gender, blank without one (owner, 22 October 2026)
+    title_ar: () => arabicTitle(e.gender),
     nationality: () => nationality(language),
     nationality_ar: () => nationality('ar'),
     nationality_en: () => nationality('en'),
@@ -549,6 +551,7 @@ const WHERE: Record<string, Where> = {
   full_name_ar: BASIC('fullNameAr'),
   full_name_en: BASIC('fullNameEn'),
   display_name: BASIC('displayName'),
+  title_ar: BASIC('gender'),
   nationality: BASIC('nationality'),
   nationality_ar: BASIC('nationality'),
   nationality_en: BASIC('nationality'),
@@ -719,6 +722,15 @@ const WHERE: Record<string, Where> = {
 const TAGS = new Map(TEMPLATE_TAGS.map((t) => [t.tag, t]));
 
 /**
+ * Tags printed blank when they have no value, never stopping a document: {{title_ar}} without a gender (owner, 22
+ * October 2026: "if no gender leave blank").
+ */
+const MAY_BE_BLANK: ReadonlySet<string> = new Set(['title_ar']);
+
+/** How an Arabic document addresses the person by their gender: السيد, السيدة, or nothing without one. */
+export const arabicTitle = (gender: string | null | undefined): string => (gender === 'male' ? 'السيد' : gender === 'female' ? 'السيدة' : '');
+
+/**
  * The tags of `tags` whose value is empty, with where to fill each in (read through the slot's overrides, so the
  * insurance copy's empty {{gross_salary}} points to the insured salary). The tags typed when generating are not listed:
  * they are asked for when generating.
@@ -730,7 +742,7 @@ export function missingTags(
   hasContract = true,
 ): MissingTag[] {
   return tags
-    .filter((tag) => !TYPED_TAGS.includes(tag) && isBlankValue(values[tag]))
+    .filter((tag) => !TYPED_TAGS.includes(tag) && !MAY_BE_BLANK.has(tag) && isBlankValue(values[tag]))
     .map((tag) => {
       const source = sourceTag(tag, overrides);
       const where = WHERE[source] ?? BASIC(source);

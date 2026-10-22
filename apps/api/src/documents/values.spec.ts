@@ -594,6 +594,26 @@ describe('the nationality', () => {
   });
 });
 
+// How an Arabic document addresses the person (owner, 22 October 2026: "if male = السيد / if female = السيدة"; "if no
+// gender leave blank").
+describe('{{title_ar}}', () => {
+  function of(gender: string | null): ValueSources {
+    const base = sources(null, 'ar');
+    return { ...base, employee: { ...base.employee, gender } };
+  }
+
+  it('prints السيد for a man, السيدة for a woman, and nothing without a gender', () => {
+    expect(resolveValues(of('male'), ['title_ar'])).toEqual({ title_ar: 'السيد' });
+    expect(resolveValues(of('female'), ['title_ar'])).toEqual({ title_ar: 'السيدة' });
+    expect(resolveValues(of(null), ['title_ar'])).toEqual({ title_ar: '' });
+  });
+
+  it('never stops a document when blank, and is not restricted', () => {
+    expect(missingTags(resolveValues(of(null), ['title_ar', 'nationality']), ['title_ar', 'nationality']).map((m) => m.tag)).toEqual(['nationality']);
+    expect(rightFor('title_ar')).toBeNull();
+  });
+});
+
 describe('amounts in English words', () => {
   it('prints the gross, net, insured and total salary in English words beside the Arabic', async () => {
     const { resolveValues } = await import('./values.js');

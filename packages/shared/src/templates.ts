@@ -213,6 +213,9 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'full_name_ar', group: 'employee', labelEn: 'Full name (Arabic)', labelAr: 'الاسم الكامل بالعربي', source: 'Profile' },
   { tag: 'full_name_en', group: 'employee', labelEn: 'Full name (English)', labelAr: 'الاسم بالإنجليزية', source: 'Profile' },
   { tag: 'display_name', group: 'employee', labelEn: 'Display name', labelAr: 'الاسم المختصر', source: 'Profile' },
+  // how an Arabic document addresses the person (owner, 22 October 2026: "if male = السيد / if female = السيدة"; "if no
+  // gender leave blank"): from the profile's gender, nothing printed without one (it never stops a document)
+  { tag: 'title_ar', group: 'employee', labelEn: 'Mr / Ms (Arabic)', labelAr: 'السيد / السيدة', source: 'Profile: gender', note: 'السيد or السيدة; blank without a gender' },
   // in the template's language (owner, 16 October 2026: Form 1 printed "Egyptian"): in Arabic, in the person's gender
   { tag: 'nationality', group: 'employee', labelEn: 'Nationality', labelAr: 'الجنسية', source: 'Profile: in the template’s language' },
   { tag: 'nationality_ar', group: 'employee', labelEn: 'Nationality (Arabic)', labelAr: 'الجنسية بالعربي', source: 'Profile: in Arabic, in the person’s gender' },
