@@ -32,6 +32,7 @@ export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: App
             <th>Applicant</th>
             {withVacancy && <th>Vacancy</th>}
             <th className="text-right">Match</th>
+            <th className="text-right">CV match</th>
             <th>Stage</th>
             <th className="text-right">Experience</th>
             <th>Source</th>
@@ -51,6 +52,7 @@ export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: App
               </td>
               {withVacancy && <td className="text-sm">{a.vacancy.title}</td>}
               <td className="text-right tabular-nums">{matchText(a.matchPercent)}</td>
+              <td className="text-right tabular-nums">{matchText(a.cvMatchPercent)}</td>
               <td>
                 <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
               </td>

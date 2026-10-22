@@ -24,6 +24,7 @@ import { MailService } from '../mail/mail.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { nextApplicationNumber } from './application-numbers.js';
+import { CvReadingsService } from './cv-readings.service.js';
 import { cvFileName, cvProblem, cvTypeOf } from './cv-file.js';
 import { APPLICATION_ENTITY, publicSummaryOf, questionsOf } from './recruitment-views.js';
 import type { ApplyDto } from './recruitment.dto.js';
@@ -99,6 +100,7 @@ export class PublicCareersService {
     private readonly audit: AuditService,
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
+    private readonly readings: CvReadingsService,
   ) {}
 
   /** The company and its open vacancies, newest first. */
@@ -225,6 +227,8 @@ export class PublicCareersService {
       entityId: made.id,
       diff: { number: made.number, vacancy: v.number, source, matchPercent: match.matchPercent, filteredOut },
     });
+    // the CV read in the background (22 October 2026)
+    this.readings.kick();
     await this.tellHr(v);
     await this.confirm(email, input.fullName, made.number, v.title);
     return { reference: made.number };

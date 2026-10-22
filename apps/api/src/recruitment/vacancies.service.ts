@@ -9,6 +9,8 @@ import {
   vacancyNumber,
   vacancyProblems,
   vacancyQuestionsProblems,
+  keySkillsOf,
+  keySkillsProblems,
   vacancySlug,
   type VacancyCan,
   type VacancyListItem,
@@ -27,6 +29,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { sanitizeJdHtml } from '../organisation/job-titles/jd-html.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { CvReadingsService } from './cv-readings.service.js';
 import { approvesVacancies, isConfidentialVacancy, managesRecruitment, vacancyWhere } from './recruitment-access.js';
 import { emptyCounts, money, questionsOf, userRef, VACANCY_ENTITY, VACANCY_INCLUDE, vacancyListView, type VacancyCounts, type VacancyRow } from './recruitment-views.js';
 import type { CreateVacancyDto, ListVacanciesDto, UpdateVacancyDto } from './recruitment.dto.js';
@@ -65,6 +68,7 @@ export class VacanciesService {
     private readonly audit: AuditService,
     private readonly confidential: ConfidentialService,
     private readonly notifications: NotificationsService,
+    private readonly readings: CvReadingsService,
   ) {}
 
   // ---------- reading ----------
@@ -158,6 +162,7 @@ export class VacanciesService {
       responsibilities: v.responsibilities,
       requirements: v.requirements,
       questions: questionsOf(v.questions),
+      keySkills: v.keySkills,
       stageCounts: counts.byStage,
       filteredOut: counts.filteredOut,
       sourceCounts: Object.fromEntries(bySource.map((g) => [g.source, g._count._all])),
@@ -188,6 +193,7 @@ export class VacanciesService {
     if (job.minGrade?.confidential && !seesConfidential(user)) throw new ForbiddenException('Only the CEO or a Super Admin sees C-level positions, so only they open a vacancy for one.');
     await this.confidential.assertMayGiveGrade(user, dto.gradeId);
     const questions = this.checkedQuestions(dto.questions);
+    const keySkills = this.checkedSkills(dto.keySkills);
     const title = dto.title?.trim() || job.titleEn;
     const problems = vacancyProblems({ title, headcount: dto.headcount ?? 1, durationMonths: dto.durationMonths ?? null, salaryMin: dto.salaryMin ?? null, salaryMax: dto.salaryMax ?? null, closingDate: dto.closingDate ?? null }, todayInCairo());
     if (problems.length) throw new BadRequestException(problems);
@@ -210,6 +216,7 @@ export class VacanciesService {
       responsibilities: dto.responsibilities === undefined ? sanitizeJdHtml(job.jdDuties) : html(dto.responsibilities),
       requirements: dto.requirements === undefined ? sanitizeJdHtml(job.jdRequirements) : html(dto.requirements),
       questions: (questions ?? []) as unknown as Prisma.InputJsonValue,
+      keySkills: keySkills ?? [],
     };
     const made = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('people-system:vacancy-number'))`;
@@ -249,6 +256,8 @@ export class VacanciesService {
     }
     if (dto.gradeId !== undefined && dto.gradeId !== v.gradeId) await this.confidential.assertMayGiveGrade(user, dto.gradeId);
     const questions = this.checkedQuestions(dto.questions);
+    // the key skills (22 October 2026): changed even after people applied, every application scored again
+    const keySkills = this.checkedSkills(dto.keySkills);
     let job: { id: string; departmentId: string; minGrade: { confidential: boolean } | null } | null = null;
     if (dto.jobTitleId !== undefined && dto.jobTitleId !== v.jobTitleId) {
       job = await this.prisma.jobTitle.findUnique({ where: { id: dto.jobTitleId }, select: { id: true, departmentId: true, minGrade: { select: { confidential: true } } } });
@@ -287,6 +296,7 @@ export class VacanciesService {
       ...(dto.responsibilities !== undefined && { responsibilities: html(dto.responsibilities) }),
       ...(dto.requirements !== undefined && { requirements: html(dto.requirements) }),
       ...(questions !== undefined && { questions: questions as unknown as Prisma.InputJsonValue }),
+      ...(keySkills !== undefined && { keySkills }),
     };
     const before = {
       title: v.title,
@@ -305,6 +315,7 @@ export class VacanciesService {
       responsibilities: v.responsibilities,
       requirements: v.requirements,
       questions: questionsOf(v.questions),
+      keySkills: v.keySkills,
     };
     const after = { ...before };
     for (const key of Object.keys(before) as (keyof typeof before)[]) {
@@ -315,6 +326,7 @@ export class VacanciesService {
     const { count } = await this.prisma.vacancy.updateMany({ where: { id, status: v.status }, data: data as Prisma.VacancyUpdateManyMutationInput });
     if (!count) throw new ConflictException('The vacancy changed meanwhile. Reload the page to see where it stands.');
     await this.audit.record({ userId: user.id, action: 'update', entityType: VACANCY_ENTITY, entityId: id, diff: { number: v.number, ...diff } });
+    if ('keySkills' in diff) await this.readings.rescoreVacancy(id);
     return this.get(id, user);
   }
 
@@ -371,6 +383,15 @@ export class VacanciesService {
   }
 
   // ---------- helpers ----------
+
+  /** The key skills sent (a list, or text with commas), checked and tidied; undefined when none were sent. */
+  private checkedSkills(sent: unknown): string[] | undefined {
+    if (sent === undefined) return undefined;
+    const skills = keySkillsOf(sent);
+    const problems = keySkillsProblems(skills);
+    if (problems.length) throw new BadRequestException(problems);
+    return skills;
+  }
 
   /** The questions sent, checked and tidied; undefined when none were sent. */
   private checkedQuestions(questions: unknown[] | undefined): VacancyQuestion[] | undefined {

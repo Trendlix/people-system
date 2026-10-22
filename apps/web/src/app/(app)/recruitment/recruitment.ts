@@ -5,6 +5,8 @@ import {
   careersPath,
   EMPLOYMENT_TYPES,
   isApplicationStage,
+  keySkillsOf,
+  keySkillsProblems,
   QUESTION_KINDS,
   VACANCY_STATUSES,
   WORK_ARRANGEMENTS,
@@ -86,7 +88,14 @@ export interface ApplicantsQuery {
   source: ApplicationSource | '';
   filtered: 'hide' | 'only' | 'all';
   q: string;
+  /** The CV match % at least (the key skills found in the CV; 22 October 2026). */
+  minCvMatch: number | null;
+  /** '': best match first (the screening questions); 'cv': best CV match first. */
+  sort: '' | 'cv';
 }
+
+/** The "CV match ≥ 50%" filter's threshold. */
+export const GOOD_CV_MATCH_PERCENT = 50;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -107,6 +116,8 @@ export function readApplicantsQuery(query: Record<string, string | string[] | un
     source: (APPLICATION_SOURCES as readonly string[]).includes(source) ? (source as ApplicationSource) : '',
     filtered: filtered === 'only' || filtered === 'all' ? filtered : 'hide',
     q: one(query.q).slice(0, 100),
+    minCvMatch: num(one(query.minCvMatch), 100),
+    sort: one(query.sort) === 'cv' ? 'cv' : '',
   };
 }
 
@@ -119,6 +130,8 @@ function applicantParams(q: Partial<ApplicantsQuery>): URLSearchParams {
   if (q.source) params.set('source', q.source);
   if (q.filtered && q.filtered !== 'hide') params.set('filtered', q.filtered);
   if (q.q) params.set('q', q.q);
+  if (q.minCvMatch !== null && q.minCvMatch !== undefined) params.set('minCvMatch', String(q.minCvMatch));
+  if (q.sort) params.set('sort', q.sort);
   return params;
 }
 
@@ -154,6 +167,8 @@ export interface VacancyBody {
   responsibilities: string | null;
   requirements: string | null;
   questions?: VacancyQuestion[];
+  /** Up to 20 short skills looked for in each CV (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it"). */
+  keySkills: string[];
 }
 
 const field = (fd: FormData, name: string): string => {
@@ -193,6 +208,8 @@ export function vacancyForm(fd: FormData, { withQuestions }: { withQuestions: bo
   const salaryMax = amountOf(field(fd, 'salaryMax'));
   if (Number.isNaN(salaryMin)) errors.push('Give the least salary as an amount, e.g. 15000, or leave it empty.');
   if (Number.isNaN(salaryMax)) errors.push('Give the most salary as an amount, e.g. 25000, or leave it empty.');
+  const keySkills = keySkillsOf(field(fd, 'keySkills'));
+  errors.push(...keySkillsProblems(keySkills));
   let questions: VacancyQuestion[] | undefined;
   if (withQuestions) {
     try {
@@ -225,6 +242,7 @@ export function vacancyForm(fd: FormData, { withQuestions }: { withQuestions: bo
       responsibilities: html('responsibilities'),
       requirements: html('requirements'),
       ...(questions !== undefined && { questions }),
+      keySkills,
     },
     errors: [],
   };

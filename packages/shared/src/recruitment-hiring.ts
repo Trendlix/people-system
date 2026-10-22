@@ -596,6 +596,8 @@ export interface BoardCard {
   number: string;
   fullName: string;
   matchPercent: number | null;
+  /** The vacancy's key skills found in the CV, % (22 October 2026). */
+  cvMatchPercent: number | null;
   source: ApplicationSource;
   stage: ApplicationStage;
   filteredOut: boolean;

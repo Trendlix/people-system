@@ -4,6 +4,7 @@ import type {
   ApplicationListItem,
   ApplicationView,
   CvBatchTarget,
+  CvTextView,
   CvUploadView,
   GeneralCvListItem,
   GeneralCvView,
@@ -19,6 +20,7 @@ import type {
 import { publicGet } from '@/lib/public-api';
 import { loadJson, type Loaded } from '../payroll/load';
 import { generalApiPath, uploadsApiPath, type GeneralQuery } from './general';
+import { applicantCvTextApiPath, generalCvTextApiPath } from './cv-reading';
 import { analyticsSearch, type AnalyticsQuery } from './hiring';
 import { applicantsApiPath, vacanciesApiPath, type ApplicantsQuery, type VacancyFilter } from './recruitment';
 
@@ -63,6 +65,13 @@ export async function loadGeneralAreas(): Promise<PublicGeneralForm['areas']> {
   const form = await publicGet<PublicGeneralForm>('/general-cvs/form');
   return form.ok ? form.data.areas : [];
 }
+
+// A CV's text and the contacts found in it (22 October 2026: "make the OCR egine reads the CV and analyse it"): refused to
+// a developer (403); 404 until it has been read.
+
+export const loadApplicantCvText = (id: string): Promise<Loaded<CvTextView>> => loadJson(applicantCvTextApiPath(id));
+
+export const loadGeneralCvText = (id: string): Promise<Loaded<CvTextView>> => loadJson(generalCvTextApiPath(id));
 
 /** What a page says in place of what it couldn't load. */
 export function recruitmentNotLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {

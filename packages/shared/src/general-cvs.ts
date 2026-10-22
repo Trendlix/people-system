@@ -13,6 +13,7 @@
 //   the consent recorded as HR's.
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/general-cvs.spec.ts.
 
+import type { CvReadingView } from './cv-analysis.js';
 import { APPLICATION_SOURCE_LABELS, applyProblems, normalEmail, RECRUITMENT_LIMITS, webLinkOf, type ApplicationSource, type ApplicationStage, type RecruitmentUserRef, type VacancyStatus } from './recruitment.js';
 
 // ---------- sources and statuses ----------
@@ -271,6 +272,8 @@ export interface CvUploadView {
   sizeBytes: number;
   /** Whether its text could be read (a scanned PDF has none: the row is HR's to fill in). */
   textFound: boolean;
+  /** A scanned CV still being read by the OCR service (22 October 2026): its row fills in once read. */
+  reading: boolean;
   guess: CvGuess;
   /** One with the guessed email on the vacancy already (or a general CV in the last 30 days), or earlier in the batch. */
   duplicate: { reference: string | null; inBatch: boolean; date: string | null } | null;
@@ -346,6 +349,8 @@ export interface GeneralCvView extends GeneralCvListItem {
   consentBy: RecruitmentUserRef | null;
   consentNote: string | null;
   cv: { fileName: string; mimeType: string; sizeBytes: number } | null;
+  /** The CV read and what the rules found in it (22 October 2026); no key skills here. */
+  cvReading: CvReadingView | null;
   history: { event: string; note: string | null; by: RecruitmentUserRef | null; at: string }[];
   can: GeneralCvCan;
 }

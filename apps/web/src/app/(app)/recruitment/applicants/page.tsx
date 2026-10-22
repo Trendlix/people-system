@@ -36,7 +36,7 @@ import {
   tabHref,
   type ApplicantsTab,
 } from '../general';
-import { APPLICANTS_PATH, applicantsHref, managesRecruitment, readApplicantsQuery, readsRecruitment, STAGE_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
+import { APPLICANTS_PATH, applicantsHref, GOOD_CV_MATCH_PERCENT, managesRecruitment, readApplicantsQuery, readsRecruitment, STAGE_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
 import { ApplicantsTable, VacancyStatusBadge } from '../ui';
 
 // All applicants (owner, 22 October 2026: "where will we include the ATS?"): across the vacancies, best match first, by
@@ -102,7 +102,7 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
           <label htmlFor="applicant-search" className="label">
             Search
           </label>
-          <input id="applicant-search" name="q" defaultValue={q.q} placeholder="Name, email, mobile or reference" className="input" />
+          <input id="applicant-search" name="q" defaultValue={q.q} placeholder="Name, email, mobile, reference or the CV's text" className="input" />
         </div>
         <div>
           <label htmlFor="applicant-source" className="label">
@@ -125,6 +125,25 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
             <option value="">Any</option>
             <option value={String(GOOD_MATCH_PERCENT)}>{GOOD_MATCH_PERCENT}% and over</option>
             <option value="50">50% and over</option>
+          </Select>
+        </div>
+        {/* the key skills found in the CV (22 October 2026: "make the OCR egine reads the CV and analyse it") */}
+        <div>
+          <label htmlFor="applicant-cv-match" className="label">
+            CV match
+          </label>
+          <Select id="applicant-cv-match" name="minCvMatch" defaultValue={q.minCvMatch === null ? '' : String(q.minCvMatch)} className="input min-w-36">
+            <option value="">Any</option>
+            <option value={String(GOOD_CV_MATCH_PERCENT)}>{GOOD_CV_MATCH_PERCENT}% and over</option>
+          </Select>
+        </div>
+        <div>
+          <label htmlFor="applicant-sort" className="label">
+            Sort
+          </label>
+          <Select id="applicant-sort" name="sort" defaultValue={q.sort} className="input min-w-44">
+            <option value="">Best match first</option>
+            <option value="cv">Best CV match first</option>
           </Select>
         </div>
         <div>
@@ -302,7 +321,7 @@ async function General({ query, manages }: { query: Query; manages: boolean }) {
           <label htmlFor="general-search" className="label">
             Search
           </label>
-          <input id="general-search" name="q" defaultValue={g.q} placeholder="Name, email, mobile or reference" className="input" />
+          <input id="general-search" name="q" defaultValue={g.q} placeholder="Name, email, mobile, reference or the CV's text" className="input" />
         </div>
         <div>
           <label htmlFor="general-area" className="label">

@@ -88,6 +88,10 @@ class VacancyFieldsDto {
   /** VacancyQuestion[]: checked by the service (vacancyQuestionsProblems). */
   @IsOptional() @IsArray({ message: 'Send the questions as a list.' })
   questions?: unknown[];
+
+  /** The key skills each CV is checked for (22 October 2026): a list, or text with commas; checked by the service (keySkillsProblems). */
+  @IsOptional() @Allow()
+  keySkills?: unknown;
 }
 
 export class CreateVacancyDto extends VacancyFieldsDto {
@@ -152,6 +156,14 @@ export class ListApplicationsDto {
 
   @IsOptional() @Trim() @IsString() @MaxLength(100)
   q?: string;
+
+  /** Only those whose CV has at least this % of the vacancy's key skills (22 October 2026). */
+  @IsOptional() @Transform(({ value }) => (value === '' || value === undefined ? undefined : Number(value))) @IsInt() @Min(0) @Max(100)
+  minCvMatch?: number;
+
+  /** `match` (the default): the screening match first; `cv`: the CV match first. */
+  @IsOptional() @IsIn(['match', 'cv'])
+  sort?: 'match' | 'cv';
 }
 
 export class MoveApplicationDto {

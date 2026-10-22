@@ -47,7 +47,7 @@ export const tabHref = (tab: ApplicantsTab) => (tab === 'general' ? `${APPLICANT
 
 /** Whether a filter narrows the posted jobs' list (then a vacancy without a match is left out). */
 export const filtering = (q: ApplicantsQuery): boolean =>
-  !!(q.vacancyId || q.stage || q.source || q.q || q.minMatch !== null || q.minYears !== null || q.filtered !== 'hide');
+  !!(q.vacancyId || q.stage || q.source || q.q || q.minMatch !== null || q.minYears !== null || q.minCvMatch !== null || q.filtered !== 'hide');
 
 /**
  * The posted jobs' applicants grouped by vacancy, in the summary's order (open first, then on hold, closed, filled):
@@ -124,6 +124,10 @@ export interface BatchRow {
   id: string;
   fileName: string;
   textFound: boolean;
+  /** A scan the OCR service is still reading (22 October 2026: "make the OCR egine reads the CV and analyse it"). */
+  reading: boolean;
+  /** What the CV said at first, to tell HR's typing from it when the reading fills the row in. */
+  guessed: { fullName: string; email: string; mobile: string };
   fullName: string;
   email: string;
   mobile: string;
@@ -141,6 +145,9 @@ export const rowOf = (u: CvUploadView): BatchRow => ({
   id: u.id,
   fileName: u.fileName,
   textFound: u.textFound,
+  // an API from before the reading has no `reading`
+  reading: u.reading === true,
+  guessed: { fullName: u.guess.fullName ?? '', email: u.guess.email ?? '', mobile: u.guess.mobile ?? '' },
   fullName: u.guess.fullName ?? '',
   email: u.guess.email ?? '',
   mobile: u.guess.mobile ?? '',
@@ -152,6 +159,22 @@ export const rowOf = (u: CvUploadView): BatchRow => ({
   skip: false,
   duplicate: u.duplicate,
 });
+
+/**
+ * The rows whose scan was being read, filled in once the OCR service has read it (22 October 2026: "make the OCR egine
+ * reads the CV and analyse it"): the name, email and mobile it found, where HR left them as they were. A row still being
+ * read, or gone from the batch, stays as it is.
+ */
+export function mergeReadings(rows: readonly BatchRow[], uploads: readonly CvUploadView[]): BatchRow[] {
+  const byId = new Map(uploads.map((u) => [u.id, u]));
+  return rows.map((r) => {
+    const u = byId.get(r.id);
+    if (!r.reading || !u || u.reading) return r;
+    const now = rowOf(u);
+    const take = (k: 'fullName' | 'email' | 'mobile') => (r[k].trim() === '' || r[k] === r.guessed[k] ? now[k] : r[k]);
+    return { ...r, reading: false, textFound: u.textFound, guessed: now.guessed, fullName: take('fullName'), email: take('email'), mobile: take('mobile'), duplicate: u.duplicate };
+  });
+}
 
 /** The rows as the save takes them: a vacancy's without the general CVs' area, referrer and keep. */
 export function saveRows(rows: readonly BatchRow[], target: CvBatchTarget): CvSaveRow[] {

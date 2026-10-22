@@ -21,6 +21,7 @@
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/recruitment.spec.ts.
 
 import type { EmploymentType, WorkArrangement } from './index.js';
+import type { CvReadingView } from './cv-analysis.js';
 import type { GeneralCvSource } from './general-cvs.js';
 import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } from './recruitment-hiring.js';
 
@@ -139,6 +140,8 @@ export interface VacancyInput {
   responsibilities?: string | null;
   requirements?: string | null;
   questions?: VacancyQuestion[];
+  /** The skills each CV is checked for (cv-analysis.ts keySkillsOf; 22 October 2026), at most 20; editable after people applied. */
+  keySkills?: string[];
 }
 
 /**
@@ -637,6 +640,8 @@ export interface VacancyView extends VacancyListItem {
   responsibilities: string | null;
   requirements: string | null;
   questions: VacancyQuestion[];
+  /** The skills each CV is checked for (the CV match %; 22 October 2026). */
+  keySkills: string[];
   stageCounts: Record<ApplicationStage, number>;
   filteredOut: number;
   /** Its applicants by source (22 October 2026: the posted links apart from the careers page reached directly). */
@@ -668,6 +673,8 @@ export interface ApplicationListItem {
   stage: ApplicationStage;
   filteredOut: boolean;
   matchPercent: number | null;
+  /** The vacancy's key skills found in the CV, %; null when none are listed or the CV isn't read (22 October 2026). */
+  cvMatchPercent: number | null;
   points: number;
   maxPoints: number;
   yearsExperience: number | null;
@@ -725,6 +732,8 @@ export interface ApplicationView extends ApplicationListItem {
   rejectReason: string | null;
   consentAt: string;
   cv: { fileName: string; mimeType: string; sizeBytes: number } | null;
+  /** The CV read and what the rules found in it (22 October 2026); null without a CV. */
+  cvReading: CvReadingView | null;
   history: ApplicationStepView[];
   offers: { id: string; number: string; status: string }[];
   /** The profile made when they were hired from a job offer. */

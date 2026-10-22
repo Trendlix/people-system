@@ -33,6 +33,7 @@ import { MailService } from '../mail/mail.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { CvReadingsService } from './cv-readings.service.js';
 import { InterviewsService } from './interviews.service.js';
 import { isConfidentialVacancy, vacancyWhere } from './recruitment-access.js';
 import { recruitmentCaller, viewerOf, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
@@ -74,9 +75,12 @@ const DETAIL_INCLUDE = {
       employmentType: true,
       workArrangement: true,
       durationMonths: true,
+      keySkills: true,
     },
   },
   cv: { select: { fileName: true, mimeType: true, sizeBytes: true } },
+  // the CV read and analysed (22 October 2026)
+  cvReading: { select: { status: true, method: true, readAt: true, facts: true, text: true } },
   steps: { orderBy: { at: 'asc' }, include: { by: { select: { id: true, email: true } } } },
   offers: { orderBy: { createdAt: 'asc' }, select: { id: true, number: true, status: true } },
   suggestedBy: { select: { id: true, email: true } },
@@ -100,6 +104,7 @@ export class ApplicationsService {
     private readonly interviews: InterviewsService,
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
+    private readonly readings: CvReadingsService,
   ) {}
 
   /** The applications the caller may see on the lists: those of the vacancies they see (HR, the CEO, a Super Admin). */
@@ -124,11 +129,16 @@ export class ApplicationsService {
           query.minYears !== undefined ? { yearsExperience: { gte: query.minYears } } : {},
           query.source ? { source: query.source } : {},
           filtered === 'hide' ? { filteredOut: false } : filtered === 'only' ? { filteredOut: true } : {},
-          text ? { OR: [{ fullName: text }, { email: text }, { number: text }, { mobile: text }] } : {},
+          query.minCvMatch !== undefined ? { cvMatchPercent: { gte: query.minCvMatch } } : {},
+          // the search also looks in the CVs' text (22 October 2026: "search by CV content")
+          text ? { OR: [{ fullName: text }, { email: text }, { number: text }, { mobile: text }, { cvReading: { is: { text } } }] } : {},
         ],
       },
       select: APPLICATION_LIST_SELECT,
-      orderBy: [{ matchPercent: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+      orderBy:
+        query.sort === 'cv'
+          ? [{ cvMatchPercent: { sort: 'desc', nulls: 'last' } }, { matchPercent: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }]
+          : [{ matchPercent: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: LIST_CAP,
     });
     return rows.map(applicationListView);
@@ -202,6 +212,7 @@ export class ApplicationsService {
       rejectReason: a.stage === 'rejected' && !participant ? a.rejectReason : null,
       consentAt: a.consentAt.toISOString(),
       cv: a.cv,
+      cvReading: a.cv ? this.readings.view(a.cvReading, a.vacancy.keySkills) : null,
       history: a.steps.map(
         (s): ApplicationStepView => ({ event: s.event as ApplicationEvent, stage: s.stage as ApplicationStage, note: s.note, by: userRef(s.by, names), at: s.at.toISOString() }),
       ),
@@ -233,6 +244,16 @@ export class ApplicationsService {
     if (!a) throw new NotFoundException(NOT_FOUND);
     if (!a.cv) throw new NotFoundException('This applicant sent no CV.');
     return { data: Buffer.from(a.cv.data), fileName: a.cv.fileName, mimeType: a.cv.mimeType };
+  }
+
+  /** The CV's text and the contacts found in it, for the caller who may see the CV (never a developer: the route refuses them). */
+  async cvText(id: string, user: SessionUser) {
+    const c = await this.caller(user);
+    const a = await this.prisma.jobApplication.findFirst({ where: { AND: [{ id }, visibleApplications(c)] }, select: { id: true } });
+    if (!a) throw new NotFoundException(NOT_FOUND);
+    const t = await this.readings.textOf({ applicationId: id });
+    if (!t) throw new NotFoundException('This CV hasn’t been read yet.');
+    return t;
   }
 
   /**
@@ -321,6 +342,7 @@ export class ApplicationsService {
         number: true,
         fullName: true,
         matchPercent: true,
+        cvMatchPercent: true,
         source: true,
         stage: true,
         filteredOut: true,
@@ -340,6 +362,7 @@ export class ApplicationsService {
         number: r.number,
         fullName: r.fullName,
         matchPercent: r.matchPercent,
+        cvMatchPercent: r.cvMatchPercent,
         source: sourceOf(r.source),
         stage: r.stage as ApplicationStage,
         filteredOut: r.filteredOut,

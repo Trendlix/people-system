@@ -512,6 +512,11 @@ export * from './recruitment-hiring.js';
 // a vacancy, each vacancy's applicants by source, and the bulk upload of CVs ("is there a way to easy apply from
 // linkedin?" … "why not")
 export * from './general-cvs.js';
+
+// CV reading and its simple rules (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it", "Built-in
+// rules only"): the reading's status, what the rules find (contacts, years, education, languages) and a vacancy's key
+// skills (the CV match %)
+export * from './cv-analysis.js';
 export * from './onboarding.js';
 
 // the Developer role (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real numbers"):

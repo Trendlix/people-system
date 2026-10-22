@@ -14,13 +14,21 @@ type PdfJs = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 let pdfjs: Promise<PdfJs> | null = null;
 const loadPdfJs = () => (pdfjs ??= import('pdfjs-dist/legacy/build/pdf.mjs'));
 
-async function pdfText(data: Buffer): Promise<string> {
+/** How much is read: pages of a PDF, characters in all (the bulk upload's guess: 3 and 20,000; a CV's reading: 5 and 60,000). */
+export interface CvTextLimits {
+  pages: number;
+  chars: number;
+}
+
+const GUESS: CvTextLimits = { pages: MAX_PAGES, chars: MAX_CHARS };
+
+async function pdfText(data: Buffer, limits: CvTextLimits): Promise<string> {
   const { getDocument, VerbosityLevel } = await loadPdfJs();
   const task = getDocument({ data: new Uint8Array(data), isEvalSupported: false, useSystemFonts: false, disableFontFace: true, verbosity: VerbosityLevel.ERRORS });
   try {
     const doc = await task.promise;
     const lines: string[] = [];
-    for (let n = 1; n <= Math.min(doc.numPages, MAX_PAGES); n++) {
+    for (let n = 1; n <= Math.min(doc.numPages, limits.pages); n++) {
       const page = await doc.getPage(n);
       const content = await page.getTextContent();
       let line = '';
@@ -36,22 +44,22 @@ async function pdfText(data: Buffer): Promise<string> {
       }
       if (line.trim()) lines.push(line);
     }
-    return lines.join('\n').slice(0, MAX_CHARS);
+    return lines.join('\n').slice(0, limits.chars);
   } finally {
     await task.destroy();
   }
 }
 
-function docxText(data: Buffer): string {
+function docxText(data: Buffer, limits: CvTextLimits): string {
   const xml = readZip(data).read('word/document.xml')?.toString('utf8') ?? '';
-  return paragraphTexts(xml).join('\n').slice(0, MAX_CHARS);
+  return paragraphTexts(xml).join('\n').slice(0, limits.chars);
 }
 
 /** The CV's text; '' when it has none (a scanned PDF) or can't be read. */
-export async function cvText(data: Buffer, type: CvType): Promise<string> {
+export async function cvText(data: Buffer, type: CvType, limits: CvTextLimits = GUESS): Promise<string> {
   try {
-    if (type === PDF) return await pdfText(data);
-    if (type === DOCX) return docxText(data);
+    if (type === PDF) return await pdfText(data, limits);
+    if (type === DOCX) return docxText(data, limits);
   } catch {
     // a damaged or protected file: the row is HR's to fill in
   }

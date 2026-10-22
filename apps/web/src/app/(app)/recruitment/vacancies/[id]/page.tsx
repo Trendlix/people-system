@@ -13,7 +13,7 @@ import { loadApplicants, loadBoard, loadVacancy, recruitmentNotLoaded } from '..
 import { ActionButton, CopyLink, ReasonButton } from '../../forms';
 import { vacancyBulkHref } from '../../general';
 import { boardHref, MY_HIRING_PATH } from '../../hiring';
-import { applicantsHref, channelLinks, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref } from '../../recruitment';
+import { applicantsHref, channelLinks, GOOD_CV_MATCH_PERCENT, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref } from '../../recruitment';
 import { ApplicantsTable, VacancyStatusBadge } from '../../ui';
 
 // A vacancy (owner, 22 October 2026: "where will we include the ATS?"): where it stands and what can be done (HR sends it
@@ -95,6 +95,17 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
           aria-pressed={q.minMatch !== null}
         >
           Match ≥ {GOOD_MATCH_PERCENT}%
+        </Link>
+        {/* the key skills found in the CV (22 October 2026: "make the OCR egine reads the CV and analyse it") */}
+        <Link
+          href={applicantsHref(base, { ...q, minCvMatch: q.minCvMatch === null ? GOOD_CV_MATCH_PERCENT : null })}
+          className={`${chip} ${q.minCvMatch !== null ? ACTIVE : IDLE}`}
+          aria-pressed={q.minCvMatch !== null}
+        >
+          CV match ≥ {GOOD_CV_MATCH_PERCENT}%
+        </Link>
+        <Link href={applicantsHref(base, { ...q, sort: q.sort === 'cv' ? '' : 'cv' })} className={`${chip} ${q.sort === 'cv' ? ACTIVE : IDLE}`} aria-pressed={q.sort === 'cv'}>
+          Best CV match first
         </Link>
       </nav>
       {/* where they came from (owner, 22 October 2026: "what came out of the posted jobs"): each count lists them */}
@@ -247,6 +258,27 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
               </li>
             ))}
           </ol>
+        )}
+      </section>
+
+      {/* looked for in each CV (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it"; "Built-in rules only") */}
+      <section aria-labelledby="vacancy-key-skills" className="card space-y-3 p-6">
+        <h2 id="vacancy-key-skills" className="text-lg font-semibold">
+          Key Skills
+        </h2>
+        {v.keySkills.length === 0 ? (
+          <p className="text-sm text-muted">None yet. List them on the vacancy&apos;s form to see which each CV names, and its CV match.</p>
+        ) : (
+          <>
+            <ul className="flex flex-wrap gap-2">
+              {v.keySkills.map((s) => (
+                <li key={s} className="badge bg-canvas text-ink">
+                  {s}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted">Looked for in each applicant&apos;s CV; the CV match % is how many it names. It never filters anyone out.</p>
+          </>
         )}
       </section>
 

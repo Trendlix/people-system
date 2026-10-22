@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   APPLICATION_SOURCE_LABELS,
   CV_BATCH_LIMIT,
@@ -21,8 +21,8 @@ import { FormErrors, useFieldIds, useKeptForm } from '@/components/form';
 import { Select } from '@/components/select';
 import type { FormState } from '@/lib/types';
 import { OTHER_AREA } from '../../careers/careers';
-import { discardBatch, saveBatch, uploadBatchCv } from './general-actions';
-import { batchSources, duplicateText, inBatchRepeats, rowOf, saveRows, type BatchRow } from './general';
+import { discardBatch, readBatch, saveBatch, uploadBatchCv } from './general-actions';
+import { batchSources, duplicateText, inBatchRepeats, mergeReadings, rowOf, saveRows, type BatchRow } from './general';
 
 // General CVs' forms (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
 // randomly", "Both"; "is there a way to easy apply from linkedin?" … "why not"): HR's Add a CV, adding one to a vacancy,
@@ -34,6 +34,10 @@ type Area = { id: string; name: string };
 
 const L = RECRUITMENT_LIMITS;
 const CV_ACCEPT = '.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+/** How often a batch with scans still being read asks again, and for how long at most (22 October 2026). */
+const READING_POLL_MS = 10_000;
+const READING_POLLS = 90;
 
 const str = (state: FormState, name: string, fallback = '') => {
   const v = state.values?.[name];
@@ -240,6 +244,7 @@ export function BulkUpload({ target, initial, areas, doneHref }: { target: CvBat
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<'save' | 'discard' | null>(null);
   const [over, setOver] = useState(false);
+  const [polls, setPolls] = useState(0);
   const box = useRef<HTMLInputElement>(null);
   const fid = useFieldIds();
   const general = target.kind === 'general';
@@ -264,7 +269,10 @@ export function BulkUpload({ target, initial, areas, doneHref }: { target: CvBat
         fd.set('cv', file, file.name);
         try {
           const r = await uploadBatchCv(target, fd);
-          if ('upload' in r) setRows((all) => [...all, rowOf(r.upload)]);
+          if ('upload' in r) {
+            setRows((all) => [...all, rowOf(r.upload)]);
+            if (r.upload.reading) setPolls(0);
+          }
           else said.push(r.error.startsWith(file.name) ? r.error : `${file.name}: ${r.error}`);
         } catch {
           said.push(`${file.name}: could not be uploaded. Please try again.`);
@@ -307,6 +315,21 @@ export function BulkUpload({ target, initial, areas, doneHref }: { target: CvBat
 
   const toSave = rows.filter((r) => !r.skip).length;
 
+  // scans being read by the OCR service: their rows filled in as each is read (asked every 10 seconds, for 15 minutes)
+  const anyReading = rows.some((r) => r.reading);
+  useEffect(() => {
+    if (!anyReading || polls >= READING_POLLS) return;
+    const timer = window.setTimeout(() => {
+      void readBatch(target)
+        .then((r) => {
+          if ('uploads' in r) setRows((all) => mergeReadings(all, r.uploads));
+        })
+        .catch(() => undefined)
+        .finally(() => setPolls((n) => n + 1));
+    }, READING_POLL_MS);
+    return () => window.clearTimeout(timer);
+  }, [anyReading, polls, target]);
+
   return (
     <div className="space-y-4">
       <div
@@ -339,8 +362,8 @@ export function BulkUpload({ target, initial, areas, doneHref }: { target: CvBat
           className="input"
         />
         <p id={fid('files-hint')} className="hint">
-          Choose or drop PDF or Word files (.docx), each at most {L.cvMb} MB, up to {CV_BATCH_LIMIT} in a batch. Each is read for the name, email and mobile; a scanned PDF has no text to read, so fill
-          its row in.
+          Choose or drop PDF or Word files (.docx), each at most {L.cvMb} MB, up to {CV_BATCH_LIMIT} in a batch. Each is read for the name, email and mobile; a scanned PDF is read by the OCR service in a
+          minute or two, its row filling in as it is (or fill it in yourself).
         </p>
         {progress && (
           <p role="status" className="text-sm">
@@ -424,7 +447,13 @@ export function BulkUpload({ target, initial, areas, doneHref }: { target: CvBat
                         <span className="block truncate font-semibold" title={r.fileName}>
                           {r.fileName}
                         </span>
-                        {!r.textFound && <span className="badge mt-1 bg-warn-soft text-warn">No text found: fill it in</span>}
+                        {r.reading ? (
+                          <span role="status" className="badge mt-1 bg-accent-soft text-accent">
+                            {polls >= READING_POLLS ? 'Still reading: refresh later, or fill it in' : 'Reading…'}
+                          </span>
+                        ) : (
+                          !r.textFound && <span className="badge mt-1 bg-warn-soft text-warn">No text found: fill it in</span>
+                        )}
                         {dup && <span className="mt-1 block text-xs text-warn">{dup}</span>}
                         {reason && <span className="mt-1 block text-xs text-danger">{reason}</span>}
                       </td>

@@ -7,7 +7,7 @@
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { CvBatchTarget, CvSaveResult, CvSaveRow, CvUploadView, GeneralCvView } from '@trendlix/shared';
-import { ApiError, apiSend, apiUpload } from '@/lib/api';
+import { ApiError, apiGet, apiSend, apiUpload } from '@/lib/api';
 import type { FormState } from '@/lib/types';
 import { addCvApiForm, addCvProblems, addCvTypedValues, generalCvHref, uploadsApiPath } from './general';
 import { applicantHref } from './recruitment';
@@ -81,6 +81,16 @@ export async function uploadBatchCv(target: CvBatchTarget, fd: FormData): Promis
     const upload = await apiUpload<CvUploadView>('POST', uploadsApiPath(target), form);
     if (!upload) return { error: 'The server sent an answer that could not be read.' };
     return { upload };
+  } catch (err) {
+    if (err instanceof ApiError) return { error: err.messages.join(' ') };
+    throw err;
+  }
+}
+
+/** The batch as it is now: its scans' rows filled in once the OCR service has read them (22 October 2026). */
+export async function readBatch(target: CvBatchTarget): Promise<{ uploads: CvUploadView[] } | { error: string }> {
+  try {
+    return { uploads: await apiGet<CvUploadView[]>(uploadsApiPath(target)) };
   } catch (err) {
     if (err instanceof ApiError) return { error: err.messages.join(' ') };
     throw err;

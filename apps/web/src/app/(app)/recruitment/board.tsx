@@ -127,7 +127,9 @@ export function PipelineBoard({ board, move }: { board: VacancyBoard; move: Move
                     {card.fullName}
                   </Link>
                   <p className="text-xs text-muted">
-                    Match {matchText(card.matchPercent)} · {APPLICATION_SOURCE_LABELS[card.source]} · {daysText(card.daysInStage)}
+                    Match {matchText(card.matchPercent)}
+                    {typeof card.cvMatchPercent === 'number' && ` · CV ${matchText(card.cvMatchPercent)}`} · {APPLICATION_SOURCE_LABELS[card.source]} ·{' '}
+                    {daysText(card.daysInStage)}
                   </p>
                   <div className="flex flex-wrap gap-1">
                     {card.upcomingInterviews > 0 && <span className={`badge ${STAGE_STYLE.interview}`}>Interview booked</span>}

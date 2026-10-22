@@ -303,6 +303,8 @@ export const actionLabel = (action: string): string => ACTION_LABELS[action] ?? 
 
 /** The words of a few fields whose name alone doesn't say it well; every other field is its name split into words. */
 const FIELD_LABELS: Readonly<Record<string, string>> = {
+  // a vacancy's key skills, each CV checked for them (22 October 2026)
+  keySkills: 'Key skills',
   employeeId: 'Employee',
   employmentId: 'Employment',
   managerId: 'Direct manager',

@@ -156,6 +156,17 @@ export class ApplicationsController {
     return this.applications.get(id, user);
   }
 
+  /**
+   * The CV's text and the contacts found in it (22 October 2026: "make the OCR egine reads the CV and analyse it"), for
+   * those who may open the applicant; never for a developer (phones and emails).
+   */
+  @NotForDevelopers()
+  @Get(':id/cv-text')
+  @Header('Cache-Control', 'private, no-store')
+  cvText(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.applications.cvText(id, user);
+  }
+
   /** The CV as sent: shown in the browser, or saved with ?download=1. For those who may open the applicant. */
   @NotForDevelopers()
   @Get(':id/cv')

@@ -35,6 +35,7 @@ import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { nextApplicationNumber } from './application-numbers.js';
 import { cvFileName, cvProblem, cvTypeOf } from './cv-file.js';
+import { CvReadingsService } from './cv-readings.service.js';
 import { createHrApplication } from './hr-applications.js';
 import type { ApplyOrigin } from './public-careers.service.js';
 import { managesRecruitment, READS, vacancyWhere } from './recruitment-access.js';
@@ -84,6 +85,8 @@ const DETAIL_INCLUDE = {
   consentBy: { select: { id: true, email: true } },
   application: { select: { id: true, number: true, vacancy: { select: { id: true, title: true } } } },
   file: { select: { fileName: true, mimeType: true, sizeBytes: true } },
+  // the CV read and analysed (22 October 2026)
+  cvReading: { select: { status: true, method: true, readAt: true, facts: true, text: true } },
   events: { orderBy: { at: 'asc' }, include: { by: { select: { id: true, email: true } } } },
 } satisfies Prisma.GeneralCvInclude;
 
@@ -114,6 +117,7 @@ export class GeneralCvsService {
     private readonly audit: AuditService,
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
+    private readonly readings: CvReadingsService,
   ) {}
 
   // ---------- the careers page ----------
@@ -197,7 +201,8 @@ export class GeneralCvsService {
           query.status === 'all' ? {} : query.status ? { status: query.status } : { status: { not: 'archived' } },
           query.source ? { source: query.source } : {},
           query.departmentId ? { departmentId: query.departmentId } : {},
-          q ? { OR: [{ fullName: q }, { email: q }, { mobile: q }, { number: q }] } : {},
+          // the search also looks in the CVs' text (22 October 2026)
+          q ? { OR: [{ fullName: q }, { email: q }, { mobile: q }, { number: q }, { cvReading: { is: { text: q } } }] } : {},
         ],
       },
       select: LIST_SELECT,
@@ -227,6 +232,7 @@ export class GeneralCvsService {
       consentBy: userRef(r.consentBy, names),
       consentNote: r.consentNote,
       cv: r.file,
+      cvReading: r.file ? this.readings.view(r.cvReading, null) : null,
       history: r.events.map((e) => ({ event: e.event, note: e.note, by: userRef(e.by, names), at: e.at.toISOString() })),
       can: {
         review: manages && status === 'new',
@@ -315,13 +321,26 @@ export class GeneralCvsService {
         note: `Moved from a general CV (${GENERAL_CV_SOURCE_LABELS[source]})`,
         byId: user.id,
       });
+      // its CV's reading goes with it, so it isn't read again (22 October 2026)
+      await this.readings.carry(tx, { generalCvId: id }, { applicationId: app.id });
       await tx.generalCv.update({ where: { id }, data: { status: 'moved', applicationId: app.id, movedAt: new Date() } });
       await tx.generalCvEvent.create({ data: { generalCvId: id, event: 'moved', note: `${v.title} (${v.number}), at ${stage === 'applied' ? 'Applied' : 'Shortlisted'}`, byId: user.id } });
       return { app, number: r.number };
     });
+    await this.readings.rescoreApplication(done.app.id);
+    this.readings.kick();
     await this.audit.record({ userId: user.id, action: 'move_to_vacancy', entityType: GENERAL_CV_ENTITY, entityId: id, diff: { number: done.number, vacancy: v.number, stage } });
     await this.audit.record({ userId: user.id, action: 'create', entityType: APPLICATION_ENTITY, entityId: done.app.id, diff: { number: done.app.number, vacancy: v.number, source: 'general', stage, from: 'general CV' } });
     return this.get(id, user);
+  }
+
+  /** The CV's text and the contacts found in it (HR, the CEO, a Super Admin; never a developer: the route refuses them). */
+  async cvText(id: string, user: SessionUser) {
+    this.assertReads(user);
+    if (!(await this.prisma.generalCv.count({ where: { id } }))) throw new NotFoundException(NOT_FOUND);
+    const t = await this.readings.textOf({ generalCvId: id });
+    if (!t) throw new NotFoundException('This CV hasn’t been read yet.');
+    return t;
   }
 
   /** The Applicants page's summary: the two tabs' counts, and each vacancy's applicants by stage and source. */
@@ -442,7 +461,7 @@ export class GeneralCvsService {
         select: { id: true, number: true, department: { select: { nameEn: true } }, areaOther: true },
       });
       return { id: row.id, number: row.number, area: areaOf(row) };
-    });
+    }).finally(() => this.readings.kick());
   }
 
   private listItem(r: ListRow, names: ReadonlyMap<string, { name: string }>): GeneralCvListItem {

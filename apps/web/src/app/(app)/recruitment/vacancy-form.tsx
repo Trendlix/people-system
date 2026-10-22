@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { EMPLOYMENT_TYPES, LABELS, RECRUITMENT_LIMITS, WORK_ARRANGEMENTS, type VacancyQuestion } from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, KEY_SKILLS_LIMITS, LABELS, RECRUITMENT_LIMITS, WORK_ARRANGEMENTS, type VacancyQuestion } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -36,6 +36,7 @@ export interface VacancyDefaults {
   responsibilities: string;
   requirements: string;
   questions: VacancyQuestion[];
+  keySkills: string[];
 }
 
 const L = RECRUITMENT_LIMITS;
@@ -238,6 +239,37 @@ export function VacancyForm({
         <RichTextEditor name="about" label="About the role" rows={3} defaultValue={valueOf(state, 'about', defaults.about)} />
         <RichTextEditor name="responsibilities" label="Responsibilities" rows={5} defaultValue={valueOf(state, 'responsibilities', defaults.responsibilities)} />
         <RichTextEditor name="requirements" label="Requirements" rows={4} defaultValue={valueOf(state, 'requirements', defaults.requirements)} />
+      </section>
+
+      {/* Key skills looked for in each CV (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it"; "Built-in
+          rules only"). Unlike the questions, they can change after people applied: every application is scored again. */}
+      <section aria-labelledby={fid('keySkills')} className="space-y-3 border-t border-line pt-6">
+        <div>
+          <h2 id={fid('keySkills')} className="text-lg font-semibold">
+            Key Skills
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Looked for in each applicant&apos;s CV: the CV match % is how many of them the CV names. It never filters anyone out. Not shown on the careers
+            page.
+          </p>
+        </div>
+        <div>
+          <label htmlFor={fid('keySkillsInput')} className="label">
+            Key skills, separated by commas
+          </label>
+          <textarea
+            id={fid('keySkillsInput')}
+            name="keySkills"
+            rows={2}
+            aria-describedby={fid('keySkillsHint')}
+            defaultValue={valueOf(state, 'keySkills', defaults.keySkills.join(', '))}
+            placeholder="e.g. Premiere Pro, After Effects, color grading"
+            className="input"
+          />
+          <p id={fid('keySkillsHint')} className="hint">
+            Up to {KEY_SKILLS_LIMITS.max}, each up to {KEY_SKILLS_LIMITS.length} characters. Found as whole words in any case, in English or Arabic.
+          </p>
+        </div>
       </section>
 
       <section aria-labelledby={fid('questions')} className="space-y-3 border-t border-line pt-6">

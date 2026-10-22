@@ -74,6 +74,7 @@ async function NewVacancy({ searchParams }: { searchParams: PageProps<'/recruitm
         responsibilities: j.jdDuties ?? '',
         requirements: j.jdRequirements ?? '',
         questions: [],
+        keySkills: [],
       }}
       options={options}
       published={false}

@@ -55,6 +55,15 @@ export class GeneralCvsController {
     return this.cvs.get(id, user);
   }
 
+  /** The CV's text and the contacts found in it (22 October 2026); never for a developer (phones and emails). */
+  @Roles(...READS)
+  @NotForDevelopers()
+  @Get(':id/cv-text')
+  @Header('Cache-Control', 'private, no-store')
+  cvText(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.cvs.cvText(id, user);
+  }
+
   /** The CV as sent: shown in the browser (a PDF), or saved with ?download=1 (a Word file always). */
   @Roles(...READS)
   @NotForDevelopers()

@@ -57,6 +57,7 @@ async function EditVacancy({ params }: { params: PageProps<'/recruitment/vacanci
           responsibilities: v.responsibilities ?? '',
           requirements: v.requirements ?? '',
           questions: v.questions,
+          keySkills: v.keySkills,
         }}
         options={options}
         published={vacancyEditable(v.status) === 'published'}

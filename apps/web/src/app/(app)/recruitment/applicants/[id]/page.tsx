@@ -17,6 +17,7 @@ import {
 import { formatDate, formatDateTime } from '@/lib/format';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { RehireWarning } from '../../../offboarding/rehire-warning';
+import { FromTheCv } from '../../cv-card';
 import { cancelInterview, giveFeedback, markInterview, moveApplicant, rescheduleInterview, restoreApplicant, saveApplicantNotes, scheduleInterview, suggestNext } from '../../actions';
 import { loadApplicant, recruitmentNotLoaded } from '../../data';
 import { ActionButton, NotesForm, ReasonButton } from '../../forms';
@@ -285,6 +286,13 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           </Fact>
         </dl>
       </section>
+
+      {/* What the CV's text says (22 October 2026: "make the OCR egine reads the CV and analyse it"; "Built-in rules only"). */}
+      {a.cv && a.cvReading && (
+        <Suspense fallback={<Loading />}>
+          <FromTheCv reading={a.cvReading} subject={{ applicationId: a.id }} />
+        </Suspense>
+      )}
 
       {a.answers.length > 0 && (
         <section aria-labelledby="applicant-answers" className="card overflow-x-auto">

@@ -136,6 +136,7 @@ describe('the bulk upload', () => {
     fileName: 'mona_adel_cv.pdf',
     sizeBytes: 1000,
     textFound: true,
+    reading: false,
     guess: { fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+201001234567' },
     duplicate: null,
     uploadedAt: '2026-10-22T10:00:00.000Z',

@@ -5,6 +5,7 @@ import { GENERAL_CV_EVENT_LABELS, GENERAL_CV_SOURCE_LABELS, GENERAL_CV_STATUS_LA
 import { formatDate, formatDateTime } from '@/lib/format';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { RehireWarning } from '../../../offboarding/rehire-warning';
+import { FromTheCv } from '../../cv-card';
 import { loadGeneralCv, loadVacancies, recruitmentNotLoaded } from '../../data';
 import { ActionButton, NotesForm } from '../../forms';
 import { moveGeneralCv, saveGeneralCvNotes, setGeneralCvStatus } from '../../general-actions';
@@ -144,6 +145,13 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
           </Fact>
         </dl>
       </section>
+
+      {/* What the CV's text says (22 October 2026: "make the OCR egine reads the CV and analyse it"; "Built-in rules only"). */}
+      {c.cv && c.cvReading && (
+        <Suspense fallback={<Loading />}>
+          <FromTheCv reading={c.cvReading} subject={{ generalCvId: c.id }} />
+        </Suspense>
+      )}
 
       {c.can.editNotes ? (
         <section aria-labelledby="general-notes" className="card space-y-2 p-6">

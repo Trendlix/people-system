@@ -101,6 +101,8 @@ export const APPLICATION_LIST_SELECT = {
   stage: true,
   filteredOut: true,
   matchPercent: true,
+  // the vacancy's key skills found in the CV (22 October 2026)
+  cvMatchPercent: true,
   points: true,
   maxPoints: true,
   yearsExperience: true,
@@ -122,6 +124,7 @@ export const applicationListView = (a: ApplicationListRow): ApplicationListItem 
   stage: a.stage as ApplicationStage,
   filteredOut: a.filteredOut,
   matchPercent: a.matchPercent,
+  cvMatchPercent: a.cvMatchPercent,
   points: a.points,
   maxPoints: a.maxPoints,
   yearsExperience: money(a.yearsExperience),

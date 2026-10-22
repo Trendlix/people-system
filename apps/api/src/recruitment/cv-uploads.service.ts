@@ -22,6 +22,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { nextApplicationNumber } from './application-numbers.js';
 import { cvFileName, cvProblem, cvTypeOf, type CvType } from './cv-file.js';
+import { CvReadingsService } from './cv-readings.service.js';
 import { cvText } from './cv-text.js';
 import { GENERAL_CV_ENTITY } from './general-cvs.service.js';
 import { createHrApplication } from './hr-applications.js';
@@ -43,7 +44,16 @@ const NOT_FOUND = 'Vacancy not found.';
 /** Where a batch goes: a vacancy's applicants, or the general CVs (`vacancyId` null). */
 type Target = { vacancyId: string | null };
 
-const UPLOAD_SELECT = { id: true, fileName: true, sizeBytes: true, textFound: true, guess: true, createdAt: true } satisfies Prisma.CvUploadSelect;
+const UPLOAD_SELECT = {
+  id: true,
+  fileName: true,
+  sizeBytes: true,
+  textFound: true,
+  guess: true,
+  createdAt: true,
+  // a scanned CV being read by the OCR service (22 October 2026)
+  cvReading: { select: { status: true } },
+} satisfies Prisma.CvUploadSelect;
 type UploadRow = Prisma.CvUploadGetPayload<{ select: typeof UPLOAD_SELECT }>;
 
 /** A kept guess as read back: each field a string or null. */
@@ -64,6 +74,7 @@ export class CvUploadsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly readings: CvReadingsService,
   ) {}
 
   /** A CV added to the caller's batch: checked, read, its row guessed. */
@@ -90,9 +101,12 @@ export class CvUploadsService {
         data: new Uint8Array(file!.buffer),
         textFound: textRead.trim().length > 0,
         guess: guess as unknown as Prisma.InputJsonValue,
+        // a scan (no text of its own): the OCR service reads it in the background, its row filled in then (22 October 2026)
+        ...(textRead.trim().length === 0 && { cvReading: { create: {} } }),
       },
       select: UPLOAD_SELECT,
     });
+    if (!row.textFound) this.readings.kick();
     return (await this.views(target, [row], user.id))[0];
   }
 
@@ -172,9 +186,13 @@ export class CvUploadsService {
               note: `Added by HR from a CV (${source === 'linkedin' ? 'LinkedIn Easy Apply' : label}), in a bulk upload`,
               byId: user.id,
             });
+            // the CV's reading goes with it, so it isn't read again (22 October 2026)
+            await this.readings.carry(tx, { uploadId: u.id }, { applicationId: app.id });
             await tx.cvUpload.delete({ where: { id: u.id } });
             return app;
           });
+          await this.readings.rescoreApplication(made.id);
+          this.readings.kick();
           await this.audit.record({ userId: user.id, action: 'create', entityType: APPLICATION_ENTITY, entityId: made.id, diff: { number: made.number, vacancy: vacancy.number, source, via: 'bulk upload' } });
           result.saved.push({ id: u.id, reference: made.number, fullName: r.fullName.trim() });
         } else {
@@ -210,9 +228,11 @@ export class CvUploadsService {
               },
               select: { id: true, number: true },
             });
+            await this.readings.carry(tx, { uploadId: u.id }, { generalCvId: row.id });
             await tx.cvUpload.delete({ where: { id: u.id } });
             return row;
           });
+          this.readings.kick();
           await this.audit.record({ userId: user.id, action: 'create', entityType: GENERAL_CV_ENTITY, entityId: made.id, diff: { number: made.number, source, via: 'bulk upload' } });
           result.saved.push({ id: u.id, reference: made.number, fullName: r.fullName.trim() });
         }
@@ -292,6 +312,7 @@ export class CvUploadsService {
         fileName: r.fileName,
         sizeBytes: r.sizeBytes,
         textFound: r.textFound,
+        reading: r.cvReading?.status === 'pending',
         guess: g,
         duplicate: found ? { reference: found.reference, inBatch: false, date: found.date } : earlier ? { reference: null, inBatch: true, date: null } : null,
         uploadedAt: r.createdAt.toISOString(),

@@ -1401,6 +1401,7 @@ model Vacancy {
   responsibilities String? // HTML: the duties
   requirements     String? // HTML
   questions        Json             @default("[]")
+  keySkills        String[]         @default([]) @map("key_skills") // the skills a CV is checked for (CV match %), at most 20 (22 October 2026)
   submittedAt      DateTime?        @map("submitted_at") @db.Timestamptz
   submittedById    String?          @map("submitted_by") @db.Uuid
   submittedBy      User?            @relation("VacancySubmission", fields: [submittedById], references: [id], onDelete: SetNull)
@@ -1450,6 +1451,7 @@ model JobApplication {
   points          Int                  @default(0)
   maxPoints       Int                  @default(0) @map("max_points")
   matchPercent    Int?                 @map("match_percent")
+  cvMatchPercent  Int?                 @map("cv_match_percent") // the vacancy's key skills found in the CV's text, %; none: no skills listed or the CV not read (22 October 2026)
   knockedOut      String[]             @default([]) @map("knocked_out") // the must-have questions not passed, by key
   source          String               @default("careers") // APPLICATION_SOURCES
   consentAt       DateTime             @map("consent_at") @db.Timestamptz
@@ -1474,6 +1476,7 @@ model JobApplication {
   consentNote     String?              @map("consent_note")
   generalCv       GeneralCv? // the general CV it was moved from
   cv              JobApplicationCv?
+  cvReading       CvReading? // its CV read and analysed (22 October 2026)
   steps           JobApplicationStep[]
   offers          JobOffer[]
   interviews      Interview[]
@@ -1555,6 +1558,7 @@ model GeneralCv {
   application     JobApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
   movedAt         DateTime?        @map("moved_at") @db.Timestamptz
   file            GeneralCvFile?
+  cvReading       CvReading? // its CV read and analysed (22 October 2026)
   events          GeneralCvEvent[]
 
   @@index([email, createdAt])
@@ -1607,10 +1611,40 @@ model CvUpload {
   data        Bytes
   textFound   Boolean  @default(false) @map("text_found")
   guess       Json     @default("{}")
+  cvReading   CvReading? // a scanned CV read by OCR, its row filled in from it (22 October 2026)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([createdById, createdAt])
   @@map("cv_uploads")
+}
+
+// A CV read and analysed (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it", "Built-in rules
+// only"): one row for each CV (an application's, a general CV's or a bulk upload's: exactly one of the three), read in
+// the background (CvReadingsService): a PDF's own text, else the OCR service for a scan; a Word file's paragraphs. Its
+// status (pending, read, no_text, failed), the text (at most 60,000 characters), how it was read (pdf, docx, ocr_en,
+// ocr_ar), what the rules found in it (packages/shared cv-analysis.ts cvFacts: contacts, years, education, languages),
+// and the tries (3 at most, each later). Deleted with its CV.
+model CvReading {
+  id            String          @id @default(uuid()) @db.Uuid
+  applicationId String?         @unique @map("application_id") @db.Uuid
+  application   JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  generalCvId   String?         @unique @map("general_cv_id") @db.Uuid
+  generalCv     GeneralCv?      @relation(fields: [generalCvId], references: [id], onDelete: Cascade)
+  uploadId      String?         @unique @map("upload_id") @db.Uuid
+  upload        CvUpload?       @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  status        String          @default("pending") // CV_READING_STATUSES: pending, read, no_text, failed
+  method        String? // pdf, docx, ocr_en, ocr_ar
+  text          String?
+  facts         Json? // CvFacts
+  attempts      Int             @default(0)
+  nextTryAt     DateTime        @default(now()) @map("next_try_at") @db.Timestamptz
+  error         String?
+  readAt        DateTime?       @map("read_at") @db.Timestamptz
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([status, nextTryAt])
+  @@map("cv_readings")
 }
 
 // An interview (Phase 2, owner, 22 October 2026: "interview invites go by email through the owner's SMTP settings"):
