@@ -118,6 +118,12 @@ export class AuthService {
     ]);
     // in charge of a department or team, while a current employee (owner, 19 October 2026: the person in charge)
     const leading = own ? await this.prisma.department.count({ where: { headId: own.id, head: { employments: { some: { endDate: null } } } } }) : 0;
+    // hiring for an open vacancy, or on an interview to come or of the last 60 days (recruitment, Phase 2, 22 October 2026)
+    const hiring = own
+      ? (await this.prisma.vacancy.count({ where: { hiringManagerId: own.id, status: { in: ['open', 'on_hold'] } } })) +
+          (await this.prisma.interviewInterviewer.count({ where: { employeeId: own.id, interview: { startsAt: { gte: new Date(Date.now() - 60 * 86_400_000) } } } })) >
+        0
+      : false;
     return {
       ...user,
       viewAs: user.viewAs ?? null,
@@ -125,6 +131,7 @@ export class AuthService {
       name: own?.fullNameEn ?? null,
       leads: leading > 0,
       assets: assetsMe(assets),
+      hiring,
       session: { id: session.id, kind: session.kind, idleTimeoutMs: session.idleTimeoutMs },
     };
   }

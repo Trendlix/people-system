@@ -7,9 +7,11 @@ import { RichText } from '@/components/rich-text';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { originFrom } from '../../../offers/sending';
-import { deleteVacancy, moveVacancy } from '../../actions';
-import { loadApplicants, loadVacancy, recruitmentNotLoaded } from '../../data';
+import { deleteVacancy, moveOnBoard, moveVacancy } from '../../actions';
+import { PipelineBoard } from '../../board';
+import { loadApplicants, loadBoard, loadVacancy, recruitmentNotLoaded } from '../../data';
 import { ActionButton, CopyLink, ReasonButton } from '../../forms';
+import { boardHref, MY_HIRING_PATH } from '../../hiring';
 import { applicantsHref, channelLinks, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref } from '../../recruitment';
 import { ApplicantsTable, VacancyStatusBadge } from '../../ui';
 
@@ -17,6 +19,8 @@ import { ApplicantsTable, VacancyStatusBadge } from '../../ui';
 // to the CEO, holds, reopens, closes it; the CEO approves it or sends it back with a reason), its position and internal
 // salary range, the links to share on each channel while it is published, the careers page's text, its screening
 // questions, and its applicants by stage (those filtered out by a must-have apart, a good match from 70%).
+// Phase 2 (22 October 2026): the applicants as a list or as the pipeline board (?view=board); the vacancy's hiring manager
+// sees it without the salary range, with its board from Shortlisted on.
 
 export const metadata: Metadata = { title: 'Vacancy · People System' };
 
@@ -96,18 +100,33 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
   );
 }
 
+/** The pipeline board (Phase 2): HR moves cards on it, the CEO and the hiring manager read it. */
+async function Board({ v }: { v: VacancyView }) {
+  const loaded = await loadBoard(v.id);
+  return (
+    <section aria-labelledby="vacancy-board" className="space-y-3">
+      <h2 id="vacancy-board" className="text-lg font-semibold">
+        Pipeline
+      </h2>
+      {loaded.kind !== 'ok' ? <Empty>{recruitmentNotLoaded(loaded, 'board')}</Empty> : <PipelineBoard board={loaded.value} move={moveOnBoard} />}
+    </section>
+  );
+}
+
 async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacancies/[id]'>) {
   const { id } = await params;
   const loaded = await loadVacancy(id);
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'vacancy')}</Empty>;
   const v = loaded.value;
+  const hiringManager = v.viewer === 'hiring_manager';
+  const view = hiringManager || (await searchParams).view === 'board' ? 'board' : 'list';
   const published = v.status === 'open' || v.status === 'on_hold';
   const origin = published ? originFrom(await headers()) : '';
   const range = v.salaryMin !== null || v.salaryMax !== null ? [money(v.salaryMin), money(v.salaryMax)].filter(Boolean).join(' – ') : null;
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <BackLink href={VACANCIES_PATH}>Vacancies</BackLink>
+        <BackLink href={hiringManager ? MY_HIRING_PATH : VACANCIES_PATH}>{hiringManager ? 'My Hiring' : 'Vacancies'}</BackLink>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{v.title}</h1>
           <VacancyStatusBadge status={v.status} />
@@ -145,12 +164,12 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
           <Fact label="Shift">{v.shift?.code ?? '—'}</Fact>
           <Fact label="Contract length">{v.durationMonths ? `${v.durationMonths} months` : '—'}</Fact>
           <Fact label="Closing date">{v.closingDate ? formatDate(v.closingDate) : '—'}</Fact>
-          <Fact label="Salary range, EGP a month">{range ?? '—'}</Fact>
+          {!hiringManager && <Fact label="Salary range, EGP a month">{range ?? '—'}</Fact>}
           <Fact label="Published">{v.publishedAt ? formatDate(v.publishedAt) : 'Not yet'}</Fact>
           <Fact label="Drafted by">{v.createdBy?.name ?? v.createdBy?.email ?? '—'}</Fact>
           <Fact label="Approved by">{v.status !== 'draft' && v.status !== 'pending' && v.decidedBy ? (v.decidedBy.name ?? v.decidedBy.email) : '—'}</Fact>
         </dl>
-        <p className="text-xs text-muted">The salary range is for HR, the CEO and a Super Admin only: never on the careers page.</p>
+        {!hiringManager && <p className="text-xs text-muted">The salary range is for HR, the CEO and a Super Admin only: never on the careers page.</p>}
       </section>
 
       {published && origin && (
@@ -209,9 +228,17 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
         )}
       </section>
 
-      <Suspense fallback={<Loading />}>
-        <Applicants v={v} searchParams={searchParams} />
-      </Suspense>
+      {!hiringManager && (
+        <nav aria-label="Show the applicants as" className="flex flex-wrap gap-2">
+          <Link href={vacancyHref(v.id)} className={`${chip} ${view === 'list' ? ACTIVE : IDLE}`} aria-current={view === 'list' ? 'page' : undefined}>
+            List
+          </Link>
+          <Link href={boardHref(v.id)} className={`${chip} ${view === 'board' ? ACTIVE : IDLE}`} aria-current={view === 'board' ? 'page' : undefined}>
+            Board
+          </Link>
+        </nav>
+      )}
+      <Suspense fallback={<Loading />}>{view === 'board' ? <Board v={v} /> : <Applicants v={v} searchParams={searchParams} />}</Suspense>
     </div>
   );
 }

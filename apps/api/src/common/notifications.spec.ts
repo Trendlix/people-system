@@ -26,10 +26,10 @@ import {
 
 const MIGRATION = new URL('../../prisma/migrations/20261020140000_notifications/migration.sql', import.meta.url);
 /**
- * The recruitment migration (22 October 2026), which gave the notifications the three recruitment kinds after the
- * offboarding ones: the kinds as they are now.
+ * The recruitment Phase 2 migration (22 October 2026), which gave the notifications the interview, scorecard, suggestion
+ * and onboarding kinds after the recruitment ones: the kinds as they are now.
  */
-const KINDS_NOW = new URL('../../prisma/migrations/20261022130000_recruitment/migration.sql', import.meta.url);
+const KINDS_NOW = new URL('../../prisma/migrations/20261022150000_recruitment_phase2/migration.sql', import.meta.url);
 
 describe('notifications (shared)', () => {
   it('has the kinds the database allows, each labelled', () => {

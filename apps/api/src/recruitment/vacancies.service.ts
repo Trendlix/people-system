@@ -88,8 +88,18 @@ export class VacanciesService {
     return rows.map((r) => vacancyListView(r, counts.get(r.id) ?? emptyCounts()));
   }
 
+  /**
+   * A vacancy: in full for HR, the CEO and a Super Admin; for its hiring manager (Phase 2, 22 October 2026: "They never
+   * see the salary range"), without the salary range and with nothing to do; 404 for anyone else.
+   */
   async get(id: string, user: SessionUser): Promise<VacancyView> {
-    return this.view(await this.row(id, user), user);
+    if (user.roles.some((r) => r === 'hr' || r === 'ceo' || r === 'super_admin')) return this.view(await this.row(id, user), user);
+    const selfId = await this.confidential.selfId(user);
+    const v = selfId ? await this.prisma.vacancy.findFirst({ where: { id, hiringManagerId: selfId }, include: VACANCY_INCLUDE }) : null;
+    if (!v) throw new NotFoundException(NOT_FOUND);
+    const view = await this.view(v, user);
+    const nothing = Object.fromEntries(Object.keys(view.can).map((k) => [k, false])) as unknown as VacancyCan;
+    return { ...view, salaryMin: null, salaryMax: null, can: nothing, viewer: 'hiring_manager' };
   }
 
   /** The vacancy, if the caller may see it: 404 otherwise. */
@@ -158,6 +168,7 @@ export class VacanciesService {
       createdBy: userRef(v.createdBy, names),
       updatedAt: v.updatedAt.toISOString(),
       can,
+      viewer: manages ? 'manages' : 'reads',
     };
   }
 

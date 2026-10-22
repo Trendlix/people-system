@@ -2,6 +2,7 @@ import { ConflictException, Injectable, Logger, NotFoundException } from '@nestj
 import { APPLICATION_STAGE_LABELS, offerable, type ApplicationEvent, type ApplicationStage } from '@trendlix/shared';
 import type { SessionUser } from '../auth/session-user.js';
 import { AuditService } from '../audit/audit.service.js';
+import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { OPEN_OFFER } from './applications.service.js';
 import { vacancyWhere } from './recruitment-access.js';
@@ -12,7 +13,8 @@ import { APPLICATION_ENTITY, VACANCY_ENTITY } from './recruitment-views.js';
 // the application"). A job offer made from an application moves it to Offer; the offer's answer moves it on: accepted,
 // Hired (with the profile made from it), the vacancy filled once its hires reach the headcount; declined, withdrawn or
 // deleted, back to Shortlisted, where HR rejects them or makes another offer. Used by the job offers' services, so it
-// never fails their answer: a failure here is logged.
+// never fails their answer: a failure here is logged. Phase 2 (22 October 2026): a hire opens the new employee's
+// onboarding checklist, and an offer drafted clears the hiring manager's suggestion (HR acted).
 
 @Injectable()
 export class RecruitmentOffersService {
@@ -21,6 +23,7 @@ export class RecruitmentOffersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly onboarding: OnboardingService,
   ) {}
 
   /**
@@ -48,7 +51,7 @@ export class RecruitmentOffersService {
       const a = await this.prisma.jobApplication.findUnique({ where: { id: applicationId }, select: { id: true, number: true, stage: true } });
       if (!a) return;
       await this.prisma.$transaction([
-        this.prisma.jobApplication.update({ where: { id: a.id }, data: { stage: 'offer', rejectedFrom: null, rejectReason: null } }),
+        this.prisma.jobApplication.update({ where: { id: a.id }, data: { stage: 'offer', rejectedFrom: null, rejectReason: null, suggestion: null, suggestionNote: null, suggestedById: null, suggestedAt: null } }),
         this.prisma.jobApplicationStep.create({ data: { applicationId: a.id, event: 'offer', stage: 'offer', note: offer.number, byId: userId } }),
       ]);
       await this.audit.record({ userId, action: 'stage', entityType: APPLICATION_ENTITY, entityId: a.id, diff: { number: a.number, stage: { from: a.stage, to: 'offer' }, offer: offer.number } });
@@ -77,6 +80,8 @@ export class RecruitmentOffersService {
         ]);
         await this.audit.record({ userId, action: 'stage', entityType: APPLICATION_ENTITY, entityId: a.id, diff: { number: a.number, stage: { from: a.stage, to: 'hired' }, offer: o.number } });
         await this.fillIfDone(a.vacancyId, userId);
+        // their onboarding checklist (Phase 2): opened with the profile made from the offer
+        if (employeeId) await this.onboarding.openForHire(employeeId, a.id, userId);
         return;
       }
       if (a.stage !== 'offer') return;
@@ -96,7 +101,10 @@ export class RecruitmentOffersService {
   /** The profile made from an accepted offer later (Make the profile again): kept on its application. */
   async profileMade(offerId: string, employeeId: string): Promise<void> {
     try {
-      await this.prisma.jobApplication.updateMany({ where: { offers: { some: { id: offerId } }, stage: 'hired', employeeId: null }, data: { employeeId } });
+      const a = await this.prisma.jobApplication.findFirst({ where: { offers: { some: { id: offerId } }, stage: 'hired', employeeId: null }, select: { id: true } });
+      if (!a) return;
+      await this.prisma.jobApplication.update({ where: { id: a.id }, data: { employeeId } });
+      await this.onboarding.openForHire(employeeId, a.id, null);
     } catch (err) {
       this.logger.warn(`Keeping the profile on the application failed: ${(err as Error).message}`);
     }

@@ -39,6 +39,7 @@ export function ReasonButton({
   reasonLabel,
   required,
   kind = 'secondary',
+  emailOption = false,
 }: {
   action: Action;
   label: string;
@@ -46,15 +47,29 @@ export function ReasonButton({
   reasonLabel: string;
   required: boolean;
   kind?: 'secondary' | 'danger';
+  /** Phase 2 (22 October 2026): "an 'Email the candidate' tick, off by default" on Reject. */
+  emailOption?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [state, formAction, pending] = useActionState(action, {});
+  // done: closed again, with what happened (the rejection's email, Phase 2)
+  const [state, formAction, pending] = useActionState(async (prev: FormState, fd: FormData) => {
+    const next = await action(prev, fd);
+    if (next.message && !next.errors) setOpen(false);
+    return next;
+  }, {});
   const fid = useFieldIds();
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className={`btn btn-${kind}`}>
-        {label}
-      </button>
+      <div className="space-y-1">
+        <button type="button" onClick={() => setOpen(true)} className={`btn btn-${kind}`}>
+          {label}
+        </button>
+        {state.message && !state.errors && (
+          <p role="status" className="text-sm text-ok">
+            {state.message}
+          </p>
+        )}
+      </div>
     );
   }
   return (
@@ -65,6 +80,15 @@ export function ReasonButton({
         {!required && <span className="font-normal text-muted"> (optional)</span>}
       </label>
       <textarea id={fid('reason')} name="reason" rows={2} required={required} maxLength={RECRUITMENT_LIMITS.reason} className="input" />
+      {emailOption && (
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" name="email" className="mt-1" />
+          <span>
+            Email the candidate
+            <span className="block text-xs text-muted">A polite rejection, English then Arabic, with the words in Recruitment Settings. Your reason is never sent.</span>
+          </span>
+        </label>
+      )}
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={pending} className={`btn btn-${kind === 'danger' ? 'danger' : 'primary'}`}>
           {pending ? pendingLabel : label}

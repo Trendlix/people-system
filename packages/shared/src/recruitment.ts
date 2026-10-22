@@ -16,11 +16,12 @@
 //   restores; Make offer opens the job offer form filled in from the applicant and the vacancy, and the offer's answer
 //   moves the application on: accepted, hired (the vacancy filled at its headcount); declined or withdrawn, back to
 //   shortlisted.
-// Phase 2 (not here): the pipeline board, interviews with their invitations, the hiring manager's feedback, onboarding
-// and recruitment analytics.
+// Phase 2 (recruitment-hiring.ts, onboarding.ts): the pipeline board, interviews with their invitations, the hiring
+// manager's and the interviewers' feedback, the rejection email, onboarding and recruitment analytics.
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/recruitment.spec.ts.
 
 import type { EmploymentType, WorkArrangement } from './index.js';
+import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } from './recruitment-hiring.js';
 
 // ---------- the limits ----------
 
@@ -611,6 +612,8 @@ export interface VacancyView extends VacancyListItem {
   createdBy: RecruitmentUserRef | null;
   updatedAt: string;
   can: VacancyCan;
+  /** How the caller sees it (Phase 2): a hiring manager without the salary range, the description or the questions' points. */
+  viewer: RecruitmentViewer;
 }
 
 /** An applicant on a list. */
@@ -660,6 +663,12 @@ export interface ApplicationCan {
   restore: boolean;
   makeOffer: boolean;
   editNotes: boolean;
+  /** Phase 2: schedule an interview (HR, a Super Admin). */
+  scheduleInterview: boolean;
+  /** Phase 2: suggest the next step or a rejection (the vacancy's hiring manager). */
+  suggest: boolean;
+  /** Phase 2: Reject may email the candidate (email is set up on the server). */
+  emailOnReject: boolean;
 }
 
 /** GET /recruitment/applications/:id. */
@@ -677,6 +686,16 @@ export interface ApplicationView extends ApplicationListItem {
   offers: { id: string; number: string; status: string }[];
   /** The profile made when they were hired from a job offer. */
   employeeId: string | null;
+  /** How the caller sees them (Phase 2): a hiring manager and an interviewer never see the expected salary nor HR's notes. */
+  viewer: RecruitmentViewer;
+  /** Their interviews, newest first (Phase 2). */
+  interviews: InterviewView[];
+  /** The scorecards the caller may see (Phase 2: an interviewer sees the others' once they gave theirs). */
+  feedback: FeedbackView[];
+  /** Scorecards given that the caller can't see yet (an interviewer, until they give theirs). */
+  feedbackHidden: number;
+  /** The hiring manager's suggestion, while HR hasn't acted on it. */
+  suggestion: SuggestionView | null;
   /** What a job offer is filled in with (Make offer). */
   position: {
     jobTitleId: string;

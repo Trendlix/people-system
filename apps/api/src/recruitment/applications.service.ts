@@ -1,11 +1,21 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   APPLICATION_STAGE_LABELS,
+  BOARD_STAGES,
+  daysSince,
+  feedbackSeen,
+  HIRING_SUGGESTION_LABELS,
   offerable,
+  rejectionMail,
   restorable,
   scoreAnswers,
+  sourceOf,
   stageMoveProblem,
+  stageSince,
   type ApplicationCan,
+  type BoardCard,
+  type HiringSuggestion,
+  type VacancyBoard,
   type ApplicationEvent,
   type ApplicationListItem,
   type ApplicationStage,
@@ -17,10 +27,15 @@ import {
 } from '@trendlix/shared';
 import type { SessionUser } from '../auth/session-user.js';
 import { AuditService } from '../audit/audit.service.js';
+import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { MailService } from '../mail/mail.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { managesRecruitment, vacancyWhere } from './recruitment-access.js';
+import { InterviewsService } from './interviews.service.js';
+import { isConfidentialVacancy, vacancyWhere } from './recruitment-access.js';
+import { recruitmentCaller, viewerOf, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { APPLICATION_ENTITY, APPLICATION_LIST_SELECT, answersOf, applicationListView, money, questionsOf, userRef } from './recruitment-views.js';
 import type { ListApplicationsDto } from './recruitment.dto.js';
 
@@ -30,6 +45,11 @@ import type { ListApplicationsDto } from './recruitment.dto.js';
 // rejects with a reason and restores (one filtered out by a must-have, or one rejected); the job offer's stages follow
 // the offer (RecruitmentOffersService). HR and the CEO read; a C-level vacancy's applicants only the CEO and a Super
 // Admin. Each step is kept in the application's history and the audit log.
+// Phase 2 (owner, 22 October 2026; packages/shared recruitment-hiring.ts): a vacancy's hiring manager opens its applicants
+// from Shortlisted on, an interviewer those they interview (recruitment-scope.ts), neither with the expected salary nor
+// HR's notes; the interviews and the scorecards (an interviewer sees the others' once they gave theirs); the hiring
+// manager's suggestion (the next step or a rejection) for HR, cleared once HR moves the applicant; the rejection email
+// (an "Email the candidate" tick, off unless ticked); and the pipeline board.
 
 const NOT_FOUND = 'Applicant not found.';
 const LIST_CAP = 1000;
@@ -43,6 +63,8 @@ const DETAIL_INCLUDE = {
       number: true,
       title: true,
       questions: true,
+      grade: { select: { confidential: true } },
+      jobTitle: { select: { minGrade: { select: { confidential: true } } } },
       jobTitleId: true,
       departmentId: true,
       gradeId: true,
@@ -56,20 +78,34 @@ const DETAIL_INCLUDE = {
   cv: { select: { fileName: true, mimeType: true, sizeBytes: true } },
   steps: { orderBy: { at: 'asc' }, include: { by: { select: { id: true, email: true } } } },
   offers: { orderBy: { createdAt: 'asc' }, select: { id: true, number: true, status: true } },
+  suggestedBy: { select: { id: true, email: true } },
 } satisfies Prisma.JobApplicationInclude;
 
 type DetailRow = Prisma.JobApplicationGetPayload<{ include: typeof DETAIL_INCLUDE }>;
 
+/** What a rejection's email did: sent, not asked for, email not set up on the server, or the provider refused it. */
+export type RejectionEmail = 'sent' | 'not_sent' | 'not_set_up' | 'failed';
+
 @Injectable()
 export class ApplicationsService {
+  private readonly logger = new Logger('Applicants');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly confidential: ConfidentialService,
+    private readonly interviews: InterviewsService,
+    private readonly mail: MailService,
+    private readonly notifications: NotificationsService,
   ) {}
 
-  /** The applications the caller may see: those of the vacancies they see. */
+  /** The applications the caller may see on the lists: those of the vacancies they see (HR, the CEO, a Super Admin). */
   where(user: SessionUser): Prisma.JobApplicationWhereInput {
     return { vacancy: vacancyWhere(user) };
+  }
+
+  async caller(user: SessionUser): Promise<RecruitmentCaller> {
+    return recruitmentCaller(user, await this.confidential.selfId(user));
   }
 
   async list(query: ListApplicationsDto, user: SessionUser): Promise<ApplicationListItem[]> {
@@ -95,17 +131,27 @@ export class ApplicationsService {
     return rows.map(applicationListView);
   }
 
+  /** An applicant, as the caller may see them: HR, the CEO and a Super Admin in full; their hiring manager and interviewers without the expected salary and HR's notes; 404 for anyone else. */
   async get(id: string, user: SessionUser): Promise<ApplicationView> {
-    return this.view(await this.row(id, user), user);
+    const c = await this.caller(user);
+    return this.view(await this.row(id, c), c);
   }
 
-  private async row(id: string, user: SessionUser): Promise<DetailRow> {
-    const a = await this.prisma.jobApplication.findFirst({ where: { AND: [{ id }, this.where(user)] }, include: DETAIL_INCLUDE });
+  private async row(id: string, c: RecruitmentCaller): Promise<DetailRow> {
+    const a = await this.prisma.jobApplication.findFirst({ where: { AND: [{ id }, visibleApplications(c)] }, include: DETAIL_INCLUDE });
     if (!a) throw new NotFoundException(NOT_FOUND);
     return a;
   }
 
-  private async view(a: DetailRow, user: SessionUser): Promise<ApplicationView> {
+  /** HR's (or a Super Admin's) applicant: 404 for anyone else who may not see it, 403 for one who may but doesn't manage. */
+  private async managedRow(id: string, user: SessionUser): Promise<{ a: DetailRow; c: RecruitmentCaller }> {
+    const c = await this.caller(user);
+    const a = await this.row(id, c);
+    if (!c.manages) throw new ForbiddenException('Only HR (or a Super Admin) moves applicants.');
+    return { a, c };
+  }
+
+  private async view(a: DetailRow, c: RecruitmentCaller): Promise<ApplicationView> {
     const questions = questionsOf(a.vacancy.questions);
     const answers = answersOf(a.answers);
     const scored = new Map(scoreAnswers(questions, answers).answers.map((s) => [s.key, s]));
@@ -114,8 +160,11 @@ export class ApplicationsService {
       a.steps.map((s) => s.by),
     );
     const stage = a.stage as ApplicationStage;
-    const manages = managesRecruitment(user);
+    const manages = c.manages;
+    const viewer = viewerOf(c, a);
+    const participant = viewer === 'hiring_manager' || viewer === 'interviewer';
     const openOffer = a.offers.some((o) => o.status === 'draft' || o.status === 'sent');
+    const settled = stage === 'hired' || stage === 'rejected';
     const can: ApplicationCan = {
       shortlist: manages && stageMoveProblem(stage, 'shortlisted', { filteredOut: a.filteredOut, openOffer }) === null,
       interview: manages && stageMoveProblem(stage, 'interview', { filteredOut: a.filteredOut, openOffer }) === null,
@@ -123,19 +172,31 @@ export class ApplicationsService {
       restore: manages && restorable({ stage, filteredOut: a.filteredOut }),
       makeOffer: manages && offerable({ stage, filteredOut: a.filteredOut }) && !openOffer,
       editNotes: manages,
+      scheduleInterview: manages && !a.filteredOut && !settled,
+      suggest: viewer === 'hiring_manager' && !settled,
+      emailOnReject: manages && this.mail.configured,
     };
+    const [interviews, allFeedback] = await Promise.all([this.interviews.ofApplication(a.id, c), this.interviews.feedbackOf(a.id, c.selfId)]);
+    const gaveOwn = allFeedback.some((f) => f.mine);
+    const seen = feedbackSeen(viewer, gaveOwn);
+    const feedback = seen === 'all' ? allFeedback : allFeedback.filter((f) => f.mine);
+    const suggestion =
+      a.suggestion && !settled
+        ? { kind: a.suggestion as HiringSuggestion, note: a.suggestionNote, by: userRef(a.suggestedBy, await userNames(this.prisma, [a.suggestedBy])), at: (a.suggestedAt ?? a.updatedAt).toISOString() }
+        : null;
     return {
       ...applicationListView({ ...a, vacancy: { id: a.vacancy.id, number: a.vacancy.number, title: a.vacancy.title } }),
       linkedin: a.linkedin,
       portfolio: a.portfolio,
       noticePeriod: a.noticePeriod,
-      expectedSalary: money(a.expectedSalary),
+      // never for a hiring manager or an interviewer (the brief: "They never see the salary range or the candidate's expected salary")
+      expectedSalary: participant ? null : money(a.expectedSalary),
       answers: questions.map((q) => {
         const s = scored.get(q.key);
         return { key: q.key, text: q.text, kind: q.kind, answer: answers[q.key] ?? null, points: s?.points ?? 0, maxPoints: s?.maxPoints ?? 0, knockout: q.knockout, passed: s?.passed ?? null };
       }),
-      notes: a.notes,
-      rejectReason: a.stage === 'rejected' ? a.rejectReason : null,
+      notes: participant ? null : a.notes,
+      rejectReason: a.stage === 'rejected' && !participant ? a.rejectReason : null,
       consentAt: a.consentAt.toISOString(),
       cv: a.cv,
       history: a.steps.map(
@@ -143,6 +204,11 @@ export class ApplicationsService {
       ),
       offers: a.offers,
       employeeId: a.employeeId,
+      viewer,
+      interviews,
+      feedback,
+      feedbackHidden: allFeedback.length - feedback.length,
+      suggestion,
       position: {
         jobTitleId: a.vacancy.jobTitleId,
         departmentId: a.vacancy.departmentId,
@@ -159,7 +225,8 @@ export class ApplicationsService {
 
   /** The CV as it was sent, for the caller who may see the applicant. */
   async cv(id: string, user: SessionUser): Promise<{ data: Buffer; fileName: string; mimeType: string }> {
-    const a = await this.prisma.jobApplication.findFirst({ where: { AND: [{ id }, this.where(user)] }, select: { cv: { select: { data: true, fileName: true, mimeType: true } } } });
+    const c = await this.caller(user);
+    const a = await this.prisma.jobApplication.findFirst({ where: { AND: [{ id }, visibleApplications(c)] }, select: { cv: { select: { data: true, fileName: true, mimeType: true } } } });
     if (!a) throw new NotFoundException(NOT_FOUND);
     if (!a.cv) throw new NotFoundException('This applicant sent no CV.');
     return { data: Buffer.from(a.cv.data), fileName: a.cv.fileName, mimeType: a.cv.mimeType };
@@ -169,8 +236,8 @@ export class ApplicationsService {
    * Moves an applicant by hand (shared stageMoveProblem): shortlisted, interview, or rejected with a reason; refused in
    * words when the move doesn't fit their stage (409).
    */
-  async move(id: string, to: HandStage, reason: string | null | undefined, user: SessionUser): Promise<ApplicationView> {
-    const a = await this.row(id, user);
+  async move(id: string, to: HandStage, reason: string | null | undefined, user: SessionUser, email = false): Promise<ApplicationView & { emailed: RejectionEmail }> {
+    const { a } = await this.managedRow(id, user);
     const stage = a.stage as ApplicationStage;
     const openOffer = a.offers.some((o) => o.status === 'draft' || o.status === 'sent');
     const problem = stageMoveProblem(stage, to, { filteredOut: a.filteredOut, openOffer });
@@ -179,12 +246,118 @@ export class ApplicationsService {
     const data: Prisma.JobApplicationUpdateManyMutationInput =
       to === 'rejected' ? { stage: 'rejected', rejectedFrom: stage, rejectReason: reason ?? null } : { stage: to, rejectedFrom: null, rejectReason: null };
     await this.step(a, stage, data, { event: to, stage: to, note: to === 'rejected' ? (reason ?? null) : null }, user);
-    return this.get(id, user);
+    const emailed = to === 'rejected' && email ? await this.emailRejection(a, user) : 'not_sent';
+    return { ...(await this.get(id, user)), emailed };
+  }
+
+  /**
+   * The rejection email to the candidate (the brief: "an 'Email the candidate' tick, off by default … a polite standard
+   * text that an HR-editable Recruitment Settings section can change"), English then Arabic. Never fails the rejection.
+   */
+  private async emailRejection(a: DetailRow, user: SessionUser): Promise<RejectionEmail> {
+    if (!this.mail.configured) return 'not_set_up';
+    const [settings, company] = await Promise.all([
+      this.prisma.recruitmentSettings.findUnique({ where: { id: 1 } }),
+      this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true } }),
+    ]);
+    const mail = rejectionMail(
+      { subject: settings?.rejectionSubject ?? null, en: settings?.rejectionEn ?? null, ar: settings?.rejectionAr ?? null },
+      { name: a.fullName, job: a.vacancy.title, company: company?.nameEn ?? 'the company' },
+    );
+    try {
+      await this.mail.send({ to: a.email, replyTo: user.email, subject: mail.subject, text: mail.text });
+    } catch (err) {
+      this.logger.warn(`The rejection email of ${a.number} could not be sent: ${(err as Error).message}`);
+      await this.audit.record({ userId: user.id, action: 'rejection_email', entityType: APPLICATION_ENTITY, entityId: a.id, diff: { number: a.number, sent: false } });
+      return 'failed';
+    }
+    await this.audit.record({ userId: user.id, action: 'rejection_email', entityType: APPLICATION_ENTITY, entityId: a.id, diff: { number: a.number, sent: true } });
+    return 'sent';
+  }
+
+  /**
+   * The hiring manager's suggestion (the brief: "They can suggest Reject or Next step, which HR acts on"): kept on the
+   * applicant until HR moves them, and HR told (the CEO and the Super Admins for a C-level vacancy).
+   */
+  async suggest(id: string, suggestion: HiringSuggestion, note: string | null | undefined, user: SessionUser): Promise<ApplicationView> {
+    const c = await this.caller(user);
+    const a = await this.row(id, c);
+    if (viewerOf(c, a) !== 'hiring_manager') throw new ForbiddenException('Only the vacancy’s hiring manager suggests what happens next.');
+    const stage = a.stage as ApplicationStage;
+    if (stage === 'hired' || stage === 'rejected') throw new ConflictException(`They are ${APPLICATION_STAGE_LABELS[stage].toLowerCase()}: there is nothing to suggest.`);
+    await this.prisma.jobApplication.update({ where: { id }, data: { suggestion, suggestionNote: note ?? null, suggestedById: user.id, suggestedAt: new Date() } });
+    await this.audit.record({ userId: user.id, action: 'suggest', entityType: APPLICATION_ENTITY, entityId: id, diff: { number: a.number, suggestion, ...(note && { note }) } });
+    const roles = isConfidentialVacancy(a.vacancy) ? ['ceo', 'super_admin'] : ['hr'];
+    const hr = await this.prisma.user.findMany({ where: { isActive: true, roles: { some: { role: { key: { in: roles } } } } }, select: { id: true } });
+    await this.notifications.notify(
+      hr.map((u) => u.id),
+      { kind: 'hiring_suggestion', title: `Hiring manager suggests: ${HIRING_SUGGESTION_LABELS[suggestion]}`, body: `${a.fullName} · ${a.vacancy.title}`, link: `/recruitment/applicants/${id}` },
+    );
+    return this.view(await this.row(id, c), c);
+  }
+
+  // ---------- the pipeline board ----------
+
+  /**
+   * A vacancy's pipeline board (the brief: "a board with a column per stage, and cards with name, match %, source and
+   * days in stage"): HR, the CEO and a Super Admin see every applicant but those filtered out (counted apart); the
+   * vacancy's hiring manager from Shortlisted on, read only; 404 for anyone else.
+   */
+  async board(vacancyId: string, user: SessionUser, now = new Date()): Promise<VacancyBoard> {
+    const c = await this.caller(user);
+    const v = await this.prisma.vacancy.findFirst({
+      where: { id: vacancyId, ...(c.reads ? vacancyWhere(user) : { hiringManagerId: c.selfId ?? '00000000-0000-0000-0000-000000000000' }) },
+      select: { id: true, number: true, title: true, status: true, hiringManagerId: true },
+    });
+    if (!v) throw new NotFoundException('Vacancy not found.');
+    const viewer = c.manages ? 'manages' : c.reads ? 'reads' : 'hiring_manager';
+    const rows = await this.prisma.jobApplication.findMany({
+      where: { AND: [{ vacancyId }, visibleApplications(c), { filteredOut: false }] },
+      select: {
+        id: true,
+        number: true,
+        fullName: true,
+        matchPercent: true,
+        source: true,
+        stage: true,
+        filteredOut: true,
+        suggestion: true,
+        createdAt: true,
+        steps: { select: { stage: true, at: true }, orderBy: { at: 'asc' } },
+        offers: { where: OPEN_OFFER, select: { id: true } },
+        interviews: { where: { status: 'scheduled', startsAt: { gte: now } }, select: { id: true } },
+      },
+      orderBy: [{ matchPercent: { sort: 'desc', nulls: 'last' } }, { createdAt: 'asc' }],
+    });
+    const filteredOut = c.reads ? await this.prisma.jobApplication.count({ where: { vacancyId, filteredOut: true } }) : 0;
+    const stages = viewer === 'hiring_manager' ? BOARD_STAGES.filter((s) => s !== 'applied') : [...BOARD_STAGES];
+    const cards = rows.map(
+      (r): BoardCard => ({
+        id: r.id,
+        number: r.number,
+        fullName: r.fullName,
+        matchPercent: r.matchPercent,
+        source: sourceOf(r.source),
+        stage: r.stage as ApplicationStage,
+        filteredOut: r.filteredOut,
+        daysInStage: daysSince(stageSince(r.steps, r.createdAt), now),
+        openOffer: r.offers.length > 0,
+        upcomingInterviews: r.interviews.length,
+        suggestion: (r.suggestion as HiringSuggestion | null) ?? null,
+      }),
+    );
+    return {
+      vacancy: { id: v.id, number: v.number, title: v.title, status: v.status },
+      viewer,
+      canMove: c.manages,
+      columns: stages.map((stage) => ({ stage, cards: cards.filter((x) => x.stage === stage) })),
+      filteredOut,
+    };
   }
 
   /** Restores one filtered out by a must-have (kept at Applied), or one rejected (back to the stage they were rejected at). */
   async restore(id: string, user: SessionUser): Promise<ApplicationView> {
-    const a = await this.row(id, user);
+    const { a } = await this.managedRow(id, user);
     const stage = a.stage as ApplicationStage;
     if (!restorable({ stage, filteredOut: a.filteredOut })) throw new ConflictException('They are neither filtered out nor rejected: there is nothing to restore.');
     if (stage === 'rejected') {
@@ -198,7 +371,7 @@ export class ApplicationsService {
 
   /** HR's notes on an applicant. */
   async notes(id: string, notes: string | null | undefined, user: SessionUser): Promise<ApplicationView> {
-    const a = await this.row(id, user);
+    const { a } = await this.managedRow(id, user);
     const next = notes ?? null;
     if (next !== a.notes) {
       await this.prisma.jobApplication.update({ where: { id }, data: { notes: next } });
@@ -216,7 +389,8 @@ export class ApplicationsService {
     user: SessionUser,
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.jobApplication.updateMany({ where: { id: a.id, stage, filteredOut: a.filteredOut }, data });
+      // HR acted: the hiring manager's suggestion is done with
+      const { count } = await tx.jobApplication.updateMany({ where: { id: a.id, stage, filteredOut: a.filteredOut }, data: { ...data, suggestion: null, suggestionNote: null, suggestedById: null, suggestedAt: null } });
       if (!count) throw new ConflictException('The applicant changed meanwhile. Reload the page to see where they stand.');
       await tx.jobApplicationStep.create({ data: { applicationId: a.id, ...step, byId: user.id } });
     });

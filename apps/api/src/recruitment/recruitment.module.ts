@@ -2,16 +2,48 @@ import { Global, Module } from '@nestjs/common';
 import { ApplicationsService } from './applications.service.js';
 import { PublicCareersService } from './public-careers.service.js';
 import { RecruitmentOffersService } from './recruitment-offers.service.js';
-import { ApplicationsController, PublicCareersController, VacanciesController } from './recruitment.controller.js';
+import { InterviewsService } from './interviews.service.js';
+import { RecruitmentAnalyticsService } from './recruitment-analytics.service.js';
+import { RecruitmentSchedulerService } from './recruitment-scheduler.service.js';
+import { RecruitmentSettingsService } from './recruitment-settings.service.js';
+import {
+  ApplicationsController,
+  BoardController,
+  InterviewsController,
+  MyHiringController,
+  PublicCareersController,
+  RecruitmentAnalyticsController,
+  RecruitmentSettingsController,
+  VacanciesController,
+} from './recruitment.controller.js';
 import { VacanciesService } from './vacancies.service.js';
 
-// Recruitment, the ATS, Phase 1 (owner, 22 October 2026: "where will we include the ATS?"): vacancies, the careers page
-// and the applicants. Global, so the job offers move an application on (RecruitmentOffersService) without wiring this
+// Recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): Phase 1, vacancies, the careers page
+// and the applicants; Phase 2, the pipeline board, interviews, scorecards, the hiring manager's suggestions, the
+// rejection email, Recruitment Settings, the analytics and the scorecard reminder's round. Global, so the job offers move an application on (RecruitmentOffersService) without wiring this
 // module into theirs; email, notifications and the C-level rules are global too.
 @Global()
 @Module({
-  controllers: [VacanciesController, ApplicationsController, PublicCareersController],
-  providers: [VacanciesService, ApplicationsService, PublicCareersService, RecruitmentOffersService],
-  exports: [RecruitmentOffersService],
+  controllers: [
+    VacanciesController,
+    BoardController,
+    ApplicationsController,
+    InterviewsController,
+    MyHiringController,
+    RecruitmentSettingsController,
+    RecruitmentAnalyticsController,
+    PublicCareersController,
+  ],
+  providers: [
+    VacanciesService,
+    ApplicationsService,
+    PublicCareersService,
+    RecruitmentOffersService,
+    InterviewsService,
+    RecruitmentSettingsService,
+    RecruitmentAnalyticsService,
+    RecruitmentSchedulerService,
+  ],
+  exports: [RecruitmentOffersService, InterviewsService, RecruitmentSchedulerService],
 })
 export class RecruitmentModule {}

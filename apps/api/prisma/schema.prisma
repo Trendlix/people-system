@@ -61,6 +61,17 @@ model User {
   vacanciesDecided   Vacancy[]                  @relation("VacancyDecision")
   vacanciesClosed    Vacancy[]                  @relation("VacancyClosing")
   applicationSteps   JobApplicationStep[]
+  // recruitment, Phase 2 (22 October 2026): interviews this user scheduled, changed or marked; suggestions as a hiring
+  // manager; the rejection email's words; onboarding checklists and items
+  interviewsMade     Interview[]                @relation("InterviewCreation")
+  interviewsChanged  Interview[]                @relation("InterviewChange")
+  interviewsMarked   Interview[]                @relation("InterviewOutcome")
+  suggestionsMade    JobApplication[]           @relation("ApplicationSuggestion")
+  recruitmentSettingsSet RecruitmentSettings[]  @relation("RecruitmentSettingsChange")
+  onboardingDefaultsSet  OnboardingDefault[]    @relation("OnboardingDefaultChange")
+  onboardingOpened       OnboardingChecklist[]  @relation("OnboardingOpening")
+  onboardingCompleted    OnboardingChecklist[]  @relation("OnboardingCompletion")
+  onboardingItemsDone    OnboardingItem[]       @relation("OnboardingItemDone")
   payrollsCreated    PayrollRun[]               @relation("PayrollCreation") // payroll runs this user started
   payrollsApproved   PayrollRun[]               @relation("PayrollApproval") // payroll runs this user approved as CEO
   payslipsDrawn      Payslip[]                  @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
@@ -610,6 +621,8 @@ model Employee {
   offers                     JobOffer[]             @relation("OfferPerson") // offers made to this person: as a former employee, or the offer they were hired from
   offersManaging             JobOffer[]             @relation("OfferManager") // offers whose position reports to this person
   vacanciesManaging          Vacancy[]              @relation("VacancyHiringManager") // the vacancies they hire for (22 October 2026)
+  interviewing               InterviewInterviewer[] // the interviews they sit on (22 October 2026)
+  interviewFeedback          InterviewFeedback[] // their scorecards
   applications               JobApplication[] // the applications they were hired from
   payrollLines               PayrollLine[] // the person's pay, month by month
   payrollAdjustments         PayrollAdjustment[] // one-off additions and deductions on a month's pay
@@ -705,6 +718,7 @@ model Employment {
   leaveAdjustments LeaveAdjustment[]
   kpiScorecards    KpiScorecard[] // the KPI scorecards opened under it (21 October 2026)
   offboarding            OffboardingCase? // its offboarding case, once it is ending (22 October 2026)
+  onboarding             OnboardingChecklist? // its onboarding checklist (22 October 2026)
 
   @@index([employeeId])
   @@index([departmentId])
@@ -1438,9 +1452,17 @@ model JobApplication {
   employee        Employee?            @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  // the hiring manager's suggestion (Phase 2, 22 October 2026): the next step or a rejection, until HR acts on it
+  suggestion      String? // HIRING_SUGGESTIONS: next, reject
+  suggestionNote  String?              @map("suggestion_note")
+  suggestedById   String?              @map("suggested_by") @db.Uuid
+  suggestedBy     User?                @relation("ApplicationSuggestion", fields: [suggestedById], references: [id], onDelete: SetNull)
+  suggestedAt     DateTime?            @map("suggested_at") @db.Timestamptz
   cv              JobApplicationCv?
   steps           JobApplicationStep[]
   offers          JobOffer[]
+  interviews      Interview[]
+  onboarding      OnboardingChecklist[]
 
   @@unique([vacancyId, email])
   @@index([stage])
@@ -1478,6 +1500,155 @@ model JobApplicationStep {
 
   @@index([applicationId, at])
   @@map("job_application_steps")
+}
+
+// An interview (Phase 2, owner, 22 October 2026: "interview invites go by email through the owner's SMTP settings"):
+// scheduled from an applicant, when (in Cairo, kept as a moment), how long, in person (the office's address unless
+// another is given), online (its link) or by phone, a note to the candidate. Each change raises its sequence (the
+// calendar invitation's SEQUENCE, so a calendar moves or removes the same event). Scheduled, then done or a no-show, or
+// cancelled. The candidate's latest email about it, or why none went.
+model Interview {
+  id            String                 @id @default(uuid()) @db.Uuid
+  applicationId String                 @map("application_id") @db.Uuid
+  application   JobApplication         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  startsAt      DateTime               @map("starts_at") @db.Timestamptz
+  minutes       Int
+  kind          String // INTERVIEW_KINDS: in_person, online, phone
+  location      String?
+  note          String?
+  status        String                 @default("scheduled") // INTERVIEW_STATUSES
+  sequence      Int                    @default(0)
+  emailedAt     DateTime?              @map("emailed_at") @db.Timestamptz
+  emailProblem  String?                @map("email_problem")
+  cancelReason  String?                @map("cancel_reason")
+  cancelledAt   DateTime?              @map("cancelled_at") @db.Timestamptz
+  outcomeAt     DateTime?              @map("outcome_at") @db.Timestamptz
+  outcomeById   String?                @map("outcome_by") @db.Uuid
+  outcomeBy     User?                  @relation("InterviewOutcome", fields: [outcomeById], references: [id], onDelete: SetNull)
+  createdById   String?                @map("created_by") @db.Uuid
+  createdBy     User?                  @relation("InterviewCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedById   String?                @map("updated_by") @db.Uuid
+  updatedBy     User?                  @relation("InterviewChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  interviewers  InterviewInterviewer[]
+  feedback      InterviewFeedback[]
+
+  @@index([applicationId])
+  @@index([status, startsAt])
+  @@map("interviews")
+}
+
+// An interviewer on an interview (a current employee when chosen), and when they were reminded of their scorecard (the
+// day after the interview, once).
+model InterviewInterviewer {
+  interviewId String    @map("interview_id") @db.Uuid
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  employeeId  String    @map("employee_id") @db.Uuid
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  remindedAt  DateTime? @map("reminded_at") @db.Timestamptz
+
+  @@id([interviewId, employeeId])
+  @@index([employeeId])
+  @@map("interview_interviewers")
+}
+
+// An interviewer's scorecard of an interview, one each (changed by them afterwards): four ratings from 1 to 5, a
+// recommendation, notes. An interviewer sees the others' on the applicant only once they gave theirs.
+model InterviewFeedback {
+  id                  String    @id @default(uuid()) @db.Uuid
+  interviewId         String    @map("interview_id") @db.Uuid
+  interview           Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  employeeId          String    @map("employee_id") @db.Uuid
+  employee            Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  ratingSkills        Int       @map("rating_skills")
+  ratingExperience    Int       @map("rating_experience")
+  ratingCommunication Int       @map("rating_communication")
+  ratingCulture       Int       @map("rating_culture")
+  recommendation      String // RECOMMENDATIONS
+  notes               String?
+  submittedAt         DateTime  @default(now()) @map("submitted_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([interviewId, employeeId])
+  @@map("interview_feedback")
+}
+
+// Recruitment's settings (one row, id 1; Phase 2): the rejection email's subject and words, English and Arabic, as HR
+// wrote them; none: the standard (packages/shared recruitment-hiring.ts REJECTION_STANDARD).
+model RecruitmentSettings {
+  id               Int      @id @default(1)
+  rejectionSubject String?  @map("rejection_subject")
+  rejectionEn      String?  @map("rejection_en")
+  rejectionAr      String?  @map("rejection_ar")
+  updatedById      String?  @map("updated_by") @db.Uuid
+  updatedBy        User?    @relation("RecruitmentSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("recruitment_settings")
+}
+
+// HR's default onboarding items (Phase 2, 22 October 2026; packages/shared onboarding.ts), in order, each with the role
+// that clears it, copied into each checklist when it opens; one taken off is kept, switched off.
+model OnboardingDefault {
+  id          String   @id @default(uuid()) @db.Uuid
+  position    Int
+  label       String
+  owner       String // CLEARANCE_OWNERS: hr, manager, admin, finance, assets
+  active      Boolean  @default(true)
+  updatedById String?  @map("updated_by") @db.Uuid
+  updatedBy   User?    @relation("OnboardingDefaultChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([active, position])
+  @@map("onboarding_defaults")
+}
+
+// An employment's onboarding checklist, one at most: opened when an applicant is hired through an accepted job offer
+// (with the application), or by HR; completed once every item is cleared.
+model OnboardingChecklist {
+  id            String           @id @default(uuid()) @db.Uuid
+  employmentId  String           @unique @map("employment_id") @db.Uuid
+  employment    Employment       @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  applicationId String?          @map("application_id") @db.Uuid
+  application   JobApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  status        String           @default("open") // ONBOARDING_STATUSES
+  openedById    String?          @map("opened_by") @db.Uuid // none: opened by the system
+  openedBy      User?            @relation("OnboardingOpening", fields: [openedById], references: [id], onDelete: SetNull)
+  openedAt      DateTime         @default(now()) @map("opened_at") @db.Timestamptz
+  completedById String?          @map("completed_by") @db.Uuid
+  completedBy   User?            @relation("OnboardingCompletion", fields: [completedById], references: [id], onDelete: SetNull)
+  completedAt   DateTime?        @map("completed_at") @db.Timestamptz
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  items         OnboardingItem[]
+
+  @@index([status])
+  @@map("onboarding_checklists")
+}
+
+// An onboarding checklist's item, in order: cleared by its owner (manual), or ticked by the system (contract: its
+// contract signed; kpi_template: the job title's KPI template published; assets: something in custody), read live
+// while the checklist is open and kept when it is completed.
+model OnboardingItem {
+  id          String              @id @default(uuid()) @db.Uuid
+  checklistId String              @map("checklist_id") @db.Uuid
+  checklist   OnboardingChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  position    Int
+  kind        String              @default("manual") // ONBOARDING_KINDS
+  label       String
+  owner       String // CLEARANCE_OWNERS
+  status      String              @default("pending") // CLEARANCE_ITEM_STATUSES
+  doneById    String?             @map("done_by") @db.Uuid
+  doneBy      User?               @relation("OnboardingItemDone", fields: [doneById], references: [id], onDelete: SetNull)
+  doneAt      DateTime?           @map("done_at") @db.Timestamptz
+  note        String?
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([checklistId, position])
+  @@map("onboarding_items")
 }
 
 // ---------- payroll ----------

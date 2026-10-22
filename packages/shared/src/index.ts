@@ -498,3 +498,9 @@ export * from './offboarding.js';
 // the public careers page with its application form, screening questions with must-haves and match points, and the
 // applicants' stages up to the job offer
 export * from './recruitment.js';
+
+// recruitment, Phase 2 (owner, 22 October 2026: "where will we include the ATS?"; "interview invites go by email through
+// the owner's SMTP settings"): the pipeline board, interviews with their calendar invitations, the interviewers' and the
+// hiring manager's feedback, the rejection email and the analytics; onboarding, offboarding's mirror
+export * from './recruitment-hiring.js';
+export * from './onboarding.js';

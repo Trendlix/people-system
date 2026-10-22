@@ -59,6 +59,13 @@ export const NOTIFICATION_KINDS = [
   'vacancy_waiting',
   'vacancy_decided',
   'applications_new',
+  // recruitment, Phase 2 (owner, 22 October 2026; recruitment-hiring.ts, onboarding.ts): an interview scheduled, moved or
+  // cancelled for its interviewers, the reminder of a scorecard not given the day after, the hiring manager's suggestion
+  // for HR, and the onboarding items waiting for someone when a checklist opens
+  'interview_scheduled',
+  'interview_feedback',
+  'hiring_suggestion',
+  'onboarding_items',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -115,6 +122,10 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   vacancy_waiting: 'Vacancy',
   vacancy_decided: 'Vacancy',
   applications_new: 'Applicants',
+  interview_scheduled: 'Interview',
+  interview_feedback: 'Interview',
+  hiring_suggestion: 'Applicants',
+  onboarding_items: 'Onboarding',
 };
 
 // ---------- the reminders and the person's switches ----------

@@ -176,7 +176,8 @@ describe('Recruitment (e2e)', () => {
       expect(v.can).toMatchObject({ edit: true, submit: true, approve: false });
       await get('ceo', `/recruitment/vacancies/${v.id}`).expect(200);
       for (const who of ['ceo', 'admin', 'finance', 'outsider']) await post(who, '/recruitment/vacancies', { jobTitleId, employmentType: 'full_time' }).expect(403);
-      for (const who of ['admin', 'finance', 'outsider']) await get(who, `/recruitment/vacancies/${v.id}`).expect(403);
+      // Phase 2 (22 October 2026): a vacancy opens to its hiring manager too, so anyone else is told it isn't there
+      for (const who of ['admin', 'finance', 'outsider']) await get(who, `/recruitment/vacancies/${v.id}`).expect(404);
       await post('superAdmin', '/recruitment/vacancies', { jobTitleId, employmentType: 'part_time', title: `Editor ${RUN}` })
         .expect(201)
         .then((r) => vacancyIds.push(r.body.id));
@@ -353,7 +354,8 @@ describe('Recruitment (e2e)', () => {
       expect(a.can).toMatchObject({ shortlist: false, restore: true, makeOffer: false });
       const cv = await get('hr', `/recruitment/applications/${fady}/cv`).buffer(true).expect(200);
       expect(cv.headers['content-type']).toBe('application/pdf');
-      await get('outsider', `/recruitment/applications/${fady}/cv`).expect(403);
+      // Phase 2 (22 October 2026): an applicant opens to their hiring manager and interviewers too: 404 for anyone else
+      await get('outsider', `/recruitment/applications/${fady}/cv`).expect(404);
     });
 
     it('are shortlisted, rejected with a reason and restored; one filtered out restored first', async () => {

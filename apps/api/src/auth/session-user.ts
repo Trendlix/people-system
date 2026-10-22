@@ -47,6 +47,12 @@ export interface Me extends SessionUser {
    * October 2026: "3 levels per user"; "CEO and Finance"): the web shows the Assets pages with it.
    */
   assets: AssetsAccessView;
+  /**
+   * Whether they hire for an open vacancy (its hiring manager) or sit on an interview to come or of the last 60 days
+   * (recruitment, Phase 2, 22 October 2026: "Show it only to people who are a hiring manager or interviewer on something
+   * open"): the web shows them My Hiring with it.
+   */
+  hiring: boolean;
   viewAs: ViewAs | null;
   session: MeSession;
 }

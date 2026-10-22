@@ -20,6 +20,7 @@ import { MailModule } from './mail/mail.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { OffersModule } from './offers/offers.module.js';
 import { OffboardingModule } from './offboarding/offboarding.module.js';
+import { OnboardingModule } from './onboarding/onboarding.module.js';
 import { RecruitmentModule } from './recruitment/recruitment.module.js';
 import { VersionController } from './health/version.controller.js';
 import { OrganisationModule } from './organisation/organisation.module.js';
@@ -69,6 +70,7 @@ import { WfhModule } from './wfh/wfh.module.js';
     OffboardingModule,
     // recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): vacancies, the careers page, applicants
     RecruitmentModule,
+    OnboardingModule,
     // KPIs (owner, 21 October 2026: "lets start with the KPI's First")
     KpisModule,
     // Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system")

@@ -93,6 +93,12 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   user: 'User account',
   // recruitment (22 October 2026): a vacancy, approved by the CEO before the careers page shows it
   vacancy: 'Vacancy',
+  // recruitment, Phase 2 (22 October 2026): an interview, the rejection email's words, the analytics' Excel; onboarding
+  interview: 'Interview',
+  recruitment_settings: 'Recruitment settings',
+  recruitment_analytics: 'Recruitment analytics',
+  onboarding_checklist: 'Onboarding checklist',
+  onboarding_defaults: 'Onboarding checklist defaults',
   // working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp")
   wfh_request: 'Work from home request',
 };
@@ -260,6 +266,21 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   rehire: 'Set the rehire eligibility',
   reopen_case: 'Opened the offboarding case again',
   turnover_file: 'Downloaded the turnover',
+  // recruitment, Phase 2 (22 October 2026): an interview scheduled, moved, done or a no-show; an interviewer's scorecard
+  // given or changed; the hiring manager's suggestion; a rejection emailed; the analytics' Excel; an onboarding
+  // checklist opened, an item of it cleared or put back, one added
+  schedule: 'Scheduled',
+  reschedule: 'Moved to another time',
+  interview_done: 'Marked done',
+  no_show: 'Marked a no-show',
+  feedback: 'Gave the scorecard',
+  feedback_change: 'Changed the scorecard',
+  suggest: 'Suggested the next step',
+  rejection_email: 'Emailed the rejection',
+  analytics_file: 'Downloaded the recruitment analytics',
+  open_onboarding: 'Opened the onboarding checklist',
+  mark_onboarding_item: 'Changed an onboarding item',
+  add_onboarding_item: 'Added an onboarding item',
 };
 
 /** "waive_attendance" → "Waive attendance": a key with no words of its own. */

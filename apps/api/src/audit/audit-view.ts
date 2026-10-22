@@ -379,6 +379,18 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return id ? own(`/recruitment/vacancies/${id}`, 'Open vacancy', RECRUITMENT) : null;
     case 'job_application':
       return id ? own(`/recruitment/applicants/${id}`, 'Open applicant', RECRUITMENT) : null;
+    // recruitment, Phase 2 (22 October 2026): the interviews' list, Recruitment Settings, the analytics, an onboarding
+    // checklist and its defaults
+    case 'interview':
+      return { href: '/recruitment/interviews', label: 'Open interviews', roles: RECRUITMENT };
+    case 'recruitment_settings':
+      return { href: '/recruitment/settings', label: 'Open recruitment settings', roles: RECRUITMENT };
+    case 'recruitment_analytics':
+      return { href: '/recruitment/analytics', label: 'Open recruitment analytics', roles: RECRUITMENT };
+    case 'onboarding_checklist':
+      return id ? own(`/onboarding/${id}`, 'Open onboarding checklist', RECRUITMENT) : null;
+    case 'onboarding_defaults':
+      return { href: '/onboarding/checklist', label: 'Open onboarding checklist defaults', roles: RECRUITMENT };
     case 'user':
       return id ? own(`/users/${id}`, 'Open user account', USERS) : null;
     case 'template_version':

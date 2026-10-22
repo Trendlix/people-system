@@ -83,6 +83,12 @@ export interface SessionUser {
    * the "CEO and Finance"). Left out by an API from before the Assets module: no access.
    */
   assets?: AssetsAccessView | null;
+  /**
+   * Whether they hire for an open vacancy or sit on an interview to come or of the last 60 days (recruitment, Phase 2, 22
+   * October 2026: "Show it only to people who are a hiring manager or interviewer on something open"): the sidebar
+   * shows them My Hiring. Left out by an API from before it.
+   */
+  hiring?: boolean;
 }
 
 /**

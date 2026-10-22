@@ -9,6 +9,7 @@ import { canSeeAuditLog, historyHref } from '../../audit/audit';
 import { loadMyCustody } from '../../assets/custody-data';
 import { MyCustody } from '../../assets/custody/my-custody';
 import { OffboardingBanner } from '../../offboarding/profile-banner';
+import { OnboardingBanner } from '../../onboarding/profile-banner';
 import { loadProfileOrCard } from '../data';
 import { askedTab, BackLink, Loading, PROFILE_TABS, profileHref, seesEveryone, todayInCairo, type ProfileTabKey } from '../ui';
 import { BasicTab, EducationTab } from './details-tabs';
@@ -87,6 +88,8 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
         {/* their offboarding (22 October 2026): HR's, the CEO's and a Super Admin's, for someone leaving or gone */}
         <Suspense fallback={null}>
           <OffboardingBanner profile={p} />
+          {/* their onboarding (22 October 2026, the ATS's Phase 2): HR's, the CEO's and a Super Admin's, for someone new */}
+          <OnboardingBanner profile={p} />
         </Suspense>
 
         <ProfileTabs tabs={tabs.map((t) => ({ key: t.key, label: t.label, href: profileHref(p.id, t.key) }))} active={tab} label={`Profile of ${p.fullNameEn}`}>

@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { Allow, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import {
   APPLICATION_SOURCES,
   APPLICATION_STAGES,
@@ -13,6 +13,16 @@ import {
   type EmploymentType,
   type HandStage,
   type WorkArrangement,
+  FEEDBACK_NOTES_MAX,
+  HIRING_SUGGESTIONS,
+  INTERVIEW_KINDS,
+  INTERVIEW_LIMITS,
+  RECOMMENDATIONS,
+  REJECTION_LIMITS,
+  SUGGESTION_NOTE_MAX,
+  type HiringSuggestion,
+  type InterviewKind,
+  type Recommendation,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
@@ -143,6 +153,91 @@ export class MoveApplicationDto {
   /** Required to reject. */
   @IsOptional() @TrimOrNull() @IsString() @MaxLength(L.reason, { message: `Keep the reason to ${L.reason} characters or fewer.` })
   reason?: string | null;
+
+  /** Phase 2: a rejection may email the candidate the rejection email (off unless sent). */
+  @IsOptional() @IsBoolean({ message: 'Say whether to email the candidate.' })
+  email?: boolean;
+}
+
+// ---------- Phase 2 (owner, 22 October 2026; packages/shared recruitment-hiring.ts) ----------
+
+const IL = INTERVIEW_LIMITS;
+
+/** Scheduling or rescheduling an interview: checked by the service with interviewProblems (every problem in words). */
+export class InterviewDto {
+  @IsString({ message: 'Choose the day of the interview.' }) @MaxLength(10)
+  date!: string;
+
+  /** HH:mm, 24 hours, in Cairo. */
+  @IsString({ message: 'Choose the time of the interview.' }) @MaxLength(5)
+  time!: string;
+
+  @IsInt({ message: 'Give its length in minutes.' }) @Min(IL.minutesMin, { message: 'An interview takes 15 minutes at least.' }) @Max(IL.minutesMax, { message: 'An interview takes 8 hours at most.' })
+  minutes!: number;
+
+  @IsIn(INTERVIEW_KINDS, { message: 'Choose how it is held: in person, online or by phone.' })
+  kind!: InterviewKind;
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(IL.location, { message: `Keep the place to ${IL.location} characters or fewer.` })
+  location?: string | null;
+
+  @IsArray({ message: 'Choose who interviews them.' }) @IsUUID('all', { each: true, message: 'Choose the interviewers from the list.' })
+  interviewerIds!: string[];
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(IL.note, { message: `Keep the note to ${IL.note} characters or fewer.` })
+  note?: string | null;
+}
+
+export class CancelInterviewDto {
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(IL.reason, { message: `Keep the reason to ${IL.reason} characters or fewer.` })
+  reason?: string | null;
+}
+
+export class InterviewOutcomeDto {
+  @IsIn(['done', 'no_show'], { message: 'Choose done or no-show.' })
+  outcome!: 'done' | 'no_show';
+}
+
+/** An interviewer's scorecard: checked by the service with feedbackProblems. */
+export class FeedbackDto {
+  @Allow()
+  ratings!: Record<string, unknown>;
+
+  @IsIn(RECOMMENDATIONS, { message: 'Choose your recommendation: strong yes, yes, no or strong no.' })
+  recommendation!: Recommendation;
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(FEEDBACK_NOTES_MAX, { message: `Keep the notes to ${FEEDBACK_NOTES_MAX} characters or fewer.` })
+  notes?: string | null;
+}
+
+/** The hiring manager's suggestion. */
+export class SuggestionDto {
+  @IsIn(HIRING_SUGGESTIONS, { message: 'Suggest the next step or a rejection.' })
+  suggestion!: HiringSuggestion;
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(SUGGESTION_NOTE_MAX, { message: `Keep the note to ${SUGGESTION_NOTE_MAX} characters or fewer.` })
+  note?: string | null;
+}
+
+/** The rejection email's words (empty: the standard). */
+export class RecruitmentSettingsDto {
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(REJECTION_LIMITS.subject, { message: `Keep the subject to ${REJECTION_LIMITS.subject} characters or fewer.` })
+  rejectionSubject?: string | null;
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(REJECTION_LIMITS.text, { message: `Keep the English text to ${REJECTION_LIMITS.text} characters or fewer.` })
+  rejectionEn?: string | null;
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(REJECTION_LIMITS.text, { message: `Keep the Arabic text to ${REJECTION_LIMITS.text} characters or fewer.` })
+  rejectionAr?: string | null;
+}
+
+/** ?year= and ?departmentId= for the analytics. */
+export class AnalyticsQueryDto {
+  @IsOptional() @Transform(({ value }) => (value === undefined || value === '' ? undefined : Number(value))) @IsInt({ message: 'Choose a year, e.g. 2026.' }) @Min(2000) @Max(2100)
+  year?: number;
+
+  @IsOptional() @IsUUID('all', { message: 'Choose a department from the list.' })
+  departmentId?: string;
 }
 
 export class ApplicationNotesDto {

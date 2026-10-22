@@ -49,7 +49,7 @@ export interface NavSubItem {
 }
 
 /** Who a sub-item is for besides its roles (NavSubItem.audience). */
-export type NavAudience = 'profile' | 'team' | 'assets' | 'assets-register' | 'assets-manager' | 'asset-values' | 'assets-settings';
+export type NavAudience = 'profile' | 'team' | 'assets' | 'assets-register' | 'assets-manager' | 'asset-values' | 'assets-settings' | 'hiring';
 
 /**
  * The KPIs (owner, 21 October 2026: "lets start with the KPI's First", "Full framework per role"): a heading with its
@@ -127,6 +127,29 @@ export const REIMBURSEMENTS_PATH = '/reimbursements';
 /** The employees' leave requests and the month's calendar of who is off (app/(app)/leave), under Requests. */
 export const LEAVE_PATH = '/leave';
 
+/**
+ * Recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): the vacancies (the CEO approves them
+ * before the careers page shows them), every applicant, the interviews to come, the job offers (moved here from People:
+ * the offer stage, before someone is an employee; owner's request, 15 October 2026), onboarding, the analytics and the
+ * settings (the rejection email), for HR, the CEO and a Super Admin; and My Hiring (Phase 2: "Show it only to people who
+ * are a hiring manager or interviewer on something open"), for a vacancy's hiring manager and the interviewers, in
+ * anyone's sidebar, an employee's too.
+ */
+export const RECRUITMENT_NAV: NavItem = {
+  href: '/recruitment/vacancies',
+  label: 'Recruitment',
+  items: [
+    { href: '/recruitment/vacancies', label: 'Vacancies', section: '/recruitment/vacancies', roles: ['hr', 'ceo', 'super_admin'] },
+    { href: '/recruitment/applicants', label: 'Applicants', section: '/recruitment/applicants', roles: ['hr', 'ceo', 'super_admin'] },
+    { href: '/recruitment/interviews', label: 'Interviews', section: '/recruitment/interviews', roles: ['hr', 'ceo', 'super_admin'] },
+    { href: '/recruitment/my-hiring', label: 'My Hiring', section: '/recruitment/my-hiring', audience: 'hiring' },
+    { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
+    { href: '/onboarding', label: 'Onboarding', section: '/onboarding', roles: ['hr', 'ceo', 'super_admin'] },
+    { href: '/recruitment/analytics', label: 'Analytics', section: '/recruitment/analytics', roles: ['hr', 'ceo', 'super_admin'] },
+    { href: '/recruitment/settings', label: 'Settings', section: '/recruitment/settings', roles: ['hr', 'ceo', 'super_admin'] },
+  ],
+};
+
 /** The Audit Log (app/(app)/audit): who changed what and when, for the Super Admin and the CEO. */
 export const AUDIT_LOG_PATH = '/audit';
 
@@ -152,18 +175,7 @@ export const NAV: NavItem[] = [
       { href: '/employees/former', label: 'Former Employees', section: '/employees/former', roles: ['hr', 'ceo', 'super_admin'] },
     ],
   },
-  // recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): the vacancies (the CEO approves them
-  // before the careers page shows them), every applicant, and the job offers, moved here from People (the offer stage,
-  // before someone is an employee: owner's request, 15 October 2026)
-  {
-    href: '/recruitment/vacancies',
-    label: 'Recruitment',
-    items: [
-      { href: '/recruitment/vacancies', label: 'Vacancies', section: '/recruitment/vacancies', roles: ['hr', 'ceo', 'super_admin'] },
-      { href: '/recruitment/applicants', label: 'Applicants', section: '/recruitment/applicants', roles: ['hr', 'ceo', 'super_admin'] },
-      { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
-    ],
-  },
+  RECRUITMENT_NAV,
   // the month's pay: HR prepares a run, the CEO approves it, HR marks it paid (owner's decisions, 16 October 2026); a
   // heading with its pages under it (owner, 17 October 2026: "make the Payroll in the side tab a main title below it -
   // Overview - Unsettled - Additions / Deductions - Reports (Statistics)"), the runs under Overview
@@ -252,7 +264,7 @@ export const MY_ATTENDANCE = '/my-attendance';
  * whether they lead a department or a team (`leads`; left out by an API from before it), and their Assets access
  * (`assets`, 21 October 2026; left out by an API from before it: none).
  */
-type NavUser = { roles: readonly Role[]; employeeId?: string | null; leads?: boolean; assets?: AssetsAccessView | null };
+type NavUser = { roles: readonly Role[]; employeeId?: string | null; leads?: boolean; assets?: AssetsAccessView | null; hiring?: boolean };
 
 /**
  * Whether someone decides others' leave and reimbursement claims first, on My Team: a direct manager, or the person in
@@ -288,6 +300,8 @@ function selfServiceNav(user: NavUser): NavItem[] {
     ...shownWithItems(user, KPIS_NAV),
     // Assets, with an Assets access given on the Users page (owner, 21 October 2026: "3 levels per user")
     ...shownWithItems(user, ASSETS_NAV),
+    // My Hiring, for a vacancy's hiring manager and the interviewers (recruitment, Phase 2, 22 October 2026)
+    ...shownWithItems(user, RECRUITMENT_NAV),
     // a department's head or a team's lead too (19 October 2026), for what waits for them there
     ...(decidesForTeam(user) ? [{ href: MY_TEAM, label: 'My Team', section: MY_TEAM }] : []),
   ];
@@ -297,6 +311,7 @@ function selfServiceNav(user: NavUser): NavItem[] {
 function inAudience(user: NavUser, audience: NavAudience | undefined): boolean {
   if (audience === 'profile') return !!user.employeeId;
   if (audience === 'team') return decidesForTeam(user);
+  if (audience === 'hiring') return user.hiring === true;
   if (audience === undefined) return false;
   const can = assetsCan(user.assets ?? { access: 'none', values: false, ai: false });
   switch (audience) {
